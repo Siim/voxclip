@@ -10,12 +10,12 @@ internal sealed class DebugRewriteTakeAssets(VoiceLabTakeStorage storage)
     private readonly Dictionary<Guid, (VoiceLabTakeScratch Scratch, VoiceLabTakeInput Input, uint Seed)> rows = [];
     internal VoiceLabTakeScratch? Scratch(Guid id) => rows.GetValueOrDefault(id).Scratch;
     internal async Task<VoiceLabTakeRow> RowAsync(VoiceLabTakeInput input, VoiceLabTakeQuote quote, VoiceLabTakeQaResult qa,
-        double score, bool changed, CancellationToken ct)
+        double score, bool changed, CancellationToken ct, bool cut = false)
     {
         const int rate = 24_000;
         Directory.CreateDirectory(storage.PaidRoot); Directory.CreateDirectory(storage.ScratchRoot);
         var window = input.Window;
-        var frames = checked((long)Math.Floor((window.End - window.Start) * rate + 0.5)) + (changed ? rate / 5 : 0);
+        var frames = checked((long)Math.Floor((window.End - window.Start) * rate + 0.5)) + (cut ? -rate / 5 : changed ? rate / 5 : 0);
         var incoming = (long)Math.Ceiling(window.LeftSeam.FadeSamples / 2 * (double)rate / input.SourceSampleRate);
         var outgoing = (long)Math.Ceiling((window.RightSeam.FadeSamples - window.RightSeam.FadeSamples / 2) * (double)rate / input.SourceSampleRate);
         var samples = Enumerable.Range(0, checked((int)(incoming + frames + outgoing))).Select(index => (float)(0.05 * Math.Sin(index * 0.1))).ToArray();
@@ -27,7 +27,15 @@ internal sealed class DebugRewriteTakeAssets(VoiceLabTakeStorage storage)
             var words = new[] { new VoiceLabWord(input.Text, Math.Min(0.01, duration / 4), Math.Max(duration / 2, duration - 0.01), true) };
             var plan = new VoiceLabFitPlan([], new(0, 0), new(0, 0), incoming, incoming + frames, window.Start, window.End,
                 window.StartSample, window.EndSample, frames, words);
-            VoiceLabFitResult fit = changed ? new VoiceLabFitResult.ChangedDuration(plan, duration, 0.2) : new VoiceLabFitResult.Exact(plan);
+            if (cut)
+            {
+                // A take 0.2 s shorter than its window, cut once just inside the leading edge guard.
+                var output = (long)Math.Floor((window.End - window.Start - 0.2) * input.SourceSampleRate + 0.5);
+                var start = window.StartSample + (long)Math.Floor(VoiceLabNaturalPacing.CUT_EDGE_GUARD * input.SourceSampleRate + 0.5);
+                plan = plan with { VideoCuts = [new(start, start + window.EndSample - window.StartSample - output)] };
+            }
+            VoiceLabFitResult fit = cut ? new VoiceLabFitResult.ChangedDuration(plan, duration, -0.2)
+                : changed ? new VoiceLabFitResult.ChangedDuration(plan, duration, 0.2) : new VoiceLabFitResult.Exact(plan);
             var fitted = VoiceLabSilenceFit.Prepare(snapshot, paid, fit, window, input.SourceSampleRate, ct);
             var source = new float[checked((int)Math.Floor(input.Source.TotalFrames * (double)rate / input.SourceSampleRate + 0.5))];
             var tone = VoiceLabRoomToneSelection.Select(input.Items, input.SourceEnvelope, input.SourceSampleRate, input.Source.TotalFrames);

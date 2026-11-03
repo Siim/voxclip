@@ -93,9 +93,9 @@ internal sealed class DebugRewriteTakeRunner : IVoiceLabTakeRunner, IDisposable
             var score = fixtures.RootElement.GetProperty("ranking")[0].GetProperty("score").GetDouble();
             if (State == "ranked") score = take.Index == 1 ? 1 : 0.5;
             rows.Add(assets is null ? new(Guid.NewGuid(), take.Index, take.Seed, Audio: audio, Qa: qa, Score: score) :
-                await assets.RowAsync(input, take, qa, score, State == "length-changed", ct));
+                await assets.RowAsync(input, take, qa, score, State == "length-changed", ct, State == "length-cut"));
             if (progress is not null) await progress(rows.ToArray());
-            if (qa.Passed && State is not ("length-changed" or "three-ready" or "mixed" or "ranked" or "cancelled" or "fatal"))
+            if (qa.Passed && State is not ("length-changed" or "length-cut" or "three-ready" or "mixed" or "ranked" or "cancelled" or "fatal"))
                 return new(rows.ToArray(), VoiceLabTakeRunEnd.EarlyStop);
         }
         return new(rows.ToArray(), State switch { "cancelled" => VoiceLabTakeRunEnd.Cancelled, "fatal" => VoiceLabTakeRunEnd.Fatal, _ => VoiceLabTakeRunEnd.Completed });

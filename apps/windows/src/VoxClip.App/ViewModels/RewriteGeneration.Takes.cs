@@ -39,14 +39,24 @@ internal sealed partial class RewriteGeneration
     internal int PhraseNumber { get; set; } = 1;
     internal bool CanPlay => !closed && !accepting && !IsRunning && current() && outputChecked && !refreshingOutput &&
         Audition?.CanPlay == true && reviewEnd is VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop or VoiceLabTakeRunEnd.Fatal;
-    internal bool CanRetime => false;
-    internal bool NeedsShorterWording => Selected is { Fits: false } && !CanRetime && !IsRunning;
+    /// <summary>The selected take's changed-duration choices (Mac VoiceLabVideoDurationOptions); null without a take.</summary>
+    internal VoiceLabVideoDurationOptions? VideoOptions => Selected is { } row
+        ? new(row, ReviewedInput?.SourceSampleRate ?? 48_000) : null;
+    internal bool CanRetime => Selected is { Fits: false } && VideoOptions?.Allows(VoiceLabVideoMode.Retimed) == true;
+    internal bool CanCut => Selected is { Fits: false } && VideoOptions?.Allows(VoiceLabVideoMode.Cut) == true;
+    internal bool NeedsShorterWording => Selected is { Fits: false } && !CanRetime && !CanCut && !IsRunning;
     internal bool CanPlayTake(Guid id) => CanPlay && Rows.FirstOrDefault(row => row.Id == id) is { Stopped: false } row &&
         (row.Audio is not null ? takes?.Scratch(id)?.IsValid == true : row.Generated is not null && takes?.PaidAudio is not null);
     internal bool CanUseTakeAnyway(Guid id) => !closed && !accepting && !IsRunning && current() &&
         reviewEnd is VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop &&
         Rows.FirstOrDefault(row => row.Id == id) is { Selectable: true, HasJoinAdvisory: true } && takes?.Scratch(id)?.IsValid == true;
-    internal string RetimeCopy => "Retimed source video is not available in this build. Re-record this sentence instead.";
+    internal string KeepSourceCopy => VideoOptions?.UnchangedUnavailableReason ??
+        (VideoOptions is { AddedPauseSeconds: > 0 } options
+            ? $"Adds {options.AddedPauseSeconds.ToString("F1", CultureInfo.InvariantCulture)} s of natural pauses in your room's sound. Speech keeps its pace."
+            : "Uses the verified silence-only fit. Speech is never stretched.");
+    internal string CutCopy => $"Removes {(VideoOptions?.RemovedVideoSeconds ?? 0).ToString("F1", CultureInfo.InvariantCulture)} s of video at a pause, like a vlog jump cut. Speech keeps its pace.";
+    internal string RetimeCopy => VideoOptions?.ChangedUnavailableReason ??
+        $"Keeps this take's natural speech timing, plays source video at {(VideoOptions?.RetimeFactor ?? 1).ToString("F2", CultureInfo.InvariantCulture)}× and crops in 1.12×. Nothing is sent.";
     internal string LengthCopy => Selected is { Audio.Fit: VoiceLabFitResult.ChangedDuration change } row
         ? $"Take {row.Index + 1} runs {Math.Abs(change.ResidualSeconds).ToString("F1", CultureInfo.InvariantCulture)} s {(change.ResidualSeconds >= 0 ? "longer" : "shorter")} than the words it replaces. Choose how the video keeps up." : "";
 
@@ -205,8 +215,8 @@ internal sealed partial class RewriteGeneration
     }
     internal bool ChooseVideo(VoiceLabVideoMode choice)
     {
-        if (closed || accepting || Phase != RewriteGenerationPhase.LengthChanged || Selected is not { Selectable: true } ||
-            choice != VoiceLabVideoMode.Retimed || !CanRetime) return false;
+        if (closed || accepting || Phase is not (RewriteGenerationPhase.LengthChanged or RewriteGenerationPhase.ReadyToAccept) ||
+            Selected is not { Selectable: true, Fits: false } || !(choice == VoiceLabVideoMode.Retimed ? CanRetime : choice == VoiceLabVideoMode.Cut && CanCut)) return false;
         VideoChoice = choice; Phase = ReviewPhase(); Notify(); return true;
     }
     internal async Task<bool> AcceptAsync(EditorViewModel editor, IReadOnlyList<Core.Domain.Editing.EditOperation>? localOperations = null)

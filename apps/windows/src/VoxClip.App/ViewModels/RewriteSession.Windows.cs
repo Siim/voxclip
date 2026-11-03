@@ -15,6 +15,27 @@ internal sealed partial class RewriteSession
     internal bool IsGeneratingBatch { get; private set; }
     internal bool CanAcceptAll => GenerationIsCurrent && !IsGeneratingBatch && !applyingBatch && generationWindows.Count > 0 &&
         generationWindows.Count == PricedVoiceHunks.Count && generationWindows.All(window => window.ReadyToAccept);
+    /// <summary>The footer's next step while selected takes cannot be used yet because a changed-duration phrase has no
+    /// video choice (Mac ClipTakePlan.acceptanceBlocker); null otherwise.</summary>
+    internal string? AcceptanceBlocker
+    {
+        get
+        {
+            if (!GenerationIsCurrent || IsGeneratingBatch || applyingBatch || CanAcceptAll) return null;
+            var missing = generationWindows.Select((window, index) => (window, number: index + 1))
+                .Where(item => item.window.Phase == RewriteGenerationPhase.LengthChanged &&
+                    item.window.Selected is { Selectable: true, RequiresJoinAdvisoryAcceptance: false, Fits: false } && item.window.VideoChoice is null)
+                .Select(item => item.number).ToArray();
+            return missing.Length == 0 ? null : $"Choose the video duration for {PhraseList(missing)}.";
+        }
+    }
+    /// <summary>"phrase 2", "phrases 2 and 4", "phrases 1, 2 and 4".</summary>
+    internal static string PhraseList(IReadOnlyList<int> numbers) => numbers.Count switch
+    {
+        0 => "",
+        1 => $"phrase {numbers[0]}",
+        _ => $"phrases {string.Join(", ", numbers.Take(numbers.Count - 1))} and {numbers[^1]}"
+    };
     internal Task GenerationCleanup => Task.WhenAll(retiredGenerations);
     internal string RewriteActionName => requestedScope is null
         ? $"Rewrite {Source.Count(word => word.Kind == Core.Domain.Shared.WordKind.Word)} words"

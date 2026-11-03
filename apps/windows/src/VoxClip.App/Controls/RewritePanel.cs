@@ -36,6 +36,7 @@ internal sealed partial class RewritePanel : Grid
     private readonly StackPanel review = Ui.Stack(6);
     private readonly TextBlock changeSummary = Ui.Text("");
     private readonly Button apply = new() { HorizontalAlignment = HorizontalAlignment.Right };
+    private readonly TextBlock acceptBlocker = Ui.Text("");
     private readonly RewriteAnnouncements announcements = new();
     private readonly List<(DependencyObject Target, DependencyProperty Property, string Key)> brushes = [];
     private bool updating;
@@ -148,6 +149,10 @@ internal sealed partial class RewritePanel : Grid
         var disclosureText = Small("Exports show AI MODIFIED on the video and in the post.");
         Grid.SetColumn(disclosureText, 1); disclosure.Children.Add(disclosureText);
         footerContent.Children.Add(disclosure);
+        acceptBlocker.TextWrapping = TextWrapping.Wrap;
+        AutomationProperties.SetAutomationId(acceptBlocker, "Rewrite.AcceptBlocker");
+        AutomationProperties.SetLiveSetting(acceptBlocker, AutomationLiveSetting.Polite);
+        footerContent.Children.Add(acceptBlocker);
         footerContent.Children.Add(apply);
         apply.Click += async (_, _) => await ApplyDefaultAsync();
         var footer = Themed(new Border { Padding = new(16, 12, 16, 12), BorderThickness = new(0, 1, 0, 0),

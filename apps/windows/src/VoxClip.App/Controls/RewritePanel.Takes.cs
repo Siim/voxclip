@@ -13,8 +13,10 @@ internal sealed partial class RewritePanel
         HorizontalAlignment = HorizontalAlignment.Stretch, Padding = new(0) };
     private readonly StackPanel lengthBody = Ui.Stack(8);
     private readonly TextBlock lengthCopy = Ui.Text("");
-    private readonly RadioButtons videoChoices = new() { Header = "How the video keeps up", SelectedIndex = -1, MaxColumns = 1 };
-    private readonly TextBlock retimeCopy = Ui.Text("");
+    private readonly RadioButtons videoChoices = new() { Header = "Choose video duration for this passage", SelectedIndex = -1, MaxColumns = 1 };
+    private static readonly VoiceLabVideoMode[] VideoModes = [VoiceLabVideoMode.Source, VoiceLabVideoMode.Cut, VoiceLabVideoMode.Retimed];
+    private readonly TextBlock[] videoDetails = [Ui.Text(""), Ui.Text(""), Ui.Text("")];
+    private readonly TextBlock chooseAnew = Ui.Text("Choose anew for each passage and selected take.");
     private readonly StackPanel takeRecovery = Ui.Stack(6);
     private readonly TextBlock nextPace = Ui.Text("");
     private readonly Dictionary<Guid, (Button Play, Button? Reject)> takeButtons = [];
@@ -47,17 +49,29 @@ internal sealed partial class RewritePanel
         generationBody.Children.Add(takeList);
         generationBody.Children.Add(nextPace);
         AutomationProperties.SetAutomationId(videoChoices, "Rewrite.VideoChoice");
-        videoChoices.Items.Add(new RadioButton { Content = new TextBlock { Text = "Lip sync", TextWrapping = TextWrapping.Wrap }, IsEnabled = false });
-        videoChoices.Items.Add(new RadioButton { Content = new TextBlock { Text = "Retimed source video", TextWrapping = TextWrapping.Wrap }, IsEnabled = false });
+        string[] titles = ["Keep source video duration", "Cut the video to this take", "Match video to this take's duration"];
+        for (var index = 0; index < titles.Length; index++)
+        {
+            var detail = videoDetails[index];
+            detail.TextWrapping = TextWrapping.Wrap; detail.FontSize = 11;
+            Themed(detail, TextBlock.ForegroundProperty, "VcTextSecondaryBrush");
+            var content = Ui.Stack(2);
+            content.Children.Add(new TextBlock { Text = titles[index], TextWrapping = TextWrapping.Wrap });
+            content.Children.Add(detail);
+            var option = new RadioButton { Content = content, IsEnabled = false };
+            AutomationProperties.SetAutomationId(option, "Rewrite.VideoChoice." + VideoModes[index]);
+            SetName(option, titles[index]);
+            videoChoices.Items.Add(option);
+        }
         videoChoices.SelectionChanged += (_, _) =>
         {
             if (updating || session.Generation is not { } generation) return;
-            if (videoChoices.SelectedIndex >= 0) generation.ChooseVideo(videoChoices.SelectedIndex == 0 ? VoiceLabVideoMode.Lipsync : VoiceLabVideoMode.Retimed);
+            if (videoChoices.SelectedIndex >= 0) generation.ChooseVideo(VideoModes[videoChoices.SelectedIndex]);
             RenderTakes(generation);
         };
-        lengthBody.Children.Add(lengthCopy); lengthBody.Children.Add(videoChoices);
-        lengthBody.Children.Add(Small("Lip sync is not available in this build."));
-        lengthBody.Children.Add(retimeCopy);
+        chooseAnew.TextWrapping = TextWrapping.Wrap;
+        Themed(chooseAnew, TextBlock.ForegroundProperty, "VcTextTertiaryBrush");
+        lengthBody.Children.Add(lengthCopy); lengthBody.Children.Add(videoChoices); lengthBody.Children.Add(chooseAnew);
         var shorter = new Button { Content = "Ask for shorter" };
         shorter.Click += async (_, _) =>
         {
@@ -180,8 +194,8 @@ internal sealed partial class RewritePanel
             retry.Content = generation.Selected?.Audio?.Fit is VoiceLabFitResult.ChangedDuration { ResidualSeconds: < 0 } ? "Use surrounding sentence" : "Ask for shorter";
         nextPace.Text = generation.NextPace is { } pace && pace != 1 ? FormattableString.Invariant($"Next take at {pace:F2}× pace") : "";
         nextPace.Visibility = nextPace.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
-        lengthCopy.Text = generation.LengthCopy; retimeCopy.Text = generation.RetimeCopy;
-        videoChoices.SelectedIndex = generation.VideoChoice is null ? -1 : 1;
+        lengthCopy.Text = generation.LengthCopy;
+        RenderVideoChoices(generation);
         updating = false;
         RenderTakeButtons(generation);
         if (session.LocalAction is null)
@@ -194,6 +208,25 @@ internal sealed partial class RewritePanel
             apply.IsEnabled = session.CanAcceptAll;
         }
         else AutomationProperties.SetAutomationId(apply, "Rewrite.Apply");
+        acceptBlocker.Text = session.LocalAction is null ? session.AcceptanceBlocker ?? "" : "";
+        acceptBlocker.Visibility = acceptBlocker.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+    /// <summary>Keep source, Cut and Match video as on Mac: Cut is listed only when its quiet-boundary cut is valid, the
+    /// others always, each with its reason; nothing is preselected.</summary>
+    private void RenderVideoChoices(RewriteGeneration generation)
+    {
+        bool[] allowed = [false, generation.CanCut, generation.CanRetime];
+        string[] details = [generation.KeepSourceCopy, generation.CutCopy, generation.RetimeCopy];
+        for (var index = 0; index < VideoModes.Length; index++)
+        {
+            var option = (RadioButton)videoChoices.Items[index];
+            option.IsEnabled = allowed[index] && !generation.IsRunning;
+            option.Visibility = index == 1 && !allowed[index] ? Visibility.Collapsed : Visibility.Visible;
+            videoDetails[index].Text = details[index];
+            AutomationProperties.SetHelpText(option, details[index]);
+        }
+        videoChoices.SelectedIndex = generation.VideoChoice is { } choice ? Array.IndexOf(VideoModes, choice) : -1;
+        chooseAnew.Visibility = generation.VideoChoice is null ? Visibility.Visible : Visibility.Collapsed;
     }
     private readonly HashSet<DependencyObject> renderedTakeElements = [];
 #if DEBUG

@@ -58,14 +58,20 @@ public sealed class RewriteTakeReviewTests
     }
 
     [Fact]
-    public void LengthChoicesWrapStartUnselectedAndExplainBothUnavailableModes()
+    public void LengthChoicesMatchMacStartUnselectedAndListCutOnlyWhenValid()
     {
         var source = AppSource("Controls/RewritePanel.Takes.cs");
         Assert.Contains("RadioButtons", source); Assert.Contains("SelectedIndex = -1", source);
-        Assert.Contains("Text = \"Lip sync\", TextWrapping = TextWrapping.Wrap }, IsEnabled = false", source);
-        Assert.Contains("Text = \"Retimed source video\", TextWrapping = TextWrapping.Wrap }, IsEnabled = false", source);
-        Assert.Contains("Lip sync is not available in this build.", source);
-        Assert.Contains("retimeCopy.Text = generation.RetimeCopy", source);
+        Assert.Contains("Header = \"Choose video duration for this passage\"", source);
+        Assert.Contains("[\"Keep source video duration\", \"Cut the video to this take\", \"Match video to this take's duration\"]", source);
+        Assert.Contains("[VoiceLabVideoMode.Source, VoiceLabVideoMode.Cut, VoiceLabVideoMode.Retimed]", source);
+        Assert.Contains("option.Visibility = index == 1 && !allowed[index] ? Visibility.Collapsed : Visibility.Visible", source);
+        Assert.Contains("TextWrapping = TextWrapping.Wrap", source);
+        Assert.Contains("Choose anew for each passage and selected take.", source);
+        Assert.DoesNotContain("Lip sync", source);
+        var panel = AppSource("Controls/RewritePanel.cs");
+        Assert.Contains("footerContent.Children.Add(acceptBlocker);", panel);
+        Assert.DoesNotContain("ContentDialog", source);
     }
     [Fact]
     public void FailedRowsHaveInlineKeyboardReachablePlaybackWithoutARejectAction()
@@ -365,17 +371,57 @@ public sealed class RewriteTakeReviewTests
         Assert.Equal(0, test.PublishCalls); Assert.False(test.Editor.CanUndo);
     }
     [Fact]
-    public async Task ChangedLengthNeedsARealAvailableVideoChoiceAndLipSyncRefuses()
+    public async Task ChangedLengthOffersMatchVideoWithoutPreselectionAndRendersIt()
     {
         await using var test = new Harness("length-changed"); await test.GenerateAsync();
         Assert.NotNull(test.Generation.SelectedTakeId); Assert.Null(test.Generation.VideoChoice);
         Assert.Equal(RewriteGenerationPhase.LengthChanged, test.Generation.Phase);
         Assert.Contains("0.2 s longer", test.Generation.LengthCopy);
         Assert.False(test.Generation.ReadyToAccept);
+        Assert.Equal("Choose the video duration for phrase 1.", test.Session.AcceptanceBlocker);
         Assert.False(test.Generation.ChooseVideo(VoiceLabVideoMode.Lipsync));
-        Assert.False(test.Generation.ChooseVideo(VoiceLabVideoMode.Retimed));
-        Assert.Contains("not available in this build", test.Generation.RetimeCopy);
+        Assert.False(test.Generation.ChooseVideo(VoiceLabVideoMode.Source));
+        Assert.False(test.Generation.CanCut); Assert.False(test.Generation.ChooseVideo(VoiceLabVideoMode.Cut));
+        Assert.True(test.Generation.CanRetime); Assert.False(test.Generation.NeedsShorterWording);
+        Assert.Matches(@"^Keeps this take's natural speech timing, plays source video at 0\.\d\d× and crops in 1\.12×\. Nothing is sent\.$", test.Generation.RetimeCopy);
+        Assert.StartsWith("This take is longer than the source window.", test.Generation.KeepSourceCopy);
         Assert.False(await test.Session.ApplyTakeAsync()); Assert.Equal(0, test.PublishCalls);
+        Assert.True(test.Generation.ChooseVideo(VoiceLabVideoMode.Retimed));
+        Assert.True(test.Generation.ReadyToAccept); Assert.Null(test.Session.AcceptanceBlocker);
+        Assert.True(await test.Session.ApplyTakeAsync(), test.Generation.Problem + " / " + test.Editor.Notice);
+        var video = test.Editor.Project.VoiceLab.Segments.Single().Candidates.Single(candidate => candidate.Recipe!.Video.Mode != VoiceLabVideoMode.Source).Recipe!.Video;
+        Assert.Equal(VoiceLabVideoMode.ZoomCover, video.Mode);
+        Assert.Equal((1.12, .5, .5), (video.Zoom, video.FaceX, video.FaceY));
+        AssertRenderable(test.Editor.Project, VoiceLabVideoDurationOptions.MatchZoom);
+    }
+    /// <summary>Lead review finding 2: a phrase that fits only with a video cut is priced as fitting, so once paid its take
+    /// must offer a Cut that is accepted and renders, not leave the phrase without a usable video choice.</summary>
+    [Fact]
+    public async Task PaidTakeThatFitsOnlyWithAVideoCutOffersCutAndRendersIt()
+    {
+        await using var test = new Harness("length-cut"); await test.GenerateAsync();
+        Assert.Equal(RewriteGenerationPhase.LengthChanged, test.Generation.Phase);
+        Assert.Null(test.Generation.VideoChoice); Assert.False(test.Generation.ReadyToAccept);
+        Assert.Contains("0.2 s shorter", test.Generation.LengthCopy);
+        Assert.True(test.Generation.CanCut); Assert.False(test.Generation.NeedsShorterWording);
+        Assert.Equal("Removes 0.2 s of video at a pause, like a vlog jump cut. Speech keeps its pace.", test.Generation.CutCopy);
+        Assert.Equal("Choose the video duration for phrase 1.", test.Session.AcceptanceBlocker);
+        Assert.True(test.Generation.ChooseVideo(VoiceLabVideoMode.Cut));
+        Assert.Equal(VoiceLabVideoMode.Cut, test.Generation.VideoChoice);
+        Assert.True(test.Generation.ReadyToAccept); Assert.Null(test.Session.AcceptanceBlocker);
+        Assert.True(await test.Session.ApplyTakeAsync(), test.Generation.Problem + " / " + test.Editor.Notice);
+        var segment = test.Editor.Project.VoiceLab.Segments.Single();
+        var video = segment.Candidates[segment.SelectedCandidateIndex].Recipe!.Video;
+        Assert.Equal(VoiceLabVideoMode.Cut, video.Mode);
+        Assert.Single(video.Cuts!);
+        AssertRenderable(test.Editor.Project, VoiceLabNaturalPacing.CUT_PUNCH_IN);
+    }
+    private static void AssertRenderable(Project project, double zoom)
+    {
+        var prepared = VoiceLabRenderContract.Prepare(project, VoiceLabOutputScope.Full, VoiceLabLabelPosition.TopRight);
+        var input = VoiceLabRenderInput.Capture(project, prepared, Path.GetTempPath());
+        Assert.Contains(input.Framing.Spans, span => span.Zoom == zoom);
+        Assert.Equal(prepared.OutputPlan.OutputSamples, input.Framing.Spans[^1].OutputEndSample);
     }
     [Fact]
     public async Task AcceptUsesRecipePublicationAndOneByteExactUndoRedoStep()
