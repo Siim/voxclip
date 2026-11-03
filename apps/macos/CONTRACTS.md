@@ -1,5 +1,13 @@
 # macOS implementation contracts
 
+### 2026-11-04 — Rewrite sync-3 lip-sync pipeline
+
+- **Built.** Sample-grid windows, minimum-three-second expansion, overlap/touch merging and catalogue window pricing. Local injectable Vision gate precedes any upload. Chosen Keep/Match/Cut video and final mixed PCM16/48 kHz mono WAV feed sync-3 only. Approved upload, queue, bounded explicit-response retries, cancel and cleanup reuse the existing provider types. Inputs request one-hour retention; result payload deletion is attempted where supported.
+- **Render and ownership.** Preserve base duration recipe fields under `video.mode=lipsync`, store actual `cut_off`/`remap`, snapshot/hash-check imported video, and share seam ±0.2 s/three-frame compositing between preview and export. Accepted submit receipts survive Undo. App job ownership blocks dependent mutations and waits through Use Takes; cancelled/invalidated late results cannot reapply. DEBUG diagnostic requires isolated `VOXCLIP_DATA_DIR` and writes safe typed events only.
+- **Deleted.** The disabled Mac lip-sync render gate and remap-only validator; no duplicate implementation or backup files. Panel integration follows a fresh merge of `origin/lead/v2-rewrite`.
+- **Limits / owed.** No live or paid request was made. First live job belongs to the lead. Current source video bounds are even dimensions ≤1920 pixels and ≤60 fps; unsupported media fails locally. Windows native twin remains hidden and owed; its existing validator still requires a compatibility follow-up for actual modes/base fields (Windows code is outside this package's permitted scope).
+- **Integration.** New shared `lipsync-window-cases.json` (`voxclip-lipsync-windows/1`) is independent of existing vectors. Preserve concurrent autofit and cut ownership/confirmation behavior. Verification and UI-state acceptance are recorded in the completion entry/report.
+
 ### 2026-11-03 — Audio expression review fixes: trim, edge extents and QA
 
 - **Built.** Every take uses `VoiceLabAlignment.trim`. `VoiceLabAudioTags.edgeExtent` is the single pure edge-expression function: explicit words, PCM, rate, tags, token count, model and provider character timing. Supported leading/trailing tags extend the adjacent word outward on every seam, using bracket timing when present or the existing activity search widened by shared duration allowances otherwise. Asset clamps apply. Mid-phrase and unsupported tags leave normal extents/trim alone.

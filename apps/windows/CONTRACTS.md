@@ -1,5 +1,11 @@
 # Windows fixed contracts
 
+### 2026-11-04 — Mac Rewrite sync-3 twin owed
+
+- Windows keeps lip sync hidden; no Windows production code changes belong to this package. Owed: local face gate, chosen-duration mezzanine/WAV, approved fal REST upload/queue/retention/retry/cancel/cleanup, inline per-phrase/All controls, mutation ownership, receipt retention and shared preview/export crossfades.
+- Mac retains existing recipe field names, preserving source/zoom/cut fields under `mode=lipsync` and storing the actual `cut_off` or `remap`. Windows decodes the existing fields but its remap-only/base-field validator needs a scoped compatibility follow-up before consuming these Mac recipes; passing current Windows tests is not evidence of that compatibility. New independent `voxclip-lipsync-windows/1` vectors have ten window/merge cases for the twin to replay.
+- No paid/live gate or CI dispatch is authorized. The lead owns the first actual fal job and Windows native acceptance.
+
 ### 2026-11-03 — Audio expressions Windows twin and measured shorter feedback
 
 - **Rewrite / requests (brief 1–2).** Both Rewrite services parse and retain the optional structured annotations from shared prompt version 2. Ordered word-diff positions, scope splits/merges, context windows and sentence recovery carry their anchors; repeated words cannot steal another hunk's tags. The cached shared catalogue supplies the whitelist, capable models and duration allowances. Only v3/v4 render bracket tags. Exact request hashes, limits and billing include their characters. Unpaid edits retire/requote without synthesis; paid/in-flight edits use the existing inline discard/cancel ownership guard. Cancelling preserves words, tags and takes. The independently pushed HTTP strict-schema repair below requires every object property recursively without changing canonical/CLI optionality.

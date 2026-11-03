@@ -201,7 +201,7 @@ If `user_read` is missing, Core reports the permission failure and leaves clone 
 
 ### 2.5 First-use consent per provider
 
-Before the first paid request to each provider, show a sheet. The answer is stored as `voiceLab.providerConsent.<provider>` in settings. The sheet copy:
+Before the first paid request to each provider, show its consent copy. The answer is stored as `voiceLab.providerConsent.<provider>` in settings. In Rewrite, fal.ai consent is inline above the priced lip-sync button; accepting that button accepts both the displayed consent and that exact job. No additional dialog opens. Other provider entry points retain their existing consent presentation. The copy:
 
 | Provider | Copy |
 |---|---|
@@ -492,16 +492,16 @@ A local, offline alternative (DeepFilterNet or similar) is out of scope until it
 
 ## 5. Voice Lab beta: 0.1.0 gate and settings
 
-0.1.0 ships text Rewrite. Voice Lab is a beta behind its setting: Mac can create your voice, re-voice rewritten words and change the voice of a passage or full take; Windows re-voice is not available until voice creation is. Lip sync is later (M3+).
+0.1.0 ships text Rewrite. Voice Lab is a beta behind its setting: Mac can create your voice, re-voice rewritten words, change the voice of a passage or full take, and lip sync chosen Rewrite takes with fal.ai sync-3. Windows lip sync remains hidden pending its native twin.
 
 - Settings → Voice Lab → **Show Voice Lab (beta)**. It is off by default in release builds; development builds turn it on (below). On Mac, turning it on opens the inline Voice first-use card; Windows retains its one-time presentation:
   - "Voice Lab can create a copy of your own voice and re-voice words you rewrite. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key."
   - Buttons [Turn on] and [Cancel].
 - **Rewrite** (the scope bar, the sidebar row's Rewrite, the selection bar and the menus; `doc/design.md` §6.3) does not need Voice Lab. It proposes cuts, text fixes and phrases in your voice. Cuts and fixes apply with Voice Lab off. Phrases in your voice, making your voice, takes, **Insert Words…**, **Change Voice…** and lip sync need `voiceLab.enabled` and `voiceLab.betaNoticeAccepted`. With Voice Lab off, voice changes stay visible but excluded, with "Needs Voice Lab (beta)", and the panel offers **Turn On Voice Lab…**, which opens the inline Voice job on Mac (the one-time presentation on Windows).
 - Your voice is made inside Rewrite (§6.5.2). Settings → Voice Lab lists and deletes voices; it no longer creates them.
-- Windows appends "Creating your voice isn't available on Windows yet." to the beta notice. Its full notice is "Voice Lab can create a copy of your own voice and re-voice words you rewrite. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key. Creating your voice isn't available on Windows yet." Unshipped lip-sync keys and monthly-cap rows stay hidden on both platforms; saved values are preserved.
+- Windows appends "Creating your voice isn't available on Windows yet." to the beta notice. Its full notice is "Voice Lab can create a copy of your own voice and re-voice words you rewrite. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key. Creating your voice isn't available on Windows yet." Unshipped lip-sync keys and monthly-cap rows stay hidden on Windows; saved values are preserved.
 - Settings → Voice Lab also shows:
-  - the ElevenLabs key row (§2); fal.ai and sync.so key rows and monthly caps are hidden in 0.1.0 behind one lip-sync availability constant per platform. Stored keys and settings are preserved for M3+;
+  - the ElevenLabs key row (§2); Mac also exposes fal.ai. sync.so remains hidden. Windows lip-sync key rows remain hidden behind its availability constant; stored keys and settings are preserved;
   - **My voices**: the consent records, with their voice name, creation date, ElevenLabs voice id, and [Delete voice];
   - the ElevenLabs spend cap (§3.1) and the label position (§11.2);
   - Content Credentials (C2PA) for Clean-audio-only exports, on or off (§11.7; exports that need disclosure always carry a machine-readable mark);
@@ -1759,31 +1759,33 @@ public interface ILipsyncProvider {
 | quality+ | `fal-ai/sync-lipsync/v2` with `model: "lipsync-2-pro"` | `lipsync-2-pro` |
 | **best** | `fal-ai/sync-lipsync/v3` (sync-3) | `sync-3` |
 
-Settings → Voice Lab → Lip sync has two choices: the provider (fal.ai, sync.so) and the tier (Fast, Quality, Best). When the window's duration changed (`remap` is needed), a model without `supportsRemap` is skipped in favour of the next tier, after confirmation.
+Rewrite uses **only sync-3**, `fal-ai/sync-lipsync/v3`, priced through `VoiceLabPricing` at $8/minute of the prepared window. There is no provider or tier picker. The other models remain service contracts, not editor choices. Settings → Voice Lab → fal.ai stores the user's key. Windows keeps lip sync hidden pending its native twin.
+
+The inline **Lip Sync · ≈ $x** click is the paid approval (user decision, 1 November 2026), beside a description of the video/audio transfer and export disclosure. First-use provider consent and monthly cap warnings appear above that button, not in a sheet. **Lip Sync All** merges overlapping or touching windows before pricing; the merged window is charged once.
 
 ### 9.3 Window procedure
 
-1. **Window.** `L = [seamIn − 1.0 s, seamOut + 1.0 s]`, clamped to the take and at least 3 s long. The handles give the model speaking motion; lipsync-2 works in 2 s chunks.
+1. **Window.** `L = [seamIn − 1.0 s, seamOut + 1.0 s]`, clamped to the take and at least 3 s long. Map through the chosen duration policy, expanding again if the mapped window is shorter than 3 s. Lip Sync All merges overlapping/touching expanded windows before pricing. Each job is at most 300 s; unsupported windows refuse locally.
 2. **Face check.**
    - Sample one frame every 0.5 s across `L`. Detect faces with Vision on macOS or `FaceDetector` on Windows.
    - Require a face in at least 80% of the samples, with the largest face at least 8% of the frame height.
-   - Otherwise lip sync is unavailable: "No clear face in this part. Use zoom cover instead."
+   - Otherwise lip sync is unavailable: "No clear face in this part." No upload or billed submit takes place.
 3. **Mezzanine.**
-   - Video: H.264 High at the source resolution and frame rate, with a bitrate of `0.33 bits × pixels × fps` (≈ 20 Mbps at 1080p30) and a keyframe every second. Use AVAssetWriter on macOS and the encoder ladder on Windows. There is no audio track.
+   - Video: H.264 High at the source-oriented resolution and frame rate, with a bitrate of `0.33 bits × pixels × fps` (≈ 20 Mbps at 1080p30) and a keyframe every second. Use AVAssetWriter on macOS and the encoder ladder on Windows. There is no audio track. Mac currently refuses source dimensions above its compositor's 1920-pixel bound, odd dimensions and rates above 60 fps before upload. A fractional final video frame may extend by less than one frame beyond the sample-exact WAV.
    - Audio: 16-bit WAV, 48 kHz mono, of the **final mixed audio** of `L`: the source handles plus the patch.
 4. **Submit.** Use `sync_mode = "cut_off"` when the window duration is unchanged, and `"remap"` when it changed.
 5. **Download** the result immediately, because result URLs expire. Then conform it:
    - Probe the result, and scale it to the window's size if it differs.
    - Compare the mean luma of the first frame with the source frame at the same time. If it differs by more than 8 code values on average, try a full/limited range conversion. If it still differs, show the warning "The lip-sync clip's colours differ slightly."
 6. **Replace frames** only inside `[seamIn − 0.2 s, seamOut + 0.2 s]`, with a 3-frame crossfade to the source frames at both ends.
-7. **Store** the result as the segment's `video.mode = "lipsync"` with its asset and provenance (§10.1). Then call `cleanup`.
+7. **Store** the result as the segment's `video.mode = "lipsync"` with its asset and provenance (§10.1), the source window bounds and the actual `cut_off`/`remap` used. Preserve the underlying source/Match/Cut recipe fields; the renderer builds that base video before overlaying the generated frames. Merged phrases reference one immutable video asset. Then call `cleanup`.
 
 ### 9.4 fal.ai flow
 
 1. **Upload** the mezzanine and the WAV:
    - `POST https://rest.fal.ai/storage/upload/initiate?storage_type=fal-cdn-v3` with header `Authorization: Key <key>` and body `{"file_name":"window.mp4","content_type":"video/mp4"}`. The response is `{upload_url, file_url}`.
    - `PUT <upload_url>` with the bytes and the same `Content-Type`.
-   - The fal SDKs document CDN uploads, but this REST initiate path is not on fal's current public CDN page. Spike S8 verifies the path, and also the lifecycle header that limits retention of the uploaded files (`X-Fal-Object-Lifecycle-Preference`; the documented default is no expiry).
+   - Verified against fal's official JavaScript client's `storage.ts` on 4 November 2026: this is the SDK's single-upload REST path. Initiation uses **`X-Fal-Object-Lifecycle`**, with JSON `{"expiration_duration_seconds":3600}`. This is distinct from **`X-Fal-Object-Lifecycle-Preference`**, which goes on queue submission and controls generated objects. The latter is also set to one hour. Never send the API key to the returned upload URL. Follow-up redirects are refused.
 2. **Submit** with `POST https://queue.fal.run/<endpoint>` and a JSON body. The response is `{request_id, status_url, response_url, cancel_url, queue_position}`.
 
    | Endpoint | Body |
@@ -1809,7 +1811,9 @@ Settings → Voice Lab → Lip sync has two choices: the provider (fal.ai, sync.
 6. **Retries.** A submit is retried only after an explicit 429 or 5xx response, never after a timeout, because a lost response may still have started a billed job.
 7. **Cleanup** after the download, or after a terminal failure or cancel:
    - `DELETE https://api.fal.ai/v1/models/requests/{request_id}/payloads` removes the request payloads and output files.
-   - `POST https://rest.fal.ai/storage/files/delete` removes each uploaded input file.
+   - The current public storage API and official SDK do not document `POST /storage/files/delete`. Do not invent or call it. Input uploads expire using the one-hour lifecycle requested during initiation; request/output deletion is attempted after download, terminal failure or cancellation. The UI promises deletion only where the API permits it, not immediate deletion of inputs.
+
+Reference: [official SDK storage implementation](https://github.com/fal-ai/fal-js/blob/main/libs/client/src/storage.ts), [queue submit headers](https://fal.ai/docs/api-reference/inference-api/queue/submit), and [request payload deletion](https://fal.ai/docs/platform-apis/v1/models/requests/payloads).
 
 ### 9.5 sync.so flow
 
@@ -1838,9 +1842,11 @@ Settings → Voice Lab → Lip sync has two choices: the provider (fal.ai, sync.
 
 ### 9.6 Concurrency
 
-One lip-sync job per provider at a time, queued. Progress shows "Lip sync · queued (3)" → "Lip sync · 40%" → "Lip sync · downloading", with [Cancel].
+One lip-sync job per provider at a time, behind the existing approval and queue types. Rewrite serializes the selected jobs; unrelated phrase take selection remains available. Use Takes waits for running work, and paid starts are blocked through publication. Changing a dependency's take, wording or duration requires the existing inline paid-mutation confirmation and invalidates its result; late completion cannot reapply it. Undo restores the base video without deleting the billing receipt.
 
-Local result import uses a private `.partial.mp4` stage so AVFoundation recognizes the container before publication. Bounded copy, self-contained container checks, H.264 metadata validation, hash binding, cancellation and no-clobber publication remain mandatory. A successful service import does not enable the editor's lip-sync render route.
+Local result import uses a private `.partial.mp4` stage so AVFoundation recognizes the container before publication. Bounded copy, self-contained container checks, H.264 metadata validation, hash binding, cancellation and no-clobber publication remain mandatory. Preview and export share the same per-frame compositor, replacing only each phrase's seam ±0.2 s with three-frame crossfades, not the whole uploaded window. The label and metadata say "Lip movement generated with AI"; existing C2PA policy remains unchanged.
+
+Accepted submits immediately write a private receipt at `VoiceLab/<projectId>/lipsync-receipts/<requestId>.json`, including hashes, estimate, model, mode and timestamps, not URLs, media or keys. DEBUG runs with an explicit isolated `VOXCLIP_DATA_DIR` write safe typed events to `Diagnostics/lipsync.jsonl` there; normal user Library storage and global logs are refused. No live/paid run is an automated test or release gate.
 
 ---
 
