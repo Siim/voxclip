@@ -1220,6 +1220,7 @@ Selection snapping skips them. Hit-testing an inserted run focuses its change.
 - The connector consent (ai.md §4.8) appears before the first send per connector, worded for Rewrite. It is unchanged.
 - A send on an API key, or on a CLI signed in with an API key, asks every time (R0b). Every other send starts at once (voice-lab.md §3.1).
 - On Mac, a Rewrite on another scope keeps the open session until the new one opens. If the selection, the project or the AI choice changed while Rewrite got ready, nothing opens and nothing is sent, the open session stays, and the status bar says why until the next press: "Rewrite didn't start because the selection changed. Nothing was sent. Press Rewrite again." (or "…the project changed…", "…the AI choice changed…"); VoiceOver hears the same sentence. A close or a send of the open session in that moment says nothing.
+- On Mac, opening and accepting a Rewrite use the same scoped input projection. Autosave or Save As (timestamp, writer, title and relative media path), tab choice, Motion/Demo commits, schema/extensions and Voice Lab asset catalogs do not refuse or discard unchanged text. The source transcript/media, pause settings, replacement segments and scoped cuts/corrections/clip bounds remain inputs; a selection also includes the pauses immediately before and after it. Edits outside the scope can finish while the request is in flight. An unavailable stale-connector retry closes the old session and says "Rewrite isn't available right now. Nothing was sent." instead of silently doing nothing.
 
 **R0. No AI chosen** (`llm.connector` is unset)
 
@@ -1325,6 +1326,7 @@ The current connectors return one answer, so nothing streams: R1 waits until the
   - the primary **Rewrite Again**, with the send line as the note.
 - Undoing back to the proposal's revision returns the panel to R2 with every inclusion and take intact.
 - Edits outside the scope don't affect the proposal.
+- On Mac, a successful reply rejected because the connector or model changed uses the same R3 actions with headline "AI changed" and body "You changed the AI, so these changes may no longer fit. Nothing was applied, and no takes were paid for." It does not claim the user edited the words.
 
 **Request shapes** (detail in voice-lab.md §8.1):
 

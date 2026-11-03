@@ -98,6 +98,167 @@ private actor RewriteFailureRunner: ProcessRunner {
         return session
     }
 
+    private func successFixture(selection: Bool) async throws -> (EditorModel, RewriteFailureRunner) {
+        let (_, editor, shell, runner) = try await setup("success")
+        var project = editor.project
+        project.title = nil
+        project.media.source.absolutePath = "/fixture/narration.mov"
+        project.media.source.relativePath = "old-relative.mov"
+        project.media.source.durationSeconds = 122
+        project.transcript?.durationSeconds = 122
+        project.transcript?.words = (0..<60).map { index in
+            TimedWord(id: "fresh-\(index)", text: "word\(index)", start: Double(index) * 2, end: Double(index) * 2 + 0.6)
+        }
+        project.edits = ProjectEdits(clips: [ClipRange(id: "input-clip", startWordId: "fresh-10", endWordId: "fresh-30")])
+        editor.document.replaceProject(project)
+        editor.mediaResolved = true
+        editor.refresh()
+        editor.waveformTask?.cancel()
+        editor.waveform = WaveformData(fine: Array(repeating: 0.01, count: 150_000))
+        shell.choose(selection ? .fullTake : .clip("input-clip"), byClick: false)
+        editor.selectedWordIDs = selection ? Set(editor.words[13...17].map(\.id)) : []
+        return (editor, runner)
+    }
+
+    private func prepareSuccess(_ session: RewriteSession, runner: RewriteFailureRunner) async throws {
+        let reply: Data
+        if case .selection = session.rewriteScope {
+            reply = try JSONSerialization.data(withJSONObject: ["rewrite": session.source.dropFirst().map(\.text).joined(separator: " ")])
+        } else {
+            let plan = try ScopeRewritePlan.make(project: session.project, scope: session.rewriteScope, instruction: session.instruction,
+                language: "en", envelope: session.envelope)
+            let line = try #require(plan.lines.first)
+            reply = try JSONSerialization.data(withJSONObject: ["edits": [["line": line.line, "text": "", "reason": "Remove this line"]]])
+        }
+        await runner.respond(with: String(decoding: reply, as: UTF8.self))
+    }
+
+    private func save(_ editor: EditorModel, asNewName: Bool) async throws {
+        let root = editor.app.locations.root.appendingPathComponent("rewrite-save-\(UUID())")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let before = editor.project
+        editor.document.fileURL = root.appendingPathComponent("before.voxclip")
+        let destination = root.appendingPathComponent(asNewName ? "after.voxclip" : "before.voxclip")
+        let saved = await withTestDeadline(returning: false) { continuation in
+            editor.document.save(to: destination, ofType: UTType.voxclipProject.identifier,
+                for: asNewName ? .saveAsOperation : .saveOperation) { error in continuation.resume(returning: error == nil) }
+        }
+        try #require(saved)
+        #expect(editor.project.modifiedAt != before.modifiedAt)
+        #expect(editor.project.media.source.relativePath != before.media.source.relativePath)
+        if asNewName { #expect(editor.project.title == "after") }
+    }
+
+    @Test(arguments: [false, true], ["save", "saveAs", "outside", "scope", "connector"])
+    func saveDuringOpenUsesScopedInputs(_ selection: Bool, _ change: String) async throws {
+        let (editor, runner) = try await successFixture(selection: selection)
+        defer { editor.close() }
+        let waveform = RewritePresentationGate()
+        defer { waveform.release() }
+        editor.waveform = nil
+        editor.beforeWaveformLoad = { await waveform.pause() }
+        editor.runRewrite(instruction: "Keep my tone")
+        await waveform.untilPaused()
+        if change == "save" || change == "saveAs" {
+            try await save(editor, asNewName: change == "saveAs")
+        } else if change == "connector" {
+            editor.app.settings.values["llm.model.claude-code"] = .string("sonnet")
+        } else {
+            var changed = editor.project
+            changed.edits.corrections[change == "outside" ? "fresh-58" : "fresh-14"] = "corrected"
+            editor.document.replaceProject(changed)
+        }
+        waveform.release()
+        _ = try await TestDeadline.value(editor.rewriteOpenTask, "open after waveform wait")
+        if change == "scope" || change == "connector" {
+            #expect(editor.openRewrite == nil)
+            #expect(editor.rewriteNotice == (change == "scope" ? EditorModel.rewriteProjectNotice : EditorModel.rewriteConnectorNotice))
+            #expect(await runner.sends == 0)
+        } else {
+            #expect(editor.rewriteNotice == nil)
+            let session = try #require(editor.openRewrite)
+            await runner.untilWaiting()
+            try await prepareSuccess(session, runner: runner)
+            await runner.release()
+            _ = try await TestDeadline.value(session.actionTask, "land first reply after save during open")
+            #expect(session.isOpen && session.current && editor.proposal != nil)
+        }
+    }
+
+    @Test(arguments: [false, true], ["outside", "saveAs", "motion", "demo", "assets", "schema"])
+    func unrelatedCommitDuringSendStillLands(_ selection: Bool, _ change: String) async throws {
+        let (editor, runner) = try await successFixture(selection: selection)
+        defer { editor.close() }
+        let session = try await open(editor, runner: runner)
+        try await prepareSuccess(session, runner: runner)
+        let revision = session.revision
+        if change == "saveAs" {
+            try await save(editor, asNewName: true)
+        } else if change == "motion" {
+            editor.app.shell.choose(.clip("input-clip"), byClick: false)
+            let draft = try #require(editor.motionCueDraft())
+            try #require(editor.applyMotionCue(draft))
+        } else if change == "demo" {
+            let snapshot = editor.contextDemoSnapshot()
+            let demo = try editor.contextDemoDraftDocument()
+            let committed = try editor.commitContextDemoDocument(demo, expected: snapshot, name: "Commit Demo")
+            try #require(committed)
+        } else {
+            var changed = editor.project
+            switch change {
+            case "outside":
+                changed.edits.corrections["fresh-58"] = "outside"
+                changed.edits.cutWordIds.append("fresh-57")
+            case "assets":
+                changed.voiceLab.assets = [VoiceLabAsset(id: "unused", file: "unused.wav", sha256: String(repeating: "a", count: 64),
+                    durationSeconds: 1, sampleRate: 48_000, createdAt: .distantPast)]
+                changed.voiceLab.cleanAudio = VoiceLabCleanAudio(mode: .off)
+                changed.voiceLab.videoAssets = []
+            default:
+                changed.schemaVersion += 1
+                changed.extensions = ["unrelated": .string("metadata")]
+            }
+            editor.replace(changed, name: "Change outside Rewrite")
+        }
+        #expect(session.task.state == .running && session.revision == revision)
+        await runner.release()
+        _ = try await TestDeadline.value(session.actionTask, "land reply after unrelated commit")
+        #expect(editor.openRewrite === session && session.current && editor.proposal != nil)
+        if case .proposal = session.task.state {} else { Issue.record("Unrelated change discarded the proposal") }
+        #expect(await runner.sends == 1)
+    }
+
+    @Test(arguments: [12, 17])
+    func selectionEdgePauseInvalidates(_ afterIndex: Int) async throws {
+        let (editor, runner) = try await successFixture(selection: true)
+        defer { editor.close() }
+        let session = try await open(editor, runner: runner)
+        try await prepareSuccess(session, runner: runner)
+        let pause = try #require(editor.pauses.first { $0.afterIndex == afterIndex })
+        var changed = editor.project
+        changed.edits.cutPauseIds.append(pause.id)
+        editor.replace(changed, name: "Cut edge pause")
+        #expect(session.task.state == .changed && !session.current)
+        await runner.release()
+        _ = try await TestDeadline.value(session.actionTask, "reject reply after edge pause cut")
+        #expect(editor.openRewrite === session && session.task.state == .changed && editor.proposal == nil)
+    }
+
+    @Test func staleRetryWhenUnavailableExplainsWhy() async throws {
+        let (_, editor, _, runner) = try await setup("unexpected CLI failure")
+        defer { editor.close() }
+        let session = try await open(editor, runner: runner)
+        await runner.release()
+        _ = try await TestDeadline.value(session.actionTask, "fail before unavailable retry")
+        editor.app.settings.values["llm.model.claude-code"] = .string("sonnet")
+        editor.document.versionForTesting = true
+        session.task.footer.primary?.perform()
+        _ = try await TestDeadline.value(session.actionTask, "retry read-only project")
+        #expect(editor.rewriteNotice == EditorModel.rewriteUnavailableNotice || editor.openRewrite == nil)
+        #expect(await runner.sends == 1)
+    }
+
     @Test(arguments: ["none", "save", "scope", "connector"])
     func firstSuccessfulReplyAfterNewClipAndAsk(_ change: String) async throws {
         let (_, editor, shell, runner) = try await setup("success")
@@ -155,6 +316,8 @@ private actor RewriteFailureRunner: ProcessRunner {
         if change == "scope" || change == "connector" {
             #expect(session.task.state == .changed)
             #expect(editor.proposal == nil)
+            let text = session.task.cards.compactMap { if case .text(let text) = $0 { text } else { nil } }.joined()
+            #expect(text.hasPrefix(change == "connector" ? "You changed the AI" : "You edited"))
         } else {
             #expect(session.current)
             if case .proposal = session.task.state {} else { Issue.record("Successful reply was not proposed: \(session.task.state)") }

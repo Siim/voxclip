@@ -471,7 +471,7 @@ struct RewriteChange: Equatable, Sendable {
         guard isOpen, revision == expected else { return false }
         guard !Task.isCancelled, current else {
             clearProposal()
-            showChanged()
+            showChanged(reason: connectorIsCurrent() ? .scope : .ai)
             return false
         }
         return true
@@ -798,57 +798,27 @@ struct RewriteChange: Equatable, Sendable {
         if case .clip(let id) = scope { return project.edits.clips.contains { $0.id == id } }
         return true
     }
-    /// The parts of `project` the scope reads: the transcript, the video, the pause and Voice Lab settings, and the cuts,
-    /// corrections and pauses of the scope's words and its clip's, with that clip's bounds. The clip's title, and whether it
-    /// is kept or suggested, lie outside it, as do other clips, Find Clips results, captions, export and share settings.
-    /// Full take reads every word.
+    /// Uses the same scoped inputs as opening, keeping the session's original enclosing clip across tab changes.
     private func inside(_ project: Project) -> Project {
-        let positions = editor.wordIndex
-        var clipID: String?
-        var words: ClosedRange<Int>
-        switch rewriteScope {
-        case .fullTake: words = 0...max(0, (project.transcript?.words.count ?? 1) - 1)
-        case .clip(let id):
-            clipID = id
-            words = Self.clipRange(id, in: self.project) ?? 0...0
-        case .selection(let range):
-            words = range
-            if case .clip(let id) = scope, let clip = Self.clipRange(id, in: self.project) {
-                clipID = id
-                words = min(range.lowerBound, clip.lowerBound)...max(range.upperBound, clip.upperBound)
-            }
-        }
-        var project = project
-        project.modifiedAt = .distantPast
-        project.savedBy = ProjectWriter(version: "0.0.0")
-        project.media.source.relativePath = nil
-        project.title = nil
-        project.edits.activeClipId = nil
-        project.edits.clips = project.edits.clips.filter { $0.id == clipID }.map { ClipRange(id: $0.id, startWordId: $0.startWordId, endWordId: $0.endWordId) }
-        project.edits.cutWordIds = project.edits.cutWordIds.filter { positions[$0].map(words.contains) ?? true }
-        project.edits.cutPauseIds = project.edits.cutPauseIds.filter { id in
-            editor.pauseIndex[id].map { $0.afterIndex >= words.lowerBound && $0.afterIndex < words.upperBound } ?? true
-        }
-        project.edits.corrections = project.edits.corrections.filter { positions[$0.key].map(words.contains) ?? true }
-        project.captions = CaptionSettings()
-        project.export = ProjectExport()
-        project.share = ProjectShare()
-        project.ai = ProjectAI()
-        return project
+        let clipID: String? = if case .clip(let id) = scope { id } else { nil }
+        return project.rewriteInputs(scope: rewriteScope, enclosingClipID: clipID)
     }
+    enum ChangedReason { case scope, ai }
     /// R3: "Clip 1 changed", why nothing was applied, Close, and Rewrite Again with the send line.
-    func showChanged() {
+    func showChanged(reason: ChangedReason = .scope) {
         let words = task.words
-        var body = "You edited \(words.name), so these changes may no longer fit. Nothing was applied, and no takes were paid for."
+        let headline = reason == .ai ? "AI changed" : words.changed
+        let change = reason == .ai ? "You changed the AI" : "You edited \(words.name)"
+        var body = "\(change), so these changes may no longer fit. Nothing was applied, and no takes were paid for."
         if hasPaidTakes { body += " Your takes are kept until you close this." }
         // Rewrite Again discards the set-aside proposal and its takes, so it asks first as ⇧⌘R does.
         let again = PanelAction(id: "rewriteAgain", title: sendAsksFirst ? "Rewrite Again…" : "Rewrite Again") { [weak self] in
             guard let self else { return }
             editor.sendRewriteAgain(self)
         }
-        task.show(.changed, headline: PanelHeadline(text: words.changed), cards: [.text(body)],
+        task.show(.changed, headline: PanelHeadline(text: headline), cards: [.text(body)],
                   footer: PanelFooter(note: sendLine, link: PanelAction(id: "closeChanged", title: "Close") { [weak editor] in editor?.closeRewrite() }, primary: again))
-        editor.announce(words.changed + ".")
+        editor.announce(headline + ".")
     }
 
     nonisolated static func refusal(_ error: any Error) -> String {
