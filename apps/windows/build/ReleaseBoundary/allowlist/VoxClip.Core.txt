@@ -7972,7 +7972,6 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFit :: field public TooShortC
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFit :: method public AllowsVideo(VoxClip.Core.Domain.VoiceLab.VoiceLabFitResult,double,double)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFit :: method public Estimate(string,double)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFit :: method public Hypothetical(VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,System.Nullable`1<double>,System.Nullable`1<double>,double,double)
-member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFit :: method public Measure(string,double,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,System.Nullable`1<double>,System.Nullable`1<double>,double)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFit :: method public SpeakingRate(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult :: method private PrintMembers(System.Text.StringBuilder)

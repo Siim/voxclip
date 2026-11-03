@@ -10,7 +10,7 @@ public sealed record VoiceLabRewriteFitResult(double EstimateSeconds, double Slo
 {
     public bool TooLong => EstimateSeconds > SlotSeconds;
     public string Copy => "≈ " + EditingFormat.ToFixed1(EstimateSeconds) + " s" +
-        (Pace == 1 ? "" : " at " + Pace.ToString("F2", CultureInfo.InvariantCulture) + "× pace") +
+        (Pace == 1 ? "" : " at ≈ " + Pace.ToString("F2", CultureInfo.InvariantCulture) + "× pace") +
         " · slot " + EditingFormat.ToFixed1(SlotSeconds) + " s" + (Fits ? " · fits" : "");
 }
 
@@ -51,19 +51,6 @@ public static class VoiceLabRewriteFit
             previous = kind == 0 ? 0 : Math.Max(previous, kind);
         }
         return seconds;
-    }
-
-    public static VoiceLabRewriteFitResult Measure(string text, double rate, VoiceLabWindow window,
-        double? incomingSilence, double? outgoingSilence, double sourceSampleRate)
-    {
-        var estimate = Estimate(text, rate);
-        var longDuration = 2 * (window.End - window.Start + (incomingSilence ?? 0) + (outgoingSilence ?? 0) + 1);
-        var widest = Hypothetical(window, incomingSilence, outgoingSilence, longDuration, sourceSampleRate);
-        var expandedWindow = (widest.Plan.WindowEndSample - widest.Plan.WindowStartSample) / sourceSampleRate;
-        var edgePadding = (widest.Plan.Incoming.PadFrames + widest.Plan.Outgoing.PadFrames) / sourceSampleRate;
-        var slot = Math.Max(0, expandedWindow / MinimumVideoSpeed - edgePadding);
-        var fit = Hypothetical(window, incomingSilence, outgoingSilence, estimate, sourceSampleRate);
-        return new(estimate, slot, AllowsVideo(fit, sourceSampleRate, sourceSampleRate));
     }
 
     public static bool AllowsVideo(VoiceLabFitResult fit, double sourceSampleRate, double assetSampleRate)
