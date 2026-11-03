@@ -50,14 +50,15 @@ public struct VoiceLabQuote: Codable, Sendable, Equatable {
     public let languageMode: VoiceLabLanguageMode?
     public let preparedAt: Date
     public let modelID: String?
+    public let voiceID: String?
     package let fingerprint: String
     package let guardAudioHash: String?
     package init(id: UUID, operation: VoiceLabOperation, requestID: UUID, estimate: CostEstimate, region: ElevenLabsRegion,
          endpoint: String, languageMode: VoiceLabLanguageMode?, fingerprint: String, guardAudioHash: String? = nil,
-         preparedAt: Date = Date(), modelID: String? = nil) {
+         preparedAt: Date = Date(), modelID: String? = nil, voiceID: String? = nil) {
         self.id = id; self.operation = operation; self.requestID = requestID; self.estimate = estimate; self.region = region
         self.endpoint = endpoint; self.languageMode = languageMode; self.fingerprint = fingerprint; self.guardAudioHash = guardAudioHash
-        self.preparedAt = preparedAt; self.modelID = modelID
+        self.preparedAt = preparedAt; self.modelID = modelID; self.voiceID = voiceID
     }
 }
 
@@ -73,6 +74,24 @@ public struct VoiceLabAuthorization: Sendable, Equatable {
     }
 }
 
+/// The supported timestamped transport for making a take. Turbo dialogue requires a websocket and has no route yet.
+public enum VoiceLabSpeechRoute: String, Sendable {
+    case textToSpeech, textToDialogue
+    package static func forModelID(_ id: String) -> Self? {
+        switch id {
+        case "eleven_v4": return .textToDialogue
+        case "eleven_v4_turbo": return nil
+        default: return .textToSpeech
+        }
+    }
+    package func endpoint(voiceID: String) -> String {
+        switch self {
+        case .textToSpeech: "v1/text-to-speech/\(voiceID)/with-timestamps"
+        case .textToDialogue: "v1/text-to-dialogue/with-timestamps"
+        }
+    }
+}
+
 public struct VoiceLabModel: Sendable, Equatable {
     package init(id: String, name: String, languages: [String], canSpeak: Bool, canConvert: Bool, maximumTextLength: Int?, characterCostMultiplier: Double?) {
         self.id = id; self.name = name; self.languages = languages; self.canSpeak = canSpeak; self.canConvert = canConvert; self.maximumTextLength = maximumTextLength; self.characterCostMultiplier = characterCostMultiplier
@@ -85,19 +104,24 @@ public struct VoiceLabModel: Sendable, Equatable {
     public let canConvert: Bool
     public let maximumTextLength: Int?
     public let characterCostMultiplier: Double?
-    /// v4 is documented for Text to Dialogue; that separate timing path is not implemented here.
-    public var supportsTimestampedTTS: Bool { canSpeak && id != "eleven_v4" && id != "eleven_v4_turbo" }
-    /// Whether a take on this model gets the surrounding transcript as `previous_text` and `next_text` (§8.5). Eleven v3
-    /// has no request stitching, so the client omits both for it.
-    public var sendsSpeechContext: Bool { supportsTimestampedTTS && id != "eleven_v3" }
+    public var speechRoute: VoiceLabSpeechRoute? {
+        canSpeak ? VoiceLabSpeechRoute.forModelID(id) : nil
+    }
+    /// Kept for callers that ask whether the model can make timestamped takes, on either supported transport.
+    public var supportsTimestampedTTS: Bool { speechRoute != nil }
+    /// The context policy seam (§8.5). Dialogue sends no context until model support is separately validated.
+    public var sendsSpeechContext: Bool { speechRoute == .textToSpeech && id != "eleven_v3" }
     /// The model known to take both the §8.5 context and reliable `/with-timestamps` alignment.
     public static let patchingModelID = "eleven_multilingual_v2"
     /// The default speech model for re-voicing a phrase, from the account's discovered list (§8.5): Multilingual v2 when it
     /// is listed, since a patch must match the words around it; otherwise the first model that is sent context; otherwise
-    /// the first model. The list order is the account's, newest first, so the newest model is not simply the default.
+    /// the first TTS model, with dialogue only when no TTS model is available. The list order is the account's, newest
+    /// first, so the newest model is not simply the default.
     public static func patchDefault(_ models: [VoiceLabModel]) -> VoiceLabModel? {
         models.first { $0.id == patchingModelID && $0.supportsTimestampedTTS }
-            ?? models.first(where: \.sendsSpeechContext) ?? models.first(where: \.supportsTimestampedTTS)
+            ?? models.first(where: \.sendsSpeechContext)
+            ?? models.first { $0.speechRoute == .textToSpeech }
+            ?? models.first { $0.speechRoute == .textToDialogue }
     }
 }
 

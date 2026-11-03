@@ -1,6 +1,18 @@
 import Foundation
 import VoxClipCore
 
+/// Own-voice proofs bind the route already frozen in a service-issued quote, as well as its voice.
+private func matchesVoiceEndpoint(_ quote: VoiceLabQuote, voiceID: String) -> Bool {
+    guard quote.voiceID == voiceID else { return false }
+    switch quote.operation {
+    case .textToSpeech:
+        guard let route = VoiceLabSpeechRoute.forModelID(quote.modelID ?? "") else { return false }
+        return quote.endpoint == route.endpoint(voiceID: voiceID)
+    case .voiceChange: return quote.endpoint == "v1/voice-changer/\(voiceID)"
+    default: return false
+    }
+}
+
 struct VoiceSpeakerMatch: Sendable {
     let recordID: String
     let cloneVoiceID: String?
@@ -16,8 +28,7 @@ struct VoiceSpeakerMatch: Sendable {
     }
     func capability(for quote: VoiceLabQuote) throws -> VoiceOperationCapability {
         if let record {
-            let endpoint = quote.operation == .textToSpeech ? "v1/text-to-speech/\(record.voiceId)/with-timestamps" : "v1/voice-changer/\(record.voiceId)"
-            guard [.textToSpeech, .voiceChange].contains(quote.operation), quote.endpoint == endpoint else { throw VoiceLabError.consentRequired }
+            guard matchesVoiceEndpoint(quote, voiceID: record.voiceId) else { throw VoiceLabError.consentRequired }
             return VoiceOperationCapability(quote: quote, reserve: { try await store.dispatchPermit(record, requestID: quote.requestID) }) {
                 try await embedder.validateAvailability()
                 try await store.validateUse(record)
@@ -190,8 +201,7 @@ public actor VoiceUseGuard {
         guard approved, !contentKey.isEmpty else { throw VoiceLabError.consentRequired }
         let record = try await store.load(recordID)
         guard quote.operation == .textToSpeech || quote.operation == .voiceChange else { throw VoiceLabError.consentRequired }
-        let expected = quote.operation == .textToSpeech ? "v1/text-to-speech/\(record.voiceId)/with-timestamps" : "v1/voice-changer/\(record.voiceId)"
-        guard quote.endpoint == expected else { throw VoiceLabError.consentRequired }
+        guard matchesVoiceEndpoint(quote, voiceID: record.voiceId) else { throw VoiceLabError.consentRequired }
         try await store.validateUse(record)
         try await check.embedder?.validateAvailability()
         let audioHash = speech16k.withUnsafeBytes { VoiceLabFingerprint.bytes(Data($0)) }

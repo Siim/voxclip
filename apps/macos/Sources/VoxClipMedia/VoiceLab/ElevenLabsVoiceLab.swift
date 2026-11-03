@@ -12,8 +12,12 @@ private final class VoiceLabTransportStart: Sendable {
 /// the request's estimate (voice-lab §3.1), however the reply then ends. A take run reads it for a request that threw.
 final class VoiceLabRequestAcceptance: Sendable {
     private let value = Mutex(false)
+    private let decoded = Mutex<VoiceLabAudioResult?>(nil)
     var accepted: Bool { value.withLock { $0 } }
     func mark() { value.withLock { $0 = true } }
+    /// Valid PCM remains playable when original-text alignment or segment validation fails. It has no timestamps.
+    var unalignedAudio: VoiceLabAudioResult? { decoded.withLock { $0 } }
+    func preserve(_ audio: VoiceLabAudioResult) { decoded.withLock { $0 = audio } }
 }
 
 /// Explicit, region-bound Voice Lab transport. Mutations are sent once, including on 429/5xx.
@@ -213,14 +217,14 @@ public actor ElevenLabsVoiceLab {
     }
 
     private func quote(_ operation: VoiceLabOperation, requestID: UUID, endpoint: String,
-                       fields: [String], model: String? = nil, units: Double,
+                       fields: [String], model: String? = nil, voiceID: String? = nil, units: Double,
                        languageMode: VoiceLabLanguageMode? = nil, guardAudioHash: String? = nil) throws -> VoiceLabQuote {
         guard units > 0 else { throw VoiceLabError.invalidInput }
         let estimate = try estimate(operation, modelID: model, units: units)
         let value = VoiceLabQuote(id: UUID(), operation: operation, requestID: requestID, estimate: estimate,
                                   region: region, endpoint: endpoint, languageMode: languageMode,
                                   fingerprint: VoiceLabFingerprint.fields(fields), guardAudioHash: guardAudioHash,
-                                  preparedAt: now(), modelID: model)
+                                  preparedAt: now(), modelID: model, voiceID: voiceID)
         if preparedOrder.count >= 32 {
             guard let oldest = preparedOrder.first(where: { candidate in !approvedRuns.values.contains(where: { $0.contains(candidate) }) }) else { throw VoiceLabError.invalidInput }
             prepared.removeValue(forKey: oldest); preparedOrder.removeAll { $0 == oldest }
@@ -293,12 +297,12 @@ public actor ElevenLabsVoiceLab {
                                  options: VoiceLabSpeechOptions, requestID: UUID) throws -> VoiceLabQuote {
         try voice.validate()
         let model = try selectedModel(modelID, language: language, speak: true)
-        guard !text.isEmpty, text.unicodeScalars.count <= min(model.maximumTextLength ?? 5_000, 5_000),
-              Self.safeID(voice.id) else { throw VoiceLabError.invalidInput }
+        try validateSpeechText(text, model: model, voiceID: voice.id)
         try selectedVoice(voice)
-        return try quote(.textToSpeech, requestID: requestID, endpoint: "v1/text-to-speech/\(voice.id)/with-timestamps",
-                         fields: speechFields(text, modelID, voice, language, options),
-                         model: modelID, units: Double(text.unicodeScalars.count),
+        let route = try speechRoute(model)
+        return try quote(.textToSpeech, requestID: requestID, endpoint: route.endpoint(voiceID: voice.id),
+                         fields: speechFields(text, model, voice, language, options),
+                         model: modelID, voiceID: voice.id, units: Double(text.unicodeScalars.count),
                          languageMode: modelID == "eleven_multilingual_v2" ? .autoDetected(expected: language) : .explicit(language))
     }
 
@@ -311,7 +315,7 @@ public actor ElevenLabsVoiceLab {
         guard format.frames <= format.rate * 290 else { throw VoiceLabError.invalidInput }
         return try quote(.voiceChange, requestID: requestID, endpoint: "v1/voice-changer/\(voice.id)",
                          fields: conversionFields(audio, modelID, voice, language, seed, cleanAudioOn),
-                         model: modelID, units: Double(format.frames) / Double(format.rate),
+                         model: modelID, voiceID: voice.id, units: Double(format.frames) / Double(format.rate),
                          languageMode: .autoDetected(expected: language), guardAudioHash: VoiceLabFingerprint.bytes(audio))
     }
 
@@ -370,11 +374,21 @@ public actor ElevenLabsVoiceLab {
         case .stock: return [voice.id, "stock"]
         }
     }
-    private func speechFields(_ text: String, _ model: String, _ voice: VoiceLabVoiceChoice, _ language: String, _ options: VoiceLabSpeechOptions) -> [String] {
-        // Trimmed context is never empty, so "" stands for an omitted field.
-        [region.rawValue, "v1/text-to-speech/\(voice.id)/with-timestamps", "pcm_24000", text, model, language, String(options.seed),
-         model == "eleven_v3" ? "" : Self.speechContext(options.previousText, previous: true) ?? "",
-         model == "eleven_v3" ? "" : Self.speechContext(options.nextText, previous: false) ?? ""] + voiceFields(voice)
+    private func speechRoute(_ model: VoiceLabModel) throws -> VoiceLabSpeechRoute {
+        guard let route = model.speechRoute else { throw VoiceLabError.unsupportedEndpoint }
+        return route
+    }
+    private func validateSpeechText(_ text: String, model: VoiceLabModel, voiceID: String) throws {
+        let routeLimit = model.speechRoute == .textToDialogue ? 2_000 : 5_000
+        let count = text.unicodeScalars.count
+        guard count > 0, count <= min(model.maximumTextLength ?? 5_000, routeLimit), Self.safeID(voiceID)
+        else { throw VoiceLabError.invalidInput }
+    }
+    private func speechFields(_ text: String, _ model: VoiceLabModel, _ voice: VoiceLabVoiceChoice, _ language: String, _ options: VoiceLabSpeechOptions) -> [String] {
+        // Called only with a supported selected model. Empty context fields mean omitted, on both transports.
+        [region.rawValue, model.speechRoute?.endpoint(voiceID: voice.id) ?? "", "pcm_24000", text, model.id, language, String(options.seed),
+         model.sendsSpeechContext ? Self.speechContext(options.previousText, previous: true) ?? "" : "",
+         model.sendsSpeechContext ? Self.speechContext(options.nextText, previous: false) ?? "" : ""] + voiceFields(voice)
     }
     /// Removes Unicode White_Space at both ends. Foundation's whitespace sets differ: they also hold U+200B.
     private static func trimWhiteSpace(_ text: String) -> String {
@@ -572,24 +586,32 @@ public actor ElevenLabsVoiceLab {
         try voice.validate()
         let capability = try capability(voice)
         let model = try selectedModel(modelID, language: language, speak: true)
-        let count = text.unicodeScalars.count
-        guard count > 0, count <= min(model.maximumTextLength ?? 5_000, 5_000), Self.safeID(voice.id) else { throw VoiceLabError.invalidInput }
+        try validateSpeechText(text, model: model, voiceID: voice.id)
         try selectedVoice(voice)
-        let path = "v1/text-to-speech/\(voice.id)/with-timestamps"
+        let route = try speechRoute(model)
+        let path = route.endpoint(voiceID: voice.id)
         var components = URLComponents(url: region.baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
         components.queryItems = [URLQueryItem(name: "output_format", value: "pcm_24000")]
         // Voice settings are spec constants (§8.5), not caller choices.
-        var payload: [String: Any] = ["text": text, "model_id": modelID, "voice_settings": ["stability": 0.5, "similarity_boost": 0.8],
-                                      "seed": Int(options.seed), "apply_text_normalization": "auto"]
-        if modelID != "eleven_multilingual_v2" { payload["language_code"] = language }
-        if modelID != "eleven_v3" {
+        var payload: [String: Any]
+        switch route {
+        case .textToSpeech:
+            payload = ["text": text, "model_id": modelID, "voice_settings": ["stability": 0.5, "similarity_boost": 0.8],
+                       "seed": Int(options.seed), "apply_text_normalization": "auto"]
+            if modelID != "eleven_multilingual_v2" { payload["language_code"] = language }
+        case .textToDialogue:
+            payload = ["inputs": [["text": text, "voice_id": voice.id]], "model_id": modelID,
+                       "language_code": language, "settings": ["stability": NSDecimalNumber(string: "0.5"), "similarity": NSDecimalNumber(string: "0.8")],
+                       "seed": Int(options.seed), "apply_text_normalization": "auto"]
+        }
+        if model.sendsSpeechContext {
             if let previous = Self.speechContext(options.previousText, previous: true) { payload["previous_text"] = previous }
             if let next = Self.speechContext(options.nextText, previous: false) { payload["next_text"] = next }
         }
-        let body = try JSONSerialization.data(withJSONObject: payload)
+        let body = try JSONSerialization.data(withJSONObject: payload, options: route == .textToDialogue ? [.sortedKeys] : [])
         let deadline = deadlines[authorization.quote.id]
         try claim(authorization, operation: .textToSpeech, requestID: requestID, endpoint: path,
-                  fields: speechFields(text, modelID, voice, language, options))
+                  fields: speechFields(text, model, voice, language, options))
         let transportStart = VoiceLabTransportStart()
         let reply: Reply
         do {
@@ -607,9 +629,22 @@ public actor ElevenLabsVoiceLab {
         guard let row = try? JSONSerialization.jsonObject(with: reply.bytes) as? [String: Any],
               let base64 = row["audio_base64"] as? String, let pcm = Data(base64Encoded: base64) else { throw VoiceLabError.invalidAudio }
         try Self.validatePCM(pcm, maxBytes: maxResponse)
-        let timing = try Self.parseAlignment(row["alignment"], text: text, duration: Double(pcm.count) / 48_000)
-        return VoiceLabAudioResult(pcm: pcm, sampleRate: 24_000, alignment: timing,
-                                   receipt: receipt(path, model: modelID, voice: voice.id, authorization: authorization, reply: reply))
+        let provenance = receipt(path, model: modelID, voice: voice.id, authorization: authorization, reply: reply)
+        acceptance?.preserve(VoiceLabAudioResult(pcm: pcm, sampleRate: 24_000, alignment: nil, receipt: provenance))
+        let duration = Double(pcm.count) / 48_000
+        let timing = try Self.parseAlignment(row["alignment"], text: text, duration: duration)
+        if route == .textToDialogue {
+            // §8.5: the provider has not specified which character array segments index.
+            // Until the live probe settles that, a valid normalized alignment can widen the bound.
+            var characterCount = timing.count
+            if let normalized = row["normalized_alignment"] as? [String: Any],
+               let characters = normalized["characters"] as? [String],
+               let normalizedTiming = try? Self.parseAlignment(normalized, text: characters.joined(), duration: duration) {
+                characterCount = max(characterCount, normalizedTiming.count)
+            }
+            try Self.validateDialogueSegments(row["voice_segments"], voiceID: voice.id, characterCount: characterCount, duration: duration)
+        }
+        return VoiceLabAudioResult(pcm: pcm, sampleRate: 24_000, alignment: timing, receipt: provenance)
     }
 
     /// A reviewed rewrite is generated only by this separate, explicitly approved call.
@@ -832,7 +867,7 @@ public actor ElevenLabsVoiceLab {
             case ("/v2/voices", _): permission = "voices_read"
             case ("/v1/voices/add", _): permission = "create_instant_voice_clone"
             case (_, "DELETE") where path.hasPrefix("/v1/voices/"): permission = "voices_write"
-            case (_, _) where path.hasPrefix("/v1/text-to-speech/"): permission = "text_to_speech"
+            case (_, _) where path.hasPrefix("/v1/text-to-speech/") || path == "/v1/text-to-dialogue/with-timestamps": permission = "text_to_speech"
             case (_, _) where path.hasPrefix("/v1/voice-changer/"): permission = "speech_to_speech"
             default: permission = "unknown"
             }
@@ -923,6 +958,25 @@ public actor ElevenLabsVoiceLab {
             : [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160][bitrateIndex]
         let rate = rates[rateIndex] / (version == 3 ? 1 : version == 2 ? 2 : 4)
         return (version == 3 ? 144_000 : 72_000) * kilobits / rate + Int((bytes[offset + 2] >> 1) & 1)
+    }
+    private static func validateDialogueSegments(_ raw: Any?, voiceID: String, characterCount: Int, duration: Double) throws {
+        guard let segments = raw as? [[String: Any]], !segments.isEmpty else { throw VoiceLabError.malformedResponse }
+        func number(_ raw: Any?) -> Double? {
+            guard let value = raw as? NSNumber, CFGetTypeID(value) != CFBooleanGetTypeID(), value.doubleValue.isFinite
+            else { return nil }
+            return value.doubleValue
+        }
+        let count = Double(characterCount)
+        for segment in segments {
+            guard segment["voice_id"] as? String == voiceID,
+                  number(segment["dialogue_input_index"]) == 0,
+                  let start = number(segment["character_start_index"]), let end = number(segment["character_end_index"]),
+                  start.rounded(.towardZero) == start, end.rounded(.towardZero) == end,
+                  start >= 0, end >= start, end <= count,
+                  let startTime = number(segment["start_time_seconds"]), let endTime = number(segment["end_time_seconds"]),
+                  startTime >= 0, endTime >= startTime, endTime <= duration + 0.05
+            else { throw VoiceLabError.malformedResponse }
+        }
     }
     private static func parseAlignment(_ raw: Any?, text: String, duration: Double) throws -> [VoiceLabCharacterTiming] {
         guard let row = raw as? [String: Any], let characters = row["characters"] as? [String],

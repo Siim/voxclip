@@ -1,5 +1,9 @@
 # Voice Lab Core contract fixtures
 
+`dialogue-cases.json` is the separate Eleven v4 contract (`voxclip-voice-lab-dialogue-cases/1`). Regenerate byte for byte with `python3 tools/fixtures/voice-lab/generate_dialogue.py`. Both Cores must replay every `requests`, `responses` and `routes` row. Requests use the existing method/path/query/headers/json framing plus canonical sorted compact UTF-8 bytes, byte length and SHA-256. Responses are entirely synthetic PCM16, with explicit expected errors; per-row `text` overrides `responseInput.text` for typed/normalized expansion and Unicode character-array cases. Null original alignment never falls back to normalized alignment. Fault order is audio decode, PCM, alignment, then voice segments; the two-fault vector pins that precedence. Segment ends use alignment's 50 ms audio-end tolerance, with separate within/beyond cases. No live keys, voices or calls are used.
+
+Dialogue segment indices provisionally use the larger of the original and valid normalized alignment character-array lengths, pending the live probe described in §8.5. The generator includes normalized expansion, past-both bounds, malformed normalized timing and grouped-character array cases. Original alignment remains mandatory.
+
 `accept-all-cases.json` is the C4 set-acceptance contract, generated with
 `python3 tools/fixtures/voice-lab/generate_accept_all.py` from the inert v3 render
 fixtures. `inputs` holds complete project, segment-list, asset-list and consent
@@ -132,3 +136,5 @@ three attempts per ten minutes, and explicit recovery after verification but bef
 Generate with `python3 tools/fixtures/voice-lab/generate_enrollment.py`; every row is replayed by both Cores in
 `VoiceEnrollmentPlanTests` (Swift C7 and C# W4). It has only strings, integers and booleans and is
 byte-exact in `check_drift.py`. See `enrollment-cases-README.md`.
+
+Dialogue segment indices provisionally use the larger of the original and valid normalized alignment character-array lengths, pending the live probe described in §8.5. The generator includes normalized expansion, past-both bounds, malformed normalized metadata and grouped-character array cases. Original alignment remains mandatory.

@@ -88,9 +88,13 @@ public enum VoiceLabRenderContract {
         for piece in plan.pieces where piece.kind == .synth && !excluding.contains(piece.segmentId ?? "") {
             guard let segment = project.voiceLab.segments.first(where: { $0.id == piece.segmentId }),
                   let recipe = segment.candidates[segment.selectedCandidateIndex].recipe else { throw VoiceLabProjectError.missingRenderPolicy }
-            if segment.kind == .tts && (!recipe.provenance.endpoint.hasPrefix("v1/text-to-speech/") ||
-                !recipe.provenance.endpoint.hasSuffix("/with-timestamps") || recipe.provenance.model == "eleven_v4") {
-                throw VoiceLabProjectError.endpointUnsupported
+            if segment.kind == .tts {
+                let endpoint = recipe.provenance.endpoint
+                let parts = endpoint.split(separator: "/", omittingEmptySubsequences: false)
+                let tts = parts.count == 4 && parts[0] == "v1" && parts[1] == "text-to-speech" &&
+                    !parts[2].isEmpty && parts[3] == "with-timestamps" && recipe.provenance.model != "eleven_v4"
+                let dialogue = endpoint == "v1/text-to-dialogue/with-timestamps" && recipe.provenance.model == "eleven_v4"
+                guard tts || dialogue else { throw VoiceLabProjectError.endpointUnsupported }
             }
             if recipe.video.mode == .retimed || (recipe.video.mode == .source &&
                 piece.sourceEndSample - piece.sourceStartSample != piece.outputEndSample - piece.outputStartSample) {

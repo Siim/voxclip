@@ -52,6 +52,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         var voicesVisible = true
         /// The account also lists Multilingual v2, after Eleven v3, as the live account did.
         var listsMultilingual = false
+        var listsDialogue = false
         /// Each synthesis request's `model_id`, in order.
         var models: [String] = []
     }
@@ -67,7 +68,9 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
                 Self.state.withLock { $0.gets += 1 }
                 let multilingual = Self.state.withLock { $0.listsMultilingual }
                     ? #",{"model_id":"eleven_multilingual_v2","name":"Multilingual v2","can_do_text_to_speech":true,"can_do_voice_conversion":false,"languages":[{"language_id":"en"}],"maximum_text_length_per_request":10000}"# : ""
-                data = Data((#"[{"model_id":"eleven_v3","name":"Speech","can_do_text_to_speech":true,"can_do_voice_conversion":false,"languages":[{"language_id":"en"}],"maximum_text_length_per_request":5000}"# + multilingual + "]").utf8)
+                let dialogue = Self.state.withLock { $0.listsDialogue }
+                    ? #",{"model_id":"eleven_v4","name":"Eleven v4 account name","can_do_text_to_speech":true,"languages":[{"language_id":"en"}]},{"model_id":"eleven_v4_turbo","name":"Turbo","can_do_text_to_speech":true,"languages":[{"language_id":"en"}]}"# : ""
+                data = Data((#"[{"model_id":"eleven_v3","name":"Speech","can_do_text_to_speech":true,"can_do_voice_conversion":false,"languages":[{"language_id":"en"}],"maximum_text_length_per_request":5000}"# + multilingual + dialogue + "]").utf8)
             case ("GET", "/v2/voices"):
                 data = Self.state.withLock { $0.voicesVisible } ? Data(#"{"voices":[{"voice_id":"fixtureOwnVoice","name":"My voice","category":"cloned","is_owner":true}],"has_more":false}"#.utf8) : Data(#"{"voices":[],"has_more":false}"#.utf8)
             case ("POST", "/v1/text-to-speech/fixtureOwnVoice/with-timestamps"):
@@ -758,7 +761,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
     }
 
     @Test(arguments: zip([false, false, true, true], [false, true, false, true]))
-    func acceptedMalformedOrLostResponsesCountWithoutReceiptOrAutomaticResend(qa: Bool, lost: Bool) async throws {
+    func acceptedMalformedOrLostResponsesRetainAvailableReceiptsWithoutAutomaticResend(qa: Bool, lost: Bool) async throws {
         let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
         ClipTakeHTTP.state.withLock {
             $0.malformedSynthesis = !qa && !lost; $0.malformedQA = qa && !lost
@@ -770,7 +773,10 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         await fixture.plan.start(approved: true)
         let rows = fixture.plan.phrases[0].takes.map(\.row)
         #expect(rows.count == attempts && rows.allSatisfy { !$0.selectable && $0.qaReceipt == nil })
-        #expect(rows.allSatisfy { ($0.receipt != nil) == (qa && !lost) && $0.acceptedRequestIDs.count == (qa ? 2 : 1) })
+        #expect(rows.allSatisfy { ($0.receipt != nil) == !lost && $0.acceptedRequestIDs.count == (qa ? 2 : 1) })
+        if !qa && !lost {
+            #expect(rows.allSatisfy { $0.receipt != nil && $0.receipt == $0.generated?.receipt })
+        }
         let accepted = Set(rows.flatMap(\.acceptedRequestIDs))
         let expectedIDs = Set(quotes.prefix(attempts).flatMap { qa ? [$0.synthesis.requestID, $0.qa.requestID] : [$0.synthesis.requestID] })
         #expect(accepted == expectedIDs)
@@ -994,6 +1000,19 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(generation.selectedModelID == "eleven_multilingual_v2")
         generation.chooseModel("eleven_v3")
         #expect(generation.selectedModelID == "eleven_v3")
+    }
+
+    @Test func dialogueIsSelectableByAccountNameAndTurboIsHidden() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        ClipTakeHTTP.state.withLock { $0.listsMultilingual = true; $0.listsDialogue = true }
+        let (editor, session) = try await productionSession(fixture); defer { editor.close() }
+        let generation = try #require(session.generation)
+        #expect(generation.models.map(\.id) == ["eleven_v3", "eleven_multilingual_v2", "eleven_v4"])
+        #expect(generation.models.last?.name == "Eleven v4 account name")
+        #expect(generation.selectedModelID == "eleven_multilingual_v2")
+        generation.chooseModel("eleven_v4")
+        #expect(generation.selectedModelID == "eleven_v4")
+        #expect(generation.models.last?.sendsSpeechContext == false)
     }
 
     /// Live 2026-11-03: after a run the Speech model picker was disabled, so a failing model could not be swapped before
