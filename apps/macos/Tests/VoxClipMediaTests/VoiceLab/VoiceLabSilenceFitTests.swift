@@ -181,6 +181,35 @@ extension HeavyMediaTests {
         #expect(digest == vector.expected.fittedSHA256)
     }
     #if DEBUG
+    /// Review P0 (hard-join smoothing): a smoothed take that starts or ends on a non-zero sample (providers stop
+    /// mid-word) must still fade at every side the micro-pause does not own, or it clicks against the silence pad.
+    @Test(arguments: [false, true]) func smoothedTakesKeepTheirEdgeFadeExceptOnAHardSide(hardLeft: Bool) throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("edge-fade-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rate = 24_000, frames = 4_800
+        var wave = VoiceLabWavePCM(rate: rate, channels: 1, bits: 16, floating: false, pcm: Data(count: frames * 2))
+        for frame in 0..<frames { wave.setSample(0.25, frame: Int64(frame), channel: 0) }
+        let paid = try VoiceLabAssetStore.writeWave(pcm: wave.pcm, sampleRate: rate, channels: 1, bits: 16, floating: false,
+            projectId: projectId, assetId: "paid-edge", paidRoot: root, createdAt: Date(timeIntervalSince1970: 0))
+        let snapshot = try VoiceLabAssets.preparePaid(asset: paid, projectId: projectId, paidRoot: root, scratchRoot: root)
+        let start = 2.0, end = 2.2
+        var window = VoiceLabWindow(firstWordId: "w4", lastWordId: "w5", leftBridgeWordIds: [], rightBridgeWordIds: [],
+            start: start, end: end, startSample: 96_000, endSample: 105_600,
+            leftSeam: .init(kind: .gap, time: start, sample: 96_000, fadeSamples: 960),
+            rightSeam: .init(kind: .gap, time: end, sample: 105_600, fadeSamples: 960))
+        if hardLeft { window.leftSeam.kind = .hard; window.leftSeam.fadeSamples = 576 }
+        var plan = VoiceLabFitPlan(edits: [], incoming: .init(padFrames: 0, borrowedSamples: 0),
+            outgoing: .init(padFrames: 0, borrowedSamples: 0), trimStartFrame: 0, trimEndFrame: Int64(frames),
+            windowStart: start, windowEnd: end, windowStartSample: 96_000, windowEndSample: 105_600,
+            outputFrames: Int64(frames), words: [VoiceLabWord(text: "words", start: 0, end: 0.2, synthetic: true)])
+        plan.hardJoinSmoothing = true
+        let fitted = try VoiceLabSilenceFit.prepare(snapshot: snapshot, paidAsset: paid, fit: .exact(plan), window: window, sourceSampleRate: 48_000)
+        let first = fitted.incomingHandleFrames, last = first + Int64(frames) - 1
+        #expect(abs(fitted.wave.sample(frame: last, channel: 0)) < 0.01)
+        if hardLeft { #expect(abs(fitted.wave.sample(frame: first, channel: 0) - 0.25) < 0.001) }
+        else { #expect(abs(fitted.wave.sample(frame: first, channel: 0)) < 0.01) }
+    }
+
     @MainActor @Test func auditionCancelsOnTakeSelectionRejectionAndSessionEnd() async throws {
         let vector = try #require(FittedAssetVector.load().first)
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
