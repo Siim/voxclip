@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Voice takes no longer fail the join check when the source's pause beside the join is a breath, or when the take's pause meets the source's next word.
 - Keep successful Rewrite replies when a project save finishes during the request, and explain stale replies inline.
 - Keep Rewrite failures from interrupting recordings or other panel jobs, and retry with the AI selected now.
 - Voice takes no longer fail the loudness check at a join that sounds continuous: a pause beside the join is compared with the source's own pause there, breaths included.
