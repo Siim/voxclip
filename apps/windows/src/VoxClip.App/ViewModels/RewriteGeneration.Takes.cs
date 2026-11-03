@@ -7,7 +7,8 @@ using VoxClip.Media.VoiceLab;
 namespace VoxClip.App.ViewModels;
 
 internal sealed record RewriteTakeAccess(VoiceLabAudition Audition, Func<Guid, VoiceLabTakeScratch?> Scratch,
-    Func<Guid, Task> Reject, Func<Guid, DateTimeOffset, CancellationToken, Task<(VoiceLabPublishedTake Take, VoiceConsentRecord Consent)>> Publish);
+    Func<Guid, Task> Reject, Func<Guid, DateTimeOffset, CancellationToken, Task<(VoiceLabPublishedTake Take, VoiceConsentRecord Consent)>> Publish,
+    Func<Guid, CancellationToken, Task<PreparedVoiceLabAsset?>>? PaidAudio = null);
 
 internal sealed record RewriteAcceptance(VoiceLabSegment Segment, IReadOnlyList<VoiceLabAsset> Assets,
     VoiceLabVoiceReference Voice, Func<bool> IsCurrent);
@@ -35,10 +36,12 @@ internal sealed partial class RewriteGeneration
         Phase == RewriteGenerationPhase.ReadyToAccept && Selected is { Selectable: true } selected && takes?.Scratch(selected.Id)?.IsValid == true;
     internal string AcceptTitle => "Use Take " + ((Selected?.Index ?? 0) + 1).ToString(CultureInfo.InvariantCulture);
     internal VoiceLabAuditionState? Audition => takes?.Audition.Snapshot;
+    internal int PhraseNumber { get; set; } = 1;
     internal bool CanPlay => !closed && !accepting && !IsRunning && current() && outputChecked && !refreshingOutput &&
-        Audition?.CanPlay == true && reviewEnd is VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop;
+        Audition?.CanPlay == true && reviewEnd is VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop or VoiceLabTakeRunEnd.Fatal;
     internal bool CanRetime => false;
-    internal bool CanPlayTake(Guid id) => CanPlay && Rows.Any(row => row.Id == id && row.Selectable) && takes?.Scratch(id)?.IsValid == true;
+    internal bool CanPlayTake(Guid id) => CanPlay && Rows.FirstOrDefault(row => row.Id == id) is { Stopped: false } row &&
+        (row.Audio is not null ? takes?.Scratch(id)?.IsValid == true : row.Generated is not null && takes?.PaidAudio is not null);
     internal string RetimeCopy => "Retimed source video is not available in this build. Re-record this sentence instead.";
     internal string LengthCopy => Selected is { Audio.Fit: VoiceLabFitResult.ChangedDuration change } row
         ? $"Take {row.Index + 1} runs {Math.Abs(change.ResidualSeconds).ToString("F1", CultureInfo.InvariantCulture)} s {(change.ResidualSeconds >= 0 ? "longer" : "shorter")} than the words it replaces. Choose how the video keeps up." : "";
@@ -114,26 +117,51 @@ internal sealed partial class RewriteGeneration
     }
     internal async Task PlayTakeAsync(Guid id)
     {
-        if (takes is null || closed || accepting || IsRunning || !current()) return;
+        if (takes is null || closed || accepting || IsRunning || !current() ||
+            reviewEnd is not (VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop or VoiceLabTakeRunEnd.Fatal) ||
+            Rows.FirstOrDefault(row => row.Id == id) is not { Stopped: false } row) return;
         if (takes.Audition.Snapshot is { IsPlaying: true } playing && playing.TakeId == id)
-        { await takes.Audition.StopAsync(); return; }
-        if (!await SelectTakeAsync(id)) return;
-        var version = selectionRevision;
+        { selectionRevision++; await takes.Audition.StopAsync(); return; }
+        if (row.Selectable && !await SelectTakeAsync(id)) return;
+        var version = ++selectionRevision;
+        bool Current() => !closed && !accepting && !IsRunning && version == selectionRevision && current() &&
+            Rows.Any(candidate => candidate.Id == id) && (!row.Selectable || SelectedTakeId == id);
         try
         {
+            await takes.Audition.StopAsync();
             await takes.Audition.RefreshAvailabilityAsync(lifetime.Token);
-            if (closed || version != selectionRevision || SelectedTakeId != id || !current()) return;
+            if (!Current()) return;
             outputChecked = true;
-            if (takes.Audition.Snapshot.CanPlay && takes.Scratch(id) is { IsValid: true } scratch)
+            if (!takes.Audition.Snapshot.CanPlay) return;
+            if (row.Audio is not null && takes.Scratch(id) is { IsValid: true } scratch)
             {
                 Task Start(CancellationToken token)
                 {
                     token.ThrowIfCancellationRequested();
-                    return !closed && !accepting && !IsRunning && current() && SelectedTakeId == id && scratch.IsValid
+                    return Current() && scratch.IsValid
                         ? takes.Audition.PlayAsync(scratch, id, id.ToString("D"), token) : Task.CompletedTask;
                 }
                 if (transport is null) await Start(lifetime.Token);
                 else await transport.CandidateAsync(Start, lifetime.Token);
+            }
+            else if (row.Audio is null && row.Generated is not null && takes.PaidAudio is { } prepare)
+            {
+                var paid = await prepare(id, lifetime.Token);
+                if (paid is null) return;
+                var transferred = false;
+                try
+                {
+                    Task Start(CancellationToken token)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        if (!Current() || !paid.IsValid) return Task.CompletedTask;
+                        transferred = true;
+                        return takes.Audition.PlayAsync(paid, id, id.ToString("D"), token);
+                    }
+                    if (transport is null) await Start(lifetime.Token);
+                    else await transport.CandidateAsync(Start, lifetime.Token);
+                }
+                finally { if (!transferred) await paid.InvalidateAsync(); }
             }
         }
         catch (OperationCanceledException) { }

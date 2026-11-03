@@ -1,5 +1,7 @@
 using System.Text.Json.Nodes;
 using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Media.Audio;
+using VoxClip.Media.VoiceLab;
 using VoxClip.Tests.Support;
 using Xunit;
 
@@ -71,5 +73,47 @@ public sealed partial class VoiceLabTakeRunTests
         Assert.Equal(model, row.Receipt.ModelId);
         Assert.Equal("paid-speech-request", row.Receipt.ProviderRequestId);
         Assert.Equal(model == "eleven_v4" ? "/v1/text-to-dialogue/with-timestamps" : "/v1/text-to-speech/fixtureOwnVoice/with-timestamps", row.Receipt.Endpoint);
+        var paid = fixture.Run.PaidAsset(row.Id)!;
+        var snapshot = await VoiceLabAssets.PreparePaidAsync(paid, paid.File.Split('/')[0], paidRoot, Path.Combine(fixture.Root, "audition"), Token);
+        var endpoint = new PaidEndpoint();
+        await using var audition = new VoiceLabAudition(() => endpoint, _ => Task.CompletedTask);
+        Assert.True(await audition.PlayAsync(snapshot, row.Id, "phrase", Token));
+        Assert.Equal(snapshot.Path, endpoint.Path);
+        Assert.Equal(pcm, (await File.ReadAllBytesAsync(endpoint.Path!, Token))[44..]);
+        Assert.False(row.Selectable); Assert.Null(result.Best); Assert.Null(fixture.Run.Scratch(row.Id));
+        refusal = await Assert.ThrowsAsync<VoiceLabException>(() => fixture.Run.PublishForAcceptanceAsync(row.Id, DateTimeOffset.UtcNow, Token));
+        Assert.Equal(VoiceLabErrorKind.ConsentRequired, refusal.Kind);
+        await audition.StopAsync();
+        Assert.False(snapshot.IsValid); Assert.False(File.Exists(snapshot.Path)); Assert.True(File.Exists(files[0]));
+        Assert.Single(fixture.Remote.Seeds); Assert.Equal(0, fixture.Remote.Qa);
+    }
+
+    [Fact]
+    public async Task FailedCheckedMixPlaysButPublicationStillRefusesIt()
+    {
+        await using var fixture = new Fixture(); fixture.Remote.Mismatches = 3;
+        var result = await fixture.Run.ExecuteAsync(await fixture.Prepare(), true, ct: Token);
+        var row = result.Rows[0]; var scratch = fixture.Run.Scratch(row.Id)!;
+        Assert.False(row.Selectable); Assert.Null(result.Best);
+        var endpoint = new PaidEndpoint();
+        await using var audition = new VoiceLabAudition(() => endpoint, _ => Task.CompletedTask);
+        Assert.True(await audition.PlayAsync(scratch, row.Id, "phrase", Token));
+        Assert.Equal(scratch.MixedAudioPath, endpoint.Path);
+        var refusal = await Assert.ThrowsAsync<VoiceLabException>(() => fixture.Run.PublishForAcceptanceAsync(row.Id, DateTimeOffset.UtcNow, Token));
+        Assert.Equal(VoiceLabErrorKind.ConsentRequired, refusal.Kind);
+        Assert.False(row.Selectable); Assert.Null(result.Best);
+        await audition.StopAsync(); Assert.True(scratch.IsValid);
+    }
+
+    private sealed class PaidEndpoint : IVoiceLabRenderEndpoint
+    {
+        private readonly TaskCompletionSource done = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal string? Path;
+        public Task<string?> CheckAvailabilityAsync(CancellationToken ct) => Task.FromResult<string?>(null);
+        public Task OpenAsync(string path, CancellationToken ct) { Path = path; return Task.CompletedTask; }
+        public Task PlayAsync(CancellationToken ct) => Task.CompletedTask;
+        public Task Completion => done.Task;
+        public TimeSpan Position => TimeSpan.Zero;
+        public ValueTask DisposeAsync() { done.TrySetResult(); return ValueTask.CompletedTask; }
     }
 }

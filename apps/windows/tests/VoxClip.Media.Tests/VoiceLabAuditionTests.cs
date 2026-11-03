@@ -10,6 +10,63 @@ public sealed class VoiceLabAuditionTests
 {
     private static CancellationToken Token => TestContext.Current.CancellationToken;
     [Theory]
+    [InlineData("stop")]
+    [InlineData("take")]
+    [InlineData("selection")]
+    [InlineData("reject")]
+    [InlineData("snapshot")]
+    [InlineData("close")]
+    [InlineData("invalidate")]
+    [InlineData("dispose")]
+    public async Task UncheckedPaidSnapshotUsesTheSamePlayerAndReleasesItsReaderBeforeDeletion(string hook)
+    {
+        await using var fixture = new AuditionFixture();
+        var paid = fixture.PaidSnapshot(); var path = paid.Path;
+        Assert.True(await fixture.Player.PlayAsync(paid, fixture.Id, "selection", Token));
+        Assert.Equal(path, fixture.Endpoint.OpenedPath); Assert.True(fixture.Player.Snapshot.IsPlaying);
+        Assert.Equal(new[] { "probe", "pause-preview", "open", "play" }, fixture.Events);
+        switch (hook)
+        {
+            case "stop": await fixture.Player.StopAsync(); break;
+            case "take": await fixture.Player.TakeChangedAsync(Guid.NewGuid()); break;
+            case "selection": await fixture.Player.SelectionChangedAsync("different"); break;
+            case "reject": await fixture.Player.RejectAsync(fixture.Id); break;
+            case "snapshot": await paid.InvalidateAsync().WaitAsync(Token); break;
+            case "close": await fixture.Player.EndSessionAsync(); break;
+            case "invalidate": await fixture.Player.InvalidateAsync(); break;
+            case "dispose": await fixture.Player.DisposeAsync(); break;
+        }
+        Assert.False(fixture.Player.Snapshot.IsPlaying); Assert.Equal(1, fixture.Endpoint.Disposals);
+        Assert.True(fixture.Endpoint.ReaderClosed); Assert.False(paid.IsValid); Assert.False(File.Exists(path));
+        Assert.True(File.Exists(fixture.Scratch.MixedAudioPath));
+    }
+    [Theory]
+    [InlineData("open")]
+    [InlineData("play")]
+    [InlineData("preview")]
+    [InlineData("output")]
+    public async Task UncheckedPlaybackFailureReleasesTheSnapshotWithoutTouchingPaidStorage(string failure)
+    {
+        await using var fixture = new AuditionFixture(failure);
+        var paid = fixture.PaidSnapshot();
+        if (failure == "output") fixture.Endpoint.Reason = VoiceLabAudition.NoOutputDevice;
+        Assert.False(await fixture.Player.PlayAsync(paid, fixture.Id, "selection", Token));
+        Assert.False(paid.IsValid); Assert.False(File.Exists(paid.Path));
+        Assert.False(fixture.Player.Snapshot.IsPlaying); Assert.True(fixture.Endpoint.ReaderClosed);
+        Assert.Equal(1, fixture.Endpoint.Disposals); Assert.True(File.Exists(fixture.Scratch.MixedAudioPath));
+    }
+    [Fact]
+    public async Task UncheckedSnapshotInvalidationDuringOpenCancelsWithoutDeadlockOrLatePlayback()
+    {
+        await using var fixture = new AuditionFixture(); fixture.Endpoint.HoldOpen = true;
+        var paid = fixture.PaidSnapshot();
+        var playing = fixture.Player.PlayAsync(paid, fixture.Id, "selection", Token);
+        await fixture.Endpoint.Opened.Task.WaitAsync(Token);
+        await paid.InvalidateAsync().WaitAsync(Token);
+        Assert.False(await playing); Assert.False(fixture.Player.Snapshot.IsPlaying);
+        Assert.True(fixture.Endpoint.ReaderClosed); Assert.False(File.Exists(paid.Path));
+    }
+    [Theory]
     [InlineData("take")]
     [InlineData("selection")]
     [InlineData("reject")]
@@ -173,6 +230,12 @@ public sealed class VoiceLabAuditionTests
             Task Pause(CancellationToken ct) { Events.Add("pause-preview"); return failure == "preview" ? Task.FromException(new IOException("synthetic preview failure")) : Task.CompletedTask; }
             Player = native ? new(Pause) : new(() => Endpoint, Pause, Clock);
         }
+        internal PreparedVoiceLabAsset PaidSnapshot()
+        {
+            var directory = Path.Combine(root, "unchecked"); Directory.CreateDirectory(directory);
+            var path = Path.Combine(directory, "paid.wav"); File.Copy(Scratch.MixedAudioPath, path);
+            return new("unchecked", "paid", path, directory, 48000, 1, 48000, 0, 48000, 1, 0);
+        }
         public async ValueTask DisposeAsync()
         {
             await Player.DisposeAsync(); await Scratch.DisposeAsync();
@@ -186,6 +249,7 @@ public sealed class VoiceLabAuditionTests
         internal int Disposals;
         internal bool HoldOpen;
         internal bool ReaderClosed => reader is null;
+        internal string? OpenedPath;
         internal readonly TaskCompletionSource Opened = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal readonly TaskCompletionSource Done = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TimeSpan Position { get; set; }
@@ -193,7 +257,7 @@ public sealed class VoiceLabAuditionTests
         public Task<string?> CheckAvailabilityAsync(CancellationToken ct) { events.Add("probe"); return Task.FromResult(Reason); }
         public async Task OpenAsync(string path, CancellationToken ct)
         {
-            events.Add("open"); reader = File.OpenRead(path); Opened.TrySetResult();
+            events.Add("open"); OpenedPath = path; reader = File.OpenRead(path); Opened.TrySetResult();
             if (HoldOpen) await new TaskCompletionSource().Task.WaitAsync(ct);
             if (failure == "open") throw new IOException("synthetic open failure");
         }

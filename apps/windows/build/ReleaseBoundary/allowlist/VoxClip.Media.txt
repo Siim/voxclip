@@ -192,6 +192,7 @@ member VoxClip.Media.Audio.VoiceLabAudition :: field public OutputUnavailable
 member VoxClip.Media.Audio.VoiceLabAudition :: method private ChangeAsync(System.Nullable`1<System.Guid>,string,bool)
 member VoxClip.Media.Audio.VoiceLabAudition :: method private DefaultEndpoint()
 member VoxClip.Media.Audio.VoiceLabAudition :: method private ObserveAsync(VoxClip.Media.Audio.VoiceLabAudition+Playback)
+member VoxClip.Media.Audio.VoiceLabAudition :: method private PlayAsync(VoxClip.Media.Audio.VoiceLabAudition+PlaybackSource,System.Guid,string,System.Threading.CancellationToken)
 member VoxClip.Media.Audio.VoiceLabAudition :: method private StopCoreAsync()
 member VoxClip.Media.Audio.VoiceLabAudition :: method private StopPlaybackAsync(VoxClip.Media.Audio.VoiceLabAudition+Playback,bool)
 member VoxClip.Media.Audio.VoiceLabAudition :: method private Tick(VoxClip.Media.Audio.VoiceLabAudition+Playback)
@@ -201,6 +202,7 @@ member VoxClip.Media.Audio.VoiceLabAudition :: method public .ctor(System.Func`2
 member VoxClip.Media.Audio.VoiceLabAudition :: method public DisposeAsync()
 member VoxClip.Media.Audio.VoiceLabAudition :: method public EndSessionAsync()
 member VoxClip.Media.Audio.VoiceLabAudition :: method public InvalidateAsync()
+member VoxClip.Media.Audio.VoiceLabAudition :: method public PlayAsync(VoxClip.Media.VoiceLab.PreparedVoiceLabAsset,System.Guid,string,System.Threading.CancellationToken)
 member VoxClip.Media.Audio.VoiceLabAudition :: method public PlayAsync(VoxClip.Media.VoiceLab.VoiceLabTakeScratch,System.Guid,string,System.Threading.CancellationToken)
 member VoxClip.Media.Audio.VoiceLabAudition :: method public RefreshAvailabilityAsync(System.Threading.CancellationToken)
 member VoxClip.Media.Audio.VoiceLabAudition :: method public RejectAsync(System.Guid)
@@ -217,7 +219,28 @@ member VoxClip.Media.Audio.VoiceLabAudition+Playback :: method internal Cancel()
 member VoxClip.Media.Audio.VoiceLabAudition+Playback :: method internal get_Cancellation()
 member VoxClip.Media.Audio.VoiceLabAudition+Playback :: method internal get_Endpoint()
 member VoxClip.Media.Audio.VoiceLabAudition+Playback :: method internal get_Scratch()
-member VoxClip.Media.Audio.VoiceLabAudition+Playback :: method public .ctor(VoxClip.Media.Audio.IVoiceLabRenderEndpoint,System.Threading.CancellationTokenSource,VoxClip.Media.VoiceLab.VoiceLabTakeScratch)
+member VoxClip.Media.Audio.VoiceLabAudition+Playback :: method public .ctor(VoxClip.Media.Audio.IVoiceLabRenderEndpoint,System.Threading.CancellationTokenSource,VoxClip.Media.Audio.VoiceLabAudition+PlaybackSource)
+member VoxClip.Media.Audio.VoiceLabAudition+PlaybackSource :: method private .ctor(VoxClip.Media.Audio.VoiceLabAudition+PlaybackSource)
+member VoxClip.Media.Audio.VoiceLabAudition+PlaybackSource :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Media.Audio.VoiceLabAudition+PlaybackSource :: method private get_EqualityContract()
+member VoxClip.Media.Audio.VoiceLabAudition+PlaybackSource :: method public .ctor(string,System.Func`1<bool>,System.Func`2<System.Func`1<System.Threading.Tasks.Task>,System.IDisposable>,System.Func`1<System.Threading.Tasks.Task>,bool)
+member VoxClip.Media.Audio.VoiceLabAudition+PlaybackSource :: method public Deconstruct(string&,System.Func`1<bool>&,System.Func`2<System.Func`1<System.Threading.Tasks.Task>,System.IDisposable>&,System.Func`1<System.Threading.Tasks.Task>&,bool&)
+member VoxClip.Media.Audio.VoiceLabAudition+PlaybackSource :: method public Equals(VoxClip.Media.Audio.VoiceLabAudition+PlaybackSource)
+member VoxClip.Media.Audio.VoiceLabAudition+PlaybackSource :: method public Equals(object)
+member VoxClip.Media.Audio.VoiceLabAudition+PlaybackSource :: method public GetHashCode()
+member VoxClip.Media.Audio.VoiceLabAudition+PlaybackSource :: method public ToString()
+member VoxClip.Media.Audio.VoiceLabAudition+PlaybackSource :: method public get_AttachConsumer()
+member VoxClip.Media.Audio.VoiceLabAudition+PlaybackSource :: method public get_InvalidateAsync()
+member VoxClip.Media.Audio.VoiceLabAudition+PlaybackSource :: method public get_IsValid()
+member VoxClip.Media.Audio.VoiceLabAudition+PlaybackSource :: method public get_Path()
+member VoxClip.Media.Audio.VoiceLabAudition+PlaybackSource :: method public get_ReleaseOnStop()
+member VoxClip.Media.Audio.VoiceLabAudition+PlaybackSource :: method public op_Equality(VoxClip.Media.Audio.VoiceLabAudition+PlaybackSource,VoxClip.Media.Audio.VoiceLabAudition+PlaybackSource)
+member VoxClip.Media.Audio.VoiceLabAudition+PlaybackSource :: method public op_Inequality(VoxClip.Media.Audio.VoiceLabAudition+PlaybackSource,VoxClip.Media.Audio.VoiceLabAudition+PlaybackSource)
+member VoxClip.Media.Audio.VoiceLabAudition+PlaybackSource :: method public set_AttachConsumer(System.Func`2<System.Func`1<System.Threading.Tasks.Task>,System.IDisposable>)
+member VoxClip.Media.Audio.VoiceLabAudition+PlaybackSource :: method public set_InvalidateAsync(System.Func`1<System.Threading.Tasks.Task>)
+member VoxClip.Media.Audio.VoiceLabAudition+PlaybackSource :: method public set_IsValid(System.Func`1<bool>)
+member VoxClip.Media.Audio.VoiceLabAudition+PlaybackSource :: method public set_Path(string)
+member VoxClip.Media.Audio.VoiceLabAudition+PlaybackSource :: method public set_ReleaseOnStop(bool)
 member VoxClip.Media.Audio.VoiceLabAuditionState :: method private .ctor(VoxClip.Media.Audio.VoiceLabAuditionState)
 member VoxClip.Media.Audio.VoiceLabAuditionState :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Media.Audio.VoiceLabAuditionState :: method private get_EqualityContract()
@@ -2062,6 +2085,7 @@ type VoxClip.Media.Audio.MicrophoneTake
 type VoxClip.Media.Audio.SharedWasapiOutput
 type VoxClip.Media.Audio.VoiceLabAudition
 type VoxClip.Media.Audio.VoiceLabAudition+Playback
+type VoxClip.Media.Audio.VoiceLabAudition+PlaybackSource
 type VoxClip.Media.Audio.VoiceLabAuditionState
 type VoxClip.Media.Audio.VoiceMicrophoneRecorder
 type VoxClip.Media.Audio.VoiceMicrophoneRecorder+Session
