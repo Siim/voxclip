@@ -17,6 +17,25 @@ arrays for both number and currency expansion, on a 0.5 ms clock. Its segment en
 is the raw provider character count, deliberately longer than the typed text.
 Mac's stubbed provider replay validates that bound before mapping to typed words.
 
+The review-fix vectors extend this existing fixture at the lead's explicit request,
+retaining its schema ID and all previous sections. `edgeExtents` contains 21 named
+cases: v3/v4 × leading/trailing × bracket characters/acoustic search × hard/gap,
+mid-phrase/unsupported/unknown normal trimming, and both asset clamps. Construct
+mono samples at `sampleRate` with `sampleCount` zeroes, filling each half-open
+`sampleRuns` interval with Float32 0.1. Bracket cases include unrelated activity
+farther outward: character times take precedence over the activity search.
+`characters` may contain an entire bracket tag in one provider entry, so partial
+character-entry timing is scalar-proportional as in the alignment reader. The
+pure extent function is seam-independent; integration tests exercise both seam
+kinds. `expectedTrimStart` / `expectedTrimEnd` pin the normal 30/60 ms trim.
+
+`eventFilters` contains ten named cases for punctuation, typed ha, repeated ha,
+extra ha before/after its ordered expected occurrence, untagged input, bracket
+events, and missing/extra lexical words. `filtered` is normalized words, with
+only surplus catalog events removed when `tagged` is true. Preserve ordered
+expected matches when choosing which duplicate event occurrences to remove.
+All new values are deterministic and byte-exact, never tolerance-listed.
+
 macOS replays all sections. Windows replays optional-field decode, validation and
 preservation only; the behavior/UI twin is explicitly owed in its CONTRACTS.
 The older dialogue fixture's `alignment_null` case predates the macOS fallback:

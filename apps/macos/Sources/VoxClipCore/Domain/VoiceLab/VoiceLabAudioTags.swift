@@ -24,6 +24,7 @@ public enum VoiceLabAudioTags {
               let data = try? Data(contentsOf: shared.root.appendingPathComponent("data/voice-audio-tags.json")) else { return nil }
         return try? JSONDecoder().decode(Catalog.self, from: data)
     }()
+    private static let scribeEvents = Set((catalog?.scribeEvents ?? []).map { EditingPrimitives.normalizeForMatch(EditingPrimitives.nfc($0)) })
     public static var definitions: [Definition] { catalog?.tags ?? [] }
     public static func supports(_ modelID: String) -> Bool { catalog?.models.contains(modelID) == true }
     public static func validated(_ tags: [VoiceLabAudioTag], text: String) -> [VoiceLabAudioTag] {
@@ -83,7 +84,95 @@ public enum VoiceLabAudioTags {
         return result
     }
     public static func isScribeEvent(_ text: String) -> Bool {
-        catalog?.scribeEvents.contains(text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) == true
+        let normalized = EditingPrimitives.normalizeForMatch(EditingPrimitives.nfc(text))
+        return scribeEvents.contains(normalized)
+    }
+    public static func filterScribeEvents(recognized: [String], expected: [String], hasTags: Bool) -> [String] {
+        let tokens = recognized.flatMap { $0.split(whereSeparator: \.isWhitespace) }
+            .map { EditingPrimitives.normalizeForMatch(EditingPrimitives.nfc(String($0))) }.filter { !$0.isEmpty }
+        guard hasTags else { return tokens }
+        let expectedCounts = Dictionary(expected.map { ($0, 1) }, uniquingKeysWith: +)
+        var extras = Dictionary(tokens.map { ($0, 1) }, uniquingKeysWith: +)
+        for (token, count) in expectedCounts { extras[token, default: 0] -= count }
+        var matched: Set<Int> = []
+        if tokens.count <= 5_000, expected.count <= 5_000,
+           extras.contains(where: { $0.value > 0 && expectedCounts[$0.key, default: 0] > 0 && isScribeEvent($0.key) }) {
+            let width = tokens.count + 1
+            var lengths = [UInt16](repeating: 0, count: (expected.count + 1) * width)
+            for expectedIndex in expected.indices.reversed() {
+                for recognizedIndex in tokens.indices.reversed() {
+                    let cell = expectedIndex * width + recognizedIndex
+                    lengths[cell] = expected[expectedIndex] == tokens[recognizedIndex]
+                        ? lengths[cell + width + 1] + 1 : max(lengths[cell + width], lengths[cell + 1])
+                }
+            }
+            var expectedIndex = 0, recognizedIndex = 0
+            while expectedIndex < expected.count && recognizedIndex < tokens.count {
+                if expected[expectedIndex] == tokens[recognizedIndex] {
+                    matched.insert(recognizedIndex)
+                    expectedIndex += 1; recognizedIndex += 1
+                } else if lengths[(expectedIndex + 1) * width + recognizedIndex] >= lengths[expectedIndex * width + recognizedIndex + 1] {
+                    expectedIndex += 1
+                } else { recognizedIndex += 1 }
+            }
+        }
+        return tokens.enumerated().filter { index, token in
+            guard !matched.contains(index), isScribeEvent(token), extras[token, default: 0] > 0 else { return true }
+            extras[token, default: 0] -= 1
+            return false
+        }.map(\.element)
+    }
+    public static func edgeExtent(words: [VoiceLabWord], samples: [Float], sampleRate: Int,
+                                  tags: [VoiceLabAudioTag], tokenCount: Int, modelID: String,
+                                  characters: [VoiceLabCharacterTiming]) -> [VoiceLabWord] {
+        guard supports(modelID), !words.isEmpty, sampleRate > 0, !samples.isEmpty else { return words }
+        let assetEnd = VoiceLabTakeProcessing.lastAlignedTime(frames: samples.count, rate: sampleRate)
+        let text = characters.map(\.character).joined()
+        let ranges = tagRanges(text)
+        var result = words
+        for incoming in [true, false] {
+            let edgeTags = tags.filter { annotation in
+                annotation.beforeToken == (incoming ? 0 : tokenCount) && definitions.contains { $0.tag == annotation.tag }
+            }
+            guard !edgeTags.isEmpty else { continue }
+            let index = incoming ? 0 : words.count - 1
+            var missing: [VoiceLabAudioTag] = []
+            var used: Set<Int> = []
+            for annotation in edgeTags {
+                let match = ranges.indices.first { rangeIndex in
+                    let range = ranges[rangeIndex]
+                    return !used.contains(rangeIndex) && String(text[range].dropFirst().dropLast()) == annotation.tag &&
+                        EditingPrimitives.splitWords(strippingTags(String(text[..<range.lowerBound]))).count == annotation.beforeToken
+                }
+                guard let match else { missing.append(annotation); continue }
+                used.insert(match)
+                let range = ranges[match]
+                let lower = text.unicodeScalars.distance(from: text.unicodeScalars.startIndex, to: range.lowerBound)
+                let upper = text.unicodeScalars.distance(from: text.unicodeScalars.startIndex, to: range.upperBound)
+                var offset = 0
+                for timing in characters {
+                    let count = timing.character.unicodeScalars.count
+                    let start = max(lower, offset), end = min(upper, offset + count)
+                    if end > start, count > 0 {
+                        let step = (timing.end - timing.start) / Double(count)
+                        if incoming {
+                            result[index].start = max(0, min(result[index].start, timing.start + step * Double(start - offset)))
+                        } else {
+                            result[index].end = min(assetEnd, max(result[index].end, timing.start + step * Double(end - offset)))
+                        }
+                    }
+                    offset += count
+                }
+            }
+            if !missing.isEmpty {
+                let allowance = edgeTags.reduce(0.0) { total, annotation in total + (definitions.first { $0.tag == annotation.tag }?.seconds ?? 0) }
+                let refined = VoiceLabHardJoin.refine(words: words, samples: samples, sampleRate: sampleRate,
+                    incoming: incoming, outgoing: !incoming, searchSeconds: VoiceLabHardJoin.acousticSearchSeconds + allowance)
+                if incoming { result[index].start = max(0, min(result[index].start, refined[index].start)) }
+                else { result[index].end = min(assetEnd, max(result[index].end, refined[index].end)) }
+            }
+        }
+        return result
     }
     public static func shifted(_ tags: [VoiceLabAudioTag], by offset: Int) -> [VoiceLabAudioTag] {
         tags.map { VoiceLabAudioTag(beforeToken: $0.beforeToken + offset, tag: $0.tag) }

@@ -529,12 +529,12 @@ public actor ElevenLabsVoiceLab {
     /// `acceptance` is marked once the provider accepts the request, even when its reply then fails.
     func transcribeQA(_ samples: [Float], rate: Int, language: String, authorization: VoiceLabAuthorization,
                       capability: VoiceOperationCapability,
-                      acceptance: VoiceLabRequestAcceptance? = nil) async throws -> (words: [VoiceLabWord], receipt: VoiceLabReceipt) {
+                      acceptance: VoiceLabRequestAcceptance? = nil, hasAudioTags: Bool = false) async throws -> (words: [VoiceLabWord], receipt: VoiceLabReceipt) {
         guard rate == 24_000, !samples.isEmpty, samples.count <= Int(VoiceLabTakeProcessing.maximumQASeconds) * rate else { throw VoiceLabError.invalidAudio }
         let wav = try VoiceLabTakeWAV.encode(samples, rate: rate)
         let boundary = newBoundary()
         let parts: [Part] = [.text("model_id", "scribe_v2"), .text("language_code", language),
-                            .text("tag_audio_events", "false"), .text("diarize", "false"),
+                            .text("tag_audio_events", hasAudioTags ? "true" : "false"), .text("diarize", "false"),
                             .text("timestamps_granularity", "word"), .file("file", "qa.wav", wav)]
         let body = try multipart(parts, boundary: boundary, limit: maxRequest)
         try Task.checkCancellation()
