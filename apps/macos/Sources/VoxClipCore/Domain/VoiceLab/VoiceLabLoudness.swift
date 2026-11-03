@@ -69,30 +69,55 @@ public enum VoiceLabLoudness {
     /// stopping at the first voiced frame or after 0.4 s, the momentary window QA reads there. Nil with fewer than 10
     /// such frames, as at hard seams in connected speech. `source` must hold 0.4 s beside the window, clamped to the take.
     public static func seamBackgroundRmsDb(_ source: VoiceLabSourceExcerpt, sampleRate: Int, window: Range<Int>) throws -> Double? {
+        let sides = try seamBackgroundPower(source, sampleRate: sampleRate, window: window)
+        return level(power: sides.left.power + sides.right.power, frames: sides.left.frames + sides.right.frames, sampleRate: sampleRate)
+    }
+
+    /// The same background measured on each side of the window on its own (§8.7 item 3): before the incoming seam and
+    /// after the outgoing one, each nil with fewer than 10 unvoiced frames there.
+    public static func seamBackgroundSidesRmsDb(_ source: VoiceLabSourceExcerpt, sampleRate: Int,
+                                                  window: Range<Int>) throws -> (left: Double?, right: Double?) {
+        let sides = try seamBackgroundPower(source, sampleRate: sampleRate, window: window)
+        return (level(power: sides.left.power, frames: sides.left.frames, sampleRate: sampleRate),
+                level(power: sides.right.power, frames: sides.right.frames, sampleRate: sampleRate))
+    }
+    private static func level(power: Double, frames: Int, sampleRate: Int) -> Double? {
+        guard frames >= 10, power > 0 else { return nil }
+        return 10 * log10(power / Double(frames * sampleCount(VoiceLabPatchConstants.RMS_FRAME, sampleRate)))
+    }
+    private static func seamBackgroundPower(_ source: VoiceLabSourceExcerpt, sampleRate: Int,
+                                            window: Range<Int>) throws -> (left: (power: Double, frames: Int), right: (power: Double, frames: Int)) {
         guard sampleRate > 0, window.lowerBound >= 0, window.upperBound <= source.totalFrames else { throw VoiceLabAudioMathError.invalidInput }
         let size = sampleCount(VoiceLabPatchConstants.RMS_FRAME, sampleRate), limit = sampleCount(momentarySeconds, sampleRate) / size
         let threshold = VoiceLabPatchConstants.VOICED_FRAME_LEVEL
-        var total = 0.0, frames = 0
+        var sides: [(power: Double, frames: Int)] = []
         for outward in [-1, 1] {
+            let span = outward < 0 ? max(0, window.lowerBound - limit * size)..<window.lowerBound
+                                   : window.upperBound..<min(source.totalFrames, window.upperBound + limit * size)
+            guard let held = source.samples(span) else { throw VoiceLabAudioMathError.invalidInput }
+            let raw = Array(held)
+            guard raw.allSatisfy(\.isFinite) else { throw VoiceLabAudioMathError.invalidInput }
+            var total = 0.0, frames = 0
             for index in 0..<limit {
-                let start = outward < 0 ? window.lowerBound - (index + 1) * size : window.upperBound + index * size
-                guard start >= 0, start + size <= source.totalFrames else { break }
-                guard let frame = source.samples(start..<(start + size)) else { throw VoiceLabAudioMathError.invalidInput }
+                let start = outward < 0 ? raw.count - (index + 1) * size : index * size
+                guard start >= 0, start + size <= raw.count else { break }
                 var sum = 0.0
-                for sample in frame {
-                    guard sample.isFinite else { throw VoiceLabAudioMathError.invalidInput }
-                    sum += Double(sample) * Double(sample)
-                }
+                for offset in start..<(start + size) { sum += Double(raw[offset]) * Double(raw[offset]) }
                 if (sum / Double(size)).squareRoot() > threshold { break }
                 total += sum; frames += 1
             }
+            sides.append((total, frames))
         }
-        guard frames >= 10, total > 0 else { return nil }
-        return 10 * log10(total / Double(frames * size))
+        return (sides[0], sides[1])
     }
 
-    /// The room-tone loop's static gain (§8.7 item 3): the background at the seams (`seamBackgroundRmsDb`) less the RMS of
-    /// the selected run, clamped to `GAIN_CLAMP`; 0, its natural level, when the seams have no background to match.
+    /// The smallest background difference between the two sides, in dB, at which the room-tone bed ramps from one
+    /// side's level to the other's instead of playing at their pooled level (§8.7 item 3).
+    public static let roomToneRampMinimumDb = 1.0
+
+    /// The room-tone loop's gain (§8.7 item 3): a background level (`seamBackgroundRmsDb`, or one side's from
+    /// `seamBackgroundSidesRmsDb`) less the RMS of the selected run, clamped to `GAIN_CLAMP`; 0, its natural level, when
+    /// there is no background to match.
     public static func roomToneGainDb(seamBackgroundRmsDb background: Double?, run: [Float]) throws -> Double {
         guard let background else { return 0 }
         guard background.isFinite, !run.isEmpty, run.allSatisfy(\.isFinite) else { throw VoiceLabAudioMathError.invalidInput }

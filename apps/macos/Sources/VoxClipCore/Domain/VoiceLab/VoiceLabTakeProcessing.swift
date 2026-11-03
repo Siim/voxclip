@@ -48,6 +48,15 @@ public enum VoiceLabTakeProcessing {
             guard let run = input.source.samples(Int(selected.sourceStartSample)..<Int(selected.sourceEndSample)) else { throw VoiceLabError.invalidInput }
             let background = try VoiceLabLoudness.seamBackgroundRmsDb(input.source, sampleRate: rate, window: range)
             tone?.gainDb = try VoiceLabLoudness.roomToneGainDb(seamBackgroundRmsDb: background, run: Array(run))
+            // When the background differs on the two sides, no one level meets both seams: the bed ramps from the
+            // left side's level to the right side's across the window, linearly in dB.
+            let sides = try VoiceLabLoudness.seamBackgroundSidesRmsDb(input.source, sampleRate: rate, window: range)
+            if let left = sides.left, let right = sides.right, abs(right - left) >= VoiceLabLoudness.roomToneRampMinimumDb {
+                let start = try VoiceLabLoudness.roomToneGainDb(seamBackgroundRmsDb: left, run: Array(run))
+                let end = try VoiceLabLoudness.roomToneGainDb(seamBackgroundRmsDb: right, run: Array(run))
+                tone?.gainDb = start
+                tone?.endGainDb = end == start ? nil : end
+            }
         }
         return VoiceLabTakePreflight(sourceLevel: level, roomTone: tone)
     }

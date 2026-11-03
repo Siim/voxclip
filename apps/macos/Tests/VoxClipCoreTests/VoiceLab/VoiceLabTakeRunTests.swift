@@ -120,6 +120,8 @@ private final class TakeRunHTTP: Sendable {
         /// Eleven v3's shape: the characters run from 0 to the PCM's last frame plus this overshoot (the client accepts
         /// up to 50 ms), so the audio holds nothing past the last aligned character. Nil keeps 0.1 s at each end.
         var edgeAlignmentOvershoot: Double?
+        /// The PCM is silent this long at each end, inside the aligned lead and tail, as a take that pauses at its edges.
+        var silentEdges = 0.0
         /// Scribe answers 200 with no words, after the spend ledger has recorded the QA request.
         var malformedQA = false
         var current = true
@@ -199,6 +201,7 @@ struct VoiceLabTakeRunTests {
     }
     private func fixture(_ configure: @Sendable (inout TakeRunHTTP.State) -> Void = { _ in }, drift: Bool = false,
                          sourceAudible: Bool = true, roomToneAvailable: Bool = true,
+                         background: (left: Double, right: Double, run: Double)? = nil,
                          boundary: VoiceLabTakeDispatchBoundary? = nil, text: String = "Hello", voicedFraction: Double = 1, rejectGeneratedVAD: Bool = false) async throws -> Fixture {
         let root = try SpeechTestFiles.directory()
         let locations = SpeechTestFiles.locations(root)
@@ -236,8 +239,12 @@ struct VoiceLabTakeRunTests {
                 if state.seeds.count == 1 && state.firstStatus != 200 { return (state.firstStatus, [:], Data()) }
                 var pcm = Data()
                 let frames = Int(state.duration * 24_000)
+                let edge = Int(state.silentEdges * 24_000)
                 for index in 0..<frames {
-                    var value = Int16((sin(2 * Double.pi * 100 * Double(index) / 24_000) * 3_200).rounded()).littleEndian
+                    // Speech fades over 20 ms (480 frames) into its silent edges.
+                    let inside = edge == 0 ? Int.max : min(index - edge, frames - edge - 1 - index)
+                    let envelope = inside < 0 ? 0 : inside >= 480 ? 1 : 0.5 - 0.5 * cos(Double.pi * Double(inside) / 480)
+                    var value = Int16((sin(2 * Double.pi * 100 * Double(index) / 24_000) * 3_200 * envelope).rounded()).littleEndian
                     withUnsafeBytes(of: &value) { pcm.append(contentsOf: $0) }
                 }
                 let generatedText = try #require(body["text"] as? String)
@@ -303,7 +310,15 @@ struct VoiceLabTakeRunTests {
         let source: [Float] = (0..<(8 * rate)).map { index in
             let seconds = Double(index) / Double(rate)
             let quiet = (1.9..<2.1).contains(seconds) || (5.9..<6.1).contains(seconds) || (6.5..<7.1).contains(seconds)
-            return !sourceAudible ? 0 : quiet ? 0.001 : Float(0.1 * sin(2 * Double.pi * 100 * seconds))
+            guard sourceAudible else { return 0 }
+            // With `background`, speech fades over 20 ms into and out of each pause, as speech decays, instead of
+            // stopping on a broadband click, and the pauses hold noise at each side's level.
+            let edges = [1.9, 2.1, 5.9, 6.1, 6.5, 7.1], distance = edges.map { abs(seconds - $0) }.min() ?? 1
+            let envelope = background == nil || distance >= 0.02 ? 1 : 0.5 - 0.5 * cos(Double.pi * distance / 0.02)
+            guard quiet else { return Float(0.1 * envelope * sin(2 * Double.pi * 100 * seconds)) }
+            guard let background else { return 0.001 }
+            let level = seconds < 4 ? background.left : seconds < 6.3 ? background.right : background.run
+            return Float(Double((index * 7_919) % 1_001 - 500) / 500 * level)
         }
         var items = [TimedWord(id: "before", text: "before", kind: .word, start: 0, end: 1.9),
                      TimedWord(id: "old", text: "old", kind: .word, start: 2.1, end: 5.9),
@@ -670,6 +685,51 @@ struct VoiceLabTakeRunTests {
         #expect(Array(audio.mixed[0..<(audio.seams[0] - half)]) == Array(source[source.startIndex..<(source.startIndex + audio.seams[0] - half)]))
         let tailCount = audio.mixed.count - (audio.seams[1] + half)
         #expect(Array(audio.mixed.suffix(tailCount)) == Array(source.suffix(tailCount)))
+    }
+    /// Live 2026-11-03 (take 4): the background was 8 LU apart on the two sides of a window, and one room-tone level
+    /// met neither join. The bed ramps from the left side's level to the right side's, so both pause joins stay within
+    /// 2 LU; equal backgrounds keep today's single pooled level and the earlier encoding.
+    @Test(arguments: [8.0, 0.0]) func theRoomToneBedRampsBetweenTwoBackgrounds(stepDb: Double) async throws {
+        let left = 0.003, right = left * pow(10, -stepDb / 20)
+        let fixture = try await fixture({ $0.duration = 2.6; $0.silentEdges = 0.2 }, background: (left, right, 0.001))
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let rate = 24_000, window = 48_000..<144_000
+        let preflight = try VoiceLabTakeProcessing.preflight(fixture.input)
+        let tone = try #require(preflight.roomTone)
+        let run = Array(try #require(fixture.input.source.samples(Int(tone.sourceStartSample)..<Int(tone.sourceEndSample))))
+        let sides = try VoiceLabLoudness.seamBackgroundSidesRmsDb(fixture.input.source, sampleRate: rate, window: window)
+        let (l, r) = (try #require(sides.left), try #require(sides.right))
+        #expect(abs((l - r) - stepDb) < 0.5)
+        if stepDb == 0 {
+            // Equal backgrounds: one level, today's pooled one, and no end gain in the file.
+            let pooled = try VoiceLabLoudness.seamBackgroundRmsDb(fixture.input.source, sampleRate: rate, window: window)
+            let today = try VoiceLabLoudness.roomToneGainDb(seamBackgroundRmsDb: pooled, run: run)
+            #expect(tone.endGainDb == nil && tone.gainDb == today)
+            let encoded = try JSONEncoder().encode(tone)
+            #expect(String(decoding: encoded, as: UTF8.self).contains("endGainDb") == false)
+        } else {
+            let start = try VoiceLabLoudness.roomToneGainDb(seamBackgroundRmsDb: l, run: run)
+            let end = try VoiceLabLoudness.roomToneGainDb(seamBackgroundRmsDb: r, run: run)
+            #expect(tone.gainDb == start && tone.endGainDb == end)
+            #expect(tone.gainDb(atFrame: -10, of: 100) == tone.gainDb && tone.gainDb(atFrame: 200, of: 100) == tone.endGainDb)
+            #expect(abs(tone.gainDb(atFrame: 50, of: 100) - (tone.gainDb + (tone.endGainDb ?? 0)) / 2) < 1e-12)
+            let decoded = try JSONDecoder().decode(VoiceLabRoomTone.self, from: JSONEncoder().encode(tone))
+            #expect(decoded == tone)
+        }
+        let quote = try await fixture.run.prepare(fixture.input)
+        let result = try await fixture.run.execute(quote, approved: true)
+        let row = try #require(result.rows.first), audio = try #require(row.audio), qa = try #require(row.qa)
+        #expect(audio.roomTone == tone)
+        // Both joins sit in a pause on both sides: the source's pause, and the take's pad over the bed.
+        let pauses = try VoiceLabLoudness.pauseSeamStepsLu(audio.mixed, sampleRate: audio.sampleRate, seamSamples: audio.seams)
+        #expect(pauses.count == 2 && pauses.allSatisfy { $0.map { abs($0) <= 2 } == true }, "\(pauses)")
+        #expect((qa.values.lufsJumpLu ?? 9) <= 2 && !qa.failures.contains(.loudness), "\(qa)")
+        if stepDb > 0 {
+            // One pooled level would have missed both joins by about half the step.
+            let pooled = try VoiceLabLoudness.seamBackgroundRmsDb(fixture.input.source, sampleRate: rate, window: window)
+            let flat = try VoiceLabLoudness.roomToneGainDb(seamBackgroundRmsDb: pooled, run: run)
+            #expect(abs(flat - tone.gainDb) > 2 && abs(flat - (tone.endGainDb ?? 0)) > 2)
+        }
     }
     /// Live 2026-11-03: a 1.36 s Eleven v3 take timed to its last frame. `ceil(1.36 × 24,000)` is 32,641 in binary64, one
     /// frame past the asset, and the fit planner refused the word timing (invalidAlignment) until times were clamped.
