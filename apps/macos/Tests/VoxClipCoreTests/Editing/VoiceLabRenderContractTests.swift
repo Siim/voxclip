@@ -223,6 +223,35 @@ import Testing
         #expect(throws: VoiceLabProjectError.invalidFadeHandles) { try VoiceLabRenderContract.prepare(clipped, scope: .clip("clip-edge"), labelPosition: .topRight) }
         #expect(try VoiceLabRenderContract.prepare(clipped, scope: .full, labelPosition: .topRight).selectedSegmentRecipes.count == 2)
     }
+
+    @Test func hardJoinedPatchesKeepATwentyMillisecondSourceRun() throws {
+        var project = try fixture("one-sample-gap-render-v3")
+        for index in project.voiceLab.segments.indices {
+            var segment = project.voiceLab.segments[index]
+            if index == 0 { segment.replace.end = 3.18; segment.outDuration = 0.68 }
+            for candidate in segment.candidates.indices {
+                var recipe = segment.candidates[candidate].recipe!
+                if index == 0 {
+                    recipe.outDuration = 0.68; recipe.audio.trimEnd = recipe.audio.trimStart + 0.68
+                    recipe.words![recipe.words!.count - 1].end = 0.54
+                    recipe.chunks[0].sourceEndSample = 3_180
+                    recipe.chunks[0].assembledEndFrame = recipe.chunks[0].assembledStartFrame + 16_320
+                    recipe.video.sourceEndSample = 3_180; recipe.video.outputSamples = 680
+                    recipe.seams.out = .init(kind: .hard, fadeSamples: 12, sourceHandleSamples: 6, assetHandleFrames: 144,
+                        microPause: VoiceLabHardJoin.pause(words: recipe.words!, duration: 0.68, incoming: false))
+                } else {
+                    recipe.words![0].start = 0.14
+                    recipe.seams.in = .init(kind: .hard, fadeSamples: 12, sourceHandleSamples: 6, assetHandleFrames: 144,
+                        microPause: VoiceLabHardJoin.pause(words: recipe.words!, duration: 0.3, incoming: true))
+                }
+                segment.candidates[candidate].recipe = recipe
+            }
+            segment.audio = segment.candidates[0].recipe!.audio; segment.words = segment.candidates[0].recipe!.words
+            project.voiceLab.segments[index] = segment
+        }
+        let prepared = try VoiceLabRenderContract.prepare(project, scope: .full, labelPosition: .topRight)
+        #expect(prepared.outputPlan.pieces.contains { $0.kind == .source && $0.sourceEndSample - $0.sourceStartSample == 20 })
+    }
     @Test func stretchedAssetHandlesUseRawFramesAtTheAssetRate() throws {
         let original = try fixture()
         func withHandles(_ incoming: Int64, _ outgoing: Int64) -> Project {

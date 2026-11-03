@@ -140,7 +140,7 @@ public enum VoiceLabTakeQuality {
     /// says which side of each seam is generated, after it at the incoming seam. nil keeps the plain largest jump.
     public static func evaluate(expected: String, recognized: [String], mixed: [Float], sampleRate: Int,
                                 seams: [Int], sourceSeamSteps: [Double]? = nil, sourceSeamPauses: [VoiceLabSourcePause?]? = nil,
-                                generatedAfter: [Bool]? = nil, measuredSeamSteps: [Double]? = nil, speakerScore: Double?,
+                                generatedAfter: [Bool]? = nil, measuredSeamSteps: [Double]? = nil, measuredPauseExcesses: [Double]? = nil, speakerScore: Double?,
                                 threshold: Double) throws -> VoiceLabTakeQAResult {
         guard speakerScore.map({ $0.isFinite && (-1...1).contains($0) }) ?? true, threshold.isFinite, (0...1).contains(threshold) else { throw VoiceLabError.invalidInput }
         let expectedTokens = tokens(expected)
@@ -151,6 +151,9 @@ public enum VoiceLabTakeQuality {
         if let generatedAfter, generatedAfter.count != seams.count { throw VoiceLabAudioMathError.invalidInput }
         let steps = try measuredSeamSteps ?? VoiceLabLoudness.seamStepsLu(mixed, sampleRate: sampleRate, seamSamples: seams)
         guard steps.count == seams.count, steps.allSatisfy(\.isFinite) else { throw VoiceLabAudioMathError.invalidInput }
+        if let measuredPauseExcesses {
+            guard measuredPauseExcesses.count == seams.count, measuredPauseExcesses.allSatisfy({ $0.isFinite && $0 >= 0 }) else { throw VoiceLabAudioMathError.invalidInput }
+        }
         let excesses: [Double]
         if let sourceSeamSteps {
             let ranges = sourceSeamPauses.flatMap { $0.isEmpty ? nil : $0 }
@@ -160,11 +163,11 @@ public enum VoiceLabTakeQuality {
                 levels = try VoiceLabLoudness.generatedPauseLufs(mixed, sampleRate: sampleRate, seamSamples: seams, generatedAfter: generatedAfter)
             } else { levels = Array(repeating: nil, count: seams.count) }
             excesses = try steps.indices.map { index in
-                try VoiceLabLoudness.seamExcessLu(mixedSteps: [steps[index]], sourceSteps: [sourceSeamSteps[index]],
-                    generatedPauseLevels: [levels[index]], sourcePauses: [ranges?[index]])
+                max(try VoiceLabLoudness.seamExcessLu(mixedSteps: [steps[index]], sourceSteps: [sourceSeamSteps[index]],
+                    generatedPauseLevels: [levels[index]], sourcePauses: [ranges?[index]]), measuredPauseExcesses?[index] ?? 0)
             }
         } else {
-            excesses = steps.map { abs($0) }
+            excesses = steps.indices.map { max(abs(steps[$0]), measuredPauseExcesses?[$0] ?? 0) }
         }
         let jump = excesses.max() ?? 0
         let joinSeams = excesses.indices.filter { excesses[$0] > 2 }.map { index in
@@ -195,6 +198,7 @@ public struct VoiceLabTakeAudio: Sendable, Equatable {
     public var microPauseOut: VoiceLabMicroPause?
     public var edgeGain: VoiceLabEdgeGain?
     public var measuredSeamSteps: [Double]?
+    public var measuredPauseExcesses: [Double]?
     public let sampleRate: Int
     public let trimmed: [Float]
     public let mixed: [Float]

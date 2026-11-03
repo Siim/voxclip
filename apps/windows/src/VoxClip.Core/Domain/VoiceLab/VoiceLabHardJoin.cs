@@ -19,11 +19,11 @@ public static class VoiceLabHardJoin
     public const double ToleranceLu = 2;
     public const double RoomToneMaximumGainDb = 48;
 
-    public static (long left, long right) FadeExtent(VoiceLabSeam seam, bool incoming, double sampleRate)
+    public static (long left, long right) FadeExtent(VoiceLabSeam seam, bool incoming, double sampleRate, long? availableSourceSamples = null)
     {
         if (seam.MicroPause is not null)
         {
-            var frames = (long)Math.Floor(SourceFadeSeconds * sampleRate + 0.5);
+            var frames = SourceFadeFrames(sampleRate, availableSourceSamples ?? (long)sampleRate);
             return incoming ? (frames, 0) : (0, frames);
         }
         var left = seam.FadeSamples / 2;
@@ -51,8 +51,23 @@ public static class VoiceLabHardJoin
         return weight;
     }
 
-    public static double SourceWeight(double secondsFromJoin, bool incoming) =>
-        Math.Sin(Math.PI * Math.Clamp(incoming ? -secondsFromJoin / SourceFadeSeconds : secondsFromJoin / SourceFadeSeconds, 0, 1) / 2);
+    public static long SourceFadeFrames(double sampleRate, long availableSourceSamples) =>
+        Math.Min((long)Math.Floor(SourceFadeSeconds * sampleRate + 0.5), availableSourceSamples / 2);
+
+    public static double PauseExcess(float[] samples, int sampleRate, int seam, VoiceLabMicroPause pause, bool incoming, VoiceLabTakeInput input)
+    {
+        var sourceSeam = incoming ? input.Window.StartSample : input.Window.EndSample;
+        if (VoiceLabRoomToneSelection.NeighbouringPause(input.Items, input.SourceEnvelope, input.SourceSampleRate, input.Source.TotalFrames, sourceSeam) is not { } target ||
+            input.Source.Samples(target.Start, target.End) is not { } source) return 0;
+        var first = incoming ? seam : seam + (int)Math.Floor(pause.WordEndSeconds * sampleRate + 0.5);
+        var last = incoming ? seam + (int)Math.Floor((pause.WordStartSeconds - GeneratedFadeSeconds) * sampleRate + 0.5) : seam;
+        var generated = VoiceLabLoudness.GeneratedPauseLufs(samples, sampleRate, first, last);
+        var level = VoiceLabLoudness.GeneratedPauseLufs(source.Span, input.SourceSampleRate, 0, source.Length);
+        return Math.Abs(generated - level);
+    }
+
+    public static double SourceWeight(double secondsFromJoin, bool incoming, double fadeSeconds = SourceFadeSeconds) =>
+        Math.Sin(Math.PI * Math.Clamp((incoming ? -secondsFromJoin : secondsFromJoin) / fadeSeconds, 0, 1) / 2);
 
     public static double EdgeGainDb(double seconds, double duration, VoiceLabEdgeGain? edgeGain)
     {
@@ -71,22 +86,7 @@ public static class VoiceLabHardJoin
 
     public static double BedWeight(double seconds, double duration, IReadOnlyList<VoiceLabWord> words, VoiceLabMicroPause? incoming, VoiceLabMicroPause? outgoing)
     {
-        var voice = GeneratedWeight(seconds, duration, incoming, outgoing);
-        if (incoming is not null && seconds < incoming.WordStartSeconds || outgoing is not null && seconds >= duration + outgoing.WordEndSeconds - GeneratedFadeSeconds)
-            return Math.Sqrt(Math.Max(0, 1 - voice * voice));
-        var distance = SourceFadeSeconds;
-        var lower = 0;
-        var upper = words.Count;
-        while (lower < upper)
-        {
-            var middle = lower + (upper - lower) / 2;
-            if (words[middle].End < seconds) lower = middle + 1;
-            else upper = middle;
-        }
-        double Near(int index) => index < 0 || index >= words.Count ? SourceFadeSeconds : Math.Max(0, Math.Max(words[index].Start - seconds, seconds - words[index].End));
-        distance = Math.Min(distance, Math.Min(Near(lower - 1), Near(lower)));
-        var pause = Math.Sin(Math.PI * Math.Min(1, distance / SourceFadeSeconds) / 2);
-        return Math.Max(pause, Math.Sqrt(Math.Max(0, 1 - voice * voice)));
+        return 1;
     }
 
     public static void Validate(VoiceLabSeams seams, VoiceLabEdgeGain? edgeGain, double duration)
@@ -184,31 +184,20 @@ public static class VoiceLabHardJoin
     public static VoiceLabRoomTone MatchedRoomTone(VoiceLabRoomTone room, VoiceLabTakeInput input, double speechLevel)
     {
         var rate = input.SourceSampleRate;
-        var size = Math.Max(1, (int)Math.Floor(rate * 0.01 + 0.5));
-        var count = size * 10;
         if (input.Source.Samples(room.SourceStartSample, room.SourceEndSample) is not { } run) throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
         double Level(float[] samples) => VoiceLabLoudness.Loudness(VoiceLabLoudness.KWeighted(samples, rate), 0, samples.Length);
         var runLevel = Level(run.ToArray());
-        if (!double.IsFinite(runLevel)) throw new VoiceLabGeometryException(VoiceLabGeometryErrorCode.RoomToneUnavailable);
+        if (!double.IsFinite(runLevel))
+        {
+            if (run.Span.ContainsAnyExcept(0f)) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
+            return room with { GainDb = 0, EndGainDb = null };
+        }
         double? Target(long seam)
         {
-            var lower = Math.Max(0, seam - 3 * rate);
-            var upper = Math.Min(input.Source.TotalFrames - count, seam + 3 * rate);
-            (long distance, double level)? best = null;
-            for (var start = lower / size * size; start <= upper; start += size)
-            {
-                var end = start + count;
-                if (input.Items.Any(word => word.Kind == Shared.WordKind.Word && word.End > start / (double)rate && word.Start < end / (double)rate) ||
-                    input.Source.Samples(start, end) is not { } samples) continue;
-                if (end / size > input.SourceEnvelope.Rms.Count || Enumerable.Range((int)(start / size), count / size).Any(index => input.SourceEnvelope.Rms[index] > VoiceLabPatchConstants.VOICED_FRAME_LEVEL)) continue;
-                var distance = Math.Abs(start + count / 2 - seam);
-                if (best is null || distance < best.Value.distance)
-                {
-                    var measured = Level(samples.ToArray());
-                    if (double.IsFinite(measured)) best = (distance, Math.Min(measured, speechLevel - 12));
-                }
-            }
-            return best?.level;
+            if (VoiceLabRoomToneSelection.NeighbouringPause(input.Items, input.SourceEnvelope, rate, input.Source.TotalFrames, seam) is not { } pause ||
+                input.Source.Samples(pause.Start, pause.End) is not { } samples) return null;
+            var measured = Level(samples.ToArray());
+            return double.IsFinite(measured) ? Math.Min(measured, speechLevel - 12) : null;
         }
         var left = Target(input.Window.StartSample);
         var right = Target(input.Window.EndSample);

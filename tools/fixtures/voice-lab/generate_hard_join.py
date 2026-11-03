@@ -1,6 +1,54 @@
 import argparse
 import json
+import math
+import struct
 from pathlib import Path
+
+
+def review_document():
+    def single(value):
+        return struct.unpack('<f', struct.pack('<f', value))[0]
+
+    def tone(frame):
+        period, fade = 21600, 2400
+        index = frame % period
+        if 0 <= frame < period or index >= fade:
+            return single(0.01)
+        phase = index / (fade - 1)
+        return single(single(single(0.01) * single(math.cos(math.pi * phase / 2))) +
+                      single(single(0.01) * single(math.sin(math.pi * phase / 2))))
+
+    def sample(frame):
+        if frame < 0 or frame >= 33600:
+            local = frame if frame < 0 else frame - 33600
+            weight = math.sin(math.pi * min(1, abs(local) / 960) / 2)
+            return single(single(single(0.2) * single(weight)) +
+                          single(tone(frame) * single(math.sqrt(max(0, 1 - weight * weight)))))
+        seconds = frame / 48000
+        incoming = math.sin(math.pi * min(1, max(0, (seconds - 0.14 + 0.025) / 0.025)) / 2)
+        fraction = min(1, max(0, (seconds - 0.7 + 0.14 + 0.025) / 0.025))
+        outgoing = 0 if fraction >= 1 else math.cos(math.pi * fraction / 2)
+        return single(single(single(0.5) * single(incoming * outgoing)) + tone(frame))
+
+    offsets = [-960, -720, -480, -240, -1, 0, 4800, 5520, 5820, 6120, 6420, 6720,
+               9600, 14400, 16800, 19200, 21600, 22200, 22800, 23400, 23999, 24000,
+               25680, 25980, 26280, 26580, 26880, 31200, 33599, 33600, 33840, 34080, 34320, 34559, 34560]
+    return {
+        'schema': 'voxclip-hard-join-review/1',
+        'bedWeights': [{'seconds': seconds, 'expected': 1} for seconds in
+                       [0, 0.115, 0.1275, 0.14, 0.2, 0.44, 0.445, 0.45, 1, 1.835, 1.8475, 1.86, 1.99]],
+        'sourceFades': [{'rate': rate, 'availableFrames': round(seconds * rate),
+                         'fadeFrames': min(round(0.02 * rate), round(seconds * rate) // 2)}
+                        for rate in [24000, 48000] for seconds in [0.004, 0.02, 0.039, 0.04, 0.08]],
+        'takeEdge': {'rate': 24000, 'frames': 120, 'amplitude': 0.25,
+                     'samples': [{'offset': offset, 'incoming': round(0.25 * math.sin(math.pi / 2 * offset / 120), 12),
+                                  'outgoing': round(0.25 * math.cos(math.pi / 2 * (offset + 1) / 120), 12)}
+                                 for offset in [0, 29, 59, 89, 119]]},
+        'microRecipe': {'rate': 48000, 'durationSeconds': 0.7, 'sourceAmplitude': 0.2, 'takeAmplitude': 0.5, 'bedAmplitude': 0.01, 'sampleTolerance': 0.00001,
+                        'incoming': {'wordStartSeconds': 0.14, 'wordEndSeconds': 0.3},
+                        'outgoing': {'wordStartSeconds': -0.4, 'wordEndSeconds': -0.14},
+                        'samples': [{'frame': offset, 'expected': round(sample(offset), 9)} for offset in offsets]},
+    }
 
 
 def document():
@@ -67,5 +115,13 @@ if __name__ == '__main__':
         if path.read_text() != rendered:
             raise SystemExit('hard-join-cases.json differs; regenerate it')
         print('hard-join-cases.json: identical')
+    else:
+        path.write_text(rendered)
+    path = path.with_name('hard-join-review-cases.json')
+    rendered = json.dumps(review_document(), indent=2) + '\n'
+    if args.check:
+        if path.read_text() != rendered:
+            raise SystemExit('hard-join-review-cases.json differs; regenerate it')
+        print('hard-join-review-cases.json: identical')
     else:
         path.write_text(rendered)

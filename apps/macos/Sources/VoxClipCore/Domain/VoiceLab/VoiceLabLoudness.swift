@@ -271,6 +271,16 @@ public enum VoiceLabLoudness {
     /// (`TTS_TRIM_TAIL`) after its last word at the outgoing one: its breath and onset or decay, not the pause. With at
     /// least 0.1 s kept, the level is the K-weighted loudness of just those frames, floored at −70 LUFS: the room tone,
     /// pad and pause the join brings, whatever lies further from the join.
+    public static func generatedPauseLufs(_ samples: [Float], sampleRate: Int, range: Range<Int>) throws -> Double {
+        try validate(samples, sampleRate: sampleRate)
+        guard range.lowerBound >= 0, range.upperBound <= samples.count,
+              range.count >= sampleCount(minimumSeamWindowSeconds, sampleRate) else { throw VoiceLabAudioMathError.insufficientContext }
+        let pause = Array(samples[range])
+        return kWeighted(pause, count: pause.count, sampleRate: sampleRate).withUnsafeBufferPointer {
+            max(loudness($0.baseAddress!, from: 0, to: pause.count), silenceGateLufs)
+        }
+    }
+
     public static func generatedPauseLufs(_ samples: [Float], sampleRate: Int, seamSamples: [Int],
                                           generatedAfter: [Bool]) throws -> [Double?] {
         try pauseRuns(samples, sampleRate: sampleRate, seamSamples: seamSamples, generatedAfter: generatedAfter) { weighted, runs in

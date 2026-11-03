@@ -19,7 +19,65 @@ public sealed class VoiceLabHardJoinTests
         Assert.Equal(12000, matched.SourceStartSample);
     }
 
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(0.001)]
+    public void PreflightKeepsDigitalSilenceOnlyForSilentNeighbours(double background)
+    {
+        const int rate = 24000;
+        var source = Enumerable.Range(0, rate * 8).Select(index =>
+        {
+            var seconds = index / (double)rate;
+            var amplitude = seconds < 0.5 ? 0 : seconds >= 1 && seconds < 4 ? 0.1 : background;
+            return (float)(amplitude * Math.Sin(2 * Math.PI * 1000 * seconds));
+        }).ToArray();
+        var input = new VoiceLabTakeInput("word", "fixture", "fixture", "en", 1, "fixture", source, rate,
+            [new TimedWord("w", "speech", WordKind.Word, 1, 4, null, null, null, null, TimingSource.Native)], new HashSet<string>(), Window(rate), null, null, false, true);
+        var room = Assert.IsType<VoiceLabRoomTone>(VoiceLabTakeProcessing.Preflight(input).RoomTone);
+        if (background == 0)
+        {
+            Assert.Equal(0, room.SourceStartSample);
+            Assert.Equal(0, room.GainDb);
+            Assert.Null(room.EndGainDb);
+        }
+        else Assert.True(room.SourceStartSample >= rate / 2);
+    }
+
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web);
+
+    [Fact]
+    public void SharedReviewBedAndShortSourceFades()
+    {
+        using var document = JsonDocument.Parse(FixtureLoader.ReadText("fixtures/voice-lab/hard-join-review-cases.json"));
+        foreach (var row in document.RootElement.GetProperty("bedWeights").EnumerateArray())
+            Assert.Equal(row.GetProperty("expected").GetDouble(), VoiceLabHardJoin.BedWeight(row.GetProperty("seconds").GetDouble(), 2,
+                [new("first", 0.14, 0.44, true), new("second", 0.45, 1.86, true)], new(0.14, 0.44), new(-1.55, -0.14)));
+        foreach (var row in document.RootElement.GetProperty("sourceFades").EnumerateArray())
+        {
+            var rate = row.GetProperty("rate").GetDouble();
+            var count = VoiceLabHardJoin.SourceFadeFrames(rate, row.GetProperty("availableFrames").GetInt64());
+            Assert.Equal(row.GetProperty("fadeFrames").GetInt64(), count);
+            Assert.Equal(Math.Sqrt(0.5), VoiceLabHardJoin.SourceWeight(count / rate / 2, false, count / rate), 12);
+        }
+    }
+
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(6.0)]
+    public void ReservedPauseLevelIsAnAdvisoryIndependentOfSpeech(double gainDb)
+    {
+        const int rate = 24000;
+        var source = Enumerable.Range(0, rate * 5).Select(index =>
+            (float)((index >= rate && index < rate * 4 ? 0.1 : 0.001) * Math.Sin(2 * Math.PI * 1000 * index / rate))).ToArray();
+        var input = new VoiceLabTakeInput("word", "fixture", "fixture", "en", 1, "fixture", source, rate,
+            [new TimedWord("w", "speech", WordKind.Word, 1, 4, null, null, null, null, TimingSource.Native)], new HashSet<string>(), Window(rate), null, null, false, true);
+        var mixed = Enumerable.Range(0, rate * 2).Select(index => (float)(0.001 * Math.Pow(10, gainDb / 20) * Math.Sin(2 * Math.PI * 1000 * index / rate))).ToArray();
+        var excess = VoiceLabHardJoin.PauseExcess(mixed, rate, rate / 2, new(0.14, 0.44), true, input);
+        Assert.InRange(Math.Abs(excess - gainDb), 0, 0.1);
+        var qa = VoiceLabTakeQuality.Evaluate("word", ["word"], mixed, rate, [rate / 2], 1, 0.5, seamExcesses: [excess]);
+        Assert.DoesNotContain(qa.Failures, failure => failure != VoiceLabTakeQaFailure.Loudness);
+        Assert.Equal(gainDb > 2, qa.Failures.Contains(VoiceLabTakeQaFailure.Loudness));
+    }
     private static JsonDocument Fixture() => JsonDocument.Parse(FixtureLoader.ReadText("fixtures/voice-lab/hard-join-cases.json"));
     private static VoiceLabMicroPause Pause(JsonElement element) => JsonSerializer.Deserialize<VoiceLabMicroPause>(element, Options)!;
     private static VoiceLabWindow Window(int rate, double duration = 1)
@@ -121,7 +179,7 @@ public sealed class VoiceLabHardJoinTests
         Assert.Equal(6, VoiceLabHardJoin.MatchingGain(quiet, quiet.Select(sample => sample * 5).ToArray(), rate));
         var nearPeak = quiet.Select(sample => sample * 9).ToArray();
         Assert.Equal(0, VoiceLabHardJoin.MatchingGain(nearPeak, nearPeak.Select(sample => sample * 2).ToArray(), rate));
-        Assert.Equal(0, VoiceLabHardJoin.BedWeight(1, 2, [new("speech", 0.14, 1.86, true)], new(0.14, 1.86), new(-1.86, -0.14)));
+        Assert.Equal(1, VoiceLabHardJoin.BedWeight(1, 2, [new("speech", 0.14, 1.86, true)], new(0.14, 1.86), new(-1.86, -0.14)));
         var shared = new VoiceLabEdgeGain(new(6, new(0.14, 0.86)), new(6, new(-0.86, -0.14)));
         Assert.Equal(6, VoiceLabHardJoin.EdgeGainDb(0.5, 1, shared));
     }

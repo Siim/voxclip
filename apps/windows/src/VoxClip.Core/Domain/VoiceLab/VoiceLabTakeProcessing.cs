@@ -33,7 +33,7 @@ public static class VoiceLabTakeProcessing
             throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
         var level = VoiceLabLoudness.NeighbourhoodVoicedRmsDb(input.Source, rate, window.StartSample, window.EndSample);
         var tone = input.CleanAudioOn ? null : VoiceLabRoomToneSelection.Select(input.Items, input.SourceEnvelope, rate, total,
-            input.HardJoinSmoothing && (window.LeftSeam.Kind == VoiceLabSeamKind.Hard || window.RightSeam.Kind == VoiceLabSeamKind.Hard));
+            VoiceLabRoomToneSelection.ExcludeDigitalSilence(input.Items, input.SourceEnvelope, rate, total, window, input.HardJoinSmoothing));
         if (input.HardJoinSmoothing && (window.LeftSeam.Kind == VoiceLabSeamKind.Hard || window.RightSeam.Kind == VoiceLabSeamKind.Hard) && tone is not null)
             tone = VoiceLabHardJoin.MatchedRoomTone(tone, input, level);
         return new(level, tone);
