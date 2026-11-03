@@ -42,7 +42,7 @@ public enum LipsyncWindowPreparation {
         request.output = OutputSpec(size: PixelSize(width: width, height: height), fps: fps,
             videoBitrate: Int((0.33 * Double(width) * Double(height) * fps).rounded()))
         request.captions = CaptionTrack(); request.captionLayout = nil; request.style = nil
-        let graph = try await CompositionBuilder().build(request, includeDisclosure: false)
+        let graph = try await CompositionBuilder().build(request, includeDisclosure: false, allowsFractionalFrameRate: true)
         let rate = request.timeline.sampleRate
         let range = CMTimeRange(start: CMTime(value: window.outputStartSample, timescale: Int32(rate)),
             end: CMTime(value: window.outputEndSample, timescale: Int32(rate)))

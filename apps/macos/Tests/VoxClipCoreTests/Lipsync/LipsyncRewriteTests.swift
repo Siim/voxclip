@@ -80,14 +80,14 @@ import Testing
         let assetID = "lipsync-fixture"
         project.voiceLab.videoAssets = [.init(id: assetID, file: "\(project.id)/\(assetID).mp4", sha256: String(repeating: "a", count: 64),
             durationSeconds: 3, frameRate: 30, width: 320, height: 180)]
-        let window = LipsyncWindow(startSample: 0, endSample: 3_000, phraseIDs: [0])
+        let window = LipsyncWindow(startSample: 1_000, endSample: 4_200, phraseIDs: [0])
         recipe.video = base.addingLipsync(assetID: assetID, requestID: LipsyncProviderFixtures.requestID, sourceWindow: window, syncMode: .cutOff)
         project.voiceLab.segments[0].candidates[selected].recipe = recipe
         try VoiceLabRenderValidation.validate(project)
         let decoded = try JSONProjectStore.decode(ProjectJSON.encode(project))
         let stored = try #require(decoded.voiceLab.segments[0].candidates[selected].recipe?.video)
         #expect(stored.mode == .lipsync && stored.syncMode == "cut_off" && stored.lipsyncBase == base)
-        #expect(try VoiceLabRenderContract.prepare(decoded, scope: .full, labelPosition: .topRight).disclosure.postText?.contains("Lip movement generated with AI.") == true)
+        #expect(try VoiceLabRenderContract.prepare(decoded, scope: .full, labelPosition: .topRight).disclosure.postText?.contains("Lip movements in parts of it were generated with AI.") == true)
         var invalid = project
         invalid.voiceLab.segments[0].candidates[selected].recipe!.video.zoom = 1.3
         #expect(throws: (any Error).self) { try VoiceLabRenderValidation.validate(invalid) }

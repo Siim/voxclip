@@ -47,7 +47,7 @@ enum LipsyncResultConformer {
         let output = OutputSpec(size: PixelSize(width: width, height: height), fps: fps,
             videoBitrate: Int((0.33 * Double(width) * Double(height) * fps).rounded()))
         let request = RenderRequest(sourceURL: file, plan: plan, output: output)
-        let graph = try await CompositionBuilder().build(request, colorCorrection: correction)
+        let graph = try await CompositionBuilder().build(request, colorCorrection: correction, allowsFractionalFrameRate: true)
         let conformed = file.deletingLastPathComponent().appendingPathComponent("conformed.mp4")
         try await LipsyncMezzanine.write(graph: graph, range: CMTimeRange(start: .zero,
             duration: CMTime(value: total, timescale: 48_000)), output: output, to: conformed)

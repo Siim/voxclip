@@ -76,8 +76,10 @@ public struct CompositionBuilder: Sendable {
         self.scratchRoot = scratchRoot
     }
 
+    /// `allowsFractionalFrameRate` is only for the lip-sync mezzanine and result conform, which keep the source's own rate
+    /// (29.97 fps and similar); exports keep whole frame rates.
     public func build(_ request: RenderRequest, includeDisclosure: Bool = true,
-                      colorCorrection: (scale: Double, bias: Double)? = nil,
+                      colorCorrection: (scale: Double, bias: Double)? = nil, allowsFractionalFrameRate: Bool = false,
                       isolation: isolated (any Actor)? = #isolation) async throws -> RenderGraph {
         try Task.checkCancellation()
         let plan = request.plan
@@ -99,6 +101,7 @@ public struct CompositionBuilder: Sendable {
               max(request.output.size.width, request.output.size.height) <= 1920,
               request.output.size.width % 2 == 0, request.output.size.height % 2 == 0,
               request.output.fps.isFinite, request.output.fps > 0, request.output.fps <= 60,
+              allowsFractionalFrameRate || request.output.fps.rounded() == request.output.fps,
               request.output.videoBitrate > 0 else {
             throw VoxClipError.exportFailed("Invalid output dimensions or frame rate")
         }
@@ -177,7 +180,8 @@ public struct CompositionBuilder: Sendable {
               request.output.fps.isFinite, request.output.fps >= 1, request.output.fps <= 60 else {
             throw VoxClipError.exportFailed("Invalid render configuration")
         }
-        let frameDuration = CMTime(seconds: 1 / request.output.fps, preferredTimescale: 600_000)
+        let fps = request.output.fps
+        let frameDuration = fps.rounded() == fps ? CMTime(value: 1, timescale: Int32(fps)) : CMTime(seconds: 1 / fps, preferredTimescale: 600_000)
         let needsRasterizer = request.captionLayout != nil || request.style != nil
         let disclosure: VoiceLabDisclosureOverlay?
         if let input = request.voiceLab, input.prepared.disclosure.required, includeDisclosure {

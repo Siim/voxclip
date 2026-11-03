@@ -228,7 +228,7 @@ public enum VoiceLabRenderContract {
         if kinds.contains("voiceChanger") {
             lines.append(estonian ? (own ? "Selle video hääl on tehisintellektiga muudetud minu enda hääle koopiaks." : "Selle video häält on muudetud tehisintellektiga.") : (own ? "The voice in this video was converted with AI into a copy of my own voice." : "The voice in this video was changed with AI."))
         }
-        if kinds.contains("lipsync") { lines.append(estonian ? "Osa huulte liikumisest on loodud tehisintellektiga." : "Lip movement generated with AI.") }
+        if kinds.contains("lipsync") { lines.append(estonian ? "Osa huulte liikumisest on loodud tehisintellektiga." : "Lip movements in parts of it were generated with AI.") }
         return lines.isEmpty ? nil : lines.joined(separator: " ")
     }
     static func mergeDisclosureIntervals(_ intervals: [VoiceLabLabelInterval]) -> [VoiceLabLabelInterval] {
