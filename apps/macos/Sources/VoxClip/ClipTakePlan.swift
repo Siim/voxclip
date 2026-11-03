@@ -420,7 +420,8 @@ import VoxClipMedia
         return try VoiceLabPaceMatching.match(seconds: measured, oldPace: selected.row.receipt?.pace ?? selected.row.quote?.synthesis.pace ?? 1,
             window: input.window, incomingSilence: input.incomingSilence, outgoingSilence: input.outgoingSilence,
             sourceSampleRate: input.sourceSampleRate, supportsPace: input.modelID != "eleven_v4", hardJoinSmoothing: true,
-            sourceItems: input.items, sourceEnvelope: input.sourceEnvelope, generatedText: input.text, pauseProfile: input.pauseProfile).pace
+            sourceItems: input.items, sourceEnvelope: input.sourceEnvelope, generatedText: input.text, pauseProfile: input.pauseProfile,
+            audioTags: VoiceLabAudioTags.recorded(input.audioTags, modelID: input.modelID) ?? []).pace
     }
 
     func phrasePace(_ index: Int) -> Double? {

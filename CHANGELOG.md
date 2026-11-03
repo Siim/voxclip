@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Offer useful video jump cuts between quiet speech boundaries, and preserve deliberate expression-tagged pauses.
 - Keep recording ambience under generated speech, preserve noise-gated silence, and check short hard-join pauses without rejecting usable takes.
 - Phrases in your voice keep a natural pace; extra time becomes natural pauses or a jump cut.
 

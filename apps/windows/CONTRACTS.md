@@ -1,5 +1,12 @@
 # Windows fixed contracts
 
+### 2026-11-03 — Quiet-boundary cuts and explicit protected pause tags
+
+- **Built.** Core mirrors Mac quiet-endpoint planning, 40 ms wordless quiet runs, 0.3 s guards, one span before two, boundary-power/earliest-time ranking, sample-exact removal and strict disjointness. The unchanged recipe and `ValidCuts` contract still require 1.06× centered punch-in. Windows rendering remains refused; no App or Media rendering code changes.
+- **Natural audio.** A non-exact fit with valid as-spoken cuts drops partial pause growth before returning the cut-ready plan. Source-exact and no-cut plans keep their old fitting behavior. Mandatory seam reserves and provider-selected pace are preserved. Pre-pay matching disables growth for its cut probe.
+- **Tags / merge boundary.** `VoiceLabTakeInput.AudioTags` is immutable in snapshots. Processing explicitly filters this list through the shared catalog's capable models and whitelist and passes it to the pause planner. Any tag at the gap's `BeforeToken` prevents shrink and growth. The tags-win lane must preserve/populate this input property and its snapshot copy when merging its request/UI work; no request, QA, alignment, UI or LlmConnector changes are made here. `VoiceLabTakeProcessing` changes only its final fit/cut call.
+- **Replaced/deleted.** Replaced whole-quiet-span ranking and pause-grown cut calculation in place. No source file or data deleted and no second fitter retained. Shared `voxclip-natural-pacing/2` adds 13 boundary and three tag-gap vectors while preserving both original hard-window vectors. One existing synthetic two-span test now chooses the single 0.50–2.50 s span, as required by quiet endpoints. Shipping Core allowlist changes are limited to the new product API.
+
 ### 2026-11-03 — Natural pacing, source pause profiles and preserved video cuts
 
 - **Built.** Mirror Mac automatic 0.90–1.10 exact-fit-only pace selection, preferred 1.00, explicit provider retry validation, p25 shrink and p75/p90 bounded natural pause fill. One hard-reserve helper caps each side at min(140 ms, 20% of window); pre-pay, measured match and paid planning share it. Smoothing is explicit at every planner/preview/matcher call. Clip-context profiles survive input snapshots and model/pace retries. Portable fitted PCM supports the same room-tone insert edits and 25 ms out / 20 ms in quiet fades without modifying voiced samples.

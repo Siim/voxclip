@@ -51,10 +51,38 @@ public static class VoiceLabNaturalPacing
     public const double NATURAL_PACE_MAX = 1.10;
     public const double CUT_EDGE_GUARD = 0.30;
     public const double CUT_PUNCH_IN = 1.06;
+    public const double CUT_QUIET_RUN = 0.04;
     public static bool EndsSentence(string token) => token.Length > 0 && ".?!…。！？".Contains(token[^1], StringComparison.Ordinal);
     public static bool ClauseBoundary(string token, string next) =>
         token.Length > 0 && ",;:.?!，；：。！？".Contains(token[^1], StringComparison.Ordinal) ||
         new[] { "and", "but", "so" }.Contains(next.Trim(',', ';', ':', '.', '?', '!').ToLowerInvariant(), StringComparer.Ordinal);
+
+    public static IReadOnlyList<VoiceLabAudioTag> PauseTags(IReadOnlyList<VoiceLabAudioTag> tags, string modelId, int tokenCount)
+    {
+        if (tags.Count == 0) return [];
+        var root = VoxClip.Core.Services.Project.SharedResources.ResolveRoot();
+        using var catalog = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "data", "voice-audio-tags.json")));
+        if (!catalog.RootElement.GetProperty("models").EnumerateArray().Any(model => model.GetString() == modelId)) return [];
+        var allowed = catalog.RootElement.GetProperty("tags").EnumerateArray().Select(tag => tag.GetProperty("tag").GetString()).ToHashSet(StringComparer.Ordinal);
+        return tags.Take(64).Where(tag => tag is not null && tag.BeforeToken >= 0 && tag.BeforeToken <= tokenCount && allowed.Contains(tag.Tag)).ToArray();
+    }
+
+    public static VoiceLabFitResult Fit(VoiceLabWindow window, double? incomingSilence, double? outgoingSilence, VoiceLabFitTake take,
+        int sourceSampleRate, bool hardJoinSmoothing, VoiceLabPauseProfile pauseProfile, IReadOnlyList<VoiceLabAudioTag> audioTags,
+        AudioEnvelope sourceEnvelope, IReadOnlyList<TimedWord> items)
+    {
+        VoiceLabFitResult Plan(bool allowGrowth) => VoiceLabFitPlanner.Plan(window, incomingSilence, outgoingSilence, take,
+            take.Words.Select(word => word.Text).ToArray(), sourceSampleRate, hardJoinSmoothing, pauseProfile, audioTags, allowGrowth);
+        var fitted = Plan(true);
+        if (fitted is VoiceLabFitResult.Exact) return fitted;
+        var spoken = Plan(false);
+        var output = (long)VoxClip.Core.Domain.Editing.EditingMath.Round((double)spoken.Plan.OutputFrames * sourceSampleRate / take.AssetSampleRate);
+        var cuts = Cuts(spoken.Plan.WindowStartSample, spoken.Plan.WindowEndSample, output, sourceSampleRate, sourceEnvelope, items);
+        if (cuts.Count == 0) return fitted;
+        var plan = spoken.Plan with { VideoCuts = cuts };
+        return spoken is VoiceLabFitResult.ChangedDuration changed ?
+            new VoiceLabFitResult.ChangedDuration(plan, changed.NaturalOut, changed.ResidualSeconds) : new VoiceLabFitResult.Exact(plan);
+    }
 
     public static IReadOnlyList<VoiceLabVideoCut> Cuts(long windowStartSample, long windowEndSample, long outputSamples,
         int sampleRate, AudioEnvelope envelope, IReadOnlyList<TimedWord> items)
@@ -65,55 +93,100 @@ public static class VoiceLabNaturalPacing
         var lower = windowStartSample + edge; var upper = windowEndSample - edge;
         if (needed <= 0 || upper <= lower || needed > upper - lower) return [];
         var size = VoiceLabGeometry.FrameSize(sampleRate);
-        var first = (lower + size - 1) / size; var last = Math.Min(upper / size, envelope.Rms.Count);
+        var minimumRun = VoiceLabGeometry.Samples(CUT_QUIET_RUN, sampleRate);
+        var reach = (minimumRun + size - 1) / size;
+        var first = Math.Max(0, lower / size - reach); var last = Math.Min(upper / size + reach + 1, envelope.Rms.Count);
         if (first >= last) return [];
-        var speech = items.Where(word => (word.Kind is WordKind.Word or WordKind.UnlabeledSpeech) && word.End > (double)lower / sampleRate && word.Start < (double)upper / sampleRate).ToArray();
-        List<(long Start, long End, double Power)> runs = [];
-        var start = first; var power = 0.0;
+        var speech = items.Where(word => (word.Kind is WordKind.Word or WordKind.UnlabeledSpeech) && word.End > (double)(first * size) / sampleRate && word.Start < (double)(last * size) / sampleRate).ToArray();
+        var eligible = new bool[(int)(last - first)];
+        var runStarts = Enumerable.Repeat(-1L, (int)(last - first)).ToArray();
+        var start = first;
         for (var block = first; block <= last; block++)
         {
             var lo = block * size; var hi = lo + size;
             var quiet = block < last && envelope.Rms[(int)block] < VoiceLabPatchConstants.VOICED_FRAME_LEVEL &&
                 !speech.Any(word => word.Start < (double)hi / sampleRate && word.End > (double)lo / sampleRate);
-            if (quiet) { var level = envelope.Rms[(int)block]; power += (double)level * level; }
-            else
+            if (!quiet)
             {
-                if (block > start) runs.Add((start * size, lo, power / (block - start)));
-                start = block + 1; power = 0;
+                if ((block - start) * size >= minimumRun)
+                    for (var member = start; member < block; member++)
+                    {
+                        eligible[(int)(member - first)] = true;
+                        runStarts[(int)(member - first)] = start;
+                    }
+                start = block + 1;
             }
         }
-        var ranked = runs.OrderBy(run => run.Power).ThenBy(run => run.Start).ToArray();
-        var prefix = new double[envelope.Rms.Count + 1];
-        for (var index = 0; index < envelope.Rms.Count; index++)
-            prefix[index + 1] = prefix[index] + (double)envelope.Rms[index] * envelope.Rms[index] * size;
-        double Energy(long sample)
+        bool IsEligible(long block) => block >= first && block < last && eligible[(int)(block - first)];
+        double? BoundaryPower(long sample, long startSample)
         {
-            var block = (int)(sample / size);
-            return block >= envelope.Rms.Count ? prefix[^1] : prefix[block] + (double)envelope.Rms[block] * envelope.Rms[block] * (sample % size);
-        }
-        (long Start, double Power)? best = null;
-        foreach (var run in runs.Where(run => run.End - run.Start >= needed))
-        {
-            var candidates = new List<long>();
-            for (var candidate = run.Start; candidate <= run.End - needed; candidate += size) candidates.Add(candidate);
-            candidates.Add(run.End - needed);
-            foreach (var candidate in candidates)
+            if (sample < lower || sample > upper) return null;
+            var block = sample / size;
+            if (!IsEligible(block))
             {
-                var spanPower = Energy(candidate + needed) - Energy(candidate);
-                if (best is null || spanPower < best.Value.Power - 1e-12 || (Math.Abs(spanPower - best.Value.Power) <= 1e-12 && candidate < best.Value.Start)) best = (candidate, spanPower);
+                var startBlock = startSample / size;
+                if (sample % size != 0 || !IsEligible(block - 1) || !IsEligible(startBlock) ||
+                    runStarts[(int)(startBlock - first)] != runStarts[(int)(block - 1 - first)]) return null;
+                block--;
+            }
+            var level = (double)envelope.Rms[(int)block];
+            return level * level;
+        }
+        List<(long Sample, double Power)> starts = [];
+        for (var block = first; block < last; block++)
+        {
+            var sample = block * size;
+            if (IsEligible(block) && sample >= lower && sample < upper)
+            {
+                var level = (double)envelope.Rms[(int)block];
+                starts.Add((sample, level * level));
             }
         }
+        (double Power, long Start)? best = null;
+        foreach (var candidate in starts)
+            if (BoundaryPower(candidate.Sample + needed, candidate.Sample) is { } endPower)
+            {
+                var scored = (candidate.Power + endPower, candidate.Sample);
+                if (best is null || scored.CompareTo(best.Value) < 0) best = scored;
+            }
         if (best is { } selected) return [new(selected.Start, selected.Start + needed)];
-        for (var firstIndex = 0; firstIndex < ranked.Length; firstIndex++)
-            for (var secondIndex = firstIndex + 1; secondIndex < ranked.Length; secondIndex++)
+        long[] phases = needed % size == 0 ? [0] : [0, needed % size];
+        List<(long Sample, double Power)> endings = [];
+        for (var block = first; block <= last; block++)
+            foreach (var phase in phases)
             {
-                var left = ranked[firstIndex]; var right = ranked[secondIndex];
-                if (left.End - left.Start + right.End - right.Start < needed) continue;
-                var firstCount = Math.Min(left.End - left.Start, needed / 2);
-                var secondCount = Math.Min(right.End - right.Start, needed - firstCount);
-                return new[] { new VoiceLabVideoCut(left.Start, left.Start + needed - secondCount),
-                    new VoiceLabVideoCut(right.Start, right.Start + secondCount) }.OrderBy(cut => cut.StartSample).ToArray();
+                var sample = block * size + phase;
+                if (BoundaryPower(sample, sample - size) is { } power) endings.Add((sample, power));
             }
+        endings.Sort((left, right) => left.Sample.CompareTo(right.Sample));
+        var endingIndex = 0;
+        Dictionary<long, (double Power, long Start, long End)> leftByLength = [];
+        (double Power, long FirstStart, long FirstEnd, long SecondStart)? bestTwo = null;
+        foreach (var right in starts)
+        {
+            while (endingIndex < endings.Count && endings[endingIndex].Sample < right.Sample)
+            {
+                var end = endings[endingIndex];
+                foreach (var left in starts)
+                {
+                    var count = end.Sample - left.Sample;
+                    if (count <= 0) break;
+                    if (count >= needed) continue;
+                    if (BoundaryPower(end.Sample, left.Sample) is not { } endPower) continue;
+                    var scored = (left.Power + endPower, left.Sample, end.Sample);
+                    if (!leftByLength.TryGetValue(count, out var previous) || scored.CompareTo(previous) < 0) leftByLength[count] = scored;
+                }
+                endingIndex++;
+            }
+            foreach (var (count, left) in leftByLength)
+            {
+                if (BoundaryPower(right.Sample + needed - count, right.Sample) is not { } endPower) continue;
+                var scored = (left.Power + right.Power + endPower, left.Start, left.End, right.Sample);
+                if (bestTwo is null || scored.CompareTo(bestTwo.Value) < 0) bestTwo = scored;
+            }
+        }
+        if (bestTwo is { } pair)
+            return [new(pair.FirstStart, pair.FirstEnd), new(pair.SecondStart, pair.SecondStart + needed - (pair.FirstEnd - pair.FirstStart))];
         return [];
     }
 

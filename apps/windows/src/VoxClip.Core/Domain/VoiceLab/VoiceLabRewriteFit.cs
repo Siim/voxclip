@@ -73,7 +73,8 @@ public static class VoiceLabRewriteFit
     }
 
     public static VoiceLabFitResult Hypothetical(VoiceLabWindow window, double? incomingSilence, double? outgoingSilence,
-        double seconds, double sourceSampleRate, bool hardJoinSmoothing, string? generatedText = null, VoiceLabPauseProfile? pauseProfile = null)
+        double seconds, double sourceSampleRate, bool hardJoinSmoothing, string? generatedText = null, VoiceLabPauseProfile? pauseProfile = null,
+        IReadOnlyList<VoiceLabAudioTag>? audioTags = null, bool allowPauseGrowth = true)
     {
         if (!double.IsFinite(seconds) || seconds <= 0 || seconds > 3600 || !double.IsFinite(sourceSampleRate) ||
             sourceSampleRate <= 0 || sourceSampleRate > 1_000_000 || sourceSampleRate != Math.Truncate(sourceSampleRate))
@@ -112,6 +113,7 @@ public static class VoiceLabRewriteFit
         }).ToArray();
         var envelope = new AudioEnvelope(assetRate, 0.01, levels);
         return VoiceLabFitPlanner.Plan(window, incomingSilence, outgoingSilence,
-            new(frames, assetRate, 0, duration, words, envelope), words.Select(word => word.Text).ToArray(), sourceSampleRate, hardJoinSmoothing, pauseProfile);
+            new(frames, assetRate, 0, duration, words, envelope), words.Select(word => word.Text).ToArray(), sourceSampleRate, hardJoinSmoothing,
+            pauseProfile, audioTags, allowPauseGrowth);
     }
 }

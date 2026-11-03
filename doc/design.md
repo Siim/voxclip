@@ -1260,6 +1260,8 @@ Duration choices are inline rows, with none preselected for each passage and tak
 - **Cut the video to this take** — “Removes {s} s of video at a pause, like a vlog jump cut. Speech keeps its pace.” Show only for a verified safe cut; the rest of the source window gets a 1.06× punch-in after the first jump.
 - **Match video to this take's duration** — retain the retime factor and 1.12× crop disclosure. Acceptance prepares the actual composition for both changed-duration routes.
 
+If no eligible boundary pair exists, the cut planner's reason is “No pair of quiet source boundaries can make this video cut clear of the window edges.” Quiet endpoints may surround source speech because the take replaces that audio; each stays in a wordless quiet run of at least 40 ms. Cut uses the take as spoken, without growing pauses to reduce the removed video.
+
 Take detail reads `Take 1 · 3.1 s · 0.8 s shorter · natural pace 1.00×`.
 Keep ADR-R36 footer blockers. Windows reports that video cuts cannot render yet,
 preserving the saved audio, cut spans and edits without silently retiming them.

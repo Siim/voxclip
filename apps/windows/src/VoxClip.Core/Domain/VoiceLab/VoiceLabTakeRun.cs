@@ -16,6 +16,7 @@ public sealed record VoiceLabTakeInput(string Text, string ModelId, string Recor
     VoiceLabWindow Window, double? IncomingSilence, double? OutgoingSilence, bool CleanAudioOn, bool ProviderConsent, double? Pace = null, bool HardJoinSmoothing = true)
 {
     public VoiceLabPauseProfile? PauseProfile { get; init; }
+    public IReadOnlyList<VoiceLabAudioTag> AudioTags { get; init; } = [];
     /// <summary>A source held whole, as short sources and tests pass it; the envelope is computed from it.</summary>
     public VoiceLabTakeInput(string Text, string ModelId, string RecordId, string Language, uint Seed, string ContentKey,
         float[] Source, int SourceSampleRate, IReadOnlyList<TimedWord> Items, IReadOnlySet<string> CutWordIds, VoiceLabWindow Window,
@@ -31,6 +32,7 @@ public sealed record VoiceLabTakeInput(string Text, string ModelId, string Recor
     }
     /// <summary>A copy that later changes to the caller's lists cannot reach. The excerpt never changes, so it is shared.</summary>
     public VoiceLabTakeInput Snapshot() => this with { SourceEnvelope = SourceEnvelope with { Rms = Array.AsReadOnly(SourceEnvelope.Rms.ToArray()) },
+        AudioTags = Array.AsReadOnly(AudioTags.ToArray()),
         Items = Array.AsReadOnly(Items.ToArray()),
         CutWordIds = System.Collections.Frozen.FrozenSet.ToFrozenSet(CutWordIds, StringComparer.Ordinal),
         Window = Window with { LeftBridgeWordIds = Array.AsReadOnly(Window.LeftBridgeWordIds.ToArray()), RightBridgeWordIds = Array.AsReadOnly(Window.RightBridgeWordIds.ToArray()) } };

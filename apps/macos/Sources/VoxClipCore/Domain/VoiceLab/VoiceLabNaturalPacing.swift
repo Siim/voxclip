@@ -66,6 +66,7 @@ public enum VoiceLabNaturalPacing {
     public static let NATURAL_PACE_MAX = 1.10
     public static let CUT_EDGE_GUARD = 0.30
     public static let CUT_PUNCH_IN = 1.06
+    public static let CUT_QUIET_RUN = 0.04
 
     public static func endsSentence(_ token: String) -> Bool {
         token.last.map { ".?!…。！？".contains($0) } ?? false
@@ -74,6 +75,28 @@ public enum VoiceLabNaturalPacing {
     public static func clauseBoundary(after token: String, before next: String) -> Bool {
         (token.last.map { ",;:.?!，；：。！？".contains($0) } ?? false) ||
             ["and", "but", "so"].contains(next.lowercased().trimmingCharacters(in: .punctuationCharacters))
+    }
+
+    public static func fit(window: VoiceLabWindow, incomingSilence: Double?, outgoingSilence: Double?, take: VoiceLabFitTake,
+                           sourceSampleRate: Int, hardJoinSmoothing: Bool, pauseProfile: VoiceLabPauseProfile,
+                           audioTags: [VoiceLabAudioTag], sourceEnvelope: AudioEnvelope, items: [TimedWord]) throws -> VoiceLabFitResult {
+        func plan(allowGrowth: Bool) throws -> VoiceLabFitResult {
+            try VoiceLabFitPlanner.plan(window: window, incomingSilence: incomingSilence, outgoingSilence: outgoingSilence,
+                take: take, tokens: take.words.map(\.text), sourceSampleRate: Double(sourceSampleRate),
+                hardJoinSmoothing: hardJoinSmoothing, pauseProfile: pauseProfile, audioTags: audioTags, allowPauseGrowth: allowGrowth)
+        }
+        let fitted = try plan(allowGrowth: true)
+        guard case .changedDuration = fitted else { return fitted }
+        let spoken = try plan(allowGrowth: false)
+        var cutPlan = spoken.plan
+        let output = Int64(EditingPrimitives.jsRound(Double(cutPlan.outputFrames) * Double(sourceSampleRate) / Double(take.assetSampleRate)))
+        cutPlan.videoCuts = cuts(windowStartSample: cutPlan.windowStartSample, windowEndSample: cutPlan.windowEndSample,
+            outputSamples: output, sampleRate: sourceSampleRate, envelope: sourceEnvelope, items: items)
+        guard !cutPlan.videoCuts.isEmpty else { return fitted }
+        switch spoken {
+        case .exact: return .exact(cutPlan)
+        case .changedDuration(_, let natural, let residual): return .changedDuration(cutPlan, naturalOut: natural, residualSeconds: residual)
+        }
     }
 
     public static func cuts(windowStartSample: Int64, windowEndSample: Int64, outputSamples: Int64,
@@ -85,60 +108,90 @@ public enum VoiceLabNaturalPacing {
         let lower = windowStartSample + edge, upper = windowEndSample - edge
         guard needed > 0, upper > lower, needed <= upper - lower else { return [] }
         let size = VoiceLabGeometry.frameSize(Double(sampleRate))
-        let first = (lower + size - 1) / size
-        let last = min(upper / size, Int64(envelope.levels.count))
+        let minimumRun = VoiceLabGeometry.samples(CUT_QUIET_RUN, Double(sampleRate))
+        let reach = (minimumRun + size - 1) / size
+        let first = max(0, lower / size - reach)
+        let last = min(upper / size + reach + 1, Int64(envelope.levels.count))
         guard first < last else { return [] }
-        let speech = items.filter { ($0.kind == .word || $0.kind == .unlabeledSpeech) && $0.end > Double(lower) / Double(sampleRate) && $0.start < Double(upper) / Double(sampleRate) }
-        var runs: [(start: Int64, end: Int64, power: Double)] = []
-        var start = first, power = 0.0
+        let speech = items.filter { ($0.kind == .word || $0.kind == .unlabeledSpeech) && $0.end > Double(first * size) / Double(sampleRate) && $0.start < Double(last * size) / Double(sampleRate) }
+        var eligible = [Bool](repeating: false, count: Int(last - first))
+        var runStarts = [Int64](repeating: -1, count: Int(last - first))
+        var start = first
         for block in first...last {
             let lo = block * size, hi = lo + size
             let quiet = block < last && Double(envelope.levels[Int(block)]) < VoiceLabPatchConstants.VOICED_FRAME_LEVEL &&
                 !speech.contains { $0.start < Double(hi) / Double(sampleRate) && $0.end > Double(lo) / Double(sampleRate) }
-            if quiet {
-                let level = Double(envelope.levels[Int(block)])
-                power += level * level
-            } else {
-                if block > start { runs.append((start * size, lo, power / Double(block - start))) }
-                start = block + 1; power = 0
+            if !quiet {
+                if (block - start) * size >= minimumRun {
+                    for member in start..<block {
+                        eligible[Int(member - first)] = true
+                        runStarts[Int(member - first)] = start
+                    }
+                }
+                start = block + 1
             }
         }
-        let ranked = runs.sorted { $0.power == $1.power ? $0.start < $1.start : $0.power < $1.power }
-        var prefix = [Double](repeating: 0, count: envelope.levels.count + 1)
-        for index in envelope.levels.indices {
-            let level = Double(envelope.levels[index])
-            prefix[index + 1] = prefix[index] + level * level * Double(size)
+        func isEligible(_ block: Int64) -> Bool {
+            block >= first && block < last && eligible[Int(block - first)]
         }
-        func energy(to sample: Int64) -> Double {
-            let block = Int(sample / size)
-            guard block < envelope.levels.count else { return prefix.last! }
-            let level = Double(envelope.levels[block])
-            return prefix[block] + level * level * Double(sample % size)
+        func boundaryPower(_ sample: Int64, from startSample: Int64) -> Double? {
+            guard sample >= lower, sample <= upper else { return nil }
+            var block = sample / size
+            if !isEligible(block) {
+                let startBlock = startSample / size
+                guard sample % size == 0, isEligible(block - 1), isEligible(startBlock),
+                      runStarts[Int(startBlock - first)] == runStarts[Int(block - 1 - first)] else { return nil }
+                block -= 1
+            }
+            let level = Double(envelope.levels[Int(block)])
+            return level * level
         }
-        var best: (start: Int64, power: Double)?
-        for run in runs where run.end - run.start >= needed {
-            var candidates = Array(stride(from: run.start, through: run.end - needed, by: Int(size)))
-            candidates.append(run.end - needed)
-            for candidate in candidates {
-                let power = energy(to: candidate + needed) - energy(to: candidate)
-                if best == nil || power < best!.power - 1e-12 || (abs(power - best!.power) <= 1e-12 && candidate < best!.start) {
-                    best = (candidate, power)
-                }
+        let starts: [(sample: Int64, power: Double)] = (first..<last).compactMap { block in
+            let sample = block * size
+            guard isEligible(block), sample >= lower, sample < upper else { return nil }
+            let level = Double(envelope.levels[Int(block)])
+            return (sample, level * level)
+        }
+        var best: (power: Double, start: Int64)?
+        for candidate in starts {
+            if let endPower = boundaryPower(candidate.sample + needed, from: candidate.sample) {
+                let scored = (candidate.power + endPower, candidate.sample)
+                if best == nil || scored < best! { best = scored }
             }
         }
         if let best {
             return [.init(startSample: best.start, endSample: best.start + needed)]
         }
-        for firstIndex in ranked.indices {
-            for secondIndex in ranked.indices where secondIndex > firstIndex {
-                let left = ranked[firstIndex], right = ranked[secondIndex]
-                guard left.end - left.start + right.end - right.start >= needed else { continue }
-                let firstCount = min(left.end - left.start, needed / 2)
-                let secondCount = min(right.end - right.start, needed - firstCount)
-                let finalFirst = needed - secondCount
-                return [VoiceLabVideoCut(startSample: left.start, endSample: left.start + finalFirst),
-                        VoiceLabVideoCut(startSample: right.start, endSample: right.start + secondCount)].sorted { $0.startSample < $1.startSample }
+        let phases = needed % size == 0 ? [Int64(0)] : [0, needed % size]
+        let endings = (first...last).flatMap { block in phases.map { block * size + $0 } }.sorted().compactMap { sample in
+            boundaryPower(sample, from: sample - size).map { (sample: sample, power: $0) }
+        }
+        var endingIndex = 0
+        var leftByLength: [Int64: (power: Double, start: Int64, end: Int64)] = [:]
+        var bestTwo: (power: Double, firstStart: Int64, firstEnd: Int64, secondStart: Int64)?
+        for right in starts {
+            while endingIndex < endings.count && endings[endingIndex].sample < right.sample {
+                let end = endings[endingIndex]
+                for left in starts {
+                    let count = end.sample - left.sample
+                    if count <= 0 { break }
+                    guard count < needed else { continue }
+                    guard let endPower = boundaryPower(end.sample, from: left.sample) else { continue }
+                    let scored = (left.power + endPower, left.sample, end.sample)
+                    if leftByLength[count] == nil || scored < leftByLength[count]! { leftByLength[count] = scored }
+                }
+                endingIndex += 1
             }
+            for (count, left) in leftByLength {
+                guard let endPower = boundaryPower(right.sample + needed - count, from: right.sample) else { continue }
+                let scored = (left.power + right.power + endPower, left.start, left.end, right.sample)
+                if bestTwo == nil || scored < bestTwo! { bestTwo = scored }
+            }
+        }
+        if let bestTwo {
+            let remaining = needed - (bestTwo.firstEnd - bestTwo.firstStart)
+            return [.init(startSample: bestTwo.firstStart, endSample: bestTwo.firstEnd),
+                    .init(startSample: bestTwo.secondStart, endSample: bestTwo.secondStart + remaining)]
         }
         return []
     }
