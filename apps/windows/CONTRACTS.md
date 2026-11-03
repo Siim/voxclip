@@ -1,5 +1,11 @@
 # Windows fixed contracts
 
+### 2026-11-03 — Rewrite HTTP strict-schema repair
+
+- **Built.** HTTP structured-output schemas recursively require every object property, including optional `audioTags` inside rewrite edits and annotation array items. OpenAI Responses, OpenAI-compatible Chat, Anthropic, Gemini and Ollama all use this wire-only shape. Already exhaustive schemas retain their required-key order. Canonical schemas, CLI requests and reply validation keep optional annotations.
+- **Verification.** Both new shared-prompt wire regressions fail before the repair. Afterward, **528 focused Release Core tests pass**, including the regenerated shared LLM fixtures, all six HTTP schema shapes and canonical non-mutation. The Release build has zero warnings/errors. The Core shipping inventory adds only the private schema-shaping method. No live requests or CI dispatch.
+- **Deleted / next.** No files deleted. This isolated repair can land before the Windows expression behavior/UI twin; that twin remains in progress.
+
 ### 2026-11-03 — Audio expressions: Core compatibility only
 
 - **Built.** `VoiceLabText.AudioTags` is an optional ordered list of `{beforeToken, tag}`. Missing annotations remain absent on serialization. Core validates the shared whitelist, 64-item limit, token-boundary bounds/order and exact JSON keys; project round-trips preserve annotations without changing words. Shared optional Rewrite reply fields are structurally validated when supplied and may be absent. Release boundary approvals include only these compatibility members.

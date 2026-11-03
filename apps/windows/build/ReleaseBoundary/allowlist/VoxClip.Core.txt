@@ -9952,6 +9952,7 @@ member VoxClip.Core.Services.LLM.LlmConnector :: method private Error(VoxClip.Co
 member VoxClip.Core.Services.LLM.LlmConnector :: method private ExchangeAsync(System.Net.Http.HttpMethod,string,System.Text.Json.Nodes.JsonObject,System.TimeSpan,VoxClip.Core.Services.LLM.LlmRequest,string,System.Threading.CancellationToken)
 member VoxClip.Core.Services.LLM.LlmConnector :: method private GeminiOutput(System.Text.Json.Nodes.JsonNode)
 member VoxClip.Core.Services.LLM.LlmConnector :: method private GetAsync(string,System.TimeSpan,System.Threading.CancellationToken)
+member VoxClip.Core.Services.LLM.LlmConnector :: method private HttpStructuredSchema(System.Text.Json.Nodes.JsonNode)
 member VoxClip.Core.Services.LLM.LlmConnector :: method private MatchesAuthField(System.Text.Json.Nodes.JsonObject,string,string)
 member VoxClip.Core.Services.LLM.LlmConnector :: method private MatchesKeyConfiguration()
 member VoxClip.Core.Services.LLM.LlmConnector :: method private ModelsAsync(bool,System.Threading.CancellationToken)
