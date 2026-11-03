@@ -318,6 +318,7 @@ public struct VoiceRewriteProposal: Sendable {
     public let sourceWords: [TimedWord]
     public let sourceText: String
     public let proposedText: String
+    public var audioTags: [VoiceLabAudioTag] = []
     public let connector: ConnectorID
     public let model: String
     public let providerRequestID: String?

@@ -29,7 +29,7 @@ struct RewriteReview: Sendable {
 
     /// Takes are made from each voice change's window and patch text, so takes made for `other` fit this review too.
     func makesTheSameTakes(as other: RewriteReview) -> Bool {
-        voiceHunks.map(\.window) == other.voiceHunks.map(\.window) && voiceHunks.map(\.patchText) == other.voiceHunks.map(\.patchText)
+        voiceHunks.map(\.window) == other.voiceHunks.map(\.window) && voiceHunks.map(\.patchText) == other.voiceHunks.map(\.patchText) && voiceHunks.map { $0.hunk.audioTags } == other.voiceHunks.map { $0.hunk.audioTags }
     }
 
     static func build(_ hunks: [VoiceLabDiffHunk], _ inputs: Inputs) throws -> RewriteReview {
@@ -37,6 +37,7 @@ struct RewriteReview: Sendable {
         let voice = hunks.filter { (hunk: VoiceLabDiffHunk) -> Bool in hunk.kind == .voice }
         let texts = Dictionary(inputs.transcript.map { ($0.id, $0.text) }, uniquingKeysWith: { first, _ in first })
         var reviews: [RewriteHunkReview] = []
+        var requestTexts: [String?] = []
         for hunk in voice {
             do {
                 guard let envelope = inputs.envelope else { throw RewriteSessionError.noSourceAudio }
@@ -46,23 +47,30 @@ struct RewriteReview: Sendable {
                 let newWords: String = hunk.newTokens.joined(separator: " ")
                 let patchWords: [String] = window.leftBridgeWordIds.map { texts[$0] ?? "" } + [newWords] + window.rightBridgeWordIds.map { texts[$0] ?? "" }
                 let patch: String = patchWords.joined(separator: " ")
+                let annotations = VoiceLabAudioTags.shifted(hunk.audioTags,
+                    by: window.leftBridgeWordIds.compactMap { texts[$0] }.flatMap { EditingPrimitives.splitWords($0) }.count)
                 let rate = try VoiceLabLengthBudget.rate(transcript: inputs.transcript).charactersPerSecond
                 let meter = try VoiceLabFitMeter.measure(text: patch, window: window, incomingSilence: silence.incoming,
-                    outgoingSilence: silence.outgoing, rate: rate, newWords: newWords, multipleHunks: voice.count > 1)
+                    outgoingSilence: silence.outgoing, rate: rate, newWords: newWords, multipleHunks: voice.count > 1,
+                    durationAllowance: VoiceLabAudioTags.allowance(annotations, text: patch, modelID: inputs.synthesisModel ?? ""))
                 let spoken = timingTranscript(inputs)
                 let speakingRate = try VoiceLabPhraseTiming.speakingRate(transcript: spoken)
                 let timing = try VoiceLabPaceMatching.measure(text: patch, rate: speakingRate, window: window,
                     incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
                     sourceSampleRate: inputs.project.media.source.audio?.sampleRate ?? 48_000,
-                    supportsPace: inputs.synthesisModel != "eleven_v4")
+                    supportsPace: inputs.synthesisModel != "eleven_v4",
+                    audioTags: VoiceLabAudioTags.shifted(hunk.audioTags, by: window.leftBridgeWordIds.compactMap { texts[$0] }.flatMap { EditingPrimitives.splitWords($0) }.count),
+                    modelID: inputs.synthesisModel ?? "")
                 reviews.append(RewriteHunkReview(hunk: hunk, window: window, patchText: patch, meter: meter, refusal: nil, timing: timing))
+                requestTexts.append(VoiceLabAudioTags.requestText(words: patch, tags: annotations, modelID: inputs.synthesisModel ?? ""))
             } catch {
                 reviews.append(RewriteHunkReview(hunk: hunk, window: nil, patchText: nil, meter: nil, refusal: RewriteSession.refusal(error)))
+                requestTexts.append(nil)
             }
         }
         let complete: Bool = reviews.allSatisfy { $0.meter != nil }
         let summary = complete ? try VoiceLabDiffSummary.make(hunks: hunks, meters: reviews.compactMap(\.meter),
-            catalog: inputs.prices, model: inputs.synthesisModel, patchTexts: reviews.map(\.patchText)) : nil
+            catalog: inputs.prices, model: inputs.synthesisModel, patchTexts: requestTexts) : nil
         return RewriteReview(hunks: hunks, budget: budget, voiceHunks: reviews, summary: summary)
     }
 

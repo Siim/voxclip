@@ -1,5 +1,27 @@
 # VoxClip design specification
 
+### Inline voice expressions (Mac, 2026-11-03)
+
+The speech model popup labels are **Eleven v3 · audio tags** and **Eleven v4 · audio
+tags**. Review and voice rows wrap quoted words with small expression chips and a
+remove control; transcript text and captions never include chips. Each phrase has
+an inline **+ Expression** toggle revealing the shared whitelist. Selection appends
+at the end of the rewritten words (before trailing unchanged bridge/context words
+in a full take phrase), not at a caret. Removal preserves the remaining anchors.
+Controls are keyboard buttons with VoiceOver names such as “Add laughs to phrase
+1” and “Remove laughs from phrase 1”. No new sheet or alert is used.
+
+Under the rows: “Rewrite suggests tags where your original had a laugh, sigh or
+pause. Tags aren't spoken words and don't count in the word check.” For v2:
+“Multilingual v2 leaves tags out.” Suggestions remain available for every model;
+other incapable models show that tags are left out. The fit-line shape stays
+`≈ 4.6 s at natural pace · slot 5.4 s · fits`, including tag allowances. Measured
+takes remain authoritative. Before payment, a tag edit retires the exact old quote
+and prepares another without synthesis; after payment/in-flight it first uses the
+existing inline discard confirmation, and cancelling changes nothing. The new
+quote still requires its own explicit paid action. Narrow wrapping and native
+VoiceOver/listening acceptance require the usual real-window gate.
+
 Status: normative for 0.1.0 (M1), with M2/M3 surfaces marked. Date: 2026-10-26.
 
 This spec covers information architecture, the single-window layouts for macOS and Windows, the transcript editor, the viewer and timeline, the clip list, captions, Rewrite and Voice Lab in context, Home, export and share, onboarding, settings, keyboard shortcuts, states and their exact copy, materials, accessibility, the token system and the design skills used to build it. Tokens live in [`shared/design/tokens.json`](../shared/design/tokens.json); this document explains how to use them. Module placement and threading are in [architecture.md](architecture.md).

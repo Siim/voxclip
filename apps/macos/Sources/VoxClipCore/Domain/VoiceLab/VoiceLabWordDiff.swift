@@ -25,6 +25,7 @@ public struct VoiceLabDiffHunk: Sendable, Equatable {
     public let sourceStartIndex: Int
     public let sourceEndIndex: Int
     public let anchorSeconds: Double?
+    public var audioTags: [VoiceLabAudioTag] = []
 }
 
 public struct VoiceLabWordDiffResult: Sendable, Equatable {
@@ -50,7 +51,7 @@ public enum VoiceLabWordDiff {
         var bridges: [String]
     }
 
-    public static func diff(source: [TimedWord], newText: String) throws -> VoiceLabWordDiffResult {
+    public static func diff(source: [TimedWord], newText: String, audioTags: [VoiceLabAudioTag] = []) throws -> VoiceLabWordDiffResult {
         var tokens: [Token] = []
         var ids: Set<String> = []
         var previousStart: Double = 0
@@ -120,14 +121,16 @@ public enum VoiceLabWordDiff {
                 ordered += run.filter { $0.kind == .insert }
             }
         }
-        return VoiceLabWordDiffResult(ops: ordered, hunks: hunks(ops: ordered, tokens: tokens, source: source))
+        let annotated = hunks(ops: ordered, tokens: tokens, source: source,
+                              audioTags: VoiceLabAudioTags.validated(audioTags, text: newText))
+        return VoiceLabWordDiffResult(ops: ordered, hunks: annotated)
     }
 
     private static func normalize(_ text: String) -> String {
         EditingPrimitives.normalizeForMatch(EditingPrimitives.nfc(text))
     }
 
-    private static func hunks(ops: [VoiceLabDiffOp], tokens: [Token], source: [TimedWord]) -> [VoiceLabDiffHunk] {
+    private static func hunks(ops: [VoiceLabDiffOp], tokens: [Token], source: [TimedWord], audioTags: [VoiceLabAudioTag]) -> [VoiceLabDiffHunk] {
         var regions: [Region] = []
         var cursor: Int = 0
         var sourceIndex: Int = 0
@@ -220,6 +223,9 @@ public enum VoiceLabWordDiff {
             let run = ops[region.start..<region.end]
             let sourceIds: [String] = unique(run.compactMap(\.sourceWordId))
             let newTokens: [String] = run.compactMap(\.newToken)
+            let newStart = ops.prefix(region.start).compactMap(\.newToken).count
+            let annotations = audioTags.filter { $0.beforeToken >= newStart && $0.beforeToken <= newStart + newTokens.count }
+                .map { VoiceLabAudioTag(beforeToken: $0.beforeToken - newStart, tag: $0.tag) }
             var absorbed: [String] = []
             if region.kind == .voice, region.sourceStart < region.sourceEnd {
                 let first: Int = tokens[region.sourceStart].itemIndex
@@ -241,7 +247,8 @@ public enum VoiceLabWordDiff {
                                     correctedTexts: corrected, absorbedItemIds: absorbed,
                                     bridgeWordIds: unique(region.bridges), sourceStartIndex: region.sourceStart,
                                     sourceEndIndex: region.sourceEnd,
-                                    anchorSeconds: region.sourceStart == region.sourceEnd ? anchor(region.sourceStart, tokens: tokens) : nil)
+                                    anchorSeconds: region.sourceStart == region.sourceEnd ? anchor(region.sourceStart, tokens: tokens) : nil,
+                                    audioTags: annotations)
         }
     }
 

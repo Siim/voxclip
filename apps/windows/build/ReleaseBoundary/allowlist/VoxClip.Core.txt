@@ -530,6 +530,7 @@ attribute VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaFailure :: field public Lou
 attribute VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaFailure :: field public Speaker @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("speaker")
 attribute VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaFailure :: field public Transcript @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("transcript")
 attribute VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaFailure @ System.Text.Json.Serialization.JsonConverterAttribute("System.Text.Json.Serialization.JsonStringEnumConverter`1[VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaFailure], System.Text.Json")
+attribute VoxClip.Core.Domain.VoiceLab.VoiceLabText :: property AudioTags @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.VoiceLab.VoiceLabVideoMode :: field public Lipsync @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("lipsync")
 attribute VoxClip.Core.Domain.VoiceLab.VoiceLabVideoMode :: field public Retimed @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("retimed")
 attribute VoxClip.Core.Domain.VoiceLab.VoiceLabVideoMode :: field public Source @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("source")
@@ -6132,6 +6133,21 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabAudioResult :: method public set_Ali
 member VoxClip.Core.Domain.VoiceLab.VoiceLabAudioResult :: method public set_Pcm(byte[])
 member VoxClip.Core.Domain.VoiceLab.VoiceLabAudioResult :: method public set_Receipt(VoxClip.Core.Domain.VoiceLab.VoiceLabReceipt)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabAudioResult :: method public set_SampleRate(int)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag :: method private get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag :: method public .ctor(int,string)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag :: method public Deconstruct(int&,string&)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag :: method public get_BeforeToken()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag :: method public get_Tag()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag,VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag,VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag :: method public set_BeforeToken(int)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag :: method public set_Tag(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabAuthorization :: method internal .ctor(System.Guid,string,VoxClip.Core.Domain.VoiceLab.VoiceLabEstimate,VoxClip.Core.Domain.VoiceLab.VoiceLabReview)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabAuthorization :: method internal get_Fingerprint()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabAuthorization :: method internal get_IsRunAuthorization()
@@ -7565,6 +7581,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabPricing :: method public IsCharacter
 member VoxClip.Core.Domain.VoiceLab.VoiceLabProject :: field private Id
 member VoxClip.Core.Domain.VoiceLab.VoiceLabProject :: field private ProviderVoiceId
 member VoxClip.Core.Domain.VoiceLab.VoiceLabProject :: method internal Matches(string,string)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProject :: method internal ValidAudioTags(VoxClip.Core.Domain.VoiceLab.VoiceLabText)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabProject :: method private Require(bool,VoxClip.Core.Domain.VoiceLab.VoiceLabProjectErrorCode)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabProject :: method public Accept(VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabAsset>,VoxClip.Core.Domain.VoiceLab.VoiceLabSegment)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabProject :: method public AcceptAll(VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabAsset>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabSegment>)
@@ -8670,10 +8687,12 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabText :: method public Equals(VoxClip
 member VoxClip.Core.Domain.VoiceLab.VoiceLabText :: method public Equals(object)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabText :: method public GetHashCode()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabText :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabText :: method public get_AudioTags()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabText :: method public get_New()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabText :: method public get_Original()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabText :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceLabText,VoxClip.Core.Domain.VoiceLab.VoiceLabText)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabText :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabText,VoxClip.Core.Domain.VoiceLab.VoiceLabText)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabText :: method public set_AudioTags(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabText :: method public set_New(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabText :: method public set_Original(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTextLength :: method public Length(string)
@@ -12347,6 +12366,7 @@ type VoxClip.Core.Domain.VoiceLab.VoiceLabAudio
 type VoxClip.Core.Domain.VoiceLab.VoiceLabAudioMathErrorCode
 type VoxClip.Core.Domain.VoiceLab.VoiceLabAudioMathException
 type VoxClip.Core.Domain.VoiceLab.VoiceLabAudioResult
+type VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag
 type VoxClip.Core.Domain.VoiceLab.VoiceLabAuthorization
 type VoxClip.Core.Domain.VoiceLab.VoiceLabBeta
 type VoxClip.Core.Domain.VoiceLab.VoiceLabBiquad

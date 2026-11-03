@@ -16,7 +16,11 @@ public enum VoiceLabSegmentKind
 }
 public sealed record VoiceLabReplacement(double Start, double End, string FirstWordId, string LastWordId);
 public sealed record VoiceLabAudio(string AssetId, double TrimStart, double TrimEnd, double Stretch, double GainDb);
-public sealed record VoiceLabText(string Original, string New);
+public sealed record VoiceLabAudioTag(int BeforeToken, string Tag);
+public sealed record VoiceLabText(string Original, string New)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public IReadOnlyList<VoiceLabAudioTag>? AudioTags { get; init; }
+}
 public sealed record VoiceLabWord(string Text, double Start, double End, bool Synthetic);
 public sealed record VoiceLabCandidate(string? AssetId, double? Score, string? Rejected)
 {
@@ -68,6 +72,22 @@ public static class VoiceLabAssetNaming
 /// <summary>Pure validation and immutable project transitions; does not delete paid assets.</summary>
 public static class VoiceLabProject
 {
+    internal static bool ValidAudioTags(VoiceLabText text)
+    {
+        if (text.AudioTags is null) return true;
+        if (text.AudioTags.Count > 64) return false;
+        var root = VoxClip.Core.Services.Project.SharedResources.ResolveRoot();
+        using var catalog = System.Text.Json.JsonDocument.Parse(System.IO.File.ReadAllText(System.IO.Path.Combine(root, "data", "voice-audio-tags.json")));
+        var allowed = catalog.RootElement.GetProperty("tags").EnumerateArray().Select(item => item.GetProperty("tag").GetString()).ToHashSet(StringComparer.Ordinal);
+        var count = EditingAlgorithms.SplitWords(text.New).Count;
+        var previous = 0;
+        foreach (var annotation in text.AudioTags)
+        {
+            if (annotation is null || annotation.BeforeToken < previous || annotation.BeforeToken > count || !allowed.Contains(annotation.Tag)) return false;
+            previous = annotation.BeforeToken;
+        }
+        return true;
+    }
     private const string Id = "[A-Za-z0-9][A-Za-z0-9._:-]{0,63}";
     /// <summary>The ElevenLabs client's path-safe ID rule, anchored so a trailing newline is refused.</summary>
     private const string ProviderVoiceId = "[A-Za-z0-9_-]{1,128}";
@@ -152,6 +172,7 @@ public static class VoiceLabProject
             if (segment.Kind == VoiceLabSegmentKind.Tts)
             {
                 Require(segment.Text is { New.Length: > 0 } && segment.Words is { Count: > 0 }, VoiceLabProjectErrorCode.InvalidWords);
+                Require(ValidAudioTags(segment.Text!), VoiceLabProjectErrorCode.InvalidWords);
                 var previous = 0.0;
                 foreach (var word in segment.Words!)
                 {

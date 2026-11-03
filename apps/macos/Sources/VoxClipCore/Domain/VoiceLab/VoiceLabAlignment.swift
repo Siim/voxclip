@@ -17,6 +17,26 @@ public enum VoiceLabAlignment {
     public static func words(characters: [String]?, starts: [Double]?, ends: [Double]?, expectedText: String) throws -> [VoiceLabWord] {
         guard let characters, let starts, let ends, !characters.isEmpty, characters.count == starts.count,
               starts.count == ends.count, !characters.contains("") else { throw VoiceLabGeometryError.alignmentUnavailable }
+        let joined = characters.joined()
+        let ranges = VoiceLabAudioTags.tagRanges(joined).map { range in
+            joined.unicodeScalars.distance(from: joined.unicodeScalars.startIndex, to: range.lowerBound)..<joined.unicodeScalars.distance(from: joined.unicodeScalars.startIndex, to: range.upperBound)
+        }
+        if !ranges.isEmpty {
+            var cleanCharacters: [String] = [], cleanStarts: [Double] = [], cleanEnds: [Double] = []
+            var offset = 0
+            for index in characters.indices {
+                let scalars = Array(characters[index].unicodeScalars)
+                for (local, scalar) in scalars.enumerated() {
+                    cleanCharacters.append(ranges.contains { $0.contains(offset) } ? " " : String(scalar))
+                    let step = (ends[index] - starts[index]) / Double(scalars.count)
+                    cleanStarts.append(starts[index] + step * Double(local))
+                    cleanEnds.append(starts[index] + step * Double(local + 1))
+                    offset += 1
+                }
+            }
+            return try words(characters: cleanCharacters, starts: cleanStarts, ends: cleanEnds,
+                             expectedText: VoiceLabAudioTags.strippingTags(expectedText))
+        }
         var words: [VoiceLabWord] = [], buffer = "", start: Double?, end = 0.0
         for index in characters.indices {
             if characters[index].unicodeScalars.allSatisfy(isWhiteSpace) {
@@ -35,13 +55,58 @@ public enum VoiceLabAlignment {
             return EditingPrimitives.normalizeForMatch(EditingPrimitives.nfc(token))
         }
         let derived = try words.map { try folded($0.text) }
-        let expected = try expectedText.unicodeScalars.split(whereSeparator: isWhiteSpace).map { try folded(String($0)) }
+        let expected = try VoiceLabAudioTags.strippingTags(expectedText).unicodeScalars.split(whereSeparator: isWhiteSpace).map { try folded(String($0)) }
         // Ordinal comparison, as on Windows; Swift String equality would also accept canonically equivalent scalars.
         guard derived.count == expected.count, zip(derived, expected).allSatisfy({ $0.utf8.elementsEqual($1.utf8) }) else {
             throw VoiceLabGeometryError.alignmentMismatch
         }
         guard !words.isEmpty else { throw VoiceLabGeometryError.alignmentUnavailable }
         return words
+    }
+
+    public static func retimeNormalized(_ timings: [VoiceLabCharacterTiming], expectedText: String) throws -> [VoiceLabCharacterTiming] {
+        let normalizedText = VoiceLabAudioTags.strippingTags(timings.map(\.character).joined())
+        let normalized = try words(characters: timings.map(\.character), starts: timings.map(\.start), ends: timings.map(\.end), expectedText: normalizedText)
+        let source = normalized.enumerated().map { index, word in
+            TimedWord(id: String(index), text: word.text, start: word.start, end: word.end)
+        }
+        let operations = try VoiceLabWordDiff.diff(source: source, newText: VoiceLabAudioTags.strippingTags(expectedText)).ops
+        var result: [VoiceLabWord] = []
+        var removed: [VoiceLabWord] = []
+        var inserted: [String] = []
+        func flush() throws {
+            guard !removed.isEmpty || !inserted.isEmpty else { return }
+            guard let first = removed.first, let last = removed.last, !inserted.isEmpty, last.end > first.start else {
+                throw VoiceLabGeometryError.alignmentMismatch
+            }
+            let total = Double(inserted.reduce(0) { $0 + max(1, $1.unicodeScalars.count) })
+            var cursor = first.start
+            for (index, token) in inserted.enumerated() {
+                let end = index == inserted.count - 1 ? last.end : cursor + (last.end - first.start) * Double(max(1, token.unicodeScalars.count)) / total
+                result.append(VoiceLabWord(text: token, start: cursor, end: end, synthetic: true))
+                cursor = end
+            }
+            removed = []; inserted = []
+        }
+        for operation in operations {
+            switch operation.kind {
+            case .equal:
+                try flush()
+                guard let id = operation.sourceWordId, let index = Int(id), let text = operation.newToken else { throw VoiceLabGeometryError.alignmentMismatch }
+                result.append(VoiceLabWord(text: text, start: normalized[index].start, end: normalized[index].end, synthetic: true))
+            case .delete:
+                guard let id = operation.sourceWordId, let index = Int(id) else { throw VoiceLabGeometryError.alignmentMismatch }
+                removed.append(normalized[index])
+            case .insert:
+                guard let text = operation.newToken else { throw VoiceLabGeometryError.alignmentMismatch }
+                inserted.append(text)
+            }
+        }
+        try flush()
+        return result.enumerated().flatMap { index, word in
+            let separator = index == 0 ? [] : [VoiceLabCharacterTiming(character: " ", start: word.start, end: word.start)]
+            return separator + [VoiceLabCharacterTiming(character: word.text, start: word.start, end: word.end)]
+        }
     }
 
     /// `[max(0, firstStart − TTS_TRIM_LEAD), min(assetDuration, lastEnd + TTS_TRIM_TAIL)]` in asset seconds.

@@ -235,7 +235,7 @@ export function validateSchema(schema, path = '$') {
   assert(['object', 'array', 'string', 'integer', 'number', 'boolean'].includes(schema.type), `${path}: unsupported type`)
   if (schema.type === 'object') {
     assert.equal(schema.additionalProperties, false, `${path}: additionalProperties`)
-    assert.deepEqual([...schema.required].sort(), Object.keys(schema.properties).sort(), `${path}: every property must be required`)
+    assert(schema.required.every(name => name in schema.properties), `${path}: required names must be properties`)
     assert.equal(new Set(schema.required).size, schema.required.length, `${path}: duplicate required property`)
     for (const [name, child] of Object.entries(schema.properties)) validateSchema(child, `${path}.${name}`)
   } else assert(!('properties' in schema || 'required' in schema || 'additionalProperties' in schema), `${path}: object-only keywords`)

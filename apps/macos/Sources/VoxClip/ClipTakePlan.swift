@@ -27,6 +27,7 @@ import VoxClipMedia
         let id: Int
         let indices: [Int]
         let text: String
+        var audioTags: [VoiceLabAudioTag] = []
         let window: VoiceLabWindow
         var status: Status = .waiting
         var takes: [Take] = []
@@ -249,7 +250,8 @@ import VoxClipMedia
             case .refused(_, _, let reason): throw Failure.placement(reason)
             case .placed(let indices, let hunk, let window):
                 let words = window.leftBridgeWordIds.compactMap { texts[$0] } + hunk.newTokens + window.rightBridgeWordIds.compactMap { texts[$0] }
-                phrases.append(Phrase(id: phrases.count, indices: indices, text: words.joined(separator: " "), window: window))
+                phrases.append(Phrase(id: phrases.count, indices: indices, text: words.joined(separator: " "),
+                    audioTags: VoiceLabAudioTags.shifted(hunk.audioTags, by: window.leftBridgeWordIds.compactMap { texts[$0] }.flatMap { EditingPrimitives.splitWords($0) }.count), window: window))
             }
         }
         guard (1...VoiceLabTakeBatch.maximumWindows).contains(phrases.count) else { throw VoiceLabError.invalidInput }
@@ -444,7 +446,7 @@ import VoxClipMedia
                         let input = try await makeInput(phrase)
                         decoded.append(modelID.map { input.replacingModel($0) } ?? input); try checkCurrent(version)
                     }
-                    guard decoded.map(\.window) == phrases.map(\.window), decoded.map(\.text) == phrases.map(\.text) else { throw Failure.stale }
+                    guard decoded.map(\.window) == phrases.map(\.window), decoded.map(\.text) == phrases.map(\.text), decoded.map(\.audioTags) == phrases.map(\.audioTags) else { throw Failure.stale }
                     inputs = decoded
                     nextSeeds = decoded.map { $0.seed &+ UInt32(candidates) }
                 } else {
@@ -455,7 +457,7 @@ import VoxClipMedia
                             language: input.language, seed: nextSeeds[index], contentKey: input.contentKey, source: input.source,
                             sourceEnvelope: input.sourceEnvelope, sourceSampleRate: input.sourceSampleRate, items: input.items,
                             cutWordIDs: input.cutWordIDs, window: input.window, incomingSilence: input.incomingSilence,
-                            outgoingSilence: input.outgoingSilence, cleanAudioOn: input.cleanAudioOn, providerConsent: input.providerConsent, pace: pace)
+                            outgoingSilence: input.outgoingSilence, cleanAudioOn: input.cleanAudioOn, providerConsent: input.providerConsent, pace: pace, audioTags: input.audioTags)
                         nextSeeds[index] &+= UInt32(candidates)
                     }
                 }

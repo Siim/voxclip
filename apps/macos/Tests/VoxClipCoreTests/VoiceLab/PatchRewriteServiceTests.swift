@@ -176,12 +176,16 @@ struct PatchRewriteServiceTests {
     @Test func promptIsThePatchEditsSchemaWithTheBadgeCopy() throws {
         let prompt = try FixtureLoader.decode(JSONValue.self, at: "prompts/patch-rewrite.json")
         let line: JSONValue = .object(["type": .string("string")])
+        let annotation: JSONValue = .object(["type": .string("array"), "items": .object([
+            "type": .string("object"), "additionalProperties": .bool(false),
+            "required": .array([.string("beforeToken"), .string("tag")]),
+            "properties": .object(["beforeToken": .object(["type": .string("integer")]), "tag": line])])])
         let item: JSONValue = .object(["type": .string("object"), "additionalProperties": .bool(false),
                                        "required": .array([.string("line"), .string("text"), .string("reason")]),
-                                       "properties": .object(["line": line, "text": line, "reason": line])])
+                                       "properties": .object(["line": line, "text": line, "reason": line, "audioTags": annotation])])
         let schema: JSONValue = .object(["type": .string("object"), "additionalProperties": .bool(false), "required": .array([.string("edits")]),
                                          "properties": .object(["edits": .object(["type": .string("array"), "items": item])])])
-        #expect(prompt[ai: "schemaVersion"].aiInt == 1 && prompt[ai: "promptVersion"].aiInt == 1)
+        #expect(prompt[ai: "schemaVersion"].aiInt == 1 && prompt[ai: "promptVersion"].aiInt == 2)
         #expect(prompt[ai: "schemaName"].aiString == "patch_edits")
         #expect(prompt[ai: "schema"] == schema && CanonicalResponseParser.validateSchemaSubset(schema))
         #expect(prompt[ai: "messages"][ai: "checkThis"].aiString == (try PatchRewriteFixtures.document())[ai: "copy"][ai: "checkThis"].aiString)

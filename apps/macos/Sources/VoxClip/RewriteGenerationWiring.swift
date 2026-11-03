@@ -92,7 +92,7 @@ extension RewriteSession {
                     let silence = try VoiceLabWindowPlanner.lendableSilence(project: final, scope: outputScope, window: phrase.window)
                     let timing = try VoiceLabPaceMatching.measure(text: phrase.text, rate: speakingRate, window: phrase.window,
                         incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
-                        sourceSampleRate: audio.sampleRate, supportsPace: modelID != "eleven_v4")
+                        sourceSampleRate: audio.sampleRate, supportsPace: modelID != "eleven_v4", audioTags: phrase.audioTags, modelID: modelID)
                     let source = try await VoiceLabSourceAudio.rewriteSource(source: sourceURL, frames: frames, sampleRate: audio.sampleRate,
                         window: phrase.window, incomingSilence: silence.incoming, outgoingSilence: silence.outgoing, items: Self.corrected(final))
                     return VoiceLabTakeInput(text: phrase.text, modelID: modelID, recordID: recordID,
@@ -100,7 +100,7 @@ extension RewriteSession {
                         contentKey: final.media.source.contentKey, source: source.excerpt, sourceEnvelope: source.envelope,
                         sourceSampleRate: audio.sampleRate, items: Self.corrected(final), cutWordIDs: Set(final.edits.cutWordIds),
                         window: phrase.window, incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
-                        providerConsent: true, pace: timing.pace)
+                        providerConsent: true, pace: timing.pace, audioTags: phrase.audioTags)
                 }, readCap: { [weak self] in
                     guard let self else { throw CancellationError() }
                     return try await self.currentGenerationCap()

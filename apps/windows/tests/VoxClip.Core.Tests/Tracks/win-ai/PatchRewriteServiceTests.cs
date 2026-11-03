@@ -165,14 +165,15 @@ public sealed class PatchRewriteServiceTests
         var item = new JsonObject
         {
             ["type"] = "object", ["additionalProperties"] = false, ["required"] = new JsonArray("line", "text", "reason"),
-            ["properties"] = new JsonObject { ["line"] = Line(), ["text"] = Line(), ["reason"] = Line() }
+            ["properties"] = new JsonObject { ["line"] = Line(), ["text"] = Line(), ["reason"] = Line(),
+                ["audioTags"] = JsonNode.Parse("""{"type":"array","items":{"type":"object","additionalProperties":false,"required":["beforeToken","tag"],"properties":{"beforeToken":{"type":"integer"},"tag":{"type":"string"}}}}""") }
         };
         var schema = new JsonObject
         {
             ["type"] = "object", ["additionalProperties"] = false, ["required"] = new JsonArray("edits"),
             ["properties"] = new JsonObject { ["edits"] = new JsonObject { ["type"] = "array", ["items"] = item } }
         };
-        Assert.Equal(1, prompt["promptVersion"]!.GetValue<int>());
+        Assert.Equal(2, prompt["promptVersion"]!.GetValue<int>());
         Assert.Equal("patch_edits", prompt["schemaName"]!.GetValue<string>());
         EqualJson(schema, prompt["schema"]);
         Assert.Equal("Check this: it adds something you didn't say.", prompt["messages"]!["checkThis"]!.GetValue<string>());

@@ -130,6 +130,7 @@ internal static class LlmOutput
             {
                 var propertySchema = property.Value!.AsObject();
                 var value = result[property.Key];
+                if (!result.ContainsKey(property.Key) && !schema["required"]!.AsArray().Any(name => name!.GetValue<string>() == property.Key)) continue;
                 if (propertySchema["type"]!.GetValue<string>() == "array")
                 {
                     if (value is not JsonArray array) return (null, 0, $"missing \"{property.Key}\"");
@@ -155,7 +156,7 @@ internal static class LlmOutput
         return schema["type"]!.GetValue<string>() switch
         {
             "object" => value is JsonObject obj && schema["required"]!.AsArray().All(name => obj.ContainsKey(name!.GetValue<string>())) &&
-                schema["properties"]!.AsObject().All(property => Matches(obj[property.Key], property.Value!.AsObject())),
+                schema["properties"]!.AsObject().All(property => !obj.ContainsKey(property.Key) || Matches(obj[property.Key], property.Value!.AsObject())),
             "array" => value is JsonArray array && array.All(item => Matches(item, schema["items"]!.AsObject())),
             "integer" or "number" => kind == JsonValueKind.Number,
             "string" => kind == JsonValueKind.String && (schema["enum"] is not JsonArray choices || choices.Any(choice => choice!.GetValue<string>() == value.GetValue<string>())),

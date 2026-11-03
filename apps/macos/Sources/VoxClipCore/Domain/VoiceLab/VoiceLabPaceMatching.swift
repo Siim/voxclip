@@ -3,8 +3,8 @@ import Foundation
 public enum VoiceLabPaceMatching {
     public static func measure(text: String, rate: Double, window: VoiceLabWindow,
                                incomingSilence: Double?, outgoingSilence: Double?, sourceSampleRate: Int,
-                               supportsPace: Bool = true, hardJoinSmoothing: Bool = true) throws -> VoiceLabPhraseTiming {
-        try match(seconds: VoiceLabPhraseTiming.estimate(text: text, rate: rate), window: window,
+                               supportsPace: Bool = true, hardJoinSmoothing: Bool = true, audioTags: [VoiceLabAudioTag] = [], modelID: String = "") throws -> VoiceLabPhraseTiming {
+        try match(seconds: VoiceLabPhraseTiming.estimate(text: text, rate: rate) + VoiceLabAudioTags.allowance(audioTags, text: text, modelID: modelID), window: window,
             incomingSilence: incomingSilence, outgoingSilence: outgoingSilence,
             sourceSampleRate: sourceSampleRate, supportsPace: supportsPace, hardJoinSmoothing: hardJoinSmoothing)
     }

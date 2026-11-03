@@ -93,7 +93,12 @@ internal static class ProjectValidation
                 if (projectVersion >= 3) { Choice(segment.GetProperty("scope"), "passage", "fullTake"); Choice(segment.GetProperty("kind"), "tts", "voiceChanger"); }
                 Object(segment.GetProperty("replace"), "start end firstWordId lastWordId");
                 Object(segment.GetProperty("audio"), "assetId trimStart trimEnd stretch gainDb");
-                Nullable(segment.GetProperty("text"), text => Object(text, "original new"));
+                Nullable(segment.GetProperty("text"), text =>
+                {
+                    Object(text, "original new", "audioTags");
+                    if (text.TryGetProperty("audioTags", out var annotations))
+                        Array(annotations, annotation => Object(annotation, "beforeToken tag"));
+                });
                 Nullable(segment.GetProperty("words"), words => Array(words, word => Object(word, "text start end synthetic")));
                 Object(segment.GetProperty("provenance"), "provider endpoint model voiceId consentRecordId requestId seed createdAt" + (projectVersion >= 3 ? " region" : ""), "pace");
                 if (segment.GetProperty("provenance").TryGetProperty("pace", out var pace)) Number(pace, VoiceLabPace.Minimum, VoiceLabPace.Maximum);

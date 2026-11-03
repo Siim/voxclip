@@ -66,6 +66,7 @@ public struct PatchRewriteEdit: Sendable, Equatable {
     public let checkThis: Bool
     /// `text` is empty after `jsTrim`: the edit deletes the whole line, and is in range with length 0.
     public let isDeletion: Bool
+    public var audioTags: [VoiceLabAudioTag] = []
 }
 
 /// Validated Fix with AI edits in arrival order, and what validation dropped.

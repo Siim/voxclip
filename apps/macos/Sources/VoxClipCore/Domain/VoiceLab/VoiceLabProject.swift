@@ -38,7 +38,10 @@ public struct VoiceLabAudio: Codable, Sendable, Equatable {
 public struct VoiceLabText: Codable, Sendable, Equatable {
     public var original: String
     public var new: String
-    public init(original: String, new: String) { self.original = original; self.new = new }
+    public var audioTags: [VoiceLabAudioTag]?
+    public init(original: String, new: String, audioTags: [VoiceLabAudioTag]? = nil) {
+        self.original = original; self.new = new; self.audioTags = audioTags
+    }
 }
 public struct VoiceLabWord: Codable, Sendable, Equatable {
     public var text: String
@@ -259,7 +262,8 @@ public enum VoiceLabProject {
             if let score = qa.speakerScore, !(0...1).contains(score) { throw VoiceLabProjectError.invalidSegment }
             switch segment.kind {
             case .tts:
-                guard let text = segment.text, !text.new.isEmpty, let captionWords = segment.words, !captionWords.isEmpty else { throw VoiceLabProjectError.invalidWords }
+                guard let text = segment.text, !text.new.isEmpty,
+                      text.audioTags.map({ VoiceLabAudioTags.validated($0, text: text.new) == $0 }) ?? true, let captionWords = segment.words, !captionWords.isEmpty else { throw VoiceLabProjectError.invalidWords }
                 var previous = 0.0
                 for word in captionWords {
                     guard !word.text.isEmpty, word.start.isFinite, word.end.isFinite, word.start >= previous,

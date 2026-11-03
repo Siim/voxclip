@@ -1,5 +1,12 @@
 # Windows fixed contracts
 
+### 2026-11-03 — Audio expressions: Core compatibility only
+
+- **Built.** `VoiceLabText.AudioTags` is an optional ordered list of `{beforeToken, tag}`. Missing annotations remain absent on serialization. Core validates the shared whitelist, 64-item limit, token-boundary bounds/order and exact JSON keys; project round-trips preserve annotations without changing words. Shared optional Rewrite reply fields are structurally validated when supplied and may be absent. Release boundary approvals include only these compatibility members.
+- **Verification.** Core Release **2799 passed, 29 skipped, 2828 total**, including four focused annotation cases. Release UI typecheck build has zero warnings/errors. The **ReleaseSurrogate** test passes the four-assembly shipping-allowlist precheck. The reviewed Core allowlist adds only the annotation record, nullable-omission attribute, property accessors and production validator; no stale approval or switch is added.
+- **Owed twin.** Inline expression chips/add/remove, keyboard/VoiceOver controls, capable-model labels and explanatory copy; parsing/retaining suggestions through Windows rewrite/diff; v3/v4-only speech rendering, exact request approval/billing; words-only QA and shared Scribe events; tag-aware alignment/trim; estimated duration/pace allowances; v4 normalized alignment fallback and raw segment bounds; isolated DEBUG diagnostic output; optional-to-required HTTP structured-schema shaping. No Windows speech or UI behavior is implemented here. The old dialogue fixture keeps its original Windows expectation until that twin.
+- **Next package.** Read `shared/data/voice-audio-tags.json`, `audio-tag-cases.json` and `doc/spec/voice-lab.md`. An annotation is never a word or caption; v2 must never receive bracket tags. Preserve paid-mutation ownership and existing inline confirmation. No files deleted, package/reference changes, live calls or CI dispatch.
+
 ### 2026-11-03 — Hard-join smoothing (Core + portable Media)
 
 - **Built:** Mirror Mac's named 140 ms reserve, 120 ms bounded acoustic refinement, 25 ms generated and 20 ms directional source fades, pause-excluding voiced join check, matched room tone and gated 0–6 dB edge-word gain. Gain has a 20 ms inner-edge dB ramp and −1 dBTP cap; recompute both checks after correction. Missing generated handles are silent on new flagged fits. Fitted PCM never contains edge gain or room tone.

@@ -23,8 +23,9 @@ enum PatchRewriteValidator {
         var seen: Set<[Unicode.Scalar]> = []
         var result = Result()
         for item in items {
-            guard let raw = item[ai: "line"].aiString, let text = item[ai: "text"].aiString, let reason = item[ai: "reason"].aiString,
-                  !hasControl(text), !hasControl(reason), text.utf8.count <= maxEditBytes else { result.malformedItems += 1; continue }
+            guard let raw = item[ai: "line"].aiString, let rawText = item[ai: "text"].aiString, let reason = item[ai: "reason"].aiString,
+                  !hasControl(rawText), !hasControl(reason), rawText.utf8.count <= maxEditBytes else { result.malformedItems += 1; continue }
+            let text = VoiceLabAudioTags.sanitizedRequest(rawText, modelID: "")
             let line = AIText.trim(raw)
             let label = Array(line.unicodeScalars)
             guard let range = byLine[label] else { result.unknownLines += 1; continue }
@@ -33,7 +34,8 @@ enum PatchRewriteValidator {
             let deletion = AIText.trim(text).isEmpty
             result.edits.append(PatchRewriteEdit(line: line, text: text, reason: reason, length: length,
                                                  inRange: deletion || (range.minChars...range.maxChars).contains(length),
-                                                 checkThis: known.flags(text), isDeletion: deletion))
+                                                 checkThis: known.flags(text), isDeletion: deletion,
+                                                 audioTags: VoiceLabAudioTags.parse(item[ai: "audioTags"], text: text)))
         }
         return result
     }

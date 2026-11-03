@@ -339,7 +339,10 @@ assert(renderedRewrites.some(test => test.input.minChars === test.input.maxChars
 // voice-lab §8.1 "Fix with AI": the clip finder's lines (ai.md §11.3), each with a synthetic character range.
 const patchSchema = { type: 'object', additionalProperties: false, required: ['edits'], properties: { edits: { type: 'array', items: {
   type: 'object', additionalProperties: false, required: ['line', 'text', 'reason'],
-  properties: { line: { type: 'string' }, text: { type: 'string' }, reason: { type: 'string' } } } } } }
+  properties: { line: { type: 'string' }, text: { type: 'string' }, reason: { type: 'string' }, audioTags: {
+    type: 'array', items: { type: 'object', additionalProperties: false, required: ['beforeToken', 'tag'],
+      properties: { beforeToken: { type: 'integer' }, tag: { type: 'string' } } }
+  } } } } } }
 equal(voiceLabPrompts.patchRewrite.schema, patchSchema, 'patch_edits is the voice-lab §8.1 schema')
 equal(voiceLabPrompts.patchRewrite.schemaName, 'patch_edits', 'Fix with AI schema name')
 const indexed = (first, timed) => timed.map(([text, start, end], offset) => ({ index: first + offset, text, start, end }))
@@ -699,7 +702,7 @@ for (const [id, rendered] of Object.entries(wire)) {
   }
 }
 for (const invalid of [
-  { type: 'object', properties: { item: { type: 'string' } }, required: [], additionalProperties: false },
+  { type: 'object', properties: { item: { type: 'string' } }, required: ['missing'], additionalProperties: false },
   { type: 'string', minLength: 1 }, { type: 'integer', enum: [1] }, { type: ['null', 'string'] },
   { type: 'object', properties: {}, required: [], additionalProperties: true }, { type: 'array', items: { type: 'null' } }
 ]) assert.throws(() => reference.validateSchema(invalid), undefined, 'schema subset must reject invalid schema')

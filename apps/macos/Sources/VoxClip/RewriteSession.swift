@@ -50,7 +50,7 @@ struct RewriteConnector {
 /// passage diff's for a selection, as the AI's reply made it. The reply becomes the transcript's proposal
 /// (`EditorModel.proposal`), which the hunks (V14) and the change list (V15) review.
 struct RewriteChange: Equatable, Sendable {
-    let hunk: VoiceLabDiffHunk
+    var hunk: VoiceLabDiffHunk
     /// An insertion's place in a clip or Full take: the item it follows, nil before the scope's first item, for a change
     /// with source items, and for a selection's insertions.
     var insertionAfterItemID: String? = nil
@@ -456,8 +456,8 @@ struct RewriteChange: Equatable, Sendable {
                     authorization: VoiceRewriteAuthorization(quote: quote, approved: true))
                 guard acceptReply(expected: expected) else { return false }
                 advanceRun(to: 3)
-                let source = source, text = result.proposedText
-                checked = try await check { try VoiceLabWordDiff.diff(source: source, newText: text).hunks.map { RewriteChange(hunk: $0) } }
+                let source = source, text = result.proposedText, audioTags = result.audioTags
+                checked = try await check { try VoiceLabWordDiff.diff(source: source, newText: text, audioTags: audioTags).hunks.map { RewriteChange(hunk: $0) } }
             case .scope(let plan, let quote, let service):
                 let result = try await service.propose(plan.request, connector: connector.connector, model: connector.model,
                     authorization: PatchRewriteAuthorization(quote: quote, approved: true))
@@ -664,6 +664,60 @@ struct RewriteChange: Equatable, Sendable {
     var hasEditedChanges: Bool {
         let proposal = task.state == .changed ? setAside?.proposal : ownProposal
         return proposal?.changes.contains { change in replyParts[change.ordinal].map { $0 != change.parts } ?? false } ?? false
+    }
+    func updateAudioTags(_ tags: [VoiceLabAudioTag], ordinal: Int) {
+        guard changes.indices.contains(ordinal - 1) else { return }
+        let original = changes[ordinal - 1].hunk.newTokens.joined(separator: " ")
+        let displayed = editor.changeReadings.first { $0.change.ordinal == ordinal }?.text ?? original
+        updateAudioTags([ordinal - 1: VoiceLabAudioTags.reanchored(tags, from: displayed, to: original)])
+    }
+    func updateAudioTags(_ tags: [VoiceLabAudioTag], phrase: ClipTakePlan.Phrase) {
+        var remaining = tags
+        var retained: [Bool] = []
+        for annotation in phrase.audioTags {
+            if let index = remaining.firstIndex(of: annotation) {
+                retained.append(true)
+                remaining.remove(at: index)
+            } else { retained.append(false) }
+        }
+        var annotationIndex = 0
+        var updates: [Int: [VoiceLabAudioTag]] = [:]
+        for index in phrase.indices where takePlanOrdinals.indices.contains(index) {
+            let change = takePlanOrdinals[index] - 1
+            guard changes.indices.contains(change), changes[change].hunk.kind == .voice else { continue }
+            updates[change] = changes[change].hunk.audioTags.filter { _ in
+                defer { annotationIndex += 1 }
+                return retained.indices.contains(annotationIndex) && retained[annotationIndex]
+            }
+        }
+        if let last = updates.keys.max() {
+            updates[last, default: []] += remaining.map {
+                VoiceLabAudioTag(beforeToken: changes[last].hunk.newTokens.count, tag: $0.tag)
+            }
+        }
+        updateAudioTags(updates)
+    }
+    private func updateAudioTags(_ updates: [Int: [VoiceLabAudioTag]]) {
+        guard current, !isProposing, !updates.isEmpty,
+              updates.keys.allSatisfy({ changes.indices.contains($0) && changes[$0].hunk.kind == .voice }) else { return }
+        let changed = updates.filter { index, tags in
+            VoiceLabAudioTags.validated(tags, text: changes[index].hunk.newTokens.joined(separator: " ")) != changes[index].hunk.audioTags
+        }
+        guard !changed.isEmpty else { return }
+        if confirmPaidProposalChange(perform: { [weak self] in self?.updateAudioTags(changed) }) { return }
+        let requote = generation != nil
+        takePlan?.invalidate(); takePlan = nil
+        speechContextOffer = nil; speechContextReview = nil; acceptedSpeechContext = nil
+        surroundingSentenceOrdinal = nil; takeQuotePhrase = nil
+        revision += 1
+        for (index, tags) in changed {
+            changes[index].hunk.audioTags = VoiceLabAudioTags.validated(tags, text: changes[index].hunk.newTokens.joined(separator: " "))
+        }
+        do { review = try RewriteReview.build(changes.map(\.hunk), reviewInputs); problem = "" }
+        catch { review = nil; problem = Self.refusal(error) }
+        generation?.inputsChanged(prepareNewQuote: false)
+        showProposal()
+        if requote { makeTakes() }
     }
     var hasPaidTakes: Bool { takePlan?.generating == true || (takePlan?.spent.units ?? 0) > 0 || generation?.rows.isEmpty == false }
     var currentSynthesisModel: String? {

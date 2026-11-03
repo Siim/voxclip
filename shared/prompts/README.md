@@ -6,8 +6,8 @@ The macOS and Windows apps send the same prompts to every LLM connector. The pro
 | --- | --- | --- |
 | `clip-finder.json` | AI clip finding: system prompt, request templates, presets (Best moments, Hooks, One per topic, Quotes, Custom), limits, output schema `clips` | M1 |
 | `ai-tighten.json` | AI tighten: system prompt, strength levels, verification limits, output schema `tighten_edits` | M2 |
-| `voice-rewrite.json` | Voice Lab passage/full-take proposal (`promptVersion` 1): system prompt, request templates with the length budget (`targetSeconds`, `minChars`, `maxChars`), output schema `voice_rewrite_proposal` | Swift and Windows Core services; native media/UI workflow pending |
-| `patch-rewrite.json` | Voice Lab Fix with AI line edits (`promptVersion` 1): system prompt with the editing rules, transcript block in the clip finder's line format, request templates for each line's range of letters and digits and for the instruction, output schema `patch_edits`, the "Check this" badge copy | Swift and Windows Core services; native media/UI workflow pending |
+| `voice-rewrite.json` | Voice Lab passage/full-take proposal (`promptVersion` 2): system prompt, request templates with the length budget (`targetSeconds`, `minChars`, `maxChars`), optional expression annotations, output schema `voice_rewrite_proposal` | Swift and Windows Core services; Windows annotation behavior owed |
+| `patch-rewrite.json` | Voice Lab Fix with AI line edits (`promptVersion` 2): system prompt with the editing rules, transcript block in the clip finder's line format, request templates for each line's range of letters and digits and for the instruction, optional expression annotations, output schema `patch_edits`, the "Check this" badge copy | Swift and Windows Core services; Windows annotation behavior owed |
 
 The connector catalog, including the connection-test request, is `../catalog/llm-providers.json`. The normative behaviour (how requests are built, windowed, validated and finalised) is in [`doc/spec/ai.md`](../../doc/spec/ai.md).
 
@@ -35,7 +35,15 @@ Both apps ship these files unchanged, copied at build time. They never download 
 1. Edit the JSON here and bump `promptVersion`.
 2. Regenerate the request fixtures with `npm --prefix tools/fixtures/llm run generate`, review the diff, and update any affected golden vectors in `doc/spec/ai.md` §13 in the same change.
 3. Run both test suites.
-4. Keep the canonical schema subset: every object has `additionalProperties: false`, every property is required, and the only keywords are `type`, `properties`, `required`, `additionalProperties`, `items` and string `enum`.
+4. Keep the canonical schema subset: every object has `additionalProperties: false`, `required` is a subset of its properties (optional additive fields are allowed), and the only keywords are `type`, `properties`, `required`, `additionalProperties`, `items` and string `enum`. Supplied optional fields are validated. Mac HTTP strict-schema shaping promotes optional properties to required; canonical and CLI schemas retain optionality.
+
+Voice and patch Rewrite are now `promptVersion` 2. Their optional structured
+`audioTags` never alter spoken-word fields: source-supported expressions only,
+roughly one per eight words. `shared/data/voice-audio-tags.json` is the runtime
+whitelist and duration source; keep the prompt's instruction list synchronized
+when changing it. Unknown tags are dropped before speech. This version deliberately
+updates the voice/patch request hashes and CLI reply goldens with
+`npm --prefix tools/fixtures/llm run generate`.
 
 ## Relation to VoxConvo
 

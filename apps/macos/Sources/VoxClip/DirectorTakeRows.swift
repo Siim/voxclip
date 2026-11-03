@@ -212,6 +212,13 @@ extension ClipTakePlan.Phrase {
 
 @MainActor struct DirectorTakeRows: View {
     static let makeVoiceTitle = "Make Your Voice"
+    static func speechModelName(_ model: VoiceLabModel) -> String {
+        switch model.id {
+        case "eleven_v3": "Eleven v3 · audio tags"
+        case "eleven_v4": "Eleven v4 · audio tags"
+        default: model.name
+        }
+    }
     @Bindable var session: RewriteSession
     @Bindable var generation: RewriteGenerationSession
     var body: some View {
@@ -230,13 +237,17 @@ extension ClipTakePlan.Phrase {
                 }
                 .disabled(session.takesBusy || session.hasPaidTakes)
                 Picker("Speech model", selection: Binding(get: { generation.selectedModelID ?? "" }, set: { generation.chooseModel($0) })) {
-                    ForEach(generation.models, id: \.id) { Text($0.name).tag($0.id) }
+                    ForEach(generation.models, id: \.id) { Text(Self.speechModelName($0)).tag($0.id) }
                 }
                 // After a run the model still changes for Try another; the takes already made keep theirs.
                 .disabled(session.takesBusy || (session.hasPaidTakes && session.takePlan?.stillCurrent != true))
             }
             if let plan = session.takePlan {
                 ForEach(plan.phrases) { phrase in phraseRow(phrase, plan: plan) }
+                Text(AudioTagPhrase.explanation).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
+                if !VoiceLabAudioTags.supports(generation.selectedModelID ?? "") {
+                    Text("Multilingual v2 leaves tags out.").font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
+                }
                 if plan.preparing { ProgressView("Preparing price…").controlSize(.small) }
                 if !plan.problem.isEmpty { Text(plan.problem).foregroundStyle(DesignValues.color("status.warning")) }
                 Text(session.takeSpendLine).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
@@ -269,7 +280,13 @@ extension ClipTakePlan.Phrase {
                     }.buttonStyle(.plain).accessibilityLabel("\(plan.audition.isPlaying && plan.audition.takeId == phrase.selectedID ? "Pause" : "Play") phrase \(phrase.id + 1)")
                         .help(phrase.selected?.fits == true ? "Listen to the selected fitting take." : "Listen to the checked take. Its timing must fit before it can be used.")
                 }
-                Text("“" + phrase.text + "”").frame(maxWidth: .infinity, alignment: .leading)
+                AudioTagPhrase(text: phrase.text, tags: phrase.audioTags, phrase: phrase.id + 1,
+                    insertionBoundary: EditingPrimitives.splitWords(phrase.text).count - phrase.window.rightBridgeWordIds.compactMap { id in
+                        session.project.transcript?.words.first { $0.id == id }?.text
+                    }.flatMap { EditingPrimitives.splitWords($0) }.count,
+                    omitted: !VoiceLabAudioTags.supports(session.currentSynthesisModel ?? "")) {
+                        session.updateAudioTags($0, phrase: phrase)
+                    }.frame(maxWidth: .infinity, alignment: .leading)
             }
             HStack(spacing: 4) {
                 ForEach(phrase.takes) { take in
