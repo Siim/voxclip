@@ -225,8 +225,65 @@ public enum VoiceLabLoudness {
         guard mixedSteps.count == sourceSteps.count, (mixedSteps + sourceSteps).allSatisfy(\.isFinite) else {
             throw VoiceLabAudioMathError.invalidInput
         }
-        return zip(mixedSteps, sourceSteps).map { mixed, source in max(0, min(0, source) - mixed, mixed - max(0, source)) }.max() ?? 0
+        return zip(mixedSteps, sourceSteps).map { mixed, source in outside(mixed, source) }.max() ?? 0
     }
+
+    /// Each seam's signed step across the pause it lies in (§8.11 item 3), or nil when it does not lie in one. Each side
+    /// is framed in 10 ms frames outward from the seam, as `seamBackgroundRmsDb` frames it, and keeps the unvoiced frames
+    /// (RMS at or below `VOICED_FRAME`) up to the first voiced frame or 0.4 s. When both sides keep at least 0.1 s, the
+    /// step is `max(M_after, −70) − max(M_before, −70)` over just those frames of the K-weighted audio, so two pause or
+    /// room-tone levels are compared instead of windows that also hold some speech.
+    public static func pauseSeamStepsLu(_ samples: [Float], sampleRate: Int, seamSamples: [Int]) throws -> [Double?] {
+        try validate(samples, sampleRate: sampleRate)
+        guard seamSamples.allSatisfy({ $0 >= 0 && $0 <= samples.count }) else { throw VoiceLabAudioMathError.invalidInput }
+        guard !seamSamples.isEmpty else { return [] }
+        let size = sampleCount(VoiceLabPatchConstants.RMS_FRAME, sampleRate)
+        let limit = sampleCount(momentarySeconds, sampleRate) / size, minimum = sampleCount(minimumSeamWindowSeconds, sampleRate) / size
+        let threshold = VoiceLabPatchConstants.VOICED_FRAME_LEVEL
+        func unvoiced(_ start: Int) -> Bool {
+            var sum = 0.0
+            for index in start..<(start + size) { sum += Double(samples[index]) * Double(samples[index]) }
+            return (sum / Double(size)).squareRoot() <= threshold
+        }
+        func run(from seam: Int, outward: Int) -> Int {
+            var frames = 0
+            while frames < limit {
+                let start = outward < 0 ? seam - (frames + 1) * size : seam + frames * size
+                guard start >= 0, start + size <= samples.count, unvoiced(start) else { break }
+                frames += 1
+            }
+            return frames
+        }
+        let weighted = kWeighted(samples, count: samples.count, sampleRate: sampleRate)
+        return weighted.withUnsafeBufferPointer { buffer in
+            seamSamples.map { seam -> Double? in
+                let before = run(from: seam, outward: -1), after = run(from: seam, outward: 1)
+                guard before >= minimum, after >= minimum else { return nil }
+                let lower = loudness(buffer.baseAddress!, from: seam - before * size, to: seam)
+                let upper = loudness(buffer.baseAddress!, from: seam, to: seam + after * size)
+                return max(upper, silenceGateLufs) - max(lower, silenceGateLufs)
+            }
+        }
+    }
+
+    /// The take QA's seam value with pauses (§8.11 item 3). A seam whose mixed audio lies in a pause on both sides
+    /// (`mixedPauseSteps` not nil) compares its pause step with the source's pause step at the same seam, or with 0 when
+    /// the source is not in a pause there, since two pauses should sit at one background level. Every other seam keeps
+    /// `seamExcessLu(mixedSteps:sourceSteps:)`. The largest value, 0 without a seam.
+    public static func seamExcessLu(mixedSteps: [Double], sourceSteps: [Double], mixedPauseSteps: [Double?],
+                                    sourcePauseSteps: [Double?]) throws -> Double {
+        let count = mixedSteps.count
+        guard sourceSteps.count == count, mixedPauseSteps.count == count, sourcePauseSteps.count == count,
+              (mixedSteps + sourceSteps + mixedPauseSteps.compactMap { $0 } + sourcePauseSteps.compactMap { $0 }).allSatisfy(\.isFinite) else {
+            throw VoiceLabAudioMathError.invalidInput
+        }
+        return (0..<count).map { index in
+            if let pause = mixedPauseSteps[index] { return outside(pause, sourcePauseSteps[index] ?? 0) }
+            return outside(mixedSteps[index], sourceSteps[index])
+        }.max() ?? 0
+    }
+    /// How far `mixed` lies outside the interval between 0 and `source`.
+    private static func outside(_ mixed: Double, _ source: Double) -> Double { max(0, min(0, source) - mixed, mixed - max(0, source)) }
 
     /// A recipe's `qa.lufsJumpLu`: the largest jump over its seams that are not `none`, or 0 without such a seam.
     public static func lufsJumpLu(_ samples: [Float], sampleRate: Int, seamSamples: [Int]) throws -> Double {

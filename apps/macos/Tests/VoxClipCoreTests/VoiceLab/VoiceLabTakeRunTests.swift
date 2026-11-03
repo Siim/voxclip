@@ -549,8 +549,11 @@ struct VoiceLabTakeRunTests {
         // The seam value is the step the join adds over the unedited source's own jump at the same seams (§8.11 item 3).
         let original = try #require(fixture.input.source.samples(36_000..<156_000))
         #expect(audio.sourceSeamSteps == (try VoiceLabLoudness.seamStepsLu(Array(original), sampleRate: 24_000, seamSamples: [12_000, 108_000])))
+        #expect(audio.sourceSeamPauseSteps == (try VoiceLabLoudness.pauseSeamStepsLu(Array(original), sampleRate: 24_000, seamSamples: [12_000, 108_000])))
         #expect(qa.values.lufsJumpLu == (try VoiceLabLoudness.seamExcessLu(mixedSteps: VoiceLabLoudness.seamStepsLu(audio.mixed,
-            sampleRate: audio.sampleRate, seamSamples: audio.seams), sourceSteps: audio.sourceSeamSteps)))
+            sampleRate: audio.sampleRate, seamSamples: audio.seams), sourceSteps: audio.sourceSeamSteps,
+            mixedPauseSteps: VoiceLabLoudness.pauseSeamStepsLu(audio.mixed, sampleRate: audio.sampleRate, seamSamples: audio.seams),
+            sourcePauseSteps: audio.sourceSeamPauseSteps)))
         let paid = try #require(await fixture.run.paidAsset(for: row.id))
         let paidURL = fixture.root.appendingPathComponent("VoiceLab").appendingPathComponent(paid.file)
         await fixture.run.reject(row.id)

@@ -102,6 +102,53 @@ struct VoiceLabTakeQualityTests {
         #expect(throws: VoiceLabAudioMathError.invalidInput) { try VoiceLabLoudness.seamExcessLu(mixedSteps: [.nan], sourceSteps: [1]) }
         #expect(try VoiceLabLoudness.seamExcessLu(mixedSteps: [], sourceSteps: []) == 0)
     }
+    /// Live take 3 (2026-11-03): a join inside a pause on both sides, where the take's pause before it is longer than the
+    /// source's. The 400 ms windows read where speech falls, so the plain rule failed a join no one hears. Inside a pause
+    /// the pause levels are compared instead, and a real room-tone level jump there still fails.
+    @Test func aJoinInsideAPauseComparesThePauseLevels() throws {
+        let rate = 24_000, seam = 12_000
+        /// Tone (speech) until `speechEnd`, background at `before` up to the seam and `after` from it, tone again from
+        /// `speechStart`. The tone fades over 20 ms at each edge, as speech decays, so its edge is not a broadband click.
+        func signal(speechEnd: Int, speechStart: Int, before: Double, after: Double) -> [Float] {
+            let ramp = 480
+            return (0..<rate).map { index in
+                let edge = index < speechEnd ? speechEnd - index : index >= speechStart ? index - speechStart + 1 : 0
+                let envelope = edge == 0 ? 0 : edge >= ramp ? 1 : 0.5 - 0.5 * cos(Double.pi * Double(edge) / Double(ramp))
+                let noise = Double((index * 7_919) % 1_001 - 500) / 500 * (index < seam ? before : after)
+                return Float(0.1 * envelope * sin(2 * Double.pi * 180 * Double(index) / Double(rate)) + noise)
+            }
+        }
+        let source = signal(speechEnd: seam - 3_600, speechStart: seam + 4_320, before: 0.002, after: 0.002)
+        let take = signal(speechEnd: seam - 8_400, speechStart: seam + 4_320, before: 0.002, after: 0.002)
+        let sourceSteps = try VoiceLabLoudness.seamStepsLu(source, sampleRate: rate, seamSamples: [seam])
+        let sourcePauses = try VoiceLabLoudness.pauseSeamStepsLu(source, sampleRate: rate, seamSamples: [seam])
+        let takeSteps = try VoiceLabLoudness.seamStepsLu(take, sampleRate: rate, seamSamples: [seam])
+        let takePauses = try VoiceLabLoudness.pauseSeamStepsLu(take, sampleRate: rate, seamSamples: [seam])
+        // The windows' own step differs by several LU only because the take's pause is longer.
+        #expect(try VoiceLabLoudness.seamExcessLu(mixedSteps: takeSteps, sourceSteps: sourceSteps) > 4)
+        #expect(sourcePauses[0].map { abs($0) < 1 } == true && takePauses[0].map { abs($0) < 1 } == true)
+        let quiet = try VoiceLabTakeQuality.evaluate(expected: "a", recognized: ["a"], mixed: take, sampleRate: rate, seams: [seam],
+            sourceSeamSteps: sourceSteps, sourceSeamPauseSteps: sourcePauses, speakerScore: nil, threshold: 0.45)
+        #expect(quiet.passed && (quiet.values.lufsJumpLu ?? 9) < 1)
+        // Without a source pause at the seam the pause is compared with no step at all, and passes the same.
+        let alone = try VoiceLabTakeQuality.evaluate(expected: "a", recognized: ["a"], mixed: take, sampleRate: rate, seams: [seam],
+            sourceSeamSteps: sourceSteps, speakerScore: nil, threshold: 0.45)
+        #expect(alone.passed)
+        // Room tone 12 dB above the background it meets, inside the same pause, is a jump at the join.
+        let loud = signal(speechEnd: seam - 8_400, speechStart: seam + 4_320, before: 0.004, after: 0.001)
+        let jump = try VoiceLabTakeQuality.evaluate(expected: "a", recognized: ["a"], mixed: loud, sampleRate: rate, seams: [seam],
+            sourceSeamSteps: sourceSteps, sourceSeamPauseSteps: sourcePauses, speakerScore: nil, threshold: 0.45)
+        #expect(jump.failures == [.loudness] && (jump.values.lufsJumpLu ?? 0) > 10)
+        // Less than 0.1 s of pause on a side keeps the 400 ms windows.
+        let short = signal(speechEnd: seam - 8_400, speechStart: seam + 2_160, before: 0.002, after: 0.002)
+        #expect(try VoiceLabLoudness.pauseSeamStepsLu(short, sampleRate: rate, seamSamples: [seam]) == [nil])
+        #expect(throws: VoiceLabAudioMathError.invalidInput) {
+            try VoiceLabLoudness.seamExcessLu(mixedSteps: [0], sourceSteps: [0], mixedPauseSteps: [], sourcePauseSteps: [nil])
+        }
+        #expect(throws: VoiceLabAudioMathError.invalidInput) {
+            try VoiceLabLoudness.pauseSeamStepsLu(take, sampleRate: rate, seamSamples: [rate + 1])
+        }
+    }
     @Test func incompleteSpeakerEvidenceCannotBeRankedOrSelected() throws {
         let qa = VoiceLabTakeQAResult(values: VoiceLabQA(), failures: [.insufficientGeneratedSpeech])
         let audio = VoiceLabTakeAudio(sampleRate: 24_000, trimmed: [0.1], mixed: [0.1], patchRange: 0..<1,
