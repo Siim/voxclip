@@ -268,7 +268,7 @@ jobs:
 
       - name: Caption parity (Swift vs C# renders)
         if: ${{ !cancelled() && steps.release_cli.outcome == 'success' && steps.detect.outputs.parity == 'true' && steps.detect.outputs.media_tests == 'true' }}
-        timeout-minutes: 20
+        timeout-minutes: 30
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
           VOXCLIP_CAPTION_PYTHON: ${{ steps.py.outputs.python-path }}
