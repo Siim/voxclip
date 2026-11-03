@@ -147,7 +147,8 @@ jobs:
 
       - name: Swift test (headless Voice Lab app model)
         if: ${{ !cancelled() && steps.swift_build.outcome == 'success' }}
-        timeout-minutes: 10
+        # 814 tests run ~10 minutes on hosted runners (592 s on 2026-11-03); keep headroom.
+        timeout-minutes: 20
         working-directory: apps/macos
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
