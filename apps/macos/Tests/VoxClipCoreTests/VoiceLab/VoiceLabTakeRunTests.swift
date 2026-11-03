@@ -203,7 +203,7 @@ struct VoiceLabTakeRunTests {
     private func fixture(_ configure: @Sendable (inout TakeRunHTTP.State) -> Void = { _ in }, drift: Bool = false,
                          sourceAudible: Bool = true, roomToneAvailable: Bool = true,
                          background: (left: Double, right: Double, run: Double)? = nil,
-                         boundary: VoiceLabTakeDispatchBoundary? = nil, text: String = "Hello", modelID: String = "eleven_v3", voicedFraction: Double = 1, rejectGeneratedVAD: Bool = false) async throws -> Fixture {
+                         boundary: VoiceLabTakeDispatchBoundary? = nil, text: String = "Hello", modelID: String = "eleven_v3", voicedFraction: Double = 1, rejectGeneratedVAD: Bool = false, pace: Double? = nil) async throws -> Fixture {
         let root = try SpeechTestFiles.directory()
         let locations = SpeechTestFiles.locations(root)
         let store = VoiceConsentStore(locations: locations)
@@ -344,7 +344,7 @@ struct VoiceLabTakeRunTests {
             rightSeam: .init(kind: .hard, time: 6, sample: 144_000, fadeSamples: 288))
         let input = VoiceLabTakeInput(text: text, modelID: modelID, recordID: record.id, language: "en", seed: UInt32.max,
             contentKey: "synthetic-source", source: source, sourceSampleRate: rate, items: items, window: window,
-            incomingSilence: nil, outgoingSilence: nil, providerConsent: true)
+            incomingSilence: nil, outgoingSilence: nil, providerConsent: true, pace: pace)
         let lastWindow = VoiceLabWindow(firstWordId: "last", lastWordId: "last", leftBridgeWordIds: [], rightBridgeWordIds: [], start: 7, end: 7.5,
             startSample: 168_000, endSample: 180_000, leftSeam: .init(kind: .hard, time: 7, sample: 168_000, fadeSamples: 288),
             rightSeam: .init(kind: .hard, time: 7.5, sample: 180_000, fadeSamples: 288))
@@ -353,6 +353,22 @@ struct VoiceLabTakeRunTests {
             incomingSilence: nil, outgoingSilence: nil, providerConsent: true)
         return Fixture(root: root, http: http, clock: clock, store: store, client: client, ledger: ledger, run: run, input: input,
                        later: later, laterInput: laterInput)
+    }
+    @Test func slowTakeCarriesPaceThroughOptionsQuotesReceiptsAndRecipe() async throws {
+        let fixture = try await fixture(pace: 0.8)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        #expect(fixture.input.pace == 0.8)
+        #expect(fixture.input.replacingModel("eleven_multilingual_v2").pace == 0.8)
+        for index in 0..<3 { #expect(fixture.input.options(take: index).pace == 0.8) }
+        let quote = try await fixture.run.prepare(fixture.input)
+        #expect(quote.takes.allSatisfy { $0.synthesis.pace == 0.8 })
+        let result = try await fixture.run.execute(quote, approved: true)
+        let row = try #require(result.best)
+        #expect(row.receipt?.pace == 0.8)
+        let (published, record) = try await fixture.run.publishForAcceptance(row, input: fixture.input, at: fixture.clock.now())
+        let candidate = try VoiceLabRecipeBuilder.candidate(row: row, input: fixture.input, published: published,
+            record: record, createdAt: fixture.clock.now(), videoChoice: .source)
+        #expect(candidate.recipe?.provenance.pace == 0.8)
     }
     @Test func dialogueTakePassesQAAndPublishesARenderableRecipe() async throws {
         let fixture = try await fixture(modelID: "eleven_v4")
@@ -369,6 +385,7 @@ struct VoiceLabTakeRunTests {
             record: record, createdAt: fixture.clock.now(), videoChoice: .source)
         #expect(candidate.recipe?.provenance.endpoint == "v1/text-to-dialogue/with-timestamps")
         #expect(candidate.recipe?.provenance.model == "eleven_v4")
+        #expect(candidate.recipe?.provenance.pace == 1)
         let segment = try VoiceLabRecipeBuilder.segment(id: "dialogue-take", candidates: [candidate], selected: 0,
             input: fixture.input, plan: take.fit.plan)
         var project = try JSONProjectStore.decode(FixtureLoader.data("fixtures/voice-lab/passage-render-v3.voxclip"))

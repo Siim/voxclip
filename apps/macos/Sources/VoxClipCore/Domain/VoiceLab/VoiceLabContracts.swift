@@ -51,14 +51,16 @@ public struct VoiceLabQuote: Codable, Sendable, Equatable {
     public let preparedAt: Date
     public let modelID: String?
     public let voiceID: String?
+    public let pace: Double?
     package let fingerprint: String
     package let guardAudioHash: String?
     package init(id: UUID, operation: VoiceLabOperation, requestID: UUID, estimate: CostEstimate, region: ElevenLabsRegion,
          endpoint: String, languageMode: VoiceLabLanguageMode?, fingerprint: String, guardAudioHash: String? = nil,
-         preparedAt: Date = Date(), modelID: String? = nil, voiceID: String? = nil) {
+         preparedAt: Date = Date(), modelID: String? = nil, voiceID: String? = nil, pace: Double? = nil) {
         self.id = id; self.operation = operation; self.requestID = requestID; self.estimate = estimate; self.region = region
         self.endpoint = endpoint; self.languageMode = languageMode; self.fingerprint = fingerprint; self.guardAudioHash = guardAudioHash
         self.preparedAt = preparedAt; self.modelID = modelID; self.voiceID = voiceID
+        self.pace = pace
     }
 }
 
@@ -162,14 +164,32 @@ public struct VoiceLabSpeechOptions: Sendable, Equatable {
     public let seed: UInt32
     public let previousText: String?
     public let nextText: String?
-    public init(seed: UInt32, previousText: String? = nil, nextText: String? = nil) {
+    public let pace: Double?
+    public init(seed: UInt32, previousText: String? = nil, nextText: String? = nil, pace: Double? = nil) {
         self.seed = seed; self.previousText = previousText; self.nextText = nextText
+        self.pace = pace
+    }
+}
+
+public enum VoiceLabPace {
+    public static let minimum = 0.7
+    public static let maximum = 1.2
+    public static let defaultValue = 1.0
+    public static func clamp(_ value: Double) -> Double {
+        value.isNaN ? defaultValue : min(maximum, max(minimum, value))
+    }
+    public static func isValid(_ value: Double) -> Bool {
+        value.isFinite && (minimum...maximum).contains(value)
+    }
+    package static func rounded(_ value: Double?) -> Double {
+        ((value ?? defaultValue) * 100).rounded(.toNearestOrAwayFromZero) / 100
     }
 }
 
 public struct VoiceLabReceipt: Sendable, Equatable {
-    package init(provider: String, region: ElevenLabsRegion, endpoint: String, modelID: String?, voiceID: String?, requestID: UUID, providerRequestID: String?, spendWarning: VoiceLabSpendWarning?) {
+    package init(provider: String, region: ElevenLabsRegion, endpoint: String, modelID: String?, voiceID: String?, requestID: UUID, providerRequestID: String?, spendWarning: VoiceLabSpendWarning?, pace: Double? = nil) {
         self.provider = provider; self.region = region; self.endpoint = endpoint; self.modelID = modelID; self.voiceID = voiceID; self.requestID = requestID; self.providerRequestID = providerRequestID; self.spendWarning = spendWarning
+        self.pace = pace
     }
 
     public let provider: String
@@ -179,6 +199,7 @@ public struct VoiceLabReceipt: Sendable, Equatable {
     public let voiceID: String?
     public let requestID: UUID
     public let providerRequestID: String?
+    public let pace: Double?
     /// Set when the spend ledger could not record this accepted action as asked; voice-lab §3.1. The action still succeeded,
     /// so the caller shows it as a notice, never as a failure.
     public let spendWarning: VoiceLabSpendWarning?

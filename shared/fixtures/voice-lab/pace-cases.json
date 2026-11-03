@@ -1,0 +1,137 @@
+{
+  "schema": "voxclip-voice-lab-pace-cases/1",
+  "version": 1,
+  "caseCount": 15,
+  "cases": [
+    {
+      "case": "tts_default",
+      "modelId": "eleven_multilingual_v2",
+      "pace": null,
+      "expected": "ok",
+      "path": "/v1/text-to-speech/voice123/with-timestamps",
+      "canonicalJSON": "{\"apply_text_normalization\":\"auto\",\"model_id\":\"eleven_multilingual_v2\",\"seed\":7,\"text\":\"Hi\",\"voice_settings\":{\"similarity_boost\":0.8,\"stability\":0.5}}",
+      "exactBytes": false,
+      "receiptPace": 1
+    },
+    {
+      "case": "tts_explicit_default",
+      "modelId": "eleven_multilingual_v2",
+      "pace": 1.0,
+      "expected": "ok",
+      "path": "/v1/text-to-speech/voice123/with-timestamps",
+      "canonicalJSON": "{\"apply_text_normalization\":\"auto\",\"model_id\":\"eleven_multilingual_v2\",\"seed\":7,\"text\":\"Hi\",\"voice_settings\":{\"similarity_boost\":0.8,\"stability\":0.5}}",
+      "exactBytes": false,
+      "receiptPace": 1
+    },
+    {
+      "case": "tts_slow",
+      "modelId": "eleven_multilingual_v2",
+      "pace": 0.8,
+      "expected": "ok",
+      "path": "/v1/text-to-speech/voice123/with-timestamps",
+      "canonicalJSON": "{\"apply_text_normalization\":\"auto\",\"model_id\":\"eleven_multilingual_v2\",\"seed\":7,\"text\":\"Hi\",\"voice_settings\":{\"similarity_boost\":0.8,\"speed\":0.8,\"stability\":0.5}}",
+      "exactBytes": true,
+      "receiptPace": 0.8
+    },
+    {
+      "case": "tts_fast",
+      "modelId": "eleven_multilingual_v2",
+      "pace": 1.15,
+      "expected": "ok",
+      "path": "/v1/text-to-speech/voice123/with-timestamps",
+      "canonicalJSON": "{\"apply_text_normalization\":\"auto\",\"model_id\":\"eleven_multilingual_v2\",\"seed\":7,\"text\":\"Hi\",\"voice_settings\":{\"similarity_boost\":0.8,\"speed\":1.15,\"stability\":0.5}}",
+      "exactBytes": true,
+      "receiptPace": 1.15
+    },
+    {
+      "case": "tts_round_half_up",
+      "modelId": "eleven_multilingual_v2",
+      "pace": 0.805,
+      "expected": "ok",
+      "path": "/v1/text-to-speech/voice123/with-timestamps",
+      "canonicalJSON": "{\"apply_text_normalization\":\"auto\",\"model_id\":\"eleven_multilingual_v2\",\"seed\":7,\"text\":\"Hi\",\"voice_settings\":{\"similarity_boost\":0.8,\"speed\":0.81,\"stability\":0.5}}",
+      "exactBytes": true,
+      "receiptPace": 0.81
+    },
+    {
+      "case": "tts_round_to_default",
+      "modelId": "eleven_multilingual_v2",
+      "pace": 0.995,
+      "expected": "ok",
+      "path": "/v1/text-to-speech/voice123/with-timestamps",
+      "canonicalJSON": "{\"apply_text_normalization\":\"auto\",\"model_id\":\"eleven_multilingual_v2\",\"seed\":7,\"text\":\"Hi\",\"voice_settings\":{\"similarity_boost\":0.8,\"speed\":1,\"stability\":0.5}}",
+      "exactBytes": true,
+      "receiptPace": 1
+    },
+    {
+      "case": "tts_minimum",
+      "modelId": "eleven_multilingual_v2",
+      "pace": 0.7,
+      "expected": "ok",
+      "path": "/v1/text-to-speech/voice123/with-timestamps",
+      "canonicalJSON": "{\"apply_text_normalization\":\"auto\",\"model_id\":\"eleven_multilingual_v2\",\"seed\":7,\"text\":\"Hi\",\"voice_settings\":{\"similarity_boost\":0.8,\"speed\":0.7,\"stability\":0.5}}",
+      "exactBytes": true,
+      "receiptPace": 0.7
+    },
+    {
+      "case": "tts_maximum",
+      "modelId": "eleven_multilingual_v2",
+      "pace": 1.2,
+      "expected": "ok",
+      "path": "/v1/text-to-speech/voice123/with-timestamps",
+      "canonicalJSON": "{\"apply_text_normalization\":\"auto\",\"model_id\":\"eleven_multilingual_v2\",\"seed\":7,\"text\":\"Hi\",\"voice_settings\":{\"similarity_boost\":0.8,\"speed\":1.2,\"stability\":0.5}}",
+      "exactBytes": true,
+      "receiptPace": 1.2
+    },
+    {
+      "case": "tts_below_range",
+      "modelId": "eleven_multilingual_v2",
+      "pace": 0.5,
+      "expected": "invalidInput"
+    },
+    {
+      "case": "tts_before_rounding_low",
+      "modelId": "eleven_multilingual_v2",
+      "pace": 0.6999,
+      "expected": "invalidInput"
+    },
+    {
+      "case": "tts_before_rounding_high",
+      "modelId": "eleven_multilingual_v2",
+      "pace": 1.2001,
+      "expected": "invalidInput"
+    },
+    {
+      "case": "dialogue_default",
+      "modelId": "eleven_v4",
+      "pace": null,
+      "expected": "ok",
+      "path": "/v1/text-to-dialogue/with-timestamps",
+      "canonicalJSON": "{\"apply_text_normalization\":\"auto\",\"inputs\":[{\"text\":\"Hi\",\"voice_id\":\"voice123\"}],\"language_code\":\"en\",\"model_id\":\"eleven_v4\",\"seed\":7,\"settings\":{\"similarity\":0.8,\"stability\":0.5}}",
+      "exactBytes": true,
+      "receiptPace": 1
+    },
+    {
+      "case": "dialogue_explicit_default",
+      "modelId": "eleven_v4",
+      "pace": 1.0,
+      "expected": "ok",
+      "path": "/v1/text-to-dialogue/with-timestamps",
+      "canonicalJSON": "{\"apply_text_normalization\":\"auto\",\"inputs\":[{\"text\":\"Hi\",\"voice_id\":\"voice123\"}],\"language_code\":\"en\",\"model_id\":\"eleven_v4\",\"seed\":7,\"settings\":{\"similarity\":0.8,\"stability\":0.5}}",
+      "exactBytes": true,
+      "receiptPace": 1
+    },
+    {
+      "case": "dialogue_nondefault",
+      "modelId": "eleven_v4",
+      "pace": 0.8,
+      "expected": "invalidInput"
+    },
+    {
+      "case": "dialogue_rounded_default_refused",
+      "modelId": "eleven_v4",
+      "pace": 0.999,
+      "expected": "invalidInput"
+    }
+  ]
+}

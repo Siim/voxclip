@@ -67,7 +67,10 @@ enum ProjectValidation {
                 if item["words"] != .null {
                     for word in try array(item["words"]) { _ = try object(word, required: "text start end synthetic") }
                 }
-                _ = try object(item["provenance"], required: "provider endpoint model voiceId consentRecordId requestId seed createdAt" + (version >= 3 ? " region" : ""))
+                let provenance = try object(item["provenance"], required: "provider endpoint model voiceId consentRecordId requestId seed createdAt" + (version >= 3 ? " region" : ""), optional: "pace")
+                if let pace = provenance["pace"] {
+                    guard case .number(let value) = pace, VoiceLabPace.isValid(value) else { try fail("Invalid speech pace") }
+                }
                 _ = try object(item["qa"], required: "transcriptMatch lufsJumpLu peakDbfs speakerScore")
                 for candidate in try array(item["candidates"]) {
                     let record = try object(candidate, required: "assetId score rejected" + (version >= 3 && (try map(candidate))["rejected"] == .null ? " recipe" : ""), optional: version >= 3 ? "recipe" : "")
@@ -132,7 +135,10 @@ enum ProjectValidation {
         if let evidence = qa["shortSpeech"] {
             _ = try object(evidence, required: "mode recordId consentMethod voicedFrames takeCount")
         }
-        _ = try object(recipe["provenance"], required: "provider endpoint model voiceId consentRecordId requestId seed createdAt region")
+        let provenance = try object(recipe["provenance"], required: "provider endpoint model voiceId consentRecordId requestId seed createdAt region", optional: "pace")
+        if let pace = provenance["pace"] {
+            guard case .number(let value) = pace, VoiceLabPace.isValid(value) else { try fail("Invalid speech pace") }
+        }
         _ = try object(recipe["cost"], required: "quoteId usd")
     }
 

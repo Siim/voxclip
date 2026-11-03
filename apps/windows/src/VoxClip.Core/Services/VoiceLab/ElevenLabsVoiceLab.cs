@@ -274,11 +274,12 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         SelectedVoice(voice);
         if (options is null || string.IsNullOrWhiteSpace(text) || Encoding.UTF8.GetByteCount(text) > 20000 ||
             text.EnumerateRunes().Count() > SpeechTextLimit(model)) throw Invalid();
+        ValidatePace(options.Pace, model);
         var fingerprint = SynthesisFingerprint(text, modelId, voice, language, options);
         return actions.Prepare(fingerprint, Quoted(VoiceLabOperation.TextToSpeech, modelId, text.EnumerateRunes().Count()),
             Review(VoiceLabOperation.TextToSpeech, requestId, SpeechPath(model, voice.Id) + "?output_format=pcm_24000",
                 modelId, voice.Id, modelId == "eleven_multilingual_v2" ? Auto(language) : Explicit(language),
-                VoiceLabActionGate.ContentHash(Encoding.UTF8.GetBytes(text)), voice.Policy));
+                VoiceLabActionGate.ContentHash(Encoding.UTF8.GetBytes(text)), voice.Policy) with { Pace = options.Pace ?? VoiceLabPace.DefaultValue });
     }
 
     public VoiceLabPreparedAction PrepareEnrollmentClone(VoiceLabCloneRequest request, OwnVoicePolicy policy, Guid requestId)
@@ -404,6 +405,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         SelectedVoice(voice);
         if (options is null || string.IsNullOrWhiteSpace(text) || Encoding.UTF8.GetByteCount(text) > 20000 ||
             text.EnumerateRunes().Count() > SpeechTextLimit(model)) throw Invalid();
+        ValidatePace(options.Pace, model);
         var path = SpeechPath(model, voice.Id);
         JsonObject payload;
         if (model.SpeechRoute == VoiceLabSpeechRoute.TextToDialogue)
@@ -419,7 +421,6 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         }
         else
         {
-            // Voice settings are spec constants (§8.5), not caller choices.
             payload = new JsonObject
             {
                 ["text"] = text, ["model_id"] = modelId,
@@ -430,6 +431,12 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         }
         if (model.SendsSpeechContext && SpeechContext(options.PreviousText, true) is { } previous) payload["previous_text"] = previous;
         if (model.SendsSpeechContext && SpeechContext(options.NextText, false) is { } next) payload["next_text"] = next;
+        if (options.Pace is { } pace && pace != VoiceLabPace.DefaultValue)
+        {
+            payload["voice_settings"] = new JsonObject { ["similarity_boost"] = 0.8, ["speed"] = VoiceLabPace.Rounded(pace), ["stability"] = 0.5 };
+            payload = new JsonObject(payload.OrderBy(pair => pair.Key, StringComparer.Ordinal)
+                .Select(pair => KeyValuePair.Create(pair.Key, pair.Value?.DeepClone())));
+        }
         var jsonBody = Encoding.UTF8.GetBytes(payload.ToJsonString());
         var id = actions.Claim(authorization, SynthesisFingerprint(text, modelId, voice, language, options), VoiceLabOperation.TextToSpeech, requestId);
         using var reply = await SendAsync(HttpMethod.Post, path + "?output_format=pcm_24000", new ByteArrayContent(jsonBody) { Headers = { ContentType = new MediaTypeHeaderValue("application/json") } }, MaxJsonAudio, ct,
@@ -441,7 +448,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         try { pcm = Convert.FromBase64String(audio.GetString()!); }
         catch (FormatException) { throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio); }
         ValidatePcm(pcm);
-        var receipt = Receipt(path, modelId, voice.Id, id, reply);
+        var receipt = Receipt(path, modelId, voice.Id, id, reply) with { Pace = VoiceLabPace.Rounded(options.Pace) };
         acceptance?.Preserve(new(pcm, 24000, null, receipt));
         var duration = pcm.Length / 48000.0;
         var timing = Alignment(json.RootElement, text, duration);
@@ -508,15 +515,22 @@ public sealed class ElevenLabsVoiceLab : IDisposable
 
     private static int SpeechTextLimit(VoiceLabModel model) => Math.Min(model.MaximumTextLength ?? 5000,
         model.SpeechRoute == VoiceLabSpeechRoute.TextToDialogue ? 2000 : 5000);
+    private static void ValidatePace(double? pace, VoiceLabModel model)
+    {
+        if (!VoiceLabPace.IsValid(pace ?? VoiceLabPace.DefaultValue) ||
+            model.SpeechRoute == VoiceLabSpeechRoute.TextToDialogue && (pace ?? VoiceLabPace.DefaultValue) != VoiceLabPace.DefaultValue) throw Invalid();
+    }
     private static string SpeechPath(VoiceLabModel model, string voiceId) => model.SpeechRoute == VoiceLabSpeechRoute.TextToDialogue
         ? "/v1/text-to-dialogue/with-timestamps" : "/v1/text-to-speech/" + voiceId + "/with-timestamps";
     private string SynthesisFingerprint(string text, string model, VoiceLabVoiceChoice voice, string language, VoiceLabSpeechOptions options)
     {
         var selected = SelectedModel(model, language, true);
-        return Fingerprint(VoiceLabOperation.TextToSpeech, SpeechPath(selected, voice.Id) + "?output_format=pcm_24000", model, voice, language,
-            VoiceLabActionGate.ContentHash(Encoding.UTF8.GetBytes(text)), options.Seed.ToString(CultureInfo.InvariantCulture),
+        string?[] settings = [options.Seed.ToString(CultureInfo.InvariantCulture),
             selected.SendsSpeechContext ? ContextHash(SpeechContext(options.PreviousText, true)) : null,
-            selected.SendsSpeechContext ? ContextHash(SpeechContext(options.NextText, false)) : null);
+            selected.SendsSpeechContext ? ContextHash(SpeechContext(options.NextText, false)) : null];
+        if (options.Pace is { } pace && pace != VoiceLabPace.DefaultValue) settings = [.. settings, pace.ToString("R", CultureInfo.InvariantCulture)];
+        return Fingerprint(VoiceLabOperation.TextToSpeech, SpeechPath(selected, voice.Id) + "?output_format=pcm_24000", model, voice, language,
+            VoiceLabActionGate.ContentHash(Encoding.UTF8.GetBytes(text)), settings);
     }
     private static string? ContextHash(string? context) => context is null ? null : VoiceLabActionGate.ContentHash(Encoding.UTF8.GetBytes(context));
     /// <summary>Voice-lab §8.5 context: Unicode White_Space is removed at both ends, then the last (previous) or first (next)

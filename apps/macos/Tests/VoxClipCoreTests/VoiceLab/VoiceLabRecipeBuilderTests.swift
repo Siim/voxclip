@@ -43,7 +43,7 @@ import Testing
         let quote = VoiceLabQuote(id: UUID(), operation: .textToSpeech, requestID: UUID(), estimate: estimate,
             region: .default, endpoint: "v1/text-to-speech/fixture/with-timestamps", languageMode: .explicit("en"), fingerprint: "test")
         let receipt = VoiceLabReceipt(provider: "elevenlabs", region: .default, endpoint: quote.endpoint, modelID: input.modelID,
-            voiceID: record.voiceId, requestID: quote.requestID, providerRequestID: nil, spendWarning: nil)
+            voiceID: record.voiceId, requestID: quote.requestID, providerRequestID: nil, spendWarning: nil, pace: 0.8)
         let evidence = VoiceLabShortSpeechEvidence(mode: .unmeasured, recordId: record.id,
             consentMethod: record.consentMethod, voicedFrames: 16_800, takeCount: 1)
         var values = stored.qa
@@ -58,6 +58,7 @@ import Testing
         #expect(candidate.recipe?.audio.assetId == (fitted ? "fitted-test" : asset.id))
         #expect(candidate.recipe?.chunks[0].assetId == asset.id)
         #expect(candidate.recipe?.cost.usd == 0.2)
+        #expect(candidate.recipe?.provenance.pace == 0.8)
         #expect(candidate.recipe?.qa.shortSpeech == (unmeasured ? evidence : nil))
         #expect(candidate.recipe?.qa.speakerPassed == !unmeasured)
         #expect((candidate.recipe?.qa.speakerScore == nil) == unmeasured)

@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.ContextDemo;
+using VoxClip.Core.Domain.VoiceLab;
 
 namespace VoxClip.Core.Services.Project;
 
@@ -94,7 +95,8 @@ internal static class ProjectValidation
                 Object(segment.GetProperty("audio"), "assetId trimStart trimEnd stretch gainDb");
                 Nullable(segment.GetProperty("text"), text => Object(text, "original new"));
                 Nullable(segment.GetProperty("words"), words => Array(words, word => Object(word, "text start end synthetic")));
-                Object(segment.GetProperty("provenance"), "provider endpoint model voiceId consentRecordId requestId seed createdAt" + (projectVersion >= 3 ? " region" : ""));
+                Object(segment.GetProperty("provenance"), "provider endpoint model voiceId consentRecordId requestId seed createdAt" + (projectVersion >= 3 ? " region" : ""), "pace");
+                if (segment.GetProperty("provenance").TryGetProperty("pace", out var pace)) Number(pace, VoiceLabPace.Minimum, VoiceLabPace.Maximum);
                 Object(segment.GetProperty("qa"), "transcriptMatch lufsJumpLu peakDbfs speakerScore");
                 Array(segment.GetProperty("candidates"), candidate =>
                 {
@@ -152,7 +154,8 @@ internal static class ProjectValidation
             Number(shortSpeech.GetProperty("voicedFrames"), 0, int.MaxValue, true);
             Number(shortSpeech.GetProperty("takeCount"), 0, int.MaxValue, true);
         }
-        Object(recipe.GetProperty("provenance"), "provider endpoint model voiceId consentRecordId requestId seed createdAt region");
+        Object(recipe.GetProperty("provenance"), "provider endpoint model voiceId consentRecordId requestId seed createdAt region", "pace");
+        if (recipe.GetProperty("provenance").TryGetProperty("pace", out var pace)) Number(pace, VoiceLabPace.Minimum, VoiceLabPace.Maximum);
         Object(recipe.GetProperty("cost"), "quoteId usd");
     }
 

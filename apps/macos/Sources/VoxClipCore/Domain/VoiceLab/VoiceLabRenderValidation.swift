@@ -97,7 +97,8 @@ public enum VoiceLabRenderValidation {
             guard evidence.valid, evidence.recordId == provenance.consentRecordId,
                   recipe.voiceSource == .own else { throw VoiceLabProjectError.invalidSegment }
         }
-        guard provenance.provider.range(of: "\\A[a-z0-9-]+\\z", options: .regularExpression) != nil,
+        guard provenance.pace.map(VoiceLabPace.isValid) ?? true,
+              provenance.provider.range(of: "\\A[a-z0-9-]+\\z", options: .regularExpression) != nil,
               !provenance.endpoint.isEmpty, !provenance.model.isEmpty, !provenance.voiceId.isEmpty,
               provenance.consentRecordId.map(validID) ?? true, provenance.requestId.map(validID) ?? true, provenance.region?.isEmpty == false,
               validID(recipe.cost.quoteId), recipe.cost.usd.map({ $0.isFinite && $0 >= 0 }) ?? true,
