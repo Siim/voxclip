@@ -1123,10 +1123,27 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(session.includedVoice.isEmpty && ClipTakeHTTP.state.withLock { $0.texts.isEmpty })
     }
 
+    @Test func prepayPaceCopyTracksTheSelectedModel() async throws {
+        let fixture = try await fixture(indices: [10], dialogue: true); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture); defer { editor.close() }
+        let ordinal = try #require(session.ownProposal?.changes.first(where: { $0.kind == .voice })?.ordinal)
+        let pace = try #require(session.voiceReview(ordinal)?.timing?.pace)
+        #expect(pace != 1)
+        let generation = try #require(session.generation)
+        generation.chooseModel("eleven_v4")
+        #expect(session.voiceReview(ordinal)?.timing?.pace == 1)
+        #expect(session.voiceReview(ordinal)?.timing?.copy.contains("pace") == false)
+        generation.chooseModel("eleven_v3")
+        #expect(session.voiceReview(ordinal)?.timing?.pace == pace)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.isEmpty })
+    }
+
     @Test func productionPaceBindsPriceAndMeasuredRetryWithoutCompounding() async throws {
-        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let fixture = try await fixture(indices: [10], dialogue: true); defer { try? FileManager.default.removeItem(at: fixture.root) }
         let (editor, session) = try await productionSession(fixture); defer { editor.close() }
         let plan = try #require(session.takePlan)
+        let ordinal = try #require(session.ownProposal?.changes.first(where: { $0.kind == .voice })?.ordinal)
+        let originalReviewPace = session.voiceReview(ordinal)?.timing?.pace
         let originalPace = try #require(plan.phrasePace(0))
         #expect(originalPace != 1 && VoiceLabPace.isValid(originalPace))
         #expect(session.takeSendLine.contains("× pace"))
@@ -1155,6 +1172,13 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
         await plan.tryAnother(phrase: 0, approved: true, quoteID: plan.approvalID)
         #expect(ClipTakeHTTP.state.withLock { $0.paces == [originalPace, expected.pace] })
+        let generation = try #require(session.generation)
+        generation.chooseModel("eleven_v4")
+        #expect(plan.phrasePace(0) == 1)
+        #expect(session.voiceReview(ordinal)?.timing?.pace == originalReviewPace)
+        await plan.prepareAnother(phrase: 0)
+        #expect(plan.phrasePace(0) == 1 && plan.approvalID != nil, "\(plan.problem)")
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 2 })
     }
 
     /// Live 2026-11-03: the Speech model defaulted to the account's first model, Eleven v3. Patching defaults to

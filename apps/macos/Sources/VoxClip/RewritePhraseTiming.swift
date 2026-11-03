@@ -1,7 +1,7 @@
 import SwiftUI
 import VoxClipCore
 
-enum PhraseTimingAction { case shorter, again, surrounding, original, priceAnyway }
+enum PhraseTimingAction { case shorter, surrounding, original, priceAnyway }
 
 extension RewriteSession {
     var blockedVoiceOrdinals: [Int] {
@@ -23,7 +23,6 @@ extension RewriteSession {
             takeRowsShown = true
             if generation != nil { reviewTimingSpeechContext(ordinal: ordinal) }
             else { makeTakes() }
-        case .again: model.sendRewriteAgain(self, instruction: originalInstruction)
         case .original:
             if surroundingSentenceOrdinal == ordinal { surroundingSentenceOrdinal = nil }
             review(ordinal, .undo)

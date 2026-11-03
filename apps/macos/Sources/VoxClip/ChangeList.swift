@@ -29,7 +29,18 @@ extension RewriteSession {
         return Dictionary(zip(ordinals, review?.voiceHunks ?? []).map { ($0, $1) }, uniquingKeysWith: { first, _ in first })
     }
     /// The voice review of the voice change `ordinal`.
-    func voiceReview(_ ordinal: Int) -> RewriteHunkReview? { voiceReviews[ordinal] }
+    func voiceReview(_ ordinal: Int) -> RewriteHunkReview? {
+        guard var result = voiceReviews[ordinal] else { return nil }
+        guard !hasPaidTakes, let selectedModel = generation?.selectedModelID, let timing = result.timing, let window = result.window,
+              (selectedModel == "eleven_v4") != (synthesisModel == "eleven_v4"),
+              let silence = try? VoiceLabWindowPlanner.lendableSilence(project: project, scope: scope, window: window),
+              let matched = try? VoiceLabPaceMatching.match(seconds: timing.estimateSeconds * timing.pace, window: window,
+                  incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
+                  sourceSampleRate: project.media.source.audio?.sampleRate ?? 48_000,
+                  supportsPace: selectedModel != "eleven_v4") else { return result }
+        result.timing = matched
+        return result
+    }
     /// The ordinals of the voice changes takes are made for: those the list includes that can be made, as the AI wrote
     /// them (a change edited in the popover needs a new review first).
     var reviewedVoiceOrdinals: [Int] {
