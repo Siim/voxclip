@@ -13,6 +13,25 @@ public sealed class VoiceLabRenderContractTests
     static void Error(VoiceLabProjectErrorCode code, Action action) => Assert.Equal(code, Assert.Throws<VoiceLabProjectException>(action).Code);
     static Project Replace(Project project, VoiceLabSegment segment) => project with { VoiceLab = project.VoiceLab with { Segments = [segment] } };
 
+    [Theory]
+    [InlineData("v1/text-to-dialogue/with-timestamps", "eleven_v4", true)]
+    [InlineData("v1/text-to-dialogue/with-timestamps", "eleven_v3", false)]
+    [InlineData("v1/text-to-dialogue/with-timestamps", "eleven_v4_turbo", false)]
+    [InlineData("v1/text-to-dialogue/with-timestamps/extra", "eleven_v4", false)]
+    [InlineData("v1/text-to-speech/voice123/with-timestamps", "eleven_v4", false)]
+    [InlineData("v1/text-to-speech/voice123/with-timestamps", "eleven_v3", true)]
+    public void DialogueRenderEndpointAndModelMustMatch(string endpoint, string model, bool accepted)
+    {
+        var project = Fixture();
+        var segment = project.VoiceLab.Segments[0];
+        var first = segment.Candidates[0];
+        var recipe = first.Recipe!;
+        var provenance = recipe.Provenance with { Endpoint = endpoint, Model = model };
+        project = Replace(project, segment with { Provenance = provenance, Candidates = [first with { Recipe = recipe with {
+            Provenance = provenance } }, segment.Candidates[1]] });
+        if (accepted) Assert.Single(VoiceLabRenderContract.Prepare(project, VoiceLabOutputScope.Full, VoiceLabLabelPosition.TopRight).SelectedSegmentRecipes);
+        else Error(VoiceLabProjectErrorCode.EndpointUnsupported, () => VoiceLabRenderContract.Prepare(project, VoiceLabOutputScope.Full, VoiceLabLabelPosition.TopRight));
+    }
     [Fact]
     public void PassageAndFullTakePrepareAndRoundTrip()
     {
