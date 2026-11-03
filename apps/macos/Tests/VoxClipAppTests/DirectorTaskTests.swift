@@ -692,6 +692,44 @@ private actor RefusingKeys: ProviderKeyStore {
         #expect(panel()["director.panel"] != nil)
     }
 
+    /// Live 2026-11-03: after Tighten the panel went back to Captions and the Rewrite job was gone. Tighten inside the
+    /// clip a proposal covers sets the proposal aside and shows R3 in the same job (design.md R3); the session stays
+    /// open, the panel keeps Rewrite, and an undo brings the proposal back.
+    @Test func tightenInsideTheScopeKeepsTheRewriteJobInR3() async throws {
+        _ = NSApplication.shared
+        let shell = WorkspaceShell(app: AppModel())
+        let shared = try SharedResources.locate()
+        var base = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
+        base.edits.cutWordIds = []; base.edits.cutPauseIds = []
+        base.edits.clips = [ClipRange(id: "tight-1", startWordId: "w1", endWordId: "w7", title: "One", origin: .manual, selected: true)]
+        base.edits.activeClipId = nil
+        await shell.attachForTesting(VoxClipDocument(project: base, demo: true), selection: .clip("tight-1"))
+        let editor = try #require(shell.editor)
+        defer { editor.close() }
+        editor.mediaResolved = true
+        editor.refresh()
+        let undo = UndoManager()
+        undo.groupsByEvent = false
+        editor.undoManager = undo
+        let connector = RewriteConnector(connector: StubConnector(id: .ollama), model: "fixture-local", name: "Ollama", group: "local", plan: "")
+        let session = RewriteSession(editor: editor, scope: .clip("tight-1"), envelope: nil, connector: connector)
+        editor.rewrite = session
+        session.sendRun()
+        try session.receivePassage("So, um, today we shipped uh the")
+        session.finishRun(seconds: 1)
+        guard case .proposal = session.task.state else { Issue.record("no proposal"); return }
+        #expect(shell.panelJob(for: editor) == .rewrite && editor.proposal != nil)
+        undo.beginUndoGrouping()
+        let cuts = editor.tighten(scope: "tight-1")
+        undo.endUndoGrouping()
+        #expect((cuts ?? 0) > 0)
+        #expect(editor.openRewrite === session && session.isOpen && session.task.state == .changed)
+        #expect(shell.panelJob(for: editor) == .rewrite && PanelJob.available(in: editor).contains(.rewrite))
+        undo.undo()
+        #expect(session.isOpen && editor.proposal != nil && shell.panelJob(for: editor) == .rewrite)
+        guard case .proposal = session.task.state else { Issue.record("the undo did not show the proposal again"); return }
+    }
+
     /// A run keeps the keyboard where it was (design.md §10); moved into R1 (F6), Esc (and ⌘.) stop it there.
     @Test func aRunKeepsTheKeyboardWhereItWasAndEscInThePanelStopsIt() async throws {
         let ollama = StubConnector(id: .ollama, hold: true)
