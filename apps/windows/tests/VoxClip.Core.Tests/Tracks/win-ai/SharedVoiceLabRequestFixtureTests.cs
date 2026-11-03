@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Services.VoiceLab;
 using Xunit;
@@ -9,6 +10,48 @@ namespace VoxClip.Core.Tests.Tracks.WinAi;
 
 public sealed partial class SharedFixtureTests
 {
+    [Theory]
+    [InlineData("voice-rewrite-requests")]
+    [InlineData("patch-rewrite-requests")]
+    public async Task OptionalRewriteAnnotationsAreRequiredOnlyOnTheHttpWire(string fixture)
+    {
+        var expected = Load(fixture)["cases"]![0]!["expected"]!["request"]!;
+        var canonical = expected["schema"]!.DeepClone().AsObject();
+        var request = new LlmRequest(LlmFeature.VoiceRewrite, Text(expected, "system"), Text(expected, "cachedBlock"),
+            Text(expected, "instruction"), Text(expected, "schemaName"), canonical, 16000, Effort.Medium,
+            TimeSpan.FromSeconds(30), "en", "fixture");
+        foreach (var provider in new[] { ConnectorId.OpenAI, ConnectorId.Xai, ConnectorId.LmStudio, ConnectorId.Anthropic, ConnectorId.Gemini, ConnectorId.Ollama })
+        {
+            using var client = new HttpClient(new StubHttp((_, _, _) => Task.FromResult(Response(200,
+                "{\"model_info\":{\"model.context_length\":100000},\"capabilities\":[\"completion\"]}"))));
+            var connector = new LlmConnector(provider, Catalog(), client, new MemoryKeys("synthetic-key"), new Redactor());
+            var body = await connector.BodyAsync(request, "fixture-model", TestContext.Current.CancellationToken);
+            var schema = provider switch
+            {
+                ConnectorId.OpenAI => body["text"]!["format"]!["schema"]!,
+                ConnectorId.Anthropic => body["output_config"]!["format"]!["schema"]!,
+                ConnectorId.Gemini => body["generationConfig"]!["responseJsonSchema"]!,
+                ConnectorId.Ollama => body["format"]!,
+                _ => body["response_format"]!["json_schema"]!["schema"]!
+            };
+            AssertStrictObjects(schema);
+            EqualJson(expected["schema"], canonical);
+        }
+        var annotationOwner = fixture == "voice-rewrite-requests" ? canonical : canonical["properties"]!["edits"]!["items"]!;
+        Assert.DoesNotContain(annotationOwner["required"]!.AsArray(), value => value!.GetValue<string>() == "audioTags");
+    }
+
+    private static void AssertStrictObjects(JsonNode schema)
+    {
+        if (schema["properties"] is JsonObject properties)
+        {
+            Assert.Equal(properties.Select(pair => pair.Key).Order(StringComparer.Ordinal),
+                schema["required"]!.AsArray().Select(value => value!.GetValue<string>()).Order(StringComparer.Ordinal));
+            foreach (var property in properties) AssertStrictObjects(property.Value!);
+        }
+        if (schema["items"] is { } items) AssertStrictObjects(items);
+    }
+
     /// <summary><c>voice-rewrite-requests.json</c>: the case goes through <see cref="VoiceRewriteService"/>, and the request it sends must match.</summary>
     private static async Task VoiceRewriteRequestCase(JsonNode input, JsonNode expected)
     {

@@ -156,7 +156,7 @@ public sealed partial class LlmConnector
     internal async Task<JsonObject> BodyAsync(LlmRequest request, string model, CancellationToken ct)
     {
         var maxOut = catalog.Cap(Id, request.MaxOutputTokens);
-        var schema = request.Schema.DeepClone();
+        var schema = HttpStructuredSchema(request.Schema);
         var effort = request.Effort?.ToString().ToLowerInvariant();
         var supportsEffort = catalog.Model(Id, model)?["effort"]?.GetValue<bool>() == true;
         if (Id == ConnectorId.Anthropic)
@@ -227,6 +227,21 @@ public sealed partial class LlmConnector
         return compatible;
     }
 
+    private static JsonNode HttpStructuredSchema(JsonNode schema)
+    {
+        var shaped = schema.DeepClone();
+        if (shaped is not JsonObject value) return shaped;
+        if (value["properties"] is JsonObject properties)
+        {
+            foreach (var property in properties.ToArray()) properties[property.Key] = HttpStructuredSchema(property.Value!);
+            var required = value["required"] is JsonArray keys ? keys.Select(key => key!.GetValue<string>()).ToHashSet(StringComparer.Ordinal) : [];
+            if (!required.SetEquals(properties.Select(property => property.Key)))
+                value["required"] = new JsonArray(properties.Select(property => property.Key).Order(StringComparer.Ordinal)
+                    .Select(key => (JsonNode)JsonValue.Create(key)!).ToArray());
+        }
+        if (value["items"] is { } items) value["items"] = HttpStructuredSchema(items);
+        return value;
+    }
     private static JsonObject StrictSchema(LlmRequest request, JsonNode schema) => new() { ["name"] = request.SchemaName, ["strict"] = true, ["schema"] = schema };
     private static JsonObject SchemaFormat(LlmRequest request, JsonNode schema) { var format = StrictSchema(request, schema); format["type"] = "json_schema"; return format; }
     private bool UsesBeta(string model) => !betaUnsupported && catalog.Model(Id, model)?["serverSideFallback"]?.GetValue<bool>() == true;

@@ -1,5 +1,11 @@
 # Windows fixed contracts
 
+### 2026-11-03 — Rewrite HTTP strict-schema repair
+
+- **Built.** HTTP structured-output schemas recursively require every object property, including optional `audioTags` inside rewrite edits and annotation array items. OpenAI Responses, OpenAI-compatible Chat, Anthropic, Gemini and Ollama all use this wire-only shape. Already exhaustive schemas retain their required-key order. Canonical schemas, CLI requests and reply validation keep optional annotations.
+- **Verification.** Both new shared-prompt wire regressions fail before the repair. Afterward, **528 focused Release Core tests pass**, including the regenerated shared LLM fixtures, all six HTTP schema shapes and canonical non-mutation. The Release build has zero warnings/errors. The Core shipping inventory adds only the private schema-shaping method. No live requests or CI dispatch.
+- **Deleted / next.** No files deleted. This isolated repair can land before the Windows expression behavior/UI twin; that twin remains in progress.
+
 ### 2026-11-03 — Natural pacing, source pause profiles and preserved video cuts
 
 - **Built.** Mirror Mac automatic 0.90–1.10 exact-fit-only pace selection, preferred 1.00, explicit provider retry validation, p25 shrink and p75/p90 bounded natural pause fill. One hard-reserve helper caps each side at min(140 ms, 20% of window); pre-pay, measured match and paid planning share it. Smoothing is explicit at every planner/preview/matcher call. Clip-context profiles survive input snapshots and model/pace retries. Portable fitted PCM supports the same room-tone insert edits and 25 ms out / 20 ms in quiet fades without modifying voiced samples.
