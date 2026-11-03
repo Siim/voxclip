@@ -217,7 +217,9 @@ internal sealed partial class RewriteGeneration : IDisposable
         return VoiceLabPaceMatching.Match(audio.Trimmed.Length / (double)audio.SampleRate, input.Window,
             input.IncomingSilence, input.OutgoingSilence, input.SourceSampleRate,
             oldPace: selected.Receipt?.Pace ?? selected.Quote?.Synthesis.Review.Pace ?? 1,
-            sourceItems: input.Items, sourceEnvelope: input.SourceEnvelope, generatedText: input.Text, hardJoinSmoothing: input.HardJoinSmoothing, pauseProfile: input.PauseProfile).Pace;
+            sourceItems: input.Items, sourceEnvelope: input.SourceEnvelope, generatedText: input.Text, hardJoinSmoothing: input.HardJoinSmoothing, pauseProfile: input.PauseProfile,
+            audioTags: VoiceLabNaturalPacing.PauseTags(input.AudioTags, input.ModelId,
+                VoxClip.Core.Domain.Editing.EditingAlgorithms.SplitWords(input.Text).Count)).Pace;
     }
     internal void MarkEstimateShown(VoiceLabTakeRunQuote quote)
     {

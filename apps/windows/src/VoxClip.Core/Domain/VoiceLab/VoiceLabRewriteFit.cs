@@ -54,10 +54,15 @@ public static class VoiceLabRewriteFit
         return seconds;
     }
 
+    /// <summary>The seconds the take occupies in the video: the window, plus the residual after a partial fit. Every video
+    /// choice, the cut search included, sizes its output from <c>Round(VideoDuration × sourceRate)</c>, never from asset frames.</summary>
+    public static double VideoDuration(VoiceLabFitResult fit) =>
+        fit.Plan.WindowEnd - fit.Plan.WindowStart + (fit is VoiceLabFitResult.ChangedDuration changed ? changed.ResidualSeconds : 0);
+
     public static bool AllowsVideo(VoiceLabFitResult fit, double sourceSampleRate, double assetSampleRate)
     {
         var plan = fit.Plan;
-        var duration = plan.WindowEnd - plan.WindowStart + (fit is VoiceLabFitResult.ChangedDuration changed ? changed.ResidualSeconds : 0);
+        var duration = VideoDuration(fit);
         var output = EditingMath.Round(duration * sourceSampleRate);
         if (sourceSampleRate <= 0 || assetSampleRate <= 0 || plan.OutputFrames <= 0 || plan.WindowStartSample < 0 ||
             plan.WindowEndSample <= plan.WindowStartSample || !double.IsFinite(plan.WindowStart) || plan.WindowStart < 0 ||

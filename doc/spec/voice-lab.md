@@ -1355,6 +1355,9 @@ The shared helper in each Core uses `HARD_JOIN_PAUSE = 0.140 s` and a named
 leaving 180 ms of speech; a 1.1 s window reserves 140 ms, leaving 820 ms.
 The reserve reaches the legacy 60 ms pad whenever the window is at least 0.3 s;
 smaller windows retain the 20% cap rather than losing their entire slot.
+The window is the source window the recipe covers: when a gap seam lends samples,
+the planner repeats with the widened duration until the reserve stops growing, and
+render validation recomputes it from `video.sourceStartSample`/`sourceEndSample`.
 Planner, pre-pay preview and measured pace matching require an explicit smoothing
 flag, so a caller cannot accidentally compare different reserve policies.
 Legacy fixtures explicitly pass false; production passes the take's policy.
@@ -1428,7 +1431,8 @@ First shrink generated pauses to the clip speaker's p25 floors, or grow existing
 punctuation/aligned pauses and clause gaps up to their class's p75 (also bounded
 by p90). Measure within-sentence and between-sentence distributions from the
 scope's source transcript and quiet 10 ms envelope frames. Empty distributions
-conservatively allow no growth. No inserted pause splits a word. Room-tone inserts
+conservatively allow no growth and shrink only to the legacy fixed floors (150 ms
+after punctuation, 60 ms otherwise), never to the 45 ms fade minimum. No inserted pause splits a word. Room-tone inserts
 use the existing fit-edit mechanism with 25 ms equal-power out and 20 ms in fades,
 on the constant source room-tone bed. No speech is stretched.
 
@@ -1466,7 +1470,8 @@ measurement eligibility, not this timing decision.
 On **Try another** for a selected take that cannot keep the source duration, recalibrate
 from its measured trimmed audio duration before fitting edits, borrowing, padding or retiming:
 `naturalSeconds = oldPace × measuredSeconds`, then use the same natural-first
-exact-fit policy and 0.90–1.10 grid. Use the selected take's receipt pace, not an
+exact-fit policy and 0.90–1.10 grid, with the input's supported tagged pauses held as
+in the paid fit. Use the selected take's receipt pace, not an
 unused retry quote's pace. Do not slow a retry merely to reach Match video. Preparing or
 re-preparing a retry sends nothing and creates a new pace-bound quote/approval. Include the
 non-default phrase paces beside the priced action. Older paid takes keep their receipt pace.
@@ -1558,7 +1563,8 @@ Shared `length-budget-cases.json`, written by `tools/fixtures/voice-lab/generate
 
 **Natural-profile plans (3 November 2026).** New paid takes supply the clip's
 source pause profile. The legacy table below remains the compatibility contract
-for explicitly profile-less fixtures. Profiled plans use p25 shrink floors and
+for explicitly profile-less fixtures. Profiled plans use p25 shrink floors (the legacy
+fixed floors for a class with no measured pauses) and
 p75/p90 total-pause ceilings; grow punctuation pauses first, then aligned/clause
 gaps, spreading allocations evenly. A gap must leave 25 ms out / 20 ms in quiet
 handles. Source room-tone insert edits may exceed the original quiet run length;
@@ -2477,3 +2483,24 @@ contract, 1.06× punch-in and speech/voice/clipping/consent gates are unchanged.
 vectors are unchanged, with 13 boundary-cut and three tagged-pause vectors added.
 The formerly two-span synthetic 0.50–1.50 / 2.50–3.50 s example now selects a single
 0.50–2.50 s cut; the removed speech is deliberate, not an unsafe boundary.
+
+#### ADR-R38 amendment: review fixes (4 November 2026)
+
+These correct the planner without changing the recipe or schema.
+
+- **Cut length.** The cut search sizes its output as
+  `jsRound((windowEnd − windowStart + residual) × sourceRate)`, the same output the
+  video-duration options and the recipe store, not `outputFrames × sourceRate / assetRate`.
+  A 24 kHz take over an odd 48 kHz window otherwise removed one sample too few, failed
+  `validCuts` and lost Cut after payment.
+- **Borrowed hard reserve.** A hard side reserves min(140 ms, 20%) of the widened
+  window the recipe covers. A short hard window that borrows gap silence no longer
+  fails `invalidFadeHandles` at save. Windows without a borrow, and windows of at
+  least 0.7 s, plan exactly as before.
+- **Empty pause classes.** A class with no measured source pauses shrinks only to the
+  legacy 150 ms / 60 ms floors, as its growth already stays at zero.
+- **Try another.** Windows recalibrates with the input's supported tagged pauses, as Mac
+  does, so a retry's pace matches the paid fit.
+
+`natural-pacing-review-cases.json` (`voxclip-natural-pacing-review/1`) pins one
+paid-rate cut, one borrowed reserve and two empty-class vectors. Both Cores replay it.

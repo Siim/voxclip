@@ -39,11 +39,7 @@ public struct VoiceLabVideoDurationOptions: Sendable, Equatable {
             return
         }
         let plan = fit.plan
-        let duration: Double
-        switch fit {
-        case .exact: duration = plan.windowEnd - plan.windowStart
-        case .changedDuration(_, _, let residual): duration = plan.windowEnd - plan.windowStart + residual
-        }
+        let duration = Self.videoDuration(fit)
         let rounded = EditingPrimitives.jsRound(duration * Double(sourceSampleRate))
         guard plan.windowStart.isFinite, plan.windowStart >= 0, plan.windowEnd.isFinite, plan.windowEnd > plan.windowStart,
               EditingPrimitives.jsRound(plan.windowStart * Double(sourceSampleRate)) == Double(plan.windowStartSample),
@@ -82,6 +78,15 @@ public struct VoiceLabVideoDurationOptions: Sendable, Equatable {
         }
         changedUnavailableReason = Self.retimeRange.contains(factor) ? nil :
             "Matching this take would put source-video speed outside 0.80×–1.25×. Choose another take or re-record the sentence."
+    }
+
+    /// The seconds the take occupies in the video: the window, plus the residual after a partial fit. Every video choice,
+    /// the cut search included, sizes its output from `jsRound(videoDuration × sourceRate)`, never from asset frames.
+    public static func videoDuration(_ fit: VoiceLabFitResult) -> Double {
+        switch fit {
+        case .exact(let plan): plan.windowEnd - plan.windowStart
+        case .changedDuration(let plan, _, let residual): plan.windowEnd - plan.windowStart + residual
+        }
     }
 
     public func allows(_ choice: VoiceLabVideoMode) -> Bool {

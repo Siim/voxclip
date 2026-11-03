@@ -108,6 +108,31 @@ public enum VoiceLabFitPlanner {
                             tokens: [String], sourceSampleRate rate: Double, hardJoinSmoothing: Bool,
                             pauseProfile: VoiceLabPauseProfile? = nil, audioTags: [VoiceLabAudioTag] = [],
                             allowPauseGrowth: Bool = true) throws -> VoiceLabFitResult {
+        // Each hard side reserves min(140 ms, 20%) of the source window the recipe covers, which render validation
+        // recomputes from the recipe's video samples. A window that borrows gap silence is wider than the replacement,
+        // so the plan repeats with the widened duration until its reserve stops growing (a fifth of the extra each time).
+        var reserveWindow = window.end - window.start
+        for _ in 0..<32 {
+            let result = try plan(window: window, incomingSilence: incomingSilence, outgoingSilence: outgoingSilence,
+                take: take, tokens: tokens, sourceSampleRate: rate, hardJoinSmoothing: hardJoinSmoothing,
+                pauseProfile: pauseProfile, audioTags: audioTags, allowPauseGrowth: allowPauseGrowth,
+                reserveWindow: reserveWindow)
+            guard hardJoinSmoothing, window.leftSeam.kind == .hard || window.rightSeam.kind == .hard else { return result }
+            let widened = result.plan.windowEnd - result.plan.windowStart
+            let assetRate = Double(take.assetSampleRate)
+            func reserve(_ duration: Double) -> Int64 {
+                VoiceLabGeometry.samples(VoiceLabHardJoin.pauseSeconds(windowDuration: duration), assetRate)
+            }
+            if reserve(widened) <= reserve(reserveWindow) { return result }
+            reserveWindow = widened
+        }
+        throw VoiceLabGeometryError.fitTouchesVoice
+    }
+
+    private static func plan(window: VoiceLabWindow, incomingSilence: Double?, outgoingSilence: Double?, take: VoiceLabFitTake,
+                             tokens: [String], sourceSampleRate rate: Double, hardJoinSmoothing: Bool,
+                             pauseProfile: VoiceLabPauseProfile?, audioTags: [VoiceLabAudioTag],
+                             allowPauseGrowth: Bool, reserveWindow: Double) throws -> VoiceLabFitResult {
         let kinds: [VoiceLabSeamKind] = [window.leftSeam.kind, window.rightSeam.kind]
         let silences: [Double?] = [incomingSilence, outgoingSilence]
         let reach = try validate(window: window, kinds: kinds, silences: silences, take: take, rate: rate)
@@ -121,7 +146,7 @@ public enum VoiceLabFitPlanner {
         // The take must fill w = duration(W) − e frames; ρ > 0 means it is too long.
         let fade = VoiceLabGeometry.samples(VoiceLabPatchConstants.SEAM_FADE, assetRate)
         let leadIn = spans[0].start - t0, tailOut = t1 - spans[spans.count - 1].end
-        let reserve = VoiceLabGeometry.samples(VoiceLabHardJoin.pauseSeconds(windowDuration: window.end - window.start), assetRate)
+        let reserve = VoiceLabGeometry.samples(VoiceLabHardJoin.pauseSeconds(windowDuration: reserveWindow), assetRate)
         let edgeIn: Int64 = kinds[0] == .none ? max(0, VoiceLabGeometry.samples(silences[0] ?? 0, assetRate) - leadIn) :
             hardJoinSmoothing && kinds[0] == .hard ? max(0, reserve - leadIn) : 0
         let edgeOut: Int64 = kinds[1] == .none ? max(0, VoiceLabGeometry.samples(silences[1] ?? 0, assetRate) - tailOut) :
@@ -136,7 +161,9 @@ public enum VoiceLabFitPlanner {
             guard let pauseProfile else { return roomsOf([pause], shorten: shorten, assetRate: assetRate, fade: fade)[0] }
             let distribution = pauseProfile.distribution(after: tokens[pause.word])
             let boundary = VoiceLabNaturalPacing.clauseBoundary(after: tokens[pause.word], before: tokens[pause.word + 1])
-            let floor = VoiceLabGeometry.samples(distribution.p25, assetRate)
+            // A class the source never uses has no p25: shrink only to the legacy floor, as growth already stays at zero.
+            let legacyFloor = pause.punctuation ? VoiceLabPatchConstants.PAUSE_FLOOR_PUNCT : VoiceLabPatchConstants.PAUSE_FLOOR_PHRASE
+            let floor = VoiceLabGeometry.samples(distribution.isEmpty ? legacyFloor : distribution.p25, assetRate)
             let ceiling = VoiceLabGeometry.samples(min(distribution.p75, distribution.p90), assetRate)
             let minimumGap = VoiceLabGeometry.samples(VoiceLabHardJoin.generatedFadeSeconds + VoiceLabHardJoin.sourceFadeSeconds, assetRate)
             if shorten { return max(0, pause.length - max(floor, minimumGap)) }

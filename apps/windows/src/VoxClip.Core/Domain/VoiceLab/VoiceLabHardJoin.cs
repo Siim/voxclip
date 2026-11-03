@@ -92,6 +92,11 @@ public static class VoiceLabHardJoin
         return 1;
     }
 
+    /// <summary>The source window a stored recipe covers, borrowed gap samples included, in its output's seconds. The fit
+    /// planner sizes each hard reserve from this same widened window.</summary>
+    public static double WindowDuration(VoiceLabVideoRecipe video, double outDuration) => video.OutputSamples > 0
+        ? outDuration * ((double)video.SourceEndSample - video.SourceStartSample) / video.OutputSamples : outDuration;
+
     public static void Validate(VoiceLabSeams seams, VoiceLabEdgeGain? edgeGain, double duration, double? windowDuration = null)
     {
         if (seams.In.MicroPause is null && seams.Out.MicroPause is null && edgeGain is null) return;
