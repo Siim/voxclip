@@ -109,7 +109,8 @@ public static class VoiceLabHardJoin
         }
     }
 
-    public static VoiceLabWord[] Refine(IReadOnlyList<VoiceLabWord> words, float[] samples, int sampleRate, bool refineIncoming = true, bool refineOutgoing = true)
+    public static VoiceLabWord[] Refine(IReadOnlyList<VoiceLabWord> words, float[] samples, int sampleRate, bool refineIncoming = true, bool refineOutgoing = true,
+        double searchSeconds = AcousticSearchSeconds)
     {
         var refined = words.ToArray();
         if (words.Count == 0) return refined;
@@ -120,8 +121,8 @@ public static class VoiceLabHardJoin
             var index = incoming ? 0 : words.Count - 1;
             var word = refined[index];
             var boundary = incoming ? word.Start : word.End;
-            var lower = Math.Max(0, (int)Math.Floor((incoming ? boundary - AcousticSearchSeconds : word.Start) * sampleRate));
-            var upper = Math.Min(samples.Length, (int)Math.Ceiling((incoming ? word.End : boundary + AcousticSearchSeconds) * sampleRate));
+            var lower = Math.Max(0, (int)Math.Floor((incoming ? boundary - searchSeconds : word.Start) * sampleRate));
+            var upper = Math.Min(samples.Length, (int)Math.Ceiling((incoming ? word.End : boundary + searchSeconds) * sampleRate));
             if (upper <= lower) continue;
             var levels = new List<(int start, int end, double power)>();
             for (var start = lower; start < upper; start += frame)

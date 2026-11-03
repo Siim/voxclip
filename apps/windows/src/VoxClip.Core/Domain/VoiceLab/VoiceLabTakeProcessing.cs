@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Transcript;
 #pragma warning disable CS1591
 
@@ -61,6 +62,7 @@ public static class VoiceLabTakeProcessing
             alignment.Select(item => item.End).ToArray(), input.Text);
         if (input.HardJoinSmoothing) words = VoiceLabHardJoin.Refine(words, samples, rate,
             input.Window.LeftSeam.Kind == VoiceLabSeamKind.Hard, input.Window.RightSeam.Kind == VoiceLabSeamKind.Hard);
+        words = VoiceLabAudioTags.ExtendEdges(words, samples, rate, input.AudioTags, EditingAlgorithms.SplitWords(input.Text).Count, input.ModelId, result.RawAlignment ?? alignment);
         var trim = VoiceLabAlignment.Trim(words, samples.Length / (double)rate);
         var lower = Frames(trim.Start, rate);
         var upper = Frames(trim.End, rate);

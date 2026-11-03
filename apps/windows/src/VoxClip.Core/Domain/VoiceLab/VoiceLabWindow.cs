@@ -254,6 +254,8 @@ public static class VoiceLabWindowPlanner
             CorrectedTexts = [], AbsorbedItemIds = [.. earlier.AbsorbedItemIds, .. later.AbsorbedItemIds],
             BridgeWordIds = [.. earlier.BridgeWordIds, .. bridges, .. later.BridgeWordIds],
             SourceEndIndex = later.SourceEndIndex, AnchorSeconds = null,
+            AudioTags = earlier.AudioTags.Concat(VoiceLabAudioTags.Shifted(later.AudioTags, earlier.NewTokens.Count +
+                between.Sum(word => EditingAlgorithms.SplitWords(corrections.GetValueOrDefault(word.Id, word.Text)).Count))).ToArray(),
         };
     }
 

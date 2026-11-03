@@ -2,6 +2,7 @@
 using System.Buffers;
 using System.Text;
 using VoxClip.Core.Domain.Editing;
+using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.Transcript;
 
 namespace VoxClip.Core.Domain.VoiceLab;
@@ -47,6 +48,27 @@ public static class VoiceLabAlignment
     {
         if (characters is null || starts is null || ends is null || characters.Count == 0 || characters.Count != starts.Count ||
             starts.Count != ends.Count || characters.Any(string.IsNullOrEmpty)) throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.AlignmentUnavailable);
+        var ranges = VoiceLabAudioTags.TagRanges(string.Concat(characters));
+        if (ranges.Count > 0)
+        {
+            var cleanCharacters = new List<string>();
+            var cleanStarts = new List<double>();
+            var cleanEnds = new List<double>();
+            var offset = 0;
+            for (var index = 0; index < characters.Count; index++)
+            {
+                var runes = characters[index].EnumerateRunes().ToArray();
+                var step = (ends[index] - starts[index]) / runes.Length;
+                for (var local = 0; local < runes.Length; local++)
+                {
+                    cleanCharacters.Add(ranges.Any(range => offset >= range.Index && offset < range.Index + range.Length) ? " " : runes[local].ToString());
+                    cleanStarts.Add(starts[index] + step * local);
+                    cleanEnds.Add(starts[index] + step * (local + 1));
+                    offset += runes[local].Utf16SequenceLength;
+                }
+            }
+            return Words(cleanCharacters, cleanStarts, cleanEnds, VoiceLabAudioTags.StrippingTags(expectedText));
+        }
         var words = new List<VoiceLabWord>();
         var buffer = new StringBuilder();
         double? start = null;
@@ -68,10 +90,54 @@ public static class VoiceLabAlignment
         }
         if (start is { } last && buffer.Length > 0) words.Add(new(buffer.ToString(), last, end, true));
         var derived = words.Select(word => Folded(word.Text));
-        var expected = SplitWhiteSpace(expectedText).Select(Folded);
+        var expected = SplitWhiteSpace(VoiceLabAudioTags.StrippingTags(expectedText)).Select(Folded);
         if (!derived.SequenceEqual(expected, StringComparer.Ordinal)) throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.AlignmentMismatch);
         if (words.Count == 0) throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.AlignmentUnavailable);
         return words;
+    }
+
+    public static IReadOnlyList<VoiceLabCharacterTiming> RetimeNormalized(IReadOnlyList<VoiceLabCharacterTiming> timings, string expectedText)
+    {
+        var normalized = Words(timings.Select(timing => timing.Character).ToArray(), timings.Select(timing => timing.Start).ToArray(),
+            timings.Select(timing => timing.End).ToArray(), VoiceLabAudioTags.StrippingTags(string.Concat(timings.Select(timing => timing.Character))));
+        var source = normalized.Select((word, index) => new TimedWord(index.ToString(System.Globalization.CultureInfo.InvariantCulture), word.Text,
+            WordKind.Word, word.Start, word.End, null, null, null, null, TimingSource.Native)).ToArray();
+        var operations = VoiceLabWordDiff.Diff(source, VoiceLabAudioTags.StrippingTags(expectedText)).Ops;
+        var result = new List<VoiceLabWord>();
+        var removed = new List<VoiceLabWord>();
+        var inserted = new List<string>();
+        void Flush()
+        {
+            if (removed.Count == 0 && inserted.Count == 0) return;
+            if (removed.Count == 0 || inserted.Count == 0 || removed[^1].End <= removed[0].Start)
+                throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.AlignmentMismatch);
+            var total = inserted.Sum(token => Math.Max(1, token.EnumerateRunes().Count()));
+            var cursor = removed[0].Start;
+            for (var index = 0; index < inserted.Count; index++)
+            {
+                var end = index == inserted.Count - 1 ? removed[^1].End : cursor + (removed[^1].End - removed[0].Start) *
+                    Math.Max(1, inserted[index].EnumerateRunes().Count()) / total;
+                result.Add(new(inserted[index], cursor, end, true));
+                cursor = end;
+            }
+            removed.Clear(); inserted.Clear();
+        }
+        foreach (var operation in operations)
+            switch (operation.Kind)
+            {
+                case VoiceLabDiffOpKind.Equal:
+                    Flush();
+                    var word = normalized[int.Parse(operation.SourceWordId!, System.Globalization.CultureInfo.InvariantCulture)];
+                    result.Add(word with { Text = operation.NewToken! });
+                    break;
+                case VoiceLabDiffOpKind.Delete:
+                    removed.Add(normalized[int.Parse(operation.SourceWordId!, System.Globalization.CultureInfo.InvariantCulture)]);
+                    break;
+                case VoiceLabDiffOpKind.Insert: inserted.Add(operation.NewToken!); break;
+            }
+        Flush();
+        return result.SelectMany((word, index) => index == 0 ? new[] { new VoiceLabCharacterTiming(word.Text, word.Start, word.End) } :
+            new[] { new VoiceLabCharacterTiming(" ", word.Start, word.Start), new VoiceLabCharacterTiming(word.Text, word.Start, word.End) }).ToArray();
     }
 
     /// <summary>[max(0, firstStart − TTS_TRIM_LEAD), min(assetDuration, lastEnd + TTS_TRIM_TAIL)] in asset seconds.</summary>

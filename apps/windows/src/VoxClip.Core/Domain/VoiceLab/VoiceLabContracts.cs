@@ -152,6 +152,7 @@ public sealed record VoiceLabCharacterTiming(string Character, double Start, dou
 public sealed record VoiceLabAudioResult(byte[] Pcm, int SampleRate,
     IReadOnlyList<VoiceLabCharacterTiming>? Alignment, VoiceLabReceipt Receipt)
 {
+    internal IReadOnlyList<VoiceLabCharacterTiming>? RawAlignment { get; init; }
     public VoiceLabSpendWarning? SpendWarning => Receipt.SpendWarning;
 }
 public sealed record VoiceLabCloneResult(string VoiceId, bool RequiresVerification, string ConsentRecordId,
@@ -176,9 +177,15 @@ public sealed record VoiceRewriteRequest(Guid RequestId, VoiceRewriteScope Scope
 {
     public IReadOnlyList<VoiceRewriteTimingFeedback> ShorterPhrases { get; init; } = [];
 }
-public sealed record VoiceRewriteTimingFeedback(string Original, string Proposed, double EstimateSeconds, double SlotSeconds);
+public sealed record VoiceRewriteTimingFeedback(string Original, string Proposed, double EstimateSeconds, double SlotSeconds)
+{
+    public double? MeasuredSeconds { get; init; }
+}
 /// <summary>Review data cannot synthesize audio or change the original timed words. <c>ProposedLength</c> is Core's own
 /// <see cref="VoiceLabTextLength"/> of the proposed text, and <c>InRange</c> says whether it lies in the request's range; a proposal
 /// outside the range is still returned, as it is (§8.9.1).</summary>
 public sealed record VoiceRewriteProposal(Guid Id, VoiceRewriteScope Scope, IReadOnlyList<TimedWord> SourceWords,
-    string SourceText, string ProposedText, ConnectorId Connector, string Model, string? ProviderRequestId, int ProposedLength, bool InRange);
+    string SourceText, string ProposedText, ConnectorId Connector, string Model, string? ProviderRequestId, int ProposedLength, bool InRange)
+{
+    public IReadOnlyList<VoiceLabAudioTag> AudioTags { get; init; } = [];
+}

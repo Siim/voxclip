@@ -52,6 +52,18 @@ public sealed class VoiceLabEditingTests
         internal VoiceLabSegment Segment() => VoiceLabRecipeBuilder.Segment("accepted-test", [Candidate()], 0, Input, Row.Audio!.Fit.Plan);
     }
     [Theory]
+    [InlineData("eleven_v3", true)]
+    [InlineData("eleven_v4", true)]
+    [InlineData("eleven_multilingual_v2", false)]
+    public void RecipeTextOnlyStoresExpressionsSentToCapableModels(string model, bool tagged)
+    {
+        var fixture = new Fixture();
+        var input = fixture.Input with { ModelId = model, AudioTags = [new(2, "laughs")] };
+        var segment = VoiceLabRecipeBuilder.Segment("expressions", [fixture.Candidate()], 0, input, fixture.Row.Audio!.Fit.Plan);
+        Assert.Equal(tagged, segment.Text!.AudioTags is not null);
+        if (tagged) Assert.Equal(input.AudioTags, segment.Text.AudioTags);
+    }
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void PaidAndFittedRecipesRoundTripWithoutSourceMutation(bool fitted)

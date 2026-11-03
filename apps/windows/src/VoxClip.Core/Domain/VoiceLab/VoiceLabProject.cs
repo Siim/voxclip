@@ -76,9 +76,9 @@ public static class VoiceLabProject
     {
         if (text.AudioTags is null) return true;
         if (text.AudioTags.Count > 64) return false;
-        var root = VoxClip.Core.Services.Project.SharedResources.ResolveRoot();
-        using var catalog = System.Text.Json.JsonDocument.Parse(System.IO.File.ReadAllText(System.IO.Path.Combine(root, "data", "voice-audio-tags.json")));
-        var allowed = catalog.RootElement.GetProperty("tags").EnumerateArray().Select(item => item.GetProperty("tag").GetString()).ToHashSet(StringComparer.Ordinal);
+        IReadOnlySet<string> allowed;
+        try { allowed = VoiceLabAudioTags.AllowedTags; }
+        catch (VoiceLabProjectException) { return false; }
         var count = EditingAlgorithms.SplitWords(text.New).Count;
         var previous = 0;
         foreach (var annotation in text.AudioTags)

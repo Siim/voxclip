@@ -116,6 +116,7 @@ public static class ScopeRewriteDiff
                         after = previous >= 0 ? ids[previous] : null;
                     }
                     int begin = NewStart(diff.Ops, found.SourceStartIndex);
+                    var editIndices = stretch.EditIndices.Skip(begin).Take(found.NewTokens.Count).ToArray();
                     bool flagged = Enumerable.Range(0, found.NewTokens.Count).Any(index =>
                     {
                         int at = begin + index;
@@ -124,7 +125,11 @@ public static class ScopeRewriteDiff
                         return token < flags.Count ? flags[token] : edit.CheckThis;
                     });
                     parts.Add(new(found with { SourceStartIndex = startToken + found.SourceStartIndex,
-                        SourceEndIndex = startToken + found.SourceEndIndex, AnchorSeconds = anchor }, [line.Label], [edit.Reason],
+                        SourceEndIndex = startToken + found.SourceEndIndex, AnchorSeconds = anchor,
+                        AudioTags = edit.AudioTags.Where(annotation => editIndices.Length > 0 &&
+                            annotation.BeforeToken >= editIndices[0] && annotation.BeforeToken <= editIndices[^1] + 1)
+                            .Select(annotation => annotation with { BeforeToken = editIndices.Count(index => index < annotation.BeforeToken) }).ToArray()
+                    }, [line.Label], [edit.Reason],
                         flagged, found.Kind == VoiceLabDiffHunkKind.Voice && firstVoice, count == 0, insertItem, after));
                     if (found.Kind == VoiceLabDiffHunkKind.Voice) firstVoice = false;
                 }
@@ -161,7 +166,8 @@ public static class ScopeRewriteDiff
                         Unique(earlier.Hunk.SourceWordIds.Concat(bridges).Concat(part.Hunk.SourceWordIds)),
                         earlier.Hunk.NewTokens.Concat(between.Select(index => surfaces[index])).Concat(part.Hunk.NewTokens).ToArray(), [],
                         earlier.Hunk.AbsorbedItemIds.Concat(part.Hunk.AbsorbedItemIds).ToArray(),
-                        Unique(earlier.Hunk.BridgeWordIds.Concat(bridges).Concat(part.Hunk.BridgeWordIds)), start, end, start == end ? earlier.Hunk.AnchorSeconds : null);
+                        Unique(earlier.Hunk.BridgeWordIds.Concat(bridges).Concat(part.Hunk.BridgeWordIds)), start, end, start == end ? earlier.Hunk.AnchorSeconds : null)
+                    { AudioTags = earlier.Hunk.AudioTags.Concat(VoiceLabAudioTags.Shifted(part.Hunk.AudioTags, earlier.Hunk.NewTokens.Count + between.Length)).ToArray() };
                     merged.RemoveRange(earlierIndex, merged.Count - earlierIndex);
                     merged.Add(new(hunk, lines, reasons, pieces.Any(piece => piece.CheckThis), false, false, part.InsertItem, start == end ? earlier.After : null));
                     continue;

@@ -37,10 +37,59 @@ public sealed class VoiceLabDialogueTests
         }
     }
     private static ElevenLabsVoiceLab Client(Handler handler) => ElevenLabsVoiceLab.ForTesting(new MemoryKeys("synthetic-key"), handler, ElevenLabsRegion.Default);
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ScribeRequestsBindConditionalAudioEventsAndKeepOnlyWordRows(bool tagged)
+    {
+        var reply = JsonNode.Parse("""{"language_code":"en","words":[{"type":"word","text":"Hi","start":0.1,"end":0.2},{"type":"audio_event","text":"[laughs]","start":0.2,"end":0.4}]}""")!;
+        using var handler = new Handler(Cases(), reply);
+        using var client = ElevenLabsVoiceLab.ForTesting(new MemoryKeys("synthetic-key"), handler, ElevenLabsRegion.Default, boundary: "voxclip-tags-wire");
+        var policy = new OwnVoicePolicy("record", "voice123", true, true, true, true, true);
+        var prepared = client.PrepareQa("en", policy.RecordId, Guid.NewGuid(), tagged);
+        var expectedFingerprint = VoiceLabActionGate.Fingerprint(ElevenLabsRegion.Default.ToString(), "scribe_v2", "en", policy.RecordId,
+            VoiceLabTakeProcessing.MaximumQaSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        if (tagged) expectedFingerprint = VoiceLabActionGate.Fingerprint(expectedFingerprint, "tag_audio_events=true");
+        Assert.Equal(VoiceLabActionGate.BoundFingerprint(expectedFingerprint, prepared.Estimate, prepared.Review), prepared.Fingerprint);
+        var approval = client.Approve(prepared, true);
+        await Assert.ThrowsAsync<VoiceLabException>(() => client.TranscribeQaAsync(new float[24000], 24000, "en", policy, approval, Ct, tagAudioEvents: !tagged));
+        Assert.Empty(handler.Requests);
+        var transcript = await client.TranscribeQaAsync(new float[24000], 24000, "en", policy, approval, Ct, tagAudioEvents: tagged);
+        Assert.Equal("Hi", Assert.Single(transcript.Words).Text);
+        var body = Encoding.UTF8.GetString(Assert.Single(handler.Requests).Body);
+        Assert.Contains("name=\"tag_audio_events\"\r\n\r\n" + (tagged ? "true" : "false") + "\r\n", body);
+        if (!tagged)
+        {
+            var untagged = client.PrepareQa("en", policy.RecordId, Guid.NewGuid());
+            await client.TranscribeQaAsync(new float[24000], 24000, "en", policy, client.Approve(untagged, true), Ct);
+            Assert.Equal(handler.Requests[0].Body, handler.Requests[1].Body);
+        }
+    }
     private static async Task Discover(ElevenLabsVoiceLab client)
     {
         await client.DiscoverModelsAsync(Ct);
         await client.DiscoverVoicesAsync(Ct);
+    }
+    [Fact]
+    public async Task NormalizedFallbackPreservesBracketTimingsForEdgeExpressions()
+    {
+        var root = Cases();
+        var response = root["responses"]![0]!["response"]!.DeepClone();
+        response["audio_base64"] = Convert.ToBase64String(new byte[48000 * 3]);
+        response["alignment"] = null;
+        response["normalized_alignment"] = JsonNode.Parse("""{"characters":["[laughs]"," ","Hi"," ","[sighs]"],"character_start_times_seconds":[0.2,0.5,1,1.2,1.6],"character_end_times_seconds":[0.5,1,1.2,1.6,2.4]}""");
+        response["voice_segments"]![0]!["character_end_index"] = 5;
+        response["voice_segments"]![0]!["end_time_seconds"] = 2.4;
+        using var handler = new Handler(root, response);
+        using var client = Client(handler);
+        await Discover(client);
+        var result = await Speak(client, "[laughs] Hi [sighs]");
+        var raw = Assert.IsAssignableFrom<IReadOnlyList<VoiceLabCharacterTiming>>(result.RawAlignment);
+        var extended = VoiceLabAudioTags.ExtendEdges([new("Hi", 1, 1.2, true)], new float[24000 * 3], 24000,
+            [new(0, "laughs"), new(1, "sighs")], 1, "eleven_v4", raw);
+        Assert.Equal(.2, extended[0].Start);
+        Assert.Equal(2.4, extended[0].End);
+        Assert.Equal((.2 - VoiceLabPatchConstants.TTS_TRIM_LEAD, 2.4 + VoiceLabPatchConstants.TTS_TRIM_TAIL), VoiceLabAlignment.Trim(extended, 3));
     }
     private static Task<VoiceLabAudioResult> Speak(ElevenLabsVoiceLab client, string text = "Hi", string model = "eleven_v4",
         VoiceLabSpeechOptions? options = null, VoiceLabAuthorization? approval = null, Guid? requestId = null, VoiceLabRequestAcceptance? acceptance = null)
@@ -149,7 +198,7 @@ public sealed class VoiceLabDialogueTests
         await Discover(client);
         var text = row["text"]?.GetValue<string>() ?? root["responseInput"]!["text"]!.GetValue<string>();
         var expected = row["expected"]!.GetValue<string>();
-        if (expected == "success")
+        if (expected == "success" || name == "alignment_null")
         {
             var result = await Speak(client, text);
             Assert.Equal(text, string.Concat(result.Alignment!.Select(timing => timing.Character)));
@@ -160,7 +209,6 @@ public sealed class VoiceLabDialogueTests
         Assert.Single(handler.Requests);
     }
     [Theory]
-    [InlineData("eleven_v4", "alignment_null", VoiceLabErrorKind.InvalidAlignment, true)]
     [InlineData("eleven_v4", "segments_wrong_voice", VoiceLabErrorKind.MalformedResponse, true)]
     [InlineData("eleven_v3", "alignment_null", VoiceLabErrorKind.InvalidAlignment, true)]
     [InlineData("eleven_v4", "alignment_null", VoiceLabErrorKind.InvalidAudio, false)]
@@ -187,6 +235,89 @@ public sealed class VoiceLabDialogueTests
         Assert.Equal(id, raw.Receipt.ActionId);
         Assert.Equal(model, raw.Receipt.ModelId);
         Assert.Equal("voice123", raw.Receipt.VoiceId);
+    }
+    [Fact]
+    public async Task IncapableSpeechModelNeverReceivesBracketTags()
+    {
+        var root = Cases();
+        using var handler = new Handler(root, root["responses"]![0]!["response"]!);
+        using var client = Client(handler);
+        await Discover(client);
+        await Speak(client, "[laughs]Hi", "eleven_multilingual_v2");
+        Assert.Equal("Hi", JsonNode.Parse(Assert.Single(handler.Requests).Body)!["text"]!.GetValue<string>().Trim());
+    }
+    [Theory]
+    [InlineData("eleven_v3")]
+    [InlineData("eleven_v4")]
+    [InlineData("eleven_multilingual_v2")]
+    public async Task TaggedSpeechQuotesAndSendsOnlyTheExactModelRequest(string model)
+    {
+        var root = Cases();
+        var text = VoiceLabAudioTags.RequestText("Hi", [new(1, "laughs")], model);
+        var response = root["responses"]![0]!["response"]!.DeepClone();
+        response["alignment"] = new JsonObject
+        {
+            ["characters"] = new JsonArray(text.Select(character => (JsonNode)JsonValue.Create(character.ToString())!).ToArray()),
+            ["character_start_times_seconds"] = new JsonArray(text.Select((_, index) => (JsonNode)JsonValue.Create(index * .0005)!).ToArray()),
+            ["character_end_times_seconds"] = new JsonArray(text.Select((_, index) => (JsonNode)JsonValue.Create((index + 1) * .0005)!).ToArray())
+        };
+        using var handler = new Handler(root, response);
+        using var client = Client(handler);
+        await Discover(client);
+        var id = Guid.NewGuid();
+        var action = client.PrepareSynthesis(text, model, Voice, "en", new(0), id);
+        Assert.Equal(text.Length, action.Estimate.Units);
+        Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text))), action.Review.ContentSha256);
+        var approval = client.Approve(action, true);
+        if (model != "eleven_multilingual_v2")
+        {
+            Assert.Equal(VoiceLabErrorKind.ConsentRequired, (await Assert.ThrowsAsync<VoiceLabException>(() => Speak(client, "Hi", model, approval: approval, requestId: id))).Kind);
+            Assert.Empty(handler.Requests);
+        }
+        await Speak(client, text, model, approval: approval, requestId: id);
+        var sent = JsonNode.Parse(Assert.Single(handler.Requests).Body)!;
+        Assert.Equal(text, (model == "eleven_v4" ? sent["inputs"]![0]!["text"] : sent["text"])!.GetValue<string>());
+        Assert.Null(sent["previous_text"]);
+        Assert.Null(sent["next_text"]);
+    }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SharedNormalizedFallbacksUseRawSegmentBoundsAndTypedWords(bool missingOriginal)
+    {
+        var vectors = JsonNode.Parse(FixtureLoader.ReadText("fixtures/voice-lab/audio-tag-cases.json"))!;
+        foreach (var row in vectors["dialogueFallbacks"]!.AsArray())
+        {
+            var root = Cases();
+            var response = root["responses"]![0]!["response"]!.DeepClone();
+            response["normalized_alignment"] = row!["normalized_alignment"]!.DeepClone();
+            if (missingOriginal) response.AsObject().Remove("alignment"); else response["alignment"] = null;
+            response["voice_segments"]![0]!["character_end_index"] = row["segmentEnd"]!.DeepClone();
+            using var handler = new Handler(root, response);
+            using var client = Client(handler);
+            await Discover(client);
+            var result = await Speak(client, row["typed"]!.GetValue<string>());
+            Assert.NotNull(result.RawAlignment);
+            Assert.Equal(row["normalized_alignment"]!["characters"]!.AsArray().Select(value => value!.GetValue<string>()), result.RawAlignment.Select(time => time.Character));
+            var alignment = Assert.IsAssignableFrom<IReadOnlyList<VoiceLabCharacterTiming>>(result.Alignment);
+            var words = VoiceLabAlignment.Words(alignment.Select(time => time.Character).ToArray(), alignment.Select(time => time.Start).ToArray(),
+                alignment.Select(time => time.End).ToArray(), row["typed"]!.GetValue<string>());
+            Assert.Equal(row["expectedWords"]!.AsArray().Select(value => value!.GetValue<string>()), words.Select(word => word.Text));
+        }
+    }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task NoTimingAndMalformedNonNullOriginalNeverGetRescued(bool malformedOriginal)
+    {
+        var root = Cases();
+        var response = root["responses"]![0]!["response"]!.DeepClone();
+        response["normalized_alignment"] = malformedOriginal ? response["alignment"]!.DeepClone() : null;
+        response["alignment"] = malformedOriginal ? new JsonObject() : null;
+        using var handler = new Handler(root, response);
+        using var client = Client(handler);
+        await Discover(client);
+        Assert.Equal(VoiceLabErrorKind.InvalidAlignment, (await Assert.ThrowsAsync<VoiceLabException>(() => Speak(client))).Kind);
     }
     [Fact]
     public async Task SpeechAndDialogueQuotesCannotAuthorizeTheOtherRoute()

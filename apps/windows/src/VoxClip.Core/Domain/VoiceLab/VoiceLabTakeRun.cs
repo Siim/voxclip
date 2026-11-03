@@ -15,6 +15,9 @@ public sealed record VoiceLabTakeInput(string Text, string ModelId, string Recor
     VoiceLabSourceExcerpt Source, AudioEnvelope SourceEnvelope, int SourceSampleRate, IReadOnlyList<TimedWord> Items, IReadOnlySet<string> CutWordIds,
     VoiceLabWindow Window, double? IncomingSilence, double? OutgoingSilence, bool CleanAudioOn, bool ProviderConsent, double? Pace = null, bool HardJoinSmoothing = true)
 {
+    public IReadOnlyList<VoiceLabAudioTag> AudioTags { get; init; } = [];
+    public string RequestText => VoiceLabAudioTags.RequestText(Text, AudioTags, ModelId);
+    public bool HasRequestTags => AudioTags.Count > 0 && VoiceLabAudioTags.Supports(ModelId) && VoiceLabAudioTags.Validated(AudioTags, Text).Count > 0;
     /// <summary>A source held whole, as short sources and tests pass it; the envelope is computed from it.</summary>
     public VoiceLabTakeInput(string Text, string ModelId, string RecordId, string Language, uint Seed, string ContentKey,
         float[] Source, int SourceSampleRate, IReadOnlyList<TimedWord> Items, IReadOnlySet<string> CutWordIds, VoiceLabWindow Window,
@@ -30,6 +33,7 @@ public sealed record VoiceLabTakeInput(string Text, string ModelId, string Recor
     }
     /// <summary>A copy that later changes to the caller's lists cannot reach. The excerpt never changes, so it is shared.</summary>
     public VoiceLabTakeInput Snapshot() => this with { SourceEnvelope = SourceEnvelope with { Rms = Array.AsReadOnly(SourceEnvelope.Rms.ToArray()) },
+        AudioTags = Array.AsReadOnly(AudioTags.ToArray()),
         Items = Array.AsReadOnly(Items.ToArray()),
         CutWordIds = System.Collections.Frozen.FrozenSet.ToFrozenSet(CutWordIds, StringComparer.Ordinal),
         Window = Window with { LeftBridgeWordIds = Array.AsReadOnly(Window.LeftBridgeWordIds.ToArray()), RightBridgeWordIds = Array.AsReadOnly(Window.RightBridgeWordIds.ToArray()) } };
@@ -102,12 +106,12 @@ public static class VoiceLabTakeQuality
         return 2.0 * previous[^1] / (expected.Count + recognized.Count);
     }
     public static VoiceLabTakeQaResult Evaluate(string expected, IReadOnlyList<string> recognized, float[] mixed, int sampleRate,
-        IReadOnlyList<int> seams, double speakerScore, double threshold, IReadOnlyList<bool>? generatedAfter = null, IReadOnlyList<double>? seamExcesses = null)
+        IReadOnlyList<int> seams, double speakerScore, double threshold, IReadOnlyList<bool>? generatedAfter = null, IReadOnlyList<double>? seamExcesses = null, bool hasTags = false)
     {
         if (!double.IsFinite(speakerScore) || speakerScore is < -1 or > 1 || !double.IsFinite(threshold) || threshold is < 0 or > 1)
             throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
-        var expectedTokens = Tokens(expected);
-        var recognizedTokens = recognized.SelectMany(Tokens).ToArray();
+        var expectedTokens = Tokens(VoiceLabAudioTags.StrippingTags(expected));
+        var recognizedTokens = VoiceLabAudioTags.FilterScribeEvents(expectedTokens, recognized.SelectMany(Tokens).ToArray(), hasTags);
         var ratio = TranscriptRatio(expectedTokens, recognizedTokens);
         var peak = VoiceLabLoudness.SamplePeakDbfs(mixed);
         if (!double.IsFinite(peak)) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);

@@ -4,8 +4,9 @@ namespace VoxClip.Core.Domain.VoiceLab;
 public static class VoiceLabPaceMatching
 {
     public static VoiceLabRewriteFitResult Measure(string text, double rate, VoiceLabWindow window,
-        double? incomingSilence, double? outgoingSilence, int sourceSampleRate, bool supportsPace = true, bool hardJoinSmoothing = true) =>
-        Match(VoiceLabRewriteFit.Estimate(text, rate), window, incomingSilence, outgoingSilence, sourceSampleRate,
+        double? incomingSilence, double? outgoingSilence, int sourceSampleRate, bool supportsPace = true, bool hardJoinSmoothing = true,
+        IReadOnlyList<VoiceLabAudioTag>? audioTags = null, string modelId = "") =>
+        Match(VoiceLabRewriteFit.Estimate(text, rate) + VoiceLabAudioTags.Allowance(audioTags ?? [], text, modelId), window, incomingSilence, outgoingSilence, sourceSampleRate,
             supportsPace: supportsPace, hardJoinSmoothing: hardJoinSmoothing);
 
     public static VoiceLabRewriteFitResult Match(double seconds, VoiceLabWindow window,
