@@ -1182,6 +1182,26 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(!plan.audition.isPlaying)
     }
 
+    /// Live 2026-11-03: four failed takes could not be heard. A failed take with staged audio plays without being selected.
+    @Test func aFailedTakeWithAudioPlaysButStaysLeftOut() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let plan = fixture.plan
+        await plan.prepare()
+        ClipTakeHTTP.state.withLock { $0.failGenerated = true }
+        await plan.start(approved: true)
+        let take = try #require(plan.phrases[0].takes.first)
+        #expect(!take.row.selectable && take.row.audio != nil && plan.phrases[0].selectedID == nil)
+        await plan.play(phrase: 0)
+        #expect(!plan.audition.isPlaying)
+        await plan.play(take: take.id, phrase: 0)
+        #expect(plan.audition.isPlaying && plan.audition.takeId == take.id && plan.phrases[0].selectedID == nil)
+        #expect(!plan.select(take: take.id, phrase: 0))
+        await plan.play(take: take.id, phrase: 0)
+        #expect(!plan.audition.isPlaying && fixture.playback.stops >= 1)
+        await plan.play(take: UUID(), phrase: 0)
+        #expect(!plan.audition.isPlaying)
+    }
+
     @Test func rowKeysPickOnlyTheFocusedPhraseAndKeepFailedRowsVisible() async throws {
         let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
         let (editor, session) = session(fixture); defer { editor.close() }

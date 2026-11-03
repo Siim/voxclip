@@ -98,6 +98,11 @@ extension RewriteSession {
         editor.transport("k")
         await takePlan.play(phrase: phrase)
     }
+    func playTake(_ take: UUID, phrase: Int) async {
+        guard current, let takePlan, takePlan.stillCurrent else { return }
+        editor.transport("k")
+        await takePlan.play(take: take, phrase: phrase)
+    }
     var takesBusy: Bool { takePlan.map { $0.preparing || $0.generating || $0.publishing || $0.preparingVideo } ?? false }
     var usableTakeCount: Int { takePlan.map { $0.canAccept ? $0.phrases.filter { $0.selected?.row.selectable == true }.count : 0 } ?? 0 }
     var takeSendLine: String {
@@ -270,7 +275,21 @@ extension ClipTakePlan.Phrase {
             }
             ForEach(phrase.takes.filter { !$0.row.selectable }) { take in
                 if let copy = TakeFailurePresentation.leftOut(take.row, number: take.number) {
-                    Text(copy).font(VCType.small.font()).foregroundStyle(DesignValues.color("status.warning"))
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        if take.row.audio != nil, !session.takesBusy {
+                            let playing = plan.audition.isPlaying && plan.audition.takeId == take.id
+                            Button {
+                                session.focusedTakePhrase = phrase.id
+                                Task { await session.playTake(take.id, phrase: phrase.id) }
+                            } label: {
+                                Image(systemName: playing ? "pause.fill" : "play.fill").frame(width: 20, height: 20)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("\(playing ? "Pause" : "Play") phrase \(phrase.id + 1), take \(take.number)")
+                            .help("Listen to this take. It stays left out.")
+                        }
+                        Text(copy).font(VCType.small.font()).foregroundStyle(DesignValues.color("status.warning"))
+                    }
                 }
             }
             VideoDurationChoiceView(availability: plan.videoAvailability(phrase: phrase.id), selection: phrase.videoChoice,

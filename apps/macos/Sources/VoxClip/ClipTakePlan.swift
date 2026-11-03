@@ -534,6 +534,21 @@ import VoxClipMedia
         catch { problem = Self.copy(error) }
     }
 
+    /// Plays one take's checked mix, failed or not, without selecting it: a failed take stays left out, but the user can
+    /// hear what the checks refused. Toggles like `play(phrase:)`. A take whose audio was never staged has nothing to play.
+    func play(take id: UUID, phrase: Int) async {
+        guard stillCurrent, !generating, !preparing, !publishing, phrases.indices.contains(phrase),
+              phrases[phrase].takes.contains(where: { $0.id == id && $0.row.audio != nil }) else { return }
+        let wasPlaying = audition.isPlaying && audition.takeId == id
+        stopAudition()
+        guard !wasPlaying else { return }
+        let turn = auditionTurn
+        guard let audio = await backend?.scratch(phrase, id), turn == auditionTurn, stillCurrent,
+              phrases[phrase].takes.contains(where: { $0.id == id }), !generating, !preparing, !publishing else { return }
+        do { try audition.play(audio, takeId: id, selectionId: String(phrase)) }
+        catch { problem = Self.copy(error) }
+    }
+
     func dispatch(_ request: UUID, start: @escaping @Sendable () throws -> Void) async throws {
         let version = revision
         try checkCurrent(version)
