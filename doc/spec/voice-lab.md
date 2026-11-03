@@ -22,12 +22,33 @@ roughly one annotation per eight words, without changing meaning.
 Only `eleven_v3` and `eleven_v4` requests render bracket tags. V2 and unknown models
 omit them, retaining the annotations for a later model switch. Approval hashes,
 request limits and billing cover the exact rendered request, including bracket
-characters. Word QA strips annotations and ignores only the shared non-lexical
-Scribe event spellings. Alignment skips bracket-tag characters whether the
-provider includes them or omits them; captions retain typed words. Estimated fit
+characters. Word QA strips annotations. Only when the synthesis request carried
+tags, QA sends `tag_audio_events=true`; Scribe's `audio_event` entries are excluded
+by the existing word-only response reader. Untagged QA keeps its exact existing
+request bytes (`tag_audio_events=false`) and applies no event-token filtering.
+For tagged takes, normalize both recognized tokens and catalog event spellings
+with `normalizeForMatch(nfc(...))`, exactly like the word check. Drop only event
+occurrences in excess of their count in the expected words, retaining ordered
+matches so typed “Ha, got you” and repeated expected “ha” survive even when an
+extra “ha” occurs before or after them. Missing words, extra ordinary words,
+voice, clipping and consent remain hard gates. Alignment skips bracket-tag
+characters whether the provider includes them or omits them; captions retain
+typed words. Estimated fit
 and pre-pay pace matching add shared tag allowances, with `≈` on the phrase line;
-measured takes remain authoritative. Tagged takes retain their full audio envelope
-so a leading or trailing expression is not cropped. Untagged trimming is unchanged.
+measured takes remain authoritative. Every take uses the normal alignment trim
+(`TTS_TRIM_LEAD` / `TTS_TRIM_TAIL`), on every model; tags never retain provider
+lead-in or tail silence wholesale. Mid-phrase tags do not change either edge.
+On a tag-capable model, tags at boundary 0 extend the first word's acoustic start,
+and tags at the word count extend the last word's acoustic end, on hard, gap and
+other seam kinds, independently of hard-join smoothing. When alignment includes
+the matching bracket text at that boundary, use its character times, extending
+only outward. Otherwise use the existing energy/activity refinement outward from
+the edge word, widening its 120 ms search by the edge tags' shared duration
+allowances. Clamp both extents to the asset. Trim, fit words, recipe micro-pauses,
+edge-gain word seconds and generated fades follow those extended word times;
+there is no tag-specific renderer branch. The pause follows the expression,
+not just its neighboring lexical word. The shared `audio-tag-cases.json`
+`edgeExtents` and `eventFilters` sections pin this contract for both platforms.
 
 For v4 only, missing/null original `alignment` with valid `normalized_alignment`
 uses the latter's validated times. The ordered word-diff aligner maps normalized

@@ -156,7 +156,7 @@ public enum VoiceLabHardJoin {
         }
     }
 
-    public static func refine(words: [VoiceLabWord], samples: [Float], sampleRate: Int, incoming refineIncoming: Bool = true, outgoing refineOutgoing: Bool = true) -> [VoiceLabWord] {
+    public static func refine(words: [VoiceLabWord], samples: [Float], sampleRate: Int, incoming refineIncoming: Bool = true, outgoing refineOutgoing: Bool = true, searchSeconds: Double = acousticSearchSeconds) -> [VoiceLabWord] {
         guard !words.isEmpty else { return words }
         var refined = words
         let rate = Double(sampleRate), frame = max(1, sampleRate / 200)
@@ -165,8 +165,8 @@ public enum VoiceLabHardJoin {
             let index = incoming ? 0 : words.count - 1
             let word = refined[index]
             let boundary = incoming ? word.start : word.end
-            let lower = max(0, Int(((incoming ? boundary - acousticSearchSeconds : word.start) * rate).rounded(.down)))
-            let upper = min(samples.count, Int(((incoming ? word.end : boundary + acousticSearchSeconds) * rate).rounded(.up)))
+            let lower = max(0, Int(((incoming ? boundary - searchSeconds : word.start) * rate).rounded(.down)))
+            let upper = min(samples.count, Int(((incoming ? word.end : boundary + searchSeconds) * rate).rounded(.up)))
             guard upper > lower else { continue }
             var levels: [(Int, Int, Double)] = []
             var start = lower

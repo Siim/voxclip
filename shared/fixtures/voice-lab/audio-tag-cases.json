@@ -517,5 +517,1459 @@
       "seconds": 0.5
     }
   ],
-  "caseCount": 40
+  "caseCount": 71,
+  "edgeExtents": [
+    {
+      "id": "eleven_v3-leading-characters-hard",
+      "modelID": "eleven_v3",
+      "seam": "hard",
+      "sampleRate": 1000,
+      "sampleCount": 2000,
+      "sampleRuns": [
+        [
+          300,
+          800
+        ],
+        [
+          100,
+          200
+        ],
+        [
+          0,
+          50
+        ]
+      ],
+      "words": [
+        {
+          "text": "Hello",
+          "start": 0.3,
+          "end": 0.5,
+          "synthetic": true
+        },
+        {
+          "text": "there",
+          "start": 0.6,
+          "end": 0.8,
+          "synthetic": true
+        }
+      ],
+      "audioTags": [
+        {
+          "beforeToken": 0,
+          "tag": "sighs"
+        }
+      ],
+      "tokenCount": 2,
+      "characters": [
+        {
+          "character": "[sighs]",
+          "start": 0.1,
+          "end": 0.2
+        },
+        {
+          "character": "Hello",
+          "start": 0.3,
+          "end": 0.5
+        },
+        {
+          "character": " ",
+          "start": 0.5,
+          "end": 0.6
+        },
+        {
+          "character": "there",
+          "start": 0.6,
+          "end": 0.8
+        }
+      ],
+      "expectedStart": 0.1,
+      "expectedEnd": 0.8
+    },
+    {
+      "id": "eleven_v3-leading-characters-gap",
+      "modelID": "eleven_v3",
+      "seam": "gap",
+      "sampleRate": 1000,
+      "sampleCount": 2000,
+      "sampleRuns": [
+        [
+          300,
+          800
+        ],
+        [
+          100,
+          200
+        ],
+        [
+          0,
+          50
+        ]
+      ],
+      "words": [
+        {
+          "text": "Hello",
+          "start": 0.3,
+          "end": 0.5,
+          "synthetic": true
+        },
+        {
+          "text": "there",
+          "start": 0.6,
+          "end": 0.8,
+          "synthetic": true
+        }
+      ],
+      "audioTags": [
+        {
+          "beforeToken": 0,
+          "tag": "sighs"
+        }
+      ],
+      "tokenCount": 2,
+      "characters": [
+        {
+          "character": "[sighs]",
+          "start": 0.1,
+          "end": 0.2
+        },
+        {
+          "character": "Hello",
+          "start": 0.3,
+          "end": 0.5
+        },
+        {
+          "character": " ",
+          "start": 0.5,
+          "end": 0.6
+        },
+        {
+          "character": "there",
+          "start": 0.6,
+          "end": 0.8
+        }
+      ],
+      "expectedStart": 0.1,
+      "expectedEnd": 0.8
+    },
+    {
+      "id": "eleven_v3-leading-acoustic-hard",
+      "modelID": "eleven_v3",
+      "seam": "hard",
+      "sampleRate": 1000,
+      "sampleCount": 2000,
+      "sampleRuns": [
+        [
+          300,
+          800
+        ],
+        [
+          100,
+          200
+        ]
+      ],
+      "words": [
+        {
+          "text": "Hello",
+          "start": 0.3,
+          "end": 0.5,
+          "synthetic": true
+        },
+        {
+          "text": "there",
+          "start": 0.6,
+          "end": 0.8,
+          "synthetic": true
+        }
+      ],
+      "audioTags": [
+        {
+          "beforeToken": 0,
+          "tag": "sighs"
+        }
+      ],
+      "tokenCount": 2,
+      "characters": [
+        {
+          "character": "Hello",
+          "start": 0.3,
+          "end": 0.5
+        },
+        {
+          "character": " ",
+          "start": 0.5,
+          "end": 0.6
+        },
+        {
+          "character": "there",
+          "start": 0.6,
+          "end": 0.8
+        }
+      ],
+      "expectedStart": 0.1,
+      "expectedEnd": 0.8
+    },
+    {
+      "id": "eleven_v3-leading-acoustic-gap",
+      "modelID": "eleven_v3",
+      "seam": "gap",
+      "sampleRate": 1000,
+      "sampleCount": 2000,
+      "sampleRuns": [
+        [
+          300,
+          800
+        ],
+        [
+          100,
+          200
+        ]
+      ],
+      "words": [
+        {
+          "text": "Hello",
+          "start": 0.3,
+          "end": 0.5,
+          "synthetic": true
+        },
+        {
+          "text": "there",
+          "start": 0.6,
+          "end": 0.8,
+          "synthetic": true
+        }
+      ],
+      "audioTags": [
+        {
+          "beforeToken": 0,
+          "tag": "sighs"
+        }
+      ],
+      "tokenCount": 2,
+      "characters": [
+        {
+          "character": "Hello",
+          "start": 0.3,
+          "end": 0.5
+        },
+        {
+          "character": " ",
+          "start": 0.5,
+          "end": 0.6
+        },
+        {
+          "character": "there",
+          "start": 0.6,
+          "end": 0.8
+        }
+      ],
+      "expectedStart": 0.1,
+      "expectedEnd": 0.8
+    },
+    {
+      "id": "eleven_v3-trailing-characters-hard",
+      "modelID": "eleven_v3",
+      "seam": "hard",
+      "sampleRate": 1000,
+      "sampleCount": 2000,
+      "sampleRuns": [
+        [
+          300,
+          800
+        ],
+        [
+          1000,
+          1200
+        ],
+        [
+          1400,
+          1500
+        ]
+      ],
+      "words": [
+        {
+          "text": "Hello",
+          "start": 0.3,
+          "end": 0.5,
+          "synthetic": true
+        },
+        {
+          "text": "there",
+          "start": 0.6,
+          "end": 0.8,
+          "synthetic": true
+        }
+      ],
+      "audioTags": [
+        {
+          "beforeToken": 2,
+          "tag": "laughs"
+        }
+      ],
+      "tokenCount": 2,
+      "characters": [
+        {
+          "character": "Hello",
+          "start": 0.3,
+          "end": 0.5
+        },
+        {
+          "character": " ",
+          "start": 0.5,
+          "end": 0.6
+        },
+        {
+          "character": "there",
+          "start": 0.6,
+          "end": 0.8
+        },
+        {
+          "character": "[laughs]",
+          "start": 1,
+          "end": 1.2
+        }
+      ],
+      "expectedStart": 0.3,
+      "expectedEnd": 1.2
+    },
+    {
+      "id": "eleven_v3-trailing-characters-gap",
+      "modelID": "eleven_v3",
+      "seam": "gap",
+      "sampleRate": 1000,
+      "sampleCount": 2000,
+      "sampleRuns": [
+        [
+          300,
+          800
+        ],
+        [
+          1000,
+          1200
+        ],
+        [
+          1400,
+          1500
+        ]
+      ],
+      "words": [
+        {
+          "text": "Hello",
+          "start": 0.3,
+          "end": 0.5,
+          "synthetic": true
+        },
+        {
+          "text": "there",
+          "start": 0.6,
+          "end": 0.8,
+          "synthetic": true
+        }
+      ],
+      "audioTags": [
+        {
+          "beforeToken": 2,
+          "tag": "laughs"
+        }
+      ],
+      "tokenCount": 2,
+      "characters": [
+        {
+          "character": "Hello",
+          "start": 0.3,
+          "end": 0.5
+        },
+        {
+          "character": " ",
+          "start": 0.5,
+          "end": 0.6
+        },
+        {
+          "character": "there",
+          "start": 0.6,
+          "end": 0.8
+        },
+        {
+          "character": "[laughs]",
+          "start": 1,
+          "end": 1.2
+        }
+      ],
+      "expectedStart": 0.3,
+      "expectedEnd": 1.2
+    },
+    {
+      "id": "eleven_v3-trailing-acoustic-hard",
+      "modelID": "eleven_v3",
+      "seam": "hard",
+      "sampleRate": 1000,
+      "sampleCount": 2000,
+      "sampleRuns": [
+        [
+          300,
+          800
+        ],
+        [
+          1000,
+          1200
+        ]
+      ],
+      "words": [
+        {
+          "text": "Hello",
+          "start": 0.3,
+          "end": 0.5,
+          "synthetic": true
+        },
+        {
+          "text": "there",
+          "start": 0.6,
+          "end": 0.8,
+          "synthetic": true
+        }
+      ],
+      "audioTags": [
+        {
+          "beforeToken": 2,
+          "tag": "laughs"
+        }
+      ],
+      "tokenCount": 2,
+      "characters": [
+        {
+          "character": "Hello",
+          "start": 0.3,
+          "end": 0.5
+        },
+        {
+          "character": " ",
+          "start": 0.5,
+          "end": 0.6
+        },
+        {
+          "character": "there",
+          "start": 0.6,
+          "end": 0.8
+        }
+      ],
+      "expectedStart": 0.3,
+      "expectedEnd": 1.2
+    },
+    {
+      "id": "eleven_v3-trailing-acoustic-gap",
+      "modelID": "eleven_v3",
+      "seam": "gap",
+      "sampleRate": 1000,
+      "sampleCount": 2000,
+      "sampleRuns": [
+        [
+          300,
+          800
+        ],
+        [
+          1000,
+          1200
+        ]
+      ],
+      "words": [
+        {
+          "text": "Hello",
+          "start": 0.3,
+          "end": 0.5,
+          "synthetic": true
+        },
+        {
+          "text": "there",
+          "start": 0.6,
+          "end": 0.8,
+          "synthetic": true
+        }
+      ],
+      "audioTags": [
+        {
+          "beforeToken": 2,
+          "tag": "laughs"
+        }
+      ],
+      "tokenCount": 2,
+      "characters": [
+        {
+          "character": "Hello",
+          "start": 0.3,
+          "end": 0.5
+        },
+        {
+          "character": " ",
+          "start": 0.5,
+          "end": 0.6
+        },
+        {
+          "character": "there",
+          "start": 0.6,
+          "end": 0.8
+        }
+      ],
+      "expectedStart": 0.3,
+      "expectedEnd": 1.2
+    },
+    {
+      "id": "eleven_v4-leading-characters-hard",
+      "modelID": "eleven_v4",
+      "seam": "hard",
+      "sampleRate": 1000,
+      "sampleCount": 2000,
+      "sampleRuns": [
+        [
+          300,
+          800
+        ],
+        [
+          100,
+          200
+        ],
+        [
+          0,
+          50
+        ]
+      ],
+      "words": [
+        {
+          "text": "Hello",
+          "start": 0.3,
+          "end": 0.5,
+          "synthetic": true
+        },
+        {
+          "text": "there",
+          "start": 0.6,
+          "end": 0.8,
+          "synthetic": true
+        }
+      ],
+      "audioTags": [
+        {
+          "beforeToken": 0,
+          "tag": "sighs"
+        }
+      ],
+      "tokenCount": 2,
+      "characters": [
+        {
+          "character": "[sighs]",
+          "start": 0.1,
+          "end": 0.2
+        },
+        {
+          "character": "Hello",
+          "start": 0.3,
+          "end": 0.5
+        },
+        {
+          "character": " ",
+          "start": 0.5,
+          "end": 0.6
+        },
+        {
+          "character": "there",
+          "start": 0.6,
+          "end": 0.8
+        }
+      ],
+      "expectedStart": 0.1,
+      "expectedEnd": 0.8
+    },
+    {
+      "id": "eleven_v4-leading-characters-gap",
+      "modelID": "eleven_v4",
+      "seam": "gap",
+      "sampleRate": 1000,
+      "sampleCount": 2000,
+      "sampleRuns": [
+        [
+          300,
+          800
+        ],
+        [
+          100,
+          200
+        ],
+        [
+          0,
+          50
+        ]
+      ],
+      "words": [
+        {
+          "text": "Hello",
+          "start": 0.3,
+          "end": 0.5,
+          "synthetic": true
+        },
+        {
+          "text": "there",
+          "start": 0.6,
+          "end": 0.8,
+          "synthetic": true
+        }
+      ],
+      "audioTags": [
+        {
+          "beforeToken": 0,
+          "tag": "sighs"
+        }
+      ],
+      "tokenCount": 2,
+      "characters": [
+        {
+          "character": "[sighs]",
+          "start": 0.1,
+          "end": 0.2
+        },
+        {
+          "character": "Hello",
+          "start": 0.3,
+          "end": 0.5
+        },
+        {
+          "character": " ",
+          "start": 0.5,
+          "end": 0.6
+        },
+        {
+          "character": "there",
+          "start": 0.6,
+          "end": 0.8
+        }
+      ],
+      "expectedStart": 0.1,
+      "expectedEnd": 0.8
+    },
+    {
+      "id": "eleven_v4-leading-acoustic-hard",
+      "modelID": "eleven_v4",
+      "seam": "hard",
+      "sampleRate": 1000,
+      "sampleCount": 2000,
+      "sampleRuns": [
+        [
+          300,
+          800
+        ],
+        [
+          100,
+          200
+        ]
+      ],
+      "words": [
+        {
+          "text": "Hello",
+          "start": 0.3,
+          "end": 0.5,
+          "synthetic": true
+        },
+        {
+          "text": "there",
+          "start": 0.6,
+          "end": 0.8,
+          "synthetic": true
+        }
+      ],
+      "audioTags": [
+        {
+          "beforeToken": 0,
+          "tag": "sighs"
+        }
+      ],
+      "tokenCount": 2,
+      "characters": [
+        {
+          "character": "Hello",
+          "start": 0.3,
+          "end": 0.5
+        },
+        {
+          "character": " ",
+          "start": 0.5,
+          "end": 0.6
+        },
+        {
+          "character": "there",
+          "start": 0.6,
+          "end": 0.8
+        }
+      ],
+      "expectedStart": 0.1,
+      "expectedEnd": 0.8
+    },
+    {
+      "id": "eleven_v4-leading-acoustic-gap",
+      "modelID": "eleven_v4",
+      "seam": "gap",
+      "sampleRate": 1000,
+      "sampleCount": 2000,
+      "sampleRuns": [
+        [
+          300,
+          800
+        ],
+        [
+          100,
+          200
+        ]
+      ],
+      "words": [
+        {
+          "text": "Hello",
+          "start": 0.3,
+          "end": 0.5,
+          "synthetic": true
+        },
+        {
+          "text": "there",
+          "start": 0.6,
+          "end": 0.8,
+          "synthetic": true
+        }
+      ],
+      "audioTags": [
+        {
+          "beforeToken": 0,
+          "tag": "sighs"
+        }
+      ],
+      "tokenCount": 2,
+      "characters": [
+        {
+          "character": "Hello",
+          "start": 0.3,
+          "end": 0.5
+        },
+        {
+          "character": " ",
+          "start": 0.5,
+          "end": 0.6
+        },
+        {
+          "character": "there",
+          "start": 0.6,
+          "end": 0.8
+        }
+      ],
+      "expectedStart": 0.1,
+      "expectedEnd": 0.8
+    },
+    {
+      "id": "eleven_v4-trailing-characters-hard",
+      "modelID": "eleven_v4",
+      "seam": "hard",
+      "sampleRate": 1000,
+      "sampleCount": 2000,
+      "sampleRuns": [
+        [
+          300,
+          800
+        ],
+        [
+          1000,
+          1200
+        ],
+        [
+          1400,
+          1500
+        ]
+      ],
+      "words": [
+        {
+          "text": "Hello",
+          "start": 0.3,
+          "end": 0.5,
+          "synthetic": true
+        },
+        {
+          "text": "there",
+          "start": 0.6,
+          "end": 0.8,
+          "synthetic": true
+        }
+      ],
+      "audioTags": [
+        {
+          "beforeToken": 2,
+          "tag": "laughs"
+        }
+      ],
+      "tokenCount": 2,
+      "characters": [
+        {
+          "character": "Hello",
+          "start": 0.3,
+          "end": 0.5
+        },
+        {
+          "character": " ",
+          "start": 0.5,
+          "end": 0.6
+        },
+        {
+          "character": "there",
+          "start": 0.6,
+          "end": 0.8
+        },
+        {
+          "character": "[laughs]",
+          "start": 1,
+          "end": 1.2
+        }
+      ],
+      "expectedStart": 0.3,
+      "expectedEnd": 1.2
+    },
+    {
+      "id": "eleven_v4-trailing-characters-gap",
+      "modelID": "eleven_v4",
+      "seam": "gap",
+      "sampleRate": 1000,
+      "sampleCount": 2000,
+      "sampleRuns": [
+        [
+          300,
+          800
+        ],
+        [
+          1000,
+          1200
+        ],
+        [
+          1400,
+          1500
+        ]
+      ],
+      "words": [
+        {
+          "text": "Hello",
+          "start": 0.3,
+          "end": 0.5,
+          "synthetic": true
+        },
+        {
+          "text": "there",
+          "start": 0.6,
+          "end": 0.8,
+          "synthetic": true
+        }
+      ],
+      "audioTags": [
+        {
+          "beforeToken": 2,
+          "tag": "laughs"
+        }
+      ],
+      "tokenCount": 2,
+      "characters": [
+        {
+          "character": "Hello",
+          "start": 0.3,
+          "end": 0.5
+        },
+        {
+          "character": " ",
+          "start": 0.5,
+          "end": 0.6
+        },
+        {
+          "character": "there",
+          "start": 0.6,
+          "end": 0.8
+        },
+        {
+          "character": "[laughs]",
+          "start": 1,
+          "end": 1.2
+        }
+      ],
+      "expectedStart": 0.3,
+      "expectedEnd": 1.2
+    },
+    {
+      "id": "eleven_v4-trailing-acoustic-hard",
+      "modelID": "eleven_v4",
+      "seam": "hard",
+      "sampleRate": 1000,
+      "sampleCount": 2000,
+      "sampleRuns": [
+        [
+          300,
+          800
+        ],
+        [
+          1000,
+          1200
+        ]
+      ],
+      "words": [
+        {
+          "text": "Hello",
+          "start": 0.3,
+          "end": 0.5,
+          "synthetic": true
+        },
+        {
+          "text": "there",
+          "start": 0.6,
+          "end": 0.8,
+          "synthetic": true
+        }
+      ],
+      "audioTags": [
+        {
+          "beforeToken": 2,
+          "tag": "laughs"
+        }
+      ],
+      "tokenCount": 2,
+      "characters": [
+        {
+          "character": "Hello",
+          "start": 0.3,
+          "end": 0.5
+        },
+        {
+          "character": " ",
+          "start": 0.5,
+          "end": 0.6
+        },
+        {
+          "character": "there",
+          "start": 0.6,
+          "end": 0.8
+        }
+      ],
+      "expectedStart": 0.3,
+      "expectedEnd": 1.2
+    },
+    {
+      "id": "eleven_v4-trailing-acoustic-gap",
+      "modelID": "eleven_v4",
+      "seam": "gap",
+      "sampleRate": 1000,
+      "sampleCount": 2000,
+      "sampleRuns": [
+        [
+          300,
+          800
+        ],
+        [
+          1000,
+          1200
+        ]
+      ],
+      "words": [
+        {
+          "text": "Hello",
+          "start": 0.3,
+          "end": 0.5,
+          "synthetic": true
+        },
+        {
+          "text": "there",
+          "start": 0.6,
+          "end": 0.8,
+          "synthetic": true
+        }
+      ],
+      "audioTags": [
+        {
+          "beforeToken": 2,
+          "tag": "laughs"
+        }
+      ],
+      "tokenCount": 2,
+      "characters": [
+        {
+          "character": "Hello",
+          "start": 0.3,
+          "end": 0.5
+        },
+        {
+          "character": " ",
+          "start": 0.5,
+          "end": 0.6
+        },
+        {
+          "character": "there",
+          "start": 0.6,
+          "end": 0.8
+        }
+      ],
+      "expectedStart": 0.3,
+      "expectedEnd": 1.2
+    },
+    {
+      "id": "mid-phrase-normal-trim",
+      "modelID": "eleven_v3",
+      "seam": "hard",
+      "sampleRate": 1000,
+      "sampleCount": 2000,
+      "sampleRuns": [
+        [
+          300,
+          800
+        ],
+        [
+          100,
+          200
+        ],
+        [
+          0,
+          50
+        ]
+      ],
+      "words": [
+        {
+          "text": "Hello",
+          "start": 0.3,
+          "end": 0.5,
+          "synthetic": true
+        },
+        {
+          "text": "there",
+          "start": 0.6,
+          "end": 0.8,
+          "synthetic": true
+        }
+      ],
+      "audioTags": [
+        {
+          "beforeToken": 1,
+          "tag": "short pause"
+        }
+      ],
+      "tokenCount": 2,
+      "characters": [
+        {
+          "character": "[sighs]",
+          "start": 0.1,
+          "end": 0.2
+        },
+        {
+          "character": "Hello",
+          "start": 0.3,
+          "end": 0.5
+        },
+        {
+          "character": " ",
+          "start": 0.5,
+          "end": 0.6
+        },
+        {
+          "character": "there",
+          "start": 0.6,
+          "end": 0.8
+        }
+      ],
+      "expectedStart": 0.3,
+      "expectedEnd": 0.8,
+      "expectedTrimStart": 0.27,
+      "expectedTrimEnd": 0.86
+    },
+    {
+      "id": "unsupported-normal-trim",
+      "modelID": "eleven_multilingual_v2",
+      "seam": "hard",
+      "sampleRate": 1000,
+      "sampleCount": 2000,
+      "sampleRuns": [
+        [
+          300,
+          800
+        ],
+        [
+          100,
+          200
+        ],
+        [
+          0,
+          50
+        ]
+      ],
+      "words": [
+        {
+          "text": "Hello",
+          "start": 0.3,
+          "end": 0.5,
+          "synthetic": true
+        },
+        {
+          "text": "there",
+          "start": 0.6,
+          "end": 0.8,
+          "synthetic": true
+        }
+      ],
+      "audioTags": [
+        {
+          "beforeToken": 2,
+          "tag": "laughs"
+        }
+      ],
+      "tokenCount": 2,
+      "characters": [
+        {
+          "character": "[sighs]",
+          "start": 0.1,
+          "end": 0.2
+        },
+        {
+          "character": "Hello",
+          "start": 0.3,
+          "end": 0.5
+        },
+        {
+          "character": " ",
+          "start": 0.5,
+          "end": 0.6
+        },
+        {
+          "character": "there",
+          "start": 0.6,
+          "end": 0.8
+        }
+      ],
+      "expectedStart": 0.3,
+      "expectedEnd": 0.8,
+      "expectedTrimStart": 0.27,
+      "expectedTrimEnd": 0.86
+    },
+    {
+      "id": "unknown-normal-trim",
+      "modelID": "unknown",
+      "seam": "hard",
+      "sampleRate": 1000,
+      "sampleCount": 2000,
+      "sampleRuns": [
+        [
+          300,
+          800
+        ],
+        [
+          100,
+          200
+        ],
+        [
+          0,
+          50
+        ]
+      ],
+      "words": [
+        {
+          "text": "Hello",
+          "start": 0.3,
+          "end": 0.5,
+          "synthetic": true
+        },
+        {
+          "text": "there",
+          "start": 0.6,
+          "end": 0.8,
+          "synthetic": true
+        }
+      ],
+      "audioTags": [
+        {
+          "beforeToken": 0,
+          "tag": "sighs"
+        }
+      ],
+      "tokenCount": 2,
+      "characters": [
+        {
+          "character": "[sighs]",
+          "start": 0.1,
+          "end": 0.2
+        },
+        {
+          "character": "Hello",
+          "start": 0.3,
+          "end": 0.5
+        },
+        {
+          "character": " ",
+          "start": 0.5,
+          "end": 0.6
+        },
+        {
+          "character": "there",
+          "start": 0.6,
+          "end": 0.8
+        }
+      ],
+      "expectedStart": 0.3,
+      "expectedEnd": 0.8,
+      "expectedTrimStart": 0.27,
+      "expectedTrimEnd": 0.86
+    },
+    {
+      "id": "leading-clamped-to-asset",
+      "modelID": "eleven_v3",
+      "seam": "hard",
+      "sampleRate": 1000,
+      "sampleCount": 2000,
+      "sampleRuns": [
+        [
+          0,
+          200
+        ],
+        [
+          300,
+          800
+        ]
+      ],
+      "words": [
+        {
+          "text": "Hello",
+          "start": 0.3,
+          "end": 0.5,
+          "synthetic": true
+        },
+        {
+          "text": "there",
+          "start": 0.6,
+          "end": 0.8,
+          "synthetic": true
+        }
+      ],
+      "audioTags": [
+        {
+          "beforeToken": 0,
+          "tag": "sighs"
+        }
+      ],
+      "tokenCount": 2,
+      "characters": [
+        {
+          "character": "Hello",
+          "start": 0.3,
+          "end": 0.5
+        },
+        {
+          "character": " ",
+          "start": 0.5,
+          "end": 0.6
+        },
+        {
+          "character": "there",
+          "start": 0.6,
+          "end": 0.8
+        }
+      ],
+      "expectedStart": 0,
+      "expectedEnd": 0.8
+    },
+    {
+      "id": "trailing-clamped-to-asset",
+      "modelID": "eleven_v3",
+      "seam": "hard",
+      "sampleRate": 1000,
+      "sampleCount": 1100,
+      "sampleRuns": [
+        [
+          300,
+          800
+        ],
+        [
+          1000,
+          1100
+        ]
+      ],
+      "words": [
+        {
+          "text": "Hello",
+          "start": 0.3,
+          "end": 0.5,
+          "synthetic": true
+        },
+        {
+          "text": "there",
+          "start": 0.6,
+          "end": 0.8,
+          "synthetic": true
+        }
+      ],
+      "audioTags": [
+        {
+          "beforeToken": 2,
+          "tag": "laughs"
+        }
+      ],
+      "tokenCount": 2,
+      "characters": [
+        {
+          "character": "Hello",
+          "start": 0.3,
+          "end": 0.5
+        },
+        {
+          "character": " ",
+          "start": 0.5,
+          "end": 0.6
+        },
+        {
+          "character": "there",
+          "start": 0.6,
+          "end": 0.8
+        }
+      ],
+      "expectedStart": 0.3,
+      "expectedEnd": 1.1
+    }
+  ],
+  "eventFilters": [
+    {
+      "id": "punctuated-haha",
+      "expected": "Hello there",
+      "recognized": [
+        "Hello",
+        "Haha.",
+        "there"
+      ],
+      "tagged": true,
+      "filtered": [
+        "hello",
+        "there"
+      ]
+    },
+    {
+      "id": "typed-ha",
+      "expected": "Ha, got you",
+      "recognized": [
+        "ha",
+        "got",
+        "you"
+      ],
+      "tagged": true,
+      "filtered": [
+        "ha",
+        "got",
+        "you"
+      ]
+    },
+    {
+      "id": "typed-ha-before-extra",
+      "expected": "Ha, got you",
+      "recognized": [
+        "ha",
+        "got",
+        "you",
+        "ha"
+      ],
+      "tagged": true,
+      "filtered": [
+        "ha",
+        "got",
+        "you"
+      ]
+    },
+    {
+      "id": "typed-ha-after-extra",
+      "expected": "got you ha",
+      "recognized": [
+        "ha",
+        "got",
+        "you",
+        "ha"
+      ],
+      "tagged": true,
+      "filtered": [
+        "got",
+        "you",
+        "ha"
+      ]
+    },
+    {
+      "id": "repeated-expected-ha",
+      "expected": "Ha ha",
+      "recognized": [
+        "ha",
+        "Ha,",
+        "HA!"
+      ],
+      "tagged": true,
+      "filtered": [
+        "ha",
+        "ha"
+      ]
+    },
+    {
+      "id": "untagged-no-filter",
+      "expected": "Hello there",
+      "recognized": [
+        "Hello",
+        "haha",
+        "there"
+      ],
+      "tagged": false,
+      "filtered": [
+        "hello",
+        "haha",
+        "there"
+      ]
+    },
+    {
+      "id": "untagged-typed-ha",
+      "expected": "Ha, got you",
+      "recognized": [
+        "ha",
+        "got",
+        "you"
+      ],
+      "tagged": false,
+      "filtered": [
+        "ha",
+        "got",
+        "you"
+      ]
+    },
+    {
+      "id": "extra-bracket-events",
+      "expected": "Hello there",
+      "recognized": [
+        "(laughs)",
+        "Hello",
+        "[sighs]",
+        "there"
+      ],
+      "tagged": true,
+      "filtered": [
+        "hello",
+        "there"
+      ]
+    },
+    {
+      "id": "missing-word-stays-hard",
+      "expected": "Ha ha there",
+      "recognized": [
+        "ha",
+        "there"
+      ],
+      "tagged": true,
+      "filtered": [
+        "ha",
+        "there"
+      ]
+    },
+    {
+      "id": "extra-real-word-stays-hard",
+      "expected": "Hello there",
+      "recognized": [
+        "Hello",
+        "wrong",
+        "there"
+      ],
+      "tagged": true,
+      "filtered": [
+        "hello",
+        "wrong",
+        "there"
+      ]
+    }
+  ]
 }

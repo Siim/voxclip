@@ -90,12 +90,16 @@ public enum VoiceLabTakeProcessing {
         let last = lastAlignedTime(frames: samples.count, rate: rate)
         var words: [VoiceLabWord] = try VoiceLabAlignment.words(characters: alignment.map(\.character), starts: alignment.map { min($0.start, last) },
             ends: alignment.map { min($0.end, last) }, expectedText: input.text)
+        let taggedModel = VoiceLabAudioTags.supports(input.modelID)
+        let tokenCount = EditingPrimitives.splitWords(input.text).count
         if input.hardJoinSmoothing {
             words = VoiceLabHardJoin.refine(words: words, samples: samples, sampleRate: rate,
-                incoming: input.window.leftSeam.kind == .hard, outgoing: input.window.rightSeam.kind == .hard)
+                incoming: input.window.leftSeam.kind == .hard && !(taggedModel && input.audioTags.contains { $0.beforeToken == 0 }),
+                outgoing: input.window.rightSeam.kind == .hard && !(taggedModel && input.audioTags.contains { $0.beforeToken == tokenCount }))
         }
-        let trim = input.audioTags.isEmpty || !VoiceLabAudioTags.supports(input.modelID)
-            ? try VoiceLabAlignment.trim(words: words, assetDuration: duration) : (start: 0.0, end: duration)
+        words = VoiceLabAudioTags.edgeExtent(words: words, samples: samples, sampleRate: rate, tags: input.audioTags,
+            tokenCount: tokenCount, modelID: input.modelID, characters: alignment)
+        let trim = try VoiceLabAlignment.trim(words: words, assetDuration: duration)
         let trimStart = frames(trim.start, rate), trimEnd = frames(trim.end, rate)
         guard trimEnd <= samples.count, trimStart < trimEnd else { throw VoiceLabError.invalidAlignment }
         let trimmed = Array(samples[trimStart..<trimEnd])

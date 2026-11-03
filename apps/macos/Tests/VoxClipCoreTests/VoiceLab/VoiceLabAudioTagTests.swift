@@ -4,6 +4,39 @@ import Testing
 
 @Suite("Audio tag annotations", .offlineFixtures)
 struct VoiceLabAudioTagTests {
+    @Test func sharedEdgeExtentsAndTrimBoundaries() throws {
+        for row in try fixture()[ai: "edgeExtents"].aiArray {
+            let rate = try #require(row[ai: "sampleRate"].aiInt)
+            var samples = [Float](repeating: 0, count: try #require(row[ai: "sampleCount"].aiInt))
+            for run in row[ai: "sampleRuns"].aiArray {
+                let bounds = run.aiArray.compactMap(\.aiInt)
+                for index in bounds[0]..<bounds[1] { samples[index] = 0.1 }
+            }
+            let words = try JSONDecoder().decode([VoiceLabWord].self, from: row[ai: "words"].aiEncoded())
+            let characters = try row[ai: "characters"].aiArray.map { timing in
+                VoiceLabCharacterTiming(character: try #require(timing[ai: "character"].aiString),
+                    start: try #require(timing[ai: "start"].aiDouble), end: try #require(timing[ai: "end"].aiDouble))
+            }
+            let extended = VoiceLabAudioTags.edgeExtent(words: words, samples: samples, sampleRate: rate,
+                tags: try tags(row[ai: "audioTags"]), tokenCount: try #require(row[ai: "tokenCount"].aiInt),
+                modelID: try #require(row[ai: "modelID"].aiString), characters: characters)
+            #expect(abs(extended.first!.start - (row[ai: "expectedStart"].aiDouble ?? -1)) < 1e-12, "\(row[ai: "id"])")
+            #expect(abs(extended.last!.end - (row[ai: "expectedEnd"].aiDouble ?? -1)) < 1e-12, "\(row[ai: "id"])")
+            #expect(extended.map(\.text) == words.map(\.text))
+            if let expectedStart = row[ai: "expectedTrimStart"].aiDouble, let expectedEnd = row[ai: "expectedTrimEnd"].aiDouble {
+                let trim = try VoiceLabAlignment.trim(words: extended, assetDuration: Double(samples.count) / Double(rate))
+                #expect(abs(trim.start - expectedStart) < 1e-12 && abs(trim.end - expectedEnd) < 1e-12)
+            }
+        }
+    }
+    @Test func sharedEventFiltersKeepExpectedMultiplicity() throws {
+        for row in try fixture()[ai: "eventFilters"].aiArray {
+            let expected = VoiceLabTakeQuality.tokens(try #require(row[ai: "expected"].aiString))
+            let filtered = VoiceLabAudioTags.filterScribeEvents(recognized: row[ai: "recognized"].aiArray.compactMap(\.aiString),
+                expected: expected, hasTags: row[ai: "tagged"] == .bool(true))
+            #expect(filtered == row[ai: "filtered"].aiArray.compactMap(\.aiString), "\(row[ai: "id"])")
+        }
+    }
     private func fixture() throws -> JSONValue {
         try JSONDecoder().decode(JSONValue.self, from: FixtureLoader.data("fixtures/voice-lab/audio-tag-cases.json"))
     }
