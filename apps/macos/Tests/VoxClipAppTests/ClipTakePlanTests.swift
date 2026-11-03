@@ -1360,7 +1360,53 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == synthesisCount })
     }
 
-    @Test(arguments: ["price", "original", "keepVoice", "undoVoice", "keepFree", "undoFree", "keepAll", "edit"])
+    @Test func unpaidExpressionChangeRequotesWithoutSendingSpeech() async throws {
+        let fixture = try await fixture(indices: [10])
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture)
+        defer { editor.close() }
+        let previous = try #require(session.takePlan)
+        let approval = try #require(previous.approvalID)
+        let sends = ClipTakeHTTP.state.withLock { $0.texts.count }
+        let project = editor.project
+        let oldTiming = try #require(session.voiceReview(2)?.timing)
+        session.updateAudioTags([.init(beforeToken: 1, tag: "laughs")], ordinal: 2)
+        await session.takesTask?.value
+        let next = try #require(session.takePlan)
+        #expect(previous.isRetired && next !== previous && next.approvalID != approval)
+        #expect(session.changes[1].hunk.audioTags == [.init(beforeToken: 1, tag: "laughs")])
+        #expect(next.phrases[0].audioTags.map(\.tag) == ["laughs"])
+        let timing = try #require(session.voiceReview(2)?.timing)
+        #expect(abs(timing.estimateSeconds * timing.pace - oldTiming.estimateSeconds * oldTiming.pace - 0.8) < 1e-9)
+        #expect(editor.project == project)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == sends })
+        await next.start(approved: true, quoteID: approval)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == sends })
+        let model = VoiceLabModel(id: "eleven_v3", name: "Provider name", languages: ["en"], canSpeak: true,
+            canConvert: false, maximumTextLength: nil, characterCostMultiplier: nil)
+        #expect(DirectorTakeRows.speechModelName(model) == "Eleven v3 · audio tags")
+        #expect(AudioTagPhrase.explanation == "Rewrite suggests tags where your original had a laugh, sigh or pause. Tags aren't spoken words and don't count in the word check.")
+    }
+
+    @Test func mergedPhraseRemovalPreservesOtherHunksAnnotations() async throws {
+        let fixture = try await fixture(indices: [10, 11])
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture, touchingVoices: true)
+        defer { editor.close() }
+        session.updateAudioTags([.init(beforeToken: 1, tag: "laughs")], ordinal: 2)
+        await session.takesTask?.value
+        session.updateAudioTags([.init(beforeToken: 1, tag: "sighs")], ordinal: 3)
+        await session.takesTask?.value
+        let phrase = try #require(session.takePlan?.phrases.first)
+        #expect(phrase.audioTags.map(\.tag) == ["laughs", "sighs"])
+        session.updateAudioTags(Array(phrase.audioTags.dropFirst()), phrase: phrase)
+        await session.takesTask?.value
+        #expect(session.changes[1].hunk.audioTags.isEmpty)
+        #expect(session.changes[2].hunk.audioTags == [.init(beforeToken: 1, tag: "sighs")])
+        #expect(session.takePlan?.phrases.first?.audioTags.map(\.tag) == ["sighs"])
+    }
+
+    @Test(arguments: ["price", "original", "keepVoice", "undoVoice", "keepFree", "undoFree", "keepAll", "edit", "tag"])
     func paidProposalActionsWaitForDiscardAndCancellationChangesNothing(action: String) async throws {
         let fixture = try await fixture(indices: [10])
         defer { try? FileManager.default.removeItem(at: fixture.root) }
@@ -1382,6 +1428,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
             case "keepFree": _ = editor.keepChange(1)
             case "undoFree": _ = editor.excludeChange(1)
             case "keepAll": _ = editor.keepAllChanges()
+            case "tag": session.updateAudioTags([VoiceLabAudioTag(beforeToken: 1, tag: "laughs")], ordinal: 2)
             default: _ = editor.editChange(2, text: "Different words")
             }
         }

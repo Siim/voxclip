@@ -601,9 +601,13 @@ extension EditorModel {
             let inputs = RewriteReview.Inputs(transcript: transcript, project: project, scope: scope, envelope: envelope,
                 prices: nil, synthesisModel: rewrite?.currentSynthesisModel)
             let rate = try VoiceLabPhraseTiming.speakingRate(transcript: RewriteReview.timingTranscript(inputs))
+            let hunk = rewrite?.changes.indices.contains(ordinal - 1) == true ? rewrite?.changes[ordinal - 1].hunk : nil
+            let annotations = VoiceLabAudioTags.reanchored(hunk?.audioTags ?? [],
+                from: hunk?.newTokens.joined(separator: " ") ?? trimmed, to: trimmed)
+            let shifted = VoiceLabAudioTags.shifted(annotations, by: window.leftBridgeWordIds.map(reader.text).flatMap { EditingPrimitives.splitWords($0) }.count)
             return try VoiceLabPaceMatching.measure(text: patch, rate: rate, window: window, incomingSilence: silence.incoming,
                 outgoingSilence: silence.outgoing, sourceSampleRate: project.media.source.audio?.sampleRate ?? 48_000,
-                supportsPace: inputs.synthesisModel != "eleven_v4").copy
+                supportsPace: inputs.synthesisModel != "eleven_v4", audioTags: shifted, modelID: inputs.synthesisModel ?? "").copy
         } catch { return nil }
     }
     private func confirmPaidProposalChange(_ perform: @escaping @MainActor () -> Void) -> Bool {

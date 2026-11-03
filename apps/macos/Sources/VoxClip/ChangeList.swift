@@ -32,9 +32,11 @@ extension RewriteSession {
     func voiceReview(_ ordinal: Int) -> RewriteHunkReview? {
         guard var result = voiceReviews[ordinal] else { return nil }
         guard let selectedModel = currentSynthesisModel, let timing = result.timing, let window = result.window,
-              (selectedModel == "eleven_v4") != (synthesisModel == "eleven_v4"),
+              selectedModel != synthesisModel,
               let silence = try? VoiceLabWindowPlanner.lendableSilence(project: project, scope: scope, window: window),
-              let matched = try? VoiceLabPaceMatching.match(seconds: timing.estimateSeconds * timing.pace, window: window,
+              let matched = try? VoiceLabPaceMatching.match(seconds: timing.estimateSeconds * timing.pace
+                  - VoiceLabAudioTags.allowance(result.hunk.audioTags, text: result.patchText ?? "", modelID: synthesisModel ?? "")
+                  + VoiceLabAudioTags.allowance(result.hunk.audioTags, text: result.patchText ?? "", modelID: selectedModel), window: window,
                   incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
                   sourceSampleRate: project.media.source.audio?.sampleRate ?? 48_000,
                   supportsPace: selectedModel != "eleven_v4") else { return result }
@@ -94,6 +96,7 @@ extension RewriteSession {
         }
         task.review = { [weak self] ordinal, review in self?.review(ordinal, review) }
         task.phraseTimingAction = { [weak self] ordinal, action in self?.phraseTimingAction(action, ordinal: ordinal) }
+        task.audioTagsChanged = { [weak self] ordinal, tags in self?.updateAudioTags(tags, ordinal: ordinal) }
         task.show(.proposal(content.set), headline: content.headline, cards: content.cards, footer: content.footer, contextAction: content.askAgain)
     }
 
@@ -196,7 +199,10 @@ extension RewriteSession {
         }
         let timing = kind == .voice ? voiceReview(change.ordinal)?.timing : nil
         let spoken = change.description(prefix: "Change", count: count, removed: reading.removed, inserted: reading.inserted)
-        return ProposalItem(timing: timing,
+        let annotations = changes.indices.contains(change.ordinal - 1) ? changes[change.ordinal - 1].hunk.audioTags : []
+        let original = changes.indices.contains(change.ordinal - 1) ? changes[change.ordinal - 1].hunk.newTokens.joined(separator: " ") : reading.text
+        return ProposalItem(audioTags: VoiceLabAudioTags.reanchored(annotations, from: original, to: reading.text),
+                            tagsOmitted: !VoiceLabAudioTags.supports(currentSynthesisModel ?? ""), timing: timing,
                             pricedAnyway: pricedAnyway.contains(change.ordinal),
                             ordinal: change.ordinal, kind: kind, sourceWordIDs: change.span, newWords: change.parts.flatMap(\.newTokens),
                             oldWords: reading.removed, checkThis: checkThis, state: state,
@@ -369,7 +375,16 @@ extension RewriteSession {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(set.items) { item in
                 ChangeRow(item: item, focused: item.ordinal == set.focused,
+                    tagsChanged: { task.audioTagsChanged?(item.ordinal, $0) },
                     timingAction: { task.phraseTimingAction?(item.ordinal, $0) }, review: { task.review?(item.ordinal, $0) })
+            }
+            if set.items.contains(where: { $0.kind == .voice }) {
+                Text(AudioTagPhrase.explanation).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
+                    .padding(.horizontal, 8).padding(.top, 6)
+                if set.items.contains(where: { $0.kind == .voice && $0.tagsOmitted }) {
+                    Text("Multilingual v2 leaves tags out.").font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
+                        .padding(.horizontal, 8)
+                }
             }
         }
         .padding(.horizontal, -8)
@@ -382,6 +397,7 @@ extension RewriteSession {
 @MainActor private struct ChangeRow: View {
     let item: ProposalItem
     let focused: Bool
+    let tagsChanged: ([VoiceLabAudioTag]) -> Void
     let timingAction: (PhraseTimingAction) -> Void
     let review: (ChangeReview) -> Void
 
@@ -425,13 +441,18 @@ extension RewriteSession {
                 RoundedRectangle(cornerRadius: 1.5).fill(item.state == .pending ? DesignValues.color("change.add") : .clear)
                     .frame(width: 3, height: 14)
                 Image(systemName: glyph).font(.system(size: 12)).foregroundStyle(DesignValues.color("text.tertiary")).frame(width: 14)
-                Text(item.quote).font(VCType.callout.font())
-                    .foregroundStyle(DesignValues.color(item.state == .pending ? "text.primary" : item.state == .kept ? "text.secondary" : "text.tertiary"))
-                    .lineLimit(1).truncationMode(.tail)
+                if item.kind == .voice {
+                    AudioTagPhrase(text: item.quote, tags: item.audioTags, phrase: item.ordinal, omitted: item.tagsOmitted, changed: tagsChanged)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Text(item.quote).font(VCType.callout.font())
+                        .foregroundStyle(DesignValues.color(item.state == .pending ? "text.primary" : item.state == .kept ? "text.secondary" : "text.tertiary"))
+                        .lineLimit(1).truncationMode(.tail)
+                }
                 Spacer(minLength: 4)
                 Text(label).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary")).fixedSize()
             }
-            .frame(height: 26)
+            .frame(minHeight: 26)
             if let timing = item.timing {
                 Text(timing.copy).font(VCType.small.font().monospaced())
                     .foregroundStyle(DesignValues.color("text.tertiary"))
@@ -461,7 +482,7 @@ extension RewriteSession {
                 Button(action == .keep ? "Keep Change" : action == .undo ? "Undo Change" : "Edit Change") { review(action) }
             }
         }
-        .accessibilityElement(children: item.timing?.fits == false ? .contain : .ignore)
+        .accessibilityElement(children: item.kind == .voice || item.timing?.fits == false ? .contain : .ignore)
         .accessibilityLabel(item.spoken)
         .accessibilityAddTraits(focused ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction { review(.focus) }

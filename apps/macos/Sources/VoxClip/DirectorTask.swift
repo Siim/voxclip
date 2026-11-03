@@ -165,6 +165,8 @@ struct ActivityStep: Identifiable, Equatable, Sendable {
 /// panel and the transcript share (design.md §6.3.5). The proposal's producer keeps it as the
 /// transcript's proposal reads it, so its review follows the transcript's Keep and Undo.
 struct ProposalItem: Identifiable, Equatable, Sendable {
+    var audioTags: [VoiceLabAudioTag] = []
+    var tagsOmitted = false
     var timing: VoiceLabPhraseTiming? = nil
     var pricedAnyway = false
     enum Kind: String, Sendable { case cut, fix, voice }
@@ -343,6 +345,7 @@ enum PanelError: Equatable, Sendable {
     /// Keeps, undoes, focuses or edits a change of a `.changes` card, by ordinal (impl-plan item 7).
     @ObservationIgnored var review: (@MainActor (Int, ChangeReview) -> Void)?
     @ObservationIgnored var phraseTimingAction: (@MainActor (Int, PhraseTimingAction) -> Void)?
+    @ObservationIgnored var audioTagsChanged: (@MainActor (Int, [VoiceLabAudioTag]) -> Void)?
     /// The producer's work as the task's panel appears: Rewrite detects its AI for the context line's dot.
     @ObservationIgnored var appeared: (@MainActor () async -> Void)?
     /// The row picked in a chooser card.
