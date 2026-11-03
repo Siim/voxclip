@@ -22,6 +22,8 @@ import Testing
                 let pace: Double
                 let fits: Bool
                 let keepsSource: Bool
+                let quietSpan: [Double]
+                let videoCut: Bool
             }
             let schema: String
             let sourceSampleRate: Int
@@ -32,19 +34,26 @@ import Testing
             let cases: [Row]
         }
         let fixture = try FixtureLoader.decode(Document.self, at: "fixtures/voice-lab/pace-matching-cases.json")
-        #expect(fixture.schema == "voxclip-pace-matching/1" && fixture.caseCount == 3 && fixture.cases.count == 3)
+        #expect(fixture.schema == "voxclip-pace-matching/2" && fixture.caseCount == 6 && fixture.cases.count == 6)
         for row in fixture.cases {
             let source = window(row.windowSeconds, kind: fixture.seamKind)
+            let blocks = Int(ceil(source.end * 100))
+            let envelope = AudioEnvelope(sampleRate: 48_000, levels: (0..<blocks).map { block in
+                let local = Double(block) / 100 - source.start
+                return local >= row.quietSpan[0] && local + 0.01 <= row.quietSpan[1] ? 0.001 : 1
+            })
             let timing = try VoiceLabPaceMatching.match(seconds: row.measuredSeconds, window: source,
-                incomingSilence: fixture.incomingSilence, outgoingSilence: fixture.outgoingSilence, sourceSampleRate: fixture.sourceSampleRate, hardJoinSmoothing: false)
+                incomingSilence: fixture.incomingSilence, outgoingSilence: fixture.outgoingSilence, sourceSampleRate: fixture.sourceSampleRate,
+                hardJoinSmoothing: false, sourceEnvelope: envelope)
             #expect(timing.pace == row.pace, "\(row.id)")
             #expect(timing.fits == row.fits, "\(row.id)")
             let fit = try VoiceLabPhraseTiming.preview(seconds: timing.estimateSeconds, window: source,
-                incomingSilence: 0.05, outgoingSilence: 0.05, sourceSampleRate: 48_000)
+                incomingSilence: 0.05, outgoingSilence: 0.05, sourceSampleRate: 48_000, hardJoinSmoothing: false)
             let gate = VoiceLabVideoDurationOptions(fit: fit, sourceSampleRate: 48_000, assetSampleRate: 48_000)
             #expect(gate.allows(.source) == row.keepsSource)
             #expect(fit.plan.incoming.padFrames + fit.plan.outgoing.padFrames <= 28_800)
-            #expect(timing.copy.contains("at ≈\(String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), row.pace))× pace"))
+            #expect(timing.fitsWithVideoCut == row.videoCut)
+            #expect(!timing.copy.contains("pace"))
             if !row.fits { #expect(timing.tooLong) }
         }
     }
@@ -63,12 +72,14 @@ import Testing
                     }
                     let timing = try VoiceLabPaceMatching.match(seconds: natural, window: source,
                         incomingSilence: silence, outgoingSilence: silence, sourceSampleRate: 48_000, hardJoinSmoothing: hardJoinSmoothing)
-                    let grid = try (70...120).map { try gate(Double($0) / 100) }
+                    let grid = try (90...110).map { try gate(Double($0) / 100) }
                     let chosen = try gate(timing.pace)
-                    #expect(timing.fits == grid.contains { $0.allows(.source) || $0.allows(.retimed) })
+                    #expect((0.9...1.1).contains(timing.pace))
+                    #expect(timing.fits == (chosen.allows(.source) || chosen.allows(.retimed)))
                     if grid.contains(where: { $0.allows(.source) }) {
                         #expect(chosen.allows(.source), "\(kind) \(duration) \(fraction), chose \(timing.pace)")
                     }
+                    else { #expect(timing.pace == 1) }
                 }
             }
         }
@@ -78,22 +89,22 @@ import Testing
         let source = window(5.120, kind: .hard)
         let timing = try VoiceLabPaceMatching.match(seconds: 3.390, window: source,
             incomingSilence: nil, outgoingSilence: nil, sourceSampleRate: 48_000, hardJoinSmoothing: false)
-        #expect(timing.pace == 0.7 && timing.fits)
+        #expect(timing.pace == 1 && !timing.fits)
         let fit = try VoiceLabPhraseTiming.preview(seconds: timing.estimateSeconds, window: source,
-            incomingSilence: nil, outgoingSilence: nil, sourceSampleRate: 48_000)
+            incomingSilence: nil, outgoingSilence: nil, sourceSampleRate: 48_000, hardJoinSmoothing: false)
         let gate = VoiceLabVideoDurationOptions(fit: fit, sourceSampleRate: 48_000, assetSampleRate: 48_000)
-        #expect(!gate.allows(.source) && gate.allows(.retimed))
+        #expect(!gate.allows(.source) && !gate.allows(.retimed))
         let retry = try VoiceLabPaceMatching.match(seconds: 5.8, oldPace: 0.7, window: source,
             incomingSilence: nil, outgoingSilence: nil, sourceSampleRate: 48_000, hardJoinSmoothing: false)
-        #expect(retry.pace == 0.8 && retry.fits)
-        #expect(abs(retry.estimateSeconds - 5.075) < 0.00001)
+        #expect(retry.pace == 1 && retry.fits)
+        #expect(abs(retry.estimateSeconds - 4.06) < 0.00001)
     }
 
     @Test func tooShortAndDialogueKeepTruthfulRecovery() throws {
         let source = window(5.120, kind: .hard)
         let short = try VoiceLabPaceMatching.match(seconds: 1, window: source,
             incomingSilence: nil, outgoingSilence: nil, sourceSampleRate: 48_000, hardJoinSmoothing: false)
-        #expect(short.pace == 0.7 && !short.fits && !short.tooLong)
+        #expect(short.pace == 1 && !short.fits && !short.tooLong)
         let dialogue = try VoiceLabPaceMatching.match(seconds: 3.390, window: source,
             incomingSilence: nil, outgoingSilence: nil, sourceSampleRate: 48_000, supportsPace: false, hardJoinSmoothing: false)
         #expect(dialogue.pace == 1 && !dialogue.fits)

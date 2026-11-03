@@ -95,7 +95,7 @@ def document():
         'gains': gains,
         'validation': validation,
         'reserve': {'windowSeconds': 1, 'speechSeconds': 0.9, 'legacyOutputSeconds': 1,
-                    'outputSeconds': 1.18, 'padSeconds': 0.14, 'pace': 1.2, 'fits': True},
+                    'outputSeconds': 1.18, 'padSeconds': 0.14, 'pace': 1.0, 'fits': True},
         'roomTone': {'runAmplitude': 0.000005, 'pauseAmplitude': 0.0005, 'gainDb': 40, 'toleranceLu': 2},
         'joinCheck': {'pauseSeconds': [0.14, 0.24], 'speechStepDb': 0, 'excessLu': 0},
         'acoustic': {'alignedStart': 0.2, 'alignedEnd': 0.7, 'audioStart': 0.15, 'audioEnd': 0.8, 'searchLimitSeconds': 0.12},

@@ -15,10 +15,14 @@ The original 42-case file and all older fixture bytes/counts are unchanged.
 `hard-join-cases.json` is the independent `voxclip-hard-join/1` contract for new
 hard-seam micro-pauses, fades, gated edge gain, room tone, validation and
 reserve-aware pace matching. Both Cores and Media suites replay its synthetic
-cases; see [hard-join-README.md](hard-join-README.md). Existing fixtures and
-pinned counts remain unchanged.
+cases; see [hard-join-README.md](hard-join-README.md). Fixture categories stay
+independent; the pace-matching revision below changes only its own contract.
 
-`pace-matching-cases.json` is the independent `voxclip-pace-matching/1` contract for the three sample-exact paid-duration observations supplied on 3 November 2026: window/take 19.400/16.115, 5.120/3.390 and 1.145/1.830 seconds. The offline replay uses 48 kHz, gap seams with 0.05 s available outside each seam (none borrowable after the kept margin), and fully voiced hypothetical takes (no invented internal pause growth). The existing total seam padding limit remains 0.6 s. Expected hundredth-step provider paces are 0.84, 0.70 and 1.20: the first two can keep the source duration; the third still needs shorter words. These are supplied timing observations, not bundled private media or new provider evidence. With hard seams the first two may instead require Match video; the Core tests cover that fallback and measured retries. Regenerate with `python3 tools/fixtures/voice-lab/generate_pace_matching.py`; `--check` checks exact bytes. Windows must port pace selection, exact-before-retimed preference, receipt-based retry calibration, short-wording sentence recovery, row copy and price binding. Existing fixture schemas/categories/counts are unchanged.
+`pace-matching-cases.json` is `voxclip-pace-matching/2`, regenerated in place. Synthetic quiet spans make cut eligibility deterministic; no private audio is bundled. All automatic paces are 1.00: phrase-1 (16.115/19.400 s) and phrase-2 (3.390/5.120 s) no longer choose 0.84/0.70 to fill silence and instead permit a video cut. Phrase-3 (1.830/1.145 s) no longer chooses 1.20; it stays 1.00 and still requires shorter wording. The three supplied MVP9 observations (4.1/5.4, 1.3/2.2, 2.7/5.5 s) also stay 1.00 and permit cuts in their synthetic quiet context. Actual pause/cut capacity remains clip-dependent. Regenerate with `python3 tools/fixtures/voice-lab/generate_pace_matching.py`; `--check` checks exact bytes. Both Core suites replay all six cases.
+
+`natural-pacing-cases.json` uses its own `voxclip-natural-pacing/1` schema: 0.3 s / 1.1 s hard windows reserve 0.06 s / 0.14 s per side and retain 0.18 s / 0.82 s speech. Both platforms replay the helper, paid planner, measured matcher and pre-pay estimate. Regenerate with `python3 tools/fixtures/voice-lab/generate_natural_pacing.py`. Legacy fit and hard-join fixture categories remain unchanged.
+
+The existing `hard-join-cases.json` reserve vector keeps its geometry and fit result, but its automatic pace changes from 1.20 to 1.00: 0.9 s speech plus 0.28 s hard-side pauses cannot Keep-source fit within the natural range, so it retains natural speech and offers Match video rather than automatically using the provider maximum. No hard-join bed-weight or room-tone vectors change here.
 
 `pace-cases.json` is the separate per-take speech-pace contract; both platforms replay all 15 request/refusal rows. See [pace-README.md](pace-README.md) for exact bytes, default compatibility, approval binding and provenance rules.
 

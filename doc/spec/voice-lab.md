@@ -1245,21 +1245,18 @@ Then:
 
 #### Hard-join reserve (3 November 2026)
 
-New take processing enables `hardJoinSmoothing`. At each hard side, reserve
-`max(0, HARD_JOIN_PAUSE − existing aligned edge silence)` before allocating any
-internal pause edits. `HARD_JOIN_PAUSE` is 140 ms. This reserve is part of the
-natural duration, including when the take is too long: remove internal pauses
-only down to their existing floors, then expose the remaining duration mismatch.
-The source window and source after the join never move. Lengthening cannot add
-extra hard padding after the reserve; the old 60 ms `HARD_SEAM_PAD_MAX` remains
-only for legacy plans. Other seam kinds retain their existing limits.
-
-The pre-pay pace matcher and measured retry matcher include the reserve on every
-hundredth-step candidate from 0.70 through 1.20. Their synthetic one-word preview
-conservatively reserves a full 140 ms at each hard side. Direct legacy fit and
-hypothetical-fit APIs default the flag off to preserve the existing fixtures;
-production take inputs and pace matching default it on. New vectors live in
-`hard-join-cases.json`, not the legacy fit/pace files.
+New take processing enables `hardJoinSmoothing`. Each hard side reserves
+`max(0, min(HARD_JOIN_PAUSE, 0.20 × window duration) − aligned edge silence)`.
+The shared helper in each Core uses `HARD_JOIN_PAUSE = 0.140 s` and a named
+`windowPauseFraction = 0.20`. A 0.3 s hard window reserves 60 ms per side,
+leaving 180 ms of speech; a 1.1 s window reserves 140 ms, leaving 820 ms.
+The reserve reaches the legacy 60 ms pad whenever the window is at least 0.3 s;
+smaller windows retain the 20% cap rather than losing their entire slot.
+Planner, pre-pay preview and measured pace matching require an explicit smoothing
+flag, so a caller cannot accidentally compare different reserve policies.
+Legacy fixtures explicitly pass false; production passes the take's policy.
+The reserve precedes all internal pause edits; no extra hard padding follows it.
+The shared `natural-pacing-cases.json` replays both short-window examples.
 
 Before trimming a new hard side, refine its first/last aligned word outward with
 5 ms energy frames, at most 120 ms beyond the alignment. Use a relative −30 dB
@@ -1320,15 +1317,29 @@ asking for fewer words, and use `{n} phrase(s) need(s) wording that fits.` in th
 The original-words and explicit pricing override remain available.
 
 **Pace matching (3 November 2026).** The calibrated estimate above is the 1.0× baseline.
-For each complete voice phrase, choose a provider pace within 0.70–1.20, on the provider's
-0.01 grid. Prefer a predicted **Keep source video duration** exact fit, aiming at the midpoint
-of its exact-fit duration interval. If that interval is unreachable, choose a permitted pace
-that passes **Match video**, still as close to that midpoint as possible. Derive the intervals
-from the existing fit planner: its one-frame take gives maximum permitted seam/edge padding,
-and its overlong take gives the maximum borrowed window and required edge padding. Assume
-no editable generated internal pauses. Verify the chosen prediction through the actual
-video-duration gate. Never enlarge room-tone padding to make pace matching succeed.
-The row reads `≈ 4.6 s at ≈0.80× pace · slot 5.1 s · fits`; omit the pace clause at 1.0×.
+Automatic pace stays on the hundredth grid within `NATURAL_PACE_MIN = 0.90`
+and `NATURAL_PACE_MAX = 1.10`, preferring 1.00. Move away from 1.00 only
+when that alone produces an exact **Keep source video duration** fit. The provider's
+0.70–1.20 range remains valid for explicit retry requests, never automatic selection.
+First shrink generated pauses to the clip speaker's p25 floors, or grow existing
+punctuation/aligned pauses and clause gaps up to their class's p75 (also bounded
+by p90). Measure within-sentence and between-sentence distributions from the
+scope's source transcript and quiet 10 ms envelope frames. Empty distributions
+conservatively allow no growth. No inserted pause splits a word. Room-tone inserts
+use the existing fit-edit mechanism with 25 ms equal-power out and 20 ms in fades,
+on the constant source room-tone bed. No speech is stretched.
+
+If natural pauses cannot fill a shorter take's window, offer **Cut the video to this
+take** only when one quiet source span can hold the excess (two only if one cannot).
+Cuts cannot intersect transcript words or the first/last 0.3 s. Choose the quietest
+span by squared envelope energy, tie-breaking by earliest source time. Audio plays
+continuously; after the first hard video cut, use a 1.06× centered punch-in.
+The row reads `≈ 3.1 s · slot 3.9 s · fits`, or `≈ 3.1 s · slot 4.9 s · fits with a
+video cut`; include `at 1.05× pace` only away from 1.00. Slot means the actual
+source window, not the larger retime limit; the separate maximum gates too-long copy.
+Keep **Match video to this take's duration** as the explicit retime alternative
+with its factor and existing 1.12× crop. Duration choices are inline and none is
+preselected (ADR-R36). See ADR-R38 for the natural-pacing decision.
 The row's per-hunk pace is approximate; complete-phrase pricing also accounts for kept
 cuts and merged hunks. The edit popover uses the selected speech model's pace capability.
 VoiceOver reads the timing line for fitting rows too. With a current take plan, timing
@@ -1348,9 +1359,9 @@ measurement eligibility, not this timing decision.
 
 On **Try another** for a selected take that cannot keep the source duration, recalibrate
 from its measured trimmed audio duration before fitting edits, borrowing, padding or retiming:
-`newPace = clamp(oldPace × measuredSpeech / targetSpeech)`. Use the selected take's receipt
-pace, not an unused retry quote's pace; target the exact-fit midpoint, respect provider
-hundredth-step rounding, then fall back to the reachable Match video interval. Preparing or
+`naturalSeconds = oldPace × measuredSeconds`, then use the same natural-first
+exact-fit policy and 0.90–1.10 grid. Use the selected take's receipt pace, not an
+unused retry quote's pace. Do not slow a retry merely to reach Match video. Preparing or
 re-preparing a retry sends nothing and creates a new pace-bound quote/approval. Include the
 non-default phrase paces beside the priced action. Older paid takes keep their receipt pace.
 Before a retry quote is held, the next-take pace label computes the same measured retry
@@ -1392,15 +1403,16 @@ Voiced speech is never time-stretched (ADR-R30). A take reaches the length of it
 
 Let `D = duration(trimmed TTS)` (§8.7 step 1). At a take edge (seam kind `none`, §8.4) the planner keeps the source edge silence with an edge pad `e` (§8.9.2); elsewhere `e = 0`. Let `w = duration(W) − e`, the part of the window the take must fill, and `ρ = D − w`. A positive `ρ` means the take is too long.
 
-1. **Silence fit.** The fit planner (§8.9.2) places `ρ` in the pauses inside the take, which it finds from the character alignment: punctuation pauses first, then the others, each in proportion to its length and within `PAUSE_FLOOR_PHRASE`, `PAUSE_FLOOR_PUNCT` and `PAUSE_GROWTH_MAX`. It edits silence only, and every voiced sample is copied bit-exactly. When the result is `exact`, Media writes the fitted WAV (§8.9.3): the output timeline is unchanged, the recipe's fit factor is 1, and the video stays source video. This step replaces the earlier pitch-preserving fit.
+1. **Natural silence fit.** After the bounded hard-side micro-pauses, the fit planner (§8.9.2) grows existing punctuation/aligned pauses and eligible clause-boundary gaps, distributing added time evenly. Within-sentence and between-sentence limits come from the source clip's own pauses: grow to class p75, never above p90; shrink no further than class p25. Source room tone fills insertions with the hard-join 25 ms out / 20 ms in quiet handles over the shared constant bed. It edits silence only, and every voiced sample is copied bit-exactly. An `exact` result writes the fitted WAV (§8.9.3), keeps the output timeline unchanged and uses fit factor 1. The older fixed-floor/proportional rules below remain only the profile-less compatibility contract for existing fixtures.
 2. **Borrow pause time.** Whatever step 1 cannot place goes to the seams, in the same plan:
    - If the TTS is longer, widen `W` into the neighbouring gaps, keeping at least `PAUSE_SLACK_KEEP` of silence next to each kept word.
-   - If the TTS is shorter, pad room tone (or silence) equally at both seams: up to `SEAM_PAD_MAX` at a gap seam or take edge, and up to `HARD_SEAM_PAD_MAX` at a hard seam. A hard seam sits in connected speech, so it takes only a short pause. Whatever the take's own pauses and the seams cannot hold becomes a changed duration (step 3).
-3. **Choose how to match the video.** When the planner returns `changedDuration`, its partial silence edits stay, and only the residual changes the output length (`outDuration ≠ inDuration`): `outDuration = duration(W) + residualSeconds`, and the fit factor stays 1. A smaller residual keeps the retime factor inside `RETIME_VIDEO_OK` more often. Show both **Lip sync** and **Retimed source video** for each rewrite and require the user's choice (ADR-R28). Do not automatically choose a mode or reuse the last rewrite's choice. Keep an unavailable option visible with its reason; do not fall back to the other option after a failure.
+   - If the TTS is shorter, new profiled plans do not add arbitrary seam padding beyond their hard-side reserve and retained source-edge silence. Whatever the natural pause capacity cannot hold becomes a changed duration (step 3). Profile-less compatibility vectors retain `SEAM_PAD_MAX` / `HARD_SEAM_PAD_MAX` padding.
+3. **Choose video duration inline.** Partial silence edits stay and only the residual changes output length: `outDuration = duration(W) + residualSeconds`, with fit factor 1. Offer **Keep source video duration**, an eligible **Cut the video to this take**, and **Match video to this take's duration** (ADR-R36/R38). None is preselected or reused from another take. Keep source and Match video explain their unavailable state; show Cut only when a safe source span exists and its renderer is ready. Do not silently fall back after a failure.
+   - **Cut (`cut`)** removes the exact residual from one quiet source span (two only when one cannot fit), clear of transcript speech and the first/last 0.3 s. Take audio stays continuous; source video has a centered 1.06× punch-in after the first jump. Windows validates and preserves this recipe but refuses rendering until its twin lands.
    - **Retimed source video (`zoomCover`)**: a jump cut to 1.12× around the face during the replaced range, with source frames retimed by `duration(W) / outDuration`. Explain the speed change and slight crop before selection. Only allowed when that factor is in `RETIME_VIDEO_OK`.
      - Face centre: Vision `VNDetectFaceRectanglesRequest` on macOS, `Windows.Media.FaceAnalysis.FaceDetector` on Windows, sampled every 0.5 s and averaged.
      - With no face, use the frame centre.
-   - **Lip sync (`lipsync`)**: §9, with `sync_mode = "remap"`. Show the provider, what is sent and the current cost before the separate paid-action approval.
+   - **Lip sync (`lipsync`)** remains the separately gated future route in §9, not another current duration row. Show the provider, what is sent and the current cost before any future separate paid-action approval.
    - If neither approach can handle the range, the hunk is rejected: "This change is too long to patch. Re-record this sentence instead."
 
 `STRETCH_OK` remains only as a validation bound for stored recipes (§10.5). It no longer selects a fit step, and rendering refuses any fit factor other than 1. A micro-stretch of at most ±3% is an optional later experiment (§8.9.5). What was tried before ADR-R30, and why it was rejected, is recorded in [`doc/archive/voice-lab-stretch-history.md`](../archive/voice-lab-stretch-history.md).
@@ -1434,6 +1446,17 @@ Let `D = duration(trimmed TTS)` (§8.7 step 1). At a take edge (seam kind `none`
 Shared `length-budget-cases.json`, written by `tools/fixtures/voice-lab/generate_length_budget.py`, pins every pair of gap/hard/none seams, take-edge pads, transcript and stored-candidate rates, full-take scope, floor/ceil values within 1e-9 of an integer, and both meter verdicts immediately inside and outside the inclusive bounds. Both Core suites replay every case.
 
 #### 8.9.2 Fit planner
+
+**Natural-profile plans (3 November 2026).** New paid takes supply the clip's
+source pause profile. The legacy table below remains the compatibility contract
+for explicitly profile-less fixtures. Profiled plans use p25 shrink floors and
+p75/p90 total-pause ceilings; grow punctuation pauses first, then aligned/clause
+gaps, spreading allocations evenly. A gap must leave 25 ms out / 20 ms in quiet
+handles. Source room-tone insert edits may exceed the original quiet run length;
+zero-filled intermediate PCM receives the source bed, not a repeated speech tail.
+No arbitrary extra seam padding is used with a profile. A profile is a snapshot
+of the complete clip context, not just the replaced words.
+
 
 `VoiceLabFitPlanner` in each Core (`Domain/VoiceLab/`) is free, pure and deterministic, and gives the same result on both platforms. Its shared vectors are `shared/fixtures/voice-lab/fit-cases.json`, written by `tools/fixtures/voice-lab/generate.py` through its standard-library reference planner `tools/fixtures/voice-lab/generate_fit.py`.
 
@@ -1531,9 +1554,9 @@ Private take invalidation is explicit and idempotent: first stop every registere
 ### 8.10 Seams
 
 - Legacy recipes apply equal-power crossfades of `SEAM_FADE` at both seams, or `HARD_SEAM_FADE` at hard seams, centred on the seam. Gap and other non-hard seams keep this rule.
-- New hard OUT joins fade generated audio out over 25 ms, ending at the last word's acoustic end. Matched source room tone fills the 140 ms from that end to the join. Source fades in over 20 ms **starting at** the join. IN joins mirror this: source fades out over 20 ms ending at the join; generated audio fades in over 25 ms ending at the first word's acoustic onset, 140 ms after the join. Curves are equal-power sine/cosine. Source timing and video sync do not change.
+- New hard OUT joins fade generated audio out over 25 ms, ending at the last word's acoustic end. Matched source room tone fills the bounded reserve from that end to the join: min(140 ms, 20% of the source window's duration). Source fades in over 20 ms **starting at** the join. IN joins mirror this: source fades out over 20 ms ending at the join; generated audio fades in over 25 ms ending at the first word's acoustic onset, one bounded reserve after the join. Curves are equal-power sine/cosine. Source timing and video sync do not change.
 - Store optional `seams.in/out.microPause: {wordStartSeconds, wordEndSeconds}` and `edgeGain: {in?, out?}`, whose entries are `{gainDb, wordSeconds: {wordStartSeconds, wordEndSeconds}}`. All times are output seconds relative to that side's join (positive IN, negative OUT), not 24 kHz asset frames. Both Cores preserve and validate them; both Media renderers replay them at the output rate, including 48 kHz. Omit absent fields. Recipes without them retain their old render path and bytes.
-- Metadata is hard-only, finite, bounded by the patch duration (at most 290 s), and must match the recipe's first/last word within 1 µs. Require at least 139 ms of edge silence (1 ms rounding allowance), unity stretch, gains from 0 through 6 dB, and matching gain-word/pause coordinates. Reject gains without the corresponding micro-pause and empty gain objects. The source-side fade is at most 20 ms and at most half the contiguous source run beside that join, rounded down to whole source frames; require at least 2 ms. Both joins sharing a short source run use this rule, so neither swallows the other's context. Less than 4 ms of shared source cannot hold both minimum fades and is refused. QA staging uses the same frame-count and equal-power curve against its available source context; final render resolves the actual kept source pieces.
+- Metadata is hard-only, finite, bounded by the patch duration (at most 290 s), and must match the recipe's first/last word within 1 µs. Require at least min(140 ms, 20% of the source window's duration) of edge silence with a 1 ms rounding allowance, unity stretch, gains from 0 through 6 dB, and matching gain-word/pause coordinates. Reject gains without the corresponding micro-pause and empty gain objects. The source-side fade is at most 20 ms and at most half the contiguous source run beside that join, rounded down to whole source frames; require at least 2 ms. Both joins sharing a short source run use this rule, so neither swallows the other's context. Less than 4 ms of shared source cannot hold both minimum fades and is refused. QA staging uses the same frame-count and equal-power curve against its available source context; final render resolves the actual kept source pieces.
 - When Clean audio is off, inspect the closest unvoiced, non-word 100 ms source pause within 3 s of each join; tie-break by earliest start. Only when hard-join smoothing is on and at least one of those pauses has nonzero energy must the room-tone run exclude exactly-zero 10 ms frames. Otherwise retain legacy quietest-run selection: a noise-gated recording keeps a digitally silent bed, with zero gain and no ramp, rather than borrowing a breath or refusing the take. Excerpt decoding and preflight use the same flag-gated decision and closest-pause search. Match a finite run's K-weighted level to the finite neighbouring targets. The two targets can ramp linearly in dB across the patch. The gain limit is ±48 dB, not the legacy +12 dB ceiling. Targets stay at least 12 dB below speech; if only one side is measurable, use it for both sides. Without either, retain the run's measured level subject to that speech ceiling. A missing usable run remains the existing Clean audio recovery, not invented noise.
 - Fill should match neighbouring source pauses within ±2 LU. The bed stays at weight 1 through the whole generated patch: clean generated speech, its 25 ms edge envelopes, and short inter-word gaps do not already carry the source background. The 20 ms source-side fades alone use complementary room-tone weights, `sqrt(1 − sourceWeight²)`, so there is no second bed under un-faded **source** speech. Do not duck the background during generated edge fades: that would create a new dip and a discontinuity at the word onset. Clean audio retains its explicit no-bed choice. The 50 ms loop crossfade is equal-power on both platforms for recipes with micro-pause metadata; Windows recipes without that metadata retain their historical linear loop and render bytes.
 - Newly fitted Windows takes with the existing `hardJoinSmoothing` flag retain a 5 ms equal-power take-edge fade at each non-hard side whose paid PCM starts or ends on a nonzero sample, matching Mac. A hard side gives ownership to its micro-pause's 25 ms generated fade. Apply the short fade to derived PCM before publication, never to an old stored asset while rendering it. Flag-off Windows fits retain the legacy path and bytes.
@@ -2196,7 +2219,7 @@ Unit tests run in both suites (`VoxClipCoreTests`, `VoxClip.Core.Tests`), with s
    - Re-voicing the sentence after an accepted one places its seam clear of that replacement's fade: in a gap, or as a hard seam when only 18 ms of silence separates them. A window over a replacement refuses with `overlapsReplacement`. One that would touch a replacement, leave too little kept source between them on either side, or move a cut until another replacement's fade crosses it refuses with `adjacentReplacement`. A disabled replacement, or one outside the clip, changes nothing.
    - After a replacement is accepted, cutting the pause its seam lies in does not block re-voicing the first sentence: that window is accepted and renders. A scope that a replacement already leaves unrenderable, such as one whose fade now meets a 5 ms sliver of kept source, refuses with `invalidInput` and that replacement's ID, and so does a pair of replacements too close for both fades.
    - Property: every window placed for a random take, at 44.1 and 48 kHz and in full or clip scope, passes `VoiceLabProject.validate` and `VoiceLabRenderContract.prepare`, and so does every window placed beside one or two replacements that `place` itself put there, including after later cuts and replacements enabled again. `window-cases.json` carries a fixed-seed sample of each 20,000-case fuzz, and both suites validate and prepare every accepted case, named vectors included, with every replacement in the project.
-4. **Duration fit (§8.9), with `fit-cases.json`.**
+4. **Duration fit (§8.9).** `fit-cases.json` retains the following profile-less legacy math checks; they do not authorize arbitrary padding for new profiled takes. `natural-pacing-cases.json` additionally pins both hard-window reserves, and platform regressions pin source quantiles, bit-exact voiced PCM, exact-fit-only natural pace and safe cut rendering/refusal.
    - A take 5% longer than its window (`D = 1.05 × w`) whose punctuation pauses can give up the residual above their floors fits exactly: `outDuration == end − start`, the fit factor is 1, and every word keeps its aligned duration.
    - A take 5% shorter (`D = 0.95 × w`) lengthens its pauses within `PAUSE_GROWTH_MAX`, pads what remains equally at its two gap seams, and fits exactly.
    - A one-word take shorter than its window between two hard seams pads at most `HARD_SEAM_PAD_MAX` at each seam, and the rest becomes `changedDuration`.
@@ -2313,3 +2336,15 @@ Sources for the lip-sync corrections (lip-sync research, 2026-10-26):
 - sync.so: [generate-api/get](https://sync.so/docs/api-reference/api/generate-api/get.md) (`wait` and `include=progress` are alternatives), [generate-api/delete](https://sync.so/docs/api-reference/api/generate-api/delete.md) (terminal states only), [assets-api/delete](https://sync.so/docs/api-reference/api/assets-api/delete.md), and the [pricing page](https://sync.so/pricing) (watermark by plan).
 
 Repository documents: `doc/spec/editing.md` (§2, §4.5, §4.7, §7, §10, §12), `doc/spec/ai.md` (§4.8, §11.3, §12.8), `doc/architecture.md` (§2.5, §8, §10, §11), `doc/design.md` (§6.3, Settings), `doc/publishing.md` (§2, §3.5.3, §5), and `shared/schemas/project.schema.json` (`voiceLab`).
+
+### Natural-pacing video-cut recipe (3 November 2026)
+
+`video.mode = "cut"` records one or two ordered, disjoint `cuts` containing absolute
+`startSample` / `endSample` source samples. Removed samples must exactly equal
+source-window samples minus output samples. The renderer rejects edge-guard,
+length, ordering, crop or foreign-policy mismatches. `zoom = 1.06`, centered
+`faceX = faceY = 0.5`; retime/lipsync/external-asset fields are null. Mac composition
+splits only the video track around cuts; generated audio remains continuous.
+Timeline seek/source mappings collapse cut spans and skip them in reverse.
+Windows decodes, validates and preserves this recipe, but explicitly refuses its
+render until the native changed-duration/cut twin lands. No migration guesses cuts.

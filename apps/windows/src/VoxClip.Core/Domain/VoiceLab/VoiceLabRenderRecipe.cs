@@ -30,10 +30,11 @@ public sealed record VoiceLabSeam(VoiceLabSeamKind Kind, long FadeSamples, long 
 public sealed record VoiceLabSeams(VoiceLabSeam In, VoiceLabSeam Out);
 public sealed record VoiceLabChunk(long SourceStartSample, long SourceEndSample, string RequestId, uint Seed, string AssetId, string AssetSha256, long AssembledStartFrame, long AssembledEndFrame);
 [JsonConverter(typeof(JsonStringEnumConverter<VoiceLabVideoMode>))]
-public enum VoiceLabVideoMode { [JsonStringEnumMemberName("source")] Source, [JsonStringEnumMemberName("retimed")] Retimed, [JsonStringEnumMemberName("zoomCover")] ZoomCover, [JsonStringEnumMemberName("lipsync")] Lipsync }
+public enum VoiceLabVideoMode { [JsonStringEnumMemberName("source")] Source, [JsonStringEnumMemberName("cut")] Cut, [JsonStringEnumMemberName("retimed")] Retimed, [JsonStringEnumMemberName("zoomCover")] ZoomCover, [JsonStringEnumMemberName("lipsync")] Lipsync }
 public sealed record VoiceLabVideoRecipe(VoiceLabVideoMode Mode, long SourceStartSample, long SourceEndSample, long OutputSamples,
     double? RetimeFactor, double? Zoom, double? FaceX, double? FaceY, string? AssetId, string? Provider, string? Model,
-    string? RequestId, long? WindowStartSample, long? WindowEndSample, string? SyncMode);
+    string? RequestId, long? WindowStartSample, long? WindowEndSample, string? SyncMode,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<VoiceLabVideoCut>? Cuts = null);
 [JsonConverter(typeof(JsonStringEnumConverter<VoiceLabVoiceSource>))]
 public enum VoiceLabVoiceSource { [JsonStringEnumMemberName("own")] Own, [JsonStringEnumMemberName("stock")] Stock }
 public sealed record VoiceLabJoinAdvisorySeam(string Side, double ExcessLu);

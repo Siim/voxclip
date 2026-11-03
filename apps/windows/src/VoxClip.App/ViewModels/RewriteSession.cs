@@ -148,10 +148,18 @@ internal sealed partial class RewriteSession : IDisposable
         var read = await source(new(frames, rate, window, silence.Incoming, silence.Outgoing, Transcript), ct);
         ct.ThrowIfCancellationRequested();
         if (!GenerationIsCurrent || revision != version) throw new OperationCanceledException(ct);
-        return new(text, modelId, recordId, Project.Transcript?.Language ?? "en", seed, Project.Media.Source.ContentKey,
+        var pauseWords = Transcript;
+        if (Scope.ClipId is { } clipId && Project.Edits.Clips.FirstOrDefault(clip => clip.Id == clipId) is { } clip)
+        {
+            var first = Transcript.ToList().FindIndex(word => word.Id == clip.StartWordId);
+            var last = Transcript.ToList().FindIndex(word => word.Id == clip.EndWordId);
+            if (first >= 0 && last >= first) pauseWords = Transcript.Skip(first).Take(last - first + 1).ToArray();
+        }
+        return new VoiceLabTakeInput(text, modelId, recordId, Project.Transcript?.Language ?? "en", seed, Project.Media.Source.ContentKey,
             read.Excerpt, read.Envelope, rate, Transcript, Editor.State?.CutWordIds ?? new HashSet<string>(), window,
             silence.Incoming, silence.Outgoing, false, providerConsent,
-            RewriteReview.MeasureTiming(this, combined, text, window, modelId).Pace);
+            RewriteReview.MeasureTiming(this, combined, text, window, modelId).Pace)
+            { PauseProfile = VoiceLabPauseProfile.Measure(pauseWords.Where(word => !Project.Edits.CutWordIds.Contains(word.Id)).ToArray(), read.Envelope, 0, double.MaxValue) };
     }
 
     internal RewriteSession(EditorViewModel editor, int first, int last, AudioEnvelope? envelope, RewriteConnector? connector,

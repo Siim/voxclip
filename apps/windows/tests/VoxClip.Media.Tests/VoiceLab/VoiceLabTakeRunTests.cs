@@ -679,7 +679,7 @@ public sealed partial class VoiceLabTakeRunTests
         internal int Qa;
         internal int FirstStatus = 200;
         internal int Mismatches;
-        internal double Duration = 4;
+        internal double Duration = 4.11;
         internal bool MissingAlignment;
         internal JsonNode? SynthesisResponse;
         internal string SynthesisText = "Hello";
@@ -838,7 +838,7 @@ public sealed partial class VoiceLabTakeRunTests
         Assert.True(row.Fits);
         Assert.Equal(new uint[] { uint.MaxValue }, fixture.Remote.Seeds);
         Assert.Equal(1, fixture.Remote.Qa);
-        Assert.Equal(93360, row.Audio!.Trimmed.Length);
+        Assert.Equal(96000, row.Audio!.Trimmed.Length);
         Assert.Equal(96000, row.Audio.Fit.Plan.OutputFrames);
         var total = await fixture.Ledger.TotalAsync("elevenlabs", DateTimeOffset.UnixEpoch, Token);
         Assert.Equal(quote.Takes[0].Synthesis.Estimate.Usd + quote.Takes[0].Qa.Estimate.Usd, total!.Usd);

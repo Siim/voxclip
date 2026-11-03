@@ -15,6 +15,7 @@ public sealed record VoiceLabTakeInput(string Text, string ModelId, string Recor
     VoiceLabSourceExcerpt Source, AudioEnvelope SourceEnvelope, int SourceSampleRate, IReadOnlyList<TimedWord> Items, IReadOnlySet<string> CutWordIds,
     VoiceLabWindow Window, double? IncomingSilence, double? OutgoingSilence, bool CleanAudioOn, bool ProviderConsent, double? Pace = null, bool HardJoinSmoothing = true)
 {
+    public VoiceLabPauseProfile? PauseProfile { get; init; }
     /// <summary>A source held whole, as short sources and tests pass it; the envelope is computed from it.</summary>
     public VoiceLabTakeInput(string Text, string ModelId, string RecordId, string Language, uint Seed, string ContentKey,
         float[] Source, int SourceSampleRate, IReadOnlyList<TimedWord> Items, IReadOnlySet<string> CutWordIds, VoiceLabWindow Window,

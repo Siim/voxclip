@@ -99,11 +99,26 @@ public static class VoiceLabSilenceFit
         Silence(plan.Incoming.PadFrames);
         var cursor = plan.TrimStartFrame;
         var joins = new List<(long Output, long Left, long Right)>();
+        var naturalJoins = new List<(long Start, long End)>();
         var fade = (long)Math.Floor(VoiceLabPatchConstants.SEAM_FADE * original.Rate + 0.5);
         var previousEnd = plan.TrimStartFrame;
         foreach (var edit in plan.Edits)
         {
             ct.ThrowIfCancellationRequested();
+            if (edit.RoomTone)
+            {
+                var outCount = (long)Math.Floor(VoiceLabHardJoin.GeneratedFadeSeconds * original.Rate + 0.5);
+                var inCount = (long)Math.Floor(VoiceLabHardJoin.SourceFadeSeconds * original.Rate + 0.5);
+                if (edit.Kind != VoiceLabFitEditKind.Insert || edit.Count <= 0 || edit.Count > plan.OutputFrames ||
+                    edit.Start - outCount < cursor || edit.Start + inCount > plan.TrimEndFrame)
+                    throw new VoiceLabGeometryException(VoiceLabGeometryErrorCode.FitTouchesVoice);
+                Copy(cursor, edit.Start);
+                var start = pcm.Length / original.Stride;
+                Silence(edit.Count);
+                naturalJoins.Add((start, start + edit.Count));
+                cursor = edit.Start; previousEnd = edit.Start + inCount;
+                continue;
+            }
             if (!Enum.IsDefined(edit.Kind) || edit.Start < cursor || edit.Start > plan.TrimEndFrame || edit.Count <= 0 || edit.Count > plan.TrimEndFrame - edit.Start) throw Invalid();
             var end = edit.Start + edit.Count;
             if (edit.Start - fade / 2 < previousEnd || end + fade - fade / 2 > plan.TrimEndFrame)
@@ -121,6 +136,23 @@ public static class VoiceLabSilenceFit
         if (plan.Outgoing.PadFrames > 0) Silence(outgoing);
         else { Copy(plan.TrimEndFrame, plan.TrimEndFrame + outgoing - missingAfter); Silence(missingAfter); }
         var wave = new VoiceLabWavePcm(original.Rate, original.Channels, original.Bits, original.Floating, pcm.ToArray());
+        foreach (var join in naturalJoins)
+        {
+            var outCount = (long)Math.Floor(VoiceLabHardJoin.GeneratedFadeSeconds * original.Rate + 0.5);
+            var inCount = (long)Math.Floor(VoiceLabHardJoin.SourceFadeSeconds * original.Rate + 0.5);
+            for (var offset = 0; offset < outCount; offset++)
+            {
+                var frame = join.Start - outCount + offset;
+                var weight = Math.Cos(Math.PI * offset / (outCount - 1) / 2);
+                for (var channel = 0; channel < original.Channels; channel++) wave.SetSample(wave.Sample(frame, channel) * weight, frame, channel);
+            }
+            for (var offset = 0; offset < inCount; offset++)
+            {
+                var frame = join.End + offset;
+                var weight = Math.Sin(Math.PI * offset / (inCount - 1) / 2);
+                for (var channel = 0; channel < original.Channels; channel++) wave.SetSample(wave.Sample(frame, channel) * weight, frame, channel);
+            }
+        }
         foreach (var join in joins)
             for (var offset = 0; offset < fade; offset++)
             {

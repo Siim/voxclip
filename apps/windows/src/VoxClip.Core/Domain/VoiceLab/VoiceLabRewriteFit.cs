@@ -6,12 +6,13 @@ using VoxClip.Core.Domain.Transcript;
 
 namespace VoxClip.Core.Domain.VoiceLab;
 
-public sealed record VoiceLabRewriteFitResult(double EstimateSeconds, double SlotSeconds, bool Fits, double Pace = 1)
+public sealed record VoiceLabRewriteFitResult(double EstimateSeconds, double SlotSeconds, bool Fits, double Pace = 1, bool FitsWithVideoCut = false,
+    double? MaximumSeconds = null)
 {
-    public bool TooLong => EstimateSeconds > SlotSeconds;
+    public bool TooLong => EstimateSeconds > (MaximumSeconds ?? SlotSeconds);
     public string Copy => "≈ " + EditingFormat.ToFixed1(EstimateSeconds) + " s" +
-        (Pace == 1 ? "" : " at ≈ " + Pace.ToString("F2", CultureInfo.InvariantCulture) + "× pace") +
-        " · slot " + EditingFormat.ToFixed1(SlotSeconds) + " s" + (Fits ? " · fits" : "");
+        (Pace == 1 ? "" : " at " + Pace.ToString("F2", CultureInfo.InvariantCulture) + "× pace") +
+        " · slot " + EditingFormat.ToFixed1(SlotSeconds) + " s" + (FitsWithVideoCut ? " · fits with a video cut" : Fits ? " · fits" : "");
 }
 
 public static class VoiceLabRewriteFit
@@ -72,7 +73,7 @@ public static class VoiceLabRewriteFit
     }
 
     public static VoiceLabFitResult Hypothetical(VoiceLabWindow window, double? incomingSilence, double? outgoingSilence,
-        double seconds, double sourceSampleRate, bool hardJoinSmoothing = false)
+        double seconds, double sourceSampleRate, bool hardJoinSmoothing, string? generatedText = null, VoiceLabPauseProfile? pauseProfile = null)
     {
         if (!double.IsFinite(seconds) || seconds <= 0 || seconds > 3600 || !double.IsFinite(sourceSampleRate) ||
             sourceSampleRate <= 0 || sourceSampleRate > 1_000_000 || sourceSampleRate != Math.Truncate(sourceSampleRate))
@@ -83,8 +84,34 @@ public static class VoiceLabRewriteFit
             throw new VoiceLabLengthBudgetException(VoiceLabLengthBudgetErrorCode.InvalidInput);
         var duration = (double)frames / assetRate;
         var lastWord = duration * assetRate > frames ? Math.BitDecrement(duration) : duration;
-        var envelope = new AudioEnvelope(assetRate, 0.01, Enumerable.Repeat(1f, (int)(frames / VoiceLabGeometry.FrameSize(assetRate))).ToArray());
+        VoiceLabWord[] words = [new("speech", 0, lastWord, true)];
+        var tokens = generatedText?.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries) ?? [];
+        if (tokens.Length > 1 && pauseProfile is not null)
+        {
+            var gaps = tokens.SkipLast(1).Select(token => VoiceLabNaturalPacing.EndsSentence(token) ? 0.22 :
+                VoiceLabNaturalPacing.ClauseBoundary(token, "") ? 0.12 : 0.06).ToArray();
+            var speech = lastWord - gaps.Sum();
+            if (speech > (double)tokens.Length / assetRate)
+            {
+                var letters = tokens.Select(token => Math.Max(1, VoiceLabTextLength.Length(token))).ToArray();
+                var count = letters.Sum(); var cursor = 0.0;
+                words = tokens.Select((token, index) =>
+                {
+                    var end = index == tokens.Length - 1 ? lastWord : cursor + speech * letters[index] / count;
+                    var word = new VoiceLabWord(token, cursor, end, true);
+                    cursor = end + (index < gaps.Length ? gaps[index] : 0);
+                    return word;
+                }).ToArray();
+            }
+        }
+        var size = VoiceLabGeometry.FrameSize(assetRate);
+        var levels = Enumerable.Range(0, (int)(frames / size)).Select(block =>
+        {
+            var start = (double)(block * size) / assetRate; var end = (double)((block + 1) * size) / assetRate;
+            return words.Any(word => word.Start < end && word.End > start) ? 1f : 0f;
+        }).ToArray();
+        var envelope = new AudioEnvelope(assetRate, 0.01, levels);
         return VoiceLabFitPlanner.Plan(window, incomingSilence, outgoingSilence,
-            new(frames, assetRate, 0, duration, [new("speech", 0, lastWord, true)], envelope), ["speech"], sourceSampleRate, hardJoinSmoothing);
+            new(frames, assetRate, 0, duration, words, envelope), words.Select(word => word.Text).ToArray(), sourceSampleRate, hardJoinSmoothing, pauseProfile);
     }
 }

@@ -72,14 +72,14 @@ struct VoiceLabHardJoinTests {
         let fixture = try fixture(), row = fixture.reserve
         for rate in fixture.rates {
             let window = window(rate)
-            let legacy = try VoiceLabPhraseTiming.preview(seconds: row.speechSeconds, window: window, incomingSilence: nil, outgoingSilence: nil, sourceSampleRate: rate)
+            let legacy = try VoiceLabPhraseTiming.preview(seconds: row.speechSeconds, window: window, incomingSilence: nil, outgoingSilence: nil, sourceSampleRate: rate, hardJoinSmoothing: false)
             let fit = try VoiceLabPhraseTiming.preview(seconds: row.speechSeconds, window: window, incomingSilence: nil, outgoingSilence: nil, sourceSampleRate: rate, hardJoinSmoothing: true)
             #expect(abs(Double(legacy.plan.outputFrames) / Double(rate) - row.legacyOutputSeconds) < 1e-9)
             #expect(abs(Double(fit.plan.outputFrames) / Double(rate) - row.outputSeconds) < 1e-9)
             #expect(fit.plan.incoming.padFrames == Int64(row.padSeconds * Double(rate)))
             #expect(fit.plan.outgoing.padFrames == Int64(row.padSeconds * Double(rate)))
             #expect(fit.plan.windowStartSample == window.startSample && fit.plan.windowEndSample == window.endSample)
-            let timing = try VoiceLabPaceMatching.match(seconds: row.speechSeconds, window: window, incomingSilence: nil, outgoingSilence: nil, sourceSampleRate: rate)
+            let timing = try VoiceLabPaceMatching.match(seconds: row.speechSeconds, window: window, incomingSilence: nil, outgoingSilence: nil, sourceSampleRate: rate, hardJoinSmoothing: true)
             #expect(timing.pace == row.pace && timing.fits == row.fits)
         }
     }

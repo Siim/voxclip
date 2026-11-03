@@ -607,7 +607,8 @@ extension EditorModel {
             let shifted = VoiceLabAudioTags.shifted(annotations, by: window.leftBridgeWordIds.map(reader.text).flatMap { EditingPrimitives.splitWords($0) }.count)
             return try VoiceLabPaceMatching.measure(text: patch, rate: rate, window: window, incomingSilence: silence.incoming,
                 outgoingSilence: silence.outgoing, sourceSampleRate: project.media.source.audio?.sampleRate ?? 48_000,
-                supportsPace: inputs.synthesisModel != "eleven_v4", audioTags: shifted, modelID: inputs.synthesisModel ?? "").copy
+                supportsPace: inputs.synthesisModel != "eleven_v4", hardJoinSmoothing: true, audioTags: shifted, modelID: inputs.synthesisModel ?? "",
+                sourceItems: RewriteReview.timingTranscript(inputs), sourceEnvelope: envelope).copy
         } catch { return nil }
     }
     private func confirmPaidProposalChange(_ perform: @escaping @MainActor () -> Void) -> Bool {

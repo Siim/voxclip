@@ -78,14 +78,15 @@ private struct VideoDurationTestKeys: KeyProvider {
         #expect(!plan.chooseVideo(.lipsync, phrase: 1) && !plan.chooseVideo(.zoomCover, phrase: 1))
     }
 
-    private func row(changed: Bool = false, index: Int = 0) -> VoiceLabTakeRow {
-        let duration = changed ? 4.4 : 4.0
+    private func row(changed: Bool = false, cut: Bool = false, index: Int = 0) -> VoiceLabTakeRow {
+        let duration = cut ? 3.0 : changed ? 4.4 : 4.0
         let frames = Int64(EditingPrimitives.jsRound(duration * 24_000))
-        let fit = VoiceLabFitPlan(edits: [], incoming: .init(padFrames: 0, borrowedSamples: 0), outgoing: .init(padFrames: 0, borrowedSamples: 0),
+        var fit = VoiceLabFitPlan(edits: [], incoming: .init(padFrames: 0, borrowedSamples: 0), outgoing: .init(padFrames: 0, borrowedSamples: 0),
             trimStartFrame: 0, trimEndFrame: frames, windowStart: 1, windowEnd: 5, windowStartSample: 24_000, windowEndSample: 120_000,
             outputFrames: frames, words: [.init(text: "Reviewed passage", start: 0.1, end: duration - 0.1, synthetic: true)])
+        if cut { fit.videoCuts = [.init(startSample: 48_000, endSample: 72_000)] }
         let audio = VoiceLabTakeAudio(sampleRate: 24_000, trimmed: [], mixed: [], patchRange: 0..<0, seams: [], gainDb: 0, roomTone: nil,
-            fit: changed ? .changedDuration(fit, naturalOut: duration, residualSeconds: duration - 4) : .exact(fit))
+            fit: changed || cut ? .changedDuration(fit, naturalOut: duration, residualSeconds: duration - 4) : .exact(fit))
         return VoiceLabTakeRow(id: UUID(), index: index, seed: UInt32(index), audio: audio,
             qa: .init(values: .init(transcriptMatch: 1, lufsJumpLu: 0, peakDbfs: -10, speakerScore: 0.9), failures: []), score: 0.9)
     }
@@ -150,6 +151,18 @@ private struct VideoDurationTestKeys: KeyProvider {
         await #expect(throws: VoiceLabProjectError.videoModeUnsupported) {
             _ = try await VideoDurationRenderReadiness.prepare(project, scope: .full, using: nil)
         }
+    }
+
+    @Test func safeCutRequiresPreparedRendererAndExplicitSelection() {
+        let row = row(cut: true)
+        let unavailable = VideoDurationChoiceAvailability(row: row, sourceSampleRate: 24_000, rendererReady: false)
+        let available = VideoDurationChoiceAvailability(row: row, sourceSampleRate: 24_000, rendererReady: true)
+        #expect(!unavailable.allows(.cut) && available.allows(.cut))
+        #expect(!available.allows(.source))
+        let session = session()
+        session.review(.init(rows: [row], end: .completed), input: input())
+        #expect(session.videoChoice == nil && !session.readyToAccept)
+        #expect(!session.chooseVideo(.cut) && session.videoChoice == nil)
     }
 
     @Test(arguments: [false, true])

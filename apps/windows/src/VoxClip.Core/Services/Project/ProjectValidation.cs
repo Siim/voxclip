@@ -159,8 +159,10 @@ internal static class ProjectValidation
         }
         Choice(seams.GetProperty("in").GetProperty("kind"), "none", "gap", "hard", "synthToSynth");
         Choice(seams.GetProperty("out").GetProperty("kind"), "none", "gap", "hard", "synthToSynth");
-        Object(recipe.GetProperty("video"), "mode sourceStartSample sourceEndSample outputSamples retimeFactor zoom faceX faceY assetId provider model requestId windowStartSample windowEndSample syncMode");
-        Choice(recipe.GetProperty("video").GetProperty("mode"), "source", "retimed", "zoomCover", "lipsync");
+        var video = recipe.GetProperty("video");
+        Object(video, "mode sourceStartSample sourceEndSample outputSamples retimeFactor zoom faceX faceY assetId provider model requestId windowStartSample windowEndSample syncMode", "cuts");
+        if (video.TryGetProperty("cuts", out var cuts)) Array(cuts, cut => Object(cut, "startSample endSample"));
+        Choice(video.GetProperty("mode"), "source", "cut", "retimed", "zoomCover", "lipsync");
         Choice(recipe.GetProperty("voiceSource"), "own", "stock");
         var qa = recipe.GetProperty("qa");
         Object(qa, "transcriptTokens transcriptExact transcriptMatch lufsJumpLu peakDbfs speakerScore speakerThreshold speakerModel speakerPassed", "shortSpeech joinAdvisory");

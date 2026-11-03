@@ -98,6 +98,30 @@ private func zoomCoverRequest(project: Project, paidRoot: URL) throws -> RenderR
 
 @Suite("context-demo-zoom-cover-contract", .offlineFixtures)
 struct ContextDemoZoomCoverContractTests {
+    @Test func videoCutKeepsAudioContinuousAndPunchesInOnlyAfterTheJump() throws {
+        var project = try zoomCoverProject(duration: 0.63)
+        var recipe = try #require(project.voiceLab.segments[0].candidates[0].recipe)
+        let start = recipe.video.sourceStartSample, end = recipe.video.sourceEndSample
+        recipe.video.mode = .cut; recipe.video.retimeFactor = nil
+        recipe.video.zoom = 1.06; recipe.video.faceX = 0.5; recipe.video.faceY = 0.5
+        let removed = end - start - recipe.video.outputSamples
+        recipe.video.cuts = [.init(startSample: start + 14_400, endSample: start + 14_400 + removed)]
+        project.voiceLab.segments[0].candidates[0].recipe = recipe
+        let request = try zoomCoverRequest(project: project, paidRoot: URL(fileURLWithPath: "/unread-paid-root"))
+        let spans = try CompositionVideoSpan.build(request)
+        let before = try #require(spans.first { $0.source.start == CMTime(value: start, timescale: 48_000) })
+        let after = try #require(spans.first { $0.source.end == CMTime(value: end, timescale: 48_000) })
+        #expect(before.zoom == 1 && after.zoom == 1.06)
+        #expect(before.source.duration == before.output.duration && after.source.duration == after.output.duration)
+        #expect(before.output.end == after.output.start)
+        #expect(after.source.start.value - before.source.end.value == removed)
+        #expect(request.voiceLab?.prepared.selectedSegmentRecipes.count == 1)
+        #expect(request.voiceLab?.prepared.selectedSegmentRecipes[0].recipe.audio.stretch == 1)
+        recipe.video.cuts = [.init(startSample: start, endSample: start + removed)]
+        project.voiceLab.segments[0].candidates[0].recipe = recipe
+        #expect(throws: (any Error).self) { try zoomCoverRequest(project: project, paidRoot: URL(fileURLWithPath: "/unread-paid-root")) }
+    }
+
     @Test(arguments: [0.875, 0.56]) func endpointsAndBoundsAreOnTheDeclaredOutputGrid(_ duration: Double) throws {
         let request = try zoomCoverRequest(project: zoomCoverProject(duration: duration), paidRoot: URL(fileURLWithPath: "/unread-paid-root"))
         let spans = try CompositionVideoSpan.build(request)

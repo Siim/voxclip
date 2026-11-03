@@ -11,6 +11,9 @@ public sealed record VoiceLabEdgeGain(
 public static class VoiceLabHardJoin
 {
     public const double PauseSeconds = 0.140;
+    public const double WindowPauseFraction = 0.20;
+    public static double PauseForWindow(double windowDuration) =>
+        double.IsFinite(windowDuration) && windowDuration > 0 ? Math.Min(PauseSeconds, windowDuration * WindowPauseFraction) : 0;
     public const double GeneratedFadeSeconds = 0.025;
     public const double SourceFadeSeconds = 0.020;
     public const double GainRampSeconds = 0.020;
@@ -89,15 +92,15 @@ public static class VoiceLabHardJoin
         return 1;
     }
 
-    public static void Validate(VoiceLabSeams seams, VoiceLabEdgeGain? edgeGain, double duration)
+    public static void Validate(VoiceLabSeams seams, VoiceLabEdgeGain? edgeGain, double duration, double? windowDuration = null)
     {
         if (seams.In.MicroPause is null && seams.Out.MicroPause is null && edgeGain is null) return;
         if (!double.IsFinite(duration) || duration is <= 0 or > 290 || edgeGain is { In: null, Out: null })
             throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidFadeHandles);
         bool Valid(VoiceLabMicroPause word, bool incoming) => double.IsFinite(word.WordStartSeconds) && double.IsFinite(word.WordEndSeconds) &&
             word.WordEndSeconds > word.WordStartSeconds && (incoming
-                ? word.WordStartSeconds >= PauseSeconds - 0.001 && word.WordEndSeconds <= duration
-                : word.WordStartSeconds >= -duration && word.WordEndSeconds <= -PauseSeconds + 0.001);
+                ? word.WordStartSeconds >= PauseForWindow(windowDuration ?? duration) - 0.001 && word.WordEndSeconds <= duration
+                : word.WordStartSeconds >= -duration && word.WordEndSeconds <= -PauseForWindow(windowDuration ?? duration) + 0.001);
         foreach (var incoming in new[] { true, false })
         {
             var seam = incoming ? seams.In : seams.Out;

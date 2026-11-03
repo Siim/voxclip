@@ -40,14 +40,18 @@ d['voiceLabVideoAsset'] = obj({'id': idref, 'file': {'type': 'string', 'pattern'
 d['voiceLabSeam'] = obj({'kind': {'enum': ['none', 'gap', 'hard', 'synthToSynth']}, 'fadeSamples': integer, 'sourceHandleSamples': integer, 'assetHandleFrames': integer})
 d['voiceLabSeams'] = obj({'in': {'$ref': '#/$defs/voiceLabSeam'}, 'out': {'$ref': '#/$defs/voiceLabSeam'}})
 d['voiceLabChunk'] = obj({'sourceStartSample': integer, 'sourceEndSample': integer, 'requestId': idref, 'seed': {'type': 'integer', 'minimum': 0, 'maximum': 4294967295}, 'assetId': idref, 'assetSha256': {'type': 'string', 'pattern': '^[0-9a-f]{64}$'}, 'assembledStartFrame': integer, 'assembledEndFrame': integer})
-video_fields = {'mode': {'enum': ['source', 'retimed', 'zoomCover', 'lipsync']}, 'sourceStartSample': integer, 'sourceEndSample': integer, 'outputSamples': integer,
+video_fields = {'mode': {'enum': ['source', 'cut', 'retimed', 'zoomCover', 'lipsync']}, 'sourceStartSample': integer, 'sourceEndSample': integer, 'outputSamples': integer,
                 'retimeFactor': num, 'zoom': num, 'faceX': {'type': 'number', 'minimum': 0, 'maximum': 1}, 'faceY': {'type': 'number', 'minimum': 0, 'maximum': 1},
                 'assetId': idref, 'provider': string, 'model': string, 'requestId': idref, 'windowStartSample': integer, 'windowEndSample': integer, 'syncMode': {'enum': ['remap']}}
 for key in set(video_fields) - {'mode', 'sourceStartSample', 'sourceEndSample', 'outputSamples'}:
     video_fields[key] = nullable(video_fields[key])
 # Every key is written, with null for the fields a mode does not use, so both Cores read every saved recipe.
 d['voiceLabVideoRecipe'] = obj(video_fields)
+d['voiceLabVideoRecipe']['properties']['cuts'] = {
+    'type': 'array', 'minItems': 1, 'maxItems': 2,
+    'items': obj({'startSample': integer, 'endSample': {'type': 'integer', 'minimum': 1}})}
 d['voiceLabVideoRecipe']['allOf'] = [
+    {'if': {'properties': {'mode': {'const': 'cut'}}}, 'then': {'required': ['cuts', 'zoom', 'faceX', 'faceY']}},
     {'if': {'properties': {'mode': {'const': 'retimed'}}}, 'then': {'required': ['retimeFactor']}},
     {'if': {'properties': {'mode': {'const': 'zoomCover'}}}, 'then': {'required': ['retimeFactor', 'zoom', 'faceX', 'faceY']}},
     {'if': {'properties': {'mode': {'const': 'lipsync'}}}, 'then': {'required': ['assetId', 'provider', 'model', 'requestId', 'windowStartSample', 'windowEndSample', 'syncMode']}}

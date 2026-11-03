@@ -99,13 +99,13 @@ struct VoiceLabTakeAccountBindingTests {
                 let body = try #require(JSONSerialization.jsonObject(with: VoiceLabRequestFixtures.body(request)) as? [String: Any])
                 #expect(body["text"] as? String == "Hello")
                 var pcm = Data()
-                for index in 0..<96_000 {
+                for index in 0..<98_640 {
                     var sample = Int16((sin(2 * Double.pi * 100 * Double(index) / 24_000) * 3_200).rounded()).littleEndian
                     withUnsafeBytes(of: &sample) { pcm.append(contentsOf: $0) }
                 }
                 let characters = Array("Hello").map(String.init)
-                let starts = characters.indices.map { 0.1 + Double($0) * 3.8 / 5 }
-                let ends = characters.indices.map { 0.1 + Double($0 + 1) * 3.8 / 5 }
+                let starts = characters.indices.map { 0.1 + Double($0) * 3.91 / 5 }
+                let ends = characters.indices.map { 0.1 + Double($0 + 1) * 3.91 / 5 }
                 let reply = try JSONSerialization.data(withJSONObject: ["audio_base64": pcm.base64EncodedString(),
                     "alignment": ["characters": characters, "character_start_times_seconds": starts, "character_end_times_seconds": ends]])
                 if rotateAfterSynthesis { keys.rotate() }

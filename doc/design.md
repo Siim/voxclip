@@ -1238,19 +1238,31 @@ If wording instead falls below the same gate's minimum usable length, say “Too
 for its slot. A take won't fit the video.” and offer **Use surrounding sentence** rather than asking
 for fewer words. That footer reads “{n} phrase(s) need(s) wording that fits.”
 
-**Pace matching (3 November 2026).** Before pricing, choose a provider pace on its 0.01
-grid within 0.70×–1.20×: prefer keeping the source video duration, aiming at the midpoint
-of the exact-fit range; otherwise use a reachable Match video fit. Keep the actual fit
-planner's silence/room-tone limits, never extra padding. At non-default pace the muted
-line reads `≈ 4.6 s at 0.80× pace · slot 5.1 s · fits`. The complete phrase input and
+**Natural pacing (3 November 2026, ADR-R38).** Before pricing, prefer 1.00× speech.
+Automatic pace stays on the 0.01 grid in 0.90×–1.10× and moves only for an exact
+Keep-source fit. Grow natural generated pauses within the speaker's measured limits,
+then offer a safe source-video jump cut; never slow a phrase just to fill its slot.
+The muted line reads `≈ 3.1 s · slot 3.9 s · fits` or
+`≈ 3.1 s · slot 4.9 s · fits with a video cut`. Only non-default pace adds
+`at 1.05× pace`. The complete phrase input and
 fresh paid approval bind that pace, and the inline send/price disclosure repeats it.
 For dialogue/v4, only 1.0× is supported. If pace cannot fit, the same too-long/too-short
 wording recovery applies. Use surrounding sentence reviews the whole replacement and
 source range inline, preserving excluded changes and paid takes; it does not approve a
-charge. A changed-duration take's **Try another** targets the exact-fit midpoint from
+charge. A changed-duration take's **Try another** repeats natural-first exact-fit matching from
 its measured pre-fit trimmed length and the selected take's receipt pace, not the original
 text estimate. A fresh quote and priced click are still required, including after another
 retry quote or a speech-model change.
+
+Duration choices are inline rows, with none preselected for each passage and take:
+
+- **Keep source video duration** — “Adds {s} s of natural pauses in your room's sound. Speech keeps its pace.” Keep the existing verified-fit copy when no pauses are added; disable with the actual reason if natural pause capacity is insufficient.
+- **Cut the video to this take** — “Removes {s} s of video at a pause, like a vlog jump cut. Speech keeps its pace.” Show only for a verified safe cut; the rest of the source window gets a 1.06× punch-in after the first jump.
+- **Match video to this take's duration** — retain the retime factor and 1.12× crop disclosure. Acceptance prepares the actual composition for both changed-duration routes.
+
+Take detail reads `Take 1 · 3.1 s · 0.8 s shorter · natural pace 1.00×`.
+Keep ADR-R36 footer blockers. Windows reports that video cuts cannot render yet,
+preserving the saved audio, cut spans and edits without silently retiming them.
 
 The footer counts unresolved included phrases: “1 phrase needs a shorter wording.” or
 “{n} phrases need a shorter wording.” **Get Price · {k} phrase(s)** prices only included

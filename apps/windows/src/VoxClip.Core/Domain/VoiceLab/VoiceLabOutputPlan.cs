@@ -16,6 +16,7 @@ public sealed record VoiceLabOutputPiece(VoiceLabOutputPieceKind Kind, long Sour
 public sealed record VoiceLabOutputPlan(double SampleRate, long TotalSourceSamples, IReadOnlyList<VoiceLabOutputPiece> Pieces,
     IReadOnlyList<CaptionWord> Captions, VoiceLabOutputScope Scope)
 {
+    public IReadOnlyDictionary<string, IReadOnlyList<VoiceLabVideoCut>> VideoCuts { get; init; } = new Dictionary<string, IReadOnlyList<VoiceLabVideoCut>>();
     public long OutputSamples => Pieces.Count == 0 ? 0 : Pieces[^1].OutputEndSample;
     public double Duration => OutputSamples / SampleRate;
     public bool RequiresSyntheticRendering => Pieces.Any(piece => piece.Kind == VoiceLabOutputPieceKind.Synth);
@@ -32,6 +33,11 @@ public sealed record VoiceLabOutputPlan(double SampleRate, long TotalSourceSampl
             if (sample < piece.SourceStartSample) return prior / SampleRate;
             if (sample <= piece.SourceEndSample)
             {
+                if (piece.SegmentId is { } id && VideoCuts.TryGetValue(id, out var cuts) && cuts.Count > 0)
+                {
+                    var removed = cuts.Sum(cut => Math.Max(0, Math.Min(sample, cut.EndSample) - cut.StartSample));
+                    return (piece.OutputStartSample + sample - piece.SourceStartSample - removed) / SampleRate;
+                }
                 var fraction = (double)(sample - piece.SourceStartSample) / (piece.SourceEndSample - piece.SourceStartSample);
                 return (piece.OutputStartSample + fraction * (piece.OutputEndSample - piece.OutputStartSample)) / SampleRate;
             }
@@ -45,6 +51,13 @@ public sealed record VoiceLabOutputPlan(double SampleRate, long TotalSourceSampl
         foreach (var piece in Pieces)
         {
             if (sample >= piece.OutputEndSample) continue;
+            if (piece.SegmentId is { } id && VideoCuts.TryGetValue(id, out var cuts) && cuts.Count > 0)
+            {
+                var sourceSample = piece.SourceStartSample + sample - piece.OutputStartSample;
+                foreach (var cut in cuts)
+                    if (sourceSample >= cut.StartSample) sourceSample += cut.EndSample - cut.StartSample;
+                return sourceSample / SampleRate;
+            }
             var fraction = (sample - piece.OutputStartSample) / (piece.OutputEndSample - piece.OutputStartSample);
             return (piece.SourceStartSample + fraction * (piece.SourceEndSample - piece.SourceStartSample)) / SampleRate;
         }
@@ -155,6 +168,8 @@ public static class VoiceLabOutputPlanner
             Append(VoiceLabOutputPieceKind.Source, position, interval.EndSample, interval.EndSample - position);
         }
         var plan = new VoiceLabOutputPlan(rate, total, pieces, [], scope);
+        plan = plan with { VideoCuts = enabled.Where(segment => segment.Candidates[segment.SelectedCandidateIndex].Recipe?.Video.Mode == VoiceLabVideoMode.Cut)
+            .ToDictionary(segment => segment.Id, segment => segment.Candidates[segment.SelectedCandidateIndex].Recipe!.Video.Cuts!) };
         if (enabled.Length == 0) return plan with { Captions = EditingEngine.CaptionCopy(segments, basePlan) };
         var captions = new List<CaptionWord>();
         foreach (var word in transcript.Words.Where(word => word.Kind == WordKind.Word))

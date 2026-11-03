@@ -248,7 +248,7 @@
     "legacyOutputSeconds": 1,
     "outputSeconds": 1.18,
     "padSeconds": 0.14,
-    "pace": 1.2,
+    "pace": 1.0,
     "fits": true
   },
   "roomTone": {

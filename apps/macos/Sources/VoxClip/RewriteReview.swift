@@ -58,9 +58,9 @@ struct RewriteReview: Sendable {
                 let timing = try VoiceLabPaceMatching.measure(text: patch, rate: speakingRate, window: window,
                     incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
                     sourceSampleRate: inputs.project.media.source.audio?.sampleRate ?? 48_000,
-                    supportsPace: inputs.synthesisModel != "eleven_v4",
+                    supportsPace: inputs.synthesisModel != "eleven_v4", hardJoinSmoothing: true,
                     audioTags: VoiceLabAudioTags.shifted(hunk.audioTags, by: window.leftBridgeWordIds.compactMap { texts[$0] }.flatMap { EditingPrimitives.splitWords($0) }.count),
-                    modelID: inputs.synthesisModel ?? "")
+                    modelID: inputs.synthesisModel ?? "", sourceItems: spoken, sourceEnvelope: inputs.envelope)
                 reviews.append(RewriteHunkReview(hunk: hunk, window: window, patchText: patch, meter: meter, refusal: nil, timing: timing))
                 requestTexts.append(VoiceLabAudioTags.requestText(words: patch, tags: annotations, modelID: inputs.synthesisModel ?? ""))
             } catch {

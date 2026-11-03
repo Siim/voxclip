@@ -25,6 +25,7 @@ public enum VoiceLabFitEditKind: String, Sendable, Equatable { case remove, inse
 /// Either way the playhead jumps once, at `start` for a removal and at `start + count` for an insertion, with one
 /// equal-power `SEAM_FADE` join centred on the jump: `floor(N/2)` frames before it and `ceil(N/2)` after.
 public struct VoiceLabFitEdit: Sendable, Equatable {
+    public var roomTone: Bool = false
     public var kind: VoiceLabFitEditKind
     public var start: Int64
     public var count: Int64
@@ -40,6 +41,7 @@ public struct VoiceLabFitSeam: Sendable, Equatable {
 
 /// A fit plan (§8.9.2 Output): the incoming pad, the edited take between the final trims and the outgoing pad.
 public struct VoiceLabFitPlan: Sendable, Equatable {
+    public var videoCuts: [VoiceLabVideoCut] = []
     public var hardJoinSmoothing: Bool = false
     public var edits: [VoiceLabFitEdit]
     public var incoming: VoiceLabFitSeam
@@ -103,7 +105,8 @@ public enum VoiceLabFitPlanner {
     /// measures, for a take edge (`none`) the silence to the window's nearest word, and nil for a hard seam. `tokens` are
     /// the patch tokens, one per word.
     public static func plan(window: VoiceLabWindow, incomingSilence: Double?, outgoingSilence: Double?, take: VoiceLabFitTake,
-                            tokens: [String], sourceSampleRate rate: Double, hardJoinSmoothing: Bool = false) throws -> VoiceLabFitResult {
+                            tokens: [String], sourceSampleRate rate: Double, hardJoinSmoothing: Bool,
+                            pauseProfile: VoiceLabPauseProfile? = nil) throws -> VoiceLabFitResult {
         let kinds: [VoiceLabSeamKind] = [window.leftSeam.kind, window.rightSeam.kind]
         let silences: [Double?] = [incomingSilence, outgoingSilence]
         let reach = try validate(window: window, kinds: kinds, silences: silences, take: take, rate: rate)
@@ -117,7 +120,7 @@ public enum VoiceLabFitPlanner {
         // The take must fill w = duration(W) − e frames; ρ > 0 means it is too long.
         let fade = VoiceLabGeometry.samples(VoiceLabPatchConstants.SEAM_FADE, assetRate)
         let leadIn = spans[0].start - t0, tailOut = t1 - spans[spans.count - 1].end
-        let reserve = VoiceLabGeometry.samples(VoiceLabHardJoin.pauseSeconds, assetRate)
+        let reserve = VoiceLabGeometry.samples(VoiceLabHardJoin.pauseSeconds(windowDuration: window.end - window.start), assetRate)
         let edgeIn: Int64 = kinds[0] == .none ? max(0, VoiceLabGeometry.samples(silences[0] ?? 0, assetRate) - leadIn) :
             hardJoinSmoothing && kinds[0] == .hard ? max(0, reserve - leadIn) : 0
         let edgeOut: Int64 = kinds[1] == .none ? max(0, VoiceLabGeometry.samples(silences[1] ?? 0, assetRate) - tailOut) :
@@ -127,12 +130,26 @@ public enum VoiceLabFitPlanner {
         let natural = edgeIn + edgeOut + t1 - t0
         let rho = natural - target, shorten = rho > 0
         let lengths = pauses.map(\.length)
-        let rooms = roomsOf(pauses, shorten: shorten, assetRate: assetRate, fade: fade)
+        let rooms: [Int64] = pauses.map { pause in
+            guard let pauseProfile else { return roomsOf([pause], shorten: shorten, assetRate: assetRate, fade: fade)[0] }
+            let distribution = pauseProfile.distribution(after: tokens[pause.word])
+            let boundary = VoiceLabNaturalPacing.clauseBoundary(after: tokens[pause.word], before: tokens[pause.word + 1])
+            let floor = VoiceLabGeometry.samples(distribution.p25, assetRate)
+            let ceiling = VoiceLabGeometry.samples(min(distribution.p75, distribution.p90), assetRate)
+            let minimumGap = VoiceLabGeometry.samples(VoiceLabHardJoin.generatedFadeSeconds + VoiceLabHardJoin.sourceFadeSeconds, assetRate)
+            if shorten { return max(0, pause.length - max(floor, minimumGap)) }
+            guard pause.length >= minimumGap, boundary || pause.length >= VoiceLabGeometry.samples(0.10, assetRate) else { return 0 }
+            return max(0, ceiling - pause.length)
+        }
         var alloc = [Int64](repeating: 0, count: pauses.count)
         var remaining = abs(rho)
         for punctuation in [true, false] {
-            let group = pauses.indices.filter { pauses[$0].punctuation == punctuation }
-            remaining = spread(remaining, group, lengths: lengths, rooms: rooms, alloc: &alloc)
+            let group = pauses.indices.filter { index in
+                let existing = pauseProfile != nil && !shorten ?
+                    pauses[index].punctuation || pauses[index].length >= VoiceLabGeometry.samples(0.10, assetRate) : pauses[index].punctuation
+                return existing == punctuation
+            }
+            remaining = spread(remaining, group, lengths: pauseProfile == nil ? lengths : lengths.map { _ in 1 }, rooms: rooms, alloc: &alloc)
         }
 
         // Seams: borrow source samples into a gap, keeping PAUSE_SLACK_KEEP beside the kept word, or pad silence.
@@ -157,7 +174,7 @@ public enum VoiceLabFitPlanner {
         } else if remaining > 0 {
             let gapPad = VoiceLabGeometry.samples(VoiceLabPatchConstants.SEAM_PAD_MAX, assetRate)
             let hardPad = VoiceLabGeometry.samples(VoiceLabPatchConstants.HARD_SEAM_PAD_MAX, assetRate)
-            let caps: [Int64] = kinds.map { $0 == .hard ? (hardJoinSmoothing ? 0 : hardPad) : gapPad }
+            let caps: [Int64] = kinds.map { pauseProfile != nil ? 0 : $0 == .hard ? (hardJoinSmoothing ? 0 : hardPad) : gapPad }
             let extra = split(remaining, caps: caps)
             pad = [pad[0] + extra[0], pad[1] + extra[1]]
             exact = extra[0] + extra[1] == remaining
@@ -197,8 +214,13 @@ public enum VoiceLabFitPlanner {
         var edits: [VoiceLabFitEdit] = []
         var shifts = [Int64](repeating: 0, count: take.words.count)
         for (index, pause) in pauses.enumerated() where alloc[index] > 0 {
-            let start = pause.start + (pause.length - alloc[index]) / 2
-            edits.append(VoiceLabFitEdit(kind: shorten ? .remove : .insert, start: start, count: alloc[index]))
+            let roomTone = pauseProfile != nil && !shorten
+            let start = roomTone ? max(pause.start + VoiceLabGeometry.samples(VoiceLabHardJoin.generatedFadeSeconds, assetRate),
+                min(pause.end - VoiceLabGeometry.samples(VoiceLabHardJoin.sourceFadeSeconds, assetRate), pause.start + pause.length / 2)) :
+                pause.start + (pause.length - alloc[index]) / 2
+            var edit = VoiceLabFitEdit(kind: shorten ? .remove : .insert, start: start, count: alloc[index])
+            edit.roomTone = roomTone
+            edits.append(edit)
             for word in (pause.word + 1)..<take.words.count { shifts[word] += deltas[index] }
         }
         let startSample = window.startSample - borrow[0], endSample = window.endSample + borrow[1]
@@ -226,7 +248,7 @@ public enum VoiceLabFitPlanner {
                                    windowStart: start, windowEnd: end, windowStartSample: startSample, windowEndSample: endSample,
                                    outputFrames: output, words: words)
         plan.hardJoinSmoothing = hardJoinSmoothing
-        try checkVoice(plan, spans: spans, unvoiced: unvoiced, size: size, fade: fade)
+        try checkVoice(plan, spans: spans, unvoiced: unvoiced, size: size, fade: fade, assetRate: assetRate)
         guard !exact else { return .exact(plan) }
         return .changedDuration(plan, naturalOut: Double(natural) / assetRate, residualSeconds: residualSeconds)
     }
@@ -428,12 +450,13 @@ public enum VoiceLabFitPlanner {
     /// of every word span and of every envelope frame at or above `VOICED_FRAME`, so every other output sample is a copy of
     /// its paid frame; and the output length adds up.
     private static func checkVoice(_ plan: VoiceLabFitPlan, spans: [(start: Int64, end: Int64)], unvoiced: [Bool], size: Int64,
-                                   fade: Int64) throws {
+                                   fade: Int64, assetRate: Double) throws {
         guard plan.incoming.padFrames >= 0, plan.outgoing.padFrames >= 0 else { throw VoiceLabGeometryError.fitTouchesVoice }
         var cursor = plan.trimStartFrame
         var frames = plan.incoming.padFrames + plan.trimEndFrame - plan.trimStartFrame + plan.outgoing.padFrames
         for edit in plan.edits {
-            let lo = edit.start - fade / 2, hi = edit.start + edit.count + fade - fade / 2
+            let lo = edit.start - (edit.roomTone ? VoiceLabGeometry.samples(VoiceLabHardJoin.generatedFadeSeconds, assetRate) : fade / 2)
+            let hi = edit.start + (edit.roomTone ? VoiceLabGeometry.samples(VoiceLabHardJoin.sourceFadeSeconds, assetRate) : edit.count + fade - fade / 2)
             guard edit.count > 0, cursor <= lo, hi <= plan.trimEndFrame,
                   !spans.contains(where: { $0.start < hi && lo < $0.end }) else { throw VoiceLabGeometryError.fitTouchesVoice }
             var block = lo / size

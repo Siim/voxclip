@@ -104,8 +104,20 @@ public enum VoiceLabTakeProcessing {
             candidateTruePeakDbtp: VoiceLabLoudness.truePeakDbtp(trimmed, sampleRate: rate))
         let take = VoiceLabFitTake(assetFrames: Int64(samples.count), assetSampleRate: rate, trimStart: trim.start, trimEnd: trim.end,
                                   words: words, envelope: envelope(samples, sampleRate: rate))
-        let fit = try VoiceLabFitPlanner.plan(window: input.window, incomingSilence: input.incomingSilence,
-            outgoingSilence: input.outgoingSilence, take: take, tokens: words.map(\.text), sourceSampleRate: Double(input.sourceSampleRate), hardJoinSmoothing: input.hardJoinSmoothing)
+        let profile = input.pauseProfile ?? VoiceLabPauseProfile.measure(items: input.items, envelope: input.sourceEnvelope,
+            start: 0, end: .greatestFiniteMagnitude)
+        let fitted = try VoiceLabFitPlanner.plan(window: input.window, incomingSilence: input.incomingSilence,
+            outgoingSilence: input.outgoingSilence, take: take, tokens: words.map(\.text), sourceSampleRate: Double(input.sourceSampleRate),
+            hardJoinSmoothing: input.hardJoinSmoothing, pauseProfile: profile)
+        var plan = fitted.plan
+        let outputSamples = Int64(EditingPrimitives.jsRound(Double(plan.outputFrames) * Double(input.sourceSampleRate) / Double(rate)))
+        plan.videoCuts = VoiceLabNaturalPacing.cuts(windowStartSample: plan.windowStartSample, windowEndSample: plan.windowEndSample,
+            outputSamples: outputSamples, sampleRate: input.sourceSampleRate, envelope: input.sourceEnvelope, items: input.items)
+        let fit: VoiceLabFitResult
+        switch fitted {
+        case .exact: fit = .exact(plan)
+        case .changedDuration(_, let natural, let residual): fit = .changedDuration(plan, naturalOut: natural, residualSeconds: residual)
+        }
         return VoiceLabTakeAnalysis(sampleRate: rate, trimmed: trimmed, gainDb: gain, roomTone: preflight.roomTone, fit: fit)
     }
     private static func frames(_ seconds: Double, _ rate: Int) -> Int { Int(EditingPrimitives.jsRound(seconds * Double(rate))) }

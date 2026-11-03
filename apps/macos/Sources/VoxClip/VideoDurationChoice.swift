@@ -20,8 +20,10 @@ struct VideoDurationChoiceAvailability: Equatable {
     let options: VoiceLabVideoDurationOptions?
     let unchangedReason: String?
     let changedReason: String?
+    private let rendererReady: Bool
 
     init(row: VoiceLabTakeRow?, sourceSampleRate: Int, rendererReady: Bool) {
+        self.rendererReady = rendererReady
         let options = row.map { VoiceLabVideoDurationOptions(row: $0, sourceSampleRate: sourceSampleRate) }
         self.options = options
         unchangedReason = options?.unchangedUnavailableReason ?? (row == nil ? "Choose a take that passed all speech checks first." : nil)
@@ -32,6 +34,7 @@ struct VideoDurationChoiceAvailability: Equatable {
     func allows(_ choice: VoiceLabVideoMode) -> Bool {
         switch choice {
         case .source: unchangedReason == nil
+        case .cut: rendererReady && options?.allows(.cut) == true
         case .retimed: changedReason == nil
         case .zoomCover, .lipsync: false
         }
@@ -65,14 +68,24 @@ struct VideoDurationChoiceView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Choose video duration for this passage")
             option(.source, title: "Keep source video duration", detail:
-                availability.unchangedReason ?? "Uses the verified silence-only fit. Speech is never stretched.")
+                availability.unchangedReason ?? keepSourceDetail)
+            if availability.allows(.cut) {
+                option(.cut, title: "Cut the video to this take", detail:
+                    "Removes \(String(format: "%.1f", availability.options?.removedVideoSeconds ?? 0)) s of video at a pause, like a vlog jump cut. Speech keeps its pace.")
+            }
             option(.retimed, title: "Match video to this take's duration", detail:
-                availability.changedReason ?? "Keeps this take's natural speech timing, retimes source video and crops in 1.12×. Nothing is sent.")
+                availability.changedReason ?? "Keeps this take's natural speech timing, plays source video at \(String(format: "%.2f", availability.options?.retimeFactor ?? 1))× and crops in 1.12×. Nothing is sent.")
             if selection == nil { Text("Choose anew for each passage and selected take.").foregroundStyle(DesignValues.color("text.tertiary")) }
         }
         .font(VCType.small.font())
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Video duration choices")
+    }
+
+    private var keepSourceDetail: String {
+        let added = availability.options?.addedPauseSeconds ?? 0
+        return added > 0 ? "Adds \(String(format: "%.1f", added)) s of natural pauses in your room's sound. Speech keeps its pace." :
+            "Uses the verified silence-only fit. Speech is never stretched."
     }
 
     private func option(_ choice: VoiceLabVideoMode, title: String, detail: String) -> some View {

@@ -203,10 +203,13 @@ extension ClipTakePlan.Phrase {
             return takes.isEmpty ? "No take selected." : "No usable take selected. Review the reasons below."
         }
         let duration = String(format: "%.1f s", locale: Locale(identifier: "en_US_POSIX"), length)
-        if selected.fits { return "Take \(selected.number) · \(duration) · fits" }
+        let effectivePace = selected.row.receipt?.pace ?? selected.row.quote?.synthesis.pace ?? 1
+        let pace = String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), effectivePace)
+        let paceLabel = (VoiceLabNaturalPacing.NATURAL_PACE_MIN...VoiceLabNaturalPacing.NATURAL_PACE_MAX).contains(effectivePace) ? "natural pace" : "pace"
+        if selected.fits { return "Take \(selected.number) · \(duration) · fits · \(paceLabel) \(pace)×" }
         let difference = length - originalLength
         let delta = String(format: "%.1f s", locale: Locale(identifier: "en_US_POSIX"), abs(difference))
-        return "Take \(selected.number) · \(duration) · \(delta) \(difference < 0 ? "shorter" : "longer"). Choose video duration below."
+        return "Take \(selected.number) · \(duration) · \(delta) \(difference < 0 ? "shorter" : "longer") · \(paceLabel) \(pace)×"
     }
 }
 

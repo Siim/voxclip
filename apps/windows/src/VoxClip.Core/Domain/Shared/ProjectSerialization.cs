@@ -82,7 +82,7 @@ public static class ProjectSerialization
                 RequireKeys(recipe, "audio", "words", "outDuration", "seed", "chunks", "roomTone", "seams", "video", "qa", "provenance", "cost", "voiceSource", "voiceRefId", "consentVerifiedAt");
                 RequireKeys(RequireKind(recipe, "qa", JsonValueKind.Object), "transcriptTokens", "transcriptExact", "transcriptMatch", "lufsJumpLu", "peakDbfs", "speakerScore", "speakerThreshold", "speakerModel", "speakerPassed");
                 Choice(recipe, "voiceSource", "own", "stock");
-                Choice(RequireKind(recipe, "video", JsonValueKind.Object), "mode", "source", "retimed", "zoomCover", "lipsync");
+                Choice(RequireKind(recipe, "video", JsonValueKind.Object), "mode", "source", "cut", "retimed", "zoomCover", "lipsync");
                 var seams = RequireKind(recipe, "seams", JsonValueKind.Object);
                 Choice(RequireKind(seams, "in", JsonValueKind.Object), "kind", "none", "gap", "hard", "synthToSynth");
                 Choice(RequireKind(seams, "out", JsonValueKind.Object), "kind", "none", "gap", "hard", "synthToSynth");

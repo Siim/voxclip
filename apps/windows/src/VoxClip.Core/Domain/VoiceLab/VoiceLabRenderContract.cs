@@ -107,7 +107,7 @@ public static class VoiceLabRenderContract
             var timestampedDialogue = provenance.Endpoint == "v1/text-to-dialogue/with-timestamps" && provenance.Model == "eleven_v4";
             if (segment.Kind == VoiceLabSegmentKind.Tts && !timestampedSpeech && !timestampedDialogue)
                 throw new VoiceLabProjectException(VoiceLabProjectErrorCode.EndpointUnsupported);
-            if (recipe.Video.Mode == VoiceLabVideoMode.Retimed || (recipe.Video.Mode == VoiceLabVideoMode.Source &&
+            if (recipe.Video.Mode is VoiceLabVideoMode.Cut or VoiceLabVideoMode.Retimed || (recipe.Video.Mode == VoiceLabVideoMode.Source &&
                 piece.SourceEndSample-piece.SourceStartSample != piece.OutputEndSample-piece.OutputStartSample))
                 throw new VoiceLabProjectException(VoiceLabProjectErrorCode.VideoModeUnsupported);
             var asset = project.VoiceLab.Assets!.First(a => a.Id == recipe.Audio.AssetId);

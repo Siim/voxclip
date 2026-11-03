@@ -247,6 +247,7 @@ public sealed class PaidTakePlaybackTests
                 Edits = project.Edits with { Clips = [], ActiveClipId = null, CutWordIds = [], CutPauseIds = [], Corrections = new Dictionary<string, string>() } });
             Session = new(Editor, 1, 3, new(48000, .01, Enumerable.Repeat(.01f, 1000).ToArray()), null);
             Session.Edit("clearer word2 word3");
+            if (Session.BlockedVoiceHunks.Count > 0) Assert.True(Session.PriceItAnyway(1));
             Runner = new(new(Editor.Project.Id, Path.Combine(root, "paid"), Path.Combine(root, "scratch")), uncheckedAudio, allFailed, end);
             Generation = new(Runner, _ => Task.FromResult(new RewriteGenerationChoices([new("voice", "My voice")],
                     [new("eleven_multilingual_v2", "Multilingual v2", ["en"], true, false, 5000, 1)])),

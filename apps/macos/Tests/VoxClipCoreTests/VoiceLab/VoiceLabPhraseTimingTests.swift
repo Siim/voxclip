@@ -49,8 +49,8 @@ struct VoiceLabPhraseTimingTests {
             incomingSilence: nil, outgoingSilence: nil, sourceSampleRate: 48_000, supportsPace: false, hardJoinSmoothing: false)
         #expect(timing.estimateSeconds >= 1.6)
         #expect(!timing.fits)
-        #expect(abs(timing.slotSeconds - 1.375) < 0.0001)
-        #expect(timing.copy == "≈ 1.7 s · slot 1.4 s")
+        #expect(abs(timing.slotSeconds - 1.1) < 0.0001)
+        #expect(timing.copy == "≈ 1.7 s · slot 1.1 s")
         let fast = try VoiceLabPhraseTiming.estimate(text: text, rate: 20)
         #expect(timing.estimateSeconds > fast)
         let plain = try VoiceLabPhraseTiming.estimate(text: "then well let's get going", rate: rate)
@@ -75,8 +75,9 @@ struct VoiceLabPhraseTimingTests {
                     #expect(timing.fits == (paid.allows(.source) || paid.allows(.retimed)))
                     for offset in [-0.01, 0.01] {
                         // Probe lengths are clamped to 0.1 s, so a slot that small has no probe just below it.
-                        if timing.slotSeconds - 0.01 < 0.1 { continue }
-                        let length = max(0.1, timing.slotSeconds + offset)
+                        let maximum = try #require(timing.maximumSeconds)
+                        if maximum - 0.01 < 0.1 { continue }
+                        let length = max(0.1, maximum + offset)
                         let boundary = try VoiceLabPhraseTiming.preview(seconds: length, window: source,
                             incomingSilence: silence, outgoingSilence: silence, sourceSampleRate: 48_000, hardJoinSmoothing: true)
                         let gate = VoiceLabVideoDurationOptions(fit: boundary, sourceSampleRate: 48_000, assetSampleRate: 48_000)

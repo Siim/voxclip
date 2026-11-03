@@ -69,9 +69,10 @@ public sealed class RewritePaceMatchingTests
         var dialogue = await InputFor("eleven_v4");
         var paced = await InputFor("eleven_multilingual_v2");
         Assert.Equal(1, dialogue.Pace);
-        Assert.NotEqual(1, paced.Pace);
+        Assert.Equal(1, paced.Pace);
         Assert.Equal(VoiceLabPaceMatching.Measure(paced.Text, VoiceLabRewriteFit.SpeakingRate(session.Transcript), paced.Window,
-            paced.IncomingSilence, paced.OutgoingSilence, paced.SourceSampleRate).Pace, paced.Pace);
+            paced.IncomingSilence, paced.OutgoingSilence, paced.SourceSampleRate, hardJoinSmoothing: true,
+            sourceItems: session.Transcript, sourceEnvelope: session.Envelope).Pace, paced.Pace);
     }
 
     [Fact]
@@ -112,7 +113,7 @@ public sealed class RewritePaceMatchingTests
         var fitting = hunk with { Fit = new(4, 6, true, .85) };
         Assert.Equal(fitting.Fit.Copy, fitting.SpokenTiming);
         Assert.Contains("fits", fitting.SpokenTiming);
-        Assert.Contains("at ≈ 0.85× pace", fitting.SpokenTiming);
+        Assert.Contains("at 0.85× pace", fitting.SpokenTiming);
         var root = Path.Combine(Path.GetDirectoryName(SharedResources.ResolveRoot())!, "apps/windows/src/VoxClip.App");
         var rows = File.ReadAllText(Path.Combine(root, "Controls/RewritePanel.Review.cs"));
         Assert.Contains("voiceHunk?.SpokenTiming", rows);
@@ -183,7 +184,7 @@ public sealed class RewritePaceMatchingTests
         Assert.Equal(1, Assert.Single(session.Review!.VoiceHunks).Fit!.Pace);
         Assert.Same(paid, Assert.Single(session.Generation!.Rows));
         await generation.ChooseModelAsync("eleven_multilingual_v2");
-        Assert.NotEqual(1, Assert.Single(session.Review.VoiceHunks).Fit!.Pace);
+        Assert.Equal(1, Assert.Single(session.Review.VoiceHunks).Fit!.Pace);
         Assert.Same(paid, Assert.Single(session.Generation.Rows));
     }
 
@@ -279,7 +280,7 @@ public sealed class RewritePaceMatchingTests
         Assert.False(fresh.CanExecute);
         fresh.MarkEstimateShown(fresh.Quote!);
         Assert.True(fresh.CanExecute);
-        Assert.Contains("Phrase 1 at ", session.TakeSendLine);
+        Assert.DoesNotContain("Phrase 1 at ", session.TakeSendLine);
         await generation.GenerateAsync((_, _) => throw new InvalidOperationException("Stale approval must not be shown."), oldQuote, autoplay: false);
         Assert.Empty(generation.Rows);
         Assert.Empty(fresh.Rows);
@@ -344,7 +345,7 @@ public sealed class RewritePaceMatchingTests
         Assert.All(session.Review!.VoiceHunks, hunk => Assert.Equal(1, hunk.Fit!.Pace));
         Assert.Same(paid, other.Selected);
         Assert.Equal(1, other.NextPace);
-        Assert.NotEqual(1, paid.Receipt!.Pace);
+        Assert.Equal(1, paid.Receipt!.Pace);
     }
 
     [Fact]
@@ -354,8 +355,8 @@ public sealed class RewritePaceMatchingTests
         Configure(session);
         await session.DiscoverWindowsAsync();
         var timing = Assert.Single(session.Review!.VoiceHunks).Fit!;
-        Assert.NotEqual(1, timing.Pace);
-        Assert.Contains("× pace", timing.Copy);
+        Assert.Equal(1, timing.Pace);
+        Assert.DoesNotContain("pace", timing.Copy);
         await session.ChooseModelForWindowsAsync("eleven_v4");
         var dialogue = Assert.Single(session.Review.VoiceHunks).Fit!;
         Assert.Equal(1, dialogue.Pace);
@@ -423,7 +424,7 @@ public sealed class RewritePaceMatchingTests
         var selected = Assert.IsType<VoiceLabTakeRow>(generation.Selected);
         Assert.Equal(0.7, selected.Receipt!.Pace);
         var expected = VoiceLabPaceMatching.Match(selected.Audio!.Trimmed.Length / (double)selected.Audio.SampleRate,
-            Input().Window, null, null, 48_000, oldPace: selected.Receipt.Pace!.Value).Pace;
+            Input().Window, null, null, 48_000, oldPace: selected.Receipt.Pace!.Value, hardJoinSmoothing: true).Pace;
         await generation.InputsChangedAsync(preserveReview: true);
         Assert.Equal(expected, runner.Input!.Pace);
         Assert.NotEqual(0.7, runner.Input.Pace);
@@ -504,7 +505,7 @@ public sealed class RewritePaceMatchingTests
             var input = Input!;
             if (progress is not null) await progress([]);
             var trimmed = new float[278_400];
-            var fit = VoiceLabRewriteFit.Hypothetical(input.Window, input.IncomingSilence, input.OutgoingSilence, 5.8, 48_000);
+            var fit = VoiceLabRewriteFit.Hypothetical(input.Window, input.IncomingSilence, input.OutgoingSilence, 5.8, 48_000, hardJoinSmoothing: false);
             var receipt = new VoiceLabReceipt("elevenlabs", ElevenLabsRegion.Default, "fixture", input.ModelId, "voice",
                 quote.Takes[0].Synthesis.Review.RequestId, null, null, input.Pace);
             var row = new VoiceLabTakeRow(receipt.ActionId, 0, 42, receipt, Quote: quote.Takes[0],

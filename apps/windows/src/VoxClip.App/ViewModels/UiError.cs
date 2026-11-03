@@ -41,7 +41,7 @@ public static class UiError
                 VoiceLabProjectErrorCode.UnsupportedRendering or VoiceLabProjectErrorCode.NeedsVoiceLabUpgrade =>
                     "This Voice Lab project needs a reviewed v3 render recipe before preview or export. Your video and edits are still here.",
                 VoiceLabProjectErrorCode.VideoModeUnsupported =>
-                    "This Voice Lab video timing or mode is not supported in this build. Your generated audio and edits are saved.",
+                    "This Windows build cannot render changed-duration video or a video cut yet. Your generated audio, cut recipe and edits are saved. Open it on Mac to render, or choose Keep source video duration.",
                 VoiceLabProjectErrorCode.UnsupportedAssetFormat =>
                     "This Windows build cannot read this generated audio format. Keep the paid file for a supported build.",
                 VoiceLabProjectErrorCode.CleanAudioUnsupported =>

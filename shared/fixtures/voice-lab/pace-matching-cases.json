@@ -1,34 +1,88 @@
 {
-  "schema": "voxclip-pace-matching/1",
+  "schema": "voxclip-pace-matching/2",
   "sourceSampleRate": 48000,
   "seamKind": "gap",
   "incomingSilence": 0.05,
   "outgoingSilence": 0.05,
-  "caseCount": 3,
+  "caseCount": 6,
   "cases": [
     {
       "id": "phrase-1",
       "windowSeconds": 19.4,
       "measuredSeconds": 16.115,
-      "pace": 0.84,
+      "quietSpan": [
+        0.4,
+        18.9
+      ],
+      "pace": 1.0,
       "fits": true,
-      "keepsSource": true
+      "keepsSource": false,
+      "videoCut": true
     },
     {
       "id": "phrase-2",
       "windowSeconds": 5.12,
       "measuredSeconds": 3.39,
-      "pace": 0.7,
+      "quietSpan": [
+        0.4,
+        4.7
+      ],
+      "pace": 1.0,
       "fits": true,
-      "keepsSource": true
+      "keepsSource": false,
+      "videoCut": true
     },
     {
       "id": "phrase-3",
       "windowSeconds": 1.145,
       "measuredSeconds": 1.83,
-      "pace": 1.2,
+      "quietSpan": [
+        0.4,
+        0.7
+      ],
+      "pace": 1.0,
       "fits": false,
-      "keepsSource": false
+      "keepsSource": false,
+      "videoCut": false
+    },
+    {
+      "id": "mvp9-4.1-5.4",
+      "windowSeconds": 5.4,
+      "measuredSeconds": 4.1,
+      "quietSpan": [
+        0.4,
+        4.9
+      ],
+      "pace": 1.0,
+      "fits": true,
+      "keepsSource": false,
+      "videoCut": true
+    },
+    {
+      "id": "mvp9-1.3-2.2",
+      "windowSeconds": 2.2,
+      "measuredSeconds": 1.3,
+      "quietSpan": [
+        0.4,
+        1.8
+      ],
+      "pace": 1.0,
+      "fits": true,
+      "keepsSource": false,
+      "videoCut": true
+    },
+    {
+      "id": "mvp9-2.7-5.5",
+      "windowSeconds": 5.5,
+      "measuredSeconds": 2.7,
+      "quietSpan": [
+        0.4,
+        5.0
+      ],
+      "pace": 1.0,
+      "fits": true,
+      "keepsSource": false,
+      "videoCut": true
     }
   ]
 }

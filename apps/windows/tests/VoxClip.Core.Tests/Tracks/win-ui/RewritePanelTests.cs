@@ -34,7 +34,7 @@ public sealed class RewritePanelTests
     [Fact]
     public async Task ShorterWordingIsAFreshTextOnlySendAndReplacesTheProposal()
     {
-        var connector = new RecordingConnector { Rewrite = "short word11 word12" };
+        var connector = new RecordingConnector { Rewrite = "straightforwardness word11 word12" };
         var consentCount = 0;
         using var session = new RewriteSession(Editor(), 10, 12, Envelope(), new(connector, "chosen", "Stub", "apiKey", ""),
             consent: _ => { consentCount++; return Task.FromResult(true); });
@@ -62,7 +62,7 @@ public sealed class RewritePanelTests
         Assert.Contains("Original words: word10", sent.Instruction);
         Assert.Contains("Proposed words: " + blocked.PatchText, sent.Instruction);
         Assert.Contains("Say it in fewer words; keep the other changes as they are.", sent.Instruction);
-        Assert.Equal("short word11 word12", session.NewWords);
+        Assert.Equal("straightforwardness word11 word12", session.NewWords);
         Assert.NotEqual(oldWords, session.NewWords);
         Assert.Empty(session.BlockedVoiceHunks);
         Assert.Equal("Nothing paid yet.", session.FitFooter);
@@ -75,7 +75,7 @@ public sealed class RewritePanelTests
     {
         var prices = VoiceLabPriceCatalog.Parse(File.ReadAllBytes(Path.Combine(Shared, "catalog", "voice-lab.json")));
         using var session = new RewriteSession(Editor(), 10, 18, Envelope(), null, prices: prices, synthesisModel: "eleven_multilingual_v2");
-        session.Edit("a very long phrase with far too many extra words for this tiny slot word11 word12 word13 word14 word15 word16 word17 five");
+        session.Edit("a very long phrase with far too many extra words for this tiny slot word11 word12 word13 word14 word15 word16 word17 straightforwardness");
         Assert.Equal(2, session.Review!.VoiceHunks.Count);
         Assert.Single(session.PricedVoiceHunks);
         Assert.Equal(1, session.Review.Summary!.RevoicedPhrases);
@@ -96,11 +96,11 @@ public sealed class RewritePanelTests
     [Fact]
     public void ASharedVoiceWindowKeepsItsOriginalChangeOrdinalsForOverridesAndPricing()
     {
-        var words = Enumerable.Range(0, 200).Select(index => Word(index, "word" + index) with
+        var words = Enumerable.Range(0, 320).Select(index => Word(index, "word" + index) with
             { Start = 1 + index * 0.25 + (index >= 10 ? 0.1 : 0) + (index >= 13 ? 0.1 : 0) + (index >= 16 ? 0.1 : 0),
                 End = 1.23 + index * 0.25 + (index >= 10 ? 0.1 : 0) + (index >= 13 ? 0.1 : 0) + (index >= 16 ? 0.1 : 0) }).ToArray();
         using var session = new RewriteSession(Editor(words), 10, 15, Envelope(), null, synthesisModel: "eleven_v4");
-        session.Edit("a much longer replacement with many extra words word11 word12 word13 word14 another long replacement with far too many words");
+        session.Edit("a much longer replacement with many extra words that cannot possibly fit this tiny window even with its natural pauses shortened word11 word12 word13 word14 another long replacement with far too many words to fit this tiny window even after shortening all its pauses");
         Assert.Equal(2, session.Review!.Diff.Hunks.Count);
         var phrase = Assert.Single(session.Review.VoiceHunks);
         Assert.Equal(new[] { 1, 2 }, phrase.Ordinals);
@@ -162,7 +162,7 @@ public sealed class RewritePanelTests
         var connector = new RecordingConnector();
         using var session = new RewriteSession(Editor(), 10, 12, Envelope(), new(connector, "chosen", "Stub", "local", ""));
         await session.SetInstructionAsync("Plainly");
-        session.Edit("short word11 word12");
+        session.Edit("straightforwardness word11 word12");
         Assert.Single(session.PricedVoiceHunks);
         Assert.False(session.ReviewSurroundingSentence(1));
         Assert.Equal(RewriteSession.SentenceUnavailable, session.SentenceProblem);
@@ -519,7 +519,7 @@ public sealed class RewritePanelTests
     {
         var prices = VoiceLabPriceCatalog.Parse(File.ReadAllBytes(Path.Combine(Shared, "catalog", "voice-lab.json")));
         using var session = new RewriteSession(Editor(), 10, 18, Envelope(), null, prices: prices, synthesisModel: "eleven_multilingual_v2");
-        session.Edit("Sunday word11 word12 word13 word14 word15 word16 word17 five");
+        session.Edit("straightforwardness word11 word12 word13 word14 word15 word16 word17 straightforwardness");
         var review = Assert.IsType<RewriteReview>(session.Review);
         Assert.Equal(2, review.VoiceHunks.Count);
         foreach (var hunk in review.VoiceHunks)
@@ -551,7 +551,7 @@ public sealed class RewritePanelTests
         Assert.Null(unavailable.Review!.Summary);
         Assert.All(unavailable.Review.VoiceHunks, hunk => { Assert.Null(hunk.Window); Assert.Null(hunk.PatchText); Assert.NotNull(hunk.Refusal); });
         using var unknown = new RewriteSession(Editor(), 10, 12, Envelope(), null, prices: prices, synthesisModel: "unknown-model");
-        unknown.Edit("Sunday word11 word12");
+        unknown.Edit("straightforwardness word11 word12");
         Assert.Null(unknown.Review!.Summary!.CostEstimate!.Usd);
         Assert.DoesNotContain("$", unknown.Review.Summary.Copy);
         Assert.Equal("This change is too close to the end of the take to blend in. Re-record this sentence instead.",
