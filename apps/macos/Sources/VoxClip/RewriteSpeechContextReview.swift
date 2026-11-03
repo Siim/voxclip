@@ -160,6 +160,7 @@ extension RewriteSession {
             speechContextOffer = review; speechContextReview = review; speechContextProblem = ""
         } catch {
             speechContextOffer = nil; speechContextReview = nil
+            surroundingSentenceOrdinal = nil
             speechContextProblem = RewriteSpeechContextReview.copy(error)
         }
     }
@@ -179,6 +180,7 @@ extension RewriteSession {
             speechContextProblem = ""
         } catch {
             speechContextOffer = nil; speechContextReview = nil
+            surroundingSentenceOrdinal = nil
             speechContextProblem = RewriteSpeechContextReview.copy(error)
         }
     }

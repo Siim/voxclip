@@ -88,6 +88,7 @@ extension RewriteSession {
             weak var created: ClipTakePlan?
             let plan = try ClipTakePlan(project: final, scope: scope, envelope: envelope, hunks: hunks,
                 makeInput: { phrase in
+                    let modelID = created?.modelID ?? modelID
                     let silence = try VoiceLabWindowPlanner.lendableSilence(project: final, scope: outputScope, window: phrase.window)
                     let timing = try VoiceLabPaceMatching.measure(text: phrase.text, rate: speakingRate, window: phrase.window,
                         incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,

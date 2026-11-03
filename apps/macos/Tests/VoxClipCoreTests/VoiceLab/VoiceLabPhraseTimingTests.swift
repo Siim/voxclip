@@ -45,8 +45,8 @@ struct VoiceLabPhraseTimingTests {
         let rate = try VoiceLabPhraseTiming.speakingRate(transcript: words)
         #expect(rate == 10)
         let text = "then, well, let's get going."
-        let timing = try VoiceLabPhraseTiming.measure(text: text, rate: rate, window: window(1.1),
-            incomingSilence: nil, outgoingSilence: nil, sourceSampleRate: 48_000)
+        let timing = try VoiceLabPaceMatching.measure(text: text, rate: rate, window: window(1.1),
+            incomingSilence: nil, outgoingSilence: nil, sourceSampleRate: 48_000, supportsPace: false)
         #expect(timing.estimateSeconds >= 1.6)
         #expect(!timing.fits)
         #expect(abs(timing.slotSeconds - 1.375) < 0.0001)
@@ -63,8 +63,8 @@ struct VoiceLabPhraseTimingTests {
                 for pause in [0.0, 0.08, 0.3, 0.8] {
                     let source = window(duration, kind: kind)
                     let silence: Double? = kind == .hard ? nil : pause
-                    let timing = try VoiceLabPhraseTiming.measure(text: "speech", rate: 10, window: source,
-                        incomingSilence: silence, outgoingSilence: silence, sourceSampleRate: 48_000)
+                    let timing = try VoiceLabPaceMatching.measure(text: "speech", rate: 10, window: source,
+                        incomingSilence: silence, outgoingSilence: silence, sourceSampleRate: 48_000, supportsPace: false)
                     let fit = try VoiceLabPhraseTiming.preview(seconds: timing.estimateSeconds, window: source,
                         incomingSilence: silence, outgoingSilence: silence, sourceSampleRate: 48_000)
                     let audio = VoiceLabTakeAudio(sampleRate: 48_000, trimmed: [], mixed: [], patchRange: 0..<0,

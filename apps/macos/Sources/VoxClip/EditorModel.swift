@@ -215,16 +215,10 @@ struct EditorRenderSnapshot {
             sendAgain(session, instruction: instruction, feedback: feedback)
             return
         }
-        let question = count == 1 ? "Discard this change?" : "Discard these \(count) changes?"
-        session.task.ask(PanelConfirm(question: question,
-            cancel: PanelAction(id: "keepWorking", title: "Keep Working") { [weak session] in session?.task.dismissConfirm() },
-            confirm: PanelAction(id: "discardChanges", title: "Discard Changes") { [weak self, weak session] in
-                guard let self, let session, session.task.confirm != nil else { return }
-                session.task.dismissConfirm()
-                sendAgain(session, instruction: instruction, feedback: feedback)
-            }))
-        if app.shell.editor === self, !app.shell.viewerShown { app.shell.toggleViewer() }
-        announce(question)
+        session.confirmDiscardChanges { [weak self, weak session] in
+            guard let self, let session else { return }
+            sendAgain(session, instruction: instruction, feedback: feedback)
+        }
     }
     private func sendAgain(_ session: RewriteSession, instruction: String?, feedback: String? = nil) {
         guard session.isOpen, !session.isProposing else { return }

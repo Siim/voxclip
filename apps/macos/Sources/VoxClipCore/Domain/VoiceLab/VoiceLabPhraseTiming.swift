@@ -7,7 +7,7 @@ public struct VoiceLabPhraseTiming: Sendable, Equatable {
     public var pace: Double = 1
     public var tooLong: Bool { estimateSeconds > slotSeconds }
     public var copy: String {
-        let paceCopy = pace == 1 ? "" : " at \(String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), pace))× pace"
+        let paceCopy = pace == 1 ? "" : " at ≈\(String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), pace))× pace"
         return "≈ \(toFixed1(estimateSeconds)) s\(paceCopy) · slot \(toFixed1(slotSeconds)) s" + (fits ? " · fits" : "")
     }
     public static let warning = "Too long for its slot. A take won't fit the video."
@@ -50,22 +50,6 @@ public struct VoiceLabPhraseTiming: Sendable, Equatable {
         let estimate = trimmed + punctuationSeconds
         guard estimate.isFinite, estimate > 0 else { throw VoiceLabLengthBudgetError.invalidInput }
         return estimate
-    }
-
-    public static func measure(text: String, rate: Double, window: VoiceLabWindow,
-                               incomingSilence: Double?, outgoingSilence: Double?, sourceSampleRate: Int) throws -> Self {
-        let estimate = try estimate(text: text, rate: rate)
-        let probeDuration = 2 * (window.end - window.start + (incomingSilence ?? 0) + (outgoingSilence ?? 0) + 1)
-        let probe = try preview(seconds: probeDuration, window: window, incomingSilence: incomingSilence,
-                                outgoingSilence: outgoingSilence, sourceSampleRate: sourceSampleRate)
-        let plan = probe.plan
-        let expandedWindow = Double(plan.windowEndSample - plan.windowStartSample) / Double(sourceSampleRate)
-        let edgePadding = Double(plan.incoming.padFrames + plan.outgoing.padFrames) / Double(sourceSampleRate)
-        let slot = expandedWindow / VoiceLabVideoDurationOptions.retimeRange.lowerBound - edgePadding
-        let fit = try preview(seconds: estimate, window: window, incomingSilence: incomingSilence,
-                              outgoingSilence: outgoingSilence, sourceSampleRate: sourceSampleRate)
-        let options = VoiceLabVideoDurationOptions(fit: fit, sourceSampleRate: sourceSampleRate, assetSampleRate: sourceSampleRate)
-        return Self(estimateSeconds: estimate, slotSeconds: max(0, slot), fits: options.allows(.source) || options.allows(.retimed))
     }
 
     public static func preview(seconds: Double, window: VoiceLabWindow, incomingSilence: Double?,

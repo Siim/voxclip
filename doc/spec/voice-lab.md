@@ -1255,7 +1255,14 @@ from the existing fit planner: its one-frame take gives maximum permitted seam/e
 and its overlong take gives the maximum borrowed window and required edge padding. Assume
 no editable generated internal pauses. Verify the chosen prediction through the actual
 video-duration gate. Never enlarge room-tone padding to make pace matching succeed.
-The row reads `≈ 4.6 s at 0.80× pace · slot 5.1 s · fits`; omit the pace clause at 1.0×.
+The row reads `≈ 4.6 s at ≈0.80× pace · slot 5.1 s · fits`; omit the pace clause at 1.0×.
+The row's per-hunk pace is approximate; complete-phrase pricing also accounts for kept
+cuts and merged hunks. The edit popover uses the selected speech model's pace capability.
+VoiceOver reads the timing line for fitting rows too. With a current take plan, timing
+always uses that plan's current model, including during generation and after a model
+change that keeps paid takes. Without a current plan it uses the picker. Paid-plan
+membership stays bound to its reviewed ordinals; changing models never silently adds
+or removes a phrase or invalidates another phrase's paid takes.
 Pace scales the whole predicted trimmed take, not the source video. The estimate remains
 advisory. Dialogue/v4 has no supported non-default speed and uses the same gate at 1.0×.
 
@@ -1273,6 +1280,10 @@ pace, not an unused retry quote's pace; target the exact-fit midpoint, respect p
 hundredth-step rounding, then fall back to the reachable Match video interval. Preparing or
 re-preparing a retry sends nothing and creates a new pace-bound quote/approval. Include the
 non-default phrase paces beside the priced action. Older paid takes keep their receipt pace.
+Before a retry quote is held, the next-take pace label computes the same measured retry
+pace that pricing will use; with a held quote it shows that quote's input pace. Re-decoding
+an expanded surrounding sentence uses the plan's current model: exactly 1.0 for v4,
+otherwise a fresh exact-fit-first pace calculation, not the initial model's old pace.
 Shared sample-exact regression observations live in `pace-matching-cases.json`, separate
 from both the provider request fixtures and the original calibration vectors.
 
@@ -1287,6 +1298,22 @@ scope request fingerprints bind feedback to the fresh send quote; nil retains th
 request and fixture shape. Render template placeholders once, never inside substituted words.
 Paid takes with neither video option available also offer both recovery actions; further
 audio generation always goes through the usual fresh price and approval.
+After payment, shorter-wording feedback uses the selected take's measured output duration
+(`outputFrames / sampleRate`), falling back to the best measured take. It includes all
+reviewed ordinals of a merged phrase, not only the first hunk. The shared
+`prompts/voice-rewrite-shorter-measured.json` keys `shorterMeasuredFeedbackBlock` and
+`shorterMeasuredPhraseLine` distinguish these readings from the unchanged pre-pay
+estimate templates and leave the existing request fixtures' source hashes intact.
+
+While paid takes exist, Price it anyway, Keep original words, Keep, Undo, Keep All and
+editing proposal words use the same inline Discard Changes / Keep Working confirmation
+as Ask for shorter. Before confirmation, no proposal state, inclusion override, quote,
+selection or paid plan changes. Keep Working leaves all of them untouched. Confirmation
+retires the old plan before applying the requested review action; no provider call is made.
+Failed surrounding-sentence review clears its redirect ordinal but keeps the inline failure.
+Price it anyway also clears that redirect; an ordinal no longer in the reviewed voice set
+cannot redirect Get Price. The compatibility single-take session announces fitting progress
+only for automatically selectable takes, never advisory takes it cannot accept.
 
 Voiced speech is never time-stretched (ADR-R30). A take reaches the length of its window in this order: length-budgeted wording before any paid call (§8.9.1); one initial take followed by separately approved one-take retries (§8.6); silence-only fit (steps 1 and 2 below); and otherwise a changed duration with the ADR-R28 video choice, after as much silence fit as the limits allow (step 3).
 

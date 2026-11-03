@@ -473,6 +473,7 @@ extension EditorModel {
               proposal.changes[index].reviewable else { return false }
         let change = proposal.changes[index], order = proposalDisplay?.shown.map(\.ordinal) ?? []
         guard change.state != .kept else { return false }
+        if confirmPaidProposalChange({ [weak self] in _ = self?.keepChange(ordinal) }) { return false }
         let id = proposal.id, focused = proposal.focused
         proposal.changes[index].state = .kept
         // A cut's or fix's commands, or a voice change's free parts (an edit split it), apply with it.
@@ -491,6 +492,7 @@ extension EditorModel {
     @discardableResult func excludeChange(_ ordinal: Int) -> Bool {
         guard capabilities.edit, var proposal, let index = proposal.changes.firstIndex(where: { $0.ordinal == ordinal }),
               proposal.changes[index].reviewable, proposal.changes[index].state != .excluded else { return false }
+        if confirmPaidProposalChange({ [weak self] in _ = self?.excludeChange(ordinal) }) { return false }
         let order = proposalDisplay?.shown.map(\.ordinal) ?? []
         proposal.changes[index].state = .excluded
         self.proposal = proposal
@@ -508,6 +510,7 @@ extension EditorModel {
         let reader = TranscriptChangeReader(self)
         let kept = proposal.changes.filter { $0.state == .pending && !reader.isApplied($0) }
         guard !kept.isEmpty else { return false }
+        if confirmPaidProposalChange({ [weak self] in _ = self?.keepAllChanges() }) { return false }
         let id = proposal.id, focused = proposal.focused
         var reviews: [Int: ProposalReview] = [:]
         for index in proposal.changes.indices where proposal.changes[index].state == .pending {
@@ -553,6 +556,7 @@ extension EditorModel {
     /// words; a text equal to them leaves nothing to change, so the change is left out.
     @discardableResult func editChange(_ ordinal: Int, text: String) -> Bool {
         guard var proposal, let slot = proposal.changes.firstIndex(where: { $0.ordinal == ordinal }), proposal.changes[slot].reviewable else { return false }
+        if confirmPaidProposalChange({ [weak self] in _ = self?.editChange(ordinal, text: text) }) { return false }
         var change = proposal.changes[slot]
         let trimmed = EditingPrimitives.jsTrim(text)
         let reader = TranscriptChangeReader(self)
@@ -595,11 +599,16 @@ extension EditorModel {
             let silence = try VoiceLabWindowPlanner.lendableSilence(project: project, scope: scope, window: window)
             let patch = (window.leftBridgeWordIds.map(reader.text) + [trimmed] + window.rightBridgeWordIds.map(reader.text)).joined(separator: " ")
             let inputs = RewriteReview.Inputs(transcript: transcript, project: project, scope: scope, envelope: envelope,
-                prices: nil, synthesisModel: nil)
+                prices: nil, synthesisModel: rewrite?.currentSynthesisModel)
             let rate = try VoiceLabPhraseTiming.speakingRate(transcript: RewriteReview.timingTranscript(inputs))
             return try VoiceLabPaceMatching.measure(text: patch, rate: rate, window: window, incomingSilence: silence.incoming,
-                outgoingSilence: silence.outgoing, sourceSampleRate: project.media.source.audio?.sampleRate ?? 48_000).copy
+                outgoingSilence: silence.outgoing, sourceSampleRate: project.media.source.audio?.sampleRate ?? 48_000,
+                supportsPace: inputs.synthesisModel != "eleven_v4").copy
         } catch { return nil }
+    }
+    private func confirmPaidProposalChange(_ perform: @escaping @MainActor () -> Void) -> Bool {
+        guard let rewrite, rewrite.ownProposal?.id == proposal?.id else { return false }
+        return rewrite.confirmPaidProposalChange(perform: perform)
     }
     /// Which change Return edits (design.md §6.3.5): the focused one with no words selected, the
     /// one whose words the selection lies in, or the focused one when the selection spans several

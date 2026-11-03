@@ -14,7 +14,14 @@ extension RewriteSession {
     }
 
     func phraseTimingAction(_ action: PhraseTimingAction, ordinal: Int) {
-        guard current, !takesBusy, ownProposal?[ordinal] != nil else { return }
+        phraseTimingAction(action, ordinals: [ordinal])
+    }
+
+    func phraseTimingAction(_ action: PhraseTimingAction, ordinals: [Int]) {
+        guard current, !takesBusy, let ordinal = ordinals.first, ordinals.allSatisfy({ ownProposal?[$0] != nil }) else { return }
+        if action == .original || action == .priceAnyway {
+            if confirmPaidProposalChange(perform: { [weak self] in self?.phraseTimingAction(action, ordinals: ordinals) }) { return }
+        }
         let model: EditorModel = editor
         let originalInstruction: String = instruction
         switch action {
@@ -24,15 +31,16 @@ extension RewriteSession {
             if generation != nil { reviewTimingSpeechContext(ordinal: ordinal) }
             else { makeTakes() }
         case .original:
-            if surroundingSentenceOrdinal == ordinal { surroundingSentenceOrdinal = nil }
-            review(ordinal, .undo)
+            if surroundingSentenceOrdinal.map(ordinals.contains) == true { surroundingSentenceOrdinal = nil }
+            for ordinal in ordinals { review(ordinal, .undo) }
         case .priceAnyway:
-            pricedAnyway.insert(ordinal)
+            surroundingSentenceOrdinal = nil
+            pricedAnyway.formUnion(ordinals)
             showProposal()
         case .shorter:
             do {
                 let longOrdinals = blockedVoiceOrdinals.filter { voiceReview($0)?.timing?.tooLong == true }
-                let feedback = try shorterFeedbackBlock(ordinals: Array(Set(longOrdinals + [ordinal])).sorted())
+                let feedback = try shorterFeedbackBlock(ordinals: Array(Set(longOrdinals + ordinals)).sorted())
                 model.sendRewriteAgain(self, instruction: originalInstruction, feedback: feedback)
             } catch {
                 reportGenerationProblem(error)
@@ -49,21 +57,42 @@ extension RewriteSession {
             }
             let request: Request
         }
+        struct MeasuredFeedback: Decodable {
+            let shorterMeasuredFeedbackBlock: String
+            let shorterMeasuredPhraseLine: String
+        }
         let shared = try SharedResources.locate()
         let data = try Data(contentsOf: shared.root.appendingPathComponent("prompts/voice-rewrite.json"))
         let template = try JSONDecoder().decode(Prompt.self, from: data).request
+        let measuredData = try Data(contentsOf: shared.root.appendingPathComponent("prompts/voice-rewrite-shorter-measured.json"))
+        let measuredTemplate = try JSONDecoder().decode(MeasuredFeedback.self, from: measuredData)
         let readings = Dictionary(uniqueKeysWithValues: editor.changeReadings.map { ($0.change.ordinal, $0) })
-        let phrases = try ordinals.map { ordinal -> String in
+        let measuredPhrases = takePlan?.phrases.filter { phrase in
+            !Set(takePhraseOrdinals(phrase)).isDisjoint(with: ordinals) && measuredTakeLength(phrase) != nil
+        } ?? []
+        let expandedOrdinals = Set(ordinals + measuredPhrases.flatMap(takePhraseOrdinals)).sorted()
+        let phrases = try expandedOrdinals.map { ordinal -> String in
             guard let reading = readings[ordinal], let timing = voiceReview(ordinal)?.timing else {
                 throw RewriteSessionError.noSourceAudio
             }
+            let phrase = measuredPhrases.first { takePhraseOrdinals($0).contains(ordinal) }
+            let measured = phrase.flatMap(measuredTakeLength)
             let values = ["original": reading.removed.joined(separator: " "), "proposed": reading.text,
-                          "estimateSeconds": toFixed1(timing.estimateSeconds), "slotSeconds": toFixed1(timing.slotSeconds)]
-            return template.shorterPhraseLine.replacing(#/\{(original|proposed|estimateSeconds|slotSeconds)\}/#) { match in
+                          "estimateSeconds": toFixed1(timing.estimateSeconds), "measuredSeconds": measured.map(toFixed1) ?? "",
+                          "slotSeconds": toFixed1(timing.slotSeconds)]
+            let line = measured == nil ? template.shorterPhraseLine : measuredTemplate.shorterMeasuredPhraseLine
+            return line.replacing(#/\{(original|proposed|estimateSeconds|measuredSeconds|slotSeconds)\}/#) { match in
                 values[String(match.1)] ?? ""
             }
         }
-        return template.shorterFeedbackBlock.replacingOccurrences(of: "{phrases}", with: phrases.joined(separator: "\n\n"))
+        let block = measuredPhrases.isEmpty ? template.shorterFeedbackBlock : measuredTemplate.shorterMeasuredFeedbackBlock
+        return block.replacingOccurrences(of: "{phrases}", with: phrases.joined(separator: "\n\n"))
+    }
+
+    private func measuredTakeLength(_ phrase: ClipTakePlan.Phrase) -> Double? {
+        if let length = phrase.selected?.length { return length }
+        let best = phrase.bestMeasured ?? phrase.takes.filter { $0.length != nil }.max { ($0.row.score ?? 0) < ($1.row.score ?? 0) }
+        return best?.length
     }
 
     func takePhraseOrdinals(_ phrase: ClipTakePlan.Phrase) -> [Int] {
