@@ -36,7 +36,7 @@ internal sealed class RewriteGenerationBackend : IDisposable
     {
         RequireCurrent(ct);
         VoiceSpeakerCheck.Unavailable.ValidateAvailability();
-        var models = (await client.DiscoverModelsAsync(ct)).Where(model => model.SupportsTimestampedTts && model.Languages.Contains(language)).ToArray();
+        var models = (await client.DiscoverModelsAsync(ct)).Where(model => model.SpeechRoute is not null && model.Languages.Contains(language)).ToArray();
         RequireCurrent(ct);
         var remote = await client.ListOwnClonesAsync(ct);
         RequireCurrent(ct);

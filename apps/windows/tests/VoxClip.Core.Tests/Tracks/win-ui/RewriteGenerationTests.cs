@@ -151,7 +151,7 @@ public sealed class RewriteGenerationTests
         internal Func<string>? ReadText;
         internal string DiscoveryLabel = "initial";
         internal string Text = "clearer words";
-        internal Harness()
+        internal Harness(IReadOnlyList<VoiceLabModel>? models = null)
         {
             Runner = new(Fixture, Clock);
             Generation = new(Runner, async ct =>
@@ -160,7 +160,7 @@ public sealed class RewriteGenerationTests
                     var label = DiscoveryLabel;
                     if (BeforeDiscovery is { } pause) await pause(ct);
                     return new RewriteGenerationChoices([new("voice-a", label), new("voice-b", "B")],
-                        [new("model-a", "A", ["en"], true, false, 5000, 1), new("model-b", "B", ["en"], true, false, 5000, 1)]);
+                        models ?? [new("model-a", "A", ["en"], true, false, 5000, 1), new("model-b", "B", ["en"], true, false, 5000, 1)]);
                 },
                 (voice, model, seed, _) => Task.FromResult<VoiceLabTakeInput?>(Input(voice, model, seed) with { Text = ReadText?.Invoke() ?? Text, ProviderConsent = Consented }),
                 _ => { ConsentCalls++; return Task.FromResult(Consented); }, _ => Task.FromResult(Cap), () => Current, timeProvider: Clock);
@@ -172,6 +172,21 @@ public sealed class RewriteGenerationTests
         }
         internal Task GenerateAsync(bool approved = true) => Generation.GenerateAsync((_, _) => Task.FromResult(approved));
         public async ValueTask DisposeAsync() { Generation.Dispose(); await Generation.Cleanup; }
+    }
+    [Fact]
+    public async Task DialogueModelKeepsItsAccountLabelWhileDefaultStaysMultilingualV2()
+    {
+        VoiceLabModel[] models = [new("eleven_v4", "Account v4 label", ["en"], true, false, 5000, 1),
+            new("eleven_v3", "Account v3 label", ["en"], true, false, 5000, 1),
+            new("eleven_multilingual_v2", "Account multilingual label", ["en"], true, false, 5000, 1)];
+        await using var test = new Harness(models);
+        await test.Generation.DiscoverAsync();
+        Assert.Equal("eleven_multilingual_v2", test.Generation.ModelId);
+        Assert.Equal("Account v4 label", test.Generation.Models[0].Name);
+        await test.Generation.ChooseModelAsync("eleven_v4");
+        Assert.Equal("eleven_v4", test.Generation.ModelId);
+        Assert.Equal("eleven_v4", test.Runner.PreparedInputs.Last().ModelId);
+        Assert.Equal(0, test.Runner.PaidRequests);
     }
     [Fact]
     public async Task NothingIsSentUntilThisExactEstimateHasRendered()
