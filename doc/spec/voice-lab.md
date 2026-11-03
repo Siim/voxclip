@@ -50,7 +50,7 @@ inline Fit/Skip row shows the existing send estimate (or explicitly unknown
 API-key cost) and covers at most three requests for this reply only. Skipping
 retains the proposal and sends nothing. This approval never authorizes a take.
 
-After a selected v4 take cannot Keep source, Cut, or retime, Mac requests one
+After a selected v4 take cannot Keep source and Cut is unavailable, Mac requests one
 measured-feedback rewording round. An API-key connector still needs inline
 send approval. The new wording receives a fresh ordinary take quote. Only its
 priced Make Take click can synthesize; Keep Take n cancels that quote and
@@ -2298,7 +2298,7 @@ The Guidelines do not settle whether a free, open-source, bring-your-own-key des
 | S12 | Legal review of §11 | M3 release |
 | S13 | Paid calibration, only with the user's explicit approval: 5 passages × 3 seeds per language on the user's own voice, plus `voice_settings.speed` 0.9 and 1.1 probes on Eleven v3 (about $0.25–1). How much does take length vary between seeds, how accurate is the length budget, and does speed change the duration? | §8.6 speed, §8.9.1 |
 | S14 | Resolved: one affirmative approval for the immutable quote set of up to three sequential takes plus bounded Scribe QA, with one summed displayed cap. Consume per dispatch; discard unsent remainder on early stop, cancellation or changed inputs. Approved remainder stays valid until the run ends (§2.6). | Closed by lead decision; §8.6, design §6.3 |
-| S15 | Resolved: no automatic length retry. Show an out-of-range proposal with its meter. Shorter or Longer is a new send with its own quote and approval, as `doc/spec/ai.md` requires. | Closed by lead decision; §8.9.1 |
+| S15 | Superseded for Mac Rewrite by the 2026-11-04 automatic-fit decisions above: at most three selective wording requests, with per-reply inline approval on API-key connectors. Other proposal routes retain their existing quoted Shorter/Longer sends. Audio synthesis always requires its own paid approval. | Mac automatic wording fit; §8.9.1 for other routes |
 | S16 | The listening check that gates the fit policy, and the tuning of the six fit constants from its answers | §8.9.4, ADR-R30 |
 
 ---

@@ -1,5 +1,12 @@
 # macOS implementation contracts
 
+### 2026-11-04 — Eleven v4 Rewrite and automatic wording fit
+
+- **Built.** New Rewrite phrases are fixed to v4. A quote-bound shared fit service sends only unfitted phrases, with deterministic word targets, validated keep-original decisions, three-round limits, Stop/edit/Ask-again cancellation and per-reply inline API consent. Project-persisted per-model last-ten median calibration feeds timing and word targets. Selected unfit v4 takes get one measured rewording round and a fresh quote, never automatic synthesis; per-take input snapshots retain the old paid take.
+- **Replaced / deleted.** Removed the Rewrite model picker and its paid-model-switch callback in place. Added longer-wording recovery. No compatibility model routes, saved recipes, project data or source files were deleted. No changes to `VoiceLabNaturalPacing` or `VoiceLabFitPlanner`.
+- **Shared / next.** Read the automatic-fit section of `doc/spec/voice-lab.md`, fit prompt version 1, and `autofit-cases.json`. The normal LLM fixture manifests now include the fit prompt hash. Windows automatic behavior/UI is owed in its contracts. Keep source, Cut, retime, words, voice, clipping, paid approval and consent remain hard gates. Integration must keep the sibling video-cut planner's pause/cut work intact.
+- **Verification.** The pre-change longer-recovery and automatic-send regressions both fail. Local: Core 1,146 passed (2 known issues), App 833 passed, Media 496 passed including `rightColumnLayout`; Voice Lab and project fixture generators, `check_drift.py`, the LLM fixture check and `git diff --exit-code` are clean. Windows Core and win-ui Release are green. The real-window gates (`-uiSelfTest`, `-sceneAudit`) for the new panel states are owed.
+
 ### 2026-11-03 — Audio expression review fixes: trim, edge extents and QA
 
 - **Built.** Every take uses `VoiceLabAlignment.trim`. `VoiceLabAudioTags.edgeExtent` is the single pure edge-expression function: explicit words, PCM, rate, tags, token count, model and provider character timing. Supported leading/trailing tags extend the adjacent word outward on every seam, using bracket timing when present or the existing activity search widened by shared duration allowances otherwise. Asset clamps apply. Mid-phrase and unsupported tags leave normal extents/trim alone.

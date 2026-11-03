@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Rewrite rewords phrases until they fit your video, and new phrases use Eleven v4.
 - A laugh, sigh or pause at the start or end of a phrase is kept whole at the join, and the word check no longer trips on transcribed laughter.
 - Keep recording ambience under generated speech, preserve noise-gated silence, and check short hard-join pauses without rejecting usable takes.
 - Phrases in your voice keep a natural pace; extra time becomes natural pauses or a jump cut.
