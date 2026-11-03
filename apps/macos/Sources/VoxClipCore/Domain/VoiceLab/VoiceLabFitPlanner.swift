@@ -40,6 +40,7 @@ public struct VoiceLabFitSeam: Sendable, Equatable {
 
 /// A fit plan (§8.9.2 Output): the incoming pad, the edited take between the final trims and the outgoing pad.
 public struct VoiceLabFitPlan: Sendable, Equatable {
+    public var hardJoinSmoothing: Bool = false
     public var edits: [VoiceLabFitEdit]
     public var incoming: VoiceLabFitSeam
     public var outgoing: VoiceLabFitSeam
@@ -102,7 +103,7 @@ public enum VoiceLabFitPlanner {
     /// measures, for a take edge (`none`) the silence to the window's nearest word, and nil for a hard seam. `tokens` are
     /// the patch tokens, one per word.
     public static func plan(window: VoiceLabWindow, incomingSilence: Double?, outgoingSilence: Double?, take: VoiceLabFitTake,
-                            tokens: [String], sourceSampleRate rate: Double) throws -> VoiceLabFitResult {
+                            tokens: [String], sourceSampleRate rate: Double, hardJoinSmoothing: Bool = false) throws -> VoiceLabFitResult {
         let kinds: [VoiceLabSeamKind] = [window.leftSeam.kind, window.rightSeam.kind]
         let silences: [Double?] = [incomingSilence, outgoingSilence]
         let reach = try validate(window: window, kinds: kinds, silences: silences, take: take, rate: rate)
@@ -116,8 +117,11 @@ public enum VoiceLabFitPlanner {
         // The take must fill w = duration(W) − e frames; ρ > 0 means it is too long.
         let fade = VoiceLabGeometry.samples(VoiceLabPatchConstants.SEAM_FADE, assetRate)
         let leadIn = spans[0].start - t0, tailOut = t1 - spans[spans.count - 1].end
-        let edgeIn: Int64 = kinds[0] == .none ? max(0, VoiceLabGeometry.samples(silences[0] ?? 0, assetRate) - leadIn) : 0
-        let edgeOut: Int64 = kinds[1] == .none ? max(0, VoiceLabGeometry.samples(silences[1] ?? 0, assetRate) - tailOut) : 0
+        let reserve = VoiceLabGeometry.samples(VoiceLabHardJoin.pauseSeconds, assetRate)
+        let edgeIn: Int64 = kinds[0] == .none ? max(0, VoiceLabGeometry.samples(silences[0] ?? 0, assetRate) - leadIn) :
+            hardJoinSmoothing && kinds[0] == .hard ? max(0, reserve - leadIn) : 0
+        let edgeOut: Int64 = kinds[1] == .none ? max(0, VoiceLabGeometry.samples(silences[1] ?? 0, assetRate) - tailOut) :
+            hardJoinSmoothing && kinds[1] == .hard ? max(0, reserve - tailOut) : 0
         let n = window.endSample - window.startSample
         let target = framesOf(n, assetRate: assetRate, rate: rate)
         let natural = edgeIn + edgeOut + t1 - t0
@@ -153,7 +157,7 @@ public enum VoiceLabFitPlanner {
         } else if remaining > 0 {
             let gapPad = VoiceLabGeometry.samples(VoiceLabPatchConstants.SEAM_PAD_MAX, assetRate)
             let hardPad = VoiceLabGeometry.samples(VoiceLabPatchConstants.HARD_SEAM_PAD_MAX, assetRate)
-            let caps: [Int64] = kinds.map { $0 == .hard ? hardPad : gapPad }
+            let caps: [Int64] = kinds.map { $0 == .hard ? (hardJoinSmoothing ? 0 : hardPad) : gapPad }
             let extra = split(remaining, caps: caps)
             pad = [pad[0] + extra[0], pad[1] + extra[1]]
             exact = extra[0] + extra[1] == remaining
@@ -218,9 +222,10 @@ public enum VoiceLabFitPlanner {
         try validate(words: words, duration: duration, rate: rate)
         let incoming = VoiceLabFitSeam(padFrames: pad[0], borrowedSamples: borrow[0])
         let outgoing = VoiceLabFitSeam(padFrames: pad[1], borrowedSamples: borrow[1])
-        let plan = VoiceLabFitPlan(edits: edits, incoming: incoming, outgoing: outgoing, trimStartFrame: t0, trimEndFrame: t1,
+        var plan = VoiceLabFitPlan(edits: edits, incoming: incoming, outgoing: outgoing, trimStartFrame: t0, trimEndFrame: t1,
                                    windowStart: start, windowEnd: end, windowStartSample: startSample, windowEndSample: endSample,
                                    outputFrames: output, words: words)
+        plan.hardJoinSmoothing = hardJoinSmoothing
         try checkVoice(plan, spans: spans, unvoiced: unvoiced, size: size, fade: fade)
         guard !exact else { return .exact(plan) }
         return .changedDuration(plan, naturalOut: Double(natural) / assetRate, residualSeconds: residualSeconds)

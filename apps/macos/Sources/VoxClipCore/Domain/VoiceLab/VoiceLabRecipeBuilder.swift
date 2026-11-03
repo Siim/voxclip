@@ -127,7 +127,8 @@ public enum VoiceLabRecipeBuilder {
             guard rounded.isFinite, rounded >= 0, rounded < Double(Int64.max) else { throw VoiceLabProjectError.invalidFadeHandles }
             let frames = Int64(rounded)
             return VoiceLabSeam(kind: edge.kind, fadeSamples: edge.fadeSamples,
-                sourceHandleSamples: edge.fadeSamples - inner, assetHandleFrames: frames)
+                sourceHandleSamples: edge.fadeSamples - inner, assetHandleFrames: frames,
+                microPause: incoming ? take.microPauseIn : take.microPauseOut)
         }
         let tokens = VoiceLabTakeQuality.tokens(input.text).count
         let qa = VoiceLabRenderQA(transcriptTokens: tokens, transcriptExact: tokens <= 5 ? match == 1 : nil,
@@ -148,10 +149,11 @@ public enum VoiceLabRecipeBuilder {
         else { usd = nil }
         let cost = VoiceLabCost(quoteId: quote.synthesis.id.uuidString, usd: usd)
         let seams = try VoiceLabSeams(in: seam(input.window.leftSeam, incoming: true), out: seam(input.window.rightSeam, incoming: false))
-        let recipe = VoiceLabRenderRecipe(audio: published.audio, words: published.words, outDuration: published.outDuration,
+        var recipe = VoiceLabRenderRecipe(audio: published.audio, words: published.words, outDuration: published.outDuration,
             seed: row.seed, chunks: published.chunks, roomTone: take.roomTone,
             seams: seams, video: video, qa: qa, provenance: provenance, cost: cost, voiceSource: .own, voiceRefId: record.id,
             consentVerifiedAt: verifiedAt)
+        recipe.edgeGain = take.edgeGain
         var candidate = VoiceLabCandidate(assetId: published.audio.assetId, score: row.score)
         candidate.recipe = recipe
         return candidate

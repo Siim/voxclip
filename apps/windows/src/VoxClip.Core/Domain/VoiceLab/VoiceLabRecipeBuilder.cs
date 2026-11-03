@@ -42,7 +42,7 @@ public static class VoiceLabRecipeBuilder
             var nearest = Math.Round(raw);
             var frames = Math.Abs(raw - nearest) <= 4 * Math.Abs(Math.BitIncrement(raw) - raw) ? nearest : Math.Ceiling(raw);
             if (!double.IsFinite(frames) || frames < 0 || frames >= (double)long.MaxValue) throw Error(VoiceLabProjectErrorCode.InvalidFadeHandles);
-            return new(edge.Kind, edge.FadeSamples, edge.FadeSamples - inner, (long)frames);
+            return new(edge.Kind, edge.FadeSamples, edge.FadeSamples - inner, (long)frames, incoming ? take.MicroPauseIn : take.MicroPauseOut);
         }
         var tokens = VoiceLabTakeQuality.Tokens(input.Text).Length;
         var checkedQa = new VoiceLabRenderQa(tokens, tokens <= 5 ? match == 1 : null, match, jump, peak,
@@ -55,7 +55,7 @@ public static class VoiceLabRecipeBuilder
         var usd = quote.Synthesis.Estimate.Usd is { } synthesis && quote.Qa.Estimate.Usd is { } transcription ? (double?)(synthesis + transcription) : null;
         var recipe = new VoiceLabRenderRecipe(published.Audio, Array.AsReadOnly(published.Words.ToArray()), published.OutDuration, row.Seed,
             Array.AsReadOnly(published.Chunks.ToArray()), take.RoomTone, new(Seam(input.Window.LeftSeam, true), Seam(input.Window.RightSeam, false)),
-            video, checkedQa, provenance, new(quote.Synthesis.Token.ToString("D"), usd), VoiceLabVoiceSource.Own, record.RecordId, record.Attestations.AcceptedAt);
+            video, checkedQa, provenance, new(quote.Synthesis.Token.ToString("D"), usd), VoiceLabVoiceSource.Own, record.RecordId, record.Attestations.AcceptedAt, take.EdgeGain);
         return new(published.Audio.AssetId, row.Score, null) { Recipe = recipe };
     }
     public static VoiceLabSegment Segment(string id, IReadOnlyList<VoiceLabCandidate> candidates, int selected, VoiceLabTakeInput input, VoiceLabFitPlan plan)

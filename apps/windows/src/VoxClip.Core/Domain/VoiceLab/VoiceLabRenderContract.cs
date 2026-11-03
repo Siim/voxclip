@@ -154,15 +154,15 @@ public static class VoiceLabRenderContract
                     Fail(VoiceLabProjectErrorCode.InvalidFadeHandles);
             }
             else if (outgoing.Kind is VoiceLabSeamKind.None or VoiceLabSeamKind.SynthToSynth) Fail(VoiceLabProjectErrorCode.InvalidFadeHandles);
-            void Add(VoiceLabSeam seam, long center)
+            void Add(VoiceLabSeam seam, long center, bool isIncoming)
             {
                 if (seam.Kind == VoiceLabSeamKind.None) return;
-                var left = seam.FadeSamples/2; var right = seam.FadeSamples-left;
+                var (left, right) = VoiceLabHardJoin.FadeExtent(seam, isIncoming, plan.SampleRate);
                 if (center < left || right > plan.OutputSamples-center) Fail(VoiceLabProjectErrorCode.InvalidFadeHandles);
                 windows.Add((center-left,center+right));
             }
-            Add(incoming,piece.OutputStartSample);
-            if (after?.Kind != VoiceLabOutputPieceKind.Synth) Add(outgoing,piece.OutputEndSample);
+            Add(incoming,piece.OutputStartSample, true);
+            if (after?.Kind != VoiceLabOutputPieceKind.Synth) Add(outgoing,piece.OutputEndSample, false);
         }
         windows.Sort((a,b) => a.start.CompareTo(b.start));
         for (var i = 1; i < windows.Count; i++)
@@ -177,13 +177,13 @@ public static class VoiceLabRenderContract
             var incoming = item.Seams.In; var outgoing = item.Seams.Out;
             if (incoming.Kind != VoiceLabSeamKind.None)
             {
-                var left = incoming.FadeSamples/2; var right = incoming.FadeSamples-left;
+                var (left, right) = VoiceLabHardJoin.FadeExtent(incoming, true, plan.SampleRate);
                 if (before!.OutputEndSample-before.OutputStartSample < left || piece.OutputEndSample-piece.OutputStartSample < right)
                     Fail(VoiceLabProjectErrorCode.InvalidFadeHandles);
             }
             if (outgoing.Kind != VoiceLabSeamKind.None)
             {
-                var left = outgoing.FadeSamples/2; var right = outgoing.FadeSamples-left;
+                var (left, right) = VoiceLabHardJoin.FadeExtent(outgoing, false, plan.SampleRate);
                 if (piece.OutputEndSample-piece.OutputStartSample < left || after!.OutputEndSample-after.OutputStartSample < right)
                     Fail(VoiceLabProjectErrorCode.InvalidFadeHandles);
             }

@@ -13,15 +13,15 @@ namespace VoxClip.Core.Domain.VoiceLab;
 /// (<see cref="VoiceLabTakeProcessing.Envelope"/>), which the room-tone search reads.</summary>
 public sealed record VoiceLabTakeInput(string Text, string ModelId, string RecordId, string Language, uint Seed, string ContentKey,
     VoiceLabSourceExcerpt Source, AudioEnvelope SourceEnvelope, int SourceSampleRate, IReadOnlyList<TimedWord> Items, IReadOnlySet<string> CutWordIds,
-    VoiceLabWindow Window, double? IncomingSilence, double? OutgoingSilence, bool CleanAudioOn, bool ProviderConsent, double? Pace = null)
+    VoiceLabWindow Window, double? IncomingSilence, double? OutgoingSilence, bool CleanAudioOn, bool ProviderConsent, double? Pace = null, bool HardJoinSmoothing = true)
 {
     /// <summary>A source held whole, as short sources and tests pass it; the envelope is computed from it.</summary>
     public VoiceLabTakeInput(string Text, string ModelId, string RecordId, string Language, uint Seed, string ContentKey,
         float[] Source, int SourceSampleRate, IReadOnlyList<TimedWord> Items, IReadOnlySet<string> CutWordIds, VoiceLabWindow Window,
-        double? IncomingSilence, double? OutgoingSilence, bool CleanAudioOn, bool ProviderConsent, double? Pace = null)
+        double? IncomingSilence, double? OutgoingSilence, bool CleanAudioOn, bool ProviderConsent, double? Pace = null, bool HardJoinSmoothing = true)
         : this(Text, ModelId, RecordId, Language, Seed, ContentKey, VoiceLabSourceExcerpt.Whole(Source),
             VoiceLabTakeProcessing.Envelope(Source, SourceSampleRate), SourceSampleRate, Items, CutWordIds, Window,
-            IncomingSilence, OutgoingSilence, CleanAudioOn, ProviderConsent, Pace) { }
+            IncomingSilence, OutgoingSilence, CleanAudioOn, ProviderConsent, Pace, HardJoinSmoothing) { }
     public VoiceLabSpeechOptions Options(int take)
     {
         var kept = Items.Where(word => word.Kind == WordKind.Word && !CutWordIds.Contains(word.Id)).ToArray();
@@ -102,7 +102,7 @@ public static class VoiceLabTakeQuality
         return 2.0 * previous[^1] / (expected.Count + recognized.Count);
     }
     public static VoiceLabTakeQaResult Evaluate(string expected, IReadOnlyList<string> recognized, float[] mixed, int sampleRate,
-        IReadOnlyList<int> seams, double speakerScore, double threshold, IReadOnlyList<bool>? generatedAfter = null)
+        IReadOnlyList<int> seams, double speakerScore, double threshold, IReadOnlyList<bool>? generatedAfter = null, IReadOnlyList<double>? seamExcesses = null)
     {
         if (!double.IsFinite(speakerScore) || speakerScore is < -1 or > 1 || !double.IsFinite(threshold) || threshold is < 0 or > 1)
             throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
@@ -112,7 +112,8 @@ public static class VoiceLabTakeQuality
         var peak = VoiceLabLoudness.SamplePeakDbfs(mixed);
         if (!double.IsFinite(peak)) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
         if (generatedAfter is not null && generatedAfter.Count != seams.Count) throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
-        var jumps = VoiceLabLoudness.SeamJumps(mixed, sampleRate, seams);
+        var jumps = seamExcesses?.ToArray() ?? VoiceLabLoudness.SeamJumps(mixed, sampleRate, seams);
+        if (jumps.Length != seams.Count || jumps.Any(value => !double.IsFinite(value) || value < 0)) throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
         var jump = jumps.Length == 0 ? 0 : jumps.Max();
         var joinSeams = jumps.Select((excess, index) => new VoiceLabJoinAdvisorySeam(
             (generatedAfter?[index] ?? index == 0) ? "left" : "right", excess)).Where(seam => seam.ExcessLu > 2).ToArray();
@@ -132,7 +133,13 @@ public static class VoiceLabTakeQuality
     }
 }
 public sealed record VoiceLabTakeAudio(int SampleRate, float[] Trimmed, float[] Mixed, int PatchStart, int PatchEnd,
-    IReadOnlyList<int> Seams, double GainDb, VoiceLabRoomTone? RoomTone, VoiceLabFitResult Fit);
+    IReadOnlyList<int> Seams, double GainDb, VoiceLabRoomTone? RoomTone, VoiceLabFitResult Fit)
+{
+    public VoiceLabMicroPause? MicroPauseIn { get; init; }
+    public VoiceLabMicroPause? MicroPauseOut { get; init; }
+    public VoiceLabEdgeGain? EdgeGain { get; init; }
+    public IReadOnlyList<double>? SeamExcesses { get; init; }
+}
 public sealed record VoiceLabTakeRow(Guid Id, int Index, uint Seed, VoiceLabReceipt? Receipt = null, VoiceLabReceipt? QaReceipt = null,
     VoiceLabAudioResult? Generated = null, VoiceLabTakeQuote? Quote = null, VoiceLabTakeAudio? Audio = null,
     VoiceLabTakeQaResult? Qa = null, double? Score = null, Exception? Failure = null)

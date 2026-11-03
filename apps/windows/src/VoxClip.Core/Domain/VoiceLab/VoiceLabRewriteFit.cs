@@ -85,7 +85,7 @@ public static class VoiceLabRewriteFit
     }
 
     public static VoiceLabFitResult Hypothetical(VoiceLabWindow window, double? incomingSilence, double? outgoingSilence,
-        double seconds, double sourceSampleRate)
+        double seconds, double sourceSampleRate, bool hardJoinSmoothing = false)
     {
         if (!double.IsFinite(seconds) || seconds <= 0 || seconds > 3600 || !double.IsFinite(sourceSampleRate) ||
             sourceSampleRate <= 0 || sourceSampleRate > 1_000_000 || sourceSampleRate != Math.Truncate(sourceSampleRate))
@@ -98,6 +98,6 @@ public static class VoiceLabRewriteFit
         var lastWord = duration * assetRate > frames ? Math.BitDecrement(duration) : duration;
         var envelope = new AudioEnvelope(assetRate, 0.01, Enumerable.Repeat(1f, (int)(frames / VoiceLabGeometry.FrameSize(assetRate))).ToArray());
         return VoiceLabFitPlanner.Plan(window, incomingSilence, outgoingSilence,
-            new(frames, assetRate, 0, duration, [new("speech", 0, lastWord, true)], envelope), ["speech"], sourceSampleRate);
+            new(frames, assetRate, 0, duration, [new("speech", 0, lastWord, true)], envelope), ["speech"], sourceSampleRate, hardJoinSmoothing);
     }
 }

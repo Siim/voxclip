@@ -207,6 +207,14 @@ public static class VoiceLabRenderValidation
     /// Render policy runs first for unrejected candidates, so this only reports what policy leaves unchecked.</summary>
     static void ValidateShape(VoiceLabRenderRecipe recipe)
     {
+        VoiceLabHardJoin.Validate(recipe.Seams, recipe.EdgeGain, recipe.OutDuration);
+        foreach (var incoming in new[] { true, false })
+            if ((incoming ? recipe.Seams.In.MicroPause : recipe.Seams.Out.MicroPause) is { } pause)
+            {
+                var expected = recipe.Words is { } words ? VoiceLabHardJoin.Pause(words, recipe.OutDuration, incoming) : null;
+                Require(expected is not null && Math.Abs(expected.WordStartSeconds - pause.WordStartSeconds) <= 1e-6 &&
+                    Math.Abs(expected.WordEndSeconds - pause.WordEndSeconds) <= 1e-6 && Math.Abs(recipe.Audio.Stretch - 1) <= 1e-12, VoiceLabProjectErrorCode.InvalidFadeHandles);
+            }
         static bool Unit(double? value) => value is not { } number || double.IsFinite(number) && number is >= 0 and <= 1;
         static bool Finite(double? value) => value is not { } number || double.IsFinite(number);
         var audio = recipe.Audio; var video = recipe.Video; var qa = recipe.Qa; var provenance = recipe.Provenance;

@@ -9,6 +9,53 @@ import VoxClipCore
 extension HeavyMediaTests {
 @Suite("voice-lab-native-composition", .serialized, .offlineFixtures)
 struct VoiceLabCompositionTests {
+    @Test func hardJoinRecipeUsesOutputSecondsFor48kRendering() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-hard-join-render-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let media = try await source(in: root)
+        var (project, _) = try fixture(source: media, root: root)
+        var recipe = try #require(project.voiceLab.segments[0].candidates[0].recipe)
+        recipe.audio.stretch = 1
+        recipe.roomTone?.gainDb = -300
+        project.voiceLab.segments[0].audio = recipe.audio
+        project.voiceLab.segments[0].candidates[0].recipe = recipe
+        func render(_ project: Project, name: String) async throws -> [Float] {
+            let prepared = try VoiceLabRenderContract.prepare(project, scope: .full, labelPosition: .topRight)
+            let input = try VoiceLabRenderInput(project: project, scope: .full, labelPosition: .topRight, paidRoot: root, prepared: prepared)
+            let request = RenderRequest(sourceURL: media, plan: try legacyPlan(project),
+                output: OutputSpec(size: PixelSize(width: 640, height: 360), fps: 30, videoBitrate: 2_000_000), voiceLab: input)
+            let url = root.appendingPathComponent(name + ".wav")
+            try await AVExporter().writeEditedAudio(request, to: url)
+            return try samples(url, at: 0, count: Int(prepared.outputPlan.outputSamples))
+        }
+        let legacy = try await render(project, name: "legacy")
+        recipe.words![0].start = 0.14
+        recipe.words![1].end = 0.56
+        let incoming = VoiceLabMicroPause(wordStartSeconds: 0.14, wordEndSeconds: 0.3)
+        let outgoing = VoiceLabMicroPause(wordStartSeconds: -0.4, wordEndSeconds: -0.14)
+        recipe.seams.in = .init(kind: .hard, fadeSamples: 576, sourceHandleSamples: 288, assetHandleFrames: 240, microPause: incoming)
+        recipe.seams.out = .init(kind: .hard, fadeSamples: 576, sourceHandleSamples: 288, assetHandleFrames: 240, microPause: outgoing)
+        recipe.edgeGain = .init(out: .init(gainDb: 1, wordSeconds: outgoing))
+        project.voiceLab.segments[0].words = recipe.words
+        project.voiceLab.segments[0].candidates[0].recipe = recipe
+        project = try JSONProjectStore.decode(JSONProjectStore.encode(project))
+        #expect(project.voiceLab.segments[0].candidates[0].recipe?.edgeGain == recipe.edgeGain)
+        let smooth = try await render(project, name: "smooth")
+        #expect(smooth.count == legacy.count && smooth.count == 7 * 48_000)
+        let start = 120_000, end = 153_600
+        for seconds in [0.2, 0.4, 0.5475] {
+            let offset = Int((seconds * 48_000).rounded())
+            let voice = VoiceLabHardJoin.generatedWeight(seconds: seconds, duration: 0.7, incoming: incoming, outgoing: outgoing)
+            let boost = pow(10, VoiceLabHardJoin.edgeGainDb(seconds: seconds, duration: 0.7, edgeGain: recipe.edgeGain) / 20)
+            #expect(abs(Double(smooth[start + offset]) - Double(legacy[start + offset]) * voice * boost) < 2e-5)
+        }
+        for offset in [0, 2_400, 4_800, 28_800, 31_200, 33_599] { #expect(abs(smooth[start + offset]) < 1e-10) }
+        #expect(abs(Double(smooth[end + 720]) - Double(legacy[end + 720]) * VoiceLabHardJoin.sourceWeight(secondsFromJoin: 0.015, incoming: false)) < 2e-5)
+        #expect(smooth[end + 960] == legacy[end + 960])
+        #expect(smooth[start - 960] == legacy[start - 960])
+    }
+
     private func source(in root: URL) async throws -> URL {
         let original = try FixtureLoader.sharedRoot().appendingPathComponent("fixtures/media/joins-tone.mov")
         let asset = AVURLAsset(url: original)

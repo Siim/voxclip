@@ -32,7 +32,10 @@ public static class VoiceLabTakeProcessing
         if (tokens.Length == 0 || !tokens.Take(leading.Length).SequenceEqual(leading) || !tokens.TakeLast(trailing.Length).SequenceEqual(trailing))
             throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
         var level = VoiceLabLoudness.NeighbourhoodVoicedRmsDb(input.Source, rate, window.StartSample, window.EndSample);
-        var tone = input.CleanAudioOn ? null : VoiceLabRoomToneSelection.Select(input.Items, input.SourceEnvelope, rate, total);
+        var tone = input.CleanAudioOn ? null : VoiceLabRoomToneSelection.Select(input.Items, input.SourceEnvelope, rate, total,
+            input.HardJoinSmoothing && (window.LeftSeam.Kind == VoiceLabSeamKind.Hard || window.RightSeam.Kind == VoiceLabSeamKind.Hard));
+        if (input.HardJoinSmoothing && (window.LeftSeam.Kind == VoiceLabSeamKind.Hard || window.RightSeam.Kind == VoiceLabSeamKind.Hard) && tone is not null)
+            tone = VoiceLabHardJoin.MatchedRoomTone(tone, input, level);
         return new(level, tone);
     }
     public static AudioEnvelope Envelope(float[] samples, int sampleRate)
@@ -56,6 +59,8 @@ public static class VoiceLabTakeProcessing
         for (var index = 0; index < samples.Length; index++) samples[index] = BinaryPrimitives.ReadInt16LittleEndian(result.Pcm.AsSpan(index * 2)) / 32768f;
         var words = VoiceLabAlignment.Words(alignment.Select(item => item.Character).ToArray(), alignment.Select(item => item.Start).ToArray(),
             alignment.Select(item => item.End).ToArray(), input.Text);
+        if (input.HardJoinSmoothing) words = VoiceLabHardJoin.Refine(words, samples, rate,
+            input.Window.LeftSeam.Kind == VoiceLabSeamKind.Hard, input.Window.RightSeam.Kind == VoiceLabSeamKind.Hard);
         var trim = VoiceLabAlignment.Trim(words, samples.Length / (double)rate);
         var lower = Frames(trim.Start, rate);
         var upper = Frames(trim.End, rate);
@@ -63,7 +68,7 @@ public static class VoiceLabTakeProcessing
         var trimmed = samples[lower..upper];
         var gain = VoiceLabLoudness.LevelGainDb(preflight.SourceLevel, VoiceLabLoudness.VoicedRmsDb(trimmed, rate), VoiceLabLoudness.TruePeakDbtp(trimmed, rate));
         var take = new VoiceLabFitTake(samples.Length, rate, trim.Start, trim.End, words, Envelope(samples, rate));
-        var fit = VoiceLabFitPlanner.Plan(input.Window, input.IncomingSilence, input.OutgoingSilence, take, words.Select(word => word.Text).ToArray(), input.SourceSampleRate);
+        var fit = VoiceLabFitPlanner.Plan(input.Window, input.IncomingSilence, input.OutgoingSilence, take, words.Select(word => word.Text).ToArray(), input.SourceSampleRate, input.HardJoinSmoothing);
         return new(rate, trimmed, gain, preflight.RoomTone, fit);
     }
     public static byte[] EncodeQaWav(ReadOnlySpan<float> samples, int rate)

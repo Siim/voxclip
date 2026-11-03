@@ -1197,6 +1197,33 @@ Then:
 
 ### 8.9 Duration fit
 
+#### Hard-join reserve (3 November 2026)
+
+New take processing enables `hardJoinSmoothing`. At each hard side, reserve
+`max(0, HARD_JOIN_PAUSE − existing aligned edge silence)` before allocating any
+internal pause edits. `HARD_JOIN_PAUSE` is 140 ms. This reserve is part of the
+natural duration, including when the take is too long: remove internal pauses
+only down to their existing floors, then expose the remaining duration mismatch.
+The source window and source after the join never move. Lengthening cannot add
+extra hard padding after the reserve; the old 60 ms `HARD_SEAM_PAD_MAX` remains
+only for legacy plans. Other seam kinds retain their existing limits.
+
+The pre-pay pace matcher and measured retry matcher include the reserve on every
+hundredth-step candidate from 0.70 through 1.20. Their synthetic one-word preview
+conservatively reserves a full 140 ms at each hard side. Direct legacy fit and
+hypothetical-fit APIs default the flag off to preserve the existing fixtures;
+production take inputs and pace matching default it on. New vectors live in
+`hard-join-cases.json`, not the legacy fit/pace files.
+
+Before trimming a new hard side, refine its first/last aligned word outward with
+5 ms energy frames, at most 120 ms beyond the alignment. Use a relative −30 dB
+power threshold with an absolute −80 dBFS floor. Never discard aligned speech,
+extend beyond the PCM, or refine a non-hard side. A provider-truncated word has
+no recoverable decay: padding/fades cannot recreate missing speech. The new
+render-time edge fade replaces the legacy baked 5 ms file-edge fade for these
+plans. Missing take handles are silent; source audio is never borrowed to invent
+generated speech.
+
 #### Pre-pay phrase fit (3 November 2026)
 
 Rewrite checks every included voice change before **Get Price**. The local-length sentence in
@@ -1430,10 +1457,31 @@ Private take invalidation is explicit and idempotent: first stop every registere
 
 ### 8.10 Seams
 
-- Apply equal-power crossfades of `SEAM_FADE` at both seams, or `HARD_SEAM_FADE` at hard seams. The synthetic audio and the source audio overlap by the fade length, centred on the seam.
+- Legacy recipes apply equal-power crossfades of `SEAM_FADE` at both seams, or `HARD_SEAM_FADE` at hard seams, centred on the seam. Gap and other non-hard seams keep this rule.
+- New hard OUT joins fade generated audio out over 25 ms, ending at the last word's acoustic end. Matched source room tone fills the 140 ms from that end to the join. Source fades in over 20 ms **starting at** the join. IN joins mirror this: source fades out over 20 ms ending at the join; generated audio fades in over 25 ms ending at the first word's acoustic onset, 140 ms after the join. Curves are equal-power sine/cosine. Source timing and video sync do not change.
+- Store optional `seams.in/out.microPause: {wordStartSeconds, wordEndSeconds}` and `edgeGain: {in?, out?}`, whose entries are `{gainDb, wordSeconds: {wordStartSeconds, wordEndSeconds}}`. All times are output seconds relative to that side's join (positive IN, negative OUT), not 24 kHz asset frames. Both Cores preserve and validate them; both Media renderers replay them at the output rate, including 48 kHz. Omit absent fields. Recipes without them retain their old render path and bytes.
+- Metadata is hard-only, finite, bounded by the patch duration (at most 290 s), and must match the recipe's first/last word within 1 µs. Require at least 139 ms of edge silence (1 ms rounding allowance), unity stretch, gains from 0 through 6 dB, and matching gain-word/pause coordinates. Reject gains without the corresponding micro-pause, empty gain objects, and source-side fades that exceed available context or overlap another seam.
+- When Clean audio is off, select a non-digital-silence room-tone run deterministically. Match its K-weighted level to the closest unvoiced, non-word 100 ms source pause within 3 s of each join; tie-break by earliest start. The two targets can ramp linearly in dB across the patch. The new gain limit is ±48 dB, not the legacy +12 dB ceiling. Targets stay at least 12 dB below speech; if only one side is measurable, use it for both sides. Without either, retain the run's measured level subject to that speech ceiling. A missing usable run remains the existing Clean audio recovery, not invented noise.
+- Fill should match neighbouring source pauses within ±2 LU. Keep the existing 50 ms room-loop crossfade. Mask the bed to internal pauses and complementary edge fades; never add a second bed under aligned speech. Clean audio retains its explicit no-bed choice.
 - The plan's 5 ms join fades (`editing.md` §7.7) still apply at cut joins elsewhere.
 
 ### 8.11 QA checks (hard gates and advisory joins)
+
+**New hard-join measurement.** For a micro-pause seam, compare voiced RMS of the
+generated edge word (at most the closest 400 ms) with voiced source speech on
+the other side (at most 400 ms). Exclude the reserved pause. Subtract the
+unedited source's own voiced step in the same direction; tolerance remains
+2 LU. A plain 400 ms momentary window crossing a longer pause is not this check.
+Gap/non-hard/legacy joins retain their existing pause-aware loudness rules.
+
+Only if the new check exceeds 2 LU, match the edge word to the source speech it
+meets: `G = clamp(source voiced RMS − edge voiced RMS, 0, 6)` dB, reduced so the
+word's true peak cannot exceed −1 dBTP. Keep G flat except for a 20 ms
+linear-in-dB ramp at the word's inner edge. Single-word two-sided gains combine
+by maximum, never addition. Re-mix and re-check all affected seams after both
+corrections. Gain lives in the recipe, never in fitted PCM. A remaining join
+failure is still advisory; words, clipping, speaker and consent remain hard
+gates. This local correction makes no provider request.
 
 **Join advisory (3 November 2026).** Only a finite measured excess above 2 LU at a join is advisory. Such a take is **passed with advisory**, selectable through its inline **Use anyway** action, but never selected automatically. The row reads `Take {n} · {dur} · The join may sound uneven ({side} side). Listen before using.` and offers **Play** and **Use anyway** without an alert or sheet. `{side}` is `left`, `right`, or `either` when both joins exceed the threshold. Playback does not select or accept it. **Use anyway** records that take's measured seams and the acceptance time, selects it, and leaves the normal per-take video-duration choice and **Use Takes** transaction unchanged. It does not claim that playback finished or that the joins passed. Clean passes win best-take ordering even at a lower score. No Use-all, Keep-all, auto-accept or keyboard shortcut bypasses the explicit choice. A later retry preserves the acceptance only for the same take ID and identical measured seams.
 

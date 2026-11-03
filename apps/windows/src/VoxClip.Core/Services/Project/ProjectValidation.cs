@@ -130,14 +130,28 @@ internal static class ProjectValidation
 
     private static void RenderRecipe(JsonElement recipe)
     {
-        Object(recipe, "audio words outDuration seed chunks roomTone seams video qa provenance cost voiceSource voiceRefId consentVerifiedAt");
+        Object(recipe, "audio words outDuration seed chunks roomTone seams video qa provenance cost voiceSource voiceRefId consentVerifiedAt", "edgeGain");
         Object(recipe.GetProperty("audio"), "assetId trimStart trimEnd stretch gainDb");
         Nullable(recipe.GetProperty("words"), words => Array(words, word => Object(word, "text start end synthetic")));
         Array(recipe.GetProperty("chunks"), item => Object(item, "sourceStartSample sourceEndSample requestId seed assetId assetSha256 assembledStartFrame assembledEndFrame"));
         Nullable(recipe.GetProperty("roomTone"), item => Object(item, "sourceStartSample sourceEndSample gainDb", "endGainDb"));
         var seams = recipe.GetProperty("seams"); Object(seams, "in out");
-        Object(seams.GetProperty("in"), "kind fadeSamples sourceHandleSamples assetHandleFrames");
-        Object(seams.GetProperty("out"), "kind fadeSamples sourceHandleSamples assetHandleFrames");
+        foreach (var side in new[] { "in", "out" })
+        {
+            var seam = seams.GetProperty(side);
+            Object(seam, "kind fadeSamples sourceHandleSamples assetHandleFrames", "microPause");
+            if (seam.TryGetProperty("microPause", out var pause)) Object(pause, "wordStartSeconds wordEndSeconds");
+        }
+        if (recipe.TryGetProperty("edgeGain", out var gains))
+        {
+            Object(gains, "", "in out");
+            foreach (var side in new[] { "in", "out" })
+                if (gains.TryGetProperty(side, out var gain))
+                {
+                    Object(gain, "gainDb wordSeconds");
+                    Object(gain.GetProperty("wordSeconds"), "wordStartSeconds wordEndSeconds");
+                }
+        }
         Choice(seams.GetProperty("in").GetProperty("kind"), "none", "gap", "hard", "synthToSynth");
         Choice(seams.GetProperty("out").GetProperty("kind"), "none", "gap", "hard", "synthToSynth");
         Object(recipe.GetProperty("video"), "mode sourceStartSample sourceEndSample outputSamples retimeFactor zoom faceX faceY assetId provider model requestId windowStartSample windowEndSample syncMode");

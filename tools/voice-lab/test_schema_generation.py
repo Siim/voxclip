@@ -10,6 +10,14 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class ProjectSchemaGenerationTests(unittest.TestCase):
+    def test_hard_join_fields_are_optional(self):
+        schema = json.loads((ROOT / 'shared/schemas/project.schema.json').read_bytes())
+        for definition, field in [('voiceLabSeam', 'microPause'), ('voiceLabRenderRecipe', 'edgeGain')]:
+            self.assertNotIn(field, schema['$defs'][definition]['required'])
+            self.assertIn(field, schema['$defs'][definition]['properties'])
+        self.assertNotIn('required', schema['$defs']['voiceLabEdgeGain'])
+        self.assertEqual(1, schema['$defs']['voiceLabEdgeGain']['minProperties'])
+
     def test_pace_is_optional_in_every_provenance_shape(self):
         schema = json.loads((ROOT / 'shared/schemas/project.schema.json').read_bytes())
         for name in ['voiceLabSegment', 'voiceLabSegmentV3', 'voiceLabRenderRecipe']:

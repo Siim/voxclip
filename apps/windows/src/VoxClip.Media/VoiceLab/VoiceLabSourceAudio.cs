@@ -109,7 +109,8 @@ public static class VoiceLabSourceAudio
         var ranges = new List<(long Start, long End)> { NearWindow(window, incomingSilence, outgoingSilence, frames, sampleRate) };
         // A search that finds no run leaves the refusal to the take run's own preflight, which repeats it.
         VoiceLabRoomTone? tone = null;
-        try { tone = VoiceLabRoomToneSelection.Select(items, envelope, sampleRate, frames); }
+        try { tone = VoiceLabRoomToneSelection.Select(items, envelope, sampleRate, frames,
+            window.LeftSeam.Kind == VoiceLabSeamKind.Hard || window.RightSeam.Kind == VoiceLabSeamKind.Hard); }
         catch (VoiceLabGeometryException) { }
         if (tone is not null) ranges.Add(Aligned(tone.SourceStartSample - sampleRate, tone.SourceEndSample + sampleRate, frames, sampleRate));
         var regions = new List<VoiceLabSourceExcerpt.Region>();

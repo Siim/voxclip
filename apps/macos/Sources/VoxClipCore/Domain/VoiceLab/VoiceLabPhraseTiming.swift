@@ -69,7 +69,7 @@ public struct VoiceLabPhraseTiming: Sendable, Equatable {
     }
 
     public static func preview(seconds: Double, window: VoiceLabWindow, incomingSilence: Double?,
-                               outgoingSilence: Double?, sourceSampleRate: Int) throws -> VoiceLabFitResult {
+                               outgoingSilence: Double?, sourceSampleRate: Int, hardJoinSmoothing: Bool = false) throws -> VoiceLabFitResult {
         guard seconds.isFinite, seconds > 0, seconds <= 3_600, sourceSampleRate > 0,
               sourceSampleRate <= 1_000_000 else { throw VoiceLabLengthBudgetError.invalidInput }
         let rate = Double(sourceSampleRate)
@@ -82,6 +82,6 @@ public struct VoiceLabPhraseTiming: Sendable, Equatable {
         let take = VoiceLabFitTake(assetFrames: frames, assetSampleRate: sourceSampleRate, trimStart: 0, trimEnd: duration,
             words: [VoiceLabWord(text: "speech", start: 0, end: wordEnd, synthetic: true)], envelope: envelope)
         return try VoiceLabFitPlanner.plan(window: window, incomingSilence: incomingSilence, outgoingSilence: outgoingSilence,
-                                           take: take, tokens: ["speech"], sourceSampleRate: rate)
+                                           take: take, tokens: ["speech"], sourceSampleRate: rate, hardJoinSmoothing: hardJoinSmoothing)
     }
 }

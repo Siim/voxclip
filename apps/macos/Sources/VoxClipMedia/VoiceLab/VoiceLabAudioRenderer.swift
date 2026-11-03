@@ -39,18 +39,30 @@ enum VoiceLabAudioRenderer {
             tone = run.flatMap { [$0, $0] }
         } else { tone = [] }
         let gain = Float(pow(10, analysis.gainDb / 20)), toneGain = Float(pow(10, (analysis.roomTone?.gainDb ?? 0) / 20))
+        let duration = fitted.outDuration
+        let incomingPause = plan.hardJoinSmoothing && input.window.leftSeam.kind == .hard ? VoiceLabHardJoin.pause(words: plan.words, duration: duration, incoming: true) : nil
+        let outgoingPause = plan.hardJoinSmoothing && input.window.rightSeam.kind == .hard ? VoiceLabHardJoin.pause(words: plan.words, duration: duration, incoming: false) : nil
+        let smoothing = incomingPause != nil || outgoingPause != nil
+        var edgeGain: VoiceLabEdgeGain?
         // A bed whose two sides differ ramps across the window, linearly in dB (§8.7 item 3).
         func bedGain(_ relative: Int) -> Float {
             guard let room = analysis.roomTone, room.endGainDb != nil else { return toneGain }
-            return Float(pow(10, room.gainDb(atFrame: Double(relative), of: Double(length)) / 20))
+            return Float(pow(10, room.gainDb(atFrame: Double(relative), of: smoothing ? duration * Double(rate) : Double(length)) / 20))
+        }
+        func background(_ relative: Int) -> Float {
+            tone.isEmpty ? 0 : toneSample(tone, at: Int64(relative), channel: 0, rate: Double(rate)) * bedGain(relative)
         }
         func signal(_ relative: Int) throws -> Float {
             let frame = fitted.trimStartFrame + Int64(relative)
             guard frame >= 0, frame < fitted.wave.frames else { throw VoiceLabError.invalidAudio }
             var sample: Float = 0
             for channel in 0..<fitted.wave.channels { sample += Float(fitted.wave.sample(frame: frame, channel: channel)) / Float(fitted.wave.channels) }
-            let background = tone.isEmpty ? 0 : toneSample(tone, at: Int64(relative), channel: 0, rate: Double(rate)) * bedGain(relative)
-            return sample * gain + background
+            guard smoothing else { return sample * gain + background(relative) }
+            let seconds = Double(relative) / Double(rate)
+            let voice = VoiceLabHardJoin.generatedWeight(seconds: seconds, duration: duration, incoming: incomingPause, outgoing: outgoingPause)
+            let boost = pow(10, VoiceLabHardJoin.edgeGainDb(seconds: seconds, duration: duration, edgeGain: edgeGain) / 20)
+            let bed = VoiceLabHardJoin.bedWeight(seconds: seconds, duration: duration, words: plan.words, incoming: incomingPause, outgoing: outgoingPause)
+            return sample * gain * Float(voice * boost) + background(relative) * Float(bed)
         }
         guard let leading = source.samples((start - lead)..<start), let trailing = source.samples(end..<(end + tail)) else { throw VoiceLabError.invalidAudio }
         var mixed = Array(leading)
@@ -63,6 +75,20 @@ enum VoiceLabAudioRenderer {
         for incoming in [true, false] {
             let placement = incoming ? input.window.leftSeam : input.window.rightSeam
             if placement.kind == .none { continue }
+            if incoming ? incomingPause != nil : outgoingPause != nil {
+                let count = frames(VoiceLabHardJoin.sourceFadeSeconds)
+                let seam = lead + (incoming ? 0 : length)
+                let sourceSeam = incoming ? start : end
+                guard count >= 2, incoming ? count <= lead : count <= tail else { throw VoiceLabError.invalidAudio }
+                for offset in 0..<count {
+                    let local = incoming ? offset - count : offset
+                    guard let original = source.samples((sourceSeam + local)..<(sourceSeam + local + 1))?.first else { throw VoiceLabError.invalidAudio }
+                    let weight = VoiceLabHardJoin.sourceWeight(secondsFromJoin: Double(local) / Double(rate), incoming: incoming)
+                    mixed[seam + local] = original * Float(weight) + background((incoming ? 0 : length) + local) * Float(sqrt(max(0, 1 - weight * weight)))
+                }
+                seams.append(seam); sourceSeams.append(lead + (incoming ? 0 : end - start))
+                continue
+            }
             let count = frames(Double(placement.fadeSamples) / Double(input.sourceSampleRate)), before = count / 2
             let seam = lead + (incoming ? 0 : length), sourceSeam = incoming ? start : end
             guard count >= 2, seam >= before, seam + count - before <= mixed.count, sourceSeam >= before,
@@ -80,9 +106,40 @@ enum VoiceLabAudioRenderer {
         guard mixed.allSatisfy(\.isFinite) else { throw VoiceLabError.invalidAudio }
         // The unedited source over the same lead, window and tail, so QA counts only the step a join adds (§8.11 item 3).
         guard let original = source.samples((start - lead)..<(end + tail)) else { throw VoiceLabError.invalidAudio }
-        let sourceSeamSteps = try VoiceLabLoudness.seamStepsLu(Array(original), sampleRate: rate, seamSamples: sourceSeams)
-        let sourceSeamPauses = try VoiceLabLoudness.sourcePausesLufs(Array(original), sampleRate: rate, seamSamples: sourceSeams,
+        var sourceSeamSteps = try VoiceLabLoudness.seamStepsLu(Array(original), sampleRate: rate, seamSamples: sourceSeams)
+        var sourceSeamPauses = try VoiceLabLoudness.sourcePausesLufs(Array(original), sampleRate: rate, seamSamples: sourceSeams,
             generatedAfter: sourceSeams.map { $0 == lead })
+        var measuredSteps = try VoiceLabLoudness.seamStepsLu(mixed, sampleRate: rate, seamSamples: seams)
+        for index in seams.indices {
+            let incoming = seams[index] == lead
+            guard let pause = incoming ? incomingPause : outgoingPause else { continue }
+            sourceSeamSteps[index] = try VoiceLabHardJoin.sourceStep(Array(original), sampleRate: rate, seam: sourceSeams[index])
+            sourceSeamPauses[index] = nil
+            let step = try VoiceLabHardJoin.speechStep(mixed, sampleRate: rate, seam: seams[index], pause: pause, incoming: incoming)
+            let excess = try VoiceLabLoudness.seamExcessLu(mixedSteps: [step], sourceSteps: [sourceSeamSteps[index]])
+            if excess > VoiceLabHardJoin.toleranceLu {
+                let first = seams[index] + frames(pause.wordStartSeconds), last = seams[index] + frames(pause.wordEndSeconds)
+                let sourceRange = incoming ? max(0, start - frames(0.4))..<start : end..<min(source.totalFrames, end + frames(0.4))
+                guard let meeting = source.samples(sourceRange) else { throw VoiceLabError.invalidAudio }
+                let unboosted = (first..<last).map { position in
+                    mixed[position] / Float(pow(10, VoiceLabHardJoin.edgeGainDb(seconds: Double(position - lead) / Double(rate), duration: duration, edgeGain: edgeGain) / 20))
+                }
+                let boost = try VoiceLabHardJoin.matchingGain(edge: unboosted, source: Array(meeting), sampleRate: rate, incoming: incoming)
+                if boost > 0 {
+                    let adjustment = VoiceLabEdgeGainWord(gainDb: boost, wordSeconds: pause)
+                    if edgeGain == nil { edgeGain = .init() }
+                    if incoming { edgeGain?.in = adjustment } else { edgeGain?.out = adjustment }
+                    for position in first..<last { mixed[position] = try signal(position - lead) }
+                }
+            }
+            measuredSteps[index] = try VoiceLabHardJoin.speechStep(mixed, sampleRate: rate, seam: seams[index], pause: pause, incoming: incoming)
+        }
+        for index in seams.indices {
+            let incoming = seams[index] == lead
+            if let pause = incoming ? incomingPause : outgoingPause {
+                measuredSteps[index] = try VoiceLabHardJoin.speechStep(mixed, sampleRate: rate, seam: seams[index], pause: pause, incoming: incoming)
+            }
+        }
         try reserveDisk(scratchRoot, frames: Int64(mixed.count), additionalBytes: Int64(fitted.wave.pcm.count + 88))
         let operation = try VoiceLabAssetRecovery.Operation.create(in: scratchRoot)
         let directory = scratchRoot.appendingPathComponent(operation.name, isDirectory: true)
@@ -96,9 +153,11 @@ enum VoiceLabAudioRenderer {
             let readback = try VoiceLabWavePCM(Data(contentsOf: mixedURL))
             let measured = (0..<readback.frames).map { Float(readback.sample(frame: $0, channel: 0)) }
             guard measured == mixed else { throw VoiceLabError.invalidAudio }
-            let audio = VoiceLabTakeAudio(sampleRate: rate, trimmed: analysis.trimmed, mixed: measured,
+            var audio = VoiceLabTakeAudio(sampleRate: rate, trimmed: analysis.trimmed, mixed: measured,
                 patchRange: lead..<(lead + length), seams: seams, gainDb: analysis.gainDb, roomTone: analysis.roomTone, fit: analysis.fit,
                 sourceSeamSteps: sourceSeamSteps, sourceSeamPauses: sourceSeamPauses)
+            audio.microPauseIn = incomingPause; audio.microPauseOut = outgoingPause; audio.edgeGain = edgeGain
+            audio.measuredSeamSteps = smoothing ? measuredSteps : nil
             return VoiceLabTakeScratch(directory: directory, operation: operation, fitted: fitted, audio: audio)
         } catch { operation.discard(); throw error }
     }
@@ -438,6 +497,8 @@ enum VoiceLabAudioRenderer {
             let synthGain: Float = piece.kind == .synth ? Float(pow(10, (recipes[piece.segmentId ?? ""]?.audio.gainDb ?? 0) / 20)) : 1
             let generatedBefore = index > 0 && plan.pieces[index - 1].kind == .synth
             let generatedAfter = index + 1 < plan.pieces.count && plan.pieces[index + 1].kind == .synth
+            let recipe = piece.kind == .synth ? recipes[piece.segmentId ?? ""] : nil
+            let smooth = recipe.map { $0.seams.in.microPause != nil || $0.seams.out.microPause != nil } ?? false
             var position: Int64 = 0
             while position < length {
                 try Task.checkCancellation()
@@ -453,11 +514,15 @@ enum VoiceLabAudioRenderer {
                                                  fadeIn: !generatedBefore && piece.sourceStartSample > 0,
                                                  fadeOut: !generatedAfter && piece.sourceEndSample < plan.totalSourceSamples)
                     }
+                    let seconds = Double(position + Int64(frame)) / plan.sampleRate
+                    let voice = smooth ? VoiceLabHardJoin.generatedWeight(seconds: seconds, duration: recipe!.outDuration, incoming: recipe!.seams.in.microPause, outgoing: recipe!.seams.out.microPause) : 1
+                    let boost = recipe?.edgeGain.map { pow(10, VoiceLabHardJoin.edgeGainDb(seconds: seconds, duration: recipe!.outDuration, edgeGain: $0) / 20) } ?? 1
+                    let bed = toneRamp.map { Float(pow(10, $0.gainDb(atFrame: Double(position + Int64(frame)), of: $1) / 20)) } ?? toneGain
+                    let weight = smooth ? VoiceLabHardJoin.bedWeight(seconds: seconds, duration: recipe!.outDuration, words: recipe!.words ?? [], incoming: recipe!.seams.in.microPause, outgoing: recipe!.seams.out.microPause) : 1
                     for channel in 0..<2 {
-                        channels[channel][frame] *= gain
+                        channels[channel][frame] *= gain * Float(voice * boost)
                         if let tone {
-                            let bed = toneRamp.map { Float(pow(10, $0.gainDb(atFrame: Double(position + Int64(frame)), of: $1) / 20)) } ?? toneGain
-                            channels[channel][frame] += toneSample(tone, at: position + Int64(frame), channel: channel, rate: plan.sampleRate) * bed
+                            channels[channel][frame] += toneSample(tone, at: position + Int64(frame), channel: channel, rate: plan.sampleRate) * bed * Float(weight)
                         }
                     }
                     if let seam = windows.first(where: { absolute >= $0.start && absolute < $0.end }) {
@@ -525,6 +590,27 @@ enum VoiceLabAudioRenderer {
         guard let recipe else { throw VoiceLabProjectError.invalidFadeHandles }
         let seam = right.kind == .synth ? recipe.seams.in : recipe.seams.out
         guard seam.kind != .none else { return nil }
+        if seam.microPause != nil {
+            let incoming = right.kind == .synth
+            guard incoming ? left.kind == .source : right.kind == .source else { throw VoiceLabProjectError.invalidFadeHandles }
+            let count = Int(EditingPrimitives.jsRound(VoiceLabHardJoin.sourceFadeSeconds * plan.sampleRate))
+            let available = incoming ? left.outputEndSample - left.outputStartSample : right.outputEndSample - right.outputStartSample
+            guard count >= 2, Int64(count) <= available else { throw VoiceLabProjectError.invalidFadeHandles }
+            let sourceStart = incoming ? left.sourceEndSample - Int64(count) : right.sourceStartSample
+            var samples = try read(source, start: sourceStart, count: count)
+            let tone = try recipe.roomTone.map { try read(source, start: $0.sourceStartSample, count: Int($0.sourceEndSample - $0.sourceStartSample)) }
+            for frame in 0..<count {
+                let local = incoming ? frame - count : frame
+                let relative = incoming ? Int64(local) : left.outputEndSample - left.outputStartSample + Int64(local)
+                let weight = VoiceLabHardJoin.sourceWeight(secondsFromJoin: Double(local) / plan.sampleRate, incoming: incoming)
+                let bed = recipe.roomTone.map { Float(pow(10, $0.gainDb(atFrame: Double(relative), of: recipe.outDuration * plan.sampleRate) / 20)) } ?? 0
+                for channel in 0..<2 {
+                    let background = tone.map { toneSample($0, at: relative, channel: channel, rate: plan.sampleRate) * bed } ?? 0
+                    samples[frame * 2 + channel] = samples[frame * 2 + channel] * Float(weight) + background * Float(sqrt(max(0, 1 - weight * weight)))
+                }
+            }
+            return SeamWindow(start: right.outputStartSample - (incoming ? Int64(count) : 0), samples: samples)
+        }
         let n = Int(seam.fadeSamples), half = n / 2, after = n - half
         guard n >= 2, left.outputEndSample == right.outputStartSample else { throw VoiceLabProjectError.invalidFadeHandles }
         func sourceHandle() throws -> [Float] {
@@ -571,10 +657,15 @@ enum VoiceLabAudioRenderer {
                 Float(pow(10, room.gainDb(atFrame: Double(bodyOffset + Int64(frame)), of: recipe.outDuration * rate) / 20)) } } ?? toneGain
             for channel in 0..<2 {
                 let slot = frame * 2 + channel
-                output[slot] *= gain
+                let seconds = Double(bodyOffset + Int64(frame)) / rate
+                let smooth = recipe.seams.in.microPause != nil || recipe.seams.out.microPause != nil
+                let voice = smooth ? VoiceLabHardJoin.generatedWeight(seconds: seconds, duration: recipe.outDuration, incoming: recipe.seams.in.microPause, outgoing: recipe.seams.out.microPause) : 1
+                let boost = pow(10, VoiceLabHardJoin.edgeGainDb(seconds: seconds, duration: recipe.outDuration, edgeGain: recipe.edgeGain) / 20)
+                output[slot] *= gain * Float(voice * boost)
                 if let tone {
+                    let weight = smooth ? VoiceLabHardJoin.bedWeight(seconds: seconds, duration: recipe.outDuration, words: recipe.words ?? [], incoming: recipe.seams.in.microPause, outgoing: recipe.seams.out.microPause) : 1
                     output[slot] += toneSample(tone, at: bodyOffset + Int64(frame), channel: channel,
-                                               rate: rate) * bed
+                                               rate: rate) * bed * Float(weight)
                 }
             }
         }

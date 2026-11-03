@@ -52,7 +52,8 @@ public enum VoiceLabSourceAudio {
         let envelope = levels.envelope, total = Int(frames)
         var ranges = [nearWindow(window, incomingSilence: incomingSilence, outgoingSilence: outgoingSilence, total: total, rate: sampleRate)]
         // A search that finds no run leaves the refusal to the take run's own preflight, which repeats it.
-        if let tone = try? VoiceLabRoomToneSelection.select(items: items, envelope: envelope, sourceSampleRate: Double(sampleRate), totalSamples: frames) {
+        if let tone = try? VoiceLabRoomToneSelection.select(items: items, envelope: envelope, sourceSampleRate: Double(sampleRate), totalSamples: frames,
+            excludeDigitalSilence: window.leftSeam.kind == .hard || window.rightSeam.kind == .hard) {
             ranges.append(aligned(Int(tone.sourceStartSample) - sampleRate, Int(tone.sourceEndSample) + sampleRate, total: total, rate: sampleRate))
         }
         var regions: [VoiceLabSourceExcerpt.Region] = []
