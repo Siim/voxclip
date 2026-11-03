@@ -4,14 +4,12 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Keep Eleven v4 voice takes and CLI network recovery consistent across macOS and Windows.
 - Keep Eleven v4 segment bounds compatible with valid normalized alignment, bind own-voice approval to the quote’s voice, prefer TTS defaults, and retain receipts for failed paid takes on both platforms.
 - Eleven v4 can now voice takes on macOS and Windows.
 - Show an unreachable CLI server at the failed Rewrite send step.
-
 - Keep CLI timeouts distinct from model text, show the relevant network diagnostic, and hide proxy URL credentials.
-
 - Rewrite says what to do when Claude Code or Codex can't reach its server.
-
 - Bound competition between headless Mac fixture suites while preserving request and cancellation checks.
 - Keep headless Mac checks responsive during audio validation, preserve panel keyboard ownership, and latch early export releases.
 - Integrate pooled short-phrase checks, inline Motion editing and the Windows v2 shell while preserving Release availability gates.
