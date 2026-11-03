@@ -5,7 +5,7 @@ public struct Redactor: Sendable, Equatable {
     private var secrets: Set<String>
     public let homeDirectory: String
 
-    /// Architecture §11.2 rules 2 to 6, in their normative order: the output depends on it. Windows Core runs the same
+    /// Architecture §11.2 rule 1a and rules 2 to 6, in their normative order: the output depends on it. Windows Core runs the same
     /// pattern text, and shared/fixtures/redaction/cases.json lists it, so both platforms redact identically. Whitespace
     /// is spelled out as the Unicode White_Space class, so both engines use the identical set of characters.
     /// Field names, scheme words and query names match ASCII letters in either case and fold no other letter, except
@@ -53,6 +53,8 @@ public struct Redactor: Sendable, Equatable {
         let segment = #"(?>[A-Za-z0-9_-]{1,8192})"#
         let jwt = #"(?<![A-Za-z0-9_-])eyJ"# + segment + #"\."# + segment + #"\."# + segment
         return [
+            // URL userinfo can hold a proxy password; remove it before field/key rules.
+            (#"(?<![A-Za-z0-9+.-])([A-Za-z][A-Za-z0-9+.-]*://)[^/\t\n\x0B\f\r\x85\p{Z}@?#]+@"#, "$1***@"),
             ("(" + authorization + ")" + field, "$1$2$3[REDACTED]"),
             ("(" + names + ")" + field, "$1$2$3[REDACTED]"),
             // The Bearer rule follows Bearer anywhere, and an authorization field's Bearer or Basic, across any

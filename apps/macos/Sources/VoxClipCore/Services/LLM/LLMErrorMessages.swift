@@ -83,8 +83,8 @@ extension LLMError {
             let suffix = version.isEmpty || version == "unknown" ? "" : " \(version)"
             message = "Your \(cli)\(suffix) is too old for VoxClip. Update it, then try again."
         case .cliSignedOut: message = "\(cli) isn't signed in. \(signInHint.isEmpty ? "Open Terminal and sign in through the CLI itself." : signInHint)"
-        case .cliNetworkUnreachable(let detail):
-            message = "\(cli) couldn't reach its server from VoxClip. " + Self.cliNetworkRecovery + " " + AIText.prefix(redactor.redact(detail), utf16: 200)
+        case .cliNetworkUnreachable:
+            message = "\(cli) couldn't reach its server from VoxClip. " + Self.cliNetworkRecovery
         case .cliFailed(let detail): message = "\(cli) stopped with an error: " + AIText.prefix(redactor.redact(detail), utf16: 200)
         case .cancelled: return nil
         }

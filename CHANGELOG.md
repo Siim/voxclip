@@ -4,6 +4,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Keep CLI timeouts distinct from model text, show the relevant network diagnostic, and hide proxy URL credentials.
+
 - Rewrite says what to do when Claude Code or Codex can't reach its server.
 
 - Bound competition between headless Mac fixture suites while preserving request and cancellation checks.

@@ -22,7 +22,7 @@ npm --prefix tools/fixtures/llm run check
 | `connector-requests.json` | 37 | Connection tests, capability branches, CLI escaping/flags, Apple mapping; 37 renderings |
 | `voice-rewrite-requests.json` | 7 | Voice Lab rewrite (voice-lab §8.9.1): passage and full take, with and without a request, six budgets including `minChars` = `maxChars`, a decomposed source; each with the quote's estimate and preflight |
 | `patch-rewrite-requests.json` | 5 | Voice Lab Fix with AI (voice-lab §8.1): the line ranges and instruction, equal `minChars` and `maxChars`, a trimmed instruction, F1, sparse indices, decomposed Estonian text; each with the quote's estimate and preflight |
-| `cli-replies.json` | 98 | Claude and Codex CLI transport envelopes (ai.md §4.5, §6.8–§6.10): stops, structured/text replies, depth and strict-JSON bounds, signed 64-bit integer ranking and usage, ignored Codex cache-write counts, category-ordered failures, single Codex fallback, first app-server response selection, optional fields, line endings and stderr selection |
+| `cli-replies.json` | 98 | Claude and Codex CLI transport envelopes (ai.md §4.5, §6.8–§6.10): stops, structured/text replies, depth and strict-JSON bounds, signed 64-bit integer ranking and usage, ignored Codex cache-write counts, category-ordered failures, selected-line malformed-envelope classification, single Codex fallback, first app-server response selection, optional fields, line endings and stderr selection |
 
 The CLI rows include Claude output-token ties (UTF-8 ordinal keys, independent of JSON order), `output_tokens`, malformed envelopes with signed-out stderr, malformed envelope field types, and exact-zero number tokens of 1,024 and 1,025 bytes in both replies and envelopes. Optional envelope fields of the wrong type are absent, and integral float status and usage fields are accepted. Integer ranking and recorded usage cover counts above Int32, 2^53, -1, -2^63, the largest binary64 below 2^63 and out-of-range values, including a decimal that rounds to the excluded upper bound. Four conflicting marker/status rows pin Claude's first matching category in list order, including integral float status. Codex exec and app-server rows cover wrong event and metadata types, wide and absent usage, CRLF, a trailing CR, raw U+2028 inside a JSON string, and a leading BOM. The stderr rows cover leading blank lines, empty and whitespace-only stderr, CRLF, internal CR and U+2028, and markers on selected or ignored second lines for malformed Claude envelopes, Claude errors and Codex errors. Both connector suites replay every row.
 
@@ -32,7 +32,7 @@ Codex failure rows pin auth before limit, limit before overload, overload before
 
 Two Codex usage rows supply integral and out-of-range `cache_write_input_tokens` values. Both expect absent cache-write usage and preserve only input, cached input and output counts (§6.9 step 4). Claude's cache-creation usage is unchanged.
 
-Current `cli-replies.json` SHA-256: `3f8dc0e9b4e3005c43bf5a72ba614b299369f41e8896d4f9935685abde107686`.
+Current `cli-replies.json` SHA-256: `fbd24df5069fd52c099c1a8edc23dddb42f3c6d4989c613b4410e8f3ec56e0ce`.
 
 Each UTF-8 file has stable insertion-order keys, LF line endings and one trailing
 newline. Its envelope is:

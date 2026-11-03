@@ -13,6 +13,16 @@ namespace VoxClip.Core.Tests;
 /// (RedactionOracleTests.swift).</summary>
 public sealed class RedactionOracleTests
 {
+    [Fact]
+    public void ProxyUrlCredentialsAreRedacted()
+    {
+        var redactor = new Redactor();
+        Assert.Equal("tcp connect error: https://***@proxy.invalid:8443/path", redactor.Redact("tcp connect error: https://proxy-user:proxy-pass@proxy.invalid:8443/path"));
+        Assert.Equal("socks5://***@proxy.invalid:1080", redactor.Redact("socks5://proxy-user@proxy.invalid:1080"));
+        Assert.Equal("https://proxy.invalid/?email=user@example.invalid", redactor.Redact("https://proxy.invalid/?email=user@example.invalid"));
+        Assert.Equal("https://proxy.invalid#user@example.invalid", redactor.Redact("https://proxy.invalid#user@example.invalid"));
+    }
+
     private sealed record OracleSecret(string Marker, string Position, string Field, string Separator, string Scheme, string Form);
 
     private static readonly string[] Fields = ["authorization", "x-api-key", "xi-api-key", "x-goog-api-key", "api-key", "api_key", "apikey",
