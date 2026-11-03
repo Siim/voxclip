@@ -7,7 +7,7 @@ using VoxClip.Core.Domain.Transcript;
 namespace VoxClip.Core.Domain.VoiceLab;
 
 public sealed record VoiceLabRewriteFitResult(double EstimateSeconds, double SlotSeconds, bool Fits, double Pace = 1, bool FitsWithVideoCut = false,
-    double? MaximumSeconds = null)
+    double? MaximumSeconds = null, double? MinimumSeconds = null)
 {
     public bool TooLong => EstimateSeconds > (MaximumSeconds ?? SlotSeconds);
     public string Copy => "≈ " + EditingFormat.ToFixed1(EstimateSeconds) + " s" +

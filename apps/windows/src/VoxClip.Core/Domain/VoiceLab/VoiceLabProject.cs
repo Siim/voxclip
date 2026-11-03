@@ -99,6 +99,9 @@ public static class VoiceLabProject
     }
     public static void Validate(Project project)
     {
+        if (project.VoiceLab.SpeakingRateSamples is { } rates)
+            Require(rates.All(pair => pair.Key.Length > 0 && pair.Value is { Count: <= VoiceLabWordingFit.MaximumSamples } samples &&
+                samples.All(sample => sample is { Id.Length: > 0 } && double.IsFinite(sample.Ratio) && sample.Ratio > 0)), VoiceLabProjectErrorCode.InvalidSegment);
         if (project.SchemaVersion == 1)
         {
             Require(project.VoiceLab.Segments.Count == 0 && project.VoiceLab.Assets is null && project.VoiceLab.CleanAudio is null && project.VoiceLab.Voices is null && project.VoiceLab.VideoAssets is null, VoiceLabProjectErrorCode.InvalidSegment);
@@ -199,7 +202,7 @@ public static class VoiceLabProject
         if (project.SchemaVersion >= 3) return project;
         Require(project.VoiceLab.Segments.Count == 0, VoiceLabProjectErrorCode.LegacySegmentsNeedReview);
         var result = project with { SchemaVersion = 3, VoiceLab = new VoiceLabPlaceholder([]) { Assets = project.VoiceLab.Assets ?? [],
-            CleanAudio = new(VoiceLabCleanAudioMode.Off, null, null), Voices = [], VideoAssets = [] } };
+            CleanAudio = new(VoiceLabCleanAudioMode.Off, null, null), Voices = [], VideoAssets = [], SpeakingRateSamples = project.VoiceLab.SpeakingRateSamples } };
         Validate(result); return result;
     }
     /// <summary>Appends a reviewed v3 segment; v1 and segment-free v2 projects are upgraded first, so accept never writes v2.</summary>
