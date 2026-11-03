@@ -77,7 +77,8 @@ public static class VoiceLabTakeRenderer
             if (frame < 0 || frame >= fitted.Wave.Frames) throw Invalid();
             float sample = 0;
             for (var channel = 0; channel < fitted.Wave.Channels; channel++) sample += (float)fitted.Wave.Sample(frame, channel) / fitted.Wave.Channels;
-            var background = tone.Length == 0 ? 0 : VoiceLabAudioMixer.RoomToneSample(tone, relative, 0, loop) * toneGain;
+            var bed = analysis.RoomTone is { EndGainDb: not null } ramp ? (float)Math.Pow(10, ramp.GainDbAt(relative, length) / 20) : toneGain;
+            var background = tone.Length == 0 ? 0 : VoiceLabAudioMixer.RoomToneSample(tone, relative, 0, loop) * bed;
             return sample * gain + background;
         }
         if (source.Samples(start - lead, start) is not { } leading || source.Samples(end, end + tail) is not { } trailing) throw Invalid();

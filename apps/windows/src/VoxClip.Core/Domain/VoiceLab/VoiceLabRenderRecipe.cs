@@ -11,7 +11,17 @@ public sealed record VoiceLabCleanAudio(VoiceLabCleanAudioMode Mode, string? Ass
 [JsonConverter(typeof(JsonStringEnumConverter<VoiceLabVoiceStatus>))]
 public enum VoiceLabVoiceStatus { [JsonStringEnumMemberName("active")] Active, [JsonStringEnumMemberName("deleted")] Deleted }
 public sealed record VoiceLabVoiceReference(string Id, string Provider, string VoiceId, string ConsentRecordId, string DisplayName, VoiceLabVoiceStatus Status);
-public sealed record VoiceLabRoomTone(long SourceStartSample, long SourceEndSample, double GainDb);
+/// <summary>The room-tone loop under a segment. <c>EndGainDb</c> (Mac since 2026-11-03, voice-lab §8.7 item 3) is the
+/// loop's gain at the window's end when the background differs on the two sides; the gain moves linearly in dB from
+/// <c>GainDb</c>. Omitted from the file when null, so a flat bed keeps the earlier encoding.</summary>
+public sealed record VoiceLabRoomTone(long SourceStartSample, long SourceEndSample, double GainDb,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? EndGainDb = null)
+{
+    /// <summary>The loop's gain in dB at <paramref name="frame"/> of a window <paramref name="length"/> frames long:
+    /// <c>GainDb + (EndGainDb − GainDb) × f</c> with <c>f = frame / length</c> clamped to [0, 1].</summary>
+    public double GainDbAt(double frame, double length) =>
+        EndGainDb is not { } end || !(length > 0) ? GainDb : GainDb + (end - GainDb) * Math.Min(Math.Max(frame / length, 0), 1);
+}
 public sealed record VoiceLabVideoAsset(string Id, string File, string Sha256, double DurationSeconds, double FrameRate, int Width, int Height);
 [JsonConverter(typeof(JsonStringEnumConverter<VoiceLabSeamKind>))]
 public enum VoiceLabSeamKind { [JsonStringEnumMemberName("none")] None, [JsonStringEnumMemberName("gap")] Gap, [JsonStringEnumMemberName("hard")] Hard, [JsonStringEnumMemberName("synthToSynth")] SynthToSynth }

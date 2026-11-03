@@ -121,7 +121,8 @@ public static class VoiceLabRenderValidation
         if (recipe.RoomTone is { } tone)
         {
             Require(tone.SourceStartSample >= 0 && tone.SourceEndSample <= total &&
-                tone.SourceEndSample-tone.SourceStartSample == Samples(0.5,rate) && double.IsFinite(tone.GainDb), VoiceLabProjectErrorCode.MissingRenderPolicy);
+                tone.SourceEndSample-tone.SourceStartSample == Samples(0.5,rate) && double.IsFinite(tone.GainDb) &&
+                (tone.EndGainDb is not { } endGain || double.IsFinite(endGain)), VoiceLabProjectErrorCode.MissingRenderPolicy);
             Require(project.Transcript?.Words.Any(w => Samples(w.Start,rate) < tone.SourceEndSample && Samples(w.End,rate) > tone.SourceStartSample) != true, VoiceLabProjectErrorCode.MissingRenderPolicy);
         }
         if (project.VoiceLab.CleanAudio!.Mode == VoiceLabCleanAudioMode.On) Require(recipe.RoomTone is null, VoiceLabProjectErrorCode.MissingRenderPolicy);
@@ -210,7 +211,8 @@ public static class VoiceLabRenderValidation
         var audio = recipe.Audio; var video = recipe.Video; var qa = recipe.Qa; var provenance = recipe.Provenance;
         Require(Id(audio.AssetId) && double.IsFinite(audio.TrimStart) && audio.TrimStart >= 0 && double.IsFinite(audio.TrimEnd) && audio.TrimEnd >= 0 &&
             double.IsFinite(audio.Stretch) && audio.Stretch > 0 && double.IsFinite(audio.GainDb) && double.IsFinite(recipe.OutDuration) && recipe.OutDuration > 0 &&
-            (recipe.RoomTone is not { } tone || tone.SourceStartSample >= 0 && tone.SourceEndSample >= 0 && double.IsFinite(tone.GainDb)), VoiceLabProjectErrorCode.InvalidSegment);
+            (recipe.RoomTone is not { } tone || tone.SourceStartSample >= 0 && tone.SourceEndSample >= 0 && double.IsFinite(tone.GainDb) &&
+                (tone.EndGainDb is not { } endGain || double.IsFinite(endGain))), VoiceLabProjectErrorCode.InvalidSegment);
         Require(recipe.Words is null || recipe.Words.Count > 0 && recipe.Words.All(word => !string.IsNullOrEmpty(word.Text) &&
             double.IsFinite(word.Start) && word.Start >= 0 && double.IsFinite(word.End) && word.End >= 0), VoiceLabProjectErrorCode.InvalidSegment);
         Require(recipe.Chunks is { Count: > 0 } && recipe.Chunks.All(chunk => chunk.SourceStartSample >= 0 && chunk.SourceEndSample >= 0 &&

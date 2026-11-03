@@ -39,12 +39,17 @@ enum VoiceLabAudioRenderer {
             tone = run.flatMap { [$0, $0] }
         } else { tone = [] }
         let gain = Float(pow(10, analysis.gainDb / 20)), toneGain = Float(pow(10, (analysis.roomTone?.gainDb ?? 0) / 20))
+        // A bed whose two sides differ ramps across the window, linearly in dB (§8.7 item 3).
+        func bedGain(_ relative: Int) -> Float {
+            guard let room = analysis.roomTone, room.endGainDb != nil else { return toneGain }
+            return Float(pow(10, room.gainDb(atFrame: Double(relative), of: Double(length)) / 20))
+        }
         func signal(_ relative: Int) throws -> Float {
             let frame = fitted.trimStartFrame + Int64(relative)
             guard frame >= 0, frame < fitted.wave.frames else { throw VoiceLabError.invalidAudio }
             var sample: Float = 0
             for channel in 0..<fitted.wave.channels { sample += Float(fitted.wave.sample(frame: frame, channel: channel)) / Float(fitted.wave.channels) }
-            let background = tone.isEmpty ? 0 : toneSample(tone, at: Int64(relative), channel: 0, rate: Double(rate)) * toneGain
+            let background = tone.isEmpty ? 0 : toneSample(tone, at: Int64(relative), channel: 0, rate: Double(rate)) * bedGain(relative)
             return sample * gain + background
         }
         guard let leading = source.samples((start - lead)..<start), let trailing = source.samples(end..<(end + tail)) else { throw VoiceLabError.invalidAudio }
@@ -423,7 +428,9 @@ enum VoiceLabAudioRenderer {
             }
             let tone: [Float]?
             let toneGain: Float
+            var toneRamp: (VoiceLabRoomTone, Double)?
             if piece.kind == .synth, let id = piece.segmentId, let room = recipes[id]?.roomTone {
+                if room.endGainDb != nil, let recipe = recipes[id] { toneRamp = (room, recipe.outDuration * plan.sampleRate) }
                 tone = try read(source, start: room.sourceStartSample, count: Int(room.sourceEndSample - room.sourceStartSample))
                 toneGain = Float(pow(10, room.gainDb / 20))
             } else { tone = nil; toneGain = 0 }
@@ -447,7 +454,10 @@ enum VoiceLabAudioRenderer {
                     }
                     for channel in 0..<2 {
                         channels[channel][frame] *= gain
-                        if let tone { channels[channel][frame] += toneSample(tone, at: position + Int64(frame), channel: channel, rate: plan.sampleRate) * toneGain }
+                        if let tone {
+                            let bed = toneRamp.map { Float(pow(10, $0.gainDb(atFrame: Double(position + Int64(frame)), of: $1) / 20)) } ?? toneGain
+                            channels[channel][frame] += toneSample(tone, at: position + Int64(frame), channel: channel, rate: plan.sampleRate) * bed
+                        }
                     }
                     if let seam = windows.first(where: { absolute >= $0.start && absolute < $0.end }) {
                         let slot = Int(absolute - seam.start) * 2
@@ -555,12 +565,15 @@ enum VoiceLabAudioRenderer {
         let toneGain = Float(pow(10, (recipe.roomTone?.gainDb ?? 0) / 20))
         for frame in 0..<(samples.count / 2) {
             try Task.checkCancellation()
+            // A seam handle lies just outside the window, where a ramped bed keeps that side's level.
+            let bed = recipe.roomTone.flatMap { room in room.endGainDb.map { _ in
+                Float(pow(10, room.gainDb(atFrame: Double(bodyOffset + Int64(frame)), of: recipe.outDuration * rate) / 20)) } } ?? toneGain
             for channel in 0..<2 {
                 let slot = frame * 2 + channel
                 output[slot] *= gain
                 if let tone {
                     output[slot] += toneSample(tone, at: bodyOffset + Int64(frame), channel: channel,
-                                               rate: rate) * toneGain
+                                               rate: rate) * bed
                 }
             }
         }

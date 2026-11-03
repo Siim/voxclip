@@ -88,6 +88,24 @@ import Testing
         let raw = try #require(String(data: FixtureLoader.data("fixtures/voice-lab/passage-render-v3.voxclip"), encoding: .utf8))
         #expect(throws: DecodingError.self) { try ProjectJSON.decode(Data(raw.replacingOccurrences(of: "\"mode\": \"source\"", with: "\"mode\": \"unrecognised\"").utf8)) }
     }
+    /// The room-tone bed's optional end gain (voice-lab §8.7 item 3): it validates, encodes, decodes and survives the
+    /// strict key check; a flat bed keeps the earlier encoding; a non-finite end gain is refused.
+    @Test func roomToneEndGainRoundTrips() throws {
+        let passage = try fixture()
+        #expect(String(decoding: try ProjectJSON.encode(passage), as: UTF8.self).contains("endGainDb") == false)
+        var ramped = passage
+        ramped.voiceLab.segments[0].candidates[0].recipe!.roomTone!.gainDb = 6
+        ramped.voiceLab.segments[0].candidates[0].recipe!.roomTone!.endGainDb = -2
+        try VoiceLabProject.validate(ramped)
+        let data = try ProjectJSON.encode(ramped)
+        #expect(String(decoding: data, as: UTF8.self).contains("\"endGainDb\" : -2") || String(decoding: data, as: UTF8.self).contains("\"endGainDb\": -2"))
+        let back = try ProjectJSON.decode(data)
+        #expect(back == ramped && back.voiceLab.segments[0].candidates[0].recipe?.roomTone?.endGainDb == -2)
+        _ = try JSONProjectStore.decode(data)
+        var bad = ramped
+        bad.voiceLab.segments[0].candidates[0].recipe!.roomTone!.endGainDb = .infinity
+        #expect(throws: (any Error).self) { try VoiceLabProject.validate(bad) }
+    }
     @Test func disclosureThresholdsAndStockConversion() throws {
         let at = try VoiceLabRenderContract.prepare(fixture("disclosure-at-30-render-v3"), scope: .full, labelPosition: .topRight)
         let above = try VoiceLabRenderContract.prepare(fixture("disclosure-above-30-render-v3"), scope: .full, labelPosition: .topRight)

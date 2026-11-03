@@ -73,7 +73,7 @@ public enum VoiceLabRenderValidation {
         let audio = recipe.audio, video = recipe.video, qa = recipe.qa, provenance = recipe.provenance
         guard validID(audio.assetId), audio.trimStart.isFinite, audio.trimStart >= 0, audio.trimEnd.isFinite, audio.trimEnd >= 0,
               audio.stretch.isFinite, audio.stretch > 0, audio.gainDb.isFinite, recipe.outDuration.isFinite, recipe.outDuration > 0,
-              recipe.words?.isEmpty != true, !recipe.chunks.isEmpty, recipe.roomTone.map({ $0.gainDb.isFinite }) ?? true,
+              recipe.words?.isEmpty != true, !recipe.chunks.isEmpty, recipe.roomTone.map({ $0.gainDb.isFinite && $0.endGainDb?.isFinite != false }) ?? true,
               (recipe.roomTone?.sourceStartSample ?? 0) >= 0, (recipe.roomTone?.sourceEndSample ?? 0) >= 0 else { throw VoiceLabProjectError.invalidSegment }
         for word in recipe.words ?? [] {
             guard !word.text.isEmpty, word.start.isFinite, word.start >= 0, word.end.isFinite, word.end >= 0 else { throw VoiceLabProjectError.invalidSegment }
@@ -163,7 +163,8 @@ public enum VoiceLabRenderValidation {
         guard sourceCursor == end, assembledCursor == samples(recipe.audio.trimEnd, Double(asset.sampleRate)) else { throw VoiceLabProjectError.invalidRange }
         if let tone = recipe.roomTone {
             guard tone.sourceStartSample >= 0, tone.sourceEndSample <= total,
-                  tone.sourceEndSample - tone.sourceStartSample == samples(0.5, rate), tone.gainDb.isFinite else { throw VoiceLabProjectError.missingRenderPolicy }
+                  tone.sourceEndSample - tone.sourceStartSample == samples(0.5, rate), tone.gainDb.isFinite,
+                  tone.endGainDb?.isFinite != false else { throw VoiceLabProjectError.missingRenderPolicy }
             if project.transcript?.words.contains(where: { samples($0.start, rate) < tone.sourceEndSample && samples($0.end, rate) > tone.sourceStartSample }) == true { throw VoiceLabProjectError.missingRenderPolicy }
         }
         if project.voiceLab.cleanAudio?.mode == .on && recipe.roomTone != nil { throw VoiceLabProjectError.missingRenderPolicy }

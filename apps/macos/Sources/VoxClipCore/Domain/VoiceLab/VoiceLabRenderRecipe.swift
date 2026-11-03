@@ -34,9 +34,19 @@ public struct VoiceLabVoiceReference: Codable, Sendable, Equatable {
 public struct VoiceLabRoomTone: Codable, Sendable, Equatable {
     public var sourceStartSample: Int64
     public var sourceEndSample: Int64
+    /// The loop's gain at the window's start, and its whole gain when `endGainDb` is nil.
     public var gainDb: Double
-    public init(sourceStartSample: Int64, sourceEndSample: Int64, gainDb: Double) {
-        self.sourceStartSample = sourceStartSample; self.sourceEndSample = sourceEndSample; self.gainDb = gainDb
+    /// The loop's gain at the window's end, when the background differs on the two sides (§8.7 item 3); the gain moves
+    /// linearly in dB between them. Omitted from the file when nil, so a flat bed keeps the earlier encoding.
+    public var endGainDb: Double?
+    public init(sourceStartSample: Int64, sourceEndSample: Int64, gainDb: Double, endGainDb: Double? = nil) {
+        self.sourceStartSample = sourceStartSample; self.sourceEndSample = sourceEndSample; self.gainDb = gainDb; self.endGainDb = endGainDb
+    }
+    /// The loop's gain in dB at `frame` of a window `length` frames long: `gainDb + (endGainDb − gainDb) × f`, with
+    /// `f = frame / length` clamped to [0, 1], so a seam handle before or after the window keeps that side's level.
+    public func gainDb(atFrame frame: Double, of length: Double) -> Double {
+        guard let endGainDb, length > 0 else { return gainDb }
+        return gainDb + (endGainDb - gainDb) * min(max(frame / length, 0), 1)
     }
 }
 public struct VoiceLabVideoAsset: Codable, Sendable, Equatable {
