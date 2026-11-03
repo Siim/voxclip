@@ -273,10 +273,10 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         var model = SelectedModel(modelId, language, true);
         SelectedVoice(voice);
         if (options is null || string.IsNullOrWhiteSpace(text) || Encoding.UTF8.GetByteCount(text) > 20000 ||
-            text.EnumerateRunes().Count() > Math.Min(model.MaximumTextLength ?? 5000, 5000)) throw Invalid();
+            text.EnumerateRunes().Count() > SpeechTextLimit(model)) throw Invalid();
         var fingerprint = SynthesisFingerprint(text, modelId, voice, language, options);
         return actions.Prepare(fingerprint, Quoted(VoiceLabOperation.TextToSpeech, modelId, text.EnumerateRunes().Count()),
-            Review(VoiceLabOperation.TextToSpeech, requestId, "/v1/text-to-speech/" + voice.Id + "/with-timestamps?output_format=pcm_24000",
+            Review(VoiceLabOperation.TextToSpeech, requestId, SpeechPath(model, voice.Id) + "?output_format=pcm_24000",
                 modelId, voice.Id, modelId == "eleven_multilingual_v2" ? Auto(language) : Explicit(language),
                 VoiceLabActionGate.ContentHash(Encoding.UTF8.GetBytes(text)), voice.Policy));
     }
@@ -403,21 +403,36 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         var model = SelectedModel(modelId, language, true);
         SelectedVoice(voice);
         if (options is null || string.IsNullOrWhiteSpace(text) || Encoding.UTF8.GetByteCount(text) > 20000 ||
-            text.EnumerateRunes().Count() > Math.Min(model.MaximumTextLength ?? 5000, 5000)) throw Invalid();
-        var path = "/v1/text-to-speech/" + voice.Id + "/with-timestamps?output_format=pcm_24000";
-        // Voice settings are spec constants (§8.5), not caller choices.
-        var payload = new JsonObject
+            text.EnumerateRunes().Count() > SpeechTextLimit(model)) throw Invalid();
+        var path = SpeechPath(model, voice.Id);
+        JsonObject payload;
+        if (model.SpeechRoute == VoiceLabSpeechRoute.TextToDialogue)
         {
-            ["text"] = text, ["model_id"] = modelId,
-            ["voice_settings"] = new JsonObject { ["stability"] = 0.5, ["similarity_boost"] = 0.8 },
-            ["seed"] = options.Seed, ["apply_text_normalization"] = "auto"
-        };
-        if (modelId != "eleven_multilingual_v2") payload["language_code"] = language;
-        if (modelId != "eleven_v3" && SpeechContext(options.PreviousText, true) is { } previous) payload["previous_text"] = previous;
-        if (modelId != "eleven_v3" && SpeechContext(options.NextText, false) is { } next) payload["next_text"] = next;
+            // Canonical key order is part of the independent shared dialogue wire contract.
+            payload = new JsonObject
+            {
+                ["apply_text_normalization"] = "auto",
+                ["inputs"] = new JsonArray(new JsonObject { ["text"] = text, ["voice_id"] = voice.Id }),
+                ["language_code"] = language, ["model_id"] = modelId, ["seed"] = options.Seed,
+                ["settings"] = new JsonObject { ["similarity"] = 0.8, ["stability"] = 0.5 }
+            };
+        }
+        else
+        {
+            // Voice settings are spec constants (§8.5), not caller choices.
+            payload = new JsonObject
+            {
+                ["text"] = text, ["model_id"] = modelId,
+                ["voice_settings"] = new JsonObject { ["stability"] = 0.5, ["similarity_boost"] = 0.8 },
+                ["seed"] = options.Seed, ["apply_text_normalization"] = "auto"
+            };
+            if (modelId != "eleven_multilingual_v2") payload["language_code"] = language;
+        }
+        if (model.SendsSpeechContext && SpeechContext(options.PreviousText, true) is { } previous) payload["previous_text"] = previous;
+        if (model.SendsSpeechContext && SpeechContext(options.NextText, false) is { } next) payload["next_text"] = next;
         var jsonBody = Encoding.UTF8.GetBytes(payload.ToJsonString());
         var id = actions.Claim(authorization, SynthesisFingerprint(text, modelId, voice, language, options), VoiceLabOperation.TextToSpeech, requestId);
-        using var reply = await SendAsync(HttpMethod.Post, path, new ByteArrayContent(jsonBody) { Headers = { ContentType = new MediaTypeHeaderValue("application/json") } }, MaxJsonAudio, ct,
+        using var reply = await SendAsync(HttpMethod.Post, path + "?output_format=pcm_24000", new ByteArrayContent(jsonBody) { Headers = { ContentType = new MediaTypeHeaderValue("application/json") } }, MaxJsonAudio, ct,
             billing: authorization, policy: voice.Policy, acceptance: acceptance).ConfigureAwait(false);
         if (reply.ContentType is { } contentType && !contentType.Equals("application/json", StringComparison.OrdinalIgnoreCase)) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
         using var json = Parse(reply.Bytes);
@@ -426,8 +441,12 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         try { pcm = Convert.FromBase64String(audio.GetString()!); }
         catch (FormatException) { throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio); }
         ValidatePcm(pcm);
-        var timing = Alignment(json.RootElement, text, pcm.Length / 48000.0);
-        return new(pcm, 24000, timing, Receipt("/v1/text-to-speech/" + voice.Id + "/with-timestamps", modelId, voice.Id, id, reply));
+        var receipt = Receipt(path, modelId, voice.Id, id, reply);
+        acceptance?.Preserve(new(pcm, 24000, null, receipt));
+        var duration = pcm.Length / 48000.0;
+        var timing = Alignment(json.RootElement, text, duration);
+        if (model.SpeechRoute == VoiceLabSpeechRoute.TextToDialogue) ValidateVoiceSegments(json.RootElement, voice.Id, timing.Count, duration);
+        return new(pcm, 24000, timing, receipt);
     }
 
     public async Task<VoiceLabAudioResult> ConvertAsync(byte[] sourceWav, string modelId, VoiceLabVoiceChoice voice,
@@ -487,11 +506,18 @@ public sealed class ElevenLabsVoiceLab : IDisposable
             throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
     }
 
-    private string SynthesisFingerprint(string text, string model, VoiceLabVoiceChoice voice, string language, VoiceLabSpeechOptions options) =>
-        Fingerprint(VoiceLabOperation.TextToSpeech, "/v1/text-to-speech/" + voice.Id + "/with-timestamps?output_format=pcm_24000", model, voice, language,
+    private static int SpeechTextLimit(VoiceLabModel model) => Math.Min(model.MaximumTextLength ?? 5000,
+        model.SpeechRoute == VoiceLabSpeechRoute.TextToDialogue ? 2000 : 5000);
+    private static string SpeechPath(VoiceLabModel model, string voiceId) => model.SpeechRoute == VoiceLabSpeechRoute.TextToDialogue
+        ? "/v1/text-to-dialogue/with-timestamps" : "/v1/text-to-speech/" + voiceId + "/with-timestamps";
+    private string SynthesisFingerprint(string text, string model, VoiceLabVoiceChoice voice, string language, VoiceLabSpeechOptions options)
+    {
+        var selected = SelectedModel(model, language, true);
+        return Fingerprint(VoiceLabOperation.TextToSpeech, SpeechPath(selected, voice.Id) + "?output_format=pcm_24000", model, voice, language,
             VoiceLabActionGate.ContentHash(Encoding.UTF8.GetBytes(text)), options.Seed.ToString(CultureInfo.InvariantCulture),
-            model == "eleven_v3" ? null : ContextHash(SpeechContext(options.PreviousText, true)),
-            model == "eleven_v3" ? null : ContextHash(SpeechContext(options.NextText, false)));
+            selected.SendsSpeechContext ? ContextHash(SpeechContext(options.PreviousText, true)) : null,
+            selected.SendsSpeechContext ? ContextHash(SpeechContext(options.NextText, false)) : null);
+    }
     private static string? ContextHash(string? context) => context is null ? null : VoiceLabActionGate.ContentHash(Encoding.UTF8.GetBytes(context));
     /// <summary>Voice-lab §8.5 context: Unicode White_Space is removed at both ends, then the last (previous) or first (next)
     /// 300 Unicode scalars are kept. If they hold White_Space, a word split by the cut is dropped first. Then the cut
@@ -682,6 +708,8 @@ public sealed class ElevenLabsVoiceLab : IDisposable
             if (policy is not null) RequirePermit(policy);
             if (policy?.DispatchPermit is { } bound && bound.RequestId != billing?.Review.RequestId) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
             if (policy is not null && billing?.Review.ConsentRecordId is { } consent && consent != policy.RecordId) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+            if (policy is not null && billing?.Review is { Operation: VoiceLabOperation.TextToSpeech or VoiceLabOperation.VoiceChange } speechReview &&
+                speechReview.VoiceId != policy.CloneVoiceId) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
             if (billing?.RunDispatch is { } checking) await checking.AuthorizeAsync(billing.Review.RequestId, deadline.Token).ConfigureAwait(false);
             Task<HttpResponseMessage> Start()
             {
@@ -781,7 +809,8 @@ public sealed class ElevenLabsVoiceLab : IDisposable
             {
                 "/v1/models" => "models_read", "/v1/user/subscription" => "user_read", "/v2/voices" => "voices_read",
                 "/v1/voices/add" => "create_instant_voice_clone", _ when method == HttpMethod.Delete && path.StartsWith("/v1/voices/", StringComparison.Ordinal) => "voices_write",
-                _ when path.StartsWith("/v1/text-to-speech/", StringComparison.Ordinal) => "text_to_speech",
+                _ when path.StartsWith("/v1/text-to-speech/", StringComparison.Ordinal) ||
+                       path.StartsWith("/v1/text-to-dialogue/", StringComparison.Ordinal) => "text_to_speech",
                 _ when path.StartsWith("/v1/voice-changer/", StringComparison.Ordinal) => "speech_to_speech", _ => "unknown"
             };
             return new(VoiceLabErrorKind.PermissionMissing, permission);
@@ -930,9 +959,37 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         var frames = payload / 2;
         return frames >= (rate + 49) / 50 && frames <= (ulong)rate * 290;
     }
+    private static void ValidateVoiceSegments(JsonElement row, string voiceId, int characters, double duration)
+    {
+        if (!row.TryGetProperty("voice_segments", out var segments) || segments.ValueKind != JsonValueKind.Array || segments.GetArrayLength() == 0)
+            throw Malformed();
+        // Provisional STEP3 bound: valid normalized timing may expand the provider's character array.
+        if (row.TryGetProperty("normalized_alignment", out var normalized) && normalized.ValueKind == JsonValueKind.Object)
+        {
+            try { characters = Math.Max(characters, AlignmentObject(normalized, null, duration).Count); }
+            catch (VoiceLabException error) when (error.Kind == VoiceLabErrorKind.InvalidAlignment) { }
+        }
+        foreach (var segment in segments.EnumerateArray())
+        {
+            if (segment.ValueKind != JsonValueKind.Object || RequiredString(segment, "voice_id") != voiceId ||
+                RequiredInt(segment, "dialogue_input_index") != 0) throw Malformed();
+            var start = RequiredInt(segment, "character_start_index");
+            var end = RequiredInt(segment, "character_end_index");
+            if (start < 0 || end < start || end > characters ||
+                !segment.TryGetProperty("start_time_seconds", out var startTime) || startTime.ValueKind != JsonValueKind.Number ||
+                !segment.TryGetProperty("end_time_seconds", out var endTime) || endTime.ValueKind != JsonValueKind.Number ||
+                !startTime.TryGetDouble(out var begin) || !endTime.TryGetDouble(out var finish) ||
+                !double.IsFinite(begin) || !double.IsFinite(finish) || begin < 0 || finish < begin || finish > duration + 0.05) throw Malformed();
+        }
+    }
     private static IReadOnlyList<VoiceLabCharacterTiming> Alignment(JsonElement row, string text, double duration)
     {
-        if (!row.TryGetProperty("alignment", out var alignment) || alignment.ValueKind != JsonValueKind.Object ||
+        if (!row.TryGetProperty("alignment", out var alignment)) throw new VoiceLabException(VoiceLabErrorKind.InvalidAlignment);
+        return AlignmentObject(alignment, text, duration);
+    }
+    private static IReadOnlyList<VoiceLabCharacterTiming> AlignmentObject(JsonElement alignment, string? expectedText, double duration)
+    {
+        if (alignment.ValueKind != JsonValueKind.Object ||
             !alignment.TryGetProperty("characters", out var characters) || characters.ValueKind != JsonValueKind.Array ||
             !alignment.TryGetProperty("character_start_times_seconds", out var starts) || starts.ValueKind != JsonValueKind.Array ||
             !alignment.TryGetProperty("character_end_times_seconds", out var ends) || ends.ValueKind != JsonValueKind.Array ||
@@ -951,7 +1008,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
             if (value.Length == 0) throw new VoiceLabException(VoiceLabErrorKind.InvalidAlignment);
             joined.Append(value); output.Add(new(value, begin, finish)); previous = finish;
         }
-        if (joined.ToString() != text) throw new VoiceLabException(VoiceLabErrorKind.InvalidAlignment);
+        if (expectedText is not null && joined.ToString() != expectedText) throw new VoiceLabException(VoiceLabErrorKind.InvalidAlignment);
         return output;
     }
     private static JsonDocument Parse(byte[] bytes)

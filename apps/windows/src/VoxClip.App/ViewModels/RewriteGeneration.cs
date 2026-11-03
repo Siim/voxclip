@@ -136,7 +136,7 @@ internal sealed partial class RewriteGeneration : IDisposable
                     if (version != discoveryRevision) continue;
                     Voices = choices.Voices; Models = choices.Models;
                     if (!Voices.Any(voice => voice.Id == VoiceId)) VoiceId = Voices.FirstOrDefault()?.Id;
-                    if (!Models.Any(model => model.Id == ModelId)) ModelId = Models.FirstOrDefault()?.Id;
+                    if (!Models.Any(model => model.Id == ModelId)) ModelId = VoiceLabModel.PatchDefault(Models)?.Id;
                     HasDiscovered = true;
                     break;
                 }

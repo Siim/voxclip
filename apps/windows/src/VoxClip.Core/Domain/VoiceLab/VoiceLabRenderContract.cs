@@ -101,8 +101,11 @@ public static class VoiceLabRenderContract
             if (piece.Kind != VoiceLabOutputPieceKind.Synth || piece.SegmentId == excluding) continue;
             var segment = project.VoiceLab.Segments.First(s => s.Id == piece.SegmentId);
             var recipe = segment.Candidates[segment.SelectedCandidateIndex].Recipe ?? throw new VoiceLabProjectException(VoiceLabProjectErrorCode.MissingRenderPolicy);
-            if (segment.Kind == VoiceLabSegmentKind.Tts && (!recipe.Provenance.Endpoint.StartsWith("v1/text-to-speech/", StringComparison.Ordinal) ||
-                !recipe.Provenance.Endpoint.EndsWith("/with-timestamps", StringComparison.Ordinal) || recipe.Provenance.Model == "eleven_v4"))
+            var provenance = recipe.Provenance;
+            var timestampedSpeech = provenance.Endpoint.StartsWith("v1/text-to-speech/", StringComparison.Ordinal) &&
+                provenance.Endpoint.EndsWith("/with-timestamps", StringComparison.Ordinal) && provenance.Model != "eleven_v4";
+            var timestampedDialogue = provenance.Endpoint == "v1/text-to-dialogue/with-timestamps" && provenance.Model == "eleven_v4";
+            if (segment.Kind == VoiceLabSegmentKind.Tts && !timestampedSpeech && !timestampedDialogue)
                 throw new VoiceLabProjectException(VoiceLabProjectErrorCode.EndpointUnsupported);
             if (recipe.Video.Mode == VoiceLabVideoMode.Retimed || (recipe.Video.Mode == VoiceLabVideoMode.Source &&
                 piece.SourceEndSample-piece.SourceStartSample != piece.OutputEndSample-piece.OutputStartSample))

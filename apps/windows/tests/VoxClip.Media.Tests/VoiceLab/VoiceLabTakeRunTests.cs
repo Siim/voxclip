@@ -21,6 +21,56 @@ public sealed partial class VoiceLabTakeRunTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public async Task DialogueTakeUsesQaAndRecipeOrRecordsTheAcceptedAlignmentFailure(bool missingAlignment)
+    {
+        await using var fixture = new Fixture(input => input with { ModelId = "eleven_v4", ContentKey = new string('a', 64) });
+        fixture.Remote.MissingAlignment = missingAlignment;
+        var quote = await fixture.Prepare();
+        Assert.All(quote.Takes, take => Assert.Equal("/v1/text-to-dialogue/with-timestamps?output_format=pcm_24000", take.Synthesis.Review.Endpoint));
+        var result = await fixture.Run.ExecuteAsync(quote, true, ct: Token);
+        var row = Assert.Single(result.Rows);
+        Assert.Single(fixture.Remote.Seeds);
+        var total = await fixture.Ledger.TotalAsync("elevenlabs", DateTimeOffset.UnixEpoch, Token);
+        if (missingAlignment)
+        {
+            Assert.Equal(VoiceLabTakeRunEnd.Fatal, result.End);
+            Assert.Equal(VoiceLabErrorKind.InvalidAlignment, Assert.IsType<VoiceLabException>(row.Failure).Kind);
+            Assert.False(row.Selectable);
+            Assert.Equal(0, fixture.Remote.Qa);
+            Assert.Equal(quote.Takes[0].Synthesis.Estimate.Usd, total!.Usd);
+            return;
+        }
+        Assert.Equal(VoiceLabTakeRunEnd.EarlyStop, result.End);
+        Assert.True(row.Selectable, row.Failure?.ToString());
+        Assert.True(row.Fits);
+        Assert.True(row.Qa!.Passed);
+        Assert.Equal(1, fixture.Remote.Qa);
+        Assert.Equal(quote.Takes[0].Synthesis.Estimate.Usd + quote.Takes[0].Qa.Estimate.Usd, total!.Usd);
+        var (publication, consent) = await fixture.Run.PublishForAcceptanceAsync(row.Id, DateTimeOffset.UtcNow, Token);
+        var published = new VoiceLabPublishedTake(publication.Assets, publication.Audio, publication.OutDuration, publication.Words, publication.Chunks);
+        var candidate = VoiceLabRecipeBuilder.Candidate(row, fixture.Input, published, consent, DateTimeOffset.UtcNow);
+        Assert.Equal("v1/text-to-dialogue/with-timestamps", candidate.Recipe!.Provenance.Endpoint);
+        Assert.Equal("eleven_v4", candidate.Recipe.Provenance.Model);
+        Assert.True(candidate.Recipe.Qa.SpeakerPassed);
+        var segment = VoiceLabRecipeBuilder.Segment("dialogue-take", [candidate], 0, fixture.Input, row.Audio!.Fit.Plan);
+        var project = ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/voice-lab/passage-render-v3.voxclip"));
+        project = project with
+        {
+            Id = publication.Assets[0].File.Split('/')[0], SchemaVersion = 1, VoiceLab = new([]),
+            Media = new(project.Media.Source with { DurationSeconds = 8, ContentKey = fixture.Input.ContentKey, Audio = new(24000, 1) }),
+            Transcript = project.Transcript! with { Words = fixture.Input.Items },
+            Edits = project.Edits with { CutWordIds = [], CutPauseIds = [], Corrections = new Dictionary<string, string>(), Clips = [], ActiveClipId = null },
+            Share = new(new Dictionary<string, string>())
+        };
+        var voice = new VoiceLabVoiceReference(consent.RecordId, consent.Provider, consent.VoiceId, consent.RecordId, consent.VoiceName, VoiceLabVoiceStatus.Active);
+        project = new VoiceLabEditCommand.Accept(segment, publication.Assets, voice).ApplyingTo(project);
+        var roundTrip = ProjectSerialization.Deserialize(ProjectSerialization.Serialize(project));
+        var prepared = VoiceLabRenderContract.Prepare(roundTrip, VoiceLabOutputScope.Full, VoiceLabLabelPosition.TopRight);
+        Assert.Equal("v1/text-to-dialogue/with-timestamps", Assert.Single(prepared.SelectedSegmentRecipes).Recipe.Provenance.Endpoint);
+    }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task BatchPinsTheUnionAndDiscardsTheCorrectRemainder(bool fatalSecond)
     {
         await using var fixture = new Fixture();
@@ -88,7 +138,7 @@ public sealed partial class VoiceLabTakeRunTests
         var result = await runner.ExecuteAsync(batch, 0, ct: Token);
         var progress = new VoiceLabTakeBatchProgress(batch); progress.Finish(0, result);
         Assert.Equal(VoiceLabTakeRunEnd.Fatal, result.End); Assert.Null(progress.Window);
-        Assert.Null(result.Rows[0].Receipt); Assert.Single(progress.Sent); Assert.Equal(5, progress.Discarded.Count);
+        Assert.NotNull(result.Rows[0].Receipt); Assert.Single(progress.Sent); Assert.Equal(5, progress.Discarded.Count);
         var total = await fixture.Ledger.TotalAsync("elevenlabs", DateTimeOffset.UnixEpoch, Token);
         Assert.Equal(progress.SentEstimate.Usd, total!.Usd);
     }
@@ -535,23 +585,39 @@ public sealed partial class VoiceLabTakeRunTests
         internal int Mismatches;
         internal double Duration = 4;
         internal bool MissingAlignment;
+        internal JsonNode? SynthesisResponse;
+        internal string SynthesisText = "Hello";
         internal Action? OnTts;
         private static HttpResponseMessage Json(object value, int status = 200) => new((HttpStatusCode)status) { Content = new StringContent(JsonSerializer.Serialize(value), Encoding.UTF8, "application/json") };
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             var path = request.RequestUri!.AbsolutePath;
-            if (path == "/v1/models") return Json(new[] { new { model_id = "eleven_v3", name = "Fixture", can_do_text_to_speech = true,
-                can_do_voice_conversion = false, languages = new[] { new { language_id = "en" } }, model_rates = new { character_cost_multiplier = 1 } } });
+            if (path == "/v1/models") return Json(new[] { "eleven_v3", "eleven_v4" }.Select(model => new { model_id = model, name = "Fixture", can_do_text_to_speech = true,
+                can_do_voice_conversion = false, languages = new[] { new { language_id = "en" } }, model_rates = new { character_cost_multiplier = 1 } }));
             if (path == "/v2/voices") return Json(new { voices = new[] { new { voice_id = "fixtureOwnVoice", name = "Fixture", category = "cloned", is_owner = true } }, has_more = false });
             var bytes = await request.Content!.ReadAsByteArrayAsync(ct);
-            if (path.StartsWith("/v1/text-to-speech/", StringComparison.Ordinal))
+            if (path.StartsWith("/v1/text-to-speech/", StringComparison.Ordinal) || path == "/v1/text-to-dialogue/with-timestamps")
             {
                 var body = JsonNode.Parse(bytes)!;
+                var dialogue = body["model_id"]!.GetValue<string>() == "eleven_v4";
+                Assert.Equal(dialogue ? "/v1/text-to-dialogue/with-timestamps" : "/v1/text-to-speech/fixtureOwnVoice/with-timestamps", path);
+                if (dialogue)
+                {
+                    Assert.Equal(SynthesisText, body["inputs"]![0]!["text"]!.GetValue<string>());
+                    Assert.Equal("fixtureOwnVoice", body["inputs"]![0]!["voice_id"]!.GetValue<string>());
+                    Assert.Null(body["future_text"]);
+                }
                 Seeds.Add(body["seed"]!.GetValue<uint>());
                 OnTts?.Invoke();
                 Assert.Null(body["previous_text"]);
                 Assert.Null(body["next_text"]);
                 if (Seeds.Count == 1 && FirstStatus != 200) return Json(new { }, FirstStatus);
+                if (SynthesisResponse is { } response)
+                {
+                    var reply = Json(response);
+                    reply.Headers.Add("request-id", "paid-speech-request");
+                    return reply;
+                }
                 var pcm = new byte[(int)(Duration * 24000) * 2];
                 for (var index = 0; index < pcm.Length / 2; index++) BinaryPrimitives.WriteInt16LittleEndian(pcm.AsSpan(index * 2), (short)Math.Round(Math.Sin(2 * Math.PI * 100 * index / 24000) * 3200));
                 var characters = "Hello".Select(character => character.ToString()).ToArray();
@@ -559,7 +625,8 @@ public sealed partial class VoiceLabTakeRunTests
                 {
                     characters, character_start_times_seconds = Enumerable.Range(0, 5).Select(index => 0.1 + index * (Duration - 0.2) / 5).ToArray(),
                     character_end_times_seconds = Enumerable.Range(0, 5).Select(index => 0.1 + (index + 1) * (Duration - 0.2) / 5).ToArray()
-                } });
+                }, voice_segments = new[] { new { voice_id = "fixtureOwnVoice", dialogue_input_index = 0,
+                    character_start_index = 0, character_end_index = 5, start_time_seconds = 0, end_time_seconds = Duration } } });
             }
             Assert.Equal("/v1/speech-to-text", path);
             Qa++;
@@ -606,13 +673,13 @@ public sealed partial class VoiceLabTakeRunTests
             Store.SaveStatement(wav, Record.RecordId); Store.Save(Record);
             Ledger = new(locations);
             Client = ElevenLabsVoiceLab.ForTesting(Keys, Remote, ElevenLabsRegion.Default, clock: Clock, spend: Ledger);
-            var checks = Checks = new VoiceLabTakeRunChecks(_ => { }, (record, speech, request, binding, model, ct) =>
+            var checks = Checks = new VoiceLabTakeRunChecks(_ => { }, (record, speech, quote, binding, model, ct) =>
             {
                 ct.ThrowIfCancellationRequested(); Store.ValidateUse(record);
                 lock (Speech) Speech.Add(speech);
                 return Task.FromResult(new OwnVoicePolicy(record.RecordId, record.VoiceId, true, true, true, true, true)
                 {
-                    DispatchPermit = new(Store, record.RecordId, request, () => Store.ValidateUse(record), binding),
+                    DispatchPermit = new(Store, record.RecordId, quote.Review.RequestId, () => Store.ValidateUse(record), binding),
                     ValidateDispatch = _ => Task.CompletedTask, ModelRevision = model
                 });
             }, (_, _, ct) =>

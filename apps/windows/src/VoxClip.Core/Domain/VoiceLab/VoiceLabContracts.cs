@@ -62,6 +62,10 @@ public sealed record VoiceLabPreparedAction
 public sealed class VoiceLabRequestAcceptance
 {
     private int accepted;
+    private VoiceLabAudioResult? unalignedAudio;
+    /// <summary>Validated paid PCM without timestamps, retained even when alignment or dialogue segments fail. Never selectable.</summary>
+    public VoiceLabAudioResult? UnalignedAudio => System.Threading.Volatile.Read(ref unalignedAudio);
+    internal void Preserve(VoiceLabAudioResult audio) => System.Threading.Volatile.Write(ref unalignedAudio, audio);
     public bool Accepted => System.Threading.Volatile.Read(ref accepted) != 0;
     internal void MarkAccepted() => System.Threading.Interlocked.Exchange(ref accepted, 1);
 }
@@ -98,10 +102,22 @@ public sealed record OwnVoicePolicy(string RecordId, string? CloneVoiceId, bool 
     }
 }
 
+public enum VoiceLabSpeechRoute { TextToSpeech, TextToDialogue }
+
 public sealed record VoiceLabModel(string Id, string Name, IReadOnlyList<string> Languages, bool CanSpeak,
     bool CanConvert, int? MaximumTextLength, double? CharacterCostMultiplier)
 {
-    public bool SupportsTimestampedTts => CanSpeak && Id is not ("eleven_v4" or "eleven_v4_turbo");
+    public VoiceLabSpeechRoute? SpeechRoute => !CanSpeak || Id == "eleven_v4_turbo" ? null :
+        Id == "eleven_v4" ? VoiceLabSpeechRoute.TextToDialogue : VoiceLabSpeechRoute.TextToSpeech;
+    // Retained for callers that ask whether timestamped takes can be made on this model.
+    public bool SupportsTimestampedTts => SpeechRoute is not null;
+    /// <summary>Single seam for §8.5 stitching; dialogue sends no context in this cut.</summary>
+    public bool SendsSpeechContext => SpeechRoute == VoiceLabSpeechRoute.TextToSpeech && Id != "eleven_v3";
+    public static VoiceLabModel? PatchDefault(IReadOnlyList<VoiceLabModel> models) =>
+        models.FirstOrDefault(model => model.Id == "eleven_multilingual_v2" && model.SupportsTimestampedTts)
+        ?? models.FirstOrDefault(model => model.SendsSpeechContext)
+        ?? models.FirstOrDefault(model => model.SpeechRoute == VoiceLabSpeechRoute.TextToSpeech)
+        ?? models.FirstOrDefault(model => model.SupportsTimestampedTts);
 }
 public sealed record VoiceLabSubscription(string Tier, string Status, int CharacterCount, int CharacterLimit,
     long? NextResetUnix, bool CanClone, int VoiceSlotsUsed, int VoiceLimit)

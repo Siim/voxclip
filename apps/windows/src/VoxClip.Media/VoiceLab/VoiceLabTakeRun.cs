@@ -5,7 +5,7 @@ using VoxClip.Core.Services.VoiceLab;
 namespace VoxClip.Media.VoiceLab;
 
 internal sealed record VoiceLabTakeRunChecks(Action<VoiceConsentRecord> Validate,
-    Func<VoiceConsentRecord, float[], Guid, VoiceLabDispatchBinding, long, CancellationToken, Task<OwnVoicePolicy>> Authorize,
+    Func<VoiceConsentRecord, float[], VoiceLabPreparedAction, VoiceLabDispatchBinding, long, CancellationToken, Task<OwnVoicePolicy>> Authorize,
     Func<float[], int, CancellationToken, Task<float[]>> Embedding);
 
 public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
@@ -45,8 +45,8 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
             speaker.ValidateAvailability();
             if (!speaker.Supports(record.Language) || speaker.ModelId != record.Speaker.Model || speaker.Threshold != record.Speaker.Threshold)
                 throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
-        }, (record, speech, request, binding, model, ct) => guard.AuthorizeAsync("take:" + VoiceConsentStore.Hash(System.Runtime.InteropServices.MemoryMarshal.AsBytes(speech.AsSpan()).ToArray()),
-            record.RecordId, speech, request, true, ct: ct, binding: binding, modelRevision: model),
+        }, (record, speech, quote, binding, model, ct) => guard.AuthorizeAsync("take:" + VoiceConsentStore.Hash(System.Runtime.InteropServices.MemoryMarshal.AsBytes(speech.AsSpan()).ToArray()),
+            record.RecordId, speech, quote, true, ct: ct, binding: binding, modelRevision: model),
             (samples, rate, ct) => speaker.GeneratedEmbeddingAsync(samples, rate, ct));
     }
     internal Guid? PreparedSetId { get { lock (sync) return pending?.Quote.Id; } }
@@ -226,16 +226,14 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
             try
             {
                 await ValidateAsync(value, ct).ConfigureAwait(false);
-                var policy = await checks.Authorize(value.Record, value.Speech, take.Synthesis.Review.RequestId, value.Binding, value.ModelRevision, ct).ConfigureAwait(false);
+                var policy = await checks.Authorize(value.Record, value.Speech, take.Synthesis, value.Binding, value.ModelRevision, ct).ConfigureAwait(false);
                 await Checkpoint("authorization", value, ct).ConfigureAwait(false);
                 generated = await client.SynthesizeAsync(value.Input.Text, value.Input.ModelId, VoiceLabVoiceChoice.Own(value.Record.VoiceId, policy),
                     value.Input.Language, value.Input.Options(take.Index), approvals[take.Index * 2], ct, take.Synthesis.Review.RequestId, synthesisAccepted).ConfigureAwait(false);
                 await launchCleanup().ConfigureAwait(false);
                 value = current();
                 if (Suspension is { } afterSynthesis) await afterSynthesis("synthesis").ConfigureAwait(false);
-                var paid = await Task.Run(() => VoiceLabAssetStore.Write(generated.Pcm, generated.SampleRate, storage.ProjectId,
-                    Guid.NewGuid().ToString("D"), storage.PaidRoot, DateTimeOffset.UtcNow), CancellationToken.None).ConfigureAwait(false);
-                lock (sync) paidAssets[take.Synthesis.Review.RequestId] = paid;
+                var paid = await PreservePaidAudioAsync(generated, take.Synthesis.Review.RequestId).ConfigureAwait(false);
                 await ValidateAsync(value, ct).ConfigureAwait(false);
                 var analysis = VoiceLabTakeProcessing.Process(generated, value.Input, value.Preflight);
                 var snapshot = await VoiceLabAssets.PreparePaidAsync(paid, storage.ProjectId, storage.PaidRoot, storage.ScratchRoot, ct).ConfigureAwait(false);
@@ -278,7 +276,7 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                 await ValidateAsync(value, ct).ConfigureAwait(false);
                 var ownerVector = VoiceConsentRecord.DecodeEmbedding(value.Record.Speaker.Embedding) ?? throw new VoiceConsentException(VoiceConsentError.InvalidRecord);
                 var score = SpeakerAudio.Cosine(ownerVector, vector);
-                var qaPolicy = await checks.Authorize(value.Record, value.Speech, take.Qa.Review.RequestId, value.Binding, value.ModelRevision, ct).ConfigureAwait(false);
+                var qaPolicy = await checks.Authorize(value.Record, value.Speech, take.Qa, value.Binding, value.ModelRevision, ct).ConfigureAwait(false);
                 await Checkpoint("qaAuthorization", value, ct).ConfigureAwait(false);
                 var recognized = await client.TranscribeQaAsync(audio.Mixed, audio.SampleRate, value.Input.Language, qaPolicy, approvals[take.Index * 2 + 1], ct, qaAccepted).ConfigureAwait(false);
                 qaReceipt = recognized.Receipt;
@@ -304,6 +302,13 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                     if (error is VoiceConsentException or VoiceLabRunInvalidatedException) return new(rows.AsReadOnly(), End(error));
                     throw;
                 }
+                if (generated is null && synthesisAccepted.UnalignedAudio is { } decoded)
+                {
+                    // Preserve paid PCM independently of cancellation; failed metadata never enters QA or publication.
+                    generated = decoded;
+                    try { await PreservePaidAudioAsync(decoded, take.Synthesis.Review.RequestId).ConfigureAwait(false); }
+                    catch (VoiceLabAssetStoreException) { /* Keep the original provider validation failure. */ }
+                }
                 value = current();
                 HashSet<Guid> accepted = [];
                 if (synthesisAccepted.Accepted) accepted.Add(take.Synthesis.Review.RequestId);
@@ -317,6 +322,13 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
             }
         }
         return new(rows.AsReadOnly(), VoiceLabTakeRunEnd.Completed);
+    }
+    private async Task<VoiceLabAsset> PreservePaidAudioAsync(VoiceLabAudioResult result, Guid requestId)
+    {
+        var paid = await Task.Run(() => VoiceLabAssetStore.Write(result.Pcm, result.SampleRate, storage.ProjectId,
+            Guid.NewGuid().ToString("D"), storage.PaidRoot, DateTimeOffset.UtcNow), CancellationToken.None).ConfigureAwait(false);
+        lock (sync) paidAssets[requestId] = paid;
+        return paid;
     }
     private async Task ValidateAsync(Pending value, CancellationToken ct)
     {
