@@ -26,7 +26,7 @@ import VoxClipMedia
     struct Phrase: Identifiable {
         let id: Int
         let indices: [Int]
-        let text: String
+        var text: String
         var audioTags: [VoiceLabAudioTag] = []
         let window: VoiceLabWindow
         var status: Status = .waiting
@@ -125,6 +125,8 @@ import VoxClipMedia
     @ObservationIgnored private(set) var videoPreparationFailure: (any Error)?
     @ObservationIgnored private var videoRevision = UUID()
     @ObservationIgnored private var inputs: [VoiceLabTakeInput] = []
+    @ObservationIgnored private var takeInputs: [UUID: VoiceLabTakeInput] = [:]
+    @ObservationIgnored var onMeasuredTakesChanged: (@MainActor () -> Void)?
     @ObservationIgnored private var nextSeeds: [UInt32] = []
     @ObservationIgnored private var batch: VoiceLabTakeBatch?
     @ObservationIgnored private var batchIndices: [Int] = []
@@ -400,14 +402,32 @@ import VoxClipMedia
     }
     /// The input a take was made from, on the model its receipt names.
     private func input(for row: VoiceLabTakeRow, phrase: Int) -> VoiceLabTakeInput {
-        let input = inputs[phrase].replacingPace(row.receipt?.pace ?? row.quote?.synthesis.pace ?? 1)
+        let input = (takeInputs[row.id] ?? inputs[phrase]).replacingPace(row.receipt?.pace ?? row.quote?.synthesis.pace ?? 1)
         guard let model = row.receipt?.modelID, model != input.modelID else { return input }
         return input.replacingModel(model)
     }
+    func measuredInput(take: UUID) -> VoiceLabTakeInput? { takeInputs[take] }
 
     func prepareAnother(phrase index: Int) async {
         guard phrases.indices.contains(index), inputs.indices.contains(index) else { return }
         await prepareQuote(indices: [index], decoding: false, candidates: 1)
+    }
+
+    func prepareRewording(_ text: String, phrase index: Int) async {
+        guard stillCurrent, phrases.indices.contains(index), !generating, !preparing, !publishing, !preparingVideo else { return }
+        phrases[index].audioTags = VoiceLabAudioTags.reanchored(phrases[index].audioTags, from: phrases[index].text, to: text)
+        phrases[index].text = text
+        clearPreparedVideo()
+        await prepareQuote(indices: [index], decoding: true, candidates: 1)
+    }
+
+    func keepSelectedWording(phrase index: Int) {
+        guard !generating, !preparing, !publishing, phrases.indices.contains(index),
+              let selected = phrases[index].selected, let input = takeInputs[selected.id] else { return }
+        phrases[index].text = input.text; phrases[index].audioTags = input.audioTags
+        inputs[index] = input
+        revision += 1; batch = nil; batchIndices = []; cost = nil; estimate = nil
+        clearPreparedVideo()
     }
 
     private func retryPace(phrase index: Int) throws -> Double? {
@@ -479,6 +499,7 @@ import VoxClipMedia
         }
         await operation?.value
         if revision == version { operation = nil }
+        onMeasuredTakesChanged?()
     }
 
     private func hold(_ quoted: VoiceLabTakeBatch, indices: [Int], version: Int) async throws {
@@ -562,6 +583,7 @@ import VoxClipMedia
         }
         await operation?.value
         if revision == version { operation = nil }
+        onMeasuredTakesChanged?()
     }
 
     func tryAnother(phrase: Int, approved: Bool) async {
@@ -613,6 +635,13 @@ import VoxClipMedia
         }
         phrases[phrase].selectedID = take
         phrases[phrase].explicitlySelected = true
+        if let input = takeInputs[take] {
+            if phrases[phrase].text != input.text || phrases[phrase].audioTags != input.audioTags {
+                keepSelectedWording(phrase: phrase)
+            }
+            phrases[phrase].text = input.text; phrases[phrase].audioTags = input.audioTags
+        }
+        onMeasuredTakesChanged?()
         return true
     }
 
@@ -690,6 +719,7 @@ import VoxClipMedia
 
     private func receive(_ rows: [VoiceLabTakeRow], phrase: Int, batch: VoiceLabTakeBatch, version: Int) async {
         for row in rows {
+            if takeInputs[row.id] == nil, inputs.indices.contains(phrase) { takeInputs[row.id] = inputs[phrase] }
             let newIDs = row.acceptedRequestIDs.subtracting(sent)
             if !newIDs.isEmpty {
                 charges.append(batch.estimate(of: newIDs)); sent.formUnion(newIDs)

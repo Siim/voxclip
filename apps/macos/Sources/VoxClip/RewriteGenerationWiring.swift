@@ -47,6 +47,7 @@ extension RewriteSession {
         } catch { generationProblem(error) }
     }
     func prepareTakes() async {
+        guard !wordingIsLocked else { return }
         if let reviewing { await reviewing.value }
         if let ordinal = surroundingSentenceOrdinal, acceptedSpeechContext == nil {
             reviewTimingSpeechContext(ordinal: ordinal)
@@ -94,7 +95,8 @@ extension RewriteSession {
                         incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
                         sourceSampleRate: audio.sampleRate, supportsPace: modelID != "eleven_v4", hardJoinSmoothing: true,
                         audioTags: phrase.audioTags, modelID: modelID,
-                        sourceItems: RewriteReview.timingTranscript(timingInputs), sourceEnvelope: envelope)
+                        sourceItems: RewriteReview.timingTranscript(timingInputs), sourceEnvelope: envelope,
+                        rateMultiplier: VoiceLabWordingFit.multiplier(final.voiceLab.speakingRateSamples?[modelID] ?? []))
                     let source = try await VoiceLabSourceAudio.rewriteSource(source: sourceURL, frames: frames, sampleRate: audio.sampleRate,
                         window: phrase.window, incomingSilence: silence.incoming, outgoingSilence: silence.outgoing, items: Self.corrected(final))
                     var input = VoiceLabTakeInput(text: phrase.text, modelID: modelID, recordID: recordID,
@@ -111,7 +113,9 @@ extension RewriteSession {
                     return try await self.currentGenerationCap()
                 }, isCurrent: { [weak self, weak generation] in
                     guard let self, let generation else { return false }
-                    return current && editor.project == snapshot && self.revision == revision && includedVoice == ordinals &&
+                    var snapshotInputs = editor.project
+                    snapshotInputs.voiceLab.speakingRateSamples = snapshot.voiceLab.speakingRateSamples
+                    return current && snapshotInputs == snapshot && self.revision == revision && includedVoice == ordinals &&
                         localCommands == commands && changes == reviewedChanges && ownProposal?.changes == proposalChanges &&
                         generation.selectedVoiceID == recordID && generation.selectedModelID == (created?.modelID ?? modelID) &&
                         region.map { generationIsCurrent(region: $0) } == true
@@ -119,6 +123,11 @@ extension RewriteSession {
                     await app?.refreshMonthlySpend()
                 })
             created = plan
+            _ = plan.changeModel(VoiceLabWordingFit.modelID)
+            plan.onMeasuredTakesChanged = { [weak self, weak plan] in
+                guard let self, let plan else { return }
+                self.observeMeasuredTakes(plan)
+            }
             plan.prepareDurationRender = durationRenderPreparer()
             if let contextReview, let contextRequest {
                 try contextReview.validatePreparedPhrases(plan.phrases, current: contextRequest, envelope: envelope)

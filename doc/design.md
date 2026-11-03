@@ -1,5 +1,36 @@
 # VoxClip design specification
 
+### Inline wording fit (Mac, 2026-11-04)
+
+Rewrite makes new voice phrases with the fixed label **Eleven v4 · audio tags**.
+There is no new-phrase model picker. Previously saved takes retain their models.
+All fit work stays in the existing right panel, with no new modal surfaces.
+
+- Running: **Fitting wording to the video · round {r} of 3**, a thin progress
+  bar and Stop. Each requested row says **Phrase {n} · ≈ {e} s, slot {s} s ·
+  asking for about {k} more/fewer words**. Show **Uses {connector} on your plan;
+  nothing is paid until Get Price.** Local connectors omit “on your plan”; an
+  API-key connector states that fit requests are billed to its key.
+- Send consent, when required: **Fit wording automatically · up to 3 requests
+  · ≈ {send cost}**, with **Fit** and **Skip** inline. Unknown cost is explicit,
+  never represented as free. This consent belongs to this reply only.
+- Fitted: **reworded to fit · was ≈ {a} s, now ≈ {b} s · slot {s} s**.
+  A structured keep decision says **kept your original words · {s} s is too
+  short to re-voice**. The footer says **{n} phrases fit · {m} kept as recorded**
+  with the existing Get Price action for included voice phrases.
+- Still outside the slot: retain the existing recovery row. A short phrase
+  now offers **Ask for longer**, alongside surrounding sentence, original
+  words and the explicit price override. Stop retains the latest words.
+- After a take: **Take {n} · {m} s · slot {s} s · too short/too long**, then
+  **Reworded with the measured length: “…”**, the existing priced **Make Take**
+  action and **Keep Take {n}**. A key-billed rewording shows its own one-request
+  Fit/Skip consent. Preparing a new price never makes a take.
+
+The proposal is visible but not editable during fit work. Ask again, a user
+edit, changed inputs or close cancel remaining rounds. Buttons have keyboard
+focus and accessibility labels. Feedback and consent copy wrap at narrow panel
+widths; the headless right-column layout gate covers the surrounding panel.
+
 ### Inline voice expressions (Mac and Windows, 2026-11-03)
 
 The speech model popup labels are **Eleven v3 · audio tags** and **Eleven v4 · audio

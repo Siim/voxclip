@@ -18,6 +18,13 @@ private actor ScopeStub: LLMConnector {
     private let reply: @Sendable ([RewriteFixtureReply.Line]) -> [Edit]
     private var waiting: TestContinuation<Void>?
     private var arrivals: [TestContinuation<Void>] = []
+    private var fitReplies: [String] = []
+    private var fitHold = false
+    private var fitCalls = 0
+    var fitRequests: [LLMRequest] { requests.filter { $0.tag == "voice-rewrite-fit" } }
+    func configureFit(_ replies: [String], hold: Bool = false) {
+        fitReplies = replies; fitHold = hold; fitCalls = 0
+    }
     private(set) var requests: [LLMRequest] = []
     init(id: ConnectorID = .ollama, authMethod: String? = nil, hold: Bool = false,
          reply: @escaping @Sendable ([RewriteFixtureReply.Line]) -> [Edit] = ScopeStub.cutFirstWord) {
@@ -33,7 +40,12 @@ private actor ScopeStub: LLMConnector {
     func contextTokens(model: String) -> Int? { 128_000 }
     func send(_ request: LLMRequest, model: String) async throws -> RawCompletion {
         requests.append(request)
-        if hold { await withTestDeadline { waiting = $0; arrivals.forEach { $0.resume() }; arrivals = [] } }
+        if hold || (fitHold && request.tag == "voice-rewrite-fit") { await withTestDeadline { waiting = $0; arrivals.forEach { $0.resume() }; arrivals = [] } }
+        if request.tag == "voice-rewrite-fit", !fitReplies.isEmpty {
+            let text = fitReplies[min(fitCalls, fitReplies.count - 1)]
+            fitCalls += 1
+            return RawCompletion(text: text, model: model, stop: .complete)
+        }
         let text = request.tag == "patch-rewrite" ? RewriteFixtureReply.patch(reply(RewriteFixtureReply.lines(of: request))) : "{\"rewrite\":\"A clearer passage\"}"
         return RawCompletion(text: text, model: model, stop: .complete)
     }
@@ -135,6 +147,161 @@ private final class WorkThreads: Sendable {
         app.settings.values["transcription.elevenlabs.region"] = .string("default")
     }
 
+    @Test func shortPhraseRecoveryOffersLongerWording() {
+        let row = PhraseTimingRecovery(tooLong: false, priceAnyway: true) { _ in }
+        #expect(row.retryTitle == "Ask for longer")
+    }
+
+    @Test func automaticFitStartsBeforePricing() async throws {
+        let stub = ScopeStub()
+        let (app, _) = app("ollama", stub: stub)
+        enableVoiceLab(app)
+        let (editor, _) = try editor(app)
+        defer { editor.close() }
+        editor.selectedWordIDs = ["w20", "w21"]
+        _ = try await rewrite(editor)
+        #expect(await stub.requests.count > 1)
+    }
+
+    private func fitFixture(_ connectorID: ConnectorID = .ollama, selected: [String] = ["w20", "w21"]) async throws -> (RewriteSession, ScopeStub, EditorModel) {
+        let stub = ScopeStub(id: connectorID)
+        let (app, _) = app(connectorID.rawValue, stub: stub)
+        let (editor, _) = try editor(app)
+        editor.selectedWordIDs = Set(selected)
+        let session = try await rewrite(editor)
+        enableVoiceLab(app)
+        try session.receivePassage(String(repeating: "collaboratively ", count: 8))
+        session.finishRun(seconds: 0.1)
+        return (session, stub, editor)
+    }
+
+    private func fittingText(_ session: RewriteSession, ordinal: Int = 1) throws -> String {
+        for count in 1...20 {
+            let text = Array(repeating: "better", count: count).joined(separator: " ")
+            var hunks = session.changes.map(\.hunk)
+            hunks[ordinal - 1] = VoiceLabWordingFit.reword(hunks[ordinal - 1], text: text, tags: [])
+            let review = try RewriteReview.build(hunks, session.reviewInputs)
+            let voiceOrdinals = session.changes.indices.filter { session.changes[$0].hunk.kind == .voice }.map { $0 + 1 }
+            if review.voiceHunks[try #require(voiceOrdinals.firstIndex(of: ordinal))].timing?.fits == true { return text }
+        }
+        throw RewriteSessionError.noSourceAudio
+    }
+
+    private func fitReply(_ text: String, ordinal: Int = 1, keep: Bool = false) throws -> String {
+        let data = try JSONSerialization.data(withJSONObject: ["phrases": [["ordinal": ordinal, "action": keep ? "keepOriginal" : "reword", "text": text]]])
+        return try #require(String(data: data, encoding: .utf8))
+    }
+
+    @Test(arguments: [1, 2]) func automaticWordingFitsAndStopsEarly(round: Int) async throws {
+        let (session, stub, editor) = try await fitFixture()
+        defer { editor.close() }
+        let fitted = try fittingText(session)
+        var replies = try Array(repeating: fitReply(session.changes[0].hunk.newTokens.joined(separator: " ")), count: round - 1)
+        replies.append(try fitReply(fitted))
+        await stub.configureFit(replies)
+        await session.beginAutomaticWordingFit()
+        #expect(session.wordingFit.round == round)
+        #expect(session.wordingFit.completed)
+        #expect(session.blockedVoiceOrdinals.isEmpty)
+        #expect(session.changes[0].hunk.newTokens.joined(separator: " ") == fitted)
+        #expect(await stub.fitRequests.count == round)
+        #expect(session.takePlan == nil)
+    }
+
+    @Test func automaticWordingKeepsRecoveryAfterThreeRounds() async throws {
+        let (session, stub, editor) = try await fitFixture()
+        defer { editor.close() }
+        await stub.configureFit([try fitReply(session.changes[0].hunk.newTokens.joined(separator: " "))])
+        await session.beginAutomaticWordingFit()
+        #expect(session.wordingFit.round == 3)
+        #expect(await stub.fitRequests.count == 3)
+        #expect(session.blockedVoiceOrdinals == [1])
+        #expect(session.task.footer.note == session.timingBlockedNote)
+        #expect(!session.task.wordingLocked)
+    }
+
+    @Test func automaticWordingKeepsTheRecordingOnlyForAStructuredDecision() async throws {
+        let (session, stub, editor) = try await fitFixture()
+        defer { editor.close() }
+        await stub.configureFit([try fitReply("", keep: true)])
+        await session.beginAutomaticWordingFit()
+        #expect(await stub.fitRequests.count == 1)
+        #expect(session.wordingFit.kept == [1])
+        #expect(session.ownProposal?[1]?.state == .excluded)
+        #expect(session.task.footer.note == "0 phrases fit · 1 kept as recorded")
+        #expect(session.takePlan == nil)
+    }
+
+    @Test(arguments: [false, true]) func stoppingOrEditingCancelsWordingRounds(edit: Bool) async throws {
+        let (session, stub, editor) = try await fitFixture()
+        defer { editor.close() }
+        let before = session.changes
+        await stub.configureFit([try fitReply(fittingText(session))], hold: true)
+        let work = Task { await session.beginAutomaticWordingFit() }
+        await stub.untilWaiting()
+        #expect(session.wordingFit.running)
+        #expect(session.task.wordingLocked)
+        #expect(session.task.footer.primary == nil)
+        if edit { #expect(editor.editChange(1, text: "Edited by the user")) }
+        else { session.stopWordingFit() }
+        await stub.release()
+        await work.value
+        #expect(session.wordingFit.stopped)
+        #expect(!session.wordingFit.running)
+        #expect(await stub.fitRequests.count == 1)
+        #expect(session.changes == before)
+        if edit { #expect(editor.changeReadings.first?.text == "Edited by the user") }
+        #expect(!editor.llmRuns.isBusy)
+    }
+
+    @Test(arguments: [false, true]) func APIWordingApprovalCoversThisReplyOnlyAndCanBeSkipped(approve: Bool) async throws {
+        let (session, stub, editor) = try await fitFixture(.anthropic)
+        defer { editor.close() }
+        await stub.configureFit([try fitReply(session.changes[0].hunk.newTokens.joined(separator: " "))])
+        await session.beginAutomaticWordingFit()
+        #expect(session.wordingFit.awaitingApproval)
+        #expect(await stub.fitRequests.isEmpty)
+        if approve {
+            await session.fitWording(approved: true)
+            #expect(await stub.fitRequests.count == 3)
+            #expect(!session.wordingFit.awaitingApproval)
+            await session.beginAutomaticWordingFit()
+            #expect(session.wordingFit.awaitingApproval)
+            #expect(await stub.fitRequests.count == 3)
+        } else {
+            session.stopWordingFit()
+            #expect(await stub.fitRequests.isEmpty)
+            #expect(session.ownProposal?[1]?.state == .pending)
+        }
+        #expect(session.takePlan == nil)
+    }
+
+    @Test func fittedPhrasesAreFrozenAndNeverResent() async throws {
+        let (session, stub, editor) = try await fitFixture(selected: (20...31).map { "w\($0)" })
+        defer { editor.close() }
+        let first = RewriteChange(hunk: try #require(VoiceLabWordDiff.diff(source: Array(session.source.prefix(2)),
+            newText: String(repeating: "collaboratively ", count: 8)).hunks.first))
+        let second = RewriteChange(hunk: try #require(VoiceLabWordDiff.diff(source: Array(session.source.suffix(2)),
+            newText: "Some completely different wording").hunks.first))
+        session.receive([first, second]); session.finishRun(seconds: 0.1)
+        let text = try fittingText(session, ordinal: 2)
+        try session.applyWordingFit([.init(ordinal: 2, keepOriginal: false, text: text)])
+        let frozen = session.changes[1]
+        await stub.configureFit([try fitReply("", keep: true)])
+        await session.beginAutomaticWordingFit()
+        let requests = await stub.fitRequests
+        #expect(requests.count == 1)
+        #expect(requests.allSatisfy { $0.cachedBlock?.contains("Phrase 2\n") == false })
+        #expect(session.changes[1] == frozen)
+    }
+
+    @Test func newRewriteUsesOnlyV4AndThePanelHasAFixedModelLabel() async throws {
+        let (session, _, editor) = try await fitFixture()
+        defer { editor.close() }
+        #expect(session.synthesisModel == "eleven_v4")
+        #expect(DirectorTakeRows.rewriteModelLabel == "Eleven v4 · audio tags")
+    }
+
     @Test func longPhraseIsBlockedBeforePricing() async throws {
         let (app, _) = app("ollama", stub: ScopeStub())
         enableVoiceLab(app)
@@ -161,6 +328,7 @@ private final class WorkThreads: Sendable {
         session.finishRun(seconds: 0.1)
         let ordinal = try #require(session.blockedVoiceOrdinals.first)
         let item = try #require(session.task.changes?.items.first)
+        let sendsBeforeRecovery = await stub.requests.count
         #expect(item.timing?.copy.hasPrefix("≈ ") == true && item.timing?.fits == false)
         #expect(session.includedVoice.isEmpty)
         session.phraseTimingAction(.priceAnyway, ordinal: ordinal)
@@ -169,7 +337,7 @@ private final class WorkThreads: Sendable {
         #expect(session.task.footer.note?.hasPrefix("Nothing paid yet.") == true)
         session.phraseTimingAction(.original, ordinal: ordinal)
         #expect(session.ownProposal?[ordinal]?.state == .excluded && session.includedVoice.isEmpty)
-        #expect(await stub.requests.count == 1)
+        #expect(await stub.requests.count == sendsBeforeRecovery)
         #expect(RewriteSession.firstTakeVerb(hasTakes: false) == "Make take")
         #expect(RewriteSession.firstTakeVerb(hasTakes: true) == "Try another")
     }
@@ -189,7 +357,7 @@ private final class WorkThreads: Sendable {
         #expect(session.task.footer.note == "1 phrase needs wording that fits.")
         #expect(session.task.footer.primary == nil)
         let recovery = PhraseTimingRecovery(tooLong: false, priceAnyway: true, action: { _ in })
-        #expect(recovery.retryTitle == "Use surrounding sentence")
+        #expect(recovery.retryTitle == "Ask for longer")
         app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(false)
         session.phraseTimingAction(.surrounding, ordinal: ordinal)
         #expect(session.surroundingSentenceOrdinal == ordinal)
@@ -218,8 +386,9 @@ private final class WorkThreads: Sendable {
         session.phraseTimingAction(.shorter, ordinal: ordinal)
         await editor.rewriteOpenTask?.value
         await session.actionTask?.value
-        let request = try #require(await stub.requests.last)
-        #expect(await stub.requests.count == 2)
+        let rewrites = await stub.requests.filter { $0.tag != "voice-rewrite-fit" }
+        let request = try #require(rewrites.last)
+        #expect(rewrites.count == 2)
         #expect(request.instruction.hasSuffix(expected))
         #expect(sheets.take() == (provider == "anthropic" ? [.cost] : []))
         #expect(session.pricedAnyway.isEmpty)

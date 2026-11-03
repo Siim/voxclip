@@ -469,6 +469,7 @@ extension EditorModel {
     /// included for takes, with no project change and no undo step. Either is `.kept` from then on.
     /// A change that can't be reviewed (`reviewable`) is not kept, and nothing is announced.
     @discardableResult func keepChange(_ ordinal: Int) -> Bool {
+        openRewrite?.stopWordingFit(refresh: false)
         guard capabilities.edit, var proposal, let index = proposal.changes.firstIndex(where: { $0.ordinal == ordinal }),
               proposal.changes[index].reviewable else { return false }
         let change = proposal.changes[index], order = proposalDisplay?.shown.map(\.ordinal) ?? []
@@ -490,6 +491,7 @@ extension EditorModel {
     /// Undo (⌘⌫, impl-plan item 7): the change is excluded, its row left out in the change list.
     /// The project does not change and no undo step is added.
     @discardableResult func excludeChange(_ ordinal: Int) -> Bool {
+        openRewrite?.stopWordingFit(refresh: false)
         guard capabilities.edit, var proposal, let index = proposal.changes.firstIndex(where: { $0.ordinal == ordinal }),
               proposal.changes[index].reviewable, proposal.changes[index].state != .excluded else { return false }
         if confirmPaidProposalChange({ [weak self] in _ = self?.excludeChange(ordinal) }) { return false }
@@ -506,6 +508,7 @@ extension EditorModel {
     /// undo step named for the scope ("Rewrite clip 1") and the voice ones are included for
     /// takes; all of them are `.kept`, so a later edit of their words never brings them back.
     @discardableResult func keepAllChanges() -> Bool {
+        openRewrite?.stopWordingFit(refresh: false)
         guard capabilities.edit, var proposal else { return false }
         let reader = TranscriptChangeReader(self)
         let kept = proposal.changes.filter { $0.state == .pending && !reader.isApplied($0) }
@@ -555,6 +558,7 @@ extension EditorModel {
     /// new text replaces its parts. Nothing is sent. An empty text turns it into a cut of its
     /// words; a text equal to them leaves nothing to change, so the change is left out.
     @discardableResult func editChange(_ ordinal: Int, text: String) -> Bool {
+        openRewrite?.stopWordingFit(refresh: false)
         guard var proposal, let slot = proposal.changes.firstIndex(where: { $0.ordinal == ordinal }), proposal.changes[slot].reviewable else { return false }
         if confirmPaidProposalChange({ [weak self] in _ = self?.editChange(ordinal, text: text) }) { return false }
         var change = proposal.changes[slot]
@@ -608,7 +612,8 @@ extension EditorModel {
             return try VoiceLabPaceMatching.measure(text: patch, rate: rate, window: window, incomingSilence: silence.incoming,
                 outgoingSilence: silence.outgoing, sourceSampleRate: project.media.source.audio?.sampleRate ?? 48_000,
                 supportsPace: inputs.synthesisModel != "eleven_v4", hardJoinSmoothing: true, audioTags: shifted, modelID: inputs.synthesisModel ?? "",
-                sourceItems: RewriteReview.timingTranscript(inputs), sourceEnvelope: envelope).copy
+                sourceItems: RewriteReview.timingTranscript(inputs), sourceEnvelope: envelope,
+                rateMultiplier: VoiceLabWordingFit.multiplier(project.voiceLab.speakingRateSamples?[inputs.synthesisModel ?? ""] ?? [])).copy
         } catch { return nil }
     }
     private func confirmPaidProposalChange(_ perform: @escaping @MainActor () -> Void) -> Bool {
@@ -620,6 +625,7 @@ extension EditorModel {
     /// changes and holds some of its words, as a Rewrite's scope does; nil, for a selection
     /// outside every change, leaves Return to Correct Spelling.
     var changeForReturn: Int? {
+        guard openRewrite?.wordingIsLocked != true else { return nil }
         guard let display = proposalDisplay, let focused = display.focused, !display.actions.isEmpty else { return nil }
         guard !selectedWordIDs.isEmpty else { return focused }
         let ordinals = Set(selectedWordIDs.map { display.marks[$0]?.ordinal })

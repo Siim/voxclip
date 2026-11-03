@@ -208,6 +208,7 @@ struct EditorRenderSnapshot {
     /// changes?" in place of its footer, with Keep Working, the primary that Return and Esc choose, and Discard Changes,
     /// which sends. The job comes to the panel to ask, and VoiceOver hears the question.
     func sendRewriteAgain(_ session: RewriteSession, instruction: String? = nil, feedback: String? = nil) {
+        session.stopWordingFit(refresh: false)
         guard session.isOpen, !session.isProposing else { return }
         cancelRewriteOpen()
         let count = session.proposalCount

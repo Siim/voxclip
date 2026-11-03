@@ -84,6 +84,8 @@ struct RewriteChange: Equatable, Sendable {
     private(set) var transcript: [TimedWord]
     var pricedAnyway: Set<Int> = []
     var shorterFeedback: String?
+    let wordingFit = RewriteWordingFitState()
+    var calibratedTakeIDs: Set<UUID> = []
     /// The scope's items in order: the selection's, a clip's from its first to its last word, or the take's.
     private(set) var source: [TimedWord]
     /// Where voice changes are placed (`VoiceLabWindowPlanner`): the clip of a clip, or of a selection inside the tab's
@@ -151,6 +153,7 @@ struct RewriteChange: Equatable, Sendable {
             await self?.generationIsCurrent(region: region) ?? false
         }
         generation = RewriteGenerationSession(run: run) { [weak self] in self?.generationIsCurrent(region: region) ?? false }
+        generation?.fixedModelID = VoiceLabWordingFit.modelID
         generation?.prepareDurationRender = durationRenderPreparer()
         takeBackend = { [weak self] count, dispatch in
             let runs = (0..<count).map { _ in
@@ -166,12 +169,6 @@ struct RewriteChange: Equatable, Sendable {
             try self.editor.validateVoiceLabPlacement(window, localCommands: self.localCommands)
         }
         generation?.prepareQuote = { [weak self] in await self?.prepareTakes() }
-        // With paid takes, a new speech model applies to the next Try another; the takes already made stay (design T3).
-        generation?.changeModelKeepingTakes = { [weak self] id in
-            guard let self, current, let plan = takePlan, plan.spent.units > 0 else { return nil }
-            guard !takesBusy, plan.stillCurrent else { return false }
-            return plan.changeModel(id)
-        }
         generation?.onInputsChanged = { [weak self] in self?.takePlan?.invalidate() }
         generation?.readMonthlyCap = { [weak self] in
             guard let self else { throw CancellationError() }
@@ -182,7 +179,7 @@ struct RewriteChange: Equatable, Sendable {
     func reportGenerationProblem(_ error: (any Error)?) { problem = error.map(Self.refusal) ?? "" }
     /// Takes need Voice Lab's Rewrite on, its ElevenLabs consent and region, and a session that is current.
     func generationIsCurrent(region: ElevenLabsRegion) -> Bool {
-        current && !isProposing && editor.app.voiceLabRewriteEnabled && editor.app.bool("voiceLab.providerConsent.elevenlabs") &&
+        current && !isProposing && !wordingIsLocked && editor.app.voiceLabRewriteEnabled && editor.app.bool("voiceLab.providerConsent.elevenlabs") &&
             editor.app.string("transcription.elevenlabs.region", fallback: "default") == region.rawValue
     }
     /// Prepares and sends a selection's quotes; tests move its clock past a quote's 300 s window.
@@ -244,7 +241,7 @@ struct RewriteChange: Equatable, Sendable {
         transcript = corrected
         source = items
         scope = Self.outputScope(of: rewriteScope, in: editor.project)
-        self.envelope = envelope; self.connector = connector; self.prices = prices; self.synthesisModel = synthesisModel
+        self.envelope = envelope; self.connector = connector; self.prices = prices; self.synthesisModel = VoiceLabWordingFit.modelID
         self.consent = consent; self.connectorIsCurrent = connectorIsCurrent
         passageService = editor.app.shared.map(VoiceRewriteService.init)
         scopeService = editor.app.shared.map(PatchRewriteService.init)
@@ -404,6 +401,7 @@ struct RewriteChange: Equatable, Sendable {
     /// read again, R1 with nothing sent, then the send in `sending`. Nil while another AI request holds the project.
     private func begin() -> Task<Bool, Never>? {
         guard isOpen, !isProposing, let connector else { return nil }
+        stopWordingFit(refresh: false)
         guard let lease = editor.llmRuns.acquire() else {
             let busy = editor.finding ? "Find Clips is still running. Choose Try Again when it finishes."
                                       : "Another AI request on this project is still running. Choose Try Again when it finishes."
@@ -428,6 +426,7 @@ struct RewriteChange: Equatable, Sendable {
             isProposing = false
             // Declining consent restores the previous view; stale successful replies show R3 instead.
             if isOpen, task.state == .running { restoreReplaced() }
+            if proposed { await beginAutomaticWordingFit() }
             return proposed
         }
         sending = work
@@ -564,6 +563,10 @@ struct RewriteChange: Equatable, Sendable {
         RewriteReview.Inputs(transcript: transcript, project: project, scope: scope, envelope: envelope, prices: prices, synthesisModel: synthesisModel)
     }
     private func receive(_ checked: Checked) {
+        stopWordingFit(refresh: false)
+        wordingFit.round = 0; wordingFit.completed = false; wordingFit.stopped = false
+        wordingFit.initialEstimates = [:]; wordingFit.frozen = []; wordingFit.kept = []; wordingFit.problem = ""
+        wordingFit.measured = nil
         pricedAnyway = []
         changes = checked.changes
         switch checked.review {
@@ -580,7 +583,49 @@ struct RewriteChange: Equatable, Sendable {
     func receivePassage(_ text: String) throws {
         receive(try VoiceLabWordDiff.diff(source: source, newText: text).hunks.map { RewriteChange(hunk: $0) })
     }
+    func applyWordingFit(_ updates: [VoiceLabFitUpdate]) throws {
+        guard var proposal = ownProposal else { throw CancellationError() }
+        var next = changes
+        for update in updates {
+            guard next.indices.contains(update.ordinal - 1), next[update.ordinal - 1].hunk.kind == .voice,
+                  let index = proposal.changes.firstIndex(where: { $0.ordinal == update.ordinal }) else { throw CancellationError() }
+            if update.keepOriginal {
+                proposal.changes[index].state = .excluded
+                wordingFit.kept.insert(update.ordinal)
+            } else {
+                let old = next[update.ordinal - 1].hunk
+                let tags = VoiceLabAudioTags.reanchored(old.audioTags, from: old.newTokens.joined(separator: " "), to: update.text)
+                next[update.ordinal - 1].hunk = VoiceLabWordingFit.reword(old, text: update.text, tags: tags)
+                let parts = [TranscriptChange.Part(next[update.ordinal - 1].hunk)]
+                proposal.changes[index].parts = parts
+                replyParts[update.ordinal] = parts
+            }
+        }
+        let built = try RewriteReview.build(next.map(\.hunk), reviewInputs)
+        changes = next; review = built
+        editor.proposal = proposal
+        showProposal()
+    }
+    func recordSpeakingRate(model: String, take: UUID, measured: Double, baseline: Double) {
+        guard !calibratedTakeIDs.contains(take) else { return }
+        var next = editor.project
+        let previous = next.voiceLab.speakingRateSamples?[model] ?? []
+        if previous.contains(where: { $0.id == take.uuidString }) {
+            calibratedTakeIDs.insert(take)
+            return
+        }
+        let samples = VoiceLabWordingFit.recording(previous, id: take.uuidString, measured: measured, estimated: baseline)
+        guard samples != previous else { return }
+        calibratedTakeIDs.insert(take)
+        if next.voiceLab.speakingRateSamples == nil { next.voiceLab.speakingRateSamples = [:] }
+        next.voiceLab.speakingRateSamples?[model] = samples
+        editor.document.replaceProject(next)
+        if !editor.document.demo { editor.document.updateChangeCount(.changeDone) }
+        project.voiceLab.speakingRateSamples = next.voiceLab.speakingRateSamples
+        review = try? RewriteReview.build(changes.map(\.hunk), reviewInputs)
+    }
     private func invalidate() {
+        stopWordingFit(refresh: false)
         speechContextOffer = nil; speechContextReview = nil; acceptedSpeechContext = nil; speechContextProblem = ""
         surroundingSentenceOrdinal = nil
         takePlan?.invalidate(); takePlan = nil
@@ -698,6 +743,7 @@ struct RewriteChange: Equatable, Sendable {
         updateAudioTags(updates)
     }
     private func updateAudioTags(_ updates: [Int: [VoiceLabAudioTag]]) {
+        stopWordingFit(refresh: false)
         guard current, !isProposing, !updates.isEmpty,
               updates.keys.allSatisfy({ changes.indices.contains($0) && changes[$0].hunk.kind == .voice }) else { return }
         let changed = updates.filter { index, tags in
@@ -825,6 +871,7 @@ struct RewriteChange: Equatable, Sendable {
     /// with every inclusion and take. Another transcript or video, or a clip that is gone, closes the session.
     func follow(_ next: Project, name: String = "") {
         guard isOpen, !applying else { return }
+        if wordingFit.running || wordingFit.awaitingApproval { stopWordingFit(refresh: false) }
         let next = next.scoped(to: project.edits.activeClipId)
         let before = inside(project), after = inside(next)
         if after.transcript != before.transcript || after.media.source != before.media.source || !Self.scopeExists(rewriteScope, in: next) {

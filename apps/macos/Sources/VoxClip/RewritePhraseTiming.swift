@@ -1,7 +1,7 @@
 import SwiftUI
 import VoxClipCore
 
-enum PhraseTimingAction { case shorter, surrounding, original, priceAnyway }
+enum PhraseTimingAction { case shorter, longer, surrounding, original, priceAnyway }
 
 extension RewriteSession {
     var blockedVoiceOrdinals: [Int] {
@@ -25,6 +25,9 @@ extension RewriteSession {
         let model: EditorModel = editor
         let originalInstruction: String = instruction
         switch action {
+        case .longer:
+            stopWordingFit(refresh: false)
+            actionTask = Task { [weak self] in await self?.beginAutomaticWordingFit() }
         case .surrounding:
             surroundingSentenceOrdinal = ordinal
             takeRowsShown = true
@@ -103,7 +106,7 @@ extension RewriteSession {
     func takeNeedsWordingRecovery(_ phrase: ClipTakePlan.Phrase, plan: ClipTakePlan) -> Bool {
         guard phrase.selected != nil else { return false }
         let availability = plan.videoAvailability(phrase: phrase.id)
-        return !availability.allows(.source) && !availability.allows(.retimed)
+        return !availability.allows(.source) && !availability.allows(.cut) && !availability.allows(.retimed)
     }
 
     static func firstTakeVerb(hasTakes: Bool) -> String { hasTakes ? "Try another" : "Make take" }
@@ -122,16 +125,18 @@ struct PhraseTimingRecovery: View {
     var tooLong = true
     let priceAnyway: Bool
     let action: (PhraseTimingAction) -> Void
-    var retryTitle: String { tooLong ? "Ask for shorter" : "Use surrounding sentence" }
+    var retryTitle: String { tooLong ? "Ask for shorter" : "Ask for longer" }
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(tooLong ? VoiceLabPhraseTiming.warning : VoiceLabPhraseTiming.shortWarning).font(VCType.callout.font())
                 .foregroundStyle(DesignValues.color("status.warning"))
             HStack(spacing: 12) {
-                Button(retryTitle) { action(tooLong ? .shorter : .surrounding) }
+                Button(retryTitle) { action(tooLong ? .shorter : .longer) }
                 Button("Keep original words") { action(.original) }
             }
             .buttonStyle(.plain).font(VCType.callout.font())
+            Button("Use surrounding sentence") { action(.surrounding) }
+                .buttonStyle(.plain).font(VCType.callout.font())
             if priceAnyway {
                 Button("Price it anyway") { action(.priceAnyway) }
                     .buttonStyle(.plain).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))

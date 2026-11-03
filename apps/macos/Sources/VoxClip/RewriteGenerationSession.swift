@@ -295,7 +295,11 @@ import xlocale
             if !voices.contains(where: { $0.id == selectedVoiceID }) { chooseVoice(nil) }
             if !models.contains(where: { $0.id == selectedModelID }) { chooseModel(nil) }
             if selectedVoiceID == nil { chooseVoice(voices.first?.id) }
-            if selectedModelID == nil { chooseModel(VoiceLabModel.patchDefault(models)?.id) }
+            if let fixedModelID {
+                chooseModel(models.first { $0.id == fixedModelID }?.id)
+                if selectedModelID == nil { problem = "Eleven v4 is not available on this account. New Rewrite takes require Eleven v4." }
+            }
+            else if selectedModelID == nil { chooseModel(VoiceLabModel.patchDefault(models)?.id) }
         } catch { problem = RewriteSession.refusal(error) }
     }
     func chooseVoice(_ id: String?) {
@@ -307,7 +311,9 @@ import xlocale
     /// (the model stays, so paid takes are never dropped by a model change), nil without paid takes, which leaves the
     /// ordinary invalidation.
     @ObservationIgnored var changeModelKeepingTakes: (@MainActor (String) -> Bool?)?
+    var fixedModelID: String?
     func chooseModel(_ id: String?) {
+        guard fixedModelID == nil || id == nil || id == fixedModelID else { return }
         guard id == nil || models.contains(where: { $0.id == id }) else { return }
         guard id != selectedModelID else { return }
         if let id, let kept = changeModelKeepingTakes?(id) {

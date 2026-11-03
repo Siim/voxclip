@@ -48,7 +48,7 @@ extension HeavyMediaTests {
         for result in report { #expect(result.passed && result.skipped == nil, Comment(rawValue: result.name)) }
         struct Measurement: Decodable { let width: Double; let minimumWidth: Double; let proposedWidth: Double; let box: CGRect; let header: CGRect; let variant: String; let jobs: [String]; let viewOverflow: [String]; let accessibilityOverflow: [String] }
         let measurements = try JSONDecoder().decode([Measurement].self, from: Data(contentsOf: directory.appendingPathComponent("right-column-layout.json")))
-        #expect(measurements.count == 108)
+        #expect(measurements.count == 138)
         let captures = try JSONDecoder().decode([String].self, from: Data(contentsOf: directory.appendingPathComponent("rewrite-captures.json")))
         #expect(captures.count == 48)
         for name in captures { #expect(FileManager.default.fileExists(atPath: directory.appendingPathComponent(name).path)) }

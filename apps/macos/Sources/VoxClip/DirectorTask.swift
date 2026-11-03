@@ -264,6 +264,7 @@ enum PanelCard: Identifiable, Equatable {
     case ask(placeholder: String)
     /// Voice Lab's takes for the proposal's voice change, until the Takes job (V18).
     case takes
+    case wordingFit
 
     var id: String {
         switch self {
@@ -277,6 +278,7 @@ enum PanelCard: Identifiable, Equatable {
         case .callout(let text): "callout:\(text)"
         case .ask: "ask"
         case .takes: "takes"
+        case .wordingFit: "wordingFit"
         }
     }
 }
@@ -346,6 +348,7 @@ enum PanelError: Equatable, Sendable {
     @ObservationIgnored var review: (@MainActor (Int, ChangeReview) -> Void)?
     @ObservationIgnored var phraseTimingAction: (@MainActor (Int, PhraseTimingAction) -> Void)?
     @ObservationIgnored var audioTagsChanged: (@MainActor (Int, [VoiceLabAudioTag]) -> Void)?
+    var wordingLocked = false
     /// The producer's work as the task's panel appears: Rewrite detects its AI for the context line's dot.
     @ObservationIgnored var appeared: (@MainActor () async -> Void)?
     /// The row picked in a chooser card.
