@@ -198,6 +198,21 @@ public sealed class VoiceLabWordingFitTests
     }
 
     [Fact]
+    public void AnOldProjectWithMultilingualV2TakesStillOpensValidatesAndKeepsItsTakes()
+    {
+        var node = JsonNode.Parse(File.ReadAllText(Path.Combine(FixtureLoader.SharedRoot, "fixtures/voice-lab/passage-render-v3.voxclip"))
+            .Replace("\"fixture-model\"", "\"eleven_multilingual_v2\"", StringComparison.Ordinal))!;
+        var old = ProjectSerialization.Deserialize(node.ToJsonString());
+        Assert.Null(old.VoiceLab.SpeakingRateSamples);
+        Assert.All(old.VoiceLab.Segments, segment => Assert.Equal("eleven_multilingual_v2", segment.Provenance.Model));
+        VoiceLabProject.Validate(old);
+        node["voiceLab"]!["speakingRateSamples"] = new JsonObject { ["eleven_v4"] = new JsonArray(new JsonObject { ["id"] = "take", ["ratio"] = 1.1 }) };
+        var calibrated = ProjectSerialization.Deserialize(node.ToJsonString());
+        Assert.Equal(ProjectSerialization.Serialize(old with { VoiceLab = old.VoiceLab with { SpeakingRateSamples = calibrated.VoiceLab.SpeakingRateSamples } }),
+            ProjectSerialization.Serialize(calibrated));
+    }
+
+    [Fact]
     public void CalibratedRateScalesTheEstimateAndTheFitRangeHasALowerEnd()
     {
         var window = new VoiceLabWindow("first", "last", [], [], 0, 3, 0, 144_000,
