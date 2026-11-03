@@ -372,6 +372,7 @@ public actor VoiceLabTakeRun {
                 if generated == nil, let decoded = synthesisAccepted.unalignedAudio {
                     // Keep paid PCM even when its timing/segment metadata failed. It is playable, never selectable.
                     generated = decoded
+                    receipt = receipt ?? decoded.receipt
                     _ = try? await preservePaidAudio(decoded, requestID: take.synthesis.requestID)
                 }
                 // A request the provider accepted is in the spend ledger even when its reply failed and left no receipt.

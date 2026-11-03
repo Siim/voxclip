@@ -337,7 +337,7 @@ struct VoiceLabServiceTests {
         #expect(VoiceLabModel.patchDefault([v3, flash, v2])?.id == "eleven_multilingual_v2")
         #expect(VoiceLabModel.patchDefault([v3, flash])?.id == "eleven_flash_v2_5")
         #expect(VoiceLabModel.patchDefault([v3])?.id == "eleven_v3")
-        #expect(VoiceLabModel.patchDefault([v4, v3])?.id == "eleven_v4")
+        #expect(VoiceLabModel.patchDefault([v4, v3])?.id == "eleven_v3")
         #expect(VoiceLabModel.patchDefault([v4])?.id == "eleven_v4" && VoiceLabModel.patchDefault([]) == nil)
         #expect(!v3.sendsSpeechContext && v2.sendsSpeechContext && flash.sendsSpeechContext && !v4.sendsSpeechContext)
     }

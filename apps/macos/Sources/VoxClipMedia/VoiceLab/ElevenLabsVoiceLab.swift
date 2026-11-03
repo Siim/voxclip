@@ -217,14 +217,14 @@ public actor ElevenLabsVoiceLab {
     }
 
     private func quote(_ operation: VoiceLabOperation, requestID: UUID, endpoint: String,
-                       fields: [String], model: String? = nil, units: Double,
+                       fields: [String], model: String? = nil, voiceID: String? = nil, units: Double,
                        languageMode: VoiceLabLanguageMode? = nil, guardAudioHash: String? = nil) throws -> VoiceLabQuote {
         guard units > 0 else { throw VoiceLabError.invalidInput }
         let estimate = try estimate(operation, modelID: model, units: units)
         let value = VoiceLabQuote(id: UUID(), operation: operation, requestID: requestID, estimate: estimate,
                                   region: region, endpoint: endpoint, languageMode: languageMode,
                                   fingerprint: VoiceLabFingerprint.fields(fields), guardAudioHash: guardAudioHash,
-                                  preparedAt: now(), modelID: model)
+                                  preparedAt: now(), modelID: model, voiceID: voiceID)
         if preparedOrder.count >= 32 {
             guard let oldest = preparedOrder.first(where: { candidate in !approvedRuns.values.contains(where: { $0.contains(candidate) }) }) else { throw VoiceLabError.invalidInput }
             prepared.removeValue(forKey: oldest); preparedOrder.removeAll { $0 == oldest }
@@ -302,7 +302,7 @@ public actor ElevenLabsVoiceLab {
         let route = try speechRoute(model)
         return try quote(.textToSpeech, requestID: requestID, endpoint: route.endpoint(voiceID: voice.id),
                          fields: speechFields(text, model, voice, language, options),
-                         model: modelID, units: Double(text.unicodeScalars.count),
+                         model: modelID, voiceID: voice.id, units: Double(text.unicodeScalars.count),
                          languageMode: modelID == "eleven_multilingual_v2" ? .autoDetected(expected: language) : .explicit(language))
     }
 
@@ -315,7 +315,7 @@ public actor ElevenLabsVoiceLab {
         guard format.frames <= format.rate * 290 else { throw VoiceLabError.invalidInput }
         return try quote(.voiceChange, requestID: requestID, endpoint: "v1/voice-changer/\(voice.id)",
                          fields: conversionFields(audio, modelID, voice, language, seed, cleanAudioOn),
-                         model: modelID, units: Double(format.frames) / Double(format.rate),
+                         model: modelID, voiceID: voice.id, units: Double(format.frames) / Double(format.rate),
                          languageMode: .autoDetected(expected: language), guardAudioHash: VoiceLabFingerprint.bytes(audio))
     }
 
@@ -634,7 +634,15 @@ public actor ElevenLabsVoiceLab {
         let duration = Double(pcm.count) / 48_000
         let timing = try Self.parseAlignment(row["alignment"], text: text, duration: duration)
         if route == .textToDialogue {
-            try Self.validateDialogueSegments(row["voice_segments"], voiceID: voice.id, text: text, duration: duration)
+            // §8.5: the provider has not specified which character array segments index.
+            // Until the live probe settles that, a valid normalized alignment can widen the bound.
+            var characterCount = timing.count
+            if let normalized = row["normalized_alignment"] as? [String: Any],
+               let characters = normalized["characters"] as? [String],
+               let normalizedTiming = try? Self.parseAlignment(normalized, text: characters.joined(), duration: duration) {
+                characterCount = max(characterCount, normalizedTiming.count)
+            }
+            try Self.validateDialogueSegments(row["voice_segments"], voiceID: voice.id, characterCount: characterCount, duration: duration)
         }
         return VoiceLabAudioResult(pcm: pcm, sampleRate: 24_000, alignment: timing, receipt: provenance)
     }
@@ -951,14 +959,14 @@ public actor ElevenLabsVoiceLab {
         let rate = rates[rateIndex] / (version == 3 ? 1 : version == 2 ? 2 : 4)
         return (version == 3 ? 144_000 : 72_000) * kilobits / rate + Int((bytes[offset + 2] >> 1) & 1)
     }
-    private static func validateDialogueSegments(_ raw: Any?, voiceID: String, text: String, duration: Double) throws {
+    private static func validateDialogueSegments(_ raw: Any?, voiceID: String, characterCount: Int, duration: Double) throws {
         guard let segments = raw as? [[String: Any]], !segments.isEmpty else { throw VoiceLabError.malformedResponse }
         func number(_ raw: Any?) -> Double? {
             guard let value = raw as? NSNumber, CFGetTypeID(value) != CFBooleanGetTypeID(), value.doubleValue.isFinite
             else { return nil }
             return value.doubleValue
         }
-        let count = Double(text.unicodeScalars.count)
+        let count = Double(characterCount)
         for segment in segments {
             guard segment["voice_id"] as? String == voiceID,
                   number(segment["dialogue_input_index"]) == 0,

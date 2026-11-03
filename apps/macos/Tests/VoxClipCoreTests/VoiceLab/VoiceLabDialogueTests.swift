@@ -79,12 +79,13 @@ struct VoiceLabDialogueTests {
         #expect(String(decoding: call.body, as: UTF8.self) == golden["bodyUTF8"] as? String)
         #expect(call.body.count == golden["bodyLength"] as? Int)
         #expect(VoiceLabFingerprint.bytes(call.body) == golden["bodySha256"] as? String)
+        #expect(quote.voiceID == "voice123")
         #expect(result.receipt.endpoint == quote.endpoint && result.receipt.modelID == "eleven_v4")
         #expect(result.alignment?.count == 2 && result.sampleRate == 24_000)
     }
     @Test func allSharedResponsesAreValidatedWithOneSendAndNoRetry() async throws {
         let rows = try #require(document()["responses"] as? [[String: Any]])
-        #expect(rows.count == 21)
+        #expect(rows.count == 25)
         for row in rows {
             let name = try #require(row["case"] as? String)
             let text = row["text"] as? String ?? "Hi"

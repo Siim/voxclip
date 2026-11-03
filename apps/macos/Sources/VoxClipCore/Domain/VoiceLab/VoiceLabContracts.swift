@@ -50,14 +50,15 @@ public struct VoiceLabQuote: Codable, Sendable, Equatable {
     public let languageMode: VoiceLabLanguageMode?
     public let preparedAt: Date
     public let modelID: String?
+    public let voiceID: String?
     package let fingerprint: String
     package let guardAudioHash: String?
     package init(id: UUID, operation: VoiceLabOperation, requestID: UUID, estimate: CostEstimate, region: ElevenLabsRegion,
          endpoint: String, languageMode: VoiceLabLanguageMode?, fingerprint: String, guardAudioHash: String? = nil,
-         preparedAt: Date = Date(), modelID: String? = nil) {
+         preparedAt: Date = Date(), modelID: String? = nil, voiceID: String? = nil) {
         self.id = id; self.operation = operation; self.requestID = requestID; self.estimate = estimate; self.region = region
         self.endpoint = endpoint; self.languageMode = languageMode; self.fingerprint = fingerprint; self.guardAudioHash = guardAudioHash
-        self.preparedAt = preparedAt; self.modelID = modelID
+        self.preparedAt = preparedAt; self.modelID = modelID; self.voiceID = voiceID
     }
 }
 
@@ -114,10 +115,13 @@ public struct VoiceLabModel: Sendable, Equatable {
     public static let patchingModelID = "eleven_multilingual_v2"
     /// The default speech model for re-voicing a phrase, from the account's discovered list (§8.5): Multilingual v2 when it
     /// is listed, since a patch must match the words around it; otherwise the first model that is sent context; otherwise
-    /// the first model. The list order is the account's, newest first, so the newest model is not simply the default.
+    /// the first TTS model, with dialogue only when no TTS model is available. The list order is the account's, newest
+    /// first, so the newest model is not simply the default.
     public static func patchDefault(_ models: [VoiceLabModel]) -> VoiceLabModel? {
         models.first { $0.id == patchingModelID && $0.supportsTimestampedTTS }
-            ?? models.first(where: \.sendsSpeechContext) ?? models.first(where: \.supportsTimestampedTTS)
+            ?? models.first(where: \.sendsSpeechContext)
+            ?? models.first { $0.speechRoute == .textToSpeech }
+            ?? models.first { $0.speechRoute == .textToDialogue }
     }
 }
 

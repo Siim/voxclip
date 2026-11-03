@@ -592,15 +592,16 @@ struct VoiceConsentTests {
         }
         #expect(calls.value.withLock { $0.filter { $0.hasPrefix("POST") }.isEmpty })
     }
-    @Test(arguments: ["forged", "stale", "changed", "model-removed", "deleting", "valid-replay", "conversion-input"]) func dispatchRequiresCurrentOperationCapability(mode: String) async throws {
+    @Test(arguments: ["forged", "stale", "changed", "model-removed", "deleting", "valid-replay", "conversion-input", "wrong-voice-tts", "wrong-voice-dialogue"]) func dispatchRequiresCurrentOperationCapability(mode: String) async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let store = storage(root); let record = try fixtureRecord(wav: wav); let calls = ConsentRequestLog()
         try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
+        let modelID = mode == "wrong-voice-dialogue" ? "eleven_v4" : "speaker_tts"
         let base = SpeechStubHTTP.register { request in
             let path = request.url?.path ?? ""
             calls.value.withLock { $0.append((request.httpMethod ?? "") + " " + path) }
             switch path {
-            case "/v1/models": return (200, [:], Data(#"[{"model_id":"speaker_tts","can_do_text_to_speech":true,"can_do_voice_conversion":true,"languages":[{"language_id":"en"}]}]"#.utf8))
+            case "/v1/models": return (200, [:], Data("[{\"model_id\":\"\(modelID)\",\"can_do_text_to_speech\":true,\"can_do_voice_conversion\":true,\"languages\":[{\"language_id\":\"en\"}]}]".utf8))
             case "/v2/voices": return (200, [:], Data(#"{"voices":[{"voice_id":"fixtureOwnVoice","name":"Example","category":"cloned","is_owner":true,"voice_verification":{"is_verified":true}}],"has_more":false}"#.utf8))
             case "/v1/text-to-speech/fixtureOwnVoice/with-timestamps":
                 let pcm = Data(repeating: 0, count: 4_800).base64EncodedString()
@@ -613,11 +614,30 @@ struct VoiceConsentTests {
         let initial = OwnVoicePolicy(recordID: record.id, cloneVoiceID: record.voiceId, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
         let options = VoiceLabSpeechOptions(seed: 7)
         let voice = VoiceLabVoiceChoice.own(voiceID: record.voiceId, policy: initial)
-        let quote = try await client.prepareSynthesis(text: "Hi", modelID: "speaker_tts", voice: voice, language: "en", options: options, requestID: UUID())
+        let quote = try await client.prepareSynthesis(text: "Hi", modelID: modelID, voice: voice, language: "en", options: options, requestID: UUID())
         let present = SpeakerAvailability()
         let guardService = VoiceUseGuard(store: store, check: .init(embedder: SignEmbedding(present: present), calibratedThreshold: 0.8))
+        #expect(quote.voiceID == record.voiceId)
+        if mode.hasPrefix("wrong-voice-") {
+            var otherJSON = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(record)) as? [String: Any])
+            otherJSON["id"] = UUID().uuidString.lowercased()
+            otherJSON["voiceId"] = "otherOwnVoice"
+            let other = try JSONDecoder().decode(VoiceConsentRecord.self, from: JSONSerialization.data(withJSONObject: otherJSON))
+            try await store.saveStatement(wav, recordID: other.id)
+            try await store.save(other)
+            let speech = [Float](repeating: 0.1, count: 160_000)
+            await #expect(throws: VoiceLabError.consentRequired) {
+                try await guardService.authorize(quote: quote, contentKey: "source", recordID: other.id, speech16k: speech, approved: true)
+            }
+            // The separately acquired proof must reject the wrong voice at its own gate too.
+            let check = VoiceSpeakerCheck(embedder: SignEmbedding(present: present), calibratedThreshold: 0.8)
+            let proof = try await check.match(store: store, recordID: other.id, speech16k: speech)
+            #expect(throws: VoiceLabError.consentRequired) { try proof.capability(for: quote) }
+            #expect(calls.value.withLock { $0.filter { $0.hasPrefix("POST") }.isEmpty })
+            return
+        }
         if mode == "conversion-input" {
-            let conversion = try await client.prepareConversion(audio: wav, modelID: "speaker_tts", voice: voice, language: "en", seed: 7, cleanAudioOn: false, requestID: UUID())
+            let conversion = try await client.prepareConversion(audio: wav, modelID: modelID, voice: voice, language: "en", seed: 7, cleanAudioOn: false, requestID: UUID())
             let changed = VoiceLabRequestFixtures.wav(rate: 16_000, frames: 80_000, fill: 8_000)
             await #expect(throws: VoiceLabError.consentRequired) { try await guardService.authorizeConversion(quote: conversion, contentKey: "source", recordID: record.id, audio: changed, approved: true) }
             return
@@ -627,9 +647,9 @@ struct VoiceConsentTests {
         if mode == "stale" { try await store.markDeleted(record.id, at: now) }
         if mode == "deleting" { _ = try await store.beginDeletion(record.id, region: .default, at: now) }
         if mode == "model-removed" { present.value.withLock { $0 = false } }
-        let dispatchQuote = mode == "changed" ? try await client.prepareSynthesis(text: "Hi", modelID: "speaker_tts", voice: voice, language: "en", options: options, requestID: UUID()) : quote
+        let dispatchQuote = mode == "changed" ? try await client.prepareSynthesis(text: "Hi", modelID: modelID, voice: voice, language: "en", options: options, requestID: UUID()) : quote
         let dispatch: @Sendable () async throws -> Void = {
-            _ = try await client.synthesize(text: "Hi", modelID: "speaker_tts", voice: authorizedVoice, language: "en", options: options, requestID: dispatchQuote.requestID, authorization: .init(quote: dispatchQuote, approved: true))
+            _ = try await client.synthesize(text: "Hi", modelID: modelID, voice: authorizedVoice, language: "en", options: options, requestID: dispatchQuote.requestID, authorization: .init(quote: dispatchQuote, approved: true))
         }
         if mode == "valid-replay" {
             try await dispatch()
@@ -781,7 +801,7 @@ struct VoiceConsentTests {
         let client = ElevenLabsVoiceLab(keys: SpeechTestKeys(value: nil), region: .default)
         let reference = try await client.prepareQA(language: "en", requestID: UUID())
         let quote = VoiceLabQuote(id: UUID(), operation: .textToSpeech, requestID: UUID(), estimate: reference.estimate, region: .default,
-            endpoint: "v1/text-to-speech/\(record.voiceId)/with-timestamps", languageMode: .explicit("en"), fingerprint: "synthetic-proof")
+            endpoint: "v1/text-to-speech/\(record.voiceId)/with-timestamps", languageMode: .explicit("en"), fingerprint: "synthetic-proof", voiceID: record.voiceId)
         let other = OwnVoicePolicy(recordID: UUID().uuidString, cloneVoiceID: record.voiceId, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
         #expect(throws: VoiceLabError.consentRequired) { try other.authorized(for: quote, proof: proof) }
         let owner = OwnVoicePolicy(recordID: record.id, cloneVoiceID: record.voiceId, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)

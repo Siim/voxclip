@@ -3,6 +3,7 @@ import VoxClipCore
 
 /// Own-voice proofs bind the route already frozen in a service-issued quote, as well as its voice.
 private func matchesVoiceEndpoint(_ quote: VoiceLabQuote, voiceID: String) -> Bool {
+    guard quote.voiceID == voiceID else { return false }
     switch quote.operation {
     case .textToSpeech:
         guard let route = VoiceLabSpeechRoute.forModelID(quote.modelID ?? "") else { return false }
