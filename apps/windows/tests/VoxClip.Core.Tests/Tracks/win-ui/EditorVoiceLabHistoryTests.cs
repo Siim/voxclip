@@ -53,7 +53,7 @@ public sealed class EditorVoiceLabHistoryTests
         using var session = new RewriteSession(editor, 3, 4, new(1000, 0.01, Enumerable.Repeat(0.01f, 700).ToArray()), null);
         session.Edit("new words");
         var review = session.Review!;
-        var hunk = review.VoiceHunks[0] with { Window = window, PatchText = "new words" };
+        var hunk = review.VoiceHunks[0] with { Window = window, PatchText = "new words", Fit = new(1, 1, true) };
         typeof(RewriteSession).GetProperty("Review", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
             .SetValue(session, review with { VoiceHunks = [hunk], Budget = review.Budget with { Copy = null } });
         Assert.True(session.GenerationIsCurrent);

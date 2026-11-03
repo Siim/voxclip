@@ -40,7 +40,14 @@ internal sealed record RewriteReview(VoiceLabWordDiffResult Diff, VoiceLabPatchB
                 var patch = string.Join(" ", window.LeftBridgeWordIds.Select(Text).Append(newWords).Concat(window.RightBridgeWordIds.Select(Text)));
                 var rate = VoiceLabLengthBudget.Rate(session.Transcript).CharactersPerSecond;
                 var meter = VoiceLabFitMeter.Measure(patch, window, silence.Incoming, silence.Outgoing, rate, newWords, voice.Length > 1);
-                var fitRate = VoiceLabRewriteFit.SpeakingRate(session.Transcript.Where(word =>
+                var spoken = session.Transcript;
+                if (session.Scope.ClipId is { } clipId && session.Project.Edits.Clips.FirstOrDefault(clip => clip.Id == clipId) is { } clip)
+                {
+                    var first = session.Transcript.ToList().FindIndex(word => word.Id == clip.StartWordId);
+                    var last = session.Transcript.ToList().FindIndex(word => word.Id == clip.EndWordId);
+                    if (first >= 0 && last >= first) spoken = session.Transcript.Skip(first).Take(last - first + 1).ToArray();
+                }
+                var fitRate = VoiceLabRewriteFit.SpeakingRate(spoken.Where(word =>
                     session.Editor.State?.CutWordIds.Contains(word.Id) != true).ToArray());
                 var fit = VoiceLabRewriteFit.Measure(patch, fitRate, window, silence.Incoming, silence.Outgoing,
                     session.Project.Media.Source.Audio?.SampleRate ?? 48_000);

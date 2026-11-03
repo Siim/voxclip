@@ -28,6 +28,7 @@ public sealed class RewritePanelTests
         var takes = AppSource("Controls", "RewritePanel.Takes.cs");
         Assert.Contains("Ask for shorter", takes);
         Assert.Contains("Keep original words", takes);
+        Assert.Contains("Ask again", takes);
     }
 
     [Fact]
@@ -140,6 +141,36 @@ public sealed class RewritePanelTests
         var phrase = Assert.Single(session.Review!.VoiceHunks);
         var expected = VoiceLabRewriteFit.Estimate(phrase.PatchText!, VoiceLabRewriteFit.SpeakingRate(session.Transcript.Where(word => word.Id != "w0").ToArray()));
         Assert.Equal(expected, phrase.Fit!.EstimateSeconds);
+    }
+
+    [Fact]
+    public void ActiveClipUsesItsOwnSpeakingRateInsteadOfTheRestOfTheTake()
+    {
+        var words = Enumerable.Range(0, 80).Select(index => Word(index, "word" + index) with
+            { End = index + 1 + (index is >= 10 and <= 20 ? 0.8 : 0.1) }).ToArray();
+        var project = Editor(words).Project;
+        var editor = new EditorViewModel(project with { Edits = project.Edits with
+            { Clips = [new("timing-clip", "w10", "w20", "Timing", ClipOrigin.Manual, null, null, true)], ActiveClipId = "timing-clip" } });
+        using var session = new RewriteSession(editor, 10, 12, Envelope(), null);
+        session.Edit("Sunday word11 word12");
+        var phrase = Assert.Single(session.Review!.VoiceHunks);
+        var expected = VoiceLabRewriteFit.Estimate(phrase.PatchText!, VoiceLabRewriteFit.SpeakingRate(session.Transcript.Skip(10).Take(11).ToArray()));
+        Assert.Equal(expected, phrase.Fit!.EstimateSeconds);
+    }
+
+    [Fact]
+    public async Task ShortPaidTakeCanAskAgainWithoutShorteningAnOtherwiseFittingEstimate()
+    {
+        var connector = new RecordingConnector();
+        using var session = new RewriteSession(Editor(), 10, 12, Envelope(), new(connector, "chosen", "Stub", "local", ""));
+        await session.SetInstructionAsync("Plainly");
+        session.Edit("short word11 word12");
+        Assert.Single(session.PricedVoiceHunks);
+        Assert.True(await session.PrepareShorterAsync(1, askAgain: true));
+        var prepared = session.Prepared!;
+        session.MarkEstimateShown(prepared);
+        Assert.True(await session.ProposeAsync(prepared, true));
+        Assert.DoesNotContain("Say it in fewer words", Assert.Single(connector.Requests).Instruction);
     }
 
     [Fact]

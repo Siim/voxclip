@@ -30,9 +30,9 @@ internal sealed partial class RewritePanel
         finally { requestingApproval = false; App.Services.BusyOperations--; }
     }
 
-    private async Task AskForShorterAsync(int ordinal)
+    private async Task AskForShorterAsync(int ordinal, bool askAgain = false)
     {
-        if (requestingApproval || !await session.PrepareShorterAsync(ordinal) || session.Prepared is not { } action) return;
+        if (requestingApproval || !await session.PrepareShorterAsync(ordinal, askAgain) || session.Prepared is not { } action) return;
         session.MarkEstimateShown(action);
         await SendProposalAsync();
     }

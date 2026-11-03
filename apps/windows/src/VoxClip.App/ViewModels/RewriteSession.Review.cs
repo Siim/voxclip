@@ -35,12 +35,12 @@ internal sealed partial class RewriteSession
         Changed?.Invoke(this, EventArgs.Empty);
         return true;
     }
-    internal async Task<bool> PrepareShorterAsync(int? ordinal = null)
+    internal async Task<bool> PrepareShorterAsync(int? ordinal = null, bool askAgain = false)
     {
         if (!ReviewIsCurrent || Review is null) return false;
         var hunks = BlockedVoiceHunks.Where(hunk => hunk.Fit is { TooLong: true }).Concat(ordinal is { } number
             ? Review.VoiceHunks.Where(hunk => hunk.Ordinals.Contains(number)) : []).Distinct().ToArray();
-        if (ordinal is { } requested && hunks.Any(hunk => hunk.Ordinals.Contains(requested) && hunk.Fit is { Fits: false, TooLong: false }))
+        if (askAgain || ordinal is { } requested && hunks.Any(hunk => hunk.Ordinals.Contains(requested) && hunk.Fit is { Fits: false, TooLong: false }))
         {
             await StopCandidatesAsync();
             if (!ReviewIsCurrent) return false;

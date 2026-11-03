@@ -58,7 +58,7 @@ internal sealed partial class RewritePanel
         shorter.Click += async (_, _) =>
         {
             if (session.PricedVoiceHunks.ElementAtOrDefault(session.ActiveWindow) is not { } hunk || session.Review is null) return;
-            await AskForShorterAsync(hunk.Ordinals[0]);
+            await AskForShorterAsync(hunk.Ordinals[0], session.Generation?.Selected?.Audio?.Fit is VoiceLabFitResult.ChangedDuration { ResidualSeconds: < 0 });
         };
         var keep = Ui.Button("Keep original words", () =>
         {
@@ -143,6 +143,8 @@ internal sealed partial class RewritePanel
         lengthBody.Visibility = generation.Selected is { Fits: false } ? Visibility.Visible : Visibility.Collapsed;
         takeRecovery.Visibility = generation.NeedsShorterWording ? Visibility.Visible : Visibility.Collapsed;
         foreach (var button in takeRecovery.Children.OfType<Button>()) button.IsEnabled = session.ReviewIsCurrent && !requestingApproval;
+        if (takeRecovery.Children.OfType<Button>().FirstOrDefault() is { } retry)
+            retry.Content = generation.Selected?.Audio?.Fit is VoiceLabFitResult.ChangedDuration { ResidualSeconds: < 0 } ? "Ask again" : "Ask for shorter";
         lengthCopy.Text = generation.LengthCopy; retimeCopy.Text = generation.RetimeCopy;
         videoChoices.SelectedIndex = generation.VideoChoice is null ? -1 : 1;
         updating = false;
