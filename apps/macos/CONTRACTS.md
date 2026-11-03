@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+## Approved Rewrite sends report unreachable CLI servers (3 Nov 2026)
+
+- Treat `cliNetworkUnreachable` like `network` in the approved-send activity: the failed send step reads “Couldn't reach {ai}” / “nothing was answered”, with the existing inline network recovery, secondary diagnostic and retry action. There is no extra “No reply was received” wait step. No views, files or approval behavior were replaced or deleted.
+- Claude Code and Codex API-key stubs exercise actual inline approval before the failure and retain **Try Again…**. Both cases fail against the prior activity mapping and pass here. Full App verification passes 772 tests / 58 suites; the paired Core and Windows receipts are in the diagnostic-review entry below. No new system API or layout change; no equivalent Windows activity renderer exists. Real-window and signed-app permission acceptance remain owed under the same gates below. The next package must keep transport failures attached to the failed send step.
+
 ## CLI diagnostic review fixes (3 Nov 2026)
 
 - Generation timeouts classify stderr plus parsed Codex `error.message` / `turn.failed.error.message`, including reconnect reasons. Model text, IDs, usage, malformed JSONL and Claude stdout cannot change a timeout's category. Cancellation and non-generation probes retain their behavior.

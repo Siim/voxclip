@@ -4,6 +4,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Show an unreachable CLI server at the failed Rewrite send step.
+
 - Keep CLI timeouts distinct from model text, show the relevant network diagnostic, and hide proxy URL credentials.
 
 - Rewrite says what to do when Claude Code or Codex can't reach its server.

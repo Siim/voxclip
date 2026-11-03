@@ -525,6 +525,25 @@ private actor RefusingKeys: ProviderKeyStore {
         if case .proposal = task.state {} else { Issue.record("Try Again did not propose: \(task.state)") }
     }
 
+    @Test(arguments: [ConnectorID.claudeCode, .codex])
+    func approvedCLINetworkFailureShowsCouldNotReachStep(_ id: ConnectorID) async throws {
+        let name = id == .claudeCode ? "Claude Code" : "Codex"
+        let stub = StubConnector(id: id, authMethod: "apiKey", failure: .cliNetworkUnreachable(detail: "tcp connect error"))
+        let (app, _) = app(id.rawValue, connectors: [id.rawValue: stub])
+        app.connectorConsentOverride = nil
+        let editor = try editor(app)
+        defer { editor.close() }
+        let session = try await open(editor, waits: false)
+        for _ in 0..<10_000 where !editor.sendConfirmation.isPresented { await Task.yield() }
+        #expect(editor.sendConfirmation.isPresented)
+        editor.sendConfirmation.approve()
+        await session.sending?.value
+        #expect(session.task.steps.last?.title == "Couldn't reach \(name)")
+        #expect(session.task.steps.last?.detail == "nothing was answered")
+        #expect(session.task.steps.last?.status == .failed)
+        #expect(session.task.footer.primary?.title == "Try Again…")
+    }
+
     @Test func failedAPIKeySendKeepsItsStepsAndRetryReopensTheInlineRow() async throws {
         let stub = StubConnector(id: .openai, failure: .rateLimited(retryAfter: nil))
         let (app, _) = app("openai", connectors: ["openai": stub])

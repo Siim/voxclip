@@ -285,13 +285,15 @@ extension RewriteSession {
             switch failure {
             case .rateLimited: detail = "429 · rate limited"
             case .unauthorized: detail = "401 · key rejected"
-            case .network: detail = "nothing was answered"
+            case .network, .cliNetworkUnreachable: detail = "nothing was answered"
             default: detail = "No reply was received."
             }
             steps[2] = ActivityStep(id: "wait", title: "No answer", detail: detail, status: .failed, spoken: "No answer. \(detail)")
-            if case .network = failure {
+            switch failure {
+            case .network, .cliNetworkUnreachable:
                 steps[1] = ActivityStep(id: "send", title: "Couldn't reach \(aiName)", detail: "nothing was answered", status: .failed, spoken: "Couldn't reach \(aiName)")
                 steps.removeLast()
+            default: break
             }
             cards.insert(.activity(steps), at: 0)
             if case .unauthorized = failure, let provider {
