@@ -142,7 +142,17 @@ internal static class ProjectValidation
         Choice(recipe.GetProperty("video").GetProperty("mode"), "source", "retimed", "zoomCover", "lipsync");
         Choice(recipe.GetProperty("voiceSource"), "own", "stock");
         var qa = recipe.GetProperty("qa");
-        Object(qa, "transcriptTokens transcriptExact transcriptMatch lufsJumpLu peakDbfs speakerScore speakerThreshold speakerModel speakerPassed", "shortSpeech");
+        Object(qa, "transcriptTokens transcriptExact transcriptMatch lufsJumpLu peakDbfs speakerScore speakerThreshold speakerModel speakerPassed", "shortSpeech joinAdvisory");
+        if (qa.TryGetProperty("joinAdvisory", out var advisory))
+        {
+            Object(advisory, "seams acceptedAt");
+            Array(advisory.GetProperty("seams"), seam => {
+                Object(seam, "side excessLu");
+                Choice(seam.GetProperty("side"), "left", "right");
+                Number(seam.GetProperty("excessLu"), 2);
+            });
+            Timestamp(advisory.GetProperty("acceptedAt"));
+        }
         if (qa.TryGetProperty("shortSpeech", out var shortSpeech))
         {
             Object(shortSpeech, "mode recordId consentMethod voicedFrames takeCount");
