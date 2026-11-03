@@ -121,7 +121,9 @@ extension RewriteSession {
     func pricedTakeAction(phrase: Int? = nil) -> PanelAction? {
         guard let plan = takePlan, plan.stillCurrent, !takesBusy, takeQuotePhrase == phrase,
               let quoteID = plan.approvalID, let cost = plan.cost else { return nil }
-        let verb = phrase == nil ? "Make Takes" : "Try another"
+        let verb = phrase.map { index in
+            Self.firstTakeVerb(hasTakes: plan.phrases.indices.contains(index) && !plan.phrases[index].takes.isEmpty)
+        } ?? "Make Takes"
         let title: String = switch cost {
         case .inline: VoiceLabCostPresentation.buttonTitle(verb, kind: cost)
         case .confirm: verb + "…"
@@ -302,12 +304,22 @@ extension ClipTakePlan.Phrase {
                     Task { await plan.prepareVideoChoices() }
                 }
             if plan.preparingVideo { ProgressView("Preparing video duration…").controlSize(.small) }
+            if !session.takesBusy, session.takeNeedsWordingRecovery(phrase, plan: plan) {
+                PhraseTimingRecovery(tooLong: (phrase.lengthDifference ?? 0) >= 0, priceAnyway: false) { action in
+                    let ordinals = session.takePhraseOrdinals(phrase)
+                    if case .original = action {
+                        for ordinal in ordinals { session.phraseTimingAction(.original, ordinal: ordinal) }
+                    } else if let ordinal = ordinals.first {
+                        session.phraseTimingAction(.shorter, ordinal: ordinal)
+                    }
+                }
+            }
             if !session.takesBusy, plan.spent.units > 0 || session.acceptedSpeechContext?.targetPhraseID == phrase.id {
                 if let action = session.pricedTakeAction(phrase: phrase.id) {
                     Text(session.takeSendLine).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
                     PanelButton(action: action, kind: .ghost)
                 } else {
-                    Button(phrase.takes.isEmpty ? "Try Again…" : "Try another…") { session.priceAnotherTake(phrase: phrase.id) }
+                    Button(RewriteSession.firstTakeVerb(hasTakes: !phrase.takes.isEmpty) + "…") { session.priceAnotherTake(phrase: phrase.id) }
                         .buttonStyle(.plain).help("Prepare this phrase's price. Nothing is sent until you approve it.")
                 }
             }

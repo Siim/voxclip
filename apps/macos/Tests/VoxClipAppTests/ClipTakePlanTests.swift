@@ -709,6 +709,26 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
                 "\(phrase.takes.map { String(describing: $0.row.failure) })")
         #expect((phrase.lengthDifference ?? 0) > 1)
         await #expect(throws: ClipTakePlan.Failure.noSelection) { try await plan.acceptance() }
+        let (editor, session) = session(fixture)
+        defer { editor.close() }
+        #expect(!plan.videoAvailability(phrase: 0).allows(.source))
+        #expect(!plan.videoAvailability(phrase: 0).allows(.retimed))
+        #expect(session.takeNeedsWordingRecovery(phrase, plan: plan))
+        let recovery = PhraseTimingRecovery(priceAnyway: false, action: { _ in })
+        #expect(recovery.retryTitle == "Ask for shorter")
+    }
+
+    @Test func individualFirstTakeQuoteSaysMakeTake() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = session(fixture)
+        defer { editor.close() }
+        await fixture.plan.prepare()
+        await fixture.plan.prepareAnother(phrase: 0)
+        session.takeQuotePhrase = 0
+        #expect(fixture.plan.phrases[0].takes.isEmpty)
+        let action = try #require(session.pricedTakeAction(phrase: 0))
+        #expect(action.title.hasPrefix("Make take · ≈ $"))
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.isEmpty && $0.qa == 0 })
     }
 
     @Test func aFailedRetryShowsItsReasonAndKeepsTheEarlierTakeUsable() async throws {
@@ -962,6 +982,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
             absorbedItemIds: [], bridgeWordIds: [], sourceStartIndex: 9, sourceEndIndex: 10, anchorSeconds: nil)
         session.receive(([fix] + hunks([10])).map { RewriteChange(hunk: $0) })
         session.finishRun(seconds: 1); session.showProposal()
+        for ordinal in session.blockedVoiceOrdinals { session.pricedAnyway.insert(ordinal) }
+        session.showProposal()
         session.configureGeneration(client: fixture.client, store: fixture.store,
             speaker: VoiceSpeakerCheck(embedder: ClipTakeSpeaker(), calibratedThreshold: 0.45))
         let factory = try #require(session.takeBackend)
@@ -1000,6 +1022,59 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(generation.selectedModelID == "eleven_multilingual_v2")
         generation.chooseModel("eleven_v3")
         #expect(generation.selectedModelID == "eleven_v3")
+    }
+
+    @Test func productionQuoteLeavesOutBlockedPhrasesUntilExplicitOverride() async throws {
+        let fixture = try await fixture(indices: [10, 17]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture)
+        defer { editor.close() }
+        let long = VoiceLabDiffHunk(kind: .voice, sourceWordIds: ["w10"],
+            newTokens: [String(repeating: "collaboratively", count: 8)], correctedTexts: [], absorbedItemIds: [],
+            bridgeWordIds: [], sourceStartIndex: 10, sourceEndIndex: 11, anchorSeconds: nil)
+        session.receive(([long] + hunks([17])).map { RewriteChange(hunk: $0) })
+        session.finishRun(seconds: 1)
+        session.showProposal()
+        #expect(session.blockedVoiceOrdinals == [1] && session.includedVoice == [2])
+        let generation = try #require(session.generation)
+        await generation.finishQuotePreparationForTests()
+        await session.prepareTakes()
+        let first = try #require(session.takePlan)
+        #expect(first.phrases.count == 1 && session.takePlanOrdinals == [2])
+        session.showProposal()
+        #expect(session.task.footer.note?.hasPrefix("1 phrase needs a shorter wording.") == true)
+        #expect(session.task.footer.note?.contains("ElevenLabs with your key") == true)
+        session.phraseTimingAction(.priceAnyway, ordinal: 1)
+        await generation.finishQuotePreparationForTests()
+        await session.prepareTakes()
+        let overridden = try #require(session.takePlan)
+        #expect(overridden.phrases.count == 2 && session.takePlanOrdinals == [1, 2])
+        #expect(first !== overridden && first.approvalID == nil)
+        session.phraseTimingAction(.original, ordinal: 1)
+        await generation.finishQuotePreparationForTests()
+        await session.prepareTakes()
+        #expect(session.takePlan?.phrases.count == 1 && session.takePlanOrdinals == [2])
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.isEmpty && $0.qa == 0 })
+    }
+
+    @Test func paidUnusableTakeRecoveryKeepsNormalDiscardApproval() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture)
+        defer { editor.close() }
+        let plan = try #require(session.takePlan)
+        ClipTakeHTTP.state.withLock { $0.duration += 5; $0.speechMargin = 0.15 }
+        await plan.start(approved: true)
+        let phrase = try #require(plan.phrases.first)
+        #expect(session.takeNeedsWordingRecovery(phrase, plan: plan))
+        let ordinal = try #require(session.takePhraseOrdinals(phrase).first)
+        let synthesisCount = ClipTakeHTTP.state.withLock { $0.texts.count }
+        session.phraseTimingAction(.shorter, ordinal: ordinal)
+        #expect(session.task.confirm?.question == "Discard these 2 changes?")
+        #expect(session.takePlan === plan && session.hasPaidTakes && !plan.generating)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == synthesisCount })
+        session.task.confirm?.cancel.perform()
+        session.phraseTimingAction(.original, ordinal: ordinal)
+        #expect(session.ownProposal?[ordinal]?.state == .excluded)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == synthesisCount })
     }
 
     @Test func dialogueIsSelectableByAccountNameAndTurboIsHidden() async throws {
@@ -1224,9 +1299,9 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(ClipTakeHTTP.state.withLock { $0.texts.isEmpty })
         session.takeQuotePhrase = 0
         let retry = try #require(session.pricedTakeAction(phrase: 0))
-        #expect(retry.title.contains("Try another") && session.takeSendLine.contains("only phrase 1"))
+        #expect(retry.title.contains("Make take") && session.takeSendLine.contains("only phrase 1"))
         if case .inline(let amount)? = fixture.plan.cost {
-            #expect(retry.title == "Try another · " + amount)
+            #expect(retry.title == "Make take · " + amount)
             #expect(retry.title.components(separatedBy: "≈").count <= 2)
         } else { Issue.record("This fixture must exercise the inline retry price") }
         retry.perform()
