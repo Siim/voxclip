@@ -208,6 +208,18 @@ extension HeavyMediaTests {
         #expect(abs(fitted.wave.sample(frame: last, channel: 0)) < 0.01)
         if hardLeft { #expect(abs(fitted.wave.sample(frame: first, channel: 0) - 0.25) < 0.001) }
         else { #expect(abs(fitted.wave.sample(frame: first, channel: 0)) < 0.01) }
+        struct Fixture: Decodable {
+            struct Edge: Decodable {
+                struct Sample: Decodable { let offset: Int64; let incoming: Double; let outgoing: Double }
+                let frames: Int64; let samples: [Sample]
+            }
+            let takeEdge: Edge
+        }
+        let edge = try JSONDecoder().decode(Fixture.self, from: FixtureLoader.data("fixtures/voice-lab/hard-join-review-cases.json")).takeEdge
+        for sample in edge.samples {
+            #expect(abs(fitted.wave.sample(frame: last + 1 - edge.frames + sample.offset, channel: 0) - sample.outgoing) < 0.00004)
+            if !hardLeft { #expect(abs(fitted.wave.sample(frame: first + sample.offset, channel: 0) - sample.incoming) < 0.00004) }
+        }
     }
 
     @MainActor @Test func auditionCancelsOnTakeSelectionRejectionAndSessionEnd() async throws {

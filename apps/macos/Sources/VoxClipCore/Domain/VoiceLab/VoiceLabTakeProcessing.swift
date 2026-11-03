@@ -42,7 +42,8 @@ public enum VoiceLabTakeProcessing {
         let level = try VoiceLabLoudness.neighbourhoodVoicedRmsDb(input.source, sampleRate: rate, window: range)
         var tone = input.cleanAudioOn ? nil : try VoiceLabRoomToneSelection.select(items: input.items, envelope: input.sourceEnvelope,
             sourceSampleRate: Double(rate), totalSamples: Int64(total),
-            excludeDigitalSilence: input.hardJoinSmoothing && (input.window.leftSeam.kind == .hard || input.window.rightSeam.kind == .hard))
+            excludeDigitalSilence: VoiceLabRoomToneSelection.excludeDigitalSilence(items: input.items, envelope: input.sourceEnvelope,
+                sampleRate: Double(rate), totalSamples: Int64(total), window: input.window, hardJoinSmoothing: input.hardJoinSmoothing))
         // The quietest run of the whole take can sit well under the noise beside the window (a car vlog), and the patch's
         // pads and pauses would dip; the loop plays at the background level measured at the seams.
         if let selected = tone {

@@ -35,8 +35,8 @@ public sealed class VoiceLabRewriteSourceTests
         // 30,000,001 frames at 8 kHz (62.5 minutes): one more than the old whole-track read accepted before reading anything.
         const int rate = 8_000;
         const long frames = 30_000_001;
-        // Speech-like content everywhere except a quiet nonzero stretch at 50.0–50.6 s, exposed by a gap in the words.
-        static short Pcm(long frame) => frame is >= 400_000 and < 404_800 ? (short)1 : Speech(frame);
+        // Speech-like content everywhere except digital silence at 50.0–50.6 s, exposed by a gap in the words.
+        static short Pcm(long frame) => frame is >= 400_000 and < 404_800 ? (short)0 : Speech(frame);
         TimedWord[] items = [Word("a", 0, 49.9), Word("b", 50.7, 3_750)];
         var spans = new List<(long Start, long End)>();
         var result = await VoiceLabSourceAudio.RewriteSourceAsync("long-source", frames, rate, Window(30, 31, rate), null, null, items,
@@ -63,6 +63,30 @@ public sealed class VoiceLabRewriteSourceTests
             Assert.Equal(whole[(int)region.Start..(int)region.End], region.Samples.ToArray());
         Assert.Null(result.Excerpt.Samples(0, rate));
         Assert.NotNull(result.Excerpt.Samples(29 * rate, 32 * rate));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExcerptAndPreflightShareTheFiniteNeighbourFlag(bool hardJoinSmoothing)
+    {
+        const int rate = 8000;
+        const int frames = 60 * rate;
+        static short Pcm(long frame)
+        {
+            var seconds = frame / (double)rate;
+            if (seconds >= 50 && seconds < 50.6) return 0;
+            if (seconds >= 45 && seconds < 45.6 || seconds >= 31.8 && seconds < 32.1) return 33;
+            return Speech(frame);
+        }
+        TimedWord[] items = [Word("a", 0, 31.8), Word("b", 32.1, 44.9), Word("c", 45.7, 49.9), Word("d", 50.7, 60)];
+        var window = Window(30, 31, rate);
+        var read = await VoiceLabSourceAudio.RewriteSourceAsync("neighbours", frames, rate, window, null, null, items, Conversion(frames, Pcm), Token, hardJoinSmoothing);
+        var input = new VoiceLabTakeInput("word", "fixture", "fixture", "en", 1, "fixture", read.Excerpt, read.Envelope, rate,
+            items, new HashSet<string>(), window, null, null, false, true, HardJoinSmoothing: hardJoinSmoothing);
+        var room = Assert.IsType<VoiceLabRoomTone>(VoiceLabTakeProcessing.Preflight(input).RoomTone);
+        Assert.Equal((hardJoinSmoothing ? 45 : 50) * rate, room.SourceStartSample);
+        Assert.NotNull(read.Excerpt.Samples(room.SourceStartSample, room.SourceEndSample));
     }
 
     /// <summary>The chunk rule and PCM16 scale the whole-track read had (RewriteGenerationBackend.ReadSourceAsync): a remainder

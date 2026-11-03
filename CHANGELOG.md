@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Keep recording ambience under generated speech, preserve noise-gated silence, and check short hard-join pauses without rejecting usable takes.
 - Joins between the generated phrase and your recording now get a short natural pause instead of a hard cut
 - Add laughs, sighs and pauses to phrases in your voice with Eleven v3 and v4
 - Let the first Rewrite start across saves and land across unrelated Motion, Demo and metadata changes; explain AI changes and unavailable retries.

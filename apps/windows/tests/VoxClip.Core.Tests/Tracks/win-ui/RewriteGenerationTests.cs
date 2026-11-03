@@ -86,7 +86,8 @@ public sealed class RewriteGenerationTests
         // RewriteSourceAsync's, by name and type in order, so the two silences cannot change places on the way.
         static (string?, Type)[] Parameters(System.Reflection.MethodInfo method) =>
             method.GetParameters().Select(parameter => (parameter.Name, parameter.ParameterType)).ToArray();
-        Assert.Equal(Parameters(typeof(VoxClip.Media.VoiceLab.VoiceLabSourceAudio).GetMethod(nameof(VoxClip.Media.VoiceLab.VoiceLabSourceAudio.RewriteSourceAsync))!),
+        RewriteSourceDecoder decode = VoxClip.Media.VoiceLab.VoiceLabSourceAudio.RewriteSourceAsync;
+        Assert.Equal(Parameters(decode.Method),
             Parameters(typeof(RewriteSourceDecoder).GetMethod(nameof(RewriteSourceDecoder.Invoke))!));
         Assert.Contains("var readSource = RewriteSourceRequest.Reader(() => media?.Path ?? \"\", VoiceLabSourceAudio.RewriteSourceAsync);",
             Source("Pages/EditorPage.xaml.cs"));

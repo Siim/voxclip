@@ -1,5 +1,6 @@
 using VoxClip.Core.Domain.Editing;
 
+#pragma warning disable CS1591
 namespace VoxClip.Core.Domain.VoiceLab;
 
 /// <summary>Typed failures of the Voice Lab audio measurements; voice-lab.md §8.7 item 2 and §8.11 item 3.</summary>
@@ -157,6 +158,14 @@ public static class VoiceLabLoudness
         if (windowStart < 0 || windowStart > samples.Length - window)
             throw new VoiceLabAudioMathException(VoiceLabAudioMathErrorCode.InvalidInput);
         return Loudness(KWeighted(samples[..(windowStart + window)], sampleRate), windowStart, windowStart + window);
+    }
+
+    public static double GeneratedPauseLufs(ReadOnlySpan<float> samples, int sampleRate, int first, int last)
+    {
+        Validate(samples, sampleRate);
+        if (first < 0 || last > samples.Length || last - first < SampleCount(MinimumSeamWindowSeconds, sampleRate))
+            throw new VoiceLabAudioMathException(VoiceLabAudioMathErrorCode.InsufficientContext);
+        return Math.Max(Loudness(KWeighted(samples[first..last], sampleRate), 0, last - first), SilenceGateLufs);
     }
 
     /// <summary>The momentary jump across one seam (§8.11 item 3): |M_after − M_before| over [seam − 0.4 s, seam) and

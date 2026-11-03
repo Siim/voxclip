@@ -13,6 +13,39 @@ public sealed class VoiceLabRenderContractTests
     static void Error(VoiceLabProjectErrorCode code, Action action) => Assert.Equal(code, Assert.Throws<VoiceLabProjectException>(action).Code);
     static Project Replace(Project project, VoiceLabSegment segment) => project with { VoiceLab = project.VoiceLab with { Segments = [segment] } };
 
+    [Fact]
+    public void HardJoinedPatchesKeepATwentyMillisecondSourceRun()
+    {
+        var project = Fixture("one-sample-gap-render-v3");
+        var segments = project.VoiceLab.Segments.Select((segment, index) =>
+        {
+            var candidates = segment.Candidates.Select(candidate =>
+            {
+                var recipe = candidate.Recipe!;
+                if (index == 0)
+                {
+                    var sourceWords = recipe.Words!;
+                    var words = sourceWords.Select((word, ordinal) => ordinal == sourceWords.Count - 1 ? word with { End = 0.54 } : word).ToArray();
+                    recipe = recipe with { OutDuration = 0.68, Audio = recipe.Audio with { TrimEnd = recipe.Audio.TrimStart + 0.68 }, Words = words,
+                        Chunks = [recipe.Chunks[0] with { SourceEndSample = 3180, AssembledEndFrame = recipe.Chunks[0].AssembledStartFrame + 16320 }],
+                        Video = recipe.Video with { SourceEndSample = 3180, OutputSamples = 680 },
+                        Seams = recipe.Seams with { Out = new(VoiceLabSeamKind.Hard, 12, 6, 144, VoiceLabHardJoin.Pause(words, 0.68, false)) } };
+                }
+                else
+                {
+                    var words = recipe.Words!.Select((word, ordinal) => ordinal == 0 ? word with { Start = 0.14 } : word).ToArray();
+                    recipe = recipe with { Words = words, Seams = recipe.Seams with { In = new(VoiceLabSeamKind.Hard, 12, 6, 144, VoiceLabHardJoin.Pause(words, 0.3, true)) } };
+                }
+                return candidate with { Recipe = recipe };
+            }).ToArray();
+            return segment with { Replace = index == 0 ? segment.Replace with { End = 3.18 } : segment.Replace,
+                OutDuration = index == 0 ? 0.68 : segment.OutDuration, Audio = candidates[0].Recipe!.Audio, Words = candidates[0].Recipe!.Words, Candidates = candidates };
+        }).ToArray();
+        project = project with { VoiceLab = project.VoiceLab with { Segments = segments } };
+        var prepared = VoiceLabRenderContract.Prepare(project, VoiceLabOutputScope.Full, VoiceLabLabelPosition.TopRight);
+        Assert.Contains(prepared.OutputPlan.Pieces, piece => piece.Kind == VoiceLabOutputPieceKind.Source && piece.SourceEndSample - piece.SourceStartSample == 20);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

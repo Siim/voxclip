@@ -17,6 +17,35 @@ public sealed class VoiceLabSilenceFitTests
         public void Dispose() => Directory.Delete(Root, true);
     }
     private static JsonDocument Cases() => JsonDocument.Parse(FixtureLoader.ReadText("fixtures/voice-lab/fitted-asset-cases.json"));
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SmoothedTakesKeepTheirEdgeFadeExceptOnAHardSide(bool hardLeft)
+    {
+        using var storage = new Storage();
+        const int rate = 24000;
+        const int frames = 4800;
+        var wave = new VoiceLabWavePcm(rate, 1, 16, false, new byte[frames * 2]);
+        for (var frame = 0; frame < frames; frame++) wave.SetSample(0.25, frame, 0);
+        var paid = VoiceLabAssetStore.WriteWave(wave.Pcm, rate, 1, 16, false, Project, "paid-edge", storage.Root, DateTimeOffset.UnixEpoch, TestContext.Current.CancellationToken);
+        var snapshot = await VoiceLabAssets.PreparePaidAsync(paid, Project, storage.Root, storage.Root, TestContext.Current.CancellationToken);
+        var window = new VoiceLabWindow("w4", "w5", [], [], 2, 2.2, 96000, 105600,
+            new(hardLeft ? VoiceLabSeamKind.Hard : VoiceLabSeamKind.Gap, 2, 96000, hardLeft ? 576 : 960), new(VoiceLabSeamKind.Gap, 2.2, 105600, 960));
+        var plan = new VoiceLabFitPlan([], new(0, 0), new(0, 0), 0, frames, 2, 2.2, 96000, 105600, frames, [new("words", 0, 0.2, true)]) { HardJoinSmoothing = true };
+        var fitted = VoiceLabSilenceFit.Prepare(snapshot, paid, new VoiceLabFitResult.Exact(plan), window, 48000, TestContext.Current.CancellationToken);
+        var first = fitted.IncomingHandleFrames;
+        Assert.InRange(Math.Abs(fitted.Wave.Sample(first + frames - 1, 0)), 0, 0.01);
+        Assert.InRange(Math.Abs(fitted.Wave.Sample(first, 0) - (hardLeft ? 0.25 : 0)), 0, 0.001);
+        using var fixture = JsonDocument.Parse(FixtureLoader.ReadText("fixtures/voice-lab/hard-join-review-cases.json"));
+        var edge = fixture.RootElement.GetProperty("takeEdge");
+        foreach (var sample in edge.GetProperty("samples").EnumerateArray())
+        {
+            var offset = sample.GetProperty("offset").GetInt64();
+            Assert.InRange(Math.Abs(fitted.Wave.Sample(first + frames - edge.GetProperty("frames").GetInt64() + offset, 0) - sample.GetProperty("outgoing").GetDouble()), 0, 0.00004);
+            if (!hardLeft) Assert.InRange(Math.Abs(fitted.Wave.Sample(first + offset, 0) - sample.GetProperty("incoming").GetDouble()), 0, 0.00004);
+        }
+    }
     private static int Number(JsonElement row, string key) => row.GetProperty(key).GetInt32();
     private static VoiceLabWindow Window(JsonElement row, bool hard = false)
     {

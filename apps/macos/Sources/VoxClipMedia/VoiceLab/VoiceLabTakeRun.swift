@@ -353,6 +353,7 @@ public actor VoiceLabTakeRun {
                     sampleRate: processed.sampleRate, seams: processed.seams, sourceSeamSteps: processed.sourceSeamSteps, sourceSeamPauses: processed.sourceSeamPauses,
                     generatedAfter: processed.generatedAfter,
                     measuredSeamSteps: processed.measuredSeamSteps,
+                    measuredPauseExcesses: processed.measuredPauseExcesses,
                     speakerScore: score, threshold: value.record.speaker.threshold)
                 let flatness = try VoiceLabLoudness.flatness(processed.trimmed, sampleRate: processed.sampleRate)
                 let rank = try VoiceLabTakeQuality.rank(fit: processed.fit, windowSeconds: value.input.window.end - value.input.window.start,

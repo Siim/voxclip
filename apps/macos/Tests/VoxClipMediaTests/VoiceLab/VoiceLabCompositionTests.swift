@@ -9,6 +9,74 @@ import VoxClipCore
 extension HeavyMediaTests {
 @Suite("voice-lab-native-composition", .serialized, .offlineFixtures)
 struct VoiceLabCompositionTests {
+    @Test(arguments: [false, true]) func sharedMicroRecipeRendersTheSame48kSamplesAsWindows(shortSource: Bool) async throws {
+        struct Fixture: Decodable {
+            struct Recipe: Decodable {
+                struct Sample: Decodable { let frame: Int; let expected: Double }
+                let incoming: VoiceLabMicroPause; let outgoing: VoiceLabMicroPause; let samples: [Sample]; let sampleTolerance: Double
+            }
+            let microRecipe: Recipe
+        }
+        let row = try JSONDecoder().decode(Fixture.self, from: FixtureLoader.data("fixtures/voice-lab/hard-join-review-cases.json")).microRecipe
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-micro-recipe-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("source.wav")
+        var pcm = Data()
+        for frame in 0..<(7 * 48_000) {
+            let sample: Float = (216_000..<240_000).contains(frame) ? 0.01 : 0.2
+            withUnsafeBytes(of: sample.bitPattern.littleEndian) { pcm.append(contentsOf: $0) }
+        }
+        try VoiceLabWavePCM(rate: 48_000, channels: 1, bits: 32, floating: true, pcm: pcm).bytes.write(to: source)
+        var (project, _) = try fixture(source: source, root: root, constantSample: 16_384)
+        var recipe = project.voiceLab.segments[0].candidates[0].recipe!
+        recipe.audio.stretch = 1
+        recipe.words![0].start = 0.14; recipe.words![1].end = 0.56
+        recipe.roomTone = .init(sourceStartSample: 216_000, sourceEndSample: 240_000, gainDb: 0)
+        recipe.seams.in = .init(kind: .hard, fadeSamples: 576, sourceHandleSamples: 288, assetHandleFrames: 240, microPause: row.incoming)
+        recipe.seams.out = .init(kind: .hard, fadeSamples: 576, sourceHandleSamples: 288, assetHandleFrames: 240, microPause: row.outgoing)
+        project.voiceLab.segments[0].audio = recipe.audio; project.voiceLab.segments[0].words = recipe.words
+        project.voiceLab.segments[0].candidates[0].recipe = recipe
+        if shortSource {
+            var next = project.voiceLab.segments[0]
+            next.id = "vl-next"; next.replace.start = 3.2; next.replace.end = 3.5; next.outDuration = 0.3
+            next.replace.firstWordId = "w6"; next.replace.lastWordId = "w6"
+            var nextRecipe = recipe
+            nextRecipe.outDuration = 0.3; nextRecipe.audio.trimEnd = 0.4
+            nextRecipe.words = [.init(text: "next", start: 0.14, end: 0.16, synthetic: true)]
+            nextRecipe.seams.in.microPause = VoiceLabHardJoin.pause(words: nextRecipe.words!, duration: 0.3, incoming: true)
+            nextRecipe.seams.out.microPause = VoiceLabHardJoin.pause(words: nextRecipe.words!, duration: 0.3, incoming: false)
+            nextRecipe.video.sourceStartSample = 153_600; nextRecipe.video.sourceEndSample = 168_000; nextRecipe.video.outputSamples = 14_400
+            nextRecipe.chunks[0].sourceStartSample = 153_600; nextRecipe.chunks[0].sourceEndSample = 168_000; nextRecipe.chunks[0].assembledEndFrame = 9_600
+            next.audio = nextRecipe.audio; next.words = nextRecipe.words
+            next.candidates = [next.candidates[0]]; next.candidates[0].recipe = nextRecipe
+            recipe.outDuration = 0.68; recipe.audio.trimEnd = 0.78; recipe.words![1].end = 0.54
+            recipe.seams.out.microPause = VoiceLabHardJoin.pause(words: recipe.words!, duration: 0.68, incoming: false)
+            recipe.video.sourceEndSample = 152_640; recipe.video.outputSamples = 32_640
+            recipe.chunks[0].sourceEndSample = 152_640; recipe.chunks[0].assembledEndFrame = 18_720
+            project.voiceLab.segments[0].replace.end = 3.18; project.voiceLab.segments[0].outDuration = 0.68
+            project.voiceLab.segments[0].audio = recipe.audio; project.voiceLab.segments[0].words = recipe.words
+            project.voiceLab.segments[0].candidates = [project.voiceLab.segments[0].candidates[0]]
+            project.voiceLab.segments[0].candidates[0].recipe = recipe
+            project.voiceLab.segments.append(next)
+        }
+        let prepared = try VoiceLabRenderContract.prepare(project, scope: .full, labelPosition: .topRight)
+        let input = try VoiceLabRenderInput(project: project, scope: .full, labelPosition: .topRight, paidRoot: root, prepared: prepared)
+        let request = RenderRequest(sourceURL: source, plan: try legacyPlan(project),
+            output: OutputSpec(size: PixelSize(width: 640, height: 360), fps: 30, videoBitrate: 2_000_000), voiceLab: input)
+        let lease = try await VoiceLabAudioRenderer.stage(request: request, scratchRoot: root)
+        let output = try samples(lease.mixedAudioURL, at: 0, count: 336_000)
+        for sample in row.samples where !shortSource || sample.frame < 24_720 {
+            #expect(abs(Double(output[120_000 + sample.frame]) - sample.expected) < row.sampleTolerance, "frame \(sample.frame)")
+        }
+        if shortSource {
+            #expect(abs(output[152_640] - 0.01) < 1e-6)
+            #expect(abs(output[152_880] - Float(0.21 * sqrt(0.5))) < 1e-6)
+            #expect(output[153_120] == 0.2)
+            #expect(abs(output[153_600] - 0.01) < 1e-6)
+        }
+    }
+
     @Test func hardJoinRecipeUsesOutputSecondsFor48kRendering() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-hard-join-render-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
@@ -101,7 +169,7 @@ struct VoiceLabCompositionTests {
     }
 
     private func wave(frames: Int, rate: Int, hz: Double, markerFrame: Int? = nil,
-                      markerFrames: [Int] = [], rightOnly: Bool = false, amplitude: Double = 1) -> Data {
+                      markerFrames: [Int] = [], rightOnly: Bool = false, amplitude: Double = 1, constantSample: Int16? = nil) -> Data {
         var data = Data()
         func text(_ value: String) { data.append(contentsOf: value.utf8) }
         func u16(_ value: UInt16) { var n = value.littleEndian; withUnsafeBytes(of: &n) { data.append(contentsOf: $0) } }
@@ -113,7 +181,7 @@ struct VoiceLabCompositionTests {
         let marks = markerFrames + (markerFrame.map { [$0] } ?? [])
         for i in 0..<frames {
             let pulse = marks.contains(where: { i >= $0 && i < $0 + 240 }) ? 20_000.0 : 0
-            let sample = UInt16(bitPattern: Int16(((sin(2 * .pi * hz * Double(i) / Double(rate)) * 9000 + pulse) * amplitude).rounded()))
+            let sample = UInt16(bitPattern: constantSample ?? Int16(((sin(2 * .pi * hz * Double(i) / Double(rate)) * 9000 + pulse) * amplitude).rounded()))
             if rightOnly { u16(0) }
             u16(sample)
         }
@@ -125,7 +193,7 @@ struct VoiceLabCompositionTests {
                          minimalHandles: Bool = false, multipleMarkers: Bool = false,
                          rightOnly: Bool = false, amplitude: Double = 1,
                          customMarkers: [Int]? = nil,
-                         scope: VoiceLabOutputScope = .full) throws -> (Project, VoiceLabRenderInput) {
+                         scope: VoiceLabOutputScope = .full, constantSample: Int16? = nil) throws -> (Project, VoiceLabRenderInput) {
         var project = try JSONProjectStore.decode(FixtureLoader.data("fixtures/voice-lab/\(fixtureName).voxclip"))
         project.media.source.audio!.sampleRate = 48_000
         project.media.source.absolutePath = source.path
@@ -138,7 +206,7 @@ struct VoiceLabCompositionTests {
         let first = wave(frames: compressing ? 28_800 : Int(project.voiceLab.assets![0].durationSeconds * 24_000), rate: 24_000, hz: 880,
                          markerFrame: nonunity && !multipleMarkers ? 9_600 : nil,
                          markerFrames: customMarkers ?? (multipleMarkers ? [3_800, 9_600, compressing ? 19_000 : 16_600] : []),
-                         rightOnly: rightOnly, amplitude: amplitude)
+                         rightOnly: rightOnly, amplitude: amplitude, constantSample: constantSample)
         let second = wave(frames: Int(project.voiceLab.assets![1].durationSeconds * 24_000), rate: 24_000, hz: 660)
         try first.write(to: directory.appendingPathComponent("asset-one.wav"))
         try second.write(to: directory.appendingPathComponent("asset-two.wav"))

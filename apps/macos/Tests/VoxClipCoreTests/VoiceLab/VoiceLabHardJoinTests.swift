@@ -102,7 +102,7 @@ struct VoiceLabHardJoinTests {
         #expect(try VoiceLabHardJoin.matchingGain(edge: quiet, source: loud, sampleRate: rate) == 6)
         let nearPeak = quiet.map { $0 * 9 }
         #expect(try VoiceLabHardJoin.matchingGain(edge: nearPeak, source: nearPeak.map { $0 * 2 }, sampleRate: rate) == 0)
-        #expect(VoiceLabHardJoin.bedWeight(seconds: 1, duration: 2, words: [.init(text: "speech", start: 0.14, end: 1.86, synthetic: true)], incoming: .init(wordStartSeconds: 0.14, wordEndSeconds: 1.86), outgoing: .init(wordStartSeconds: -1.86, wordEndSeconds: -0.14)) == 0)
+        #expect(VoiceLabHardJoin.bedWeight(seconds: 1, duration: 2, words: [.init(text: "speech", start: 0.14, end: 1.86, synthetic: true)], incoming: .init(wordStartSeconds: 0.14, wordEndSeconds: 1.86), outgoing: .init(wordStartSeconds: -1.86, wordEndSeconds: -0.14)) == 1)
         let shared = VoiceLabEdgeGain(in: .init(gainDb: 6, wordSeconds: .init(wordStartSeconds: 0.14, wordEndSeconds: 0.86)), out: .init(gainDb: 6, wordSeconds: .init(wordStartSeconds: -0.86, wordEndSeconds: -0.14)))
         #expect(VoiceLabHardJoin.edgeGainDb(seconds: 0.5, duration: 1, edgeGain: shared) == 6)
     }
@@ -147,11 +147,68 @@ struct VoiceLabHardJoinTests {
         #expect(encoded["microPause"] != nil)
     }
 
+    @Test func sharedReviewBedAndShortSourceFades() throws {
+        struct Review: Decodable {
+            struct Bed: Decodable { let seconds: Double; let expected: Double }
+            struct Fade: Decodable { let rate: Double; let availableFrames: Int64; let fadeFrames: Int64 }
+            let bedWeights: [Bed]
+            let sourceFades: [Fade]
+        }
+        let review = try FixtureLoader.decode(Review.self, at: "fixtures/voice-lab/hard-join-review-cases.json")
+        let words = [VoiceLabWord(text: "first", start: 0.14, end: 0.44, synthetic: true), .init(text: "second", start: 0.45, end: 1.86, synthetic: true)]
+        for row in review.bedWeights {
+            #expect(VoiceLabHardJoin.bedWeight(seconds: row.seconds, duration: 2, words: words,
+                incoming: .init(wordStartSeconds: 0.14, wordEndSeconds: 0.44), outgoing: .init(wordStartSeconds: -1.55, wordEndSeconds: -0.14)) == row.expected)
+        }
+        for row in review.sourceFades {
+            #expect(VoiceLabHardJoin.sourceFadeFrames(sampleRate: row.rate, availableSourceSamples: row.availableFrames) == row.fadeFrames)
+            let weight = VoiceLabHardJoin.sourceWeight(secondsFromJoin: Double(row.fadeFrames) / row.rate / 2, incoming: false,
+                fadeSeconds: Double(row.fadeFrames) / row.rate)
+            #expect(abs(weight - sqrt(0.5)) < 1e-12)
+        }
+    }
+
+    @Test(arguments: [0.0, 6.0]) func reservedPauseLevelIsAnAdvisoryIndependentOfSpeech(gainDb: Double) throws {
+        let rate = 24_000
+        let source = (0..<(rate * 5)).map { index -> Float in
+            let amplitude = index >= rate && index < rate * 4 ? 0.1 : 0.001
+            return Float(amplitude * sin(2 * Double.pi * 1_000 * Double(index) / Double(rate)))
+        }
+        let input = VoiceLabTakeInput(text: "word", modelID: "fixture", recordID: "fixture", language: "en", seed: 1, contentKey: "fixture",
+            source: source, sourceSampleRate: rate, items: [.init(id: "w", text: "speech", kind: .word, start: 1, end: 4)],
+            window: window(rate), incomingSilence: nil, outgoingSilence: nil, providerConsent: true)
+        let mixed = (0..<(rate * 2)).map { Float(0.001 * pow(10, gainDb / 20) * sin(2 * Double.pi * 1_000 * Double($0) / Double(rate))) }
+        let excess = try VoiceLabHardJoin.pauseExcess(mixed, sampleRate: rate, seam: rate / 2,
+            pause: .init(wordStartSeconds: 0.14, wordEndSeconds: 0.44), incoming: true, input: input)
+        #expect(abs(excess - gainDb) < 0.1)
+        let qa = try VoiceLabTakeQuality.evaluate(expected: "word", recognized: ["word"], mixed: mixed, sampleRate: rate, seams: [rate / 2],
+            sourceSeamSteps: [0], measuredSeamSteps: [0], measuredPauseExcesses: [excess], speakerScore: 1, threshold: 0.5)
+        #expect(qa.hardFailures.isEmpty)
+        #expect(qa.failures.contains(.loudness) == (gainDb > 2))
+    }
+
     @Test func newRoomToneSelectionSkipsDigitalSilenceWithoutChangingLegacy() throws {
         let envelope = AudioEnvelope(sampleRate: 24_000, levels: [Float](repeating: 0, count: 50) + [Float](repeating: 0.001, count: 100))
         let legacy = try VoiceLabRoomToneSelection.select(items: [], envelope: envelope, sourceSampleRate: 24_000, totalSamples: 36_000)
         let matched = try VoiceLabRoomToneSelection.select(items: [], envelope: envelope, sourceSampleRate: 24_000, totalSamples: 36_000, excludeDigitalSilence: true)
         #expect(legacy.sourceStartSample == 0)
         #expect(matched.sourceStartSample == 12_000)
+    }
+
+    @Test(arguments: [0.0, 0.001]) func preflightKeepsDigitalSilenceOnlyForSilentNeighbours(background: Double) throws {
+        let rate = 24_000
+        let source = (0..<(rate * 8)).map { index -> Float in
+            let seconds = Double(index) / Double(rate)
+            let amplitude = seconds < 0.5 ? 0 : seconds >= 1 && seconds < 4 ? 0.1 : background
+            return Float(amplitude * sin(2 * Double.pi * 1_000 * seconds))
+        }
+        let input = VoiceLabTakeInput(text: "word", modelID: "fixture", recordID: "fixture", language: "en", seed: 1,
+            contentKey: "fixture", source: source, sourceSampleRate: rate,
+            items: [.init(id: "w", text: "speech", kind: .word, start: 1, end: 4)], window: window(rate),
+            incomingSilence: nil, outgoingSilence: nil, providerConsent: true)
+        let room = try #require(VoiceLabTakeProcessing.preflight(input).roomTone)
+        if background == 0 {
+            #expect(room.sourceStartSample == 0 && room.gainDb == 0 && room.endGainDb == nil)
+        } else { #expect(room.sourceStartSample >= rate / 2) }
     }
 }

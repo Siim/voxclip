@@ -34,9 +34,9 @@ public enum VoiceLabHardJoin {
     public static let toleranceLu = 2.0
     public static let roomToneMaximumGainDb = 48.0
 
-    public static func fadeExtent(_ seam: VoiceLabSeam, incoming: Bool, sampleRate: Double) -> (left: Int64, right: Int64) {
+    public static func fadeExtent(_ seam: VoiceLabSeam, incoming: Bool, sampleRate: Double, availableSourceSamples: Int64? = nil) -> (left: Int64, right: Int64) {
         if seam.microPause != nil {
-            let frames = Int64(EditingPrimitives.jsRound(sourceFadeSeconds * sampleRate))
+            let frames = sourceFadeFrames(sampleRate: sampleRate, availableSourceSamples: availableSourceSamples ?? Int64(sampleRate))
             return incoming ? (frames, 0) : (0, frames)
         }
         let left = seam.fadeSamples / 2
@@ -44,7 +44,7 @@ public enum VoiceLabHardJoin {
     }
 
     public static func matchedRoomTone(_ room: VoiceLabRoomTone, input: VoiceLabTakeInput, speechLevel: Double) throws -> VoiceLabRoomTone {
-        let rate = input.sourceSampleRate, size = max(1, Int(EditingPrimitives.jsRound(Double(rate) * 0.01))), count = size * 10
+        let rate = input.sourceSampleRate
         guard let run = input.source.samples(Int(room.sourceStartSample)..<Int(room.sourceEndSample)) else { throw VoiceLabError.invalidInput }
         func level(_ samples: [Float]) -> Double {
             let weighted = VoiceLabLoudness.kWeighted(samples, count: samples.count, sampleRate: rate)
@@ -52,25 +52,16 @@ public enum VoiceLabHardJoin {
             return power > 0 ? -0.691 + 10 * log10(power) : -.infinity
         }
         let runLevel = level(Array(run))
-        guard runLevel.isFinite else { throw VoiceLabGeometryError.roomToneUnavailable }
+        guard runLevel.isFinite else {
+            guard run.allSatisfy({ $0 == 0 }) else { throw VoiceLabError.invalidAudio }
+            return .init(sourceStartSample: room.sourceStartSample, sourceEndSample: room.sourceEndSample, gainDb: 0)
+        }
         func target(_ seam: Int) -> Double? {
-            let lower = max(0, seam - 3 * rate), upper = min(input.source.totalFrames - count, seam + 3 * rate)
-            guard upper >= lower else { return nil }
-            var best: (distance: Int, level: Double)?
-            for start in stride(from: lower / size * size, through: upper, by: size) {
-                let end = start + count
-                guard !input.items.contains(where: { $0.kind == .word && $0.end > Double(start) / Double(rate) && $0.start < Double(end) / Double(rate) }),
-                      let samples = input.source.samples(start..<end) else { continue }
-                let frames = start / size..<(end / size)
-                guard frames.upperBound <= input.sourceEnvelope.levels.count,
-                      frames.allSatisfy({ Double(input.sourceEnvelope.levels[$0]) <= VoiceLabPatchConstants.VOICED_FRAME_LEVEL }) else { continue }
-                let distance = abs(start + count / 2 - seam)
-                if best == nil || distance < best!.distance {
-                    let measured = level(Array(samples))
-                    if measured.isFinite { best = (distance, min(measured, speechLevel - 12)) }
-                }
-            }
-            return best?.level
+            guard let pause = VoiceLabRoomToneSelection.neighbouringPause(items: input.items, envelope: input.sourceEnvelope,
+                sampleRate: Double(rate), totalSamples: Int64(input.source.totalFrames), seam: Int64(seam)),
+                  let samples = input.source.samples(Int(pause.lowerBound)..<Int(pause.upperBound)) else { return nil }
+            let measured = level(Array(samples))
+            return measured.isFinite ? min(measured, speechLevel - 12) : nil
         }
         let left = target(Int(input.window.startSample)), right = target(Int(input.window.endSample))
         func gain(_ target: Double?) -> Double {
@@ -100,8 +91,25 @@ public enum VoiceLabHardJoin {
         return weight
     }
 
-    public static func sourceWeight(secondsFromJoin: Double, incoming: Bool) -> Double {
-        let fraction = min(1, max(0, incoming ? -secondsFromJoin / sourceFadeSeconds : secondsFromJoin / sourceFadeSeconds))
+    public static func sourceFadeFrames(sampleRate: Double, availableSourceSamples: Int64) -> Int64 {
+        min(Int64(EditingPrimitives.jsRound(sourceFadeSeconds * sampleRate)), availableSourceSamples / 2)
+    }
+
+    public static func pauseExcess(_ samples: [Float], sampleRate: Int, seam: Int, pause: VoiceLabMicroPause,
+                                   incoming: Bool, input: VoiceLabTakeInput) throws -> Double {
+        let sourceSeam = incoming ? input.window.startSample : input.window.endSample
+        guard let target = VoiceLabRoomToneSelection.neighbouringPause(items: input.items, envelope: input.sourceEnvelope,
+            sampleRate: Double(input.sourceSampleRate), totalSamples: Int64(input.source.totalFrames), seam: sourceSeam),
+              let source = input.source.samples(Int(target.lowerBound)..<Int(target.upperBound)) else { return 0 }
+        let first = incoming ? seam : seam + Int(EditingPrimitives.jsRound(pause.wordEndSeconds * Double(sampleRate)))
+        let last = incoming ? seam + Int(EditingPrimitives.jsRound((pause.wordStartSeconds - generatedFadeSeconds) * Double(sampleRate))) : seam
+        let generated = try VoiceLabLoudness.generatedPauseLufs(samples, sampleRate: sampleRate, range: first..<last)
+        let level = try VoiceLabLoudness.generatedPauseLufs(Array(source), sampleRate: input.sourceSampleRate, range: 0..<source.count)
+        return abs(generated - level)
+    }
+
+    public static func sourceWeight(secondsFromJoin: Double, incoming: Bool, fadeSeconds: Double = sourceFadeSeconds) -> Double {
+        let fraction = min(1, max(0, (incoming ? -secondsFromJoin : secondsFromJoin) / fadeSeconds))
         return sin(.pi * fraction / 2)
     }
 
@@ -118,23 +126,7 @@ public enum VoiceLabHardJoin {
     }
 
     public static func bedWeight(seconds: Double, duration: Double, words: [VoiceLabWord], incoming: VoiceLabMicroPause?, outgoing: VoiceLabMicroPause?) -> Double {
-        let voice = generatedWeight(seconds: seconds, duration: duration, incoming: incoming, outgoing: outgoing)
-        if let incoming, seconds < incoming.wordStartSeconds { return sqrt(max(0, 1 - voice * voice)) }
-        if let outgoing, seconds >= duration + outgoing.wordEndSeconds - generatedFadeSeconds { return sqrt(max(0, 1 - voice * voice)) }
-        var distance = sourceFadeSeconds
-        var lower = 0, upper = words.count
-        while lower < upper {
-            let middle = lower + (upper - lower) / 2
-            if words[middle].end < seconds { lower = middle + 1 } else { upper = middle }
-        }
-        func near(_ index: Int) -> Double {
-            guard words.indices.contains(index) else { return sourceFadeSeconds }
-            let word = words[index]
-            return max(0, max(word.start - seconds, seconds - word.end))
-        }
-        distance = min(distance, near(lower - 1), near(lower))
-        let pause = sin(.pi * min(1, distance / sourceFadeSeconds) / 2)
-        return max(pause, sqrt(max(0, 1 - voice * voice)))
+        1
     }
 
     public static func validate(seams: VoiceLabSeams, edgeGain: VoiceLabEdgeGain?, duration: Double) throws {

@@ -7,6 +7,29 @@ import VoxClipCore
 @testable import VoxClipMedia
 
 @Suite(.offlineFixtures) struct VoiceLabSourceAudioTests {
+    @Test(arguments: [false, true]) func excerptAndPreflightShareTheFiniteNeighbourFlag(hardJoinSmoothing: Bool) async throws {
+        let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("neighbours.mov"), rate = 8_000, frames = 60 * rate
+        try await movie(url, rate: rate, channels: 1, frames: frames, float: false) { frame, _ in
+            let seconds = Double(frame) / Double(rate)
+            if seconds >= 50 && seconds < 50.6 { return 0 }
+            if seconds >= 45 && seconds < 45.6 || seconds >= 31.8 && seconds < 32.1 { return 33 }
+            return Double(Self.mono(frame))
+        }
+        let items = [(0.0, 31.8), (32.1, 44.9), (45.7, 49.9), (50.7, 60.0)].enumerated().map {
+            TimedWord(id: "w\($0.offset)", text: "speech", kind: .word, start: $0.element.0, end: $0.element.1)
+        }
+        let window = Self.window(start: 30, end: 31, rate: rate)
+        let read = try await VoiceLabSourceAudio.rewriteSource(source: url, frames: Int64(frames), sampleRate: rate,
+            window: window, incomingSilence: nil, outgoingSilence: nil, items: items, hardJoinSmoothing: hardJoinSmoothing)
+        let input = VoiceLabTakeInput(text: "word", modelID: "fixture", recordID: "fixture", language: "en", seed: 1, contentKey: "fixture",
+            source: read.excerpt, sourceEnvelope: read.envelope, sourceSampleRate: rate, items: items, window: window,
+            incomingSilence: nil, outgoingSilence: nil, providerConsent: true, hardJoinSmoothing: hardJoinSmoothing)
+        let room = try #require(VoiceLabTakeProcessing.preflight(input).roomTone)
+        #expect(room.sourceStartSample == Int64((hardJoinSmoothing ? 45 : 50) * rate))
+        #expect(read.excerpt.samples(Int(room.sourceStartSample)..<Int(room.sourceEndSample)) != nil)
+    }
+
     @Test func rewriteSourceRetainsNativeRateAndAbsoluteFrameOrder() async throws {
         let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
         let url = root.appendingPathComponent("rewrite.mov")
@@ -69,9 +92,9 @@ import VoxClipCore
     @Test func rewriteSourceHoldsOnlyTheWindowAndRoomToneRegionsOfALongTrack() async throws {
         let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
         let url = root.appendingPathComponent("long.mov"), rate = 8_000, frames = 60 * rate
-        // Speech-like content everywhere except a quiet nonzero stretch at 50.0–50.6 s, exposed by a gap in the words.
+        // Speech-like content everywhere except digital silence at 50.0–50.6 s, exposed by a gap in the words.
         try await movie(url, rate: rate, channels: 1, frames: frames, float: false, bufferFrames: 8_000) { frame, _ in
-            (400_000..<404_800).contains(frame) ? 1 : Double(Self.mono(frame))
+            (400_000..<404_800).contains(frame) ? 0 : Double(Self.mono(frame))
         }
         let items = [TimedWord(id: "a", text: "a", kind: .word, start: 0, end: 49.9), TimedWord(id: "b", text: "b", kind: .word, start: 50.7, end: 60)]
         let result = try await VoiceLabSourceAudio.rewriteSource(source: url, frames: Int64(frames), sampleRate: rate,

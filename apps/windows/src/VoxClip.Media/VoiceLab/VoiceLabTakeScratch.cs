@@ -79,7 +79,7 @@ public static class VoiceLabTakeRenderer
         float Background(int relative)
         {
             var bed = analysis.RoomTone is { EndGainDb: not null } ramp ? (float)Math.Pow(10, ramp.GainDbAt(relative, smoothing ? duration * rate : length) / 20) : toneGain;
-            return tone.Length == 0 ? 0 : VoiceLabAudioMixer.RoomToneSample(tone, relative, 0, loop) * bed;
+            return tone.Length == 0 ? 0 : VoiceLabAudioMixer.RoomToneSample(tone, relative, 0, loop, smoothing) * bed;
         }
         float Signal(int relative)
         {
@@ -110,15 +110,15 @@ public static class VoiceLabTakeRenderer
             if (placement.Kind == VoiceLabSeamKind.None) continue;
             if ((incoming ? incomingPause : outgoingPause) is not null)
             {
-                var fadeCount = (int)Frames(VoiceLabHardJoin.SourceFadeSeconds);
-                if (fadeCount < 2 || (incoming ? fadeCount > lead : fadeCount > tail)) throw Invalid();
+                var fadeCount = (int)VoiceLabHardJoin.SourceFadeFrames(rate, incoming ? start : total - end);
+                if (fadeCount < Frames(0.002) || (incoming ? fadeCount > lead : fadeCount > tail)) throw Invalid();
                 var join = lead + (incoming ? 0 : length);
                 var sourceJoin = incoming ? start : end;
                 for (var offset = 0; offset < fadeCount; offset++)
                 {
                     var local = incoming ? offset - fadeCount : offset;
                     if (source.Samples(sourceJoin + local, sourceJoin + local + 1) is not { } original) throw Invalid();
-                    var weight = VoiceLabHardJoin.SourceWeight(local / (double)rate, incoming);
+                    var weight = VoiceLabHardJoin.SourceWeight(local / (double)rate, incoming, fadeCount / (double)rate);
                     mixed[join + local] = original.Span[0] * (float)weight + Background((incoming ? 0 : length) + local) * (float)Math.Sqrt(Math.Max(0, 1 - weight * weight));
                 }
                 seams.Add(join);
@@ -181,7 +181,8 @@ public static class VoiceLabTakeRenderer
                 if ((incoming ? incomingPause : outgoingPause) is not { } pause) continue;
                 var sourceJoin = checked(lead + (incoming ? 0 : (int)(end - start)));
                 var reference = VoiceLabHardJoin.SourceStep(original.ToArray(), rate, sourceJoin);
-                excesses[index] = VoiceLabHardJoin.Excess(VoiceLabHardJoin.SpeechStep(mixed, rate, seams[index], pause, incoming), reference);
+                excesses[index] = Math.Max(VoiceLabHardJoin.Excess(VoiceLabHardJoin.SpeechStep(mixed, rate, seams[index], pause, incoming), reference),
+                    VoiceLabHardJoin.PauseExcess(mixed, rate, seams[index], pause, incoming, input));
             }
         }
         Directory.CreateDirectory(scratchRoot);

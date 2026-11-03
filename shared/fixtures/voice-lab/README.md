@@ -1,5 +1,17 @@
 # Voice Lab Core contract fixtures
 
+`hard-join-review-cases.json` (`voxclip-hard-join-review/1`) adds independent
+constant-bed vectors (including both generated edge fades and a 10 ms word
+gap), 2–20 ms source-fade counts, nonzero take-edge samples, and a synthetic
+24 kHz take rendered at 48 kHz. Both Media suites compare its sample values,
+including loop crossings and the complementary source fades, and render a
+second patch across a preserved 20 ms source run. The 0.00001 sample tolerance
+allows AVAudioConverter's roughly 0.000005 constant-signal resampling offset;
+it is below one PCM16 step. Both Core suites replay the bed/fade vectors.
+Regenerate with `python3 generate_hard_join.py` from `tools/fixtures/voice-lab`;
+`--check` verifies both hard-join files. Drift remains byte-exact, not tolerant.
+The original 42-case file and all older fixture bytes/counts are unchanged.
+
 `hard-join-cases.json` is the independent `voxclip-hard-join/1` contract for new
 hard-seam micro-pauses, fades, gated edge gain, room tone, validation and
 reserve-aware pace matching. Both Cores and Media suites replay its synthetic

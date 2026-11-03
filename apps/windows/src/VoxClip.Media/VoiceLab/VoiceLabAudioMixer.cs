@@ -279,18 +279,25 @@ internal sealed class VoiceLabAudioMixer : IDisposable
                     if (recipe.Seams.In.MicroPause is not null || recipe.Seams.Out.MicroPause is not null)
                         gain *= (float)VoiceLabHardJoin.BedWeight((relative + i) / plan.SampleRate, recipe.OutDuration,
                             recipe.Words ?? [], recipe.Seams.In.MicroPause, recipe.Seams.Out.MicroPause);
-                    target[2 * i + channel] += gain * RoomToneSample(tone, relative + i, channel, fade);
+                    target[2 * i + channel] += gain * RoomToneSample(tone, relative + i, channel, fade,
+                        recipe.Seams.In.MicroPause is not null || recipe.Seams.Out.MicroPause is not null);
                 }
             }
         }
     }
 
-    internal static float RoomToneSample(float[] tone, long relative, int channel, int fade)
+    internal static float RoomToneSample(float[] tone, long relative, int channel, int fade, bool equalPower = false)
     {
         var length = tone.Length / 2;
         var period = length - fade;
         var index = (int)(((relative % period) + period) % period);
         var head = tone[2 * index + channel];
+        if (equalPower)
+        {
+            if (fade == 0 || relative >= 0 && relative < period || index >= fade) return head;
+            var phase = index / (double)Math.Max(1, fade - 1);
+            return tone[2 * (period + index) + channel] * (float)Math.Cos(Math.PI * phase / 2) + head * (float)Math.Sin(Math.PI * phase / 2);
+        }
         if (fade == 0 || relative < period || index >= fade) return head;
         var u = (index + 1) / (float)(fade + 1);
         return tone[2 * (period + index) + channel] * (1 - u) + head * u;
@@ -309,7 +316,9 @@ internal sealed class VoiceLabAudioMixer : IDisposable
             {
                 var incoming = right.Kind == VoiceLabOutputPieceKind.Synth;
                 if (incoming ? left.Kind != VoiceLabOutputPieceKind.Source : right.Kind != VoiceLabOutputPieceKind.Source) throw Invalid();
-                var count = (int)Math.Floor(VoiceLabHardJoin.SourceFadeSeconds * plan.SampleRate + 0.5);
+                var available = incoming ? left.OutputEndSample - left.OutputStartSample : right.OutputEndSample - right.OutputStartSample;
+                var count = (int)VoiceLabHardJoin.SourceFadeFrames(plan.SampleRate, available);
+                if (count < Math.Ceiling(0.002 * plan.SampleRate)) throw Invalid();
                 var start = right.OutputStartSample - (incoming ? count : 0);
                 seams.Add((start, count, left, right));
                 continue;
@@ -362,7 +371,7 @@ internal sealed class VoiceLabAudioMixer : IDisposable
             for (var frame = 0; frame < n; frame++)
             {
                 var local = incoming ? frame - n : frame;
-                var weight = VoiceLabHardJoin.SourceWeight(local / plan.SampleRate, incoming);
+                var weight = VoiceLabHardJoin.SourceWeight(local / plan.SampleRate, incoming, n / plan.SampleRate);
                 var bed = (float)Math.Sqrt(Math.Max(0, 1 - weight * weight));
                 lhs[2 * frame] = lhs[2 * frame] * (float)weight + rhs[2 * frame] * bed;
                 lhs[2 * frame + 1] = lhs[2 * frame + 1] * (float)weight + rhs[2 * frame + 1] * bed;
