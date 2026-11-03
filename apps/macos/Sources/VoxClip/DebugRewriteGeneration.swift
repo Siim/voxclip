@@ -27,6 +27,10 @@ private struct RewriteGenerationFixtureKeys: KeyProvider {
         try install(state, in: session)
     }
     static func install(_ state: String, in session: RewriteSession) throws {
+        // Take-state fixtures show the take rows, not the pre-pay fit check: price a phrase that's too long for its
+        // slot as if Price It Anyway was chosen (before generation is configured, as the user would), so the plan
+        // keeps its phrase and the column stays on Voice.
+        for ordinal in session.blockedVoiceOrdinals { session.pricedAnyway.insert(ordinal) }
         let app = session.editor.app
         let record = try JSONDecoder().decode(VoiceConsentRecord.self, from: Data(contentsOf: app.shared!.root.appendingPathComponent("fixtures/voice-lab/consent-record.json")))
         session.configureGeneration(client: ElevenLabsVoiceLab(keys: RewriteGenerationFixtureKeys(), region: .default),
