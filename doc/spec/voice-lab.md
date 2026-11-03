@@ -1044,6 +1044,8 @@ The model comes from `GET {base}/v1/models`. Keep entries with `can_do_text_to_s
 
 On first use of a voice in a language, the user hears a 10 s A/B preview of the candidate models and the choice is remembered per voice.
 
+**Mac default (2026-11-03).** The Speech model picker lists every discovered model with timestamped speech (`supportsTimestampedTTS`: `can_do_text_to_speech`, not `eleven_v4` or `eleven_v4_turbo`, whose Text to Dialogue timing path is not implemented) in the account's order. The default is not the first entry: it is `eleven_multilingual_v2` when listed (`VoiceLabModel.patchDefault`), the one model the code knows takes both `previous_text`/`next_text` and reliable `/with-timestamps` alignment; otherwise the first model that is sent context (`sendsSpeechContext`, every timestamped model but `eleven_v3`); otherwise the first. Every listed model stays selectable. Instant voice clones are model-agnostic here: the clone's `voice_id` is sent to whichever model is selected. A live review defaulted to Eleven v3 because the account listed it first; v3 gets no context and ended its audio on the last word.
+
 **Primary request (eleven_v4).** The models page says v4 is available "via the Text to Dialogue API":
 
 ```

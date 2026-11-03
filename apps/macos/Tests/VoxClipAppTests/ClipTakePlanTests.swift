@@ -48,6 +48,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         var gets = 0
         var qa = 0
         var voicesVisible = true
+        /// The account also lists Multilingual v2, after Eleven v3, as the live account did.
+        var listsMultilingual = false
     }
     static let state = Mutex(State())
     override class func canInit(with request: URLRequest) -> Bool { true }
@@ -59,7 +61,9 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
             switch (request.httpMethod, request.url?.path) {
             case ("GET", "/v1/models"):
                 Self.state.withLock { $0.gets += 1 }
-                data = Data(#"[{"model_id":"eleven_v3","name":"Speech","can_do_text_to_speech":true,"can_do_voice_conversion":false,"languages":[{"language_id":"en"}],"maximum_text_length_per_request":5000}]"#.utf8)
+                let multilingual = Self.state.withLock { $0.listsMultilingual }
+                    ? #",{"model_id":"eleven_multilingual_v2","name":"Multilingual v2","can_do_text_to_speech":true,"can_do_voice_conversion":false,"languages":[{"language_id":"en"}],"maximum_text_length_per_request":10000}"# : ""
+                data = Data((#"[{"model_id":"eleven_v3","name":"Speech","can_do_text_to_speech":true,"can_do_voice_conversion":false,"languages":[{"language_id":"en"}],"maximum_text_length_per_request":5000}"# + multilingual + "]").utf8)
             case ("GET", "/v2/voices"):
                 data = Self.state.withLock { $0.voicesVisible } ? Data(#"{"voices":[{"voice_id":"fixtureOwnVoice","name":"My voice","category":"cloned","is_owner":true}],"has_more":false}"#.utf8) : Data(#"{"voices":[],"has_more":false}"#.utf8)
             case ("POST", "/v1/text-to-speech/fixtureOwnVoice/with-timestamps"):
@@ -969,6 +973,19 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(plan.approvalID != nil && plan.stillCurrent)
         ClipTakeHTTP.state.withLock { $0.duration = plan.phrases[0].originalLength; $0.echoQA = true }
         return (editor, session)
+    }
+
+    /// Live 2026-11-03: the Speech model defaulted to the account's first model, Eleven v3. Patching defaults to
+    /// Multilingual v2, which takes the surrounding transcript; v3 stays selectable.
+    @Test func productionTakesDefaultToTheContextModelAndKeepOthersSelectable() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        ClipTakeHTTP.state.withLock { $0.listsMultilingual = true }
+        let (editor, session) = try await productionSession(fixture); defer { editor.close() }
+        let generation = try #require(session.generation)
+        #expect(generation.models.map(\.id) == ["eleven_v3", "eleven_multilingual_v2"])
+        #expect(generation.selectedModelID == "eleven_multilingual_v2")
+        generation.chooseModel("eleven_v3")
+        #expect(generation.selectedModelID == "eleven_v3")
     }
 
     @Test(arguments: [false, true]) func productionQuotePinsPendingBridgeCorrectionAndPaidDiscard(generated: Bool) async throws {

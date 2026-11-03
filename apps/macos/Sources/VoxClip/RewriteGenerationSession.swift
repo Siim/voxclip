@@ -294,7 +294,7 @@ import xlocale
             if !voices.contains(where: { $0.id == selectedVoiceID }) { chooseVoice(nil) }
             if !models.contains(where: { $0.id == selectedModelID }) { chooseModel(nil) }
             if selectedVoiceID == nil { chooseVoice(voices.first?.id) }
-            if selectedModelID == nil { chooseModel(models.first?.id) }
+            if selectedModelID == nil { chooseModel(VoiceLabModel.patchDefault(models)?.id) }
         } catch { problem = RewriteSession.refusal(error) }
     }
     func chooseVoice(_ id: String?) {
