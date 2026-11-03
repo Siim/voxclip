@@ -94,8 +94,14 @@ public static class VoiceLabSourceAudio
     /// however long the recording is. <paramref name="incomingSilence"/> and <paramref name="outgoingSilence"/> are the window's
     /// §8.9.2 outside silences, as the take run's fit reads them (<see cref="VoiceLabWindowPlanner.LendableSilence"/>).</summary>
     public static Task<(VoiceLabSourceExcerpt Excerpt, AudioEnvelope Envelope)> RewriteSourceAsync(string source, long frames, int sampleRate,
-        VoiceLabWindow window, double? incomingSilence, double? outgoingSilence, IReadOnlyList<TimedWord> items, CancellationToken ct = default, bool hardJoinSmoothing = true)
+        VoiceLabWindow window, double? incomingSilence, double? outgoingSilence, IReadOnlyList<TimedWord> items, CancellationToken ct = default)
+        => RewriteSourceAsync(source, frames, sampleRate, window, incomingSilence, outgoingSilence, items, true, ct);
+
+#pragma warning disable CS1591
+    public static Task<(VoiceLabSourceExcerpt Excerpt, AudioEnvelope Envelope)> RewriteSourceAsync(string source, long frames, int sampleRate,
+        VoiceLabWindow window, double? incomingSilence, double? outgoingSilence, IReadOnlyList<TimedWord> items, bool hardJoinSmoothing, CancellationToken ct = default)
         => RewriteSourceAsync(source, frames, sampleRate, window, incomingSilence, outgoingSilence, items, ConversionInputAsync, ct, hardJoinSmoothing);
+#pragma warning restore CS1591
 
     internal static async Task<(VoiceLabSourceExcerpt Excerpt, AudioEnvelope Envelope)> RewriteSourceAsync(string source, long frames, int sampleRate,
         VoiceLabWindow window, double? incomingSilence, double? outgoingSilence, IReadOnlyList<TimedWord> items,
