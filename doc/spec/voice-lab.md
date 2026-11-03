@@ -1242,9 +1242,39 @@ that fit or have that explicit override enter the quote. The footer reads
 `{n} phrase(s) need(s) a shorter wording.` and **Get Price · {k} phrase(s)**;
 omit the priced button when k is zero. With no blocked phrases, read **Nothing paid yet.**
 The same gate can reject wording that is too short to pad or retime safely. In that case
-say **Too short for its slot. A take won't fit the video.**, offer **Ask again** instead of
+say **Too short for its slot. A take won't fit the video.**, offer **Use surrounding sentence** instead of
 asking for fewer words, and use `{n} phrase(s) need(s) wording that fits.` in the footer.
 The original-words and explicit pricing override remain available.
+
+**Pace matching (3 November 2026).** The calibrated estimate above is the 1.0× baseline.
+For each complete voice phrase, choose a provider pace within 0.70–1.20, on the provider's
+0.01 grid. Prefer a predicted **Keep source video duration** exact fit, aiming at the midpoint
+of its exact-fit duration interval. If that interval is unreachable, choose a permitted pace
+that passes **Match video**, still as close to that midpoint as possible. Derive the intervals
+from the existing fit planner: its one-frame take gives maximum permitted seam/edge padding,
+and its overlong take gives the maximum borrowed window and required edge padding. Assume
+no editable generated internal pauses. Verify the chosen prediction through the actual
+video-duration gate. Never enlarge room-tone padding to make pace matching succeed.
+The row reads `≈ 4.6 s at 0.80× pace · slot 5.1 s · fits`; omit the pace clause at 1.0×.
+Pace scales the whole predicted trimmed take, not the source video. The estimate remains
+advisory. Dialogue/v4 has no supported non-default speed and uses the same gate at 1.0×.
+
+If no permitted pace fits, retain the too-long warning and **Ask for shorter**, or the
+too-short warning and **Use surrounding sentence / Keep original words** (replacing Ask
+again for short wording). Sentence expansion uses the existing full-sentence inline review,
+scope/reservation checks and fresh separate paid quote; selecting the action is not a pricing
+override or a send approval. The unchanged generated-speech floor still governs speaker
+measurement eligibility, not this timing decision.
+
+On **Try another** for a selected take that cannot keep the source duration, recalibrate
+from its measured trimmed audio duration before fitting edits, borrowing, padding or retiming:
+`newPace = clamp(oldPace × measuredSpeech / targetSpeech)`. Use the selected take's receipt
+pace, not an unused retry quote's pace; target the exact-fit midpoint, respect provider
+hundredth-step rounding, then fall back to the reachable Match video interval. Preparing or
+re-preparing a retry sends nothing and creates a new pace-bound quote/approval. Include the
+non-default phrase paces beside the priced action. Older paid takes keep their receipt pace.
+Shared sample-exact regression observations live in `pace-matching-cases.json`, separate
+from both the provider request fixtures and the original calibration vectors.
 
 **Ask for shorter** uses the same scope and normal text-only Rewrite send, with fresh
 consent/approval checks, never a previous send authorization. Append the shared

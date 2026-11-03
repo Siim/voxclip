@@ -4,9 +4,11 @@ public struct VoiceLabPhraseTiming: Sendable, Equatable {
     public let estimateSeconds: Double
     public let slotSeconds: Double
     public let fits: Bool
+    public var pace: Double = 1
     public var tooLong: Bool { estimateSeconds > slotSeconds }
     public var copy: String {
-        "≈ \(toFixed1(estimateSeconds)) s · slot \(toFixed1(slotSeconds)) s" + (fits ? " · fits" : "")
+        let paceCopy = pace == 1 ? "" : " at \(String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), pace))× pace"
+        return "≈ \(toFixed1(estimateSeconds)) s\(paceCopy) · slot \(toFixed1(slotSeconds)) s" + (fits ? " · fits" : "")
     }
     public static let warning = "Too long for its slot. A take won't fit the video."
     public static let shortWarning = "Too short for its slot. A take won't fit the video."
