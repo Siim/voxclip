@@ -54,7 +54,7 @@ case('segments_empty', 'malformedResponse', empty=True)
 case('segments_missing', 'malformedResponse', remove='voice_segments')
 # Normalized text never rescues missing original-text alignment.
 responses[1]['response']['normalized_alignment'] = copy.deepcopy(REPLY['alignment'])
-# Character indices count Unicode scalars, including an astral character as one.
+# Each astral character occupies one entry in the alignment characters array.
 scalar_reply = copy.deepcopy(REPLY)
 scalar_reply['alignment']['characters'] = ['\U0001f399', 'i']
 responses.append({'case': 'valid_astral_scalar', 'text': '\U0001f399i', 'response': scalar_reply, 'expected': 'success'})
@@ -63,6 +63,35 @@ missing = copy.deepcopy(REPLY)
 missing['voice_segments'].append(copy.deepcopy(missing['voice_segments'][0]))
 del missing['voice_segments'][1]['voice_id']
 responses.append({'case': 'later_segment_missing_voice', 'response': missing, 'expected': 'malformedResponse'})
+
+# The segment array is not documented as original versus normalized alignment.
+# Provisionally accept either valid array's length, never the typed text scalar count.
+def alignment_for(text):
+    count = len(text)
+    return {'characters': list(text), 'character_start_times_seconds': [0] * count,
+            'character_end_times_seconds': [0] * count}
+
+text = 'Back in 2025'
+normalized_text = 'Back in twenty twenty-five'
+normalized_reply = copy.deepcopy(REPLY)
+normalized_reply['alignment'] = alignment_for(text)
+normalized_reply['normalized_alignment'] = alignment_for(normalized_text)
+normalized_reply['voice_segments'][0]['character_end_index'] = len(normalized_text)
+responses.append({'case': 'segments_index_normalized', 'text': text,
+                  'response': normalized_reply, 'expected': 'success'})
+past_both = copy.deepcopy(normalized_reply)
+past_both['voice_segments'][0]['character_end_index'] = len(normalized_text) + 1
+responses.append({'case': 'segments_index_past_both', 'text': text,
+                  'response': past_both, 'expected': 'malformedResponse'})
+malformed_normalized = copy.deepcopy(normalized_reply)
+malformed_normalized['normalized_alignment']['character_end_times_seconds'] = []
+responses.append({'case': 'segments_index_malformed_normalized', 'text': text,
+                  'response': malformed_normalized, 'expected': 'malformedResponse'})
+array_bound = copy.deepcopy(REPLY)
+array_bound['alignment'] = {'characters': ['Hi'], 'character_start_times_seconds': [0],
+                            'character_end_times_seconds': [0.02]}
+responses.append({'case': 'segments_index_alignment_array_bound', 'response': array_bound,
+                  'expected': 'malformedResponse'})
 
 routes = []
 for model, route in [('eleven_v4', 'textToDialogue'), ('eleven_v4_turbo', None),
