@@ -43,7 +43,7 @@ public sealed class VoiceLabAudition : IAsyncDisposable
     private readonly SemaphoreSlim serial = new(1, 1);
     private readonly object sync = new();
     private Playback? playback;
-    private VoiceLabTakeScratch? scratch;
+    private PlaybackSource? scratch;
     private string? selectionId;
     private bool disposed;
     private VoiceLabAuditionState state = new(false, false, TimeSpan.Zero, null, null);
@@ -85,14 +85,22 @@ public sealed class VoiceLabAudition : IAsyncDisposable
         finally { serial.Release(); }
     }
     /// <summary>Plays mixed scratch audio once, after pausing preview. False exposes an output tooltip.</summary>
-    public async Task<bool> PlayAsync(VoiceLabTakeScratch take, Guid takeId, string selection, CancellationToken ct = default)
+    public Task<bool> PlayAsync(VoiceLabTakeScratch take, Guid takeId, string selection, CancellationToken ct = default) =>
+        PlayAsync(new PlaybackSource(take.MixedAudioPath, () => take.IsValid, take.AttachConsumer, take.InvalidateAsync, false), takeId, selection, ct);
+    /// <summary>Plays an unchecked paid snapshot without fitting or checking it. Ownership transfers until playback stops.</summary>
+    public async Task<bool> PlayAsync(PreparedVoiceLabAsset take, Guid takeId, string selection, CancellationToken ct = default)
+    {
+        try { return await PlayAsync(new PlaybackSource(take.Path, () => take.IsValid, take.AttachConsumer, take.InvalidateAsync, true), takeId, selection, ct).ConfigureAwait(false); }
+        catch { await take.InvalidateAsync().ConfigureAwait(false); throw; }
+    }
+    private async Task<bool> PlayAsync(PlaybackSource take, Guid takeId, string selection, CancellationToken ct)
     {
         await serial.WaitAsync(ct).ConfigureAwait(false);
         try
         {
             ObjectDisposedException.ThrowIf(disposed, this);
             await StopCoreAsync().ConfigureAwait(false);
-            if (!take.IsValid) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
+            if (!take.IsValid()) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
             scratch = take; selectionId = selection;
             Update(new(false, false, TimeSpan.Zero, takeId, null));
             try
@@ -108,9 +116,9 @@ public sealed class VoiceLabAudition : IAsyncDisposable
                 }
                 current.Lease = take.AttachConsumer(() => StopPlaybackAsync(current, invalidated: true));
                 await pausePreview(token).ConfigureAwait(false);
-                await current.Endpoint.OpenAsync(take.MixedAudioPath, token).ConfigureAwait(false);
+                await current.Endpoint.OpenAsync(take.Path, token).ConfigureAwait(false);
                 token.ThrowIfCancellationRequested();
-                if (!take.IsValid) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
+                if (!take.IsValid()) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
                 await current.Endpoint.PlayAsync(token).ConfigureAwait(false);
                 Update(Snapshot with { IsPlaying = true });
                 current.Timer = clock.CreateTimer(_ => Tick(current), null, TimeSpan.FromMilliseconds(50), TimeSpan.FromMilliseconds(50));
@@ -176,6 +184,11 @@ public sealed class VoiceLabAudition : IAsyncDisposable
             try { await current.Endpoint.DisposeAsync().ConfigureAwait(false); }
             catch (Exception) { Update(Snapshot with { UnavailableReason = OutputUnavailable }); }
             finally { current.Cancellation.Dispose(); }
+            if (current.Scratch.ReleaseOnStop)
+            {
+                if (ReferenceEquals(scratch, current.Scratch)) scratch = null;
+                if (current.Scratch.IsValid()) await current.Scratch.InvalidateAsync().ConfigureAwait(false);
+            }
         }
         Update(Snapshot with { IsPlaying = false, Completed = false, Position = TimeSpan.Zero });
     }
@@ -210,7 +223,7 @@ public sealed class VoiceLabAudition : IAsyncDisposable
         if (Snapshot.TakeId != takeId) return;
         Volatile.Read(ref playback)?.Cancel();
         await serial.WaitAsync().ConfigureAwait(false);
-        VoiceLabTakeScratch? rejected;
+        PlaybackSource? rejected;
         try
         {
             if (Snapshot.TakeId != takeId) return;
@@ -225,7 +238,7 @@ public sealed class VoiceLabAudition : IAsyncDisposable
     {
         Volatile.Read(ref playback)?.Cancel();
         await serial.WaitAsync().ConfigureAwait(false);
-        VoiceLabTakeScratch? previous;
+        PlaybackSource? previous;
         try
         {
             previous = scratch; scratch = null; selectionId = null;
@@ -241,7 +254,7 @@ public sealed class VoiceLabAudition : IAsyncDisposable
     {
         Volatile.Read(ref playback)?.Cancel();
         await serial.WaitAsync().ConfigureAwait(false);
-        VoiceLabTakeScratch? previous;
+        PlaybackSource? previous;
         try
         {
             if (disposed) return;
@@ -251,11 +264,13 @@ public sealed class VoiceLabAudition : IAsyncDisposable
         finally { serial.Release(); }
         if (previous is not null) await previous.InvalidateAsync().ConfigureAwait(false);
     }
-    private sealed class Playback(IVoiceLabRenderEndpoint endpoint, CancellationTokenSource cancellation, VoiceLabTakeScratch take)
+    private sealed record PlaybackSource(string Path, Func<bool> IsValid, Func<Func<Task>, IDisposable> AttachConsumer,
+        Func<Task> InvalidateAsync, bool ReleaseOnStop);
+    private sealed class Playback(IVoiceLabRenderEndpoint endpoint, CancellationTokenSource cancellation, PlaybackSource take)
     {
         internal IVoiceLabRenderEndpoint Endpoint { get; } = endpoint;
         internal CancellationTokenSource Cancellation { get; } = cancellation;
-        internal VoiceLabTakeScratch Scratch { get; } = take;
+        internal PlaybackSource Scratch { get; } = take;
         internal IDisposable? Lease;
         internal ITimer? Timer;
         internal CancellationTokenRegistration Registration;
