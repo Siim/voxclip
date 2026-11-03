@@ -60,7 +60,12 @@ enum TestDeadline {
         let deadline = ContinuousClock.now.advanced(by: timeout)
         while true {
             if await condition() { return true }
-            guard !Task.isCancelled, ContinuousClock.now < deadline else { break }
+            // Cancellation or the deadline can land between the check above and this one; a condition that
+            // became true in that gap (such as `Task.isCancelled` itself) still counts.
+            guard !Task.isCancelled, ContinuousClock.now < deadline else {
+                if await condition() { return true }
+                break
+            }
             // Yielding can immediately requeue and starve HTTP/native callbacks while
             // CPU-heavy audio suites run. Suspend between polls without extending the deadline.
             try? await Task.sleep(for: .milliseconds(1))

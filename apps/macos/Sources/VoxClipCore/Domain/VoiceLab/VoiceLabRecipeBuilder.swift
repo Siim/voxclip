@@ -16,7 +16,7 @@ public struct VoiceLabVideoDurationOptions: Sendable, Equatable {
     public private(set) var addedPauseSeconds: Double = 0
     public private(set) var removedVideoSeconds: Double = 0
     public var cutUnavailableReason: String? {
-        cuts.isEmpty ? "No safe source pause can hold this video cut without touching speech or the window edges." : nil
+        cuts.isEmpty ? "No pair of quiet source boundaries can make this video cut clear of the window edges." : nil
     }
     public static let retimeRange = 0.80...1.25
     public let outputSamples: Int64?

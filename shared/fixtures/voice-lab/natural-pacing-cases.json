@@ -1,5 +1,5 @@
 {
-  "schema": "voxclip-natural-pacing/1",
+  "schema": "voxclip-natural-pacing/2",
   "sourceSampleRate": 48000,
   "caseCount": 2,
   "cases": [
@@ -14,6 +14,350 @@
       "windowSeconds": 1.1,
       "reserveSeconds": 0.14,
       "speechSeconds": 0.82
+    }
+  ],
+  "cutCaseCount": 13,
+  "cutCases": [
+    {
+      "id": "continuous-speech-short-boundaries",
+      "windowStartSample": 0,
+      "windowEndSample": 240000,
+      "outputSamples": 172800,
+      "quietBlocks": [
+        [
+          80,
+          86
+        ],
+        [
+          220,
+          226
+        ]
+      ],
+      "levels": [],
+      "speech": [
+        {
+          "kind": "word",
+          "start": 0.86,
+          "end": 2.2
+        }
+      ],
+      "expected": [
+        [
+          38400,
+          105600
+        ]
+      ]
+    },
+    {
+      "id": "no-boundary-pair",
+      "windowStartSample": 0,
+      "windowEndSample": 240000,
+      "outputSamples": 172800,
+      "quietBlocks": [
+        [
+          80,
+          84
+        ],
+        [
+          225,
+          229
+        ]
+      ],
+      "levels": [],
+      "speech": [],
+      "expected": []
+    },
+    {
+      "id": "speech-onset-is-not-quiet-boundary",
+      "windowStartSample": 0,
+      "windowEndSample": 240000,
+      "outputSamples": 172800,
+      "quietBlocks": [
+        [
+          80,
+          84
+        ],
+        [
+          216,
+          220
+        ]
+      ],
+      "levels": [],
+      "speech": [],
+      "expected": []
+    },
+    {
+      "id": "edge-guards-refuse",
+      "windowStartSample": 0,
+      "windowEndSample": 240000,
+      "outputSamples": 172800,
+      "quietBlocks": [
+        [
+          0,
+          6
+        ],
+        [
+          140,
+          146
+        ]
+      ],
+      "levels": [],
+      "speech": [],
+      "expected": []
+    },
+    {
+      "id": "edge-guard-inclusive",
+      "windowStartSample": 0,
+      "windowEndSample": 240000,
+      "outputSamples": 172800,
+      "quietBlocks": [
+        [
+          26,
+          34
+        ],
+        [
+          170,
+          176
+        ]
+      ],
+      "levels": [],
+      "speech": [],
+      "expected": [
+        [
+          14400,
+          81600
+        ]
+      ]
+    },
+    {
+      "id": "runs-under-forty-ms-refuse",
+      "windowStartSample": 0,
+      "windowEndSample": 240000,
+      "outputSamples": 172800,
+      "quietBlocks": [
+        [
+          80,
+          83
+        ],
+        [
+          220,
+          223
+        ]
+      ],
+      "levels": [],
+      "speech": [],
+      "expected": []
+    },
+    {
+      "id": "word-blocks-boundary",
+      "windowStartSample": 0,
+      "windowEndSample": 240000,
+      "outputSamples": 172800,
+      "quietBlocks": [
+        [
+          80,
+          86
+        ],
+        [
+          220,
+          226
+        ]
+      ],
+      "levels": [],
+      "speech": [
+        {
+          "kind": "word",
+          "start": 0.8,
+          "end": 0.86
+        }
+      ],
+      "expected": []
+    },
+    {
+      "id": "unlabeled-speech-blocks-boundary",
+      "windowStartSample": 0,
+      "windowEndSample": 240000,
+      "outputSamples": 172800,
+      "quietBlocks": [
+        [
+          80,
+          86
+        ],
+        [
+          220,
+          226
+        ]
+      ],
+      "levels": [],
+      "speech": [
+        {
+          "kind": "unlabeled-speech",
+          "start": 0.8,
+          "end": 0.86
+        }
+      ],
+      "expected": []
+    },
+    {
+      "id": "earliest-boundary-tie",
+      "windowStartSample": 0,
+      "windowEndSample": 240000,
+      "outputSamples": 172800,
+      "quietBlocks": [
+        [
+          80,
+          86
+        ],
+        [
+          220,
+          226
+        ]
+      ],
+      "levels": [],
+      "speech": [],
+      "expected": [
+        [
+          38400,
+          105600
+        ]
+      ]
+    },
+    {
+      "id": "lowest-boundary-power",
+      "windowStartSample": 0,
+      "windowEndSample": 240000,
+      "outputSamples": 172800,
+      "quietBlocks": [
+        [
+          80,
+          86
+        ],
+        [
+          220,
+          226
+        ]
+      ],
+      "levels": [
+        [
+          81,
+          0.001
+        ],
+        [
+          221,
+          0.001
+        ]
+      ],
+      "speech": [],
+      "expected": [
+        [
+          38880,
+          106080
+        ]
+      ]
+    },
+    {
+      "id": "whole-quiet-run-still-valid",
+      "windowStartSample": 0,
+      "windowEndSample": 240000,
+      "outputSamples": 144000,
+      "quietBlocks": [
+        [
+          100,
+          400
+        ]
+      ],
+      "levels": [],
+      "speech": [],
+      "expected": [
+        [
+          48000,
+          144000
+        ]
+      ]
+    },
+    {
+      "id": "two-spans-only-without-single",
+      "windowStartSample": 0,
+      "windowEndSample": 240000,
+      "outputSamples": 192000,
+      "quietBlocks": [
+        [
+          50,
+          56
+        ],
+        [
+          100,
+          106
+        ],
+        [
+          250,
+          256
+        ],
+        [
+          300,
+          306
+        ]
+      ],
+      "levels": [],
+      "speech": [],
+      "expected": [
+        [
+          24000,
+          48000
+        ],
+        [
+          120000,
+          144000
+        ]
+      ]
+    },
+    {
+      "id": "fractional-block-length",
+      "windowStartSample": 0,
+      "windowEndSample": 240000,
+      "outputSamples": 172560,
+      "quietBlocks": [
+        [
+          80,
+          86
+        ],
+        [
+          220,
+          226
+        ]
+      ],
+      "levels": [],
+      "speech": [],
+      "expected": [
+        [
+          38400,
+          105840
+        ]
+      ]
+    }
+  ],
+  "pauseCaseCount": 3,
+  "pauseCases": [
+    {
+      "id": "tagged-growth",
+      "windowSeconds": 1.8,
+      "beforeToken": 1,
+      "kind": "insert",
+      "editedGap": 2
+    },
+    {
+      "id": "tagged-shrink",
+      "windowSeconds": 1.2,
+      "beforeToken": 1,
+      "kind": "remove",
+      "editedGap": 2
+    },
+    {
+      "id": "other-tagged-gap",
+      "windowSeconds": 1.8,
+      "beforeToken": 2,
+      "kind": "insert",
+      "editedGap": 1
     }
   ]
 }

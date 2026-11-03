@@ -106,7 +106,8 @@ public enum VoiceLabFitPlanner {
     /// the patch tokens, one per word.
     public static func plan(window: VoiceLabWindow, incomingSilence: Double?, outgoingSilence: Double?, take: VoiceLabFitTake,
                             tokens: [String], sourceSampleRate rate: Double, hardJoinSmoothing: Bool,
-                            pauseProfile: VoiceLabPauseProfile? = nil) throws -> VoiceLabFitResult {
+                            pauseProfile: VoiceLabPauseProfile? = nil, audioTags: [VoiceLabAudioTag] = [],
+                            allowPauseGrowth: Bool = true) throws -> VoiceLabFitResult {
         let kinds: [VoiceLabSeamKind] = [window.leftSeam.kind, window.rightSeam.kind]
         let silences: [Double?] = [incomingSilence, outgoingSilence]
         let reach = try validate(window: window, kinds: kinds, silences: silences, take: take, rate: rate)
@@ -131,6 +132,7 @@ public enum VoiceLabFitPlanner {
         let rho = natural - target, shorten = rho > 0
         let lengths = pauses.map(\.length)
         let rooms: [Int64] = pauses.map { pause in
+            guard !audioTags.contains(where: { $0.beforeToken == pause.word + 1 }), shorten || allowPauseGrowth else { return 0 }
             guard let pauseProfile else { return roomsOf([pause], shorten: shorten, assetRate: assetRate, fade: fade)[0] }
             let distribution = pauseProfile.distribution(after: tokens[pause.word])
             let boundary = VoiceLabNaturalPacing.clauseBoundary(after: tokens[pause.word], before: tokens[pause.word + 1])
@@ -174,7 +176,7 @@ public enum VoiceLabFitPlanner {
         } else if remaining > 0 {
             let gapPad = VoiceLabGeometry.samples(VoiceLabPatchConstants.SEAM_PAD_MAX, assetRate)
             let hardPad = VoiceLabGeometry.samples(VoiceLabPatchConstants.HARD_SEAM_PAD_MAX, assetRate)
-            let caps: [Int64] = kinds.map { pauseProfile != nil ? 0 : $0 == .hard ? (hardJoinSmoothing ? 0 : hardPad) : gapPad }
+            let caps: [Int64] = kinds.map { pauseProfile != nil || !allowPauseGrowth ? 0 : $0 == .hard ? (hardJoinSmoothing ? 0 : hardPad) : gapPad }
             let extra = split(remaining, caps: caps)
             pad = [pad[0] + extra[0], pad[1] + extra[1]]
             exact = extra[0] + extra[1] == remaining
