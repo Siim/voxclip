@@ -117,6 +117,7 @@ private final class TakeRunHTTP: Sendable {
         var missingAlignment = false
         var remoteRequiresVerification = false
         var malformedAlignment = false
+        var wrongDialogueVoice = false
         /// Eleven v3's shape: the characters run from 0 to the PCM's last frame plus this overshoot (the client accepts
         /// up to 50 ms), so the audio holds nothing past the last aligned character. Nil keeps 0.1 s at each end.
         var edgeAlignmentOvershoot: Double?
@@ -202,7 +203,7 @@ struct VoiceLabTakeRunTests {
     private func fixture(_ configure: @Sendable (inout TakeRunHTTP.State) -> Void = { _ in }, drift: Bool = false,
                          sourceAudible: Bool = true, roomToneAvailable: Bool = true,
                          background: (left: Double, right: Double, run: Double)? = nil,
-                         boundary: VoiceLabTakeDispatchBoundary? = nil, text: String = "Hello", voicedFraction: Double = 1, rejectGeneratedVAD: Bool = false) async throws -> Fixture {
+                         boundary: VoiceLabTakeDispatchBoundary? = nil, text: String = "Hello", modelID: String = "eleven_v3", voicedFraction: Double = 1, rejectGeneratedVAD: Bool = false) async throws -> Fixture {
         let root = try SpeechTestFiles.directory()
         let locations = SpeechTestFiles.locations(root)
         let store = VoiceConsentStore(locations: locations)
@@ -217,13 +218,13 @@ struct VoiceLabTakeRunTests {
         let base = SpeechStubHTTP.register { request in
             switch (request.httpMethod, request.url?.path) {
             case ("GET", "/v1/models"):
-                return (200, [:], Data(#"[{"model_id":"eleven_v3","name":"Speech","can_do_text_to_speech":true,"can_do_voice_conversion":false,"languages":[{"language_id":"en"}],"maximum_text_length_per_request":5000}]"#.utf8))
+                return (200, [:], try JSONSerialization.data(withJSONObject: [["model_id": modelID, "name": "Speech", "can_do_text_to_speech": true, "can_do_voice_conversion": false, "languages": [["language_id": "en"]], "maximum_text_length_per_request": 5000]]))
             case ("GET", "/v2/voices"):
                 let requiresVerification = http.value.withLock { $0.remoteRequiresVerification }
                 let row: [String: Any] = ["voice_id": "fixtureOwnVoice", "name": "My voice", "category": "cloned", "is_owner": true,
                     "voice_verification": ["requires_verification": requiresVerification, "is_verified": false]]
                 return (200, [:], try JSONSerialization.data(withJSONObject: ["voices": [row], "has_more": false]))
-            case ("POST", "/v1/text-to-speech/fixtureOwnVoice/with-timestamps"):
+            case ("POST", "/v1/text-to-speech/fixtureOwnVoice/with-timestamps"), ("POST", "/v1/text-to-dialogue/with-timestamps"):
                 let body = try #require(JSONSerialization.jsonObject(with: VoiceLabRequestFixtures.body(request)) as? [String: Any])
                 let seed = try #require(body["seed"] as? UInt32)
                 let state = http.value.withLock { state in
@@ -247,7 +248,8 @@ struct VoiceLabTakeRunTests {
                     var value = Int16((sin(2 * Double.pi * 100 * Double(index) / 24_000) * 3_200 * envelope).rounded()).littleEndian
                     withUnsafeBytes(of: &value) { pcm.append(contentsOf: $0) }
                 }
-                let generatedText = try #require(body["text"] as? String)
+                let inputs = body["inputs"] as? [[String: Any]]
+                let generatedText = try #require(body["text"] as? String ?? inputs?.first?["text"] as? String)
                 let characters = Array(generatedText).map(String.init)
                 let lead = state.edgeAlignmentOvershoot == nil ? 0.1 : 0
                 let span = state.edgeAlignmentOvershoot.map { state.duration + $0 } ?? state.duration - 0.2
@@ -255,7 +257,16 @@ struct VoiceLabTakeRunTests {
                 var ends = characters.indices.map { lead + Double($0 + 1) * span / Double(characters.count) }
                 if state.edgeAlignmentOvershoot != nil { ends[ends.count - 1] = span }
                 let alignment: Any = state.missingAlignment ? NSNull() : ["characters": characters, "character_start_times_seconds": state.malformedAlignment ? Array(starts.dropLast()) : starts, "character_end_times_seconds": ends]
-                return (200, [:], try JSONSerialization.data(withJSONObject: ["audio_base64": pcm.base64EncodedString(), "alignment": alignment]))
+                var reply: [String: Any] = ["audio_base64": pcm.base64EncodedString(), "alignment": alignment]
+                if modelID == "eleven_v4" {
+                    #expect(request.url?.path == "/v1/text-to-dialogue/with-timestamps")
+                    #expect(inputs?.count == 1 && inputs?.first?["voice_id"] as? String == "fixtureOwnVoice")
+                    #expect(body["previous_text"] == nil && body["future_text"] == nil && body["next_text"] == nil)
+                    reply["voice_segments"] = [["voice_id": state.wrongDialogueVoice ? "otherVoice" : "fixtureOwnVoice", "dialogue_input_index": 0,
+                        "character_start_index": 0, "character_end_index": generatedText.unicodeScalars.count,
+                        "start_time_seconds": 0, "end_time_seconds": state.duration]]
+                }
+                return (200, [:], try JSONSerialization.data(withJSONObject: reply))
             case ("POST", "/v1/speech-to-text"):
                 let bytes = try VoiceLabRequestFixtures.body(request)
                 let body = String(decoding: bytes, as: UTF8.self)
@@ -331,17 +342,80 @@ struct VoiceLabTakeRunTests {
         let window = VoiceLabWindow(firstWordId: "old", lastWordId: "old", leftBridgeWordIds: [], rightBridgeWordIds: [], start: 2, end: 6,
             startSample: 48_000, endSample: 144_000, leftSeam: .init(kind: .hard, time: 2, sample: 48_000, fadeSamples: 288),
             rightSeam: .init(kind: .hard, time: 6, sample: 144_000, fadeSamples: 288))
-        let input = VoiceLabTakeInput(text: text, modelID: "eleven_v3", recordID: record.id, language: "en", seed: UInt32.max,
+        let input = VoiceLabTakeInput(text: text, modelID: modelID, recordID: record.id, language: "en", seed: UInt32.max,
             contentKey: "synthetic-source", source: source, sourceSampleRate: rate, items: items, window: window,
             incomingSilence: nil, outgoingSilence: nil, providerConsent: true)
         let lastWindow = VoiceLabWindow(firstWordId: "last", lastWordId: "last", leftBridgeWordIds: [], rightBridgeWordIds: [], start: 7, end: 7.5,
             startSample: 168_000, endSample: 180_000, leftSeam: .init(kind: .hard, time: 7, sample: 168_000, fadeSamples: 288),
             rightSeam: .init(kind: .hard, time: 7.5, sample: 180_000, fadeSamples: 288))
-        let laterInput = VoiceLabTakeInput(text: text, modelID: "eleven_v3", recordID: record.id, language: "en", seed: 7,
+        let laterInput = VoiceLabTakeInput(text: text, modelID: modelID, recordID: record.id, language: "en", seed: 7,
             contentKey: "synthetic-source", source: source, sourceSampleRate: rate, items: items, window: lastWindow,
             incomingSilence: nil, outgoingSilence: nil, providerConsent: true)
         return Fixture(root: root, http: http, clock: clock, store: store, client: client, ledger: ledger, run: run, input: input,
                        later: later, laterInput: laterInput)
+    }
+    @Test func dialogueTakePassesQAAndPublishesARenderableRecipe() async throws {
+        let fixture = try await fixture(modelID: "eleven_v4")
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let quote = try await fixture.run.prepare(fixture.input)
+        #expect(quote.takes.allSatisfy { $0.synthesis.endpoint == "v1/text-to-dialogue/with-timestamps" })
+        let result = try await fixture.run.execute(quote, approved: true)
+        let row = try #require(result.best)
+        #expect(row.selectable && row.qa?.passed == true && row.fits)
+        #expect(fixture.http.value.withLock { $0.seeds.count == 1 && $0.qa == 1 })
+        let (published, record) = try await fixture.run.publishForAcceptance(row, input: fixture.input, at: fixture.clock.now())
+        let take = try #require(row.audio)
+        let candidate = try VoiceLabRecipeBuilder.candidate(row: row, input: fixture.input, published: published,
+            record: record, createdAt: fixture.clock.now(), videoChoice: .source)
+        #expect(candidate.recipe?.provenance.endpoint == "v1/text-to-dialogue/with-timestamps")
+        #expect(candidate.recipe?.provenance.model == "eleven_v4")
+        let segment = try VoiceLabRecipeBuilder.segment(id: "dialogue-take", candidates: [candidate], selected: 0,
+            input: fixture.input, plan: take.fit.plan)
+        var project = try JSONProjectStore.decode(FixtureLoader.data("fixtures/voice-lab/passage-render-v3.voxclip"))
+        let publishedAsset = try #require(published.assets.first)
+        project.id = String(try #require(publishedAsset.file.split(separator: "/").first))
+        project.media.source.durationSeconds = 8
+        project.media.source.audio = MediaAudio(sampleRate: 24_000, channels: 1)
+        project.transcript!.words = fixture.input.items
+        project.transcript!.durationSeconds = 8
+        project.edits = ProjectEdits()
+        project.voiceLab = ProjectVoiceLab(assets: [], cleanAudio: .init(mode: .off), voices: [], videoAssets: [])
+        project = try VoiceLabProject.addVoiceReference(.init(id: record.id, provider: record.provider, voiceId: record.voiceId,
+            consentRecordId: record.id, displayName: record.voiceName, status: .active), to: project)
+        let accepted = try VoiceLabProject.accept(segment, assets: published.assets, into: project)
+        let prepared = try VoiceLabRenderContract.prepare(accepted, scope: .full, labelPosition: .topRight)
+        #expect(prepared.selectedSegmentRecipes.count == 1)
+        _ = try JSONProjectStore.decode(ProjectJSON.encode(accepted))
+        await fixture.run.invalidate()
+    }
+    @Test(arguments: [false, true]) func dialogueBadAlignmentRecordsSpendAndSkipsQA(malformed: Bool) async throws {
+        let fixture = try await fixture({ $0.missingAlignment = !malformed; $0.malformedAlignment = malformed }, modelID: "eleven_v4")
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let quote = try await fixture.run.prepare(fixture.input)
+        let result = try await fixture.run.execute(quote, approved: true)
+        let row = try #require(result.rows.first)
+        #expect(row.failure == .provider(.invalidAlignment) && !row.selectable && result.best == nil)
+        #expect(row.generated?.alignment == nil && row.generated?.pcm.isEmpty == false)
+        #expect(fixture.http.value.withLock { $0.seeds.count == 1 && $0.qa == 0 })
+        #expect(await fixture.ledger.total(provider: "elevenlabs", at: fixture.clock.now())?.usd == quote.takes[0].synthesis.estimate.usd)
+        let paid = try #require(await fixture.run.paidAudioURL(for: row.id))
+        #expect(FileManager.default.fileExists(atPath: paid.path))
+        await fixture.run.invalidate()
+    }
+    @Test func dialogueBadSegmentsKeepPaidPCMPlayableWithoutQAOrRetry() async throws {
+        let fixture = try await fixture({ $0.wrongDialogueVoice = true }, modelID: "eleven_v4")
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let quote = try await fixture.run.prepare(fixture.input, candidates: 1)
+        let result = try await fixture.run.execute(quote, approved: true)
+        let row = try #require(result.rows.first)
+        #expect(result.rows.count == 1 && result.best == nil && !row.selectable)
+        #expect(row.failure == .provider(.malformedResponse))
+        #expect(row.generated?.alignment == nil && row.generated?.pcm.isEmpty == false)
+        #expect(fixture.http.value.withLock { $0.seeds.count == 1 && $0.qa == 0 })
+        #expect(await fixture.ledger.total(provider: "elevenlabs", at: fixture.clock.now())?.usd == quote.takes[0].synthesis.estimate.usd)
+        let paid = try #require(await fixture.run.paidAudioURL(for: row.id))
+        #expect(FileManager.default.fileExists(atPath: paid.path))
+        await fixture.run.invalidate()
     }
     @Test(arguments: ["clock", "inputs", "model", "embedder", "consent", "record", "validation", "approval", "launch"])
     func cancellationAtEveryExecuteSuspension(point: String) async throws {

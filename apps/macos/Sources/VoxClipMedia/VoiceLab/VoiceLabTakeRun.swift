@@ -300,12 +300,7 @@ public actor VoiceLabTakeRun {
                     authorization: VoiceLabAuthorization(quote: take.synthesis, approved: true), acceptance: synthesisAccepted)
                 receipt = result.receipt
                 generated = result
-                let storage = storage
-                let paid = try await Task.detached(priority: .utility) {
-                    try VoiceLabAssetStore.write(pcm16: result.pcm, sampleRate: result.sampleRate, projectId: storage.projectId,
-                        assetId: UUID().uuidString.lowercased(), paidRoot: storage.paidRoot, createdAt: Date())
-                }.value
-                paidAssets[take.synthesis.requestID] = paid
+                let paid = try await preservePaidAudio(result, requestID: take.synthesis.requestID)
                 try await validate(value, revision: expected)
                 let analysis = try VoiceLabTakeProcessing.process(result, input: value.input, preflight: value.preflight)
                 let snapshot = try VoiceLabAssets.preparePaid(asset: paid, projectId: storage.projectId, paidRoot: storage.paidRoot, scratchRoot: storage.scratchRoot)
@@ -374,6 +369,11 @@ public actor VoiceLabTakeRun {
                 if !short, qa.passed, case .exact = processed.fit { return VoiceLabTakeRunResult(rows: rows, end: .earlyStop) }
             } catch {
                 guard dispatch.started else { return VoiceLabTakeRunResult(rows: rows, end: end(error), failure: failure(error)) }
+                if generated == nil, let decoded = synthesisAccepted.unalignedAudio {
+                    // Keep paid PCM even when its timing/segment metadata failed. It is playable, never selectable.
+                    generated = decoded
+                    _ = try? await preservePaidAudio(decoded, requestID: take.synthesis.requestID)
+                }
                 // A request the provider accepted is in the spend ledger even when its reply failed and left no receipt.
                 var accepted = Set<UUID>()
                 if synthesisAccepted.accepted { accepted.insert(take.synthesis.requestID) }
@@ -385,6 +385,15 @@ public actor VoiceLabTakeRun {
             }
         }
         return VoiceLabTakeRunResult(rows: rows, end: .completed)
+    }
+    private func preservePaidAudio(_ result: VoiceLabAudioResult, requestID: UUID) async throws -> VoiceLabAsset {
+        let storage = storage
+        let paid = try await Task.detached(priority: .utility) {
+            try VoiceLabAssetStore.write(pcm16: result.pcm, sampleRate: result.sampleRate, projectId: storage.projectId,
+                assetId: UUID().uuidString.lowercased(), paidRoot: storage.paidRoot, createdAt: Date())
+        }.value
+        paidAssets[requestID] = paid
+        return paid
     }
     private func policy(_ record: VoiceConsentRecord) -> OwnVoicePolicy {
         OwnVoicePolicy(recordID: record.id, cloneVoiceID: record.voiceId, recordActive: true, providerConsentGranted: true,

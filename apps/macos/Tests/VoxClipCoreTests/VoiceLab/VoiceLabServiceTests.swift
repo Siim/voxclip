@@ -319,11 +319,11 @@ struct VoiceLabServiceTests {
             }
         }
         let discovered = try await service.models()
-        #expect(discovered.count == 1 && !discovered[0].supportsTimestampedTTS)
+        #expect(discovered.count == 1 && discovered[0].supportsTimestampedTTS)
         _ = try await service.voices()
         let id = UUID()
-        do { _ = try await service.prepareSynthesis(text: "Hi", modelID: "eleven_v4", voice: .stock(voiceID: "stock123"), language: "en", options: speech, requestID: id); Issue.record("Expected endpoint gate") }
-        catch VoiceLabError.unsupportedEndpoint {}
+        let quote = try await service.prepareSynthesis(text: "Hi", modelID: "eleven_v4", voice: .stock(voiceID: "stock123"), language: "en", options: speech, requestID: id)
+        #expect(quote.endpoint == "v1/text-to-dialogue/with-timestamps")
         #expect(calls.withLock { $0 } == 2)
     }
 
@@ -337,8 +337,8 @@ struct VoiceLabServiceTests {
         #expect(VoiceLabModel.patchDefault([v3, flash, v2])?.id == "eleven_multilingual_v2")
         #expect(VoiceLabModel.patchDefault([v3, flash])?.id == "eleven_flash_v2_5")
         #expect(VoiceLabModel.patchDefault([v3])?.id == "eleven_v3")
-        #expect(VoiceLabModel.patchDefault([v4, v3])?.id == "eleven_v3")
-        #expect(VoiceLabModel.patchDefault([v4]) == nil && VoiceLabModel.patchDefault([]) == nil)
+        #expect(VoiceLabModel.patchDefault([v4, v3])?.id == "eleven_v4")
+        #expect(VoiceLabModel.patchDefault([v4])?.id == "eleven_v4" && VoiceLabModel.patchDefault([]) == nil)
         #expect(!v3.sendsSpeechContext && v2.sendsSpeechContext && flash.sendsSpeechContext && !v4.sendsSpeechContext)
     }
 

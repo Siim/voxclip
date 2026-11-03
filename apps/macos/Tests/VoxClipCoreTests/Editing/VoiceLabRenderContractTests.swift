@@ -49,6 +49,30 @@ import Testing
         #expect(full.selectedSegmentRecipes[0].recipe.chunks.count == 2)
         #expect(full.disclosure.persistent && full.disclosure.intervals == [VoiceLabLabelInterval(start: 0, end: 7)])
     }
+    @Test func dialogueRecipeRequiresTheMatchingEndpointAndModel() throws {
+        for (endpoint, model, accepted) in [
+            ("v1/text-to-dialogue/with-timestamps", "eleven_v4", true),
+            ("v1/text-to-dialogue/with-timestamps", "eleven_v3", false),
+            ("v1/text-to-speech/fixtureOwnVoice/with-timestamps", "eleven_v4", false),
+            ("v1/text-to-dialogue/with-timestamps/extra", "eleven_v4", false),
+            ("v1/text-to-speech/fixtureOwnVoice/with-timestamps", "eleven_v3", true)
+        ] {
+            var project = try fixture()
+            project.voiceLab.segments[0].provenance.endpoint = endpoint
+            project.voiceLab.segments[0].provenance.model = model
+            for index in project.voiceLab.segments[0].candidates.indices {
+                project.voiceLab.segments[0].candidates[index].recipe!.provenance.endpoint = endpoint
+                project.voiceLab.segments[0].candidates[index].recipe!.provenance.model = model
+            }
+            if accepted {
+                _ = try VoiceLabRenderContract.prepare(project, scope: .full, labelPosition: .topRight)
+            } else {
+                #expect(throws: VoiceLabProjectError.endpointUnsupported) {
+                    try VoiceLabRenderContract.prepare(project, scope: .full, labelPosition: .topRight)
+                }
+            }
+        }
+    }
     @Test func selectionAndSourceRestore() throws {
         let original = try fixture()
         let chosen = try VoiceLabProject.selectCandidate(1, id: "vl-passage", in: original)
