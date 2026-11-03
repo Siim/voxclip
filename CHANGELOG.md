@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Windows, a phrase whose take runs longer or shorter can cut the video at a pause or match the video to the take, as on Mac.
 - Clips in the sidebar show Rewrite and More buttons.
 - A laugh, sigh or pause at the start or end of a phrase is kept whole at the join, and the word check no longer trips on transcribed laughter.
 - Offer useful video jump cuts between quiet speech boundaries, and preserve deliberate expression-tagged pauses.
