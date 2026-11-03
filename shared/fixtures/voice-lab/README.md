@@ -134,3 +134,5 @@ three attempts per ten minutes, and explicit recovery after verification but bef
 Generate with `python3 tools/fixtures/voice-lab/generate_enrollment.py`; every row is replayed by both Cores in
 `VoiceEnrollmentPlanTests` (Swift C7 and C# W4). It has only strings, integers and booleans and is
 byte-exact in `check_drift.py`. See `enrollment-cases-README.md`.
+
+Dialogue segment indices provisionally use the larger of the original and valid normalized alignment character-array lengths, pending the live probe described in §8.5. The generator includes normalized expansion, past-both bounds, malformed normalized metadata and grouped-character array cases. Original alignment remains mandatory.
