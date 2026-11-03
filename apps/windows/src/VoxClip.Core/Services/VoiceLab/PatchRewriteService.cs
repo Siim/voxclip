@@ -102,7 +102,8 @@ public sealed class PatchRewriteService
         var sourceTokens = catalog.Estimate(rendered);
         var maxOutput = VoiceLabLlmChecks.MaxOutputTokens(sourceTokens, prompt.OutputCap, catalog.Cap(connector, prompt.OutputCap)) ??
             throw LlmErrors.Create(LlmErrorKind.ContextTooLong, "", model, LlmFeature.VoiceRewrite);
-        var (cachedBlock, instruction) = RequestText(input, rendered, prompt.Document);
+        var feedbackPrompt = input.ShorterPhrases.Count == 0 ? null : VoiceLabLlmChecks.ReadPrompt(catalog, "prompts/voice-rewrite.json").Document;
+        var (cachedBlock, instruction) = RequestText(input, rendered, prompt.Document, feedbackPrompt);
         var timeout = catalog.Timeout(connector is ConnectorId.ClaudeCode or ConnectorId.Codex ? "cli" :
             connector is ConnectorId.Ollama or ConnectorId.LmStudio ? "localServer" : "cloud");
         // A Voice Lab rewrite send, so each connector makes it once, like the passage rewrite.
@@ -112,7 +113,7 @@ public sealed class PatchRewriteService
 
     /// <summary>Renders the request from the shared prompt (voice-lab §8.1): the clip finder's transcript block, then one range per
     /// line and the instruction. No prompt text lives in code.</summary>
-    internal static (string CachedBlock, string Instruction) RequestText(PatchRewriteRequest input, string rendered, JsonObject prompt)
+    internal static (string CachedBlock, string Instruction) RequestText(PatchRewriteRequest input, string rendered, JsonObject prompt, JsonObject? feedbackPrompt = null)
     {
         string? Template(string group, string key) => prompt[group] is JsonObject block ? Text(block[key]) : null;
         if (Template("transcriptBlock", "prefix") is not { } prefix || Template("transcriptBlock", "suffix") is not { } suffix ||
@@ -124,11 +125,13 @@ public sealed class PatchRewriteService
             .Replace("{minChars}", range.MinChars.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
             .Replace("{maxChars}", range.MaxChars.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal));
         var instruction = instructionLine.Replace("{instruction}", EditingAlgorithms.JsTrim(input.Instruction), StringComparison.Ordinal);
-        return (prefix + rendered + suffix, string.Join("\n", ranges.Prepend(rangesLine)) + "\n\n" + instruction);
+        var feedback = input.ShorterPhrases.Count == 0 ? "" : VoiceRewriteFeedback.Render(input.ShorterPhrases,
+            feedbackPrompt ?? throw Missing());
+        return (prefix + rendered + suffix, string.Join("\n", ranges.Prepend(rangesLine)) + "\n\n" + instruction + feedback);
     }
 
-    private static PatchRewriteRequest Snapshot(PatchRewriteRequest? input) => input?.Entries is null || input.Ranges is null
-        ? throw Invalid() : input with { Entries = input.Entries.ToArray(), Ranges = input.Ranges.ToArray() };
+    private static PatchRewriteRequest Snapshot(PatchRewriteRequest? input) => input?.Entries is null || input.Ranges is null || input.ShorterPhrases is null
+        ? throw Invalid() : input with { Entries = input.Entries.ToArray(), Ranges = input.Ranges.ToArray(), ShorterPhrases = input.ShorterPhrases.ToArray() };
 
     /// <summary>Checks every input bound and returns the request's transcript lines (ai.md §11.3), one per range.</summary>
     private static IReadOnlyList<NumberedLine> Validate(PatchRewriteRequest input)

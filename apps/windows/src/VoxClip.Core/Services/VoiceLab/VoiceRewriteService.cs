@@ -28,8 +28,8 @@ public sealed class VoiceRewriteService
     {
         ct.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(connector);
-        if (input is null || input.SourceWords is null) throw Invalid();
-        var snapshot = input with { SourceWords = input.SourceWords.ToArray() };
+        if (input is null || input.SourceWords is null || input.ShorterPhrases is null) throw Invalid();
+        var snapshot = input with { SourceWords = input.SourceWords.ToArray(), ShorterPhrases = input.ShorterPhrases.ToArray() };
         var source = Validate(snapshot);
         if (!VoiceLabLlmChecks.IsValidModel(model)) throw Invalid();
         var prompt = VoiceLabLlmChecks.ReadPrompt(catalog, PromptFile);
@@ -50,8 +50,8 @@ public sealed class VoiceRewriteService
     {
         ct.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(connector);
-        if (input is null || input.SourceWords is null) throw Invalid();
-        var snapshot = input with { SourceWords = input.SourceWords.ToArray() };
+        if (input is null || input.SourceWords is null || input.ShorterPhrases is null) throw Invalid();
+        var snapshot = input with { SourceWords = input.SourceWords.ToArray(), ShorterPhrases = input.ShorterPhrases.ToArray() };
         var source = Validate(snapshot);
         // Bind the approved input before discovery, without consuming it for a nonbillable preflight failure.
         var prompt = VoiceLabLlmChecks.ReadPrompt(catalog, PromptFile);
@@ -124,7 +124,7 @@ public sealed class VoiceRewriteService
             .Replace("{minChars}", input.MinChars.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
             .Replace("{maxChars}", input.MaxChars.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
         var request = EditingAlgorithms.JsTrim(input.Instruction);
-        return (block, (request.Length == 0 ? "" : requestBlock.Replace("{instruction}", request, StringComparison.Ordinal) + "\n\n") + returnLine + "\n" + length);
+        return (block, (request.Length == 0 ? "" : requestBlock.Replace("{instruction}", request, StringComparison.Ordinal) + "\n\n") + returnLine + "\n" + length + VoiceRewriteFeedback.Render(input.ShorterPhrases, prompt));
     }
 
     private static string Validate(VoiceRewriteRequest input)

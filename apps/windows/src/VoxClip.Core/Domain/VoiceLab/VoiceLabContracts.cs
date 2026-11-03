@@ -163,7 +163,11 @@ public enum VoiceRewriteScope { Passage, FullTake }
 /// <c>TargetSeconds</c> is <c>w</c>, the part of the window the take must fill: finite, above 0 and at most 600. <c>MinChars</c> and
 /// <c>MaxChars</c> bound the new words' <see cref="VoiceLabTextLength"/>, with 1 ≤ MinChars ≤ MaxChars ≤ 5,000.</summary>
 public sealed record VoiceRewriteRequest(Guid RequestId, VoiceRewriteScope Scope, IReadOnlyList<TimedWord> SourceWords,
-    string Instruction, string Language, double TargetSeconds, int MinChars, int MaxChars);
+    string Instruction, string Language, double TargetSeconds, int MinChars, int MaxChars)
+{
+    public IReadOnlyList<VoiceRewriteTimingFeedback> ShorterPhrases { get; init; } = [];
+}
+public sealed record VoiceRewriteTimingFeedback(string Original, string Proposed, double EstimateSeconds, double SlotSeconds);
 /// <summary>Review data cannot synthesize audio or change the original timed words. <c>ProposedLength</c> is Core's own
 /// <see cref="VoiceLabTextLength"/> of the proposed text, and <c>InRange</c> says whether it lies in the request's range; a proposal
 /// outside the range is still returned, as it is (§8.9.1).</summary>
