@@ -22,6 +22,10 @@ internal sealed partial class RewriteGeneration
     private bool refreshingOutput;
     private bool accepting;
     private bool runStarted;
+    private bool runInputRecorded;
+    private readonly Dictionary<Guid, VoiceLabTakeInput> takeInputs = [];
+    /// <summary>The input a take was made from: its text, tags and window. Null for a take this window did not make.</summary>
+    internal VoiceLabTakeInput? InputFor(Guid id) => takeInputs.GetValueOrDefault(id);
     private long selectionRevision;
     private Guid? explicitSelection;
     private long outputRevision;
@@ -222,11 +226,13 @@ internal sealed partial class RewriteGeneration
     internal async Task<RewriteAcceptance?> PrepareAcceptanceAsync(EditorViewModel editor, Core.Domain.Shared.Project project,
         IReadOnlyList<Core.Domain.Editing.EditOperation>? localOperations = null)
     {
-        if (!ReadyToAccept || takes is null || ReviewedInput is not { } input || Selected is not { } selected ||
+        if (!ReadyToAccept || takes is null || ReviewedInput is not { } reviewed || Selected is not { } selected ||
             !ReferenceEquals(project, editor.Project)) return null;
+        var input = InputFor(selected.Id) ?? reviewed;
+        VoiceLabTakeInput Made(VoiceLabTakeRow row) => InputFor(row.Id) ?? reviewed;
         var version = revision; var selection = selectionRevision;
         bool Current() => !closed && revision == version && selectionRevision == selection && current() &&
-            ReferenceEquals(project, editor.Project) && ReferenceEquals(ReviewedInput, input) && SelectedTakeId == selected.Id;
+            ReferenceEquals(project, editor.Project) && ReferenceEquals(ReviewedInput, reviewed) && SelectedTakeId == selected.Id;
         accepting = true; Notify();
         try
         {
@@ -241,12 +247,13 @@ internal sealed partial class RewriteGeneration
             VoiceLabVoiceReference? voice = null; int? selectedIndex = null;
             var date = clock.GetUtcNow();
             foreach (var row in Rows.Where(row => row.Selectable && !row.RequiresJoinAdvisoryAcceptance && (row.Fits || row.Id == selected.Id) &&
+                Made(row).Text == input.Text && Made(row).RequestText == input.RequestText &&
                 row.Audio!.Fit.Plan.WindowStartSample == selected.Audio!.Fit.Plan.WindowStartSample &&
                 row.Audio.Fit.Plan.WindowEndSample == selected.Audio.Fit.Plan.WindowEndSample))
             {
                 var (published, record) = await takes.Publish(row.Id, date, lifetime.Token);
                 if (!Current()) return null;
-                var rowInput = input with { ModelId = row.Receipt?.ModelId ?? input.ModelId, Pace = row.Receipt?.Pace ?? row.Quote?.Synthesis.Review.Pace ?? 1 };
+                var rowInput = Made(row) with { ModelId = row.Receipt?.ModelId ?? input.ModelId, Pace = row.Receipt?.Pace ?? row.Quote?.Synthesis.Review.Pace ?? 1 };
                 var candidate = VoiceLabRecipeBuilder.Candidate(row, rowInput, published, record, date, row.Id == selected.Id ? VideoChoice : null);
                 if (row.Id == selected.Id) selectedIndex = candidates.Count;
                 candidates.Add(candidate);

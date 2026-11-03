@@ -42,7 +42,9 @@ internal sealed partial class RewriteGeneration : IDisposable
     internal IReadOnlyList<VoiceLabModel> Models { get; private set; } = [];
     internal string? VoiceId { get; private set; }
     internal string? ModelId { get; private set; }
-    internal string? PreferredModelId { get; set; }
+    /// <summary>The only model new takes may use (Rewrite: Eleven v4). Takes already made keep their receipts' models.</summary>
+    internal string? FixedModelId { get; set; }
+    internal const string FixedModelUnavailable = "Eleven v4 is not available on this account. New Rewrite takes require Eleven v4.";
     internal double? NextPace => Quote?.Takes[0].Synthesis.Review.Pace;
     internal bool HasPaidTakes => IsRunning || core.Rows.Any(row => row.AcceptedRequestIds.Count > 0);
     internal string Problem { get; private set; } = "";
@@ -139,7 +141,8 @@ internal sealed partial class RewriteGeneration : IDisposable
                     if (version != discoveryRevision) continue;
                     Voices = choices.Voices; Models = choices.Models;
                     if (!Voices.Any(voice => voice.Id == VoiceId)) VoiceId = Voices.FirstOrDefault()?.Id;
-                    if (!Models.Any(model => model.Id == ModelId)) ModelId = Models.FirstOrDefault(model => model.Id == PreferredModelId)?.Id ?? VoiceLabModel.PatchDefault(Models)?.Id;
+                    if (!Models.Any(model => model.Id == ModelId) || FixedModelId is { } required && ModelId != required)
+                        ModelId = FixedModelId is { } only ? Models.FirstOrDefault(model => model.Id == only)?.Id : VoiceLabModel.PatchDefault(Models)?.Id;
                     HasDiscovered = true;
                     break;
                 }
@@ -151,6 +154,7 @@ internal sealed partial class RewriteGeneration : IDisposable
         catch (Exception error) when (error is not OutOfMemoryException) { if (!closed) Fail(error); }
         finally { IsRequestingConsent = false; discovering = false; Notify(); }
         if (!closed && HasDiscovered) await InputsChangedAsync();
+        if (!closed && HasDiscovered && FixedModelId is not null && ModelId is null) { Problem = FixedModelUnavailable; Announcement = Problem; Notify(); }
     }
 
     internal Task ChooseVoiceAsync(string? id)
@@ -160,7 +164,7 @@ internal sealed partial class RewriteGeneration : IDisposable
     }
     internal Task ChooseModelAsync(string? id)
     {
-        if (IsRunning || IsPreparing || id == ModelId || !Models.Any(model => model.Id == id)) return Task.CompletedTask;
+        if (IsRunning || IsPreparing || id == ModelId || !Models.Any(model => model.Id == id) || FixedModelId is { } only && id != only) return Task.CompletedTask;
         ModelId = id; return InputsChangedAsync(preserveReview: ReviewedInput is not null);
     }
     internal Task InputsChangedAsync(bool preserveReview = false)
@@ -236,6 +240,7 @@ internal sealed partial class RewriteGeneration : IDisposable
         var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         executing = cancellation;
         runStarted = false;
+        runInputRecorded = false;
         var declinedAtDispatch = false;
         core.ConfirmCostAsync = async (copy, token) =>
         {
@@ -352,6 +357,13 @@ internal sealed partial class RewriteGeneration : IDisposable
                 reviewEnd = null;
                 ReviewedInput = pendingInput;
             }
+            // A run from reworded text reviews that text; earlier takes keep the input they were made from.
+            else if (!runInputRecorded && pendingInput is { } reworded && ReviewedInput is { } reviewed && reworded.Text != reviewed.Text)
+            {
+                runStarted = true; ReviewedInput = reworded;
+            }
+            runInputRecorded = true;
+            foreach (var made in core.Rows) if (pendingInput is { } input) takeInputs.TryAdd(made.Id, input);
             if (Rows.LastOrDefault() is { Selectable: true } row) Announcement = TakeRowPresentation.Ready(row.Index);
             Notify();
         });

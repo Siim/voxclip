@@ -250,7 +250,7 @@ public sealed class PaidTakePlaybackTests
             if (Session.BlockedVoiceHunks.Count > 0) Assert.True(Session.PriceItAnyway(1));
             Runner = new(new(Editor.Project.Id, Path.Combine(root, "paid"), Path.Combine(root, "scratch")), uncheckedAudio, allFailed, end);
             Generation = new(Runner, _ => Task.FromResult(new RewriteGenerationChoices([new("voice", "My voice")],
-                    [new("eleven_multilingual_v2", "Multilingual v2", ["en"], true, false, 5000, 1)])),
+                    [new("eleven_v4", "Eleven v4", ["en"], true, false, 5000, 1)])),
                 (voice, model, seed, ct) => Session.GenerationInputAsync(voice, model, seed, true, (request, _) =>
                 {
                     var samples = new float[checked((int)request.Frames)];

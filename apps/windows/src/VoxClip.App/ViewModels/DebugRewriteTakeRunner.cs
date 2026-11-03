@@ -39,7 +39,7 @@ internal sealed class DebugRewriteTakeRunner : IVoiceLabTakeRunner, IDisposable
     {
         ct.ThrowIfCancellationRequested();
         return Task.FromResult(new RewriteGenerationChoices(State == "no-voice" ? [] : [new("fixture-voice", "My voice · consent Oct 12")],
-            [new("eleven_multilingual_v2", "Multilingual v2", ["en"], true, false, 5000, 1)]));
+            [new("eleven_v4", "Eleven v4", ["en"], true, false, 5000, 1)]));
     }
     public async Task<VoiceLabTakeRunQuote> PrepareAsync(VoiceLabTakeInput value, CancellationToken ct = default)
     {
