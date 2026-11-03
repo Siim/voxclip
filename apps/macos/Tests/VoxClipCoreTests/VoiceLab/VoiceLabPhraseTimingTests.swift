@@ -46,7 +46,7 @@ struct VoiceLabPhraseTimingTests {
         #expect(rate == 10)
         let text = "then, well, let's get going."
         let timing = try VoiceLabPaceMatching.measure(text: text, rate: rate, window: window(1.1),
-            incomingSilence: nil, outgoingSilence: nil, sourceSampleRate: 48_000, supportsPace: false)
+            incomingSilence: nil, outgoingSilence: nil, sourceSampleRate: 48_000, supportsPace: false, hardJoinSmoothing: false)
         #expect(timing.estimateSeconds >= 1.6)
         #expect(!timing.fits)
         #expect(abs(timing.slotSeconds - 1.375) < 0.0001)
@@ -64,9 +64,9 @@ struct VoiceLabPhraseTimingTests {
                     let source = window(duration, kind: kind)
                     let silence: Double? = kind == .hard ? nil : pause
                     let timing = try VoiceLabPaceMatching.measure(text: "speech", rate: 10, window: source,
-                        incomingSilence: silence, outgoingSilence: silence, sourceSampleRate: 48_000, supportsPace: false)
+                        incomingSilence: silence, outgoingSilence: silence, sourceSampleRate: 48_000, supportsPace: false, hardJoinSmoothing: true)
                     let fit = try VoiceLabPhraseTiming.preview(seconds: timing.estimateSeconds, window: source,
-                        incomingSilence: silence, outgoingSilence: silence, sourceSampleRate: 48_000)
+                        incomingSilence: silence, outgoingSilence: silence, sourceSampleRate: 48_000, hardJoinSmoothing: true)
                     let audio = VoiceLabTakeAudio(sampleRate: 48_000, trimmed: [], mixed: [], patchRange: 0..<0,
                         seams: [], gainDb: 0, roomTone: nil, fit: fit)
                     let qa = VoiceLabTakeQAResult(values: VoiceLabQA(speakerScore: 1), failures: [])
@@ -74,12 +74,14 @@ struct VoiceLabPhraseTimingTests {
                     let paid = VoiceLabVideoDurationOptions(row: row, sourceSampleRate: 48_000)
                     #expect(timing.fits == (paid.allows(.source) || paid.allows(.retimed)))
                     for offset in [-0.01, 0.01] {
-                        if timing.slotSeconds <= 0.02 { continue }
+                        // Probe lengths are clamped to 0.1 s, so a slot that small has no probe just below it.
+                        if timing.slotSeconds - 0.01 < 0.1 { continue }
                         let length = max(0.1, timing.slotSeconds + offset)
                         let boundary = try VoiceLabPhraseTiming.preview(seconds: length, window: source,
-                            incomingSilence: silence, outgoingSilence: silence, sourceSampleRate: 48_000)
+                            incomingSilence: silence, outgoingSilence: silence, sourceSampleRate: 48_000, hardJoinSmoothing: true)
                         let gate = VoiceLabVideoDurationOptions(fit: boundary, sourceSampleRate: 48_000, assetSampleRate: 48_000)
-                        #expect((gate.allows(.source) || gate.allows(.retimed)) == (offset < 0))
+                        #expect((gate.allows(.source) || gate.allows(.retimed)) == (offset < 0),
+                            "kind=\(kind) duration=\(duration) pause=\(pause) slot=\(timing.slotSeconds) offset=\(offset)")
                     }
                 }
             }

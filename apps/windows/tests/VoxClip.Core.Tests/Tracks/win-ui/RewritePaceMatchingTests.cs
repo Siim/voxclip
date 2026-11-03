@@ -132,7 +132,7 @@ public sealed class RewritePaceMatchingTests
     [InlineData("outside")]
     public async Task PaidReviewChangesWaitForDiscardApproval(string action)
     {
-        using var session = SentenceSession(5, 37);
+        using var session = SentenceSession(53, 85);
         if (action == "outside") Assert.True(session.SetChangeIncluded(1, false));
         Configure(session);
         await session.DiscoverWindowsAsync();
@@ -206,7 +206,7 @@ public sealed class RewritePaceMatchingTests
     [Fact]
     public async Task PriceOverrideAbandonsSentenceReviewWithoutRedirectingTheNextQuote()
     {
-        using var session = SentenceSession(5);
+        using var session = SentenceSession(53);
         Configure(session);
         await session.DiscoverWindowsAsync();
         Assert.True(session.ReviewSurroundingSentence(1));
