@@ -250,6 +250,7 @@ public struct VoiceLabCloneRequest: Codable, Sendable, Equatable {
 public enum VoiceRewriteScope: String, Codable, Sendable { case passage, fullTake }
 /// One passage or full-take rewrite with its length budget (voice-lab §8.9.1). The caller computes the budget; the quote binds it.
 public struct VoiceRewriteRequest: Codable, Sendable {
+    public let feedback: String?
     public let id: UUID
     public let scope: VoiceRewriteScope
     public let sourceWords: [TimedWord]
@@ -261,7 +262,8 @@ public struct VoiceRewriteRequest: Codable, Sendable {
     public let minChars: Int
     public let maxChars: Int
     public init(id: UUID, scope: VoiceRewriteScope, sourceWords: [TimedWord], instruction: String, language: String,
-                targetSeconds: Double, minChars: Int, maxChars: Int) {
+                targetSeconds: Double, minChars: Int, maxChars: Int, feedback: String? = nil) {
+        self.feedback = feedback
         self.id = id; self.scope = scope; self.sourceWords = sourceWords; self.instruction = instruction; self.language = language
         self.targetSeconds = targetSeconds; self.minChars = minChars; self.maxChars = maxChars
     }

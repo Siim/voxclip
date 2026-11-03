@@ -42,6 +42,7 @@ public actor PatchRewriteService {
               input.entries.allSatisfy({ $0.start.isFinite && $0.end.isFinite && $0.start >= 0 && $0.end >= $0.start && !AIText.trim($0.text).isEmpty }),
               input.entries.map(\.text).joined(separator: " ").utf8.count <= 20_000,
               !AIText.trim(input.instruction).isEmpty, input.instruction.utf8.count <= 1_000,
+              (input.feedback?.utf8.count ?? 0) <= 20_000,
               input.language.range(of: #"\A[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*\z"#, options: .regularExpression) != nil,
               input.ranges.allSatisfy({ $0.minChars >= 1 && $0.minChars <= $0.maxChars && $0.maxChars <= 5_000 }) else { throw VoiceLabError.invalidInput }
         let transcript = try formatTranscript(input.entries)
@@ -111,7 +112,8 @@ public actor PatchRewriteService {
                 .replacingOccurrences(of: "{maxChars}", with: String(range.maxChars))
         }
         let instruction = instructionLine.replacingOccurrences(of: "{instruction}", with: AIText.trim(input.instruction))
-        return (prefix + transcript.rendered + suffix, ([rangesLine] + ranges).joined(separator: "\n") + "\n\n" + instruction)
+        let feedback = input.feedback.map { "\n\n" + $0 } ?? ""
+        return (prefix + transcript.rendered + suffix, ([rangesLine] + ranges).joined(separator: "\n") + "\n\n" + instruction + feedback)
     }
 
     public func propose(_ input: PatchRewriteRequest, connector: any LLMConnector, model: String,

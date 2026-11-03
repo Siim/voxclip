@@ -12,23 +12,29 @@ public struct VoiceLabPublishedTake: Sendable {
 }
 
 public struct VoiceLabVideoDurationOptions: Sendable, Equatable {
+    public static let retimeRange = 0.80...1.25
     public let outputSamples: Int64?
     public let retimeFactor: Double?
     public let unchangedUnavailableReason: String?
     public let changedUnavailableReason: String?
 
     public init(row: VoiceLabTakeRow, sourceSampleRate: Int) {
-        guard row.selectable, let take = row.audio, sourceSampleRate > 0, take.sampleRate > 0,
-              take.fit.plan.outputFrames > 0, take.fit.plan.windowStartSample >= 0,
-              take.fit.plan.windowEndSample > take.fit.plan.windowStartSample else {
+        self.init(fit: row.selectable ? row.audio?.fit : nil,
+                  sourceSampleRate: sourceSampleRate, assetSampleRate: row.audio?.sampleRate ?? 0)
+    }
+
+    public init(fit: VoiceLabFitResult?, sourceSampleRate: Int, assetSampleRate: Int) {
+        guard let fit, sourceSampleRate > 0, assetSampleRate > 0,
+              fit.plan.outputFrames > 0, fit.plan.windowStartSample >= 0,
+              fit.plan.windowEndSample > fit.plan.windowStartSample else {
             outputSamples = nil; retimeFactor = nil
             unchangedUnavailableReason = "Choose a take that passed all speech checks first."
             changedUnavailableReason = unchangedUnavailableReason
             return
         }
-        let plan = take.fit.plan
+        let plan = fit.plan
         let duration: Double
-        switch take.fit {
+        switch fit {
         case .exact: duration = plan.windowEnd - plan.windowStart
         case .changedDuration(_, _, let residual): duration = plan.windowEnd - plan.windowStart + residual
         }
@@ -37,7 +43,7 @@ public struct VoiceLabVideoDurationOptions: Sendable, Equatable {
               EditingPrimitives.jsRound(plan.windowStart * Double(sourceSampleRate)) == Double(plan.windowStartSample),
               EditingPrimitives.jsRound(plan.windowEnd * Double(sourceSampleRate)) == Double(plan.windowEndSample),
               duration.isFinite, duration > 0,
-              EditingPrimitives.jsRound(duration * Double(take.sampleRate)) == Double(plan.outputFrames),
+              EditingPrimitives.jsRound(duration * Double(assetSampleRate)) == Double(plan.outputFrames),
               rounded.isFinite, rounded > 0, rounded < Double(Int64.max) else {
             outputSamples = nil; retimeFactor = nil
             unchangedUnavailableReason = "The take's duration cannot be mapped safely to the source video."
@@ -49,7 +55,8 @@ public struct VoiceLabVideoDurationOptions: Sendable, Equatable {
         outputSamples = output
         let factor = Double(source) / Double(output)
         retimeFactor = factor
-        if row.fits && source == output {
+        let exact: Bool = if case .exact = fit { true } else { false }
+        if exact && source == output {
             unchangedUnavailableReason = nil
         } else if output > source {
             unchangedUnavailableReason = "This take is longer than the source window. Its pauses cannot be shortened enough without cutting or stretching speech."
@@ -58,7 +65,7 @@ public struct VoiceLabVideoDurationOptions: Sendable, Equatable {
         } else {
             unchangedUnavailableReason = "An exact silence-only fit was not verified for this take."
         }
-        changedUnavailableReason = (0.80...1.25).contains(factor) ? nil :
+        changedUnavailableReason = Self.retimeRange.contains(factor) ? nil :
             "Matching this take would put source-video speed outside 0.80×–1.25×. Choose another take or re-record the sentence."
     }
 

@@ -94,7 +94,7 @@ public struct ScopeRewritePlan: Sendable {
     /// - The instruction and language pass through; `PatchRewriteService` checks them with the rest of the request.
     public static func make(project: Project, scope: RewriteScope, instruction: String, language: String,
                             envelope: AudioEnvelope?, candidates: [VoiceLabRateCandidate] = [],
-                            id: UUID = UUID()) throws -> ScopeRewritePlan {
+                            id: UUID = UUID(), feedback: String? = nil) throws -> ScopeRewritePlan {
         guard let items = project.transcript?.words else { throw ScopeRewritePlanError.invalidInput }
         let edits = project.edits
         let outputScope: VoiceLabOutputScope
@@ -183,7 +183,7 @@ public struct ScopeRewritePlan: Sendable {
         }
         let ranges = lines.map { PatchRewriteLineRange(line: $0.line, minChars: $0.range.lowerBound, maxChars: $0.range.upperBound) }
         return ScopeRewritePlan(scope: scope, lines: lines,
-                                request: PatchRewriteRequest(id: id, entries: entries, ranges: ranges, instruction: instruction, language: language))
+                                request: PatchRewriteRequest(id: id, entries: entries, ranges: ranges, instruction: instruction, language: language, feedback: feedback))
     }
 
     /// §8.9.1 for one line placed as a replace hunk. Nil, so the caller falls back, without an envelope or when the window or
