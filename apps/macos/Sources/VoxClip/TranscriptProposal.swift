@@ -603,7 +603,7 @@ extension EditorModel {
             let rate = try VoiceLabPhraseTiming.speakingRate(transcript: RewriteReview.timingTranscript(inputs))
             return try VoiceLabPaceMatching.measure(text: patch, rate: rate, window: window, incomingSilence: silence.incoming,
                 outgoingSilence: silence.outgoing, sourceSampleRate: project.media.source.audio?.sampleRate ?? 48_000,
-                supportsPace: inputs.synthesisModel != "eleven_v4").copy
+                supportsPace: inputs.synthesisModel != "eleven_v4", hardJoinSmoothing: true, sourceItems: RewriteReview.timingTranscript(inputs), sourceEnvelope: envelope).copy
         } catch { return nil }
     }
     private func confirmPaidProposalChange(_ perform: @escaping @MainActor () -> Void) -> Bool {

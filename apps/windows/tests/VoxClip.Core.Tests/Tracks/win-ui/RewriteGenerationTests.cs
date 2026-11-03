@@ -688,6 +688,7 @@ public sealed class RewriteGenerationTests
         Assert.Equal(48_000, input.SourceSampleRate); Assert.Equal(owner.Transcript, input.Items); Assert.False(input.CleanAudioOn); Assert.True(input.ProviderConsent);
         using var multiple = new RewriteSession(Editor(), 10, 18, Envelope(), null);
         multiple.Edit("Sunday word11 word12 word13 word14 word15 word16 word17 five");
+        foreach (var blocked in multiple.BlockedVoiceHunks.ToArray()) Assert.True(multiple.PriceItAnyway(blocked.Ordinals[0]));
         Assert.Equal(2, multiple.Review!.VoiceHunks.Count);
         for (var index = 0; index < multiple.Review.VoiceHunks.Count; index++)
         {

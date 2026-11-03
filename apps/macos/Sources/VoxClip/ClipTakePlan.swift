@@ -155,7 +155,7 @@ import VoxClipMedia
                   phrase.selected?.row.requiresJoinAdvisoryAcceptance == false &&
                       phrase.videoChoice.map { videoAvailability(phrase: phrase.id).allows($0) } == true
               }) else { return false }
-        return !selectedPhrases.contains(where: { $0.videoChoice == .retimed }) || preparedVideoSelection?.choices == videoChoices
+        return !selectedPhrases.contains(where: { $0.videoChoice == .retimed || $0.videoChoice == .cut }) || preparedVideoSelection?.choices == videoChoices
     }
     /// The next step that keeps selected takes from being used (design.md, T3 footer), nil when nothing is selected or
     /// they can be used. "Left out until a take fits." belongs to a phrase none of whose takes passed, not to a missing
@@ -200,7 +200,7 @@ import VoxClipMedia
     func prepareVideoChoices(at date: Date = Date()) async {
         guard stillCurrent, !generating, !preparing, !publishing, !preparingVideo,
               !selectedPhrases.isEmpty, selectedPhrases.allSatisfy({ $0.videoChoice != nil }),
-              selectedPhrases.contains(where: { $0.videoChoice == .retimed }) else { return }
+              selectedPhrases.contains(where: { $0.videoChoice == .retimed || $0.videoChoice == .cut }) else { return }
         if preparedVideoSelection?.choices == videoChoices { return }
         let turn = videoRevision, choices = videoChoices
         preparingVideo = true
@@ -417,7 +417,8 @@ import VoxClipMedia
         let measured = Double(audio.trimmed.count) / Double(audio.sampleRate)
         return try VoiceLabPaceMatching.match(seconds: measured, oldPace: selected.row.receipt?.pace ?? selected.row.quote?.synthesis.pace ?? 1,
             window: input.window, incomingSilence: input.incomingSilence, outgoingSilence: input.outgoingSilence,
-            sourceSampleRate: input.sourceSampleRate, supportsPace: input.modelID != "eleven_v4").pace
+            sourceSampleRate: input.sourceSampleRate, supportsPace: input.modelID != "eleven_v4", hardJoinSmoothing: true,
+            sourceItems: input.items, sourceEnvelope: input.sourceEnvelope, generatedText: input.text, pauseProfile: input.pauseProfile).pace
     }
 
     func phrasePace(_ index: Int) -> Double? {
@@ -457,6 +458,7 @@ import VoxClipMedia
                             cutWordIDs: input.cutWordIDs, window: input.window, incomingSilence: input.incomingSilence,
                             outgoingSilence: input.outgoingSilence, cleanAudioOn: input.cleanAudioOn, providerConsent: input.providerConsent, pace: pace)
                         nextSeeds[index] &+= UInt32(candidates)
+                        inputs[index].pauseProfile = input.pauseProfile
                     }
                 }
                 try validate(inputs.map(\.window))
@@ -764,7 +766,7 @@ import VoxClipMedia
         stopAudition()
         guard stillCurrent else { invalidate(); throw Failure.stale }
         guard canAccept else { throw Failure.noSelection }
-        if selectedPhrases.contains(where: { $0.videoChoice == .retimed }) {
+        if selectedPhrases.contains(where: { $0.videoChoice == .retimed || $0.videoChoice == .cut }) {
             let turn = videoRevision, choices = videoChoices
             preparingVideo = true
             defer { preparingVideo = false }

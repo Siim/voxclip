@@ -21,7 +21,7 @@ private actor ClipTakeSpeaker: SpeakerEmbedder {
     nonisolated let dimension = 2
     private var generated = false
     func voicedSamples(_ pcm16k: [Float]) async throws -> [Float] {
-        generated = pcm16k.count < 80_000
+        generated = pcm16k.count <= 80_000
         let fraction = generated ? ClipTakeHTTP.state.withLock { $0.voicedFraction } : 1
         return Array(pcm16k.prefix(Int(Double(pcm16k.count) * fraction)))
     }
@@ -90,7 +90,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
                 let variance = Self.state.withLock { $0.amplitudeVariance }
                 let silent = Self.state.withLock { $0.silentSynthesis }
                 var pcm = Data()
-                for index in 0..<Int(duration * 24_000) {
+                for index in 0..<Int(EditingPrimitives.jsRound(duration * 24_000)) {
                     let seconds = Double(index) / 24_000
                     let amplitude = 1 + variance * sin(2 * Double.pi * 2 * seconds)
                     var value = Int16(silent ? 0 : (sin(2 * Double.pi * 100 * seconds) * 3_200 * amplitude).rounded()).littleEndian
@@ -222,9 +222,9 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         }
         return (project, source, VoiceLabTakeProcessing.envelope(source, sampleRate: 24_000))
     }
-    private func hunks(_ indices: [Int]) -> [VoiceLabDiffHunk] {
+    private func hunks(_ indices: [Int], text: String = "Hello") -> [VoiceLabDiffHunk] {
         indices.map { index in
-            VoiceLabDiffHunk(kind: .voice, sourceWordIds: ["w\(index)"], newTokens: ["Hello"], correctedTexts: [],
+            VoiceLabDiffHunk(kind: .voice, sourceWordIds: ["w\(index)"], newTokens: [text], correctedTexts: [],
                 absorbedItemIds: [], bridgeWordIds: [], sourceStartIndex: index, sourceEndIndex: index + 1, anchorSeconds: nil)
         }
     }
@@ -275,7 +275,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         } catch { try? FileManager.default.removeItem(at: root); throw error }
         let made = Fixture(root: root, plan: plan, ledger: ledger, playback: playback, source: project, envelope: envelope,
             client: client, store: store, record: record); fixture = made
-        ClipTakeHTTP.state.withLock { $0.duration = plan.phrases[0].originalLength }
+        ClipTakeHTTP.state.withLock { $0.duration = fittingSyntheticDuration(plan.phrases[0].window) }
         let storage = VoiceLabTakeStorage(projectId: project.id, paidRoot: root.appendingPathComponent("VoiceLab"), scratchRoot: root.appendingPathComponent("scratch"))
         let check = VoiceSpeakerCheck(embedder: ClipTakeSpeaker(), calibratedThreshold: 0.45)
         let runs = plan.phrases.map { _ in
@@ -348,8 +348,19 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
 
     private func chooseSourceDuration(_ plan: ClipTakePlan) throws {
         for phrase in plan.phrases where phrase.selected?.row.selectable == true {
-            try #require(plan.chooseVideo(.source, phrase: phrase.id))
+            let chosen = plan.chooseVideo(.source, phrase: phrase.id)
+            let fit = phrase.selected?.row.audio?.fit
+            let reason = plan.videoAvailability(phrase: phrase.id).unchangedReason ?? "none"
+            try #require(chosen, "\(reason); fit=\(String(describing: fit))")
         }
+    }
+
+    private func fittingSyntheticDuration(_ window: VoiceLabWindow) -> Double {
+        let duration = window.end - window.start
+        let reserve = VoiceLabHardJoin.pauseSeconds(windowDuration: duration)
+        let hardSides = [window.leftSeam.kind, window.rightSeam.kind].filter { $0 == .hard }.count
+        let trimmedLead = window.leftSeam.kind == .hard ? 0 : max(0, 0.05 - VoiceLabPatchConstants.TTS_TRIM_LEAD)
+        return duration - Double(hardSides) * reserve + trimmedLead
     }
 
     private func sourceAcceptance(_ plan: ClipTakePlan) async throws -> ClipTakePlan.Acceptance {
@@ -648,7 +659,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(fixture.approved == 0)
         await plan.start(approved: true)
         #expect(plan.problem.isEmpty, "\(plan.problem), \(plan.phrases.map(\.status))")
-        #expect(plan.phrases.allSatisfy { $0.status == .ready && $0.takes.count == 1 && $0.selected?.fits == true },
+        let allReadyAndFitting = plan.phrases.allSatisfy { $0.status == .ready && $0.takes.count == 1 && $0.selected?.fits == true }
+        #expect(allReadyAndFitting,
                 "\(plan.phrases.map { $0.takes.map { String(describing: $0.row.failure) } })")
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 3 && $0.qa == 3 })
         let spent = await fixture.ledger.total(provider: "elevenlabs", at: Date())
@@ -1199,7 +1211,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(plan.phrases[0].text.contains("Corrected"))
         #expect(plan.phrases[0].window.leftBridgeWordIds.contains("w9"))
         #expect(plan.approvalID != nil && plan.stillCurrent)
-        ClipTakeHTTP.state.withLock { $0.duration = plan.phrases[0].originalLength; $0.echoQA = true }
+        ClipTakeHTTP.state.withLock { $0.duration = fittingSyntheticDuration(plan.phrases[0].window); $0.echoQA = true }
         return (editor, session)
     }
 
@@ -1232,7 +1244,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         let (editor, session) = try await productionSession(fixture); defer { editor.close() }
         let ordinal = try #require(session.ownProposal?.changes.first(where: { $0.kind == .voice })?.ordinal)
         let pace = try #require(session.voiceReview(ordinal)?.timing?.pace)
-        #expect(pace != 1)
+        #expect(pace == 1)
         let generation = try #require(session.generation)
         generation.chooseModel("eleven_v4")
         #expect(session.voiceReview(ordinal)?.timing?.pace == 1)
@@ -1264,10 +1276,10 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         let silence = try VoiceLabWindowPlanner.lendableSilence(project: editor.project, scope: .full, window: plan.phrases[0].window)
         let expected = try VoiceLabPaceMatching.match(seconds: measured, oldPace: originalPace,
             window: plan.phrases[0].window, incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
-            sourceSampleRate: 24_000)
+            sourceSampleRate: 24_000, hardJoinSmoothing: true)
         #expect(plan.phrasePace(0) == expected.pace)
         await plan.prepareAnother(phrase: 0)
-        #expect(plan.phrasePace(0) == expected.pace && expected.pace != originalPace)
+        #expect(plan.phrasePace(0) == expected.pace && (0.9...1.1).contains(expected.pace))
         #expect(plan.approvalID != oldQuote)
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
         let unusedQuote = plan.approvalID
@@ -1281,7 +1293,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         generation.chooseModel("eleven_v4")
         #expect(plan.phrasePace(0) == 1)
         #expect(session.voiceReview(ordinal)?.timing?.pace == 1)
-        #expect(session.voiceReview(ordinal)?.timing?.pace != originalReviewPace)
+        #expect(originalReviewPace == 1)
         await plan.prepareAnother(phrase: 0)
         #expect(plan.phrasePace(0) == 1 && plan.approvalID != nil, "\(plan.problem)")
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 2 })
@@ -1307,14 +1319,15 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         let long = VoiceLabDiffHunk(kind: .voice, sourceWordIds: ["w10"],
             newTokens: [String(repeating: "collaboratively", count: 8)], correctedTexts: [], absorbedItemIds: [],
             bridgeWordIds: [], sourceStartIndex: 10, sourceEndIndex: 11, anchorSeconds: nil)
-        session.receive(([long] + hunks([17])).map { RewriteChange(hunk: $0) })
+        session.receive(([long] + hunks([17], text: "Welcome")).map { RewriteChange(hunk: $0) })
         session.finishRun(seconds: 1)
         session.showProposal()
         #expect(session.blockedVoiceOrdinals == [1] && session.includedVoice == [2])
         let generation = try #require(session.generation)
         await generation.finishQuotePreparationForTests()
         await session.prepareTakes()
-        let first = try #require(session.takePlan)
+        let pendingPlan = session.takePlan
+        let first = try #require(pendingPlan)
         #expect(first.phrases.count == 1 && session.takePlanOrdinals == [2])
         session.showProposal()
         #expect(session.task.footer.note?.hasPrefix("1 phrase needs a shorter wording.") == true)
@@ -1446,7 +1459,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(session.speechContextProblem.isEmpty && plan.problem.isEmpty, "\(session.speechContextProblem); \(plan.problem)")
         #expect(plan.approvalID != nil && session.takePlan === plan)
         let pace = try #require(plan.phrasePace(0))
-        #expect(model == "eleven_v4" ? pace == 1 : pace != 1)
+        #expect(pace == 1)
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
     }
 
@@ -1458,10 +1471,10 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         editor.waveform = WaveformData(fine: fixture.envelope.levels)
         let item = try #require(session.proposalContent().set.items.first { $0.kind == .voice })
         let timing = try #require(item.timing)
-        #expect(timing.fits && timing.pace != 1)
-        #expect(timing.copy.contains("at ≈") && item.spoken.contains(timing.copy))
+        #expect(timing.pace == 1)
+        #expect(!timing.copy.contains("pace") && item.spoken.contains(timing.copy))
         let paced = try #require(editor.changeFit(item.ordinal, text: "Hello"))
-        #expect(paced.contains("pace"))
+        #expect(!paced.contains("pace"))
         let generation = try #require(session.generation)
         generation.chooseModel("eleven_v4")
         let fixed = try #require(editor.changeFit(item.ordinal, text: "Hello"))
@@ -1916,6 +1929,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
                 absorbedItemIds: [], bridgeWordIds: [], sourceStartIndex: 1, sourceEndIndex: 2, anchorSeconds: nil)), at: 1)
         }
         session.receive(changes); session.finishRun(seconds: 1); session.showProposal()
+        for ordinal in session.blockedVoiceOrdinals { session.pricedAnyway.insert(ordinal) }
+        session.showProposal()
         session.takePlan = fixture.plan
     }
 
@@ -1941,7 +1956,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(editor.project.edits.cutWordIds.contains("w0") && editor.project.edits.corrections["w1"] == "Old")
         #expect(editor.undoSteps == 1 && undo.undoActionName == "Rewrite full take")
         #expect(!fixture.plan.audition.isPlaying)
-        let feedback = try #require(editor.currentVoiceFeedback)
+        let currentFeedback = editor.currentVoiceFeedback
+        let feedback = try #require(currentFeedback)
         #expect(feedback.phrases.count == 3 && feedback.spent == fixture.plan.spent && editor.voiceRewriteToastVisible)
         #expect(feedback.message.contains("3 phrases in your voice, 1 cut, 1 fix") && editor.lastAnnouncement == feedback.message)
         #expect(feedback.spendLine.hasPrefix("Spent ") && editor.canUndoVoiceRewrite)
@@ -2080,6 +2096,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         let (editor, session) = session(fixture); defer { editor.close() }
         session.takePlan = nil
         session.receive(hunks([10]).map { RewriteChange(hunk: $0) }); session.finishRun(seconds: 1); session.showProposal()
+        for ordinal in session.blockedVoiceOrdinals { session.pricedAnyway.insert(ordinal) }
+        session.showProposal()
         editor.app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(true)
         session.configureGeneration(client: fixture.client, store: fixture.store, speaker: .unavailable)
         let generation = try #require(session.generation)

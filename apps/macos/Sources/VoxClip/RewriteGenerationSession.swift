@@ -211,7 +211,7 @@ import xlocale
         do {
             let output = try await publishVideoSelection(into: editor, localCommands: localCommands, at: date)
             let render: PreparedVideoDurationRender?
-            if videoChoice == .retimed {
+            if videoChoice == .retimed || videoChoice == .cut {
                 render = try await VideoDurationRenderReadiness.prepare(output.proposed, scope: output.scope, using: prepareDurationRender)
             } else { render = nil }
             try Task.checkCancellation()
@@ -258,8 +258,9 @@ import xlocale
     }
 
     func prepareVideoChoice(into editor: EditorModel, localCommands: [EditCommand] = [], at date: Date = Date()) async {
-        guard !accepting, !preparingVideo, reviewedInputsCurrent, inputsAreCurrent(), videoChoice == .retimed,
-              videoAvailability.allows(.retimed), let selectedID else { return }
+        guard !accepting, !preparingVideo, reviewedInputsCurrent, inputsAreCurrent(), let videoChoice,
+              videoChoice == .retimed || videoChoice == .cut,
+              videoAvailability.allows(videoChoice), let selectedID else { return }
         if let prepared = preparedVideoAcceptance, prepared.takeID == selectedID,
            prepared.acceptance.original == editor.project,
            (try? editor.voiceLabReviewProject(localCommands: localCommands)) == prepared.acceptance.review { return }

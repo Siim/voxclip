@@ -37,7 +37,9 @@ extension RewriteSession {
               let matched = try? VoiceLabPaceMatching.match(seconds: timing.estimateSeconds * timing.pace, window: window,
                   incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
                   sourceSampleRate: project.media.source.audio?.sampleRate ?? 48_000,
-                  supportsPace: selectedModel != "eleven_v4") else { return result }
+                  supportsPace: selectedModel != "eleven_v4", hardJoinSmoothing: true,
+                  sourceItems: RewriteReview.timingTranscript(.init(transcript: Self.corrected(project), project: project,
+                      scope: scope, envelope: envelope, prices: prices, synthesisModel: selectedModel)), sourceEnvelope: envelope) else { return result }
         result.timing = matched
         return result
     }

@@ -76,11 +76,13 @@ internal sealed record RewriteReview(VoiceLabWordDiffResult Diff, VoiceLabPatchB
             var last = session.Transcript.ToList().FindIndex(word => word.Id == clip.EndWordId);
             if (first >= 0 && last >= first) spoken = session.Transcript.Skip(first).Take(last - first + 1).ToArray();
         }
-        var rate = VoiceLabRewriteFit.SpeakingRate(spoken.Where(word => !project.Edits.CutWordIds.Contains(word.Id))
-            .Select(word => word with { Text = project.Edits.Corrections.GetValueOrDefault(word.Id) ?? word.Text }).ToArray());
+        spoken = spoken.Where(word => !project.Edits.CutWordIds.Contains(word.Id))
+            .Select(word => word with { Text = project.Edits.Corrections.GetValueOrDefault(word.Id) ?? word.Text }).ToArray();
+        var rate = VoiceLabRewriteFit.SpeakingRate(spoken);
         var silence = VoiceLabWindowPlanner.LendableSilence(project, session.Scope, window);
         return VoiceLabPaceMatching.Measure(patch, rate, window, silence.Incoming, silence.Outgoing,
-            project.Media.Source.Audio?.SampleRate ?? 48_000, supportsPace: model != "eleven_v4");
+            project.Media.Source.Audio?.SampleRate ?? 48_000, supportsPace: model != "eleven_v4",
+            sourceItems: spoken, sourceEnvelope: session.Envelope, hardJoinSmoothing: true);
     }
 
     private static IReadOnlyList<RewriteDiffRun> DiffRuns(VoiceLabWordDiffResult diff, IReadOnlyList<TimedWord> source,

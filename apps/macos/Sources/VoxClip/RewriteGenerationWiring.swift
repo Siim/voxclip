@@ -92,15 +92,19 @@ extension RewriteSession {
                     let silence = try VoiceLabWindowPlanner.lendableSilence(project: final, scope: outputScope, window: phrase.window)
                     let timing = try VoiceLabPaceMatching.measure(text: phrase.text, rate: speakingRate, window: phrase.window,
                         incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
-                        sourceSampleRate: audio.sampleRate, supportsPace: modelID != "eleven_v4")
+                        sourceSampleRate: audio.sampleRate, supportsPace: modelID != "eleven_v4", hardJoinSmoothing: true,
+                        sourceItems: RewriteReview.timingTranscript(timingInputs), sourceEnvelope: envelope)
                     let source = try await VoiceLabSourceAudio.rewriteSource(source: sourceURL, frames: frames, sampleRate: audio.sampleRate,
                         window: phrase.window, incomingSilence: silence.incoming, outgoingSilence: silence.outgoing, items: Self.corrected(final))
-                    return VoiceLabTakeInput(text: phrase.text, modelID: modelID, recordID: recordID,
+                    var input = VoiceLabTakeInput(text: phrase.text, modelID: modelID, recordID: recordID,
                         language: final.transcript?.language ?? "en", seed: UInt32.random(in: 0...UInt32.max),
                         contentKey: final.media.source.contentKey, source: source.excerpt, sourceEnvelope: source.envelope,
                         sourceSampleRate: audio.sampleRate, items: Self.corrected(final), cutWordIDs: Set(final.edits.cutWordIds),
                         window: phrase.window, incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
                         providerConsent: true, pace: timing.pace)
+                    input.pauseProfile = VoiceLabPauseProfile.measure(items: RewriteReview.timingTranscript(timingInputs),
+                        envelope: envelope, start: 0, end: .greatestFiniteMagnitude)
+                    return input
                 }, readCap: { [weak self] in
                     guard let self else { throw CancellationError() }
                     return try await self.currentGenerationCap()
