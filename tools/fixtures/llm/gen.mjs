@@ -18,10 +18,11 @@ const [clipFinder, aiTighten, catalog] = sourceBytes.map(text => JSON.parse(text
 const prompts = { clipFinder, aiTighten }
 const sourceHashes = Object.fromEntries(inputPaths.map((path, index) => [path, sha256(sourceBytes[index].replace(/\r\n/g, '\n'))]))
 // The Voice Lab prompts feed only their own request files, so each of those records just its prompt.
-const voiceLabPaths = { voiceRewrite: 'shared/prompts/voice-rewrite.json', patchRewrite: 'shared/prompts/patch-rewrite.json' }
+const voiceLabPaths = { voiceRewrite: 'shared/prompts/voice-rewrite.json', patchRewrite: 'shared/prompts/patch-rewrite.json', wordingFit: 'shared/prompts/voice-rewrite-fit.json' }
 const voiceLabBytes = Object.fromEntries(await Promise.all(Object.entries(voiceLabPaths).map(async ([name, path]) => [name, await readFile(join(root, path), 'utf8')])))
 const voiceLabPrompts = Object.fromEntries(Object.entries(voiceLabBytes).map(([name, text]) => [name, JSON.parse(text)]))
-const voiceLabSources = name => ({ [voiceLabPaths[name]]: sha256(voiceLabBytes[name].replace(/\r\n/g, '\n')) })
+const voiceLabSources = name => ({ [voiceLabPaths[name]]: sha256(voiceLabBytes[name].replace(/\r\n/g, '\n')),
+  ...(name === 'voiceRewrite' ? { [voiceLabPaths.wordingFit]: sha256(voiceLabBytes.wordingFit.replace(/\r\n/g, '\n')) } : {}) })
 for (const source of [clipFinder, aiTighten, catalog, ...Object.values(voiceLabPrompts)]) assert.equal(source.schemaVersion, 1, 'unsupported shared input schemaVersion')
 for (const prompt of Object.values(voiceLabPrompts)) assert(Number.isInteger(prompt.promptVersion) && prompt.promptVersion >= 1, 'a Voice Lab prompt needs a promptVersion')
 for (const schema of [clipFinder.output.schema, aiTighten.output.schema, catalog.testRequest.schema, ...Object.values(voiceLabPrompts).map(prompt => prompt.schema)]) reference.validateSchema(schema)

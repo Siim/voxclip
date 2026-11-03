@@ -3,7 +3,8 @@
   "id": "voice-rewrite-requests",
   "origin": "voxclip",
   "sources": {
-    "shared/prompts/voice-rewrite.json": "33b043228f706661fbe54349edf3e9ecd13d2a34defc75508f08bae49f6217a9"
+    "shared/prompts/voice-rewrite.json": "33b043228f706661fbe54349edf3e9ecd13d2a34defc75508f08bae49f6217a9",
+    "shared/prompts/voice-rewrite-fit.json": "2f6d133ea39d80dfad613ba14985678707698342e1ba82b3b3d76a0babe0273e"
   },
   "cases": [
     {

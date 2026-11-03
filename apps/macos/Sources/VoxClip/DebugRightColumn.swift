@@ -63,7 +63,24 @@ import VoxClipMedia
         let session = RewriteSession(editor: model, scope: .selection(12...25), envelope: envelope, connector: connector)
         model.rewrite = session
         try session.receivePassage(variant == "rewrite-budget" ? Array(repeating: "replacement", count: 180).joined(separator: " ") : "A clearer way to explain what happened in this passage."); session.finishRun(seconds: 1)
-        if variant.hasPrefix("rewrite-takes-") { try DebugRewriteGeneration.install(String(variant.dropFirst(14)), in: session) }
+        if variant == "rewrite-takes-measured-fit" {
+            try DebugRewriteGeneration.install("length-changed", in: session)
+            session.wordingFit.measured = MeasuredWordingSuggestion(phrase: 0, take: UUID(), number: 2,
+                measuredSeconds: 1.2, slotSeconds: 3.8, tooLong: false,
+                text: "Here is a naturally longer way to explain this thought.", preparing: false)
+        } else if variant.hasPrefix("rewrite-takes-") {
+            try DebugRewriteGeneration.install(String(variant.dropFirst(14)), in: session)
+        } else if variant.hasPrefix("rewrite-fit-") {
+            let ordinals = session.changes.indices.filter { session.changes[$0].hunk.kind == .voice }.map { $0 + 1 }
+            session.wordingFit.phrases = try session.fitPhrases(ordinals: ordinals)
+            session.wordingFit.round = 2
+            session.wordingFit.running = variant == "rewrite-fit-running"
+            session.wordingFit.awaitingApproval = variant == "rewrite-fit-approval"
+            session.wordingFit.completed = !session.wordingFit.running && !session.wordingFit.awaitingApproval
+            for phrase in session.wordingFit.phrases { session.wordingFit.initialEstimates[phrase.ordinal] = phrase.estimateSeconds + 1 }
+            if variant == "rewrite-fit-exhausted" { session.wordingFit.problem = "Three rounds completed. Review the phrases that still need wording that fits." }
+            session.showProposal()
+        }
     }
     private static func measureResizes(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
         let model = EditorModel(document: VoxClipDocument(project: fixture, demo: true), app: app, preview: DemoPreviewEngine())
@@ -230,7 +247,8 @@ import VoxClipMedia
         let height: CGFloat = 4096
         var measurements: [Measurement] = []
         for width: CGFloat in [300, 320, 340, 360, 440, 560] {
-          for variant in ["source", "9:16", "1:1", "16:9", "ai-rate-hours", "captions-off", "fine-tune", "caption-error", "rewrite", "rewrite-budget"] + DebugRewriteGeneration.variants {
+          for variant in ["source", "9:16", "1:1", "16:9", "ai-rate-hours", "captions-off", "fine-tune", "caption-error", "rewrite", "rewrite-budget",
+                          "rewrite-fit-running", "rewrite-fit-approval", "rewrite-fit-fitted", "rewrite-fit-exhausted", "rewrite-takes-measured-fit"] + DebugRewriteGeneration.variants {
             let model = EditorModel(document: VoxClipDocument(project: fixture, demo: true), app: app, preview: DemoPreviewEngine())
             defer { model.close() }
             let shell = WorkspaceShell(app: app)

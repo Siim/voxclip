@@ -27,11 +27,11 @@ private struct DurationHookKeys: KeyProvider {
 
         init(root: URL, record: VoiceConsentRecord) { self.root = root; self.record = record }
 
-        func quote(seed: UInt32) -> VoiceLabTakeQuote {
+        func quote(seed: UInt32, modelID: String) -> VoiceLabTakeQuote {
             let estimate = CostEstimate(provider: "elevenlabs", operation: "test", units: 1, unit: "test", usd: 0.01, basis: "fixture")
             func request(_ operation: VoiceLabOperation) -> VoiceLabQuote {
                 VoiceLabQuote(id: UUID(), operation: operation, requestID: UUID(), estimate: estimate, region: .default,
-                    endpoint: operation == .speechToText ? "v1/speech-to-text" : "v1/text-to-speech/\(record.voiceId)/with-timestamps",
+                    endpoint: operation == .speechToText ? "v1/speech-to-text" : modelID == "eleven_v4" ? "v1/text-to-dialogue/with-timestamps" : "v1/text-to-speech/\(record.voiceId)/with-timestamps",
                     languageMode: .explicit("en"), fingerprint: "fixture")
             }
             return VoiceLabTakeQuote(index: 0, seed: seed, synthesis: request(.textToSpeech), qa: request(.speechToText))
@@ -94,7 +94,7 @@ private struct DurationHookKeys: KeyProvider {
                 self.preparations += 1
                 self.inputs = inputs
                 return try VoiceLabTakeBatch(windows: inputs.map { input in
-                    .init(input: input, quote: .init(id: UUID(), takes: [self.quote(seed: input.seed)], preparedAt: Date()))
+                    .init(input: input, quote: .init(id: UUID(), takes: [self.quote(seed: input.seed, modelID: input.modelID)], preparedAt: Date()))
                 })
             }
             backend.approve = { _, _ in }

@@ -95,6 +95,13 @@ d['voiceLabSegmentV3'] = segment
 d['voiceLabV3'] = obj({'assets': d['voiceLabV2']['properties']['assets'], 'segments': {'type': 'array', 'items': {'$ref': '#/$defs/voiceLabSegmentV3'}},
                            'cleanAudio': {'$ref': '#/$defs/voiceLabCleanAudio'}, 'voices': {'type': 'array', 'items': {'$ref': '#/$defs/voiceLabVoiceReference'}},
                            'videoAssets': {'type': 'array', 'items': {'$ref': '#/$defs/voiceLabVideoAsset'}}})
+d['voiceLabSpeakingRateSamples'] = {
+    'type': 'object', 'additionalProperties': {
+        'type': 'array', 'maxItems': 10, 'items': obj({
+            'id': {'type': 'string', 'minLength': 1},
+            'ratio': {'type': 'number', 'exclusiveMinimum': 0}})}}
+for version in ('voiceLabV1', 'voiceLabV2', 'voiceLabV3'):
+    d[version]['properties']['speakingRateSamples'] = {'$ref': '#/$defs/voiceLabSpeakingRateSamples'}
 d['voiceLabMicroPause'] = obj({'wordStartSeconds': {'type': 'number', 'minimum': -290, 'maximum': 290},
                               'wordEndSeconds': {'type': 'number', 'minimum': -290, 'maximum': 290}})
 d['voiceLabEdgeGainWord'] = obj({'gainDb': {'type': 'number', 'minimum': 0, 'maximum': 6},

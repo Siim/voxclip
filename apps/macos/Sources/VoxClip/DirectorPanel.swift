@@ -261,6 +261,7 @@ import VoxClipCore
                     .columnLayoutEvidence("director.ask", text: placeholder)
             }
         case .takes: RewriteTakesCard(model: model)
+        case .wordingFit: RewriteWordingFitCard(model: model)
         }
     }
 }

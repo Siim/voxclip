@@ -26,6 +26,11 @@ private actor StubConnector: LLMConnector {
     func models(refresh: Bool) -> [LLMModel] { [LLMModel(id: "fixture-local", name: "Fixture", contextTokens: 128_000, source: .curated)] }
     func contextTokens(model: String) -> Int? { 128_000 }
     func send(_ request: LLMRequest, model: String) async throws -> RawCompletion {
+        if request.tag == "voice-rewrite-fit" {
+            let ordinals = (request.cachedBlock ?? "").matches(of: #/Phrase (\d+)\n/#).compactMap { Int($0.1) }
+            let phrases = ordinals.map { "{\"ordinal\":\($0),\"action\":\"keepOriginal\",\"text\":\"\"}" }
+            return RawCompletion(text: "{\"phrases\":[" + phrases.joined(separator: ",") + "]}", model: model, stop: .complete)
+        }
         sends += 1
         if hold { await withTestDeadline { waiting = $0; arrivals.forEach { $0.resume() }; arrivals = [] } }
         if let failure { throw failure }

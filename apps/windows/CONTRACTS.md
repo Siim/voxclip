@@ -1,5 +1,13 @@
 # Windows fixed contracts
 
+### 2026-11-04 — Automatic wording-fit shared contract; Windows twin owed
+
+- **Verification.** Release Core: 2,920 total, 2,891 passed, 29 skipped. Release win-ui: 1,142 total, 1,137 passed, five skipped. Both have zero failures. Core/UI Release builds and the App typecheck have zero warnings/errors. No shipping allowlist changed, so no ReleaseSurrogate update is needed. These portable checks do not prove native Windows behavior or UI parity.
+- **Shared changes only.** `voice-rewrite-fit.json` version 1, the voice-rewrite/CLI hash manifests, optional project `speakingRateSamples`, and generated `autofit-cases.json` define the new Mac behavior. Existing Windows prompt consumers keep their original request bodies; hash verification now also sees the fit prompt. No Windows runtime behavior, shipping allowlist or UI is changed by this package.
+- **Owed twin.** Fixed v4 for new Rewrite phrases while retaining legacy playback/rendering; last-ten per-model measured/estimated median calibration; shared word-target and round-selection vectors; validated keep-original replies; at most three selective rounds, freezing fitted phrases; Stop/edit/Ask-again cancellation; one inline per-reply API send approval; measured longer/shorter rewording with a separately clicked fresh take quote and retained old-take inputs. Reuse the shared templates and hashes rather than copying prompt strings.
+- **Project handoff.** Add optional `speakingRateSamples` to the Windows typed project model before opening calibrated Mac projects: its current strict JSON reader rejects this new field. The Mac optional field does not change old project bytes. Windows runtime changes remain outside this Mac package.
+- **Next.** Preserve words, voice, clipping, consent, quote binding and paid-mutation confirmations. The Mac package does not claim Windows parity for this feature. No live requests or CI dispatch are authorized here.
+
 ### 2026-11-04 — Visible sidebar clip Rewrite and More actions
 
 - **Built.** Kept clip rows replace their duration with subtle ✦ and ⋯ buttons on selection or pointer-over. Rewrite is available only for editable clips with kept words, names the clip number, and uses “Rewrite Clip {n} (Ctrl+R)” help. More opens the row container's existing context flyout, not a copied menu. That menu gains the same Rewrite handler and retains Export, Rename, Copy and Remove. Both buttons use the existing handled-Tapped route, have UIA names and add no tab stops. Suggested rows and their Keep/Dismiss controls are unchanged. Native targets remain 32×32; the title line reserves their height while idle too, avoiding hover/selection height changes. Titles still trim at the tail and status/AI-modified lines stay in place.

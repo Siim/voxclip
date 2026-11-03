@@ -5,6 +5,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 ## 0.1.0 - Unreleased
 
 - Clips in the sidebar show Rewrite and More buttons.
+- Rewrite rewords phrases until they fit your video, and new phrases use Eleven v4.
 - A laugh, sigh or pause at the start or end of a phrase is kept whole at the join, and the word check no longer trips on transcribed laughter.
 - Offer useful video jump cuts between quiet speech boundaries, and preserve deliberate expression-tagged pauses.
 - Keep recording ambience under generated speech, preserve noise-gated silence, and check short hard-join pauses without rejecting usable takes.

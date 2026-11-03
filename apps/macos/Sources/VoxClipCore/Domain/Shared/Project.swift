@@ -776,6 +776,7 @@ public struct ProjectVoiceLab: Codable, Sendable, Equatable {
     public var cleanAudio: VoiceLabCleanAudio?
     public var voices: [VoiceLabVoiceReference]?
     public var videoAssets: [VoiceLabVideoAsset]?
+    public var speakingRateSamples: [String: [VoiceLabRateSample]]?
 
     /// Creates an explicit value without I/O or generated identifiers.
     public init(segments: [VoiceLabSegment] = [], assets: [VoiceLabAsset]? = nil, cleanAudio: VoiceLabCleanAudio? = nil, voices: [VoiceLabVoiceReference]? = nil, videoAssets: [VoiceLabVideoAsset]? = nil) {
@@ -789,7 +790,7 @@ public struct ProjectVoiceLab: Codable, Sendable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case segments
         case assets
-        case cleanAudio, voices, videoAssets
+        case cleanAudio, voices, videoAssets, speakingRateSamples
     }
 
     public init(from decoder: any Decoder) throws {
@@ -799,12 +800,14 @@ public struct ProjectVoiceLab: Codable, Sendable, Equatable {
         self.cleanAudio = try values.decodeIfPresent(VoiceLabCleanAudio.self, forKey: .cleanAudio)
         self.voices = try values.decodeIfPresent([VoiceLabVoiceReference].self, forKey: .voices)
         self.videoAssets = try values.decodeIfPresent([VoiceLabVideoAsset].self, forKey: .videoAssets)
+        self.speakingRateSamples = try values.decodeIfPresent([String: [VoiceLabRateSample]].self, forKey: .speakingRateSamples)
     }
 
     public func encode(to encoder: any Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(self.segments, forKey: .segments)
         try values.encodeIfPresent(self.assets, forKey: .assets)
+        try values.encodeIfPresent(self.speakingRateSamples, forKey: .speakingRateSamples)
         if let voices { try values.encode(cleanAudio, forKey: .cleanAudio); try values.encode(voices, forKey: .voices); try values.encode(videoAssets, forKey: .videoAssets) }
     }
 

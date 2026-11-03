@@ -58,6 +58,7 @@ extension Project {
         project.voiceLab.cleanAudio = nil
         project.voiceLab.videoAssets = nil
         project.voiceLab.voices = nil
+        project.voiceLab.speakingRateSamples = nil
         return project
     }
 }

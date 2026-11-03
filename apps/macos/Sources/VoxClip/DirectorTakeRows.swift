@@ -134,7 +134,8 @@ extension RewriteSession {
         guard let plan = takePlan, plan.stillCurrent, !takesBusy, takeQuotePhrase == phrase,
               let quoteID = plan.approvalID, let cost = plan.cost else { return nil }
         let verb = phrase.map { index in
-            Self.firstTakeVerb(hasTakes: plan.phrases.indices.contains(index) && !plan.phrases[index].takes.isEmpty)
+            wordingFit.measured?.phrase == index && wordingFit.measured?.text != nil ? "Make Take" :
+                Self.firstTakeVerb(hasTakes: plan.phrases.indices.contains(index) && !plan.phrases[index].takes.isEmpty)
         } ?? "Make Takes"
         let title: String = switch cost {
         case .inline: VoiceLabCostPresentation.buttonTitle(verb, kind: cost)
@@ -156,6 +157,7 @@ extension RewriteSession {
     }
     private func startTakes(_ plan: ClipTakePlan, phrase: Int?, quoteID: UUID) {
         guard current, takePlan === plan, plan.stillCurrent, !takesBusy, plan.approvalID == quoteID else { return }
+        wordingFit.measured = nil
         takesTask = Task { [weak self, weak plan] in
             guard let self, let plan, current, takePlan === plan else { return }
             if let phrase { await plan.tryAnother(phrase: phrase, approved: true, quoteID: quoteID) }
@@ -215,6 +217,7 @@ extension ClipTakePlan.Phrase {
 
 @MainActor struct DirectorTakeRows: View {
     static let makeVoiceTitle = "Make Your Voice"
+    static let rewriteModelLabel = "Eleven v4 · audio tags"
     static func speechModelName(_ model: VoiceLabModel) -> String {
         switch model.id {
         case "eleven_v3": "Eleven v3 · audio tags"
@@ -226,6 +229,8 @@ extension ClipTakePlan.Phrase {
     @Bindable var generation: RewriteGenerationSession
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            Text(Self.rewriteModelLabel)
+                .accessibilityLabel("Speech model: " + Self.rewriteModelLabel)
             if generation.voices.isEmpty {
                 Text("No voice yet").font(VCType.callout.font())
                 if session.editor.app.voiceLabSession.voicesUnavailable(projectLanguage: session.project.transcript?.language) {
@@ -239,18 +244,10 @@ extension ClipTakePlan.Phrase {
                     ForEach(generation.voices) { Text($0.voiceName).tag($0.id) }
                 }
                 .disabled(session.takesBusy || session.hasPaidTakes)
-                Picker("Speech model", selection: Binding(get: { generation.selectedModelID ?? "" }, set: { generation.chooseModel($0) })) {
-                    ForEach(generation.models, id: \.id) { Text(Self.speechModelName($0)).tag($0.id) }
-                }
-                // After a run the model still changes for Try another; the takes already made keep theirs.
-                .disabled(session.takesBusy || (session.hasPaidTakes && session.takePlan?.stillCurrent != true))
             }
             if let plan = session.takePlan {
                 ForEach(plan.phrases) { phrase in phraseRow(phrase, plan: plan) }
                 Text(AudioTagPhrase.explanation).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
-                if !VoiceLabAudioTags.supports(generation.selectedModelID ?? "") {
-                    Text("Multilingual v2 leaves tags out.").font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
-                }
                 if plan.preparing { ProgressView("Preparing price…").controlSize(.small) }
                 if !plan.problem.isEmpty { Text(plan.problem).foregroundStyle(DesignValues.color("status.warning")) }
                 Text(session.takeSpendLine).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
@@ -369,6 +366,9 @@ extension ClipTakePlan.Phrase {
                 }
             if plan.preparingVideo { ProgressView("Preparing video duration…").controlSize(.small) }
             if !session.takesBusy, session.takeNeedsWordingRecovery(phrase, plan: plan) {
+                if session.wordingFit.measured?.phrase == phrase.id {
+                    MeasuredWordingFitRow(session: session, plan: plan)
+                }
                 PhraseTimingRecovery(tooLong: (phrase.lengthDifference ?? 0) >= 0, priceAnyway: false) { action in
                     let ordinals = session.takePhraseOrdinals(phrase)
                     if case .original = action {
@@ -376,7 +376,7 @@ extension ClipTakePlan.Phrase {
                     } else if case .surrounding = action {
                         session.reviewSpeechContext(phrase: phrase.id)
                     } else {
-                        session.phraseTimingAction(.shorter, ordinals: ordinals)
+                        session.phraseTimingAction(action, ordinals: ordinals)
                     }
                 }
             }

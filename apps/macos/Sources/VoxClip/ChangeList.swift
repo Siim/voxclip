@@ -99,6 +99,7 @@ extension RewriteSession {
         task.review = { [weak self] ordinal, review in self?.review(ordinal, review) }
         task.phraseTimingAction = { [weak self] ordinal, action in self?.phraseTimingAction(action, ordinal: ordinal) }
         task.audioTagsChanged = { [weak self] ordinal, tags in self?.updateAudioTags(tags, ordinal: ordinal) }
+        task.wordingLocked = wordingIsLocked
         task.show(.proposal(content.set), headline: content.headline, cards: content.cards, footer: content.footer, contextAction: content.askAgain)
     }
 
@@ -159,8 +160,24 @@ extension RewriteSession {
                                    cards: [.text("\(aiName) found nothing to change in \(task.words.name)."), .ask(placeholder: AskField.placeholder(task.words))],
                                    footer: PanelFooter(primary: askForSomethingElse), askAgain: askAgain)
         }
-        let footer = proposalFooter(set)
+        var footer = proposalFooter(set)
         var cards: [PanelCard] = [.changes(set)]
+        if wordingIsLocked {
+            headline.text = wordingFit.running ? "Fitting wording to the video · round \(wordingFit.round) of 3" : "Fit wording to the video"
+            if wordingFit.running { headline.stop = PanelAction(id: "stopWordingFit", title: "Stop") { [weak self] in self?.stopWordingFit() } }
+            askAgain = PanelAction(id: "askAgain", title: "Ask again") { [weak self] in
+                guard let self else { return }
+                stopWordingFit(refresh: false)
+                editor.runRewrite(scope: rewriteScope)
+            }
+            return ProposalContent(set: set, headline: headline, cards: [.wordingFit, .changes(set)],
+                footer: PanelFooter(note: sendAsksFirst ? "Fit requests are billed to your key. Making a take needs a separate paid click." : "Nothing is paid until Get Price."), askAgain: askAgain)
+        }
+        if wordingFit.completed || wordingFit.stopped || !wordingFit.problem.isEmpty { cards.insert(.wordingFit, at: 0) }
+        if wordingFit.completed, blockedVoiceOrdinals.isEmpty,
+           includedVoice.allSatisfy({ voiceReview($0)?.timing?.fits == true }) {
+            footer.footer.note = "\(includedVoice.count) phrases fit · \(wordingFit.kept.count) kept as recorded"
+        }
         if let callout = footer.callout { cards.append(.callout(callout)) }
         // Why Make Takes could not go on (finding the voices failed); a refused review is on the voice rows instead.
         if review != nil, !problem.isEmpty { cards.append(.callout(problem)) }
@@ -192,7 +209,13 @@ extension RewriteSession {
         }
         if unavailable != nil { state = .excluded }
         let checkThis = changes.indices.contains(change.ordinal - 1) && changes[change.ordinal - 1].checkThis
-        let note = unavailable?.text ?? (checkThis ? "Check this: it adds something you didn't say." : nil)
+        var note = unavailable?.text ?? (checkThis ? "Check this: it adds something you didn't say." : nil)
+        if wordingFit.kept.contains(change.ordinal) {
+            note = "kept your original words · \(toFixed1(voiceReview(change.ordinal)?.timing?.slotSeconds ?? 0)) s is too short to re-voice"
+        } else if let before = wordingFit.initialEstimates[change.ordinal], let timing = voiceReview(change.ordinal)?.timing, timing.fits {
+            let fitted = "reworded to fit · was ≈ \(toFixed1(before)) s, now ≈ \(toFixed1(timing.estimateSeconds)) s · slot \(toFixed1(timing.slotSeconds)) s"
+            note = [note, fitted].compactMap { $0 }.joined(separator: "\n")
+        }
         func quoted(_ text: String) -> String {
             // A phrase reads without the comma or stop it ends on, as notes.md's rows do.
             var text = text.trimmingCharacters(in: .whitespaces)
@@ -320,6 +343,7 @@ extension RewriteSession {
     /// A row's Keep, Undo, focus or edit (impl-plan item 7): the transcript's own review, so the list and the hunks agree.
     func review(_ ordinal: Int, _ review: ChangeReview) {
         guard isOpen, case .proposal = task.state, ownProposal != nil else { return }
+        stopWordingFit(refresh: false)
         switch review {
         case .focus: editor.focusChange(ordinal, announcing: false)
         case .keep: editor.keepChange(ordinal)
@@ -390,6 +414,7 @@ extension RewriteSession {
             }
         }
         .padding(.horizontal, -8)
+        .disabled(task.wordingLocked)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Changes")
         .columnLayoutEvidence("director.changes")
