@@ -150,9 +150,9 @@ public sealed partial class TranscriptView
         var visual = realized.Values.FirstOrDefault(value => index >= value.Item.StartIndex && index < value.Item.StartIndex + value.Item.Count);
         if (visual is null) return;
         var expected = proposal;
-        var meter = proposalSession?.Review?.VoiceHunks.FirstOrDefault(review => ReferenceEquals(review.Hunk, hunk.Hunk))?.Meter;
+        var timing = proposalSession?.Review?.VoiceHunks.FirstOrDefault(review => review.Ordinals.Contains(hunk.Ordinal))?.Fit;
         ShowInlineEditor(visual, $"New words for change {hunk.Ordinal}", hunk.NewText,
-            (meter is null ? "Nothing is sent. " : meter.Copy + ". ") + "Return saves · Esc cancels", value =>
+            (timing is null ? "Nothing is sent. " : timing.Copy + ". ") + "Return saves · Esc cancels", value =>
                 ReferenceEquals(expected, proposal) && EditChangeRequested?.Invoke(hunk.Ordinal, value) == true,
             ExcludeChangeRequested is null ? null : () => ExcludeChangeRequested?.Invoke(hunk.Ordinal));
     }

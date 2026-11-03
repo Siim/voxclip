@@ -133,7 +133,7 @@ internal sealed partial class RewritePanel : Grid
         Grid.SetColumn(changeSummary, 1);
         newHeader.Children.Add(changeSummary);
         body.Children.Add(newHeader);
-        body.Children.Add(words); body.Children.Add(review); body.Children.Add(sentenceReview); body.Children.Add(problem);
+        body.Children.Add(words); body.Children.Add(review); body.Children.Add(paidReviewChange); body.Children.Add(sentenceReview); body.Children.Add(problem);
         BuildGeneration();
         body.Children.Add(generationBody);
         var scroll = new ScrollViewer { Content = body, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
@@ -388,6 +388,7 @@ internal sealed partial class RewritePanel : Grid
     private void RenderGeneration()
     {
         RenderSentenceReview();
+        RenderPaidReviewChange();
         takeSend.Text = session.TakeSendLine;
         monthlySpend.Text = WorkflowSpendCache.Monthly is { } total
             ? "ElevenLabs $" + total.Usd.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) + " estimated this month" +

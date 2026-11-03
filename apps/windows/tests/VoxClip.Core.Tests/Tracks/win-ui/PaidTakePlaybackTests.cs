@@ -15,6 +15,22 @@ namespace VoxClip.Core.Tests.Tracks.WinUi;
 public sealed class PaidTakePlaybackTests
 {
     [Fact]
+    public async Task AcceptedAdvisoryIsNotAnnouncedAsAnAutomaticallyFittingTake()
+    {
+        await using var test = new Harness(false, false, VoiceLabTakeRunEnd.Completed);
+        test.Runner.Advisory = true;
+        await test.GenerateAsync();
+        var advisory = test.Generation.Rows[0];
+        Assert.True(await test.Generation.UseTakeAnywayAsync(advisory.Id));
+        Assert.True(test.Generation.Selected!.Fits);
+        Assert.False(test.Generation.Selected.AutomaticallySelectable);
+        typeof(RewriteGeneration).GetMethod("FinishTakes", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .Invoke(test.Generation, [test.Generation.LastRunResult]);
+        Assert.Equal(advisory.Id, test.Generation.SelectedTakeId);
+        Assert.DoesNotContain("fits", test.Generation.Announcement);
+    }
+
+    [Fact]
     public async Task PaidTakeWithoutAFitOffersWordingRecoveryAndKeepOriginalChangesNothingInTheProject()
     {
         await using var test = new Harness(true, false, VoiceLabTakeRunEnd.Completed);
@@ -25,7 +41,9 @@ public sealed class PaidTakePlaybackTests
         Assert.True(test.Generation.NeedsShorterWording);
         Assert.False(test.Generation.CanRetime);
         Assert.False(test.Generation.ReadyToAccept);
-        Assert.True(test.Session.SetChangeIncluded(1, false));
+        Assert.False(test.Session.SetChangeIncluded(1, false));
+        Assert.True(test.Session.HasPaidTakes);
+        Assert.True(await test.Session.ConfirmPaidReviewChangeAsync(test.Session.PendingPaidReviewChange!));
         Assert.Empty(test.Session.Review!.VoiceHunks);
         Assert.Equal(project, ProjectSerialization.Serialize(test.Editor.Project));
         Assert.False(test.Editor.CanUndo);

@@ -127,11 +127,8 @@ internal sealed partial class RewriteSession
         if (IsGeneratingBatch || generationWindows.Any(window => window.IsRunning || window.IsPreparing) ||
             !generationWindows.Any(window => window.Models.Any(model => model.Id == id))) return;
         var discovered = generationWindows.Any(window => window.HasDiscovered);
-        if (generationWindows.All(window => window.Rows.Count == 0))
-        {
-            synthesisModel = id;
-            RefreshReview(preserveGenerations: true);
-        }
+        synthesisModel = id;
+        RefreshReview(preserveGenerations: true);
         foreach (var generation in generationWindows.ToArray())
         {
             if (discovered && !generation.HasDiscovered) await generation.DiscoverAsync();

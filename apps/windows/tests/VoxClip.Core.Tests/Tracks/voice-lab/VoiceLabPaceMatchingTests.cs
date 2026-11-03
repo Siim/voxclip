@@ -48,7 +48,7 @@ public sealed class VoiceLabPaceMatchingTests
             var fit = VoiceLabRewriteFit.Hypothetical(window, incoming, outgoing, timing.EstimateSeconds, sampleRate);
             Assert.Equal(row["keepsSource"]!.GetValue<bool>(), fit is VoiceLabFitResult.Exact);
             Assert.True(fit.Plan.Incoming.PadFrames + fit.Plan.Outgoing.PadFrames <= 28_800);
-            Assert.Contains("at " + timing.Pace.ToString("F2", CultureInfo.InvariantCulture) + "× pace", timing.Copy);
+            Assert.Contains("at ≈ " + timing.Pace.ToString("F2", CultureInfo.InvariantCulture) + "× pace", timing.Copy);
             if (!timing.Fits) Assert.True(timing.TooLong);
         }
     }
