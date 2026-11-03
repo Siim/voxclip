@@ -75,7 +75,7 @@ enum VoiceLabAudioRenderer {
         guard mixed.allSatisfy(\.isFinite) else { throw VoiceLabError.invalidAudio }
         // The unedited source over the same lead, window and tail, so QA counts only the step a join adds (§8.11 item 3).
         guard let original = source.samples((start - lead)..<(end + tail)) else { throw VoiceLabError.invalidAudio }
-        let sourceSeamJumps = try VoiceLabLoudness.seamJumpsLu(Array(original), sampleRate: rate, seamSamples: sourceSeams)
+        let sourceSeamSteps = try VoiceLabLoudness.seamStepsLu(Array(original), sampleRate: rate, seamSamples: sourceSeams)
         try reserveDisk(scratchRoot, frames: Int64(mixed.count), additionalBytes: Int64(fitted.wave.pcm.count + 88))
         let operation = try VoiceLabAssetRecovery.Operation.create(in: scratchRoot)
         let directory = scratchRoot.appendingPathComponent(operation.name, isDirectory: true)
@@ -91,7 +91,7 @@ enum VoiceLabAudioRenderer {
             guard measured == mixed else { throw VoiceLabError.invalidAudio }
             let audio = VoiceLabTakeAudio(sampleRate: rate, trimmed: analysis.trimmed, mixed: measured,
                 patchRange: lead..<(lead + length), seams: seams, gainDb: analysis.gainDb, roomTone: analysis.roomTone, fit: analysis.fit,
-                sourceSeamJumps: sourceSeamJumps)
+                sourceSeamSteps: sourceSeamSteps)
             return VoiceLabTakeScratch(directory: directory, operation: operation, fitted: fitted, audio: audio)
         } catch { operation.discard(); throw error }
     }

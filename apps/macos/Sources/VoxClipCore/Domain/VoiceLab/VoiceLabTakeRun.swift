@@ -116,10 +116,10 @@ public enum VoiceLabTakeQuality {
         }
         return 2 * Double(previous.last ?? 0) / Double(expected.count + recognized.count)
     }
-    /// `sourceSeamJumps`, one per seam, makes the loudness value the step the join adds over the source's own jump
-    /// (`VoiceLabLoudness.seamExcessLu`); nil keeps the plain largest jump.
+    /// `sourceSeamSteps`, one signed step per seam, makes the loudness value how far each join's step lies outside the
+    /// source's own step there (`VoiceLabLoudness.seamExcessLu`); nil keeps the plain largest jump.
     public static func evaluate(expected: String, recognized: [String], mixed: [Float], sampleRate: Int,
-                                seams: [Int], sourceSeamJumps: [Double]? = nil, speakerScore: Double?,
+                                seams: [Int], sourceSeamSteps: [Double]? = nil, speakerScore: Double?,
                                 threshold: Double) throws -> VoiceLabTakeQAResult {
         guard speakerScore.map({ $0.isFinite && (-1...1).contains($0) }) ?? true, threshold.isFinite, (0...1).contains(threshold) else { throw VoiceLabError.invalidInput }
         let expectedTokens = tokens(expected)
@@ -128,9 +128,9 @@ public enum VoiceLabTakeQuality {
         let peak = try VoiceLabLoudness.samplePeakDbfs(mixed)
         guard peak.isFinite else { throw VoiceLabError.invalidAudio }
         let jump: Double
-        if let sourceSeamJumps {
-            let jumps = try VoiceLabLoudness.seamJumpsLu(mixed, sampleRate: sampleRate, seamSamples: seams)
-            jump = try VoiceLabLoudness.seamExcessLu(mixedJumps: jumps, sourceJumps: sourceSeamJumps)
+        if let sourceSeamSteps {
+            let steps = try VoiceLabLoudness.seamStepsLu(mixed, sampleRate: sampleRate, seamSamples: seams)
+            jump = try VoiceLabLoudness.seamExcessLu(mixedSteps: steps, sourceSteps: sourceSeamSteps)
         } else {
             jump = try VoiceLabLoudness.lufsJumpLu(mixed, sampleRate: sampleRate, seamSamples: seams)
         }
@@ -163,14 +163,14 @@ public struct VoiceLabTakeAudio: Sendable, Equatable {
     public let gainDb: Double
     public let roomTone: VoiceLabRoomTone?
     public let fit: VoiceLabFitResult
-    /// The unedited source's momentary jump at each of `seams`, measured over the same lead, window and tail
-    /// (`VoiceLabLoudness.seamJumpsLu`), so QA counts only the step the join adds (§8.11 item 3). Empty when unmeasured.
-    public let sourceSeamJumps: [Double]
+    /// The unedited source's signed momentary step at each of `seams`, measured over the same lead, window and tail
+    /// (`VoiceLabLoudness.seamStepsLu`), so QA counts only what the join adds (§8.11 item 3). Empty when unmeasured.
+    public let sourceSeamSteps: [Double]
     public var words: [VoiceLabWord] { fit.plan.words }
     package init(sampleRate: Int, trimmed: [Float], mixed: [Float], patchRange: Range<Int>, seams: [Int], gainDb: Double,
-                 roomTone: VoiceLabRoomTone?, fit: VoiceLabFitResult, sourceSeamJumps: [Double] = []) {
+                 roomTone: VoiceLabRoomTone?, fit: VoiceLabFitResult, sourceSeamSteps: [Double] = []) {
         self.sampleRate = sampleRate; self.trimmed = trimmed; self.mixed = mixed; self.patchRange = patchRange
-        self.seams = seams; self.gainDb = gainDb; self.roomTone = roomTone; self.fit = fit; self.sourceSeamJumps = sourceSeamJumps
+        self.seams = seams; self.gainDb = gainDb; self.roomTone = roomTone; self.fit = fit; self.sourceSeamSteps = sourceSeamSteps
     }
 }
 

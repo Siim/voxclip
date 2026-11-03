@@ -209,20 +209,23 @@ public enum VoiceLabLoudness {
         try seamJumps(samples, sampleRate: sampleRate, seamSamples: [seamSample])[0]
     }
 
-    /// Every seam's momentary jump (`seamJumpLu`), in order: one K-weighting pass over `samples`.
-    public static func seamJumpsLu(_ samples: [Float], sampleRate: Int, seamSamples: [Int]) throws -> [Double] {
-        try seamJumps(samples, sampleRate: sampleRate, seamSamples: seamSamples)
+    /// Every seam's signed momentary step, in order: `max(M_after, −70) − max(M_before, −70)` over the windows of
+    /// `seamJumpLu`, whose value is this step's magnitude. One K-weighting pass over `samples`.
+    public static func seamStepsLu(_ samples: [Float], sampleRate: Int, seamSamples: [Int]) throws -> [Double] {
+        try seamSteps(samples, sampleRate: sampleRate, seamSamples: seamSamples)
     }
 
-    /// The take QA's seam value (§8.11 item 3): how far each seam's momentary jump in the mixed audio exceeds the jump of
-    /// the unedited source at the same seam, `max(0, J_mixed − J_source)`, and the largest of them, 0 without a seam. A
-    /// seam sits in a pause or at a word edge, so one 400 ms side holds more speech than the other and the source itself
-    /// jumps there; only the step the join adds is the join's. Both lists come from `seamJumpsLu`, seam by seam.
-    public static func seamExcessLu(mixedJumps: [Double], sourceJumps: [Double]) throws -> Double {
-        guard mixedJumps.count == sourceJumps.count, (mixedJumps + sourceJumps).allSatisfy({ $0.isFinite && $0 >= 0 }) else {
+    /// The take QA's seam value (§8.11 item 3): how far each seam's signed step in the mixed audio lies outside the
+    /// unedited source's own step at the same seam, and the largest of them, 0 without a seam. A seam sits in a pause or
+    /// at a word edge, so one 400 ms side holds more speech than the other and the source itself steps there. A mixed
+    /// step between 0 and the source's step, in the same direction, adds nothing; one beyond it adds the difference;
+    /// one in the other direction adds its whole size, so a take far louder than the speech it replaces cannot pass by
+    /// mirroring the source's step. Both lists come from `seamStepsLu`, seam by seam.
+    public static func seamExcessLu(mixedSteps: [Double], sourceSteps: [Double]) throws -> Double {
+        guard mixedSteps.count == sourceSteps.count, (mixedSteps + sourceSteps).allSatisfy(\.isFinite) else {
             throw VoiceLabAudioMathError.invalidInput
         }
-        return zip(mixedJumps, sourceJumps).map { max(0, $0 - $1) }.max() ?? 0
+        return zip(mixedSteps, sourceSteps).map { mixed, source in max(0, min(0, source) - mixed, mixed - max(0, source)) }.max() ?? 0
     }
 
     /// A recipe's `qa.lufsJumpLu`: the largest jump over its seams that are not `none`, or 0 without such a seam.
@@ -232,6 +235,9 @@ public enum VoiceLabLoudness {
 
     // Spec: voice-lab.md §8.11 item 3; each window is floored at −70 LUFS, the BS.1770 absolute gate (lead decision).
     static func seamJumps(_ samples: [Float], sampleRate: Int, seamSamples: [Int]) throws -> [Double] {
+        try seamSteps(samples, sampleRate: sampleRate, seamSamples: seamSamples).map(abs)
+    }
+    static func seamSteps(_ samples: [Float], sampleRate: Int, seamSamples: [Int]) throws -> [Double] {
         try validate(samples, sampleRate: sampleRate)
         let window = sampleCount(momentarySeconds, sampleRate), minimum = sampleCount(minimumSeamWindowSeconds, sampleRate)
         for seam in seamSamples {
@@ -245,7 +251,7 @@ public enum VoiceLabLoudness {
             seamSamples.map { seam in
                 let before = loudness(buffer.baseAddress!, from: max(0, seam - window), to: seam)
                 let after = loudness(buffer.baseAddress!, from: seam, to: min(samples.count, seam + window))
-                return abs(max(after, silenceGateLufs) - max(before, silenceGateLufs))
+                return max(after, silenceGateLufs) - max(before, silenceGateLufs)
             }
         }
     }

@@ -41,7 +41,7 @@ struct VoiceLabTakeQualityTests {
         }
     }
     /// Live 2026-11-03 (car vlog): a gap seam sits in a pause, so one 400 ms side holds more speech than the other and the
-    /// unedited source itself jumps 5 to 38 LU there. Only the step a join adds over the source's own jump is the join's.
+    /// unedited source itself jumps 5 to 38 LU there. Only what a join adds beyond the source's own signed step is the join's.
     @Test func seamLoudnessCountsOnlyTheStepTheJoinAdds() throws {
         let rate = 24_000, seam = 12_000
         /// Speech-level tone, a 375 ms pause of background noise before the seam, then tone again from `speech` on.
@@ -54,30 +54,53 @@ struct VoiceLabTakeQualityTests {
             }
         }
         let source = signal(speech: seam + 1_200, level: 1, background: 0.002)
-        let sourceJumps = try VoiceLabLoudness.seamJumpsLu(source, sampleRate: rate, seamSamples: [seam])
-        #expect(sourceJumps[0] > 10)
+        let sourceSteps = try VoiceLabLoudness.seamStepsLu(source, sampleRate: rate, seamSamples: [seam])
+        #expect(sourceSteps[0] > 10)
         // A take that starts its speech 20 ms later at the same level passes; the plain jump would fail it.
         let take = signal(speech: seam + 1_680, level: 1, background: 0.002)
         let plain = try VoiceLabTakeQuality.evaluate(expected: "a", recognized: ["a"], mixed: take, sampleRate: rate, seams: [seam],
             speakerScore: nil, threshold: 0.45)
         #expect(plain.failures == [.loudness])
         let referenced = try VoiceLabTakeQuality.evaluate(expected: "a", recognized: ["a"], mixed: take, sampleRate: rate, seams: [seam],
-            sourceSeamJumps: sourceJumps, speakerScore: nil, threshold: 0.45)
+            sourceSeamSteps: sourceSteps, speakerScore: nil, threshold: 0.45)
         #expect(referenced.passed && (referenced.values.lufsJumpLu ?? 9) < 1)
         // Speech 6 dB louder than the source's after the seam is still a step at the join.
         let loud = signal(speech: seam + 1_200, level: 2, background: 0.002)
         let louder = try VoiceLabTakeQuality.evaluate(expected: "a", recognized: ["a"], mixed: loud, sampleRate: rate, seams: [seam],
-            sourceSeamJumps: sourceJumps, speakerScore: nil, threshold: 0.45)
+            sourceSeamSteps: sourceSteps, speakerScore: nil, threshold: 0.45)
         #expect(louder.failures == [.loudness] && (louder.values.lufsJumpLu ?? 0) > 5)
         // So is room tone that stops at a seam whose source has background on both sides.
         let quiet = (0..<(rate * 2)).map { index in Float(Double((index * 7_919) % 1_001 - 500) / 500 * 0.002) }
         let silent = quiet.enumerated().map { $0.offset >= seam ? Float(0) : $0.element }
-        let flat = try VoiceLabLoudness.seamJumpsLu(quiet, sampleRate: rate, seamSamples: [seam])
+        let flat = try VoiceLabLoudness.seamStepsLu(quiet, sampleRate: rate, seamSamples: [seam])
         let dropout = try VoiceLabTakeQuality.evaluate(expected: "a", recognized: ["a"], mixed: silent, sampleRate: rate, seams: [seam],
-            sourceSeamJumps: flat, speakerScore: nil, threshold: 0.45)
+            sourceSeamSteps: flat, speakerScore: nil, threshold: 0.45)
         #expect(dropout.failures == [.loudness])
-        #expect(throws: VoiceLabAudioMathError.invalidInput) { try VoiceLabLoudness.seamExcessLu(mixedJumps: [1], sourceJumps: []) }
-        #expect(try VoiceLabLoudness.seamExcessLu(mixedJumps: [], sourceJumps: []) == 0)
+        // A take far louder than the speech it replaces, whose step mirrors the source's (as loud before the seam as the
+        // source is quiet there), still fails: only a step between 0 and the source's own, in its direction, is free.
+        let speechAfter = (0..<(rate * 2)).map { index in
+            Float((index >= seam ? 0.1 * sin(2 * Double.pi * 180 * Double(index) / Double(rate)) : 0) + Double((index * 7_919) % 1_001 - 500) / 500 * 0.002)
+        }
+        let step = try VoiceLabLoudness.seamStepsLu(speechAfter, sampleRate: rate, seamSamples: [seam])
+        #expect(step[0] > 20)
+        let gain = pow(10, step[0] / 40)
+        let mirrored = speechAfter.enumerated().map { index, sample in
+            index < seam ? Float(0.1 * gain * sin(2 * Double.pi * 180 * Double(index) / Double(rate))) : sample
+        }
+        let mirroredStep = try VoiceLabLoudness.seamStepsLu(mirrored, sampleRate: rate, seamSamples: [seam])
+        #expect(mirroredStep[0] < -5 && abs(mirroredStep[0]) <= step[0])
+        let flipped = try VoiceLabTakeQuality.evaluate(expected: "a", recognized: ["a"], mixed: mirrored, sampleRate: rate, seams: [seam],
+            sourceSeamSteps: step, speakerScore: nil, threshold: 0.45)
+        #expect(flipped.failures == [.loudness] && (flipped.values.lufsJumpLu ?? 0) > 5)
+        // (mixed step, source step, excess): within the source's step, the other way, beyond it, and none at the source.
+        let cases: [(Double, Double, Double)] = [(5, 10, 0), (-1, 10, 1), (12, 10, 2), (-10, 10, 10), (0.5, 0, 0.5), (-3, -8, 0), (-9, -8, 1), (2, -8, 2)]
+        for (mixed, source, excess) in cases {
+            #expect(try VoiceLabLoudness.seamExcessLu(mixedSteps: [mixed], sourceSteps: [source]) == excess)
+        }
+        #expect(try VoiceLabLoudness.seamExcessLu(mixedSteps: cases.map { $0.0 }, sourceSteps: cases.map { $0.1 }) == 10)
+        #expect(throws: VoiceLabAudioMathError.invalidInput) { try VoiceLabLoudness.seamExcessLu(mixedSteps: [1], sourceSteps: []) }
+        #expect(throws: VoiceLabAudioMathError.invalidInput) { try VoiceLabLoudness.seamExcessLu(mixedSteps: [.nan], sourceSteps: [1]) }
+        #expect(try VoiceLabLoudness.seamExcessLu(mixedSteps: [], sourceSteps: []) == 0)
     }
     @Test func incompleteSpeakerEvidenceCannotBeRankedOrSelected() throws {
         let qa = VoiceLabTakeQAResult(values: VoiceLabQA(), failures: [.insufficientGeneratedSpeech])
