@@ -167,7 +167,7 @@ public enum VoiceLabRecipeBuilder {
         var segment = VoiceLabSegment(id: id, kind: .tts, enabled: true,
             replace: VoiceLabReplacement(start: plan.windowStart, end: plan.windowEnd,
                 firstWordId: input.window.firstWordId, lastWordId: input.window.lastWordId),
-            outDuration: recipe.outDuration, audio: recipe.audio, text: VoiceLabText(original: original, new: input.text, audioTags: input.audioTags.isEmpty ? nil : input.audioTags),
+            outDuration: recipe.outDuration, audio: recipe.audio, text: VoiceLabText(original: original, new: input.text, audioTags: VoiceLabAudioTags.recorded(input.audioTags, modelID: input.modelID)),
             words: recipe.words, provenance: recipe.provenance,
             qa: VoiceLabQA(transcriptMatch: recipe.qa.transcriptMatch, lufsJumpLu: recipe.qa.lufsJumpLu,
                 peakDbfs: recipe.qa.peakDbfs, speakerScore: recipe.qa.speakerScore), candidates: candidates, selectedCandidateIndex: selected)

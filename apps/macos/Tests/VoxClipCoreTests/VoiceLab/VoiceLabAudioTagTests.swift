@@ -27,6 +27,13 @@ struct VoiceLabAudioTagTests {
             #expect(VoiceLabAudioTags.allowance([annotation], text: "Hello", modelID: "eleven_v4") == row[ai: "seconds"].aiDouble)
         }
     }
+    @Test func acceptedSegmentsRecordOnlyTheTagsTheirModelSpoke() {
+        let laugh = [VoiceLabAudioTag(beforeToken: 2, tag: "laughs")]
+        #expect(VoiceLabAudioTags.recorded(laugh, modelID: "eleven_v3") == laugh)
+        #expect(VoiceLabAudioTags.recorded(laugh, modelID: "eleven_v4") == laugh)
+        #expect(VoiceLabAudioTags.recorded(laugh, modelID: "eleven_multilingual_v2") == nil)
+        #expect(VoiceLabAudioTags.recorded([], modelID: "eleven_v3") == nil)
+    }
     @Test func sharedAlignmentsKeepOnlyTypedWordTimings() throws {
         for row in try fixture()[ai: "alignments"].aiArray {
             let words = try VoiceLabAlignment.words(characters: row[ai: "characters"].aiArray.compactMap(\.aiString),

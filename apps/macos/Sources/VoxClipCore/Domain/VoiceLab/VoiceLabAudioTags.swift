@@ -26,6 +26,10 @@ public enum VoiceLabAudioTags {
     }()
     public static var definitions: [Definition] { catalog?.tags ?? [] }
     public static func supports(_ modelID: String) -> Bool { catalog?.models.contains(modelID) == true }
+    /// The tags an accepted segment records: only those its model spoke, so a Multilingual v2 take saves none.
+    public static func recorded(_ tags: [VoiceLabAudioTag], modelID: String) -> [VoiceLabAudioTag]? {
+        tags.isEmpty || !supports(modelID) ? nil : tags
+    }
     public static func validated(_ tags: [VoiceLabAudioTag], text: String) -> [VoiceLabAudioTag] {
         let count = EditingPrimitives.splitWords(text).count
         return tags.prefix(64).filter { annotation in
