@@ -151,7 +151,6 @@ internal sealed partial class RewritePanel : Grid
         footerContent.Children.Add(disclosure);
         acceptBlocker.TextWrapping = TextWrapping.Wrap;
         AutomationProperties.SetAutomationId(acceptBlocker, "Rewrite.AcceptBlocker");
-        AutomationProperties.SetLiveSetting(acceptBlocker, AutomationLiveSetting.Polite);
         footerContent.Children.Add(acceptBlocker);
         footerContent.Children.Add(apply);
         apply.Click += async (_, _) => await ApplyDefaultAsync();
