@@ -179,6 +179,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         var afterPhrase: ((Int) async throws -> Void)?
         var finishFailure: VoiceLabTakeFailure?
         var transformFinish: (([UUID: VoiceLabTakeRow]) -> [UUID: VoiceLabTakeRow])?
+        var transformRow: ((VoiceLabTakeRow) -> VoiceLabTakeRow)?
         var fatalResult: VoiceLabTakeFailure?
         var beforePhrase: ((Int) async throws -> Void)?
         var beforeQuote: (() async -> Void)?
@@ -313,11 +314,12 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
             try await made?.beforePhrase?(phrase)
             let result = try await real.execute(batch, index, phrase) { [weak made] rows in
                 await made?.beforeProgress?()
-                await progress(rows)
+                let transformed = await MainActor.run { rows.map { made?.transformRow?($0) ?? $0 } }
+                await progress(transformed)
             }
             try await made?.afterPhrase?(phrase)
             if let failure = made?.fatalResult { return VoiceLabTakeRunResult(rows: result.rows, end: .fatal, failure: failure) }
-            return result
+            return VoiceLabTakeRunResult(rows: result.rows.map { made?.transformRow?($0) ?? $0 }, end: result.end, failure: result.failure)
         }
         backend.finishVoice = { [weak made] in
             let original = await real.finishVoice()
@@ -347,6 +349,97 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
     private func sourceAcceptance(_ plan: ClipTakePlan) async throws -> ClipTakePlan.Acceptance {
         try chooseSourceDuration(plan)
         return try await plan.acceptance()
+    }
+
+    private static func advisoryRow(_ row: VoiceLabTakeRow, side: VoiceLabJoinAdvisorySeam.Side = .left) -> VoiceLabTakeRow {
+        var values = row.qa!.values
+        values.lufsJumpLu = 4
+        let qa = VoiceLabTakeQAResult(values: values, failures: row.qa!.hardFailures + [.loudness],
+            joinSeams: [.init(side: side, excessLu: 4)])
+        return VoiceLabTakeRow(id: row.id, index: row.index, seed: row.seed, receipt: row.receipt, audio: row.audio,
+            qa: qa, score: 1, failure: row.failure, qaReceipt: row.qaReceipt, generated: row.generated,
+            quote: row.quote, accepted: row.acceptedRequestIDs, voiceCheck: row.voiceCheck)
+    }
+
+    @Test func joinAdvisoryNeedsUseAnywayThenNormalDurationAndUseFlow() async throws {
+        let fixture = try await fixture(indices: [3])
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        fixture.transformRow = { Self.advisoryRow($0) }
+        let plan = fixture.plan
+        await plan.prepare()
+        await plan.start(approved: true)
+        let row = try #require(plan.phrases[0].takes.first?.row)
+        let selectable = row.selectable
+        try #require(selectable && row.qa?.verdict == .passedWithAdvisory)
+        #expect(plan.phrases[0].selectedID == nil)
+        let genericSelection = plan.select(take: row.id, phrase: 0)
+        #expect(!plan.canAccept && !genericSelection)
+        await plan.play(take: row.id, phrase: 0)
+        #expect(plan.audition.isPlaying && plan.phrases[0].selectedID == nil)
+        let date = Date(timeIntervalSince1970: floor(Date().timeIntervalSince1970))
+        let used = plan.useAnyway(take: row.id, phrase: 0, at: date)
+        try #require(used)
+        #expect(plan.phrases[0].selectedID == row.id && !plan.canAccept)
+        try chooseSourceDuration(plan)
+        #expect(plan.canAccept)
+        let accepted = try await plan.acceptance(at: date.addingTimeInterval(1))
+        #expect(accepted.segments[0].candidates[0].recipe?.qa.joinAdvisory?.acceptedAt == date)
+        let command = try VoiceLabEditCommand.acceptAll(segments: accepted.segments, assets: accepted.assets, voice: accepted.voice)
+        let project = try command.applying(to: fixture.source, outputScope: .full)
+        _ = try VoiceLabRenderContract.prepare(project, scope: .full, labelPosition: .topRight)
+        let encoded = try JSONProjectStore.encode(project)
+        #expect(try JSONProjectStore.encode(JSONProjectStore.decode(encoded)) == encoded)
+    }
+
+    @Test func mixedAdvisoryRunKeepsTheCleanTakeSelectedAndExplicitChoiceSurvivesRetry() async throws {
+        let fixture = try await fixture(indices: [3])
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let plan = fixture.plan
+        await plan.prepare()
+        await plan.start(approved: true)
+        let clean = try #require(plan.phrases[0].selectedID)
+        fixture.transformRow = { $0.id == clean ? $0 : Self.advisoryRow($0) }
+        await plan.prepareAnother(phrase: 0)
+        await plan.tryAnother(phrase: 0, approved: true)
+        let advisory = try #require(plan.phrases[0].takes.last?.row)
+        try #require(advisory.qa?.verdict == .passedWithAdvisory)
+        #expect(advisory.score! >= plan.phrases[0].selected!.row.score!)
+        #expect(plan.phrases[0].selectedID == clean && plan.phrases[0].bestMeasured?.id == clean)
+        let genericSelection = plan.select(take: advisory.id, phrase: 0)
+        #expect(!genericSelection)
+        let used = plan.useAnyway(take: advisory.id, phrase: 0)
+        try #require(used)
+        let acceptance = plan.phrases[0].selected?.row.acceptedJoinAdvisory
+        await plan.prepareAnother(phrase: 0)
+        await plan.tryAnother(phrase: 0, approved: true)
+        #expect(plan.phrases[0].selectedID == advisory.id)
+        #expect(plan.phrases[0].selected?.row.acceptedJoinAdvisory == acceptance)
+        fixture.transformRow = { $0.id == clean ? $0 : Self.advisoryRow($0, side: .right) }
+        fixture.transformFinish = { rows in
+            var updates = rows
+            updates[advisory.id] = Self.advisoryRow(advisory, side: .right)
+            return updates
+        }
+        await plan.prepareAnother(phrase: 0)
+        await plan.tryAnother(phrase: 0, approved: true)
+        #expect(plan.phrases[0].selectedID != advisory.id)
+        #expect(plan.phrases[0].takes.first(where: { $0.id == advisory.id })?.row.acceptedJoinAdvisory == nil)
+    }
+
+    @Test func useAllLeavesAnUnacceptedAdvisoryOutOfTheSelection() async throws {
+        let fixture = try await fixture(indices: [3, 10])
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        fixture.transformRow = { row in
+            (row.audio?.fit.plan.windowStart ?? 0) < 20 ? Self.advisoryRow(row) : row
+        }
+        let plan = fixture.plan
+        await plan.prepare()
+        await plan.start(approved: true)
+        #expect(plan.phrases[0].selectedID == nil && plan.phrases[1].selectedID != nil)
+        let accepted = try await sourceAcceptance(plan)
+        #expect(accepted.segments.count == 1)
+        #expect(accepted.segments[0].candidates[0].recipe?.qa.joinAdvisory == nil)
+        #expect(fixture.publishedIDs == [plan.phrases[1].selectedID!])
     }
 
     @Test func reviewerUnmeasuredNeedsExplicitSelection() async throws {

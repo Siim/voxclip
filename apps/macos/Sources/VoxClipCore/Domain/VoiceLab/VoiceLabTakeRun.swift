@@ -92,11 +92,19 @@ public enum VoiceLabTakeQAFailure: String, Sendable, Codable {
     /// This records an unavailable check, not a measured mismatch with the owner's voice.
     case insufficientGeneratedSpeech
 }
+public enum VoiceLabTakeQAVerdict: Sendable, Equatable { case passed, passedWithAdvisory, failed }
 public struct VoiceLabTakeQAResult: Sendable, Equatable {
     public let values: VoiceLabQA
     public let failures: [VoiceLabTakeQAFailure]
+    public let joinSeams: [VoiceLabJoinAdvisorySeam]
     public var passed: Bool { failures.isEmpty }
-    package init(values: VoiceLabQA, failures: [VoiceLabTakeQAFailure]) { self.values = values; self.failures = failures }
+    public var hardFailures: [VoiceLabTakeQAFailure] { failures.filter { $0 != .loudness } }
+    public var verdict: VoiceLabTakeQAVerdict {
+        !hardFailures.isEmpty ? .failed : passed ? .passed : .passedWithAdvisory
+    }
+    package init(values: VoiceLabQA, failures: [VoiceLabTakeQAFailure], joinSeams: [VoiceLabJoinAdvisorySeam] = []) {
+        self.values = values; self.failures = failures; self.joinSeams = joinSeams
+    }
 }
 
 public enum VoiceLabTakeQuality {
@@ -130,19 +138,28 @@ public enum VoiceLabTakeQuality {
         let ratio = try transcriptRatio(expected: expectedTokens, recognized: recognizedTokens)
         let peak = try VoiceLabLoudness.samplePeakDbfs(mixed)
         guard peak.isFinite else { throw VoiceLabError.invalidAudio }
-        let jump: Double
+        if let generatedAfter, generatedAfter.count != seams.count { throw VoiceLabAudioMathError.invalidInput }
+        let steps = try VoiceLabLoudness.seamStepsLu(mixed, sampleRate: sampleRate, seamSamples: seams)
+        let excesses: [Double]
         if let sourceSeamSteps {
-            let steps = try VoiceLabLoudness.seamStepsLu(mixed, sampleRate: sampleRate, seamSamples: seams)
             let ranges = sourceSeamPauseRanges.flatMap { $0.isEmpty ? nil : $0 }
             let levels: [Double?]
             if let ranges, let generatedAfter {
                 guard ranges.count == seams.count else { throw VoiceLabAudioMathError.invalidInput }
                 levels = try VoiceLabLoudness.generatedPauseLufs(mixed, sampleRate: sampleRate, seamSamples: seams, generatedAfter: generatedAfter)
             } else { levels = Array(repeating: nil, count: seams.count) }
-            jump = try VoiceLabLoudness.seamExcessLu(mixedSteps: steps, sourceSteps: sourceSeamSteps, generatedPauseLevels: levels,
+            _ = try VoiceLabLoudness.seamExcessLu(mixedSteps: steps, sourceSteps: sourceSeamSteps, generatedPauseLevels: levels,
                 sourcePauseRanges: ranges ?? Array(repeating: nil, count: seams.count))
+            excesses = try steps.indices.map { index in
+                try VoiceLabLoudness.seamExcessLu(mixedSteps: [steps[index]], sourceSteps: [sourceSeamSteps[index]],
+                    generatedPauseLevels: [levels[index]], sourcePauseRanges: [ranges?[index]])
+            }
         } else {
-            jump = try VoiceLabLoudness.lufsJumpLu(mixed, sampleRate: sampleRate, seamSamples: seams)
+            excesses = steps.map { abs($0) }
+        }
+        let jump = excesses.max() ?? 0
+        let joinSeams = excesses.indices.filter { excesses[$0] > 2 }.map { index in
+            VoiceLabJoinAdvisorySeam(side: (generatedAfter?[index] ?? (index == 0)) ? .left : .right, excessLu: excesses[index])
         }
         var failures: [VoiceLabTakeQAFailure] = []
         let exact = expectedTokens.count == recognizedTokens.count && zip(expectedTokens, recognizedTokens).allSatisfy { $0.utf8.elementsEqual($1.utf8) }
@@ -150,7 +167,7 @@ public enum VoiceLabTakeQuality {
         if peak >= 0 { failures.append(.clipping) }
         if jump > 2 { failures.append(.loudness) }
         if let speakerScore, speakerScore < threshold { failures.append(.speaker) }
-        return VoiceLabTakeQAResult(values: VoiceLabQA(transcriptMatch: ratio, lufsJumpLu: jump, peakDbfs: peak, speakerScore: speakerScore), failures: failures)
+        return VoiceLabTakeQAResult(values: VoiceLabQA(transcriptMatch: ratio, lufsJumpLu: jump, peakDbfs: peak, speakerScore: speakerScore), failures: failures, joinSeams: joinSeams)
     }
     public static func rank(fit: VoiceLabFitResult, windowSeconds window: Double, matchRatio: Double, flatness: Double) throws -> Double {
         guard matchRatio.isFinite, flatness.isFinite, (0...1).contains(matchRatio), (0...1).contains(flatness) else { throw VoiceLabError.invalidInput }
@@ -214,6 +231,10 @@ public struct VoiceLabTakeRow: Sendable, Equatable, Identifiable {
     public let score: Double?
     public let failure: VoiceLabTakeFailure?
     public let voiceCheck: VoiceLabTakeVoiceCheck
+    public let acceptedJoinAdvisory: VoiceLabJoinAdvisory?
+    public var hasJoinAdvisory: Bool { qa?.verdict == .passedWithAdvisory }
+    public var requiresJoinAdvisoryAcceptance: Bool { hasJoinAdvisory && acceptedJoinAdvisory == nil }
+    public var automaticallySelectable: Bool { selectable && !hasJoinAdvisory }
     /// Passing voice copy depends on the whole row, including its independent words check.
     public var shortPhraseCopy: String? {
         switch voiceCheck {
@@ -222,11 +243,19 @@ public struct VoiceLabTakeRow: Sendable, Equatable, Identifiable {
         case .shortSpeech(let evidence):
             guard evidence.valid else { return nil }
             if evidence.mode == .unmeasured { return "voice couldn't be measured (under 3 s of speech)" }
-            guard failure == nil, qa?.passed == true, qa?.values.speakerScore?.isFinite == true else { return nil }
+            guard selectable, qa?.values.speakerScore?.isFinite == true else { return nil }
             return "Short phrase · words checked · voice checked across \(evidence.takeCount) takes"
         }
     }
-    public var selectable: Bool { voiceCheck.complete && failure == nil && qa?.passed == true && audio != nil }
+    public var selectable: Bool { voiceCheck.complete && failure == nil && qa.map { $0.verdict != .failed } == true && audio != nil }
+    public func acceptingJoinAdvisory(at date: Date) throws -> Self {
+        guard selectable, hasJoinAdvisory, let qa, let jump = qa.values.lufsJumpLu else { throw VoiceLabProjectError.qaRejected }
+        let acceptance = VoiceLabJoinAdvisory(seams: qa.joinSeams, acceptedAt: date)
+        guard acceptance.validates(jump: jump, createdAt: date) else { throw VoiceLabProjectError.qaRejected }
+        return Self(id: id, index: index, seed: seed, receipt: receipt, audio: audio, qa: qa, score: score, failure: failure,
+            qaReceipt: qaReceipt, generated: generated, quote: quote, accepted: acceptedRequestIDs, voiceCheck: voiceCheck,
+            acceptedJoinAdvisory: acceptedJoinAdvisory ?? acceptance)
+    }
     public var fits: Bool {
         if let audio, case .exact = audio.fit { return true }
         return false
@@ -234,8 +263,9 @@ public struct VoiceLabTakeRow: Sendable, Equatable, Identifiable {
     package init(id: UUID, index: Int, seed: UInt32, receipt: VoiceLabReceipt? = nil, audio: VoiceLabTakeAudio? = nil,
                  qa: VoiceLabTakeQAResult? = nil, score: Double? = nil, failure: VoiceLabTakeFailure? = nil,
                  qaReceipt: VoiceLabReceipt? = nil, generated: VoiceLabAudioResult? = nil, quote: VoiceLabTakeQuote? = nil,
-                 accepted: Set<UUID> = [], voiceCheck: VoiceLabTakeVoiceCheck = .perTake) {
+                 accepted: Set<UUID> = [], voiceCheck: VoiceLabTakeVoiceCheck = .perTake, acceptedJoinAdvisory: VoiceLabJoinAdvisory? = nil) {
         self.voiceCheck = voiceCheck
+        self.acceptedJoinAdvisory = acceptedJoinAdvisory
         self.id = id; self.index = index; self.seed = seed; self.receipt = receipt; self.audio = audio
         self.qa = qa; self.score = score; self.failure = failure
         self.qaReceipt = qaReceipt; self.generated = generated; self.quote = quote
@@ -251,14 +281,15 @@ extension VoiceLabTakeRow {
         if case .qa(let additional) = voiceFailure {
             for item in additional where !failures.contains(item) { failures.append(item) }
         }
-        let checked = qa.map { _ in VoiceLabTakeQAResult(values: values, failures: failures) }
+        let checked = qa.map { VoiceLabTakeQAResult(values: values, failures: failures, joinSeams: $0.joinSeams) }
+        let hardFailures = failures.filter { $0 != .loudness }
         let failure: VoiceLabTakeFailure? = voiceFailure.flatMap { item in
             if case .qa = item { return nil }
             return item
-        } ?? (failures.isEmpty ? self.failure : .qa(failures))
+        } ?? (hardFailures.isEmpty ? self.failure : .qa(hardFailures))
         return Self(id: id, index: index, seed: seed, receipt: receipt, audio: audio, qa: checked,
                     score: self.score, failure: failure, qaReceipt: qaReceipt, generated: generated,
-                    quote: quote, accepted: acceptedRequestIDs, voiceCheck: check)
+                    quote: quote, accepted: acceptedRequestIDs, voiceCheck: check, acceptedJoinAdvisory: acceptedJoinAdvisory)
     }
 }
 
@@ -268,9 +299,13 @@ public struct VoiceLabTakeRunResult: Sendable, Equatable {
     public let end: VoiceLabTakeRunEnd
     public let failure: VoiceLabTakeFailure?
     public var ranked: [VoiceLabTakeRow] {
-        rows.filter(\.selectable).sorted { $0.score == $1.score ? $0.index < $1.index : ($0.score ?? 0) > ($1.score ?? 0) }
+        rows.filter(\.selectable).sorted {
+            if $0.hasJoinAdvisory != $1.hasJoinAdvisory { return !$0.hasJoinAdvisory }
+            return $0.score == $1.score ? $0.index < $1.index : ($0.score ?? 0) > ($1.score ?? 0)
+        }
     }
     public var best: VoiceLabTakeRow? { ranked.first }
+    public var bestAutomatic: VoiceLabTakeRow? { ranked.first(where: \.automaticallySelectable) }
     package init(rows: [VoiceLabTakeRow], end: VoiceLabTakeRunEnd, failure: VoiceLabTakeFailure? = nil) {
         self.rows = rows; self.end = end; self.failure = failure
     }

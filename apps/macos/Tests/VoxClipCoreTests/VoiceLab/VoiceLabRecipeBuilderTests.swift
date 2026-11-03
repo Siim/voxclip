@@ -13,10 +13,11 @@ import Testing
         #expect(throws: DecodingError.self) { try JSONDecoder().decode(VoiceLabShortSpeechEvidence.self, from: oldKey) }
     }
 
-    @Test(arguments: [0, 1, 2], ["consent-record.json", "consent-record-project.json"])
+    @Test(arguments: [0, 1, 2, 3], ["consent-record.json", "consent-record-project.json"])
     func paidAndFittedRecipesPassV3WithoutChangingSource(policy: Int, recordFile: String) throws {
         let fitted = policy == 1
         let unmeasured = policy == 2
+        let advisory = policy == 3
         var project = try JSONProjectStore.decode(FixtureLoader.data("fixtures/voice-lab/passage-render-v3.voxclip"))
         let previous = project
         let stored = project.voiceLab.segments[0]
@@ -48,17 +49,27 @@ import Testing
             consentMethod: record.consentMethod, voicedFrames: 16_800, takeCount: 1)
         var values = stored.qa
         if unmeasured { values.speakerScore = nil }
-        let row = VoiceLabTakeRow(id: quote.requestID, index: 0, seed: 7, receipt: receipt, audio: take,
-            qa: VoiceLabTakeQAResult(values: values, failures: []), score: 0.9,
+        if advisory { values.lufsJumpLu = 4 }
+        var row = VoiceLabTakeRow(id: quote.requestID, index: 0, seed: 7, receipt: receipt, audio: take,
+            qa: VoiceLabTakeQAResult(values: values, failures: advisory ? [.loudness] : [],
+                joinSeams: advisory ? [.init(side: .left, excessLu: 4)] : []), score: 0.9,
             quote: .init(index: 0, seed: 7, synthesis: quote, qa: quote), voiceCheck: unmeasured ? .shortSpeech(evidence) : .perTake)
         let published = VoiceLabPublishedTake(assets: assets, audio: audio, outDuration: 3.2 - 2.5, words: words,
             chunks: stored.candidates[0].recipe!.chunks)
+        if advisory {
+            #expect(throws: VoiceLabProjectError.qaRejected) {
+                try VoiceLabRecipeBuilder.candidate(row: row, input: input, published: published, record: record,
+                    createdAt: Date(timeIntervalSince1970: 1_800_000_000), videoChoice: .source)
+            }
+            row = try row.acceptingJoinAdvisory(at: Date(timeIntervalSince1970: 1_799_999_999))
+        }
         let candidate = try VoiceLabRecipeBuilder.candidate(row: row, input: input, published: published, record: record,
             createdAt: Date(timeIntervalSince1970: 1_800_000_000), videoChoice: .source)
         #expect(candidate.recipe?.audio.assetId == (fitted ? "fitted-test" : asset.id))
         #expect(candidate.recipe?.chunks[0].assetId == asset.id)
         #expect(candidate.recipe?.cost.usd == 0.2)
         #expect(candidate.recipe?.qa.shortSpeech == (unmeasured ? evidence : nil))
+        #expect(candidate.recipe?.qa.joinAdvisory == row.acceptedJoinAdvisory)
         #expect(candidate.recipe?.qa.speakerPassed == !unmeasured)
         #expect((candidate.recipe?.qa.speakerScore == nil) == unmeasured)
         let segment = try VoiceLabRecipeBuilder.segment(id: "accepted-test", candidates: [candidate], selected: 0, input: input, plan: plan)
@@ -98,7 +109,7 @@ import Testing
         let longerTake = VoiceLabTakeAudio(sampleRate: 24000, trimmed: [], mixed: [], patchRange: 0..<0, seams: [], gainDb: 0,
             roomTone: take.roomTone, fit: .changedDuration(longerPlan, naturalOut: 0.75, residualSeconds: 0.05))
         let longerRow = VoiceLabTakeRow(id: row.id, index: row.index, seed: row.seed, receipt: receipt, audio: longerTake,
-            qa: row.qa, score: row.score, quote: row.quote, voiceCheck: row.voiceCheck)
+            qa: row.qa, score: row.score, quote: row.quote, voiceCheck: row.voiceCheck, acceptedJoinAdvisory: row.acceptedJoinAdvisory)
         var longerAudio = audio; longerAudio.trimEnd = 0.85
         var chunk = stored.candidates[0].recipe!.chunks[0]; chunk.assembledEndFrame = 20_400
         let longerPublished = VoiceLabPublishedTake(assets: assets, audio: longerAudio, outDuration: (3.2 - 2.5) + 0.05,
