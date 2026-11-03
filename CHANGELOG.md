@@ -6,6 +6,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 - Keep successful Rewrite replies when a project save finishes during the request, and explain stale replies inline.
 - Keep Rewrite failures from interrupting recordings or other panel jobs, and retry with the AI selected now.
+- Voice takes no longer fail the loudness check at a join that sounds continuous: a pause beside the join is compared with the source's own pause there, breaths included.
 - A failed Rewrite now stays open and says why.
 - Paid takes that failed their checks can now be played on Windows too, without being used.
 - Keep Eleven v4 voice takes and CLI network recovery consistent across macOS and Windows.
