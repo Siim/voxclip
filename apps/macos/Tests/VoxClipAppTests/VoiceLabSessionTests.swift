@@ -59,9 +59,9 @@ import Synchronization
         #expect(VoiceLabSession.betaCopy == "Voice Lab can create a copy of your own voice and re-voice words you rewrite. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key.")
     }
 
-    @Test func unshippedLipSyncProvidersHaveNoKeyOrMonthlyCapRows() throws {
+    @Test func onlyFalLipSyncHasKeyAndMonthlyCapRowsBeforeLipSyncShips() throws {
         #expect(!LipSyncAvailability.shipped)
-        #expect(LipSyncAvailability.settingsProviders.map(\.id) == ["elevenlabs"])
+        #expect(LipSyncAvailability.settingsProviders.map(\.id) == ["elevenlabs", "fal"])
         let shared = try SharedResources.locate()
         let source = try String(contentsOf: shared.root.deletingLastPathComponent().appendingPathComponent("apps/macos/Sources/VoxClip/VoiceLabSettings.swift"), encoding: .utf8)
         #expect(source.components(separatedBy: "ForEach(LipSyncAvailability.settingsProviders, id: \\.id)").count == 3)

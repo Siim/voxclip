@@ -2,11 +2,12 @@ import SwiftUI
 import VoxClipCore
 import VoxClipMedia
 
-/// Restore the lip-sync provider rows together when lip sync ships (M3+). Stored keys and caps remain intact.
+/// fal.ai's key and spending rows show while lip sync through fal.ai is wired into Rewrite (user, 2026-11-03).
+/// sync.so's rows return with its client when lip sync ships (M3+). Stored keys and caps remain intact.
 enum LipSyncAvailability {
     static let shipped = false
     static var settingsProviders: [(id: String, label: String)] {
-        shipped ? [("elevenlabs", "ElevenLabs"), ("fal", "fal.ai"), ("syncso", "sync.so")] : [("elevenlabs", "ElevenLabs")]
+        [("elevenlabs", "ElevenLabs"), ("fal", "fal.ai")] + (shipped ? [("syncso", "sync.so")] : [])
     }
 }
 
