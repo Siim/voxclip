@@ -156,7 +156,8 @@ struct EditorRenderSnapshot {
         // The open session on another scope stays until the new one opens: closing it first re-rendered the transcript
         // without its proposal, which could move the selection and cancel this open, leaving no session and no message.
         rewriteNotice = nil
-        let snapshot = project
+        let inputClipID: String? = if case .clip(let id) = RewriteSession.outputScope(of: scope, in: project) { id } else { nil }
+        let snapshot = project.rewriteInputs(scope: scope, enclosingClipID: inputClipID)
         let selection = selectedWordIDs
         let pauses = selectedPauseIDs
         let signature = rewriteConnectorSignature
@@ -172,7 +173,7 @@ struct EditorRenderSnapshot {
             rewriteOpenToken = nil
             let refusal: String? = if !capabilities.ai { Self.rewriteUnavailableNotice }
                 else if selectedWordIDs != selection || selectedPauseIDs != pauses { Self.rewriteSelectionNotice }
-                else if project != snapshot { Self.rewriteProjectNotice }
+                else if project.rewriteInputs(scope: scope, enclosingClipID: inputClipID) != snapshot { Self.rewriteProjectNotice }
                 else if rewriteConnectorSignature != signature { Self.rewriteConnectorNotice }
                 else if Task.isCancelled { Self.rewriteStoppedNotice }
                 else { nil }
@@ -261,8 +262,13 @@ struct EditorRenderSnapshot {
         restartRewrite(session)
     }
     func restartRewrite(_ session: RewriteSession) {
-        guard openRewrite === session, session.isOpen,
-              RewriteEntryPolicy.canRun(editable: capabilities.ai, scope: session.rewriteScope) else { return }
+        guard openRewrite === session, session.isOpen else { return }
+        guard RewriteEntryPolicy.canRun(editable: capabilities.ai, scope: session.rewriteScope) else {
+            closeRewrite(returnFocus: false)
+            rewriteNotice = Self.rewriteUnavailableNotice
+            announce(Self.rewriteUnavailableNotice)
+            return
+        }
         let scope = session.rewriteScope, instruction = session.instruction
         closeRewrite(returnFocus: false)
         openRewriteSession(scope: scope, instruction: instruction)

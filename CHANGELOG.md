@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Let the first Rewrite start across saves and land across unrelated Motion, Demo and metadata changes; explain AI changes and unavailable retries.
 - Keep successful Rewrite replies when a project save finishes during the request, and explain stale replies inline.
 - Keep Rewrite failures from interrupting recordings or other panel jobs, and retry with the AI selected now.
 - A failed Rewrite now stays open and says why.
