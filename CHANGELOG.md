@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Keep recording ambience under generated speech, preserve noise-gated silence, and check short hard-join pauses without rejecting usable takes.
 - Joins between the generated phrase and your recording now get a short natural pause instead of a hard cut
 - Let the first Rewrite start across saves and land across unrelated Motion, Demo and metadata changes; explain AI changes and unavailable retries.
 - Rewrite chooses a fitting voice pace before pricing and learns from a take's measured length when you try another.

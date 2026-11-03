@@ -76,14 +76,14 @@ enum VoiceLabAudioRenderer {
             let placement = incoming ? input.window.leftSeam : input.window.rightSeam
             if placement.kind == .none { continue }
             if incoming ? incomingPause != nil : outgoingPause != nil {
-                let count = frames(VoiceLabHardJoin.sourceFadeSeconds)
+                let count = Int(VoiceLabHardJoin.sourceFadeFrames(sampleRate: Double(rate), availableSourceSamples: Int64(incoming ? start : source.totalFrames - end)))
                 let seam = lead + (incoming ? 0 : length)
                 let sourceSeam = incoming ? start : end
-                guard count >= 2, incoming ? count <= lead : count <= tail else { throw VoiceLabError.invalidAudio }
+                guard count >= frames(0.002), incoming ? count <= lead : count <= tail else { throw VoiceLabError.invalidAudio }
                 for offset in 0..<count {
                     let local = incoming ? offset - count : offset
                     guard let original = source.samples((sourceSeam + local)..<(sourceSeam + local + 1))?.first else { throw VoiceLabError.invalidAudio }
-                    let weight = VoiceLabHardJoin.sourceWeight(secondsFromJoin: Double(local) / Double(rate), incoming: incoming)
+                    let weight = VoiceLabHardJoin.sourceWeight(secondsFromJoin: Double(local) / Double(rate), incoming: incoming, fadeSeconds: Double(count) / Double(rate))
                     mixed[seam + local] = original * Float(weight) + background((incoming ? 0 : length) + local) * Float(sqrt(max(0, 1 - weight * weight)))
                 }
                 seams.append(seam); sourceSeams.append(lead + (incoming ? 0 : end - start))
@@ -110,6 +110,7 @@ enum VoiceLabAudioRenderer {
         var sourceSeamPauses = try VoiceLabLoudness.sourcePausesLufs(Array(original), sampleRate: rate, seamSamples: sourceSeams,
             generatedAfter: sourceSeams.map { $0 == lead })
         var measuredSteps = try VoiceLabLoudness.seamStepsLu(mixed, sampleRate: rate, seamSamples: seams)
+        var pauseExcesses = [Double](repeating: 0, count: seams.count)
         for index in seams.indices {
             let incoming = seams[index] == lead
             guard let pause = incoming ? incomingPause : outgoingPause else { continue }
@@ -138,6 +139,7 @@ enum VoiceLabAudioRenderer {
             let incoming = seams[index] == lead
             if let pause = incoming ? incomingPause : outgoingPause {
                 measuredSteps[index] = try VoiceLabHardJoin.speechStep(mixed, sampleRate: rate, seam: seams[index], pause: pause, incoming: incoming)
+                pauseExcesses[index] = try VoiceLabHardJoin.pauseExcess(mixed, sampleRate: rate, seam: seams[index], pause: pause, incoming: incoming, input: input)
             }
         }
         try reserveDisk(scratchRoot, frames: Int64(mixed.count), additionalBytes: Int64(fitted.wave.pcm.count + 88))
@@ -158,6 +160,7 @@ enum VoiceLabAudioRenderer {
                 sourceSeamSteps: sourceSeamSteps, sourceSeamPauses: sourceSeamPauses)
             audio.microPauseIn = incomingPause; audio.microPauseOut = outgoingPause; audio.edgeGain = edgeGain
             audio.measuredSeamSteps = smoothing ? measuredSteps : nil
+            audio.measuredPauseExcesses = smoothing ? pauseExcesses : nil
             return VoiceLabTakeScratch(directory: directory, operation: operation, fitted: fitted, audio: audio)
         } catch { operation.discard(); throw error }
     }
@@ -593,16 +596,16 @@ enum VoiceLabAudioRenderer {
         if seam.microPause != nil {
             let incoming = right.kind == .synth
             guard incoming ? left.kind == .source : right.kind == .source else { throw VoiceLabProjectError.invalidFadeHandles }
-            let count = Int(EditingPrimitives.jsRound(VoiceLabHardJoin.sourceFadeSeconds * plan.sampleRate))
             let available = incoming ? left.outputEndSample - left.outputStartSample : right.outputEndSample - right.outputStartSample
-            guard count >= 2, Int64(count) <= available else { throw VoiceLabProjectError.invalidFadeHandles }
+            let count = Int(VoiceLabHardJoin.sourceFadeFrames(sampleRate: plan.sampleRate, availableSourceSamples: available))
+            guard count >= Int(ceil(0.002 * plan.sampleRate)), Int64(count) <= available else { throw VoiceLabProjectError.invalidFadeHandles }
             let sourceStart = incoming ? left.sourceEndSample - Int64(count) : right.sourceStartSample
             var samples = try read(source, start: sourceStart, count: count)
             let tone = try recipe.roomTone.map { try read(source, start: $0.sourceStartSample, count: Int($0.sourceEndSample - $0.sourceStartSample)) }
             for frame in 0..<count {
                 let local = incoming ? frame - count : frame
                 let relative = incoming ? Int64(local) : left.outputEndSample - left.outputStartSample + Int64(local)
-                let weight = VoiceLabHardJoin.sourceWeight(secondsFromJoin: Double(local) / plan.sampleRate, incoming: incoming)
+                let weight = VoiceLabHardJoin.sourceWeight(secondsFromJoin: Double(local) / plan.sampleRate, incoming: incoming, fadeSeconds: Double(count) / plan.sampleRate)
                 let bed = recipe.roomTone.map { Float(pow(10, $0.gainDb(atFrame: Double(relative), of: recipe.outDuration * plan.sampleRate) / 20)) } ?? 0
                 for channel in 0..<2 {
                     let background = tone.map { toneSample($0, at: relative, channel: channel, rate: plan.sampleRate) * bed } ?? 0

@@ -10,6 +10,14 @@ struct VoiceLabHardJoinStagingTests {
         let gating: [Gating]
     }
     @Test(arguments: [0.1, 0.07, 0.01]) func gainIsGatedAndNeverBaked(amplitude: Double) throws {
+        try stageAndCheck(amplitude: amplitude, bedGainDb: nil)
+    }
+
+    @Test(arguments: [0.0, -6.0, 6.0]) func reservedPauseIsCheckedInTheStagedMix(gainDb: Double) throws {
+        try stageAndCheck(amplitude: 0.1, bedGainDb: gainDb)
+    }
+
+    private func stageAndCheck(amplitude: Double, bedGainDb: Double?) throws {
         let row = try #require(JSONDecoder().decode(Fixture.self, from: FixtureLoader.data("fixtures/voice-lab/hard-join-cases.json")).gating.first { $0.amplitude == amplitude })
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
@@ -24,7 +32,10 @@ struct VoiceLabHardJoinStagingTests {
             window.rightSeam.time = window.end; window.rightSeam.sample = window.endSample
         }
         let samples = (0..<rate).map { Float(amplitude * sin(2 * Double.pi * 1_000 * Double($0) / Double(rate))) }
-        let source = (0..<(rate * 5)).map { Float(0.1 * sin(2 * Double.pi * 1_000 * Double($0) / Double(rate))) }
+        let source = (0..<(rate * 5)).map { index -> Float in
+            let level = bedGainDb != nil && (index < rate || index >= rate * 4) ? 0.001 : 0.1
+            return Float(level * sin(2 * Double.pi * 1_000 * Double(index) / Double(rate)))
+        }
         let words = [VoiceLabWord(text: "new", start: 0.14, end: 0.4, synthetic: true), .init(text: "words", start: 0.6, end: 0.86, synthetic: true)]
         let take = VoiceLabFitTake(assetFrames: Int64(rate), assetSampleRate: rate, trimStart: 0, trimEnd: 1, words: words,
             envelope: VoiceLabTakeProcessing.envelope(samples, sampleRate: rate))
@@ -39,9 +50,11 @@ struct VoiceLabHardJoinStagingTests {
         let fitted = try VoiceLabSilenceFit.prepare(snapshot: snapshot, paidAsset: paid, fit: fit, window: window, sourceSampleRate: rate)
         let before = fitted.wave.bytes
         let input = VoiceLabTakeInput(text: "new words", modelID: "fixture", recordID: "fixture", language: "en", seed: 1,
-            contentKey: "fixture", source: source, sourceSampleRate: rate, items: [], window: window,
+            contentKey: "fixture", source: source, sourceSampleRate: rate,
+            items: bedGainDb == nil ? [] : [.init(id: "w", text: "speech", kind: .word, start: 1, end: 4)], window: window,
             incomingSilence: nil, outgoingSilence: nil, cleanAudioOn: true, providerConsent: true)
-        let analysis = VoiceLabTakeAnalysis(sampleRate: rate, trimmed: samples, gainDb: 0, roomTone: nil, fit: fit)
+        let room = bedGainDb.map { VoiceLabRoomTone(sourceStartSample: 0, sourceEndSample: Int64(rate / 2), gainDb: $0) }
+        let analysis = VoiceLabTakeAnalysis(sampleRate: rate, trimmed: samples, gainDb: 0, roomTone: room, fit: fit)
         let scratch = try VoiceLabAudioRenderer.stageTake(fitted: fitted, analysis: analysis, input: input, sourceAtAssetRate: .init(whole: source), scratchRoot: root)
         #expect(fitted.wave.bytes == before)
         #expect(scratch.audio.microPauseIn != nil && scratch.audio.microPauseOut != nil)
@@ -51,9 +64,14 @@ struct VoiceLabHardJoinStagingTests {
         let audio = scratch.audio
         let qa = try VoiceLabTakeQuality.evaluate(expected: "new words", recognized: ["new", "words"], mixed: audio.mixed,
             sampleRate: rate, seams: audio.seams, sourceSeamSteps: audio.sourceSeamSteps,
-            sourceSeamPauses: audio.sourceSeamPauses, measuredSeamSteps: audio.measuredSeamSteps, speakerScore: 1, threshold: 0.5)
+            sourceSeamPauses: audio.sourceSeamPauses, measuredSeamSteps: audio.measuredSeamSteps,
+            measuredPauseExcesses: audio.measuredPauseExcesses, speakerScore: 1, threshold: 0.5)
         #expect(qa.hardFailures.isEmpty)
-        #expect(qa.failures.contains(.loudness) == row.advisory)
+        #expect(qa.failures.contains(.loudness) == (row.advisory || abs(bedGainDb ?? 0) > 2))
+        if let bedGainDb {
+            #expect(abs((audio.measuredPauseExcesses?.max() ?? -1) - abs(bedGainDb)) < 1)
+            #expect(abs((qa.values.lufsJumpLu ?? -1) - abs(bedGainDb)) < 1)
+        }
         let failed = try VoiceLabTakeQuality.evaluate(expected: "new words", recognized: ["wrong"], mixed: audio.mixed,
             sampleRate: rate, seams: audio.seams, sourceSeamSteps: audio.sourceSeamSteps,
             measuredSeamSteps: audio.measuredSeamSteps, speakerScore: 0, threshold: 0.5)

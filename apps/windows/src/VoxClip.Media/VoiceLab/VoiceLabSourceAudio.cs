@@ -94,12 +94,12 @@ public static class VoiceLabSourceAudio
     /// however long the recording is. <paramref name="incomingSilence"/> and <paramref name="outgoingSilence"/> are the window's
     /// §8.9.2 outside silences, as the take run's fit reads them (<see cref="VoiceLabWindowPlanner.LendableSilence"/>).</summary>
     public static Task<(VoiceLabSourceExcerpt Excerpt, AudioEnvelope Envelope)> RewriteSourceAsync(string source, long frames, int sampleRate,
-        VoiceLabWindow window, double? incomingSilence, double? outgoingSilence, IReadOnlyList<TimedWord> items, CancellationToken ct = default)
-        => RewriteSourceAsync(source, frames, sampleRate, window, incomingSilence, outgoingSilence, items, ConversionInputAsync, ct);
+        VoiceLabWindow window, double? incomingSilence, double? outgoingSilence, IReadOnlyList<TimedWord> items, CancellationToken ct = default, bool hardJoinSmoothing = true)
+        => RewriteSourceAsync(source, frames, sampleRate, window, incomingSilence, outgoingSilence, items, ConversionInputAsync, ct, hardJoinSmoothing);
 
     internal static async Task<(VoiceLabSourceExcerpt Excerpt, AudioEnvelope Envelope)> RewriteSourceAsync(string source, long frames, int sampleRate,
         VoiceLabWindow window, double? incomingSilence, double? outgoingSilence, IReadOnlyList<TimedWord> items,
-        Func<string, long, long, double, CancellationToken, Task<byte[]>> conversion, CancellationToken ct)
+        Func<string, long, long, double, CancellationToken, Task<byte[]>> conversion, CancellationToken ct, bool hardJoinSmoothing = true)
     {
         if (sampleRate is < 8_000 or > 96_000) throw Failure(VoiceLabSourceAudioErrorCode.UnsupportedRate);
         if (frames <= 0) throw Failure(VoiceLabSourceAudioErrorCode.RangeOutsideMedia);
@@ -110,7 +110,7 @@ public static class VoiceLabSourceAudio
         // A search that finds no run leaves the refusal to the take run's own preflight, which repeats it.
         VoiceLabRoomTone? tone = null;
         try { tone = VoiceLabRoomToneSelection.Select(items, envelope, sampleRate, frames,
-            window.LeftSeam.Kind == VoiceLabSeamKind.Hard || window.RightSeam.Kind == VoiceLabSeamKind.Hard); }
+            VoiceLabRoomToneSelection.ExcludeDigitalSilence(items, envelope, sampleRate, frames, window, hardJoinSmoothing)); }
         catch (VoiceLabGeometryException) { }
         if (tone is not null) ranges.Add(Aligned(tone.SourceStartSample - sampleRate, tone.SourceEndSample + sampleRate, frames, sampleRate));
         var regions = new List<VoiceLabSourceExcerpt.Region>();

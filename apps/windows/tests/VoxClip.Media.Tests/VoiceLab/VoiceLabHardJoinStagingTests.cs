@@ -14,6 +14,16 @@ public sealed class VoiceLabHardJoinStagingTests
     [InlineData(0.07)]
     [InlineData(0.01)]
     public async Task GainIsGatedAndNeverBaked(double amplitude)
+        => await StageAndCheck(amplitude, null);
+
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(-6.0)]
+    [InlineData(6.0)]
+    public async Task ReservedPauseIsCheckedInTheStagedMix(double gainDb)
+        => await StageAndCheck(0.1, gainDb);
+
+    private static async Task StageAndCheck(double amplitude, double? bedGainDb)
     {
         using var document = JsonDocument.Parse(FixtureLoader.ReadText("fixtures/voice-lab/hard-join-cases.json"));
         var row = document.RootElement.GetProperty("gating").EnumerateArray().Single(item => item.GetProperty("amplitude").GetDouble() == amplitude);
@@ -28,7 +38,8 @@ public sealed class VoiceLabHardJoinStagingTests
                 window = window with { End = 3 + 1.0 / 48000, EndSample = 72001,
                     RightSeam = window.RightSeam with { Time = 3 + 1.0 / 48000, Sample = 72001 } };
             var samples = Enumerable.Range(0, rate).Select(index => (float)(amplitude * Math.Sin(2 * Math.PI * 1000 * index / rate))).ToArray();
-            var source = Enumerable.Range(0, rate * 5).Select(index => (float)(0.1 * Math.Sin(2 * Math.PI * 1000 * index / rate))).ToArray();
+            var source = Enumerable.Range(0, rate * 5).Select(index =>
+                (float)((bedGainDb is not null && (index < rate || index >= rate * 4) ? 0.001 : 0.1) * Math.Sin(2 * Math.PI * 1000 * index / rate))).ToArray();
             VoiceLabWord[] words = [new("new", 0.14, 0.4, true), new("words", 0.6, 0.86, true)];
             var take = new VoiceLabFitTake(rate, rate, 0, 1, words, VoiceLabTakeProcessing.Envelope(samples, rate));
             var fit = VoiceLabFitPlanner.Plan(window, null, null, take, ["new", "words"], rate, true);
@@ -39,8 +50,10 @@ public sealed class VoiceLabHardJoinStagingTests
             var snapshot = await VoiceLabAssets.PreparePaidAsync(paid, project, root, root, TestContext.Current.CancellationToken);
             var fitted = VoiceLabSilenceFit.Prepare(snapshot, paid, fit, window, rate, TestContext.Current.CancellationToken);
             var before = fitted.Wave.Bytes();
-            var input = new VoiceLabTakeInput("new words", "fixture", "fixture", "en", 1, "fixture", source, rate, [], new HashSet<string>(), window, null, null, true, true);
-            var analysis = new VoiceLabTakeAnalysis(rate, samples, 0, null, fit);
+            VoxClip.Core.Domain.Shared.TimedWord[] items = bedGainDb is null ? [] : [new("w", "speech", VoxClip.Core.Domain.Shared.WordKind.Word, 1, 4, null, null, null, null, VoxClip.Core.Domain.Transcript.TimingSource.Native)];
+            var input = new VoiceLabTakeInput("new words", "fixture", "fixture", "en", 1, "fixture", source, rate, items, new HashSet<string>(), window, null, null, true, true);
+            var room = bedGainDb is { } level ? new VoiceLabRoomTone(0, rate / 2, level) : null;
+            var analysis = new VoiceLabTakeAnalysis(rate, samples, 0, room, fit);
             await using var scratch = VoiceLabTakeRenderer.Stage(fitted, analysis, input, VoiceLabSourceExcerpt.Whole(source), root, TestContext.Current.CancellationToken);
             Assert.Equal(before, fitted.Wave.Bytes());
             Assert.NotNull(scratch.Audio.MicroPauseIn);
@@ -55,7 +68,8 @@ public sealed class VoiceLabHardJoinStagingTests
             var audio = scratch.Audio;
             var qa = VoiceLabTakeQuality.Evaluate("new words", ["new", "words"], audio.Mixed, rate, audio.Seams, 1, 0.5, seamExcesses: audio.SeamExcesses);
             Assert.DoesNotContain(qa.Failures, failure => failure != VoiceLabTakeQaFailure.Loudness);
-            Assert.Equal(row.GetProperty("advisory").GetBoolean(), qa.Failures.Contains(VoiceLabTakeQaFailure.Loudness));
+            Assert.Equal(row.GetProperty("advisory").GetBoolean() || Math.Abs(bedGainDb ?? 0) > 2, qa.Failures.Contains(VoiceLabTakeQaFailure.Loudness));
+            if (bedGainDb is { } expected) Assert.InRange(Math.Abs((qa.LufsJumpLu ?? -1) - Math.Abs(expected)), 0, 1);
             var failed = VoiceLabTakeQuality.Evaluate("new words", ["wrong"], audio.Mixed, rate, audio.Seams, 0, 0.5, seamExcesses: audio.SeamExcesses);
             Assert.Equal(VoiceLabTakeQaVerdict.Failed, failed.Verdict);
         }

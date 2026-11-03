@@ -44,7 +44,7 @@ public enum VoiceLabSourceAudio {
     /// (`VoiceLabWindowPlanner.lendableSilence`).
     public static func rewriteSource(source: URL, frames: Int64, sampleRate: Int, window: VoiceLabWindow,
                                      incomingSilence: Double?, outgoingSilence: Double?,
-                                     items: [TimedWord]) async throws -> (excerpt: VoiceLabSourceExcerpt, envelope: AudioEnvelope) {
+                                     items: [TimedWord], hardJoinSmoothing: Bool = true) async throws -> (excerpt: VoiceLabSourceExcerpt, envelope: AudioEnvelope) {
         guard (8_000...96_000).contains(sampleRate) else { throw VoiceLabSourceAudioError.unsupportedRate }
         guard frames > 0 else { throw VoiceLabSourceAudioError.rangeOutsideMedia }
         var levels = EnvelopeAccumulator(sampleRate: sampleRate)
@@ -53,7 +53,8 @@ public enum VoiceLabSourceAudio {
         var ranges = [nearWindow(window, incomingSilence: incomingSilence, outgoingSilence: outgoingSilence, total: total, rate: sampleRate)]
         // A search that finds no run leaves the refusal to the take run's own preflight, which repeats it.
         if let tone = try? VoiceLabRoomToneSelection.select(items: items, envelope: envelope, sourceSampleRate: Double(sampleRate), totalSamples: frames,
-            excludeDigitalSilence: window.leftSeam.kind == .hard || window.rightSeam.kind == .hard) {
+            excludeDigitalSilence: VoiceLabRoomToneSelection.excludeDigitalSilence(items: items, envelope: envelope,
+                sampleRate: Double(sampleRate), totalSamples: frames, window: window, hardJoinSmoothing: hardJoinSmoothing)) {
             ranges.append(aligned(Int(tone.sourceStartSample) - sampleRate, Int(tone.sourceEndSample) + sampleRate, total: total, rate: sampleRate))
         }
         var regions: [VoiceLabSourceExcerpt.Region] = []

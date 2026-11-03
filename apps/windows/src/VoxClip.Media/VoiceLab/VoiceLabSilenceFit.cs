@@ -74,7 +74,10 @@ public static class VoiceLabSilenceFit
         if ((incoming + plan.OutputFrames + outgoing) * original.Stride > 256 * 1024 * 1024) throw Invalid();
         var missingBefore = plan.HardJoinSmoothing && plan.Incoming.PadFrames == 0 ? Math.Max(0, incoming - plan.TrimStartFrame) : 0;
         var missingAfter = plan.HardJoinSmoothing && plan.Outgoing.PadFrames == 0 ? Math.Max(0, plan.TrimEndFrame + outgoing - original.Frames) : 0;
-        var derived = plan.Edits.Count > 0 || plan.Incoming.PadFrames > 0 || plan.Outgoing.PadFrames > 0 || missingBefore > 0 || missingAfter > 0;
+        bool Sounds(long frame) => Enumerable.Range(0, original.Channels).Any(channel => original.Sample(frame, channel) != 0);
+        var fadeIn = plan.HardJoinSmoothing && window.LeftSeam.Kind != VoiceLabSeamKind.Hard && plan.TrimStartFrame == 0 && Sounds(0);
+        var fadeOut = plan.HardJoinSmoothing && window.RightSeam.Kind != VoiceLabSeamKind.Hard && plan.TrimEndFrame == original.Frames && Sounds(original.Frames - 1);
+        var derived = plan.Edits.Count > 0 || plan.Incoming.PadFrames > 0 || plan.Outgoing.PadFrames > 0 || missingBefore > 0 || missingAfter > 0 || fadeIn || fadeOut;
         if (!derived)
         {
             if (plan.TrimStartFrame < incoming || plan.TrimEndFrame + outgoing > original.Frames || plan.TrimEndFrame - plan.TrimStartFrame != plan.OutputFrames) throw Invalid();
@@ -130,6 +133,24 @@ public static class VoiceLabSilenceFit
                     wave.SetSample(left + right, join.Output + local, channel);
                 }
             }
+        var first = incoming + plan.Incoming.PadFrames;
+        var last = incoming + plan.OutputFrames - plan.Outgoing.PadFrames;
+        var edge = Math.Min((long)Math.Floor(0.005 * original.Rate + 0.5), (last - first) / 2);
+        if (edge > 0 && (fadeIn || fadeOut))
+            for (var offset = 0L; offset < edge; offset++)
+                for (var channel = 0; channel < original.Channels; channel++)
+                {
+                    if (fadeIn)
+                    {
+                        var frame = first + offset;
+                        wave.SetSample(wave.Sample(frame, channel) * Math.Sin(Math.PI / 2 * offset / edge), frame, channel);
+                    }
+                    if (fadeOut)
+                    {
+                        var frame = last - edge + offset;
+                        wave.SetSample(wave.Sample(frame, channel) * Math.Cos(Math.PI / 2 * (offset + 1) / edge), frame, channel);
+                    }
+                }
         ct.ThrowIfCancellationRequested();
         return new(paidAsset, snapshot, fit, incoming, outgoing, incoming, incoming + plan.OutputFrames, true, wave);
     }
