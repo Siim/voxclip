@@ -594,10 +594,11 @@ extension EditorModel {
             let window = try VoiceLabWindowPlanner.place(project: project, scope: scope, envelope: envelope, firstWordId: first, lastWordId: last)
             let silence = try VoiceLabWindowPlanner.lendableSilence(project: project, scope: scope, window: window)
             let patch = (window.leftBridgeWordIds.map(reader.text) + [trimmed] + window.rightBridgeWordIds.map(reader.text)).joined(separator: " ")
-            let rate = try VoiceLabLengthBudget.rate(transcript: transcript).charactersPerSecond
-            let voices = proposal?.changes.filter { $0.kind == .voice && $0.state != .excluded }.count ?? 0
-            return try VoiceLabFitMeter.measure(text: patch, window: window, incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
-                                                rate: rate, newWords: trimmed, multipleHunks: voices > 1).copy
+            let inputs = RewriteReview.Inputs(transcript: transcript, project: project, scope: scope, envelope: envelope,
+                prices: nil, synthesisModel: nil)
+            let rate = try VoiceLabPhraseTiming.speakingRate(transcript: RewriteReview.timingTranscript(inputs))
+            return try VoiceLabPhraseTiming.measure(text: patch, rate: rate, window: window, incomingSilence: silence.incoming,
+                outgoingSilence: silence.outgoing, sourceSampleRate: project.media.source.audio?.sampleRate ?? 48_000).copy
         } catch { return nil }
     }
     /// Which change Return edits (design.md §6.3.5): the focused one with no words selected, the

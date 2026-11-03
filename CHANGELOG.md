@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Rewrite checks that each new phrase fits the video before you pay.
 - A failed Rewrite now stays open and says why.
 - Paid takes that failed their checks can now be played on Windows too, without being used.
 - Keep Eleven v4 voice takes and CLI network recovery consistent across macOS and Windows.
