@@ -63,7 +63,6 @@ public sealed class RewritePaceMatchingTests
         Assert.True(session.ReviewSurroundingSentence(1));
         Assert.True(session.AcceptSurroundingSentence(session.SentenceReview!));
         await session.DiscoverWindowsAsync();
-        await session.ChooseModelForWindowsAsync("eleven_v4");
         async Task<VoiceLabTakeInput> InputFor(string model) => (await session.GenerationInputAsync("record", model, 1, true,
             (request, _) => Task.FromResult((new VoiceLabSourceExcerpt(request.Frames, []), session.Envelope!)), CancellationToken.None))!;
         var dialogue = await InputFor("eleven_v4");
@@ -189,7 +188,6 @@ public sealed class RewritePaceMatchingTests
         using var session = SentenceSession(53);
         Configure(session);
         await session.DiscoverWindowsAsync();
-        await session.ChooseModelForWindowsAsync("eleven_v4");
         var generation = session.Generation!;
         var previous = generation.Quote;
         Assert.NotNull(previous);
@@ -217,7 +215,7 @@ public sealed class RewritePaceMatchingTests
     }
 
     [Fact]
-    public async Task PaidReviewTimingTracksThePlansCurrentModel()
+    public async Task PaidReviewTimingStaysOnElevenV4WhateverTheAccountOffers()
     {
         using var session = SentenceSession(5);
         Configure(session);
@@ -226,10 +224,11 @@ public sealed class RewritePaceMatchingTests
         generation.MarkEstimateShown(generation.Quote!);
         await generation.GenerateAsync((_, _) => Task.FromResult(true), autoplay: false);
         var paid = Assert.Single(generation.Rows);
-        await generation.ChooseModelAsync("eleven_v4");
+        Assert.Equal("eleven_v4", paid.Receipt!.ModelId);
         Assert.Equal(1, Assert.Single(session.Review!.VoiceHunks).Fit!.Pace);
         Assert.Same(paid, Assert.Single(session.Generation!.Rows));
         await generation.ChooseModelAsync("eleven_multilingual_v2");
+        Assert.Equal("eleven_v4", generation.ModelId);
         Assert.Equal(1, Assert.Single(session.Review.VoiceHunks).Fit!.Pace);
         Assert.Same(paid, Assert.Single(session.Generation.Rows));
     }
@@ -281,21 +280,6 @@ public sealed class RewritePaceMatchingTests
         Assert.Equal(words, session.NewWords);
         Assert.Equal(System.Text.Json.JsonSerializer.Serialize(changes), System.Text.Json.JsonSerializer.Serialize(session.Review!.Diff.Hunks));
         Assert.Equal(reviewed.Text, Assert.Single(session.Review.VoiceHunks).PatchText);
-        Assert.False(session.Editor.CanUndo);
-    }
-
-    [Fact]
-    public async Task ModelChangesInvalidateAReviewedSentenceWithoutAcceptingItsExpansion()
-    {
-        using var session = SentenceSession(5);
-        Configure(session);
-        await session.DiscoverWindowsAsync();
-        Assert.True(session.ReviewSurroundingSentence(1), session.SentenceProblem);
-        var captured = session.SentenceReview!;
-        await session.ChooseModelForWindowsAsync("eleven_v4");
-        Assert.False(session.AcceptSurroundingSentence(captured));
-        Assert.Equal(RewriteSession.SentenceStale, session.SentenceProblem);
-        Assert.NotEqual(captured.Text, Assert.Single(session.Review!.VoiceHunks).PatchText);
         Assert.False(session.Editor.CanUndo);
     }
 
@@ -386,7 +370,6 @@ public sealed class RewritePaceMatchingTests
         Assert.True(other.ReviewedInputsCurrent);
         await session.DiscoverWindowsAsync();
         var included = session.PricedVoiceHunks.ToArray();
-        await session.ChooseModelForWindowsAsync("eleven_v4");
         Assert.Equal(included.SelectMany(hunk => hunk.Ordinals), session.PricedVoiceHunks.SelectMany(hunk => hunk.Ordinals));
         Assert.All(session.Review!.VoiceHunks, hunk => Assert.Equal(1, hunk.Fit!.Pace));
         Assert.Same(paid, other.Selected);
@@ -395,7 +378,7 @@ public sealed class RewritePaceMatchingTests
     }
 
     [Fact]
-    public async Task PrepayTimingTracksTheSelectedModelWithoutSending()
+    public async Task PrepayTimingIsAlwaysElevenV4AndTheModelCannotBeChanged()
     {
         using var session = SentenceSession(5);
         Configure(session);
@@ -403,11 +386,9 @@ public sealed class RewritePaceMatchingTests
         var timing = Assert.Single(session.Review!.VoiceHunks).Fit!;
         Assert.Equal(1, timing.Pace);
         Assert.DoesNotContain("pace", timing.Copy);
-        await session.ChooseModelForWindowsAsync("eleven_v4");
-        var dialogue = Assert.Single(session.Review.VoiceHunks).Fit!;
-        Assert.Equal(1, dialogue.Pace);
-        Assert.DoesNotContain("pace", dialogue.Copy);
-        await session.ChooseModelForWindowsAsync("eleven_multilingual_v2");
+        Assert.All(session.GenerationWindows, generation => Assert.Equal("eleven_v4", generation.ModelId));
+        await session.Generation!.ChooseModelAsync("eleven_multilingual_v2");
+        Assert.All(session.GenerationWindows, generation => Assert.Equal("eleven_v4", generation.ModelId));
         Assert.Equal(timing, Assert.Single(session.Review.VoiceHunks).Fit);
         Assert.All(session.GenerationWindows, generation => Assert.Empty(generation.Rows));
     }
@@ -422,8 +403,7 @@ public sealed class RewritePaceMatchingTests
             Media = project.Media with { Source = project.Media.Source with { DurationSeconds = 160, Audio = new(48_000, 1) } },
             Transcript = project.Transcript! with { Words = words }, Edits = project.Edits with
                 { Clips = [], ActiveClipId = null, CutWordIds = [], CutPauseIds = [], Corrections = new Dictionary<string, string>() } });
-        var session = new RewriteSession(editor, 0, 199, new(48_000, .01, Enumerable.Repeat(.01f, 16_000).ToArray()), null,
-            synthesisModel: "eleven_multilingual_v2");
+        var session = new RewriteSession(editor, 0, 199, new(48_000, .01, Enumerable.Repeat(.01f, 16_000).ToArray()), null);
         session.Edit(string.Join(" ", words.Select((word, index) => changes.Contains(index) ? "x" : word.Text)));
         return session;
     }

@@ -25,20 +25,22 @@ public sealed class RewritePanelTests
         Assert.Contains("Add {definition.Tag} to phrase {phraseNumber}", source);
         Assert.Contains("AutomationProperties.SetName(button, name)", source);
         Assert.Contains("+ Expression", source);
-        Assert.Contains("Multilingual v2 leaves tags out.", source);
+        Assert.DoesNotContain("Multilingual v2 leaves tags out.", source);
         Assert.Contains("MaxWidth = 180", source);
         Assert.True(180 <= width - 32);
         Assert.DoesNotContain("ContentDialog", source);
         Assert.DoesNotContain("Flyout", source);
         var models = AppSource("Controls", "RewritePanel.cs");
-        Assert.Contains("Eleven v3 · audio tags", models);
-        Assert.Contains("Eleven v4 · audio tags", models);
+        Assert.Contains("SpeechModelLabel = \"Eleven v4 · audio tags\"", models);
+        Assert.Contains("\"Speech model: \" + SpeechModelLabel", models);
+        Assert.DoesNotContain("ComboBox speechModel", models);
+        Assert.DoesNotContain("Eleven v3 · audio tags", models);
     }
 
     [Fact]
     public void ExpressionRewordingAndRemovalKeepOrderedAnchors()
     {
-        using var session = new RewriteSession(Editor(), 10, 12, Envelope(), null, synthesisModel: "eleven_v4");
+        using var session = new RewriteSession(Editor(), 10, 12, Envelope(), null);
         session.Edit("Hello there word11 word12");
         Assert.True(session.AddExpression(1, "laughs"));
         Assert.True(session.EditChange(1, "Well Hello there now"));
@@ -112,7 +114,7 @@ public sealed class RewritePanelTests
     public void PricingExcludesBlockedPhrasesUntilExplicitOverrideAndKeepOriginalExcludesTheChange()
     {
         var prices = VoiceLabPriceCatalog.Parse(File.ReadAllBytes(Path.Combine(Shared, "catalog", "voice-lab.json")));
-        using var session = new RewriteSession(Editor(), 10, 18, Envelope(), null, prices: prices, synthesisModel: "eleven_multilingual_v2");
+        using var session = new RewriteSession(Editor(), 10, 18, Envelope(), null, prices: prices);
         session.Edit("a very long phrase with far too many extra words for this tiny slot word11 word12 word13 word14 word15 word16 word17 straightforwardness");
         Assert.Equal(2, session.Review!.VoiceHunks.Count);
         Assert.Single(session.PricedVoiceHunks);
@@ -137,7 +139,7 @@ public sealed class RewritePanelTests
         var words = Enumerable.Range(0, 320).Select(index => Word(index, "word" + index) with
             { Start = 1 + index * 0.25 + (index >= 10 ? 0.1 : 0) + (index >= 13 ? 0.1 : 0) + (index >= 16 ? 0.1 : 0),
                 End = 1.23 + index * 0.25 + (index >= 10 ? 0.1 : 0) + (index >= 13 ? 0.1 : 0) + (index >= 16 ? 0.1 : 0) }).ToArray();
-        using var session = new RewriteSession(Editor(words), 10, 15, Envelope(), null, synthesisModel: "eleven_v4");
+        using var session = new RewriteSession(Editor(words), 10, 15, Envelope(), null);
         session.Edit("a much longer replacement with many extra words that cannot possibly fit this tiny window even with its natural pauses shortened word11 word12 word13 word14 another long replacement with far too many words to fit this tiny window even after shortening all its pauses");
         Assert.Equal(2, session.Review!.Diff.Hunks.Count);
         var phrase = Assert.Single(session.Review.VoiceHunks);
@@ -556,7 +558,7 @@ public sealed class RewritePanelTests
     public void LiveReviewUsesCoreMetersAndCompletePatchPricingForEachHunk()
     {
         var prices = VoiceLabPriceCatalog.Parse(File.ReadAllBytes(Path.Combine(Shared, "catalog", "voice-lab.json")));
-        using var session = new RewriteSession(Editor(), 10, 18, Envelope(), null, prices: prices, synthesisModel: "eleven_multilingual_v2");
+        using var session = new RewriteSession(Editor(), 10, 18, Envelope(), null, prices: prices);
         session.Edit("straightforwardness word11 word12 word13 word14 word15 word16 word17 straightforwardness");
         var review = Assert.IsType<RewriteReview>(session.Review);
         Assert.Equal(2, review.VoiceHunks.Count);
@@ -572,7 +574,7 @@ public sealed class RewritePanelTests
         var priced = session.PricedVoiceHunks;
         var summary = VoiceLabDiffSummary.Make(review.Diff with { Hunks = priced.Select(hunk => hunk.Hunk).ToArray() },
             priced.Select(hunk => hunk.Meter! with { EstimateSeconds = hunk.Fit!.EstimateSeconds }).ToArray(), prices,
-            "eleven_multilingual_v2", patchTexts: priced.Select(hunk => hunk.PatchText).ToArray());
+            "eleven_v4", patchTexts: priced.Select(hunk => hunk.PatchText).ToArray());
         Assert.Equal(summary, review.Summary);
         Assert.NotNull(review.Summary!.CostEstimate!.Usd);
         session.Edit("Sunday word11 word12 word13 word14 word15 word16 word17 word18");
@@ -584,11 +586,13 @@ public sealed class RewritePanelTests
     public void MissingWindowsAndUnknownModelNeverInventAHeaderPrice()
     {
         var prices = VoiceLabPriceCatalog.Parse(File.ReadAllBytes(Path.Combine(Shared, "catalog", "voice-lab.json")));
-        using var unavailable = new RewriteSession(Editor(), 10, 12, null, null, prices: prices, synthesisModel: "eleven_multilingual_v2");
+        using var unavailable = new RewriteSession(Editor(), 10, 12, null, null, prices: prices);
         unavailable.Edit("Sunday word11 word12");
         Assert.Null(unavailable.Review!.Summary);
         Assert.All(unavailable.Review.VoiceHunks, hunk => { Assert.Null(hunk.Window); Assert.Null(hunk.PatchText); Assert.NotNull(hunk.Refusal); });
-        using var unknown = new RewriteSession(Editor(), 10, 12, Envelope(), null, prices: prices, synthesisModel: "unknown-model");
+        var unpriced = VoiceLabPriceCatalog.Parse(System.Text.Encoding.UTF8.GetBytes(File.ReadAllText(Path.Combine(Shared, "catalog", "voice-lab.json"))
+            .Replace("\"model\": \"eleven_v4\",", "\"model\": \"eleven_unpriced\",", StringComparison.Ordinal)));
+        using var unknown = new RewriteSession(Editor(), 10, 12, Envelope(), null, prices: unpriced);
         unknown.Edit("straightforwardness word11 word12");
         Assert.Null(unknown.Review!.Summary!.CostEstimate!.Usd);
         Assert.DoesNotContain("$", unknown.Review.Summary.Copy);

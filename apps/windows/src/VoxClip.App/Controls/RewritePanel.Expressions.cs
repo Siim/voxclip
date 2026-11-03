@@ -13,9 +13,7 @@ internal sealed partial class RewritePanel
 {
     private readonly StackPanel takeExpression = Ui.Stack(6);
     private RewriteHunkReview? renderedExpressionPhrase;
-    private string? renderedExpressionModel;
     private bool renderedExpressionEditable;
-    private IReadOnlyList<VoiceLabModel>? renderedSpeechModels;
 
     private StackPanel ExpressionPhrase(string text, IReadOnlyList<VoiceLabAudioTag> tags, int phraseNumber,
         Action<int> remove, Action<string> add)
@@ -67,16 +65,14 @@ internal sealed partial class RewritePanel
         AutomationProperties.SetName(button, name);
         return button;
     }
-    private static string ExpressionNote(string? model) =>
-        "Rewrite suggests tags where your original had a laugh, sigh or pause. Tags aren't spoken words and don't count in the word check." +
-        (VoiceLabAudioTags.Supports(model ?? "") ? "" : " Multilingual v2 leaves tags out.");
+    private const string ExpressionNote =
+        "Rewrite suggests tags where your original had a laugh, sigh or pause. Tags aren't spoken words and don't count in the word check.";
 
     private void RenderTakeExpression(RewriteGeneration generation)
     {
         var phrase = session.PricedVoiceHunks.ElementAtOrDefault(session.ActiveWindow);
-        if (ReferenceEquals(phrase, renderedExpressionPhrase) && generation.ModelId == renderedExpressionModel && session.ReviewIsCurrent == renderedExpressionEditable) return;
+        if (ReferenceEquals(phrase, renderedExpressionPhrase) && session.ReviewIsCurrent == renderedExpressionEditable) return;
         renderedExpressionPhrase = phrase;
-        renderedExpressionModel = generation.ModelId;
         renderedExpressionEditable = session.ReviewIsCurrent;
         takeExpression.Children.Clear();
         if (phrase?.PatchText is not { } text) return;
@@ -89,6 +85,6 @@ internal sealed partial class RewritePanel
                 index -= count;
             }
         }, tag => session.AddExpression(phrase.Ordinals[^1], tag)));
-        takeExpression.Children.Add(Small(ExpressionNote(generation.ModelId)));
+        takeExpression.Children.Add(Small(ExpressionNote));
     }
 }

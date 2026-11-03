@@ -44,7 +44,7 @@ internal sealed partial class RewriteSession
                 (index < previousHunks.Length && index < desired.Count && SameVoicePhrase(previousHunks[index], desired[index]) ||
                  index == 0 && previous[index].Rows.Count == 0 && (previousHunks.Length == 0 || desired.Count == 0));
             var window = reusable ? previous[index] : generationFactory(index);
-            window.PreferredModelId = synthesisModel;
+            window.FixedModelId = synthesisModel;
             generationWindows.Add(window);
             if (!reusable) window.Changed += GenerationChanged;
             else if (desired.Count == 0 || previousHunks.Length == 0) _ = window.InputsChangedAsync();
@@ -120,21 +120,6 @@ internal sealed partial class RewriteSession
     internal async Task ChooseVoiceForWindowsAsync(string? id)
     {
         foreach (var generation in generationWindows.ToArray()) await generation.ChooseVoiceAsync(id);
-    }
-
-    internal async Task ChooseModelForWindowsAsync(string? id)
-    {
-        if (IsGeneratingBatch || generationWindows.Any(window => window.IsRunning || window.IsPreparing) ||
-            !generationWindows.Any(window => window.Models.Any(model => model.Id == id))) return;
-        var discovered = generationWindows.Any(window => window.HasDiscovered);
-        synthesisModel = id;
-        RefreshReview(preserveGenerations: true);
-        foreach (var generation in generationWindows.ToArray())
-        {
-            if (discovered && !generation.HasDiscovered) await generation.DiscoverAsync();
-            await generation.ChooseModelAsync(id);
-        }
-        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     internal string TakeSendLine => RewriteGeneration.SendLine + string.Concat(generationWindows.Select((window, index) =>
@@ -236,7 +221,7 @@ internal sealed partial class RewriteSession
             var assets = prepared.SelectMany(item => item.Assets).ToArray();
             if (assets.GroupBy(asset => asset.Id).Any(group => group.Distinct().Count() != 1)) return false;
             return Editor.ApplyVoiceLab(prepared.Select(item => item.Segment).ToArray(), assets.DistinctBy(asset => asset.Id).ToArray(),
-                prepared[0].Voice, Scope, RewriteActionName, Project, operations);
+                prepared[0].Voice, Scope, RewriteActionName, Project, operations, CalibratedRates());
         }
         finally { applyingBatch = false; Changed?.Invoke(this, EventArgs.Empty); }
     }

@@ -52,6 +52,14 @@ internal sealed partial class RewriteSession
             ? count == 1 ? "1 phrase needs wording that fits." : $"{count} phrases need wording that fits."
             : count == 1 ? "1 phrase needs a shorter wording." : $"{count} phrases need a shorter wording."
         : "Nothing paid yet.";
+    /// <summary>The review footer: the fitted summary once automatic rounds fit every phrase, otherwise the fit status.</summary>
+    internal string ReviewFooter => WordingFitCompleted && BlockedVoiceHunks.Count == 0 && PricedVoiceHunks.Count > 0 ? FitFittedFooter : FitFooter;
+    /// <summary>Ask for longer: fit the phrases outside their slots again, with the same consent rules as a reply.</summary>
+    internal Task AskForLongerAsync()
+    {
+        StopWordingFit();
+        return BeginAutomaticWordingFitAsync();
+    }
     internal string GetPriceTitle => $"Get Price · {PricedVoiceHunks.Count} " + (PricedVoiceHunks.Count == 1 ? "phrase" : "phrases");
     internal bool CanPriceHunk(RewriteHunkReview hunk) => hunk.Fit is { } fit &&
         (HasPaidTakes && generatedVoiceHunks.Length > 0
@@ -59,6 +67,7 @@ internal sealed partial class RewriteSession
             : fit.Fits || hunk.Ordinals.All(priceOverrides.Contains));
     internal bool PriceItAnyway(int ordinal)
     {
+        StopWordingFit();
         if (!ReviewIsCurrent || Review is null || ordinal < 1 || ordinal > Review.Diff.Hunks.Count ||
             Review.VoiceHunks.FirstOrDefault(hunk => hunk.Ordinals.Contains(ordinal) && hunk.Fit is { Fits: false }) is not { } phrase) return false;
         if (DeferPaidReviewChange(() => Task.FromResult(PriceItAnyway(ordinal)))) return false;
@@ -72,6 +81,7 @@ internal sealed partial class RewriteSession
     }
     internal async Task<bool> PrepareShorterAsync(int? ordinal = null)
     {
+        StopWordingFit();
         if (!ReviewIsCurrent || Review is null) return false;
         var feedback = ShorterFeedback(ordinal);
         if (feedback.Count == 0) return false;
@@ -118,6 +128,7 @@ internal sealed partial class RewriteSession
     internal IReadOnlyList<ScopeRewriteDiff.Hunk>? ScopeHunks => scopeHunks;
     internal IReadOnlyList<VoiceLabDiffHunk> IncludedHunks => Review?.Diff.Hunks.Where((_, index) =>
         changeStates.GetValueOrDefault(index + 1) != TranscriptChangeState.Excluded).ToArray() ?? [];
+    /// <summary>False while takes generate, a Rewrite is sent or wording-fit rounds run: the proposal is then read-only.</summary>
     internal bool ReviewIsCurrent => GenerationIsCurrent && !IsProposing && !IsGeneratingBatch;
     internal string ReviewIdentity => System.Text.Json.JsonSerializer.Serialize(new
     {
@@ -128,6 +139,7 @@ internal sealed partial class RewriteSession
 
     internal bool SetChangeIncluded(int ordinal, bool included)
     {
+        StopWordingFit();
         if (!ReviewIsCurrent || Review is null || ordinal <= 0 || ordinal > Review.Diff.Hunks.Count) return false;
         if (DeferPaidReviewChange(() => Task.FromResult(SetChangeIncluded(ordinal, included)))) return false;
         InvalidateProposal();
@@ -141,6 +153,7 @@ internal sealed partial class RewriteSession
 
     internal bool SetChangesIncluded(IReadOnlyList<int> ordinals, bool included)
     {
+        StopWordingFit();
         if (!ReviewIsCurrent || Review is null || ordinals.Count == 0 || ordinals.Any(ordinal => ordinal <= 0 || ordinal > Review.Diff.Hunks.Count)) return false;
         var captured = ordinals.ToArray();
         if (DeferPaidReviewChange(() => Task.FromResult(SetChangesIncluded(captured, included)))) return false;
@@ -150,6 +163,7 @@ internal sealed partial class RewriteSession
 
     internal bool EditChange(int ordinal, string text)
     {
+        StopWordingFit();
         if (!ReviewIsCurrent || Review is null || ordinal <= 0 || ordinal > Review.Diff.Hunks.Count) return false;
         if (DeferPaidReviewChange(() => Task.FromResult(EditChange(ordinal, text)))) return false;
         var hunk = Review.Diff.Hunks[ordinal - 1];
@@ -245,6 +259,7 @@ internal sealed partial class RewriteSession
     }
     private bool SetExpressions(int ordinal, IReadOnlyList<VoiceLabAudioTag> annotations)
     {
+        StopWordingFit();
         var captured = annotations.ToArray();
         if (DeferPaidReviewChange(() => Task.FromResult(SetExpressions(ordinal, captured)))) return false;
         if (!ReviewIsCurrent || Review is null || ordinal <= 0 || ordinal > Review.Diff.Hunks.Count) return false;

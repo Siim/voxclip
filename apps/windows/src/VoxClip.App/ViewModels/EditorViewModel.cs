@@ -324,15 +324,16 @@ public sealed class EditorViewModel : ObservableObject
         return EditingEngine.ApplyToProject(snapshot, local);
     }
     public bool ApplyVoiceLab(IReadOnlyList<VoiceLabSegment> segments, IReadOnlyList<VoiceLabAsset> assets, VoiceLabVoiceReference voice,
-        VoiceLabOutputScope scope, string actionName, Project? expectedProject = null, IReadOnlyList<EditOperation>? localOperations = null)
-        => ApplyVoiceLabCore(new VoiceLabEditCommand.AcceptAll(segments, assets, voice), expectedProject, localOperations, scope, actionName);
+        VoiceLabOutputScope scope, string actionName, Project? expectedProject = null, IReadOnlyList<EditOperation>? localOperations = null,
+        IReadOnlyDictionary<string, IReadOnlyList<VoiceLabRateSample>>? speakingRateSamples = null)
+        => ApplyVoiceLabCore(new VoiceLabEditCommand.AcceptAll(segments, assets, voice), expectedProject, localOperations, scope, actionName, speakingRateSamples);
     public bool ApplyVoiceLab(VoiceLabEditCommand command, Project? expectedProject = null, IReadOnlyList<EditOperation>? localOperations = null)
     {
         if (command is VoiceLabEditCommand.AcceptAll) return false;
         return ApplyVoiceLabCore(command, expectedProject, localOperations, project.Edits.ActiveClipId is { } clipId ? VoiceLabOutputScope.Clip(clipId) : VoiceLabOutputScope.Full, null);
     }
     private bool ApplyVoiceLabCore(VoiceLabEditCommand command, Project? expectedProject, IReadOnlyList<EditOperation>? localOperations,
-        VoiceLabOutputScope scope, string? actionName)
+        VoiceLabOutputScope scope, string? actionName, IReadOnlyDictionary<string, IReadOnlyList<VoiceLabRateSample>>? speakingRateSamples = null)
     {
         if (!Monitor.TryEnter(voiceLabEdits)) return false;
         try
@@ -354,6 +355,9 @@ public sealed class EditorViewModel : ObservableObject
                 var nextState = state;
                 foreach (var operation in localOperations ?? []) nextState = reduce(nextState, operation);
                 var combined = nextState == state ? snapshot : EditingEngine.ApplyToProject(snapshot, nextState);
+                // Speaking-rate calibration measured while reviewing takes is saved with the accepted takes.
+                if (speakingRateSamples is not null && command is VoiceLabEditCommand.AcceptAll)
+                    combined = combined with { VoiceLab = combined.VoiceLab with { SpeakingRateSamples = speakingRateSamples } };
                 var history = new VoiceLabEditHistory(combined, IsDirty);
                 var change = command is VoiceLabEditCommand.AcceptAll all
                     ? history.Apply(all.Segments, all.Assets, all.Voice, scope, actionName!, modifiedAt)

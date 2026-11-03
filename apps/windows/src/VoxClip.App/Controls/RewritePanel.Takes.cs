@@ -72,6 +72,7 @@ internal sealed partial class RewritePanel
                 session.SetChangesIncluded(hunk.Ordinals, false);
         });
         takeRecovery.Children.Add(shorter); takeRecovery.Children.Add(keep);
+        lengthBody.Children.Add(measuredFit);
         lengthBody.Children.Add(takeRecovery);
         generationBody.Children.Add(lengthBody);
     }
@@ -181,6 +182,7 @@ internal sealed partial class RewritePanel
         nextPace.Text = generation.NextPace is { } pace && pace != 1 ? FormattableString.Invariant($"Next take at {pace:F2}× pace") : "";
         nextPace.Visibility = nextPace.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         lengthCopy.Text = generation.LengthCopy; retimeCopy.Text = generation.RetimeCopy;
+        RenderMeasuredFit(generation);
         videoChoices.SelectedIndex = generation.VideoChoice is null ? -1 : 1;
         updating = false;
         RenderTakeButtons(generation);
