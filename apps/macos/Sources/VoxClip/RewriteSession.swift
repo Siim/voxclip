@@ -82,6 +82,8 @@ struct RewriteChange: Equatable, Sendable {
     private(set) var project: Project
     /// The take as the user reads it: corrections applied to words.
     private(set) var transcript: [TimedWord]
+    var pricedAnyway: Set<Int> = []
+    var shorterFeedback: String?
     /// The scope's items in order: the selection's, a clip's from its first to its last word, or the take's.
     private(set) var source: [TimedWord]
     /// Where voice changes are placed (`VoiceLabWindowPlanner`): the clip of a clip, or of a selection inside the tab's
@@ -104,6 +106,7 @@ struct RewriteChange: Equatable, Sendable {
     private(set) var generation: RewriteGenerationSession?
     var takePlan: ClipTakePlan?
     var speechContextOffer: RewriteSpeechContextReview?
+    var surroundingSentenceOrdinal: Int?
     var speechContextReview: RewriteSpeechContextReview?
     var acceptedSpeechContext: RewriteSpeechContextReview?
     var speechContextProblem = ""
@@ -124,9 +127,12 @@ struct RewriteChange: Equatable, Sendable {
         generation?.invalidate()
         let region = client.region
         takeRegion = region
-        let storage = VoiceLabTakeStorage(projectId: editor.project.id,
-            paidRoot: editor.app.locations.root.appendingPathComponent("VoiceLab", isDirectory: true),
-            scratchRoot: editor.app.locations.root.appendingPathComponent("VoiceLabScratch", isDirectory: true))
+        let model: EditorModel = editor
+        let dataRoot: URL = model.app.locations.root
+        let paidRoot: URL = dataRoot.appendingPathComponent("VoiceLab", isDirectory: true)
+        let scratchRoot: URL = dataRoot.appendingPathComponent("VoiceLabScratch", isDirectory: true)
+        let storage = VoiceLabTakeStorage(projectId: model.project.id,
+            paidRoot: paidRoot, scratchRoot: scratchRoot)
         let run = VoiceLabTakeRun(client: client, store: store, speaker: speaker, storage: storage, dispatchIfCurrent: { [weak self] _, start in
             guard let generation = await self?.generation else { throw VoiceLabError.consentRequired }
             try await generation.dispatchWithCurrentCost(start)
@@ -371,9 +377,10 @@ struct RewriteChange: Equatable, Sendable {
     }
     /// Runs Rewrite on the scope again, asking `instruction` when given (the Ask field's text): Rewrite Again, Try Again
     /// and a new Rewrite of the same scope. False when nothing was proposed.
-    @discardableResult func run(instruction next: String? = nil) async -> Bool {
+    @discardableResult func run(instruction next: String? = nil, feedback: String? = nil) async -> Bool {
         guard isOpen else { return false }
         if let next { instruction = next }
+        shorterFeedback = feedback
         guard connectorIsCurrent() else {
             editor.restartRewrite(self)
             return false
@@ -482,6 +489,7 @@ struct RewriteChange: Equatable, Sendable {
         let project = project, rewriteScope = rewriteScope, envelope = envelope
         let language = project.transcript?.language ?? "en"
         let asked = RewriteSuggestions.suggestion(for: instruction).instruction
+        let feedback = shorterFeedback
         switch rewriteScope {
         case .selection:
             guard let service = passageService else { throw VoxClipError.sharedResourcesMissing }
@@ -490,12 +498,12 @@ struct RewriteChange: Equatable, Sendable {
                 try Self.passageRange(project: project, scope: scope, envelope: envelope, source: source, transcript: transcript)
             }
             let input = VoiceRewriteRequest(id: UUID(), scope: .passage, sourceWords: source.filter { $0.kind == .word }, instruction: asked,
-                language: language, targetSeconds: range.targetSeconds, minChars: range.minChars, maxChars: range.maxChars)
+                language: language, targetSeconds: range.targetSeconds, minChars: range.minChars, maxChars: range.maxChars, feedback: feedback)
             return .passage(input, try await service.prepare(input, connector: connector.connector.id, model: connector.model), service)
         case .clip, .fullTake:
             guard let service = scopeService else { throw VoxClipError.sharedResourcesMissing }
             let plan = try await offMain {
-                try ScopeRewritePlan.make(project: project, scope: rewriteScope, instruction: asked, language: language, envelope: envelope)
+                try ScopeRewritePlan.make(project: project, scope: rewriteScope, instruction: asked, language: language, envelope: envelope, feedback: feedback)
             }
             return .scope(plan, try await service.prepare(plan.request, connector: connector.connector.id, model: connector.model), service)
         }
@@ -545,6 +553,7 @@ struct RewriteChange: Equatable, Sendable {
         RewriteReview.Inputs(transcript: transcript, project: project, scope: scope, envelope: envelope, prices: prices, synthesisModel: synthesisModel)
     }
     private func receive(_ checked: Checked) {
+        pricedAnyway = []
         changes = checked.changes
         switch checked.review {
         case .success(let built): review = built
@@ -562,6 +571,7 @@ struct RewriteChange: Equatable, Sendable {
     }
     private func invalidate() {
         speechContextOffer = nil; speechContextReview = nil; acceptedSpeechContext = nil; speechContextProblem = ""
+        surroundingSentenceOrdinal = nil
         takePlan?.invalidate(); takePlan = nil
         generation?.invalidate(); generation = nil
         revision += 1; sending?.cancel()
@@ -758,6 +768,7 @@ struct RewriteChange: Equatable, Sendable {
         guard next != project else { return }
         let requote = takePlan != nil
         speechContextOffer = nil; speechContextReview = nil; acceptedSpeechContext = nil; speechContextProblem = ""
+        surroundingSentenceOrdinal = nil
         takePlan?.invalidate(); takePlan = nil
         project = next; derive()
         let previous = review

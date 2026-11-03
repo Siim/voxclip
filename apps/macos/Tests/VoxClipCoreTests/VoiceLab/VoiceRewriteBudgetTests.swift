@@ -251,7 +251,9 @@ struct VoiceRewriteBudgetTests {
         #expect(Array(proposal.proposedText.unicodeScalars) == Array(text.unicodeScalars))
         #expect(proposal.proposedLength == 17 && proposal.inRange == range.2)
         let sent = try #require(await connector.requests.first)
-        #expect(sent.instruction.hasSuffix("about 2.5 seconds to say, which is \(range.0) to \(range.1) letters and digits. Spaces and punctuation are not counted. Write natural wording that stays inside this range."))
+        let budget = "about 2.5 seconds to say, which is \(range.0) to \(range.1) letters and digits. Spaces and punctuation are not counted. Write natural wording that stays inside this range."
+        let localLength = "Keep each change about as long, when spoken, as the words it replaces; prefer the same number of syllables."
+        #expect(sent.instruction.hasSuffix(budget + " " + localLength))
     }
 
     @Test(arguments: VoiceRewriteBudgetFixtures.answers)

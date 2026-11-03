@@ -672,6 +672,7 @@ extension DebugRewrite {
             for index in 31...37 { changes["word\(index)"] = .some(nil) }
             return replacing(words, changes)
         }
+        for ordinal in ready.1.blockedVoiceOrdinals { ready.1.pricedAnyway.insert(ordinal) }
         try? DebugRewriteGeneration.install("ready", in: ready.1)
         if let plan = ready.1.takePlan {
             for index in plan.phrases.indices { _ = plan.chooseVideo(.source, phrase: index) }

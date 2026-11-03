@@ -266,10 +266,17 @@ import VoxClipMedia
         contextIsCurrent = current
     }
 
+    func canExpandTimingShortPhrase(_ index: Int) -> Bool {
+        guard phrases.indices.contains(index), inputs.indices.contains(index), let row = phrases[index].selected?.row else { return false }
+        let options = VoiceLabVideoDurationOptions(row: row, sourceSampleRate: inputs[index].sourceSampleRate)
+        return !options.allows(.source) && !options.allows(.retimed) && (options.retimeFactor ?? 0) > 1
+    }
+
     func replaceSpeechContext(hunks: [VoiceLabDiffHunk], envelope: AudioEnvelope, phrase index: Int) async throws {
         guard stillCurrent, !preparing, !generating, !publishing, !preparingVideo, operation == nil,
               let backend, phrases.indices.contains(index),
-              (phrases[index].selected == nil || phrases[index].selected?.row.voiceCheck.evidence?.mode == .unmeasured),
+              (phrases[index].selected == nil || phrases[index].selected?.row.voiceCheck.evidence?.mode == .unmeasured ||
+                  canExpandTimingShortPhrase(index)),
               inputs.count == phrases.count, nextSeeds.count == phrases.count else { throw Failure.stale }
         let prepared = try Self.preparePlan(project: project, scope: scope, envelope: envelope, hunks: hunks)
         guard prepared.count == phrases.count,
@@ -362,14 +369,17 @@ import VoxClipMedia
     func changeModel(_ id: String) -> Bool {
         guard !generating, !preparing, !publishing, !preparingVideo, !retired, operation == nil else { return false }
         stopAudition()
-        inputs = inputs.map { $0.replacingModel(id) }
+        inputs = inputs.map { input in
+            let changed = input.replacingModel(id)
+            return id == "eleven_v4" ? changed.replacingPace(1) : changed
+        }
         modelID = id
         revision += 1; batch = nil; batchIndices = []; progress = nil; cost = nil; estimate = nil
         return true
     }
     /// The input a take was made from, on the model its receipt names.
     private func input(for row: VoiceLabTakeRow, phrase: Int) -> VoiceLabTakeInput {
-        let input = inputs[phrase]
+        let input = inputs[phrase].replacingPace(row.receipt?.pace ?? row.quote?.synthesis.pace ?? 1)
         guard let model = row.receipt?.modelID, model != input.modelID else { return input }
         return input.replacingModel(model)
     }
@@ -377,6 +387,22 @@ import VoxClipMedia
     func prepareAnother(phrase index: Int) async {
         guard phrases.indices.contains(index), inputs.indices.contains(index) else { return }
         await prepareQuote(indices: [index], decoding: false, candidates: 1)
+    }
+
+    private func retryPace(phrase index: Int) throws -> Double? {
+        let input = inputs[index]
+        guard input.modelID != "eleven_v4" else { return 1 }
+        guard let selected = phrases[index].selected, let audio = selected.row.audio,
+              !VoiceLabVideoDurationOptions(row: selected.row, sourceSampleRate: input.sourceSampleRate).allows(.source),
+              !audio.trimmed.isEmpty else { return input.pace }
+        let measured = Double(audio.trimmed.count) / Double(audio.sampleRate)
+        return try VoiceLabPaceMatching.match(seconds: measured, oldPace: selected.row.receipt?.pace ?? selected.row.quote?.synthesis.pace ?? 1,
+            window: input.window, incomingSilence: input.incomingSilence, outgoingSilence: input.outgoingSilence,
+            sourceSampleRate: input.sourceSampleRate, supportsPace: input.modelID != "eleven_v4").pace
+    }
+
+    func phrasePace(_ index: Int) -> Double? {
+        inputs.indices.contains(index) ? inputs[index].pace : nil
     }
 
     private func prepareQuote(indices: [Int], decoding: Bool, candidates: Int) async {
@@ -403,11 +429,12 @@ import VoxClipMedia
                 } else {
                     for index in indices {
                         let input = inputs[index]
+                        let pace = try retryPace(phrase: index)
                         inputs[index] = VoiceLabTakeInput(text: input.text, modelID: input.modelID, recordID: input.recordID,
                             language: input.language, seed: nextSeeds[index], contentKey: input.contentKey, source: input.source,
                             sourceEnvelope: input.sourceEnvelope, sourceSampleRate: input.sourceSampleRate, items: input.items,
                             cutWordIDs: input.cutWordIDs, window: input.window, incomingSilence: input.incomingSilence,
-                            outgoingSilence: input.outgoingSilence, cleanAudioOn: input.cleanAudioOn, providerConsent: input.providerConsent, pace: input.pace)
+                            outgoingSilence: input.outgoingSilence, cleanAudioOn: input.cleanAudioOn, providerConsent: input.providerConsent, pace: pace)
                         nextSeeds[index] &+= UInt32(candidates)
                     }
                 }

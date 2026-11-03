@@ -36,6 +36,7 @@ import Testing
             }.joined(separator: " ")
             try session.receivePassage(passage)
             session.finishRun(seconds: 14)
+            for ordinal in session.blockedVoiceOrdinals { session.pricedAnyway.insert(ordinal) }
         }
         let undo = UndoManager(); undo.groupsByEvent = false; editor.undoManager = undo
         editor.announcements = []
@@ -61,10 +62,10 @@ import Testing
         let expected: [String: (note: String, link: String?, primary: String?)] = [
             "r2-free": ("No AI voice needed. Nothing is sent.", nil, "Apply 2 Changes"),
             "r2-voice-lab-off": ("1 phrase needs your voice. Voice Lab (beta) makes it from this clip.", "Turn On Voice Lab", "Apply 2 Free Changes"),
-            "r2-make-takes": ("Nothing paid yet.\nTakes < $0.01 on ElevenLabs.", "Keep All", RewriteSession.getPriceTitle),
+            "r2-make-takes": ("Nothing paid yet.\nTakes < $0.01 on ElevenLabs.", "Keep All", "Get Price · 1 phrase"),
             "r2-make-voice": ("Nothing paid yet. Next: make your voice from this clip. Once.", "Keep All", "Make Your Voice"),
             "r2-use-take": ("Exports show AI MODIFIED on the video. The post disclosure is optional.", nil, "Use Takes"),
-            "r2-several-voices": ("Nothing paid yet.\nTakes < $0.01 on ElevenLabs.", "Keep All", RewriteSession.getPriceTitle),
+            "r2-several-voices": ("Nothing paid yet.\nTakes < $0.01 on ElevenLabs.", "Keep All", "Get Price · 2 phrases"),
             "r2-over-budget": ("Make Takes appears when the phrases fit.", nil, "Apply 1 Free Change"),
             "r2-nothing-included": ("Keep a change to apply it.", nil, nil),
         ]
@@ -149,7 +150,7 @@ import Testing
         step(undo) { session.task.footer.link?.perform() }
         #expect(undo.undoActionName == "Rewrite clip 1" && editor.undoSteps == 1 && editor.cutWordIDs.isSuperset(of: ["r2-12", "r2-13", "r2-25"]))
         #expect(changes(session)?.items.map(\.state) == [.kept, .kept, .kept] && session.isOpen && !session.hasUnreviewedChanges)
-        #expect(session.task.footer.primary?.title == "Get Price" && session.task.footer.link == nil && session.includedVoice == [3])
+        #expect(session.task.footer.primary?.title == "Get Price · 1 phrase" && session.task.footer.link == nil && session.includedVoice == [3])
         undo.undo()
         await settle { changes(session)?.items.first?.state == .pending }
         #expect(editor.project.edits == before.edits && changes(session)?.items.map(\.state) == [.pending, .pending, .pending] && session.task.footer.link?.title == "Keep All")
@@ -202,7 +203,7 @@ import Testing
         editor.app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
         await settle { changes(session)?.items.last?.reviewable == true }
         #expect(changes(session)?.items.last?.state == .pending && editor.proposal?[3]?.state == .pending)
-        #expect(session.task.footer.primary?.title == "Get Price" && session.task.footer.link?.title == "Keep All")
+        #expect(session.task.footer.primary?.title == "Get Price · 1 phrase" && session.task.footer.link?.title == "Keep All")
     }
 
     /// Paid takes stay with their original review. Changing inclusion retires acceptance without replacing paid work
@@ -211,9 +212,9 @@ import Testing
         let (editor, session, _, scenes) = try scene("r2-several-voices", verifiablePhrases: true)
         defer { scenes.forEach { $0.editor?.close() } }
         editor.app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(true)
-        #expect(session.includedVoice == [2, 3] && session.task.footer.primary?.title == "Get Price")
+        #expect(session.includedVoice == [2, 3] && session.task.footer.primary?.title == "Get Price · 2 phrases")
         session.review(3, .undo)
-        #expect(session.includedVoice == [2] && session.task.footer.primary?.title == "Get Price")
+        #expect(session.includedVoice == [2] && session.task.footer.primary?.title == "Get Price · 1 phrase")
         // Phrase 2's takes: one passed. Nothing is quoted or sent here.
         try DebugRewriteGeneration.install("ready", in: session)
         if let plan = session.takePlan {
@@ -272,13 +273,13 @@ import Testing
             items: [], window: window, incomingSilence: nil, outgoingSilence: nil, providerConsent: true))
         session.showProposal()
         let stale = try #require(session.task.footer.primary)
-        #expect(stale.title == "Get Price" && session.pricedTakeAction() == nil && generation.canExecute)
+        #expect(stale.title == "Get Price · 1 phrase" && session.pricedTakeAction() == nil && generation.canExecute)
         // ⌘↩ on phrase 3 and ⌘⌫ on phrase 2 in the transcript; the list follows them on a later turn.
         editor.keepChange(3); editor.excludeChange(2)
         stale.perform()
         #expect(generation.phase != .generating)
-        await settle { session.includedVoicesSeen == [3] && quotes == 1 && session.task.footer.primary?.title == "Get Price" }
-        #expect(session.includedVoice == [3] && quotes == 1 && generation.quote == nil && session.task.footer.primary?.title == "Get Price",
+        await settle { session.includedVoicesSeen == [3] && quotes == 1 && session.task.footer.primary?.title == "Get Price · 1 phrase" }
+        #expect(session.includedVoice == [3] && quotes == 1 && generation.quote == nil && session.task.footer.primary?.title == "Get Price · 1 phrase",
             "footer: \(session.task.footer.primary?.title ?? "none"), note: \(session.task.footer.note ?? "none")")
         await generation.finishGenerationForTests()
     }
@@ -346,7 +347,7 @@ import Testing
         session.reportGenerationProblem(VoiceLabError.unauthorized)
         await settle { session.task.cards.count > 1 }
         #expect(session.task.cards.last == .callout("ElevenLabs rejected the key (401). Your edits are saved."))
-        #expect(session.task.footer.primary?.title == "Get Price")
+        #expect(session.task.footer.primary?.title == "Get Price · 1 phrase")
         session.reportGenerationProblem(nil)
         await settle { session.task.cards.count == 1 }
         #expect(session.task.cards.count == 1)

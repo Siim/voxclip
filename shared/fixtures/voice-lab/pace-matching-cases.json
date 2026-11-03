@@ -1,0 +1,34 @@
+{
+  "schema": "voxclip-pace-matching/1",
+  "sourceSampleRate": 48000,
+  "seamKind": "gap",
+  "incomingSilence": 0.05,
+  "outgoingSilence": 0.05,
+  "caseCount": 3,
+  "cases": [
+    {
+      "id": "phrase-1",
+      "windowSeconds": 19.4,
+      "measuredSeconds": 16.115,
+      "pace": 0.84,
+      "fits": true,
+      "keepsSource": true
+    },
+    {
+      "id": "phrase-2",
+      "windowSeconds": 5.12,
+      "measuredSeconds": 3.39,
+      "pace": 0.7,
+      "fits": true,
+      "keepsSource": true
+    },
+    {
+      "id": "phrase-3",
+      "windowSeconds": 1.145,
+      "measuredSeconds": 1.83,
+      "pace": 1.2,
+      "fits": false,
+      "keepsSource": false
+    }
+  ]
+}

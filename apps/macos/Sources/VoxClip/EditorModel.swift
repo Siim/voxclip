@@ -207,12 +207,12 @@ struct EditorRenderSnapshot {
     /// asks first (design.md §6.3.1 "Proposal open"), inline in the Rewrite job (impl-plan §13.1): "Discard these {c}
     /// changes?" in place of its footer, with Keep Working, the primary that Return and Esc choose, and Discard Changes,
     /// which sends. The job comes to the panel to ask, and VoiceOver hears the question.
-    func sendRewriteAgain(_ session: RewriteSession, instruction: String? = nil) {
+    func sendRewriteAgain(_ session: RewriteSession, instruction: String? = nil, feedback: String? = nil) {
         guard session.isOpen, !session.isProposing else { return }
         cancelRewriteOpen()
         let count = session.proposalCount
         guard count > 0, session.hasPaidTakes || session.hasEditedChanges else {
-            sendAgain(session, instruction: instruction)
+            sendAgain(session, instruction: instruction, feedback: feedback)
             return
         }
         let question = count == 1 ? "Discard this change?" : "Discard these \(count) changes?"
@@ -221,18 +221,18 @@ struct EditorRenderSnapshot {
             confirm: PanelAction(id: "discardChanges", title: "Discard Changes") { [weak self, weak session] in
                 guard let self, let session, session.task.confirm != nil else { return }
                 session.task.dismissConfirm()
-                sendAgain(session, instruction: instruction)
+                sendAgain(session, instruction: instruction, feedback: feedback)
             }))
         if app.shell.editor === self, !app.shell.viewerShown { app.shell.toggleViewer() }
         announce(question)
     }
-    private func sendAgain(_ session: RewriteSession, instruction: String?) {
+    private func sendAgain(_ session: RewriteSession, instruction: String?, feedback: String? = nil) {
         guard session.isOpen, !session.isProposing else { return }
         cancelRewriteOpen()
         rewriteOpenTask = Task {
             guard !Task.isCancelled, session.isOpen else { return }
             session.actionTask?.cancel()
-            session.actionTask = Task { _ = await session.run(instruction: instruction) }
+            session.actionTask = Task { _ = await session.run(instruction: instruction, feedback: feedback) }
         }
     }
     /// Opens a Rewrite session on `scope` with the AI chosen now, which runs at once; with none, its panel asks which (R0).

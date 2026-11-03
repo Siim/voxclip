@@ -1197,6 +1197,97 @@ Then:
 
 ### 8.9 Duration fit
 
+#### Pre-pay phrase fit (3 November 2026)
+
+Rewrite checks every included voice change before **Get Price**. The local-length sentence in
+`shared/prompts/voice-rewrite.json` applies to selection and scope rewrites. A passage-wide
+character budget does not permit any single changed phrase to grow unchecked.
+
+The estimator counts Unicode letters and digits in the complete synthesized patch (including
+bridge words). Measure the clip's corrected transcript letters and digits per voiced second
+using the union of its word spans (no inter-word pauses), excluding cut words. Multiply
+this user rate by the calibrated provider cadence multiplier **1.8**, not a 20 characters/s
+floor: slower users still get slower estimates. Add 0.12 s for each comma,
+semicolon, colon or dash pause and 0.22 s for each sentence-ending punctuation group.
+Trimmed provider lead/tail allowance is `TTS_TRIM_LEAD + TTS_TRIM_TAIL`.
+Punctuation runs count once. Estimates are advisory, never speech-check evidence.
+`ClipTakePlan.validateSpeechAvailability` retains its conservative generated-speech rule;
+the fit estimate must not enable a short-phrase speaker check.
+
+Calibration uses the app's `SpeakerVAD.ranges` and `VoiceConsentAudio.pcm16k`, the pinned
+Silero 6.2.0 model, CPU, threshold 0.5, minimum speech 250 ms, silence 100 ms, no padding.
+The supplied 3 November casual clip has 9.988221436984691 letters/digits per word-span
+second. Phrase 2 (45 letters/digits) measured 2.6799375 voiced seconds from 2.7399375 raw;
+its estimate is 2.832948… s (5.71% high). Phrase 3 (20 letters/digits, two commas and a
+stop) measured 1.63 voiced seconds from 1.9504375 raw; its estimate is 1.662421… s and
+cannot fit the 1.1 s source window, even at 0.80× source-video speed. Phrase 1's two
+supplied takes measured 11.02 and 12.2148125 voiced seconds. Deterministic calibration
+vectors live in the new `phrase-timing-cases.json`, not an existing replay category.
+
+The slot is the longest usable take: evaluate the same silence-only fit planner and video
+duration gate as a paid take, with lendable source silence and the existing 0.80×–1.25×
+source-video speed range. Borrowed silence expands the fit window before testing retiming;
+the maximum slot is that maximally borrowed window divided by 0.80, minus required
+incoming/outgoing edge padding (all sample-rounded by the planner). This follows the
+existing post-take gate, rather than independently capping retiming at the unborrowed window.
+do not invent an independent speed or pause gate in the UI. A fully voiced hypothetical
+take is conservative: no unmeasured generated internal silence is assumed shrinkable.
+Before pricing, “fits” means that at least one post-take video option permits a hypothetical
+take of exactly the estimated length. Slot and estimate are displayed in seconds to one decimal.
+
+Rows read `≈ {estimate} s · slot {slot} s · fits` when usable, otherwise omit `· fits` and
+show **Too long for its slot. A take won't fit the video.**, **Ask for shorter**,
+**Keep original words**, and the quiet **Price it anyway** override. Only included phrases
+that fit or have that explicit override enter the quote. The footer reads
+`{n} phrase(s) need(s) a shorter wording.` and **Get Price · {k} phrase(s)**;
+omit the priced button when k is zero. With no blocked phrases, read **Nothing paid yet.**
+The same gate can reject wording that is too short to pad or retime safely. In that case
+say **Too short for its slot. A take won't fit the video.**, offer **Use surrounding sentence** instead of
+asking for fewer words, and use `{n} phrase(s) need(s) wording that fits.` in the footer.
+The original-words and explicit pricing override remain available.
+
+**Pace matching (3 November 2026).** The calibrated estimate above is the 1.0× baseline.
+For each complete voice phrase, choose a provider pace within 0.70–1.20, on the provider's
+0.01 grid. Prefer a predicted **Keep source video duration** exact fit, aiming at the midpoint
+of its exact-fit duration interval. If that interval is unreachable, choose a permitted pace
+that passes **Match video**, still as close to that midpoint as possible. Derive the intervals
+from the existing fit planner: its one-frame take gives maximum permitted seam/edge padding,
+and its overlong take gives the maximum borrowed window and required edge padding. Assume
+no editable generated internal pauses. Verify the chosen prediction through the actual
+video-duration gate. Never enlarge room-tone padding to make pace matching succeed.
+The row reads `≈ 4.6 s at 0.80× pace · slot 5.1 s · fits`; omit the pace clause at 1.0×.
+Pace scales the whole predicted trimmed take, not the source video. The estimate remains
+advisory. Dialogue/v4 has no supported non-default speed and uses the same gate at 1.0×.
+
+If no permitted pace fits, retain the too-long warning and **Ask for shorter**, or the
+too-short warning and **Use surrounding sentence / Keep original words** (replacing Ask
+again for short wording). Sentence expansion uses the existing full-sentence inline review,
+scope/reservation checks and fresh separate paid quote; selecting the action is not a pricing
+override or a send approval. The unchanged generated-speech floor still governs speaker
+measurement eligibility, not this timing decision.
+
+On **Try another** for a selected take that cannot keep the source duration, recalibrate
+from its measured trimmed audio duration before fitting edits, borrowing, padding or retiming:
+`newPace = clamp(oldPace × measuredSpeech / targetSpeech)`. Use the selected take's receipt
+pace, not an unused retry quote's pace; target the exact-fit midpoint, respect provider
+hundredth-step rounding, then fall back to the reachable Match video interval. Preparing or
+re-preparing a retry sends nothing and creates a new pace-bound quote/approval. Include the
+non-default phrase paces beside the priced action. Older paid takes keep their receipt pace.
+Shared sample-exact regression observations live in `pace-matching-cases.json`, separate
+from both the provider request fixtures and the original calibration vectors.
+
+**Ask for shorter** uses the same scope and normal text-only Rewrite send, with fresh
+consent/approval checks, never a previous send authorization. Append the shared
+`shorterFeedbackBlock`, rendering `shorterPhraseLine` for each blocked phrase with its
+original/proposed words and estimate/slot seconds. The new proposal replaces the old one
+and resets timing overrides. **Keep original words** uses the existing per-change exclusion.
+The optional `feedback` field is distinct from the user's instruction: preserve the existing
+1,000-byte instruction limit and bound feedback to 20,000 UTF-8 bytes. Both passage and
+scope request fingerprints bind feedback to the fresh send quote; nil retains the existing
+request and fixture shape. Render template placeholders once, never inside substituted words.
+Paid takes with neither video option available also offer both recovery actions; further
+audio generation always goes through the usual fresh price and approval.
+
 Voiced speech is never time-stretched (ADR-R30). A take reaches the length of its window in this order: length-budgeted wording before any paid call (§8.9.1); one initial take followed by separately approved one-take retries (§8.6); silence-only fit (steps 1 and 2 below); and otherwise a changed duration with the ADR-R28 video choice, after as much silence fit as the limits allow (step 3).
 
 Let `D = duration(trimmed TTS)` (§8.7 step 1). At a take edge (seam kind `none`, §8.4) the planner keeps the source edge silence with an edge pad `e` (§8.9.2); elsewhere `e = 0`. Let `w = duration(W) − e`, the part of the window the take must fill, and `ρ = D − w`. A positive `ρ` means the take is too long.

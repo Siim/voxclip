@@ -88,14 +88,15 @@ import VoxClipCore
 }
 
 extension RewriteSession {
-    private func speechContextRequest(targetPhraseID: Int) throws -> VoiceLabSpeechContextPlan.Request {
+    private func speechContextRequest(targetPhraseID: Int, includingOrdinal: Int? = nil) throws -> VoiceLabSpeechContextPlan.Request {
+        let included = Array(Set(includedVoice + [includingOrdinal].compactMap { $0 })).sorted()
         guard current, !takesBusy, acceptedSpeechContext == nil, let envelope, let generation,
               let model = generation.models.first(where: { $0.id == generation.selectedModelID }),
-              let limit = model.maximumTextLength, limit > 0, !includedVoice.isEmpty else {
+              let limit = model.maximumTextLength, limit > 0, !included.isEmpty else {
             throw RewriteSpeechContextReview.Failure.unsupported
         }
         let selected = changes.indices.filter { index in
-            changes[index].hunk.kind == .voice ? includedVoice.contains(index + 1) : ownProposal?[index + 1]?.state != .excluded
+            changes[index].hunk.kind == .voice ? included.contains(index + 1) : ownProposal?[index + 1]?.state != .excluded
         }
         let final = try editor.voiceLabReviewProject(localCommands: localCommands)
         let placements = try RewriteSpeechContextReview.placedPhrases(project: final, scope: scope, envelope: envelope,
@@ -107,7 +108,7 @@ extension RewriteSession {
         let expanding = placements[targetPhraseID].indices.map { selected[$0] }
         if let existing = takePlan {
             guard existing.stillCurrent, existing.phrases.count == placements.count,
-                  (existing.phrases[targetPhraseID].selected == nil || existing.phrases[targetPhraseID].selected?.row.voiceCheck.evidence?.mode == .unmeasured),
+                  canReviewSpeechContext(phrase: existing.phrases[targetPhraseID]),
                   zip(existing.phrases, placements).allSatisfy({ $0.indices == $1.indices &&
                       $0.text.utf8.elementsEqual($1.text.utf8) && $0.window == $1.window }) else {
                 throw RewriteSpeechContextReview.Failure.unsupported
@@ -123,13 +124,43 @@ extension RewriteSession {
     }
 
     func canReviewSpeechContext(phrase: ClipTakePlan.Phrase) -> Bool {
-        guard acceptedSpeechContext == nil,
-              phrase.selected == nil || phrase.selected?.row.voiceCheck.evidence?.mode == .unmeasured else { return false }
+        guard acceptedSpeechContext == nil else { return false }
+        if takePlan?.canExpandTimingShortPhrase(phrase.id) == true { return true }
+        guard phrase.selected == nil || phrase.selected?.row.voiceCheck.evidence?.mode == .unmeasured else { return false }
         if phrase.estimatedVoicedSeconds.map({ $0 < ClipTakePlan.minimumGeneratedSpeechSeconds }) == true { return true }
         return phrase.takes.contains { take in
             if take.row.voiceCheck.evidence?.mode == .unmeasured { return true }
             if case .qa(let failures) = take.row.failure, failures.contains(.insufficientGeneratedSpeech) { return true }
             return take.row.qa?.failures.contains(.insufficientGeneratedSpeech) == true
+        }
+    }
+
+    func timingSpeechContextReview(ordinal: Int) throws -> RewriteSpeechContextReview {
+        guard current, !takesBusy, let envelope, reviewedVoiceOrdinals.contains(ordinal) else {
+            throw RewriteSpeechContextReview.Failure.unsupported
+        }
+        let included = Array(Set(includedVoice + [ordinal])).sorted()
+        let selected = changes.indices.filter {
+            changes[$0].hunk.kind == .voice ? included.contains($0 + 1) : ownProposal?[$0 + 1]?.state != .excluded
+        }
+        let final = try editor.voiceLabReviewProject(localCommands: localCommands)
+        let placements = try RewriteSpeechContextReview.placedPhrases(project: final, scope: scope,
+            envelope: envelope, hunks: selected.map { changes[$0].hunk })
+        guard let phrase = placements.first(where: { $0.indices.contains(where: { selected[$0] == ordinal - 1 }) }) else {
+            throw RewriteSpeechContextReview.Failure.unsupported
+        }
+        let request = try speechContextRequest(targetPhraseID: phrase.id, includingOrdinal: ordinal)
+        return try RewriteSpeechContextReview.propose(request: request, envelope: envelope,
+            targetPhraseID: phrase.id, selectedOriginalIndices: request.selectedHunkIndices)
+    }
+
+    func reviewTimingSpeechContext(ordinal: Int) {
+        do {
+            let review = try timingSpeechContextReview(ordinal: ordinal)
+            speechContextOffer = review; speechContextReview = review; speechContextProblem = ""
+        } catch {
+            speechContextOffer = nil; speechContextReview = nil
+            speechContextProblem = RewriteSpeechContextReview.copy(error)
         }
     }
 
@@ -143,7 +174,7 @@ extension RewriteSession {
                     selectedOriginalIndices: request.selectedHunkIndices)
             }
             guard let offer = speechContextOffer else { return }
-            try offer.plan.validateCurrent(speechContextRequest(targetPhraseID: offer.targetPhraseID), envelope: envelope)
+            try offer.plan.validateCurrent(currentSpeechContextRequest(offer), envelope: envelope)
             speechContextReview = offer
             speechContextProblem = ""
         } catch {
@@ -152,14 +183,16 @@ extension RewriteSession {
         }
     }
 
-    func cancelSpeechContextReview() { speechContextReview = nil }
+    func cancelSpeechContextReview() { speechContextReview = nil; surroundingSentenceOrdinal = nil }
 
     func currentSpeechContextRequest(_ review: RewriteSpeechContextReview) throws -> VoiceLabSpeechContextPlan.Request {
         guard current, let envelope, let generation,
               generationIsCurrent(region: takeRegion ?? .default) else { throw RewriteSpeechContextReview.Failure.stale }
         let captured = review.plan.request
+        let expanding = captured.expandingHunkIndices.map { $0 + 1 }.filter { reviewedVoiceOrdinals.contains($0) }
+        let included = Set(includedVoice + expanding)
         let selected = changes.indices.filter { index in
-            changes[index].hunk.kind == .voice ? includedVoice.contains(index + 1) : ownProposal?[index + 1]?.state != .excluded
+            changes[index].hunk.kind == .voice ? included.contains(index + 1) : ownProposal?[index + 1]?.state != .excluded
         }
         guard let model = generation.models.first(where: { $0.id == generation.selectedModelID }),
               let limit = model.maximumTextLength else { throw RewriteSpeechContextReview.Failure.stale }
@@ -192,6 +225,8 @@ extension RewriteSession {
             try reviewed.validatePreparedPhrases(prepared, current: request, envelope: envelope)
             task.dismissConfirm()
             speechContextReview = nil; speechContextOffer = nil; acceptedSpeechContext = reviewed
+            surroundingSentenceOrdinal = nil
+            includedVoicesSeen = includedVoice
             speechContextProblem = ""
             if let plan = takePlan {
                 bindSpeechContext(reviewed, to: plan)

@@ -54,6 +54,12 @@ public struct VoiceLabTakeInput: Sendable, Equatable {
         let next = kept.filter { $0.start >= window.end }.map(\.text).joined(separator: " ")
         return VoiceLabSpeechOptions(seed: seed &+ UInt32(truncatingIfNeeded: take), previousText: previous, nextText: next, pace: pace)
     }
+    public func replacingPace(_ value: Double?) -> VoiceLabTakeInput {
+        VoiceLabTakeInput(text: text, modelID: modelID, recordID: recordID, language: language, seed: seed, contentKey: contentKey,
+            source: source, sourceEnvelope: sourceEnvelope, sourceSampleRate: sourceSampleRate, items: items, cutWordIDs: cutWordIDs,
+            window: window, incomingSilence: incomingSilence, outgoingSilence: outgoingSilence, cleanAudioOn: cleanAudioOn,
+            providerConsent: providerConsent, pace: value)
+    }
 }
 
 public struct VoiceLabTakeQuote: Sendable, Equatable {

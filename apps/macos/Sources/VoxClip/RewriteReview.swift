@@ -7,6 +7,7 @@ struct RewriteHunkReview: Sendable {
     let patchText: String?
     let meter: VoiceLabFitMeterResult?
     let refusal: String?
+    var timing: VoiceLabPhraseTiming? = nil
 }
 /// A proposal's voice review (impl-plan V13): the patch budget over its changes, each voice change placed in the take
 /// with its fit, and their summary. Free changes need no review. Placing a change reads the whole take, so a run and an
@@ -48,7 +49,13 @@ struct RewriteReview: Sendable {
                 let rate = try VoiceLabLengthBudget.rate(transcript: inputs.transcript).charactersPerSecond
                 let meter = try VoiceLabFitMeter.measure(text: patch, window: window, incomingSilence: silence.incoming,
                     outgoingSilence: silence.outgoing, rate: rate, newWords: newWords, multipleHunks: voice.count > 1)
-                reviews.append(RewriteHunkReview(hunk: hunk, window: window, patchText: patch, meter: meter, refusal: nil))
+                let spoken = timingTranscript(inputs)
+                let speakingRate = try VoiceLabPhraseTiming.speakingRate(transcript: spoken)
+                let timing = try VoiceLabPaceMatching.measure(text: patch, rate: speakingRate, window: window,
+                    incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
+                    sourceSampleRate: inputs.project.media.source.audio?.sampleRate ?? 48_000,
+                    supportsPace: inputs.synthesisModel != "eleven_v4")
+                reviews.append(RewriteHunkReview(hunk: hunk, window: window, patchText: patch, meter: meter, refusal: nil, timing: timing))
             } catch {
                 reviews.append(RewriteHunkReview(hunk: hunk, window: nil, patchText: nil, meter: nil, refusal: RewriteSession.refusal(error)))
             }
@@ -57,5 +64,16 @@ struct RewriteReview: Sendable {
         let summary = complete ? try VoiceLabDiffSummary.make(hunks: hunks, meters: reviews.compactMap(\.meter),
             catalog: inputs.prices, model: inputs.synthesisModel, patchTexts: reviews.map(\.patchText)) : nil
         return RewriteReview(hunks: hunks, budget: budget, voiceHunks: reviews, summary: summary)
+    }
+
+    static func timingTranscript(_ inputs: Inputs) -> [TimedWord] {
+        let cut = Set(inputs.project.edits.cutWordIds)
+        guard case .clip(let id) = inputs.scope,
+              let clip = inputs.project.edits.clips.first(where: { $0.id == id }),
+              let first = inputs.transcript.firstIndex(where: { $0.id == clip.startWordId }),
+              let last = inputs.transcript.firstIndex(where: { $0.id == clip.endWordId }), first <= last else {
+            return inputs.transcript.filter { !cut.contains($0.id) }
+        }
+        return inputs.transcript[first...last].filter { !cut.contains($0.id) }
     }
 }

@@ -5,6 +5,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 ## 0.1.0 - Unreleased
 
 - Let the first Rewrite start across saves and land across unrelated Motion, Demo and metadata changes; explain AI changes and unavailable retries.
+- Rewrite chooses a fitting voice pace before pricing and learns from a take's measured length when you try another.
+- Rewrite checks that each new phrase fits the video before you pay.
 - Takes can be made at a slower or faster pace to fit your video.
 - Voice takes no longer fail the join check when the source's pause beside the join is a breath, or when the take's pause meets the source's next word.
 - Takes with an uneven join can be used after you listen.

@@ -34,6 +34,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
     struct State {
         var texts: [String] = []
         var seeds: [UInt32] = []
+        var paces: [Double] = []
         var duration = 0.5
         var speechMargin = 0.05
         var voicedFraction = 1.0
@@ -81,7 +82,9 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
                 let text = try #require((dialogue ? input?["text"] : body["text"]) as? String)
                 let seed = try #require(body["seed"] as? UInt32)
                 let model = body["model_id"] as? String ?? ""
+                let pace = (body["voice_settings"] as? [String: Any])?["speed"] as? Double ?? 1
                 let duration = Self.state.withLock { state in
+                    state.paces.append(pace)
                     state.texts.append(text); state.seeds.append(seed); state.models.append(model); return state.duration
                 }
                 let variance = Self.state.withLock { $0.amplitudeVariance }
@@ -198,7 +201,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
             self.client = client; self.store = store; self.record = record
         }
     }
-    private func project() throws -> (Project, [Float], AudioEnvelope) {
+    private func project(contextWords: Bool = false) throws -> (Project, [Float], AudioEnvelope) {
         let shared = try SharedResources.locate()
         var project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
         project.id = UUID().uuidString.lowercased()
@@ -206,9 +209,11 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         project.edits = ProjectEdits()
         project.media.source.durationSeconds = 121
         project.media.source.audio?.sampleRate = 24_000
-        project.transcript?.words = (0..<24).map { index in
-            let start = 0.2 + Double(index) * 5
-            return TimedWord(id: "w\(index)", text: "old", start: start, end: start + 3.8)
+        let wordCount = contextWords ? 32 : 24
+        project.transcript?.words = (0..<wordCount).map { index in
+            let start = 0.2 + Double(index) * (contextWords ? 3.5 : 5)
+            let text = contextWords ? String(repeating: "context", count: 10) + (index % 4 == 3 ? "." : "") : "old"
+            return TimedWord(id: "w\(index)", text: text, start: start, end: start + (contextWords ? 3 : 3.8))
         }
         project.transcript?.durationSeconds = 121
         let source = (0..<(121 * 24_000)).map { index -> Float in
@@ -223,7 +228,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
                 absorbedItemIds: [], bridgeWordIds: [], sourceStartIndex: index, sourceEndIndex: index + 1, anchorSeconds: nil)
         }
     }
-    private func fixture(indices: [Int] = [3, 10, 17], badPlacement: Bool = false, unknownPrice: Bool = false, dialogue: Bool = false) async throws -> Fixture {
+    private func fixture(indices: [Int] = [3, 10, 17], badPlacement: Bool = false, unknownPrice: Bool = false, dialogue: Bool = false,
+                         contextWords: Bool = false) async throws -> Fixture {
         ClipTakeHTTP.state.withLock { $0 = ClipTakeHTTP.State(); $0.listsDialogue = dialogue }
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-v18a-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -247,7 +253,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         let prices = try VoiceLabPriceCatalog(data: JSONSerialization.data(withJSONObject: priceDocument))
         let client = ElevenLabsVoiceLab(keys: ClipTakeKeys(), session: URLSession(configuration: configuration),
             prices: prices, spend: ledger, enforceCapabilities: true)
-        let (sourceProject, pcm, envelope) = try project()
+        let (sourceProject, pcm, envelope) = try project(contextWords: contextWords)
         let project = sourceProject
         let playback = TakeReviewPlayback()
         let audition = VoiceLabAudition(makeBackend: { _, _ in playback })
@@ -884,6 +890,26 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
                 "\(phrase.takes.map { String(describing: $0.row.failure) })")
         #expect((phrase.lengthDifference ?? 0) > 1)
         await #expect(throws: ClipTakePlan.Failure.noSelection) { try await plan.acceptance() }
+        let (editor, session) = session(fixture)
+        defer { editor.close() }
+        #expect(!plan.videoAvailability(phrase: 0).allows(.source))
+        #expect(!plan.videoAvailability(phrase: 0).allows(.retimed))
+        #expect(session.takeNeedsWordingRecovery(phrase, plan: plan))
+        let recovery = PhraseTimingRecovery(priceAnyway: false, action: { _ in })
+        #expect(recovery.retryTitle == "Ask for shorter")
+    }
+
+    @Test func individualFirstTakeQuoteSaysMakeTake() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = session(fixture)
+        defer { editor.close() }
+        await fixture.plan.prepare()
+        await fixture.plan.prepareAnother(phrase: 0)
+        session.takeQuotePhrase = 0
+        #expect(fixture.plan.phrases[0].takes.isEmpty)
+        let action = try #require(session.pricedTakeAction(phrase: 0))
+        #expect(action.title.hasPrefix("Make take · ≈ $"))
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.isEmpty && $0.qa == 0 })
     }
 
     @Test func aFailedRetryShowsItsReasonAndKeepsTheEarlierTakeUsable() async throws {
@@ -1137,6 +1163,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
             absorbedItemIds: [], bridgeWordIds: [], sourceStartIndex: 9, sourceEndIndex: 10, anchorSeconds: nil)
         session.receive(([fix] + hunks([10])).map { RewriteChange(hunk: $0) })
         session.finishRun(seconds: 1); session.showProposal()
+        for ordinal in session.blockedVoiceOrdinals { session.pricedAnyway.insert(ordinal) }
+        session.showProposal()
         session.configureGeneration(client: fixture.client, store: fixture.store,
             speaker: VoiceSpeakerCheck(embedder: ClipTakeSpeaker(), calibratedThreshold: 0.45))
         let factory = try #require(session.takeBackend)
@@ -1164,6 +1192,88 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         return (editor, session)
     }
 
+    @Test func timingShortSurroundingReviewDoesNotOverridePriceOrExcludedWords() async throws {
+        let fixture = try await fixture(indices: [10], contextWords: true); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture); defer { editor.close() }
+        var short = try #require(hunks([17]).first)
+        short = VoiceLabDiffHunk(kind: .voice, sourceWordIds: short.sourceWordIds, newTokens: ["Hi"], correctedTexts: [],
+            absorbedItemIds: [], bridgeWordIds: [], sourceStartIndex: 17, sourceEndIndex: 18, anchorSeconds: nil)
+        session.receive([RewriteChange(hunk: short)])
+        session.finishRun(seconds: 0.1); session.showProposal()
+        #expect(session.blockedVoiceOrdinals == [1] && session.includedVoice.isEmpty)
+        #expect(session.voiceReview(1)?.timing?.tooLong == false)
+        _ = try session.timingSpeechContextReview(ordinal: 1)
+        session.phraseTimingAction(.surrounding, ordinal: 1)
+        #expect(session.speechContextReview != nil, "\(session.speechContextProblem)")
+        #expect(session.includedVoice.isEmpty && session.pricedAnyway.isEmpty)
+        #expect(!session.hasPaidTakes && ClipTakeHTTP.state.withLock { $0.texts.isEmpty })
+        session.cancelSpeechContextReview()
+        #expect(session.surroundingSentenceOrdinal == nil)
+        session.phraseTimingAction(.surrounding, ordinal: 1)
+        session.phraseTimingAction(.original, ordinal: 1)
+        await session.acceptSpeechContextReview()
+        #expect(session.acceptedSpeechContext == nil && !session.speechContextProblem.isEmpty)
+        #expect(session.includedVoice.isEmpty && ClipTakeHTTP.state.withLock { $0.texts.isEmpty })
+    }
+
+    @Test func prepayPaceCopyTracksTheSelectedModel() async throws {
+        let fixture = try await fixture(indices: [10], dialogue: true); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture); defer { editor.close() }
+        let ordinal = try #require(session.ownProposal?.changes.first(where: { $0.kind == .voice })?.ordinal)
+        let pace = try #require(session.voiceReview(ordinal)?.timing?.pace)
+        #expect(pace != 1)
+        let generation = try #require(session.generation)
+        generation.chooseModel("eleven_v4")
+        #expect(session.voiceReview(ordinal)?.timing?.pace == 1)
+        #expect(session.voiceReview(ordinal)?.timing?.copy.contains("pace") == false)
+        generation.chooseModel("eleven_v3")
+        #expect(session.voiceReview(ordinal)?.timing?.pace == pace)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.isEmpty })
+    }
+
+    @Test func productionPaceBindsPriceAndMeasuredRetryWithoutCompounding() async throws {
+        let fixture = try await fixture(indices: [10], dialogue: true); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture); defer { editor.close() }
+        let plan = try #require(session.takePlan)
+        let ordinal = try #require(session.ownProposal?.changes.first(where: { $0.kind == .voice })?.ordinal)
+        let originalReviewPace = session.voiceReview(ordinal)?.timing?.pace
+        let originalPace = try #require(plan.phrasePace(0))
+        #expect(originalPace != 1 && VoiceLabPace.isValid(originalPace))
+        #expect(session.takeSendLine.contains("× pace"))
+        let oldQuote = try #require(plan.approvalID)
+        ClipTakeHTTP.state.withLock { $0.duration += 2.5; $0.speechMargin = 0.15 }
+        await plan.start(approved: true, quoteID: oldQuote)
+        let selectedID = try #require(plan.phrases[0].selectedID)
+        let selected = try #require(plan.phrases[0].takes.first(where: { $0.id == selectedID }))
+        let audio = try #require(selected.row.audio)
+        #expect(selected.row.receipt?.pace == originalPace)
+        #expect(ClipTakeHTTP.state.withLock { $0.paces == [originalPace] })
+        #expect(!plan.videoAvailability(phrase: 0).allows(.source))
+        let measured = Double(audio.trimmed.count) / Double(audio.sampleRate)
+        let silence = try VoiceLabWindowPlanner.lendableSilence(project: editor.project, scope: .full, window: plan.phrases[0].window)
+        let expected = try VoiceLabPaceMatching.match(seconds: measured, oldPace: originalPace,
+            window: plan.phrases[0].window, incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
+            sourceSampleRate: 24_000)
+        await plan.prepareAnother(phrase: 0)
+        #expect(plan.phrasePace(0) == expected.pace && expected.pace != originalPace)
+        #expect(plan.approvalID != oldQuote)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
+        let unusedQuote = plan.approvalID
+        await plan.prepareAnother(phrase: 0)
+        #expect(plan.phrasePace(0) == expected.pace && plan.approvalID != unusedQuote)
+        await plan.tryAnother(phrase: 0, approved: true, quoteID: unusedQuote)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
+        await plan.tryAnother(phrase: 0, approved: true, quoteID: plan.approvalID)
+        #expect(ClipTakeHTTP.state.withLock { $0.paces == [originalPace, expected.pace] })
+        let generation = try #require(session.generation)
+        generation.chooseModel("eleven_v4")
+        #expect(plan.phrasePace(0) == 1)
+        #expect(session.voiceReview(ordinal)?.timing?.pace == originalReviewPace)
+        await plan.prepareAnother(phrase: 0)
+        #expect(plan.phrasePace(0) == 1 && plan.approvalID != nil, "\(plan.problem)")
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 2 })
+    }
+
     /// Live 2026-11-03: the Speech model defaulted to the account's first model, Eleven v3. Patching defaults to
     /// Multilingual v2, which takes the surrounding transcript; v3 stays selectable.
     @Test func productionTakesDefaultToTheContextModelAndKeepOthersSelectable() async throws {
@@ -1175,6 +1285,59 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(generation.selectedModelID == "eleven_multilingual_v2")
         generation.chooseModel("eleven_v3")
         #expect(generation.selectedModelID == "eleven_v3")
+    }
+
+    @Test func productionQuoteLeavesOutBlockedPhrasesUntilExplicitOverride() async throws {
+        let fixture = try await fixture(indices: [10, 17]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture)
+        defer { editor.close() }
+        let long = VoiceLabDiffHunk(kind: .voice, sourceWordIds: ["w10"],
+            newTokens: [String(repeating: "collaboratively", count: 8)], correctedTexts: [], absorbedItemIds: [],
+            bridgeWordIds: [], sourceStartIndex: 10, sourceEndIndex: 11, anchorSeconds: nil)
+        session.receive(([long] + hunks([17])).map { RewriteChange(hunk: $0) })
+        session.finishRun(seconds: 1)
+        session.showProposal()
+        #expect(session.blockedVoiceOrdinals == [1] && session.includedVoice == [2])
+        let generation = try #require(session.generation)
+        await generation.finishQuotePreparationForTests()
+        await session.prepareTakes()
+        let first = try #require(session.takePlan)
+        #expect(first.phrases.count == 1 && session.takePlanOrdinals == [2])
+        session.showProposal()
+        #expect(session.task.footer.note?.hasPrefix("1 phrase needs a shorter wording.") == true)
+        #expect(session.task.footer.note?.contains("ElevenLabs with your key") == true)
+        session.phraseTimingAction(.priceAnyway, ordinal: 1)
+        await generation.finishQuotePreparationForTests()
+        await session.prepareTakes()
+        let overridden = try #require(session.takePlan)
+        #expect(overridden.phrases.count == 2 && session.takePlanOrdinals == [1, 2])
+        #expect(first !== overridden && first.approvalID == nil)
+        session.phraseTimingAction(.original, ordinal: 1)
+        await generation.finishQuotePreparationForTests()
+        await session.prepareTakes()
+        #expect(session.takePlan?.phrases.count == 1 && session.takePlanOrdinals == [2])
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.isEmpty && $0.qa == 0 })
+    }
+
+    @Test func paidUnusableTakeRecoveryKeepsNormalDiscardApproval() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture)
+        defer { editor.close() }
+        let plan = try #require(session.takePlan)
+        ClipTakeHTTP.state.withLock { $0.duration += 5; $0.speechMargin = 0.15 }
+        await plan.start(approved: true)
+        let phrase = try #require(plan.phrases.first)
+        #expect(session.takeNeedsWordingRecovery(phrase, plan: plan))
+        let ordinal = try #require(session.takePhraseOrdinals(phrase).first)
+        let synthesisCount = ClipTakeHTTP.state.withLock { $0.texts.count }
+        session.phraseTimingAction(.shorter, ordinal: ordinal)
+        #expect(session.task.confirm?.question == "Discard these 2 changes?")
+        #expect(session.takePlan === plan && session.hasPaidTakes && !plan.generating)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == synthesisCount })
+        session.task.confirm?.cancel.perform()
+        session.phraseTimingAction(.original, ordinal: ordinal)
+        #expect(session.ownProposal?[ordinal]?.state == .excluded)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == synthesisCount })
     }
 
     @Test func dialogueIsSelectableByAccountNameAndTurboIsHidden() async throws {
@@ -1399,9 +1562,9 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(ClipTakeHTTP.state.withLock { $0.texts.isEmpty })
         session.takeQuotePhrase = 0
         let retry = try #require(session.pricedTakeAction(phrase: 0))
-        #expect(retry.title.contains("Try another") && session.takeSendLine.contains("only phrase 1"))
+        #expect(retry.title.contains("Make take") && session.takeSendLine.contains("only phrase 1"))
         if case .inline(let amount)? = fixture.plan.cost {
-            #expect(retry.title == "Try another · " + amount)
+            #expect(retry.title == "Make take · " + amount)
             #expect(retry.title.components(separatedBy: "≈").count <= 2)
         } else { Issue.record("This fixture must exercise the inline retry price") }
         retry.perform()

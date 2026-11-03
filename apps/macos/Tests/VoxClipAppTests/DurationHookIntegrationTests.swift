@@ -167,6 +167,8 @@ private struct DurationHookKeys: KeyProvider {
         var changes = [hunk(.cut, 5...5, []), hunk(.textOnly, 8...8, ["Reviewed"]), hunk(.voice, 15...46, tokens)]
         if passages == 2 { changes.append(hunk(.voice, 55...86, tokens)) }
         session.receive(changes); session.finishRun(seconds: 1); session.showProposal()
+        for ordinal in session.blockedVoiceOrdinals { session.pricedAnyway.insert(ordinal) }
+        session.showProposal()
         session.configureGeneration(client: ElevenLabsVoiceLab(keys: DurationHookKeys(), region: .default),
             store: VoiceConsentStore(locations: app.locations), speaker: .unavailable)
         let generation = try #require(session.generation)

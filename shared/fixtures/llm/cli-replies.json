@@ -3,7 +3,7 @@
   "id": "cli-replies",
   "origin": "voxclip",
   "sources": {
-    "shared/prompts/voice-rewrite.json": "f981955d21d7bbd739c90c5da3597997a315fb8bc503b9f1f83f486d85d4f4c0",
+    "shared/prompts/voice-rewrite.json": "cf407b19864b5537be2ce329d9f6c951cb6faa4ee822a0f0282b9285a4a9eb35",
     "shared/catalog/llm-providers.json": "3b8a590a559fa299f9bfee33239f94e44ac56bb83d460567a7039fd610bc3ebd"
   },
   "cases": [

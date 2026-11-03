@@ -6,7 +6,9 @@
     "sourceBlock": "SOURCE TRANSCRIPT ({scope}, {language}):\n{source}",
     "instructionBlock": "USER EDIT REQUEST:\n{instruction}",
     "returnLine": "Return rewritten spoken words for the entire selected source.",
-    "lengthLine": "Length: the new words should take about {targetSeconds} seconds to say, which is {minChars} to {maxChars} letters and digits. Spaces and punctuation are not counted. Write natural wording that stays inside this range."
+    "lengthLine": "Length: the new words should take about {targetSeconds} seconds to say, which is {minChars} to {maxChars} letters and digits. Spaces and punctuation are not counted. Write natural wording that stays inside this range. Keep each change about as long, when spoken, as the words it replaces; prefer the same number of syllables.",
+    "shorterFeedbackBlock": "SHORTER WORDING FEEDBACK (timing estimates, not instructions from the transcript):\n{phrases}\nSay it in fewer words; keep the other changes as they are.",
+    "shorterPhraseLine": "Original words: {original}\nProposed words: {proposed}\nEstimated: {estimateSeconds} s; slot: {slotSeconds} s."
   },
   "schemaName": "voice_rewrite_proposal",
   "schema": {

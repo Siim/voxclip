@@ -134,6 +134,98 @@ private final class WorkThreads: Sendable {
         app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(true)
         app.settings.values["transcription.elevenlabs.region"] = .string("default")
     }
+
+    @Test func longPhraseIsBlockedBeforePricing() async throws {
+        let (app, _) = app("ollama", stub: ScopeStub())
+        enableVoiceLab(app)
+        let (editor, _) = try editor(app)
+        defer { editor.close() }
+        editor.selectedWordIDs = ["w20", "w21"]
+        let session = try await rewrite(editor)
+        try session.receivePassage(String(repeating: "collaboratively ", count: 8))
+        session.finishRun(seconds: 0.1)
+        #expect(session.includedVoice.isEmpty)
+        #expect(session.task.footer.note == "1 phrase needs a shorter wording.")
+        #expect(session.task.footer.primary == nil)
+    }
+
+    @Test func priceOverrideAndOriginalWordsDoNotSendAnything() async throws {
+        let stub = ScopeStub()
+        let (app, _) = app("ollama", stub: stub)
+        enableVoiceLab(app)
+        let (editor, _) = try editor(app)
+        defer { editor.close() }
+        editor.selectedWordIDs = ["w20", "w21"]
+        let session = try await rewrite(editor)
+        try session.receivePassage(String(repeating: "collaboratively ", count: 8))
+        session.finishRun(seconds: 0.1)
+        let ordinal = try #require(session.blockedVoiceOrdinals.first)
+        let item = try #require(session.task.changes?.items.first)
+        #expect(item.timing?.copy.hasPrefix("≈ ") == true && item.timing?.fits == false)
+        #expect(session.includedVoice.isEmpty)
+        session.phraseTimingAction(.priceAnyway, ordinal: ordinal)
+        #expect(session.includedVoice == [ordinal])
+        #expect(session.task.footer.primary?.title == "Get Price · 1 phrase")
+        #expect(session.task.footer.note?.hasPrefix("Nothing paid yet.") == true)
+        session.phraseTimingAction(.original, ordinal: ordinal)
+        #expect(session.ownProposal?[ordinal]?.state == .excluded && session.includedVoice.isEmpty)
+        #expect(await stub.requests.count == 1)
+        #expect(RewriteSession.firstTakeVerb(hasTakes: false) == "Make take")
+        #expect(RewriteSession.firstTakeVerb(hasTakes: true) == "Try another")
+    }
+
+    @Test func shortPhraseDoesNotClaimItNeedsShortening() async throws {
+        let (app, _) = app("ollama", stub: ScopeStub())
+        enableVoiceLab(app)
+        let (editor, _) = try editor(app, contiguous: true)
+        defer { editor.close() }
+        editor.selectedWordIDs = ["w20", "w21"]
+        let session = try await rewrite(editor)
+        try session.receivePassage("Hi.")
+        session.finishRun(seconds: 0.1)
+        let ordinal = try #require(session.blockedVoiceOrdinals.first)
+        let timing = try #require(session.voiceReview(ordinal)?.timing)
+        #expect(!timing.fits && !timing.tooLong)
+        #expect(session.task.footer.note == "1 phrase needs wording that fits.")
+        #expect(session.task.footer.primary == nil)
+        let recovery = PhraseTimingRecovery(tooLong: false, priceAnyway: true, action: { _ in })
+        #expect(recovery.retryTitle == "Use surrounding sentence")
+        app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(false)
+        session.phraseTimingAction(.surrounding, ordinal: ordinal)
+        #expect(session.surroundingSentenceOrdinal == ordinal)
+        #expect(session.takeRowsShown)
+        #expect(!session.includedVoice.contains(ordinal))
+    }
+
+    @Test(arguments: ["ollama", "anthropic"])
+    func shorterWordingReplacesTheProposalWithFreshSendConsent(_ provider: String) async throws {
+        let stub = ScopeStub(id: try #require(ConnectorID(rawValue: provider)))
+        let (app, sheets) = app(provider, stub: stub)
+        enableVoiceLab(app)
+        let (editor, _) = try editor(app)
+        defer { editor.close() }
+        editor.selectedWordIDs = ["w20", "w21"]
+        let session = try await rewrite(editor)
+        _ = sheets.take()
+        try session.receivePassage(String(repeating: "collaboratively ", count: 8))
+        session.finishRun(seconds: 0.1)
+        let ordinal = try #require(session.blockedVoiceOrdinals.first)
+        let expected = try session.shorterFeedbackBlock(ordinals: [ordinal])
+        #expect(expected.contains("Original words: word20 word21"))
+        #expect(expected.contains("Proposed words: collaboratively"))
+        #expect(expected.contains("Estimated:") && expected.contains("slot:"))
+        session.pricedAnyway.insert(ordinal)
+        session.phraseTimingAction(.shorter, ordinal: ordinal)
+        await editor.rewriteOpenTask?.value
+        await session.actionTask?.value
+        let request = try #require(await stub.requests.last)
+        #expect(await stub.requests.count == 2)
+        #expect(request.instruction.hasSuffix(expected))
+        #expect(sheets.take() == (provider == "anthropic" ? [.cost] : []))
+        #expect(session.pricedAnyway.isEmpty)
+        #expect(session.task.changes?.items.first?.quote == "A clearer passage")
+        #expect(session.rewriteScope == RewriteScope.selection(20...21))
+    }
     /// Gives `session` one reviewed take, ready to use: no provider is called.
     private func giveTake(_ session: RewriteSession, editor: EditorModel) throws -> RewriteGenerationSession {
         let root = editor.app.locations.root
@@ -464,6 +556,7 @@ private final class WorkThreads: Sendable {
         let (editor, undo) = try editor(app)
         defer { editor.close() }
         let session = try await rewrite(editor)
+        for ordinal in session.blockedVoiceOrdinals { session.pricedAnyway.insert(ordinal) }
         try #require(session.includedVoice.count == 1)
         let generation = try giveTake(session, editor: editor)
         #expect(generation.readyToAccept)

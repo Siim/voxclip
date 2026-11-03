@@ -29,15 +29,32 @@ extension RewriteSession {
         return Dictionary(zip(ordinals, review?.voiceHunks ?? []).map { ($0, $1) }, uniquingKeysWith: { first, _ in first })
     }
     /// The voice review of the voice change `ordinal`.
-    func voiceReview(_ ordinal: Int) -> RewriteHunkReview? { voiceReviews[ordinal] }
+    func voiceReview(_ ordinal: Int) -> RewriteHunkReview? {
+        guard var result = voiceReviews[ordinal] else { return nil }
+        guard !hasPaidTakes, let selectedModel = generation?.selectedModelID, let timing = result.timing, let window = result.window,
+              (selectedModel == "eleven_v4") != (synthesisModel == "eleven_v4"),
+              let silence = try? VoiceLabWindowPlanner.lendableSilence(project: project, scope: scope, window: window),
+              let matched = try? VoiceLabPaceMatching.match(seconds: timing.estimateSeconds * timing.pace, window: window,
+                  incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
+                  sourceSampleRate: project.media.source.audio?.sampleRate ?? 48_000,
+                  supportsPace: selectedModel != "eleven_v4") else { return result }
+        result.timing = matched
+        return result
+    }
     /// The ordinals of the voice changes takes are made for: those the list includes that can be made, as the AI wrote
     /// them (a change edited in the popover needs a new review first).
-    var includedVoice: [Int] {
+    var reviewedVoiceOrdinals: [Int] {
         guard let proposal = ownProposal else { return [] }
         let unavailable = voiceUnavailable
         return proposal.changes.filter { change in
             change.kind == .voice && change.state != .excluded && unavailable(change.ordinal) == nil && replyParts[change.ordinal] == change.parts
         }.map(\.ordinal)
+    }
+    var includedVoice: [Int] {
+        reviewedVoiceOrdinals.filter {
+            voiceReview($0)?.timing?.fits != false || pricedAnyway.contains($0) ||
+                acceptedSpeechContext?.plan.request.expandingHunkIndices.contains($0 - 1) == true
+        }
     }
     /// Why the voice change `ordinal` can't be made, nil when it can (design.md R2's voice rows): Voice Lab is off, the
     /// project's language has no calibrated voice check, the take refused its placement, or the review built again after
@@ -46,7 +63,7 @@ extension RewriteSession {
         let app = editor.app
         let reviews = voiceReviews
         let enabled = app.voiceLabRewriteEnabled
-        let language = enabled && app.voiceLabSession.voicesUnavailable(projectLanguage: project.transcript?.language)
+        let language: Bool = enabled && app.voiceLabSession.voicesUnavailable(projectLanguage: project.transcript?.language)
         let refused = review == nil && !problem.isEmpty ? problem : nil
         return { ordinal in
             if !enabled { return VoiceUnavailable(text: "Needs Voice Lab (beta)", warns: true) }
@@ -73,6 +90,7 @@ extension RewriteSession {
             }
         }
         task.review = { [weak self] ordinal, review in self?.review(ordinal, review) }
+        task.phraseTimingAction = { [weak self] ordinal, action in self?.phraseTimingAction(action, ordinal: ordinal) }
         task.show(.proposal(content.set), headline: content.headline, cards: content.cards, footer: content.footer, contextAction: content.askAgain)
     }
 
@@ -138,8 +156,8 @@ extension RewriteSession {
         if let callout = footer.callout { cards.append(.callout(callout)) }
         // Why Make Takes could not go on (finding the voices failed); a refused review is on the voice rows instead.
         if review != nil, !problem.isEmpty { cards.append(.callout(problem)) }
-        if footer.takes, takeRowsShown {
-            cards = [.takes]
+        if (footer.takes || surroundingSentenceOrdinal != nil), takeRowsShown {
+            cards = blockedVoiceOrdinals.isEmpty ? [.takes] : [.changes(set), .takes]
             let count = takePlan?.phrases.count ?? includedVoice.count
             headline.text = count == 1 ? "1 phrase in your voice" : "\(count) phrases in your voice"
             headline.sub = "Listen, pick a take, then use them."
@@ -174,7 +192,9 @@ extension RewriteSession {
             return text
         }
         let spoken = change.description(prefix: "Change", count: count, removed: reading.removed, inserted: reading.inserted)
-        return ProposalItem(ordinal: change.ordinal, kind: kind, sourceWordIDs: change.span, newWords: change.parts.flatMap(\.newTokens),
+        return ProposalItem(timing: kind == .voice ? voiceReview(change.ordinal)?.timing : nil,
+                            pricedAnyway: pricedAnyway.contains(change.ordinal),
+                            ordinal: change.ordinal, kind: kind, sourceWordIDs: change.span, newWords: change.parts.flatMap(\.newTokens),
                             oldWords: reading.removed, checkThis: checkThis, state: state,
                             quote: quoted(kind == .cut ? reading.removed.joined(separator: " ") : reading.text),
                             note: note, warns: unavailable?.warns ?? checkThis, reviewable: unavailable == nil,
@@ -207,6 +227,17 @@ extension RewriteSession {
         if !included.isEmpty, let over = overBudget {
             return (PanelFooter(note: "Make Takes appears when the phrases fit.", primary: apply(beside: true)), over, false)
         }
+        let blocked = blockedVoiceOrdinals.count
+        if blocked > 0 {
+            let priceable = included.filter { includedVoice.contains($0.ordinal) }
+            guard let voice = priceable.first else {
+                return (PanelFooter(note: timingBlockedNote, link: keepAll, primary: apply(beside: true)), nil, false)
+            }
+            var footer = takesFooter(voice, keepAll: keepAll)
+            let paidNote = takePlan == nil ? nil : footer.note
+            footer.note = [timingBlockedNote, paidNote].compactMap { $0 }.joined(separator: "\n")
+            return (footer, nil, takePlan != nil)
+        }
         if let voice = included.first {
             return (takesFooter(voice, keepAll: keepAll), nil, generation != nil)
         }
@@ -217,7 +248,7 @@ extension RewriteSession {
     /// The voice budget (voice-lab.md §8.2) over the voice changes the list includes, as design.md R2's callout reads it;
     /// nil while they fit. Leaving a phrase out can bring Make Takes back.
     var overBudget: String? {
-        let hunks = includedVoice.compactMap { changes.indices.contains($0 - 1) ? changes[$0 - 1].hunk : nil }
+        let hunks = reviewedVoiceOrdinals.compactMap { changes.indices.contains($0 - 1) ? changes[$0 - 1].hunk : nil }
         let budget = VoiceLabPatchBudget.evaluate(hunks: hunks, transcript: transcript)
         guard budget.flag == .reRecordInstead else { return nil }
         let limit = min(60, budget.wordItems * 15 / 100)
@@ -228,7 +259,6 @@ extension RewriteSession {
 
     /// Every footer action that only finds the voices and prices the set; nothing is sent until the priced
     /// "Make Takes · ≈ $x" that replaces it is pressed. A first "Make Takes" that only priced read as a failed click.
-    static let getPriceTitle = "Get Price"
     /// The footer prepares one plan for the entire included set. V18 supplies the phrase rows.
     private func takesFooter(_ voice: ProposalItem, keepAll: PanelAction?) -> PanelFooter {
         if let takePlan {
@@ -241,7 +271,7 @@ extension RewriteSession {
             if takePlan.spent.units > 0 { return PanelFooter(note: "Left out until a take fits. " + takeSpendLine) }
             if let action = pricedTakeAction() { return PanelFooter(note: takeSendLine, link: keepAll, primary: action) }
             return PanelFooter(note: takePlan.problem.isEmpty ? "Prepare a fresh price to make takes." : takePlan.problem,
-                link: keepAll, primary: PanelAction(id: "prepareTakes", title: Self.getPriceTitle) { [weak self] in self?.makeTakes() })
+                link: keepAll, primary: PanelAction(id: "prepareTakes", title: Self.priceTitle(includedVoice.count)) { [weak self] in self?.makeTakes() })
         }
         if let parts = replyParts[voice.ordinal], ownProposal?[voice.ordinal]?.parts != parts {
             return PanelFooter(note: "Takes are made from the AI's words. Rewrite again to make takes of an edited change.", link: keepAll)
@@ -252,7 +282,7 @@ extension RewriteSession {
                 let amount = VoiceLabCostPresentation.format(usd)
                 return "\nTakes " + (amount.hasPrefix("<") ? amount : "≈ " + amount) + " on ElevenLabs."
             } ?? ""
-            return PanelFooter(note: unpaid + estimate, link: keepAll, primary: PanelAction(id: "makeTakes", title: Self.getPriceTitle) { [weak self] in self?.makeTakes() })
+            return PanelFooter(note: unpaid + estimate, link: keepAll, primary: PanelAction(id: "makeTakes", title: Self.priceTitle(includedVoice.count)) { [weak self] in self?.makeTakes() })
         }
         if generation.voices.isEmpty {
             let make = PanelAction(id: "makeVoice", title: "Make Your Voice") { [weak self] in
@@ -261,7 +291,7 @@ extension RewriteSession {
             return PanelFooter(note: unpaid + " Next: make your voice from this \(task.words.noun). Once.", link: keepAll, primary: make)
         }
         return PanelFooter(note: unpaid + " " + takeSendLine, link: keepAll,
-            primary: PanelAction(id: "prepareTakes", title: Self.getPriceTitle) { [weak self] in self?.makeTakes() })
+            primary: PanelAction(id: "prepareTakes", title: Self.priceTitle(includedVoice.count)) { [weak self] in self?.makeTakes() })
     }
 
     /// The proposal has changes waiting for review, shown or set aside by R3: its tab shows the dirty dot (notes.md §5).
@@ -307,7 +337,7 @@ extension RewriteSession {
     /// change, asking first when the cost confirms (voice-lab.md §3.1). A footer drawn before the list's inclusions
     /// changed makes no takes of a phrase other than the one the quote is for.
     func makeTakes() {
-        guard current else { return }
+        guard current, !includedVoice.isEmpty || surroundingSentenceOrdinal != nil else { return }
         guard !takesBusy else { return }
         takeRowsShown = true
         guard generation != nil else {
@@ -315,6 +345,7 @@ extension RewriteSession {
             return
         }
         guard !hasPaidTakes else { return }
+        if let ordinal = surroundingSentenceOrdinal { reviewTimingSpeechContext(ordinal: ordinal); return }
         takesTask = Task { [weak self] in await self?.prepareTakes() }
     }
     /// Use Take {n}: the take with the free changes still pending, one undo step.
@@ -331,7 +362,10 @@ extension RewriteSession {
     let task: DirectorTask
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(set.items) { item in ChangeRow(item: item, focused: item.ordinal == set.focused) { task.review?(item.ordinal, $0) } }
+            ForEach(set.items) { item in
+                ChangeRow(item: item, focused: item.ordinal == set.focused,
+                    timingAction: { task.phraseTimingAction?(item.ordinal, $0) }, review: { task.review?(item.ordinal, $0) })
+            }
         }
         .padding(.horizontal, -8)
         .accessibilityElement(children: .contain)
@@ -343,6 +377,7 @@ extension RewriteSession {
 @MainActor private struct ChangeRow: View {
     let item: ProposalItem
     let focused: Bool
+    let timingAction: (PhraseTimingAction) -> Void
     let review: (ChangeReview) -> Void
 
     /// Keep and Undo where they can act, then Edit, as the transcript offers them: a waiting change Keep and Undo, a change
@@ -392,6 +427,15 @@ extension RewriteSession {
                 Text(label).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary")).fixedSize()
             }
             .frame(height: 26)
+            if let timing = item.timing {
+                Text(timing.copy).font(VCType.small.font().monospaced())
+                    .foregroundStyle(DesignValues.color("text.tertiary"))
+                    .padding(.leading, 33).padding(.bottom, 6)
+                if !timing.fits, item.state != .excluded {
+                    PhraseTimingRecovery(tooLong: timing.tooLong, priceAnyway: !item.pricedAnyway, action: timingAction)
+                        .padding(.leading, 33).padding(.bottom, 8)
+                }
+            }
             if let note = item.note {
                 Label { Text(note).fixedSize(horizontal: false, vertical: true) } icon: {
                     if item.warns { Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 10)) }
@@ -412,7 +456,7 @@ extension RewriteSession {
                 Button(action == .keep ? "Keep Change" : action == .undo ? "Undo Change" : "Edit Change") { review(action) }
             }
         }
-        .accessibilityElement(children: .ignore)
+        .accessibilityElement(children: item.timing?.fits == false ? .contain : .ignore)
         .accessibilityLabel(item.spoken)
         .accessibilityAddTraits(focused ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction { review(.focus) }

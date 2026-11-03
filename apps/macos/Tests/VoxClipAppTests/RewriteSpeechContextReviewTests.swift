@@ -22,6 +22,7 @@ import Testing
         var published: [VoiceLabTakeInput] = []
         var discarded = 0
         var insufficient: Set<Int> = []
+        var timingShort: Set<Int> = []
         var current = true
         var beforePrepare: (() -> Void)?
         let record: VoiceConsentRecord
@@ -50,7 +51,7 @@ import Testing
                 if insufficient.contains(phrase) {
                     row = .init(id: quote.synthesis.requestID, index: 0, seed: quote.seed,
                         failure: .qa([.insufficientGeneratedSpeech]), quote: quote, accepted: [quote.synthesis.requestID])
-                } else { row = Self.row(input: window.input, quote: quote, record: record) }
+                } else { row = Self.row(input: window.input, quote: quote, record: record, timingShort: timingShort.contains(phrase)) }
                 await progress([row])
                 return .init(rows: [row], end: .completed)
             }
@@ -84,10 +85,12 @@ import Testing
                 region: .default, endpoint: "v1/text-to-speech/fixtureOwnVoice/with-timestamps", languageMode: .explicit("en"), fingerprint: "fake")
         }
 
-        private static func row(input: VoiceLabTakeInput, quote: VoiceLabTakeQuote, record: VoiceConsentRecord) -> VoiceLabTakeRow {
+        private static func row(input: VoiceLabTakeInput, quote: VoiceLabTakeQuote, record: VoiceConsentRecord,
+                                timingShort: Bool = false) -> VoiceLabTakeRow {
             let window = input.window
             let rate = input.sourceSampleRate
-            let count = window.endSample - window.startSample
+            let originalCount = window.endSample - window.startSample
+            let count = timingShort ? originalCount / 2 : originalCount
             let duration = Double(count) / Double(rate)
             let tokens = input.text.split(separator: " ").map(String.init)
             let words = tokens.enumerated().map { index, text in
@@ -101,7 +104,8 @@ import Testing
             let receipt = VoiceLabReceipt(provider: "elevenlabs", region: .default, endpoint: quote.synthesis.endpoint, modelID: input.modelID,
                 voiceID: record.voiceId, requestID: quote.synthesis.requestID, providerRequestID: nil, spendWarning: nil)
             let audio = VoiceLabTakeAudio(sampleRate: rate, trimmed: [], mixed: [], patchRange: 0..<0, seams: [],
-                gainDb: 0, roomTone: .init(sourceStartSample: 0, sourceEndSample: Int64(rate / 2), gainDb: 0), fit: .exact(fit))
+                gainDb: 0, roomTone: .init(sourceStartSample: 0, sourceEndSample: Int64(rate / 2), gainDb: 0),
+                fit: timingShort ? .changedDuration(fit, naturalOut: duration, residualSeconds: -duration) : .exact(fit))
             return .init(id: receipt.requestID, index: 0, seed: quote.seed, receipt: receipt, audio: audio,
                 qa: .init(values: .init(transcriptMatch: 1, lufsJumpLu: 0, peakDbfs: -10, speakerScore: 1), failures: []),
                 score: 1, quote: quote)
@@ -204,6 +208,26 @@ import Testing
         #expect(plan.phrases.count == 1 && plan.phrases[0].text == "better")
         #expect(plan.phrases[0].estimatedVoicedSeconds.map { $0 < 3 } == true)
         #expect(fake.quoted.isEmpty && fake.executed.isEmpty)
+    }
+
+    @Test func measuredTimingShortTakeCanReviewAndQuoteSurroundingSentence() async throws {
+        let fixture = try fixture(), fake = Fake(record: fixture.record)
+        let target = hunk(4...4, text: ["better"])
+        let request = try request(fixture, hunks: [target], selected: [0], target: 0)
+        let review = try review(request, fixture: fixture)
+        let plan = try plan(fixture, hunks: [target], fake: fake)
+        fake.timingShort = [0]
+        await plan.prepare(); await plan.start(approved: true)
+        #expect(plan.phrases[0].selectedID != nil && plan.canExpandTimingShortPhrase(0))
+        let previous = plan.phrases[0].takes.map(\.id)
+        let expanded = try review.replacingHunks(current: request, envelope: fixture.envelope)
+        plan.bindSpeechContext({ inputs in try review.validateQuotedInputs(inputs, current: request, envelope: fixture.envelope) },
+            current: { true })
+        try await plan.replaceSpeechContext(hunks: expanded, envelope: fixture.envelope, phrase: 0)
+        #expect(fake.executed == [0] && fake.approvals.count == 1)
+        #expect(fake.quoted.last?.first?.text == review.phrase.text)
+        #expect(plan.approvalID != nil && plan.phrases[0].takes.isEmpty)
+        #expect(!previous.isEmpty)
     }
 
     @Test func expandedQuoteIsExactOnlyTargetsTheRequestedSlotAndNeedsPaidApproval() async throws {

@@ -40,6 +40,7 @@ public actor VoiceRewriteService {
         guard !input.sourceWords.isEmpty, input.sourceWords.count <= 3_000,
               input.sourceWords.allSatisfy({ $0.start.isFinite && $0.end.isFinite && $0.start >= 0 && $0.end >= $0.start }),
               input.instruction.utf8.count <= 1_000,
+              (input.feedback?.utf8.count ?? 0) <= 20_000,
               input.targetSeconds.isFinite, input.targetSeconds > 0, input.targetSeconds <= 600,
               input.minChars >= 1, input.minChars <= input.maxChars, input.maxChars <= 5_000 else { throw VoiceLabError.invalidInput }
         let source = input.sourceWords.map(\.text).joined(separator: " ")
@@ -107,7 +108,7 @@ public actor VoiceRewriteService {
             .replacingOccurrences(of: "{minChars}", with: String(input.minChars)).replacingOccurrences(of: "{maxChars}", with: String(input.maxChars))
         let request = AIText.trim(input.instruction)
         let parts = (request.isEmpty ? [] : [requestBlock.replacingOccurrences(of: "{instruction}", with: request)]) + [returnLine + "\n" + length]
-        return (block, parts.joined(separator: "\n\n"))
+        return (block, (parts + (input.feedback.map { [$0] } ?? [])).joined(separator: "\n\n"))
     }
 
     public func propose(_ input: VoiceRewriteRequest, connector: any LLMConnector, model: String,

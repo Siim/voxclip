@@ -1206,6 +1206,44 @@ Selection snapping skips them. Hit-testing an inserted run focuses its change.
 
 #### 6.3.6 Rewrite flow
 
+**Pre-pay phrase fit (3 November 2026, approved f12 grammar).** Every voice-change row adds a
+muted mono duration line: `≈ {estimate} s · slot {slot} s`, then `· fits` only when at least
+one video-duration option would be usable. A blocked row has a warning bar and the line
+“Too long for its slot. A take won't fit the video.” Below it, inline **Ask for shorter**
+and **Keep original words**; the quiet **Price it anyway** text action overrides only that
+phrase's estimate. No dialog, provider call, or audio charge happens on an override.
+If wording instead falls below the same gate's minimum usable length, say “Too short
+for its slot. A take won't fit the video.” and offer **Use surrounding sentence** rather than asking
+for fewer words. That footer reads “{n} phrase(s) need(s) wording that fits.”
+
+**Pace matching (3 November 2026).** Before pricing, choose a provider pace on its 0.01
+grid within 0.70×–1.20×: prefer keeping the source video duration, aiming at the midpoint
+of the exact-fit range; otherwise use a reachable Match video fit. Keep the actual fit
+planner's silence/room-tone limits, never extra padding. At non-default pace the muted
+line reads `≈ 4.6 s at 0.80× pace · slot 5.1 s · fits`. The complete phrase input and
+fresh paid approval bind that pace, and the inline send/price disclosure repeats it.
+For dialogue/v4, only 1.0× is supported. If pace cannot fit, the same too-long/too-short
+wording recovery applies. Use surrounding sentence reviews the whole replacement and
+source range inline, preserving excluded changes and paid takes; it does not approve a
+charge. A changed-duration take's **Try another** targets the exact-fit midpoint from
+its measured pre-fit trimmed length and the selected take's receipt pace, not the original
+text estimate. A fresh quote and priced click are still required, including after another
+retry quote or a speech-model change.
+
+The footer counts unresolved included phrases: “1 phrase needs a shorter wording.” or
+“{n} phrases need a shorter wording.” **Get Price · {k} phrase(s)** prices only included
+phrases that fit or were explicitly overridden; hide the priced action at zero. When all
+included phrases fit, the footer reads “Nothing paid yet.” The existing audio-price
+approval remains a separate, explicitly priced click.
+
+**Ask for shorter** sends a new text Rewrite of this scope with the shared feedback block
+and fresh connector consent/approval checks. Its reply replaces the proposal, resetting
+overrides as Ask again does. **Keep original words** excludes the existing change. After
+payment, a selected take whose two video-duration choices are disabled also shows both
+recovery actions. A new first take is **Make take · ≈ $x**, never **Try another**. Paid
+audio remains retained under the normal discard confirmation; no recovery action buys
+another take implicitly.
+
 "Announce" means an accessibility announcement: macOS `.announcementRequested`, Windows `RaiseNotificationEvent`.
 
 **Start.**
