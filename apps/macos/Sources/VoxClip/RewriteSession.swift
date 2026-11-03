@@ -70,6 +70,9 @@ struct RewriteChange: Equatable, Sendable {
     /// Injectable system URL boundary; clicking recovery never launches a CLI or changes permissions.
     var openSettingsURL: (URL) -> Void = { _ = NSWorkspace.shared.open($0) }
     var sendFailure: LLMError?
+    #if DEBUG
+    @ObservationIgnored var beforeFailurePresentation: @MainActor () async -> Void = {}
+    #endif
     func waitForSend() async { _ = await sending?.value }
     let editor: EditorModel
     /// What the session rewrites (C1's `RewriteScope`).

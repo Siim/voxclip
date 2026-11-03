@@ -233,6 +233,9 @@ extension RewriteSession {
     /// Shows a failed send's error (R1x), announced.
     func fail(_ error: any Error) async {
         let shown = await panelError(error)
+        #if DEBUG
+        await beforeFailurePresentation()
+        #endif
         guard isOpen else { return }
         sendFailure = error as? LLMError
         fail(shown)
