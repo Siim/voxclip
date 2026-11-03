@@ -19,10 +19,11 @@ public static class VoiceLabFitMeter
 {
     /// <summary>Estimate complete spoken text including bridges. Required newWords excludes bridges and supplies only the quote.</summary>
     public static VoiceLabFitMeterResult Measure(string text, VoiceLabWindow window, double? incomingSilence, double? outgoingSilence,
-        double rate, string newWords, bool multipleHunks = false)
+        double rate, string newWords, bool multipleHunks = false, double durationAllowance = 0)
     {
         var geometry = VoiceLabLengthBudget.Geometry(window, incomingSilence, outgoingSilence);
-        double estimate = VoiceLabLengthBudget.Estimate(text, rate);
+        if (!double.IsFinite(durationAllowance) || durationAllowance < 0) throw new VoiceLabLengthBudgetException(VoiceLabLengthBudgetErrorCode.InvalidInput);
+        double estimate = VoiceLabLengthBudget.Estimate(text, rate) + durationAllowance;
         double leftPad = Pad(window.LeftSeam.Kind);
         double rightPad = Pad(window.RightSeam.Kind);
         double lowerLeft = geometry.Target - leftPad;

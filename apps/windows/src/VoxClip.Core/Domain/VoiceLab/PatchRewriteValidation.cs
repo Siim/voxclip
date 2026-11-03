@@ -36,7 +36,8 @@ internal static class PatchRewriteValidator
             if (!seen.Add(line)) { duplicates++; continue; }
             var length = VoiceLabTextLength.Length(text);
             var deletion = EditingAlgorithms.JsTrim(text).Length == 0;
-            edits.Add(new(line, text, reason, length, deletion || length >= range.MinChars && length <= range.MaxChars, known.Flags(text), deletion));
+            edits.Add(new(line, text, reason, length, deletion || length >= range.MinChars && length <= range.MaxChars, known.Flags(text), deletion)
+            { AudioTags = VoiceLabAudioTags.Parse(item?["audioTags"], text) });
         }
         return new(edits, unknown, duplicates, malformed);
     }

@@ -98,8 +98,8 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                 var options = snapshot.Options(index);
                 var review = new OwnVoicePolicy(record.RecordId, record.VoiceId, true, true, record.ConsentMethod == VoiceConsentMethod.RecordedStatement, true, true)
                     { ConsentMethod = record.ConsentMethod };
-                var synthesis = client.PrepareSynthesis(snapshot.Text, snapshot.ModelId, VoiceLabVoiceChoice.Own(record.VoiceId, review), snapshot.Language, options, Guid.NewGuid());
-                try { quotes.Add(new(index, options.Seed, synthesis, client.PrepareQa(snapshot.Language, record.RecordId, Guid.NewGuid()))); }
+                var synthesis = client.PrepareSynthesis(snapshot.RequestText, snapshot.ModelId, VoiceLabVoiceChoice.Own(record.VoiceId, review), snapshot.Language, options, Guid.NewGuid());
+                try { quotes.Add(new(index, options.Seed, synthesis, client.PrepareQa(snapshot.Language, record.RecordId, Guid.NewGuid(), snapshot.HasRequestTags))); }
                 catch { client.DiscardTakeRun(new(id, [new(index, options.Seed, synthesis, synthesis)])); throw; }
             }
             var quote = new VoiceLabTakeRunQuote(id, quotes);
@@ -228,7 +228,7 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                 await ValidateAsync(value, ct).ConfigureAwait(false);
                 var policy = await checks.Authorize(value.Record, value.Speech, take.Synthesis, value.Binding, value.ModelRevision, ct).ConfigureAwait(false);
                 await Checkpoint("authorization", value, ct).ConfigureAwait(false);
-                generated = await client.SynthesizeAsync(value.Input.Text, value.Input.ModelId, VoiceLabVoiceChoice.Own(value.Record.VoiceId, policy),
+                generated = await client.SynthesizeAsync(value.Input.RequestText, value.Input.ModelId, VoiceLabVoiceChoice.Own(value.Record.VoiceId, policy),
                     value.Input.Language, value.Input.Options(take.Index), approvals[take.Index * 2], ct, take.Synthesis.Review.RequestId, synthesisAccepted).ConfigureAwait(false);
                 await launchCleanup().ConfigureAwait(false);
                 value = current();
@@ -278,14 +278,14 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                 var score = SpeakerAudio.Cosine(ownerVector, vector);
                 var qaPolicy = await checks.Authorize(value.Record, value.Speech, take.Qa, value.Binding, value.ModelRevision, ct).ConfigureAwait(false);
                 await Checkpoint("qaAuthorization", value, ct).ConfigureAwait(false);
-                var recognized = await client.TranscribeQaAsync(audio.Mixed, audio.SampleRate, value.Input.Language, qaPolicy, approvals[take.Index * 2 + 1], ct, qaAccepted).ConfigureAwait(false);
+                var recognized = await client.TranscribeQaAsync(audio.Mixed, audio.SampleRate, value.Input.Language, qaPolicy, approvals[take.Index * 2 + 1], ct, qaAccepted, value.Input.HasRequestTags).ConfigureAwait(false);
                 qaReceipt = recognized.Receipt;
                 await ValidateAsync(value, ct).ConfigureAwait(false);
                 var lower = audio.PatchStart / (double)audio.SampleRate;
                 var upper = audio.PatchEnd / (double)audio.SampleRate;
                 var inside = recognized.Words.Where(word => (word.Start + word.End) / 2 >= lower && (word.Start + word.End) / 2 < upper).Select(word => word.Text).ToArray();
                 var qa = VoiceLabTakeQuality.Evaluate(value.Input.Text, inside, audio.Mixed, audio.SampleRate, audio.Seams, score, value.Record.Speaker.Threshold,
-                    audio.Seams.Select(seam => seam == audio.PatchStart).ToArray(), audio.SeamExcesses);
+                    audio.Seams.Select(seam => seam == audio.PatchStart).ToArray(), audio.SeamExcesses, value.Input.HasRequestTags);
                 var rank = VoiceLabTakeQuality.Rank(audio.Fit, value.Input.Window.End - value.Input.Window.Start,
                     qa.TranscriptMatch ?? throw new VoiceLabException(VoiceLabErrorKind.InvalidInput), VoiceLabLoudness.Flatness(audio.Trimmed, audio.SampleRate));
                 var row = new VoiceLabTakeRow(take.Synthesis.Review.RequestId, take.Index, take.Seed, generated.Receipt, qaReceipt, generated, take, audio, qa, rank);

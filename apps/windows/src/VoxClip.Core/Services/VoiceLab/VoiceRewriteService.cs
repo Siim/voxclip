@@ -84,7 +84,8 @@ public sealed class VoiceRewriteService
             throw LlmErrors.Create(LlmErrorKind.InvalidOutput, "", model, LlmFeature.VoiceRewrite);
         var length = VoiceLabTextLength.Length(rewrite);
         return new(Guid.NewGuid(), snapshot.Scope, snapshot.SourceWords, source, rewrite, connector.Id, answer.Model, answer.RequestId,
-            length, length >= snapshot.MinChars && length <= snapshot.MaxChars);
+            length, length >= snapshot.MinChars && length <= snapshot.MaxChars)
+        { AudioTags = VoiceLabAudioTags.Parse(parsed.Object["audioTags"], rewrite) };
     }
 
     private const string PromptFile = "prompts/voice-rewrite.json";
@@ -100,7 +101,7 @@ public sealed class VoiceRewriteService
         var sourceTokens = catalog.Estimate(source);
         var maxOutput = VoiceLabLlmChecks.MaxOutputTokens(sourceTokens, promptCap, catalog.Cap(connector, promptCap)) ??
             throw LlmErrors.Create(LlmErrorKind.ContextTooLong, "", model, LlmFeature.VoiceRewrite);
-        var (sourceBlock, instruction) = RequestText(input, source, prompt);
+        var (sourceBlock, instruction) = RequestText(input, source, VoiceRewriteFeedback.Prompt(catalog, prompt, input.ShorterPhrases));
         var timeout = catalog.Timeout(connector is ConnectorId.ClaudeCode or ConnectorId.Codex ? "cli" :
             connector is ConnectorId.Ollama or ConnectorId.LmStudio ? "localServer" : "cloud");
         return new(LlmFeature.VoiceRewrite, system, sourceBlock, instruction, name, schema.DeepClone().AsObject(),
@@ -146,13 +147,14 @@ public sealed class VoiceRewriteService
         if (Encoding.UTF8.GetByteCount(source) > 20000) throw Invalid();
         return source;
     }
-    private static string Fingerprint(VoiceRewriteRequest input, ConnectorId connector, string model, LlmRequest request, string promptSha256)
+    private string Fingerprint(VoiceRewriteRequest input, ConnectorId connector, string model, LlmRequest request, string promptSha256)
     {
         var parts = new List<string?> { "voice-rewrite", input.RequestId.ToString("D"), LlmCatalog.WireId(connector), model, ScopeWire(input.Scope),
             input.Instruction, input.Language, input.TargetSeconds.ToString("R", CultureInfo.InvariantCulture),
             input.MinChars.ToString(CultureInfo.InvariantCulture), input.MaxChars.ToString(CultureInfo.InvariantCulture), promptSha256,
             request.System, request.CachedBlock, request.Instruction, request.SchemaName,
             request.Schema.ToJsonString(), request.MaxOutputTokens.ToString(CultureInfo.InvariantCulture) };
+        if (VoiceRewriteFeedback.MeasuredPromptHash(catalog, input.ShorterPhrases) is { } measuredHash) parts.Add(measuredHash);
         foreach (var word in input.SourceWords)
         {
             parts.AddRange([word.Id, word.Text, word.Kind.ToString(), word.Start.ToString("R", CultureInfo.InvariantCulture),

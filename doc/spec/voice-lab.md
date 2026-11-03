@@ -1,6 +1,6 @@
 # Voice Lab
 
-### Audio expressions (Mac, 2026-11-03)
+### Audio expressions (Mac and Windows, 2026-11-03)
 
 Audio expressions are annotations, not transcript words. A voice hunk and its saved
 `text` may carry optional `audioTags: [{beforeToken: 1, tag: "laughs"}]`, ordered by
@@ -63,9 +63,26 @@ text, v4 pace is 1.0. DEBUG failure diagnostics remain redacted and enabled;
 `VOXCLIP_DATA_DIR` or a process-specific temporary test directory owns test output,
 never the user's real diagnostic directory. A live provider confirmation is owed.
 
-New deterministic vectors are in `audio-tag-cases.json`, separate from the old
-dialogue fixture. Windows Core decodes, validates and preserves project annotations
-and validates optional shared reply-schema fields only; its speech/UI twin is owed.
+Deterministic vectors are in `audio-tag-cases.json`, separate from the old dialogue
+fixture. Windows replays request rendering, whitelist, event normalization,
+alignment, normalized fallback, duration and serialization cases. Both rewrite
+services retain structured annotations through ordered diff/context propagation.
+HTTP provider schemas recursively require every object property for strict mode;
+canonical and CLI reply fields remain optional. The Windows catalogue is cached,
+and missing catalogue files become typed `InvalidWords` failures. Saved take text
+includes annotations only when its model supports tags; review suggestions still
+survive switching to an incapable model.
+
+Windows shorter retries retain estimated seconds separately from measured take
+seconds. Any measured phrase selects the separate
+`voice-rewrite-shorter-measured.json` block and measured line; unmeasured phrases
+retain the estimated line. Exact approval binds that template's hash as well as
+the canonical rewrite prompt. No Windows DEBUG speech-validation logger existed,
+so this change introduces no writes to real-user diagnostic folders.
+
+Windows native listening, Narrator and narrow-window acceptance remain owed.
+The pacing twin owns `.cut`/changed-duration video and the missing-duration-choice
+footer; expressions do not add those choices.
 
 Status:
 
@@ -1166,7 +1183,7 @@ For `eleven_v3` and `eleven_v4`, `sendsSpeechContext` is false. V3 omits `previo
 A field that is empty after this is omitted. The quote binds the seed and the trimmed strings.
 
 - **Audio.** With `pcm_*` formats, `audio_base64` is raw 16-bit little-endian mono PCM at that rate. Resample to the source rate.
-- **Alignment.** Prefer valid original `alignment` so captions equal typed text. Mac v4 alone can recover missing/null original alignment from valid normalized timing, mapped back to typed words as specified in Audio expressions. Malformed original timing, or no usable timing in either field, stops the run. Windows retains its original-alignment-only behavior until its twin lands. Scribe/interpolation recovery remains deferred.
+- **Alignment.** Prefer valid original `alignment` so captions equal typed text. Mac and Windows v4 recover missing/null original alignment from valid normalized timing, mapped back to typed words as specified in Audio expressions. Malformed original timing, or no usable timing in either field, stops the run. Scribe/interpolation recovery remains deferred.
 - **Pronunciation.** The user may type a respelling for a word ("say it like"). eleven_v4 also accepts IPA wrapped in `/…/`. The respelling is sent as the text; the caption keeps the typed word.
 - **Pace (the one caller voice-setting choice).** `VoiceLabSpeechOptions.pace` / `VoiceLabTakeInput.pace` is optional; nil means 1.0. TTS accepts finite values in **[0.7, 1.2]**, validates before quoting or sending (before rounding, never clamping), and sends `voice_settings.speed` rounded to two decimals, nearest with halfway values away from zero, only for a raw pace other than 1.0. Nil/1.0 leaves the existing request bytes/settings unchanged. All other voice settings remain the constants above. The quote/claim/review binds the unrounded pace; nil/1.0 are equivalent, but any other change needs a new approval, even if it rounds to the same speed. Receipts and persisted recipe/segment `provenance.pace` record the effective rounded pace, 1.0 when omitted. The project field is optional, so old projects remain valid without a schema-version change or migration. Pricing remains per character. `VoiceLabPace.clamp` is a pure caller helper with range constants, not provider validation; NaN maps to 1.0 and infinities to their boundary. No pace selection UI or automatic fitting policy is added here.
 
@@ -1615,7 +1632,7 @@ gates. This local correction makes no provider request.
 
 Words/Scribe, clipping, speaker/voice (including pooled short-speech rules), alignment, consent, quote approval and use-time guards remain hard gates exactly as before. Missing or invalid loudness measurements remain failures; this policy does not waive incomplete checks or a hard failure accompanied by a join advisory.
 
-Eleven v4 dialogue replies may omit `alignment` or return null. Mac now uses validated normalized timing mapped back to typed words in that case (Audio expressions); Windows keeps the original stop until its twin. With both fields absent/null, the paid request remains recorded and valid PCM stays playable as unchecked audio, with no automatic retry. A take proceeds to QA only after validated typed-word timing and voice-segment bounds. Saved `.tts` recipes accept the exact dialogue endpoint `v1/text-to-dialogue/with-timestamps` only with `eleven_v4`; v4 on a TTS endpoint is `endpointUnsupported`. Other models keep the existing timestamped TTS endpoint contract.
+Eleven v4 dialogue replies may omit `alignment` or return null. Both platforms use validated normalized timing mapped back to typed words in that case (Audio expressions). With both fields absent/null, the paid request remains recorded and valid PCM stays playable as unchecked audio, with no automatic retry. A take proceeds to QA only after validated typed-word timing and voice-segment bounds. Saved `.tts` recipes accept the exact dialogue endpoint `v1/text-to-dialogue/with-timestamps` only with `eleven_v4`; v4 on a TTS endpoint is `endpointUnsupported`. Other models keep the existing timestamped TTS endpoint contract.
 
 Mac DEBUG/profile builds write redacted speech-validation JSON under the app log location, `Diagnostics/VoiceLab/speech-validation-<request-id>.json` (normally `~/Library/Logs/VoxClip/Diagnostics/VoiceLab/`; an isolated `VOXCLIP_DATA_DIR` uses its `Logs/` directory). Both speech routes record the route, model, typed text, joined original/normalized alignment text, character counts, first/last five original start/end times, PCM duration and all non-secret segment fields. The exact failed rule includes a zero-based Unicode-scalar index and both `U+` values for text mismatch, or the original alignment/segment entry index for timing/range failures. Audio, headers and credentials are excluded; registered secrets are redacted before encoding. A single INFO event says `voicelab dialogue validation failed check=<name>` without text. Diagnostic I/O cannot change the validation result or paid-audio retention. Release contains neither the evidence writer nor its destination override. This diagnostic does not relax alignment or substitute normalized metadata.
 

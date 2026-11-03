@@ -102,7 +102,8 @@ public sealed class PatchRewriteService
         var sourceTokens = catalog.Estimate(rendered);
         var maxOutput = VoiceLabLlmChecks.MaxOutputTokens(sourceTokens, prompt.OutputCap, catalog.Cap(connector, prompt.OutputCap)) ??
             throw LlmErrors.Create(LlmErrorKind.ContextTooLong, "", model, LlmFeature.VoiceRewrite);
-        var feedbackPrompt = input.ShorterPhrases.Count == 0 ? null : VoiceLabLlmChecks.ReadPrompt(catalog, "prompts/voice-rewrite.json").Document;
+        var feedbackPrompt = input.ShorterPhrases.Count == 0 ? null : VoiceRewriteFeedback.Prompt(catalog,
+            VoiceLabLlmChecks.ReadPrompt(catalog, "prompts/voice-rewrite.json").Document, input.ShorterPhrases);
         var (cachedBlock, instruction) = RequestText(input, rendered, prompt.Document, feedbackPrompt);
         var timeout = catalog.Timeout(connector is ConnectorId.ClaudeCode or ConnectorId.Codex ? "cli" :
             connector is ConnectorId.Ollama or ConnectorId.LmStudio ? "localServer" : "cloud");
@@ -153,11 +154,12 @@ public sealed class PatchRewriteService
         return lines;
     }
 
-    private static string Fingerprint(PatchRewriteRequest input, ConnectorId connector, string model, LlmRequest request, string promptSha256)
+    private string Fingerprint(PatchRewriteRequest input, ConnectorId connector, string model, LlmRequest request, string promptSha256)
     {
         var parts = new List<string?> { "patch-rewrite", input.RequestId.ToString("D"), LlmCatalog.WireId(connector), model, input.Instruction,
             input.Language, promptSha256, request.System, request.CachedBlock, request.Instruction, request.SchemaName, request.Schema.ToJsonString(),
             request.MaxOutputTokens.ToString(CultureInfo.InvariantCulture) };
+        if (VoiceRewriteFeedback.MeasuredPromptHash(catalog, input.ShorterPhrases) is { } measuredHash) parts.Add(measuredHash);
         foreach (var entry in input.Entries)
             parts.AddRange([entry.Index.ToString(CultureInfo.InvariantCulture), entry.Text, entry.Start.ToString("R", CultureInfo.InvariantCulture),
                 entry.End.ToString("R", CultureInfo.InvariantCulture)]);

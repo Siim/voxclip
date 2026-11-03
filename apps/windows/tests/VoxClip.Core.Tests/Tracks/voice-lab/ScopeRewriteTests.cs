@@ -16,6 +16,21 @@ namespace VoxClip.Core.Tests.Tracks.VoiceLab;
 
 public sealed class ScopeRewriteTests
 {
+    [Fact]
+    public void StructuredExpressionsFollowOrderedScopedHunksRatherThanRepeatedWords()
+    {
+        var words = new[] { "Hello", "one", "two", "three", "old" }.Select((text, index) => Word("word" + index, text, index, index + .5)).ToArray();
+        var entries = words.Select((word, index) => new ClipWord(index, word.Text, word.Start, word.End)).ToArray();
+        var request = new PatchRewriteRequest(Guid.NewGuid(), entries, [new("[0-4]", 1, 50)], "Keep my tone", "en");
+        var plan = new ScopeRewritePlan(RewriteScope.FullTake,
+            [new("[0-4]", words, entries, words.Select(_ => false).ToArray(), 1, 50, ScopeRewritePlan.RangeSource.LineSpan)], request);
+        var edit = new PatchRewriteEdit("[0-4]", "Hello one two three Hello", "Tone", 23, true, false, false)
+            { AudioTags = [new(1, "laughs"), new(5, "sighs")] };
+        var proposal = new PatchRewriteProposal(Guid.NewGuid(), [edit], 0, 0, 0, "", ConnectorId.OpenAI, "chosen", null);
+        var hunk = Assert.Single(ScopeRewriteDiff.Hunks(plan, proposal)).Diff;
+        Assert.Equal(new VoiceLabAudioTag(1, "sighs"), Assert.Single(hunk.AudioTags));
+        Assert.Equal("Hello", Assert.Single(hunk.NewTokens));
+    }
     static JsonNode Fixture(string name) => JsonNode.Parse(FixtureLoader.ReadText("fixtures/voice-lab/" + name + ".json"))!;
     static IEnumerable<JsonNode> Rows(JsonNode? node) => node?.AsArray().Select(value => value!) ?? [];
     static string S(JsonNode node, string key) => node[key]!.GetValue<string>();

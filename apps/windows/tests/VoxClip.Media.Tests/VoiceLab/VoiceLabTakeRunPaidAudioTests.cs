@@ -10,7 +10,7 @@ namespace VoxClip.Media.Tests.VoiceLab;
 public sealed partial class VoiceLabTakeRunTests
 {
     [Theory]
-    [InlineData("eleven_v4", "alignment_null", VoiceLabErrorKind.InvalidAlignment, true)]
+    [InlineData("eleven_v4", "both_alignments_null", VoiceLabErrorKind.InvalidAlignment, true)]
     [InlineData("eleven_v4", "segments_wrong_voice", VoiceLabErrorKind.MalformedResponse, true)]
     [InlineData("eleven_v3", "alignment_null", VoiceLabErrorKind.InvalidAlignment, true)]
     [InlineData("eleven_v4", "alignment_null", VoiceLabErrorKind.InvalidAudio, false)]
@@ -18,7 +18,9 @@ public sealed partial class VoiceLabTakeRunTests
     public async Task FailedSynthesisPreservesOnlyValidatedPaidPcm(string model, string name, VoiceLabErrorKind kind, bool validPcm)
     {
         var cases = JsonNode.Parse(FixtureLoader.ReadText("fixtures/voice-lab/dialogue-cases.json"))!;
-        var response = cases["responses"]!.AsArray().Single(row => row!["case"]!.GetValue<string>() == name)!["response"]!.DeepClone();
+        var fixtureName = name == "both_alignments_null" ? "alignment_null" : name;
+        var response = cases["responses"]!.AsArray().Single(row => row!["case"]!.GetValue<string>() == fixtureName)!["response"]!.DeepClone();
+        if (name == "both_alignments_null") response["normalized_alignment"] = null;
         if (!validPcm) response["audio_base64"] = Convert.ToBase64String(new byte[1]);
         var pcm = Convert.FromBase64String(response["audio_base64"]!.GetValue<string>());
         await using var fixture = new Fixture(input => input with { ModelId = model, Text = "Hi" });

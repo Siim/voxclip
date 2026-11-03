@@ -13,6 +13,58 @@ namespace VoxClip.Core.Tests.Tracks.WinAi;
 public sealed class RewriteShorterFeedbackTests
 {
     [Fact]
+    public async Task RewriteServicesRetainOnlyValidStructuredExpressions()
+    {
+        const string annotations = "[{\"beforeToken\":2,\"tag\":\"laughs\"},{\"beforeToken\":1,\"tag\":\"shouts\"},{\"beforeToken\":99,\"tag\":\"sighs\"}]";
+        var voice = new VoiceRewriteService(Catalog());
+        var connector = new CapturingLlmConnector("{\"rewrite\":\"Go now.\",\"audioTags\":" + annotations + "}");
+        var request = new VoiceRewriteRequest(Guid.NewGuid(), VoiceRewriteScope.Passage, [Word(0, "Leave now.", 0, 1)], "Keep my tone", "en", 1, 1, 50);
+        var prepared = await voice.PrepareAsync(request, connector, "chosen", TestContext.Current.CancellationToken);
+        var proposal = await voice.ProposeAsync(request, connector, "chosen", voice.Approve(prepared, true), TestContext.Current.CancellationToken);
+        Assert.Equal(new VoiceLabAudioTag(2, "laughs"), Assert.Single(proposal.AudioTags));
+        var patch = new PatchRewriteService(Catalog());
+        connector = new CapturingLlmConnector("{\"edits\":[{\"line\":\"[0-0]\",\"text\":\"Go now.\",\"reason\":\"Shorter\",\"audioTags\":" + annotations + "}]}");
+        var scoped = new PatchRewriteRequest(Guid.NewGuid(), [new ClipWord(0, "Leave now.", 0, 1)], [new("[0-0]", 1, 30)], "Shorter", "en");
+        prepared = await patch.PrepareAsync(scoped, connector, "chosen", TestContext.Current.CancellationToken);
+        var edits = await patch.ProposeAsync(scoped, connector, "chosen", patch.Approve(prepared, true), TestContext.Current.CancellationToken);
+        Assert.Equal(proposal.AudioTags, Assert.Single(edits.Edits).AudioTags);
+    }
+    [Fact]
+    public async Task MixedFeedbackKeepsMeasuredAndEstimatedPhraseLinesDistinct()
+    {
+        var service = new PatchRewriteService(Catalog());
+        var connector = new CapturingLlmConnector("{\"edits\":[{\"line\":\"[0-0]\",\"text\":\"Go.\",\"reason\":\"Shorter\"}]}");
+        var request = new PatchRewriteRequest(Guid.NewGuid(), [new ClipWord(0, "Go now.", 0, 1)], [new("[0-0]", 1, 30)], "Shorter", "en")
+        { ShorterPhrases = [new("Go now.", "Go right now.", 1.8, 1.1) { MeasuredSeconds = 2.4 }, new("Stay.", "Stay here.", 1.5, 1.2)] };
+        var prepared = await service.PrepareAsync(request, connector, "chosen", TestContext.Current.CancellationToken);
+        var approval = service.Approve(prepared, true);
+        var changed = request with { ShorterPhrases = [request.ShorterPhrases[0] with { MeasuredSeconds = 2.5 }, request.ShorterPhrases[1]] };
+        await Assert.ThrowsAsync<VoiceLabException>(() => service.ProposeAsync(changed, connector, "chosen", approval, TestContext.Current.CancellationToken));
+        Assert.Empty(connector.Requests);
+        await service.ProposeAsync(request, connector, "chosen", approval, TestContext.Current.CancellationToken);
+        var instruction = Assert.Single(connector.Requests).Instruction;
+        Assert.Contains("Measured take: 2.4 s; slot: 1.1 s.", instruction);
+        Assert.Contains("Estimated: 1.5 s; slot: 1.2 s.", instruction);
+        Assert.DoesNotContain("Estimated: 1.8", instruction);
+    }
+    [Fact]
+    public async Task MeasuredFeedbackUsesMeasuredTemplateNotEstimatedCopy()
+    {
+        var service = new VoiceRewriteService(Catalog());
+        var connector = new CapturingLlmConnector("{\"rewrite\":\"Go.\"}");
+        var timing = System.Text.Json.JsonSerializer.Deserialize<VoiceRewriteTimingFeedback>(
+            "{\"Original\":\"Go now.\",\"Proposed\":\"Go right now.\",\"EstimateSeconds\":1.8,\"SlotSeconds\":1.1,\"MeasuredSeconds\":2.4}")!;
+        var request = new VoiceRewriteRequest(Guid.NewGuid(), VoiceRewriteScope.Passage, [Word(0, "Go now.", 0, 1)],
+            "Shorter", "en", 1, 1, 50) { ShorterPhrases = [timing] };
+        var prepared = await service.PrepareAsync(request, connector, "chosen", TestContext.Current.CancellationToken);
+        await service.ProposeAsync(request, connector, "chosen", service.Approve(prepared, true), TestContext.Current.CancellationToken);
+        var sent = Assert.Single(connector.Requests);
+        Assert.Contains("Measured take: 2.4 s; slot: 1.1 s.", sent.Instruction);
+        Assert.Contains("measured take durations and timing estimates", sent.Instruction);
+        Assert.DoesNotContain("Estimated: 1.8", sent.Instruction);
+    }
+
+    [Fact]
     public async Task ApprovedShorterFeedbackReachesOnlyTheStubCliAndCannotReuseAnOldApproval()
     {
         var catalog = Catalog();

@@ -64,7 +64,7 @@ public static class VoiceLabRecipeBuilder
             throw Error(VoiceLabProjectErrorCode.InvalidCandidate);
         var original = string.Join(" ", input.Items.Where(word => word.Kind == WordKind.Word && word.End > plan.WindowStart && word.Start < plan.WindowEnd).Select(word => word.Text));
         return new(id, VoiceLabSegmentKind.Tts, true, new(plan.WindowStart, plan.WindowEnd, input.Window.FirstWordId, input.Window.LastWordId), recipe.OutDuration,
-            recipe.Audio, new(original, input.Text), recipe.Words, recipe.Provenance, new(recipe.Qa.TranscriptMatch, recipe.Qa.LufsJumpLu, recipe.Qa.PeakDbfs, recipe.Qa.SpeakerScore),
+            recipe.Audio, new(original, input.Text) { AudioTags = input.HasRequestTags ? VoiceLabAudioTags.Validated(input.AudioTags, input.Text) : null }, recipe.Words, recipe.Provenance, new(recipe.Qa.TranscriptMatch, recipe.Qa.LufsJumpLu, recipe.Qa.PeakDbfs, recipe.Qa.SpeakerScore),
             Array.AsReadOnly(candidates.ToArray()), selected) { Scope = VoiceLabSegmentScope.Passage };
     }
     private static bool Unit(double value) => double.IsFinite(value) && value is >= 0 and <= 1;

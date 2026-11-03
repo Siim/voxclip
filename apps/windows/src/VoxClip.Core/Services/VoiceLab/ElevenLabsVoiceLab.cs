@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Services.Logging;
@@ -210,21 +211,21 @@ public sealed class ElevenLabsVoiceLab : IDisposable
     public IReadOnlyList<VoiceLabAuthorization> ApproveTakeRun(VoiceLabTakeRunQuote quote, VoiceLabRunDispatch dispatch) => actions.ApproveRun(quote.Id, quote.Actions, true, dispatch);
     public void ReleaseTakeRun(VoiceLabTakeRunQuote quote) => actions.ReleaseRun(quote.Id, quote.Actions);
     public void DiscardTakeRun(VoiceLabTakeRunQuote quote) => actions.DiscardRun(quote.Id, quote.Actions);
-    public VoiceLabPreparedAction PrepareQa(string language, string recordId, Guid requestId)
+    public VoiceLabPreparedAction PrepareQa(string language, string recordId, Guid requestId, bool tagAudioEvents = false)
     {
         if (!CloneLanguage.IsMatch(language) || string.IsNullOrWhiteSpace(recordId)) throw Invalid();
-        return actions.Prepare(QaFingerprint(language, recordId), Quoted(VoiceLabOperation.SpeechToText, "scribe_v2", VoiceLabTakeProcessing.MaximumQaSeconds),
+        return actions.Prepare(QaFingerprint(language, recordId, tagAudioEvents), Quoted(VoiceLabOperation.SpeechToText, "scribe_v2", VoiceLabTakeProcessing.MaximumQaSeconds),
             new(VoiceLabOperation.SpeechToText, requestId, "elevenlabs", Region, "/v1/speech-to-text", "scribe_v2", null,
                 new(VoiceLabLanguageModeKind.Explicit, language), null, recordId));
     }
     public async Task<VoiceLabQaTranscript> TranscribeQaAsync(float[] samples, int rate, string language, OwnVoicePolicy policy,
-        VoiceLabAuthorization authorization, CancellationToken ct = default, VoiceLabRequestAcceptance? acceptance = null)
+        VoiceLabAuthorization authorization, CancellationToken ct = default, VoiceLabRequestAcceptance? acceptance = null, bool tagAudioEvents = false)
     {
         if (rate != 24000 || !CloneLanguage.IsMatch(language)) throw Invalid();
         policy.Validate();
         var wav = VoiceLabTakeProcessing.EncodeQaWav(samples, rate);
-        var id = actions.Claim(authorization, QaFingerprint(language, policy.RecordId), VoiceLabOperation.SpeechToText, authorization.Review.RequestId);
-        using var body = Multipart(NewBoundary(), [new("model_id", "scribe_v2"), new("language_code", language), new("tag_audio_events", "false"),
+        var id = actions.Claim(authorization, QaFingerprint(language, policy.RecordId, tagAudioEvents), VoiceLabOperation.SpeechToText, authorization.Review.RequestId);
+        using var body = Multipart(NewBoundary(), [new("model_id", "scribe_v2"), new("language_code", language), new("tag_audio_events", tagAudioEvents ? "true" : "false"),
             new("diarize", "false"), new("timestamps_granularity", "word"), new("file", null, "qa.wav", wav)]);
         using var reply = await SendAsync(HttpMethod.Post, "/v1/speech-to-text", body, 4 * 1024 * 1024, ct, billing: authorization, policy: policy, acceptance: acceptance).ConfigureAwait(false);
         using var json = Parse(reply.Bytes);
@@ -247,8 +248,12 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         }
         return new(Array.AsReadOnly(result.ToArray()), Receipt("/v1/speech-to-text", "scribe_v2", null, id, reply));
     }
-    private string QaFingerprint(string language, string recordId) => VoiceLabActionGate.Fingerprint(Region.ToString(), "scribe_v2", language, recordId,
-        VoiceLabTakeProcessing.MaximumQaSeconds.ToString(CultureInfo.InvariantCulture));
+    private string QaFingerprint(string language, string recordId, bool tagAudioEvents)
+    {
+        var original = VoiceLabActionGate.Fingerprint(Region.ToString(), "scribe_v2", language, recordId,
+            VoiceLabTakeProcessing.MaximumQaSeconds.ToString(CultureInfo.InvariantCulture));
+        return tagAudioEvents ? VoiceLabActionGate.Fingerprint(original, "tag_audio_events=true") : original;
+    }
     public async Task<VoiceConsentCreator> GetCreatorIdentityAsync(CancellationToken ct = default)
     {
         var key = await keys.GetKeyAsync("elevenlabs-api-key", ct).ConfigureAwait(false);
@@ -270,6 +275,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
     public VoiceLabPreparedAction PrepareSynthesis(string text, string modelId, VoiceLabVoiceChoice voice, string language,
         VoiceLabSpeechOptions options, Guid requestId)
     {
+        text = VoiceLabAudioTags.SanitizedRequest(text, modelId);
         var model = SelectedModel(modelId, language, true);
         SelectedVoice(voice);
         if (options is null || string.IsNullOrWhiteSpace(text) || Encoding.UTF8.GetByteCount(text) > 20000 ||
@@ -401,6 +407,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
     public async Task<VoiceLabAudioResult> SynthesizeAsync(string text, string modelId, VoiceLabVoiceChoice voice,
         string language, VoiceLabSpeechOptions options, VoiceLabAuthorization authorization, CancellationToken ct, Guid requestId, VoiceLabRequestAcceptance? acceptance = null)
     {
+        text = VoiceLabAudioTags.SanitizedRequest(text, modelId);
         var model = SelectedModel(modelId, language, true);
         SelectedVoice(voice);
         if (options is null || string.IsNullOrWhiteSpace(text) || Encoding.UTF8.GetByteCount(text) > 20000 ||
@@ -451,9 +458,24 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         var receipt = Receipt(path, modelId, voice.Id, id, reply) with { Pace = VoiceLabPace.Rounded(options.Pace) };
         acceptance?.Preserve(new(pcm, 24000, null, receipt));
         var duration = pcm.Length / 48000.0;
-        var timing = Alignment(json.RootElement, text, duration);
-        if (model.SpeechRoute == VoiceLabSpeechRoute.TextToDialogue) ValidateVoiceSegments(json.RootElement, voice.Id, timing.Count, duration);
-        return new(pcm, 24000, timing, receipt);
+        IReadOnlyList<VoiceLabCharacterTiming> timing;
+        IReadOnlyList<VoiceLabCharacterTiming>? rawAlignment = null;
+        var row = json.RootElement;
+        var originalMissing = !row.TryGetProperty("alignment", out var original) || original.ValueKind == JsonValueKind.Null;
+        var dialogue = model.SpeechRoute == VoiceLabSpeechRoute.TextToDialogue;
+        var rawCount = 0;
+        if (dialogue && originalMissing && row.TryGetProperty("normalized_alignment", out var normalized) && normalized.ValueKind == JsonValueKind.Object)
+        {
+            var raw = AlignmentObject(normalized, null, duration);
+            rawAlignment = raw;
+            rawCount = raw.Count;
+            try { timing = VoiceLabAlignment.RetimeNormalized(raw, text); }
+            catch (Exception error) when (error is VoiceLabGeometryException or VoiceLabWordDiffException)
+            { throw new VoiceLabException(VoiceLabErrorKind.InvalidAlignment); }
+        }
+        else { timing = Alignment(row, text, duration); rawCount = timing.Count; }
+        if (dialogue) ValidateVoiceSegments(row, voice.Id, rawCount, duration);
+        return new(pcm, 24000, timing, receipt) { RawAlignment = rawAlignment };
     }
 
     public async Task<VoiceLabAudioResult> ConvertAsync(byte[] sourceWav, string modelId, VoiceLabVoiceChoice voice,
@@ -1022,7 +1044,10 @@ public sealed class ElevenLabsVoiceLab : IDisposable
             if (value.Length == 0) throw new VoiceLabException(VoiceLabErrorKind.InvalidAlignment);
             joined.Append(value); output.Add(new(value, begin, finish)); previous = finish;
         }
-        if (expectedText is not null && joined.ToString() != expectedText) throw new VoiceLabException(VoiceLabErrorKind.InvalidAlignment);
+        if (expectedText is not null && joined.ToString() != expectedText && !(VoiceLabAudioTags.TagRanges(expectedText).Count > 0 &&
+            EditingAlgorithms.SplitWords(VoiceLabAudioTags.StrippingTags(joined.ToString())).SequenceEqual(
+                EditingAlgorithms.SplitWords(VoiceLabAudioTags.StrippingTags(expectedText)), StringComparer.Ordinal)))
+            throw new VoiceLabException(VoiceLabErrorKind.InvalidAlignment);
         return output;
     }
     private static JsonDocument Parse(byte[] bytes)

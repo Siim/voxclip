@@ -23,7 +23,10 @@ public sealed record PatchRewriteRequest(Guid RequestId, IReadOnlyList<ClipWord>
 /// edit outside it is kept and shown with the fit meter (§8.9.1). <c>IsDeletion</c> means the text is empty after <c>jsTrim</c>: the
 /// edit deletes the whole line, and is in range with length 0. <c>CheckThis</c> means the edit adds a digit run, a URL or a
 /// capitalised token found nowhere in the transcript or the instruction (§8.1).</summary>
-public sealed record PatchRewriteEdit(string Line, string Text, string Reason, int Length, bool InRange, bool CheckThis, bool IsDeletion);
+public sealed record PatchRewriteEdit(string Line, string Text, string Reason, int Length, bool InRange, bool CheckThis, bool IsDeletion)
+{
+    public IReadOnlyList<VoiceLabAudioTag> AudioTags { get; init; } = [];
+}
 
 /// <summary>Validated Fix with AI edits in arrival order. <c>UnknownLines</c> counts edits for no emitted line, <c>DuplicateLines</c> later
 /// edits for a line that already had one (the first is kept), and <c>MalformedItems</c> items dropped as malformed: those structural

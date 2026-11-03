@@ -7,8 +7,9 @@ public static class VoiceLabPaceMatching
 {
     public static VoiceLabRewriteFitResult Measure(string text, double rate, VoiceLabWindow window,
         double? incomingSilence, double? outgoingSilence, int sourceSampleRate, bool hardJoinSmoothing, bool supportsPace = true,
-        IReadOnlyList<TimedWord>? sourceItems = null, AudioEnvelope? sourceEnvelope = null) =>
-        Match(VoiceLabRewriteFit.Estimate(text, rate), window, incomingSilence, outgoingSilence, sourceSampleRate,
+        IReadOnlyList<TimedWord>? sourceItems = null, AudioEnvelope? sourceEnvelope = null,
+        IReadOnlyList<VoiceLabAudioTag>? audioTags = null, string modelId = "") =>
+        Match(VoiceLabRewriteFit.Estimate(text, rate) + VoiceLabAudioTags.Allowance(audioTags ?? [], text, modelId), window, incomingSilence, outgoingSilence, sourceSampleRate,
             supportsPace: supportsPace, hardJoinSmoothing: hardJoinSmoothing, sourceItems: sourceItems, sourceEnvelope: sourceEnvelope, generatedText: text);
 
     public static VoiceLabRewriteFitResult Match(double seconds, VoiceLabWindow window,

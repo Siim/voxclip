@@ -58,7 +58,11 @@ public sealed record VoiceLabDiffOp(VoiceLabDiffOpKind Kind, string? SourceWordI
 /// end exclusive. Insertions anchor at the next source token's start, or the last token's end, or zero for an empty source.</summary>
 public sealed record VoiceLabDiffHunk(VoiceLabDiffHunkKind Kind, IReadOnlyList<string> SourceWordIds,
     IReadOnlyList<string> NewTokens, IReadOnlyList<string> CorrectedTexts, IReadOnlyList<string> AbsorbedItemIds, IReadOnlyList<string> BridgeWordIds,
-    int SourceStartIndex, int SourceEndIndex, double? AnchorSeconds);
+    int SourceStartIndex, int SourceEndIndex, double? AnchorSeconds)
+{
+    /// <summary>Ordered expression annotations relative to this hunk's new tokens, never transcript words.</summary>
+    public IReadOnlyList<VoiceLabAudioTag> AudioTags { get; init; } = [];
+}
 /// <summary>Ordered raw operations and classified, merged hunks.</summary>
 public sealed record VoiceLabWordDiffResult(IReadOnlyList<VoiceLabDiffOp> Ops, IReadOnlyList<VoiceLabDiffHunk> Hunks);
 
@@ -73,7 +77,7 @@ public static class VoiceLabWordDiff
     /// <summary>Compare word items only with existing tokenization/NFC/matching rules. Forward suffix-DP backtracking deletes
     /// on ties; each non-equal run is stably partitioned so all deletes precede inserts. Nonwords block voice merges;
     /// a voice hunk explicitly reports strictly interior nonwords that acceptance replaces.</summary>
-    public static VoiceLabWordDiffResult Diff(IReadOnlyList<TimedWord> source, string newText)
+    public static VoiceLabWordDiffResult Diff(IReadOnlyList<TimedWord> source, string newText, IReadOnlyList<VoiceLabAudioTag>? audioTags = null)
     {
         List<Token> tokens = [];
         HashSet<string> ids = [];
@@ -136,12 +140,12 @@ public static class VoiceLabWordDiff
                 ordered.AddRange(run.Where(op => op.Kind == VoiceLabDiffOpKind.Insert));
             }
         }
-        return new(ordered, Hunks(ordered, tokens, source));
+        return new(ordered, Hunks(ordered, tokens, source, VoiceLabAudioTags.Validated(audioTags ?? [], newText)));
     }
 
     static string Normalize(string text) => EditingAlgorithms.NormalizeForMatch(EditingAlgorithms.Nfc(text));
 
-    static IReadOnlyList<VoiceLabDiffHunk> Hunks(List<VoiceLabDiffOp> ops, List<Token> tokens, IReadOnlyList<TimedWord> source)
+    static IReadOnlyList<VoiceLabDiffHunk> Hunks(List<VoiceLabDiffOp> ops, List<Token> tokens, IReadOnlyList<TimedWord> source, IReadOnlyList<VoiceLabAudioTag> audioTags)
     {
         List<Region> regions = [];
         int cursor = 0;
@@ -233,6 +237,9 @@ public static class VoiceLabWordDiff
             var run = ops.GetRange(region.Start, region.End - region.Start);
             var sourceIds = run.Where(op => op.SourceWordId is not null).Select(op => op.SourceWordId!).Distinct().ToArray();
             var newTokens = run.Where(op => op.NewToken is not null).Select(op => op.NewToken!).ToArray();
+            var newStart = ops.Take(region.Start).Count(op => op.NewToken is not null);
+            var annotations = audioTags.Where(annotation => annotation.BeforeToken >= newStart && annotation.BeforeToken <= newStart + newTokens.Length)
+                .Select(annotation => annotation with { BeforeToken = annotation.BeforeToken - newStart }).ToArray();
             string[] absorbed = [];
             if (region.Kind == VoiceLabDiffHunkKind.Voice && region.SourceStart < region.SourceEnd)
             {
@@ -253,7 +260,7 @@ public static class VoiceLabWordDiff
                 }
             }
             return new VoiceLabDiffHunk(region.Kind, sourceIds, newTokens, corrected, absorbed, region.Bridges.Distinct().ToArray(),
-                region.SourceStart, region.SourceEnd, region.SourceStart == region.SourceEnd ? Anchor(region.SourceStart, tokens) : null);
+                region.SourceStart, region.SourceEnd, region.SourceStart == region.SourceEnd ? Anchor(region.SourceStart, tokens) : null) { AudioTags = annotations };
         }).ToArray();
     }
 
