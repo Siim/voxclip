@@ -1,5 +1,51 @@
 # Voice Lab
 
+### Audio expressions (Mac, 2026-11-03)
+
+Audio expressions are annotations, not transcript words. A voice hunk and its saved
+`text` may carry optional `audioTags: [{beforeToken: 1, tag: "laughs"}]`, ordered by
+zero-based whitespace-token boundary in the new words; the word count means the
+end. At most 64 annotations are accepted. Nil stays absent on encode, preserving
+old project bytes. The transcript, captions, word diff, word budgets, Keep/Undo and
+exported words remain words-only. Rewording maps boundaries with the existing
+ordered word diff; equal words keep anchors, deleted spans collapse boundaries,
+and an end annotation follows the new end.
+
+`shared/data/voice-audio-tags.json` is the only runtime source for the whitelist,
+capable model IDs, Scribe event spellings and estimated seconds. The whitelist is
+short pause (0.25 s), pause (0.5 s), long pause (1 s), breathes (0.35 s), laughs
+(0.8 s), chuckles (0.5 s), sighs (0.6 s), exhales (0.5 s). Unsupported suggestions
+are dropped. Rewrite prompt version 2 allows an optional structured array, never
+inline directions: source-supported laughter, sighs, breaths or hesitation only,
+roughly one annotation per eight words, without changing meaning.
+
+Only `eleven_v3` and `eleven_v4` requests render bracket tags. V2 and unknown models
+omit them, retaining the annotations for a later model switch. Approval hashes,
+request limits and billing cover the exact rendered request, including bracket
+characters. Word QA strips annotations and ignores only the shared non-lexical
+Scribe event spellings. Alignment skips bracket-tag characters whether the
+provider includes them or omits them; captions retain typed words. Estimated fit
+and pre-pay pace matching add shared tag allowances, with `≈` on the phrase line;
+measured takes remain authoritative. Tagged takes retain their full audio envelope
+so a leading or trailing expression is not cropped. Untagged trimming is unchanged.
+
+For v4 only, missing/null original `alignment` with valid `normalized_alignment`
+uses the latter's validated times. The ordered word-diff aligner maps normalized
+words back to typed words, including number/currency expansions, distributing
+replacement spans proportionally by typed scalar length. A malformed non-null
+original is still refused; both missing/null is still the clear alignment stop.
+Voice-segment indices use raw provider character arrays, not the rebuilt typed
+array: the provisional upper bound is `max(original, valid normalized)` because
+the provider's indexed array remains unconfirmed. Routes and context policy do
+not change: v3 timestamped TTS, v4 timestamped dialogue, neither gets previous/next
+text, v4 pace is 1.0. DEBUG failure diagnostics remain redacted and enabled;
+`VOXCLIP_DATA_DIR` or a process-specific temporary test directory owns test output,
+never the user's real diagnostic directory. A live provider confirmation is owed.
+
+New deterministic vectors are in `audio-tag-cases.json`, separate from the old
+dialogue fixture. Windows Core decodes, validates and preserves project annotations
+and validates optional shared reply-schema fields only; its speech/UI twin is owed.
+
 Status:
 
 - **§4 Clean audio**: normative for M2.
@@ -1099,7 +1145,7 @@ For `eleven_v3` and `eleven_v4`, `sendsSpeechContext` is false. V3 omits `previo
 A field that is empty after this is omitted. The quote binds the seed and the trimmed strings.
 
 - **Audio.** With `pcm_*` formats, `audio_base64` is raw 16-bit little-endian mono PCM at that rate. Resample to the source rate.
-- **Alignment.** Use `alignment`, not `normalized_alignment`, so caption text equals the typed text ("2025", not "twenty twenty-five"). The current Core timestamped path rejects null or malformed alignment. The later media QA path may use the Scribe/interpolation recovery in §8.8, after it is implemented and tested; null alignment must never be presented as timestamped speech.
+- **Alignment.** Prefer valid original `alignment` so captions equal typed text. Mac v4 alone can recover missing/null original alignment from valid normalized timing, mapped back to typed words as specified in Audio expressions. Malformed original timing, or no usable timing in either field, stops the run. Windows retains its original-alignment-only behavior until its twin lands. Scribe/interpolation recovery remains deferred.
 - **Pronunciation.** The user may type a respelling for a word ("say it like"). eleven_v4 also accepts IPA wrapped in `/…/`. The respelling is sent as the text; the caption keeps the typed word.
 - **Pace (the one caller voice-setting choice).** `VoiceLabSpeechOptions.pace` / `VoiceLabTakeInput.pace` is optional; nil means 1.0. TTS accepts finite values in **[0.7, 1.2]**, validates before quoting or sending (before rounding, never clamping), and sends `voice_settings.speed` rounded to two decimals, nearest with halfway values away from zero, only for a raw pace other than 1.0. Nil/1.0 leaves the existing request bytes/settings unchanged. All other voice settings remain the constants above. The quote/claim/review binds the unrounded pace; nil/1.0 are equivalent, but any other change needs a new approval, even if it rounds to the same speed. Receipts and persisted recipe/segment `provenance.pace` record the effective rounded pace, 1.0 when omitted. The project field is optional, so old projects remain valid without a schema-version change or migration. Pricing remains per character. `VoiceLabPace.clamp` is a pure caller helper with range constants, not provider validation; NaN maps to 1.0 and infinities to their boundary. No pace selection UI or automatic fitting policy is added here.
 
@@ -1466,7 +1512,7 @@ Private take invalidation is explicit and idempotent: first stop every registere
 
 Words/Scribe, clipping, speaker/voice (including pooled short-speech rules), alignment, consent, quote approval and use-time guards remain hard gates exactly as before. Missing or invalid loudness measurements remain failures; this policy does not waive incomplete checks or a hard failure accompanied by a join advisory.
 
-Eleven v4 dialogue replies may omit `alignment` or return null. That is `invalidAlignment`, never timestamped success: the paid request remains recorded and valid PCM stays playable as unchecked audio under the existing failed-take rules, with no automatic retry or normalized-alignment substitution. A take proceeds to QA only after valid original-text alignment and voice-segment validation. Saved `.tts` recipes accept the exact dialogue endpoint `v1/text-to-dialogue/with-timestamps` only with `eleven_v4`; v4 on a TTS endpoint is `endpointUnsupported`. Other models keep the existing timestamped TTS endpoint contract.
+Eleven v4 dialogue replies may omit `alignment` or return null. Mac now uses validated normalized timing mapped back to typed words in that case (Audio expressions); Windows keeps the original stop until its twin. With both fields absent/null, the paid request remains recorded and valid PCM stays playable as unchecked audio, with no automatic retry. A take proceeds to QA only after validated typed-word timing and voice-segment bounds. Saved `.tts` recipes accept the exact dialogue endpoint `v1/text-to-dialogue/with-timestamps` only with `eleven_v4`; v4 on a TTS endpoint is `endpointUnsupported`. Other models keep the existing timestamped TTS endpoint contract.
 
 Mac DEBUG/profile builds write redacted speech-validation JSON under the app log location, `Diagnostics/VoiceLab/speech-validation-<request-id>.json` (normally `~/Library/Logs/VoxClip/Diagnostics/VoiceLab/`; an isolated `VOXCLIP_DATA_DIR` uses its `Logs/` directory). Both speech routes record the route, model, typed text, joined original/normalized alignment text, character counts, first/last five original start/end times, PCM duration and all non-secret segment fields. The exact failed rule includes a zero-based Unicode-scalar index and both `U+` values for text mismatch, or the original alignment/segment entry index for timing/range failures. Audio, headers and credentials are excluded; registered secrets are redacted before encoding. A single INFO event says `voicelab dialogue validation failed check=<name>` without text. Diagnostic I/O cannot change the validation result or paid-audio retention. Release contains neither the evidence writer nor its destination override. This diagnostic does not relax alignment or substitute normalized metadata.
 
@@ -2101,7 +2147,7 @@ Unit tests run in both suites (`VoxClipCoreTests`, `VoxClip.Core.Tests`), with s
    - A take whose pauses and seams can hold only part of its residual returns `changedDuration` with every edit at its limit. `residualSeconds` is the rest, and `outDuration = duration(W) + residualSeconds`.
    - At a take edge, the pad keeps the first aligned word at its source distance from the edge.
    - Both Cores run placement → lendable silence → fit → recipe → both validators → output planner → render preparation on a 44.1 kHz millisecond-word window, hard/hard at [2.556, 3.143] s, and a take-end variant. Exact fits keep identical source/output sample lengths and prepare as source video. Changed-duration recipes prepare in §8.9 step 3's `zoomCover` or `lipsync` mode; native request capture still refuses both (§10.5), preserving the source-only renderer gate.
-5. **Alignment to words (§8.8).** The character alignment for `"I said 2025"` gives 3 words, all `synthetic: true`. A null or malformed alignment ends the run after that paid take; the paid asset is retained. Scribe/interpolation fallback remains deferred with §8.5 rather than buying further takes that cannot pass alignment.
+5. **Alignment to words (§8.8).** The character alignment for `"I said 2025"` gives 3 words, all `synthetic: true`. Malformed timing or both timing fields absent/null ends the paid take and retains its asset. Mac v4 missing/null original timing uses valid normalized timing mapped to typed words, including expanded numbers. Scribe/interpolation recovery remains deferred.
 6. **Candidate ranking (§8.6).** Rejected candidates are never shown. An exactly fitted take has `fitCost = 0`, and a `changedDuration` take's fit cost rises with `|residualSeconds|`. The score formula orders a fixed set.
 7. **Plan mapping (§10.2).**
    - With `outDuration == in`, the plan's `mapTime` is unchanged outside the segment.

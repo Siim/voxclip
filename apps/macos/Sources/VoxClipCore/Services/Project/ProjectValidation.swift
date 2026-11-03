@@ -63,7 +63,12 @@ enum ProjectValidation {
                 let item = try object(segment, required: "id kind enabled replace outDuration audio text words provenance qa candidates selectedCandidateIndex" + (version >= 3 ? " scope" : ""), optional: version >= 3 ? "groupId" : "")
                 _ = try object(item["replace"], required: "start end firstWordId lastWordId")
                 _ = try object(item["audio"], required: "assetId trimStart trimEnd stretch gainDb")
-                if item["text"] != .null { _ = try object(item["text"], required: "original new") }
+                if item["text"] != .null {
+                    let text = try object(item["text"], required: "original new", optional: "audioTags")
+                    if let annotations = text["audioTags"] {
+                        for annotation in try array(annotations) { _ = try object(annotation, required: "beforeToken tag") }
+                    }
+                }
                 if item["words"] != .null {
                     for word in try array(item["words"]) { _ = try object(word, required: "text start end synthetic") }
                 }

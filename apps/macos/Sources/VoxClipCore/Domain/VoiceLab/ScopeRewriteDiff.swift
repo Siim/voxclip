@@ -215,7 +215,12 @@ public enum ScopeRewriteDiff {
                     let hunk = VoiceLabDiffHunk(kind: found.kind, sourceWordIds: found.sourceWordIds, newTokens: found.newTokens,
                                                 correctedTexts: found.correctedTexts, absorbedItemIds: found.absorbedItemIds,
                                                 bridgeWordIds: found.bridgeWordIds, sourceStartIndex: startToken + found.sourceStartIndex,
-                                                sourceEndIndex: startToken + found.sourceEndIndex, anchorSeconds: anchor)
+                                                sourceEndIndex: startToken + found.sourceEndIndex, anchorSeconds: anchor, audioTags: edit.audioTags.compactMap { annotation in
+                                                    let indices = Array(stretch.editIndices.dropFirst(begin).prefix(found.newTokens.count))
+                                                    guard let first = indices.first, let last = indices.last,
+                                                          annotation.beforeToken >= first, annotation.beforeToken <= last + 1 else { return nil }
+                                                    return VoiceLabAudioTag(beforeToken: indices.filter { $0 < annotation.beforeToken }.count, tag: annotation.tag)
+                                                })
                     parts.append(Part(hunk: hunk, lines: [line.line], reasons: [edit.reason], checkThis: flagged,
                                       firstVoice: found.kind == .voice && firstVoice, wordless: count == 0, insertItem: insertItem,
                                       after: after))
@@ -266,7 +271,8 @@ public enum ScopeRewriteDiff {
                                                 correctedTexts: [], absorbedItemIds: earlier.hunk.absorbedItemIds + part.hunk.absorbedItemIds,
                                                 bridgeWordIds: unique(earlier.hunk.bridgeWordIds + bridges + part.hunk.bridgeWordIds),
                                                 sourceStartIndex: start, sourceEndIndex: end,
-                                                anchorSeconds: start == end ? earlier.hunk.anchorSeconds : nil)
+                                                anchorSeconds: start == end ? earlier.hunk.anchorSeconds : nil,
+                                                audioTags: earlier.hunk.audioTags + VoiceLabAudioTags.shifted(part.hunk.audioTags, by: earlier.hunk.newTokens.count + between.count))
                     merged.removeSubrange(earlierIndex...)
                     merged.append(Part(hunk: hunk, lines: lines, reasons: reasons, checkThis: pieces.contains { $0.checkThis },
                                        firstVoice: false, wordless: false, insertItem: part.insertItem,

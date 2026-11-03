@@ -223,7 +223,8 @@ public struct VoiceLabSpeechContextPlan: Sendable, Equatable {
                 guard original.sourceStartIndex >= prefixCount else { continue }
                 let hunk = VoiceLabDiffHunk(kind: .voice, sourceWordIds: source.map(\.id), newTokens: pieces,
                     correctedTexts: [], absorbedItemIds: [], bridgeWordIds: [], sourceStartIndex: original.sourceStartIndex - prefixCount,
-                    sourceEndIndex: original.sourceEndIndex + suffixCount, anchorSeconds: nil)
+                    sourceEndIndex: original.sourceEndIndex + suffixCount, anchorSeconds: nil,
+                    audioTags: VoiceLabAudioTags.shifted(original.audioTags, by: prefixCount))
                 chosen = Phrase(hunkIndex: index, hunk: hunk, text: text, sourceWords: source, window: window,
                                 estimatedSpeechSeconds: estimate, marginSeconds: margin)
                 break

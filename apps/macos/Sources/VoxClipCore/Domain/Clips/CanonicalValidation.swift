@@ -72,7 +72,10 @@ extension CanonicalResponseParser {
         var dropped = 0
         for key in properties.keys.sorted() {
             let property = properties[key]!
-            guard let content = object[key] else { throw LLMError.invalidOutput(reason: "missing \"\(key)\"") }
+            guard let content = object[key] else {
+                if schema[ai: "required"].aiArray.contains(.string(key)) { throw LLMError.invalidOutput(reason: "missing \"\(key)\"") }
+                continue
+            }
             if property[ai: "type"].aiString == "array" {
                 guard case .array(let items) = content else { throw LLMError.invalidOutput(reason: "missing \"\(key)\"") }
                 let valid = items.filter { conforms($0, to: property[ai: "items"]) }
@@ -90,9 +93,10 @@ extension CanonicalResponseParser {
         switch schema[ai: "type"].aiString {
         case "object":
             guard let object = value.aiObject else { return false }
-            return schema[ai: "required"].aiArray.allSatisfy { required in
-                guard let key = required.aiString, let item = object[key] else { return false }
-                return conforms(item, to: schema[ai: "properties"][ai: key])
+            let required = schema[ai: "required"].aiArray.compactMap(\.aiString)
+            guard required.allSatisfy({ object[$0] != nil }) else { return false }
+            return (schema[ai: "properties"].aiObject ?? [:]).allSatisfy { key, property in
+                object[key].map { conforms($0, to: property) } ?? true
             }
         case "array":
             guard case .array(let items) = value else { return false }
@@ -107,12 +111,24 @@ extension CanonicalResponseParser {
         }
     }
 
+    static func strictSchema(_ schema: JSONValue) -> JSONValue {
+        guard var object = schema.aiObject else { return schema }
+        if let properties = schema[ai: "properties"].aiObject {
+            object["properties"] = .object(properties.mapValues(strictSchema))
+            if Set(schema[ai: "required"].aiArray.compactMap(\.aiString)) != Set(properties.keys) {
+                object["required"] = .array(properties.keys.sorted().map(JSONValue.string))
+            }
+        }
+        if object["items"] != nil { object["items"] = strictSchema(schema[ai: "items"]) }
+        return .object(object)
+    }
+
     public static func validateSchemaSubset(_ schema: JSONValue) -> Bool {
         guard let object = schema.aiObject, Set(object.keys).isSubset(of: ["type", "properties", "required", "additionalProperties", "items", "enum"]) else { return false }
         switch schema[ai: "type"].aiString {
         case "object":
             guard schema[ai: "additionalProperties"].aiBool == false, let properties = schema[ai: "properties"].aiObject else { return false }
-            return Set(schema[ai: "required"].aiArray.compactMap(\.aiString)) == Set(properties.keys) && properties.values.allSatisfy(validateSchemaSubset)
+            return Set(schema[ai: "required"].aiArray.compactMap(\.aiString)).isSubset(of: Set(properties.keys)) && properties.values.allSatisfy(validateSchemaSubset)
         case "array": return validateSchemaSubset(schema[ai: "items"])
         case "string": return schema[ai: "enum"] == .null || (!schema[ai: "enum"].aiArray.isEmpty && schema[ai: "enum"].aiArray.allSatisfy { $0.aiString != nil })
         case "integer", "number", "boolean": return schema[ai: "enum"] == .null

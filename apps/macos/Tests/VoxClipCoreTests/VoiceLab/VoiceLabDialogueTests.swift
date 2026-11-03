@@ -38,6 +38,71 @@ struct VoiceLabDialogueTests {
         return client
     }
     private var voice: VoiceLabVoiceChoice { .stock(voiceID: "voice123") }
+    @Test(arguments: ["eleven_v3", "eleven_v4", "eleven_multilingual_v2"])
+    func tagRequestsAreModelGatedBilledAndApprovalBound(model: String) async throws {
+        let recorder = RequestRecorder(), client = try await lab(response: response(), recorder: recorder)
+        let annotations = [VoiceLabAudioTag(beforeToken: 1, tag: "laughs")]
+        let text = VoiceLabAudioTags.requestText(words: "Hi", tags: annotations, modelID: model)
+        let id = UUID(), options = VoiceLabSpeechOptions(seed: 0, previousText: "Before", nextText: "After")
+        let quote = try await client.prepareSynthesis(text: text, modelID: model, voice: voice, language: "en", options: options, requestID: id)
+        #expect(quote.estimate.units == Double(text.unicodeScalars.count))
+        if VoiceLabAudioTags.supports(model) {
+            await #expect(throws: VoiceLabError.consentRequired) {
+                _ = try await client.synthesize(text: "Hi", modelID: model, voice: voice, language: "en", options: options,
+                    requestID: id, authorization: VoiceLabAuthorization(quote: quote, approved: true))
+            }
+            #expect(recorder.paid.withLock { $0.isEmpty })
+        }
+        let freshID = UUID()
+        let fresh = try await client.prepareSynthesis(text: text, modelID: model, voice: voice, language: "en", options: options, requestID: freshID)
+        _ = try await client.synthesize(text: text, modelID: model, voice: voice, language: "en", options: options,
+            requestID: freshID, authorization: VoiceLabAuthorization(quote: fresh, approved: true))
+        let body = try #require(recorder.paid.withLock { $0.first?.body })
+        let object = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let sent = model == "eleven_v4" ? (object["inputs"] as? [[String: Any]])?.first?["text"] as? String : object["text"] as? String
+        #expect(sent == text)
+        if VoiceLabAudioTags.supports(model) {
+            #expect(object["previous_text"] == nil && object["next_text"] == nil)
+        }
+    }
+    @Test func normalizedNumberFallbackUsesRawSegmentIndices() async throws {
+        let fixtures = try #require(JSONSerialization.jsonObject(with: FixtureLoader.data("fixtures/voice-lab/audio-tag-cases.json")) as? [String: Any])
+        for fixture in try #require(fixtures["dialogueFallbacks"] as? [[String: Any]]) {
+            var row = try #require(JSONSerialization.jsonObject(with: response()) as? [String: Any])
+            let text = try #require(fixture["typed"] as? String)
+            let model = try #require(fixture["modelID"] as? String)
+            let end = try #require(fixture["segmentEnd"] as? Int)
+            row["alignment"] = fixture["alignment"]
+            row["normalized_alignment"] = fixture["normalized_alignment"]
+            row["voice_segments"] = [["voice_id": "voice123", "dialogue_input_index": 0,
+                "character_start_index": 0, "character_end_index": end,
+                "start_time_seconds": 0, "end_time_seconds": Double(end) / 2_000]]
+            let client = try await lab(response: JSONSerialization.data(withJSONObject: row))
+            let id = UUID(), options = VoiceLabSpeechOptions(seed: 0)
+            let quote = try await client.prepareSynthesis(text: text, modelID: model, voice: voice, language: "en", options: options, requestID: id)
+            let result = try await client.synthesize(text: text, modelID: model, voice: voice, language: "en", options: options,
+                requestID: id, authorization: VoiceLabAuthorization(quote: quote, approved: true))
+            #expect(result.alignment?.map(\.character).joined() == text)
+        }
+    }
+    @Test func diagnosticsUseTestOrExplicitDataRoot() {
+        let explicit = ElevenLabsVoiceLab.defaultValidationDiagnosticDirectory(environment: ["VOXCLIP_DATA_DIR": "/tmp/isolated-tags"], arguments: ["Tests.xctest"])
+        #expect(explicit.path == "/tmp/isolated-tags/Logs/Diagnostics/VoiceLab")
+        let automatic = ElevenLabsVoiceLab.defaultValidationDiagnosticDirectory(environment: [:], arguments: ["Tests.xctest"])
+        #expect(automatic.path.hasPrefix(FileManager.default.temporaryDirectory.path))
+        #expect(!automatic.path.contains("Library/Logs"))
+    }
+    @Test func normalizedAlignmentCanReplaceNullOriginal() async throws {
+        var row = try #require(JSONSerialization.jsonObject(with: response()) as? [String: Any])
+        row["normalized_alignment"] = row["alignment"]
+        row["alignment"] = NSNull()
+        let client = try await lab(response: JSONSerialization.data(withJSONObject: row))
+        let id = UUID(), options = VoiceLabSpeechOptions(seed: 0)
+        let quote = try await client.prepareSynthesis(text: "Hi", modelID: "eleven_v4", voice: voice, language: "en", options: options, requestID: id)
+        let result = try await client.synthesize(text: "Hi", modelID: "eleven_v4", voice: voice, language: "en", options: options,
+            requestID: id, authorization: VoiceLabAuthorization(quote: quote, approved: true))
+        #expect(result.alignment?.map(\.character).joined() == "Hi")
+    }
     private func response() throws -> Data {
         let cases = try #require(document()["responses"] as? [[String: Any]])
         return try JSONSerialization.data(withJSONObject: try #require(cases[0]["response"]))
@@ -103,7 +168,7 @@ struct VoiceLabDialogueTests {
         var alignment = try #require(row["alignment"] as? [String: Any])
         var segments = try #require(row["voice_segments"] as? [[String: Any]])
         switch check {
-        case "null_alignment": row["alignment"] = NSNull()
+        case "null_alignment": row["alignment"] = NSNull(); row["normalized_alignment"] = NSNull()
         case "alignment_count_mismatch": alignment["character_end_times_seconds"] = [0.1]; row["alignment"] = alignment
         case "alignment_time_order": alignment["character_start_times_seconds"] = [0.2, 0.1]; row["alignment"] = alignment
         case "alignment_end_beyond_duration": alignment["character_end_times_seconds"] = [0.2, 1.06]; row["alignment"] = alignment
@@ -174,7 +239,7 @@ struct VoiceLabDialogueTests {
             let name = try #require(row["case"] as? String)
             let text = row["text"] as? String ?? "Hi"
             let bytes = try JSONSerialization.data(withJSONObject: try #require(row["response"]))
-            let expected = try #require(row["expected"] as? String)
+            let expected = name == "alignment_null" ? "success" : try #require(row["expected"] as? String)
             let recorder = RequestRecorder(), client = try await lab(response: bytes, recorder: recorder)
             let id = UUID(), options = VoiceLabSpeechOptions(seed: 0)
             do {

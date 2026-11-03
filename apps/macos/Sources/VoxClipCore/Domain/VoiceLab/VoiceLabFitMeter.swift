@@ -12,9 +12,10 @@ public struct VoiceLabFitMeterResult: Sendable, Equatable {
 
 public enum VoiceLabFitMeter {
     public static func measure(text: String, window: VoiceLabWindow, incomingSilence: Double?, outgoingSilence: Double?,
-                               rate: Double, newWords: String, multipleHunks: Bool = false) throws -> VoiceLabFitMeterResult {
+                               rate: Double, newWords: String, multipleHunks: Bool = false, durationAllowance: Double = 0) throws -> VoiceLabFitMeterResult {
         let geometry = try VoiceLabLengthBudget.geometry(window: window, incomingSilence: incomingSilence, outgoingSilence: outgoingSilence)
-        let estimate: Double = try VoiceLabLengthBudget.estimate(text: text, rate: rate)
+        guard durationAllowance.isFinite, durationAllowance >= 0 else { throw VoiceLabLengthBudgetError.invalidInput }
+        let estimate: Double = try VoiceLabLengthBudget.estimate(text: text, rate: rate) + durationAllowance
         let leftPad: Double = pad(window.leftSeam.kind)
         let rightPad: Double = pad(window.rightSeam.kind)
         let lowerLeft: Double = geometry.target - leftPad

@@ -6,7 +6,7 @@ extension HTTPConnector {
         let modelConfiguration = configuration[ai: "models"].aiArray.first { $0[ai: "id"].aiString == model } ?? .null
         let discovered = details[model] ?? .null
         let maximum = min(canonical.maxOutputTokens, configuration[ai: "maxOutputTokensCap"].aiInt ?? canonical.maxOutputTokens)
-        let schema = try JSONSerialization.jsonObject(with: canonical.schema.aiEncoded())
+        let schema = try JSONSerialization.jsonObject(with: CanonicalResponseParser.strictSchema(canonical.schema).aiEncoded())
         let schemaFormat: [String: Any] = ["type": "json_schema", "json_schema": ["name": canonical.schemaName, "strict": true, "schema": schema]]
         let user = aiUserContent(canonical)
         let messages: [[String: Any]] = [["role": "system", "content": canonical.system], ["role": "user", "content": user]]

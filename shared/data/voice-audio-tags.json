@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "models": ["eleven_v3", "eleven_v4"],
+  "tags": [
+    {"tag": "short pause", "seconds": 0.25},
+    {"tag": "pause", "seconds": 0.5},
+    {"tag": "long pause", "seconds": 1.0},
+    {"tag": "breathes", "seconds": 0.35},
+    {"tag": "laughs", "seconds": 0.8},
+    {"tag": "chuckles", "seconds": 0.5},
+    {"tag": "sighs", "seconds": 0.6},
+    {"tag": "exhales", "seconds": 0.5}
+  ],
+  "scribeEvents": ["(laughs)", "(laughter)", "[laughs]", "[laughter]", "haha", "ha", "hahaha", "(chuckles)", "[chuckles]", "(sighs)", "[sighs]", "(sigh)", "[sigh]", "(breathes)", "[breathes]", "(breathing)", "[breathing]", "(exhales)", "[exhales]"]
+}

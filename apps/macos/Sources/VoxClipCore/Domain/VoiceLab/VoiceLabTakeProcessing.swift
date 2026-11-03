@@ -85,7 +85,8 @@ public enum VoiceLabTakeProcessing {
         let last = lastAlignedTime(frames: samples.count, rate: rate)
         let words: [VoiceLabWord] = try VoiceLabAlignment.words(characters: alignment.map(\.character), starts: alignment.map { min($0.start, last) },
             ends: alignment.map { min($0.end, last) }, expectedText: input.text)
-        let trim = try VoiceLabAlignment.trim(words: words, assetDuration: duration)
+        let trim = input.audioTags.isEmpty || !VoiceLabAudioTags.supports(input.modelID)
+            ? try VoiceLabAlignment.trim(words: words, assetDuration: duration) : (start: 0.0, end: duration)
         let trimStart = frames(trim.start, rate), trimEnd = frames(trim.end, rate)
         guard trimEnd <= samples.count, trimStart < trimEnd else { throw VoiceLabError.invalidAlignment }
         let trimmed = Array(samples[trimStart..<trimEnd])

@@ -1,0 +1,521 @@
+{
+  "schema": "voxclip-voice-audio-tags/1",
+  "requests": [
+    {
+      "modelID": "eleven_v3",
+      "words": "Hello there",
+      "audioTags": [
+        {
+          "beforeToken": 1,
+          "tag": "laughs"
+        },
+        {
+          "beforeToken": 2,
+          "tag": "short pause"
+        }
+      ],
+      "expected": "Hello [laughs] there [short pause]",
+      "allowance": 1.05
+    },
+    {
+      "modelID": "eleven_v4",
+      "words": "Hello there",
+      "audioTags": [
+        {
+          "beforeToken": 1,
+          "tag": "laughs"
+        },
+        {
+          "beforeToken": 2,
+          "tag": "short pause"
+        }
+      ],
+      "expected": "Hello [laughs] there [short pause]",
+      "allowance": 1.05
+    },
+    {
+      "modelID": "eleven_multilingual_v2",
+      "words": "Hello there",
+      "audioTags": [
+        {
+          "beforeToken": 1,
+          "tag": "laughs"
+        },
+        {
+          "beforeToken": 2,
+          "tag": "short pause"
+        }
+      ],
+      "expected": "Hello there",
+      "allowance": 0
+    },
+    {
+      "modelID": "unknown",
+      "words": "Hello there",
+      "audioTags": [
+        {
+          "beforeToken": 1,
+          "tag": "laughs"
+        },
+        {
+          "beforeToken": 2,
+          "tag": "short pause"
+        }
+      ],
+      "expected": "Hello there",
+      "allowance": 0
+    }
+  ],
+  "drop": {
+    "words": "Hello there",
+    "audioTags": [
+      {
+        "beforeToken": -1,
+        "tag": "laughs"
+      },
+      {
+        "beforeToken": 0,
+        "tag": "shouts"
+      },
+      {
+        "beforeToken": 9,
+        "tag": "sighs"
+      },
+      {
+        "beforeToken": 1,
+        "tag": "laughs"
+      }
+    ],
+    "expected": [
+      {
+        "beforeToken": 1,
+        "tag": "laughs"
+      }
+    ]
+  },
+  "qaEvents": [
+    "(laughs)",
+    "(laughter)",
+    "[laughs]",
+    "[laughter]",
+    "haha",
+    "ha",
+    "hahaha",
+    "(chuckles)",
+    "[chuckles]",
+    "(sighs)",
+    "[sighs]",
+    "(sigh)",
+    "[sigh]",
+    "(breathes)",
+    "[breathes]",
+    "(breathing)",
+    "[breathing]",
+    "(exhales)",
+    "[exhales]"
+  ],
+  "alignments": [
+    {
+      "characters": [
+        "H",
+        "e",
+        "l",
+        "l",
+        "o",
+        " ",
+        "[",
+        "l",
+        "a",
+        "u",
+        "g",
+        "h",
+        "s",
+        "]",
+        " ",
+        "t",
+        "h",
+        "e",
+        "r",
+        "e"
+      ],
+      "starts": [
+        0.0,
+        0.01,
+        0.02,
+        0.03,
+        0.04,
+        0.05,
+        0.06,
+        0.07,
+        0.08,
+        0.09,
+        0.1,
+        0.11,
+        0.12,
+        0.13,
+        0.14,
+        0.15,
+        0.16,
+        0.17,
+        0.18,
+        0.19
+      ],
+      "ends": [
+        0.01,
+        0.02,
+        0.03,
+        0.04,
+        0.05,
+        0.06,
+        0.07,
+        0.08,
+        0.09,
+        0.1,
+        0.11,
+        0.12,
+        0.13,
+        0.14,
+        0.15,
+        0.16,
+        0.17,
+        0.18,
+        0.19,
+        0.2
+      ],
+      "expectedText": "Hello there",
+      "expectedWords": [
+        "Hello",
+        "there"
+      ],
+      "expectedStarts": [
+        0,
+        0.15
+      ]
+    },
+    {
+      "characters": [
+        "H",
+        "e",
+        "l",
+        "l",
+        "o",
+        " ",
+        "t",
+        "h",
+        "e",
+        "r",
+        "e"
+      ],
+      "starts": [
+        0.0,
+        0.01,
+        0.02,
+        0.03,
+        0.04,
+        0.05,
+        0.06,
+        0.07,
+        0.08,
+        0.09,
+        0.1
+      ],
+      "ends": [
+        0.01,
+        0.02,
+        0.03,
+        0.04,
+        0.05,
+        0.06,
+        0.07,
+        0.08,
+        0.09,
+        0.1,
+        0.11
+      ],
+      "expectedText": "Hello there",
+      "expectedWords": [
+        "Hello",
+        "there"
+      ],
+      "expectedStarts": [
+        0,
+        0.06
+      ]
+    }
+  ],
+  "normalized": [
+    {
+      "typed": "I have 21 apples",
+      "normalized": "I have twenty one apples",
+      "expectedWords": [
+        "I",
+        "have",
+        "21",
+        "apples"
+      ]
+    },
+    {
+      "typed": "We paid $12 today",
+      "normalized": "We paid twelve dollars today",
+      "expectedWords": [
+        "We",
+        "paid",
+        "$12",
+        "today"
+      ]
+    }
+  ],
+  "dialogueFallbacks": [
+    {
+      "modelID": "eleven_v4",
+      "typed": "I have 21 apples",
+      "alignment": null,
+      "normalized_alignment": {
+        "characters": [
+          "I",
+          " ",
+          "h",
+          "a",
+          "v",
+          "e",
+          " ",
+          "t",
+          "w",
+          "e",
+          "n",
+          "t",
+          "y",
+          " ",
+          "o",
+          "n",
+          "e",
+          " ",
+          "a",
+          "p",
+          "p",
+          "l",
+          "e",
+          "s"
+        ],
+        "character_start_times_seconds": [
+          0.0,
+          0.0005,
+          0.001,
+          0.0015,
+          0.002,
+          0.0025,
+          0.003,
+          0.0035,
+          0.004,
+          0.0045,
+          0.005,
+          0.0055,
+          0.006,
+          0.0065,
+          0.007,
+          0.0075,
+          0.008,
+          0.0085,
+          0.009,
+          0.0095,
+          0.01,
+          0.0105,
+          0.011,
+          0.0115
+        ],
+        "character_end_times_seconds": [
+          0.0005,
+          0.001,
+          0.0015,
+          0.002,
+          0.0025,
+          0.003,
+          0.0035,
+          0.004,
+          0.0045,
+          0.005,
+          0.0055,
+          0.006,
+          0.0065,
+          0.007,
+          0.0075,
+          0.008,
+          0.0085,
+          0.009,
+          0.0095,
+          0.01,
+          0.0105,
+          0.011,
+          0.0115,
+          0.012
+        ]
+      },
+      "segmentEnd": 24,
+      "expectedWords": [
+        "I",
+        "have",
+        "21",
+        "apples"
+      ]
+    },
+    {
+      "modelID": "eleven_v4",
+      "typed": "We paid $12 today",
+      "alignment": null,
+      "normalized_alignment": {
+        "characters": [
+          "W",
+          "e",
+          " ",
+          "p",
+          "a",
+          "i",
+          "d",
+          " ",
+          "t",
+          "w",
+          "e",
+          "l",
+          "v",
+          "e",
+          " ",
+          "d",
+          "o",
+          "l",
+          "l",
+          "a",
+          "r",
+          "s",
+          " ",
+          "t",
+          "o",
+          "d",
+          "a",
+          "y"
+        ],
+        "character_start_times_seconds": [
+          0.0,
+          0.0005,
+          0.001,
+          0.0015,
+          0.002,
+          0.0025,
+          0.003,
+          0.0035,
+          0.004,
+          0.0045,
+          0.005,
+          0.0055,
+          0.006,
+          0.0065,
+          0.007,
+          0.0075,
+          0.008,
+          0.0085,
+          0.009,
+          0.0095,
+          0.01,
+          0.0105,
+          0.011,
+          0.0115,
+          0.012,
+          0.0125,
+          0.013,
+          0.0135
+        ],
+        "character_end_times_seconds": [
+          0.0005,
+          0.001,
+          0.0015,
+          0.002,
+          0.0025,
+          0.003,
+          0.0035,
+          0.004,
+          0.0045,
+          0.005,
+          0.0055,
+          0.006,
+          0.0065,
+          0.007,
+          0.0075,
+          0.008,
+          0.0085,
+          0.009,
+          0.0095,
+          0.01,
+          0.0105,
+          0.011,
+          0.0115,
+          0.012,
+          0.0125,
+          0.013,
+          0.0135,
+          0.014
+        ]
+      },
+      "segmentEnd": 28,
+      "expectedWords": [
+        "We",
+        "paid",
+        "$12",
+        "today"
+      ]
+    }
+  ],
+  "roundTrips": [
+    {
+      "original": "Old words",
+      "new": "Hello there"
+    },
+    {
+      "original": "Old words",
+      "new": "Hello there",
+      "audioTags": [
+        {
+          "beforeToken": 1,
+          "tag": "laughs"
+        },
+        {
+          "beforeToken": 2,
+          "tag": "short pause"
+        }
+      ]
+    }
+  ],
+  "durations": [
+    {
+      "tag": "short pause",
+      "seconds": 0.25
+    },
+    {
+      "tag": "pause",
+      "seconds": 0.5
+    },
+    {
+      "tag": "long pause",
+      "seconds": 1.0
+    },
+    {
+      "tag": "breathes",
+      "seconds": 0.35
+    },
+    {
+      "tag": "laughs",
+      "seconds": 0.8
+    },
+    {
+      "tag": "chuckles",
+      "seconds": 0.5
+    },
+    {
+      "tag": "sighs",
+      "seconds": 0.6
+    },
+    {
+      "tag": "exhales",
+      "seconds": 0.5
+    }
+  ],
+  "caseCount": 40
+}

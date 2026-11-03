@@ -2,6 +2,8 @@ import Foundation
 
 public struct VoiceLabTakeInput: Sendable, Equatable {
     public let text: String
+    public let audioTags: [VoiceLabAudioTag]
+    public var requestText: String { VoiceLabAudioTags.requestText(words: text, tags: audioTags, modelID: modelID) }
     public let modelID: String
     public let recordID: String
     public let language: String
@@ -24,17 +26,18 @@ public struct VoiceLabTakeInput: Sendable, Equatable {
     public init(text: String, modelID: String, recordID: String, language: String, seed: UInt32, contentKey: String,
                 source: [Float], sourceSampleRate: Int, items: [TimedWord], cutWordIDs: Set<String> = [],
                 window: VoiceLabWindow, incomingSilence: Double?, outgoingSilence: Double?,
-                cleanAudioOn: Bool = false, providerConsent: Bool, pace: Double? = nil) {
+                cleanAudioOn: Bool = false, providerConsent: Bool, pace: Double? = nil, audioTags: [VoiceLabAudioTag] = []) {
         self.init(text: text, modelID: modelID, recordID: recordID, language: language, seed: seed, contentKey: contentKey,
                   source: VoiceLabSourceExcerpt(whole: source), sourceEnvelope: VoiceLabTakeProcessing.envelope(source, sampleRate: sourceSampleRate),
                   sourceSampleRate: sourceSampleRate, items: items, cutWordIDs: cutWordIDs, window: window, incomingSilence: incomingSilence,
-                  outgoingSilence: outgoingSilence, cleanAudioOn: cleanAudioOn, providerConsent: providerConsent, pace: pace)
+                  outgoingSilence: outgoingSilence, cleanAudioOn: cleanAudioOn, providerConsent: providerConsent, pace: pace, audioTags: audioTags)
     }
     /// A source of any length, of which only `source`'s regions are held.
     public init(text: String, modelID: String, recordID: String, language: String, seed: UInt32, contentKey: String,
                 source: VoiceLabSourceExcerpt, sourceEnvelope: AudioEnvelope, sourceSampleRate: Int, items: [TimedWord],
                 cutWordIDs: Set<String> = [], window: VoiceLabWindow, incomingSilence: Double?, outgoingSilence: Double?,
-                cleanAudioOn: Bool = false, providerConsent: Bool, pace: Double? = nil) {
+                cleanAudioOn: Bool = false, providerConsent: Bool, pace: Double? = nil, audioTags: [VoiceLabAudioTag] = []) {
+        self.audioTags = VoiceLabAudioTags.validated(audioTags, text: text)
         self.text = text; self.modelID = modelID; self.recordID = recordID; self.language = language; self.seed = seed
         self.contentKey = contentKey; self.source = source; self.sourceEnvelope = sourceEnvelope; self.sourceSampleRate = sourceSampleRate; self.items = items
         self.cutWordIDs = cutWordIDs; self.window = window; self.incomingSilence = incomingSilence; self.outgoingSilence = outgoingSilence
@@ -46,7 +49,7 @@ public struct VoiceLabTakeInput: Sendable, Equatable {
         VoiceLabTakeInput(text: text, modelID: id, recordID: recordID, language: language, seed: seed, contentKey: contentKey,
             source: source, sourceEnvelope: sourceEnvelope, sourceSampleRate: sourceSampleRate, items: items, cutWordIDs: cutWordIDs,
             window: window, incomingSilence: incomingSilence, outgoingSilence: outgoingSilence, cleanAudioOn: cleanAudioOn,
-            providerConsent: providerConsent, pace: pace)
+            providerConsent: providerConsent, pace: pace, audioTags: audioTags)
     }
     public func options(take: Int) -> VoiceLabSpeechOptions {
         let kept = items.filter { $0.kind == .word && !cutWordIDs.contains($0.id) }
@@ -58,7 +61,7 @@ public struct VoiceLabTakeInput: Sendable, Equatable {
         VoiceLabTakeInput(text: text, modelID: modelID, recordID: recordID, language: language, seed: seed, contentKey: contentKey,
             source: source, sourceEnvelope: sourceEnvelope, sourceSampleRate: sourceSampleRate, items: items, cutWordIDs: cutWordIDs,
             window: window, incomingSilence: incomingSilence, outgoingSilence: outgoingSilence, cleanAudioOn: cleanAudioOn,
-            providerConsent: providerConsent, pace: value)
+            providerConsent: providerConsent, pace: value, audioTags: audioTags)
     }
 }
 
@@ -117,7 +120,7 @@ public struct VoiceLabTakeQAResult: Sendable, Equatable {
 
 public enum VoiceLabTakeQuality {
     public static func tokens(_ text: String) -> [String] {
-        text.split(whereSeparator: \.isWhitespace).map { EditingPrimitives.normalizeForMatch(EditingPrimitives.nfc(String($0))) }.filter { !$0.isEmpty }
+        VoiceLabAudioTags.strippingTags(text).split(whereSeparator: \.isWhitespace).map { EditingPrimitives.normalizeForMatch(EditingPrimitives.nfc(String($0))) }.filter { !$0.isEmpty }
     }
     public static func transcriptRatio(expected: [String], recognized: [String]) throws -> Double {
         guard !expected.isEmpty, expected.count <= 5_000, recognized.count <= 5_000 else { throw VoiceLabError.invalidInput }
@@ -142,7 +145,7 @@ public enum VoiceLabTakeQuality {
                                 threshold: Double) throws -> VoiceLabTakeQAResult {
         guard speakerScore.map({ $0.isFinite && (-1...1).contains($0) }) ?? true, threshold.isFinite, (0...1).contains(threshold) else { throw VoiceLabError.invalidInput }
         let expectedTokens = tokens(expected)
-        let recognizedTokens = recognized.flatMap(tokens)
+        let recognizedTokens = recognized.filter { !VoiceLabAudioTags.isScribeEvent($0) }.flatMap(tokens)
         let ratio = try transcriptRatio(expected: expectedTokens, recognized: recognizedTokens)
         let peak = try VoiceLabLoudness.samplePeakDbfs(mixed)
         guard peak.isFinite else { throw VoiceLabError.invalidAudio }

@@ -75,7 +75,14 @@ public actor ElevenLabsVoiceLab {
     private var fixedBoundary: String?
     private var afterLastByte: (@Sendable () -> Void)?
     #if DEBUG
-    private var validationDiagnosticDirectory = DataLocations().logs.appendingPathComponent("Diagnostics/VoiceLab", isDirectory: true)
+    private var validationDiagnosticDirectory = ElevenLabsVoiceLab.defaultValidationDiagnosticDirectory()
+    package static func defaultValidationDiagnosticDirectory(environment: [String: String] = ProcessInfo.processInfo.environment,
+                                                              arguments: [String] = CommandLine.arguments) -> URL {
+        let testing = arguments.contains { $0.contains(".xctest") || $0.contains("swift-testing") || $0.hasSuffix("Tests") || $0.hasSuffix("Tests-product") } || environment["XCTestConfigurationFilePath"] != nil
+        let hasOverride = environment["VOXCLIP_DATA_DIR"].map { !$0.isEmpty } == true
+        let root = testing && !hasOverride ? FileManager.default.temporaryDirectory.appendingPathComponent("VoxClipTests-\(ProcessInfo.processInfo.processIdentifier)/Logs") : DataLocations(environment: environment).logs
+        return root.appendingPathComponent("Diagnostics/VoiceLab", isDirectory: true)
+    }
     private var enforceCapabilities = true
     private var dispatchHook: (@Sendable () async -> Void)?
     package func useDispatchHook(_ hook: @escaping @Sendable () async -> Void) { dispatchHook = hook }
@@ -297,6 +304,7 @@ public actor ElevenLabsVoiceLab {
 
     public func prepareSynthesis(text: String, modelID: String, voice: VoiceLabVoiceChoice, language: String,
                                  options: VoiceLabSpeechOptions, requestID: UUID) throws -> VoiceLabQuote {
+        let text = VoiceLabAudioTags.sanitizedRequest(text, modelID: modelID)
         try voice.validate()
         let model = try selectedModel(modelID, language: language, speak: true)
         try validateSpeechText(text, model: model, voiceID: voice.id)
@@ -592,6 +600,7 @@ public actor ElevenLabsVoiceLab {
     func synthesize(text: String, modelID: String, voice: VoiceLabVoiceChoice, language: String, options: VoiceLabSpeechOptions,
                     requestID: UUID, authorization: VoiceLabAuthorization,
                     acceptance: VoiceLabRequestAcceptance?) async throws -> VoiceLabAudioResult {
+        let text = VoiceLabAudioTags.sanitizedRequest(text, modelID: modelID)
         try Task.checkCancellation()
         try voice.validate()
         let capability = try capability(voice)
@@ -649,11 +658,23 @@ public actor ElevenLabsVoiceLab {
         acceptance?.preserve(VoiceLabAudioResult(pcm: pcm, sampleRate: 24_000, alignment: nil, receipt: provenance))
         let duration = Double(pcm.count) / 48_000
         do {
-            let timing = try Self.parseAlignment(row["alignment"], text: text, duration: duration)
+            let normalized = row["normalized_alignment"] as? [String: Any]
+            let originalMissing = row["alignment"] == nil || row["alignment"] is NSNull
+            let timing: [VoiceLabCharacterTiming]
+            var characterCount = 0
+            if route == .textToDialogue, originalMissing, let normalized,
+               let characters = normalized["characters"] as? [String] {
+                let raw = try Self.parseAlignment(normalized, text: characters.joined(), duration: duration)
+                characterCount = raw.count
+                do { timing = try VoiceLabAlignment.retimeNormalized(raw, expectedText: text) }
+                catch { throw SpeechMetadataFailure(error: .invalidAlignment, check: "normalized_word_mapping", index: nil) }
+            } else {
+                timing = try Self.parseAlignment(row["alignment"], text: text, duration: duration)
+                characterCount = timing.count
+            }
             if route == .textToDialogue {
                 // §8.5: the provider has not specified which character array segments index.
                 // Until the live probe settles that, a valid normalized alignment can widen the bound.
-                var characterCount = timing.count
                 if let normalized = row["normalized_alignment"] as? [String: Any],
                    let characters = normalized["characters"] as? [String],
                    let normalizedTiming = try? Self.parseAlignment(normalized, text: characters.joined(), duration: duration) {
@@ -674,7 +695,7 @@ public actor ElevenLabsVoiceLab {
     /// A reviewed rewrite is generated only by this separate, explicitly approved call.
     public func synthesize(proposal: VoiceRewriteProposal, modelID: String, voice: VoiceLabVoiceChoice, language: String,
                            options: VoiceLabSpeechOptions, authorization: VoiceLabAuthorization) async throws -> VoiceLabAudioResult {
-        try await synthesize(text: proposal.proposedText, modelID: modelID, voice: voice, language: language, options: options,
+        try await synthesize(text: VoiceLabAudioTags.requestText(words: proposal.proposedText, tags: proposal.audioTags, modelID: modelID), modelID: modelID, voice: voice, language: language, options: options,
                              requestID: proposal.id, authorization: authorization)
     }
 
@@ -1021,7 +1042,12 @@ public actor ElevenLabsVoiceLab {
               let ends = row["character_end_times_seconds"] as? [Double] else { throw fail("alignment_fields") }
         guard !characters.isEmpty, characters.count == starts.count, starts.count == ends.count
         else { throw fail("alignment_count_mismatch") }
-        guard characters.joined() == text else { throw fail("alignment_text_mismatch") }
+        let actual = characters.joined()
+        let wordsOnly = VoiceLabAudioTags.strippingTags(text)
+        let actualWords = VoiceLabAudioTags.strippingTags(actual)
+        let hasTags = !VoiceLabAudioTags.tagRanges(text).isEmpty
+        let matchesWithoutTags = hasTags && EditingPrimitives.splitWords(actualWords) == EditingPrimitives.splitWords(wordsOnly)
+        guard actual == text || matchesWithoutTags else { throw fail("alignment_text_mismatch") }
         var previous = 0.0
         return try characters.indices.map { index in
             let start = starts[index], end = ends[index]

@@ -136,7 +136,7 @@ public actor VoiceLabTakeRun {
         do {
             for index in 0..<candidates {
                 let options = input.options(take: index)
-                let speech = try await client.prepareSynthesis(text: input.text, modelID: input.modelID,
+                let speech = try await client.prepareSynthesis(text: input.requestText, modelID: input.modelID,
                     voice: .own(voiceID: record.voiceId, policy: policy(record)), language: input.language, options: options, requestID: UUID())
                 quotes.append(speech)
                 let qa = try await client.prepareQA(language: input.language, requestID: UUID())
@@ -294,7 +294,7 @@ public actor VoiceLabTakeRun {
                     recordID: value.record.id, speech16k: value.sourceSpeech, approved: true)
                 try await authorization.capability?.bindDispatch(boundary(request: take.synthesis.requestID, value: value, revision: expected, dispatch: dispatch))
                 try await validate(value, revision: expected)
-                let result = try await client.synthesize(text: value.input.text, modelID: value.input.modelID,
+                let result = try await client.synthesize(text: value.input.requestText, modelID: value.input.modelID,
                     voice: .own(voiceID: value.record.voiceId, policy: authorization), language: value.input.language,
                     options: value.input.options(take: take.index), requestID: take.synthesis.requestID,
                     authorization: VoiceLabAuthorization(quote: take.synthesis, approved: true), acceptance: synthesisAccepted)

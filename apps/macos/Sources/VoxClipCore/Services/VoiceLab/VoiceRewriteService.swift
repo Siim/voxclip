@@ -154,16 +154,20 @@ public actor VoiceRewriteService {
             throw LLMError.invalidOutput(reason: "The selected model changed.")
         }
         let parsed = try CanonicalResponseParser.validate(completion, schema: request.schema)
-        guard let rewrite = parsed.object[ai: "rewrite"].aiString,
+        guard let rawRewrite = parsed.object[ai: "rewrite"].aiString else { throw LLMError.invalidOutput(reason: "The rewrite is not a plain spoken passage.") }
+        let rewrite = VoiceLabAudioTags.sanitizedRequest(rawRewrite, modelID: "")
+        guard
               !AIText.trim(rewrite).isEmpty, rewrite.utf8.count <= 20_000,
               rewrite.range(of: "https?://", options: [.regularExpression, .caseInsensitive]) == nil,
               !rewrite.unicodeScalars.contains(where: { $0.properties.generalCategory == .control && $0 != "\n" }) else {
             throw LLMError.invalidOutput(reason: "The rewrite is not a plain spoken passage.")
         }
         let length = VoiceLabTextLength.length(rewrite)
-        return VoiceRewriteProposal(id: UUID(), scope: input.scope, sourceWords: input.sourceWords,
+        var proposal = VoiceRewriteProposal(id: UUID(), scope: input.scope, sourceWords: input.sourceWords,
                                     sourceText: source, proposedText: rewrite, connector: connector.id,
                                     model: completion.model, providerRequestID: completion.requestID,
                                     proposedLength: length, inRange: (input.minChars...input.maxChars).contains(length))
+        proposal.audioTags = VoiceLabAudioTags.parse(parsed.object[ai: "audioTags"], text: rewrite)
+        return proposal
     }
 }

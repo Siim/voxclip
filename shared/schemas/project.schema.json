@@ -409,6 +409,13 @@
                 "new": {
                   "type": "string",
                   "minLength": 1
+                },
+                "audioTags": {
+                  "type": "array",
+                  "maxItems": 64,
+                  "items": {
+                    "$ref": "#/$defs/voiceLabAudioTag"
+                  }
                 }
               }
             }
@@ -2232,6 +2239,13 @@
                 "new": {
                   "type": "string",
                   "minLength": 1
+                },
+                "audioTags": {
+                  "type": "array",
+                  "maxItems": 64,
+                  "items": {
+                    "$ref": "#/$defs/voiceLabAudioTag"
+                  }
                 }
               }
             }
@@ -2722,6 +2736,33 @@
         },
         "acceptedAt": {
           "$ref": "#/$defs/timestamp"
+        }
+      }
+    },
+    "voiceLabAudioTag": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "beforeToken",
+        "tag"
+      ],
+      "properties": {
+        "beforeToken": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tag": {
+          "type": "string",
+          "enum": [
+            "short pause",
+            "pause",
+            "long pause",
+            "breathes",
+            "laughs",
+            "chuckles",
+            "sighs",
+            "exhales"
+          ]
         }
       }
     }

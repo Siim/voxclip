@@ -79,9 +79,9 @@ LLMResult {                      // what the runner returns to features
 
 ### 2.2 Canonical schema subset
 
-Every schema in `shared/prompts/` and the catalog's `testRequest` uses only these keywords: `type` (`object`, `array`, `string`, `integer`, `number`, `boolean`), `properties`, `required`, `additionalProperties: false`, `items`, and `enum` on strings. Every object sets `additionalProperties: false`, and every property is listed in `required`. Numeric ranges, string lengths, formats, `$ref`, `anyOf`, nullable types and defaults are not allowed.
+Every schema in `shared/prompts/` and the catalog's `testRequest` uses only these keywords: `type` (`object`, `array`, `string`, `integer`, `number`, `boolean`), `properties`, `required`, `additionalProperties: false`, `items`, and `enum` on strings. Every object sets `additionalProperties: false`; `required` is a subset of its properties, allowing optional additive fields such as Rewrite's `audioTags`. Supplied optional fields are structurally validated; absence is valid. Numeric ranges, string lengths, formats, `$ref`, `anyOf`, nullable types and defaults are not allowed.
 
-This subset is accepted unchanged by Anthropic `output_config.format`, OpenAI and xAI strict `json_schema`, Gemini `responseJsonSchema`, Ollama `format`, LM Studio `response_format`, Claude Code `--json-schema` and Codex `--output-schema`, and it maps one to one onto Apple's `DynamicGenerationSchema`. A unit test validates every shared schema against this subset.
+Mac HTTP wire construction recursively promotes optional properties to required for provider structured-output schemas; the prompt requests an empty annotation array when none apply. Canonical requests and reply validation retain optionality, so older replies remain valid. Existing exhaustive schemas are unchanged. CLI schemas retain the canonical form. Windows Core accepts optional schema fields, but HTTP strict-schema shaping for the new annotations is owed with its behavior twin. A unit test validates every shared schema against this subset. Local structured-generation features must explicitly support a feature's schema before offering it.
 
 ### 2.3 Structural validation
 

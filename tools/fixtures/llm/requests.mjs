@@ -112,7 +112,7 @@ export function renderConnector(request, connector, catalog, options = {}) {
   const maxOut = Math.min(request.maxOutputTokens, connector.maxOutputTokensCap ?? request.maxOutputTokens)
   const user = request.cachedBlock === null ? request.instruction : request.cachedBlock + '\n\n' + request.instruction
   const chunks = request.cachedBlock === null ? [request.instruction] : [request.cachedBlock, request.instruction]
-  const schema = request.schema
+  let schema = request.schema
   const compactSchema = JSON.stringify(schema)
   const timeout = catalog.policy.timeoutsSeconds[request.feature === 'test'
     ? connector.cli ? 'cliTest' : 'test'
@@ -152,6 +152,16 @@ export function renderConnector(request, connector, catalog, options = {}) {
       language: request.language
     }
   }
+  const strictSchema = value => {
+    const result = { ...value }
+    if (value.properties) {
+      result.properties = Object.fromEntries(Object.entries(value.properties).map(([name, child]) => [name, strictSchema(child)]))
+      if (value.required.length !== Object.keys(value.properties).length) result.required = Object.keys(value.properties).sort()
+    }
+    if (value.items) result.items = strictSchema(value.items)
+    return result
+  }
+  schema = strictSchema(schema)
   const headers = { ...connector.headers }
   if (connector.auth?.type === 'apiKey') headers[connector.auth.header] = interpolate(connector.auth.valueTemplate, { key: '<key>' })
   headers['content-type'] ??= 'application/json'
