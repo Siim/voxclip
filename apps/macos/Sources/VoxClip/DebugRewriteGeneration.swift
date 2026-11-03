@@ -41,6 +41,7 @@ private struct RewriteGenerationFixtureKeys: KeyProvider {
                 hunks: session.changes.enumerated().filter { $0.element.hunk.kind != .voice || session.includedVoice.contains($0.offset + 1) }.map { $0.element.hunk },
                 makeInput: { _ in throw VoiceLabError.invalidInput })
             plan.showFixture(state)
+            session.takePlanOrdinals = session.changes.indices.filter { session.changes[$0].hunk.kind != .voice || session.includedVoice.contains($0 + 1) }.map { $0 + 1 }
             session.takePlan = plan
         }
     }

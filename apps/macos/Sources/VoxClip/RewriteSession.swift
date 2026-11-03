@@ -85,6 +85,8 @@ struct RewriteChange: Equatable, Sendable {
     var pricedAnyway: Set<Int> = []
     var shorterFeedback: String?
     let wordingFit = RewriteWordingFitState()
+    /// A next step's re-ask in flight, its AI suggestions and the advisory voice budget (RewriteNextSteps.swift).
+    let reasking = RewriteReaskState()
     var calibratedTakeIDs: Set<UUID> = []
     /// The scope's items in order: the selection's, a clip's from its first to its last word, or the take's.
     private(set) var source: [TimedWord]
@@ -123,6 +125,8 @@ struct RewriteChange: Equatable, Sendable {
     var speechContextReview: RewriteSpeechContextReview?
     var acceptedSpeechContext: RewriteSpeechContextReview?
     var speechContextProblem = ""
+    /// The phrases a refused surrounding sentence was for: their next steps show with `speechContextProblem`.
+    var speechContextRefusedOrdinals: [Int] = []
     var takeQuotePhrase: Int?
     var focusedTakePhrase = 0
     var takeRowsShown = true
@@ -179,7 +183,7 @@ struct RewriteChange: Equatable, Sendable {
     func reportGenerationProblem(_ error: (any Error)?) { problem = error.map(Self.refusal) ?? "" }
     /// Takes need Voice Lab's Rewrite on, its ElevenLabs consent and region, and a session that is current.
     func generationIsCurrent(region: ElevenLabsRegion) -> Bool {
-        current && !isProposing && !wordingIsLocked && editor.app.voiceLabRewriteEnabled && editor.app.bool("voiceLab.providerConsent.elevenlabs") &&
+        current && !isProposing && !wordingIsLocked && !isReasking && editor.app.voiceLabRewriteEnabled && editor.app.bool("voiceLab.providerConsent.elevenlabs") &&
             editor.app.string("transcription.elevenlabs.region", fallback: "default") == region.rawValue
     }
     /// Prepares and sends a selection's quotes; tests move its clock past a quote's 300 s window.
@@ -433,7 +437,7 @@ struct RewriteChange: Equatable, Sendable {
         return work
     }
     /// What a run sends: a selection's passage request, or a clip's or Full take's plan, each with its quote.
-    private enum PreparedSend {
+    enum PreparedSend {
         case passage(VoiceRewriteRequest, VoiceRewriteQuote, VoiceRewriteService)
         case scope(ScopeRewritePlan, PatchRewriteQuote, PatchRewriteService)
     }
@@ -448,28 +452,14 @@ struct RewriteChange: Equatable, Sendable {
             guard await ConnectorConsentWait().confirm(consent) else { return false }
             guard !Task.isCancelled, current, revision == expected else { return false }
             sendRun()
-            let checked: Checked
-            switch prepared {
-            case .passage(let input, let quote, let service):
-                let result = try await service.propose(input, connector: connector.connector, model: connector.model,
-                    authorization: VoiceRewriteAuthorization(quote: quote, approved: true))
+            guard let (checked, nextActions) = try await reply(prepared, connector: connector, accept: { [self] in
                 guard acceptReply(expected: expected) else { return false }
                 advanceRun(to: 3)
-                let source = source, text = result.proposedText, audioTags = result.audioTags
-                checked = try await check { try VoiceLabWordDiff.diff(source: source, newText: text, audioTags: audioTags).hunks.map { RewriteChange(hunk: $0) } }
-            case .scope(let plan, let quote, let service):
-                let result = try await service.propose(plan.request, connector: connector.connector, model: connector.model,
-                    authorization: PatchRewriteAuthorization(quote: quote, approved: true))
-                guard acceptReply(expected: expected) else { return false }
-                advanceRun(to: 3)
-                checked = try await check {
-                    try ScopeRewriteDiff.hunks(plan: plan, proposal: result).map {
-                        RewriteChange(hunk: $0.hunk, insertionAfterItemID: $0.insertionAfterItemID, checkThis: $0.checkThis, lines: $0.lines, reasons: $0.reasons)
-                    }
-                }
-            }
+                return true
+            }) else { return false }
             guard acceptReply(expected: expected) else { return false }
             receive(checked)
+            reasking.suggestions = nextActions
             let elapsed = started.duration(to: .now).components
             finishRun(seconds: Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18)
             return true
@@ -484,6 +474,29 @@ struct RewriteChange: Equatable, Sendable {
             return false
         }
     }
+    /// The reply to `prepared` as changes with their review, and its AI-suggested next steps; nil when `accept`, asked as
+    /// the reply arrives and before it is checked, refuses it.
+    func reply(_ prepared: PreparedSend, connector: RewriteConnector,
+               accept: @MainActor () -> Bool) async throws -> (Checked, [RewriteNextAction])? {
+        switch prepared {
+        case .passage(let input, let quote, let service):
+            let result = try await service.propose(input, connector: connector.connector, model: connector.model,
+                authorization: VoiceRewriteAuthorization(quote: quote, approved: true))
+            guard accept() else { return nil }
+            let source = source, text = result.proposedText, audioTags = result.audioTags
+            return (try await check { try VoiceLabWordDiff.diff(source: source, newText: text, audioTags: audioTags).hunks.map { RewriteChange(hunk: $0) } },
+                    result.nextActions)
+        case .scope(let plan, let quote, let service):
+            let result = try await service.propose(plan.request, connector: connector.connector, model: connector.model,
+                authorization: PatchRewriteAuthorization(quote: quote, approved: true))
+            guard accept() else { return nil }
+            return (try await check {
+                try ScopeRewriteDiff.hunks(plan: plan, proposal: result).map {
+                    RewriteChange(hunk: $0.hunk, insertionAfterItemID: $0.insertionAfterItemID, checkThis: $0.checkThis, lines: $0.lines, reasons: $0.reasons)
+                }
+            }, result.nextActions)
+        }
+    }
     private func acceptReply(expected: Int) -> Bool {
         guard isOpen, revision == expected else { return false }
         guard !Task.isCancelled, current else {
@@ -495,11 +508,11 @@ struct RewriteChange: Equatable, Sendable {
     }
     /// The request a run sends, made off the main actor: placing a selection and planning a clip or Full take read the
     /// whole take (impl-plan §3.1). The quote is the service's.
-    private func prepareSend(_ connector: RewriteConnector) async throws -> PreparedSend {
+    func prepareSend(_ connector: RewriteConnector, feedback: String? = nil) async throws -> PreparedSend {
         let project = project, rewriteScope = rewriteScope, envelope = envelope
         let language = project.transcript?.language ?? "en"
         let asked = RewriteSuggestions.suggestion(for: instruction).instruction
-        let feedback = shorterFeedback
+        let feedback = feedback ?? shorterFeedback
         switch rewriteScope {
         case .selection:
             guard let service = passageService else { throw VoxClipError.sharedResourcesMissing }
@@ -549,7 +562,7 @@ struct RewriteChange: Equatable, Sendable {
         }.value
     }
     /// A reply's changes with their review, or why the review was refused.
-    private typealias Checked = (changes: [RewriteChange], review: Result<RewriteReview, any Error>)
+    typealias Checked = (changes: [RewriteChange], review: Result<RewriteReview, any Error>)
     /// R1's "Check that each change fits", off the main actor: the reply's diff, then the review of its voice changes.
     private func check(_ diff: @escaping @Sendable () throws -> [RewriteChange]) async throws -> Checked {
         let inputs = reviewInputs
@@ -568,6 +581,7 @@ struct RewriteChange: Equatable, Sendable {
         wordingFit.initialEstimates = [:]; wordingFit.frozen = []; wordingFit.kept = []; wordingFit.problem = ""
         wordingFit.measured = nil
         pricedAnyway = []
+        reasking.reset()
         changes = checked.changes
         switch checked.review {
         case .success(let built): review = built
@@ -583,6 +597,8 @@ struct RewriteChange: Equatable, Sendable {
     func receivePassage(_ text: String) throws {
         receive(try VoiceLabWordDiff.diff(source: source, newText: text).hunks.map { RewriteChange(hunk: $0) })
     }
+    /// The consent route a send takes (the one-time privacy consent, then the cost row on a key).
+    func confirmSend() async -> Bool { await ConnectorConsentWait().confirm(consent) }
     func applyWordingFit(_ updates: [VoiceLabFitUpdate]) throws {
         guard var proposal = ownProposal else { throw CancellationError() }
         var next = changes
@@ -626,6 +642,7 @@ struct RewriteChange: Equatable, Sendable {
     }
     private func invalidate() {
         stopWordingFit(refresh: false)
+        stopReask(refresh: false)
         speechContextOffer = nil; speechContextReview = nil; acceptedSpeechContext = nil; speechContextProblem = ""
         surroundingSentenceOrdinal = nil
         takePlan?.invalidate(); takePlan = nil
@@ -642,7 +659,9 @@ struct RewriteChange: Equatable, Sendable {
         if ownProposal != nil { editor.proposal = nil }
     }
     /// Shows what the run replaced again, with the transcript's proposal and its reviews, or closes a first run.
-    private func restoreReplaced() {
+    /// A failed run has a proposal to go back to (R1x's "Back to the changes").
+    var canRestoreReplaced: Bool { if case .proposal? = replaced?.shown.state { true } else { false } }
+    func restoreReplaced() {
         guard let replaced else { editor.closeRewrite(returnFocus: false); return }
         self.replaced = nil
         changes = replaced.changes; review = replaced.review; setAside = replaced.setAside
@@ -658,24 +677,55 @@ struct RewriteChange: Equatable, Sendable {
         let first = source.first { $0.kind == .word && !cut.contains($0.id) }?.id
         // A selection's insertion stands before the word that owns its source token, as an edit popover's rediff places it.
         let owners = source.flatMap { word in Array(repeating: word.id, count: max(1, EditingPrimitives.splitWords(word.text).count)) }
-        let made = changes.enumerated().map { offset, change -> TranscriptChange in
-            let hunk = change.hunk
-            var anchor: TranscriptChange.Anchor?
-            if hunk.sourceWordIds.isEmpty {
-                switch rewriteScope {
-                case .selection:
-                    anchor = owners.indices.contains(hunk.sourceStartIndex) ? .before(owners[hunk.sourceStartIndex]) : source.last.map { .after($0.id) }
-                case .clip, .fullTake:
-                    anchor = change.insertionAfterItemID.map(TranscriptChange.Anchor.after) ?? first.map(TranscriptChange.Anchor.before)
-                }
-            }
-            return TranscriptChange(ordinal: offset + 1, parts: [TranscriptChange.Part(hunk)], anchor: anchor)
-        }
+        let made = changes.enumerated().map { offset, change in transcriptChange(change, ordinal: offset + 1, first: first, owners: owners) }
         replyParts = Dictionary(made.map { ($0.ordinal, $0.parts) }, uniquingKeysWith: { first, _ in first })
         leftOutUnavailable = []
         guard !made.isEmpty else { proposalID = nil; return }
         let proposal = TranscriptProposal(clipID: project.edits.activeClipId, title: task.words.title, changes: made)
         proposalID = proposal.id
+        editor.proposal = proposal
+    }
+    /// The transcript change for `change` at `ordinal`; an insertion stands where its reply placed it.
+    func transcriptChange(_ change: RewriteChange, ordinal: Int, first: String? = nil, owners: [String]? = nil) -> TranscriptChange {
+        let hunk = change.hunk
+        var anchor: TranscriptChange.Anchor?
+        if hunk.sourceWordIds.isEmpty {
+            switch rewriteScope {
+            case .selection:
+                let owners = owners ?? source.flatMap { word in Array(repeating: word.id, count: max(1, EditingPrimitives.splitWords(word.text).count)) }
+                anchor = owners.indices.contains(hunk.sourceStartIndex) ? .before(owners[hunk.sourceStartIndex]) : source.last.map { .after($0.id) }
+            case .clip, .fullTake:
+                let cut = editor.cutWordIDs
+                let first = first ?? source.first { $0.kind == .word && !cut.contains($0.id) }?.id
+                anchor = change.insertionAfterItemID.map(TranscriptChange.Anchor.after) ?? first.map(TranscriptChange.Anchor.before)
+            }
+        }
+        return TranscriptChange(ordinal: ordinal, parts: [TranscriptChange.Part(hunk)], anchor: anchor)
+    }
+    /// Replaces the changes at `replacements` (by ordinal) with a re-ask's reply and leaves out `kept`, keeping every other
+    /// change, its review and its parts as they are. Throws, changing nothing, when the review cannot be built again.
+    func applyReask(replacing replacements: [Int: RewriteChange], keepingOriginal kept: Set<Int>) throws {
+        guard var proposal = ownProposal else { throw CancellationError() }
+        var next = changes
+        for (ordinal, change) in replacements {
+            guard next.indices.contains(ordinal - 1), let index = proposal.changes.firstIndex(where: { $0.ordinal == ordinal }) else { throw CancellationError() }
+            next[ordinal - 1] = change
+            var made = transcriptChange(change, ordinal: ordinal)
+            made.state = proposal.changes[index].state == .kept && change.hunk.kind == .voice ? .kept : .pending
+            proposal.changes[index] = made
+            replyParts[ordinal] = made.parts
+        }
+        for ordinal in kept {
+            guard let index = proposal.changes.firstIndex(where: { $0.ordinal == ordinal }) else { continue }
+            proposal.changes[index].state = .excluded
+        }
+        let built = try RewriteReview.build(next.map(\.hunk), reviewInputs)
+        changes = next; review = built; problem = ""
+        let touched = Set(replacements.keys).union(kept)
+        pricedAnyway.subtract(touched)
+        wordingFit.kept.subtract(touched)
+        for ordinal in touched { wordingFit.initialEstimates[ordinal] = nil }
+        if surroundingSentenceOrdinal.map(touched.contains) == true { surroundingSentenceOrdinal = nil }
         editor.proposal = proposal
     }
 
@@ -872,6 +922,7 @@ struct RewriteChange: Equatable, Sendable {
     func follow(_ next: Project, name: String = "") {
         guard isOpen, !applying else { return }
         if wordingFit.running || wordingFit.awaitingApproval { stopWordingFit(refresh: false) }
+        if isReasking { stopReask(refresh: false) }
         let next = next.scoped(to: project.edits.activeClipId)
         let before = inside(project), after = inside(next)
         if after.transcript != before.transcript || after.media.source != before.media.source || !Self.scopeExists(rewriteScope, in: next) {
@@ -977,7 +1028,10 @@ struct RewriteChange: Equatable, Sendable {
             guard let self else { return }
             editor.sendRewriteAgain(self)
         }
-        task.show(.changed, headline: PanelHeadline(text: headline), cards: [.text(body)],
+        let steps = NextSteps(id: "stale", ask: NextStepAsk(id: "stale", placeholder: NextSteps.askPlaceholder) { [weak self] text in
+            self?.askInstead(text)
+        })
+        task.show(.changed, headline: PanelHeadline(text: headline), cards: [.text(body), .nextSteps(steps)],
                   footer: PanelFooter(note: sendLine, link: PanelAction(id: "closeChanged", title: "Close") { [weak editor] in editor?.closeRewrite() }, primary: again))
         editor.announce(headline + ".")
     }

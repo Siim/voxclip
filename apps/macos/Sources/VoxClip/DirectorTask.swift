@@ -242,6 +242,32 @@ struct ConnectorChoice: Identifiable, Equatable, Sendable {
     let needsKey: Bool
 }
 
+/// A next-step chip of a stuck state (design.md R2 "Next steps"): a built-in action, or one the AI suggested (✦).
+struct NextStepChip: Identifiable, Equatable {
+    let action: PanelAction
+    var suggested = false
+    var id: String { action.id }
+}
+
+/// The "Tell the AI what to do instead…" field under a stuck state's chips; `submit` re-asks with its text.
+struct NextStepAsk: Equatable {
+    let id: String
+    let placeholder: String
+    let submit: @MainActor (String) -> Void
+    static func == (lhs: NextStepAsk, rhs: NextStepAsk) -> Bool { lhs.id == rhs.id && lhs.placeholder == rhs.placeholder }
+}
+
+/// A stuck state's next steps (design.md R2 "Next steps"): an optional line saying what happened, a row of chips that
+/// each act now, and the free-text field. Nothing in it is disabled; a step that cannot act is not shown.
+struct NextSteps: Equatable {
+    /// The stuck state: "budget", "fit", "take", "context", "failure", "stale", "reask".
+    let id: String
+    var line: String? = nil
+    var chips: [NextStepChip] = []
+    var ask: NextStepAsk? = nil
+    static let askPlaceholder = "Tell the AI what to do instead…"
+}
+
 /// One block of a task's panel body.
 enum PanelCard: Identifiable, Equatable {
     /// What was asked, under a rule: "Asked: **Fix mistakes**, fix slips…" or "Asked: “{instruction}”".
@@ -265,6 +291,8 @@ enum PanelCard: Identifiable, Equatable {
     /// Voice Lab's takes for the proposal's voice change, until the Takes job (V18).
     case takes
     case wordingFit
+    /// A stuck state's chips and free-text field (design.md R2 "Next steps").
+    case nextSteps(NextSteps)
 
     var id: String {
         switch self {
@@ -279,6 +307,7 @@ enum PanelCard: Identifiable, Equatable {
         case .ask: "ask"
         case .takes: "takes"
         case .wordingFit: "wordingFit"
+        case .nextSteps(let steps): "nextSteps:\(steps.id)"
         }
     }
 }
@@ -357,6 +386,8 @@ enum PanelError: Equatable, Sendable {
     @ObservationIgnored var chose: (@MainActor (String) -> Void)?
     /// A key typed into a key field. In memory only, never logged or saved here, and cleared once saved.
     var keyDraft = ""
+    /// What is typed into a next-steps field (`NextStepAsk`), cleared as it is sent.
+    var nextStepDraft = ""
     /// Bumped to ask the panel to focus its first field (a key field).
     private(set) var focusRequest = 0
     /// The keyboard is in the task's panel; its views report it as their focus changes. Moving it out drops a handover.
@@ -438,6 +469,8 @@ enum PanelError: Equatable, Sendable {
         for case .changes(let set) in cards { return set }
         return nil
     }
+    /// The next steps the panel shows, in card order.
+    var nextSteps: [NextSteps] { cards.compactMap { if case .nextSteps(let steps) = $0 { steps } else { nil } } }
 
     /// Return in the panel, outside a text field (design.md §10, "Rewrite without a pointer"): with a change list, Return
     /// edits the focused change and ⌘Return runs the primary, so walking the list never applies, makes takes or pays;

@@ -66,7 +66,7 @@ import Testing
             "r2-make-voice": ("Nothing paid yet. Next: make your voice from this clip. Once.", "Keep All", "Make Your Voice"),
             "r2-use-take": ("Exports show AI MODIFIED on the video. The post disclosure is optional.", nil, "Use Takes"),
             "r2-several-voices": ("Nothing paid yet.\nTakes < $0.01 on ElevenLabs.", "Keep All", "Get Price · 2 phrases"),
-            "r2-over-budget": ("Make Takes appears when the phrases fit.", nil, "Apply 1 Free Change"),
+            "r2-over-budget": ("Nothing paid yet. Make Takes appears once you choose.", nil, nil),
             "r2-nothing-included": ("Keep a change to apply it.", nil, nil),
         ]
         for scene in scenes {
@@ -83,10 +83,54 @@ import Testing
         #expect(tags["r2-make-takes"] == "Beta" && tags["r2-several-voices"] == "Beta" && tags["r2-use-take"] == "Beta")
         #expect(tags["r2-free"] == .some(nil) && tags["r2-voice-lab-off"] == .some(nil) && tags["r2-no-changes"] == .some(nil))
         let budget = try #require(scenes.first { $0.name == "r2-over-budget" })
-        #expect(budget.task.cards.contains(.callout("These changes re-voice 15 words; a rewrite can re-voice 12. Undo a phrase or two, or re-record these sentences.")))
+        #expect(budget.task.cards.contains(.callout("These changes re-voice 15 words, a lot for a \(budget.task.words.wordCount)-word clip. Long stretches in your voice can sound stitched.")))
         let none = try #require(scenes.first { $0.name == "r2-no-changes" })
         #expect(none.task.headline.text == "No changes needed" && none.task.footer.primary?.title == "Ask for Something Else")
         #expect(none.task.cards == [.text("Claude Code found nothing to change in clip 1."), .ask(placeholder: "What should change in clip 1?")])
+    }
+
+    /// Over the voice budget the callout only advises (voice-lab.md §8.2): its chips are Re-voice all, Change fewer words
+    /// and Keep text fixes only, and Re-voice all goes on to Make Takes as if the phrases were in the budget.
+    @Test func overTheVoiceBudgetReVoiceAllReachesMakeTakes() throws {
+        let (_, session, _, scenes) = try scene("r2-over-budget")
+        defer { scenes.forEach { $0.editor?.close() } }
+        let budget = try #require(session.task.nextSteps.first { $0.id == "budget" })
+        #expect(budget.chips.map(\.action.id) == ["revoiceAll", "changeFewerWords", "keepTextFixes"])
+        #expect(budget.chips.map(\.action.title) == ["Re-voice all 15", "Change fewer words", "Keep text fixes only"])
+        #expect(budget.ask?.placeholder == NextSteps.askPlaceholder && session.task.footer.primary == nil && session.voiceBudgetBlocks)
+        budget.chips[0].action.perform()
+        #expect(!session.voiceBudgetBlocks && session.voiceBudget != nil)
+        #expect(!session.task.cards.contains { if case .callout = $0 { true } else { false } } && session.task.nextSteps.allSatisfy { $0.id != "budget" })
+        // In the budget now, the footer is the in-budget one: this scene's phrase still needs a fitting wording first.
+        #expect(session.task.footer.note?.hasPrefix(session.timingBlockedNote) == true)
+        for ordinal in session.blockedVoiceOrdinals { session.phraseTimingAction(.priceAnyway, ordinal: ordinal) }
+        let primary = try #require(session.task.footer.primary)
+        #expect(["makeTakes", "makeVoice", "prepareTakes"].contains(primary.id), "\(primary.id)")
+        // A new reply asks again.
+        session.receive(session.changes)
+        #expect(session.voiceBudgetBlocks)
+    }
+
+    /// Keep text fixes only applies the free changes and leaves the phrases in your voice out, as Apply does.
+    @Test func overTheVoiceBudgetKeepTextFixesOnlyAppliesTheFreeChanges() throws {
+        let (editor, session, _, scenes) = try scene("r2-over-budget")
+        defer { scenes.forEach { $0.editor?.close() } }
+        let chip = try #require(session.task.nextSteps.first { $0.id == "budget" }?.chips.last)
+        #expect(chip.action.id == "keepTextFixes")
+        chip.action.perform()
+        #expect(!session.isOpen && editor.openRewrite == nil && !editor.project.edits.cutWordIds.isEmpty)
+    }
+
+    /// A phrase whose takes all failed the checks offers Try another, Keep original words and the AI's suggestions.
+    @Test func aPhraseWhoseTakesAllFailedOffersNextSteps() throws {
+        let (_, session, _, scenes) = try scene("r2-make-takes")
+        defer { scenes.forEach { $0.editor?.close() } }
+        try DebugRewriteGeneration.install("none-passed", in: session)
+        session.reasking.suggestions = [RewriteNextAction(label: "Say it plainly", instruction: "Say the phrase in plain words.")]
+        session.showProposal()
+        let take = try #require(session.task.nextSteps.first { $0.id == "take" })
+        #expect(take.chips.map(\.action.id) == ["tryAnother", "keepOriginal", "suggestion.0"] && take.chips.last?.suggested == true)
+        #expect(take.line == "Phrase 1: no take passed the checks." && take.ask != nil)
     }
 
     /// The rows follow f3: the focused change on top, a cut reads the words it removes and a phrase the words it would

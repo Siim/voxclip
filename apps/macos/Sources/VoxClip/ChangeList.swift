@@ -99,7 +99,7 @@ extension RewriteSession {
         task.review = { [weak self] ordinal, review in self?.review(ordinal, review) }
         task.phraseTimingAction = { [weak self] ordinal, action in self?.phraseTimingAction(action, ordinal: ordinal) }
         task.audioTagsChanged = { [weak self] ordinal, tags in self?.updateAudioTags(tags, ordinal: ordinal) }
-        task.wordingLocked = wordingIsLocked
+        task.wordingLocked = wordingIsLocked || isReasking
         task.show(.proposal(content.set), headline: content.headline, cards: content.cards, footer: content.footer, contextAction: content.askAgain)
     }
 
@@ -162,6 +162,15 @@ extension RewriteSession {
         }
         var footer = proposalFooter(set)
         var cards: [PanelCard] = [.changes(set)]
+        // A next step's re-ask (RewriteNextSteps.swift): the list waits, the proposal stays, and Stop changes nothing.
+        if let running = reasking.running {
+            headline.text = "Asking \(aiName): “\(running.label)”"
+            headline.sub = nil
+            headline.stop = PanelAction(id: "stopReask", title: "Stop") { [weak self] in self?.stopReask() }
+            return ProposalContent(set: set, headline: headline, cards: [.changes(set)],
+                footer: PanelFooter(note: "Only \(running.ordinals.count == 1 ? "this phrase" : "these phrases") can change. Other changes and takes stay as they are."),
+                askAgain: nil)
+        }
         if wordingIsLocked {
             headline.text = wordingFit.running ? "Fitting wording to the video · round \(wordingFit.round) of 3" : "Fit wording to the video"
             if wordingFit.running { headline.stop = PanelAction(id: "stopWordingFit", title: "Stop") { [weak self] in self?.stopWordingFit() } }
@@ -179,20 +188,25 @@ extension RewriteSession {
             footer.footer.note = "\(includedVoice.count) phrases fit · \(wordingFit.kept.count) kept as recorded"
         }
         if let callout = footer.callout { cards.append(.callout(callout)) }
+        if let steps = footer.steps { cards.append(.nextSteps(steps)) }
         // Why Make Takes could not go on (finding the voices failed); a refused review is on the voice rows instead.
         if review != nil, !problem.isEmpty { cards.append(.callout(problem)) }
         if (footer.takes || surroundingSentenceOrdinal != nil), takeRowsShown {
             cards = blockedVoiceOrdinals.isEmpty ? [.takes] : [.changes(set), .takes]
+            cards += withReaskNotice(stuckSteps()).map(PanelCard.nextSteps)
             let count = takePlan?.phrases.count ?? includedVoice.count
             headline.text = count == 1 ? "1 phrase in your voice" : "\(count) phrases in your voice"
             headline.sub = "Listen, pick a take, then use them."
             if takesBusy {
                 headline.stop = PanelAction(id: "stopTakes", title: "Stop") { [weak self] in self?.stopTakes() }
             }
-        } else if footer.takes {
-            askAgain = PanelAction(id: "showTakes", title: "Review Takes") { [weak self] in
-                self?.takeRowsShown = true; self?.showProposal()
+        } else {
+            if footer.takes {
+                askAgain = PanelAction(id: "showTakes", title: "Review Takes") { [weak self] in
+                    self?.takeRowsShown = true; self?.showProposal()
+                }
             }
+            if footer.steps == nil { cards += withReaskNotice(stuckSteps()).map(PanelCard.nextSteps) }
         }
         return ProposalContent(set: set, headline: headline, cards: cards, footer: footer.footer, askAgain: askAgain)
     }
@@ -243,7 +257,7 @@ extension RewriteSession {
     ///   with Keep All while changes wait.
     /// - Only cuts and fixes: Apply {c} Changes. Nothing included: the note alone. Every change kept: its note alone, and
     ///   Close ends the task.
-    private func proposalFooter(_ set: ChangeSet) -> (footer: PanelFooter, callout: String?, takes: Bool) {
+    private func proposalFooter(_ set: ChangeSet) -> (footer: PanelFooter, callout: String?, takes: Bool, steps: NextSteps?) {
         let pending = set.items.filter { $0.state == .pending && $0.reviewable }
         let free = pending.filter { $0.kind != .voice }.count
         let voices = set.items.filter { $0.kind == .voice }
@@ -257,37 +271,34 @@ extension RewriteSession {
         func phrases(_ count: Int) -> String { count == 1 ? "1 phrase needs" : "\(count) phrases need" }
         if !editor.app.voiceLabRewriteEnabled, !voices.isEmpty {
             let turnOn = PanelAction(id: "turnOnVoiceLab", title: "Turn On Voice Lab") { [weak self] in self?.editor.openVoiceJob() }
-            return (PanelFooter(note: "\(phrases(voices.count)) your voice. Voice Lab (beta) makes it from this \(task.words.noun).", link: turnOn, primary: apply(beside: true)), nil, false)
+            return (PanelFooter(note: "\(phrases(voices.count)) your voice. Voice Lab (beta) makes it from this \(task.words.noun).", link: turnOn, primary: apply(beside: true)), nil, false, nil)
         }
-        if !included.isEmpty, let over = overBudget {
-            return (PanelFooter(note: "Make Takes appears when the phrases fit.", primary: apply(beside: true)), over, false)
+        // Over the voice budget the callout advises and the chips choose (voice-lab.md §8.2): nothing is blocked.
+        if !included.isEmpty, voiceBudgetBlocks, let advice = voiceBudget {
+            let steps = withReaskNotice([budgetSteps(advice, freeChanges: free)])
+            return (PanelFooter(note: "Nothing paid yet. Make Takes appears once you choose."), budgetCallout(advice), false, steps.first)
         }
         let blocked = blockedVoiceOrdinals.count
         if blocked > 0 {
             let priceable = included.filter { includedVoice.contains($0.ordinal) }
             guard let voice = priceable.first else {
-                return (PanelFooter(note: timingBlockedNote, link: keepAll, primary: apply(beside: true)), nil, false)
+                return (PanelFooter(note: timingBlockedNote, link: keepAll, primary: apply(beside: true)), nil, false, nil)
             }
             var footer = takesFooter(voice, keepAll: keepAll)
             let paidNote = takePlan == nil ? nil : footer.note
             footer.note = [timingBlockedNote, paidNote].compactMap { $0 }.joined(separator: "\n")
-            return (footer, nil, takePlan != nil)
+            return (footer, nil, takePlan != nil, nil)
         }
         if let voice = included.first {
-            return (takesFooter(voice, keepAll: keepAll), nil, generation != nil)
+            return (takesFooter(voice, keepAll: keepAll), nil, generation != nil, nil)
         }
-        if free > 0 { return (PanelFooter(note: "No AI voice needed. Nothing is sent.", primary: apply(beside: false)), nil, false) }
-        if set.items.allSatisfy({ $0.state == .kept }) { return (PanelFooter(note: Self.everyChangeKept), nil, false) }
-        return (PanelFooter(note: "Keep a change to apply it."), nil, false)
+        if free > 0 { return (PanelFooter(note: "No AI voice needed. Nothing is sent.", primary: apply(beside: false)), nil, false, nil) }
+        if set.items.allSatisfy({ $0.state == .kept }) { return (PanelFooter(note: Self.everyChangeKept), nil, false, nil) }
+        return (PanelFooter(note: "Keep a change to apply it."), nil, false, nil)
     }
-    /// The voice budget (voice-lab.md §8.2) over the voice changes the list includes, as design.md R2's callout reads it;
-    /// nil while they fit. Leaving a phrase out can bring Make Takes back.
-    var overBudget: String? {
-        let hunks = reviewedVoiceOrdinals.compactMap { changes.indices.contains($0 - 1) ? changes[$0 - 1].hunk : nil }
-        let budget = VoiceLabPatchBudget.evaluate(hunks: hunks, transcript: transcript)
-        guard budget.flag == .reRecordInstead else { return nil }
-        let limit = min(60, budget.wordItems * 15 / 100)
-        return "These changes re-voice \(budget.voiceTokenCount) words; a rewrite can re-voice \(limit). Undo a phrase or two, or re-record these sentences."
+    /// design.md R2's advisory callout over the voice budget (voice-lab.md §8.2).
+    func budgetCallout(_ advice: VoiceBudgetAdvice) -> String {
+        "These changes re-voice \(advice.voiceWords) words, a lot for a \(advice.scopeWords)-word \(task.words.noun). Long stretches in your voice can sound stitched."
     }
     /// R2's note once every change is kept: nothing is left to apply; ⌘Z of a Keep brings its change back for review.
     static let everyChangeKept = "Every change is kept."
@@ -375,7 +386,7 @@ extension RewriteSession {
     /// changed makes no takes of a phrase other than the one the quote is for.
     func makeTakes() {
         guard current, !includedVoice.isEmpty || surroundingSentenceOrdinal != nil else { return }
-        guard !takesBusy else { return }
+        guard !takesBusy, !isReasking, !voiceBudgetBlocks else { return }
         takeRowsShown = true
         guard generation != nil else {
             takesTask = Task { [weak self] in await self?.discoverVoices() }

@@ -63,6 +63,12 @@ import VoxClipMedia
         let session = RewriteSession(editor: model, scope: .selection(12...25), envelope: envelope, connector: connector)
         model.rewrite = session
         try session.receivePassage(variant == "rewrite-budget" ? Array(repeating: "replacement", count: 180).joined(separator: " ") : "A clearer way to explain what happened in this passage."); session.finishRun(seconds: 1)
+        if variant == "rewrite-budget" { session.showProposal() }
+        // ✦ chips at every column width: the budget and failed-take variants show two AI suggestions.
+        if variant == "rewrite-budget" || variant == "rewrite-takes-none-passed" {
+            session.reasking.suggestions = [RewriteNextAction(label: "Only phrases 1 and 3", instruction: "Keep only phrases 1 and 3 in my voice."),
+                                            RewriteNextAction(label: "Merge with the next sentence", instruction: "Merge it with the next sentence.")]
+        }
         if variant == "rewrite-takes-measured-fit" {
             try DebugRewriteGeneration.install("length-changed", in: session)
             session.wordingFit.measured = MeasuredWordingSuggestion(phrase: 0, take: UUID(), number: 2,
@@ -70,6 +76,7 @@ import VoxClipMedia
                 text: "Here is a naturally longer way to explain this thought.", preparing: false)
         } else if variant.hasPrefix("rewrite-takes-") {
             try DebugRewriteGeneration.install(String(variant.dropFirst(14)), in: session)
+            session.showProposal()
         } else if variant.hasPrefix("rewrite-fit-") {
             let ordinals = session.changes.indices.filter { session.changes[$0].hunk.kind == .voice }.map { $0 + 1 }
             session.wordingFit.phrases = try session.fitPhrases(ordinals: ordinals)
