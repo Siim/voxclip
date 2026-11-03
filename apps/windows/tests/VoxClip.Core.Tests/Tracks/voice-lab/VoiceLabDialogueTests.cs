@@ -134,14 +134,32 @@ public sealed class VoiceLabDialogueTests
         using var handler = new Handler(root, root["responses"]![0]!["response"]!);
         using var client = Client(handler);
         await Discover(client);
+        var endpoints = new List<string>();
         foreach (var (from, to) in new[] { ("eleven_v3", "eleven_v4"), ("eleven_v4", "eleven_v3") })
         {
             var id = Guid.NewGuid();
             var approval = client.Approve(client.PrepareSynthesis("Hi", from, Voice, "en", new(0), id), true);
+            endpoints.Add(approval.Review.Endpoint);
             Assert.Equal(VoiceLabErrorKind.ConsentRequired,
                 (await Assert.ThrowsAsync<VoiceLabException>(() => Speak(client, model: to, approval: approval, requestId: id))).Kind);
         }
+        // The route itself is bound, not only the model id.
+        Assert.StartsWith("/v1/text-to-speech/", endpoints[0], StringComparison.Ordinal);
+        Assert.StartsWith("/v1/text-to-dialogue/with-timestamps?", endpoints[1], StringComparison.Ordinal);
+        Assert.NotEqual(endpoints[0], endpoints[1]);
         Assert.Empty(handler.Requests);
+    }
+    [Fact]
+    public async Task DialoguePermissionRefusalNamesTheSpeechPermission()
+    {
+        var root = Cases();
+        using var handler = new Handler(root, JsonNode.Parse("{\"detail\":{\"code\":\"missing_permissions\"}}")!, HttpStatusCode.Forbidden);
+        using var client = Client(handler);
+        await Discover(client);
+        var refusal = await Assert.ThrowsAsync<VoiceLabException>(() => Speak(client));
+        Assert.Equal(VoiceLabErrorKind.PermissionMissing, refusal.Kind);
+        Assert.Equal("text_to_speech", refusal.Detail);
+        Assert.Single(handler.Requests);
     }
     [Fact]
     public async Task DialogueOmitsAndDoesNotBindContext()

@@ -805,7 +805,8 @@ public sealed class ElevenLabsVoiceLab : IDisposable
             {
                 "/v1/models" => "models_read", "/v1/user/subscription" => "user_read", "/v2/voices" => "voices_read",
                 "/v1/voices/add" => "create_instant_voice_clone", _ when method == HttpMethod.Delete && path.StartsWith("/v1/voices/", StringComparison.Ordinal) => "voices_write",
-                _ when path.StartsWith("/v1/text-to-speech/", StringComparison.Ordinal) => "text_to_speech",
+                _ when path.StartsWith("/v1/text-to-speech/", StringComparison.Ordinal) ||
+                       path.StartsWith("/v1/text-to-dialogue/", StringComparison.Ordinal) => "text_to_speech",
                 _ when path.StartsWith("/v1/voice-changer/", StringComparison.Ordinal) => "speech_to_speech", _ => "unknown"
             };
             return new(VoiceLabErrorKind.PermissionMissing, permission);
