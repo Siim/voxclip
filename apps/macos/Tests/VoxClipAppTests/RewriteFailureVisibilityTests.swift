@@ -2,6 +2,7 @@
 import AppKit
 import Foundation
 import Testing
+import UniformTypeIdentifiers
 @testable import VoxClipCore
 @testable import VoxClip
 
@@ -10,6 +11,7 @@ private actor RewriteFailureRunner: ProcessRunner {
     private var pending: TestContinuation<Void>?
     private var arrivals: [TestContinuation<Void>] = []
     private(set) var sends = 0
+    private var reply = #"{"edits":[]}"#
 
     init(failure: String) { self.failure = failure }
 
@@ -24,6 +26,7 @@ private actor RewriteFailureRunner: ProcessRunner {
         sends += 1
         await withTestDeadline { pending = $0; arrivals.forEach { $0.resume() }; arrivals = [] }
         switch failure {
+        case "success": return result("{\"type\":\"result\",\"is_error\":false,\"structured_output\":\(reply),\"modelUsage\":{\"claude-opus-5-5\":{\"outputTokens\":787}}}")
         case "timeout": throw CLIProcessTimeout(stdout: Data(), stderr: Data())
         case "cancelled": throw LLMError.cancelled
         case "cancellationError": throw CancellationError()
@@ -37,6 +40,7 @@ private actor RewriteFailureRunner: ProcessRunner {
 
     func untilWaiting() async { if pending == nil { await withTestDeadline { arrivals.append($0) } } }
     func release() { pending?.resume(); pending = nil }
+    func respond(with reply: String) { self.reply = reply }
     private func result(_ text: String) -> ProcessResult { ProcessResult(exitCode: 0, stdout: Data(text.utf8), stderr: Data()) }
 }
 
@@ -78,6 +82,71 @@ private actor RewriteFailureRunner: ProcessRunner {
         let session = try #require(editor.openRewrite)
         await runner.untilWaiting()
         return session
+    }
+
+    @Test(arguments: ["none", "save", "scope", "connector"])
+    func firstSuccessfulReplyAfterNewClipAndAsk(_ change: String) async throws {
+        let (_, editor, shell, runner) = try await setup("success")
+        defer { editor.close() }
+        var fresh = editor.project
+        fresh.media.source.durationSeconds = 32
+        fresh.transcript?.durationSeconds = 32
+        fresh.transcript?.words = (0..<60).map { index in
+            TimedWord(id: "fresh-\(index)", text: "word", start: Double(index) / 2, end: Double(index) / 2 + 0.4)
+        }
+        editor.document.replaceProject(fresh)
+        editor.refresh()
+        editor.selectedWordIDs = Set(editor.words.prefix(52).map(\.id))
+        editor.makeClip()
+        let clipID = try #require(editor.project.edits.activeClipId)
+        shell.choose(.clip(clipID), byClick: false)
+        editor.selectedWordIDs = []
+        let bar = ClipBarView(model: editor, shell: shell)
+        bar.render()
+        bar.ask.stringValue = "Rephrase this more clearly; keep my casual tone."
+        bar.runRewrite()
+        _ = try await TestDeadline.value(editor.rewriteOpenTask, "open fresh clip Rewrite")
+        let session = try #require(editor.openRewrite)
+        await runner.untilWaiting()
+        #expect(session.rewriteScope == .clip(clipID))
+        #expect(session.source.count == 52)
+        #expect(session.instruction == "Rephrase this more clearly; keep my casual tone.")
+        let plan = try ScopeRewritePlan.make(project: session.project, scope: session.rewriteScope, instruction: session.instruction, language: "en", envelope: session.envelope)
+        let line = try #require(plan.lines.first)
+        let reply = try JSONSerialization.data(withJSONObject: ["edits": [["line": line.line, "text": "", "reason": "Remove this line"]]])
+        await runner.respond(with: String(decoding: reply, as: UTF8.self))
+        let before = editor.project
+        if change == "save" {
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-rewrite-save-\(UUID())")
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: root) }
+            let saved = await withTestDeadline(returning: false) { continuation in
+                editor.document.save(to: root.appendingPathComponent("fresh.voxclip"), ofType: UTType.voxclipProject.identifier, for: .saveOperation) { error in
+                    continuation.resume(returning: error == nil)
+                }
+            }
+            #expect(saved)
+            #expect(editor.project.modifiedAt != before.modifiedAt)
+            #expect(editor.project.edits == before.edits)
+        } else if change == "scope" {
+            var changed = editor.project
+            changed.edits.corrections[editor.words[1].id] = "changed"
+            editor.document.replaceProject(changed)
+        } else if change == "connector" {
+            editor.app.settings.values["llm.model.claude-code"] = .string("sonnet")
+        }
+        await runner.release()
+        _ = try await TestDeadline.value(session.actionTask, "finish fresh successful Rewrite")
+        #expect(editor.openRewrite === session && session.isOpen)
+        if change == "scope" || change == "connector" {
+            #expect(session.task.state == .changed)
+            #expect(editor.proposal == nil)
+        } else {
+            #expect(session.current)
+            if case .proposal = session.task.state {} else { Issue.record("Successful reply was not proposed: \(session.task.state)") }
+            #expect(!session.changes.isEmpty && editor.proposal != nil)
+        }
+        #expect(await runner.sends == 1)
     }
 
     @Test(arguments: ["API Error: Connection refused (ECONNREFUSED)", "unexpected CLI failure", "timeout", "Not logged in", "Usage limit reached", "overloaded", "malformed", "cancelled", "cancellationError", "cancelledTask"])
