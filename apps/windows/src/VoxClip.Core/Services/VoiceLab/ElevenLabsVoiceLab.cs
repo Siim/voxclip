@@ -970,7 +970,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
                 !segment.TryGetProperty("start_time_seconds", out var startTime) || startTime.ValueKind != JsonValueKind.Number ||
                 !segment.TryGetProperty("end_time_seconds", out var endTime) || endTime.ValueKind != JsonValueKind.Number ||
                 !startTime.TryGetDouble(out var begin) || !endTime.TryGetDouble(out var finish) ||
-                !double.IsFinite(begin) || !double.IsFinite(finish) || begin < 0 || finish < begin || finish > duration) throw Malformed();
+                !double.IsFinite(begin) || !double.IsFinite(finish) || begin < 0 || finish < begin || finish > duration + 0.05) throw Malformed();
         }
     }
     private static IReadOnlyList<VoiceLabCharacterTiming> Alignment(JsonElement row, string text, double duration)

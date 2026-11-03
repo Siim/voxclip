@@ -110,7 +110,7 @@ public sealed class VoiceLabDialogueTests
     public async Task SharedDialogueResponses(string name)
     {
         var root = Cases();
-        Assert.Equal(19, root["responses"]!.AsArray().Count);
+        Assert.Equal(21, root["responses"]!.AsArray().Count);
         var row = root["responses"]!.AsArray().Single(row => row!["case"]!.GetValue<string>() == name)!;
         using var handler = new Handler(root, row["response"]!);
         using var client = Client(handler);
