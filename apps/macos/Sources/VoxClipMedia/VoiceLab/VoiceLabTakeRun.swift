@@ -343,7 +343,7 @@ public actor VoiceLabTakeRun {
                 try await capability.bindDispatch(boundary(request: take.qa.requestID, value: value, revision: expected, dispatch: dispatch))
                 let recognized = try await client.transcribeQA(processed.mixed, rate: processed.sampleRate,
                     language: value.input.language, authorization: VoiceLabAuthorization(quote: take.qa, approved: true), capability: capability,
-                    acceptance: qaAccepted)
+                    acceptance: qaAccepted, hasAudioTags: !value.input.audioTags.isEmpty && VoiceLabAudioTags.supports(value.input.modelID))
                 qaReceipt = recognized.receipt
                 try await validate(value, revision: expected)
                 let lower = Double(processed.patchRange.lowerBound) / Double(processed.sampleRate)
@@ -353,7 +353,8 @@ public actor VoiceLabTakeRun {
                     sampleRate: processed.sampleRate, seams: processed.seams, sourceSeamSteps: processed.sourceSeamSteps, sourceSeamPauses: processed.sourceSeamPauses,
                     generatedAfter: processed.generatedAfter,
                     measuredSeamSteps: processed.measuredSeamSteps,
-                    speakerScore: score, threshold: value.record.speaker.threshold)
+                    speakerScore: score, threshold: value.record.speaker.threshold,
+                    audioTags: VoiceLabAudioTags.supports(value.input.modelID) ? value.input.audioTags : [])
                 let flatness = try VoiceLabLoudness.flatness(processed.trimmed, sampleRate: processed.sampleRate)
                 let rank = try VoiceLabTakeQuality.rank(fit: processed.fit, windowSeconds: value.input.window.end - value.input.window.start,
                     matchRatio: qa.values.transcriptMatch ?? 0, flatness: flatness)

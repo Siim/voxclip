@@ -276,7 +276,8 @@ struct VoiceLabTakeRunTests {
                 let size = bytes.withUnsafeBytes { Int(UInt32(littleEndian: $0.loadUnaligned(fromByteOffset: start + 4, as: UInt32.self))) }
                 let wave = bytes.subdata(in: start..<(start + size + 8))
                 http.value.withLock { $0.qaWAVs.append(wave) }
-                for (field, value) in [("model_id", "scribe_v2"), ("language_code", "en"), ("diarize", "false"), ("tag_audio_events", audioTags.isEmpty ? "false" : "true"), ("timestamps_granularity", "word")] {
+                let tagged = !audioTags.isEmpty && VoiceLabAudioTags.supports(modelID)
+                for (field, value) in [("model_id", "scribe_v2"), ("language_code", "en"), ("diarize", "false"), ("tag_audio_events", tagged ? "true" : "false"), ("timestamps_granularity", "word")] {
                     #expect(body.contains("name=\"\(field)\"\r\n\r\n\(value)\r\n"))
                 }
                 let state = http.value.withLock { $0.qa += 1; return $0 }
@@ -289,7 +290,7 @@ struct VoiceLabTakeRunTests {
                     ["type": "word", "text": token, "start": 0.6 + Double(index) * step,
                      "end": 0.6 + Double(index + 1) * step]
                 }
-                if !audioTags.isEmpty { words.append(["type": "audio_event", "text": "(laughs)", "start": 0.7, "end": 0.8]) }
+                if tagged { words.append(["type": "audio_event", "text": "(laughs)", "start": 0.7, "end": 0.8]) }
                 return (200, [:], try JSONSerialization.data(withJSONObject: ["language_code": "eng", "words": words]))
             default: Issue.record("Unexpected take-run request"); return (500, [:], Data())
             }
@@ -371,7 +372,7 @@ struct VoiceLabTakeRunTests {
         #expect(row.fits)
     }
 
-    @Test(arguments: ["eleven_v3", "eleven_v4"]) func taggedQASendsAudioEventsAndKeepsOnlyWords(modelID: String) async throws {
+    @Test(arguments: ["eleven_v3", "eleven_v4", "eleven_multilingual_v2"]) func taggedQASendsAudioEventsAndKeepsOnlyWords(modelID: String) async throws {
         let fixture = try await fixture(modelID: modelID, audioTags: [.init(beforeToken: 1, tag: "laughs")])
         defer { try? FileManager.default.removeItem(at: fixture.root) }
         let quote = try await fixture.run.prepare(fixture.input, candidates: 1)

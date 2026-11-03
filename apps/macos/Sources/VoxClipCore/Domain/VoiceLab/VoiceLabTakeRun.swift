@@ -144,10 +144,11 @@ public enum VoiceLabTakeQuality {
     public static func evaluate(expected: String, recognized: [String], mixed: [Float], sampleRate: Int,
                                 seams: [Int], sourceSeamSteps: [Double]? = nil, sourceSeamPauses: [VoiceLabSourcePause?]? = nil,
                                 generatedAfter: [Bool]? = nil, measuredSeamSteps: [Double]? = nil, speakerScore: Double?,
-                                threshold: Double) throws -> VoiceLabTakeQAResult {
+                                threshold: Double, audioTags: [VoiceLabAudioTag] = []) throws -> VoiceLabTakeQAResult {
         guard speakerScore.map({ $0.isFinite && (-1...1).contains($0) }) ?? true, threshold.isFinite, (0...1).contains(threshold) else { throw VoiceLabError.invalidInput }
         let expectedTokens = tokens(expected)
-        let recognizedTokens = recognized.filter { !VoiceLabAudioTags.isScribeEvent($0) }.flatMap(tokens)
+        let recognizedTokens = VoiceLabAudioTags.filterScribeEvents(recognized: recognized, expected: expectedTokens,
+            hasTags: !audioTags.isEmpty || !VoiceLabAudioTags.tagRanges(expected).isEmpty)
         let ratio = try transcriptRatio(expected: expectedTokens, recognized: recognizedTokens)
         let peak = try VoiceLabLoudness.samplePeakDbfs(mixed)
         guard peak.isFinite else { throw VoiceLabError.invalidAudio }
