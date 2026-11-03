@@ -55,6 +55,8 @@ public struct VoiceLabFittedAudio: Sendable {
 }
 
 public enum VoiceLabSilenceFit {
+    /// The longest fade on a take edge that is also its file's edge and does not end on silence (5 ms).
+    public static let takeEdgeFade = 0.005
     public static func prepare(snapshot: PreparedVoiceLabAsset, paidAsset: VoiceLabAsset, fit: VoiceLabFitResult,
                                window: VoiceLabWindow, sourceSampleRate: Int) throws -> VoiceLabFittedAudio {
         guard snapshot.assetId == paidAsset.id, snapshot.sha256 == paidAsset.sha256,
@@ -87,7 +89,14 @@ public enum VoiceLabSilenceFit {
         // outside its trim (§8.7 item 2), so a handle the asset cannot hold is written as silence in a derived asset.
         let missingBefore = plan.incoming.padFrames > 0 ? 0 : max(0, incoming - plan.trimStartFrame)
         let missingAfter = plan.outgoing.padFrames > 0 ? 0 : max(0, plan.trimEndFrame + outgoing - original.frames)
-        let derived = !plan.edits.isEmpty || plan.incoming.padFrames > 0 || plan.outgoing.padFrames > 0 || missingBefore > 0 || missingAfter > 0
+        // A take whose file starts or ends on a non-zero sample (Eleven v3 stops mid-word) would click against the silence
+        // beside it. The bit-exact rule protects source frames; generated audio may be shaped, so that edge of the take
+        // gets an equal-power fade of at most TAKE_EDGE_FADE before the seam fade (§8.9.3).
+        func sounds(_ frame: Int64) -> Bool { (0..<original.channels).contains { original.sample(frame: frame, channel: $0) != 0 } }
+        let fadeIn = plan.trimStartFrame == 0 && sounds(0)
+        let fadeOut = plan.trimEndFrame == original.frames && sounds(original.frames - 1)
+        let derived = !plan.edits.isEmpty || plan.incoming.padFrames > 0 || plan.outgoing.padFrames > 0 || missingBefore > 0 || missingAfter > 0 ||
+            fadeIn || fadeOut
         if !derived {
             guard plan.trimStartFrame >= incoming, plan.trimEndFrame + outgoing <= original.frames,
                   plan.trimEndFrame - plan.trimStartFrame == plan.outputFrames else { throw VoiceLabError.invalidAudio }
@@ -139,6 +148,22 @@ public enum VoiceLabSilenceFit {
                     let mixed = left + right
                     guard mixed.isFinite, !original.floating || original.bits != 32 || Float(mixed).isFinite else { throw VoiceLabError.invalidAudio }
                     wave.setSample(mixed, frame: join.output + local, channel: channel)
+                }
+            }
+        }
+        let first = incoming + plan.incoming.padFrames, last = incoming + plan.outputFrames - plan.outgoing.padFrames
+        let edge = min(Int64(EditingPrimitives.jsRound(takeEdgeFade * Double(original.rate))), (last - first) / 2)
+        if edge > 0 && (fadeIn || fadeOut) {
+            for offset in 0..<edge {
+                for channel in 0..<original.channels {
+                    if fadeIn {
+                        let frame = first + offset
+                        wave.setSample(wave.sample(frame: frame, channel: channel) * sin(.pi / 2 * Double(offset) / Double(edge)), frame: frame, channel: channel)
+                    }
+                    if fadeOut {
+                        let frame = last - edge + offset
+                        wave.setSample(wave.sample(frame: frame, channel: channel) * cos(.pi / 2 * Double(offset + 1) / Double(edge)), frame: frame, channel: channel)
+                    }
                 }
             }
         }

@@ -655,7 +655,21 @@ struct VoiceLabTakeRunTests {
         #expect(fitted.isDerived && fitted.trimStartFrame == 144 && fitted.wave.frames == 144 + plan.outputFrames + 144)
         #expect((0..<144).allSatisfy { fitted.wave.sample(frame: Int64($0), channel: 0) == 0 })
         #expect((0..<144).allSatisfy { fitted.wave.sample(frame: fitted.wave.frames - 1 - Int64($0), channel: 0) == 0 })
+        // The take's file starts on a zero sample, so its start is the paid audio unchanged.
         #expect(fitted.wave.sample(frame: 145, channel: 0) != 0)
+        // It ends on a non-zero sample, as Eleven v3 stops mid-word: the take's own last 5 ms fade to 0 before the silent
+        // handle, so no step at the edge is larger than the 100 Hz tone's own largest step (§8.9.3).
+        let end = fitted.trimEndFrame, edge = Int64(120)
+        #expect(fitted.wave.sample(frame: end - 1, channel: 0) == 0 && fitted.wave.sample(frame: end, channel: 0) == 0)
+        let slope = 2 * Double.pi * 100 / 24_000 * 3_200 / 32_768 + 1.0 / 32_768
+        #expect(((end - edge)...end).allSatisfy { abs(fitted.wave.sample(frame: $0, channel: 0) - fitted.wave.sample(frame: $0 - 1, channel: 0)) <= slope })
+        #expect(abs(fitted.wave.sample(frame: end - edge - 1, channel: 0)) > 0.001)
+        // The source kept around the window is untouched: the mixed lead and tail outside the seam fades are its frames.
+        let audio = scratch.audio, lead = audio.patchRange.lowerBound, half = 144
+        let source = try #require(fixture.input.source.samples((48_000 - lead)..<(48_000 + 96_000 + 12_000)))
+        #expect(Array(audio.mixed[0..<(audio.seams[0] - half)]) == Array(source[source.startIndex..<(source.startIndex + audio.seams[0] - half)]))
+        let tailCount = audio.mixed.count - (audio.seams[1] + half)
+        #expect(Array(audio.mixed.suffix(tailCount)) == Array(source.suffix(tailCount)))
     }
     /// Live 2026-11-03: a 1.36 s Eleven v3 take timed to its last frame. `ceil(1.36 × 24,000)` is 32,641 in binary64, one
     /// frame past the asset, and the fit planner refused the word timing (invalidAlignment) until times were clamped.
