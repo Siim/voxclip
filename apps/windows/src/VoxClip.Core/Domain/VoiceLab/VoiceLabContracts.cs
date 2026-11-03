@@ -62,6 +62,10 @@ public sealed record VoiceLabPreparedAction
 public sealed class VoiceLabRequestAcceptance
 {
     private int accepted;
+    private VoiceLabAudioResult? unalignedAudio;
+    /// <summary>Validated paid PCM without timestamps, retained even when alignment or dialogue segments fail. Never selectable.</summary>
+    public VoiceLabAudioResult? UnalignedAudio => System.Threading.Volatile.Read(ref unalignedAudio);
+    internal void Preserve(VoiceLabAudioResult audio) => System.Threading.Volatile.Write(ref unalignedAudio, audio);
     public bool Accepted => System.Threading.Volatile.Read(ref accepted) != 0;
     internal void MarkAccepted() => System.Threading.Interlocked.Exchange(ref accepted, 1);
 }

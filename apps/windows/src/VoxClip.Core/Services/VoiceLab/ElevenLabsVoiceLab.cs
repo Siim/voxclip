@@ -441,10 +441,12 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         try { pcm = Convert.FromBase64String(audio.GetString()!); }
         catch (FormatException) { throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio); }
         ValidatePcm(pcm);
+        var receipt = Receipt(path, modelId, voice.Id, id, reply);
+        acceptance?.Preserve(new(pcm, 24000, null, receipt));
         var duration = pcm.Length / 48000.0;
         var timing = Alignment(json.RootElement, text, duration);
         if (model.SpeechRoute == VoiceLabSpeechRoute.TextToDialogue) ValidateVoiceSegments(json.RootElement, voice.Id, text, duration);
-        return new(pcm, 24000, timing, Receipt(path, modelId, voice.Id, id, reply));
+        return new(pcm, 24000, timing, receipt);
     }
 
     public async Task<VoiceLabAudioResult> ConvertAsync(byte[] sourceWav, string modelId, VoiceLabVoiceChoice voice,

@@ -7762,9 +7762,12 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabReplacement :: method public set_Fir
 member VoxClip.Core.Domain.VoiceLab.VoiceLabReplacement :: method public set_LastWordId(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabReplacement :: method public set_Start(double)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRequestAcceptance :: field private accepted
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRequestAcceptance :: field private unalignedAudio
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRequestAcceptance :: method internal MarkAccepted()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRequestAcceptance :: method internal Preserve(VoxClip.Core.Domain.VoiceLab.VoiceLabAudioResult)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRequestAcceptance :: method public .ctor()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRequestAcceptance :: method public get_Accepted()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRequestAcceptance :: method public get_UnalignedAudio()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRetainedFile :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabRetainedFile)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRetainedFile :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRetainedFile :: method private get_EqualityContract()

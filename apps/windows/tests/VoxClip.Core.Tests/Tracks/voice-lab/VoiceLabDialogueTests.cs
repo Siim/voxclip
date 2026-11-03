@@ -43,12 +43,12 @@ public sealed class VoiceLabDialogueTests
         await client.DiscoverVoicesAsync(Ct);
     }
     private static Task<VoiceLabAudioResult> Speak(ElevenLabsVoiceLab client, string text = "Hi", string model = "eleven_v4",
-        VoiceLabSpeechOptions? options = null, VoiceLabAuthorization? approval = null, Guid? requestId = null)
+        VoiceLabSpeechOptions? options = null, VoiceLabAuthorization? approval = null, Guid? requestId = null, VoiceLabRequestAcceptance? acceptance = null)
     {
         var id = requestId ?? Guid.NewGuid();
         options ??= new(0);
         return client.SynthesizeAsync(text, model, Voice, "en", options,
-            approval ?? client.Approve(client.PrepareSynthesis(text, model, Voice, "en", options, id), true), Ct, id);
+            approval ?? client.Approve(client.PrepareSynthesis(text, model, Voice, "en", options, id), true), Ct, id, acceptance);
     }
     [Fact]
     public void EverySharedCapabilityRouteIsReplayedAndDefaultStaysMultilingualV2()
@@ -126,6 +126,35 @@ public sealed class VoiceLabDialogueTests
         else
             Assert.Equal(Enum.Parse<VoiceLabErrorKind>(expected, true), (await Assert.ThrowsAsync<VoiceLabException>(() => Speak(client, text))).Kind);
         Assert.Single(handler.Requests);
+    }
+    [Theory]
+    [InlineData("eleven_v4", "alignment_null", VoiceLabErrorKind.InvalidAlignment, true)]
+    [InlineData("eleven_v4", "segments_wrong_voice", VoiceLabErrorKind.MalformedResponse, true)]
+    [InlineData("eleven_v3", "alignment_null", VoiceLabErrorKind.InvalidAlignment, true)]
+    [InlineData("eleven_v4", "alignment_null", VoiceLabErrorKind.InvalidAudio, false)]
+    [InlineData("eleven_v3", "alignment_null", VoiceLabErrorKind.InvalidAudio, false)]
+    public async Task FailedSpeechSurfacesValidatedPcmWithoutTimestamps(string model, string name, VoiceLabErrorKind kind, bool validPcm)
+    {
+        var root = Cases();
+        var response = root["responses"]!.AsArray().Single(row => row!["case"]!.GetValue<string>() == name)!["response"]!.DeepClone();
+        if (!validPcm) response["audio_base64"] = Convert.ToBase64String(new byte[1]);
+        using var handler = new Handler(root, response);
+        using var client = Client(handler);
+        await Discover(client);
+        var acceptance = new VoiceLabRequestAcceptance();
+        var id = Guid.NewGuid();
+        Assert.Equal(kind, (await Assert.ThrowsAsync<VoiceLabException>(() => Speak(client, model: model, requestId: id, acceptance: acceptance))).Kind);
+        Assert.True(acceptance.Accepted);
+        Assert.Single(handler.Requests);
+        if (!validPcm) { Assert.Null(acceptance.UnalignedAudio); return; }
+        var raw = acceptance.UnalignedAudio;
+        Assert.NotNull(raw);
+        Assert.Null(raw.Alignment);
+        Assert.Equal(Convert.FromBase64String(response["audio_base64"]!.GetValue<string>()), raw.Pcm);
+        Assert.Equal(24000, raw.SampleRate);
+        Assert.Equal(id, raw.Receipt.ActionId);
+        Assert.Equal(model, raw.Receipt.ModelId);
+        Assert.Equal("voice123", raw.Receipt.VoiceId);
     }
     [Fact]
     public async Task SpeechAndDialogueQuotesCannotAuthorizeTheOtherRoute()

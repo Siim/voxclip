@@ -1818,6 +1818,7 @@ member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method private Checkpoint(strin
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method private End(System.Exception)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method private Fatal(System.Exception)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method private PerformAsync(System.Func`1<VoxClip.Media.VoiceLab.VoiceLabTakeRun+Pending>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabAuthorization>,System.Func`2<System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow>,System.Threading.Tasks.Task>,System.Func`1<bool>,System.Func`1<System.Threading.Tasks.Task>,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method private PreservePaidAudioAsync(VoxClip.Core.Domain.VoiceLab.VoiceLabAudioResult,System.Guid)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method private ProductionChecks(VoxClip.Core.Services.VoiceLab.VoiceConsentStore,VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method private StopAsync(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunEnd,bool)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method private ValidateAsync(VoxClip.Media.VoiceLab.VoiceLabTakeRun+Pending,System.Threading.CancellationToken)

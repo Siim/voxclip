@@ -233,9 +233,7 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                 await launchCleanup().ConfigureAwait(false);
                 value = current();
                 if (Suspension is { } afterSynthesis) await afterSynthesis("synthesis").ConfigureAwait(false);
-                var paid = await Task.Run(() => VoiceLabAssetStore.Write(generated.Pcm, generated.SampleRate, storage.ProjectId,
-                    Guid.NewGuid().ToString("D"), storage.PaidRoot, DateTimeOffset.UtcNow), CancellationToken.None).ConfigureAwait(false);
-                lock (sync) paidAssets[take.Synthesis.Review.RequestId] = paid;
+                var paid = await PreservePaidAudioAsync(generated, take.Synthesis.Review.RequestId).ConfigureAwait(false);
                 await ValidateAsync(value, ct).ConfigureAwait(false);
                 var analysis = VoiceLabTakeProcessing.Process(generated, value.Input, value.Preflight);
                 var snapshot = await VoiceLabAssets.PreparePaidAsync(paid, storage.ProjectId, storage.PaidRoot, storage.ScratchRoot, ct).ConfigureAwait(false);
@@ -304,6 +302,13 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                     if (error is VoiceConsentException or VoiceLabRunInvalidatedException) return new(rows.AsReadOnly(), End(error));
                     throw;
                 }
+                if (generated is null && synthesisAccepted.UnalignedAudio is { } decoded)
+                {
+                    // Preserve paid PCM independently of cancellation; failed metadata never enters QA or publication.
+                    generated = decoded;
+                    try { await PreservePaidAudioAsync(decoded, take.Synthesis.Review.RequestId).ConfigureAwait(false); }
+                    catch (VoiceLabAssetStoreException) { /* Keep the original provider validation failure. */ }
+                }
                 value = current();
                 HashSet<Guid> accepted = [];
                 if (synthesisAccepted.Accepted) accepted.Add(take.Synthesis.Review.RequestId);
@@ -317,6 +322,13 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
             }
         }
         return new(rows.AsReadOnly(), VoiceLabTakeRunEnd.Completed);
+    }
+    private async Task<VoiceLabAsset> PreservePaidAudioAsync(VoiceLabAudioResult result, Guid requestId)
+    {
+        var paid = await Task.Run(() => VoiceLabAssetStore.Write(result.Pcm, result.SampleRate, storage.ProjectId,
+            Guid.NewGuid().ToString("D"), storage.PaidRoot, DateTimeOffset.UtcNow), CancellationToken.None).ConfigureAwait(false);
+        lock (sync) paidAssets[requestId] = paid;
+        return paid;
     }
     private async Task ValidateAsync(Pending value, CancellationToken ct)
     {

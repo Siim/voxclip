@@ -138,7 +138,7 @@ public sealed partial class VoiceLabTakeRunTests
         var result = await runner.ExecuteAsync(batch, 0, ct: Token);
         var progress = new VoiceLabTakeBatchProgress(batch); progress.Finish(0, result);
         Assert.Equal(VoiceLabTakeRunEnd.Fatal, result.End); Assert.Null(progress.Window);
-        Assert.Null(result.Rows[0].Receipt); Assert.Single(progress.Sent); Assert.Equal(5, progress.Discarded.Count);
+        Assert.NotNull(result.Rows[0].Receipt); Assert.Single(progress.Sent); Assert.Equal(5, progress.Discarded.Count);
         var total = await fixture.Ledger.TotalAsync("elevenlabs", DateTimeOffset.UnixEpoch, Token);
         Assert.Equal(progress.SentEstimate.Usd, total!.Usd);
     }
@@ -585,6 +585,8 @@ public sealed partial class VoiceLabTakeRunTests
         internal int Mismatches;
         internal double Duration = 4;
         internal bool MissingAlignment;
+        internal JsonNode? SynthesisResponse;
+        internal string SynthesisText = "Hello";
         internal Action? OnTts;
         private static HttpResponseMessage Json(object value, int status = 200) => new((HttpStatusCode)status) { Content = new StringContent(JsonSerializer.Serialize(value), Encoding.UTF8, "application/json") };
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
@@ -601,7 +603,7 @@ public sealed partial class VoiceLabTakeRunTests
                 Assert.Equal(dialogue ? "/v1/text-to-dialogue/with-timestamps" : "/v1/text-to-speech/fixtureOwnVoice/with-timestamps", path);
                 if (dialogue)
                 {
-                    Assert.Equal("Hello", body["inputs"]![0]!["text"]!.GetValue<string>());
+                    Assert.Equal(SynthesisText, body["inputs"]![0]!["text"]!.GetValue<string>());
                     Assert.Equal("fixtureOwnVoice", body["inputs"]![0]!["voice_id"]!.GetValue<string>());
                     Assert.Null(body["future_text"]);
                 }
@@ -610,6 +612,7 @@ public sealed partial class VoiceLabTakeRunTests
                 Assert.Null(body["previous_text"]);
                 Assert.Null(body["next_text"]);
                 if (Seeds.Count == 1 && FirstStatus != 200) return Json(new { }, FirstStatus);
+                if (SynthesisResponse is { } response) return Json(response);
                 var pcm = new byte[(int)(Duration * 24000) * 2];
                 for (var index = 0; index < pcm.Length / 2; index++) BinaryPrimitives.WriteInt16LittleEndian(pcm.AsSpan(index * 2), (short)Math.Round(Math.Sin(2 * Math.PI * 100 * index / 24000) * 3200));
                 var characters = "Hello".Select(character => character.ToString()).ToArray();
