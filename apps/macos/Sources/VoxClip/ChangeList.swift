@@ -272,6 +272,7 @@ extension RewriteSession {
                 return PanelFooter(note: "Exports show AI MODIFIED on the video. The post disclosure is optional.",
                     primary: PanelAction(id: "useTakes", title: title) { [weak self] in self?.useTake() })
             }
+            if let blocker = takePlan.acceptanceBlocker { return PanelFooter(note: blocker + " " + takeSpendLine) }
             if takePlan.spent.units > 0 { return PanelFooter(note: "Left out until a take fits. " + takeSpendLine) }
             if let action = pricedTakeAction() { return PanelFooter(note: takeSendLine, link: keepAll, primary: action) }
             return PanelFooter(note: takePlan.problem.isEmpty ? "Prepare a fresh price to make takes." : takePlan.problem,

@@ -281,7 +281,7 @@ extension ClipTakePlan.Phrase {
                         .buttonStyle(.plain).frame(width: 24, height: 24)
                         .background(phrase.selectedID == take.id ? DesignValues.color("bg.selectedRow") : .clear, in: .rect(cornerRadius: 4))
                         .accessibilityLabel("Phrase \(phrase.id + 1), take \(take.number), \(take.fits ? "fits" : "timing change required")")
-                        .help(take.fits ? "Select this checked take. It fits the phrase." : "This take passed checks but does not fit. Changed-duration video is not available in this build.")
+                        .help(take.fits ? "Select this checked take. It fits the phrase." : "This take passed checks but changes the video's duration. Choose a video duration below.")
                         .accessibilityAddTraits(phrase.selectedID == take.id ? [.isButton, .isSelected] : .isButton)
                     }
                 }

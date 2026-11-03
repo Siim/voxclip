@@ -157,6 +157,25 @@ import VoxClipMedia
               }) else { return false }
         return !selectedPhrases.contains(where: { $0.videoChoice == .retimed }) || preparedVideoSelection?.choices == videoChoices
     }
+    /// The next step that keeps selected takes from being used (design.md, T3 footer), nil when nothing is selected or
+    /// they can be used. "Left out until a take fits." belongs to a phrase none of whose takes passed, not to a missing
+    /// duration choice.
+    var acceptanceBlocker: String? {
+        guard stillCurrent, !generating, !preparing, !publishing, !selectedPhrases.isEmpty, !canAccept else { return nil }
+        let missing = selectedPhrases.filter { phrase in
+            phrase.selected?.row.requiresJoinAdvisoryAcceptance == false &&
+                phrase.videoChoice.map { videoAvailability(phrase: phrase.id).allows($0) } != true
+        }.map { $0.id + 1 }
+        if !missing.isEmpty { return "Choose the video duration for \(Self.phraseList(missing))." }
+        if preparingVideo { return "Preparing the matched video…" }
+        return problem.isEmpty ? nil : problem
+    }
+    /// "phrase 2", "phrases 2 and 4", "phrases 1, 2 and 4".
+    static func phraseList(_ numbers: [Int]) -> String {
+        let names = numbers.map(String.init)
+        guard let last = names.last else { return "" }
+        return names.count == 1 ? "phrase \(last)" : "phrases \(names.dropLast().joined(separator: ", ")) and \(last)"
+    }
 
     func videoAvailability(phrase: Int) -> VideoDurationChoiceAvailability {
         let row = phrases.indices.contains(phrase) ? phrases[phrase].selected?.row : nil
