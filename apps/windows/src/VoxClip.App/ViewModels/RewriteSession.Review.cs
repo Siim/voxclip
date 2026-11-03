@@ -30,23 +30,17 @@ internal sealed partial class RewriteSession
             Review.VoiceHunks.FirstOrDefault(hunk => hunk.Ordinals.Contains(ordinal) && hunk.Fit is { Fits: false }) is not { } phrase) return false;
         InvalidateProposal();
         priceOverrides.UnionWith(phrase.Ordinals);
-        RefreshReview();
+        RefreshReview(preserveGenerations: true);
         InvalidateGenerationInputs();
         Changed?.Invoke(this, EventArgs.Empty);
         return true;
     }
-    internal async Task<bool> PrepareShorterAsync(int? ordinal = null, bool askAgain = false)
+    internal async Task<bool> PrepareShorterAsync(int? ordinal = null)
     {
         if (!ReviewIsCurrent || Review is null) return false;
         var hunks = BlockedVoiceHunks.Where(hunk => hunk.Fit is { TooLong: true }).Concat(ordinal is { } number
             ? Review.VoiceHunks.Where(hunk => hunk.Ordinals.Contains(number)) : []).Distinct().ToArray();
-        if (askAgain || ordinal is { } requested && hunks.Any(hunk => hunk.Ordinals.Contains(requested) && hunk.Fit is { Fits: false, TooLong: false }))
-        {
-            await StopCandidatesAsync();
-            if (!ReviewIsCurrent) return false;
-            await SetInstructionAsync(Instruction);
-            return Prepared is not null;
-        }
+        if (ordinal is { } requested && hunks.Any(hunk => hunk.Ordinals.Contains(requested) && hunk.Fit is { Fits: false, TooLong: false })) return false;
         var feedback = hunks.Where(hunk => hunk.Fit is not null).Select(hunk => new VoiceRewriteTimingFeedback(
             string.Join(" ", hunk.Hunk.SourceWordIds.Select(id => Transcript.First(word => word.Id == id).Text)),
             hunk.PatchText!, hunk.Fit!.EstimateSeconds, hunk.Fit.SlotSeconds)).ToArray();
@@ -74,7 +68,8 @@ internal sealed partial class RewriteSession
     internal string ReviewIdentity => System.Text.Json.JsonSerializer.Serialize(new
     {
         Project.Id, Scope, Instruction, NewWords, Diff = Review?.Diff, Metadata = scopeHunks,
-        States = changeStates.OrderBy(pair => pair.Key).ToArray(), Overrides = priceOverrides.Order().ToArray(), Local = LocalOperations()
+        States = changeStates.OrderBy(pair => pair.Key).ToArray(), Overrides = priceOverrides.Order().ToArray(),
+        Sentences = sentenceReplacements.OrderBy(pair => pair.Key).ToArray(), Local = LocalOperations()
     });
 
     internal bool SetChangeIncluded(int ordinal, bool included)

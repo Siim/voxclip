@@ -16,6 +16,7 @@ internal sealed partial class RewritePanel
     private readonly RadioButtons videoChoices = new() { Header = "How the video keeps up", SelectedIndex = -1, MaxColumns = 1 };
     private readonly TextBlock retimeCopy = Ui.Text("");
     private readonly StackPanel takeRecovery = Ui.Stack(6);
+    private readonly TextBlock nextPace = Ui.Text("");
     private readonly Dictionary<Guid, (Button Play, Button? Reject)> takeButtons = [];
     private readonly Dictionary<Guid, Button> advisoryButtons = [];
     private IReadOnlyList<VoiceLabTakeRow> renderedRows = [];
@@ -43,6 +44,7 @@ internal sealed partial class RewritePanel
             RenderTakes(generation);
         };
         generationBody.Children.Add(takeList);
+        generationBody.Children.Add(nextPace);
         AutomationProperties.SetAutomationId(videoChoices, "Rewrite.VideoChoice");
         videoChoices.Items.Add(new RadioButton { Content = new TextBlock { Text = "Lip sync", TextWrapping = TextWrapping.Wrap }, IsEnabled = false });
         videoChoices.Items.Add(new RadioButton { Content = new TextBlock { Text = "Retimed source video", TextWrapping = TextWrapping.Wrap }, IsEnabled = false });
@@ -59,7 +61,9 @@ internal sealed partial class RewritePanel
         shorter.Click += async (_, _) =>
         {
             if (session.PricedVoiceHunks.ElementAtOrDefault(session.ActiveWindow) is not { } hunk || session.Review is null) return;
-            await AskForShorterAsync(hunk.Ordinals[0], session.Generation?.Selected?.Audio?.Fit is VoiceLabFitResult.ChangedDuration { ResidualSeconds: < 0 });
+            if (session.Generation?.Selected?.Audio?.Fit is VoiceLabFitResult.ChangedDuration { ResidualSeconds: < 0 })
+                session.ReviewSurroundingSentence(hunk.Ordinals[0]);
+            else await AskForShorterAsync(hunk.Ordinals[0]);
         };
         var keep = Ui.Button("Keep original words", () =>
         {
@@ -171,7 +175,9 @@ internal sealed partial class RewritePanel
         takeRecovery.Visibility = generation.NeedsShorterWording ? Visibility.Visible : Visibility.Collapsed;
         foreach (var button in takeRecovery.Children.OfType<Button>()) button.IsEnabled = session.ReviewIsCurrent && !requestingApproval;
         if (takeRecovery.Children.OfType<Button>().FirstOrDefault() is { } retry)
-            retry.Content = generation.Selected?.Audio?.Fit is VoiceLabFitResult.ChangedDuration { ResidualSeconds: < 0 } ? "Ask again" : "Ask for shorter";
+            retry.Content = generation.Selected?.Audio?.Fit is VoiceLabFitResult.ChangedDuration { ResidualSeconds: < 0 } ? "Use surrounding sentence" : "Ask for shorter";
+        nextPace.Text = generation.NextPace is { } pace && pace != 1 ? FormattableString.Invariant($"Next take at {pace:F2}× pace") : "";
+        nextPace.Visibility = nextPace.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         lengthCopy.Text = generation.LengthCopy; retimeCopy.Text = generation.RetimeCopy;
         videoChoices.SelectedIndex = generation.VideoChoice is null ? -1 : 1;
         updating = false;

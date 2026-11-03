@@ -16,6 +16,7 @@ internal sealed partial class RewritePanel : Grid
     private readonly DirectorTask task;
     private readonly TextBlock taskStatus = Ui.Text("");
     private readonly TextBlock monthlySpend = Ui.Text("", "HelperText");
+    private readonly TextBlock takeSend = Ui.Text("");
     private readonly Func<bool> correctionOpen;
     private readonly TextBox instruction = new() { Header = "What should change?", AcceptsReturn = false, MaxLength = 1000 };
     private readonly TextBox words = new() { AcceptsReturn = false, TextWrapping = TextWrapping.Wrap };
@@ -132,7 +133,7 @@ internal sealed partial class RewritePanel : Grid
         Grid.SetColumn(changeSummary, 1);
         newHeader.Children.Add(changeSummary);
         body.Children.Add(newHeader);
-        body.Children.Add(words); body.Children.Add(review); body.Children.Add(problem);
+        body.Children.Add(words); body.Children.Add(review); body.Children.Add(sentenceReview); body.Children.Add(problem);
         BuildGeneration();
         body.Children.Add(generationBody);
         var scroll = new ScrollViewer { Content = body, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
@@ -380,12 +381,14 @@ internal sealed partial class RewritePanel : Grid
         generationBody.Children.Add(noVoice); generationBody.Children.Add(languageUnavailable);
         generationBody.Children.Add(Ui.Text("Takes", "BodyStrongTextBlockStyle"));
         BuildTakes();
-        generationBody.Children.Add(generate); generationBody.Children.Add(Small(RewriteGeneration.SendLine));
+        generationBody.Children.Add(generate); generationBody.Children.Add(takeSend);
         generationBody.Children.Add(generationBusy); generationBody.Children.Add(generationProgress);
         generationBody.Children.Add(cancelGeneration); generationBody.Children.Add(generationError); generationBody.Children.Add(nonePassed);
     }
     private void RenderGeneration()
     {
+        RenderSentenceReview();
+        takeSend.Text = session.TakeSendLine;
         monthlySpend.Text = WorkflowSpendCache.Monthly is { } total
             ? "ElevenLabs $" + total.Usd.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) + " estimated this month" +
                 (total.UnknownCount > 0 ? " · some charges unpriced" : "") : "ElevenLabs monthly spend unavailable";
@@ -402,7 +405,7 @@ internal sealed partial class RewritePanel : Grid
         windowPicker.SelectedIndex = session.ActiveWindow;
         windowPicker.IsEnabled = !session.IsGeneratingBatch;
         voice.IsEnabled = !session.IsGeneratingBatch;
-        speechModel.IsEnabled = !session.IsGeneratingBatch;
+        speechModel.IsEnabled = !session.IsGeneratingBatch && !generation.IsPreparing && !generation.IsRunning;
         if (!ReferenceEquals(voice.ItemsSource, generation.Voices)) voice.ItemsSource = generation.Voices;
         if (!ReferenceEquals(speechModel.ItemsSource, generation.Models)) speechModel.ItemsSource = generation.Models;
         voice.SelectedValue = generation.VoiceId; speechModel.SelectedValue = generation.ModelId;

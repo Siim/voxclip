@@ -117,6 +117,7 @@ internal sealed partial class RewriteGeneration
         if (takes is not null) await takes.Audition.TakeChangedAsync(id);
         if (closed || version != selectionRevision || !current() || !Rows.Any(row => row.Id == id)) return false;
         explicitSelection = id; core.SelectTake(id); VideoChoice = null; Phase = ReviewPhase(); Notify();
+        if (pendingInput is { } input && RetryPace(input) != input.Pace) await InputsChangedAsync(preserveReview: true);
         return true;
     }
     internal async Task<bool> UseTakeAnywayAsync(Guid id)
@@ -245,7 +246,8 @@ internal sealed partial class RewriteGeneration
             {
                 var (published, record) = await takes.Publish(row.Id, date, lifetime.Token);
                 if (!Current()) return null;
-                var candidate = VoiceLabRecipeBuilder.Candidate(row, input, published, record, date, row.Id == selected.Id ? VideoChoice : null);
+                var rowInput = input with { ModelId = row.Receipt?.ModelId ?? input.ModelId, Pace = row.Receipt?.Pace ?? row.Quote?.Synthesis.Review.Pace ?? 1 };
+                var candidate = VoiceLabRecipeBuilder.Candidate(row, rowInput, published, record, date, row.Id == selected.Id ? VideoChoice : null);
                 if (row.Id == selected.Id) selectedIndex = candidates.Count;
                 candidates.Add(candidate);
                 foreach (var asset in published.Assets)
