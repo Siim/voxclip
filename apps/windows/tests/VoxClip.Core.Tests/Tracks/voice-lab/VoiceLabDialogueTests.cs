@@ -74,6 +74,38 @@ public sealed class VoiceLabDialogueTests
         Assert.Null(VoiceLabModel.PatchDefault([]));
     }
     [Fact]
+    public void PatchDefaultPrefersV3OverDialogueWhenNeitherModelTakesContext()
+    {
+        var v4 = new VoiceLabModel("eleven_v4", "Dialogue", ["en"], true, false, null, null);
+        var v3 = new VoiceLabModel("eleven_v3", "TTS", ["en"], true, false, null, null);
+        Assert.Equal("eleven_v3", VoiceLabModel.PatchDefault([v4, v3])?.Id);
+        Assert.Equal("eleven_v3", VoiceLabModel.PatchDefault([v3, v4])?.Id);
+        Assert.Equal("eleven_v4", VoiceLabModel.PatchDefault([v4])?.Id);
+    }
+    [Theory]
+    [InlineData("eleven_v4")]
+    [InlineData("eleven_v3")]
+    public async Task OwnVoiceQuoteCannotUseAnotherClonesConsent(string model)
+    {
+        var root = Cases();
+        root["discovery"]!["voices"]!["voices"] = new JsonArray(new[] { "cloneA", "cloneB" }.Select(id => (JsonNode)new JsonObject
+        { ["voice_id"] = id, ["name"] = id, ["category"] = "cloned", ["is_owner"] = true }).ToArray());
+        using var handler = new Handler(root, root["responses"]![0]!["response"]!);
+        using var client = Client(handler);
+        await Discover(client);
+        var first = new OwnVoicePolicy("recordA", "cloneA", true, true, true, true, true);
+        var other = new OwnVoicePolicy("recordB", "cloneB", true, true, true, true, true);
+        var id = Guid.NewGuid();
+        var quote = client.PrepareSynthesis("Hi", model, VoiceLabVoiceChoice.Own("cloneA", first), "en", new(0), id);
+        Assert.Equal("cloneA", quote.Review.VoiceId);
+        Assert.Equal(first.RecordId, quote.Review.ConsentRecordId);
+        var approval = client.Approve(quote, true);
+        foreach (var voice in new[] { "cloneA", "cloneB" })
+            Assert.Equal(VoiceLabErrorKind.ConsentRequired, (await Assert.ThrowsAsync<VoiceLabException>(() => client.SynthesizeAsync(
+                "Hi", model, VoiceLabVoiceChoice.Own(voice, other), "en", new(0), approval, Ct, id))).Kind);
+        Assert.Empty(handler.Requests);
+    }
+    [Fact]
     public async Task SharedDialogueRequestMatchesEveryByte()
     {
         var root = Cases();
@@ -110,7 +142,7 @@ public sealed class VoiceLabDialogueTests
     public async Task SharedDialogueResponses(string name)
     {
         var root = Cases();
-        Assert.Equal(21, root["responses"]!.AsArray().Count);
+        Assert.Equal(25, root["responses"]!.AsArray().Count);
         var row = root["responses"]!.AsArray().Single(row => row!["case"]!.GetValue<string>() == name)!;
         using var handler = new Handler(root, row["response"]!);
         using var client = Client(handler);

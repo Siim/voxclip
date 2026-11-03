@@ -1,11 +1,17 @@
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.VoiceLab;
+using VoxClip.Core.Services.Speech;
 
 namespace VoxClip.Core.Tests.Tracks.WinAi;
 
 /// <summary>Short test calls still carry the quote's explicit request identity through dispatch.</summary>
 internal static class VoiceLabTestCalls
 {
+    internal static VoiceLabPreparedAction ConsentUseQuote(VoiceConsentRecord record, string model = "eleven_v3") =>
+        new VoiceLabActionGate().Prepare("synthetic-use", new("elevenlabs", VoiceLabOperation.TextToSpeech, 2, "character", null, null, "fixture"),
+            new(VoiceLabOperation.TextToSpeech, Guid.NewGuid(), "elevenlabs", ElevenLabsRegion.Default,
+                model == "eleven_v4" ? "/v1/text-to-dialogue/with-timestamps?output_format=pcm_24000" : "/v1/text-to-speech/" + record.VoiceId + "/with-timestamps?output_format=pcm_24000",
+                model, record.VoiceId, new(VoiceLabLanguageModeKind.Explicit, "en"), null, record.RecordId));
     /// <summary>The seed short synthesis calls send, without context.</summary>
     internal static readonly VoiceLabSpeechOptions Speech = new(7);
     internal static VoiceLabPreparedAction PrepareSynthesis(this ElevenLabsVoiceLab service, string text, string model,

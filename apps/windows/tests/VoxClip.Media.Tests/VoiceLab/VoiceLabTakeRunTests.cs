@@ -612,7 +612,12 @@ public sealed partial class VoiceLabTakeRunTests
                 Assert.Null(body["previous_text"]);
                 Assert.Null(body["next_text"]);
                 if (Seeds.Count == 1 && FirstStatus != 200) return Json(new { }, FirstStatus);
-                if (SynthesisResponse is { } response) return Json(response);
+                if (SynthesisResponse is { } response)
+                {
+                    var reply = Json(response);
+                    reply.Headers.Add("request-id", "paid-speech-request");
+                    return reply;
+                }
                 var pcm = new byte[(int)(Duration * 24000) * 2];
                 for (var index = 0; index < pcm.Length / 2; index++) BinaryPrimitives.WriteInt16LittleEndian(pcm.AsSpan(index * 2), (short)Math.Round(Math.Sin(2 * Math.PI * 100 * index / 24000) * 3200));
                 var characters = "Hello".Select(character => character.ToString()).ToArray();
@@ -668,13 +673,13 @@ public sealed partial class VoiceLabTakeRunTests
             Store.SaveStatement(wav, Record.RecordId); Store.Save(Record);
             Ledger = new(locations);
             Client = ElevenLabsVoiceLab.ForTesting(Keys, Remote, ElevenLabsRegion.Default, clock: Clock, spend: Ledger);
-            var checks = Checks = new VoiceLabTakeRunChecks(_ => { }, (record, speech, request, binding, model, ct) =>
+            var checks = Checks = new VoiceLabTakeRunChecks(_ => { }, (record, speech, quote, binding, model, ct) =>
             {
                 ct.ThrowIfCancellationRequested(); Store.ValidateUse(record);
                 lock (Speech) Speech.Add(speech);
                 return Task.FromResult(new OwnVoicePolicy(record.RecordId, record.VoiceId, true, true, true, true, true)
                 {
-                    DispatchPermit = new(Store, record.RecordId, request, () => Store.ValidateUse(record), binding),
+                    DispatchPermit = new(Store, record.RecordId, quote.Review.RequestId, () => Store.ValidateUse(record), binding),
                     ValidateDispatch = _ => Task.CompletedTask, ModelRevision = model
                 });
             }, (_, _, ct) =>

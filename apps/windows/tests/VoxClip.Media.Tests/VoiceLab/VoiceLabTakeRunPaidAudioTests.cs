@@ -69,6 +69,7 @@ public sealed partial class VoiceLabTakeRunTests
         Assert.Equal(row.Generated.Receipt, row.Receipt);
         Assert.Equal(row.Id, row.Receipt!.ActionId);
         Assert.Equal(model, row.Receipt.ModelId);
+        Assert.Equal("paid-speech-request", row.Receipt.ProviderRequestId);
         Assert.Equal(model == "eleven_v4" ? "/v1/text-to-dialogue/with-timestamps" : "/v1/text-to-speech/fixtureOwnVoice/with-timestamps", row.Receipt.Endpoint);
     }
 }

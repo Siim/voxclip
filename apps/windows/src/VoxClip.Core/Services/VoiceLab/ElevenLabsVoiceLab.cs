@@ -445,7 +445,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         acceptance?.Preserve(new(pcm, 24000, null, receipt));
         var duration = pcm.Length / 48000.0;
         var timing = Alignment(json.RootElement, text, duration);
-        if (model.SpeechRoute == VoiceLabSpeechRoute.TextToDialogue) ValidateVoiceSegments(json.RootElement, voice.Id, text, duration);
+        if (model.SpeechRoute == VoiceLabSpeechRoute.TextToDialogue) ValidateVoiceSegments(json.RootElement, voice.Id, timing.Count, duration);
         return new(pcm, 24000, timing, receipt);
     }
 
@@ -708,6 +708,8 @@ public sealed class ElevenLabsVoiceLab : IDisposable
             if (policy is not null) RequirePermit(policy);
             if (policy?.DispatchPermit is { } bound && bound.RequestId != billing?.Review.RequestId) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
             if (policy is not null && billing?.Review.ConsentRecordId is { } consent && consent != policy.RecordId) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+            if (policy is not null && billing?.Review is { Operation: VoiceLabOperation.TextToSpeech or VoiceLabOperation.VoiceChange } speechReview &&
+                speechReview.VoiceId != policy.CloneVoiceId) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
             if (billing?.RunDispatch is { } checking) await checking.AuthorizeAsync(billing.Review.RequestId, deadline.Token).ConfigureAwait(false);
             Task<HttpResponseMessage> Start()
             {
@@ -957,11 +959,16 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         var frames = payload / 2;
         return frames >= (rate + 49) / 50 && frames <= (ulong)rate * 290;
     }
-    private static void ValidateVoiceSegments(JsonElement row, string voiceId, string text, double duration)
+    private static void ValidateVoiceSegments(JsonElement row, string voiceId, int characters, double duration)
     {
         if (!row.TryGetProperty("voice_segments", out var segments) || segments.ValueKind != JsonValueKind.Array || segments.GetArrayLength() == 0)
             throw Malformed();
-        var characters = text.EnumerateRunes().Count();
+        // Provisional STEP3 bound: valid normalized timing may expand the provider's character array.
+        if (row.TryGetProperty("normalized_alignment", out var normalized) && normalized.ValueKind == JsonValueKind.Object)
+        {
+            try { characters = Math.Max(characters, AlignmentObject(normalized, null, duration).Count); }
+            catch (VoiceLabException error) when (error.Kind == VoiceLabErrorKind.InvalidAlignment) { }
+        }
         foreach (var segment in segments.EnumerateArray())
         {
             if (segment.ValueKind != JsonValueKind.Object || RequiredString(segment, "voice_id") != voiceId ||
@@ -977,7 +984,12 @@ public sealed class ElevenLabsVoiceLab : IDisposable
     }
     private static IReadOnlyList<VoiceLabCharacterTiming> Alignment(JsonElement row, string text, double duration)
     {
-        if (!row.TryGetProperty("alignment", out var alignment) || alignment.ValueKind != JsonValueKind.Object ||
+        if (!row.TryGetProperty("alignment", out var alignment)) throw new VoiceLabException(VoiceLabErrorKind.InvalidAlignment);
+        return AlignmentObject(alignment, text, duration);
+    }
+    private static IReadOnlyList<VoiceLabCharacterTiming> AlignmentObject(JsonElement alignment, string? expectedText, double duration)
+    {
+        if (alignment.ValueKind != JsonValueKind.Object ||
             !alignment.TryGetProperty("characters", out var characters) || characters.ValueKind != JsonValueKind.Array ||
             !alignment.TryGetProperty("character_start_times_seconds", out var starts) || starts.ValueKind != JsonValueKind.Array ||
             !alignment.TryGetProperty("character_end_times_seconds", out var ends) || ends.ValueKind != JsonValueKind.Array ||
@@ -996,7 +1008,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
             if (value.Length == 0) throw new VoiceLabException(VoiceLabErrorKind.InvalidAlignment);
             joined.Append(value); output.Add(new(value, begin, finish)); previous = finish;
         }
-        if (joined.ToString() != text) throw new VoiceLabException(VoiceLabErrorKind.InvalidAlignment);
+        if (expectedText is not null && joined.ToString() != expectedText) throw new VoiceLabException(VoiceLabErrorKind.InvalidAlignment);
         return output;
     }
     private static JsonDocument Parse(byte[] bytes)

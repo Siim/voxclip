@@ -155,7 +155,7 @@ public sealed class VoiceProjectConsentTests
         Assert.False(VoiceSpeakerCheck.WindowsNativeParityVerified);
         Assert.Equal(VoiceConsentError.SpeakerUnavailable, Assert.Throws<VoiceConsentException>(() => store.CreateUsePolicy(record, Guid.NewGuid(), _ => Task.CompletedTask)).Kind);
         Assert.Equal(VoiceConsentError.SpeakerUnavailable, (await Assert.ThrowsAsync<VoiceConsentException>(() => new VoiceUseGuard(store)
-            .AuthorizeAsync("clip", record.RecordId, new float[48000], Guid.NewGuid(), true, ct: Token))).Kind);
+            .AuthorizeAsync("clip", record.RecordId, new float[48000], VoiceLabTestCalls.ConsentUseQuote(record), true, ct: Token))).Kind);
         File.WriteAllBytes(Path.Combine(store.Root, record.RecordId, "reference.wav"), Wav(30, 3000));
         Assert.Throws<VoiceConsentException>(() => store.Load(record.RecordId));
     }

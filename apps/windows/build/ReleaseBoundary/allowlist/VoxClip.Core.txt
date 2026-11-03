@@ -736,6 +736,7 @@ literal "next_character_count_reset_unix"
 literal "next_page_token"
 literal "next_text"
 literal "node_modules"
+literal "normalized_alignment"
 literal "num_ctx"
 literal "num_predict"
 literal "num_speakers"
@@ -11149,6 +11150,7 @@ member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method internal List
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private .cctor()
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private .ctor(VoxClip.Core.Services.LLM.IKeyProvider,System.Net.Http.HttpClient,VoxClip.Core.Services.Speech.ElevenLabsRegion,VoxClip.Core.Services.Logging.ILog,System.TimeProvider,string,VoxClip.Core.Domain.VoiceLab.VoiceLabPriceCatalog,VoxClip.Core.Services.VoiceLab.VoiceLabSpendLedger)
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private Alignment(System.Text.Json.JsonElement,string,double)
+member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private AlignmentObject(System.Text.Json.JsonElement,string,double)
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private Auto(string)
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private CloneFingerprint(VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab+CloneUpload,VoxClip.Core.Domain.VoiceLab.OwnVoicePolicy)
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private CloneParts(VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab+CloneUpload)
@@ -11199,7 +11201,7 @@ member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private Synth
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private TryParseWav(System.ReadOnlySpan`1<byte>,VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab+WavInfo&)
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private ValidId3(System.ReadOnlySpan`1<byte>)
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private ValidatePcm(byte[])
-member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private ValidateVoiceSegments(System.Text.Json.JsonElement,string,string,double)
+member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private ValidateVoiceSegments(System.Text.Json.JsonElement,string,int,double)
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private ValidatedClone(VoxClip.Core.Domain.VoiceLab.VoiceLabCloneRequest,VoxClip.Core.Domain.VoiceLab.OwnVoicePolicy)
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method public .ctor(VoxClip.Core.Services.LLM.IKeyProvider,VoxClip.Core.Services.Speech.ElevenLabsRegion,VoxClip.Core.Services.Logging.ILog,VoxClip.Core.Domain.VoiceLab.VoiceLabPriceCatalog,VoxClip.Core.Services.VoiceLab.VoiceLabSpendLedger)
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method public Approve(VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedAction,bool)
@@ -11761,7 +11763,7 @@ member VoxClip.Core.Services.VoiceLab.VoiceUseGuard :: field private cache
 member VoxClip.Core.Services.VoiceLab.VoiceUseGuard :: field private check
 member VoxClip.Core.Services.VoiceLab.VoiceUseGuard :: field private gate
 member VoxClip.Core.Services.VoiceLab.VoiceUseGuard :: method public .ctor(VoxClip.Core.Services.VoiceLab.VoiceConsentStore,VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck)
-member VoxClip.Core.Services.VoiceLab.VoiceUseGuard :: method public AuthorizeAsync(string,string,float[],System.Guid,bool,bool,System.Threading.CancellationToken,VoxClip.Core.Services.VoiceLab.VoiceLabDispatchBinding,System.Nullable`1<long>)
+member VoxClip.Core.Services.VoiceLab.VoiceUseGuard :: method public AuthorizeAsync(string,string,float[],VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedAction,bool,bool,System.Threading.CancellationToken,VoxClip.Core.Services.VoiceLab.VoiceLabDispatchBinding,System.Nullable`1<long>)
 type VoxClip.Core.Domain.Captions.CaptionAnimation
 type VoxClip.Core.Domain.Captions.CaptionAnimationSpec
 type VoxClip.Core.Domain.Captions.CaptionAnimationSpecEasingValue

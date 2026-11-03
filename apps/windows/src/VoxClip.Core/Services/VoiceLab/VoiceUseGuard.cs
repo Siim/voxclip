@@ -9,9 +9,10 @@ public sealed class VoiceUseGuard(VoiceConsentStore store, VoiceSpeakerCheck? ch
     private readonly VoiceSpeakerCheck check = check ?? VoiceSpeakerCheck.Unavailable;
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly HashSet<string> cache = [];
-    public async Task<OwnVoicePolicy> AuthorizeAsync(string contentKey, string recordId, float[] speech16k, Guid requestId,
+    public async Task<OwnVoicePolicy> AuthorizeAsync(string contentKey, string recordId, float[] speech16k, VoiceLabPreparedAction quote,
         bool approved, bool voiceChanger = false, CancellationToken ct = default, VoiceLabDispatchBinding? binding = null, long? modelRevision = null)
     {
+        var requestId = quote.Review.RequestId;
         if (!approved) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
         if (contentKey.Length == 0 || requestId == Guid.Empty || speech16k.Any(sample => !float.IsFinite(sample))) throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
         var samples = speech16k.ToArray();
@@ -20,6 +21,11 @@ public sealed class VoiceUseGuard(VoiceConsentStore store, VoiceSpeakerCheck? ch
         {
             ct.ThrowIfCancellationRequested();
             var record = store.Load(recordId);
+            var review = quote.Review;
+            var selectsVoice = review.Operation is VoiceLabOperation.TextToSpeech or VoiceLabOperation.VoiceChange;
+            if (review.ConsentRecordId != record.RecordId ||
+                (selectsVoice ? review.VoiceId != record.VoiceId : review.Operation != VoiceLabOperation.SpeechToText))
+                throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
             store.ValidateUse(record);
             if (!this.check.Supports(record.Language) || this.check.ModelId != record.Speaker.Model || this.check.Threshold != record.Speaker.Threshold ||
                 VoiceConsentRecord.DecodeEmbedding(record.Speaker.Embedding) is not { } owner) throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);

@@ -116,6 +116,7 @@ public sealed record VoiceLabModel(string Id, string Name, IReadOnlyList<string>
     public static VoiceLabModel? PatchDefault(IReadOnlyList<VoiceLabModel> models) =>
         models.FirstOrDefault(model => model.Id == "eleven_multilingual_v2" && model.SupportsTimestampedTts)
         ?? models.FirstOrDefault(model => model.SendsSpeechContext)
+        ?? models.FirstOrDefault(model => model.SpeechRoute == VoiceLabSpeechRoute.TextToSpeech)
         ?? models.FirstOrDefault(model => model.SupportsTimestampedTts);
 }
 public sealed record VoiceLabSubscription(string Tier, string Status, int CharacterCount, int CharacterLimit,

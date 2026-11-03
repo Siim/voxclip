@@ -349,7 +349,22 @@ public sealed class VoiceConsentTests
         var error = Assert.Throws<VoiceConsentException>(() => store.CreateUsePolicy(record, Guid.NewGuid(), _ => Task.CompletedTask));
         Assert.Equal(VoiceConsentError.SpeakerUnavailable, error.Kind);
         await Assert.ThrowsAsync<VoiceConsentException>(() => new VoiceUseGuard(store).AuthorizeAsync("content", record.RecordId,
-            new float[48000], Guid.NewGuid(), true, ct: Token));
+            new float[48000], VoiceLabTestCalls.ConsentUseQuote(record), true, ct: Token));
+    }
+    [Theory]
+    [InlineData("eleven_v4")]
+    [InlineData("eleven_v3")]
+    public async Task UseGuardRefusesQuoteForAnotherVoiceBeforeSpeakerAuthorization(string model)
+    {
+        using var storage = new Storage();
+        var store = new VoiceConsentStore(storage.Locations);
+        var record = Draft(store, voice: "cloneB");
+        store.Save(record);
+        // Keep the record id identical so only the quoted voice differs from the stored proof.
+        var quote = VoiceLabTestCalls.ConsentUseQuote(record with { VoiceId = "cloneA" }, model);
+        var refusal = await Assert.ThrowsAsync<VoiceLabException>(() => new VoiceUseGuard(store).AuthorizeAsync(
+            "content", record.RecordId, new float[48000], quote, true, ct: Token));
+        Assert.Equal(VoiceLabErrorKind.ConsentRequired, refusal.Kind);
     }
     private static VoiceConsentRecord BoundDraft(VoiceConsentStore store) => Draft(store) with
         { Creator = new(ElevenLabsRegion.Default, VoiceConsentCreator.Fingerprint("test-placeholder-value")) };
