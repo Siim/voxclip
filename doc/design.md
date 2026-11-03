@@ -1218,6 +1218,7 @@ Selection snapping skips them. Hit-testing an inserted run focuses its change.
 
 - The connector consent (ai.md §4.8) appears before the first send per connector, worded for Rewrite. It is unchanged.
 - A send on an API key, or on a CLI signed in with an API key, asks every time (R0b). Every other send starts at once (voice-lab.md §3.1).
+- On Mac, a Rewrite on another scope keeps the open session until the new one opens. If the selection, the project or the AI choice changed while Rewrite got ready, nothing opens and nothing is sent, the open session stays, and the status bar says why until the next press: "Rewrite didn't start because the selection changed. Nothing was sent. Press Rewrite again." (or "…the project changed…", "…the AI choice changed…"); VoiceOver hears the same sentence. A close or a send of the open session in that moment says nothing.
 
 **R0. No AI chosen** (`llm.connector` is unset)
 
