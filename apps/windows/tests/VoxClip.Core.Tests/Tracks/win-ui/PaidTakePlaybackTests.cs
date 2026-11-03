@@ -30,6 +30,30 @@ public sealed class PaidTakePlaybackTests
         Assert.DoesNotContain("fits", test.Generation.Announcement);
     }
 
+    /// <summary>Lead review finding 2: a phrase priced as "fits with a video cut" is charged, so its paid take must offer a
+    /// Cut it can use. Before this, Windows offered no Cut and the phrase was left with no usable video choice.</summary>
+    [Fact]
+    public async Task PaidTakeThatFitsOnlyWithAVideoCutOffersCutWithoutPreselection()
+    {
+        await using var test = new Harness(false, false, VoiceLabTakeRunEnd.Completed);
+        test.Runner.CutDuration = true;
+        await test.GenerateAsync();
+        Assert.Equal(RewriteGenerationPhase.LengthChanged, test.Generation.Phase);
+        Assert.Null(test.Generation.VideoChoice);
+        Assert.False(test.Generation.ReadyToAccept);
+        Assert.True(test.Generation.CanCut);
+        Assert.False(test.Generation.NeedsShorterWording);
+        Assert.Equal("Removes 0.2 s of video at a pause, like a vlog jump cut. Speech keeps its pace.", test.Generation.CutCopy);
+        Assert.StartsWith("This take is shorter than the source window.", test.Generation.KeepSourceCopy);
+        Assert.Equal("Choose the video duration for phrase 1.", test.Session.AcceptanceBlocker);
+        Assert.False(test.Generation.ChooseVideo(VoiceLabVideoMode.Source));
+        Assert.True(test.Generation.ChooseVideo(VoiceLabVideoMode.Cut));
+        Assert.Equal(VoiceLabVideoMode.Cut, test.Generation.VideoChoice);
+        Assert.True(test.Generation.ReadyToAccept);
+        Assert.Null(test.Session.AcceptanceBlocker);
+        Assert.Equal(0, test.PublishCalls);
+    }
+
     [Fact]
     public async Task PaidTakeWithoutAFitOffersWordingRecoveryAndKeepOriginalChangesNothingInTheProject()
     {
@@ -39,7 +63,7 @@ public sealed class PaidTakePlaybackTests
         await test.GenerateAsync();
         Assert.Equal(RewriteGenerationPhase.LengthChanged, test.Generation.Phase);
         Assert.True(test.Generation.NeedsShorterWording);
-        Assert.False(test.Generation.CanRetime);
+        Assert.False(test.Generation.CanRetime); Assert.False(test.Generation.CanCut);
         Assert.False(test.Generation.ReadyToAccept);
         Assert.False(test.Session.SetChangeIncluded(1, false));
         Assert.True(test.Session.HasPaidTakes);
@@ -285,6 +309,7 @@ public sealed class PaidTakePlaybackTests
     {
         internal bool Advisory;
         internal bool ChangedDuration;
+        internal bool CutDuration;
         private readonly Dictionary<Guid, VoiceLabTakeScratch> scratches = [];
         private VoiceLabTakeInput? input;
         private VoiceLabTakeRunQuote? pending;
@@ -337,10 +362,19 @@ public sealed class PaidTakePlaybackTests
                     var snapshot = await PaidAudioAsync(take.Synthesis.Review.RequestId, ct);
                     var frames = (long)Math.Floor((input.Window.End - input.Window.Start) * 24000 + .5);
                     if (ChangedDuration) frames += 4800;
+                    if (CutDuration) frames -= 4800;
                     var incoming = (long)Math.Ceiling(input.Window.LeftSeam.FadeSamples / 2 * 24000d / input.SourceSampleRate);
                     var plan = new VoiceLabFitPlan([], new(0, 0), new(0, 0), incoming, incoming + frames, input.Window.Start, input.Window.End,
                         input.Window.StartSample, input.Window.EndSample, frames, [new(input.Text, .01, frames / 24000d - .01, true)]);
-                    VoiceLabFitResult fit = ChangedDuration ? new VoiceLabFitResult.ChangedDuration(plan, frames / 24000d, .2) : new VoiceLabFitResult.Exact(plan);
+                    if (CutDuration)
+                    {
+                        // As VoiceLabNaturalPacing.Fit returns it: the as-spoken take 0.2 s short, with one quiet-boundary cut.
+                        var output = (long)Math.Floor((input.Window.End - input.Window.Start - .2) * input.SourceSampleRate + .5);
+                        var start = input.Window.StartSample + (long)Math.Floor(VoiceLabNaturalPacing.CUT_EDGE_GUARD * input.SourceSampleRate + .5);
+                        plan = plan with { VideoCuts = [new(start, start + input.Window.EndSample - input.Window.StartSample - output)] };
+                    }
+                    VoiceLabFitResult fit = ChangedDuration ? new VoiceLabFitResult.ChangedDuration(plan, frames / 24000d, .2)
+                        : CutDuration ? new VoiceLabFitResult.ChangedDuration(plan, frames / 24000d, -.2) : new VoiceLabFitResult.Exact(plan);
                     var fitted = VoiceLabSilenceFit.Prepare(snapshot!, paid, fit, input.Window, input.SourceSampleRate, ct);
                     var source = new float[checked((int)Math.Floor(input.Source.TotalFrames * 24000d / input.SourceSampleRate + .5))];
                     var scratch = VoiceLabTakeRenderer.Stage(fitted, new(24000, samples, 0, null, fit), input, VoiceLabSourceExcerpt.Whole(source), storage.ScratchRoot, ct);

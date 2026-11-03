@@ -12,6 +12,31 @@ public sealed class VoiceLabRenderInput
     private VoiceLabRenderInput(string projectJson, VoiceLabPreparedRender prepared, string paidRoot)
     { this.projectJson = projectJson; Prepared = prepared; PaidRoot = paidRoot; }
 
+    /// <summary>Video modes the native renderer draws: source, quiet-boundary cut and the 1.12× centered-crop retime.</summary>
+    public static bool SupportsVideoMode(VoiceLabVideoMode mode) => mode is VoiceLabVideoMode.Source or VoiceLabVideoMode.Cut or VoiceLabVideoMode.ZoomCover;
+
+    internal static bool SupportsVideoRecipe(VoiceLabVideoRecipe video)
+    {
+        if (!SupportsVideoMode(video.Mode)) return false;
+        if (video.Mode == VoiceLabVideoMode.Cut) return video.Cuts is { Count: > 0 };
+        if (video.Mode == VoiceLabVideoMode.Source) return true;
+        if (video.SourceStartSample < 0 || video.SourceEndSample <= video.SourceStartSample || video.OutputSamples <= 0 ||
+            video.RetimeFactor is not { } declared || !double.IsFinite(declared) ||
+            video.Zoom is not { } zoom || !double.IsFinite(zoom) || Math.Abs(zoom - VoiceLabVideoDurationOptions.MatchZoom) > 1e-9 ||
+            video.FaceX is not { } x || !double.IsFinite(x) || x is < 0 or > 1 || video.FaceY is not { } y || !double.IsFinite(y) || y is < 0 or > 1 ||
+            video.AssetId is not null || video.Provider is not null || video.Model is not null || video.RequestId is not null ||
+            video.WindowStartSample is not null || video.WindowEndSample is not null || video.SyncMode is not null) return false;
+        var factor = (double)(video.SourceEndSample - video.SourceStartSample) / video.OutputSamples;
+        return factor is >= VoiceLabVideoDurationOptions.MinimumRetime and <= VoiceLabVideoDurationOptions.MaximumRetime &&
+            Math.Abs(factor - declared) <= 1e-6;
+    }
+
+    /// <summary>Per-output-sample video framing (source spans, crop zoom and anchor), built once from the verified plan.
+    /// Capture builds it for every synthetic render, so an unrenderable recipe is refused before native work.</summary>
+    public VoiceLabVideoFraming Framing => LazyInitializer.EnsureInitialized(ref framing,
+        () => VoiceLabVideoFraming.Build(Prepared.OutputPlan, Prepared.SelectedSegmentRecipes));
+    private VoiceLabVideoFraming? framing;
+
     /// <summary>Verified immutable Core render instructions.</summary>
     public VoiceLabPreparedRender Prepared { get; }
     /// <summary>Private paid asset storage root, never serialized to output.</summary>
@@ -24,13 +49,16 @@ public sealed class VoiceLabRenderInput
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(paidRoot);
         prepared.Verify(project, prepared.OutputPlan.Scope, prepared.Disclosure.Position);
-        if (prepared.SelectedSegmentRecipes.Any(item => item.Recipe.Video.Mode != VoiceLabVideoMode.Source))
+        if (prepared.SelectedSegmentRecipes.Any(item => !SupportsVideoRecipe(item.Recipe.Video) ||
+            item.Recipe.Video.Mode is VoiceLabVideoMode.ZoomCover or VoiceLabVideoMode.Cut && item.Recipe.Audio.Stretch != 1))
             throw new VoiceLabProjectException(VoiceLabProjectErrorCode.VideoModeUnsupported);
         var json = ProjectSerialization.Serialize(project);
         var isolated = ProjectSerialization.Deserialize(json);
         prepared.Verify(isolated, prepared.OutputPlan.Scope, prepared.Disclosure.Position);
         prepared.Verify(project, prepared.OutputPlan.Scope, prepared.Disclosure.Position);
-        return new(json, prepared, Path.GetFullPath(paidRoot));
+        var input = new VoiceLabRenderInput(json, prepared, Path.GetFullPath(paidRoot));
+        if (prepared.OutputPlan.RequiresSyntheticRendering) _ = input.Framing;
+        return input;
     }
 
     /// <summary>Return a fresh isolated project value, with contract verification.</summary>

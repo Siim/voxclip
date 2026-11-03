@@ -3,6 +3,7 @@ using FFmpeg.AutoGen;
 using SkiaSharp;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.Media;
 using VoxClip.Core.Services.Project;
 using VoxClip.Media.Captions;
@@ -80,6 +81,7 @@ public sealed class FrameComposer : IFrameComposer
                 decoded = new(oriented.AsMemory(0, width * height * 4), width, height, width * 4);
             }
             var crop = ExportPresets.CenterCrop(new(decoded.Width, decoded.Height), new(output.Width, output.Height), snapshot.Output.PreserveSource);
+            crop = VideoCrop(snapshot, crop, decoded.Width, decoded.Height, editedTime);
             var left = (int)Math.Floor(crop.X);
             var top = (int)Math.Floor(crop.Y);
             var widthCrop = Math.Clamp((int)Math.Round(crop.Width), 1, decoded.Width - left);
@@ -114,6 +116,16 @@ public sealed class FrameComposer : IFrameComposer
             }
         }
         finally { if (oriented is not null) ArrayPool<byte>.Shared.Return(oriented); }
+    }
+
+    /// <summary>The changed-duration crop for this output time: a zoomed span (Match video's 1.12× crop, a cut's 1.06×
+    /// punch-in) crops the aspect crop in around its anchor, as Mac FrameCompositor does. Zoom-1 spans and legacy plans keep
+    /// the center crop untouched.</summary>
+    internal static RectD VideoCrop(ComposeSnapshot snapshot, RectD crop, int width, int height, double editedTime)
+    {
+        if (snapshot.VoiceLab is not { Prepared.OutputPlan.RequiresSyntheticRendering: true } input) return crop;
+        var span = input.Framing.At(editedTime);
+        return span.Zoom > 1 ? VoiceLabVideoFraming.FaceCrop(new(0, 0, width, height), crop, span.Zoom, span.AnchorX, span.AnchorY) : crop;
     }
 
     internal void ReleaseThreadResources() { state.Value?.Handle?.Dispose(); state.Value = new(); }

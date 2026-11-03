@@ -107,8 +107,16 @@ public static class VoiceLabRenderContract
             var timestampedDialogue = provenance.Endpoint == "v1/text-to-dialogue/with-timestamps" && provenance.Model == "eleven_v4";
             if (segment.Kind == VoiceLabSegmentKind.Tts && !timestampedSpeech && !timestampedDialogue)
                 throw new VoiceLabProjectException(VoiceLabProjectErrorCode.EndpointUnsupported);
-            if (recipe.Video.Mode is VoiceLabVideoMode.Cut or VoiceLabVideoMode.Retimed || (recipe.Video.Mode == VoiceLabVideoMode.Source &&
-                piece.SourceEndSample-piece.SourceStartSample != piece.OutputEndSample-piece.OutputStartSample))
+            var sourceSamples = piece.SourceEndSample - piece.SourceStartSample;
+            var outputSamples = piece.OutputEndSample - piece.OutputStartSample;
+            var video = recipe.Video;
+            if (video.Mode == VoiceLabVideoMode.Retimed || (video.Mode == VoiceLabVideoMode.Source && sourceSamples != outputSamples) ||
+                (video.Mode == VoiceLabVideoMode.Cut && (recipe.Audio.Stretch != 1 || !VoiceLabNaturalPacing.ValidCuts(video, plan.SampleRate))) ||
+                (video.Mode == VoiceLabVideoMode.ZoomCover && (sourceSamples <= 0 || outputSamples <= 0 || recipe.Audio.Stretch != 1 ||
+                    video.SourceStartSample != piece.SourceStartSample || video.SourceEndSample != piece.SourceEndSample ||
+                    video.OutputSamples != outputSamples || video.RetimeFactor is not { } factor || !double.IsFinite(factor) ||
+                    factor is not (>= VoiceLabVideoDurationOptions.MinimumRetime and <= VoiceLabVideoDurationOptions.MaximumRetime) ||
+                    Math.Abs(factor - (double)sourceSamples / outputSamples) > 1e-6)))
                 throw new VoiceLabProjectException(VoiceLabProjectErrorCode.VideoModeUnsupported);
             var asset = project.VoiceLab.Assets!.First(a => a.Id == recipe.Audio.AssetId);
             if (asset.File.EndsWith(".flac", StringComparison.Ordinal)) throw new VoiceLabProjectException(VoiceLabProjectErrorCode.UnsupportedAssetFormat);

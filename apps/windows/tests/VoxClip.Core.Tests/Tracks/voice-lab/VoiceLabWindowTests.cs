@@ -467,8 +467,8 @@ public sealed class VoiceLabWindowTests
         if (changed)
         {
             Assert.Equal(VoiceLabVideoMode.ZoomCover, Assert.Single(prepared.SelectedSegmentRecipes).Recipe.Video.Mode);
-            Assert.Equal(VoiceLabProjectErrorCode.VideoModeUnsupported,
-                Assert.Throws<VoiceLabProjectException>(() => VoiceLabRenderInput.Capture(project, prepared, "not-opened")).Code);
+            var span = Assert.Single(VoiceLabRenderInput.Capture(project, prepared, "not-opened").Framing.Spans, span => span.Zoom > 1);
+            Assert.Equal((synth.SourceStartSample, synth.OutputEndSample, 1.12), (span.SourceStartSample, span.OutputEndSample, span.Zoom));
         }
         else
         {
@@ -478,7 +478,7 @@ public sealed class VoiceLabWindowTests
     }
 
     [Fact]
-    public void CutRecipesRoundTripTheWholeProjectButRefuseWindowsRendering()
+    public void CutRecipesRoundTripTheWholeProjectAndPrepareWindowsRendering()
     {
         var project = Passage.Value;
         var segment = project.VoiceLab.Segments[0];
@@ -504,9 +504,10 @@ public sealed class VoiceLabWindowTests
         var decoded = ProjectSerialization.Deserialize(ProjectSerialization.Serialize(project));
         VoiceLabRenderValidation.Validate(decoded);
         Assert.Equal(recipe.Video.Cuts, decoded.VoiceLab.Segments[0].Candidates[0].Recipe!.Video.Cuts);
-        var failure = Assert.Throws<VoiceLabProjectException>(() =>
-            VoiceLabRenderContract.Prepare(decoded, VoiceLabOutputScope.Full, VoiceLabLabelPosition.TopRight));
-        Assert.Equal(VoiceLabProjectErrorCode.VideoModeUnsupported, failure.Code);
+        var prepared = VoiceLabRenderContract.Prepare(decoded, VoiceLabOutputScope.Full, VoiceLabLabelPosition.TopRight);
+        var framing = VoiceLabRenderInput.Capture(decoded, prepared, "not-opened").Framing;
+        Assert.Contains(new VoiceLabVideoSpan(2500, 2800, 2500, 2800, 1, 0.5, 0.5), framing.Spans);
+        Assert.Contains(new VoiceLabVideoSpan(2840, 3200, 2800, 3160, 1.06, 0.5, 0.5), framing.Spans);
     }
 
     /// <summary>The selected recipe a candidate would carry for window, built only from the geometry above, as segment id with
