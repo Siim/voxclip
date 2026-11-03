@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- A paid take keeps its video-cut option, a short hard join keeps its pause when the take borrows silence, and pauses keep their usual minimum when the clip has none of that kind.
 - Clips in the sidebar show Rewrite and More buttons.
 - A laugh, sigh or pause at the start or end of a phrase is kept whole at the join, and the word check no longer trips on transcribed laughter.
 - Offer useful video jump cuts between quiet speech boundaries, and preserve deliberate expression-tagged pauses.
