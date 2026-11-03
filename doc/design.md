@@ -1269,6 +1269,7 @@ The current connectors return one answer, so nothing streams: R1 waits until the
 - Body: the `LLMError` user message (ai.md §5), then "Your edits are saved." Primary: **Try Again**, or **Try Again…** when the send asks first.
 - Fixes that replace the body:
   - Signed out: "{CLI} isn't signed in. Run `claude` (or `codex login`) in Terminal and sign in, then choose Try Again."
+  - CLI server unreachable: “{CLI} couldn't reach its server from VoxClip.” On Mac, a second line says “If it uses a server on your network, allow VoxClip in System Settings › Privacy & Security › Local Network, then try again.” Show the redacted first-line detail as secondary text, with **Open Local Network Settings** inline beside the existing **Try Again**. On Windows, continue with “Check your network or proxy, then try again.” and keep retry, without a settings action. AI spec §6.8 owns classification and timeout rules.
   - No key: a secure field "{provider} API key" with **Save Key and Try Again**.
   - Not running on macOS v2: "{server} isn't answering at {url}. Start it, then choose Try Again." The URL is the address attempted by the connector (Ollama or LM Studio). The clip bar and harness picker retain that same address; no send or edit occurs. Windows retains "Ollama isn't running. Start it, then choose Try Again." (LM Studio likewise.)
 - Refused: "The model declined to rewrite this recording." Primary: **Ask for Something Else**, which focuses the field.

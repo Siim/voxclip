@@ -77,20 +77,22 @@ import VoxClipCore
         }
         .onKeyPress(keys: [.upArrow, .downArrow]) { press in
             guard !keyFieldFocused, !askFocused else { return .ignored }
+            let movesBackward: Bool = press.key == .upArrow
             if task.cards.contains(.takes), task.confirm == nil {
-                model?.rewrite?.moveTakePhrase(backward: press.key == .upArrow)
+                let rewriteSession: RewriteSession? = model?.rewrite
+                rewriteSession?.moveTakePhrase(backward: movesBackward)
                 return .handled
             }
             if let rows = chooserRows, !rows.isEmpty {
                 let index = rows.firstIndex { $0.id == task.choice } ?? -1
-                let next = press.key == .upArrow ? max(0, index - 1) : min(rows.count - 1, index + 1)
+                let next = movesBackward ? max(0, index - 1) : min(rows.count - 1, index + 1)
                 task.choose(rows[next].id)
                 return .handled
             }
             // ↑ and ↓ walk the change list, as ⌥↑ and ⌥↓ walk the hunks.
             guard let changes = task.changes, !changes.items.isEmpty else { return .ignored }
             let index = changes.items.firstIndex { $0.ordinal == changes.focused } ?? -1
-            let next = press.key == .upArrow ? max(0, index - 1) : min(changes.items.count - 1, index + 1)
+            let next = movesBackward ? max(0, index - 1) : min(changes.items.count - 1, index + 1)
             task.review?(changes.items[next].ordinal, .focus)
             return .handled
         }
@@ -235,6 +237,11 @@ import VoxClipCore
                 .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .columnLayoutEvidence("director.text", text: text)
+        case .secondaryText(let text):
+            Text(text).font(VCType.callout.font()).foregroundStyle(DesignValues.color("text.secondary"))
+                .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .columnLayoutEvidence("director.detail", text: text)
         case .chooser(let rows, let saveKey): ChooserCard(task: task, rows: rows, saveKey: saveKey, keyFieldFocused: $keyFieldFocused)
         case .keyField(let provider, let label):
             KeyField(label: label, text: $task.keyDraft, focused: $keyFieldFocused) { task.footer.primary?.perform() }
@@ -456,6 +463,11 @@ import VoxClipCore
             VStack(alignment: .leading, spacing: 8) {
                 note
                 HStack(spacing: 8) { Spacer(minLength: 0); buttons }
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                note
+                VStack(alignment: .trailing, spacing: 8) { buttons }
+                    .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
         .padding(.horizontal, 16).padding(.vertical, 9)

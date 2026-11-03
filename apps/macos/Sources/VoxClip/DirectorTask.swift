@@ -246,6 +246,7 @@ enum PanelCard: Identifiable, Equatable {
     case activity([ActivityStep])
     /// Body copy.
     case text(String)
+    case secondaryText(String)
     /// A radio list of AIs (R0). The choice is `DirectorTask.choice`; `saveKey` saves
     /// `DirectorTask.keyDraft` for the row that has no key.
     case chooser([ConnectorChoice], saveKey: PanelAction?)
@@ -265,6 +266,7 @@ enum PanelCard: Identifiable, Equatable {
         case .asked: "asked"
         case .activity: "activity"
         case .text(let text): "text:\(text)"
+        case .secondaryText(let text): "secondaryText:\(text)"
         case .chooser: "chooser"
         case .keyField(let provider, _): "key:\(provider)"
         case .changes: "changes"
@@ -281,6 +283,7 @@ enum PanelError: Equatable, Sendable {
     case message(String)
     /// An installed CLI that is not signed in; `command` signs it in ("claude", "codex login").
     case signedOut(cli: String, command: String)
+    case cliNetworkUnreachable(cli: String, detail: String)
     /// An API-key connector with no key.
     case noKey(provider: String, name: String)
     /// A local server that does not answer: "Ollama", "LM Studio".

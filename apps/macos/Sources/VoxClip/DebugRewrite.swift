@@ -588,6 +588,8 @@ extension DebugRewrite {
         let errors: [(String, ConnectorID, String, String, PanelError)] = [
             ("r1x-message", .claudeCode, "Claude Code", "cli", .message(LLMError.timeout.userMessage(label: "Claude Code", feature: .voiceRewrite) ?? "")),
             ("r1x-signed-out", .codex, "Codex", "cli", .signedOut(cli: "Codex", command: "codex login")),
+            ("r1x-network-claude", .claudeCode, "Claude Code", "cli", .cliNetworkUnreachable(cli: "Claude Code", detail: "API Error: Connection refused (ECONNREFUSED)")),
+            ("r1x-network-codex", .codex, "Codex", "cli", .cliNetworkUnreachable(cli: "Codex", detail: "fetch failed")),
             ("r1x-no-key", .anthropic, "Anthropic", "apiKey", .noKey(provider: "anthropic", name: "Anthropic")),
             ("r1x-not-running", .ollama, "Ollama", "local", .notRunning(server: "Ollama", url: "http://127.0.0.1:11434")),
             ("r1x-refused", .claudeCode, "Claude Code", "cli", .refused),

@@ -495,6 +495,36 @@ private actor RefusingKeys: ProviderKeyStore {
         #expect(editor.project == before && !editor.llmRuns.isBusy && session.isOpen)
     }
 
+    @Test(arguments: [ConnectorID.claudeCode, .codex])
+    func cliNetworkErrorOffersSettingsInlineAndTryAgainRuns(_ id: ConnectorID) async throws {
+        let name = id == .claudeCode ? "Claude Code" : "Codex"
+        let stub = StubConnector(id: id, authMethod: id == .claudeCode ? "claude_ai" : "chatgpt",
+                                 failure: .cliNetworkUnreachable(detail: "ECONNREFUSED"))
+        let (app, _) = app(id.rawValue, connectors: [id.rawValue: stub])
+        let editor = try editor(app)
+        defer { editor.close() }
+        let before = editor.project
+        let session = try await open(editor)
+        let task = session.task
+        #expect(task.state == .error(.cliNetworkUnreachable(cli: name, detail: "ECONNREFUSED")))
+        #expect(texts(task) == ["\(name) couldn't reach its server from VoxClip.",
+            "If it uses a server on your network, allow VoxClip in System Settings › Privacy & Security › Local Network, then try again."])
+        #expect(task.cards.contains(.secondaryText("ECONNREFUSED")))
+        let settings = try #require(task.footer.link)
+        #expect(settings.title == "Open Local Network Settings")
+        var opened: [URL] = []
+        session.openSettingsURL = { opened.append($0) }
+        settings.perform()
+        #expect(opened.map(\.absoluteString) == ["x-apple.systempreferences:com.apple.preference.security?Privacy_LocalNetwork"])
+        #expect(editor.project == before && !editor.llmRuns.isBusy && !editor.sendConfirmation.isPresented)
+        #expect(task.footer.primary?.title == "Try Again")
+        await stub.set(failure: nil)
+        task.footer.primary?.perform()
+        _ = try await TestDeadline.value(session.actionTask, "retry CLI network failure")
+        #expect(await stub.sends == 2)
+        if case .proposal = task.state {} else { Issue.record("Try Again did not propose: \(task.state)") }
+    }
+
     @Test func failedAPIKeySendKeepsItsStepsAndRetryReopensTheInlineRow() async throws {
         let stub = StubConnector(id: .openai, failure: .rateLimited(retryAfter: nil))
         let (app, _) = app("openai", connectors: ["openai": stub])
@@ -889,7 +919,7 @@ private actor RefusingKeys: ProviderKeyStore {
         let fixture = try DemoEditing.loadFixture(shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip"))
         let scenes = await DebugRewrite.directorScenes(app: app, fixture: fixture)
         defer { scenes.forEach { $0.editor?.close() } }
-        #expect(scenes.map(\.name) == ["r0", "r0-none", "r1", "r1-clip", "r1x-message", "r1x-signed-out", "r1x-no-key", "r1x-not-running", "r1x-refused", "r1x-too-many-words", "r1x-too-much-text", "r3",
+        #expect(scenes.map(\.name) == ["r0", "r0-none", "r1", "r1-clip", "r1x-message", "r1x-signed-out", "r1x-network-claude", "r1x-network-codex", "r1x-no-key", "r1x-not-running", "r1x-refused", "r1x-too-many-words", "r1x-too-much-text", "r3",
                                        "r2-free", "r2-voice-lab-off", "r2-make-takes", "r2-make-voice", "r2-use-take", "r2-several-voices", "r2-over-budget",
                                        "r2-nothing-included", "r2-no-changes", "r2-discard"])
         let output = ProcessInfo.processInfo.environment["VOXCLIP_DIRECTOR_SCENES"].map { URL(fileURLWithPath: $0, isDirectory: true) }
@@ -903,6 +933,13 @@ private actor RefusingKeys: ProviderKeyStore {
                 window.contentView = host
                 host.layoutSubtreeIfNeeded()
                 for result in DebugRewrite.directorSceneChecks(scene, host: host, width: width) { #expect(result.passed, "\(result.name)") }
+                if scene.name.hasPrefix("r1x-network-") {
+                    let markers = DebugRightColumn.markers(in: host)
+                    for id in ["openLocalNetworkSettings", "tryAgain"] {
+                        let frame = try #require(markers["director.button.\(id)"])
+                        #expect(frame.minX >= 0 && frame.maxX <= CGFloat(width), "\(scene.name) at \(width): \(id) \(frame)")
+                    }
+                }
                 if let output, let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
                     host.cacheDisplay(in: host.bounds, to: bitmap)
                     try bitmap.representation(using: .png, properties: [:])?.write(to: output.appendingPathComponent("v2-rewrite-\(scene.name)-\(width).png"))

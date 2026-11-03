@@ -221,6 +221,9 @@ extension RewriteSession {
         guard let error = error as? LLMError else { return .message(await editor.app.log.redact(Self.refusal(error))) }
         switch error {
         case .cancelled: return nil
+        case .cliNetworkUnreachable(let detail):
+            let safe = await editor.app.log.redact(detail)
+            return .cliNetworkUnreachable(cli: aiName, detail: String(safe.prefix(200)))
         case .cliSignedOut: return .signedOut(cli: aiName, command: provider?.id == "codex" ? "codex login" : "claude")
         case .missingKey: return .noKey(provider: provider?.id ?? "", name: aiName)
         case .notRunning(let url): return .notRunning(server: aiName, url: url)
@@ -250,6 +253,13 @@ extension RewriteSession {
         case .message(let text): cards = [.text(text)]
         case .signedOut(let cli, let command):
             cards = [.text("\(cli) isn't signed in. Run `\(command)` in Terminal and sign in, then choose Try Again.")]
+        case .cliNetworkUnreachable(let cli, let detail):
+            cards = [.text("\(cli) couldn't reach its server from VoxClip."),
+                     .text(LLMError.cliNetworkRecovery), .secondaryText(detail)]
+            footer.link = PanelAction(id: "openLocalNetworkSettings", title: "Open Local Network Settings") { [weak self] in
+                guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_LocalNetwork") else { return }
+                self?.openSettingsURL(url)
+            }
         case .noKey(let provider, let name):
             cards = [.keyField(provider: provider, label: "\(name) API key")]
             footer.primary = PanelAction(id: "saveKeyAndTryAgain", title: "Save Key and Try Again") { [weak self] in
