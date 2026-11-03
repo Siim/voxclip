@@ -2,10 +2,10 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-/// Live 2026-11-03 14:53–14:58 (casual vlog, Multilingual v2): two phrases failed "loudness check at the join" with no
-/// audible jump. The pauses beside their joins held an inhale or a word's decay below `VOICED_FRAME`, and a take shorter
+/// Live 2026-11-03 14:53–14:58 and 16:16 (casual vlog, Multilingual v2; names `m6…` are the 16:16 run): phrases failed
+/// "loudness check at the join" with no audible jump. The pauses beside their joins held an inhale or a word's decay below `VOICED_FRAME`, and a take shorter
 /// than its window ended in a pause where the source spoke on. These are the 10 ms RMS envelopes (dBFS) of the mixed audio
-/// and the unedited source over 0.5 s on each side of the six seams, rebuilt as frame-normalised noise; no user audio.
+/// and the unedited source over 0.5 s on each side of the seams, rebuilt as frame-normalised noise; no user audio.
 @Suite("Seam pause joins (live casual takes)")
 struct VoiceLabSeamPauseJoinTests {
     static let rate = 24_000, frame = 240, seam = 12_000
@@ -81,6 +81,54 @@ struct VoiceLabSeamPauseJoinTests {
             "-19 -19 -19 -20 -20 -21 -22 -25 -30 -34 -35 -37 -39 -47 -49 -55 -58 -59 -62 -63 -61 -60 -56 -54 -54",
             "-54 -52 -52 -49 -48 -48 -49 -46 -49 -49 -52 -51 -48 -49 -48 -50 -48 -51 -51 -48 -54 -50 -50 -51 -52",
             "-55 -57 -61 -59 -60 -62 -59 -61 -63 -63 -63 -59 -60 -60 -58 -58 -59 -39 -29 -23 -22 -22 -22 -24 -31"
+        ],
+        "m6p1OutMixed": [
+            "-25 -24 -25 -25 -25 -25 -24 -28 -31 -39 -45 -36 -38 -44 -34 -32 -30 -28 -25 -23 -24 -24 -24 -26 -28",
+            "-29 -28 -28 -27 -25 -26 -26 -27 -30 -29 -29 -29 -28 -27 -27 -27 -27 -26 -26 -55 -56 -57 -59 -56 -29",
+            "-20 -19 -20 -20 -20 -20 -19 -21 -21 -22 -22 -22 -23 -24 -24 -25 -26 -32 -33 -37 -42 -49 -55 -54 -59",
+            "-37 -37 -25 -27 -31 -33 -35 -39 -43 -49 -52 -42 -45 -57 -57 -62 -59 -63 -38 -36 -34 -29 -27 -29 -31"
+        ],
+        "m6p1OutSource": [
+            "-15 -14 -14 -14 -14 -14 -16 -15 -16 -17 -19 -25 -29 -33 -32 -31 -30 -28 -27 -26 -25 -23 -21 -19 -19",
+            "-18 -18 -18 -19 -19 -19 -18 -19 -18 -18 -18 -18 -18 -18 -17 -16 -15 -16 -18 -19 -19 -21 -20 -22 -21",
+            "-19 -19 -20 -20 -20 -20 -19 -21 -21 -22 -22 -22 -23 -24 -24 -25 -26 -32 -33 -37 -42 -49 -55 -54 -59",
+            "-37 -37 -25 -27 -31 -33 -35 -39 -43 -49 -52 -42 -45 -57 -57 -62 -59 -63 -38 -36 -34 -29 -27 -29 -31"
+        ],
+        "m6p2InMixed": [
+            "-32 -30 -35 -44 -43 -43 -41 -42 -43 -51 -58 -59 -47 -55 -51 -48 -46 -46 -45 -43 -43 -42 -42 -40 -41",
+            "-41 -40 -40 -39 -42 -40 -42 -41 -45 -42 -45 -41 -42 -43 -46 -46 -47 -48 -52 -56 -55 -59 -62 -59 -60",
+            "-56 -53 -55 -57 -53 -54 -56 -54 -50 -54 -54 -49 -52 -51 -51 -56 -53 -54 -57 -54 -54 -53 -50 -53 -54",
+            "-55 -52 -55 -55 -51 -54 -58 -54 -58 -54 -50 -45 -42 -38 -35 -31 -34 -36 -42 -23 -16 -15 -16 -17 -18"
+        ],
+        "m6p2InSource": [
+            "-32 -30 -35 -44 -43 -43 -41 -42 -43 -51 -58 -59 -47 -55 -51 -48 -46 -46 -45 -43 -43 -42 -42 -40 -41",
+            "-41 -40 -40 -39 -42 -40 -42 -41 -45 -42 -45 -41 -42 -43 -46 -46 -47 -48 -52 -56 -55 -59 -62 -59 -62",
+            "-64 -62 -55 -36 -36 -47 -41 -29 -24 -25 -18 -17 -16 -16 -14 -15 -15 -14 -16 -18 -24 -33 -37 -37 -33",
+            "-29 -30 -28 -30 -35 -46 -50 -55 -48 -44 -32 -23 -20 -18 -18 -20 -21 -21 -21 -19 -17 -18 -18 -17 -18"
+        ],
+        "m6p2OutMixed": [
+            "-35 -38 -37 -35 -37 -35 -37 -41 -42 -40 -54 -54 -52 -56 -57 -55 -59 -58 -59 -43 -55 -58 -54 -54 -57",
+            "-57 -59 -56 -57 -53 -55 -56 -53 -53 -55 -56 -51 -54 -52 -50 -52 -51 -52 -55 -54 -55 -56 -54 -54 -54",
+            "-53 -55 -56 -53 -47 -50 -47 -47 -47 -45 -45 -45 -44 -46 -46 -46 -49 -46 -46 -45 -46 -46 -46 -46 -46",
+            "-44 -45 -45 -44 -46 -45 -46 -44 -44 -46 -47 -47 -45 -49 -51 -55 -56 -60 -63 -64 -60 -60 -64 -64 -62"
+        ],
+        "m6p2OutSource": [
+            "-24 -27 -25 -25 -34 -38 -39 -40 -26 -24 -32 -25 -26 -31 -25 -25 -24 -23 -23 -25 -27 -23 -23 -23 -23",
+            "-23 -23 -23 -25 -31 -36 -37 -36 -35 -34 -33 -34 -33 -34 -32 -33 -34 -35 -38 -42 -47 -54 -61 -62 -63",
+            "-55 -55 -56 -53 -47 -50 -47 -47 -47 -45 -45 -45 -44 -46 -46 -46 -49 -46 -46 -45 -46 -46 -46 -46 -46",
+            "-44 -45 -45 -44 -46 -45 -46 -44 -44 -46 -47 -47 -45 -49 -51 -55 -56 -60 -63 -64 -60 -60 -64 -64 -62"
+        ],
+        "m6p4OutMixed": [
+            "-54 -56 -54 -54 -56 -56 -55 -55 -55 -56 -56 -53 -56 -56 -53 -51 -55 -51 -53 -52 -55 -54 -55 -55 -57",
+            "-57 -56 -54 -53 -53 -55 -56 -54 -55 -56 -54 -55 -58 -57 -59 -60 -59 -61 -58 -57 -56 -57 -57 -58 -60",
+            "-65 -65 -63 -67 -67 -33 -35 -30 -23 -18 -19 -23 -33 -47 -58 -59 -61 -64 -64 -64 -42 -33 -30 -34 -35",
+            "-45 -55 -61 -67 -67 -64 -66 -38 -32 -20 -18 -18 -17 -17 -17 -18 -18 -19 -20 -19 -19 -20 -23 -26 -29"
+        ],
+        "m6p4OutSource": [
+            "-60 -62 -60 -59 -65 -57 -58 -58 -60 -60 -56 -57 -59 -57 -60 -60 -60 -61 -59 -58 -59 -63 -64 -66 -65",
+            "-69 -66 -64 -64 -66 -66 -65 -66 -65 -66 -67 -63 -62 -68 -66 -62 -67 -67 -68 -67 -64 -60 -64 -65 -68",
+            "-67 -65 -63 -67 -67 -33 -35 -30 -23 -18 -19 -23 -33 -47 -58 -59 -61 -64 -64 -64 -42 -33 -30 -34 -35",
+            "-45 -55 -61 -67 -67 -64 -66 -38 -32 -20 -18 -18 -17 -17 -17 -18 -18 -19 -20 -19 -19 -20 -23 -26 -29"
         ]
     ]
     /// Deterministic white noise whose every 10 ms frame has exactly the envelope's RMS.
@@ -107,10 +155,10 @@ struct VoiceLabSeamPauseJoinTests {
         let steps = try VoiceLabLoudness.seamStepsLu(mixed, sampleRate: rate, seamSamples: [seam])
         let sourceSteps = try VoiceLabLoudness.seamStepsLu(source, sampleRate: rate, seamSamples: [seam])
         let levels = try VoiceLabLoudness.generatedPauseLufs(mixed, sampleRate: rate, seamSamples: [seam], generatedAfter: [generatedAfter])
-        let ranges = try VoiceLabLoudness.sourcePauseRangesLufs(source, sampleRate: rate, seamSamples: [seam], generatedAfter: [generatedAfter])
+        let pauses = try VoiceLabLoudness.sourcePausesLufs(source, sampleRate: rate, seamSamples: [seam], generatedAfter: [generatedAfter])
         let plain = try VoiceLabLoudness.seamExcessLu(mixedSteps: steps, sourceSteps: sourceSteps)
         let joined = try VoiceLabLoudness.seamExcessLu(mixedSteps: steps, sourceSteps: sourceSteps, generatedPauseLevels: levels,
-                                                       sourcePauseRanges: ranges)
+                                                       sourcePauses: pauses)
         return (plain, joined)
     }
 
@@ -131,6 +179,20 @@ struct VoiceLabSeamPauseJoinTests {
         let value = try Self.values(name, generatedAfter: generatedAfter)
         #expect(value.joined <= 2, "\(name) \(value)")
     }
+    /// The 16:16 run: phrase 2's incoming join meets a 0.12 s breath decaying to the floor at the join (3.60 LU live);
+    /// its outgoing join meets an inhale where the source itself steps from its floor (6.41 LU); phrase 4's take pause
+    /// meets the source's next word, whose 400 ms step it keeps (2.60 LU against the pause it replaced). All pass.
+    @Test(arguments: [("m6p2In", true), ("m6p2Out", false), ("m6p4Out", false)])
+    func liveJoinsOfTheSecondRunPass(name: String, generatedAfter: Bool) throws {
+        let value = try Self.values(name, generatedAfter: generatedAfter)
+        #expect(value.joined <= 2, "\(name) \(value)")
+    }
+    /// The 16:16 run's phrase 1 ends mid-sentence ("…really not running | out of ideas") on a hard seam, and the take's
+    /// last 0.4 s is 7.7 LU under the speech it replaces: a real step into the source's next word, which still fails.
+    @Test func aTakeThatTrailsOffBeforeSourceSpeechStillFails() throws {
+        let value = try Self.values("m6p1Out", generatedAfter: false)
+        #expect(value.joined > 2, "\(value)")
+    }
     /// The rule keeps its intent: room tone louder or quieter than every part of the pause it meets, or room tone that
     /// stops where the source has background, is still a jump at the same joins.
     @Test func roomToneThatDiffersFromThePauseItMeetsStillFails() throws {
@@ -139,8 +201,9 @@ struct VoiceLabSeamPauseJoinTests {
         #expect(louder.joined > 2, "\(louder)")
         let dropout = try Self.values("p1Out", generatedAfter: false) { $0 < 50 && $0 >= 20 ? -40 : 0 }
         #expect(dropout.joined > 2, "\(dropout)")
-        // Phrase 2's incoming join with room tone 10 dB quieter, or none, before the take's first word (frame 85 on).
-        let quieter = try Self.values("p2In", generatedAfter: true) { $0 >= 50 && $0 < 84 ? -10 : 0 }
+        // Phrase 2's incoming join with room tone 16 dB quieter (below the source's own floor at the join), or none,
+        // before the take's first word (frame 85 on).
+        let quieter = try Self.values("p2In", generatedAfter: true) { $0 >= 50 && $0 < 84 ? -16 : 0 }
         #expect(quieter.joined > 2, "\(quieter)")
         let missing = try Self.values("p2In", generatedAfter: true) { $0 >= 50 && $0 < 84 ? -40 : 0 }
         #expect(missing.joined > 2, "\(missing)")

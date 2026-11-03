@@ -658,13 +658,13 @@ struct VoiceLabTakeRunTests {
         let original = try #require(fixture.input.source.samples(36_000..<156_000))
         #expect(audio.sourceSeamSteps == (try VoiceLabLoudness.seamStepsLu(Array(original), sampleRate: 24_000, seamSamples: [12_000, 108_000])))
         #expect(audio.generatedAfter == [true, false])
-        #expect(audio.sourceSeamPauseRanges == (try VoiceLabLoudness.sourcePauseRangesLufs(Array(original), sampleRate: 24_000,
+        #expect(audio.sourceSeamPauses == (try VoiceLabLoudness.sourcePausesLufs(Array(original), sampleRate: 24_000,
             seamSamples: [12_000, 108_000], generatedAfter: [true, false])))
         #expect(qa.values.lufsJumpLu == (try VoiceLabLoudness.seamExcessLu(mixedSteps: VoiceLabLoudness.seamStepsLu(audio.mixed,
             sampleRate: audio.sampleRate, seamSamples: audio.seams), sourceSteps: audio.sourceSeamSteps,
             generatedPauseLevels: VoiceLabLoudness.generatedPauseLufs(audio.mixed, sampleRate: audio.sampleRate, seamSamples: audio.seams,
                 generatedAfter: audio.generatedAfter),
-            sourcePauseRanges: audio.sourceSeamPauseRanges)))
+            sourcePauses: audio.sourceSeamPauses)))
         let paid = try #require(await fixture.run.paidAsset(for: row.id))
         let paidURL = fixture.root.appendingPathComponent("VoiceLab").appendingPathComponent(paid.file)
         await fixture.run.reject(row.id)
@@ -819,10 +819,10 @@ struct VoiceLabTakeRunTests {
         // Both joins are pause joins: the take's pad over the bed meets the source's pause at that side's level.
         let levels = try VoiceLabLoudness.generatedPauseLufs(audio.mixed, sampleRate: audio.sampleRate, seamSamples: audio.seams,
             generatedAfter: audio.generatedAfter)
-        let joins = zip(levels, audio.sourceSeamPauseRanges).map { level, range in
-            level.flatMap { level in range.map { max(0, $0.lowerBound - level, level - $0.upperBound) } }
+        let joins = zip(levels, audio.sourceSeamPauses).map { level, range in
+            level.flatMap { level in range.map { max(0, $0.range.lowerBound - level, level - $0.range.upperBound) } }
         }
-        #expect(joins.count == 2 && joins.allSatisfy { $0.map { $0 <= 2 } == true }, "\(levels) \(audio.sourceSeamPauseRanges)")
+        #expect(joins.count == 2 && joins.allSatisfy { $0.map { $0 <= 2 } == true }, "\(levels) \(audio.sourceSeamPauses)")
         #expect((qa.values.lufsJumpLu ?? 9) <= 2 && !qa.failures.contains(.loudness), "\(qa)")
         if stepDb > 0 {
             // One pooled level would have missed both joins by about half the step.

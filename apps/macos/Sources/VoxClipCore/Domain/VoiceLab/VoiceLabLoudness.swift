@@ -1,5 +1,15 @@
 import Foundation
 
+/// The unedited source's own pause levels at one seam (§8.11 item 3, `VoiceLabLoudness.sourcePausesLufs`).
+public struct VoiceLabSourcePause: Sendable, Equatable {
+    /// Quietest to loudest level of the source's pauses on both sides of the seam, in LUFS.
+    public let range: ClosedRange<Double>
+    /// Whether the source side, which the generated audio meets at the join, is in a pause; false when the join meets
+    /// source speech and only the pause a take's pause stands in for is measured.
+    public let besideJoin: Bool
+    public init(range: ClosedRange<Double>, besideJoin: Bool) { self.range = range; self.besideJoin = besideJoin }
+}
+
 /// Typed failures of the Voice Lab audio measurements; voice-lab.md §8.7 item 2 and §8.11 item 3.
 public enum VoiceLabAudioMathError: Error, Equatable, Sendable {
     /// The source neighbourhood or the candidate has no 10 ms frame above `VOICED_FRAME`, so no level gain exists.
@@ -268,49 +278,62 @@ public enum VoiceLabLoudness {
         }
     }
 
-    /// The range of the unedited source's own pause levels beside each seam (§8.11 item 3), or nil when the source is in
-    /// no pause there. The pause is the source side's (the side the generated audio does not replace) when it holds at
-    /// least 0.1 s of unvoiced frames, framed as in `generatedPauseLufs` but read whole, up to the first voiced frame or
-    /// the end of `samples`; otherwise the window side's, the pause a take's pause stands in for. The range runs from the
-    /// quietest to the loudest K-weighted loudness of the 0.1 s spans that step frame by frame through that pause, each
-    /// floored at −70 LUFS, so an inhale or a word's decay inside a pause widens it and the floor around them stays in it.
-    public static func sourcePauseRangesLufs(_ samples: [Float], sampleRate: Int, seamSamples: [Int],
-                                             generatedAfter: [Bool]) throws -> [ClosedRange<Double>?] {
+    /// The span next to a join whose level also bounds the source's pause there: the end of a decay or the start of a
+    /// breath, which 0.1 s spans average away.
+    static let pauseJoinSeconds = 0.03
+
+    /// The unedited source's own pause levels at each seam (§8.11 item 3), or nil when the source is in no pause there.
+    /// Each side's pause is framed as in `generatedPauseLufs` but read whole, up to the first voiced frame or the end of
+    /// `samples`, and counts when it holds at least 0.1 s: the source side's (the side the generated audio does not
+    /// replace) and the window side's (the pause a take's pause stands in for). The range runs from the quietest to the
+    /// loudest K-weighted loudness, each floored at −70 LUFS, of the 0.1 s spans stepping frame by frame through those
+    /// pauses and of each pause's `pauseJoinSeconds` next to the seam. So an inhale, a word's decay or the source's own
+    /// step from its floor to a breath at the seam widens it, and the floor around them stays in it.
+    public static func sourcePausesLufs(_ samples: [Float], sampleRate: Int, seamSamples: [Int],
+                                        generatedAfter: [Bool]) throws -> [VoiceLabSourcePause?] {
         let size = sampleCount(VoiceLabPatchConstants.RMS_FRAME, sampleRate)
         let span = sampleCount(minimumSeamWindowSeconds, sampleRate) / size * size
+        let join = max(1, sampleCount(pauseJoinSeconds, sampleRate) / size) * size
         return try pauseRuns(samples, sampleRate: sampleRate, seamSamples: seamSamples, generatedAfter: generatedAfter) { weighted, runs in
-            runs.map { run in
-                guard let pause = run.source ?? run.window else { return nil }
-                var lower = Double.infinity, upper = -Double.infinity, start = pause.lowerBound
-                while start + span <= pause.upperBound {
-                    let level = max(loudness(weighted, from: start, to: start + span), silenceGateLufs)
+            zip(runs, generatedAfter).map { run, after -> VoiceLabSourcePause? in
+                var lower = Double.infinity, upper = -Double.infinity
+                func add(_ start: Int, _ end: Int) {
+                    let level = max(loudness(weighted, from: start, to: end), silenceGateLufs)
                     lower = min(lower, level); upper = max(upper, level)
-                    start += size
                 }
-                return lower...upper
+                // The source side lies before the seam when the generated audio follows it, and after it otherwise.
+                for (pause, before) in [(run.source, after), (run.window, !after)] {
+                    guard let pause else { continue }
+                    var start = pause.lowerBound
+                    while start + span <= pause.upperBound { add(start, start + span); start += size }
+                    if before { add(pause.upperBound - join, pause.upperBound) } else { add(pause.lowerBound, pause.lowerBound + join) }
+                }
+                guard lower <= upper else { return nil }
+                return VoiceLabSourcePause(range: lower...upper, besideJoin: run.source != nil)
             }
         }
     }
 
     /// The take QA's seam value (§8.11 item 3). A seam whose generated side is in a pause (`generatedPauseLevels` not
-    /// nil) and whose source has a pause beside it (`sourcePauseRanges` not nil) is a pause join: its value is how far
-    /// the generated pause level lies outside the range of the source's own pause levels there, so room tone that stops,
-    /// or sits louder or quieter than every part of the pause it meets, is a jump, and a longer take pause, a breath or a
-    /// word's decay in the source is not. Every other seam keeps `seamExcessLu(mixedSteps:sourceSteps:)`. The largest
-    /// value, 0 without a seam.
+    /// nil) and whose source has a pause there (`sourcePauses` not nil) is a pause join: its value is how far the
+    /// generated pause level lies outside the range of the source's own pause levels, so room tone that stops, or sits
+    /// louder or quieter than every part of the pauses it meets or stands in for, is a jump, and a longer take pause, a
+    /// breath or a word's decay in the source is not. Where the generated pause meets source speech instead
+    /// (`besideJoin` false), the speech onset or end is the join, so the seam also passes when its 400 ms step does. Every
+    /// other seam keeps `seamExcessLu(mixedSteps:sourceSteps:)`. The largest value, 0 without a seam.
     public static func seamExcessLu(mixedSteps: [Double], sourceSteps: [Double], generatedPauseLevels: [Double?],
-                                    sourcePauseRanges: [ClosedRange<Double>?]) throws -> Double {
+                                    sourcePauses: [VoiceLabSourcePause?]) throws -> Double {
         let count = mixedSteps.count
-        let bounds = sourcePauseRanges.compactMap { $0 }.flatMap { [$0.lowerBound, $0.upperBound] }
-        guard sourceSteps.count == count, generatedPauseLevels.count == count, sourcePauseRanges.count == count,
+        let bounds = sourcePauses.compactMap { $0 }.flatMap { [$0.range.lowerBound, $0.range.upperBound] }
+        guard sourceSteps.count == count, generatedPauseLevels.count == count, sourcePauses.count == count,
               (mixedSteps + sourceSteps + generatedPauseLevels.compactMap { $0 } + bounds).allSatisfy(\.isFinite) else {
             throw VoiceLabAudioMathError.invalidInput
         }
         return (0..<count).map { index in
-            if let level = generatedPauseLevels[index], let range = sourcePauseRanges[index] {
-                return max(0, range.lowerBound - level, level - range.upperBound)
-            }
-            return outside(mixedSteps[index], sourceSteps[index])
+            let plain = outside(mixedSteps[index], sourceSteps[index])
+            guard let level = generatedPauseLevels[index], let pause = sourcePauses[index] else { return plain }
+            let value = max(0, pause.range.lowerBound - level, level - pause.range.upperBound)
+            return pause.besideJoin ? value : min(value, plain)
         }.max() ?? 0
     }
 
