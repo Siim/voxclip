@@ -158,15 +158,97 @@ struct ContextDemoZoomCoverContractTests {
         }
     }
 
-    @Test func legacyRetimedAndLipsyncDoNotBecomeSupportedRoutes() {
+    @Test func legacyRetimedStaysUnsupportedAndLipsyncUsesValidatedBasePolicy() {
         #expect(!VoiceLabRenderInput.supportsVideoMode(.retimed))
-        #expect(!VoiceLabRenderInput.supportsVideoMode(.lipsync))
+        #expect(VoiceLabRenderInput.supportsVideoMode(.lipsync))
     }
 }
 
 extension HeavyMediaTests {
 @Suite("context-demo-zoom-cover-native", .serialized, .offlineFixtures)
 struct ContextDemoZoomCoverNativeTests {
+    @Test @MainActor func lipsyncPreparationFaceGateAndPreviewExportFrames() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("lipsync-composition-tests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = try await NativeMediaFixtures.shared.file("joins-tone.mov")
+        var project = try zoomCoverProject(duration: 0.875, source: source, paidRoot: root)
+        let baseRequest = try zoomCoverRequest(project: project, paidRoot: root)
+        let outputPlan = try #require(baseRequest.voiceLab).prepared.outputPlan
+        let recipe = try #require(project.voiceLab.segments[0].candidates[0].recipe)
+        let sourceWindow = try LipsyncWindow.make(seamIn: recipe.video.sourceStartSample,
+            seamOut: recipe.video.sourceEndSample, totalSamples: outputPlan.totalSourceSamples, sampleRate: 48_000, phraseID: 0)
+        let window = try LipsyncRenderWindow(source: sourceWindow, plan: outputPlan)
+        #expect(window.syncMode == .remap)
+        await #expect(throws: LipsyncPreparationError.noClearFace) {
+            _ = try await LipsyncWindowPreparation.prepare(request: baseRequest, window: window, scratchRoot: root, detector: { _ in 0 })
+        }
+        let prepared = try await LipsyncWindowPreparation.prepare(request: baseRequest, window: window, scratchRoot: root, detector: { _ in 0.2 })
+        #expect(prepared.width == 320 && prepared.height == 180 && prepared.fps == 30)
+        #expect(prepared.audio.data.count == 44 + Int((window.seconds(sampleRate: 48_000) * 48_000).rounded()) * 2)
+        let mezzanine = root.appendingPathComponent("check.mp4")
+        try prepared.video.data.write(to: mezzanine)
+        let native = try await LipsyncResultValidation.validate(file: mezzanine, durationSeconds: window.seconds(sampleRate: 48_000), fps: 30, width: 320, height: 180)
+        #expect(native.frameRate == 30)
+        let whiteGraph = try await CompositionBuilder(scratchRoot: root).build(baseRequest, includeDisclosure: false, colorCorrection: (0, 0.95))
+        let assetID = UUID().uuidString.lowercased()
+        let lipFile = root.appendingPathComponent("\(project.id)/\(assetID).mp4")
+        let range = CMTimeRange(start: CMTime(value: window.outputStartSample, timescale: 48_000),
+            end: CMTime(value: window.outputEndSample, timescale: 48_000))
+        try await LipsyncMezzanine.write(graph: whiteGraph, range: range, output: baseRequest.output, to: lipFile)
+        let bytes = try Data(contentsOf: lipFile)
+        project.voiceLab.videoAssets = [VoiceLabVideoAsset(id: assetID, file: "\(project.id)/\(assetID).mp4",
+            sha256: SpeechSHA256.hex(bytes), durationSeconds: range.duration.seconds, frameRate: 30, width: 320, height: 180)]
+        project.voiceLab.segments[0].candidates[0].recipe!.video = recipe.video.addingLipsync(assetID: assetID,
+            requestID: "11111111-2222-4333-8444-555555555555", sourceWindow: window.source, syncMode: .remap)
+        let request = try zoomCoverRequest(project: project, paidRoot: root)
+        let graph = try await CompositionBuilder(scratchRoot: root).build(request)
+        let instructions = graph.videoComposition.instructions.compactMap { $0 as? RenderInstruction }
+        #expect(instructions.contains { !$0.lipsyncLayers.isEmpty && $0.videoZoom == 1.12 })
+        let preview = PreviewPlayerController()
+        defer { preview.close() }
+        try await preview.load(request)
+        let previewItem = try #require(preview.player.currentItem as? LeasedPlayerItem)
+        #expect(previewItem.renderGraph.videoComposition.instructions.contains { ($0 as? RenderInstruction)?.lipsyncLayers.isEmpty == false })
+        let generator = AVAssetImageGenerator(asset: graph.composition)
+        generator.videoComposition = graph.videoComposition
+        generator.requestedTimeToleranceBefore = .zero; generator.requestedTimeToleranceAfter = .zero
+        let piece = try #require(outputPlan.pieces.first { $0.kind == .synth })
+        let fadeStart = Double(piece.outputStartSample) / 48_000 - 0.2
+        var levels: [Double] = []
+        for frame in 0...3 {
+            let image = try await compositionTestImage(generator: generator,
+                at: CMTime(seconds: fadeStart + Double(frame) / 30, preferredTimescale: 600_000))
+            levels.append(try Self.centerLuma(image))
+        }
+        #expect(levels[3] > levels[0] + 30)
+        #expect(levels[1] > levels[0] && levels[2] > levels[1] && levels[3] > levels[2])
+        let destination = root.appendingPathComponent("lip-export.mp4")
+        _ = try await AVExporter(appVersion: "0.1.0").export(ExportJob(render: request, outputURL: destination)) { _ in }
+        let exported = AVAssetImageGenerator(asset: AVURLAsset(url: destination))
+        exported.requestedTimeToleranceBefore = .zero; exported.requestedTimeToleranceAfter = .zero
+        let image = try await exported.image(at: CMTime(seconds: fadeStart + 0.15, preferredTimescale: 600_000)).image
+        #expect(try Self.centerLuma(image) > 200)
+        #expect(request.voiceLab?.prepared.disclosure.postText?.contains("Lip movements in parts of it were generated with AI.") == true)
+        let (conformed, warning) = try await LipsyncResultConformer.conform(lipFile, duration: range.duration.seconds,
+            fps: 30, width: 160, height: 90, reference: prepared.video)
+        let resized = try await LipsyncResultValidation.validate(file: conformed, durationSeconds: range.duration.seconds,
+            fps: 30, width: 160, height: 90)
+        #expect(resized.width == 160 && resized.height == 90 && warning)
+    }
+
+    private static func centerLuma(_ image: CGImage) throws -> Double {
+        var pixel = [UInt8](repeating: 0, count: 4)
+        let drawn = pixel.withUnsafeMutableBytes { bytes -> Bool in
+            guard let context = CGContext(data: bytes.baseAddress, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+                let cropped = image.cropping(to: CGRect(x: image.width / 2, y: image.height / 2, width: 1, height: 1)) else { return false }
+            context.draw(cropped, in: CGRect(x: 0, y: 0, width: 1, height: 1)); return true
+        }
+        #expect(drawn)
+        return (Double(pixel[0]) + Double(pixel[1]) + Double(pixel[2])) / 3
+    }
+
     @Test @MainActor func changedDurationScalesOnlyVideoAndKeepsNaturalGeneratedSpeech() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("zoom-composition-tests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

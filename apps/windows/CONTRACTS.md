@@ -1,5 +1,11 @@
 # Windows fixed contracts
 
+### 2026-11-04 — Mac Rewrite sync-3 twin owed
+
+- Windows keeps lip sync hidden; no Windows production code changes belong to this package. Owed: local face gate, chosen-duration mezzanine/WAV, approved fal REST upload/queue/retention/retry/cancel/cleanup, inline per-phrase/All controls, mutation ownership, receipt retention and shared preview/export crossfades.
+- Mac retains existing recipe field names, preserving source/zoom/cut fields under `mode=lipsync` and storing the actual `cut_off` or `remap`. Windows decodes the existing fields but its remap-only/base-field validator needs a scoped compatibility follow-up before consuming these Mac recipes; passing current Windows tests is not evidence of that compatibility. New independent `voxclip-lipsync-windows/1` vectors have ten window/merge cases for the twin to replay.
+- No paid/live gate or CI dispatch is authorized. The lead owns the first actual fal job and Windows native acceptance.
+
 ### 2026-11-04 — Natural-pacing review fixes: paid-rate cut, borrowed reserve, empty classes, retry tags
 
 - **Built.** `VoiceLabNaturalPacing.Fit` sizes the cut search from `VoiceLabRewriteFit.VideoDuration(fit)` × source rate, the same output `AllowsVideo` and the recipe use, so an odd 48 kHz window with a 24 kHz take produces a cut that `ValidCuts` accepts. `VoiceLabFitPlanner.Plan` sizes each hard reserve from the window the recipe covers. When a gap seam lends samples and that grows the reserve, it re-plans with the widened duration until the reserve stops growing (capped at 32 rounds). Plans without a borrow, or with a window of at least 0.7 s, are unchanged. `VoiceLabHardJoin.WindowDuration` is the validator's own widened-window arithmetic, now shared by `ValidateShape`. `VoiceLabPauseDistribution.IsEmpty` marks a class with no measured pauses, which shrinks only to the legacy 150 ms / 60 ms floors. App: `RewriteGeneration.RetryPace` passes `VoiceLabNaturalPacing.PauseTags(input.AudioTags, input.ModelId, SplitWords(input.Text).Count)` to `Match`, as Mac does. Windows App and Media renderers are untouched (track/v2-cut-win owns them).

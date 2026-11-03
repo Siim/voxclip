@@ -19,7 +19,8 @@ package protocol LipsyncHTTPClient: Sendable {
 struct URLSessionLipsyncHTTPClient: LipsyncHTTPClient {
     var configure: @Sendable (URLSessionConfiguration) -> Void = { _ in }
     func send(_ request: URLRequest, limit: Int, permit: VoiceDispatchPermit?) async throws -> LipsyncHTTPResponse {
-        try await LipsyncHTTPTransfer(limit: limit, configure: configure).run(request, permit: permit)
+        try await LipsyncHTTPTransfer(limit: limit, upload: request.httpMethod == "PUT" && request.httpBody != nil,
+                                      configure: configure).run(request, permit: permit)
     }
 
     func download(_ request: URLRequest, to file: URL, limit: Int) async throws {
@@ -93,17 +94,18 @@ private final class LipsyncHTTPTransfer: NSObject, URLSessionDataDelegate, @unch
     private let state = Mutex(State())
     private let limit: Int
     private let descriptor: Int32?
+    private let upload: Bool
     private let configure: @Sendable (URLSessionConfiguration) -> Void
-    init(limit: Int, descriptor: Int32? = nil, configure: @escaping @Sendable (URLSessionConfiguration) -> Void) {
-        self.limit = limit; self.descriptor = descriptor; self.configure = configure
+    init(limit: Int, descriptor: Int32? = nil, upload: Bool = false, configure: @escaping @Sendable (URLSessionConfiguration) -> Void) {
+        self.limit = limit; self.descriptor = descriptor; self.upload = upload; self.configure = configure
     }
 
     func run(_ request: URLRequest, permit: VoiceDispatchPermit?) async throws -> LipsyncHTTPResponse {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpCookieStorage = nil; configuration.urlCache = nil; configuration.urlCredentialStorage = nil
         configuration.httpShouldSetCookies = false; configuration.connectionProxyDictionary = [:]
-        configuration.timeoutIntervalForRequest = min(30, request.timeoutInterval)
-        configuration.timeoutIntervalForResource = descriptor == nil ? min(30, request.timeoutInterval) : 120
+        configuration.timeoutIntervalForRequest = min(upload ? 120 : 30, request.timeoutInterval)
+        configuration.timeoutIntervalForResource = descriptor == nil && !upload ? min(30, request.timeoutInterval) : 120
         configure(configuration)
         let session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
         defer { session.invalidateAndCancel() }
@@ -138,7 +140,8 @@ private final class LipsyncHTTPTransfer: NSObject, URLSessionDataDelegate, @unch
             if response.expectedContentLength > Int64(limit) { failure = .responseTooLarge }
             else if let encoding = response.value(forHTTPHeaderField: "Content-Encoding"), encoding.lowercased() != "identity" { failure = .invalidResponse }
             else if descriptor != nil && (response.statusCode != 200 || mime != "video/mp4") { failure = .invalidMedia }
-            else if descriptor == nil && !(mime == "application/json" || mime?.hasSuffix("+json") == true) { failure = .invalidResponse }
+            else if descriptor == nil && !(upload && (200...299).contains(response.statusCode)) &&
+                !(mime == "application/json" || mime?.hasSuffix("+json") == true) { failure = .invalidResponse }
             else { failure = nil }
             state.withLock { $0.response = response; $0.failure = failure }
         } else { failure = .invalidResponse; state.withLock { $0.failure = failure } }

@@ -8,7 +8,8 @@ private struct RewriteGenerationFixtureKeys: KeyProvider {
 }
 
 @MainActor enum DebugRewriteGeneration {
-    static let states = ["no-voice", "ready", "generating", "provider-error", "none-passed", "length-changed", "cost-confirmation", "cancelled"]
+    static let states = ["no-voice", "ready", "generating", "provider-error", "none-passed", "length-changed", "cost-confirmation", "cancelled",
+        "lipsync-idle", "lipsync-first-use", "lipsync-running", "lipsync-done", "lipsync-missing-key", "lipsync-failed", "lipsync-cancelled", "lipsync-waiting"]
     static var variants: [String] { states.map { "rewrite-takes-" + $0 } }
     static func show(_ state: String, app: AppModel) async throws {
         guard states.contains(state), let root = app.shared?.root else { throw VoiceLabError.invalidInput }
@@ -40,7 +41,11 @@ private struct RewriteGenerationFixtureKeys: KeyProvider {
             let plan = try ClipTakePlan(project: session.project, scope: session.scope, envelope: envelope,
                 hunks: session.changes.enumerated().filter { $0.element.hunk.kind != .voice || session.includedVoice.contains($0.offset + 1) }.map { $0.element.hunk },
                 makeInput: { _ in throw VoiceLabError.invalidInput })
-            plan.showFixture(state)
+            plan.showFixture(state.hasPrefix("lipsync-") ? "ready" : state)
+            if state.hasPrefix("lipsync-") {
+                for phrase in plan.phrases { _ = plan.chooseVideo(.source, phrase: phrase.id) }
+                try plan.lipsync.showFixture(state, project: session.project, phrases: plan.phrases)
+            }
             session.takePlan = plan
         }
     }

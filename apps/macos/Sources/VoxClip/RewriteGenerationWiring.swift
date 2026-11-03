@@ -129,6 +129,7 @@ extension RewriteSession {
                 self.observeMeasuredTakes(plan)
             }
             plan.prepareDurationRender = durationRenderPreparer()
+            configureLipsync(plan)
             if let contextReview, let contextRequest {
                 try contextReview.validatePreparedPhrases(plan.phrases, current: contextRequest, envelope: envelope)
                 bindSpeechContext(contextReview, to: plan)

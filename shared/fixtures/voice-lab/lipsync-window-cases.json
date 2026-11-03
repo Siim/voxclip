@@ -1,0 +1,220 @@
+{
+  "schema": "voxclip-lipsync-windows/1",
+  "caseCount": 10,
+  "windows": [
+    {
+      "id": "handles",
+      "seamIn": 96000,
+      "seamOut": 192000,
+      "totalSamples": 480000,
+      "sampleRate": 48000,
+      "phraseID": 0,
+      "expected": {
+        "startSample": 48000,
+        "endSample": 240000,
+        "phraseIDs": [
+          0
+        ]
+      }
+    },
+    {
+      "id": "start-clamped",
+      "seamIn": 4800,
+      "seamOut": 24000,
+      "totalSamples": 480000,
+      "sampleRate": 48000,
+      "phraseID": 0,
+      "expected": {
+        "startSample": 0,
+        "endSample": 144000,
+        "phraseIDs": [
+          0
+        ]
+      }
+    },
+    {
+      "id": "end-clamped",
+      "seamIn": 456000,
+      "seamOut": 470400,
+      "totalSamples": 480000,
+      "sampleRate": 48000,
+      "phraseID": 0,
+      "expected": {
+        "startSample": 336000,
+        "endSample": 480000,
+        "phraseIDs": [
+          0
+        ]
+      }
+    },
+    {
+      "id": "minimum-centered",
+      "seamIn": 192000,
+      "seamOut": 196800,
+      "totalSamples": 480000,
+      "sampleRate": 48000,
+      "phraseID": 0,
+      "expected": {
+        "startSample": 122400,
+        "endSample": 266400,
+        "phraseIDs": [
+          0
+        ]
+      }
+    },
+    {
+      "id": "whole-three-second-take",
+      "seamIn": 48000,
+      "seamOut": 96000,
+      "totalSamples": 144000,
+      "sampleRate": 48000,
+      "phraseID": 0,
+      "expected": {
+        "startSample": 0,
+        "endSample": 144000,
+        "phraseIDs": [
+          0
+        ]
+      }
+    },
+    {
+      "id": "long-phrase",
+      "seamIn": 480000,
+      "seamOut": 1152000,
+      "totalSamples": 2880000,
+      "sampleRate": 48000,
+      "phraseID": 0,
+      "expected": {
+        "startSample": 432000,
+        "endSample": 1200000,
+        "phraseIDs": [
+          0
+        ]
+      }
+    }
+  ],
+  "merges": [
+    {
+      "id": "touch",
+      "windows": [
+        {
+          "startSample": 48000,
+          "endSample": 192000,
+          "phraseIDs": [
+            0
+          ]
+        },
+        {
+          "startSample": 192000,
+          "endSample": 336000,
+          "phraseIDs": [
+            1
+          ]
+        }
+      ],
+      "expected": [
+        {
+          "startSample": 48000,
+          "endSample": 336000,
+          "phraseIDs": [
+            0,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "id": "overlap",
+      "windows": [
+        {
+          "startSample": 48000,
+          "endSample": 192000,
+          "phraseIDs": [
+            0
+          ]
+        },
+        {
+          "startSample": 96000,
+          "endSample": 240000,
+          "phraseIDs": [
+            1
+          ]
+        }
+      ],
+      "expected": [
+        {
+          "startSample": 48000,
+          "endSample": 240000,
+          "phraseIDs": [
+            0,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "id": "separate",
+      "windows": [
+        {
+          "startSample": 48000,
+          "endSample": 192000,
+          "phraseIDs": [
+            0
+          ]
+        },
+        {
+          "startSample": 288000,
+          "endSample": 432000,
+          "phraseIDs": [
+            1
+          ]
+        }
+      ],
+      "expected": [
+        {
+          "startSample": 48000,
+          "endSample": 192000,
+          "phraseIDs": [
+            0
+          ]
+        },
+        {
+          "startSample": 288000,
+          "endSample": 432000,
+          "phraseIDs": [
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "id": "unsorted-and-contained",
+      "windows": [
+        {
+          "startSample": 192000,
+          "endSample": 432000,
+          "phraseIDs": [
+            1
+          ]
+        },
+        {
+          "startSample": 48000,
+          "endSample": 528000,
+          "phraseIDs": [
+            0
+          ]
+        }
+      ],
+      "expected": [
+        {
+          "startSample": 48000,
+          "endSample": 528000,
+          "phraseIDs": [
+            0,
+            1
+          ]
+        }
+      ]
+    }
+  ]
+}

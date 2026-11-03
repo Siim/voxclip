@@ -54,6 +54,7 @@ import VoxClipMedia
         let segments: [VoiceLabSegment]
         let assets: [VoiceLabAsset]
         let voice: VoiceLabVoiceReference
+        var videoAssets: [VoiceLabVideoAsset] = []
     }
     private struct PreparedVideoSelection {
         let choices: [UUID: VoiceLabVideoMode]
@@ -107,6 +108,7 @@ import VoxClipMedia
     private(set) var cost: VoiceLabCostPresentation.Kind?
     private(set) var spent = VoiceLabTakeRunQuote.total(of: [], takes: 0)
     let audition: VoiceLabAudition
+    let lipsync = RewriteLipsyncSession()
     @ObservationIgnored private var auditionTurn = UUID()
     @ObservationIgnored private var receivedInBatch: Set<UUID> = []
     @ObservationIgnored private var fatalPhrases: Set<Int> = []
@@ -190,6 +192,7 @@ import VoxClipMedia
         guard stillCurrent, !generating, !preparing, !publishing, !preparingVideo, phrases.indices.contains(phrase),
               videoAvailability(phrase: phrase).allows(choice) else { return false }
         if phrases[phrase].videoChoice == choice { return true }
+        guard !lipsync.blocksMutation(phrase) else { return false }
         clearPreparedVideo()
         phrases[phrase].videoChoice = choice
         return true
@@ -612,6 +615,7 @@ import VoxClipMedia
     }
 
     func invalidate() {
+        lipsync.stop()
         stopAudition()
         clearPreparedVideo()
         guard !retired else { return }
@@ -627,6 +631,7 @@ import VoxClipMedia
     }
 
     @discardableResult func select(take: UUID, phrase: Int) -> Bool {
+        if phrases.indices.contains(phrase), phrases[phrase].selectedID != take, lipsync.blocksMutation(phrase) { return false }
         guard !generating, !preparing, !publishing, !preparingVideo, !retired, isCurrent(), phrases.indices.contains(phrase),
               phrases[phrase].takes.contains(where: { $0.id == take && $0.row.selectable && !$0.row.requiresJoinAdvisoryAcceptance }) else { return false }
         stopAudition()
@@ -647,6 +652,7 @@ import VoxClipMedia
     }
 
     @discardableResult func useAnyway(take: UUID, phrase: Int, at date: Date = Date()) -> Bool {
+        if phrases.indices.contains(phrase), phrases[phrase].selectedID != take, lipsync.blocksMutation(phrase) { return false }
         guard !generating, !preparing, !publishing, !preparingVideo, !retired, isCurrent(), phrases.indices.contains(phrase),
               let index = phrases[phrase].takes.firstIndex(where: { $0.id == take }),
               let row = try? phrases[phrase].takes[index].row.acceptingJoinAdvisory(at: date) else { return false }
@@ -763,6 +769,7 @@ import VoxClipMedia
             }
         }
         guard (revision == version || stopping), !retired, isCurrent() else { return }
+        guard !lipsync.blocksMutation(phrase) else { return }
         if phrases[phrase].explicitlySelected {
             if let row = phrases[phrase].selected?.row, row.selectable, !row.requiresJoinAdvisoryAcceptance { return }
             phrases[phrase].explicitlySelected = false
@@ -798,25 +805,26 @@ import VoxClipMedia
 
     func acceptance(at date: Date = Date()) async throws -> Acceptance {
         stopAudition()
+        defer { lipsync.finishUseTakes() }
+        try await lipsync.waitForUseTakes()
         guard stillCurrent else { invalidate(); throw Failure.stale }
         guard canAccept else { throw Failure.noSelection }
-        if selectedPhrases.contains(where: { $0.videoChoice == .retimed || $0.videoChoice == .cut }) {
+        let output = try applyingLipsync(to: await publishSelection(at: date))
+        if selectedPhrases.contains(where: { $0.videoChoice == .retimed || $0.videoChoice == .cut }) || !output.videoAssets.isEmpty {
             let turn = videoRevision, choices = videoChoices
             preparingVideo = true
             defer { preparingVideo = false }
-            let output = try await publishSelection(at: date)
             let proposed = try VoiceLabEditCommand.acceptAll(segments: output.segments, assets: output.assets, voice: output.voice)
-                .applying(to: project, outputScope: scope)
+                .applying(to: project, outputScope: scope, videoAssets: output.videoAssets)
             let render = try await VideoDurationRenderReadiness.prepare(proposed, scope: scope, using: prepareDurationRender)
             try Task.checkCancellation()
             guard stillCurrent, turn == videoRevision, choices == videoChoices else { throw Failure.stale }
             preparedVideoSelection = PreparedVideoSelection(choices: choices, acceptance: output, render: render)
-            return output
         }
-        return try await publishSelection(at: date)
+        return output
     }
 
-    private func publishSelection(at date: Date) async throws -> Acceptance {
+    private func publishSelection(at date: Date, onlyChosen: Bool = false) async throws -> Acceptance {
         stopAudition()
         let version = revision
         try checkCurrent(version)
@@ -824,7 +832,7 @@ import VoxClipMedia
         guard !generating, !preparing, !publishing, let backend else { throw Failure.stale }
         publishing = true
         defer { publishing = false }
-        let selected = selectedPhrases
+        let selected = selectedPhrases.filter { !onlyChosen || $0.videoChoice != nil }
         guard !selected.isEmpty, selected.allSatisfy({ phrase in
             phrase.videoChoice.map { videoAvailability(phrase: phrase.id).allows($0) } == true
         }) else { throw Failure.noSelection }
@@ -903,5 +911,88 @@ import VoxClipMedia
             switch failure { case .consent, .provider: true; default: false }
         }) { return TakeFailurePresentation.reason(for: failure) }
         return "These takes didn't sound right. Edit the words or try again."
+    }
+}
+
+extension ClipTakePlan {
+    private struct LipsyncBinding: Equatable {
+        let takeID: UUID?
+        let video: VoiceLabVideoMode?
+        let text: String
+    }
+
+    private var lipsyncBindings: [Int: LipsyncBinding] {
+        Dictionary(uniqueKeysWithValues: phrases.map {
+            ($0.id, LipsyncBinding(takeID: $0.selectedID, video: $0.videoChoice, text: $0.text))
+        })
+    }
+
+    func makeLipsyncOffers() async throws -> ([Int: RewriteLipsyncSession.Offer], RewriteLipsyncSession.Offer?) {
+        guard stillCurrent, !generating, !preparing, let prepareDurationRender else { throw Failure.stale }
+        let bindings = lipsyncBindings
+        let chosen = selectedPhrases.filter { $0.videoChoice != nil }
+        let eligible = chosen.filter { lipsync.applied[$0.id] == nil && !lipsync.isRunning($0.id) }
+        guard !eligible.isEmpty else { return ([:], nil) }
+        let base = try await publishSelection(at: Date(), onlyChosen: true)
+        let proposed = try VoiceLabEditCommand.acceptAll(segments: base.segments, assets: base.assets, voice: base.voice)
+            .applying(to: project, outputScope: scope, videoAssets: base.videoAssets)
+        let request = try await prepareDurationRender(proposed, scope)
+        guard stillCurrent, bindings == lipsyncBindings, let input = request.voiceLab else { throw Failure.stale }
+        let plan = input.prepared.outputPlan, rate = Int(plan.sampleRate)
+        let total = plan.totalSourceSamples
+        let windows = try eligible.map { phrase -> LipsyncWindow in
+            guard let fit = phrase.selected?.row.audio?.fit.plan else { throw Failure.noSelection }
+            return try LipsyncWindow.make(seamIn: fit.windowStartSample, seamOut: fit.windowEndSample,
+                totalSamples: total, sampleRate: rate, phraseID: phrase.id)
+        }
+        let catalog = try VoiceLabPriceCatalog.load(shared: SharedResources.locate())
+        func offer(_ windows: [LipsyncRenderWindow]) throws -> RewriteLipsyncSession.Offer {
+            let estimates = try windows.map {
+                try VoiceLabPricing.estimate(operation: .falLipsync(endpoint: "fal-ai/sync-lipsync/v3"), model: nil,
+                    units: $0.seconds(sampleRate: plan.sampleRate), catalog: catalog)
+            }
+            guard estimates.allSatisfy({ $0.usd != nil }) else { throw Failure.unknownSpend }
+            let estimate = CostEstimate(provider: "fal", operation: "lipsync", units: estimates.reduce(0) { $0 + $1.units },
+                unit: "second", usd: estimates.reduce(Decimal(0)) { $0 + ($1.usd ?? 0) }, basis: estimates[0].basis)
+            let dependencies = Set(phrases.filter { phrase in
+                windows.contains { $0.source.startSample < phrase.window.endSample && $0.source.endSample > phrase.window.startSample }
+            }.map(\.id))
+            let bound = bindings.filter { dependencies.contains($0.key) }
+            return RewriteLipsyncSession.Offer(id: UUID(), request: request, windows: windows, estimate: estimate,
+                recordID: base.voice.consentRecordId, dependencies: dependencies, isCurrent: { [weak self] in
+                    guard let self, stillCurrent else { return false }
+                    return lipsyncBindings.filter { dependencies.contains($0.key) } == bound
+                })
+        }
+        var individual: [Int: RewriteLipsyncSession.Offer] = [:]
+        for window in windows {
+            individual[window.phraseIDs[0]] = try offer(LipsyncRenderWindow.jobs(windows: [window], plan: plan))
+        }
+        return (individual, try offer(LipsyncRenderWindow.jobs(windows: windows, plan: plan)))
+    }
+
+    private func applyingLipsync(to output: Acceptance) throws -> Acceptance {
+        var segments = output.segments, videoAssets: [VoiceLabVideoAsset] = []
+        let chosen = selectedPhrases.filter { $0.videoChoice != nil }
+        guard chosen.count == segments.count else { throw Failure.stale }
+        for (index, phrase) in chosen.enumerated() {
+            guard let applied = lipsync.applied[phrase.id] else { continue }
+            let selected = segments[index].selectedCandidateIndex
+            guard var recipe = segments[index].candidates[selected].recipe else { throw Failure.stale }
+            recipe.video = recipe.video.addingLipsync(assetID: applied.result.asset.id,
+                requestID: applied.result.provenance.requestID, sourceWindow: applied.window.source,
+                syncMode: applied.result.provenance.syncMode)
+            segments[index].candidates[selected].recipe = recipe
+            if !videoAssets.contains(where: { $0.id == applied.result.asset.id }) { videoAssets.append(applied.result.asset) }
+        }
+        return Acceptance(segments: segments, assets: output.assets, voice: output.voice, videoAssets: videoAssets)
+    }
+
+    func lipsyncPreview() async throws -> RenderRequest {
+        guard let prepareDurationRender else { throw Failure.stale }
+        let output = try applyingLipsync(to: await publishSelection(at: Date(), onlyChosen: true))
+        let proposed = try VoiceLabEditCommand.acceptAll(segments: output.segments, assets: output.assets, voice: output.voice)
+            .applying(to: project, outputScope: scope, videoAssets: output.videoAssets)
+        return try await prepareDurationRender(proposed, scope)
     }
 }

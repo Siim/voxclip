@@ -100,7 +100,7 @@ public enum VoiceLabRenderValidation {
               video.retimeFactor?.isFinite != false, video.zoom?.isFinite != false, unit(video.faceX), unit(video.faceY),
               video.assetId.map(validID) ?? true, video.provider?.isEmpty != true, video.model?.isEmpty != true,
               video.requestId.map(validID) ?? true, (video.windowStartSample ?? 0) >= 0, (video.windowEndSample ?? 0) >= 0,
-              video.syncMode.map({ $0 == "remap" }) ?? true else { throw VoiceLabProjectError.invalidSegment }
+              video.syncMode.map({ ["remap", "cut_off"].contains($0) }) ?? true else { throw VoiceLabProjectError.invalidSegment }
         guard (qa.transcriptTokens ?? 0) >= 0, unit(qa.transcriptMatch), qa.lufsJumpLu.isFinite, qa.peakDbfs.isFinite,
               unit(qa.speakerScore), unit(qa.speakerThreshold), qa.speakerModel?.isEmpty != true else { throw VoiceLabProjectError.invalidSegment }
         if let advisory = qa.joinAdvisory {
@@ -209,15 +209,23 @@ public enum VoiceLabRenderValidation {
                   video.windowStartSample == nil, video.windowEndSample == nil, video.syncMode == nil,
                   video.mode == .zoomCover || (video.zoom == nil && video.faceX == nil && video.faceY == nil) else { throw VoiceLabProjectError.invalidSegment }
         case .lipsync:
+            let base = video.lipsyncBase
+            if base.mode == .cut {
+                guard VoiceLabNaturalPacing.validCuts(base, sampleRate: rate) else { throw VoiceLabProjectError.invalidRange }
+            } else if base.mode == .source {
+                guard base.retimeFactor == nil, base.zoom == nil, base.faceX == nil, base.faceY == nil,
+                      base.cuts == nil, out == end - start else { throw VoiceLabProjectError.invalidRange }
+            }
             guard let videoAsset = project.voiceLab.videoAssets?.first(where: { $0.id == video.assetId }),
                   videoAsset.durationSeconds * rate >= Double(out),
                   video.provider?.isEmpty == false, video.model?.isEmpty == false,
                   video.requestId.map(validID) == true,
                   let first = video.windowStartSample, let last = video.windowEndSample,
-                  first >= 0, first <= start, last <= total, last >= end, last > first, video.syncMode == "remap",
-                  video.retimeFactor == nil, video.zoom == nil, video.faceX == nil, video.faceY == nil else { throw VoiceLabProjectError.missingRenderPolicy }
+                  first >= 0, first <= start, last <= total, last >= end, last > first,
+                  ["remap", "cut_off"].contains(video.syncMode ?? ""),
+                  VoiceLabRenderInput.supportsVideoRecipe(video.lipsyncBase) else { throw VoiceLabProjectError.missingRenderPolicy }
         }
-        guard video.mode == .cut || video.cuts == nil else { throw VoiceLabProjectError.invalidSegment }
+        guard video.mode == .cut || video.mode == .lipsync || video.cuts == nil else { throw VoiceLabProjectError.invalidSegment }
         let qa = recipe.qa
         let joinAllowed = qa.joinAdvisory.map { $0.validates(jump: qa.lufsJumpLu, createdAt: recipe.provenance.createdAt) }
             ?? (abs(qa.lufsJumpLu) <= 2)

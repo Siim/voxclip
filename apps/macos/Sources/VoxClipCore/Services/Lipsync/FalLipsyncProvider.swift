@@ -41,6 +41,11 @@ public actor FalLipsyncProvider: LipsyncProvider {
     private var active: String?
     private var submitting = false
     private var uncertain: UUID?
+    private var diagnostic: (any LipsyncDiagnosticSink)?
+
+    public func setDiagnostic(_ sink: (any LipsyncDiagnosticSink)?) { diagnostic = sink }
+
+    public nonisolated var rewriteModel: LipsyncModel { models[3] }
 
     public init(keys: any KeyProvider, prices: VoiceLabPriceCatalog? = nil,
                 logger: any Redacting = RedactingLogger(homeDirectory: FileManager.default.homeDirectoryForCurrentUser.path),
@@ -158,22 +163,36 @@ public actor FalLipsyncProvider: LipsyncProvider {
         var request = request(URL(string: "https://queue.fal.run/\(selection[0])")!, method: "POST", key: key)
         request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("{\"expiration_duration_seconds\":3600}", forHTTPHeaderField: "X-Fal-Object-Lifecycle-Preference")
         try fresh(quote)
         try Task.checkCancellation()
         uncertain = quote.id
+        await diagnostic?.record(.init(stage: .submit))
         let response: LipsyncHTTPResponse
-        do { response = try await http.send(request, limit: LipsyncLimits.maximumJSONBytes, permit: permit) }
+        do {
+            var received = try await http.send(request, limit: LipsyncLimits.maximumJSONBytes, permit: permit)
+            for attempt in 1...2 where received.status == 429 || (500...599).contains(received.status) {
+                uncertain = nil
+                try await sleep(.seconds(attempt))
+                try fresh(quote)
+                try Task.checkCancellation()
+                uncertain = quote.id
+                received = try await http.send(request, limit: LipsyncLimits.maximumJSONBytes, permit: permit)
+            }
+            response = received
+        }
         catch {
             if error is VoiceConsentError {
                 uncertain = nil
                 throw error
             }
             await log("submit-uncertain")
+            await diagnostic?.record(.init(stage: .failure, error: .submissionUncertain))
             if Task.isCancelled || error is CancellationError { throw CancellationError() }
             throw LipsyncError.submissionUncertain
         }
         guard (200...299).contains(response.status) else {
-            if response.status == 429 || (400...499).contains(response.status) {
+            if (400...599).contains(response.status) {
                 uncertain = nil
                 throw LipsyncError.http(response.status)
             }
@@ -196,6 +215,7 @@ public actor FalLipsyncProvider: LipsyncProvider {
         active = remoteID; uncertain = nil
         if let spend { entries[remoteID]?.spendWarning = await spend.record(quote.estimate, at: job.submittedAt) }
         await log("accepted")
+        await diagnostic?.record(.init(stage: .submit, requestID: remoteID, status: response.status))
         if Task.isCancelled { await self.cancel(job) }
         return job
     }
@@ -225,6 +245,9 @@ public actor FalLipsyncProvider: LipsyncProvider {
         guard let url = job.statusURL else { throw LipsyncError.invalidResponse }
         let response = try await fetch(job, url: url)
         let body = try json(response)
+        let stage: LipsyncDiagnosticEvent.Stage = body["status"] as? String == "IN_QUEUE" ? .queued :
+            body["status"] as? String == "COMPLETED" ? .completed : .running
+        await diagnostic?.record(.init(stage: stage, requestID: job.remoteID, status: response.status, seconds: elapsed(current)))
         try stillActive(job)
         if providerError(body) {
             return try await terminal(job, state: .failed(code: "provider_error", message: "Lip sync failed. Your original media and edits are safe."))
@@ -307,6 +330,7 @@ public actor FalLipsyncProvider: LipsyncProvider {
             let http = http
             let response = try await Task { try await http.send(request, limit: LipsyncLimits.maximumJSONBytes, permit: nil) }.value
             let body = try json(response, accepts: [200, 202, 400, 404])
+            await diagnostic?.record(.init(stage: .cancel, requestID: job.remoteID, status: response.status, seconds: elapsed(current)))
             if response.status == 200, body["status"] as? String == "OK" {
                 entries[job.remoteID]?.billing = .removedBeforeRun
                 entries[job.remoteID]?.terminal = .failed(code: "cancelled", message: "")
@@ -353,11 +377,13 @@ public actor FalLipsyncProvider: LipsyncProvider {
             guard let results = body["cdn_delete_results"] as? [[String: Any]],
                   results.allSatisfy({ $0["exception"] is NSNull }) else { throw LipsyncError.invalidResponse }
             entries[job.remoteID]?.cleanup = .completed
+            await diagnostic?.record(.init(stage: .cleanup, requestID: job.remoteID, status: response.status, seconds: elapsed(current)))
             entries[job.remoteID]?.result = nil
             if active == job.remoteID { active = nil }
             await release(job)
         } catch {
             entries[job.remoteID]?.cleanup = .failed
+            await diagnostic?.record(.init(stage: .failure, requestID: job.remoteID, error: .network))
             await log("cleanup-unconfirmed")
         }
     }
@@ -460,5 +486,55 @@ public actor FalLipsyncProvider: LipsyncProvider {
     }
     private func log(_ event: String) async {
         await logger.write(LogEntry(level: .info, category: "lipsync", message: await logger.redact("lipsync provider=fal event=\(event)")))
+    }
+}
+
+extension FalLipsyncProvider {
+    public func prepareApprovedUpload(video: LipsyncUploadFile, audio: LipsyncUploadFile, options: LipsyncOptions,
+                                      fps: Double, consentStore: VoiceConsentStore, recordID: String,
+                                      acceptsPaidJob: Bool, acceptsMediaTransfer: Bool) async throws -> (LipsyncQuote, LipsyncApproval) {
+        guard acceptsPaidJob, acceptsMediaTransfer, video.contentType == "video/mp4", audio.contentType == "audio/wav" else {
+            throw LipsyncError.approvalRequired
+        }
+        try validate(rewriteModel, seconds: max(video.durationSeconds, audio.durationSeconds), fps: fps)
+        let record = try await consentStore.load(recordID)
+        try await consentStore.validateUse(record)
+        let fingerprint = try await keyFingerprint()
+        let permit = try await consentStore.dispatchPermit(record, requestID: UUID())
+        defer { permit.finish() }
+        let key = try await credential()
+        let uploadedVideo = try await upload(video, key: key, permit: permit)
+        let uploadedAudio = try await upload(audio, key: key, permit: permit)
+        guard try await keyFingerprint() == fingerprint else { throw LipsyncError.missingKey }
+        let quote = try await quote(model: rewriteModel, video: uploadedVideo, audio: uploadedAudio, options: options, fps: fps)
+        let approval = try await approve(quote, consentStore: consentStore, recordID: recordID,
+                                         acceptsPaidJob: acceptsPaidJob, acceptsMediaTransfer: acceptsMediaTransfer)
+        return (quote, approval)
+    }
+
+    private func upload(_ file: LipsyncUploadFile, key: String, permit: VoiceDispatchPermit) async throws -> LipsyncSignedInput {
+        try Task.checkCancellation()
+        let initiatedAt = now()
+        var initiate = request(URL(string: "https://rest.fal.ai/storage/upload/initiate?storage_type=fal-cdn-v3")!, method: "POST", key: key)
+        initiate.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        initiate.setValue("{\"expiration_duration_seconds\":3600}", forHTTPHeaderField: "X-Fal-Object-Lifecycle")
+        initiate.httpBody = try JSONSerialization.data(withJSONObject: ["file_name": file.contentType == "video/mp4" ? "window.mp4" : "mixed.wav", "content_type": file.contentType])
+        let body = try json(await http.send(initiate, limit: LipsyncLimits.maximumJSONBytes, permit: permit))
+        guard let target = (body["upload_url"] as? String).flatMap(URL.init(string:)),
+              let result = (body["file_url"] as? String).flatMap(URL.init(string:)) else { throw LipsyncError.invalidResponse }
+        let components = try LipsyncURLPolicy.components(target)
+        guard let host = components.host, LipsyncURLPolicy.resultHosts.contains(host) || host == "storage.fal.ai" else {
+            throw LipsyncError.unsafeURL
+        }
+        try LipsyncURLPolicy.result(result)
+        await logger.register(secret: target.absoluteString)
+        await logger.register(secret: result.absoluteString)
+        var upload = URLRequest(url: target)
+        upload.httpMethod = "PUT"; upload.httpBody = file.data; upload.timeoutInterval = 120
+        upload.setValue(file.contentType, forHTTPHeaderField: "Content-Type")
+        let response = try await http.send(upload, limit: LipsyncLimits.maximumJSONBytes, permit: permit)
+        await diagnostic?.record(.init(stage: .upload, status: response.status, seconds: now().timeIntervalSince(initiatedAt), bytes: file.data.count))
+        guard (200...299).contains(response.status) else { throw LipsyncError.http(response.status) }
+        return try LipsyncSignedInput(uploadedURL: result, file: file, expiresAt: initiatedAt.addingTimeInterval(3600))
     }
 }

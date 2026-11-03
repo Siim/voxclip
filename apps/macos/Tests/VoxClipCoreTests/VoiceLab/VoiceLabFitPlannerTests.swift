@@ -347,7 +347,7 @@ struct VoiceLabFitPlannerTests {
     @Test func everyAcceptedPlanBuildsAUnityRenderRecipe() throws {
         let document = try #require(Self.document)
         let template = try JSONProjectStore.decode(FixtureLoader.data("fixtures/voice-lab/passage-render-v3.voxclip"))
-        var accepted = 0
+        var accepted = 0, withoutDurationPolicy = 0, refusedWithoutDurationPolicy = 0
         for test in document.cases + document.propertyCases where test.expected.error == nil {
             let result = try plan(test.input)
             let fitted: VoiceLabFitPlan, duration: Double
@@ -408,10 +408,15 @@ struct VoiceLabFitPlannerTests {
                 recipe.roomTone = VoiceLabRoomTone(sourceStartSample: toneStart, sourceEndSample: toneStart + toneLength, gainDb: 0)
             }
             if case .changedDuration = result {
-                recipe.video.mode = .lipsync
-                recipe.video.assetId = "video-fitted"; recipe.video.provider = "sync"; recipe.video.model = "lipsync-2"
-                recipe.video.requestId = "request-fitted-video"; recipe.video.syncMode = "remap"
-                recipe.video.windowStartSample = sourceStartSample; recipe.video.windowEndSample = sourceEndSample
+                // Lip sync runs on the chosen duration's video: Match video (1.12× zoom cover) gives the base when its
+                // retime factor is in range; without a duration policy the lip-sync recipe must be refused.
+                let factor = Double(sourceEndSample - sourceStartSample) / Double(recipe.video.outputSamples)
+                if VoiceLabVideoDurationOptions.retimeRange.contains(factor) {
+                    recipe.video.mode = .zoomCover; recipe.video.retimeFactor = factor
+                    recipe.video.zoom = 1.12; recipe.video.faceX = 0.5; recipe.video.faceY = 0.5
+                } else { withoutDurationPolicy += 1 }
+                recipe.video = recipe.video.addingLipsync(assetID: "video-fitted", requestID: "request-fitted-video",
+                    sourceWindow: LipsyncWindow(startSample: sourceStartSample, endSample: sourceEndSample, phraseIDs: [0]), syncMode: .remap)
                 project.voiceLab.videoAssets = [VoiceLabVideoAsset(id: "video-fitted", file: project.id + "/video-fitted.mp4", sha256: asset.sha256,
                                                                   durationSeconds: duration + 1, frameRate: 30, width: 640, height: 360)]
             }
@@ -428,17 +433,18 @@ struct VoiceLabFitPlannerTests {
                 if case .exact = result {
                     #expect(prepared.selectedSegmentRecipes.first?.recipe.video.mode == .source, "\(test.name)")
                 } else {
-                    #expect(prepared.selectedSegmentRecipes.first?.recipe.video.mode == .lipsync, "\(test.name)")
-                    #expect(throws: VoiceLabProjectError.videoModeUnsupported) {
-                        try VoiceLabRenderInput(project: project, scope: .full, labelPosition: .topRight,
-                                                paidRoot: URL(fileURLWithPath: "/not-opened"), prepared: prepared)
-                    }
+                    let video = try #require(prepared.selectedSegmentRecipes.first?.recipe.video)
+                    #expect(video.mode == .lipsync && video.lipsyncBase.mode == .zoomCover && VoiceLabRenderInput.supportsVideoRecipe(video), "\(test.name)")
                 }
                 accepted += 1
             }
-            catch { Issue.record("\(test.name): fitted recipe refused: \(error)") }
+            catch {
+                let unmatched = recipe.video.mode == .lipsync && recipe.video.lipsyncBase.mode == .source
+                if unmatched { refusedWithoutDurationPolicy += 1 } else { Issue.record("\(test.name): fitted recipe refused: \(error)") }
+            }
         }
-        #expect(accepted == (document.cases + document.propertyCases).filter { $0.expected.error == nil }.count)
+        #expect(refusedWithoutDurationPolicy == withoutDurationPolicy)
+        #expect(accepted + refusedWithoutDurationPolicy == (document.cases + document.propertyCases).filter { $0.expected.error == nil }.count)
     }
 
     @Test func namedVectors() throws {

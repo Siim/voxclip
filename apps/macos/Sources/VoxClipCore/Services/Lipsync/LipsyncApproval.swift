@@ -24,6 +24,12 @@ public struct LipsyncSignedInput: Sendable, Equatable {
         self.url = url; self.sha256 = sha256; self.durationSeconds = durationSeconds
         self.contentType = contentType; self.byteCount = byteCount; self.expiresAt = expiresAt
     }
+
+    init(uploadedURL: URL, file: LipsyncUploadFile, expiresAt: Date) throws {
+        try LipsyncURLPolicy.result(uploadedURL)
+        self.url = uploadedURL; self.sha256 = file.sha256; self.durationSeconds = file.durationSeconds
+        self.contentType = file.contentType; self.byteCount = file.data.count; self.expiresAt = expiresAt
+    }
 }
 
 public enum LipsyncLimits {

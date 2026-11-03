@@ -12,8 +12,11 @@ import Testing
     @Test(arguments: [560, 800, 875])
     func onlyBoundedSourceVideoRetimeIsSupported(output: Int) {
         #expect(VoiceLabRenderInput.supportsVideoMode(.source) && VoiceLabRenderInput.supportsVideoMode(.zoomCover))
-        #expect(!VoiceLabRenderInput.supportsVideoMode(.retimed) && !VoiceLabRenderInput.supportsVideoMode(.lipsync))
+        #expect(!VoiceLabRenderInput.supportsVideoMode(.retimed) && VoiceLabRenderInput.supportsVideoMode(.lipsync))
         #expect(VoiceLabRenderInput.supportsVideoRecipe(video(output: Int64(output))))
+        // Lip sync overlays the chosen duration's video, so a bounded zoom-cover base stays renderable under it.
+        var lipsync = video(output: Int64(output)); lipsync.mode = .lipsync
+        #expect(VoiceLabRenderInput.supportsVideoRecipe(lipsync))
     }
 
     @Test func invalidZoomCoverPoliciesCannotEnterNativeRequest() {
@@ -23,7 +26,7 @@ import Testing
         var external = video(); external.assetId = "external"
         var face = video(); face.faceX = .nan
         var legacy = video(); legacy.mode = .retimed
-        var lipsync = video(); lipsync.mode = .lipsync
+        var lipsync = video(); lipsync.zoom = 1.13; lipsync.mode = .lipsync
         for invalid in [changed, factor, outside, external, face, legacy, lipsync] {
             #expect(!VoiceLabRenderInput.supportsVideoRecipe(invalid))
         }

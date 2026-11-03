@@ -45,7 +45,7 @@ struct CompositionVideoSpan: Sendable {
                     guard let selected = request.voiceLab?.prepared.selectedSegmentRecipes.first(where: {
                         $0.segmentId == piece.segmentId && $0.piece == piece
                     }) else { throw VoiceLabProjectError.staleRenderContract }
-                    let recipe = selected.recipe.video
+                    let recipe = selected.recipe.video.mode == .lipsync ? selected.recipe.video.lipsyncBase : selected.recipe.video
                     guard recipe.sourceStartSample == piece.sourceStartSample,
                           recipe.sourceEndSample == piece.sourceEndSample, recipe.outputSamples == outputCount else {
                         throw VoiceLabProjectError.staleRenderContract

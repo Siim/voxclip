@@ -164,6 +164,10 @@ public enum VoiceLabAssetNaming {
         guard let file = safeFile(projectId: projectId, assetId: assetId, extension: fileExtension) else { throw VoiceLabProjectError.invalidAsset }
         return file
     }
+    public static func videoFile(projectId: String, assetId: String) throws -> String {
+        guard let file = safeVideoFile(projectId: projectId, assetId: assetId) else { throw VoiceLabProjectError.invalidAsset }
+        return file
+    }
     package static func isSafeProjectID(_ projectId: String) -> Bool {
         VoiceLabProject.matches(projectId, "[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")
     }

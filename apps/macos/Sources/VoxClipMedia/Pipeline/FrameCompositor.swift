@@ -73,6 +73,29 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
                     faceX: instruction.videoAnchorX, faceY: instruction.videoAnchorY)
             }
             image = CompositionFrameGeometry.fill(image, crop: crop, output: size)
+            if let correction = instruction.colorCorrection {
+                image = image.applyingFilter("CIColorMatrix", parameters: [
+                    "inputRVector": CIVector(x: correction.scale, y: 0, z: 0, w: 0),
+                    "inputGVector": CIVector(x: 0, y: correction.scale, z: 0, w: 0),
+                    "inputBVector": CIVector(x: 0, y: 0, z: correction.scale, w: 0),
+                    "inputBiasVector": CIVector(x: correction.bias, y: correction.bias, z: correction.bias, w: 0)])
+            }
+            for layers in Dictionary(grouping: instruction.lipsyncLayers, by: \.trackID).values {
+                let time = request.compositionTime.seconds
+                let weighted = layers.map { layer in
+                    (layer, LipsyncFrameBlend.weight(time: time, start: layer.output.start.seconds,
+                        end: layer.output.end.seconds, fps: instruction.request.output.fps))
+                }
+                guard let (layer, weight) = weighted.max(by: { $0.1 < $1.1 }), weight > 0 else { continue }
+                guard let frame = request.sourceFrame(byTrackID: layer.trackID) else {
+                    request.finish(with: LipsyncError.invalidMedia); return
+                }
+                let captured = CIImage(cvPixelBuffer: frame).oriented(layer.orientation)
+                let replacement = CompositionFrameGeometry.fill(captured,
+                    crop: Self.centerCrop(source: captured.extent, output: size), output: size)
+                image = replacement.applyingFilter("CIDissolveTransition", parameters: [
+                    kCIInputTargetImageKey: image, kCIInputTimeKey: 1 - weight])
+            }
             if let layer = instruction.demoLayer {
                 guard let demo = request.sourceFrame(byTrackID: layer.trackID) else {
                     request.finish(with: VoxClipError.decodeFailed("Missing context-demo video frame")); return
@@ -184,7 +207,7 @@ public final class RenderInstruction: NSObject, AVVideoCompositionInstructionPro
     public let enablePostProcessing = false
     public let containsTweening = true
     public var requiredSourceTrackIDs: [NSValue]? {
-        ([sourceTrackID] + (demoLayer.map { [$0.trackID] } ?? [])).map { NSNumber(value: $0) }
+        Array(Set([sourceTrackID] + (demoLayer.map { [$0.trackID] } ?? []) + lipsyncLayers.map(\.trackID))).map { NSNumber(value: $0) }
     }
     public let passthroughTrackID: CMPersistentTrackID = kCMPersistentTrackID_Invalid
     let orientation: CGImagePropertyOrientation
@@ -192,6 +215,8 @@ public final class RenderInstruction: NSObject, AVVideoCompositionInstructionPro
     let legacyRasterizer: (any CaptionRasterizer)?
     let disclosure: VoiceLabDisclosureOverlay?
     let demoLayer: CompositionDemoLayer?
+    let lipsyncLayers: [LipsyncVideoLayer]
+    let colorCorrection: (scale: Double, bias: Double)?
     let contextDemoLease: ContextDemoCompositionLease?
     let videoZoom: Double
     let videoAnchorX: Double
@@ -204,11 +229,14 @@ public final class RenderInstruction: NSObject, AVVideoCompositionInstructionPro
          orientation: CGImagePropertyOrientation, rasterizer: CoreTextCaptionRasterizer?,
          legacyRasterizer: (any CaptionRasterizer)? = nil, disclosure: VoiceLabDisclosureOverlay? = nil,
          demoLayer: CompositionDemoLayer? = nil, contextDemoLease: ContextDemoCompositionLease? = nil,
-         videoZoom: Double = 1, videoAnchorX: Double = 0.5, videoAnchorY: Double = 0.5) {
+         videoZoom: Double = 1, videoAnchorX: Double = 0.5, videoAnchorY: Double = 0.5,
+         lipsyncLayers: [LipsyncVideoLayer] = [], colorCorrection: (scale: Double, bias: Double)? = nil) {
         self.timeRange = timeRange; self.sourceTrackID = sourceTrackID; self.request = request
         self.orientation = orientation; self.rasterizer = rasterizer; self.legacyRasterizer = legacyRasterizer
         self.disclosure = disclosure; self.demoLayer = demoLayer; self.contextDemoLease = contextDemoLease
         self.videoZoom = videoZoom; self.videoAnchorX = videoAnchorX; self.videoAnchorY = videoAnchorY
+        self.lipsyncLayers = lipsyncLayers
+        self.colorCorrection = colorCorrection
         super.init()
     }
 

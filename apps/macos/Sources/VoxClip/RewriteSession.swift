@@ -839,7 +839,7 @@ struct RewriteChange: Equatable, Sendable {
                 let first = (pendingFree.compactMap(\.span.first) + output.segments.compactMap(\.replace.firstWordId))
                     .min { (editor.index($0) ?? 0) < (editor.index($1) ?? 0) }
                 try ownEdit { try editor.applyVoiceLab(output.segments, assets: output.assets, voice: output.voice,
-                    scope: rewriteScope, localCommands: localCommands) }
+                    scope: rewriteScope, localCommands: localCommands, videoAssets: output.videoAssets) }
                 editor.finishVoiceRewrite(phrases: used, segments: output.segments, voice: output.voice,
                     spent: takePlan.spent, scope: task.words, cuts: cuts, fixes: fixes)
                 editor.closeRewrite()

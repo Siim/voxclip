@@ -76,7 +76,11 @@ public struct CompositionBuilder: Sendable {
         self.scratchRoot = scratchRoot
     }
 
-    public func build(_ request: RenderRequest, isolation: isolated (any Actor)? = #isolation) async throws -> RenderGraph {
+    /// `allowsFractionalFrameRate` is only for the lip-sync mezzanine and result conform, which keep the source's own rate
+    /// (29.97 fps and similar); exports keep whole frame rates.
+    public func build(_ request: RenderRequest, includeDisclosure: Bool = true,
+                      colorCorrection: (scale: Double, bias: Double)? = nil, allowsFractionalFrameRate: Bool = false,
+                      isolation: isolated (any Actor)? = #isolation) async throws -> RenderGraph {
         try Task.checkCancellation()
         let plan = request.plan
         let voicePlan = request.voiceLab?.prepared.outputPlan
@@ -97,7 +101,8 @@ public struct CompositionBuilder: Sendable {
               max(request.output.size.width, request.output.size.height) <= 1920,
               request.output.size.width % 2 == 0, request.output.size.height % 2 == 0,
               request.output.fps.isFinite, request.output.fps > 0, request.output.fps <= 60,
-              request.output.fps.rounded() == request.output.fps, request.output.videoBitrate > 0 else {
+              allowsFractionalFrameRate || request.output.fps.rounded() == request.output.fps,
+              request.output.videoBitrate > 0 else {
             throw VoxClipError.exportFailed("Invalid output dimensions or frame rate")
         }
         let videoSpans = try CompositionVideoSpan.build(request)
@@ -135,6 +140,7 @@ public struct CompositionBuilder: Sendable {
         }
         let duration = CMTime(value: request.timeline.outputSamples, timescale: rate)
         let demos = try await ContextDemoCompositionRoute.insert(request, into: composition, scratchRoot: scratchRoot)
+        let lipsync = try await LipsyncComposition.insert(request, into: composition, scratchRoot: scratchRoot)
         var lease: VoiceLabRenderLease?
         if synthetic {
             guard sourceAudio != nil, let audio, let voicePlan else { throw VoxClipError.noAudioTrack }
@@ -146,7 +152,8 @@ public struct CompositionBuilder: Sendable {
         }
         let videoComposition = try makeVideoComposition(request, trackID: video.trackID, duration: duration,
             orientation: MediaSupport.orientation(transform), videoSpans: videoSpans,
-            demoLayers: demos.layers, contextDemoLease: demos.lease)
+            demoLayers: demos.layers, contextDemoLease: demos.lease, lipsyncLayers: lipsync,
+            includeDisclosure: includeDisclosure, colorCorrection: colorCorrection)
         let size = videoComposition.renderSize
         let frameDuration = videoComposition.frameDuration
         var mix: AVAudioMix?
@@ -165,16 +172,19 @@ public struct CompositionBuilder: Sendable {
     func makeVideoComposition(_ request: RenderRequest, trackID: CMPersistentTrackID, duration: CMTime,
                               orientation: CGImagePropertyOrientation, videoSpans: [CompositionVideoSpan] = [],
                               demoLayers: [CompositionDemoLayer] = [],
-                              contextDemoLease: ContextDemoCompositionLease? = nil) throws -> AVVideoComposition {
+                              contextDemoLease: ContextDemoCompositionLease? = nil,
+                              lipsyncLayers: [LipsyncVideoLayer] = [], includeDisclosure: Bool = true,
+                              colorCorrection: (scale: Double, bias: Double)? = nil) throws -> AVVideoComposition {
         let size = CGSize(width: request.output.size.width, height: request.output.size.height)
         guard size.width >= 2, size.height >= 2, max(size.width, size.height) <= 1920,
               request.output.fps.isFinite, request.output.fps >= 1, request.output.fps <= 60 else {
             throw VoxClipError.exportFailed("Invalid render configuration")
         }
-        let frameDuration = CMTime(value: 1, timescale: Int32(request.output.fps.rounded()))
+        let fps = request.output.fps
+        let frameDuration = fps.rounded() == fps ? CMTime(value: 1, timescale: Int32(fps)) : CMTime(seconds: 1 / fps, preferredTimescale: 600_000)
         let needsRasterizer = request.captionLayout != nil || request.style != nil
         let disclosure: VoiceLabDisclosureOverlay?
-        if let input = request.voiceLab, input.prepared.disclosure.required {
+        if let input = request.voiceLab, input.prepared.disclosure.required, includeDisclosure {
             let blocks: [VoiceLabDisclosureCaptionBlock] = request.captionLayout?.pages.map { page in
                 let bounds = page.page.visual
                 return VoiceLabDisclosureCaptionBlock(start: page.page.start, end: page.page.end,
@@ -188,7 +198,8 @@ public struct CompositionBuilder: Sendable {
         let captionRasterizer = needsRasterizer ? try sharedRasterizer.get() : nil
         let framingSpans = videoSpans.filter { $0.zoom > 1 }
         let boundaries = ([CMTime.zero, duration] + framingSpans.flatMap { [$0.output.start, $0.output.end] } +
-            demoLayers.flatMap { [$0.output.start, $0.output.end] }).sorted().reduce(into: [CMTime]()) { result, time in
+            demoLayers.flatMap { [$0.output.start, $0.output.end] } +
+            lipsyncLayers.flatMap { [$0.output.start, $0.output.end] }).sorted().reduce(into: [CMTime]()) { result, time in
                 if result.last != time { result.append(time) }
             }
         var spanIndex = 0, layerIndex = 0
@@ -201,7 +212,8 @@ public struct CompositionBuilder: Sendable {
                 request: request, orientation: orientation, rasterizer: captionRasterizer,
                 legacyRasterizer: rasterizer, disclosure: disclosure, demoLayer: layer,
                 contextDemoLease: contextDemoLease, videoZoom: span?.zoom ?? 1,
-                videoAnchorX: span?.anchorX ?? 0.5, videoAnchorY: span?.anchorY ?? 0.5)
+                videoAnchorX: span?.anchorX ?? 0.5, videoAnchorY: span?.anchorY ?? 0.5,
+                lipsyncLayers: lipsyncLayers.filter { $0.output.start < end && $0.output.end > start }, colorCorrection: colorCorrection)
         }
         let config = AVVideoComposition.Configuration(colorPrimaries: AVVideoColorPrimaries_ITU_R_709_2,
             colorTransferFunction: AVVideoTransferFunction_ITU_R_709_2, colorYCbCrMatrix: AVVideoYCbCrMatrix_ITU_R_709_2,
