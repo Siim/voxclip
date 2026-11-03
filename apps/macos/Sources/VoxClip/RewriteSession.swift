@@ -70,6 +70,9 @@ struct RewriteChange: Equatable, Sendable {
     /// Injectable system URL boundary; clicking recovery never launches a CLI or changes permissions.
     var openSettingsURL: (URL) -> Void = { _ = NSWorkspace.shared.open($0) }
     var sendFailure: LLMError?
+    #if DEBUG
+    @ObservationIgnored var beforeFailurePresentation: @MainActor () async -> Void = {}
+    #endif
     func waitForSend() async { _ = await sending?.value }
     let editor: EditorModel
     /// What the session rewrites (C1's `RewriteScope`).
@@ -313,9 +316,8 @@ struct RewriteChange: Equatable, Sendable {
 
     // MARK: Running
 
-    /// The session still matches the editor's project. The editor's tab is not part of it:
-    /// a session belongs to its tab and keeps working while another tab shows (impl-plan §3.3).
-    var current: Bool { isOpen && editor.capabilities.edit && editor.project.scoped(to: project.edits.activeClipId) == project && connectorIsCurrent() }
+    /// The scope's inputs still match, apart from save metadata and the active tab (impl-plan §3.3).
+    var current: Bool { isOpen && editor.capabilities.edit && inside(editor.project) == inside(project) && connectorIsCurrent() }
     /// "Rewrite", or "Rewrite…" when the send asks first (design §6.3.1): an API key, or a CLI signed in with one.
     var proposalButton: String { sendAsksFirst ? "Rewrite…" : "Rewrite" }
     /// The note beside the button that sends (design.md R1's footer); empty while no AI is chosen (R0).
@@ -372,6 +374,10 @@ struct RewriteChange: Equatable, Sendable {
     @discardableResult func run(instruction next: String? = nil) async -> Bool {
         guard isOpen else { return false }
         if let next { instruction = next }
+        guard connectorIsCurrent() else {
+            editor.restartRewrite(self)
+            return false
+        }
         guard connector != nil else { await showChooser(); return false }
         guard let work = begin() else { return false }
         return await work.value
@@ -402,8 +408,7 @@ struct RewriteChange: Equatable, Sendable {
             let proposed = await send(connector, expected: expected, started: started)
             runs.release(lease)
             isProposing = false
-            // A declined sheet or a send gone stale changes nothing, silently: what the run replaced shows again, and a
-            // first run closes, as Stop does.
+            // Declining consent restores the previous view; stale successful replies show R3 instead.
             if isOpen, task.state == .running { restoreReplaced() }
             return proposed
         }
@@ -431,14 +436,14 @@ struct RewriteChange: Equatable, Sendable {
             case .passage(let input, let quote, let service):
                 let result = try await service.propose(input, connector: connector.connector, model: connector.model,
                     authorization: VoiceRewriteAuthorization(quote: quote, approved: true))
-                guard !Task.isCancelled, current, revision == expected else { return false }
+                guard acceptReply(expected: expected) else { return false }
                 advanceRun(to: 3)
                 let source = source, text = result.proposedText
                 checked = try await check { try VoiceLabWordDiff.diff(source: source, newText: text).hunks.map { RewriteChange(hunk: $0) } }
             case .scope(let plan, let quote, let service):
                 let result = try await service.propose(plan.request, connector: connector.connector, model: connector.model,
                     authorization: PatchRewriteAuthorization(quote: quote, approved: true))
-                guard !Task.isCancelled, current, revision == expected else { return false }
+                guard acceptReply(expected: expected) else { return false }
                 advanceRun(to: 3)
                 checked = try await check {
                     try ScopeRewriteDiff.hunks(plan: plan, proposal: result).map {
@@ -446,7 +451,7 @@ struct RewriteChange: Equatable, Sendable {
                     }
                 }
             }
-            guard !Task.isCancelled, current, revision == expected else { return false }
+            guard acceptReply(expected: expected) else { return false }
             receive(checked)
             let elapsed = started.duration(to: .now).components
             finishRun(seconds: Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18)
@@ -458,9 +463,18 @@ struct RewriteChange: Equatable, Sendable {
             return false
         } catch {
             guard isOpen, revision == expected else { return false }
-            await fail(error is CancellationError ? LLMError.cancelled : error)
+            await fail(error is CancellationError ? LLMError.cancelled : error, expected: expected)
             return false
         }
+    }
+    private func acceptReply(expected: Int) -> Bool {
+        guard isOpen, revision == expected else { return false }
+        guard !Task.isCancelled, current else {
+            clearProposal()
+            showChanged()
+            return false
+        }
+        return true
     }
     /// The request a run sends, made off the main actor: placing a selection and planning a clip or Full take read the
     /// whole take (impl-plan §3.1). The quote is the service's.
@@ -699,11 +713,12 @@ struct RewriteChange: Equatable, Sendable {
     func follow(_ next: Project, name: String = "") {
         guard isOpen, !applying else { return }
         let next = next.scoped(to: project.edits.activeClipId)
-        if next.transcript != project.transcript || next.media.source != project.media.source || !Self.scopeExists(rewriteScope, in: next) {
+        let before = inside(project), after = inside(next)
+        if after.transcript != before.transcript || after.media.source != before.media.source || !Self.scopeExists(rewriteScope, in: next) {
             editor.closeRewrite(returnFocus: false)
             return
         }
-        let unchanged = inside(next) == inside(project)
+        let unchanged = after == before
         if task.state == .changed {
             guard unchanged else { return }
             move(to: next)
@@ -805,6 +820,8 @@ struct RewriteChange: Equatable, Sendable {
         }
         var project = project
         project.modifiedAt = .distantPast
+        project.savedBy = ProjectWriter(version: "0.0.0")
+        project.media.source.relativePath = nil
         project.title = nil
         project.edits.activeClipId = nil
         project.edits.clips = project.edits.clips.filter { $0.id == clipID }.map { ClipRange(id: $0.id, startWordId: $0.startWordId, endWordId: $0.endWordId) }

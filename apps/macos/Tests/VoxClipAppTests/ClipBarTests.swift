@@ -462,9 +462,9 @@ private actor HookFixtureConnector: LLMConnector {
         let words = try #require(editor.activeClip.flatMap { editor.index($0.startWordId) })
         editor.selectedWordIDs = Set(editor.words[(words + 2)...(words + 4)].map(\.id))
         bar.render()
-        let failure = try #require(clipSession.failureStatus)
-        #expect(bar.rewrite.label == "Rewrite failed")
-        #expect(bar.rewrite.accessibilityLabel() == "Rewrite selection. \(failure). Try Again" && bar.ask.placeholder == "Ask about these words…")
+        #expect(clipSession.failureStatus != nil)
+        #expect(bar.rewrite.label == "Rewrite" && bar.rewrite.symbol == "sparkles" && !bar.rewrite.isOn)
+        #expect(bar.rewrite.accessibilityLabel() == "Rewrite selection" && bar.ask.placeholder == "Ask about these words…")
         bar.ask.stringValue = "Shorter"
         bar.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: bar.ask))
         let editorView = NSTextView()
