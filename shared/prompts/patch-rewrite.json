@@ -8,7 +8,7 @@
     "lineFormat": "voxconvo-numbered-lines-v1"
   },
   "request": {
-    "rangesLine": "Letters and digits allowed in the new text of each line, not counting spaces and punctuation:",
+    "rangesLine": "Keep each change about as long, when spoken, as the words it replaces; prefer the same number of syllables.\nLetters and digits allowed in the new text of each line, not counting spaces and punctuation:",
     "rangeLine": "{line} {minChars} to {maxChars}",
     "instructionLine": "Instruction: {instruction}"
   },
