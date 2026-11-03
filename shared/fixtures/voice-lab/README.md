@@ -1,5 +1,7 @@
 # Voice Lab Core contract fixtures
 
+`dialogue-cases.json` is the separate Eleven v4 contract (`voxclip-voice-lab-dialogue-cases/1`). Regenerate byte for byte with `python3 tools/fixtures/voice-lab/generate_dialogue.py`. Both Cores must replay every `requests`, `responses` and `routes` row. Requests use the existing method/path/query/headers/json framing plus canonical sorted compact UTF-8 bytes, byte length and SHA-256. Responses are entirely synthetic PCM16, with explicit expected errors; per-row `text` overrides `responseInput.text` for Unicode scalar indexing. Null original alignment never falls back to normalized alignment. No live keys, voices or calls are used.
+
 `accept-all-cases.json` is the C4 set-acceptance contract, generated with
 `python3 tools/fixtures/voice-lab/generate_accept_all.py` from the inert v3 render
 fixtures. `inputs` holds complete project, segment-list, asset-list and consent

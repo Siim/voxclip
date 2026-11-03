@@ -1,5 +1,11 @@
 # macOS implementation contracts
 
+## Eleven v4 dialogue takes — shared contract first (3 Nov 2026)
+
+- **Built (STEP1).** Spec §8.5/§8.11 and independent `dialogue-cases.json` schema v1: one-input/no-context v4 request bytes, nullable-alignment and voice-segment responses, capability routes. Generator is `generate_dialogue.py`; all bytes are exact. Multilingual v2 remains the default; v4 Turbo is unsupported.
+- **Deleted.** Superseded Mac v4 exclusion and prospective context wording in the spec; no frozen fixture or Windows implementation changed. Endpoint schema properties are unconstrained strings and need no update.
+- **Owes.** Mac implementation, replay, failure controls and headless verification follow this shared commit. Windows twin must replay the same file and retain independent TTS goldens, route-bound approval, one-send billing/cancellation and unknown-price behavior. No live provider calls or hosted CI dispatch.
+
 ## Bound headless fixture suite competition (3 Nov 2026)
 
 - Hosted `41537569844` at `323b0cdf` passes all Windows gates, but Core checkpoint tasks resume about 46 seconds after starting despite ten-second deadlines; App repeats routing/readiness timeouts that pass in the local serial replay. Media’s fake-capture checkpoint also expires while other suites run. Per-suite case serialization and 1 ms polling alone do not prevent unrelated suites from monopolizing the limited executor.
