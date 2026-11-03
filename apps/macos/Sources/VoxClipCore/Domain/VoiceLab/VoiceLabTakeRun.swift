@@ -117,11 +117,12 @@ public enum VoiceLabTakeQuality {
         return 2 * Double(previous.last ?? 0) / Double(expected.count + recognized.count)
     }
     /// `sourceSeamSteps`, one signed step per seam, makes the loudness value how far each join's step lies outside the
-    /// source's own step there, and a join inside a pause compares pause levels, against `sourceSeamPauseSteps` where the
-    /// source is in a pause too (`VoiceLabLoudness.seamExcessLu`); nil keeps the plain largest jump.
+    /// source's own step there. A join whose generated side is in a pause compares that pause's level with
+    /// `sourceSeamPauseRanges`, the source's own pause levels beside it (`VoiceLabLoudness.seamExcessLu`); `generatedAfter`
+    /// says which side of each seam is generated, after it at the incoming seam. nil keeps the plain largest jump.
     public static func evaluate(expected: String, recognized: [String], mixed: [Float], sampleRate: Int,
-                                seams: [Int], sourceSeamSteps: [Double]? = nil, sourceSeamPauseSteps: [Double?]? = nil,
-                                speakerScore: Double?,
+                                seams: [Int], sourceSeamSteps: [Double]? = nil, sourceSeamPauseRanges: [ClosedRange<Double>?]? = nil,
+                                generatedAfter: [Bool]? = nil, speakerScore: Double?,
                                 threshold: Double) throws -> VoiceLabTakeQAResult {
         guard speakerScore.map({ $0.isFinite && (-1...1).contains($0) }) ?? true, threshold.isFinite, (0...1).contains(threshold) else { throw VoiceLabError.invalidInput }
         let expectedTokens = tokens(expected)
@@ -132,9 +133,14 @@ public enum VoiceLabTakeQuality {
         let jump: Double
         if let sourceSeamSteps {
             let steps = try VoiceLabLoudness.seamStepsLu(mixed, sampleRate: sampleRate, seamSamples: seams)
-            let pauses = try VoiceLabLoudness.pauseSeamStepsLu(mixed, sampleRate: sampleRate, seamSamples: seams)
-            jump = try VoiceLabLoudness.seamExcessLu(mixedSteps: steps, sourceSteps: sourceSeamSteps, mixedPauseSteps: pauses,
-                sourcePauseSteps: sourceSeamPauseSteps.flatMap { $0.isEmpty ? nil : $0 } ?? Array(repeating: nil, count: seams.count))
+            let ranges = sourceSeamPauseRanges.flatMap { $0.isEmpty ? nil : $0 }
+            let levels: [Double?]
+            if let ranges, let generatedAfter {
+                guard ranges.count == seams.count else { throw VoiceLabAudioMathError.invalidInput }
+                levels = try VoiceLabLoudness.generatedPauseLufs(mixed, sampleRate: sampleRate, seamSamples: seams, generatedAfter: generatedAfter)
+            } else { levels = Array(repeating: nil, count: seams.count) }
+            jump = try VoiceLabLoudness.seamExcessLu(mixedSteps: steps, sourceSteps: sourceSeamSteps, generatedPauseLevels: levels,
+                sourcePauseRanges: ranges ?? Array(repeating: nil, count: seams.count))
         } else {
             jump = try VoiceLabLoudness.lufsJumpLu(mixed, sampleRate: sampleRate, seamSamples: seams)
         }
@@ -170,16 +176,18 @@ public struct VoiceLabTakeAudio: Sendable, Equatable {
     /// The unedited source's signed momentary step at each of `seams`, measured over the same lead, window and tail
     /// (`VoiceLabLoudness.seamStepsLu`), so QA counts only what the join adds (§8.11 item 3). Empty when unmeasured.
     public let sourceSeamSteps: [Double]
-    /// The unedited source's step across the pause at each of `seams` (`VoiceLabLoudness.pauseSeamStepsLu`), nil where
-    /// the source is not in a pause there. Empty when unmeasured.
-    public let sourceSeamPauseSteps: [Double?]
+    /// The range of the unedited source's own pause levels beside each of `seams` (`VoiceLabLoudness.sourcePauseRangesLufs`),
+    /// nil where the source is in no pause there. Empty when unmeasured.
+    public let sourceSeamPauseRanges: [ClosedRange<Double>?]
+    /// Whether each of `seams` has the generated audio after it (the incoming seam) rather than before it.
+    public var generatedAfter: [Bool] { seams.map { $0 == patchRange.lowerBound } }
     public var words: [VoiceLabWord] { fit.plan.words }
     package init(sampleRate: Int, trimmed: [Float], mixed: [Float], patchRange: Range<Int>, seams: [Int], gainDb: Double,
                  roomTone: VoiceLabRoomTone?, fit: VoiceLabFitResult, sourceSeamSteps: [Double] = [],
-                 sourceSeamPauseSteps: [Double?] = []) {
+                 sourceSeamPauseRanges: [ClosedRange<Double>?] = []) {
         self.sampleRate = sampleRate; self.trimmed = trimmed; self.mixed = mixed; self.patchRange = patchRange
         self.seams = seams; self.gainDb = gainDb; self.roomTone = roomTone; self.fit = fit; self.sourceSeamSteps = sourceSeamSteps
-        self.sourceSeamPauseSteps = sourceSeamPauseSteps
+        self.sourceSeamPauseRanges = sourceSeamPauseRanges
     }
 }
 

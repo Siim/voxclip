@@ -640,11 +640,14 @@ struct VoiceLabTakeRunTests {
         // The seam value is the step the join adds over the unedited source's own jump at the same seams (§8.11 item 3).
         let original = try #require(fixture.input.source.samples(36_000..<156_000))
         #expect(audio.sourceSeamSteps == (try VoiceLabLoudness.seamStepsLu(Array(original), sampleRate: 24_000, seamSamples: [12_000, 108_000])))
-        #expect(audio.sourceSeamPauseSteps == (try VoiceLabLoudness.pauseSeamStepsLu(Array(original), sampleRate: 24_000, seamSamples: [12_000, 108_000])))
+        #expect(audio.generatedAfter == [true, false])
+        #expect(audio.sourceSeamPauseRanges == (try VoiceLabLoudness.sourcePauseRangesLufs(Array(original), sampleRate: 24_000,
+            seamSamples: [12_000, 108_000], generatedAfter: [true, false])))
         #expect(qa.values.lufsJumpLu == (try VoiceLabLoudness.seamExcessLu(mixedSteps: VoiceLabLoudness.seamStepsLu(audio.mixed,
             sampleRate: audio.sampleRate, seamSamples: audio.seams), sourceSteps: audio.sourceSeamSteps,
-            mixedPauseSteps: VoiceLabLoudness.pauseSeamStepsLu(audio.mixed, sampleRate: audio.sampleRate, seamSamples: audio.seams),
-            sourcePauseSteps: audio.sourceSeamPauseSteps)))
+            generatedPauseLevels: VoiceLabLoudness.generatedPauseLufs(audio.mixed, sampleRate: audio.sampleRate, seamSamples: audio.seams,
+                generatedAfter: audio.generatedAfter),
+            sourcePauseRanges: audio.sourceSeamPauseRanges)))
         let paid = try #require(await fixture.run.paidAsset(for: row.id))
         let paidURL = fixture.root.appendingPathComponent("VoiceLab").appendingPathComponent(paid.file)
         await fixture.run.reject(row.id)
@@ -796,9 +799,13 @@ struct VoiceLabTakeRunTests {
         let result = try await fixture.run.execute(quote, approved: true)
         let row = try #require(result.rows.first), audio = try #require(row.audio), qa = try #require(row.qa)
         #expect(audio.roomTone == tone)
-        // Both joins sit in a pause on both sides: the source's pause, and the take's pad over the bed.
-        let pauses = try VoiceLabLoudness.pauseSeamStepsLu(audio.mixed, sampleRate: audio.sampleRate, seamSamples: audio.seams)
-        #expect(pauses.count == 2 && pauses.allSatisfy { $0.map { abs($0) <= 2 } == true }, "\(pauses)")
+        // Both joins are pause joins: the take's pad over the bed meets the source's pause at that side's level.
+        let levels = try VoiceLabLoudness.generatedPauseLufs(audio.mixed, sampleRate: audio.sampleRate, seamSamples: audio.seams,
+            generatedAfter: audio.generatedAfter)
+        let joins = zip(levels, audio.sourceSeamPauseRanges).map { level, range in
+            level.flatMap { level in range.map { max(0, $0.lowerBound - level, level - $0.upperBound) } }
+        }
+        #expect(joins.count == 2 && joins.allSatisfy { $0.map { $0 <= 2 } == true }, "\(levels) \(audio.sourceSeamPauseRanges)")
         #expect((qa.values.lufsJumpLu ?? 9) <= 2 && !qa.failures.contains(.loudness), "\(qa)")
         if stepDb > 0 {
             // One pooled level would have missed both joins by about half the step.
