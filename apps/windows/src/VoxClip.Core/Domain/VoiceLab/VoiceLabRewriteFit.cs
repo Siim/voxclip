@@ -1,14 +1,17 @@
 #pragma warning disable CS1591
+using System.Globalization;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.Transcript;
 
 namespace VoxClip.Core.Domain.VoiceLab;
 
-public sealed record VoiceLabRewriteFitResult(double EstimateSeconds, double SlotSeconds, bool Fits)
+public sealed record VoiceLabRewriteFitResult(double EstimateSeconds, double SlotSeconds, bool Fits, double Pace = 1)
 {
     public bool TooLong => EstimateSeconds > SlotSeconds;
-    public string Copy => "≈ " + EditingFormat.ToFixed1(EstimateSeconds) + " s · slot " + EditingFormat.ToFixed1(SlotSeconds) + " s" + (Fits ? " · fits" : "");
+    public string Copy => "≈ " + EditingFormat.ToFixed1(EstimateSeconds) + " s" +
+        (Pace == 1 ? "" : " at " + Pace.ToString("F2", CultureInfo.InvariantCulture) + "× pace") +
+        " · slot " + EditingFormat.ToFixed1(SlotSeconds) + " s" + (Fits ? " · fits" : "");
 }
 
 public static class VoiceLabRewriteFit
