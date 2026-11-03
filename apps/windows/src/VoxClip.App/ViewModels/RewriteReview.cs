@@ -7,7 +7,7 @@ namespace VoxClip.App.ViewModels;
 internal enum RewriteDiffKind { Equal, Removed, Inserted, Bridge }
 internal sealed record RewriteDiffRun(string Text, RewriteDiffKind Kind, string? SourceId = null);
 internal sealed record RewriteHunkReview(VoiceLabDiffHunk Hunk, VoiceLabWindow? Window, string? PatchText,
-    VoiceLabFitMeterResult? Meter, string? Refusal);
+    VoiceLabFitMeterResult? Meter, string? Refusal, IReadOnlyList<int> Ordinals, VoiceLabRewriteFitResult? Fit = null);
 
 internal sealed record RewriteReview(VoiceLabWordDiffResult Diff, VoiceLabPatchBudgetResult Budget,
     IReadOnlyList<RewriteDiffRun> Runs, string AccessibleDescription, IReadOnlyList<RewriteHunkReview> VoiceHunks,
@@ -22,10 +22,13 @@ internal sealed record RewriteReview(VoiceLabWordDiffResult Diff, VoiceLabPatchB
         List<RewriteHunkReview> reviews = [];
         var placements = session.Envelope is null ? [] : VoiceLabWindowPlanner.PlaceAll(session.Project, session.Scope, session.Envelope, included);
         foreach (var placement in session.Envelope is null
-            ? voice.Select(hunk => (PlacedOrRefused)new PlacedOrRefused.Refused(0, hunk,
+            ? included.Select((hunk, index) => (hunk, index)).Where(pair => pair.hunk.Kind == VoiceLabDiffHunkKind.Voice)
+                .Select(pair => (PlacedOrRefused)new PlacedOrRefused.Refused(pair.index, pair.hunk,
                 new VoiceLabWindowRefusal.Geometry(new(VoiceLabGeometryErrorCode.InvalidInput)))).ToArray() : placements)
         {
             var hunk = placement is PlacedOrRefused.Placed placedHunk ? placedHunk.Hunk : ((PlacedOrRefused.Refused)placement).Hunk;
+            var indices = placement is PlacedOrRefused.Placed placedIndices ? placedIndices.Indices : [((PlacedOrRefused.Refused)placement).Index];
+            var ordinals = indices.Select(index => diff.Hunks.ToList().IndexOf(included[index]) + 1).ToArray();
             try
             {
                 if (placement is PlacedOrRefused.Refused refused)
@@ -37,16 +40,23 @@ internal sealed record RewriteReview(VoiceLabWordDiffResult Diff, VoiceLabPatchB
                 var patch = string.Join(" ", window.LeftBridgeWordIds.Select(Text).Append(newWords).Concat(window.RightBridgeWordIds.Select(Text)));
                 var rate = VoiceLabLengthBudget.Rate(session.Transcript).CharactersPerSecond;
                 var meter = VoiceLabFitMeter.Measure(patch, window, silence.Incoming, silence.Outgoing, rate, newWords, voice.Length > 1);
-                reviews.Add(new(hunk, window, patch, meter, null));
+                var fitRate = VoiceLabRewriteFit.SpeakingRate(session.Transcript.Where(word =>
+                    session.Editor.State?.CutWordIds.Contains(word.Id) != true).ToArray());
+                var fit = VoiceLabRewriteFit.Measure(patch, fitRate, window, silence.Incoming, silence.Outgoing,
+                    session.Project.Media.Source.Audio?.SampleRate ?? 48_000);
+                reviews.Add(new(hunk, window, patch, meter, null, ordinals, fit));
             }
             catch (Exception exception) when (exception is VoiceLabGeometryException or VoiceLabLengthBudgetException or VoiceLabProjectException)
             {
-                reviews.Add(new(hunk, null, null, null, RewriteSession.Refusal(exception)));
+                reviews.Add(new(hunk, null, null, null, RewriteSession.Refusal(exception), ordinals));
             }
         }
-        VoiceLabDiffSummaryResult? summary = reviews.All(review => review.Meter is not null)
-            ? VoiceLabDiffSummary.Make(diff with { Hunks = included }, reviews.Select(review => review.Meter!).ToArray(), prices, model,
-                patchTexts: reviews.Select(review => review.PatchText).ToArray()) : null;
+        var priced = reviews.Where(session.CanPriceHunk).ToArray();
+        var pricedHunks = included.Where(hunk => hunk.Kind != VoiceLabDiffHunkKind.Voice).Concat(priced.Select(review => review.Hunk)).ToArray();
+        VoiceLabDiffSummaryResult? summary = priced.Length > 0 && priced.All(review => review.Meter is not null)
+            ? VoiceLabDiffSummary.Make(diff with { Hunks = pricedHunks }, priced.Select(review => review.Meter! with
+                { EstimateSeconds = review.Fit!.EstimateSeconds }).ToArray(), prices, model,
+                patchTexts: priced.Select(review => review.PatchText).ToArray()) : null;
         var runs = DiffRuns(diff, session.Source, session.Transcript, reviews);
         var inserted = diff.Ops.Count(op => op.Kind == VoiceLabDiffOpKind.Insert);
         var removed = diff.Ops.Count(op => op.Kind == VoiceLabDiffOpKind.Delete);

@@ -122,11 +122,11 @@ internal sealed partial class RewriteSession : IDisposable
     internal async Task<VoiceLabTakeInput?> GenerationInputAsync(string recordId, string modelId, uint seed, bool providerConsent,
         RewriteSourceReader source, CancellationToken ct, int windowIndex = 0)
     {
-        if (!GenerationIsCurrent || Review is not { } review || review.Budget.Copy is not null || review.VoiceHunks.Count == 0) return null;
-        if (review.VoiceHunks.Count > VoiceLabTakeBatch.MaximumWindows)
+        if (!GenerationIsCurrent || Review is not { } review || review.Budget.Copy is not null || PricedVoiceHunks.Count == 0) return null;
+        if (PricedVoiceHunks.Count > VoiceLabTakeBatch.MaximumWindows)
             throw new RewriteGenerationException("Keep fewer changed passages before generating takes. Your edits are saved.");
-        if (windowIndex < 0 || windowIndex >= review.VoiceHunks.Count) return null;
-        var hunk = review.VoiceHunks[windowIndex];
+        if (windowIndex < 0 || windowIndex >= PricedVoiceHunks.Count) return null;
+        var hunk = PricedVoiceHunks[windowIndex];
         if (hunk.Window is not { } window || hunk.PatchText is not { } text)
             throw new RewriteGenerationException(hunk.Refusal ?? "This change can't be placed in this take. Your edits are saved.");
         var combined = Editor.ProjectWithLocalOperations(Project, LocalOperations());
@@ -178,7 +178,7 @@ internal sealed partial class RewriteSession : IDisposable
         RefreshReview();
     }
 
-    internal async Task SetInstructionAsync(string text, bool retainFailure = false)
+    internal async Task SetInstructionAsync(string text, bool retainFailure = false, IReadOnlyList<VoiceRewriteTimingFeedback>? shorterPhrases = null)
     {
         if (!IsOpen) return;
         InvalidateProposal();
@@ -210,6 +210,7 @@ internal sealed partial class RewriteSession : IDisposable
             {
                 scopePlan = ScopeRewritePlan.Make(Project, requestedScope, string.IsNullOrWhiteSpace(text) ? "Fix mistakes" : text,
                     Project.Transcript?.Language ?? "en", Envelope);
+                scopePlan = scopePlan with { Request = scopePlan.Request with { ShorterPhrases = shorterPhrases ?? [] } };
                 var scopedAction = await patchService.PrepareAsync(scopePlan.Request, Connector.Connector, Connector.Model, lifetime.Token);
                 if (!IsOpen || current != revision) return;
                 Prepared = scopedAction;
@@ -218,7 +219,7 @@ internal sealed partial class RewriteSession : IDisposable
                 return;
             }
             var input = new VoiceRewriteRequest(Guid.NewGuid(), VoiceRewriteScope.Passage, words, text,
-                Editor.State?.Transcript.Language ?? "en", targetSeconds, 1, 5000);
+                Editor.State?.Transcript.Language ?? "en", targetSeconds, 1, 5000) { ShorterPhrases = shorterPhrases ?? [] };
             var action = await service.PrepareAsync(input, Connector.Connector, Connector.Model, lifetime.Token);
             if (!IsOpen || current != revision) return;
             request = input;
@@ -303,6 +304,7 @@ internal sealed partial class RewriteSession : IDisposable
             }
             if (!IsOpen || revision != current) return false;
             changeStates.Clear();
+            priceOverrides.Clear();
             NewWords = resultText;
             RefreshReview();
             ProposalRevision++;
@@ -325,7 +327,8 @@ internal sealed partial class RewriteSession : IDisposable
             {
                 Prepared = null;
                 Changed?.Invoke(this, EventArgs.Empty);
-                await SetInstructionAsync(Instruction, retainFailure: true);
+                await SetInstructionAsync(Instruction, retainFailure: true,
+                    shorterPhrases: scopedInput?.Request.ShorterPhrases ?? input?.ShorterPhrases);
             }
         }
     }
@@ -336,6 +339,7 @@ internal sealed partial class RewriteSession : IDisposable
         InvalidateProposal();
         scopeHunks = null;
         changeStates.Clear();
+        priceOverrides.Clear();
         NewWords = text;
         RefreshReview();
         InvalidateGenerationInputs();

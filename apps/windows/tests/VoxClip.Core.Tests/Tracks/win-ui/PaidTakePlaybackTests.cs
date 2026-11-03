@@ -14,6 +14,24 @@ namespace VoxClip.Core.Tests.Tracks.WinUi;
 
 public sealed class PaidTakePlaybackTests
 {
+    [Fact]
+    public async Task PaidTakeWithoutAFitOffersWordingRecoveryAndKeepOriginalChangesNothingInTheProject()
+    {
+        await using var test = new Harness(true, false, VoiceLabTakeRunEnd.Completed);
+        test.Runner.ReportChangedDuration = true;
+        var project = ProjectSerialization.Serialize(test.Editor.Project);
+        await test.GenerateAsync();
+        Assert.Equal(RewriteGenerationPhase.LengthChanged, test.Generation.Phase);
+        Assert.True(test.Generation.NeedsShorterWording);
+        Assert.False(test.Generation.CanRetime);
+        Assert.False(test.Generation.ReadyToAccept);
+        Assert.True(test.Session.SetChangeIncluded(1, false));
+        Assert.Empty(test.Session.Review!.VoiceHunks);
+        Assert.Equal(project, ProjectSerialization.Serialize(test.Editor.Project));
+        Assert.False(test.Editor.CanUndo);
+        Assert.Equal(0, test.PublishCalls);
+    }
+
     [Theory]
     [InlineData(false, false, VoiceLabTakeRunEnd.Completed)]
     [InlineData(false, true, VoiceLabTakeRunEnd.Completed)]
@@ -61,7 +79,9 @@ public sealed class PaidTakePlaybackTests
     public async Task PassedTakeKeepsItsExistingSelectionMixAndUseBehavior()
     {
         await using var test = new Harness(true, false, VoiceLabTakeRunEnd.Completed);
+        Assert.StartsWith("Make take", test.Generation.ButtonTitle);
         await test.GenerateAsync();
+        Assert.StartsWith("Try another", test.Generation.ButtonTitle);
         var passed = test.Generation.Rows.Single(row => row.Selectable);
         Assert.Equal(passed.Id, test.Generation.SelectedTakeId); Assert.True(test.Generation.ReadyToAccept);
         await test.Generation.PlayTakeAsync(passed.Id);
@@ -173,6 +193,7 @@ public sealed class PaidTakePlaybackTests
         private VoiceLabTakeRunQuote? pending;
         private VoiceLabAsset? paid;
         internal Exception? Error;
+        internal bool ReportChangedDuration;
         internal string PaidPath => Path.Combine(storage.PaidRoot, storage.ProjectId, Path.GetFileName(paid!.File));
         internal byte[] PaidBytes => File.ReadAllBytes(PaidPath);
         internal VoiceLabTakeScratch? Scratch(Guid id) => scratches.GetValueOrDefault(id);
@@ -226,6 +247,7 @@ public sealed class PaidTakePlaybackTests
                     var source = new float[checked((int)Math.Floor(input.Source.TotalFrames * 24000d / input.SourceSampleRate + .5))];
                     var scratch = VoiceLabTakeRenderer.Stage(fitted, new(24000, samples, 0, null, fit), input, VoiceLabSourceExcerpt.Whole(source), storage.ScratchRoot, ct);
                     scratches.Add(take.Synthesis.Review.RequestId, scratch); audio = scratch.Audio;
+                    if (ReportChangedDuration) audio = audio with { Fit = new VoiceLabFitResult.ChangedDuration(plan, 5, 3) };
                 }
                 rows.Add(new(take.Synthesis.Review.RequestId, take.Index, take.Seed, receipt, Generated: generated, Quote: take, Audio: audio,
                     Qa: audio is null ? null : new(take.Index == 0 ? .5 : 1, 0, -3, .8, take.Index == 0 ? [VoiceLabTakeQaFailure.Transcript] : []),

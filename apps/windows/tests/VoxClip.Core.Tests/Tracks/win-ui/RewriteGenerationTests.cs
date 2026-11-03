@@ -673,6 +673,7 @@ public sealed class RewriteGenerationTests
         // A longer pause after the passage than before it, so the two silences differ and a swap shows.
         using var owner = new RewriteSession(Editor(pauseAfterWord12: 1.5), 10, 12, Envelope(), null);
         owner.Edit("much clearer words");
+        if (owner.BlockedVoiceHunks.Count > 0) Assert.True(owner.PriceItAnyway(1));
         var hunk = Assert.Single(owner.Review!.VoiceHunks);
         RewriteSourceRequest? request = null;
         var read = (VoiceLabSourceExcerpt.Whole(new float[] { 0.1f, 0.2f }), VoiceLabTakeProcessing.Envelope([0.1f, 0.2f], 48_000));

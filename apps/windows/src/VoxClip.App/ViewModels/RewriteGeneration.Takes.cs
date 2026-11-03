@@ -40,6 +40,7 @@ internal sealed partial class RewriteGeneration
     internal bool CanPlay => !closed && !accepting && !IsRunning && current() && outputChecked && !refreshingOutput &&
         Audition?.CanPlay == true && reviewEnd is VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop or VoiceLabTakeRunEnd.Fatal;
     internal bool CanRetime => false;
+    internal bool NeedsShorterWording => Selected is { Fits: false } && !CanRetime && !IsRunning;
     internal bool CanPlayTake(Guid id) => CanPlay && Rows.FirstOrDefault(row => row.Id == id) is { Stopped: false } row &&
         (row.Audio is not null ? takes?.Scratch(id)?.IsValid == true : row.Generated is not null && takes?.PaidAudio is not null);
     internal string RetimeCopy => "Retimed source video is not available in this build. Re-record this sentence instead.";

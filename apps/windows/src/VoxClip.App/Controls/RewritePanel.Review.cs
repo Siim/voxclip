@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using VoxClip.App.Services;
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.VoiceLab;
@@ -14,6 +15,27 @@ internal sealed partial class RewritePanel
     private int renderedFocus = -1;
     private bool renderedEditable;
     private readonly HashSet<DependencyObject> reviewElements = [];
+
+    private async Task SendProposalAsync()
+    {
+        if (requestingApproval || session.Prepared is not { } action || !session.CanPropose) return;
+        requestingApproval = true;
+        App.Services.BusyOperations++;
+        try
+        {
+            if (await ApproveProposalAsync(action) && session.IsOpen) await session.ProposeAsync(action, true);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        { if (session.IsOpen) problem.Text = UiError.Message(exception, "Rewrite"); }
+        finally { requestingApproval = false; App.Services.BusyOperations--; }
+    }
+
+    private async Task AskForShorterAsync(int ordinal)
+    {
+        if (requestingApproval || !await session.PrepareShorterAsync(ordinal) || session.Prepared is not { } action) return;
+        session.MarkEstimateShown(action);
+        await SendProposalAsync();
+    }
 
     private void BuildWindowPicker()
     {
@@ -67,9 +89,37 @@ internal sealed partial class RewritePanel
             SetName(reveal, $"Show change {ordinal} in transcript"); SetName(edit, $"Edit change {ordinal}");
             edit.IsEnabled = session.ReviewIsCurrent;
             actions.Children.Add(reveal); actions.Children.Add(edit); row.Children.Add(actions);
+            var voiceHunk = current.VoiceHunks.FirstOrDefault(voice => voice.Ordinals.Contains(ordinal));
+            if (included && voiceHunk?.Fit is { } fit)
+            {
+                var timing = Small(fit.Copy);
+                reviewElements.Add(timing);
+                timing.FontFamily = (FontFamily)Application.Current.Resources["VcMonoFontFamily"];
+                row.Children.Add(timing);
+                if (!fit.Fits)
+                {
+                    row.Children.Add(new InfoBar { IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Warning,
+                        Message = fit.TooLong ? VoiceLabRewriteFit.TooLongCopy : VoiceLabRewriteFit.TooShortCopy });
+                    var shorter = new Button { Content = fit.TooLong ? "Ask for shorter" : "Ask again", IsEnabled = session.ReviewIsCurrent && !requestingApproval };
+                    AutomationProperties.SetAutomationId(shorter, "Rewrite.Shorter" + ordinal);
+                    shorter.Click += async (_, _) => { if (ReferenceEquals(current, session.Review)) await AskForShorterAsync(ordinal); };
+                    var keep = Ui.Button("Keep original words", () => { if (ReferenceEquals(current, session.Review)) session.SetChangeIncluded(ordinal, false); });
+                    AutomationProperties.SetAutomationId(keep, "Rewrite.KeepOriginal" + ordinal);
+                    var anyway = new HyperlinkButton { Content = "Price it anyway" };
+                    AutomationProperties.SetAutomationId(anyway, "Rewrite.PriceAnyway" + ordinal);
+                    anyway.Click += (_, _) => { if (ReferenceEquals(current, session.Review)) session.PriceItAnyway(ordinal); };
+                    keep.IsEnabled = anyway.IsEnabled = session.ReviewIsCurrent;
+                    row.Children.Add(shorter); row.Children.Add(keep); row.Children.Add(anyway);
+                }
+            }
+            else if (included && voiceHunk?.Refusal is { } refusal)
+            {
+                var refusalText = Small(refusal);
+                reviewElements.Add(refusalText); row.Children.Add(refusalText);
+            }
             review.Children.Add(row);
         }
-        foreach (var hunk in current.VoiceHunks) review.Children.Add(Small(hunk.Meter?.Copy ?? hunk.Refusal ?? ""));
+        if (current.VoiceHunks.Count > 0) review.Children.Add(Small(session.FitFooter));
         if (current.Summary is { } summary) review.Children.Add(Small(summary.Copy));
         if (current.Budget.Copy is { } budget) review.Children.Add(Small(budget));
         if (current.VoiceHunks.Count > VoiceLabTakeBatch.MaximumWindows)

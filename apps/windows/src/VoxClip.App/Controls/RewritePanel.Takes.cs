@@ -15,6 +15,7 @@ internal sealed partial class RewritePanel
     private readonly TextBlock lengthCopy = Ui.Text("");
     private readonly RadioButtons videoChoices = new() { Header = "How the video keeps up", SelectedIndex = -1, MaxColumns = 1 };
     private readonly TextBlock retimeCopy = Ui.Text("");
+    private readonly StackPanel takeRecovery = Ui.Stack(6);
     private readonly Dictionary<Guid, (Button Play, Button? Reject)> takeButtons = [];
     private IReadOnlyList<VoiceLabTakeRow> renderedRows = [];
     private Guid? renderedBest;
@@ -53,6 +54,19 @@ internal sealed partial class RewritePanel
         lengthBody.Children.Add(lengthCopy); lengthBody.Children.Add(videoChoices);
         lengthBody.Children.Add(Small("Lip sync is not available in this build."));
         lengthBody.Children.Add(retimeCopy);
+        var shorter = new Button { Content = "Ask for shorter" };
+        shorter.Click += async (_, _) =>
+        {
+            if (session.PricedVoiceHunks.ElementAtOrDefault(session.ActiveWindow) is not { } hunk || session.Review is null) return;
+            await AskForShorterAsync(hunk.Ordinals[0]);
+        };
+        var keep = Ui.Button("Keep original words", () =>
+        {
+            if (session.PricedVoiceHunks.ElementAtOrDefault(session.ActiveWindow) is { } hunk && session.Review is { } current)
+                foreach (var ordinal in hunk.Ordinals) session.SetChangeIncluded(ordinal, false);
+        });
+        takeRecovery.Children.Add(shorter); takeRecovery.Children.Add(keep);
+        lengthBody.Children.Add(takeRecovery);
         generationBody.Children.Add(lengthBody);
     }
     private void TakeContainerChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
@@ -127,6 +141,8 @@ internal sealed partial class RewritePanel
         }
         takeList.SelectedItem = rows.FirstOrDefault(row => row.Id == generation.SelectedTakeId);
         lengthBody.Visibility = generation.Selected is { Fits: false } ? Visibility.Visible : Visibility.Collapsed;
+        takeRecovery.Visibility = generation.NeedsShorterWording ? Visibility.Visible : Visibility.Collapsed;
+        foreach (var button in takeRecovery.Children.OfType<Button>()) button.IsEnabled = session.ReviewIsCurrent && !requestingApproval;
         lengthCopy.Text = generation.LengthCopy; retimeCopy.Text = generation.RetimeCopy;
         videoChoices.SelectedIndex = generation.VideoChoice is null ? -1 : 1;
         updating = false;
