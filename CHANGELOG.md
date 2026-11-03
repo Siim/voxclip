@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Mac profile builds can diagnose failed voice timing checks without saving audio or credentials in diagnostics.
 - A failed Rewrite now stays open and says why.
 - Paid takes that failed their checks can now be played on Windows too, without being used.
 - Keep Eleven v4 voice takes and CLI network recovery consistent across macOS and Windows.

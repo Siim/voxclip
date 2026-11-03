@@ -3,7 +3,7 @@ import subprocess
 import tempfile
 import unittest
 
-from check_release_boundary import CAPABILITY_CALL, POLICY_CALL, PROOF_CALL, check_internal_build, require_access_rejection, same_module_source
+from check_release_boundary import CAPABILITY_CALL, POLICY_CALL, PROOF_CALL, check_internal_build, check_validation_diagnostics, require_access_rejection, same_module_source
 
 FLAG = """extension AppModel {
     static var internalBuild: Bool {
@@ -64,6 +64,20 @@ class ReleaseBoundaryTests(unittest.TestCase):
                 else:
                     with self.assertRaisesRegex(RuntimeError, 'internalBuild as true'):
                         check_internal_build(sources)
+
+
+class ValidationDiagnosticBoundary(unittest.TestCase):
+    def test_real_sources_and_negative_control(self):
+        root = pathlib.Path(__file__).resolve().parents[2] / 'apps/macos/Sources'
+        check_validation_diagnostics(root)
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            source = root / 'Probe.swift'
+            source.write_text('#if DEBUG\nfunc recordValidationDiagnostic() {}\n#endif\n')
+            check_validation_diagnostics(root)
+            source.write_text('func recordValidationDiagnostic() {}\n')
+            with self.assertRaisesRegex(RuntimeError, 'Release exposes speech validation diagnostics'):
+                check_validation_diagnostics(root)
 
 
 if __name__ == '__main__':

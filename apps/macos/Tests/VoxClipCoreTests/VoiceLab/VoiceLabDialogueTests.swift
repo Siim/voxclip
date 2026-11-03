@@ -11,7 +11,8 @@ struct VoiceLabDialogueTests {
         try #require(JSONSerialization.jsonObject(with: FixtureLoader.data("fixtures/voice-lab/dialogue-cases.json")) as? [String: Any])
     }
     private func lab(response: Data, status: Int = 200, recorder: RequestRecorder = RequestRecorder(), multiplier: Double? = nil, maximum: Int? = nil,
-                     prices: VoiceLabPriceCatalog? = VoiceLabPricingTests.catalogIfPresent) async throws -> ElevenLabsVoiceLab {
+                     prices: VoiceLabPriceCatalog? = VoiceLabPricingTests.catalogIfPresent,
+                     logger: any Redacting = RedactingLogger(homeDirectory: "/synthetic-home"), diagnosticDirectory: URL? = nil) async throws -> ElevenLabsVoiceLab {
         let discovery = try #require(document()["discovery"] as? [String: Any])
         var modelRows = try #require(discovery["models"] as? [[String: Any]])
         if let index = modelRows.firstIndex(where: { $0["model_id"] as? String == "eleven_v4" }) {
@@ -32,7 +33,7 @@ struct VoiceLabDialogueTests {
         }
         let client = ElevenLabsVoiceLab(keys: SpeechTestKeys(value: "synthetic-dialogue-key"),
             session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)),
-            prices: prices)
+            logger: logger, prices: prices, validationDiagnosticDirectory: diagnosticDirectory)
         _ = try await client.models(); _ = try await client.voices()
         return client
     }
@@ -41,6 +42,89 @@ struct VoiceLabDialogueTests {
         let cases = try #require(document()["responses"] as? [[String: Any]])
         return try JSONSerialization.data(withJSONObject: try #require(cases[0]["response"]))
     }
+    @Test(arguments: ["eleven_v3", "eleven_v4"])
+    func validationDiagnosticIsRedactedAndNamesUnicodeMismatch(model: String) async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let logger = RedactingLogger(homeDirectory: "/synthetic-home", directory: directory)
+        var row = try #require(JSONSerialization.jsonObject(with: response()) as? [String: Any])
+        row["alignment"] = ["characters": ["I", "’", "m"],
+            "character_start_times_seconds": [0, 0.1, 0.2], "character_end_times_seconds": [0.1, 0.2, 0.3]]
+        row["normalized_alignment"] = ["characters": ["I am"]]
+        row["voice_segments"] = [["voice_id": "voice123", "dialogue_input_index": 0,
+            "character_start_index": 0, "character_end_index": 3, "start_time_seconds": 0, "end_time_seconds": 0.3,
+            "extra": "synthetic-dialogue-key", "headers": ["Authorization": "secret-header"], "audio_base64": "secret-audio"]]
+        row["headers"] = ["Authorization": "secret-envelope"]
+        let recorder = RequestRecorder()
+        let client = try await lab(response: JSONSerialization.data(withJSONObject: row), recorder: recorder,
+            logger: logger, diagnosticDirectory: directory)
+        let id = UUID(), options = VoiceLabSpeechOptions(seed: 0)
+        let quote = try await client.prepareSynthesis(text: "I'm", modelID: model, voice: voice, language: "en", options: options, requestID: id)
+        let acceptance = VoiceLabRequestAcceptance()
+        await #expect(throws: VoiceLabError.invalidAlignment) {
+            _ = try await client.synthesize(text: "I'm", modelID: model, voice: voice, language: "en", options: options,
+                requestID: id, authorization: VoiceLabAuthorization(quote: quote, approved: true), acceptance: acceptance)
+        }
+        let file = directory.appendingPathComponent("speech-validation-\(id.uuidString).json")
+        let bytes = try Data(contentsOf: file)
+        let diagnostic = try #require(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
+        #expect(diagnostic["check"] as? String == "alignment_text_mismatch")
+        #expect(diagnostic["index"] as? Int == 1)
+        #expect(diagnostic["typed_scalar"] as? String == "U+0027")
+        #expect(diagnostic["alignment_scalar"] as? String == "U+2019")
+        #expect(diagnostic["typed_text"] as? String == "I'm")
+        #expect(diagnostic["alignment_text"] as? String == "I’m")
+        #expect(diagnostic["normalized_alignment_text"] as? String == "I am")
+        #expect(diagnostic["model"] as? String == model)
+        #expect(diagnostic["route"] as? String == (model == "eleven_v4" ? "textToDialogue" : "textToSpeech"))
+        #expect(diagnostic["pcm_duration_seconds"] as? Double == 0.02)
+        let starts = try #require(diagnostic["alignment_starts"] as? [String: Any])
+        #expect(starts["first"] as? [Double] == [0, 0.1, 0.2])
+        #expect(starts["last"] as? [Double] == [0, 0.1, 0.2])
+        let segments = try #require(diagnostic["voice_segments"] as? [[String: Any]])
+        #expect(segments[0]["character_end_index"] as? Int == 3)
+        let serialized = String(decoding: bytes, as: UTF8.self)
+        for forbidden in ["audio_base64", "headers", "synthetic-dialogue-key", "secret-header", "secret-audio", "secret-envelope"] {
+            #expect(!serialized.contains(forbidden))
+        }
+        let log = try String(contentsOf: directory.appendingPathComponent("voxclip.log"), encoding: .utf8)
+        #expect(log.contains("[info] voice-lab: voicelab dialogue validation failed check=alignment_text_mismatch"))
+        #expect(!log.contains("I'm") && !log.contains("I’m"))
+        #expect(acceptance.unalignedAudio?.pcm.isEmpty == false)
+        #expect(recorder.paid.withLock { $0.count } == 1)
+    }
+
+    @Test(arguments: ["null_alignment", "alignment_count_mismatch", "alignment_time_order", "alignment_end_beyond_duration",
+                      "segment_voice", "segment_character_range", "segment_end_beyond_duration"])
+    func validationDiagnosticNamesExactRule(check: String) async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var row = try #require(JSONSerialization.jsonObject(with: response()) as? [String: Any])
+        var alignment = try #require(row["alignment"] as? [String: Any])
+        var segments = try #require(row["voice_segments"] as? [[String: Any]])
+        switch check {
+        case "null_alignment": row["alignment"] = NSNull()
+        case "alignment_count_mismatch": alignment["character_end_times_seconds"] = [0.1]; row["alignment"] = alignment
+        case "alignment_time_order": alignment["character_start_times_seconds"] = [0.2, 0.1]; row["alignment"] = alignment
+        case "alignment_end_beyond_duration": alignment["character_end_times_seconds"] = [0.2, 1.06]; row["alignment"] = alignment
+        case "segment_voice": segments[0]["voice_id"] = "wrong"
+        case "segment_character_range": segments[0]["character_end_index"] = 999
+        default: segments[0]["end_time_seconds"] = 1.06
+        }
+        row["voice_segments"] = segments
+        let client = try await lab(response: JSONSerialization.data(withJSONObject: row), diagnosticDirectory: directory)
+        let id = UUID(), options = VoiceLabSpeechOptions(seed: 0)
+        let quote = try await client.prepareSynthesis(text: "Hi", modelID: "eleven_v4", voice: voice, language: "en", options: options, requestID: id)
+        let expected: VoiceLabError = check.hasPrefix("segment_") ? .malformedResponse : .invalidAlignment
+        await #expect(throws: expected) {
+            _ = try await client.synthesize(text: "Hi", modelID: "eleven_v4", voice: voice, language: "en", options: options,
+                requestID: id, authorization: VoiceLabAuthorization(quote: quote, approved: true))
+        }
+        let bytes = try Data(contentsOf: directory.appendingPathComponent("speech-validation-\(id.uuidString).json"))
+        let diagnostic = try #require(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
+        #expect(diagnostic["check"] as? String == check)
+    }
+
     @Test func sharedModelRoutesOfferV4AndKeepMultilingualDefault() async throws {
         let client = try await lab(response: response())
         let models = try await client.models()
