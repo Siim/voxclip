@@ -146,7 +146,8 @@ struct RewriteChange: Equatable, Sendable {
         generation?.prepareQuote = { [weak self] in await self?.prepareTakes() }
         // With paid takes, a new speech model applies to the next Try another; the takes already made stay (design T3).
         generation?.changeModelKeepingTakes = { [weak self] id in
-            guard let self, current, let plan = takePlan, plan.spent.units > 0, !takesBusy, plan.stillCurrent else { return false }
+            guard let self, current, let plan = takePlan, plan.spent.units > 0 else { return nil }
+            guard !takesBusy, plan.stillCurrent else { return false }
             return plan.changeModel(id)
         }
         generation?.onInputsChanged = { [weak self] in self?.takePlan?.invalidate() }
