@@ -108,8 +108,14 @@ extension RewriteSession {
     var takesBusy: Bool { takePlan.map { $0.preparing || $0.generating || $0.publishing || $0.preparingVideo } ?? false }
     var usableTakeCount: Int { takePlan.map { $0.canAccept ? $0.phrases.filter { $0.selected?.row.selectable == true }.count : 0 } ?? 0 }
     var takeSendLine: String {
-        if let phrase = takeQuotePhrase { return "Sends only phrase \(phrase + 1) and a short audio check to ElevenLabs with your key. No video." }
-        return "Sends the included phrases and a short audio check to ElevenLabs with your key. No video."
+        let indices = takeQuotePhrase.map { [$0] } ?? takePlan?.phrases.map(\.id) ?? []
+        let paces = indices.compactMap { index -> String? in
+            guard let pace = takePlan?.phrasePace(index), pace != 1 else { return nil }
+            return "Phrase \(index + 1) at \(String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), pace))× pace."
+        }.joined(separator: " ")
+        let sent = if let phrase = takeQuotePhrase { "Sends only phrase \(phrase + 1) and a short audio check to ElevenLabs with your key. No video." }
+            else { "Sends the included phrases and a short audio check to ElevenLabs with your key. No video." }
+        return paces.isEmpty ? sent : sent + " " + paces
     }
     var takeSpendLine: String {
         guard let takePlan else { return "Nothing paid yet." }
@@ -231,6 +237,10 @@ extension ClipTakePlan.Phrase {
             }
             if !generation.problem.isEmpty { Text(generation.problem).foregroundStyle(DesignValues.color("status.warning")) }
             RewriteSpeechContextReviewView(session: session)
+            if let ordinal = session.surroundingSentenceOrdinal, session.speechContextReview == nil {
+                Button("Use surrounding sentence") { session.reviewTimingSpeechContext(ordinal: ordinal) }
+                    .disabled(session.takesBusy || generation.selectedVoiceID == nil)
+            }
             Button("Review Changes") { session.takeRowsShown = false; session.showProposal() }.buttonStyle(.plain)
         }
         .font(VCType.callout.font())
@@ -271,6 +281,10 @@ extension ClipTakePlan.Phrase {
                 }
                 Text(phrase.takeDetail).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
             }
+            if let pace = plan.phrasePace(phrase.id), pace != 1 {
+                Text("Next take at \(String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), pace))× pace")
+                    .font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
+            }
             if let best = phrase.bestMeasured, phrase.takes.filter({ $0.row.selectable }).count > 1,
                phrase.selectedID == best.id {
                 Text("Best match").font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
@@ -309,6 +323,8 @@ extension ClipTakePlan.Phrase {
                     let ordinals = session.takePhraseOrdinals(phrase)
                     if case .original = action {
                         for ordinal in ordinals { session.phraseTimingAction(.original, ordinal: ordinal) }
+                    } else if case .surrounding = action {
+                        session.reviewSpeechContext(phrase: phrase.id)
                     } else if let ordinal = ordinals.first {
                         session.phraseTimingAction(.shorter, ordinal: ordinal)
                     }
@@ -323,7 +339,8 @@ extension ClipTakePlan.Phrase {
                         .buttonStyle(.plain).help("Prepare this phrase's price. Nothing is sent until you approve it.")
                 }
             }
-            if session.canReviewSpeechContext(phrase: phrase) {
+            if session.canReviewSpeechContext(phrase: phrase),
+               !session.takeNeedsWordingRecovery(phrase, plan: plan) || (phrase.lengthDifference ?? 0) >= 0 {
                 Button("Use surrounding sentence") { session.reviewSpeechContext(phrase: phrase.id) }
                     .disabled(session.takesBusy)
             }

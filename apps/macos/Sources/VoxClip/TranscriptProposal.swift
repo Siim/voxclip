@@ -597,7 +597,7 @@ extension EditorModel {
             let inputs = RewriteReview.Inputs(transcript: transcript, project: project, scope: scope, envelope: envelope,
                 prices: nil, synthesisModel: nil)
             let rate = try VoiceLabPhraseTiming.speakingRate(transcript: RewriteReview.timingTranscript(inputs))
-            return try VoiceLabPhraseTiming.measure(text: patch, rate: rate, window: window, incomingSilence: silence.incoming,
+            return try VoiceLabPaceMatching.measure(text: patch, rate: rate, window: window, incomingSilence: silence.incoming,
                 outgoingSilence: silence.outgoing, sourceSampleRate: project.media.source.audio?.sampleRate ?? 48_000).copy
         } catch { return nil }
     }

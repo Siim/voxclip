@@ -48,6 +48,10 @@ extension RewriteSession {
     }
     func prepareTakes() async {
         if let reviewing { await reviewing.value }
+        if let ordinal = surroundingSentenceOrdinal, acceptedSpeechContext == nil {
+            reviewTimingSpeechContext(ordinal: ordinal)
+            return
+        }
         guard current, let generation, review != nil, overBudget == nil, !includedVoice.isEmpty, let takeBackend else { return }
         guard !hasPaidTakes else {
             generation.fail("Your paid takes are kept. Leave this review and confirm discarding them before making a fresh takes plan.")
@@ -77,18 +81,25 @@ extension RewriteSession {
             let sampleCount: Double = project.media.source.durationSeconds * sampleRate
             let frames: Int64 = Int64(EditingPrimitives.jsRound(sampleCount))
             let outputScope = scope, sourceURL = editor.sourceURL
+            let timingInputs = RewriteReview.Inputs(transcript: Self.corrected(final), project: final,
+                scope: scope, envelope: envelope, prices: nil, synthesisModel: modelID)
+            let speakingRate = try VoiceLabPhraseTiming.speakingRate(transcript: RewriteReview.timingTranscript(timingInputs))
             // The plan's own model once the user changes it with paid takes kept (`ClipTakePlan.changeModel`).
             weak var created: ClipTakePlan?
             let plan = try ClipTakePlan(project: final, scope: scope, envelope: envelope, hunks: hunks,
                 makeInput: { phrase in
                     let silence = try VoiceLabWindowPlanner.lendableSilence(project: final, scope: outputScope, window: phrase.window)
+                    let timing = try VoiceLabPaceMatching.measure(text: phrase.text, rate: speakingRate, window: phrase.window,
+                        incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
+                        sourceSampleRate: audio.sampleRate, supportsPace: modelID != "eleven_v4")
                     let source = try await VoiceLabSourceAudio.rewriteSource(source: sourceURL, frames: frames, sampleRate: audio.sampleRate,
                         window: phrase.window, incomingSilence: silence.incoming, outgoingSilence: silence.outgoing, items: Self.corrected(final))
                     return VoiceLabTakeInput(text: phrase.text, modelID: modelID, recordID: recordID,
                         language: final.transcript?.language ?? "en", seed: UInt32.random(in: 0...UInt32.max),
                         contentKey: final.media.source.contentKey, source: source.excerpt, sourceEnvelope: source.envelope,
                         sourceSampleRate: audio.sampleRate, items: Self.corrected(final), cutWordIDs: Set(final.edits.cutWordIds),
-                        window: phrase.window, incomingSilence: silence.incoming, outgoingSilence: silence.outgoing, providerConsent: true)
+                        window: phrase.window, incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
+                        providerConsent: true, pace: timing.pace)
                 }, readCap: { [weak self] in
                     guard let self else { throw CancellationError() }
                     return try await self.currentGenerationCap()

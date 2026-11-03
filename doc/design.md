@@ -1213,8 +1213,22 @@ one video-duration option would be usable. A blocked row has a warning bar and t
 and **Keep original words**; the quiet **Price it anyway** text action overrides only that
 phrase's estimate. No dialog, provider call, or audio charge happens on an override.
 If wording instead falls below the same gate's minimum usable length, say “Too short
-for its slot. A take won't fit the video.” and offer **Ask again** rather than asking
+for its slot. A take won't fit the video.” and offer **Use surrounding sentence** rather than asking
 for fewer words. That footer reads “{n} phrase(s) need(s) wording that fits.”
+
+**Pace matching (3 November 2026).** Before pricing, choose a provider pace on its 0.01
+grid within 0.70×–1.20×: prefer keeping the source video duration, aiming at the midpoint
+of the exact-fit range; otherwise use a reachable Match video fit. Keep the actual fit
+planner's silence/room-tone limits, never extra padding. At non-default pace the muted
+line reads `≈ 4.6 s at 0.80× pace · slot 5.1 s · fits`. The complete phrase input and
+fresh paid approval bind that pace, and the inline send/price disclosure repeats it.
+For dialogue/v4, only 1.0× is supported. If pace cannot fit, the same too-long/too-short
+wording recovery applies. Use surrounding sentence reviews the whole replacement and
+source range inline, preserving excluded changes and paid takes; it does not approve a
+charge. A changed-duration take's **Try another** targets the exact-fit midpoint from
+its measured pre-fit trimmed length and the selected take's receipt pace, not the original
+text estimate. A fresh quote and priced click are still required, including after another
+retry quote or a speech-model change.
 
 The footer counts unresolved included phrases: “1 phrase needs a shorter wording.” or
 “{n} phrases need a shorter wording.” **Get Price · {k} phrase(s)** prices only included

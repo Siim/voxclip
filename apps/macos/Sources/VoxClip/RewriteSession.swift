@@ -106,6 +106,7 @@ struct RewriteChange: Equatable, Sendable {
     private(set) var generation: RewriteGenerationSession?
     var takePlan: ClipTakePlan?
     var speechContextOffer: RewriteSpeechContextReview?
+    var surroundingSentenceOrdinal: Int?
     var speechContextReview: RewriteSpeechContextReview?
     var acceptedSpeechContext: RewriteSpeechContextReview?
     var speechContextProblem = ""
@@ -128,9 +129,10 @@ struct RewriteChange: Equatable, Sendable {
         takeRegion = region
         let model: EditorModel = editor
         let dataRoot: URL = model.app.locations.root
+        let paidRoot: URL = dataRoot.appendingPathComponent("VoiceLab", isDirectory: true)
+        let scratchRoot: URL = dataRoot.appendingPathComponent("VoiceLabScratch", isDirectory: true)
         let storage = VoiceLabTakeStorage(projectId: model.project.id,
-            paidRoot: dataRoot.appendingPathComponent("VoiceLab", isDirectory: true),
-            scratchRoot: dataRoot.appendingPathComponent("VoiceLabScratch", isDirectory: true))
+            paidRoot: paidRoot, scratchRoot: scratchRoot)
         let run = VoiceLabTakeRun(client: client, store: store, speaker: speaker, storage: storage, dispatchIfCurrent: { [weak self] _, start in
             guard let generation = await self?.generation else { throw VoiceLabError.consentRequired }
             try await generation.dispatchWithCurrentCost(start)
@@ -569,6 +571,7 @@ struct RewriteChange: Equatable, Sendable {
     }
     private func invalidate() {
         speechContextOffer = nil; speechContextReview = nil; acceptedSpeechContext = nil; speechContextProblem = ""
+        surroundingSentenceOrdinal = nil
         takePlan?.invalidate(); takePlan = nil
         generation?.invalidate(); generation = nil
         revision += 1; sending?.cancel()
@@ -765,6 +768,7 @@ struct RewriteChange: Equatable, Sendable {
         guard next != project else { return }
         let requote = takePlan != nil
         speechContextOffer = nil; speechContextReview = nil; acceptedSpeechContext = nil; speechContextProblem = ""
+        surroundingSentenceOrdinal = nil
         takePlan?.invalidate(); takePlan = nil
         project = next; derive()
         let previous = review

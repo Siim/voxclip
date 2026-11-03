@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Rewrite chooses a fitting voice pace before pricing and learns from a take's measured length when you try another.
 - Rewrite checks that each new phrase fits the video before you pay.
 - Takes can be made at a slower or faster pace to fit your video.
 - Keep successful Rewrite replies when a project save finishes during the request, and explain stale replies inline.

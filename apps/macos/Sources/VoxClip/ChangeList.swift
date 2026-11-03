@@ -40,7 +40,10 @@ extension RewriteSession {
         }.map(\.ordinal)
     }
     var includedVoice: [Int] {
-        reviewedVoiceOrdinals.filter { voiceReview($0)?.timing?.fits != false || pricedAnyway.contains($0) }
+        reviewedVoiceOrdinals.filter {
+            voiceReview($0)?.timing?.fits != false || pricedAnyway.contains($0) ||
+                acceptedSpeechContext?.plan.request.expandingHunkIndices.contains($0 - 1) == true
+        }
     }
     /// Why the voice change `ordinal` can't be made, nil when it can (design.md R2's voice rows): Voice Lab is off, the
     /// project's language has no calibrated voice check, the take refused its placement, or the review built again after
@@ -142,7 +145,7 @@ extension RewriteSession {
         if let callout = footer.callout { cards.append(.callout(callout)) }
         // Why Make Takes could not go on (finding the voices failed); a refused review is on the voice rows instead.
         if review != nil, !problem.isEmpty { cards.append(.callout(problem)) }
-        if footer.takes, takeRowsShown {
+        if (footer.takes || surroundingSentenceOrdinal != nil), takeRowsShown {
             cards = blockedVoiceOrdinals.isEmpty ? [.takes] : [.changes(set), .takes]
             let count = takePlan?.phrases.count ?? includedVoice.count
             headline.text = count == 1 ? "1 phrase in your voice" : "\(count) phrases in your voice"
@@ -323,7 +326,7 @@ extension RewriteSession {
     /// change, asking first when the cost confirms (voice-lab.md §3.1). A footer drawn before the list's inclusions
     /// changed makes no takes of a phrase other than the one the quote is for.
     func makeTakes() {
-        guard current, !includedVoice.isEmpty else { return }
+        guard current, !includedVoice.isEmpty || surroundingSentenceOrdinal != nil else { return }
         guard !takesBusy else { return }
         takeRowsShown = true
         guard generation != nil else {
@@ -331,6 +334,7 @@ extension RewriteSession {
             return
         }
         guard !hasPaidTakes else { return }
+        if let ordinal = surroundingSentenceOrdinal { reviewTimingSpeechContext(ordinal: ordinal); return }
         takesTask = Task { [weak self] in await self?.prepareTakes() }
     }
     /// Use Take {n}: the take with the free changes still pending, one undo step.

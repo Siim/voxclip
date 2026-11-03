@@ -189,7 +189,12 @@ private final class WorkThreads: Sendable {
         #expect(session.task.footer.note == "1 phrase needs wording that fits.")
         #expect(session.task.footer.primary == nil)
         let recovery = PhraseTimingRecovery(tooLong: false, priceAnyway: true, action: { _ in })
-        #expect(recovery.retryTitle == "Ask again")
+        #expect(recovery.retryTitle == "Use surrounding sentence")
+        app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(false)
+        session.phraseTimingAction(.surrounding, ordinal: ordinal)
+        #expect(session.surroundingSentenceOrdinal == ordinal)
+        #expect(session.takeRowsShown)
+        #expect(!session.includedVoice.contains(ordinal))
     }
 
     @Test(arguments: ["ollama", "anthropic"])

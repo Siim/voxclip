@@ -1,14 +1,15 @@
 import SwiftUI
 import VoxClipCore
 
-enum PhraseTimingAction { case shorter, again, original, priceAnyway }
+enum PhraseTimingAction { case shorter, again, surrounding, original, priceAnyway }
 
 extension RewriteSession {
     var blockedVoiceOrdinals: [Int] {
         guard let proposal = ownProposal else { return [] }
         return proposal.changes.filter {
             $0.kind == .voice && $0.state != .excluded && $0.reviewable &&
-                voiceReview($0.ordinal)?.timing?.fits == false && !pricedAnyway.contains($0.ordinal)
+                voiceReview($0.ordinal)?.timing?.fits == false && !pricedAnyway.contains($0.ordinal) &&
+                acceptedSpeechContext?.plan.request.expandingHunkIndices.contains($0.ordinal - 1) != true
         }.map(\.ordinal)
     }
 
@@ -17,8 +18,15 @@ extension RewriteSession {
         let model: EditorModel = editor
         let originalInstruction: String = instruction
         switch action {
+        case .surrounding:
+            surroundingSentenceOrdinal = ordinal
+            takeRowsShown = true
+            if generation != nil { reviewTimingSpeechContext(ordinal: ordinal) }
+            else { makeTakes() }
         case .again: model.sendRewriteAgain(self, instruction: originalInstruction)
-        case .original: review(ordinal, .undo)
+        case .original:
+            if surroundingSentenceOrdinal == ordinal { surroundingSentenceOrdinal = nil }
+            review(ordinal, .undo)
         case .priceAnyway:
             pricedAnyway.insert(ordinal)
             showProposal()
@@ -86,13 +94,13 @@ struct PhraseTimingRecovery: View {
     var tooLong = true
     let priceAnyway: Bool
     let action: (PhraseTimingAction) -> Void
-    var retryTitle: String { tooLong ? "Ask for shorter" : "Ask again" }
+    var retryTitle: String { tooLong ? "Ask for shorter" : "Use surrounding sentence" }
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(tooLong ? VoiceLabPhraseTiming.warning : VoiceLabPhraseTiming.shortWarning).font(VCType.callout.font())
                 .foregroundStyle(DesignValues.color("status.warning"))
             HStack(spacing: 12) {
-                Button(retryTitle) { action(tooLong ? .shorter : .again) }
+                Button(retryTitle) { action(tooLong ? .shorter : .surrounding) }
                 Button("Keep original words") { action(.original) }
             }
             .buttonStyle(.plain).font(VCType.callout.font())
