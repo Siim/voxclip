@@ -41,7 +41,7 @@ internal sealed partial class RewriteSession : IDisposable
     private int revision;
     private bool estimateShown;
     private readonly VoiceLabPriceCatalog? prices;
-    private readonly string? synthesisModel;
+    private string? synthesisModel;
     private Func<CancellationToken, Task<bool>>? consent;
     private readonly Func<bool> connectorIsCurrent;
     private Func<bool> contextIsCurrent = () => true;
@@ -142,7 +142,8 @@ internal sealed partial class RewriteSession : IDisposable
         if (!GenerationIsCurrent || revision != version) throw new OperationCanceledException(ct);
         return new(text, modelId, recordId, Project.Transcript?.Language ?? "en", seed, Project.Media.Source.ContentKey,
             read.Excerpt, read.Envelope, rate, Transcript, Editor.State?.CutWordIds ?? new HashSet<string>(), window,
-            silence.Incoming, silence.Outgoing, false, providerConsent);
+            silence.Incoming, silence.Outgoing, false, providerConsent,
+            modelId == "eleven_v4" ? 1 : hunk.Fit?.Pace ?? 1);
     }
 
     internal RewriteSession(EditorViewModel editor, int first, int last, AudioEnvelope? envelope, RewriteConnector? connector,
@@ -346,8 +347,9 @@ internal sealed partial class RewriteSession : IDisposable
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    private void RefreshReview()
+    private void RefreshReview(bool preserveGenerations = false)
     {
+        if (!preserveGenerations) { sentenceReplacements.Clear(); SentenceReview = null; SentenceProblem = ""; }
         reviewProblem = "";
         try { Review = RewriteReview.Build(this, prices, synthesisModel); }
         catch (VoiceLabWordDiffException exception)
@@ -355,7 +357,7 @@ internal sealed partial class RewriteSession : IDisposable
             Review = null;
             reviewProblem = exception.Code == VoiceLabWordDiffErrorCode.TokenLimit ? VoiceLabPatchBudget.DisabledCopy : Refusal(exception);
         }
-        ReconcileGenerationWindows();
+        ReconcileGenerationWindows(preserveGenerations);
     }
 
     internal bool ApplyLocalChanges()

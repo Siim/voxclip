@@ -17,12 +17,13 @@ internal sealed record RewriteReview(VoiceLabWordDiffResult Diff, VoiceLabPatchB
     {
         var diff = session.ReviewDiff();
         var included = diff.Hunks.Where((_, index) => session.ChangeStates.GetValueOrDefault(index + 1) != TranscriptChangeState.Excluded).ToArray();
-        var budget = VoiceLabPatchBudget.Evaluate(diff with { Hunks = included }, session.Transcript);
-        var voice = included.Where(hunk => hunk.Kind == VoiceLabDiffHunkKind.Voice).ToArray();
+        var generationHunks = included.Select(hunk => session.GenerationHunk(hunk, diff.Hunks.ToList().IndexOf(hunk) + 1)).ToArray();
+        var budget = VoiceLabPatchBudget.Evaluate(diff with { Hunks = generationHunks }, session.Transcript);
+        var voice = generationHunks.Where(hunk => hunk.Kind == VoiceLabDiffHunkKind.Voice).ToArray();
         List<RewriteHunkReview> reviews = [];
-        var placements = session.Envelope is null ? [] : VoiceLabWindowPlanner.PlaceAll(session.Project, session.Scope, session.Envelope, included);
+        var placements = session.Envelope is null ? [] : VoiceLabWindowPlanner.PlaceAll(session.Project, session.Scope, session.Envelope, generationHunks);
         foreach (var placement in session.Envelope is null
-            ? included.Select((hunk, index) => (hunk, index)).Where(pair => pair.hunk.Kind == VoiceLabDiffHunkKind.Voice)
+            ? generationHunks.Select((hunk, index) => (hunk, index)).Where(pair => pair.hunk.Kind == VoiceLabDiffHunkKind.Voice)
                 .Select(pair => (PlacedOrRefused)new PlacedOrRefused.Refused(pair.index, pair.hunk,
                 new VoiceLabWindowRefusal.Geometry(new(VoiceLabGeometryErrorCode.InvalidInput)))).ToArray() : placements)
         {
@@ -49,8 +50,8 @@ internal sealed record RewriteReview(VoiceLabWordDiffResult Diff, VoiceLabPatchB
                 }
                 var fitRate = VoiceLabRewriteFit.SpeakingRate(spoken.Where(word =>
                     session.Editor.State?.CutWordIds.Contains(word.Id) != true).ToArray());
-                var fit = VoiceLabRewriteFit.Measure(patch, fitRate, window, silence.Incoming, silence.Outgoing,
-                    session.Project.Media.Source.Audio?.SampleRate ?? 48_000);
+                var fit = VoiceLabPaceMatching.Measure(patch, fitRate, window, silence.Incoming, silence.Outgoing,
+                    session.Project.Media.Source.Audio?.SampleRate ?? 48_000, supportsPace: model != "eleven_v4");
                 reviews.Add(new(hunk, window, patch, meter, null, ordinals, fit));
             }
             catch (Exception exception) when (exception is VoiceLabGeometryException or VoiceLabLengthBudgetException or VoiceLabProjectException)

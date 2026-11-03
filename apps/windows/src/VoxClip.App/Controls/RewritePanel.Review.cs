@@ -15,6 +15,7 @@ internal sealed partial class RewritePanel
     private int renderedFocus = -1;
     private bool renderedEditable;
     private readonly HashSet<DependencyObject> reviewElements = [];
+    private readonly StackPanel sentenceReview = Ui.Stack(8);
 
     private async Task SendProposalAsync()
     {
@@ -30,9 +31,9 @@ internal sealed partial class RewritePanel
         finally { requestingApproval = false; App.Services.BusyOperations--; }
     }
 
-    private async Task AskForShorterAsync(int ordinal, bool askAgain = false)
+    private async Task AskForShorterAsync(int ordinal)
     {
-        if (requestingApproval || !await session.PrepareShorterAsync(ordinal, askAgain) || session.Prepared is not { } action) return;
+        if (requestingApproval || !await session.PrepareShorterAsync(ordinal) || session.Prepared is not { } action) return;
         session.MarkEstimateShown(action);
         await SendProposalAsync();
     }
@@ -100,9 +101,14 @@ internal sealed partial class RewritePanel
                 {
                     row.Children.Add(new InfoBar { IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Warning,
                         Message = fit.TooLong ? VoiceLabRewriteFit.TooLongCopy : VoiceLabRewriteFit.TooShortCopy });
-                    var shorter = new Button { Content = fit.TooLong ? "Ask for shorter" : "Ask again", IsEnabled = session.ReviewIsCurrent && !requestingApproval };
+                    var shorter = new Button { Content = fit.TooLong ? "Ask for shorter" : "Use surrounding sentence", IsEnabled = session.ReviewIsCurrent && !requestingApproval };
                     AutomationProperties.SetAutomationId(shorter, "Rewrite.Shorter" + ordinal);
-                    shorter.Click += async (_, _) => { if (ReferenceEquals(current, session.Review)) await AskForShorterAsync(ordinal); };
+                    shorter.Click += async (_, _) =>
+                    {
+                        if (!ReferenceEquals(current, session.Review)) return;
+                        if (fit.TooLong) await AskForShorterAsync(ordinal);
+                        else session.ReviewSurroundingSentence(ordinal);
+                    };
                     var keep = Ui.Button("Keep original words", () => { if (ReferenceEquals(current, session.Review)) session.SetChangeIncluded(ordinal, false); });
                     AutomationProperties.SetAutomationId(keep, "Rewrite.KeepOriginal" + ordinal);
                     var anyway = new HyperlinkButton { Content = "Price it anyway" };
@@ -127,10 +133,33 @@ internal sealed partial class RewritePanel
         foreach (var child in review.Children) reviewElements.Add(child);
     }
 
+    private void RenderSentenceReview()
+    {
+        sentenceReview.Children.Clear();
+        AutomationProperties.SetName(sentenceReview, "Generated speech context review");
+        if (session.SentenceReview is { } captured)
+        {
+            sentenceReview.Children.Add(Ui.Text("Review surrounding sentence"));
+            sentenceReview.Children.Add(Ui.Text($"Change {captured.Ordinal} · complete generated replacement"));
+            sentenceReview.Children.Add(new TextBlock { Text = "“" + captured.Text + "”", IsTextSelectionEnabled = true, TextWrapping = TextWrapping.Wrap });
+            sentenceReview.Children.Add(Ui.Text(FormattableString.Invariant($"Source words {captured.Window.FirstWordId}–{captured.Window.LastWordId} · {captured.Window.Start:F3}–{captured.Window.End:F3} s · samples {captured.Window.StartSample}–{captured.Window.EndSample}")));
+            sentenceReview.Children.Add(Ui.Text("This replaces the whole sentence, not just the changed word. It is not cropped back to the short phrase. Other changes and takes stay as they are."));
+            sentenceReview.Children.Add(Ui.Text("The longer text and source window need a fresh TTS + bounded audio-check quote. Any unsent short-phrase approval is discarded. This review sends nothing and approves no charge; you must approve the new price separately."));
+            var keep = Ui.Button("Keep short phrase", session.CancelSurroundingSentence);
+            var accept = Ui.Button("Accept sentence for new quote", () => session.AcceptSurroundingSentence(captured));
+            AutomationProperties.SetAutomationId(keep, "Rewrite.CancelSentence");
+            AutomationProperties.SetAutomationId(accept, "Rewrite.AcceptSentence");
+            keep.IsEnabled = accept.IsEnabled = session.ReviewIsCurrent && !session.GenerationWindows.Any(window => window.IsRunning || window.IsPreparing);
+            sentenceReview.Children.Add(keep); sentenceReview.Children.Add(accept);
+        }
+        if (session.SentenceProblem.Length > 0) sentenceReview.Children.Add(Ui.Text(session.SentenceProblem));
+        sentenceReview.Visibility = sentenceReview.Children.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     private async Task<bool> ConfirmVoiceActionAsync(object snapshot, string detail, Func<bool> current, CancellationToken token)
     {
         if (approval is not null || !current()) return false;
-        using var pending = new InlineApproval(new(Guid.NewGuid(), snapshot, "Generate reviewed takes?", RewriteGeneration.SendLine,
+        using var pending = new InlineApproval(new(Guid.NewGuid(), snapshot, "Generate reviewed takes?", session.TakeSendLine,
             detail, "Continue", true), current, token, Environment.TickCount);
         return await ShowVoiceApprovalAsync(pending);
     }

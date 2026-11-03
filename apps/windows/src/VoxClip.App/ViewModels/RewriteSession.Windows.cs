@@ -8,6 +8,7 @@ internal sealed partial class RewriteSession
     private readonly List<Task> retiredGenerations = [];
     private Func<int, RewriteGeneration>? generationFactory;
     private RewriteReview? generatedReview;
+    private RewriteHunkReview[] generatedVoiceHunks = [];
     private bool applyingBatch;
     internal IReadOnlyList<RewriteGeneration> GenerationWindows => generationWindows;
     internal int ActiveWindow { get; private set; }
@@ -27,23 +28,44 @@ internal sealed partial class RewriteSession
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    private void ReconcileGenerationWindows()
+    private void ReconcileGenerationWindows(bool preserve = false)
     {
         if (generationFactory is null || ReferenceEquals(generatedReview, Review)) return;
-        RetireGenerationWindows();
+        var previous = generationWindows.ToArray();
+        var previousHunks = generatedVoiceHunks;
+        var desired = PricedVoiceHunks;
+        generationWindows.Clear();
         generatedReview = Review;
+        generatedVoiceHunks = desired.ToArray();
         var count = Math.Max(1, Math.Min(VoiceLabTakeBatch.MaximumWindows, PricedVoiceHunks.Count));
         for (var index = 0; index < count; index++)
         {
-            var window = generationFactory(index);
+            var reusable = preserve && index < previous.Length &&
+                (index < previousHunks.Length && index < desired.Count && SameVoicePhrase(previousHunks[index], desired[index]) ||
+                 index == 0 && previous[index].Rows.Count == 0 && (previousHunks.Length == 0 || desired.Count == 0));
+            var window = reusable ? previous[index] : generationFactory(index);
+            window.PreferredModelId = synthesisModel;
             generationWindows.Add(window);
-            window.Changed += GenerationChanged;
+            if (!reusable) window.Changed += GenerationChanged;
+            else if (desired.Count == 0 || previousHunks.Length == 0) _ = window.InputsChangedAsync();
+        }
+        foreach (var retired in previous.Where(window => !generationWindows.Contains(window)))
+        {
+            retired.Changed -= GenerationChanged;
+            retired.Dispose();
+            retiredGenerations.Add(DrainGenerationAsync(retired));
         }
         ActiveWindow = 0;
         Generation = generationWindows[0];
         Editor.SelectionChanged -= GenerationSelectionChanged;
         Editor.SelectionChanged += GenerationSelectionChanged;
     }
+
+    private static bool SameVoicePhrase(RewriteHunkReview left, RewriteHunkReview right) =>
+        left.PatchText == right.PatchText && left.Ordinals.SequenceEqual(right.Ordinals) && left.Window is { } first && right.Window is { } second &&
+        first.StartSample == second.StartSample && first.EndSample == second.EndSample && first.FirstWordId == second.FirstWordId &&
+        first.LastWordId == second.LastWordId && first.LeftSeam == second.LeftSeam && first.RightSeam == second.RightSeam &&
+        first.LeftBridgeWordIds.SequenceEqual(second.LeftBridgeWordIds) && first.RightBridgeWordIds.SequenceEqual(second.RightBridgeWordIds);
 
     private void RetireGenerationWindows()
     {
@@ -54,6 +76,7 @@ internal sealed partial class RewriteSession
             retiredGenerations.Add(DrainGenerationAsync(generation));
         }
         generationWindows.Clear();
+        generatedVoiceHunks = [];
         Generation = null;
     }
 
@@ -101,8 +124,24 @@ internal sealed partial class RewriteSession
 
     internal async Task ChooseModelForWindowsAsync(string? id)
     {
-        foreach (var generation in generationWindows.ToArray()) await generation.ChooseModelAsync(id);
+        if (IsGeneratingBatch || generationWindows.Any(window => window.IsRunning || window.IsPreparing) ||
+            !generationWindows.Any(window => window.Models.Any(model => model.Id == id))) return;
+        var discovered = generationWindows.Any(window => window.HasDiscovered);
+        if (generationWindows.All(window => window.Rows.Count == 0))
+        {
+            synthesisModel = id;
+            RefreshReview(preserveGenerations: true);
+        }
+        foreach (var generation in generationWindows.ToArray())
+        {
+            if (discovered && !generation.HasDiscovered) await generation.DiscoverAsync();
+            await generation.ChooseModelAsync(id);
+        }
+        Changed?.Invoke(this, EventArgs.Empty);
     }
+
+    internal string TakeSendLine => RewriteGeneration.SendLine + string.Concat(generationWindows.Select((window, index) =>
+        window.NextPace is { } pace && pace != 1 ? " Phrase " + (index + 1) + " at " + pace.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) + "× pace." : ""));
 
     internal VoiceLabTakeBatch? PreparedBatch
     {

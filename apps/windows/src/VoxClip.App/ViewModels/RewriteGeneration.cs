@@ -9,7 +9,7 @@ internal sealed class RewriteGenerationException(string message) : Exception(mes
 
 internal sealed partial class RewriteGeneration : IDisposable
 {
-    internal const string SendLine = "Sends the new words and a short audio check to ElevenLabs with your key. No video.";
+    internal const string SendLine = "Sends the included phrases and a short audio check to ElevenLabs with your key. No video.";
     internal const string NonePassed = "These takes didn't sound right. Try different wording or re-record.";
     private readonly VoiceLabGenerationSession core;
     private readonly ObservedRunner runner;
@@ -42,6 +42,8 @@ internal sealed partial class RewriteGeneration : IDisposable
     internal IReadOnlyList<VoiceLabModel> Models { get; private set; } = [];
     internal string? VoiceId { get; private set; }
     internal string? ModelId { get; private set; }
+    internal string? PreferredModelId { get; set; }
+    internal double? NextPace => pendingInput?.Pace;
     internal string Problem { get; private set; } = "";
     internal string Announcement { get; private set; } = "";
     internal bool IsRunning => executing is not null;
@@ -136,7 +138,7 @@ internal sealed partial class RewriteGeneration : IDisposable
                     if (version != discoveryRevision) continue;
                     Voices = choices.Voices; Models = choices.Models;
                     if (!Voices.Any(voice => voice.Id == VoiceId)) VoiceId = Voices.FirstOrDefault()?.Id;
-                    if (!Models.Any(model => model.Id == ModelId)) ModelId = VoiceLabModel.PatchDefault(Models)?.Id;
+                    if (!Models.Any(model => model.Id == ModelId)) ModelId = Models.FirstOrDefault(model => model.Id == PreferredModelId)?.Id ?? VoiceLabModel.PatchDefault(Models)?.Id;
                     HasDiscovered = true;
                     break;
                 }
@@ -157,8 +159,8 @@ internal sealed partial class RewriteGeneration : IDisposable
     }
     internal Task ChooseModelAsync(string? id)
     {
-        if (id == ModelId || !Models.Any(model => model.Id == id)) return Task.CompletedTask;
-        ModelId = id; return InputsChangedAsync();
+        if (IsRunning || IsPreparing || id == ModelId || !Models.Any(model => model.Id == id)) return Task.CompletedTask;
+        ModelId = id; return InputsChangedAsync(preserveReview: ReviewedInput is not null);
     }
     internal Task InputsChangedAsync(bool preserveReview = false)
     {
@@ -188,6 +190,7 @@ internal sealed partial class RewriteGeneration : IDisposable
             var input = await buildInput(VoiceId, ModelId, seed, cancellation.Token);
             if (closed || revision != version || !current()) return;
             if (input is null) { Phase = Rows.Count == 0 ? RewriteGenerationPhase.Idle : ReviewPhase(); return; }
+            input = input with { Pace = RetryPace(input) };
             pendingInput = input.Snapshot();
             await core.UpdateInputsAsync(input, ct: cancellation.Token);
             if (revision == version && Rows.Count == 0) Phase = RewriteGenerationPhase.AwaitingApproval;
@@ -199,6 +202,16 @@ internal sealed partial class RewriteGeneration : IDisposable
             if (ReferenceEquals(updating, cancellation)) { updating = null; IsPreparing = false; TrackQuoteExpiry(); Notify(); }
             cancellation.Dispose();
         }
+    }
+    private double? RetryPace(VoiceLabTakeInput input)
+    {
+        if (input.ModelId == "eleven_v4") return 1;
+        if (Selected is not { Audio: { } audio } selected || audio.Fit is VoiceLabFitResult.Exact || audio.Trimmed.Length == 0 ||
+            ReviewedInput is not { } previous || previous.Text != input.Text || previous.Window.StartSample != input.Window.StartSample ||
+            previous.Window.EndSample != input.Window.EndSample) return input.Pace;
+        return VoiceLabPaceMatching.Match(audio.Trimmed.Length / (double)audio.SampleRate, input.Window,
+            input.IncomingSilence, input.OutgoingSilence, input.SourceSampleRate,
+            oldPace: selected.Receipt?.Pace ?? selected.Quote?.Synthesis.Review.Pace ?? 1).Pace;
     }
     internal void MarkEstimateShown(VoiceLabTakeRunQuote quote)
     {
@@ -212,6 +225,8 @@ internal sealed partial class RewriteGeneration : IDisposable
         using var worker = workers.Enter();
         if (expectedQuote is not null && !ReferenceEquals(Quote, expectedQuote)) return;
         if (Quote is null) { await InputsChangedAsync(preserveReview: true); return; }
+        if (pendingInput is { } proposed && RetryPace(proposed) != proposed.Pace)
+        { await InputsChangedAsync(preserveReview: true); return; }
         if (!CanExecute) return;
         var version = revision;
         var quote = Quote!;
@@ -260,6 +275,8 @@ internal sealed partial class RewriteGeneration : IDisposable
             if (ReferenceEquals(executing, cancellation)) executing = null;
             cancellation.Dispose(); TrackQuoteExpiry(); Notify();
         }
+        if (!closed && runStarted && pendingInput is { } completedInput && RetryPace(completedInput) != completedInput.Pace)
+            await InputsChangedAsync(preserveReview: true);
         if (autoplay && !closed && takes is not null && SelectedTakeId is { } selected && autoplayed.Add(selected)) await PlayTakeAsync(selected);
     }
     private void TrackQuoteExpiry()
