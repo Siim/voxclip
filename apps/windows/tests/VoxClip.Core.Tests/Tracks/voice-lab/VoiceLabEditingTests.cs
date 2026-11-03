@@ -92,8 +92,12 @@ public sealed class VoiceLabEditingTests
         var row = fixture.Row with { Audio = fixture.Row.Audio with { Fit = new VoiceLabFitResult.ChangedDuration(plan, 0.75, 0.05) } };
         var published = fixture.Published with { OutDuration = 0.75, Audio = fixture.Published.Audio with { TrimEnd = 0.85 },
             Chunks = [fixture.Published.Chunks[0] with { AssembledEndFrame = 20400 }] };
-        foreach (var choice in new VoiceLabVideoMode?[] { null, VoiceLabVideoMode.Retimed, VoiceLabVideoMode.Lipsync })
+        foreach (var choice in new VoiceLabVideoMode?[] { null, VoiceLabVideoMode.Source, VoiceLabVideoMode.Cut, VoiceLabVideoMode.Lipsync })
             Assert.Throws<VoiceLabProjectException>(() => VoiceLabRecipeBuilder.Candidate(row, fixture.Input, published, fixture.Consent, fixture.Date, choice, new(0.4, 0.6)));
+        // Match video (the Retimed choice) stores Mac's centered 1.12x zoom cover, whatever face the caller passes.
+        var matched = VoiceLabRecipeBuilder.Candidate(row, fixture.Input, published, fixture.Consent, fixture.Date, VoiceLabVideoMode.Retimed, new(0.4, 0.6)).Recipe!.Video;
+        Assert.Equal((VoiceLabVideoMode.ZoomCover, (double?)1.12, (double?)0.5, (double?)0.5, (IReadOnlyList<VoiceLabVideoCut>?)null),
+            (matched.Mode, matched.Zoom, matched.FaceX, matched.FaceY, matched.Cuts));
         var candidate = VoiceLabRecipeBuilder.Candidate(row, fixture.Input, published, fixture.Consent, fixture.Date, VoiceLabVideoMode.ZoomCover, new(0.4, 0.6));
         Assert.Equal(VoiceLabVideoMode.ZoomCover, candidate.Recipe!.Video.Mode);
         Assert.Equal(1.12, candidate.Recipe.Video.Zoom);

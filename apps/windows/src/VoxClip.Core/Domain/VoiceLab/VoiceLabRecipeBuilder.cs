@@ -103,7 +103,8 @@ public static class VoiceLabRecipeBuilder
             VoiceLabVideoMode.ZoomCover when face is not null && Unit(face.FaceX) && Unit(face.FaceY) => VoiceLabVideoMode.ZoomCover,
             _ => throw Error(VoiceLabProjectErrorCode.VideoModeUnsupported)
         };
-        face = mode == VoiceLabVideoMode.ZoomCover ? face ?? new(0.5, 0.5) : mode == VoiceLabVideoMode.Cut ? new(0.5, 0.5) : null;
+        // Match video and Cut are centered, as on Mac; only an explicit ZoomCover stores the caller's face position.
+        face = row.Fits ? null : videoChoice == VoiceLabVideoMode.ZoomCover ? face : new(0.5, 0.5);
         var rate = input.SourceSampleRate;
         var rounded = Math.Floor(published.OutDuration * rate + 0.5);
         if (rate <= 0 || asset.SampleRate <= 0 || !double.IsFinite(rounded) || rounded <= 0 || rounded >= (double)long.MaxValue ||
