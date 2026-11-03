@@ -39,6 +39,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         var voicedFraction = 1.0
         var synthesisStatus = 200
         var failQA = false
+        var malformedSegments = false
         var malformedSynthesis = false
         var malformedQA = false
         var failOwner = false
@@ -73,9 +74,11 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
                 data = Data((#"[{"model_id":"eleven_v3","name":"Speech","can_do_text_to_speech":true,"can_do_voice_conversion":false,"languages":[{"language_id":"en"}],"maximum_text_length_per_request":5000}"# + multilingual + dialogue + "]").utf8)
             case ("GET", "/v2/voices"):
                 data = Self.state.withLock { $0.voicesVisible } ? Data(#"{"voices":[{"voice_id":"fixtureOwnVoice","name":"My voice","category":"cloned","is_owner":true}],"has_more":false}"#.utf8) : Data(#"{"voices":[],"has_more":false}"#.utf8)
-            case ("POST", "/v1/text-to-speech/fixtureOwnVoice/with-timestamps"):
+            case ("POST", "/v1/text-to-speech/fixtureOwnVoice/with-timestamps"), ("POST", "/v1/text-to-dialogue/with-timestamps"):
                 let body = try #require(JSONSerialization.jsonObject(with: Self.body(request)) as? [String: Any])
-                let text = try #require(body["text"] as? String)
+                let dialogue = request.url?.path == "/v1/text-to-dialogue/with-timestamps"
+                let input = (body["inputs"] as? [[String: Any]])?.first
+                let text = try #require((dialogue ? input?["text"] : body["text"]) as? String)
                 let seed = try #require(body["seed"] as? UInt32)
                 let model = body["model_id"] as? String ?? ""
                 let duration = Self.state.withLock { state in
@@ -95,12 +98,16 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
                 let speechDuration: Double = duration - 2 * margin
                 let starts = characters.indices.map { margin + Double($0) * speechDuration / Double(characters.count) }
                 let ends = characters.indices.map { margin + Double($0 + 1) * speechDuration / Double(characters.count) }
-                if Self.state.withLock({ $0.malformedSynthesis }) {
-                    data = try JSONSerialization.data(withJSONObject: ["audio_base64": pcm.base64EncodedString()])
-                } else {
-                    data = try JSONSerialization.data(withJSONObject: ["audio_base64": pcm.base64EncodedString(), "alignment": [
-                        "characters": characters, "character_start_times_seconds": starts, "character_end_times_seconds": ends]])
+                var reply: [String: Any] = ["audio_base64": pcm.base64EncodedString()]
+                if !Self.state.withLock({ $0.malformedSynthesis }) {
+                    reply["alignment"] = ["characters": characters, "character_start_times_seconds": starts, "character_end_times_seconds": ends]
                 }
+                if dialogue {
+                    reply["voice_segments"] = [["voice_id": Self.state.withLock { $0.malformedSegments } ? "wrong" : "fixtureOwnVoice",
+                        "dialogue_input_index": 0, "character_start_index": 0, "character_end_index": characters.count,
+                        "start_time_seconds": 0, "end_time_seconds": duration]]
+                }
+                data = try JSONSerialization.data(withJSONObject: reply)
             case ("POST", "/v1/speech-to-text"):
                 let state = Self.state.withLock { state in state.qa += 1; return state }
                 let word = state.failQA ? "wrong" : "Hello"
@@ -215,8 +222,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
                 absorbedItemIds: [], bridgeWordIds: [], sourceStartIndex: index, sourceEndIndex: index + 1, anchorSeconds: nil)
         }
     }
-    private func fixture(indices: [Int] = [3, 10, 17], badPlacement: Bool = false, unknownPrice: Bool = false) async throws -> Fixture {
-        ClipTakeHTTP.state.withLock { $0 = ClipTakeHTTP.State() }
+    private func fixture(indices: [Int] = [3, 10, 17], badPlacement: Bool = false, unknownPrice: Bool = false, dialogue: Bool = false) async throws -> Fixture {
+        ClipTakeHTTP.state.withLock { $0 = ClipTakeHTTP.State(); $0.listsDialogue = dialogue }
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-v18a-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let locations = DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path])
@@ -579,6 +586,81 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(fixture.plan.phrases[0].selected != nil && fixture.plan.phrases[1].selected != nil)
         #expect(fixture.plan.phrases[2].takes.isEmpty)
         #expect(fixture.plan.problem == ClipTakePlan.copy(ClipTakePlan.Failure.spendingCap))
+    }
+
+    @Test(arguments: ["eleven_v3", "eleven_v4"])
+    func alignmentFailureLabelsQueuedPhrasesAsStoppedAndRequiresFreshApproval(model: String) async throws {
+        let fixture = try await fixture(dialogue: true)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let plan = fixture.plan
+        #expect(plan.changeModel(model))
+        ClipTakeHTTP.state.withLock { $0.malformedSynthesis = true }
+        await plan.prepare()
+        let originalApproval = try #require(plan.approvalID)
+        await plan.start(approved: true)
+        let failed = try #require(plan.phrases[0].takes.first)
+        #expect(failed.row.failure == .provider(.invalidAlignment))
+        #expect(failed.playable && !failed.row.selectable && failed.row.receipt != nil)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 && $0.qa == 0 })
+        let label = model == "eleven_v4" ? "Eleven v4" : "Eleven v3"
+        let copy = "Stopped: \(label) replies can't be checked yet. Nothing sent for this phrase. Try again after the timing issue is resolved."
+        for phrase in plan.phrases.dropFirst() {
+            #expect(phrase.takes.isEmpty && phrase.status == .stopped(copy))
+            #expect(phrase.takeDetail == copy)
+        }
+        #expect(!plan.generating && plan.approvalID == nil)
+        ClipTakeHTTP.state.withLock { $0.malformedSynthesis = false }
+        await plan.prepareAnother(phrase: 1)
+        #expect(plan.approvalID != nil && plan.approvalID != originalApproval)
+        await plan.tryAnother(phrase: 1, approved: true, quoteID: originalApproval)
+        await plan.tryAnother(phrase: 1, approved: false)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
+        await plan.tryAnother(phrase: 1, approved: true)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 2 })
+        #expect(plan.phrases[0].takes.first?.id == failed.id && plan.phrases[2].takes.isEmpty)
+    }
+
+    @Test func aNonfatalSegmentFailureKeepsTheBatchMoving() async throws {
+        let fixture = try await fixture(dialogue: true)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        #expect(fixture.plan.changeModel("eleven_v4"))
+        ClipTakeHTTP.state.withLock { $0.malformedSegments = true }
+        fixture.afterPhrase = { phrase in if phrase == 0 { ClipTakeHTTP.state.withLock { $0.malformedSegments = false } } }
+        await fixture.plan.prepare(); await fixture.plan.start(approved: true)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 3 && $0.qa == 2 })
+        let failed = try #require(fixture.plan.phrases[0].takes.first)
+        #expect(failed.row.failure == .provider(.malformedResponse))
+        #expect(failed.playable && !failed.row.selectable && failed.row.receipt != nil)
+        #expect(fixture.plan.phrases.dropFirst().allSatisfy { phrase in
+            phrase.takes.count == 1 && phrase.takes[0].row.qa != nil
+        })
+    }
+
+    @Test(arguments: [false, true])
+    func aNonfatalQAFailureKeepsTheBatchMoving(malformed: Bool) async throws {
+        let fixture = try await fixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        ClipTakeHTTP.state.withLock { $0.failQA = !malformed; $0.malformedQA = malformed }
+        await fixture.plan.prepare(); await fixture.plan.start(approved: true)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 3 && $0.qa == 3 })
+        #expect(fixture.plan.phrases.allSatisfy { phrase in
+            guard phrase.takes.count == 1 else { return false }
+            let row = phrase.takes[0].row
+            return malformed ? row.failure == .provider(.malformedResponse) : row.qa?.failures.contains(.transcript) == true
+        })
+    }
+
+    @Test func aFatalAccountFailureLabelsAllUnsentPhrasesWithItsCause() async throws {
+        let fixture = try await fixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        fixture.fatalResult = .provider(.quotaExceeded)
+        await fixture.plan.prepare(); await fixture.plan.start(approved: true)
+        let reason = TakeFailurePresentation.reason(for: .provider(.quotaExceeded))
+        for phrase in fixture.plan.phrases.dropFirst() {
+            #expect(phrase.status == .stopped("Stopped: \(reason) Nothing sent for this phrase."))
+            #expect(phrase.takes.isEmpty)
+        }
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
     }
 
     @Test func stopKeepsFinishedTakesAndLabelsStoppedSlot() async throws {

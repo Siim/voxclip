@@ -41,7 +41,7 @@ public sealed record VoiceLabLanguageMode(VoiceLabLanguageModeKind Kind, string 
 public sealed record VoiceLabReview(VoiceLabOperation Operation, Guid RequestId, string Provider,
     ElevenLabsRegion? Region, string Endpoint, string? ModelId, string? VoiceId,
     VoiceLabLanguageMode? LanguageMode, string? ContentSha256, string? ConsentRecordId,
-    string? DisplayName = null, string? MimeType = null, OwnVoicePolicy? ConsentPolicy = null);
+    string? DisplayName = null, string? MimeType = null, OwnVoicePolicy? ConsentPolicy = null, double? Pace = null);
 
 /// <summary>Claimed once by the service before dispatch. Construction is reserved to Core.</summary>
 public sealed record VoiceLabPreparedAction
@@ -133,11 +133,20 @@ public sealed record VoiceLabVoiceChoice(string Id, VoiceLabVoiceKind Kind, OwnV
     public static VoiceLabVoiceChoice Stock(string id) => new(id, VoiceLabVoiceKind.Stock, null);
 }
 /// <summary>Per-request TTS inputs (voice-lab §8.5). Core keeps the 300 Unicode scalars of context nearest the window and drops a cut word.</summary>
-public sealed record VoiceLabSpeechOptions(uint Seed, string? PreviousText = null, string? NextText = null);
+public sealed record VoiceLabSpeechOptions(uint Seed, string? PreviousText = null, string? NextText = null, double? Pace = null);
+public static class VoiceLabPace
+{
+    public const double Minimum = 0.7;
+    public const double Maximum = 1.2;
+    public const double DefaultValue = 1.0;
+    public static double Clamp(double value) => double.IsNaN(value) ? DefaultValue : Math.Clamp(value, Minimum, Maximum);
+    public static bool IsValid(double value) => double.IsFinite(value) && value >= Minimum && value <= Maximum;
+    internal static double Rounded(double? value) => Math.Round((value ?? DefaultValue) * 100, MidpointRounding.AwayFromZero) / 100;
+}
 /// <summary><c>SpendWarning</c> is set when the spend ledger could not record this accepted action as asked; Voice Lab §3.1. The action
 /// still succeeded, so the caller shows it as a notice, never as a failure.</summary>
 public sealed record VoiceLabReceipt(string Provider, ElevenLabsRegion Region, string Endpoint, string? ModelId,
-    string? VoiceId, Guid ActionId, string? ProviderRequestId, VoiceLabSpendWarning? SpendWarning);
+    string? VoiceId, Guid ActionId, string? ProviderRequestId, VoiceLabSpendWarning? SpendWarning, double? Pace = null);
 public sealed record VoiceLabCharacterTiming(string Character, double Start, double End);
 /// <summary>Signed PCM16LE, mono at 24 kHz; alignment exists only for timestamped TTS.</summary>
 public sealed record VoiceLabAudioResult(byte[] Pcm, int SampleRate,

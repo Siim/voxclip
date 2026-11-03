@@ -76,12 +76,13 @@ public struct VoiceLabProvenance: Codable, Sendable, Equatable {
     public var seed: UInt32?
     public var createdAt: Date
     public var region: String?
+    public var pace: Double?
     public init(provider: String, endpoint: String, model: String, voiceId: String, consentRecordId: String?, requestId: String?, seed: UInt32?, createdAt: Date) {
         self.provider = provider; self.endpoint = endpoint; self.model = model; self.voiceId = voiceId
         self.consentRecordId = consentRecordId; self.requestId = requestId; self.seed = seed; self.createdAt = createdAt
-        self.region = nil
+        self.region = nil; self.pace = nil
     }
-    private enum CodingKeys: String, CodingKey { case provider, endpoint, model, voiceId, consentRecordId, requestId, seed, createdAt, region }
+    private enum CodingKeys: String, CodingKey { case provider, endpoint, model, voiceId, consentRecordId, requestId, seed, createdAt, region, pace }
     public func encode(to encoder: any Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(provider, forKey: .provider); try values.encode(endpoint, forKey: .endpoint)
@@ -90,6 +91,7 @@ public struct VoiceLabProvenance: Codable, Sendable, Equatable {
         try values.encode(requestId, forKey: .requestId); try values.encode(seed, forKey: .seed)
         try values.encode(createdAt, forKey: .createdAt)
         try values.encodeIfPresent(region, forKey: .region)
+        try values.encodeIfPresent(pace, forKey: .pace)
     }
 }
 public struct VoiceLabQA: Codable, Sendable, Equatable {
@@ -244,6 +246,7 @@ public enum VoiceLabProject {
                 }
             }
             let provenance = segment.provenance
+            guard provenance.pace.map(VoiceLabPace.isValid) ?? true else { throw VoiceLabProjectError.invalidSegment }
             guard matches(provenance.provider, "[a-z0-9-]+"), !provenance.endpoint.isEmpty, !provenance.endpoint.contains("://"),
                   !provenance.model.isEmpty, !provenance.voiceId.isEmpty,
                   provenance.consentRecordId.map({ matches($0, id) }) ?? true,

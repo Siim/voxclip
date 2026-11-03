@@ -1,5 +1,7 @@
 # Voice Lab Core contract fixtures
 
+`pace-cases.json` is the separate per-take speech-pace contract; both platforms replay all 15 request/refusal rows. See [pace-README.md](pace-README.md) for exact bytes, default compatibility, approval binding and provenance rules.
+
 `dialogue-cases.json` is the separate Eleven v4 contract (`voxclip-voice-lab-dialogue-cases/1`). Regenerate byte for byte with `python3 tools/fixtures/voice-lab/generate_dialogue.py`. Both Cores must replay every `requests`, `responses` and `routes` row. Requests use the existing method/path/query/headers/json framing plus canonical sorted compact UTF-8 bytes, byte length and SHA-256. Responses are entirely synthetic PCM16, with explicit expected errors; per-row `text` overrides `responseInput.text` for typed/normalized expansion and Unicode character-array cases. Null original alignment never falls back to normalized alignment. Fault order is audio decode, PCM, alignment, then voice segments; the two-fault vector pins that precedence. Segment ends use alignment's 50 ms audio-end tolerance, with separate within/beyond cases. No live keys, voices or calls are used.
 
 Dialogue segment indices provisionally use the larger of the original and valid normalized alignment character-array lengths, pending the live probe described in §8.5. The generator includes normalized expansion, past-both bounds, malformed normalized timing and grouped-character array cases. Original alignment remains mandatory.

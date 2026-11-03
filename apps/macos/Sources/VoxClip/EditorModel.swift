@@ -257,10 +257,14 @@ struct EditorRenderSnapshot {
     /// session again on the same scope with its instruction, now with that AI, which runs.
     func useRewriteConnector(_ id: String) {
         guard let session = openRewrite else { return }
-        let scope = session.rewriteScope, instruction = session.instruction
         app.set("llm.connector", .string(id))
+        restartRewrite(session)
+    }
+    func restartRewrite(_ session: RewriteSession) {
+        guard openRewrite === session, session.isOpen,
+              RewriteEntryPolicy.canRun(editable: capabilities.ai, scope: session.rewriteScope) else { return }
+        let scope = session.rewriteScope, instruction = session.instruction
         closeRewrite(returnFocus: false)
-        guard RewriteEntryPolicy.canRun(editable: capabilities.ai, scope: scope) else { return }
         openRewriteSession(scope: scope, instruction: instruction)
     }
     var rewriteConnectorSignature: [String] {
@@ -276,6 +280,7 @@ struct EditorRenderSnapshot {
     /// decides, so an edit outside its scope or another tab leaves the consent valid (impl-plan §3.3).
     private func rewriteConsent(provider: ProviderChoice) async -> Bool {
         guard let session = openRewrite, session.current, let connector = session.connector?.connector else { return false }
+        let expected = session.revision
         do {
             return try await app.authorizeConnectorRequest(provider, connector: connector, action: .rewrite,
                 wordCount: session.task.words.wordCount, rewrite: session.task.words, confirmation: sendConfirmation, verb: connectorSendVerb) { [self] in
@@ -283,7 +288,7 @@ struct EditorRenderSnapshot {
                 }
         } catch is CancellationError { return false } catch {
             // R1x: the error's fix shows in the panel, named for the session's AI; the send returns false and changes nothing.
-            await session.fail(error)
+            await session.fail(error, expected: expected)
             return false
         }
     }

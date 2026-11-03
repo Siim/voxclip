@@ -19,6 +19,14 @@ def check_staged_actions(root):
 INTERNAL_BUILD_ARGUMENTS = {'Bool', 'Self.internalBuild', 'AppModel.internalBuild', 'false'}
 
 
+def check_validation_diagnostics(root):
+    """No speech evidence writer, test destination or transcript-bearing payload in Release."""
+    symbols = re.compile(r'\b(?:recordValidationDiagnostic|redactedDiagnosticValue|validationDiagnosticDirectory)\b')
+    for source in sorted(root.rglob('*.swift')):
+        if symbols.search(without_literals(release_source(source.read_text()))):
+            raise RuntimeError('Release exposes speech validation diagnostics: ' + str(source))
+
+
 def check_internal_build(root):
     """Text Rewrite ships in Release (impl-plan item 26); Voice Lab's development defaults and its beta-notice bypass do not.
     Release reads `AppModel.internalBuild` as false, and every `internalBuild:` argument in Release source is that flag or
@@ -75,6 +83,7 @@ def check(bin_path, build_path):
     scan(root)
     check_staged_actions(root / 'apps/macos/Sources')
     check_internal_build(root / 'apps/macos/Sources')
+    check_validation_diagnostics(root / 'apps/macos/Sources')
     print('Release builds are not internal: Voice Lab keeps its beta notice and has no development defaults.')
     gate_source = (root / 'apps/macos/Sources/VoxClipCore/Domain/VoiceLab/VoiceConsent.swift').read_text()
     gate = re.search(r'public static func rewriteEnabled\([^}]+}', gate_source).group()

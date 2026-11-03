@@ -6,7 +6,7 @@ import Testing
 @testable import VoxClipMedia
 @testable import VoxClip
 
-@MainActor private final class ContextDemoRecordingProbe: ContextDemoRecording {
+@MainActor final class ContextDemoRecordingProbe: ContextDemoRecording {
     var reason: String?
     var prepareFailure: ContextDemoCaptureError?
     var holdPreparation = false

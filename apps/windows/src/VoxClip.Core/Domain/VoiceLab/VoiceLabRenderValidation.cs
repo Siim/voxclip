@@ -229,7 +229,8 @@ public static class VoiceLabRenderValidation
         if (qa.ShortSpeech is { } evidence)
             Require(evidence.IsValid && evidence.RecordId == provenance.ConsentRecordId && recipe.VoiceSource == VoiceLabVoiceSource.Own,
                 VoiceLabProjectErrorCode.InvalidSegment);
-        Require(provenance.Provider is not null && VoiceLabProject.Matches(provenance.Provider, "[a-z0-9-]+") &&
+        Require((provenance.Pace is not { } pace || VoiceLabPace.IsValid(pace)) &&
+            provenance.Provider is not null && VoiceLabProject.Matches(provenance.Provider, "[a-z0-9-]+") &&
             !string.IsNullOrEmpty(provenance.Endpoint) && !string.IsNullOrEmpty(provenance.Model) && !string.IsNullOrEmpty(provenance.VoiceId) &&
             (provenance.ConsentRecordId is null || Id(provenance.ConsentRecordId)) && (provenance.RequestId is null || Id(provenance.RequestId)) &&
             provenance.Region is { Length: > 0 } && Id(recipe.Cost.QuoteId) && (recipe.Cost.Usd is not { } usd || double.IsFinite(usd) && usd >= 0) &&

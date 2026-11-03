@@ -203,7 +203,7 @@ struct VoiceLabTakeRunTests {
     private func fixture(_ configure: @Sendable (inout TakeRunHTTP.State) -> Void = { _ in }, drift: Bool = false,
                          sourceAudible: Bool = true, roomToneAvailable: Bool = true,
                          background: (left: Double, right: Double, run: Double)? = nil,
-                         boundary: VoiceLabTakeDispatchBoundary? = nil, text: String = "Hello", modelID: String = "eleven_v3", voicedFraction: Double = 1, rejectGeneratedVAD: Bool = false) async throws -> Fixture {
+                         boundary: VoiceLabTakeDispatchBoundary? = nil, text: String = "Hello", modelID: String = "eleven_v3", voicedFraction: Double = 1, rejectGeneratedVAD: Bool = false, pace: Double? = nil) async throws -> Fixture {
         let root = try SpeechTestFiles.directory()
         let locations = SpeechTestFiles.locations(root)
         let store = VoiceConsentStore(locations: locations)
@@ -344,7 +344,7 @@ struct VoiceLabTakeRunTests {
             rightSeam: .init(kind: .hard, time: 6, sample: 144_000, fadeSamples: 288))
         let input = VoiceLabTakeInput(text: text, modelID: modelID, recordID: record.id, language: "en", seed: UInt32.max,
             contentKey: "synthetic-source", source: source, sourceSampleRate: rate, items: items, window: window,
-            incomingSilence: nil, outgoingSilence: nil, providerConsent: true)
+            incomingSilence: nil, outgoingSilence: nil, providerConsent: true, pace: pace)
         let lastWindow = VoiceLabWindow(firstWordId: "last", lastWordId: "last", leftBridgeWordIds: [], rightBridgeWordIds: [], start: 7, end: 7.5,
             startSample: 168_000, endSample: 180_000, leftSeam: .init(kind: .hard, time: 7, sample: 168_000, fadeSamples: 288),
             rightSeam: .init(kind: .hard, time: 7.5, sample: 180_000, fadeSamples: 288))
@@ -353,6 +353,22 @@ struct VoiceLabTakeRunTests {
             incomingSilence: nil, outgoingSilence: nil, providerConsent: true)
         return Fixture(root: root, http: http, clock: clock, store: store, client: client, ledger: ledger, run: run, input: input,
                        later: later, laterInput: laterInput)
+    }
+    @Test func slowTakeCarriesPaceThroughOptionsQuotesReceiptsAndRecipe() async throws {
+        let fixture = try await fixture(pace: 0.8)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        #expect(fixture.input.pace == 0.8)
+        #expect(fixture.input.replacingModel("eleven_multilingual_v2").pace == 0.8)
+        for index in 0..<3 { #expect(fixture.input.options(take: index).pace == 0.8) }
+        let quote = try await fixture.run.prepare(fixture.input)
+        #expect(quote.takes.allSatisfy { $0.synthesis.pace == 0.8 })
+        let result = try await fixture.run.execute(quote, approved: true)
+        let row = try #require(result.best)
+        #expect(row.receipt?.pace == 0.8)
+        let (published, record) = try await fixture.run.publishForAcceptance(row, input: fixture.input, at: fixture.clock.now())
+        let candidate = try VoiceLabRecipeBuilder.candidate(row: row, input: fixture.input, published: published,
+            record: record, createdAt: fixture.clock.now(), videoChoice: .source)
+        #expect(candidate.recipe?.provenance.pace == 0.8)
     }
     @Test func dialogueTakePassesQAAndPublishesARenderableRecipe() async throws {
         let fixture = try await fixture(modelID: "eleven_v4")
@@ -369,6 +385,7 @@ struct VoiceLabTakeRunTests {
             record: record, createdAt: fixture.clock.now(), videoChoice: .source)
         #expect(candidate.recipe?.provenance.endpoint == "v1/text-to-dialogue/with-timestamps")
         #expect(candidate.recipe?.provenance.model == "eleven_v4")
+        #expect(candidate.recipe?.provenance.pace == 1)
         let segment = try VoiceLabRecipeBuilder.segment(id: "dialogue-take", candidates: [candidate], selected: 0,
             input: fixture.input, plan: take.fit.plan)
         var project = try JSONProjectStore.decode(FixtureLoader.data("fixtures/voice-lab/passage-render-v3.voxclip"))
@@ -640,11 +657,14 @@ struct VoiceLabTakeRunTests {
         // The seam value is the step the join adds over the unedited source's own jump at the same seams (§8.11 item 3).
         let original = try #require(fixture.input.source.samples(36_000..<156_000))
         #expect(audio.sourceSeamSteps == (try VoiceLabLoudness.seamStepsLu(Array(original), sampleRate: 24_000, seamSamples: [12_000, 108_000])))
-        #expect(audio.sourceSeamPauseSteps == (try VoiceLabLoudness.pauseSeamStepsLu(Array(original), sampleRate: 24_000, seamSamples: [12_000, 108_000])))
+        #expect(audio.generatedAfter == [true, false])
+        #expect(audio.sourceSeamPauseRanges == (try VoiceLabLoudness.sourcePauseRangesLufs(Array(original), sampleRate: 24_000,
+            seamSamples: [12_000, 108_000], generatedAfter: [true, false])))
         #expect(qa.values.lufsJumpLu == (try VoiceLabLoudness.seamExcessLu(mixedSteps: VoiceLabLoudness.seamStepsLu(audio.mixed,
             sampleRate: audio.sampleRate, seamSamples: audio.seams), sourceSteps: audio.sourceSeamSteps,
-            mixedPauseSteps: VoiceLabLoudness.pauseSeamStepsLu(audio.mixed, sampleRate: audio.sampleRate, seamSamples: audio.seams),
-            sourcePauseSteps: audio.sourceSeamPauseSteps)))
+            generatedPauseLevels: VoiceLabLoudness.generatedPauseLufs(audio.mixed, sampleRate: audio.sampleRate, seamSamples: audio.seams,
+                generatedAfter: audio.generatedAfter),
+            sourcePauseRanges: audio.sourceSeamPauseRanges)))
         let paid = try #require(await fixture.run.paidAsset(for: row.id))
         let paidURL = fixture.root.appendingPathComponent("VoiceLab").appendingPathComponent(paid.file)
         await fixture.run.reject(row.id)
@@ -796,9 +816,13 @@ struct VoiceLabTakeRunTests {
         let result = try await fixture.run.execute(quote, approved: true)
         let row = try #require(result.rows.first), audio = try #require(row.audio), qa = try #require(row.qa)
         #expect(audio.roomTone == tone)
-        // Both joins sit in a pause on both sides: the source's pause, and the take's pad over the bed.
-        let pauses = try VoiceLabLoudness.pauseSeamStepsLu(audio.mixed, sampleRate: audio.sampleRate, seamSamples: audio.seams)
-        #expect(pauses.count == 2 && pauses.allSatisfy { $0.map { abs($0) <= 2 } == true }, "\(pauses)")
+        // Both joins are pause joins: the take's pad over the bed meets the source's pause at that side's level.
+        let levels = try VoiceLabLoudness.generatedPauseLufs(audio.mixed, sampleRate: audio.sampleRate, seamSamples: audio.seams,
+            generatedAfter: audio.generatedAfter)
+        let joins = zip(levels, audio.sourceSeamPauseRanges).map { level, range in
+            level.flatMap { level in range.map { max(0, $0.lowerBound - level, level - $0.upperBound) } }
+        }
+        #expect(joins.count == 2 && joins.allSatisfy { $0.map { $0 <= 2 } == true }, "\(levels) \(audio.sourceSeamPauseRanges)")
         #expect((qa.values.lufsJumpLu ?? 9) <= 2 && !qa.failures.contains(.loudness), "\(qa)")
         if stepDb > 0 {
             // One pooled level would have missed both joins by about half the step.

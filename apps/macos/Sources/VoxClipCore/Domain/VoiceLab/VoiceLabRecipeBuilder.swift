@@ -134,6 +134,7 @@ public enum VoiceLabRecipeBuilder {
             voiceId: record.voiceId, consentRecordId: record.id, requestId: receipt.requestID.uuidString,
             seed: row.seed, createdAt: createdAt)
         provenance.region = receipt.region.rawValue
+        provenance.pace = receipt.pace
         let video = VoiceLabVideoRecipe(mode: mode, sourceStartSample: plan.windowStartSample, sourceEndSample: plan.windowEndSample,
             outputSamples: outputSamples, retimeFactor: mode == .zoomCover ? factor : nil,
             zoom: mode == .zoomCover ? 1.12 : nil, faceX: mode == .zoomCover ? 0.5 : nil, faceY: mode == .zoomCover ? 0.5 : nil, assetId: nil, provider: nil, model: nil, requestId: nil,
