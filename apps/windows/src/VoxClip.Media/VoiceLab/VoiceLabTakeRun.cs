@@ -284,7 +284,8 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                 var lower = audio.PatchStart / (double)audio.SampleRate;
                 var upper = audio.PatchEnd / (double)audio.SampleRate;
                 var inside = recognized.Words.Where(word => (word.Start + word.End) / 2 >= lower && (word.Start + word.End) / 2 < upper).Select(word => word.Text).ToArray();
-                var qa = VoiceLabTakeQuality.Evaluate(value.Input.Text, inside, audio.Mixed, audio.SampleRate, audio.Seams, score, value.Record.Speaker.Threshold);
+                var qa = VoiceLabTakeQuality.Evaluate(value.Input.Text, inside, audio.Mixed, audio.SampleRate, audio.Seams, score, value.Record.Speaker.Threshold,
+                    audio.Seams.Select(seam => seam == audio.PatchStart).ToArray());
                 var rank = VoiceLabTakeQuality.Rank(audio.Fit, value.Input.Window.End - value.Input.Window.Start,
                     qa.TranscriptMatch ?? throw new VoiceLabException(VoiceLabErrorKind.InvalidInput), VoiceLabLoudness.Flatness(audio.Trimmed, audio.SampleRate));
                 var row = new VoiceLabTakeRow(take.Synthesis.Review.RequestId, take.Index, take.Seed, generated.Receipt, qaReceipt, generated, take, audio, qa, rank);
@@ -292,7 +293,7 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                 lock (sync) { Check(value.Revision, value.Binding, ct); acceptedRows[row.Id] = (row, value); }
                 await progress(rows.AsReadOnly()).ConfigureAwait(false);
                 await ValidateAsync(value, ct).ConfigureAwait(false);
-                if (row.Selectable && row.Fits) return new(rows.AsReadOnly(), VoiceLabTakeRunEnd.EarlyStop);
+                if (row.AutomaticallySelectable && row.Fits) return new(rows.AsReadOnly(), VoiceLabTakeRunEnd.EarlyStop);
             }
             catch (VoiceLabConfirmationRequiredException) { throw; }
             catch (Exception error)

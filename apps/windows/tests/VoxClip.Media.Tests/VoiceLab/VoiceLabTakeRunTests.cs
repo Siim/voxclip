@@ -19,6 +19,67 @@ namespace VoxClip.Media.Tests.VoiceLab;
 public sealed partial class VoiceLabTakeRunTests
 {
     [Fact]
+    public async Task JoinOnlyAdvisoriesDoNotStopTheRunEarly()
+    {
+        await using var fixture = new Fixture(input =>
+        {
+            var samples = input.Source.Samples(0, input.Source.TotalFrames)!.Value.ToArray();
+            for (var index = 0; index < samples.Length; index++)
+                if (index / 24000d is >= 1.5 and < 2.5 or >= 5.5 and < 6.5) samples[index] *= .05f;
+            return input with { ContentKey = new string('a', 64), Source = VoiceLabSourceExcerpt.Whole(samples), SourceEnvelope = VoiceLabTakeProcessing.Envelope(samples, 24000) };
+        });
+        var result = await fixture.Run.ExecuteAsync(await fixture.Prepare(), true, ct: Token);
+        Assert.Equal(VoiceLabTakeRunEnd.Completed, result.End);
+        Assert.Equal(3, result.Rows.Count);
+        Assert.All(result.Rows, row =>
+        {
+            Assert.Equal(new[] { VoiceLabTakeQaFailure.Loudness }, row.Qa!.Failures);
+            Assert.True(row.Selectable, row.Failure?.ToString());
+            Assert.True(row.Fits);
+            Assert.True(row.RequiresJoinAdvisoryAcceptance);
+            Assert.False(row.AutomaticallySelectable);
+        });
+        Assert.Null(result.BestAutomatic);
+        var row = result.Rows[0];
+        Assert.Equal(new[] { "left", "right" }, row.Qa!.JoinSeams.Select(seam => seam.Side));
+        Assert.Equal(row.Qa.LufsJumpLu, row.Qa.JoinSeams.Max(seam => seam.ExcessLu));
+        foreach (var seam in row.Qa.JoinSeams)
+            Assert.Equal(VoiceLabLoudness.SeamJumpLu(row.Audio!.Mixed, row.Audio.SampleRate,
+                seam.Side == "left" ? row.Audio.PatchStart : row.Audio.PatchEnd), seam.ExcessLu);
+        var acceptedAt = DateTimeOffset.UtcNow;
+        var (publication, consent) = await fixture.Run.PublishForAcceptanceAsync(row.Id, acceptedAt, Token);
+        var published = new VoiceLabPublishedTake(publication.Assets, publication.Audio, publication.OutDuration, publication.Words, publication.Chunks);
+        Assert.Throws<VoiceLabProjectException>(() => VoiceLabRecipeBuilder.Candidate(row, fixture.Input, published, consent, acceptedAt));
+        var accepted = row.AcceptingJoinAdvisory(acceptedAt);
+        var candidate = VoiceLabRecipeBuilder.Candidate(accepted, fixture.Input, published, consent, acceptedAt);
+        Assert.Equal(accepted.AcceptedJoinAdvisory, candidate.Recipe!.Qa.JoinAdvisory);
+        Assert.Equal(acceptedAt, candidate.Recipe.Qa.JoinAdvisory!.AcceptedAt);
+        Assert.Throws<VoiceLabProjectException>(() => VoiceLabRecipeBuilder.Candidate(accepted, fixture.Input, published, consent, acceptedAt.AddTicks(-1)));
+        foreach (var failure in new[] { VoiceLabTakeQaFailure.Transcript, VoiceLabTakeQaFailure.Clipping, VoiceLabTakeQaFailure.Speaker, VoiceLabTakeQaFailure.InsufficientGeneratedSpeech })
+        {
+            var failed = accepted with { Qa = accepted.Qa! with { Failures = [VoiceLabTakeQaFailure.Loudness, failure] } };
+            Assert.Throws<VoiceLabProjectException>(() => failed.AcceptingJoinAdvisory(acceptedAt));
+            Assert.Throws<VoiceLabProjectException>(() => VoiceLabRecipeBuilder.Candidate(failed, fixture.Input, published, consent, acceptedAt));
+        }
+        Assert.Throws<VoiceLabProjectException>(() => VoiceLabRecipeBuilder.Candidate(accepted, fixture.Input with { RecordId = "other" }, published, consent, acceptedAt));
+        var segment = VoiceLabRecipeBuilder.Segment("advisory-take", [candidate], 0, fixture.Input, row.Audio!.Fit.Plan);
+        var project = ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/voice-lab/passage-render-v3.voxclip"));
+        project = project with
+        {
+            Id = publication.Assets[0].File.Split('/')[0], SchemaVersion = 1, VoiceLab = new([]),
+            Media = new(project.Media.Source with { DurationSeconds = 8, ContentKey = fixture.Input.ContentKey, Audio = new(24000, 1) }),
+            Transcript = project.Transcript! with { Words = fixture.Input.Items },
+            Edits = project.Edits with { CutWordIds = [], CutPauseIds = [], Corrections = new Dictionary<string, string>(), Clips = [], ActiveClipId = null },
+            Share = new(new Dictionary<string, string>())
+        };
+        var voice = new VoiceLabVoiceReference(consent.RecordId, consent.Provider, consent.VoiceId, consent.RecordId, consent.VoiceName, VoiceLabVoiceStatus.Active);
+        project = new VoiceLabEditCommand.Accept(segment, publication.Assets, voice).ApplyingTo(project);
+        var roundTrip = ProjectSerialization.Deserialize(ProjectSerialization.Serialize(project));
+        var prepared = VoiceLabRenderContract.Prepare(roundTrip, VoiceLabOutputScope.Full, VoiceLabLabelPosition.TopRight);
+        Assert.Equal(accepted.AcceptedJoinAdvisory!.Seams, Assert.Single(prepared.SelectedSegmentRecipes).Recipe.Qa.JoinAdvisory!.Seams);
+    }
+
+    [Fact]
     public async Task SlowTakeCarriesPaceThroughOptionsQuotesReceiptsAndRecipe()
     {
         await using var fixture = new Fixture(input => input with { Pace = 0.8, ContentKey = new string('a', 64) });
