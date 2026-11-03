@@ -23,8 +23,8 @@ public sealed class RewritePaceMatchingTests
         await generation.GenerateAsync((_, _) => Task.FromResult(true), autoplay: false);
         var paid = generation.Selected!;
         var feedback = Assert.Single(session.ShorterFeedback(1));
-        Assert.Equal(paid.Audio!.Fit.Plan.OutputFrames / (double)paid.Audio.SampleRate, feedback.EstimateSeconds);
-        Assert.NotEqual(session.Review!.VoiceHunks[0].Fit!.EstimateSeconds, feedback.EstimateSeconds);
+        Assert.Equal(paid.Audio!.Fit.Plan.OutputFrames / (double)paid.Audio.SampleRate, feedback.MeasuredSeconds);
+        Assert.Equal(session.Review!.VoiceHunks[0].Fit!.EstimateSeconds, feedback.EstimateSeconds);
         Assert.Equal(session.Review.VoiceHunks[0].PatchText, feedback.Proposed);
         Assert.Contains("sample005", feedback.Original);
         Assert.Contains("sample007", feedback.Original);
@@ -131,9 +131,12 @@ public sealed class RewritePaceMatchingTests
     [InlineData("price")]
     [InlineData("edit")]
     [InlineData("outside")]
+    [InlineData("add-tag")]
+    [InlineData("remove-tag")]
     public async Task PaidReviewChangesWaitForDiscardApproval(string action)
     {
         using var session = SentenceSession(53, 85);
+        if (action == "remove-tag") Assert.True(session.AddExpression(1, "laughs"));
         if (action == "outside") Assert.True(session.SetChangeIncluded(1, false));
         Configure(session);
         await session.DiscoverWindowsAsync();
@@ -149,6 +152,8 @@ public sealed class RewritePaceMatchingTests
             "include" => session.SetChangeIncluded(1, true),
             "outside" => session.SetChangeIncluded(1, true),
             "price" => session.PriceItAnyway(1),
+            "add-tag" => session.AddExpression(1, "laughs"),
+            "remove-tag" => session.RemoveExpression(1, 0),
             _ => session.EditChange(1, "different")
         };
         Assert.False(changed);
@@ -162,12 +167,53 @@ public sealed class RewritePaceMatchingTests
         Assert.Same(review, session.Review);
         Assert.Equal(identity, session.ReviewIdentity);
         Assert.Same(paid, Assert.Single(generation.Rows));
+        if (action is "add-tag" or "remove-tag")
+        {
+            Assert.False(action == "add-tag" ? session.AddExpression(1, "laughs") : session.RemoveExpression(1, 0));
+            Assert.True(await session.ConfirmPaidReviewChangeAsync(session.PendingPaidReviewChange!));
+            Assert.Equal(action == "add-tag" ? 1 : 0, session.Review!.Diff.Hunks[0].AudioTags.Count);
+            Assert.False(session.HasPaidTakes);
+            return;
+        }
         Assert.False(session.SetChangeIncluded(1, false));
         var pending = session.PendingPaidReviewChange!;
         Assert.True(await session.ConfirmPaidReviewChangeAsync(pending));
         Assert.False(await session.ConfirmPaidReviewChangeAsync(pending));
         Assert.Equal(TranscriptChangeState.Excluded, session.ChangeStates[1]);
         Assert.False(session.HasPaidTakes);
+    }
+
+    [Fact]
+    public async Task ExpressionMutationRetiresTheUnpaidQuoteAndRequotesWithoutSynthesis()
+    {
+        using var session = SentenceSession(53);
+        Configure(session);
+        await session.DiscoverWindowsAsync();
+        await session.ChooseModelForWindowsAsync("eleven_v4");
+        var generation = session.Generation!;
+        var previous = generation.Quote;
+        Assert.NotNull(previous);
+        var before = Assert.Single(session.Review!.VoiceHunks);
+        var words = session.NewWords;
+        Assert.True(session.AddExpression(1, "laughs"));
+        await generation.PendingUpdate;
+        Assert.Same(generation, session.Generation);
+        Assert.NotSame(previous, generation.Quote);
+        Assert.Empty(generation.Rows);
+        Assert.Equal(words, session.NewWords);
+        var phrase = Assert.Single(session.Review!.VoiceHunks);
+        Assert.Equal(.8, phrase.Fit!.EstimateSeconds - before.Fit!.EstimateSeconds, 9);
+        Assert.Contains("≈", phrase.SpokenTiming);
+        var input = await session.GenerationInputAsync("record", "eleven_v4", 42, true,
+            (request, _) => Task.FromResult((new VoiceLabSourceExcerpt(request.Frames, []), session.Envelope!)), CancellationToken.None);
+        Assert.NotNull(input);
+        Assert.Contains("[laughs]", input.RequestText);
+        var tag = Assert.Single(phrase.Hunk.AudioTags);
+        Assert.Equal(phrase.Hunk.NewTokens.Count, tag.BeforeToken);
+        Assert.True(session.RemoveExpression(1, 0));
+        await generation.PendingUpdate;
+        Assert.Empty(session.Review!.Diff.Hunks[0].AudioTags);
+        Assert.Empty(generation.Rows);
     }
 
     [Fact]

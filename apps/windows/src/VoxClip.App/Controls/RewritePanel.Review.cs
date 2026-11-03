@@ -96,7 +96,13 @@ internal sealed partial class RewritePanel
             title.Checked += (_, _) => { if (ReferenceEquals(current, session.Review)) { renderedReview = null; session.SetChangeIncluded(ordinal, true); } };
             title.Unchecked += (_, _) => { if (ReferenceEquals(current, session.Review)) { renderedReview = null; session.SetChangeIncluded(ordinal, false); } };
             row.Children.Add(title);
-            row.Children.Add(Ui.Text(hunk.Kind == VoiceLabDiffHunkKind.Cut ? "Remove these source words" : string.Join(" ", hunk.NewTokens)));
+            if (hunk.Kind == VoiceLabDiffHunkKind.Voice)
+            {
+                var phraseNumber = current.VoiceHunks.ToList().FindIndex(phrase => phrase.Ordinals.Contains(ordinal)) + 1;
+                row.Children.Add(ExpressionPhrase(string.Join(" ", hunk.NewTokens), hunk.AudioTags, Math.Max(1, phraseNumber),
+                    tagIndex => session.RemoveExpression(ordinal, tagIndex), tag => session.AddExpression(ordinal, tag)));
+            }
+            else row.Children.Add(Ui.Text(hunk.Kind == VoiceLabDiffHunkKind.Cut ? "Remove these source words" : string.Join(" ", hunk.NewTokens)));
             if (session.ScopeHunks is { } metadata && index < metadata.Count)
             {
                 var reason = Small(string.Join(" · ", metadata[index].Reasons));
@@ -149,7 +155,11 @@ internal sealed partial class RewritePanel
             }
             review.Children.Add(row);
         }
-        if (current.VoiceHunks.Count > 0) review.Children.Add(Small(session.FitFooter));
+        if (current.VoiceHunks.Count > 0)
+        {
+            review.Children.Add(Small(ExpressionNote(session.Generation?.ModelId)));
+            review.Children.Add(Small(session.FitFooter));
+        }
         if (current.Summary is { } summary) review.Children.Add(Small(summary.Copy));
         if (current.Budget.Copy is { } budget) review.Children.Add(Small(budget));
         if (current.VoiceHunks.Count > VoiceLabTakeBatch.MaximumWindows)

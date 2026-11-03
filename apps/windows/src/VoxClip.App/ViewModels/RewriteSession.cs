@@ -158,8 +158,8 @@ internal sealed partial class RewriteSession : IDisposable
         return new VoiceLabTakeInput(text, modelId, recordId, Project.Transcript?.Language ?? "en", seed, Project.Media.Source.ContentKey,
             read.Excerpt, read.Envelope, rate, Transcript, Editor.State?.CutWordIds ?? new HashSet<string>(), window,
             silence.Incoming, silence.Outgoing, false, providerConsent,
-            RewriteReview.MeasureTiming(this, combined, text, window, modelId).Pace)
-            { PauseProfile = VoiceLabPauseProfile.Measure(pauseWords.Where(word => !Project.Edits.CutWordIds.Contains(word.Id)).ToArray(), read.Envelope, 0, double.MaxValue) };
+            RewriteReview.MeasureTiming(this, combined, text, window, modelId, hunk.RequestAudioTags).Pace)
+            { PauseProfile = VoiceLabPauseProfile.Measure(pauseWords.Where(word => !Project.Edits.CutWordIds.Contains(word.Id)).ToArray(), read.Envelope, 0, double.MaxValue), AudioTags = hunk.RequestAudioTags };
     }
 
     internal RewriteSession(EditorViewModel editor, int first, int last, AudioEnvelope? envelope, RewriteConnector? connector,
@@ -318,6 +318,7 @@ internal sealed partial class RewriteSession : IDisposable
             {
                 var result = await service.ProposeAsync(input!, Connector.Connector, Connector.Model, service.Approve(action, true), cancellation.Token);
                 resultText = result.ProposedText;
+                audioTags = result.AudioTags;
             }
             if (!IsOpen || revision != current) return false;
             changeStates.Clear();
@@ -353,6 +354,7 @@ internal sealed partial class RewriteSession : IDisposable
     internal void Edit(string text)
     {
         if (!IsOpen) return;
+        audioTags = VoiceLabAudioTags.Reanchored(ReviewAudioTags(), NewWords, text);
         InvalidateProposal();
         scopeHunks = null;
         changeStates.Clear();

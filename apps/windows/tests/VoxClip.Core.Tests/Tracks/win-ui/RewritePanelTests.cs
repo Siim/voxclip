@@ -12,6 +12,44 @@ namespace VoxClip.Core.Tests.Tracks.WinUi;
 
 public sealed class RewritePanelTests
 {
+    [Theory]
+    [InlineData(300)]
+    [InlineData(320)]
+    [InlineData(560)]
+    public void InlineExpressionRowsWrapAndExposeKeyboardAndNarratorNames(int width)
+    {
+        var source = AppSource("Controls", "RewritePanel.Expressions.cs");
+        Assert.Contains("new RichTextBlock { TextWrapping = TextWrapping.Wrap", source);
+        Assert.Contains("IsTabStop = true", source);
+        Assert.Contains("Remove {indexed.Tag.Tag} from phrase {phraseNumber}", source);
+        Assert.Contains("Add {definition.Tag} to phrase {phraseNumber}", source);
+        Assert.Contains("AutomationProperties.SetName(button, name)", source);
+        Assert.Contains("+ Expression", source);
+        Assert.Contains("Multilingual v2 leaves tags out.", source);
+        Assert.Contains("MaxWidth = 180", source);
+        Assert.True(180 <= width - 32);
+        Assert.DoesNotContain("ContentDialog", source);
+        Assert.DoesNotContain("Flyout", source);
+        var models = AppSource("Controls", "RewritePanel.cs");
+        Assert.Contains("Eleven v3 · audio tags", models);
+        Assert.Contains("Eleven v4 · audio tags", models);
+    }
+
+    [Fact]
+    public void ExpressionRewordingAndRemovalKeepOrderedAnchors()
+    {
+        using var session = new RewriteSession(Editor(), 10, 12, Envelope(), null, synthesisModel: "eleven_v4");
+        session.Edit("Hello there word11 word12");
+        Assert.True(session.AddExpression(1, "laughs"));
+        Assert.True(session.EditChange(1, "Well Hello there now"));
+        var hunk = Assert.Single(session.Review!.Diff.Hunks);
+        Assert.Equal(4, Assert.Single(hunk.AudioTags).BeforeToken);
+        Assert.Equal("Well Hello there now", string.Join(" ", hunk.NewTokens));
+        Assert.DoesNotContain("laughs", session.NewWords);
+        Assert.True(session.RemoveExpression(1, 0));
+        Assert.Empty(Assert.Single(session.Review!.Diff.Hunks).AudioTags);
+    }
+
     [Fact]
     public void PrepayFitActionsAreInlineAndFirstTakeIsNamedMakeTake()
     {

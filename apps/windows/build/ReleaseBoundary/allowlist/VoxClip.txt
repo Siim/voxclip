@@ -11,6 +11,7 @@ literal "Set VOXCLIP_SHARED_DIR for the frame probe."
 literal "VOXCLIP_SHARED_DIR"
 literal "claude_ai"
 literal "eleven_multilingual_v2"
+literal "eleven_v3"
 literal "eleven_v4"
 literal "oauth_token"
 literal "scribe_v2"
@@ -611,9 +612,13 @@ member VoxClip.App.Controls.RewritePanel :: field private propose
 member VoxClip.App.Controls.RewritePanel :: field private remoteLocalAllowed
 member VoxClip.App.Controls.RewritePanel :: field private renderedBest
 member VoxClip.App.Controls.RewritePanel :: field private renderedEditable
+member VoxClip.App.Controls.RewritePanel :: field private renderedExpressionEditable
+member VoxClip.App.Controls.RewritePanel :: field private renderedExpressionModel
+member VoxClip.App.Controls.RewritePanel :: field private renderedExpressionPhrase
 member VoxClip.App.Controls.RewritePanel :: field private renderedFocus
 member VoxClip.App.Controls.RewritePanel :: field private renderedReview
 member VoxClip.App.Controls.RewritePanel :: field private renderedRows
+member VoxClip.App.Controls.RewritePanel :: field private renderedSpeechModels
 member VoxClip.App.Controls.RewritePanel :: field private renderedTakeElements
 member VoxClip.App.Controls.RewritePanel :: field private requestingApproval
 member VoxClip.App.Controls.RewritePanel :: field private retimeCopy
@@ -623,6 +628,7 @@ member VoxClip.App.Controls.RewritePanel :: field private sentenceReview
 member VoxClip.App.Controls.RewritePanel :: field private session
 member VoxClip.App.Controls.RewritePanel :: field private speechModel
 member VoxClip.App.Controls.RewritePanel :: field private takeButtons
+member VoxClip.App.Controls.RewritePanel :: field private takeExpression
 member VoxClip.App.Controls.RewritePanel :: field private takeList
 member VoxClip.App.Controls.RewritePanel :: field private takeRecovery
 member VoxClip.App.Controls.RewritePanel :: field private takeSend
@@ -653,6 +659,9 @@ member VoxClip.App.Controls.RewritePanel :: method private Close()
 member VoxClip.App.Controls.RewritePanel :: method private ConfirmVoiceActionAsync(object,string,System.Func`1<bool>,System.Threading.CancellationToken)
 member VoxClip.App.Controls.RewritePanel :: method private EffectsChanged(object,System.EventArgs)
 member VoxClip.App.Controls.RewritePanel :: method private Escape(object,Microsoft.UI.Xaml.Input.KeyRoutedEventArgs)
+member VoxClip.App.Controls.RewritePanel :: method private ExpressionButton(string,string)
+member VoxClip.App.Controls.RewritePanel :: method private ExpressionNote(string)
+member VoxClip.App.Controls.RewritePanel :: method private ExpressionPhrase(string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag>,int,System.Action`1<int>,System.Action`1<string>)
 member VoxClip.App.Controls.RewritePanel :: method private InlinePrivacyGranted()
 member VoxClip.App.Controls.RewritePanel :: method private NativeReturnTarget(Microsoft.UI.Xaml.DependencyObject)
 member VoxClip.App.Controls.RewritePanel :: method private PricingPage(VoxClip.Core.Services.LLM.ConnectorId)
@@ -665,6 +674,7 @@ member VoxClip.App.Controls.RewritePanel :: method private RenderGeneration()
 member VoxClip.App.Controls.RewritePanel :: method private RenderPaidReviewChange()
 member VoxClip.App.Controls.RewritePanel :: method private RenderSentenceReview()
 member VoxClip.App.Controls.RewritePanel :: method private RenderTakeButtons(VoxClip.App.ViewModels.RewriteGeneration)
+member VoxClip.App.Controls.RewritePanel :: method private RenderTakeExpression(VoxClip.App.ViewModels.RewriteGeneration)
 member VoxClip.App.Controls.RewritePanel :: method private RenderTakes(VoxClip.App.ViewModels.RewriteGeneration)
 member VoxClip.App.Controls.RewritePanel :: method private SendProposalAsync()
 member VoxClip.App.Controls.RewritePanel :: method private SetName(Microsoft.UI.Xaml.DependencyObject,string)
@@ -3660,7 +3670,9 @@ member VoxClip.App.ViewModels.RewriteGenerationPhase :: field public NonePassed
 member VoxClip.App.ViewModels.RewriteGenerationPhase :: field public Preparing
 member VoxClip.App.ViewModels.RewriteGenerationPhase :: field public ReadyToAccept
 member VoxClip.App.ViewModels.RewriteGenerationPhase :: field public value__
+member VoxClip.App.ViewModels.RewriteHunkReview :: method internal get_RequestAudioTags()
 member VoxClip.App.ViewModels.RewriteHunkReview :: method internal get_SpokenTiming()
+member VoxClip.App.ViewModels.RewriteHunkReview :: method internal set_RequestAudioTags(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag>)
 member VoxClip.App.ViewModels.RewriteHunkReview :: method private .ctor(VoxClip.App.ViewModels.RewriteHunkReview)
 member VoxClip.App.ViewModels.RewriteHunkReview :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.App.ViewModels.RewriteHunkReview :: method private get_EqualityContract()
@@ -3712,7 +3724,7 @@ member VoxClip.App.ViewModels.RewritePaidReviewChange :: method public set_Apply
 member VoxClip.App.ViewModels.RewritePaidReviewChange :: method public set_Identity(string)
 member VoxClip.App.ViewModels.RewritePaidReviewChange :: method public set_Shorter(bool)
 member VoxClip.App.ViewModels.RewriteReview :: method internal Build(VoxClip.App.ViewModels.RewriteSession,VoxClip.Core.Domain.VoiceLab.VoiceLabPriceCatalog,string)
-member VoxClip.App.ViewModels.RewriteReview :: method internal MeasureTiming(VoxClip.App.ViewModels.RewriteSession,VoxClip.Core.Domain.Shared.Project,string,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,string)
+member VoxClip.App.ViewModels.RewriteReview :: method internal MeasureTiming(VoxClip.App.ViewModels.RewriteSession,VoxClip.Core.Domain.Shared.Project,string,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag>)
 member VoxClip.App.ViewModels.RewriteReview :: method private .ctor(VoxClip.App.ViewModels.RewriteReview)
 member VoxClip.App.ViewModels.RewriteReview :: method private Description(VoxClip.Core.Domain.VoiceLab.VoiceLabWordDiffResult,System.Collections.Generic.IReadOnlyList`1<VoxClip.App.ViewModels.RewriteDiffRun>)
 member VoxClip.App.ViewModels.RewriteReview :: method private DiffRuns(VoxClip.Core.Domain.VoiceLab.VoiceLabWordDiffResult,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,System.Collections.Generic.IReadOnlyList`1<VoxClip.App.ViewModels.RewriteHunkReview>)
@@ -3772,6 +3784,7 @@ member VoxClip.App.ViewModels.RewriteSession :: field internal SentenceStale
 member VoxClip.App.ViewModels.RewriteSession :: field internal SentenceUnavailable
 member VoxClip.App.ViewModels.RewriteSession :: field private Changed
 member VoxClip.App.ViewModels.RewriteSession :: field private applyingBatch
+member VoxClip.App.ViewModels.RewriteSession :: field private audioTags
 member VoxClip.App.ViewModels.RewriteSession :: field private changeStates
 member VoxClip.App.ViewModels.RewriteSession :: field private confirming
 member VoxClip.App.ViewModels.RewriteSession :: field private connectorIsCurrent
@@ -3804,6 +3817,7 @@ member VoxClip.App.ViewModels.RewriteSession :: field private service
 member VoxClip.App.ViewModels.RewriteSession :: field private synthesisModel
 member VoxClip.App.ViewModels.RewriteSession :: method internal .ctor(VoxClip.App.ViewModels.EditorViewModel,int,int,VoxClip.Core.Domain.Transcript.AudioEnvelope,VoxClip.App.ViewModels.RewriteConnector,System.Nullable`1<int>,VoxClip.Core.Domain.VoiceLab.VoiceLabPriceCatalog,string,System.Func`2<System.Threading.CancellationToken,System.Threading.Tasks.Task`1<bool>>,System.Func`1<bool>,System.Func`2<string,bool>,VoxClip.Core.Domain.VoiceLab.RewriteScope)
 member VoxClip.App.ViewModels.RewriteSession :: method internal AcceptSurroundingSentence(VoxClip.App.ViewModels.RewriteSentenceReview)
+member VoxClip.App.ViewModels.RewriteSession :: method internal AddExpression(int,string)
 member VoxClip.App.ViewModels.RewriteSession :: method internal ApplyLocalChanges()
 member VoxClip.App.ViewModels.RewriteSession :: method internal ApplyTakeAsync()
 member VoxClip.App.ViewModels.RewriteSession :: method internal CanPriceHunk(VoxClip.App.ViewModels.RewriteHunkReview)
@@ -3830,6 +3844,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal PrepareShorterAs
 member VoxClip.App.ViewModels.RewriteSession :: method internal PriceItAnyway(int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal ProposeAsync(VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedAction,bool)
 member VoxClip.App.ViewModels.RewriteSession :: method internal Refusal(System.Exception)
+member VoxClip.App.ViewModels.RewriteSession :: method internal RemoveExpression(int,int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal ReviewDiff()
 member VoxClip.App.ViewModels.RewriteSession :: method internal ReviewSurroundingSentence(int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal SelectWindowAsync(int)
@@ -3912,8 +3927,10 @@ member VoxClip.App.ViewModels.RewriteSession :: method private PrepareShorterFee
 member VoxClip.App.ViewModels.RewriteSession :: method private ReconcileGenerationWindows(bool)
 member VoxClip.App.ViewModels.RewriteSession :: method private RefreshReview(bool)
 member VoxClip.App.ViewModels.RewriteSession :: method private RetireGenerationWindows()
+member VoxClip.App.ViewModels.RewriteSession :: method private ReviewAudioTags()
 member VoxClip.App.ViewModels.RewriteSession :: method private SameVoicePhrase(VoxClip.App.ViewModels.RewriteHunkReview,VoxClip.App.ViewModels.RewriteHunkReview)
 member VoxClip.App.ViewModels.RewriteSession :: method private SentenceRecoveryChanged(bool)
+member VoxClip.App.ViewModels.RewriteSession :: method private SetExpressions(int,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag>)
 member VoxClip.App.ViewModels.RewriteSession :: method private get_BillingCurrent()
 member VoxClip.App.ViewModels.RewriteSession :: method private set_ActiveWindow(int)
 member VoxClip.App.ViewModels.RewriteSession :: method private set_Estimate(VoxClip.Core.Domain.VoiceLab.VoiceLabCostPresentationResult)

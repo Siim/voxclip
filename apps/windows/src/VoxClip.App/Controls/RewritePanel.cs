@@ -408,7 +408,12 @@ internal sealed partial class RewritePanel : Grid
         voice.IsEnabled = !session.IsGeneratingBatch;
         speechModel.IsEnabled = !session.IsGeneratingBatch && !generation.IsPreparing && !generation.IsRunning;
         if (!ReferenceEquals(voice.ItemsSource, generation.Voices)) voice.ItemsSource = generation.Voices;
-        if (!ReferenceEquals(speechModel.ItemsSource, generation.Models)) speechModel.ItemsSource = generation.Models;
+        if (!ReferenceEquals(renderedSpeechModels, generation.Models))
+        {
+            renderedSpeechModels = generation.Models;
+            speechModel.ItemsSource = generation.Models.Select(model => model with { Name = model.Id switch
+            { "eleven_v3" => "Eleven v3 · audio tags", "eleven_v4" => "Eleven v4 · audio tags", _ => model.Name } }).ToArray();
+        }
         voice.SelectedValue = generation.VoiceId; speechModel.SelectedValue = generation.ModelId;
         updating = false;
         voice.Visibility = generation.Voices.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
