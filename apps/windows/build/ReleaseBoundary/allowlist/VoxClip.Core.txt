@@ -4770,13 +4770,17 @@ member VoxClip.Core.Domain.Shared.VoiceLabPlaceholder :: method public set_Clean
 member VoxClip.Core.Domain.Shared.VoiceLabPlaceholder :: method public set_Segments(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabSegment>)
 member VoxClip.Core.Domain.Shared.VoiceLabPlaceholder :: method public set_VideoAssets(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabVideoAsset>)
 member VoxClip.Core.Domain.Shared.VoiceLabPlaceholder :: method public set_Voices(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabVoiceReference>)
+member VoxClip.Core.Domain.Shared.VoiceLabRenderInput :: field private framing
 member VoxClip.Core.Domain.Shared.VoiceLabRenderInput :: field private projectJson
+member VoxClip.Core.Domain.Shared.VoiceLabRenderInput :: method internal SupportsVideoRecipe(VoxClip.Core.Domain.VoiceLab.VoiceLabVideoRecipe)
 member VoxClip.Core.Domain.Shared.VoiceLabRenderInput :: method private .ctor(string,VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedRender,string)
 member VoxClip.Core.Domain.Shared.VoiceLabRenderInput :: method private VerifyCaptions(VoxClip.Core.Domain.Captions.CaptionTrack,VoxClip.Core.Domain.Shared.PixelSize)
 member VoxClip.Core.Domain.Shared.VoiceLabRenderInput :: method public Capture(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedRender,string)
 member VoxClip.Core.Domain.Shared.VoiceLabRenderInput :: method public CaptureSnapshot(VoxClip.Core.Domain.Shared.ComposeSnapshot)
 member VoxClip.Core.Domain.Shared.VoiceLabRenderInput :: method public IsolatedProject()
+member VoxClip.Core.Domain.Shared.VoiceLabRenderInput :: method public SupportsVideoMode(VoxClip.Core.Domain.VoiceLab.VoiceLabVideoMode)
 member VoxClip.Core.Domain.Shared.VoiceLabRenderInput :: method public get_Fingerprint()
+member VoxClip.Core.Domain.Shared.VoiceLabRenderInput :: method public get_Framing()
 member VoxClip.Core.Domain.Shared.VoiceLabRenderInput :: method public get_PaidRoot()
 member VoxClip.Core.Domain.Shared.VoiceLabRenderInput :: method public get_Prepared()
 member VoxClip.Core.Domain.Shared.VoxClipErrorCode :: field public Cancelled
@@ -8843,6 +8847,27 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoCut :: method public op_Equalit
 member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoCut :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabVideoCut,VoxClip.Core.Domain.VoiceLab.VoiceLabVideoCut)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoCut :: method public set_EndSample(long)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoCut :: method public set_StartSample(long)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoDurationOptions :: field public MatchZoom
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoDurationOptions :: field public MaximumRetime
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoDurationOptions :: field public MinimumRetime
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoDurationOptions :: method public .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabFitResult,int,int)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoDurationOptions :: method public .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow,int)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoDurationOptions :: method public Allows(VoxClip.Core.Domain.VoiceLab.VoiceLabVideoMode)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoDurationOptions :: method public get_AddedPauseSeconds()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoDurationOptions :: method public get_ChangedUnavailableReason()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoDurationOptions :: method public get_CutUnavailableReason()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoDurationOptions :: method public get_Cuts()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoDurationOptions :: method public get_OutputSamples()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoDurationOptions :: method public get_RemovedVideoSeconds()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoDurationOptions :: method public get_RetimeFactor()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoDurationOptions :: method public get_UnchangedUnavailableReason()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoFraming :: method internal Build(VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan,System.Func`2<VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPiece,VoxClip.Core.Domain.VoiceLab.VoiceLabVideoRecipe>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoFraming :: method private .ctor(double,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoFraming :: method public At(double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoFraming :: method public Build(VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabSelectedRecipe>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoFraming :: method public FaceCrop(VoxClip.Core.Domain.Shared.RectD,VoxClip.Core.Domain.Shared.RectD,double,double,double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoFraming :: method public get_SampleRate()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoFraming :: method public get_Spans()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoMode :: field public Cut
 member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoMode :: field public Lipsync
 member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoMode :: field public Retimed
@@ -8892,6 +8917,31 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoRecipe :: method public set_Syn
 member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoRecipe :: method public set_WindowEndSample(System.Nullable`1<long>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoRecipe :: method public set_WindowStartSample(System.Nullable`1<long>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoRecipe :: method public set_Zoom(System.Nullable`1<double>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan :: method private get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan :: method public .ctor(long,long,long,long,double,double,double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan :: method public Deconstruct(long&,long&,long&,long&,double&,double&,double&)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan :: method public get_AnchorX()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan :: method public get_AnchorY()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan :: method public get_OutputEndSample()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan :: method public get_OutputStartSample()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan :: method public get_SourceEndSample()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan :: method public get_SourceStartSample()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan :: method public get_Zoom()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan,VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan,VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan :: method public set_AnchorX(double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan :: method public set_AnchorY(double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan :: method public set_OutputEndSample(long)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan :: method public set_OutputStartSample(long)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan :: method public set_SourceEndSample(long)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan :: method public set_SourceStartSample(long)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan :: method public set_Zoom(double)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabVoice :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabVoice)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabVoice :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabVoice :: method private get_EqualityContract()
@@ -12676,8 +12726,11 @@ type VoxClip.Core.Domain.VoiceLab.VoiceLabText
 type VoxClip.Core.Domain.VoiceLab.VoiceLabTextLength
 type VoxClip.Core.Domain.VoiceLab.VoiceLabVideoAsset
 type VoxClip.Core.Domain.VoiceLab.VoiceLabVideoCut
+type VoxClip.Core.Domain.VoiceLab.VoiceLabVideoDurationOptions
+type VoxClip.Core.Domain.VoiceLab.VoiceLabVideoFraming
 type VoxClip.Core.Domain.VoiceLab.VoiceLabVideoMode
 type VoxClip.Core.Domain.VoiceLab.VoiceLabVideoRecipe
+type VoxClip.Core.Domain.VoiceLab.VoiceLabVideoSpan
 type VoxClip.Core.Domain.VoiceLab.VoiceLabVoice
 type VoxClip.Core.Domain.VoiceLab.VoiceLabVoiceChoice
 type VoxClip.Core.Domain.VoiceLab.VoiceLabVoiceKind

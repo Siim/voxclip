@@ -1040,6 +1040,7 @@ member VoxClip.Media.Pipeline.FrameComposer :: method internal .ctor(VoxClip.Cor
 member VoxClip.Media.Pipeline.FrameComposer :: method internal PrepareDisclosure(VoxClip.Core.Domain.Shared.ComposeSnapshot)
 member VoxClip.Media.Pipeline.FrameComposer :: method internal ReleaseDisclosure(VoxClip.Core.Domain.Shared.ComposeSnapshot)
 member VoxClip.Media.Pipeline.FrameComposer :: method internal ReleaseThreadResources()
+member VoxClip.Media.Pipeline.FrameComposer :: method internal VideoCrop(VoxClip.Core.Domain.Shared.ComposeSnapshot,VoxClip.Core.Domain.Shared.RectD,int,int,double)
 member VoxClip.Media.Pipeline.FrameComposer :: method private Rotate(VoxClip.Core.Domain.Captions.PixelBuffer,byte[],int,int,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.FrameComposer :: method private Validate(VoxClip.Core.Domain.Captions.PixelBuffer)
 member VoxClip.Media.Pipeline.FrameComposer :: method public .ctor()

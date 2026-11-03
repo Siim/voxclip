@@ -577,6 +577,8 @@ member VoxClip.App.Controls.RewriteDiffLine :: field private text
 member VoxClip.App.Controls.RewriteDiffLine :: method internal .ctor(VoxClip.App.ViewModels.RewriteReview)
 member VoxClip.App.Controls.RewriteDiffLine :: method private Draw()
 member VoxClip.App.Controls.RewritePanel :: field private Closed
+member VoxClip.App.Controls.RewritePanel :: field private VideoModes
+member VoxClip.App.Controls.RewritePanel :: field private acceptBlocker
 member VoxClip.App.Controls.RewritePanel :: field private advisoryButtons
 member VoxClip.App.Controls.RewritePanel :: field private announcements
 member VoxClip.App.Controls.RewritePanel :: field private apply
@@ -586,6 +588,7 @@ member VoxClip.App.Controls.RewritePanel :: field private brushes
 member VoxClip.App.Controls.RewritePanel :: field private busy
 member VoxClip.App.Controls.RewritePanel :: field private cancelGeneration
 member VoxClip.App.Controls.RewritePanel :: field private changeSummary
+member VoxClip.App.Controls.RewritePanel :: field private chooseAnew
 member VoxClip.App.Controls.RewritePanel :: field private confirmation
 member VoxClip.App.Controls.RewritePanel :: field private correctionOpen
 member VoxClip.App.Controls.RewritePanel :: field private discover
@@ -621,7 +624,6 @@ member VoxClip.App.Controls.RewritePanel :: field private renderedRows
 member VoxClip.App.Controls.RewritePanel :: field private renderedSpeechModels
 member VoxClip.App.Controls.RewritePanel :: field private renderedTakeElements
 member VoxClip.App.Controls.RewritePanel :: field private requestingApproval
-member VoxClip.App.Controls.RewritePanel :: field private retimeCopy
 member VoxClip.App.Controls.RewritePanel :: field private review
 member VoxClip.App.Controls.RewritePanel :: field private reviewElements
 member VoxClip.App.Controls.RewritePanel :: field private sentenceReview
@@ -637,6 +639,7 @@ member VoxClip.App.Controls.RewritePanel :: field private taskStatus
 member VoxClip.App.Controls.RewritePanel :: field private textFocus
 member VoxClip.App.Controls.RewritePanel :: field private updating
 member VoxClip.App.Controls.RewritePanel :: field private videoChoices
+member VoxClip.App.Controls.RewritePanel :: field private videoDetails
 member VoxClip.App.Controls.RewritePanel :: field private voice
 member VoxClip.App.Controls.RewritePanel :: field private windowPicker
 member VoxClip.App.Controls.RewritePanel :: field private words
@@ -647,6 +650,7 @@ member VoxClip.App.Controls.RewritePanel :: method internal get_FocusTarget()
 member VoxClip.App.Controls.RewritePanel :: method internal get_IsSessionOpen()
 member VoxClip.App.Controls.RewritePanel :: method internal get_ReturnFocusOnClose()
 member VoxClip.App.Controls.RewritePanel :: method internal remove_Closed(System.EventHandler)
+member VoxClip.App.Controls.RewritePanel :: method private .cctor()
 member VoxClip.App.Controls.RewritePanel :: method private ApplyDefaultAsync()
 member VoxClip.App.Controls.RewritePanel :: method private ApproveProposalAsync(VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedAction)
 member VoxClip.App.Controls.RewritePanel :: method private AskForShorterAsync(int)
@@ -676,6 +680,7 @@ member VoxClip.App.Controls.RewritePanel :: method private RenderSentenceReview(
 member VoxClip.App.Controls.RewritePanel :: method private RenderTakeButtons(VoxClip.App.ViewModels.RewriteGeneration)
 member VoxClip.App.Controls.RewritePanel :: method private RenderTakeExpression(VoxClip.App.ViewModels.RewriteGeneration)
 member VoxClip.App.Controls.RewritePanel :: method private RenderTakes(VoxClip.App.ViewModels.RewriteGeneration)
+member VoxClip.App.Controls.RewritePanel :: method private RenderVideoChoices(VoxClip.App.ViewModels.RewriteGeneration)
 member VoxClip.App.Controls.RewritePanel :: method private SendProposalAsync()
 member VoxClip.App.Controls.RewritePanel :: method private SetName(Microsoft.UI.Xaml.DependencyObject,string)
 member VoxClip.App.Controls.RewritePanel :: method private ShowVoiceApprovalAsync(VoxClip.App.ViewModels.InlineApproval)
@@ -3560,11 +3565,13 @@ member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_Auditione
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_BestTakeId()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_ButtonName()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_ButtonTitle()
+member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_CanCut()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_CanExecute()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_CanPlay()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_CanRetime()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_Cleanup()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_Cost()
+member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_CutCopy()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_DeferredCleanup()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_HasDiscovered()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_HasPaidTakes()
@@ -3572,6 +3579,7 @@ member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_HasStarte
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_IsPreparing()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_IsRequestingConsent()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_IsRunning()
+member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_KeepSourceCopy()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_LastRunResult()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_LengthCopy()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_ModelId()
@@ -3595,6 +3603,7 @@ member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_Rows()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_Selected()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_SelectedTakeId()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_VideoChoice()
+member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_VideoOptions()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_VoiceId()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_Voices()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal remove_Changed(System.EventHandler)
@@ -3845,6 +3854,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal GenerationHunk(V
 member VoxClip.App.ViewModels.RewriteSession :: method internal GenerationInputAsync(string,string,uint,bool,VoxClip.App.ViewModels.RewriteSourceReader,System.Threading.CancellationToken,int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal MarkBatchEstimateShown(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeBatch)
 member VoxClip.App.ViewModels.RewriteSession :: method internal MarkEstimateShown(VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedAction)
+member VoxClip.App.ViewModels.RewriteSession :: method internal PhraseList(System.Collections.Generic.IReadOnlyList`1<int>)
 member VoxClip.App.ViewModels.RewriteSession :: method internal PrepareShorterAsync(System.Nullable`1<int>)
 member VoxClip.App.ViewModels.RewriteSession :: method internal PriceItAnyway(int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal ProposeAsync(VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedAction,bool)
@@ -3861,6 +3871,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal ShorterFeedback(
 member VoxClip.App.ViewModels.RewriteSession :: method internal SignIn(VoxClip.Core.Services.LLM.CliDetectionInfo)
 member VoxClip.App.ViewModels.RewriteSession :: method internal StopCandidatesAsync()
 member VoxClip.App.ViewModels.RewriteSession :: method internal add_Changed(System.EventHandler)
+member VoxClip.App.ViewModels.RewriteSession :: method internal get_AcceptanceBlocker()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_ActiveWindow()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_BlockedVoiceHunks()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_CanAcceptAll()
