@@ -2,7 +2,8 @@
   "description": "Where every file in shared/fonts came from. Each URL is pinned to the commit it was downloaded from on 2026-10-25. build_font_manifest.py copies this into shared/fonts/fonts.json.",
   "notes": {
     "noto-sans/OFL.txt": "Saved from fonts/LICENSE of notofonts/notofonts.github.io (the SIL OFL 1.1 text for the Noto fonts in that repository).",
-    "noto-emoji": "PNG images and LICENSE are taken from commit 41e31b11 (2024-02-15), the last commit before the repository root LICENSE was changed from Apache-2.0 to OFL-1.1 (commit 254596e5, 2024-07-29). At that commit README.md states: 'Tools and most image resources are under the Apache license, version 2.0 (./LICENSE)'. The images are distributed unmodified under Apache-2.0."
+    "noto-emoji": "PNG images and LICENSE are taken from commit 41e31b11 (2024-02-15), the last commit before the repository root LICENSE was changed from Apache-2.0 to OFL-1.1 (commit 254596e5, 2024-07-29). At that commit README.md states: 'Tools and most image resources are under the Apache license, version 2.0 (./LICENSE)'. The images are distributed unmodified under Apache-2.0.",
+    "roboto": "Roboto-Black.ttf (Roboto 3.005, static) and LICENSE.txt are taken from google/fonts apache/roboto at ff11ed91 (2022-08-11). At that commit METADATA.pb declares license APACHE2 and the font's name table reads 'Licensed under the Apache License, Version 2.0'. The font is distributed unmodified under Apache-2.0; 'Roboto' is a trademark of Google."
   },
   "files": {
     "dm-sans/DMSans-Black.ttf": {
@@ -409,6 +410,16 @@
       "repository": "googlefonts/noto-emoji",
       "commit": "41e31b110b4eb929dffb410264694a06205b7ad7",
       "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/41e31b110b4eb929dffb410264694a06205b7ad7/LICENSE"
+    },
+    "roboto/LICENSE.txt": {
+      "repository": "google/fonts",
+      "commit": "ff11ed915971ee26c88f442f37308142d4217979",
+      "url": "https://raw.githubusercontent.com/google/fonts/ff11ed915971ee26c88f442f37308142d4217979/apache/roboto/LICENSE.txt"
+    },
+    "roboto/Roboto-Black.ttf": {
+      "repository": "google/fonts",
+      "commit": "ff11ed915971ee26c88f442f37308142d4217979",
+      "url": "https://raw.githubusercontent.com/google/fonts/ff11ed915971ee26c88f442f37308142d4217979/apache/roboto/static/Roboto-Black.ttf"
     }
   }
 }
