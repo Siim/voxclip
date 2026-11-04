@@ -1086,6 +1086,15 @@ import VoxClipCore
             try await harness.start()
             try await harness.finish()
         },
+        // MVP18: v4 replies whose timing differs from the typed text in ways a correct reply can. Phrase 1's normalized-only
+        // timing and phrase 2's other first word are timed (the second from its own word check); both phrases are
+        // sent and voiced, never stopped for timing.
+        Definition(id: "S14", title: "Eleven v4 replies with quirky word timing are timed and used", voiced: 2,
+            fixture: Fixture(rewrites: [.passage(replace(twoChanges))],
+                voice: RewriteSmokeVoiceScript(offset: -0.2, quirks: [.normalizedOnly, .otherWords, .curlyAndNewline]))) { harness in
+            try await harness.start()
+            try await harness.finish()
+        },
         Definition(id: "S13", title: "happy path with takes that fill their slots exactly",
             fixture: Fixture(rewrites: [.passage(replace(twoChanges))], voice: RewriteSmokeVoiceScript(exactFit: true))) { harness in
             try await harness.start()
