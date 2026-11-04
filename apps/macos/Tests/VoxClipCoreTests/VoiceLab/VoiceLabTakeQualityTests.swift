@@ -40,6 +40,35 @@ struct VoiceLabTakeQualityTests {
             #expect(result.passed == row.failures.isEmpty)
         }
     }
+    /// MVP13 (live clip): the user asked for "Claude Code" where they had said "cloud code", and Scribe wrote the take's
+    /// "Claude" as "cloud". A near-homophone of the user's own replacement word is that word; no take fails for it.
+    @Test func homophoneOfAReplacementWordPassesTheWordCheck() throws {
+        let samples: [Float] = (0..<16_000).map { Float(0.1 * sin(2 * Double.pi * 220 * Double($0) / 16_000)) }
+        let expected = "bring your own Claude Code subscription or Codex subscription"
+        let heard = ["bring", "your", "own", "cloud", "code", "subscription", "or", "codex", "subscription"]
+        func check(_ words: Set<String>, _ recognized: [String] = heard) throws -> VoiceLabTakeQAResult {
+            try VoiceLabTakeQuality.evaluate(expected: expected, recognized: recognized, mixed: samples, sampleRate: 16_000,
+                seams: [], speakerScore: 0.9, threshold: 0.45, replacementWords: words)
+        }
+        // Without the user's replacement words the one homophone fails the 9-token check (2 × 8 / 18 < 0.9).
+        #expect(try check([]).failures == [.transcript])
+        let passed = try check(["claude"])
+        #expect(passed.failures.isEmpty && passed.values.transcriptMatch == 1)
+        // Only the replacement words are normalized, and only to a word that sounds alike.
+        #expect(try check(["claude"], heard.map { $0 == "cloud" ? "crowd" : $0 }).failures == [.transcript])
+        #expect(try check(["subscription"], heard.map { $0 == "codex" ? "cortex" : $0 }).failures == [.transcript])
+        #expect(VoiceLabTakeQuality.soundsAlike("claude", "cloud") && !VoiceLabTakeQuality.soundsAlike("claude", "clod2"))
+        #expect(!VoiceLabTakeQuality.soundsAlike("t3", "tea") && !VoiceLabTakeQuality.soundsAlike("an", "in"))
+        // Short phrases need an exact match; the normalized homophone makes it exact.
+        let short = try VoiceLabTakeQuality.evaluate(expected: "Claude Code", recognized: ["cloud", "code"], mixed: samples, sampleRate: 16_000,
+            seams: [], speakerScore: 0.9, threshold: 0.45, replacementWords: ["claude"])
+        #expect(short.failures.isEmpty)
+        let window = VoiceLabWindow(firstWordId: "a", lastWordId: "b", leftBridgeWordIds: [], rightBridgeWordIds: [], start: 0, end: 1,
+            startSample: 0, endSample: 24_000, leftSeam: .init(kind: .hard, time: 0, sample: 0, fadeSamples: 288),
+            rightSeam: .init(kind: .hard, time: 1, sample: 24_000, fadeSamples: 288))
+        let items = [TimedWord(id: "a", text: "cloud", start: 0, end: 0.4), TimedWord(id: "b", text: "code", start: 0.5, end: 0.9)]
+        #expect(VoiceLabTakeQuality.replacementWords(text: "Claude Code", items: items, window: window) == ["claude"])
+    }
     /// Live 2026-11-03 (car vlog): a gap seam sits in a pause, so one 400 ms side holds more speech than the other and the
     /// unedited source itself jumps 5 to 38 LU there. Only what a join adds beyond the source's own signed step is the join's.
     @Test func seamLoudnessCountsOnlyTheStepTheJoinAdds() throws {

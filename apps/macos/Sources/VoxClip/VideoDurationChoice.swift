@@ -64,18 +64,26 @@ struct VideoDurationChoiceView: View {
     let busy: Bool
     let choose: (VoiceLabVideoMode) -> Void
 
+    /// Only the choices this take allows are shown, never a disabled one (design.md: a control that can't act is absent).
+    /// A single valid choice is chosen for the user (`ClipTakePlan.autoChooseVideo`) and reads as one line.
+    var valid: [VoiceLabVideoMode] { [VoiceLabVideoMode.source, .cut, .retimed].filter(availability.allows) }
+    @State private var changing = false
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Choose video duration for this passage")
-            option(.source, title: "Keep source video duration", detail:
-                availability.unchangedReason ?? keepSourceDetail)
-            if availability.allows(.cut) {
-                option(.cut, title: "Cut the video to this take", detail:
-                    "Removes \(String(format: "%.1f", availability.options?.removedVideoSeconds ?? 0)) s of video at a pause, like a vlog jump cut. Speech keeps its pace.")
+            if let shown = selection ?? (valid.count == 1 ? valid.first : nil), !changing || busy || valid.count == 1 {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("Video: " + title(shown).prefix(1).lowercased() + title(shown).dropFirst())
+                    if valid.count > 1, !busy {
+                        Button("Change") { changing = true }.buttonStyle(.plain)
+                            .foregroundStyle(DesignValues.color("text.secondary"))
+                            .accessibilityLabel("Change video duration")
+                    }
+                }
+                Text(detail(shown)).foregroundStyle(DesignValues.color("text.secondary"))
+            } else if !busy, !valid.isEmpty {
+                Text("Choose video duration for this passage")
+                ForEach(valid, id: \.self) { choice in option(choice, title: title(choice), detail: detail(choice)) }
             }
-            option(.retimed, title: "Match video to this take's duration", detail:
-                availability.changedReason ?? "Keeps this take's natural speech timing, plays source video at \(String(format: "%.2f", availability.options?.retimeFactor ?? 1))× and crops in 1.12×. Nothing is sent.")
-            if selection == nil { Text("Choose anew for each passage and selected take.").foregroundStyle(DesignValues.color("text.tertiary")) }
         }
         .font(VCType.small.font())
         .accessibilityElement(children: .contain)
@@ -88,13 +96,27 @@ struct VideoDurationChoiceView: View {
             "Uses the verified silence-only fit. Speech is never stretched."
     }
 
+    private func title(_ choice: VoiceLabVideoMode) -> String {
+        switch choice {
+        case .source: "Keep source video duration"
+        case .cut: "Cut the video to this take"
+        default: "Match video to this take's duration"
+        }
+    }
+    private func detail(_ choice: VoiceLabVideoMode) -> String {
+        switch choice {
+        case .source: availability.unchangedReason ?? keepSourceDetail
+        case .cut: "Removes \(String(format: "%.1f", availability.options?.removedVideoSeconds ?? 0)) s of video at a pause, like a vlog jump cut. Speech keeps its pace."
+        default: availability.changedReason ?? "Keeps this take's natural speech timing, plays source video at \(String(format: "%.2f", availability.options?.retimeFactor ?? 1))× and crops in 1.12×. Nothing is sent."
+        }
+    }
+
     private func option(_ choice: VoiceLabVideoMode, title: String, detail: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Button { choose(choice) } label: {
+            Button { choose(choice); changing = false } label: {
                 Label(title, systemImage: selection == choice ? "largecircle.fill.circle" : "circle")
             }
             .buttonStyle(.plain)
-            .disabled(busy || !availability.allows(choice))
             .accessibilityAddTraits(selection == choice ? [.isButton, .isSelected] : .isButton)
             Text(detail).foregroundStyle(DesignValues.color("text.secondary"))
         }

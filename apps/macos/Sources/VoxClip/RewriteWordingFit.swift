@@ -30,11 +30,15 @@ struct MeasuredWordingSuggestion {
     let measuredSeconds: Double
     let slotSeconds: Double
     let tooLong: Bool
+    /// The measured take failed its checks, so the phrase has no take selected (an automatic fix, RewriteAutoFix.swift).
+    var unselected = false
     var text: String?
     var keepOriginal = false
     var preparing = true
     var awaitingApproval = false
     var problem = ""
+    /// The phrase's selection the suggestion was made for: the measured take, or none when it failed its checks.
+    var selection: UUID? { unselected ? nil : take }
 }
 
 extension RewriteSession {
@@ -111,6 +115,7 @@ extension RewriteSession {
                 editor.llmRuns.release(lease)
                 if wordingFit.token == token {
                     wordingFit.running = false; wordingFit.completed = true; wordingFit.lease = nil
+                    if let plan = takePlan { applyPendingExpressions(plan) }
                     if current { showProposal() }
                 }
             }
@@ -165,8 +170,10 @@ extension RewriteSession {
 
     func observeMeasuredTakes(_ plan: ClipTakePlan) {
         guard current, takePlan === plan, !plan.generating, !plan.preparing, !plan.publishing else { return }
+        autoChooseVideo(plan)
+        applyPendingExpressions(plan)
         if let suggestion = wordingFit.measured,
-           !plan.phrases.indices.contains(suggestion.phrase) || plan.phrases[suggestion.phrase].selectedID != suggestion.take {
+           !plan.phrases.indices.contains(suggestion.phrase) || plan.phrases[suggestion.phrase].selectedID != suggestion.selection {
             wordingFit.token = UUID()
             wordingFit.measuredWork?.cancel(); wordingFit.measuredWork = nil
             if let lease = wordingFit.measuredLease { editor.llmRuns.release(lease) }
@@ -183,6 +190,8 @@ extension RewriteSession {
                         measured: Double(audio.trimmed.count) / Double(audio.sampleRate) * (input.pace ?? 1), baseline: estimate)
                 }
             }
+            // Once an approved price armed the automatic fixes, they make this round (RewriteAutoFix.swift).
+            guard autoFix.plan !== plan else { advanceAutoFix(); return }
             guard connector != nil, wordingFit.measuredWork == nil, wordingFit.measured == nil,
                   let phrase = plan.phrases.first(where: { phrase in
                       guard let take = phrase.selected, !wordingFit.measuredTakes.contains(take.id),
@@ -202,10 +211,10 @@ extension RewriteSession {
         } catch { wordingFit.problem = Self.refusal(error) }
     }
 
-    func rewordMeasuredTake(_ plan: ClipTakePlan, approved: Bool) async {
+    func rewordMeasuredTake(_ plan: ClipTakePlan, approved: Bool, automatic: Bool = false) async {
         guard current, takePlan === plan, let suggestion = wordingFit.measured,
               plan.phrases.indices.contains(suggestion.phrase),
-              plan.phrases[suggestion.phrase].selectedID == suggestion.take,
+              plan.phrases[suggestion.phrase].selectedID == suggestion.selection,
               let connector, let shared = editor.app.shared else { return }
         let token = wordingFit.token
         let phrase = plan.phrases[suggestion.phrase]
@@ -240,6 +249,10 @@ extension RewriteSession {
             let quote = try await service.prepare([request], connector: connector.connector.id, model: connector.model, language: language)
             guard current, wordingFit.token == token, !Task.isCancelled else { return }
             wordingFit.estimate = quote.estimate
+            if automatic, !autoFixChargeSend(quote.estimate, phrase: suggestion.phrase) {
+                wordingFit.measured = nil
+                return
+            }
             if !approved {
                 wordingFit.measured?.awaitingApproval = true
                 wordingFit.measured?.preparing = false
@@ -256,7 +269,7 @@ extension RewriteSession {
             let updates = try await service.propose([request], connector: connector.connector, model: connector.model,
                 language: language, quote: quote, approved: true)
             guard current, wordingFit.token == token, !Task.isCancelled, takePlan === plan,
-                  plan.phrases[suggestion.phrase].selectedID == suggestion.take, let update = updates.first else { return }
+                  plan.phrases[suggestion.phrase].selectedID == suggestion.selection, let update = updates.first else { return }
             wordingFit.measured?.keepOriginal = update.keepOriginal
             if !update.keepOriginal {
                 wordingFit.measured?.text = update.text
@@ -294,5 +307,17 @@ extension RewriteSession {
             await rewordMeasuredTake(plan, approved: true)
             if wordingFit.token == token { wordingFit.measuredWork = nil }
         }
+    }
+
+    /// A selected passing take gets a video duration chosen (design.md R2): the only valid one, or the first of keep
+    /// source, cut and match. The phrase card reads it as one line, with Change when another is valid, so Use is the
+    /// one action left.
+    func autoChooseVideo(_ plan: ClipTakePlan) {
+        var prepare = false
+        for phrase in plan.phrases where phrase.videoChoice == nil && !plan.lipsync.blocksMutation(phrase.id) {
+            guard let first = plan.validVideoChoices(phrase: phrase.id).first, plan.chooseVideo(first, phrase: phrase.id) else { continue }
+            prepare = prepare || first != .source
+        }
+        if prepare { Task { [weak plan] in await plan?.prepareVideoChoices(); await plan?.lipsync.refresh() } }
     }
 }

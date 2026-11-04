@@ -129,6 +129,58 @@ public enum VoiceLabTakeQuality {
     public static func tokens(_ text: String) -> [String] {
         VoiceLabAudioTags.strippingTags(text).split(whereSeparator: \.isWhitespace).map { EditingPrimitives.normalizeForMatch(EditingPrimitives.nfc(String($0))) }.filter { !$0.isEmpty }
     }
+    /// The Soundex key of a lowercase word of letters only (first letter, then up to three consonant-class digits), nil
+    /// for anything else: digits, apostrophes and words under three letters never sound alike here.
+    static func soundKey(_ word: String) -> String? {
+        let letters = Array(word.lowercased())
+        guard letters.count >= 3, letters.allSatisfy({ $0.isASCII && $0.isLetter }), let first = letters.first else { return nil }
+        func code(_ letter: Character) -> Character? {
+            switch letter {
+            case "b", "f", "p", "v": "1"
+            case "c", "g", "j", "k", "q", "s", "x", "z": "2"
+            case "d", "t": "3"
+            case "l": "4"
+            case "m", "n": "5"
+            case "r": "6"
+            default: nil
+            }
+        }
+        var key = String(first).uppercased(), last = code(first)
+        for letter in letters.dropFirst() {
+            let digit = code(letter)
+            if let digit, digit != last { key.append(digit) }
+            // h and w do not separate equal codes; vowels do.
+            if !"hw".contains(letter) { last = digit }
+            if key.count == 4 { break }
+        }
+        return key
+    }
+    /// Whether the recognizer's `heard` is a near-homophone of `word`: the same Soundex key and at most two letters
+    /// longer or shorter ("Claude" heard as "cloud").
+    public static func soundsAlike(_ word: String, _ heard: String) -> Bool {
+        guard word != heard, abs(word.count - heard.count) <= 2, let key = soundKey(word) else { return false }
+        return soundKey(heard) == key
+    }
+    /// The recognized tokens with each near-homophone of one of `replacementWords` (the new words the user asked for,
+    /// normalized like `tokens`) written as that word. A recognizer spells a brand name it does not know as the common
+    /// word it sounds like ("Claude Code" as "cloud code"); the take said what it was asked to, so the word check must not
+    /// fail it for that (voice-lab §8.11). A token that is itself expected is never rewritten.
+    public static func normalizingHomophones(_ recognized: [String], expected: [String], replacementWords: Set<String>) -> [String] {
+        guard !replacementWords.isEmpty else { return recognized }
+        let expectedSet = Set(expected)
+        let candidates = replacementWords.filter(expectedSet.contains).sorted()
+        return recognized.map { heard in
+            guard !expectedSet.contains(heard) else { return heard }
+            return candidates.first { soundsAlike($0, heard) } ?? heard
+        }
+    }
+    /// The words of `text` the window's recorded words do not already say: the user's own replacement words.
+    public static func replacementWords(text: String, items: [TimedWord], window: VoiceLabWindow) -> Set<String> {
+        guard let first = items.firstIndex(where: { $0.id == window.firstWordId }),
+              let last = items.firstIndex(where: { $0.id == window.lastWordId }), first <= last else { return Set(tokens(text)) }
+        let recorded = Set(items[first...last].flatMap { tokens($0.text) })
+        return Set(tokens(text)).subtracting(recorded)
+    }
     public static func transcriptRatio(expected: [String], recognized: [String]) throws -> Double {
         guard !expected.isEmpty, expected.count <= 5_000, recognized.count <= 5_000 else { throw VoiceLabError.invalidInput }
         var previous = [Int](repeating: 0, count: recognized.count + 1)
@@ -149,11 +201,12 @@ public enum VoiceLabTakeQuality {
     public static func evaluate(expected: String, recognized: [String], mixed: [Float], sampleRate: Int,
                                 seams: [Int], sourceSeamSteps: [Double]? = nil, sourceSeamPauses: [VoiceLabSourcePause?]? = nil,
                                 generatedAfter: [Bool]? = nil, measuredSeamSteps: [Double]? = nil, measuredPauseExcesses: [Double]? = nil, speakerScore: Double?,
-                                threshold: Double, audioTags: [VoiceLabAudioTag] = []) throws -> VoiceLabTakeQAResult {
+                                threshold: Double, audioTags: [VoiceLabAudioTag] = [], replacementWords: Set<String> = []) throws -> VoiceLabTakeQAResult {
         guard speakerScore.map({ $0.isFinite && (-1...1).contains($0) }) ?? true, threshold.isFinite, (0...1).contains(threshold) else { throw VoiceLabError.invalidInput }
         let expectedTokens = tokens(expected)
-        let recognizedTokens = VoiceLabAudioTags.filterScribeEvents(recognized: recognized, expected: expectedTokens,
+        let filtered = VoiceLabAudioTags.filterScribeEvents(recognized: recognized, expected: expectedTokens,
             hasTags: !audioTags.isEmpty || !VoiceLabAudioTags.tagRanges(expected).isEmpty)
+        let recognizedTokens = normalizingHomophones(filtered, expected: expectedTokens, replacementWords: replacementWords)
         let ratio = try transcriptRatio(expected: expectedTokens, recognized: recognizedTokens)
         let peak = try VoiceLabLoudness.samplePeakDbfs(mixed)
         guard peak.isFinite else { throw VoiceLabError.invalidAudio }

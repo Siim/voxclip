@@ -1,5 +1,38 @@
 # macOS implementation contracts
 
+### 2026-11-04 — Rewrite fixes its own stuck phrases; phrase cards show only what can act
+
+- **Built.**
+  - **Automatic resolver** (`RewriteAutoFix.swift`, voice-lab.md §8.2.2, design.md R2 "Automatic fixes"). The approved Get Price (`startTakes` with no phrase) arms it for that plan. On each settle (`observeMeasuredTakes` → `advanceAutoFix`) it takes one step for the first stuck phrase (`stuckReason`):
+    - length: a measured reword from the closest take, selected or not;
+    - word check: one Try another, then a scoped reword "Avoid words that are hard to say or hear; keep the meaning." landed in the plan via `prepareRewording`;
+    - too short to check: the surrounding sentence, accepted automatically;
+    - anything else: Try another.
+
+    At most 3 rounds per phrase, then `ClipTakePlan.leaveOut` (every take kept, Undo restores). Spend is capped at max($0.10, quote): takes count their quote, AI sends count only when `sendAsksFirst`. Past the cap the footer shows [Keep fixing · ≈ $y]. One Stop (`stopAutoFix`). Before takes it also sends a collision's merge once, resolves a refused surrounding sentence while armed, retries a failed or stale re-ask once, and lets the budget advise only (`voiceBudgetBlocks`, `budgetAccepted` and [Re-voice all] deleted).
+  - **Stuck copy.** One plain reason per phrase (`stuckSentence`). The footer always names the next step (`takesNextStep`, including [Apply {k} text fixes], which completes without a discard prompt via `applyingTextFixesOnly`). Exactly one "Tell the AI…" field, scoped to every stuck phrase. Chips are named per phrase or change. Blocked changes are named ("Change 2 needs a shorter wording before takes."). A refused surrounding sentence reads "Change {n} at {m:ss}: …" with [Leave out this change] [Voice just the changed words] [✦ Rewrite without changing the sentence around it]; "Re-record this sentence instead." is gone from that copy. Chips wait under [Choose yourself…] while fixes run.
+  - **Phrase cards.** Video duration and lip sync only with a selected passing take, and only valid choices; the first valid one is chosen (`autoChooseVideo`) and reads as one line with [Change]. The status line looks forward (`phraseStatus`). Quote marks sit on the words (`AudioTagPhrase.pieces`). A voice that can't change is text. The per-card Use surrounding sentence, length recovery and priced Try another show only as fallback.
+  - **Expressions** (`updateAudioTags(_:phrase:)`). With a plan, only that phrase changes (`ClipTakePlan.prepareExpression`): old takes are marked `beforeExpression`, no discard prompt, and the whole set is re-priced before any take. While anything runs the tag shows at once with a line and is applied on settle. Click a word to place it; the default is before the first changed word.
+  - **Core.** `VoiceLabTakeQuality.normalizingHomophones` / `soundsAlike` / `replacementWords`: a Soundex near-homophone of a replacement word passes the word check (voice-lab §8.11). Media passes the replacement words.
+- **Causes verified (MVP13).**
+  - (a) Confirmed: `observeMeasuredTakes` required `phrase.selected`, and a failed take's length was read through `VoiceLabVideoDurationOptions(row:)`, which is selectable-only.
+  - (b) Confirmed: the footer's "needs a shorter wording" was another change held back by its estimate, and Scribe's homophone fails a 9-token phrase (2·8/18 < 0.9).
+  - (c), (d) Confirmed.
+  - Scope 3: (a) confirmed: discard prompt, whole plan lost. (b) confirmed: unmapped phrases returned silently, and merged phrases lost the chosen position. (c) confirmed: `isProposing` and the silent `stopWordingFit`.
+- **Deviations.**
+  - [Use take N anyway] for a word-check failure is not built: the recipe validator (both platforms) rejects a failed word check, so it would need a shared schema change. The homophone fix and the automatic rounds replace it.
+  - The clearer reword reuses the scoped re-ask prompt, because the shared fit prompt is out of scope.
+  - Widening to the whole sentence replaces that phrase's failed short takes, as the manual path does; their paid audio stays in the paid store.
+- **Verification.**
+  - With the arming, the homophone and the plan-level expression backed out, the 10 key tests fail with 31 issues.
+  - Focused passes: ChangeList, RewriteScope, ClipTakePlan, RewriteSpeechContextReview, VideoDurationChoice, AudioTagPhrase, TakeFailurePresentation, RewriteGeneration, RewriteLipsyncSession, DirectorTask and PopUpInventory pass 255/255; Core VoiceLabTakeQuality passes 7/7.
+  - `rightColumnLayout` passes with new variants `rewrite-takes-{waiting,all-failed,fixing,fixed,kept-original}`: 222 measurements, 97 heights, 126 captures.
+- **Owed / next.**
+  - Windows twin.
+  - Real-window `-uiSelfTest`, `-sceneAudit`, documentScene and VoiceOver acceptance.
+  - A live run on the MVP13 clip.
+  - A shared homophone fixture for both Cores.
+  - A shared prompt line for "easier words" if the fit prompt should carry it.
 ### 2026-11-04 — Natural-pacing review fixes: paid-rate cut, borrowed reserve, empty pause classes
 
 - **Built.** `VoiceLabNaturalPacing.fit` sizes the cut search from `VoiceLabVideoDurationOptions.videoDuration(fit)` × source rate, the output the options and recipe store, not `outputFrames × sourceRate / assetRate`. A 24 kHz take over an odd 48 kHz window keeps Cut after payment. The options initializer uses the same helper. `VoiceLabFitPlanner.plan` sizes each hard reserve from the window the recipe covers. When a gap seam lends samples and that grows the reserve, it re-plans with the widened duration until the reserve stops growing (a fifth of the extra each round, capped at 32 rounds). Plans without a borrow, or with a window of at least 0.7 s, are unchanged. `VoiceLabHardJoin.windowDuration(video:outDuration:)` is the validator's own widened-window arithmetic, now shared. `VoiceLabPauseDistribution.isEmpty` marks a class with no measured pauses, which shrinks only to the legacy 150 ms / 60 ms floors.
