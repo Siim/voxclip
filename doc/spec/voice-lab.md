@@ -44,7 +44,8 @@ differ fails the word check, not timing. Only an unrecovered take fails `invalid
 never run-fatal, and later phrases are sent as approved. `v4-timing-cases.json`
 (`voxclip-voice-lab-v4-timing-cases/1`, `generate_v4_timing.py`) pins 26 reply variants: 17 accepted with their
 word times (exact, normalized and tolerant paths), 2 segment refusals the take run recovers, and 7 refusals with
-their check. Windows replay is owed.
+their check. Windows Core replays all 26 through its ElevenLabs client and recovers timing the same way, with installed
+Whisper models as its on-device fallback; the Windows App does not yet wire that fallback.
 
 **The fix loop learns (§8.2.2).** Stuck phrases are classed as wording/fit (length, word check), timing,
 provider (key, credit, permission, rate, network, plan) or voice. Only wording and fit failures reword. A provider
@@ -1894,6 +1895,7 @@ A Rewrite phrase can take its words from the AI's suggestion, from the user's ty
   - Privacy: the recording stays on this Mac, in the project's Voice Lab asset folder, and is never uploaded, except to fal.ai when the user chooses lip sync for that phrase (§9). It needs no voice consent record: consent covers a clone of the voice, and this is the user speaking. Lip sync runs under the plan's own voice consent record, as for a cloned take.
 - **Stored as `kind: "recorded"`** (project schema v3). Its recipe has `voiceSource: "own"`, `voiceRefId: null`, `consentVerifiedAt: null`; provenance `provider: "microphone"`, `endpoint: "local"`, `voiceId: "own-microphone"`, `region: "local"`, `consentRecordId: null`, no pace, the recognizer as `model`, and `cost.usd: 0`. Its recipe and caption words are the recognized words with `synthetic: false`; its QA has no speaker fields and passes the word rule of a `tts` recipe. A passage still needs its room tone. Accepting only recorded segments adds no voice reference.
 - **Disclosure.** A recorded segment is real speech: it is not counted as AI-modified output, and alone it needs no AI MODIFIED label. Its lip sync, if any, is disclosed as `lipsync`.
+- **Windows (4 November 2026).** Windows Core opens, validates, renders, saves and discloses a Mac project with a `recorded` segment unchanged (`recorded-take-cases.json`, `voxclip-voice-lab-recorded-take-cases/1`, `generate_render_recorded.py`). The Windows My words and Say it myself UI is owed.
 
 ---
 
