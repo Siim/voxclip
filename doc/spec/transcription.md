@@ -995,7 +995,7 @@ Then `grouping = (.lastToken, .min, false)`, `timing = .runGrouped`, `verbatim =
 
 ### 10.6 Permission
 
-Info.plist carries `NSSpeechRecognitionUsageDescription`; the string is defined once in `doc/release.md` §2.2: "VoxClip transcribes your videos on this Mac with Apple's on-device speech recognition. Audio stays on this Mac."
+`apps/macos/Sources/VoxClip/Info.plist` carries `NSSpeechRecognitionUsageDescription`: "VoxClip recognizes speech on this Mac to transcribe your videos so you can edit them by their words, and to check the words you record for a Rewrite phrase."
 
 VoxClip does not call `SFSpeechRecognizer.requestAuthorization` up front. If analysis fails with an authorization error, it calls it once and retries. Whether on-device `SpeechAnalyzer` prompts at all is still open (section 17).
 
