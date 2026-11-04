@@ -127,7 +127,8 @@ indirect enum RewriteSmokeFit: Sendable {
 }
 
 /// How the scripted ElevenLabs answers takes in one scenario.
-/// Eleven v4 timing quirks a correct reply can have (MVP18, voice-lab §8.5), one per paid synthesis in order.
+/// Eleven v4 timing quirks a correct reply can have (MVP18, voice-lab §8.5), one per paid synthesis, cycling: every
+/// take has one, as every take in the user's run did.
 enum RewriteSmokeTimingQuirk: Sendable {
     /// Null `alignment`; `normalized_alignment` lowercases, leads with a space and ends with a newline.
     case normalizedOnly
@@ -149,8 +150,9 @@ struct RewriteSmokeVoiceScript: Sendable {
     var lengthFactors: [Double] = []
     /// Word-check transcript substitutions, lowercased: "claude code" heard as "cloud code".
     var heard: [String: String] = [:]
-    /// Quirky v4 timing for the first syntheses, in order.
+    /// Quirky v4 timing for every synthesis, cycling in order.
     var quirks: [RewriteSmokeTimingQuirk] = []
+    var quirkIndex = 0
     /// The length that fits each phrase, keyed by its words without tags; the harness fills it as the plan prepares.
     var fitting: [String: Double] = [:]
     /// Paid synthesis requests and word checks answered.
@@ -285,7 +287,11 @@ final class RewriteSmokeHTTP: URLProtocol, @unchecked Sendable {
         }
         var reply: [String: Any] = ["audio_base64": pcm.base64EncodedString(),
             "alignment": ["characters": characters, "character_start_times_seconds": starts, "character_end_times_seconds": ends]]
-        let quirk = Self.script.withLock { state in state.quirks.isEmpty ? nil : state.quirks.removeFirst() }
+        let quirk = Self.script.withLock { state -> RewriteSmokeTimingQuirk? in
+            guard !state.quirks.isEmpty else { return nil }
+            defer { state.quirkIndex += 1 }
+            return state.quirks[state.quirkIndex % state.quirks.count]
+        }
         switch quirk {
         case .normalizedOnly?:
             characters = [" "] + characters.map { $0.lowercased() } + ["\n"]
