@@ -16,7 +16,7 @@
                 <NavigationViewItem Content="About" Tag="About" Icon="Help"/>
             </NavigationView.MenuItems>
             <ScrollViewer x:Name="SettingsContent" HorizontalScrollBarVisibility="Disabled">
-                <StackPanel x:Name="Body" Padding="28,16,28,32" Spacing="20" MaxWidth="680" HorizontalAlignment="Stretch"/>
+                <StackPanel x:Name="Body" Padding="28,16,28,32" Spacing="{StaticResource VcSpacingSectionGap}" MaxWidth="680" HorizontalAlignment="Stretch"/>
             </ScrollViewer>
         </NavigationView>
     </Grid>
