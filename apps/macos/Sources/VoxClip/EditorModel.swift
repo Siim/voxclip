@@ -72,6 +72,8 @@ struct EditorRenderSnapshot {
         return .transcribing(fraction: progressStage == .transcribing ? progressFraction : nil, stage: progressStage)
     }
     let sendConfirmation = ConnectorConfirmation()
+    /// The clip style card and Claude's caption pick (design.md §6.9; EditorModel+ClipStyle.swift).
+    let clipStyleState = ClipStyleState()
     var connectorSendVerb = "Rewrite"
     @ObservationIgnored lazy var transcription = InlineTranscription(model: self)
     var contextDemoSession: ContextDemoSession?
@@ -1319,7 +1321,8 @@ struct EditorRenderSnapshot {
     func setStyle(_ id: String) {
         if id == "off", project.captions.styleId != "off" { lastStyleId = project.captions.styleId }
         else if id != "off" { lastStyleId = id }
-        var next = project; next.captions.styleId = id; replace(next, name: "Change caption style")
+        // A style the user chooses fixes the clip style's captions, so Claude's picks never override it (design.md §6.9).
+        var next = project; next.captions.styleId = id; next.clipStyle = next.clipStyle?.fixingCaptions(.init(raw: id)); replace(next, name: "Change caption style")
     }
     func setCaptionsEnabled(_ enabled: Bool) {
         guard enabled else { setStyle("off"); return }

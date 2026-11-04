@@ -234,20 +234,4 @@ public struct ClipStyleCatalog: Sendable, Equatable {
         let excluded = Set(preset(style.preset).excludeCaptionTags)
         return library.filter { Set($0.tags).isDisjoint(with: excluded) }.sorted { ($0.order, $0.id) < ($1.order, $1.id) }
     }
-
-    /// The card's rows, in order (design.md §6.9): Captions, Music, Length, Shape, Rewording.
-    public func rows(_ style: ClipStyle, styleName: (String) -> String?) -> [(label: String, value: String)] {
-        let captions: String
-        switch style.captions {
-        case .auto: captions = "Auto · Claude picks per clip"
-        case .off: captions = "Off"
-        case .style(let id): captions = styleName(id) ?? id
-        }
-        let musicOption = music.first { $0.id == style.music.rawValue }
-        let musicText = [musicOption?.label, musicOption?.detail].compactMap { $0 }.joined(separator: " · ")
-        let wording = rewording.first { $0.id == style.rewording.rawValue }?.label ?? style.rewording.rawValue
-        return [("Captions", captions), ("Music", musicText.isEmpty ? style.music.rawValue : musicText),
-                ("Length", "Up to \(style.maxLengthSec) s"), ("Shape", style.shapes.map(\.rawValue).joined(separator: " and ")),
-                ("Rewording", wording)]
-    }
 }

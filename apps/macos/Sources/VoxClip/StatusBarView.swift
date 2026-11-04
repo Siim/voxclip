@@ -17,11 +17,11 @@ struct StatusText: Equatable {
 struct StatusItem: Equatable {
     /// The items, in the bar's order: harness, billing and task lead; summary, frame and export trail.
     enum Kind: String, CaseIterable {
-        case harness, billing, task, summary, frame, spend, export
+        case harness, billing, task, summary, clipStyle, frame, spend, export
         static let leading: [Kind] = [.harness, .billing, .task]
-        static let trailing: [Kind] = [.summary, .frame, .spend, .export]
+        static let trailing: [Kind] = [.summary, .clipStyle, .frame, .spend, .export]
         /// What a narrow bar drops first. The summary never goes; it truncates last.
-        static let dropOrder: [Kind] = [.billing, .spend, .frame, .export, .harness, .task]
+        static let dropOrder: [Kind] = [.billing, .spend, .clipStyle, .frame, .export, .harness, .task]
     }
     /// What draws before the text: the AI's 6 pt dot (a ring before detection), a 13 pt symbol, or an 11 pt spinner.
     enum Lead: Equatable { case none, dot(token: String, filled: Bool), symbol(String), spinner }
@@ -61,6 +61,7 @@ struct StatusBarContent: Equatable {
         content.taskSince = task?.since
         content.items[.summary] = editor.statusSummary
         content.items[.frame] = editor.statusFrame
+        content.items[.clipStyle] = editor.statusClipStyle
         content.items[.export] = editor.statusExport
         return content
     }
@@ -491,6 +492,9 @@ enum StatusBarMetrics {
         show(StatusBarContent.make(app: shell.app, editor: editor, now: now()))
         itemView(.task)?.onPress = editor?.statusRewriteFailure != nil && content[.task] == editor?.statusRewriteFailure
             ? { [weak self] in self?.shell.showRewriteFailure() } : nil
+        // "Style: Auto · ≤60 s · 16:9+9:16" reopens the clip style card above the clip list (design.md §6.9).
+        itemView(.clipStyle)?.onPress = editor?.capabilities.edit == true && content[.clipStyle] != nil
+            ? { [weak self] in self?.editor?.reopenClipStyleCard() } : nil
         frameButton.show(content[.frame] ?? StatusItem(kind: .frame, parts: [], spoken: ""), aspect: editor?.project.export.aspect ?? .source,
                          canChange: editor?.canChangeFrame ?? false)
     }
