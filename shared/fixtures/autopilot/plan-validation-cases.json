@@ -59,7 +59,7 @@
    },
    {
     "id": "w7",
-    "text": "Software",
+    "text": "Coffee",
     "kind": "word",
     "start": 3.1,
     "end": 3.6
@@ -80,7 +80,7 @@
    },
    {
     "id": "w10",
-    "text": "solved,",
+    "text": "great,",
     "kind": "word",
     "start": 3.8,
     "end": 4.3
@@ -101,7 +101,7 @@
    },
    {
     "id": "w13",
-    "text": "business",
+    "text": "sleep",
     "kind": "word",
     "start": 4.9,
     "end": 5.4
@@ -115,7 +115,7 @@
    },
    {
     "id": "w15",
-    "text": "not.",
+    "text": "better.",
     "kind": "word",
     "start": 5.5,
     "end": 5.9
@@ -157,7 +157,7 @@
    },
    {
     "id": "w21",
-    "text": "make",
+    "text": "water",
     "kind": "word",
     "start": 7.4,
     "end": 7.6
@@ -171,7 +171,7 @@
    },
    {
     "id": "w23",
-    "text": "deals",
+    "text": "plants",
     "kind": "word",
     "start": 7.7,
     "end": 8.1
@@ -230,7 +230,7 @@
     29
    ],
    "edits": {},
-   "transcript": "<transcript>\n0:00 [0]So [1]um(filler) [2]the [3]big [4]idea [5]is [6]simple.\n(pause 1.2 s after [6])\n0:03 [7]Software [8]is [9]is [10]solved, [11]uh(filler) [12]but [13]business [14]is [15]not.\n0:06 [16](laughter) [17]You [18]still [19]need [20]to [21]make [22]the [23]deals [24]one [25]by [26]one.\n(pause 1.5 s after [26])\n0:10 [27]That's [28]the [29]job.\n</transcript>"
+   "transcript": "<transcript>\n0:00 [0]So [1]um(filler) [2]the [3]big [4]idea [5]is [6]simple.\n(pause 1.2 s after [6])\n0:03 [7]Coffee [8]is [9]is [10]great, [11]uh(filler) [12]but [13]sleep [14]is [15]better.\n0:06 [16](laughter) [17]You [18]still [19]need [20]to [21]water [22]the [23]plants [24]one [25]by [26]one.\n(pause 1.5 s after [26])\n0:10 [27]That's [28]the [29]job.\n</transcript>"
   },
   {
    "id": "edited",
@@ -246,10 +246,10 @@
      "pause-after-w26"
     ],
     "corrections": {
-     "w13": "commerce"
+     "w13": "naps"
     }
    },
-   "transcript": "<transcript>\n0:00 [0]So [2]the [3]big [4]idea [5]is [6]simple.\n(pause 1.2 s after [6])\n0:03 [7]Software [8]is [9]is [10]solved, [11]uh(filler) [12]but [13]commerce [14]is [15]not.\n0:06 [16](laughter) [17]You [18]still [19]need [20]to [21]make [22]the [23]deals [24]one [25]by [26]one.\n0:10 [27]That's [28]the [29]job.\n</transcript>"
+   "transcript": "<transcript>\n0:00 [0]So [2]the [3]big [4]idea [5]is [6]simple.\n(pause 1.2 s after [6])\n0:03 [7]Coffee [8]is [9]is [10]great, [11]uh(filler) [12]but [13]naps [14]is [15]better.\n0:06 [16](laughter) [17]You [18]still [19]need [20]to [21]water [22]the [23]plants [24]one [25]by [26]one.\n0:10 [27]That's [28]the [29]job.\n</transcript>"
   }
  ],
  "cases": [
@@ -263,8 +263,8 @@
    "reply": {
     "startWord": 0,
     "endWord": 29,
-    "title": "Software is solved",
-    "hook": "Software is solved. Business isn't.",
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
     "cuts": [
      {
       "startWord": 1,
@@ -295,8 +295,8 @@
      {
       "startWord": 17,
       "endWord": 23,
-      "text": "You still need to close the deals",
-      "reason": "close is the verb"
+      "text": "You still need to feed the plants",
+      "reason": "feed is the verb"
      }
     ],
     "captionStyle": "vox-bold",
@@ -336,13 +336,13 @@
       "reason": "the contrast"
      }
     ],
-    "postText": "Software is solved. Business isn't.",
+    "postText": "Coffee is great. Sleep is better.",
     "score": 8,
     "verdict": "post",
     "scoreReason": "A clear contrast with a payoff.",
     "questions": [
      {
-      "question": "Is it telcos?",
+      "question": "Is it plants?",
       "answer": "Yes",
       "options": [
        "Yes",
@@ -380,7 +380,7 @@
      [
       17,
       23,
-      "You still need to close the deals"
+      "You still need to feed the plants"
      ]
     ],
     "captions": {
@@ -415,8 +415,8 @@
       1.2
      ]
     ],
-    "title": "Software is solved",
-    "hook": "Software is solved. Business isn't.",
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
     "score": 8,
     "verdict": "post",
     "questions": 1,
@@ -433,8 +433,8 @@
    "reply": {
     "startWord": -5,
     "endWord": 40,
-    "title": "Software is solved",
-    "hook": "Software is solved. Business isn't.",
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
     "cuts": [
      {
       "startWord": 40,
@@ -500,7 +500,7 @@
       "reason": ""
      }
     ],
-    "postText": "Software is solved. Business isn't.",
+    "postText": "Coffee is great. Sleep is better.",
     "score": 8,
     "verdict": "post",
     "scoreReason": "A clear contrast with a payoff.",
@@ -546,8 +546,8 @@
     ],
     "musicPick": 0,
     "zooms": [],
-    "title": "Software is solved",
-    "hook": "Software is solved. Business isn't.",
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
     "score": 8,
     "verdict": "post",
     "questions": 0,
@@ -589,8 +589,8 @@
    "reply": {
     "startWord": 0,
     "endWord": 29,
-    "title": "Software is solved",
-    "hook": "Software is solved. Business isn't.",
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
     "cuts": [
      {
       "startWord": 18,
@@ -635,13 +635,13 @@
      {
       "startWord": 17,
       "endWord": 23,
-      "text": "You still need to close the deals",
+      "text": "You still need to feed the plants",
       "reason": ""
      },
      {
       "startWord": 20,
       "endWord": 25,
-      "text": "to close those deals one by",
+      "text": "to feed those plants one by",
       "reason": ""
      }
     ],
@@ -675,7 +675,7 @@
     ],
     "musicPick": 0,
     "zooms": [],
-    "postText": "Software is solved. Business isn't.",
+    "postText": "Coffee is great. Sleep is better.",
     "score": 8,
     "verdict": "post",
     "scoreReason": "A clear contrast with a payoff.",
@@ -705,7 +705,7 @@
      [
       17,
       23,
-      "You still need to close the deals"
+      "You still need to feed the plants"
      ]
     ],
     "captions": {
@@ -734,8 +734,8 @@
     ],
     "musicPick": 0,
     "zooms": [],
-    "title": "Software is solved",
-    "hook": "Software is solved. Business isn't.",
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
     "score": 8,
     "verdict": "post",
     "questions": 0,
@@ -776,8 +776,8 @@
    "reply": {
     "startWord": 0,
     "endWord": 29,
-    "title": "Software is solved",
-    "hook": "Software is solved. Business isn't.",
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
     "cuts": [],
     "pauseCuts": [],
     "rewrites": [],
@@ -811,7 +811,7 @@
     ],
     "musicPick": 0,
     "zooms": [],
-    "postText": "Software is solved. Business isn't.",
+    "postText": "Coffee is great. Sleep is better.",
     "score": 8,
     "verdict": "post",
     "scoreReason": "A clear contrast with a payoff.",
@@ -851,8 +851,8 @@
     ],
     "musicPick": 0,
     "zooms": [],
-    "title": "Software is solved",
-    "hook": "Software is solved. Business isn't.",
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
     "score": 8,
     "verdict": "post",
     "questions": 0,
@@ -886,8 +886,8 @@
    "reply": {
     "startWord": 0,
     "endWord": 29,
-    "title": "Software is solved",
-    "hook": "Software is solved. Business isn't.",
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
     "cuts": [],
     "pauseCuts": [],
     "rewrites": [],
@@ -921,7 +921,7 @@
     ],
     "musicPick": 0,
     "zooms": [],
-    "postText": "Software is solved. Business isn't.",
+    "postText": "Coffee is great. Sleep is better.",
     "score": 8,
     "verdict": "post",
     "scoreReason": "A clear contrast with a payoff.",
@@ -961,8 +961,8 @@
     ],
     "musicPick": 0,
     "zooms": [],
-    "title": "Software is solved",
-    "hook": "Software is solved. Business isn't.",
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
     "score": 8,
     "verdict": "post",
     "questions": 0,
@@ -984,15 +984,15 @@
    "reply": {
     "startWord": 0,
     "endWord": 29,
-    "title": "Software is solved",
-    "hook": "Software is solved. Business isn't.",
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
     "cuts": [],
     "pauseCuts": [],
     "rewrites": [
      {
       "startWord": 17,
       "endWord": 23,
-      "text": "We must close deals",
+      "text": "We must feed plants",
       "reason": ""
      },
      {
@@ -1004,7 +1004,7 @@
      {
       "startWord": 12,
       "endWord": 15,
-      "text": "but see https://example.com is not.",
+      "text": "but see https://example.com is better.",
       "reason": ""
      },
      {
@@ -1050,7 +1050,7 @@
     ],
     "musicPick": 0,
     "zooms": [],
-    "postText": "Software is solved. Business isn't.",
+    "postText": "Coffee is great. Sleep is better.",
     "score": 8,
     "verdict": "post",
     "scoreReason": "A clear contrast with a payoff.",
@@ -1096,8 +1096,8 @@
     ],
     "musicPick": 0,
     "zooms": [],
-    "title": "Software is solved",
-    "hook": "Software is solved. Business isn't.",
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
     "score": 8,
     "verdict": "post",
     "questions": 0,
@@ -1131,8 +1131,8 @@
    "reply": {
     "startWord": 0,
     "endWord": 29,
-    "title": "Software is solved",
-    "hook": "Software is solved. Business isn't.",
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
     "cuts": [],
     "pauseCuts": [],
     "rewrites": [
@@ -1145,19 +1145,19 @@
      {
       "startWord": 7,
       "endWord": 10,
-      "text": "Software is now solved,",
+      "text": "Coffee is really great,",
       "reason": ""
      },
      {
       "startWord": 12,
       "endWord": 15,
-      "text": "but business still is not.",
+      "text": "but sleep is still better.",
       "reason": ""
      },
      {
       "startWord": 17,
       "endWord": 23,
-      "text": "You still need to close the deals",
+      "text": "You still need to feed the plants",
       "reason": ""
      }
     ],
@@ -1191,7 +1191,7 @@
     ],
     "musicPick": 0,
     "zooms": [],
-    "postText": "Software is solved. Business isn't.",
+    "postText": "Coffee is great. Sleep is better.",
     "score": 8,
     "verdict": "post",
     "scoreReason": "A clear contrast with a payoff.",
@@ -1213,12 +1213,12 @@
      [
       7,
       10,
-      "Software is now solved,"
+      "Coffee is really great,"
      ],
      [
       12,
       15,
-      "but business still is not."
+      "but sleep is still better."
      ]
     ],
     "captions": {
@@ -1247,8 +1247,8 @@
     ],
     "musicPick": 0,
     "zooms": [],
-    "title": "Software is solved",
-    "hook": "Software is solved. Business isn't.",
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
     "score": 8,
     "verdict": "post",
     "questions": 0,
@@ -1270,8 +1270,8 @@
    "reply": {
     "startWord": 0,
     "endWord": 29,
-    "title": "Software is solved",
-    "hook": "Software is solved. Business isn't.",
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
     "cuts": [
      {
       "startWord": "a",
@@ -1318,7 +1318,7 @@
       "reason": ""
      }
     ],
-    "postText": "Software is solved. Business isn't.",
+    "postText": "Coffee is great. Sleep is better.",
     "score": "high",
     "verdict": "maybe",
     "scoreReason": "A clear contrast with a payoff.",
@@ -1366,8 +1366,8 @@
       1.35
      ]
     ],
-    "title": "Software is solved",
-    "hook": "Software is solved. Business isn't.",
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
     "score": 5,
     "verdict": "casualPost",
     "questions": 0,
@@ -1433,8 +1433,8 @@
    "reply": {
     "startWord": 27,
     "endWord": 29,
-    "title": "Software is solved",
-    "hook": "Software is solved. Business isn't.",
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
     "cuts": [
      {
       "startWord": 27,
@@ -1475,7 +1475,7 @@
     ],
     "musicPick": 0,
     "zooms": [],
-    "postText": "Software is solved. Business isn't.",
+    "postText": "Coffee is great. Sleep is better.",
     "score": 8,
     "verdict": "post",
     "scoreReason": "A clear contrast with a payoff.",
@@ -1515,8 +1515,8 @@
     ],
     "musicPick": 0,
     "zooms": [],
-    "title": "Software is solved",
-    "hook": "Software is solved. Business isn't.",
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
     "score": 8,
     "verdict": "post",
     "questions": 0,
@@ -1551,7 +1551,7 @@
     "music": [],
     "musicPick": 0,
     "zooms": [],
-    "postText": "Software is solved. Business isn't.",
+    "postText": "Coffee is great. Sleep is better.",
     "score": 8,
     "verdict": "post",
     "scoreReason": "A clear contrast with a payoff.",
@@ -1575,7 +1575,7 @@
     "music": [],
     "musicPick": null,
     "zooms": [],
-    "title": "You still need to make the deals",
+    "title": "You still need to water the plants",
     "hook": "Hook",
     "score": 8,
     "verdict": "post",
@@ -1595,8 +1595,8 @@
      {
       "startWord": 0,
       "endWord": 26,
-      "title": "Software is solved",
-      "hook": "Software is solved. Business isn't.",
+      "title": "Coffee is great",
+      "hook": "Coffee is great. Sleep is better.",
       "cuts": [],
       "pauseCuts": [],
       "rewrites": [],
@@ -1630,7 +1630,7 @@
       ],
       "musicPick": 0,
       "zooms": [],
-      "postText": "Software is solved. Business isn't.",
+      "postText": "Coffee is great. Sleep is better.",
       "score": 8,
       "verdict": "post",
       "scoreReason": "A clear contrast with a payoff.",
@@ -1639,8 +1639,8 @@
      {
       "startWord": 17,
       "endWord": 29,
-      "title": "Software is solved",
-      "hook": "Software is solved. Business isn't.",
+      "title": "Coffee is great",
+      "hook": "Coffee is great. Sleep is better.",
       "cuts": [],
       "pauseCuts": [],
       "rewrites": [],
@@ -1674,7 +1674,7 @@
       ],
       "musicPick": 0,
       "zooms": [],
-      "postText": "Software is solved. Business isn't.",
+      "postText": "Coffee is great. Sleep is better.",
       "score": 8,
       "verdict": "post",
       "scoreReason": "A clear contrast with a payoff.",
@@ -1683,8 +1683,8 @@
      {
       "startWord": 27,
       "endWord": 29,
-      "title": "Software is solved",
-      "hook": "Software is solved. Business isn't.",
+      "title": "Coffee is great",
+      "hook": "Coffee is great. Sleep is better.",
       "cuts": [],
       "pauseCuts": [],
       "rewrites": [],
@@ -1718,7 +1718,7 @@
       ],
       "musicPick": 0,
       "zooms": [],
-      "postText": "Software is solved. Business isn't.",
+      "postText": "Coffee is great. Sleep is better.",
       "score": 8,
       "verdict": "post",
       "scoreReason": "A clear contrast with a payoff.",
@@ -1727,8 +1727,8 @@
      {
       "startWord": "x",
       "endWord": 29,
-      "title": "Software is solved",
-      "hook": "Software is solved. Business isn't.",
+      "title": "Coffee is great",
+      "hook": "Coffee is great. Sleep is better.",
       "cuts": [],
       "pauseCuts": [],
       "rewrites": [],
@@ -1762,7 +1762,7 @@
       ],
       "musicPick": 0,
       "zooms": [],
-      "postText": "Software is solved. Business isn't.",
+      "postText": "Coffee is great. Sleep is better.",
       "score": 8,
       "verdict": "post",
       "scoreReason": "A clear contrast with a payoff.",

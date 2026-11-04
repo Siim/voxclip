@@ -217,7 +217,7 @@ import Testing
         let edits = ProjectEdits(pauseThresholdSeconds: 1, cutWordIds: ["w19"], cutPauseIds: ["pause-after-w6"])
         let context = try Self.context(scope: 0...29, edits: edits)
         let reply = JSONValue.object(["rewrites": .array([.object(["startWord": .number(17), "endWord": .number(23),
-            "text": .string("You still need to close the deals"), "reason": .string("")])]),
+            "text": .string("You still need to feed the plants"), "reason": .string("")])]),
             "pauseCuts": .array([.object(["afterWord": .number(6), "reason": .string("")])]),
             "zooms": .array([.object(["word": .number(19), "untilWord": .number(20), "scale": .number(1.2), "reason": .string("")])])])
         let plan = try #require(ClipAutopilotValidator.plan(reply, context: context))
@@ -281,10 +281,10 @@ import Testing
         let operations = try ClipAutopilotMapping.operations(for: plan, clipID: "c1", project: project, fonts: fonts)
         #expect(operations.map(\.id) == ["clip", "title", "cut-0", "cut-2", "pause-0", "rewrite-0", "captions", "zoom-0", "music", "hook", "post"])
         #expect(operations[0].action == .edit(.updateClip(id: "c1", startIndex: 2, endIndex: 29)))
-        #expect(operations[1].action == .edit(.renameClip(id: "c1", title: "Software is solved")))
+        #expect(operations[1].action == .edit(.renameClip(id: "c1", title: "Coffee is great")))
         #expect(operations[2].action == .edit(.cutSelection(ids: ["w1"])))
         #expect(operations[4].action == .edit(.cutSelection(ids: ["pause-after-w6"])))
-        #expect(operations[5].action == .rewrite(scope: .selection(17...23), text: "You still need to close the deals"))
+        #expect(operations[5].action == .rewrite(scope: .selection(17...23), text: "You still need to feed the plants"))
         guard case .captions(let settings, let pending) = operations[6].action else { Issue.record("no captions"); return }
         #expect(settings.styleId == "vox-bold")
         #expect(settings.overrides == ["text": .object(["transform": .string("uppercase")]), "layout": .object(["maxWords": .number(3)])])
@@ -297,10 +297,10 @@ import Testing
         let (applied, left) = try ClipAutopilotMapping.apply(operations, to: project)
         #expect(Set(applied.edits.cutWordIds) == ["w1", "w9", "w11"])
         #expect(applied.edits.cutPauseIds == ["pause-after-w6"])
-        #expect(applied.edits.clips.first?.startWordId == "w2" && applied.edits.clips.first?.title == "Software is solved")
+        #expect(applied.edits.clips.first?.startWordId == "w2" && applied.edits.clips.first?.title == "Coffee is great")
         #expect(applied.captions.styleId == "vox-bold")
         #expect(applied.motionCues.map(\.id) == ["c1-zoom-0"])
-        #expect(applied.share.captions["c1"] == "Software is solved. Business isn't.")
+        #expect(applied.share.captions["c1"] == "Coffee is great. Sleep is better.")
         #expect(left.map(\.decision) == [.rewrite, .music, .hook])
         try ProjectValidation.validateModel(applied)
     }
@@ -312,7 +312,7 @@ import Testing
         let project = try Self.project(clips: [])
         let operations = try ClipAutopilotMapping.operations(for: plan, clipID: "autopilot-1", project: project, fonts: try ClipAutopilotFonts.load(shared: shared))
         guard case .edit(.addClip(let clip)) = operations[0].action else { Issue.record("no clip"); return }
-        #expect(clip.id == "autopilot-1" && clip.origin == .ai && clip.title == "Software is solved")
+        #expect(clip.id == "autopilot-1" && clip.origin == .ai && clip.title == "Coffee is great")
         guard case .captions(let settings, let pending) = try #require(operations.first { $0.decision == .captions }).action else { return }
         #expect(pending == nil)
         #expect(settings.overrides["font"] == .object(["file": .string("Montserrat-Black.ttf"), "family": .string("Montserrat"), "weight": .number(900)]))
