@@ -24,8 +24,8 @@ enum TimelineMetrics {
     static let reach: CGFloat = 5
     static let overview = Row(y: 0, height: 24)
     static let ruler = Row(y: 24, height: 22)
-    /// V1, A1, CC and FX at the default track height (M).
-    static let tracks = [Row(y: 47, height: 36), Row(y: 84, height: 44), Row(y: 129, height: 24), Row(y: 154, height: 24)]
+    /// V1, A1, CC, FX and M1 at the default track height (M).
+    static let tracks = [Row(y: 47, height: 36), Row(y: 84, height: 44), Row(y: 129, height: 24), Row(y: 154, height: 24), Row(y: 179, height: 24)]
     static func rows(_ height: TrackHeight) -> [Row] {
         var y: CGFloat = 47
         return height.heights.map { value in
@@ -108,6 +108,8 @@ struct TimelineContent: Equatable {
     var changes: [ClosedRange<Double>] = []
     var cues: [TimelineCue] = []
     var motionCues: [TimelineMotionCue] = []
+    /// M1: the track under the open clip, on the axis.
+    var music: TimelineMusic?
     var clips: [TimelineOverviewClip] = []
     /// The scope's pieces and the take's waveform, for A1, and on Source the cut ranges in it.
     var pieces = TimelinePieces([])
@@ -126,8 +128,10 @@ struct TimelineContent: Equatable {
     let video = VideoLane()
     let captions = CaptionLane()
     let motion = MotionLane()
+    let music = MusicLane()
     let trackClip = TimelineTrackClip()
-    let headers = [TrackHeaderView(id: "V1", name: "Video"), TrackHeaderView(id: "A1", name: "Voice"), TrackHeaderView(id: "CC", name: "Captions"), TrackHeaderView(id: "FX", name: "Motion")]
+    let headers = [TrackHeaderView(id: "V1", name: "Video"), TrackHeaderView(id: "A1", name: "Voice"), TrackHeaderView(id: "CC", name: "Captions"),
+                   TrackHeaderView(id: "FX", name: "Motion"), TrackHeaderView(id: "M1", name: "Music")]
     let horizontalScroller = TimelineScroller()
     let verticalScroller = TimelineScroller()
     var trackHeight: TrackHeight { shell?.layout.trackHeight ?? .medium }
@@ -164,7 +168,7 @@ struct TimelineContent: Equatable {
         identifier = NSUserInterfaceItemIdentifier("voxclip.timeline.canvas")
         for lane in [overview, ruler, bed] as [NSView] { addSubview(lane) }
         addSubview(trackClip)
-        for lane in [video, audio, captions, motion] as [NSView] { trackClip.addSubview(lane) }
+        for lane in [video, audio, captions, motion, music] as [NSView] { trackClip.addSubview(lane) }
         for header in headers { trackClip.addSubview(header) }
         headers[1].action = { [weak model] in
             guard let model else { return }
@@ -176,6 +180,10 @@ struct TimelineContent: Equatable {
             model.setCaptionsEnabled(model.project.captions.styleId == "off")
         }
         headers[3].action = { [weak self] in self?.openMotionCue() }
+        headers[4].action = { [weak self] in
+            guard let self else { return }
+            (self.shell ?? self.model.app.shell).choosePanelJob(.captions, for: self.model)
+        }
         addSubview(overlay)
         addSubview(horizontalScroller); addSubview(verticalScroller)
         horizontalScroller.changed = { [weak self] fraction in self?.scroll(to: fraction) }
@@ -245,12 +253,12 @@ struct TimelineContent: Equatable {
         }
         trackClip.frame = NSRect(x: 0, y: TimelineMetrics.ruler.maxY, width: width, height: trackRoom)
         verticalOffset = verticalOffset.clamped(to: 0...verticalMaximum)
-        for (index, lane) in ([video, audio, captions, motion] as [TimelineLane]).enumerated() {
+        for (index, lane) in ([video, audio, captions, motion, music] as [TimelineLane]).enumerated() {
             let row = rows[index]
             lane.frame = NSRect(x: 0, y: row.y - TimelineMetrics.ruler.maxY - verticalOffset, width: width, height: row.height)
             headers[index].frame = NSRect(x: 0, y: lane.frame.minY, width: headerWidth - 1, height: row.height)
         }
-        for lane in [overview, ruler, bed, video, audio, captions, motion] as [TimelineLane] { lane.headerWidth = headerWidth }
+        for lane in [overview, ruler, bed, video, audio, captions, motion, music] as [TimelineLane] { lane.headerWidth = headerWidth }
         overlay.headerWidth = headerWidth
         overlay.line.frame.size.height = max(0, min(trackClip.frame.maxY, rows.last!.maxY - verticalOffset) - TimelineMetrics.ruler.maxY + 1)
         overlay.frame = bounds
@@ -291,6 +299,7 @@ struct TimelineContent: Equatable {
         next.words = next.waveform == nil ? model.timelineKeptWords : []
         next.cues = model.timelineCaptionCues(on: axis, removed: next.removed)
         next.motionCues = model.timelineMotionCues(on: axis)
+        next.music = model.timelineMusic(on: axis)
         video.setSource(model.timelineFilmstripSource)
         video.mediaName = model.timelineMediaName
         let previous = content
@@ -379,6 +388,7 @@ struct TimelineContent: Equatable {
         video.requestFrames()
         captions.state = CaptionLane.State(viewport: viewport, cues: content.cues, inOut: content.axis == .source ? shownInOut : nil)
         motion.state = MotionLane.State(viewport: viewport, cues: content.motionCues, hasClip: content.scope != nil)
+        music.state = MusicLane.State(viewport: viewport, music: content.music)
         updateScrollers()
         onZoom?(zoomValue)
         let top = TimelineMetrics.tracks.first?.y ?? TimelineMetrics.ruler.maxY
@@ -1290,11 +1300,61 @@ struct TimelineOverviewLabel: Equatable {
     }
 }
 
-/// The track sizes, V1/A1/CC/FX (notes.md §6).
+/// M1: the background track under the clip (doc/spec/music.md §6), its title and level, with its fades drawn as ramps.
+@MainActor final class MusicLane: TimelineLane {
+    struct State: Equatable {
+        var viewport = TimelineViewport(axis: .edited, ptPerSecond: 20, origin: -1, width: 944)
+        var music: TimelineMusic?
+    }
+    var state = State() { didSet { if state != oldValue { invalidate() } } }
+    static let emptyHint = "Add music in Captions"
+    private static let hintFont = NSFont.systemFont(ofSize: 11)
+
+    override func drawLane(in context: CGContext) {
+        let lane = CGRect(x: headerWidth, y: 0, width: max(0, bounds.width - headerWidth), height: bounds.height)
+        context.setFillColor(DesignValues.nsColor("timeline.lane").cgColor)
+        context.fill(lane)
+        context.saveGState(); context.clip(to: lane)
+        let font = Self.hintFont
+        let baseline = bounds.midY + font.xHeight / 2
+        guard let music = state.music else {
+            Self.draw(Self.emptyHint, font: font, color: DesignValues.nsColor("text.disabled"), x: headerWidth + 10, baseline: baseline)
+            context.restoreGState()
+            return
+        }
+        let lower = headerWidth + state.viewport.x(music.range.lowerBound)
+        let upper = headerWidth + state.viewport.x(music.range.upperBound)
+        let rect = CGRect(x: lower, y: 2, width: max(1, upper - lower - 1), height: max(1, bounds.height - 4))
+        let points = state.viewport.ptPerSecond
+        let fadeIn = min(rect.width / 2, CGFloat(music.fadeIn * points)), fadeOut = min(rect.width / 2, CGFloat(music.fadeOut * points))
+        let path = CGMutablePath()
+        path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX + fadeIn, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - fadeOut, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.closeSubpath()
+        context.setFillColor(DesignValues.nsColor("timeline.cue").cgColor)
+        context.addPath(path); context.fillPath()
+        context.saveGState(); context.clip(to: rect)
+        let label = "\u{266A} " + music.title + " \u{00B7} " + MusicSection.gainLabel(music.gainDb) + (music.ducking ? " \u{00B7} dips under voice" : "")
+        if rect.width > 60 {
+            Self.draw(label, font: font, color: DesignValues.nsColor("timeline.cueText"), x: max(lower, headerWidth) + 4 + fadeIn / 2, baseline: baseline)
+        }
+        context.restoreGState()
+        context.restoreGState()
+    }
+    override func isAccessibilityElement() -> Bool { true }
+    override func accessibilityRole() -> NSAccessibility.Role? { .staticText }
+    override func accessibilityLabel() -> String? {
+        state.music.map { "Music: \($0.title), \(MusicSection.gainLabel($0.gainDb))" } ?? "Music: none"
+    }
+}
+
+/// The track sizes, V1/A1/CC/FX/M1 (notes.md §6).
 enum TrackHeight: String, CaseIterable {
     case small, medium, large
     var label: String { switch self { case .small: "S"; case .medium: "M"; case .large: "L" } }
-    var heights: [CGFloat] { switch self { case .small: [28, 32, 20, 20]; case .medium: [36, 44, 24, 24]; case .large: [52, 64, 28, 28] } }
+    var heights: [CGFloat] { switch self { case .small: [28, 32, 20, 20, 20]; case .medium: [36, 44, 24, 24, 24]; case .large: [52, 64, 28, 28, 28] } }
 }
 
 @MainActor final class TimelineTrackClip: NSView {
@@ -1330,7 +1390,7 @@ enum TrackHeight: String, CaseIterable {
     func update(on: Bool, enabled: Bool) {
         self.on = on
         button.isEnabled = enabled
-        let symbol = trackID == "FX" ? "plus" : trackID == "CC" ? (on ? "eye" : "eye.slash") : (on ? "speaker.wave.1" : "speaker.slash")
+        let symbol = trackID == "FX" ? "plus" : trackID == "M1" ? "music.note" : trackID == "CC" ? (on ? "eye" : "eye.slash") : (on ? "speaker.wave.1" : "speaker.slash")
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(.init(pointSize: 12, weight: .regular))
         button.contentTintColor = DesignValues.nsColor("text.tertiary")
         button.setAccessibilityLabel("\(trackID) \(name), \(trackID == "CC" ? (on ? "shown" : "hidden") : (on ? "audible" : "muted"))")
@@ -1338,6 +1398,10 @@ enum TrackHeight: String, CaseIterable {
         if trackID == "FX" {
             button.setAccessibilityLabel("Edit clip motion cues")
             button.toolTip = "Add or edit clip motion cues"
+        }
+        if trackID == "M1" {
+            button.setAccessibilityLabel("Choose background music")
+            button.toolTip = "Choose music in the Captions panel"
         }
         needsDisplay = true
     }
