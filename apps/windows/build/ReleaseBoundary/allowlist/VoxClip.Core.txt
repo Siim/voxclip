@@ -369,6 +369,16 @@ attribute VoxClip.Core.Domain.Editing.EditSegmentKind :: field public Range @ Sy
 attribute VoxClip.Core.Domain.Editing.EditSegmentKind :: field public Word @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("word")
 attribute VoxClip.Core.Domain.Editing.EditSegmentKind @ System.Text.Json.Serialization.JsonConverterAttribute("System.Text.Json.Serialization.JsonStringEnumConverter`1[VoxClip.Core.Domain.Editing.EditSegmentKind], System.Text.Json")
 attribute VoxClip.Core.Domain.Editing.EditingAlgorithms :: method private FillerPattern() @ System.Text.RegularExpressions.GeneratedRegexAttribute("\\A(?:[Uu][Mm]+|[Uu][Hh]+|[Ee][Rr][Mm]+|[Hh][Mm][Mm]+)[,.!?]?\\z",512)
+attribute VoxClip.Core.Domain.Music.MusicLicense :: field public By @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("by")
+attribute VoxClip.Core.Domain.Music.MusicLicense :: field public Cc0 @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("cc0")
+attribute VoxClip.Core.Domain.Music.MusicLicense :: field public Generated @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("generated")
+attribute VoxClip.Core.Domain.Music.MusicLicense :: field public Own @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("own")
+attribute VoxClip.Core.Domain.Music.MusicLicense :: field public Pdm @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("pdm")
+attribute VoxClip.Core.Domain.Music.MusicLicense @ System.Text.Json.Serialization.JsonConverterAttribute("System.Text.Json.Serialization.JsonStringEnumConverter`1[VoxClip.Core.Domain.Music.MusicLicense], System.Text.Json")
+attribute VoxClip.Core.Domain.Music.MusicSource :: field public File @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("file")
+attribute VoxClip.Core.Domain.Music.MusicSource :: field public Generated @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("generated")
+attribute VoxClip.Core.Domain.Music.MusicSource :: field public Library @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("library")
+attribute VoxClip.Core.Domain.Music.MusicSource @ System.Text.Json.Serialization.JsonConverterAttribute("System.Text.Json.Serialization.JsonStringEnumConverter`1[VoxClip.Core.Domain.Music.MusicSource], System.Text.Json")
 attribute VoxClip.Core.Domain.Shared.ExportAspect :: field public Landscape @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("16:9")
 attribute VoxClip.Core.Domain.Shared.ExportAspect :: field public Portrait @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("9:16")
 attribute VoxClip.Core.Domain.Shared.ExportAspect :: field public Source @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("source")
@@ -381,8 +391,11 @@ attribute VoxClip.Core.Domain.Shared.FrameRate @ System.Text.Json.Serialization.
 attribute VoxClip.Core.Domain.Shared.Project :: property ContextDemo @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.Shared.Project :: property Extensions @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.Shared.Project :: property MotionCues @ System.Text.Json.Serialization.JsonIgnoreAttribute()
+attribute VoxClip.Core.Domain.Shared.Project :: property Music @ System.Text.Json.Serialization.JsonIgnoreAttribute()
 attribute VoxClip.Core.Domain.Shared.Project :: property PersistedMotionCues @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.Shared.Project :: property PersistedMotionCues @ System.Text.Json.Serialization.JsonPropertyNameAttribute("motionCues")
+attribute VoxClip.Core.Domain.Shared.Project :: property PersistedMusic @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.Shared.Project :: property PersistedMusic @ System.Text.Json.Serialization.JsonPropertyNameAttribute("music")
 attribute VoxClip.Core.Domain.Shared.Project :: property Title @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.Shared.Project @ System.Text.Json.Serialization.JsonUnmappedMemberHandlingAttribute(1)
 attribute VoxClip.Core.Domain.Shared.ProjectJsonContext @ System.Text.Json.Serialization.JsonSerializableAttribute("VoxClip.Core.Domain.Captions.CaptionStyle")
@@ -3968,6 +3981,86 @@ member VoxClip.Core.Domain.Editing.TimelineTick :: method public op_Equality(Vox
 member VoxClip.Core.Domain.Editing.TimelineTick :: method public op_Inequality(VoxClip.Core.Domain.Editing.TimelineTick,VoxClip.Core.Domain.Editing.TimelineTick)
 member VoxClip.Core.Domain.Editing.TimelineTick :: method public set_Major(bool)
 member VoxClip.Core.Domain.Editing.TimelineTick :: method public set_Time(double)
+member VoxClip.Core.Domain.Music.MusicAsset :: method private .ctor(VoxClip.Core.Domain.Music.MusicAsset)
+member VoxClip.Core.Domain.Music.MusicAsset :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Music.MusicAsset :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Music.MusicAsset :: method public .ctor(string,string,double)
+member VoxClip.Core.Domain.Music.MusicAsset :: method public Deconstruct(string&,string&,double&)
+member VoxClip.Core.Domain.Music.MusicAsset :: method public Equals(VoxClip.Core.Domain.Music.MusicAsset)
+member VoxClip.Core.Domain.Music.MusicAsset :: method public Equals(object)
+member VoxClip.Core.Domain.Music.MusicAsset :: method public GetHashCode()
+member VoxClip.Core.Domain.Music.MusicAsset :: method public ToString()
+member VoxClip.Core.Domain.Music.MusicAsset :: method public get_DurationSeconds()
+member VoxClip.Core.Domain.Music.MusicAsset :: method public get_File()
+member VoxClip.Core.Domain.Music.MusicAsset :: method public get_Sha256()
+member VoxClip.Core.Domain.Music.MusicAsset :: method public op_Equality(VoxClip.Core.Domain.Music.MusicAsset,VoxClip.Core.Domain.Music.MusicAsset)
+member VoxClip.Core.Domain.Music.MusicAsset :: method public op_Inequality(VoxClip.Core.Domain.Music.MusicAsset,VoxClip.Core.Domain.Music.MusicAsset)
+member VoxClip.Core.Domain.Music.MusicAsset :: method public set_DurationSeconds(double)
+member VoxClip.Core.Domain.Music.MusicAsset :: method public set_File(string)
+member VoxClip.Core.Domain.Music.MusicAsset :: method public set_Sha256(string)
+member VoxClip.Core.Domain.Music.MusicLicense :: field public By
+member VoxClip.Core.Domain.Music.MusicLicense :: field public Cc0
+member VoxClip.Core.Domain.Music.MusicLicense :: field public Generated
+member VoxClip.Core.Domain.Music.MusicLicense :: field public Own
+member VoxClip.Core.Domain.Music.MusicLicense :: field public Pdm
+member VoxClip.Core.Domain.Music.MusicLicense :: field public value__
+member VoxClip.Core.Domain.Music.MusicProject :: field private File
+member VoxClip.Core.Domain.Music.MusicProject :: field private Identifier
+member VoxClip.Core.Domain.Music.MusicProject :: field public ExportUnsupportedMessage
+member VoxClip.Core.Domain.Music.MusicProject :: method internal ValidateWire(System.Text.Json.JsonElement)
+member VoxClip.Core.Domain.Music.MusicProject :: method private Matches(string,string)
+member VoxClip.Core.Domain.Music.MusicProject :: method private Number(System.Text.Json.JsonElement)
+member VoxClip.Core.Domain.Music.MusicProject :: method private Object(System.Text.Json.JsonElement,string)
+member VoxClip.Core.Domain.Music.MusicProject :: method private Require(bool)
+member VoxClip.Core.Domain.Music.MusicProject :: method private Validate(VoxClip.Core.Domain.Music.ProjectMusic,string)
+member VoxClip.Core.Domain.Music.MusicProject :: method public Pruned(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Music.ProjectMusic>,System.Collections.Generic.IEnumerable`1<string>)
+member VoxClip.Core.Domain.Music.MusicProject :: method public Setting(VoxClip.Core.Domain.Music.ProjectMusic,string,VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Domain.Music.MusicProject :: method public Validate(VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Domain.Music.MusicSource :: field public File
+member VoxClip.Core.Domain.Music.MusicSource :: field public Generated
+member VoxClip.Core.Domain.Music.MusicSource :: field public Library
+member VoxClip.Core.Domain.Music.MusicSource :: field public value__
+member VoxClip.Core.Domain.Music.ProjectMusic :: method private .ctor(VoxClip.Core.Domain.Music.ProjectMusic)
+member VoxClip.Core.Domain.Music.ProjectMusic :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Music.ProjectMusic :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public .ctor(string,string,VoxClip.Core.Domain.Music.MusicAsset,VoxClip.Core.Domain.Music.MusicSource,string,string,VoxClip.Core.Domain.Music.MusicLicense,string,string,string,double,bool,double,double,double)
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public Deconstruct(string&,string&,VoxClip.Core.Domain.Music.MusicAsset&,VoxClip.Core.Domain.Music.MusicSource&,string&,string&,VoxClip.Core.Domain.Music.MusicLicense&,string&,string&,string&,double&,bool&,double&,double&,double&)
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public Equals(VoxClip.Core.Domain.Music.ProjectMusic)
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public Equals(object)
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public GetHashCode()
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public ToString()
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public get_Asset()
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public get_Attribution()
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public get_ClipId()
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public get_Creator()
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public get_Ducking()
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public get_FadeInSeconds()
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public get_FadeOutSeconds()
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public get_GainDb()
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public get_Id()
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public get_License()
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public get_Prompt()
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public get_Source()
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public get_SourceUrl()
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public get_StartOffsetSeconds()
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public get_Title()
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public op_Equality(VoxClip.Core.Domain.Music.ProjectMusic,VoxClip.Core.Domain.Music.ProjectMusic)
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public op_Inequality(VoxClip.Core.Domain.Music.ProjectMusic,VoxClip.Core.Domain.Music.ProjectMusic)
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public set_Asset(VoxClip.Core.Domain.Music.MusicAsset)
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public set_Attribution(string)
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public set_ClipId(string)
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public set_Creator(string)
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public set_Ducking(bool)
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public set_FadeInSeconds(double)
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public set_FadeOutSeconds(double)
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public set_GainDb(double)
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public set_Id(string)
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public set_License(VoxClip.Core.Domain.Music.MusicLicense)
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public set_Prompt(string)
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public set_Source(VoxClip.Core.Domain.Music.MusicSource)
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public set_SourceUrl(string)
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public set_StartOffsetSeconds(double)
+member VoxClip.Core.Domain.Music.ProjectMusic :: method public set_Title(string)
 member VoxClip.Core.Domain.Share.ShareDestination :: field public LinkedIn
 member VoxClip.Core.Domain.Share.ShareDestination :: field public VoxConvo
 member VoxClip.Core.Domain.Share.ShareDestination :: field public X
@@ -4467,6 +4560,7 @@ member VoxClip.Core.Domain.Shared.PreviewPosition :: method public set_EditedTim
 member VoxClip.Core.Domain.Shared.PreviewPosition :: method public set_IsPlaying(bool)
 member VoxClip.Core.Domain.Shared.PreviewPosition :: method public set_SourceTime(double)
 member VoxClip.Core.Domain.Shared.Project :: field private motionCues
+member VoxClip.Core.Domain.Shared.Project :: field private music
 member VoxClip.Core.Domain.Shared.Project :: method private .ctor(VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Domain.Shared.Project :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Shared.Project :: method private get_EqualityContract()
@@ -4488,7 +4582,9 @@ member VoxClip.Core.Domain.Shared.Project :: method public get_Id()
 member VoxClip.Core.Domain.Shared.Project :: method public get_Media()
 member VoxClip.Core.Domain.Shared.Project :: method public get_ModifiedAt()
 member VoxClip.Core.Domain.Shared.Project :: method public get_MotionCues()
+member VoxClip.Core.Domain.Shared.Project :: method public get_Music()
 member VoxClip.Core.Domain.Shared.Project :: method public get_PersistedMotionCues()
+member VoxClip.Core.Domain.Shared.Project :: method public get_PersistedMusic()
 member VoxClip.Core.Domain.Shared.Project :: method public get_SavedBy()
 member VoxClip.Core.Domain.Shared.Project :: method public get_SchemaVersion()
 member VoxClip.Core.Domain.Shared.Project :: method public get_Share()
@@ -4509,7 +4605,9 @@ member VoxClip.Core.Domain.Shared.Project :: method public set_Id(string)
 member VoxClip.Core.Domain.Shared.Project :: method public set_Media(VoxClip.Core.Domain.Shared.ProjectMedia)
 member VoxClip.Core.Domain.Shared.Project :: method public set_ModifiedAt(System.DateTimeOffset)
 member VoxClip.Core.Domain.Shared.Project :: method public set_MotionCues(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ContextDemo.MotionCue>)
+member VoxClip.Core.Domain.Shared.Project :: method public set_Music(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Music.ProjectMusic>)
 member VoxClip.Core.Domain.Shared.Project :: method public set_PersistedMotionCues(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ContextDemo.MotionCue>)
+member VoxClip.Core.Domain.Shared.Project :: method public set_PersistedMusic(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Music.ProjectMusic>)
 member VoxClip.Core.Domain.Shared.Project :: method public set_SavedBy(VoxClip.Core.Domain.Shared.SavedBy)
 member VoxClip.Core.Domain.Shared.Project :: method public set_SchemaVersion(int)
 member VoxClip.Core.Domain.Shared.Project :: method public set_Share(VoxClip.Core.Domain.Shared.ProjectShare)
@@ -12832,6 +12930,11 @@ type VoxClip.Core.Domain.Editing.TimelinePieceKind
 type VoxClip.Core.Domain.Editing.TimelinePieces
 type VoxClip.Core.Domain.Editing.TimelineRuler
 type VoxClip.Core.Domain.Editing.TimelineTick
+type VoxClip.Core.Domain.Music.MusicAsset
+type VoxClip.Core.Domain.Music.MusicLicense
+type VoxClip.Core.Domain.Music.MusicProject
+type VoxClip.Core.Domain.Music.MusicSource
+type VoxClip.Core.Domain.Music.ProjectMusic
 type VoxClip.Core.Domain.Share.ShareDestination
 type VoxClip.Core.Domain.Share.ShareDisclosure
 type VoxClip.Core.Domain.Share.ShareTextRules

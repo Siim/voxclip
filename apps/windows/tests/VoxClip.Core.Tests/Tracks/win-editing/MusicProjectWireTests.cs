@@ -68,7 +68,7 @@ public sealed class MusicProjectWireTests
         Assert.Equal(VoxClipErrorCode.ExportFailed, refusal.Code);
         Assert.Equal(MusicProject.ExportUnsupportedMessage, refusal.Message);
         Assert.Throws<VoxClipException>(() => VoiceLabRenderContract.Prepare(project, VoiceLabOutputScope.Clip("clip-main"), VoiceLabLabelPosition.TopRight));
-        Assert.True(MusicProject.HasMusic(project, "clip-main") && MusicProject.HasMusic(project, null));
+        Assert.Contains(project.Music, entry => entry.ClipId == "clip-main");
         var without = MusicProject.Setting(null, null, MusicProject.Setting(null, "clip-main", project));
         Assert.Empty(without.Music);
         VoiceLabRenderContract.RequireWindowsVisualSupport(without);

@@ -58,9 +58,6 @@ public static class MusicProject
     private static bool Matches(string? value, string pattern) => value is not null &&
         Regex.IsMatch(value, "\\A(?:" + pattern + ")\\z", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
 
-    /// <summary>Whether a render or export of this scope would need the music mix. Null clip id is the full video.</summary>
-    public static bool HasMusic(Project project, string? clipId) => project.Music.Any(entry => entry.ClipId == clipId);
-
     /// <summary>The typed rules: v4 only, clip identity, the project's own folder, one track per clip, offsets inside tracks.</summary>
     public static void Validate(Project project)
     {
@@ -144,12 +141,6 @@ public static class MusicProject
     {
         var identities = clipIds.ToHashSet(StringComparer.Ordinal);
         return music.Where(entry => entry.ClipId is null || identities.Contains(entry.ClipId)).ToArray();
-    }
-
-    /// <summary>Stops a render or export that would need the music mix.</summary>
-    public static void RequireWindowsMixSupport(Project project, string? clipId)
-    {
-        if (HasMusic(project, clipId)) throw new VoxClipException(VoxClipErrorCode.ExportFailed, ExportUnsupportedMessage);
     }
 
     private static void Object(JsonElement value, string keys)
