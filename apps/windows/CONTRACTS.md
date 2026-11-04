@@ -1,5 +1,15 @@
 # Windows fixed contracts
 
+### 2026-11-04 — Owed: Rewrite's My words and Say it myself (Mac track/v2-own-words)
+
+Mac added both options of the approved phrase-card mockup (design.md §6.3.8 "Your own words", voice-lab.md §8.13). Windows has none of it yet. Owed, in order:
+
+- **Core (blocking: Mac projects with an own take).** `VoiceLabSegmentKind.Recorded` (`"recorded"`, v3 only; the schema's v3 enum and its text/words rule already have it, `generate_render_schema.py`). Validation twins of Mac `VoiceLabRecordedTake.validate` and the edits in `VoiceLabProject.validate` (text and words as `tts`; rank required), `VoiceLabRenderValidation` (room tone for a passage; recorded provenance `microphone`/`local`/`own-microphone`/region `local`, no consent, no pace; `voiceSource: "own"`, no `voiceRefId`/`consentVerifiedAt`; no speaker QA; `cost.usd == 0`; words `synthetic: false`; the `tts` word rule), `VoiceLabRenderContract` (recorded endpoint check; a recorded segment is not AI output: disclosure only for its lip sync, kinds `["lipsync"]`), `VoiceLabOutputPlan` captions from recorded words, and `AcceptAll` with an optional voice reference. Until then Windows refuses to open a Mac project that used an own take.
+- **Core vectors.** A new shared fixture file (own schema id, not a category in an existing file) with a recorded segment's project and expected render/disclosure, replayed on both platforms.
+- **App, My words.** The segmented control, one visible field, the live "Your voice reads this…" line from the plan's estimate and verdict, ✦ Shorten/Lengthen (fills the field; inline Send for billed keys), Make take through the existing priced path, typing drops an unpaid quote, and the resolver skip (Mac `RewriteAutoFix.advanceAutoFix`, `observeMeasuredTakes`).
+- **App, Say it myself.** Recording (WASAPI), lead-in cue with headphones or a count-in, auto-stop at the gap + 1.5 s, on-device recognition (Windows.Media.SpeechRecognition or the project's Whisper model), trim/level/fit/join through the existing take processing, the take as a free take source with Use your take / Use anyway / Record again, the inline permission and no-mic states, and the Use footer without the AI label when only own takes are used.
+- **Smoke.** S-own-typed, S-own-mic, S-own-mic-misfit (Mac `DebugRewriteSmokeOwnTakes.swift`).
+
 ### 2026-11-04 — Owed from Mac "Eleven v4 timing quirks and the learning fix loop" (track/v2-v4-timing)
 
 No Windows code changed. `dialogue-cases.json`, `audio-tag-cases.json` and the fit prompt are unchanged, so every existing replay stays green. Windows owes:

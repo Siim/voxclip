@@ -5,6 +5,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 ## 0.1.0 - Unreleased
 
 - Eleven v4 takes no longer fail on harmless timing differences: a take is timed from its own word check when needed, later phrases are still sent, and automatic fixes never repeat a wording and say what they tried.
+- On Mac, each Rewrite phrase can use your own words, read by your voice, or your own take from the microphone, checked on your Mac and free.
 - On Windows, Rewrite fixes its own stuck phrases within a spending cap, offers next steps instead of dead ends, and its phrase cards show only what you can use.
 - Windows opens and saves projects with lip-synced Rewrite phrases from a Mac, accepts sound-alike spellings of your new words in the word check, and reads Rewrite's suggested next steps.
 - A take whose voice couldn't be measured is one click away (Choose Take), and a change that is still too long is priced with the others and reworded once its take is heard.
