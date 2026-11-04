@@ -10,6 +10,8 @@ internal sealed record RewriteHunkReview(VoiceLabDiffHunk Hunk, VoiceLabWindow? 
     VoiceLabFitMeterResult? Meter, string? Refusal, IReadOnlyList<int> Ordinals, VoiceLabRewriteFitResult? Fit = null)
 {
     internal IReadOnlyList<VoiceLabAudioTag> RequestAudioTags { get; init; } = [];
+    /// <summary>The earlier change this one is too close to voice separately (a placement collision that could not merge).</summary>
+    internal int? CollidesWith { get; init; }
     internal string SpokenTiming => Fit?.Copy ?? Refusal ?? "";
 }
 
@@ -34,6 +36,11 @@ internal sealed record RewriteReview(VoiceLabWordDiffResult Diff, VoiceLabPatchB
             var hunk = placement is PlacedOrRefused.Placed placedHunk ? placedHunk.Hunk : ((PlacedOrRefused.Refused)placement).Hunk;
             var indices = placement is PlacedOrRefused.Placed placedIndices ? placedIndices.Indices : [((PlacedOrRefused.Refused)placement).Index];
             var ordinals = indices.Select(index => diff.Hunks.ToList().IndexOf(included[index]) + 1).ToArray();
+            if (placement is PlacedOrRefused.Refused { Reason: VoiceLabWindowRefusal.CollidesWithChange collision })
+            {
+                reviews.Add(new(hunk, null, null, null, collision.Copy, ordinals) { CollidesWith = diff.Hunks.ToList().IndexOf(included[collision.Index]) + 1 });
+                continue;
+            }
             try
             {
                 if (placement is PlacedOrRefused.Refused refused)

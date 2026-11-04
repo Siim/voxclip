@@ -145,12 +145,14 @@ internal sealed partial class RewriteSession
         return ReaskAsync(new(instruction.Length > 40 ? instruction[..40].TrimEnd() + "…" : instruction, instruction, StuckOrdinals, RewriteBlockedReason.Asked));
     }
 
-    /// <summary>Every change a next step is about now: held back by its estimate, a refused sentence, or a phrase whose takes are stuck.</summary>
+    /// <summary>Every change a next step is about now: held back by its estimate, a placement collision (both changes), a refused
+    /// sentence, or a phrase whose takes are stuck.</summary>
     internal IReadOnlyList<int> StuckOrdinals
     {
         get
         {
             var ordinals = BlockedVoiceHunks.SelectMany(hunk => hunk.Ordinals).ToList();
+            if (Collision is { } collision) ordinals.AddRange([collision.Earlier, collision.Change]);
             if (SentenceRefusedOrdinal is { } refused) ordinals.Add(refused);
             for (var index = 0; index < generationWindows.Count; index++)
                 if (StuckReason(index) is not null && PricedVoiceHunks.ElementAtOrDefault(index) is { } phrase) ordinals.AddRange(phrase.Ordinals);

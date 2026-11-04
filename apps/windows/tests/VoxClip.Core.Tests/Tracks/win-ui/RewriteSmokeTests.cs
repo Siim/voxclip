@@ -1,5 +1,6 @@
 #if WIN_UI_TESTS
 using VoxClip.App.ViewModels;
+using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
 using Xunit;
 using static VoxClip.Core.Tests.Tracks.WinUi.RewriteAutoFixTests;
@@ -17,9 +18,11 @@ namespace VoxClip.Core.Tests.Tracks.WinUi;
 public sealed class RewriteSmokeTests
 {
     private const string Long = "a much much longer phrasing than this slot could hold";
+    /// <summary>S2's reply: words 10 and 13 change, word 11 stays (scope words 10–13 of <see cref="CloseTogether"/>).</summary>
+    private const string Close = "much better word11 nicer";
     private const string Fifteen = "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen";
 
-    public static TheoryData<string> Scenarios => new(["S1", "S3", "S4", "S5", "S6", "S7", "S8", "S9", "S10", "S11", "S12", "S13"]);
+    public static TheoryData<string> Scenarios => new(["S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9", "S10", "S11", "S12", "S13"]);
 
     [Theory]
     [MemberData(nameof(Scenarios))]
@@ -39,6 +42,23 @@ public sealed class RewriteSmokeTests
             {
                 using var smoke = new Smoke(id, new(Reply, (_, ordinals) => Rows(ordinals, "x")), new((_, _) => (Fit, Passed)));
                 await smoke.ProposeAsync();
+                await smoke.GetPriceAsync();
+                smoke.End(VoiceLabVideoMode.Source, voiced: 1);
+                return smoke;
+            }
+            case "S2":
+            {
+                // Mac S2: placement merges nearby changes when it can; here a sound between them keeps the pair apart, so change 2
+                // is refused as too close to change 1 (Mac scripts this refusal; Windows reaches it from the transcript).
+                using var smoke = new Smoke(id, new(Close, (_, ordinals) => Rows(ordinals, "x")), new((_, _) => (Fit, Passed)), last: 13, editor: CloseTogether());
+                await smoke.ProposeAsync();
+                if (smoke.Session.Collision != (2, 1)) smoke.Failures.Add($"{id}: change 2 isn't refused as too close to change 1");
+                var collision = smoke.Session.NextStepCards.SingleOrDefault(card => card.Id == "Rewrite.Steps.Collision2");
+                if (collision?.Sentence != "Change 2 is too close to change 1 to voice separately." ||
+                    !collision.Chips.Select(chip => chip.Label).SequenceEqual(["Keep original words for 2", "✦ Merge with change 1"]) ||
+                    smoke.Session.FooterStep.Line != "Change 2 needs a fix above.")
+                    smoke.Failures.Add($"{id}: the collision card or footer differs: {collision?.Sentence} {string.Join(", ", collision?.Chips.Select(chip => chip.Label) ?? [])} / {smoke.Session.FooterStep.Line}");
+                await smoke.ClickAsync("Rewrite.Chip.CollisionKeep2");
                 await smoke.GetPriceAsync();
                 smoke.End(VoiceLabVideoMode.Source, voiced: 1);
                 return smoke;
@@ -162,6 +182,19 @@ public sealed class RewriteSmokeTests
         }
     }
 
+    /// <summary>Words 10–13 within half a second, with a sound (word 12, an event) between the two changes: the diff keeps
+    /// them apart and placement cannot merge across the sound (shared window-all `all-event-prevents-merge`).</summary>
+    private static EditorViewModel CloseTogether()
+    {
+        var project = Editor().Project;
+        var words = project.Transcript!.Words.ToArray();
+        words[10] = words[10] with { Start = 11.0, End = 11.4 };
+        words[11] = words[11] with { Start = 11.401, End = 11.402 };
+        words[12] = words[12] with { Kind = WordKind.Event, Text = "[laughs]", Start = 11.403, End = 11.404 };
+        words[13] = words[13] with { Start = 11.405, End = 11.805 };
+        return new(project with { Transcript = project.Transcript with { Words = words } }, now: () => new DateTimeOffset(2026, 11, 4, 0, 0, 0, TimeSpan.Zero));
+    }
+
     private sealed class Smoke : IDisposable
     {
         private readonly string id;
@@ -172,10 +205,10 @@ public sealed class RewriteSmokeTests
         internal List<string> Log { get; } = [];
         private int step;
 
-        internal Smoke(string id, Connector connector, Runner runner)
+        internal Smoke(string id, Connector connector, Runner runner, int last = 12, EditorViewModel? editor = null)
         {
             this.id = id; this.runner = runner;
-            Session = RewriteAutoFixTests.Session(connector);
+            Session = RewriteAutoFixTests.Session(connector, last: last, editor: editor);
             Configure(Session, runner);
         }
 

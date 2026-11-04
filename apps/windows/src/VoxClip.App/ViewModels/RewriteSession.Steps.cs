@@ -1,6 +1,8 @@
 using System.Globalization;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Core.Services.LLM;
+using VoxClip.Core.Services.VoiceLab;
 
 namespace VoxClip.App.ViewModels;
 
@@ -67,6 +69,8 @@ internal sealed partial class RewriteSession
                     ])
                     : new("Rewrite.Steps.Budget", callout,
                         [new(ChooseYourselfChip, "Choose yourself…", false, () => { ShowAutoFixChoices(); return Task.CompletedTask; })], Asks: false));
+            if (Collision is { } collision && ReviewIsCurrent)
+                cards.Add(new("Rewrite.Steps.Collision" + collision.Change, CollisionSentence(collision), CollisionChips(collision)));
             if (SentenceRefusedOrdinal is { } refused && SentenceProblem == SentenceUnavailable && ReviewIsCurrent)
                 cards.Add(new("Rewrite.Steps.Sentence" + refused,
                     $"Change {refused} at {ChangeTime(refused)}: its whole sentence doesn't fit inside this clip.",
@@ -113,6 +117,33 @@ internal sealed partial class RewriteSession
         }
     }
 
+    /// <summary>A change placement refused as too close to an earlier one (Mac <c>planRefusal</c>), before takes: placement
+    /// already merges whenever the joined phrase can be placed, so no forced merge is offered.</summary>
+    internal (int Change, int Earlier)? Collision => HasPaidTakes ? null
+        : Review?.VoiceHunks.FirstOrDefault(hunk => hunk.CollidesWith is not null) is { CollidesWith: { } earlier } hunk ? (hunk.Ordinals[0], earlier) : null;
+    private static string CollisionSentence((int Change, int Earlier) collision) =>
+        $"Change {collision.Change} is too close to change {collision.Earlier} to voice separately.";
+    /// <summary>Mac <c>planSteps</c> for a collision: keep the refused change's original words, keep text fixes only, ✦ merge
+    /// the two with the shared instruction, and the reply's own suggestions.</summary>
+    private IReadOnlyList<RewriteChip> CollisionChips((int Change, int Earlier) collision)
+    {
+        var (change, earlier) = collision;
+        List<RewriteChip> chips =
+        [
+            new("Rewrite.Chip.CollisionKeep" + change, $"Keep original words for {change}", false, () => { SetChangeIncluded(change, false); return Task.CompletedTask; }),
+        ];
+        if (TextFixCount > 0)
+            chips.Add(new("Rewrite.Chip.CollisionTextFixes" + change, "Keep text fixes only", false, () => { KeepTextFixesOnly(); return Task.CompletedTask; }));
+        if (Connector is not null && earlier < change)
+        {
+            var label = $"Merge with change {earlier}";
+            chips.Add(new("Rewrite.Chip.Merge" + change, label, true,
+                () => ReaskAsync(new(label, RewriteNextActionFeedback.Merge(earlier, change, new LlmCatalog()), [earlier, change], RewriteBlockedReason.Collision))));
+        }
+        chips.AddRange(AiChips().Where(chip => chips.All(shown => shown.Title != chip.Title)));
+        return chips;
+    }
+
     /// <summary>A chip the user clicked runs the resolver's own step for that phrase; its price is on the chip, so the click is
     /// the approval and no cap applies.</summary>
     private async Task ManualStepAsync(Func<Task> step)
@@ -156,6 +187,7 @@ internal sealed partial class RewriteSession
             if (LocalAction is { } local) return new($"{local} needs no new audio.", local, RewriteFooterAction.ApplyLocal);
             if (!HasPaidTakes)
             {
+                if (Collision is { } collision) return new($"Change {collision.Change} needs a fix above.", null, RewriteFooterAction.None);
                 if (BlockedVoiceHunks.FirstOrDefault() is { } blocked)
                     return PricedVoiceHunks.Count == 0 && TextFixCount > 0
                         ? new($"Change {blocked.Ordinals[0]} needs a {(blocked.Fit?.TooLong ?? true ? "shorter" : "longer")} wording before takes. Or apply the text fixes now.", ApplyTextFixesTitle, RewriteFooterAction.ApplyTextFixes)

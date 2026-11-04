@@ -219,8 +219,8 @@ public sealed class RewriteAutoFixTests
     internal static JsonArray Rows(IReadOnlyList<int> ordinals, string text) =>
         new(ordinals.Select(ordinal => (JsonNode)new JsonObject { ["ordinal"] = ordinal, ["action"] = "reword", ["text"] = text }).ToArray());
 
-    internal static RewriteSession Session(Connector connector, int first = 10, int last = 12, string group = "local") =>
-        new(Editor(), first, last, Envelope(), new(connector, "chosen", "Stub", group, ""), consent: _ => Task.FromResult(true));
+    internal static RewriteSession Session(Connector connector, int first = 10, int last = 12, string group = "local", EditorViewModel? editor = null) =>
+        new(editor ?? Editor(), first, last, Envelope(), new(connector, "chosen", "Stub", group, ""), consent: _ => Task.FromResult(true));
 
     internal static EditorViewModel Editor()
     {
