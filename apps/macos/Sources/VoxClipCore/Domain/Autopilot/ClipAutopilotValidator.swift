@@ -165,6 +165,7 @@ public enum ClipAutopilotValidator {
             // The listed items of the range, split around every rewrite.
             var run: [Int] = []
             var trimmed = false
+            let before = pieces.count
             func close() {
                 if let first = run.first, let last = run.last {
                     pieces.append(.init(startWord: first, endWord: last, kind: kind, reason: reason.isEmpty ? kind.rawValue : reason))
@@ -176,6 +177,7 @@ public enum ClipAutopilotValidator {
                 if context.isListed(position) { run.append(position) }
             }
             close()
+            if pieces.count == before { log.drop(field, trimmed ? "inside a rewrite" : "no words of the clip"); continue }
             if trimmed { log.repair(field, "trimmed around a rewrite") }
         }
         // Merge cuts that overlap or touch in listed order; the first one's kind and reason name the merge.
@@ -229,6 +231,12 @@ public enum ClipAutopilotValidator {
             style = fallback
         }
         var font = ClipAutopilotPlan.Font(family: value[ai: "captionFont"].aiString.map(AIText.trim) ?? "", weight: integer(value[ai: "captionWeight"]) ?? -1)
+        // "Roboto 900" in the family field: the weight belongs in captionWeight.
+        if !context.allows(font), let match = font.family.wholeMatch(of: /(.+?)\s+([1-9]00)/), let weight = Int(match.2),
+           context.allows(.init(family: String(match.1), weight: weight)) {
+            font = .init(family: String(match.1), weight: weight)
+            log.repair("captionFont", "the weight was in the family name")
+        }
         if !context.allows(font) {
             let fallback = context.preference?.font.flatMap { context.allows($0) ? $0 : nil } ?? defaults.font
             log.repair("captionFont", "unknown font “\(font.family) \(font.weight)”; \(fallback.family) \(fallback.weight)")
@@ -275,7 +283,7 @@ public enum ClipAutopilotValidator {
             replyIndex.append(index)
         }
         guard !accepted.isEmpty else {
-            if value[ai: "music"] != .null { log.drop("music", "no usable suggestion") }
+            if !value[ai: "music"].aiArray.isEmpty { log.drop("music", "no usable suggestion") }
             return ([], nil)
         }
         if let wanted = integer(value[ai: "musicPick"]), let position = replyIndex.firstIndex(of: wanted) { return (accepted, position) }
@@ -301,8 +309,10 @@ public enum ClipAutopilotValidator {
                 until = min(max(until, word), span.upperBound); log.repair(field + ".untilWord", "moved inside the clip")
             }
             let start = context.words[word].start
+            let wanted = until
             while until > word && (context.words[until].end - start > limits.maxZoomSeconds || !context.isListedWord(until)) { until -= 1 }
             guard context.words[until].end - start <= limits.maxZoomSeconds else { log.drop(field, "its word is longer than a zoom"); continue }
+            if until != wanted { log.repair(field + ".untilWord", "shortened to end on word \(until)") }
             guard !accepted.contains(where: { $0.word <= until && word <= $0.untilWord }) else { log.drop(field, "overlaps another zoom"); continue }
             var scale = item[ai: "scale"].aiDouble ?? .nan
             if !scale.isFinite { scale = context.prompt.defaults.zoomScale; log.repair(field + ".scale", "unreadable; \(scale)") }

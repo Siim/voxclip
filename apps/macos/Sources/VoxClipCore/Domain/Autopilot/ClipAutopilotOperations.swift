@@ -133,16 +133,20 @@ public enum ClipAutopilotMapping {
     public static func apply(_ operations: [ClipAutopilotOperation], to project: Project) throws -> (project: Project, pending: [ClipAutopilotOperation]) {
         var result = project
         var pending: [ClipAutopilotOperation] = []
+        var cues: [MotionCue] = []
         for operation in operations {
             switch operation.action {
             case .edit(let command): try result.applyEditing(command)
             case .captions(let settings, _): result.captions = settings
-            case .motion(let cue):
-                result.motionCues.removeAll { $0.id == cue.id }
-                result.motionCues.append(cue)
+            case .motion(let cue): cues.append(cue)
             case .shareText(let clipID, let text): result.share.captions[clipID] = text
             case .rewrite, .music, .hook: pending.append(operation)
             }
+        }
+        if !cues.isEmpty {
+            // Motion cues need the v4 project; the Context demo path upgrades and checks them against the clips.
+            let kept = result.motionCues.filter { cue in !cues.contains { $0.id == cue.id } }
+            result = try ContextDemoProject.settingMotionCues(kept + cues, in: result)
         }
         return (result, pending)
     }
