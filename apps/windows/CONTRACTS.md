@@ -1,5 +1,13 @@
 # Windows fixed contracts
 
+### 2026-11-04 — Owed from Mac "A reworded phrase that drops its bridge words" (track/v2-bridge-words)
+
+No Windows code changed. `voice-rewrite-fit.json` and every replayed fixture are unchanged. Windows owes:
+
+- **Core.** `VoiceLabTakeProcessing.BridgeWords`/`KeepsBridgeWords`, shared by the preflight. `VoiceLabFitBridge` and the optional `VoiceLabFitPhrase.Bridge`, rendered from `shared/prompts/voice-rewrite-tried.json` (`promptVersion` 2) `bridge.both|leading|trailing` after the measured line and before the tried block. The tried template's SHA joins the fit fingerprint when a history or bridge words are sent. The `missingBridge` result.
+- **App resolver.** Check each measured reply with `Keeps` before it counts. A dropped reply gets one automatic re-ask in the same round, with the dropped wording in the tried history; the re-ask is an AI send under the cap, with no speech quote. A re-ask that still drops them ends the round, with "(dropped “…”, not used)" on the phrase card. A manual suggestion shows the "left out" line. `PrepareRewording` refuses a wording without the bridge words.
+- **Smoke S15** in `RewriteSmokeTests`.
+
 ### 2026-11-04 — Owed: Rewrite's My words and Say it myself (Mac track/v2-own-words)
 
 Mac added both options of the approved phrase-card mockup (design.md §6.3.8 "Your own words", voice-lab.md §8.13). Windows has none of it yet. Owed, in order:

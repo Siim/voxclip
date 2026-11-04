@@ -256,14 +256,18 @@ extension RewriteSession {
                 minimumSeconds: lower, maximumSeconds: max(lower, timing.maximumSeconds ?? timing.slotSeconds),
                 overheadSeconds: max(0, base - speech) * ratio)
             let readings = editor.changeReadings.filter { ordinals.contains($0.change.ordinal) }
-            // The loop's memory (voice-lab §8.2.2): every wording this phrase had, with its measured result.
-            let tried = triedWordings(phrase, plan: plan)
-            let request = VoiceLabFitPhrase(ordinal: ordinal, original: readings.flatMap(\.removed).joined(separator: " "),
-                proposed: phrase.text, estimateSeconds: seconds, slotSeconds: phrase.originalLength,
-                direction: suggestion.tooLong ? "shorter" : "longer", target: target,
-                measuredSeconds: suggestion.measuredSeconds, calibrated: true, tried: tried.isEmpty ? nil : tried)
+            // The loop's memory (voice-lab §8.2.2): every wording this phrase had, with its measured result. The whole
+            // phrase is reworded, so the words joining it to the recording are named as required.
+            var tried = triedWordings(phrase, plan: plan)
+            let bridge = plan.bridge(phrase: suggestion.phrase)
+            func request(_ tried: [VoiceLabFitTried]) -> VoiceLabFitPhrase {
+                VoiceLabFitPhrase(ordinal: ordinal, original: readings.flatMap(\.removed).joined(separator: " "),
+                    proposed: phrase.text, estimateSeconds: seconds, slotSeconds: phrase.originalLength,
+                    direction: suggestion.tooLong ? "shorter" : "longer", target: target,
+                    measuredSeconds: suggestion.measuredSeconds, calibrated: true, tried: tried.isEmpty ? nil : tried, bridge: bridge)
+            }
             let service = VoiceLabWordingFitService(shared: shared), language = project.transcript?.language ?? "en"
-            let quote = try await service.prepare([request], connector: connector.connector.id, model: connector.model, language: language)
+            let quote = try await service.prepare([request(tried)], connector: connector.connector.id, model: connector.model, language: language)
             guard current, wordingFit.token == token, !Task.isCancelled else { return }
             wordingFit.estimate = quote.estimate
             if automatic, !autoFixChargeSend(quote.estimate, phrase: suggestion.phrase) {
@@ -283,10 +287,45 @@ extension RewriteSession {
                 editor.llmRuns.release(lease)
                 if wordingFit.token == token { wordingFit.measuredLease = nil }
             }
-            let updates = try await service.propose([request], connector: connector.connector, model: connector.model,
+            func stillAsked() -> Bool {
+                current && wordingFit.token == token && !Task.isCancelled && takePlan === plan
+                    && plan.phrases[suggestion.phrase].selectedID == suggestion.selection
+            }
+            var updates = try await service.propose([request(tried)], connector: connector.connector, model: connector.model,
                 language: language, quote: quote, approved: true)
-            guard current, wordingFit.token == token, !Task.isCancelled, takePlan === plan,
-                  plan.phrases[suggestion.phrase].selectedID == suggestion.selection, let update = updates.first else { return }
+            guard stillAsked(), var update = updates.first else { return }
+            // A reply that dropped the bridge words can't be priced or placed, so it never counts as a round: an automatic
+            // round asks once more, free of speech cost, naming them and listing the dropped wording (voice-lab §8.2.2).
+            if !update.keepOriginal, let bridge, !bridge.keeps(update.text) {
+                let dropped = VoiceLabFitTried(text: update.text, result: "missingBridge")
+                guard automatic else {
+                    wordingFit.measured?.preparing = false
+                    wordingFit.measured?.problem = Self.droppedBridgeProblem(aiName, bridge: bridge, phrase: suggestion.phrase)
+                    showProposal()
+                    return
+                }
+                autoFix.refused[suggestion.phrase, default: []].append(dropped)
+                tried = triedWordings(phrase, plan: plan)
+                autoFix.lines[suggestion.phrase] = "Fixing phrase \(suggestion.phrase + 1): asking \(aiName) again to keep “\(bridge.display)”…"
+                let again = try await service.prepare([request(tried)], connector: connector.connector.id, model: connector.model, language: language)
+                guard stillAsked() else { return }
+                guard autoFixChargeSend(again.estimate, phrase: suggestion.phrase) else {
+                    wordingFit.measured = nil
+                    return
+                }
+                updates = try await service.propose([request(tried)], connector: connector.connector, model: connector.model,
+                    language: language, quote: again, approved: true)
+                guard stillAsked(), let retried = updates.first else { return }
+                update = retried
+                if !update.keepOriginal, !bridge.keeps(update.text) {
+                    // Still without them: this round ends, and the phrase card's "Round k of 3 · tried: …" says why.
+                    autoFix.refused[suggestion.phrase, default: []].append(VoiceLabFitTried(text: update.text, result: "missingBridge"))
+                    wordingFit.measured?.preparing = false
+                    wordingFit.measured?.problem = Self.droppedBridgeProblem(aiName, bridge: bridge, phrase: suggestion.phrase)
+                    showProposal()
+                    return
+                }
+            }
             wordingFit.measured?.keepOriginal = update.keepOriginal
             if !update.keepOriginal {
                 // An automatic round never prices a repeat, or a wording that doesn't move toward the slot; the next
@@ -302,7 +341,13 @@ extension RewriteSession {
                 }
                 wordingFit.measured?.text = update.text
                 takeQuotePhrase = suggestion.phrase
-                await plan.prepareRewording(update.text, phrase: suggestion.phrase)
+                guard await plan.prepareRewording(update.text, phrase: suggestion.phrase) else {
+                    wordingFit.measured?.text = nil
+                    wordingFit.measured?.preparing = false
+                    wordingFit.measured?.problem = "The new wording couldn't be priced."
+                    showProposal()
+                    return
+                }
             }
             wordingFit.measured?.preparing = false
             showProposal()
@@ -312,6 +357,11 @@ extension RewriteSession {
             wordingFit.measured?.problem = Self.refusal(error)
             showProposal()
         }
+    }
+
+    /// Why a reworded phrase is not voiced when the AI dropped its bridge words (voice-lab §8.2.2).
+    static func droppedBridgeProblem(_ aiName: String, bridge: VoiceLabFitBridge, phrase: Int) -> String {
+        "\(aiName) left out “\(bridge.display)”, the words that join phrase \(phrase + 1) to your recording, so its wording wasn't used."
     }
 
     /// Why an automatic round's wording is not voiced (voice-lab §8.2.2): a variant already tried, or one that does not

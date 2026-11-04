@@ -391,7 +391,12 @@ extension RewriteSession {
                     return
                 }
                 takeQuotePhrase = id
-                await plan.prepareRewording(text, phrase: id)
+                guard await plan.prepareRewording(text, phrase: id) else {
+                    if let bridge = plan.bridge(phrase: id), !bridge.keeps(text) {
+                        autoFix.refused[id, default: []].append(VoiceLabFitTried(text: text, result: "missingBridge"))
+                    }
+                    return
+                }
                 autoFix.lines[id] = "Fixing phrase \(id + 1): making a take of the new wording…"
                 await startAutomaticTakes(plan, phrase: id)
             case .keepOriginal?: giveUp(id, plan: plan)
@@ -463,6 +468,7 @@ extension RewriteSession {
         let tried = triedWordings(phrase, plan: plan)
         guard !tried.isEmpty else { return nil }
         func seconds(_ value: Double?) -> String { String(format: "%.1f s", locale: Locale(identifier: "en_US_POSIX"), value ?? 0) }
+        let bridge = plan.bridge(phrase: phrase.id)?.display
         let items = tried.suffix(4).map { row -> String in
             let result = switch row.result {
             case "tooLong": "\(seconds(row.seconds)) long"
@@ -472,6 +478,7 @@ extension RewriteSession {
             case "repeat": "repeat, not used"
             case "notShorter": "not shorter, not used"
             case "notLonger": "not longer, not used"
+            case "missingBridge": bridge.map { "dropped “\($0)”, not used" } ?? "dropped the joining words, not used"
             default: "not checked"
             }
             return "“\(row.text)” (\(result))"

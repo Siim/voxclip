@@ -5,6 +5,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 ## 0.1.0 - Unreleased
 
 - On Windows, a change refused after its takes are paid gets a fix card, Keep text fixes only applies at once, and a take whose voice couldn't be measured is one click away (Choose Take).
+- When the AI's shorter wording leaves out the words that join a phrase to your recording, Rewrite asks it again at once in the same round instead of quietly using up a try, and the phrase card says when it still left them out.
 - Eleven v4 takes no longer fail on harmless timing differences: a take is timed from its own word check when needed, later phrases are still sent, and automatic fixes never repeat a wording and say what they tried.
 - On Mac, each Rewrite phrase can use your own words, read by your voice, or your own take from the microphone, checked on your Mac and free.
 - On Windows, Rewrite fixes its own stuck phrases within a spending cap, offers next steps instead of dead ends, and its phrase cards show only what you can use.

@@ -465,12 +465,23 @@ import VoxClipMedia
         await prepareQuote(indices: [index], decoding: false, candidates: 1)
     }
 
-    func prepareRewording(_ text: String, phrase index: Int) async {
-        guard stillCurrent, phrases.indices.contains(index), !generating, !preparing, !publishing, !preparingVideo else { return }
+    /// The words a rewording of this phrase must begin and end with (voice-lab §8.4), as its take input spells them; nil
+    /// when its window has none or before the plan decoded its inputs.
+    func bridge(phrase index: Int) -> VoiceLabFitBridge? {
+        guard inputs.indices.contains(index) else { return nil }
+        return (try? VoiceLabFitBridge(input: inputs[index])).flatMap { $0 }
+    }
+
+    /// Puts a new wording on one phrase and prices a take of it. A wording without the phrase's bridge words can't be
+    /// placed or priced: it is refused, and the phrase keeps its words (false).
+    @discardableResult func prepareRewording(_ text: String, phrase index: Int) async -> Bool {
+        guard stillCurrent, phrases.indices.contains(index), !generating, !preparing, !publishing, !preparingVideo else { return false }
+        if let bridge = bridge(phrase: index), !bridge.keeps(text) { return false }
         phrases[index].audioTags = VoiceLabAudioTags.reanchored(phrases[index].audioTags, from: phrases[index].text, to: text)
         phrases[index].text = text
         clearPreparedVideo()
         await prepareQuote(indices: [index], decoding: true, candidates: 1)
+        return true
     }
 
     func keepSelectedWording(phrase index: Int) {

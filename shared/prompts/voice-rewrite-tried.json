@@ -1,8 +1,13 @@
 {
   "schemaVersion": 1,
-  "promptVersion": 1,
+  "promptVersion": 2,
   "header": "Wordings already tried for this phrase, each with its measured result. Never return any of them again, even with different case or punctuation. Move toward the slot from the closest one:",
   "line": "- “{text}”: {result}",
+  "bridge": {
+    "both": "Required: the text must begin with “{leading}” and end with “{trailing}”, exactly these words. They join this phrase to the recording around it; reword only the words between them. A text without them can't be used.",
+    "leading": "Required: the text must begin with “{leading}”, exactly these words. They join this phrase to the recording before it; reword only the words after them. A text without them can't be used.",
+    "trailing": "Required: the text must end with “{trailing}”, exactly these words. They join this phrase to the recording after it; reword only the words before them. A text without them can't be used."
+  },
   "results": {
     "tooLong": "too long by {seconds} s",
     "tooShort": "too short by {seconds} s",
@@ -11,6 +16,7 @@
     "repeat": "repeated an earlier wording, not used",
     "notShorter": "was not shorter, not used",
     "notLonger": "was not longer, not used",
+    "missingBridge": "dropped the joining words, not used",
     "unchecked": "its take could not be checked"
   }
 }

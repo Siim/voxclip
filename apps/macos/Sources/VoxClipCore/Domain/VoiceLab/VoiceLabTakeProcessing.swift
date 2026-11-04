@@ -31,14 +31,7 @@ public enum VoiceLabTakeProcessing {
         let range = Int(input.window.startSample)..<Int(input.window.endSample)
         let tokens = VoiceLabTakeQuality.tokens(input.text)
         guard !tokens.isEmpty else { throw VoiceLabError.invalidInput }
-        func bridgeTokens(_ ids: [String]) throws -> [String] {
-            try ids.flatMap { id in
-                guard !input.cutWordIDs.contains(id), let word = input.items.first(where: { $0.id == id && $0.kind == .word }) else { throw VoiceLabError.invalidInput }
-                return VoiceLabTakeQuality.tokens(word.text)
-            }
-        }
-        let leading = try bridgeTokens(input.window.leftBridgeWordIds), trailing = try bridgeTokens(input.window.rightBridgeWordIds)
-        guard Array(tokens.prefix(leading.count)) == leading, Array(tokens.suffix(trailing.count)) == trailing else { throw VoiceLabError.invalidInput }
+        guard keepsBridgeWords(input.text, bridge: try bridgeWords(input)) else { throw VoiceLabError.invalidInput }
         let level = try VoiceLabLoudness.neighbourhoodVoicedRmsDb(input.source, sampleRate: rate, window: range)
         var tone = input.cleanAudioOn ? nil : try VoiceLabRoomToneSelection.select(items: input.items, envelope: input.sourceEnvelope,
             sourceSampleRate: Double(rate), totalSamples: Int64(total),
@@ -64,6 +57,24 @@ public enum VoiceLabTakeProcessing {
             tone = try VoiceLabHardJoin.matchedRoomTone(selected, input: input, speechLevel: level)
         }
         return VoiceLabTakePreflight(sourceLevel: level, roomTone: tone)
+    }
+    /// The bridge words a take's text must begin and end with (voice-lab §8.4): the unchanged words that join the change
+    /// to the source around it, as the input's items spell them. Throws when a bridge word is cut or not a word.
+    public static func bridgeWords(_ input: VoiceLabTakeInput) throws -> (leading: [String], trailing: [String]) {
+        func texts(_ ids: [String]) throws -> [String] {
+            try ids.map { id in
+                guard !input.cutWordIDs.contains(id), let word = input.items.first(where: { $0.id == id && $0.kind == .word }) else { throw VoiceLabError.invalidInput }
+                return word.text
+            }
+        }
+        return (try texts(input.window.leftBridgeWordIds), try texts(input.window.rightBridgeWordIds))
+    }
+    /// Whether `text` begins with the leading bridge words and ends with the trailing ones, compared as the word check
+    /// compares words (case, punctuation and tags aside). A wording that drops them can't be placed or priced.
+    public static func keepsBridgeWords(_ text: String, bridge: (leading: [String], trailing: [String])) -> Bool {
+        let tokens = VoiceLabTakeQuality.tokens(text)
+        let leading = bridge.leading.flatMap(VoiceLabTakeQuality.tokens), trailing = bridge.trailing.flatMap(VoiceLabTakeQuality.tokens)
+        return !tokens.isEmpty && Array(tokens.prefix(leading.count)) == leading && Array(tokens.suffix(trailing.count)) == trailing
     }
     public static func envelope(_ samples: [Float], sampleRate: Int) -> AudioEnvelope {
         let frame = max(1, Int(EditingPrimitives.jsRound(Double(sampleRate) * 0.01)))

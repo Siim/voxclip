@@ -9,7 +9,7 @@ import VoxClipCore
 // (doc/release.md). Each scenario opens the real `RewriteSession` on a small fixture with scripted stand-ins
 // (DebugRewriteSmokeStubs.swift), clicks only what a user could click, and after every step reads the panel as it is
 // drawn: its task model and, offscreen in a window that is never shown, its view and accessibility tree. The invariants
-// I1–I7 are checked at every step (I8–I9 at the end of S10–S12) and written to rewrite-smoke.json and summary.txt.
+// I1–I7 are checked at every step (I8–I9 at the end of S10–S12 and S14–S15) and written to rewrite-smoke.json and summary.txt.
 
 @MainActor enum DebugRewriteSmoke {
     // MARK: Report
@@ -1222,6 +1222,17 @@ import VoxClipCore
                 voice: RewriteSmokeVoiceScript(offset: -0.2, quirks: [.curlyAndNewline, .otherWords, .normalizedOnly]))) { harness in
             try await harness.start()
             try await harness.finish()
+        },
+        // The measured round's first reply drops the words joining phrase 1 to the recording, so it can't be placed or
+        // priced. The free re-ask in the same round names them, its shorter wording keeps them, and the phrase is voiced.
+        Definition(id: "S15", title: "a reworded phrase that drops its bridge words is asked again and still voiced", voiced: 1,
+            fixture: Fixture(rewrites: [.passage(replace([twoChanges[0]]))], fits: [.dropsBridgeWords, .fewerWords, .fewerWords, .fewerWords],
+                voice: RewriteSmokeVoiceScript(lengthFactors: [3]))) { harness in
+            try await harness.start()
+            try await harness.finish()
+            guard await (harness.connector?.droppedBridgeReplies ?? 0) > 0 else {
+                throw Failure.setup("S15's measured round named no bridge words, so no reply dropped them")
+            }
         },
     ] + ownTakeScenarios }
 }
