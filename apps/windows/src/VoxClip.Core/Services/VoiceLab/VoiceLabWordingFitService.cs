@@ -65,7 +65,7 @@ public sealed class VoiceLabWordingFitService
             promptCap, catalog.Cap(connector, promptCap)) ?? throw LlmErrors.Create(LlmErrorKind.ContextTooLong, "", "", LlmFeature.VoiceRewrite);
         var timeout = catalog.Timeout(connector is ConnectorId.ClaudeCode or ConnectorId.Codex ? "cli" :
             connector is ConnectorId.Ollama or ConnectorId.LmStudio ? "localServer" : "cloud");
-        return new(LlmFeature.VoiceRewrite, system, cached, instruction, name, schema.DeepClone().AsObject(), maxOutput, Effort.Medium, timeout,
+        return new(LlmFeature.VoiceRewrite, system, cached, instruction, name, schema.DeepClone().AsObject(), maxOutput, EffortLevel.Decision, timeout,
             language, "voice-rewrite-fit");
     }
 

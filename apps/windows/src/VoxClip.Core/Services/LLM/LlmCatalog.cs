@@ -59,6 +59,12 @@ public sealed partial class LlmCatalog
     internal IReadOnlyList<LlmModel> Models(ConnectorId id) => Provider(id)["models"]!.AsArray().OfType<JsonObject>()
         .Select(model => new LlmModel(model["id"]!.GetValue<string>(), model["name"]!.GetValue<string>(), model["tier"]?.GetValue<string>(), model["contextTokens"]?.GetValue<int>(), ModelSource.Curated)).ToArray();
     internal string? Fallback(ConnectorId id, string model) => Provider(id)["fallbackOrder"]!.AsArray().Select(item => item!.GetValue<string>()).FirstOrDefault(item => item != model);
+    /// <summary>The connector's catalog effort levels (<c>effort.values</c>), lowercased; empty when it takes no effort.</summary>
+    internal IReadOnlyList<string> EffortLevels(ConnectorId id) => (Provider(id)["effort"]?["values"] as JsonArray ?? [])
+        .Select(value => value?.GetValue<string>().ToLowerInvariant()).OfType<string>().ToArray();
+    /// <summary>The level an AI decision feature sends on <paramref name="id"/>, from the catalog alone; null for a connector that ignores
+    /// effort (local servers, Apple, xAI). Codex shows its catalog default; a named model may list more (AI §6.9).</summary>
+    public Effort? DecisionEffort(ConnectorId id) => EffortLevel.Resolve(EffortLevel.Decision, EffortLevels(id));
     internal TimeSpan Timeout(string kind) => TimeSpan.FromSeconds(Data["policy"]!["timeoutsSeconds"]![kind]!.GetValue<double>());
     internal int Cap(ConnectorId id, int requested) => Math.Min(requested, Provider(id)["maxOutputTokensCap"]?.GetValue<int>() ?? requested);
     internal double BytesPerToken => Data["policy"]!["tokenEstimate"]!["utf8BytesPerToken"]!.GetValue<double>();

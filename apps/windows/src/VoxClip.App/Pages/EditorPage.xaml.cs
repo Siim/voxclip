@@ -143,6 +143,7 @@ public sealed partial class EditorPage : Page
         InitializeIntegratedEditor();
         SelectionChanged(this, EventArgs.Empty);
         await captions.InitializeAsync();
+        await RefreshAiStatusAsync();
         InstallAccelerators();
         if (demo) media = MediaFromProject(project);
         else if (mediaPath is not null)
@@ -388,6 +389,7 @@ public sealed partial class EditorPage : Page
             if (rediscover) _ = RediscoverRewriteAsync(session, session.GenerationWindows.ToArray());
         }
         rewrite?.SettingsChanged(App.Services.VoiceLabEnabled);
+        _ = RunAsync(RefreshAiStatusAsync, "AI status");
         if (App.Services.VoiceLabEnabled && rewrite is { IsOpen: true, Generation: null } enabled) ConfigureRewriteGeneration(enabled);
         Transcript.ApplySettings();
         SelectionChanged(this, EventArgs.Empty);

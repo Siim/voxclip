@@ -274,8 +274,10 @@ import VoxClipCore
 }
 
 /// A kept clip or suggestion: number, 36×20 frame, title and mono duration in 28 pt.
-/// Keep/Dismiss live in the clip bar, context menu and accessibility actions. A focused
-/// suggestion draws the keyboard focus ring without becoming selected.
+/// The selected row, kept or suggested, always shows ✦ Rewrite and ⋯ More in the duration's
+/// place, and hover or keyboard focus shows them on any row; the title truncates first. A
+/// suggestion's Rewrite and Export keep it first (one undo step). Keep/Dismiss also live in
+/// the clip bar. A focused suggestion draws the keyboard focus ring without becoming selected.
 @MainActor struct ClipRow: View {
     @Bindable var shell: WorkspaceShell
     let editor: EditorModel
@@ -354,14 +356,16 @@ import VoxClipCore
         .accessibilityLabel((suggested ? "Suggested clip \(number), \(title), \(SidebarStyle.spokenDuration(duration))" : "Clip \(number), \(title), \(SidebarStyle.spokenDuration(duration))") + (editor.containsAISpeech(clipID: clip.id) ? ", AI modified" : ""))
         .accessibilityHint((suggested ? reason : exportStatus.label) + (editor.containsAISpeech(clipID: clip.id) ? ", AI modified" : ""))
         .accessibilityActions {
+            if shell.canRewriteExplorerClip(clip.id) {
+                Button("Rewrite Clip \(number)") { shell.rewriteExplorerClip(clip.id) }
+            }
+            Button("Captions") { shell.captionExplorerClip(clip.id) }
+            Button("Find More Clips") { shell.findMoreClips() }.disabled(!shell.canFindMoreClips)
+            Button("Export Clip") { shell.exportExplorerClip(clip.id) }.disabled(!shell.canExportExplorerClip(clip.id))
             if suggested {
                 Button("Keep") { editor.keep(clip.id) }.disabled(!editor.capabilities.edit)
                 Button("Dismiss") { editor.dismiss(clip.id) }.disabled(!editor.capabilities.edit)
             } else {
-                if shell.canRewriteExplorerClip(clip.id) {
-                    Button("Rewrite Clip \(number)") { shell.rewriteExplorerClip(clip.id) }
-                }
-                Button("Export Clip") { editor.presentExport(clipIDs: [clip.id]) }.disabled(!editor.canExport || !editor.mediaExportable)
                 Button("Rename") { shell.beginRename(clip.id) }.disabled(!editor.capabilities.edit)
                 Button("Remove") { editor.removeClip(clip.id) }.disabled(!editor.capabilities.edit)
                 if exportStatus == .failed {
@@ -371,7 +375,7 @@ import VoxClipCore
         }
     }
 
-    var showsActions: Bool { !suggested && (shell.selection == .clip(clip.id) || hovering || focused || selectedFocused) }
+    var showsActions: Bool { shell.selection == .clip(clip.id) || hovering || focused || selectedFocused }
 
     /// A suggestion's reason and score, "8/10 · Strong hook, one idea".
     private var reason: String {
@@ -390,15 +394,17 @@ import VoxClipCore
     let clip: ClipRange
     let suggested: Bool
     var body: some View {
+        if shell.canRewriteExplorerClip(clip.id) {
+            Button("Rewrite Clip \(editor.clipNumber(clip.id) ?? 0)") { shell.rewriteExplorerClip(clip.id) }
+        }
+        Button("Captions") { shell.captionExplorerClip(clip.id) }
+        Button("Find More Clips") { shell.findMoreClips() }.disabled(!shell.canFindMoreClips)
+        Button("Export Clip…") { shell.exportExplorerClip(clip.id) }.disabled(!shell.canExportExplorerClip(clip.id))
+        Divider()
         if suggested {
             Button("Keep Clip") { editor.keep(clip.id) }.disabled(!editor.capabilities.edit)
             Button("Dismiss") { editor.dismiss(clip.id) }.disabled(!editor.capabilities.edit)
         } else {
-            if shell.canRewriteExplorerClip(clip.id) {
-                Button("Rewrite Clip \(editor.clipNumber(clip.id) ?? 0)") { shell.rewriteExplorerClip(clip.id) }
-                Divider()
-            }
-            Button("Export Clip…") { editor.presentExport(clipIDs: [clip.id]) }.disabled(!editor.canExport || !editor.mediaExportable)
             if editor.exportRowStatus(clip.id) == .failed {
                 Button("Retry export") { editor.retryExport(clip.id) }.disabled(!editor.canExport || !editor.mediaExportable)
             }

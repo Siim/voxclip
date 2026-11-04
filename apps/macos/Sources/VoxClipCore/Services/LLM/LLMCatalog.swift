@@ -44,6 +44,17 @@ extension LLMCatalog {
         connector(id)[ai: "fallbackOrder"].aiArray.compactMap(\.aiString).first { $0 != model }
     }
 
+    /// The connector's catalog effort levels (`effort.values`), lowercased; empty when it takes no effort.
+    public func effortLevels(for id: ConnectorID) -> [String] {
+        connector(id)[ai: "effort"][ai: "values"].aiArray.compactMap { $0.aiString?.lowercased() }
+    }
+
+    /// The level an AI decision feature sends on `id`, from the catalog alone: nil for a connector that ignores effort
+    /// (local servers, Apple, xAI). Codex shows its catalog default; a named model may list more (ai.md §6.9).
+    public func decisionEffort(for id: ConnectorID) -> Effort? {
+        Effort.resolved(.decision, supported: effortLevels(for: id))
+    }
+
     public func timeout(for id: ConnectorID, feature: LLMFeature) -> Duration {
         let policy = document[ai: "policy"][ai: "timeoutsSeconds"]
         let kind: String

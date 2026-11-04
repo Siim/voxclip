@@ -9961,6 +9961,7 @@ member VoxClip.Core.Services.LLM.CliLlmAdapter :: field private ClaudeGate
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: field private CodexGate
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: field private PathGate
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: field private cachedModels
+member VoxClip.Core.Services.LLM.CliLlmAdapter :: field private defaultEfforts
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: field private detected
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: field private efforts
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: field private loginPath
@@ -10132,6 +10133,7 @@ member VoxClip.Core.Services.LLM.ClipPrompts :: method internal Windows(System.C
 member VoxClip.Core.Services.LLM.ClipPrompts :: method internal get_Clips()
 member VoxClip.Core.Services.LLM.ClipPrompts :: method internal get_Tighten()
 member VoxClip.Core.Services.LLM.ClipPrompts :: method internal get_ValidationLimits()
+member VoxClip.Core.Services.LLM.ClipPrompts :: method private GenerationEffort(System.Text.Json.Nodes.JsonNode)
 member VoxClip.Core.Services.LLM.ClipPrompts :: method public .ctor(VoxClip.Core.Services.LLM.LlmCatalog)
 member VoxClip.Core.Services.LLM.ConnectorId :: field public Anthropic
 member VoxClip.Core.Services.LLM.ConnectorId :: field public AppleFoundation
@@ -10279,8 +10281,14 @@ member VoxClip.Core.Services.LLM.CostEstimate :: method public set_Units(double)
 member VoxClip.Core.Services.LLM.CostEstimate :: method public set_Usd(System.Nullable`1<System.Decimal>)
 member VoxClip.Core.Services.LLM.Effort :: field public High
 member VoxClip.Core.Services.LLM.Effort :: field public Low
+member VoxClip.Core.Services.LLM.Effort :: field public Max
 member VoxClip.Core.Services.LLM.Effort :: field public Medium
+member VoxClip.Core.Services.LLM.Effort :: field public XHigh
 member VoxClip.Core.Services.LLM.Effort :: field public value__
+member VoxClip.Core.Services.LLM.EffortLevel :: field public Decision
+member VoxClip.Core.Services.LLM.EffortLevel :: method public Label(VoxClip.Core.Services.LLM.Effort)
+member VoxClip.Core.Services.LLM.EffortLevel :: method public Resolve(System.Nullable`1<VoxClip.Core.Services.LLM.Effort>,System.Collections.Generic.IEnumerable`1<string>)
+member VoxClip.Core.Services.LLM.EffortLevel :: method public Wire(VoxClip.Core.Services.LLM.Effort)
 member VoxClip.Core.Services.LLM.EmptyKeys :: method public .ctor()
 member VoxClip.Core.Services.LLM.EmptyKeys :: method public GetKeyAsync(string,System.Threading.CancellationToken)
 member VoxClip.Core.Services.LLM.FoundationRequest :: method internal Logical(VoxClip.Core.Services.LLM.LlmRequest,int,System.Nullable`1<int>)
@@ -10436,6 +10444,7 @@ member VoxClip.Core.Services.LLM.LlmCatalog :: field private data
 member VoxClip.Core.Services.LLM.LlmCatalog :: field private root
 member VoxClip.Core.Services.LLM.LlmCatalog :: method internal .ctor(string)
 member VoxClip.Core.Services.LLM.LlmCatalog :: method internal Cap(VoxClip.Core.Services.LLM.ConnectorId,int)
+member VoxClip.Core.Services.LLM.LlmCatalog :: method internal EffortLevels(VoxClip.Core.Services.LLM.ConnectorId)
 member VoxClip.Core.Services.LLM.LlmCatalog :: method internal Estimate(string)
 member VoxClip.Core.Services.LLM.LlmCatalog :: method internal Fallback(VoxClip.Core.Services.LLM.ConnectorId,string)
 member VoxClip.Core.Services.LLM.LlmCatalog :: method internal FeatureId(VoxClip.Core.Services.LLM.LlmFeature)
@@ -10452,6 +10461,7 @@ member VoxClip.Core.Services.LLM.LlmCatalog :: method internal get_Data()
 member VoxClip.Core.Services.LLM.LlmCatalog :: method internal get_MaxRetryAfter()
 member VoxClip.Core.Services.LLM.LlmCatalog :: method internal get_SharedRoot()
 member VoxClip.Core.Services.LLM.LlmCatalog :: method public .ctor()
+member VoxClip.Core.Services.LLM.LlmCatalog :: method public DecisionEffort(VoxClip.Core.Services.LLM.ConnectorId)
 member VoxClip.Core.Services.LLM.LlmCatalog :: method public GetModelsAsync(VoxClip.Core.Services.LLM.ConnectorId,System.Threading.CancellationToken)
 member VoxClip.Core.Services.LLM.LlmCatalog :: method public Load(string)
 member VoxClip.Core.Services.LLM.LlmCatalog :: method public TestRequest(VoxClip.Core.Services.LLM.ConnectorId)
@@ -13251,6 +13261,7 @@ type VoxClip.Core.Services.LLM.ConnectorStatus+Ready
 type VoxClip.Core.Services.LLM.ConnectorStatus+Unavailable
 type VoxClip.Core.Services.LLM.CostEstimate
 type VoxClip.Core.Services.LLM.Effort
+type VoxClip.Core.Services.LLM.EffortLevel
 type VoxClip.Core.Services.LLM.EmptyKeys
 type VoxClip.Core.Services.LLM.FoundationRequest
 type VoxClip.Core.Services.LLM.IClipFinder

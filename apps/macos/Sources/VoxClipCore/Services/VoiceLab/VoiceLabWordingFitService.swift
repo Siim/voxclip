@@ -56,7 +56,7 @@ public actor VoiceLabWordingFitService {
             promptCap: document[ai: "maxOutputTokens"].aiInt ?? 16_000,
             connectorCap: catalog.connector(connector)[ai: "maxOutputTokensCap"].aiInt) else { throw LLMError.contextTooLong }
         return LLMRequest(feature: .voiceRewrite, system: system, cachedBlock: cached, instruction: instruction,
-            schemaName: name, schema: document[ai: "schema"], maxOutputTokens: output, effort: .medium,
+            schemaName: name, schema: document[ai: "schema"], maxOutputTokens: output, effort: .decision,
             timeout: catalog.timeout(for: connector, feature: .voiceRewrite), language: language, tag: "voice-rewrite-fit")
     }
 

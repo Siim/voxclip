@@ -156,18 +156,18 @@ extension HTTPConnectorTests {
         print("HTTP shared fixtures: \(file): \(renderings) HTTP renderings; \(gates) gated cases owned by Domain tests.")
     }
 
-    @Test(.enabled(if: aiSharedFixturesAvailable, aiSharedFixturesSkipReason))
-    func sharedConnectorFixturesMatchEveryHTTPRendering() async throws {
-        let cases = try HTTPSharedFixtures.cases("connector-requests")
+    @Test(.enabled(if: aiSharedFixturesAvailable, aiSharedFixturesSkipReason), arguments: ["connector-requests", "effort-requests"])
+    func sharedConnectorFixturesMatchEveryHTTPRendering(_ file: String) async throws {
+        let cases = try HTTPSharedFixtures.cases(file)
         var renderings = 0
         for fixture in cases {
             let caseID = try #require(fixture[ai: "id"].aiString)
-            #expect(fixture[ai: "kind"].aiString == "connector-request", "connector-requests/\(caseID): unknown fixture kind")
+            #expect(fixture[ai: "kind"].aiString == "connector-request", "\(file)/\(caseID): unknown fixture kind")
             let input = fixture[ai: "input"]
             let connectorName = try #require(input[ai: "connector"].aiString)
             let connector = try #require(ConnectorID(rawValue: connectorName))
             guard HTTPFixtures.connectors.contains(connector) else { continue }
-            let label = "connector-requests/\(caseID)/\(connector.rawValue)"
+            let label = "\(file)/\(caseID)/\(connector.rawValue)"
             do {
                 try await HTTPSharedFixtures.render(input[ai: "request"], connector: connector, options: input[ai: "options"], expected: fixture[ai: "expected"], label: label)
             } catch {
@@ -176,6 +176,6 @@ extension HTTPConnectorTests {
             renderings += 1
         }
         #expect(renderings > 0)
-        print("HTTP shared fixtures: connector-requests: \(renderings) HTTP renderings.")
+        print("HTTP shared fixtures: \(file): \(renderings) HTTP renderings.")
     }
 }

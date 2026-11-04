@@ -86,9 +86,12 @@ internal sealed class ClipPrompts(LlmCatalog catalog)
         return string.Join("\n", parts);
     }
 
+    /// <summary>The prompt's <c>generation.effort</c>, else the AI decision level (AI §2.1).</summary>
+    private static Effort GenerationEffort(JsonNode prompt) =>
+        prompt["generation"]?["effort"]?.GetValue<string>() is { } name ? Enum.Parse<Effort>(name, true) : EffortLevel.Decision;
     internal LlmRequest TightenRequest(IReadOnlyList<NumberedLine> lines, string instruction, string? language, int? outputReserve = null) =>
         new(LlmFeature.AiTighten, Tighten["system"]!.GetValue<string>(), Block(lines, true), instruction, Tighten["output"]!["name"]!.GetValue<string>(),
-            Tighten["output"]!["schema"]!.DeepClone().AsObject(), outputReserve ?? Tighten["generation"]!["maxOutputTokens"]!.GetValue<int>(), Effort.Medium,
+            Tighten["output"]!["schema"]!.DeepClone().AsObject(), outputReserve ?? Tighten["generation"]!["maxOutputTokens"]!.GetValue<int>(), GenerationEffort(Tighten),
             catalog.Timeout("cloud"), language, "tighten");
     internal int WindowClips(ClipPreset preset, int count) => Math.Max(Clips["limits"]!["windowMinClips"]!.GetValue<int>(),
         (int)Math.Ceiling(Rules(preset).MaxClips * Clips["limits"]!["windowClipFactor"]!.GetValue<double>() / count));
@@ -96,6 +99,6 @@ internal sealed class ClipPrompts(LlmCatalog catalog)
     {
         var timeout = catalog.Timeout(input.Connector switch { ConnectorId.ClaudeCode or ConnectorId.Codex => "cli", ConnectorId.Ollama or ConnectorId.LmStudio => "localServer", ConnectorId.AppleFoundation => "appleFoundation", _ => "cloud" });
         return new(LlmFeature.ClipFinder, Clips["system"]!.GetValue<string>(), Block(lines), instruction, Clips["output"]!["name"]!.GetValue<string>(), Clips["output"]!["schema"]!.DeepClone().AsObject(),
-            outputReserve ?? Clips["generation"]!["maxOutputTokens"]!.GetValue<int>(), Effort.Medium, timeout, input.Language, $"clips/{input.Preset.ToString().ToLowerInvariant()} part {part} of {count}");
+            outputReserve ?? Clips["generation"]!["maxOutputTokens"]!.GetValue<int>(), GenerationEffort(Clips), timeout, input.Language, $"clips/{input.Preset.ToString().ToLowerInvariant()} part {part} of {count}");
     }
 }

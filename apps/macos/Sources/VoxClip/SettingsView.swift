@@ -142,6 +142,7 @@ extension AppModel {
                 Text("The AI menu above the transcript changes this too.").font(.caption).foregroundStyle(.secondary)
                 if let provider = app.providers.first(where: { $0.id == app.string("llm.connector") }) {
                     ProviderModelPicker(provider: provider, refreshed: refreshed, app: app).id(provider.id)
+                    if let note = provider.decisionEffortNote { Text(note).font(.caption).foregroundStyle(.secondary) }
                     Button(refreshing ? "Refreshing…" : "Refresh models") {
                         refreshing = true
                         Task { defer { refreshing = false }; do { refreshed = try await app.connector(provider.id).models(refresh: true) } catch { result = await app.safeError(error) } }

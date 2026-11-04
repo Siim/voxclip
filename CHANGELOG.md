@@ -6,6 +6,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 - Rewrite phrase cards, panels, fields and next-step chips have even, roomier spacing, and the timeline's header no longer crowds at the smallest window.
 
+- Find Clips, Rewrite and the other AI decisions now think at extra high effort (Claude Code and Anthropic; others at their highest), and the status bar and Settings say so, for example "Claude Code · Opus (latest) · extra high".
+- The selected clip, kept or suggested, always shows Rewrite and More. On a suggested clip, Rewrite and Export keep it first (one undo step), then open on it. More also offers Captions and Find More Clips.
 - On Mac, Rewrite takes, Use and Export previews get ready faster: the voice mix is reworked and sounds exactly the same.
 - On Windows, each Rewrite phrase can use your own words or your own microphone take, and automatic fixes learn from what they tried and re-ask when the AI drops a phrase's joining words.
 - Windows opens Mac projects that use your own recorded take, and its Eleven v4 takes no longer fail on harmless timing differences.

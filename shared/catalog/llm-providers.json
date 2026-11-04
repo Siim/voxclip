@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updated": "2026-10-25",
+  "updated": "2026-11-04",
   "curatedAsOf": "2026-10",
   "description": "LLM connectors for VoxClip. Normative behaviour is in doc/spec/ai.md. Curated model ids are an offline fallback: the app refreshes them from each provider's model-list endpoint and always accepts a custom model id.",
   "policy": {
@@ -8,12 +8,12 @@
       "status": 3,
       "modelList": 15,
       "test": 30,
-      "cloud": 180,
+      "cloud": 360,
       "localServer": 600,
       "appleFoundation": 120,
       "cliDetect": 10,
       "cliTest": 120,
-      "cli": 300
+      "cli": 600
     },
     "retry": {
       "attempts": 3,
@@ -423,6 +423,7 @@
         "signInHint": "Open Terminal, run claude, and sign in.",
         "installHint": "Install Claude Code from code.claude.com, then run claude once to sign in."
       },
+      "effort": { "flag": "--effort", "values": ["low", "medium", "high", "xhigh", "max"] },
       "defaultModel": "sonnet",
       "fallbackOrder": ["sonnet", "haiku"],
       "models": [
@@ -517,6 +518,7 @@
         "signInHint": "Open Terminal and run codex login.",
         "installHint": "Install Codex (developers.openai.com/codex), then run codex login."
       },
+      "effort": { "config": "model_reasoning_effort", "values": ["low", "medium", "high"], "appliesTo": "the CLI default model when model/list reports no isDefault model with supportedReasoningEfforts; a named model uses only its own supportedReasoningEfforts" },
       "defaultModel": "default",
       "fallbackOrder": ["gpt-5.6-terra", "gpt-5.6-luna"],
       "models": [

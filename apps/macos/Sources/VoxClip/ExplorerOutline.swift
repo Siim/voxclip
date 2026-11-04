@@ -65,6 +65,7 @@ extension WorkspaceShell {
     /// needs no Voice Lab) and the clip keeps a word.
     func canRewriteExplorerClip(_ id: String) -> Bool {
         guard let editor, RewriteEntryPolicy.canRun(editable: editor.capabilities.ai, scope: .clip(id)),
+              !editor.isSuggestion(id) || editor.capabilities.edit,
               let clip = editor.project.edits.clips.first(where: { $0.id == id }),
               let lower = editor.index(clip.startWordId), let upper = editor.index(clip.endWordId), lower <= upper else { return false }
         return editor.words[lower...upper].contains { !editor.cutWordIDs.contains($0.id) }
@@ -73,13 +74,40 @@ extension WorkspaceShell {
     /// "Rewrite Clip {n}" on a row: opens the clip's tab, pins it so the session's work stays with it (a preview tab
     /// with an open Rewrite is pinned), lets go of the word selection, so the scope now is the clip as the clip bar and
     /// Edit › Rewrite read it, and runs V13's Rewrite on the clip with the clip bar's field text.
+    /// A suggestion is kept first, in one undo step with no prompt, then opens exactly as a kept clip does.
     func rewriteExplorerClip(_ id: String) {
         guard canRewriteExplorerClip(id), let editor else { return }
+        if editor.isSuggestion(id), !editor.keepForRowAction(id) { return }
         choose(.clip(id))
         tabs.keepOpen(tabs.active)
         editor.selectedWordIDs = []
         editor.selectedPauseIDs = []
         editor.runRewrite(scope: .clip(id))
+    }
+
+    /// "Export Clip…" on a row. A suggestion can export once it can be kept.
+    func canExportExplorerClip(_ id: String) -> Bool {
+        guard let editor else { return false }
+        return editor.canExport && editor.mediaExportable && (!editor.isSuggestion(id) || editor.capabilities.edit)
+    }
+    /// Opens the Export job on the clip; a suggestion is kept first, in one undo step with no prompt, as for Rewrite.
+    func exportExplorerClip(_ id: String) {
+        guard canExportExplorerClip(id), let editor else { return }
+        if editor.isSuggestion(id), !editor.keepForRowAction(id) { return }
+        editor.presentExport(clipIDs: [id])
+    }
+    /// "Captions" on a row: selects the clip and shows the Captions job for it. Changes nothing in the project.
+    func captionExplorerClip(_ id: String) {
+        guard let editor else { return }
+        choose(.clip(id))
+        choosePanelJob(.captions, for: editor)
+    }
+    /// "Find More Clips" on a row: one click runs Find Clips with the popover's current style when an AI is chosen, and
+    /// opens the popover (which says how to choose one) when none is. New clips land in Suggested.
+    var canFindMoreClips: Bool { editor.map { $0.capabilities.ai && !$0.words.isEmpty && !$0.finding } ?? false }
+    func findMoreClips() {
+        guard canFindMoreClips, let editor else { return }
+        if editor.findConnector == nil { editor.requestFindClips(from: .sidebar) } else { editor.findClips() }
     }
 }
 

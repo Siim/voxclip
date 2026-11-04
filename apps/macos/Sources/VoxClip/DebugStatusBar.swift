@@ -66,7 +66,7 @@ import VoxClipCore
         settle()
         check("the status bar is notes.md's 0, 776, 1280 × 24 (\(frame(bar)))", frame(bar) == ShellRegion.statusBar.reference)
         check("before detection it shows the AI's name with a ring and no billing (\(bar.content[.harness]?.text ?? "none"))",
-              bar.content[.harness]?.text == "Claude Code · Sonnet (latest)" && bar.content[.harness]?.lead == .dot(token: "text.tertiary", filled: false)
+              bar.content[.harness]?.text == "Claude Code · Sonnet (latest) · extra high" && bar.content[.harness]?.lead == .dot(token: "text.tertiary", filled: false)
               && bar.content[.billing] == nil && !bar.shown.contains(.billing))
         try capture(bar, name: "v2-status-undetected", directory: directory)
         if let provider = app.providers.first(where: { $0.id == "claude-code" }) { _ = await app.connectorStatus(provider) }
