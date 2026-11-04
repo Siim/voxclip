@@ -9,6 +9,24 @@ actor SecretStore: KeyProvider {
     private let service = "com.voxconvo.voxclip"
     init(log: any Redacting) { self.log = log }
 
+    /// DEBUG builds never touch the login keychain from a test process: each `swift test` build is a new ad-hoc
+    /// signature, so the keychain asks for the password on every read and "Always Allow" never sticks. Keys then come
+    /// from `VOXCLIP_<PROVIDER>_API_KEY`, as with `VOXCLIP_NO_KEYCHAIN=1`. A test that must reach the real keychain sets
+    /// `VOXCLIP_ALLOW_KEYCHAIN_IN_TESTS=1`.
+    static let keychainDisabled: Bool = {
+        #if DEBUG
+        let environment = ProcessInfo.processInfo.environment
+        if environment["VOXCLIP_NO_KEYCHAIN"] == "1" { return true }
+        if environment["VOXCLIP_ALLOW_KEYCHAIN_IN_TESTS"] == "1" { return false }
+        let name = ProcessInfo.processInfo.processName
+        return name.contains("swiftpm-testing-helper") || name == "xctest"
+            || environment["XCTestConfigurationFilePath"] != nil || environment["XCTestBundlePath"] != nil
+            || Bundle.allBundles.contains { $0.bundlePath.hasSuffix(".xctest") }
+        #else
+        return false
+        #endif
+    }()
+
     static func account(for provider: String) -> String {
         if provider == "fal" { return "fal-api-key" }
         if provider == "syncso" { return "syncso-api-key" }
@@ -19,7 +37,7 @@ actor SecretStore: KeyProvider {
 
     func hasKey(for provider: String) -> Bool {
         #if DEBUG
-        if ProcessInfo.processInfo.environment["VOXCLIP_NO_KEYCHAIN"] == "1" {
+        if Self.keychainDisabled {
             let name = provider.replacingOccurrences(of: "llm-api-key-", with: "").replacingOccurrences(of: "-api-key", with: "")
             return !(ProcessInfo.processInfo.environment["VOXCLIP_\(name.uppercased())_API_KEY"] ?? "").isEmpty
         }
@@ -35,7 +53,7 @@ actor SecretStore: KeyProvider {
 
     func key(for provider: String) async throws -> String? {
         #if DEBUG
-        if ProcessInfo.processInfo.environment["VOXCLIP_NO_KEYCHAIN"] == "1" {
+        if Self.keychainDisabled {
             let provider = provider.replacingOccurrences(of: "llm-api-key-", with: "").replacingOccurrences(of: "-api-key", with: "")
             let key = ProcessInfo.processInfo.environment["VOXCLIP_\(provider.uppercased())_API_KEY"]
             if let key { await log.register(secret: key) }
@@ -56,7 +74,7 @@ actor SecretStore: KeyProvider {
     func save(_ value: String, for provider: String) async throws {
         let key = value.trimmingCharacters(in: .whitespacesAndNewlines)
         #if DEBUG
-        if ProcessInfo.processInfo.environment["VOXCLIP_NO_KEYCHAIN"] == "1" { throw SecretError.disabled }
+        if Self.keychainDisabled { throw SecretError.disabled }
         #endif
         let query = baseQuery(provider)
         if key.isEmpty {
