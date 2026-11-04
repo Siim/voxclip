@@ -174,7 +174,7 @@ public enum VoiceLabWindowPlanner {
         }
         var accepted: [ReviewWindow] = []
         var refused: [(Int, PlacedOrRefused)] = []
-        for (offset, index) in order.enumerated() {
+        for index in order {
             var remaining = accepted
             var current = hunks[index]
             var indices = [index]
@@ -223,14 +223,7 @@ public enum VoiceLabWindowPlanner {
                         remaining.remove(at: hit)
                         continue
                     }
-                    if collision != nil {
-                        var budgetHunks = remaining.map { budgetHunk($0.hunk, window: $0.window, project: project) }
-                        budgetHunks.append(budgetHunk(current, window: placed, project: project))
-                        budgetHunks += order.dropFirst(offset + 1).map { hunks[$0] }
-                        guard VoiceLabPatchBudget.evaluate(hunks: budgetHunks, transcript: words).flag == .allowed else {
-                            throw VoiceLabGeometryError.invalidInput()
-                        }
-                    }
+                    // The patch budget is advisory (§8.2): a merge over it goes ahead, and the panel advises.
                     remaining.append(ReviewWindow(indices: indices, hunk: current, window: placed))
                     remaining.sort { $0.window.startSample < $1.window.startSample }
                     accepted = remaining
@@ -276,18 +269,6 @@ public enum VoiceLabWindowPlanner {
                                 bridgeWordIds: earlier.bridgeWordIds + bridges + later.bridgeWordIds,
                                 sourceStartIndex: earlier.sourceStartIndex, sourceEndIndex: later.sourceEndIndex, anchorSeconds: nil,
                                 audioTags: earlier.audioTags + VoiceLabAudioTags.shifted(later.audioTags, by: earlier.newTokens.count + between.flatMap { EditingPrimitives.splitWords(corrections[$0.id] ?? $0.text) }.count))
-    }
-
-    private static func budgetHunk(_ hunk: VoiceLabDiffHunk, window: VoiceLabWindow, project: Project) -> VoiceLabDiffHunk {
-        let words = project.transcript?.words ?? []
-        func tokens(_ ids: [String]) -> [String] {
-            ids.flatMap { id in words.first(where: { $0.id == id }).map { EditingPrimitives.splitWords(project.edits.corrections[id] ?? $0.text) } ?? [] }
-        }
-        return VoiceLabDiffHunk(kind: .voice, sourceWordIds: hunk.sourceWordIds,
-                                newTokens: tokens(window.leftBridgeWordIds) + hunk.newTokens + tokens(window.rightBridgeWordIds),
-                                correctedTexts: [], absorbedItemIds: hunk.absorbedItemIds, bridgeWordIds: hunk.bridgeWordIds,
-                                sourceStartIndex: hunk.sourceStartIndex, sourceEndIndex: hunk.sourceEndIndex, anchorSeconds: nil,
-                                audioTags: VoiceLabAudioTags.shifted(hunk.audioTags, by: tokens(window.leftBridgeWordIds).count))
     }
 
     private static func reservation(id: String, window: VoiceLabWindow) -> VoiceLabSegment {
