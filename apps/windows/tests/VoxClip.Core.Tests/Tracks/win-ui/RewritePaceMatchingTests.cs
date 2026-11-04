@@ -155,6 +155,20 @@ public sealed class RewritePaceMatchingTests
             "remove-tag" => session.RemoveExpression(1, 0),
             _ => session.EditChange(1, "different")
         };
+        if (action is "add-tag" or "remove-tag")
+        {
+            // An expression changes only its own phrase (design.md R2 "Expressions"): no discard prompt, the paid take stays
+            // listed as "Before expression" and a fresh quote is prepared for that phrase.
+            Assert.True(changed);
+            Assert.Null(session.PendingPaidReviewChange);
+            Assert.Same(paid, Assert.Single(generation.Rows));
+            // Only the phrase that holds change 1 marks its takes; another phrase's paid take is untouched.
+            var owner = session.PricedVoiceHunks.ToList().FindIndex(hunk => hunk.Ordinals.Contains(1));
+            Assert.Equal(ReferenceEquals(session.GenerationWindows.ElementAtOrDefault(owner), generation), generation.IsBeforeExpression(paid.Id));
+            Assert.Equal(action == "add-tag" ? 1 : 0, session.Review!.Diff.Hunks[0].AudioTags.Count);
+            Assert.True(session.HasPaidTakes);
+            return;
+        }
         Assert.False(changed);
         Assert.Same(review, session.Review);
         Assert.Equal(identity, session.ReviewIdentity);
@@ -166,14 +180,6 @@ public sealed class RewritePaceMatchingTests
         Assert.Same(review, session.Review);
         Assert.Equal(identity, session.ReviewIdentity);
         Assert.Same(paid, Assert.Single(generation.Rows));
-        if (action is "add-tag" or "remove-tag")
-        {
-            Assert.False(action == "add-tag" ? session.AddExpression(1, "laughs") : session.RemoveExpression(1, 0));
-            Assert.True(await session.ConfirmPaidReviewChangeAsync(session.PendingPaidReviewChange!));
-            Assert.Equal(action == "add-tag" ? 1 : 0, session.Review!.Diff.Hunks[0].AudioTags.Count);
-            Assert.False(session.HasPaidTakes);
-            return;
-        }
         Assert.False(session.SetChangeIncluded(1, false));
         var pending = session.PendingPaidReviewChange!;
         Assert.True(await session.ConfirmPaidReviewChangeAsync(pending));
@@ -207,7 +213,8 @@ public sealed class RewritePaceMatchingTests
         Assert.NotNull(input);
         Assert.Contains("[laughs]", input.RequestText);
         var tag = Assert.Single(phrase.Hunk.AudioTags);
-        Assert.Equal(phrase.Hunk.NewTokens.Count, tag.BeforeToken);
+        // The default place is before the first changed word (design.md R2 "Expressions").
+        Assert.Equal(0, tag.BeforeToken);
         Assert.True(session.RemoveExpression(1, 0));
         await generation.PendingUpdate;
         Assert.Empty(session.Review!.Diff.Hunks[0].AudioTags);

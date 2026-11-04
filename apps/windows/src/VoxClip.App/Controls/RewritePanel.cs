@@ -45,6 +45,7 @@ internal sealed partial class RewritePanel : Grid
     /// <summary>New Rewrite phrases always use Eleven v4: a fixed label, not a choice.</summary>
     internal const string SpeechModelLabel = "Eleven v4 · audio tags";
     private readonly TextBlock speechModel = Ui.Text(SpeechModelLabel);
+    private readonly TextBlock voiceText = Ui.Text("");
     private readonly Button discover = new() { Content = "Choose Voice…" };
     private readonly StackPanel noVoice = Ui.Stack(6);
     private readonly StackPanel languageUnavailable = Ui.Stack(6);
@@ -381,7 +382,8 @@ internal sealed partial class RewritePanel : Grid
             await session.DiscoverWindowsAsync();
         };
         generationError.ActionButton = settings; generationError.Content = retry;
-        generationBody.Children.Add(discover); generationBody.Children.Add(voice); generationBody.Children.Add(speechModel);
+        AutomationProperties.SetAutomationId(voiceText, "Rewrite.VoiceText");
+        generationBody.Children.Add(discover); generationBody.Children.Add(voice); generationBody.Children.Add(voiceText); generationBody.Children.Add(speechModel);
         var prerequisite = new InfoBar { IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Warning, Message = VoiceLabCopy.SpeakerUnavailable };
         AutomationProperties.SetAutomationId(prerequisite, "Rewrite.WindowsPrerequisite");
         generationBody.Children.Add(prerequisite); generationBody.Children.Add(monthlySpend);
@@ -417,7 +419,10 @@ internal sealed partial class RewritePanel : Grid
         if (!ReferenceEquals(voice.ItemsSource, generation.Voices)) voice.ItemsSource = generation.Voices;
         voice.SelectedValue = generation.VoiceId;
         updating = false;
-        voice.Visibility = generation.Voices.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        // A voice that can't change is text, not a picker with one entry.
+        voice.Visibility = generation.Voices.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
+        voiceText.Text = generation.Voices.Count == 1 ? "Voice: " + generation.Voices[0].Label : "";
+        voiceText.Visibility = generation.Voices.Count == 1 ? Visibility.Visible : Visibility.Collapsed;
         speechModel.Visibility = generation.Voices.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         discover.Content = session.GetPriceTitle;
         discover.IsEnabled = VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck.WindowsNativeParityVerified && !session.IsGeneratingBatch && !generation.IsPreparing &&

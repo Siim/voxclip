@@ -14,6 +14,7 @@ internal sealed partial class RewritePanel
     private RewriteReview? renderedReview;
     private int renderedFocus = -1;
     private bool renderedEditable;
+    private int renderedPending;
     private readonly HashSet<DependencyObject> reviewElements = [];
     private readonly StackPanel sentenceReview = Ui.Stack(8);
     private readonly StackPanel paidReviewChange = Ui.Stack(8);
@@ -73,7 +74,9 @@ internal sealed partial class RewritePanel
 
     private void RenderChangeReview()
     {
-        if (ReferenceEquals(renderedReview, session.Review) && renderedFocus == session.FocusedChange && renderedEditable == session.ReviewIsCurrent) return;
+        if (ReferenceEquals(renderedReview, session.Review) && renderedFocus == session.FocusedChange && renderedEditable == session.ReviewIsCurrent &&
+            renderedPending == session.PendingExpressionCount) return;
+        renderedPending = session.PendingExpressionCount;
         renderedReview = session.Review;
         renderedFocus = session.FocusedChange;
         renderedEditable = session.ReviewIsCurrent;
@@ -99,8 +102,8 @@ internal sealed partial class RewritePanel
             if (hunk.Kind == VoiceLabDiffHunkKind.Voice)
             {
                 var phraseNumber = current.VoiceHunks.ToList().FindIndex(phrase => phrase.Ordinals.Contains(ordinal)) + 1;
-                row.Children.Add(ExpressionPhrase(string.Join(" ", hunk.NewTokens), hunk.AudioTags, Math.Max(1, phraseNumber),
-                    tagIndex => session.RemoveExpression(ordinal, tagIndex), tag => session.AddExpression(ordinal, tag)));
+                row.Children.Add(ExpressionPhrase(string.Join(" ", hunk.NewTokens), session.ShownAudioTags(ordinal), Math.Max(1, phraseNumber),
+                    tagIndex => session.RemoveExpression(ordinal, tagIndex), tag => session.AddExpression(ordinal, tag), ordinal));
             }
             else row.Children.Add(Ui.Text(hunk.Kind == VoiceLabDiffHunkKind.Cut ? "Remove these source words" : string.Join(" ", hunk.NewTokens)));
             if (session.ScopeHunks is { } metadata && index < metadata.Count)

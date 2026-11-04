@@ -158,7 +158,7 @@ internal sealed partial class RewriteSession
     {
         if (generationWindows.ElementAtOrDefault(index) is not { } window || window.LeftOut || window.Rows.Count == 0 ||
             window.IsRunning || window.IsPreparing) return null;
-        var current = window.Rows.Where(row => !row.Stopped).ToArray();
+        var current = window.Rows.Where(row => !row.Stopped && !window.IsBeforeExpression(row.Id)).ToArray();
         if (current.Length == 0) return null;
         if (window.Selected is { Selectable: true } selected)
         {
@@ -202,6 +202,7 @@ internal sealed partial class RewriteSession
     /// <summary>Takes the next automatic step, if one is due: one phrase, one step at a time. Called whenever the takes settle.</summary>
     internal void AdvanceAutoFix()
     {
+        ApplyPendingExpressions();
         if (!AutoFix.Running || AutoFix.Work is not null || !IsOpen || !GenerationIsCurrent || IsGeneratingBatch || applyingBatch ||
             MeasuredWording is { Preparing: true } || PendingPaidReviewChange is not null ||
             generationWindows.Any(window => window.IsRunning || window.IsPreparing)) return;

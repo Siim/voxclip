@@ -17,6 +17,10 @@ internal sealed partial class RewritePanel
     private static readonly VoiceLabVideoMode[] VideoModes = [VoiceLabVideoMode.Source, VoiceLabVideoMode.Cut, VoiceLabVideoMode.Retimed];
     private readonly TextBlock[] videoDetails = [Ui.Text(""), Ui.Text(""), Ui.Text("")];
     private readonly TextBlock chooseAnew = Ui.Text("Choose anew for each passage and selected take.");
+    private readonly TextBlock videoLine = Ui.Text("");
+    private readonly Button changeVideo = new() { Content = "Change" };
+    private readonly TextBlock phraseStatus = Ui.Text("");
+    private bool showVideoChoices;
     private readonly StackPanel takeRecovery = Ui.Stack(6);
     private readonly TextBlock nextPace = Ui.Text("");
     private readonly Dictionary<Guid, (Button Play, Button? Reject)> takeButtons = [];
@@ -48,6 +52,9 @@ internal sealed partial class RewritePanel
         BuildAutoFix();
         generationBody.Children.Add(takeExpression);
         generationBody.Children.Add(takeList);
+        AutomationProperties.SetAutomationId(phraseStatus, "Rewrite.PhraseStatus");
+        phraseStatus.TextWrapping = TextWrapping.Wrap;
+        generationBody.Children.Add(phraseStatus);
         generationBody.Children.Add(autoFixBox);
         generationBody.Children.Add(nextPace);
         AutomationProperties.SetAutomationId(videoChoices, "Rewrite.VideoChoice");
@@ -60,7 +67,7 @@ internal sealed partial class RewritePanel
             var content = Ui.Stack(2);
             content.Children.Add(new TextBlock { Text = titles[index], TextWrapping = TextWrapping.Wrap });
             content.Children.Add(detail);
-            var option = new RadioButton { Content = content, IsEnabled = false };
+            var option = new RadioButton { Content = content };
             AutomationProperties.SetAutomationId(option, "Rewrite.VideoChoice." + VideoModes[index]);
             SetName(option, titles[index]);
             videoChoices.Items.Add(option);
@@ -73,7 +80,14 @@ internal sealed partial class RewritePanel
         };
         chooseAnew.TextWrapping = TextWrapping.Wrap;
         Themed(chooseAnew, TextBlock.ForegroundProperty, "VcTextTertiaryBrush");
-        lengthBody.Children.Add(lengthCopy); lengthBody.Children.Add(videoChoices); lengthBody.Children.Add(chooseAnew);
+        videoLine.TextWrapping = TextWrapping.Wrap;
+        AutomationProperties.SetAutomationId(videoLine, "Rewrite.VideoLine");
+        AutomationProperties.SetAutomationId(changeVideo, "Rewrite.ChangeVideo");
+        SetName(changeVideo, "Change the video duration");
+        changeVideo.Click += (_, _) => { showVideoChoices = !showVideoChoices; if (session.Generation is { } current) RenderTakes(current); };
+        var videoRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        videoRow.Children.Add(videoLine); videoRow.Children.Add(changeVideo);
+        lengthBody.Children.Add(lengthCopy); lengthBody.Children.Add(videoRow); lengthBody.Children.Add(videoChoices); lengthBody.Children.Add(chooseAnew);
         var shorter = new Button { Content = "Ask for shorter" };
         shorter.Click += async (_, _) =>
         {
@@ -99,6 +113,8 @@ internal sealed partial class RewritePanel
     {
         if (args.InRecycleQueue || args.Item is not VoiceLabTakeRow row) return;
         var content = TakeRowPresentation.From(row, session.Generation?.BestTakeId, session.Generation?.PhraseNumber ?? 1);
+        if (content.Selectable && !content.JoinAdvisory && session.Generation?.IsBeforeExpression(row.Id) == true)
+            content = content with { Note = "Before expression", BestMatch = false, AutomationName = content.Title + ", " + content.Duration + ", before expression" };
         args.ItemContainer.Height = content.JoinAdvisory ? double.NaN : 40;
         SetName(args.ItemContainer, content.AutomationName);
         AutomationProperties.SetAutomationId(args.ItemContainer, "Rewrite.Take" + (row.Index + 1));
@@ -193,7 +209,9 @@ internal sealed partial class RewritePanel
             takeList.ItemsSource = rows;
         }
         takeList.SelectedItem = rows.FirstOrDefault(row => row.Id == generation.SelectedTakeId);
-        lengthBody.Visibility = generation.Selected is { Fits: false } ? Visibility.Visible : Visibility.Collapsed;
+        lengthBody.Visibility = generation.Selected is { Selectable: true, Fits: false } && !generation.LeftOut ? Visibility.Visible : Visibility.Collapsed;
+        phraseStatus.Text = session.PhraseStatus(session.ActiveWindow);
+        phraseStatus.Visibility = phraseStatus.Text.Length > 0 && generation.Rows.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         takeRecovery.Visibility = generation.NeedsShorterWording && !generation.LeftOut && FallbackShown ? Visibility.Visible : Visibility.Collapsed;
         foreach (var button in takeRecovery.Children.OfType<Button>()) button.IsEnabled = session.ReviewIsCurrent && !requestingApproval;
         if (takeRecovery.Children.OfType<Button>().FirstOrDefault() is { } retry)
@@ -207,22 +225,27 @@ internal sealed partial class RewritePanel
         RenderTakeButtons(generation);
         RenderFooter();
     }
-    /// <summary>Keep source, Cut and Match video as on Mac: Cut is listed only when its quiet-boundary cut is valid, the
-    /// others always, each with its reason; nothing is preselected.</summary>
+    /// <summary>Mac phrase cards: the first valid duration is chosen at once and reads as one line with [Change]; only valid
+    /// choices are listed, never a disabled one, and none while takes run.</summary>
     private void RenderVideoChoices(RewriteGeneration generation)
     {
-        bool[] allowed = [false, generation.CanCut, generation.CanRetime];
+        var valid = generation.ValidVideoChoices;
         string[] details = [generation.KeepSourceCopy, generation.CutCopy, generation.RetimeCopy];
         for (var index = 0; index < VideoModes.Length; index++)
         {
             var option = (RadioButton)videoChoices.Items[index];
-            option.IsEnabled = allowed[index] && !generation.IsRunning;
-            option.Visibility = index == 1 && !allowed[index] ? Visibility.Collapsed : Visibility.Visible;
+            option.Visibility = valid.Contains(VideoModes[index]) ? Visibility.Visible : Visibility.Collapsed;
             videoDetails[index].Text = details[index];
             AutomationProperties.SetHelpText(option, details[index]);
         }
         videoChoices.SelectedIndex = generation.VideoChoice is { } choice ? Array.IndexOf(VideoModes, choice) : -1;
-        chooseAnew.Visibility = generation.VideoChoice is null ? Visibility.Visible : Visibility.Collapsed;
+        videoLine.Text = generation.VideoChoiceLine;
+        var choosing = !generation.IsRunning && valid.Count > 0 && (showVideoChoices || generation.VideoChoice is null);
+        videoChoices.Visibility = choosing ? Visibility.Visible : Visibility.Collapsed;
+        videoLine.Visibility = generation.VideoChoice is null ? Visibility.Collapsed : Visibility.Visible;
+        changeVideo.Visibility = generation.VideoChoice is not null && valid.Count > 1 && !generation.IsRunning ? Visibility.Visible : Visibility.Collapsed;
+        changeVideo.Content = showVideoChoices ? "Done" : "Change";
+        chooseAnew.Visibility = Visibility.Collapsed;
     }
     private readonly HashSet<DependencyObject> renderedTakeElements = [];
 #if DEBUG

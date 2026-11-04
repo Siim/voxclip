@@ -33,19 +33,21 @@ public sealed class PaidTakePlaybackTests
     /// <summary>Lead review finding 2: a phrase priced as "fits with a video cut" is charged, so its paid take must offer a
     /// Cut it can use. Before this, Windows offered no Cut and the phrase was left with no usable video choice.</summary>
     [Fact]
-    public async Task PaidTakeThatFitsOnlyWithAVideoCutOffersCutWithoutPreselection()
+    public async Task PaidTakeThatFitsOnlyWithAVideoCutGetsTheCutAtOnce()
     {
         await using var test = new Harness(false, false, VoiceLabTakeRunEnd.Completed);
         test.Runner.CutDuration = true;
         await test.GenerateAsync();
-        Assert.Equal(RewriteGenerationPhase.LengthChanged, test.Generation.Phase);
-        Assert.Null(test.Generation.VideoChoice);
-        Assert.False(test.Generation.ReadyToAccept);
+        // The first valid duration is chosen at once (Mac autoChooseVideo); [Change] lists only the valid ones.
+        Assert.Equal(RewriteGenerationPhase.ReadyToAccept, test.Generation.Phase);
+        Assert.Equal(VoiceLabVideoMode.Cut, test.Generation.VideoChoice);
+        Assert.Equal(VoiceLabVideoMode.Cut, test.Generation.ValidVideoChoices[0]);
+        Assert.True(test.Generation.ReadyToAccept);
         Assert.True(test.Generation.CanCut);
         Assert.False(test.Generation.NeedsShorterWording);
         Assert.Equal("Removes 0.2 s of video at a pause, like a vlog jump cut. Speech keeps its pace.", test.Generation.CutCopy);
         Assert.StartsWith("This take is shorter than the source window.", test.Generation.KeepSourceCopy);
-        Assert.Equal("Choose the video duration for phrase 1.", test.Session.AcceptanceBlocker);
+        Assert.Null(test.Session.AcceptanceBlocker);
         Assert.False(test.Generation.ChooseVideo(VoiceLabVideoMode.Source));
         Assert.True(test.Generation.ChooseVideo(VoiceLabVideoMode.Cut));
         Assert.Equal(VoiceLabVideoMode.Cut, test.Generation.VideoChoice);
@@ -91,9 +93,9 @@ public sealed class PaidTakePlaybackTests
         Assert.True(await test.Generation.UseTakeAnywayAsync(row.Id));
         Assert.False(test.Audition.Snapshot.Completed);
         Assert.Empty(test.OpenedPaths);
-        Assert.Equal(changedDuration ? RewriteGenerationPhase.LengthChanged : RewriteGenerationPhase.ReadyToAccept, test.Generation.Phase);
-        Assert.Equal(!changedDuration, test.Session.CanAcceptAll);
-        Assert.Null(test.Generation.VideoChoice);
+        // A changed-duration take gets its first valid video duration at once (Mac autoChooseVideo), so Use is ready.
+        Assert.Equal(RewriteGenerationPhase.ReadyToAccept, test.Generation.Phase);
+        Assert.Equal(changedDuration ? test.Generation.ValidVideoChoices[0] : null, test.Generation.VideoChoice);
     }
 
     [Fact]

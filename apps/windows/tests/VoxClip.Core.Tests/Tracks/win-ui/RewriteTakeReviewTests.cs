@@ -65,7 +65,9 @@ public sealed class RewriteTakeReviewTests
         Assert.Contains("Header = \"Choose video duration for this passage\"", source);
         Assert.Contains("[\"Keep source video duration\", \"Cut the video to this take\", \"Match video to this take's duration\"]", source);
         Assert.Contains("[VoiceLabVideoMode.Source, VoiceLabVideoMode.Cut, VoiceLabVideoMode.Retimed]", source);
-        Assert.Contains("option.Visibility = index == 1 && !allowed[index] ? Visibility.Collapsed : Visibility.Visible", source);
+        // Only valid choices are listed (never a disabled one); the first is chosen at once and reads as one line with [Change].
+        Assert.Contains("option.Visibility = valid.Contains(VideoModes[index]) ? Visibility.Visible : Visibility.Collapsed", source);
+        Assert.DoesNotContain("IsEnabled = false", source);
         Assert.Contains("TextWrapping = TextWrapping.Wrap", source);
         Assert.Contains("Choose anew for each passage and selected take.", source);
         Assert.DoesNotContain("Lip sync", source);

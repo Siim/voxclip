@@ -117,6 +117,7 @@ internal sealed partial class RewriteSession : IDisposable
     {
         ObserveMeasuredTakes();
         AdvanceAutoFix();
+        ApplyPendingExpressions();
         Changed?.Invoke(this, EventArgs.Empty);
     }
     private void GenerationSelectionChanged(object? sender, EventArgs args)
@@ -391,7 +392,7 @@ internal sealed partial class RewriteSession : IDisposable
 
     private void RefreshReview(bool preserveGenerations = false)
     {
-        if (!preserveGenerations) { sentenceReplacements.Clear(); SentenceReview = null; SentenceProblem = ""; ClearMeasuredWording(); }
+        if (!preserveGenerations) { sentenceReplacements.Clear(); SentenceReview = null; SentenceProblem = ""; ClearMeasuredWording(); pendingExpressions.Clear(); expressionNotes.Clear(); }
         reviewProblem = "";
         try { Review = RewriteReview.Build(this, prices, synthesisModel); }
         catch (VoiceLabWordDiffException exception)

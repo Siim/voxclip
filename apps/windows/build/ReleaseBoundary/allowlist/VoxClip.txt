@@ -591,6 +591,7 @@ member VoxClip.App.Controls.RewritePanel :: field private brushes
 member VoxClip.App.Controls.RewritePanel :: field private busy
 member VoxClip.App.Controls.RewritePanel :: field private cancelGeneration
 member VoxClip.App.Controls.RewritePanel :: field private changeSummary
+member VoxClip.App.Controls.RewritePanel :: field private changeVideo
 member VoxClip.App.Controls.RewritePanel :: field private chooseAnew
 member VoxClip.App.Controls.RewritePanel :: field private confirmation
 member VoxClip.App.Controls.RewritePanel :: field private correctionOpen
@@ -615,6 +616,8 @@ member VoxClip.App.Controls.RewritePanel :: field private nextSteps
 member VoxClip.App.Controls.RewritePanel :: field private noVoice
 member VoxClip.App.Controls.RewritePanel :: field private nonePassed
 member VoxClip.App.Controls.RewritePanel :: field private paidReviewChange
+member VoxClip.App.Controls.RewritePanel :: field private phraseStatus
+member VoxClip.App.Controls.RewritePanel :: field private placing
 member VoxClip.App.Controls.RewritePanel :: field private problem
 member VoxClip.App.Controls.RewritePanel :: field private propose
 member VoxClip.App.Controls.RewritePanel :: field private remoteLocalAllowed
@@ -623,6 +626,7 @@ member VoxClip.App.Controls.RewritePanel :: field private renderedEditable
 member VoxClip.App.Controls.RewritePanel :: field private renderedExpressionEditable
 member VoxClip.App.Controls.RewritePanel :: field private renderedExpressionPhrase
 member VoxClip.App.Controls.RewritePanel :: field private renderedFocus
+member VoxClip.App.Controls.RewritePanel :: field private renderedPending
 member VoxClip.App.Controls.RewritePanel :: field private renderedReview
 member VoxClip.App.Controls.RewritePanel :: field private renderedRows
 member VoxClip.App.Controls.RewritePanel :: field private renderedSteps
@@ -632,6 +636,7 @@ member VoxClip.App.Controls.RewritePanel :: field private review
 member VoxClip.App.Controls.RewritePanel :: field private reviewElements
 member VoxClip.App.Controls.RewritePanel :: field private sentenceReview
 member VoxClip.App.Controls.RewritePanel :: field private session
+member VoxClip.App.Controls.RewritePanel :: field private showVideoChoices
 member VoxClip.App.Controls.RewritePanel :: field private speechModel
 member VoxClip.App.Controls.RewritePanel :: field private takeButtons
 member VoxClip.App.Controls.RewritePanel :: field private takeExpression
@@ -647,7 +652,9 @@ member VoxClip.App.Controls.RewritePanel :: field private textFocus
 member VoxClip.App.Controls.RewritePanel :: field private updating
 member VoxClip.App.Controls.RewritePanel :: field private videoChoices
 member VoxClip.App.Controls.RewritePanel :: field private videoDetails
+member VoxClip.App.Controls.RewritePanel :: field private videoLine
 member VoxClip.App.Controls.RewritePanel :: field private voice
+member VoxClip.App.Controls.RewritePanel :: field private voiceText
 member VoxClip.App.Controls.RewritePanel :: field private windowPicker
 member VoxClip.App.Controls.RewritePanel :: field private wordingFit
 member VoxClip.App.Controls.RewritePanel :: field private words
@@ -676,7 +683,7 @@ member VoxClip.App.Controls.RewritePanel :: method private ConfirmVoiceActionAsy
 member VoxClip.App.Controls.RewritePanel :: method private EffectsChanged(object,System.EventArgs)
 member VoxClip.App.Controls.RewritePanel :: method private Escape(object,Microsoft.UI.Xaml.Input.KeyRoutedEventArgs)
 member VoxClip.App.Controls.RewritePanel :: method private ExpressionButton(string,string)
-member VoxClip.App.Controls.RewritePanel :: method private ExpressionPhrase(string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag>,int,System.Action`1<int>,System.Action`1<string>)
+member VoxClip.App.Controls.RewritePanel :: method private ExpressionPhrase(string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag>,int,System.Action`1<int>,System.Action`1<string>,System.Nullable`1<int>)
 member VoxClip.App.Controls.RewritePanel :: method private InlinePrivacyGranted()
 member VoxClip.App.Controls.RewritePanel :: method private InvokeChipAsync(VoxClip.App.ViewModels.RewriteChip)
 member VoxClip.App.Controls.RewritePanel :: method private NativeReturnTarget(Microsoft.UI.Xaml.DependencyObject)
@@ -3611,6 +3618,7 @@ member VoxClip.App.ViewModels.RewriteGeneration :: field internal SendLine
 member VoxClip.App.ViewModels.RewriteGeneration :: field private Changed
 member VoxClip.App.ViewModels.RewriteGeneration :: field private accepting
 member VoxClip.App.ViewModels.RewriteGeneration :: field private autoplayed
+member VoxClip.App.ViewModels.RewriteGeneration :: field private beforeExpression
 member VoxClip.App.ViewModels.RewriteGeneration :: field private buildInput
 member VoxClip.App.ViewModels.RewriteGeneration :: field private clock
 member VoxClip.App.ViewModels.RewriteGeneration :: field private closed
@@ -3670,10 +3678,12 @@ member VoxClip.App.ViewModels.RewriteGeneration :: method internal GenerateAsync
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal GenerationButtonTitle(string)
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal InputFor(System.Guid)
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal InputsChangedAsync(bool)
+member VoxClip.App.ViewModels.RewriteGeneration :: method internal IsBeforeExpression(System.Guid)
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal KeepEveryTake()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal LeaveOut()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal Length(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow)
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal LengthFits(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow)
+member VoxClip.App.ViewModels.RewriteGeneration :: method internal MarkBeforeExpression()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal MarkEstimateShown(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunQuote)
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal PausePreviewAsync(VoxClip.Core.Services.Media.IPreviewEngine,System.Threading.CancellationToken)
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal PlayTakeAsync(System.Guid)
@@ -3737,7 +3747,10 @@ member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_ReviewedI
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_Rows()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_Selected()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_SelectedTakeId()
+member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_TakeDetail()
+member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_ValidVideoChoices()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_VideoChoice()
+member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_VideoChoiceLine()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_VideoOptions()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_VoiceId()
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal get_Voices()
@@ -3745,6 +3758,7 @@ member VoxClip.App.ViewModels.RewriteGeneration :: method internal remove_Change
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal set_FixedModelId(string)
 member VoxClip.App.ViewModels.RewriteGeneration :: method internal set_PhraseNumber(int)
 member VoxClip.App.ViewModels.RewriteGeneration :: method private AuditionChanged(object,System.EventArgs)
+member VoxClip.App.ViewModels.RewriteGeneration :: method private AutoChooseVideo()
 member VoxClip.App.ViewModels.RewriteGeneration :: method private Cancel(System.Threading.CancellationTokenSource)
 member VoxClip.App.ViewModels.RewriteGeneration :: method private ConfirmAsync(string,System.Func`3<string,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<bool>>,System.Threading.CancellationToken)
 member VoxClip.App.ViewModels.RewriteGeneration :: method private DiscoverCurrentAsync()
@@ -3912,6 +3926,7 @@ member VoxClip.App.ViewModels.RewritePaidReviewChange :: method public op_Inequa
 member VoxClip.App.ViewModels.RewritePaidReviewChange :: method public set_Apply(System.Func`1<System.Threading.Tasks.Task`1<bool>>)
 member VoxClip.App.ViewModels.RewritePaidReviewChange :: method public set_Identity(string)
 member VoxClip.App.ViewModels.RewritePaidReviewChange :: method public set_Shorter(bool)
+member VoxClip.App.ViewModels.RewriteQuote :: method internal Pieces(System.Collections.Generic.IReadOnlyList`1<string>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag>)
 member VoxClip.App.ViewModels.RewriteReask :: method private .ctor(VoxClip.App.ViewModels.RewriteReask)
 member VoxClip.App.ViewModels.RewriteReask :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.App.ViewModels.RewriteReask :: method private get_EqualityContract()
@@ -4029,6 +4044,7 @@ member VoxClip.App.ViewModels.RewriteSession :: field private consent
 member VoxClip.App.ViewModels.RewriteSession :: field private contextIsCurrent
 member VoxClip.App.ViewModels.RewriteSession :: field private dispatched
 member VoxClip.App.ViewModels.RewriteSession :: field private estimateShown
+member VoxClip.App.ViewModels.RewriteSession :: field private expressionNotes
 member VoxClip.App.ViewModels.RewriteSession :: field private fitFrozen
 member VoxClip.App.ViewModels.RewriteSession :: field private fitInitialEstimates
 member VoxClip.App.ViewModels.RewriteSession :: field private fitInitialSlots
@@ -4050,6 +4066,7 @@ member VoxClip.App.ViewModels.RewriteSession :: field private measuredToken
 member VoxClip.App.ViewModels.RewriteSession :: field private measuredWording
 member VoxClip.App.ViewModels.RewriteSession :: field private measuring
 member VoxClip.App.ViewModels.RewriteSession :: field private patchService
+member VoxClip.App.ViewModels.RewriteSession :: field private pendingExpressions
 member VoxClip.App.ViewModels.RewriteSession :: field private preparedSignIn
 member VoxClip.App.ViewModels.RewriteSession :: field private priceOverrides
 member VoxClip.App.ViewModels.RewriteSession :: field private prices
@@ -4072,7 +4089,7 @@ member VoxClip.App.ViewModels.RewriteSession :: field private synthesisModel
 member VoxClip.App.ViewModels.RewriteSession :: method internal .ctor(VoxClip.App.ViewModels.EditorViewModel,int,int,VoxClip.Core.Domain.Transcript.AudioEnvelope,VoxClip.App.ViewModels.RewriteConnector,System.Nullable`1<int>,VoxClip.Core.Domain.VoiceLab.VoiceLabPriceCatalog,System.Func`2<System.Threading.CancellationToken,System.Threading.Tasks.Task`1<bool>>,System.Func`1<bool>,System.Func`2<string,bool>,VoxClip.Core.Domain.VoiceLab.RewriteScope)
 member VoxClip.App.ViewModels.RewriteSession :: method internal AcceptSurroundingSentence(VoxClip.App.ViewModels.RewriteSentenceReview)
 member VoxClip.App.ViewModels.RewriteSession :: method internal AcceptVoiceBudget()
-member VoxClip.App.ViewModels.RewriteSession :: method internal AddExpression(int,string)
+member VoxClip.App.ViewModels.RewriteSession :: method internal AddExpression(int,string,int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal AdvanceAutoFix()
 member VoxClip.App.ViewModels.RewriteSession :: method internal ApplyLocalChanges()
 member VoxClip.App.ViewModels.RewriteSession :: method internal ApplyTakeAsync()
@@ -4097,6 +4114,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal DiscoverWindowsA
 member VoxClip.App.ViewModels.RewriteSession :: method internal Dollars(System.Decimal)
 member VoxClip.App.ViewModels.RewriteSession :: method internal Edit(string)
 member VoxClip.App.ViewModels.RewriteSession :: method internal EditChange(int,string)
+member VoxClip.App.ViewModels.RewriteSession :: method internal ExpressionNote(int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal FewerWordsReask()
 member VoxClip.App.ViewModels.RewriteSession :: method internal FitPhraseLine(VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase)
 member VoxClip.App.ViewModels.RewriteSession :: method internal FitPhrases(System.Collections.Generic.IReadOnlyList`1<int>)
@@ -4115,7 +4133,9 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal MakeMeasuredTake
 member VoxClip.App.ViewModels.RewriteSession :: method internal MarkBatchEstimateShown(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeBatch)
 member VoxClip.App.ViewModels.RewriteSession :: method internal MarkEstimateShown(VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedAction)
 member VoxClip.App.ViewModels.RewriteSession :: method internal MeasuredPhrase(VoxClip.App.ViewModels.RewriteMeasuredWording)
+member VoxClip.App.ViewModels.RewriteSession :: method internal MoveExpression(int,int,int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal PhraseList(System.Collections.Generic.IReadOnlyList`1<int>)
+member VoxClip.App.ViewModels.RewriteSession :: method internal PhraseStatus(int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal PrepareShorterAsync(System.Nullable`1<int>)
 member VoxClip.App.ViewModels.RewriteSession :: method internal PriceItAnyway(int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal ProposeAsync(VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedAction,bool)
@@ -4132,6 +4152,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal SetInstructionAs
 member VoxClip.App.ViewModels.RewriteSession :: method internal SettingsChanged(bool)
 member VoxClip.App.ViewModels.RewriteSession :: method internal ShorterFeedback(System.Nullable`1<int>)
 member VoxClip.App.ViewModels.RewriteSession :: method internal ShowAutoFixChoices()
+member VoxClip.App.ViewModels.RewriteSession :: method internal ShownAudioTags(int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal ShowsEstimate(int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal SignIn(VoxClip.Core.Services.LLM.CliDetectionInfo)
 member VoxClip.App.ViewModels.RewriteSession :: method internal StartAutomaticTakeAsync(int)
@@ -4164,6 +4185,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal get_Editor()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_Envelope()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_Estimate()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_EstimateCopy()
+member VoxClip.App.ViewModels.RewriteSession :: method internal get_ExpressionsEditable()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_FitApprovalLine()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_FitAsksFirst()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_FitFittedFooter()
@@ -4194,6 +4216,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal get_MeasuredWord
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_MeasuredWork()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_NewWords()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_NextStepCards()
+member VoxClip.App.ViewModels.RewriteSession :: method internal get_PendingExpressionCount()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_PendingPaidReviewChange()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_Prepared()
 member VoxClip.App.ViewModels.RewriteSession :: method internal get_PreparedBatch()
@@ -4246,6 +4269,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal set_EditReviewCh
 member VoxClip.App.ViewModels.RewriteSession :: method internal set_RevealChange(System.Action`1<int>)
 member VoxClip.App.ViewModels.RewriteSession :: method internal set_VoiceConsent(System.Func`2<System.Threading.CancellationToken,System.Threading.Tasks.Task`1<bool>>)
 member VoxClip.App.ViewModels.RewriteSession :: method private AiChips()
+member VoxClip.App.ViewModels.RewriteSession :: method private ApplyPendingExpressions()
 member VoxClip.App.ViewModels.RewriteSession :: method private ApplyReviewedWindowsAsync()
 member VoxClip.App.ViewModels.RewriteSession :: method private ArmAutoFix(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeBatch)
 member VoxClip.App.ViewModels.RewriteSession :: method private AutoFixCharge(System.Nullable`1<System.Decimal>,int,bool)
@@ -4261,6 +4285,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method private DrainGenerationAs
 member VoxClip.App.ViewModels.RewriteSession :: method private EditorChanged(object,System.EventArgs)
 member VoxClip.App.ViewModels.RewriteSession :: method private EditorPropertyChanged(object,System.ComponentModel.PropertyChangedEventArgs)
 member VoxClip.App.ViewModels.RewriteSession :: method private EndsSentence(string)
+member VoxClip.App.ViewModels.RewriteSession :: method private ExpressionBlocker()
 member VoxClip.App.ViewModels.RewriteSession :: method private FitCandidates()
 member VoxClip.App.ViewModels.RewriteSession :: method private GenerationChanged(object,System.EventArgs)
 member VoxClip.App.ViewModels.RewriteSession :: method private GenerationSelectionChanged(object,System.EventArgs)
@@ -4290,6 +4315,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method private SendReaskAsync(Vo
 member VoxClip.App.ViewModels.RewriteSession :: method private SendRewriteAsync(VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedAction,bool)
 member VoxClip.App.ViewModels.RewriteSession :: method private SentenceRecoveryChanged(bool)
 member VoxClip.App.ViewModels.RewriteSession :: method private SetExpressions(int,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag>)
+member VoxClip.App.ViewModels.RewriteSession :: method private SetPhraseExpressions(int,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag>)
 member VoxClip.App.ViewModels.RewriteSession :: method private SpeakingRate()
 member VoxClip.App.ViewModels.RewriteSession :: method private StopWordingFit(bool)
 member VoxClip.App.ViewModels.RewriteSession :: method private WidenToSentenceAsync(int)
@@ -6047,6 +6073,7 @@ type VoxClip.App.ViewModels.RewriteMeasuredWording
 type VoxClip.App.ViewModels.RewriteNextStepCard
 type VoxClip.App.ViewModels.RewriteOpening
 type VoxClip.App.ViewModels.RewritePaidReviewChange
+type VoxClip.App.ViewModels.RewriteQuote
 type VoxClip.App.ViewModels.RewriteReask
 type VoxClip.App.ViewModels.RewriteReaskReply
 type VoxClip.App.ViewModels.RewriteReview

@@ -21,7 +21,7 @@ public sealed class RewritePanelTests
         var source = AppSource("Controls", "RewritePanel.Expressions.cs");
         Assert.Contains("new RichTextBlock { TextWrapping = TextWrapping.Wrap", source);
         Assert.Contains("IsTabStop = true", source);
-        Assert.Contains("Remove {indexed.Tag.Tag} from phrase {phraseNumber}", source);
+        Assert.Contains("Remove {piece} from phrase {phraseNumber}", source);
         Assert.Contains("Add {definition.Tag} to phrase {phraseNumber}", source);
         Assert.Contains("AutomationProperties.SetName(button, name)", source);
         Assert.Contains("+ Expression", source);
@@ -42,7 +42,7 @@ public sealed class RewritePanelTests
     {
         using var session = new RewriteSession(Editor(), 10, 12, Envelope(), null);
         session.Edit("Hello there word11 word12");
-        Assert.True(session.AddExpression(1, "laughs"));
+        Assert.True(session.AddExpression(1, "laughs", 2));
         Assert.True(session.EditChange(1, "Well Hello there now"));
         var hunk = Assert.Single(session.Review!.Diff.Hunks);
         Assert.Equal(4, Assert.Single(hunk.AudioTags).BeforeToken);

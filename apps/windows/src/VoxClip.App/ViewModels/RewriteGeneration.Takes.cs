@@ -116,6 +116,7 @@ internal sealed partial class RewriteGeneration
         BestTakeId = result.End is VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop && !LeftOut ? AutomaticTake()?.Id : null;
         var retained = explicitSelection is { } chosen && Rows.Any(row => row.Id == chosen && row.Selectable && !row.RequiresJoinAdvisoryAcceptance) ? explicitSelection : null;
         core.SelectTake(retained ?? BestTakeId);
+        AutoChooseVideo();
         Phase = result.End switch
         {
             VoiceLabTakeRunEnd.Cancelled or VoiceLabTakeRunEnd.Invalidated => RewriteGenerationPhase.Cancelled,
@@ -153,7 +154,7 @@ internal sealed partial class RewriteGeneration
         if (closed || !LeftOut) return false;
         LeftOut = false;
         BestTakeId = AutomaticTake()?.Id;
-        core.SelectTake(BestTakeId); VideoChoice = null;
+        core.SelectTake(BestTakeId); VideoChoice = null; AutoChooseVideo();
         Phase = ReviewPhase(); Notify();
         return true;
     }
@@ -178,7 +179,37 @@ internal sealed partial class RewriteGeneration
     /// <summary>The take chosen automatically (Mac <c>ClipTakePlan.automaticTake</c>): passing takes with no join to listen to and a
     /// measured voice, never a rejected one, ranked by <see cref="Ranked"/>.</summary>
     internal VoiceLabTakeRow? AutomaticTake() => Ranked(Rows.Where(row => row.AutomaticallySelectable && !rejected.Contains(row.Id) &&
-        row.Qa?.SpeakerScore is { } score && double.IsFinite(score))).FirstOrDefault();
+        !beforeExpression.Contains(row.Id) && row.Qa?.SpeakerScore is { } score && double.IsFinite(score))).FirstOrDefault();
+    private readonly HashSet<Guid> beforeExpression = [];
+    /// <summary>Takes made before this phrase's expression changed (design.md R2 "Expressions"): listed as "Before expression",
+    /// never chosen automatically; a new take with the expression is made beside them.</summary>
+    internal bool IsBeforeExpression(Guid id) => beforeExpression.Contains(id);
+    internal void MarkBeforeExpression() { beforeExpression.UnionWith(Rows.Select(row => row.Id)); Notify(); }
+    /// <summary>The duration choices the selected passing take allows, in the panel's order (keep source, cut, match); a
+    /// choice that can't act is never shown.</summary>
+    internal IReadOnlyList<VoiceLabVideoMode> ValidVideoChoices => Selected is not { Selectable: true } selected ? []
+        : selected.Fits ? [VoiceLabVideoMode.Source]
+        : new[] { CanCut ? VoiceLabVideoMode.Cut : (VoiceLabVideoMode?)null, CanRetime ? VoiceLabVideoMode.Retimed : null }
+            .Where(mode => mode is not null).Select(mode => mode!.Value).ToArray();
+    /// <summary>Mac <c>autoChooseVideo</c>: a selected passing take gets the first valid video duration (cut, then match) at
+    /// once; the panel shows it as one line with [Change].</summary>
+    private void AutoChooseVideo()
+    {
+        if (VideoChoice is not null || Selected is not { Selectable: true, Fits: false }) return;
+        var valid = ValidVideoChoices;
+        VideoChoice = valid.Count > 0 ? valid[0] : null;
+    }
+    /// <summary>The chosen duration in a few words, for the card's one line.</summary>
+    internal string VideoChoiceLine => VideoChoice switch
+    {
+        VoiceLabVideoMode.Cut => "Video: cut to this take · " + CutCopy,
+        VoiceLabVideoMode.Retimed => "Video: matched to this take · " + RetimeCopy,
+        _ => Selected is { Fits: true } ? "Video: keeps its duration · " + KeepSourceCopy : ""
+    };
+    /// <summary>The selected take in one line: its number, length and how the video keeps up.</summary>
+    internal string TakeDetail => Selected is not { Audio: not null } selected ? Rows.Count == 0 ? "No take yet." : "No take chosen yet."
+        : $"Take {selected.Index + 1} · {(Length(selected) ?? 0).ToString("F1", CultureInfo.InvariantCulture)} s · " +
+          (selected.Fits ? "fits" : VideoChoice == VoiceLabVideoMode.Cut ? "video cut to fit" : VideoChoice == VoiceLabVideoMode.Retimed ? "video matched" : "doesn't fit yet");
 
     internal async Task<bool> SelectTakeAsync(Guid id)
     {
@@ -188,7 +219,7 @@ internal sealed partial class RewriteGeneration
         var version = ++selectionRevision;
         if (takes is not null) await takes.Audition.TakeChangedAsync(id);
         if (closed || version != selectionRevision || !current() || !Rows.Any(row => row.Id == id)) return false;
-        explicitSelection = id; LeftOut = false; core.SelectTake(id); VideoChoice = null; Phase = ReviewPhase(); Notify();
+        explicitSelection = id; LeftOut = false; core.SelectTake(id); VideoChoice = null; AutoChooseVideo(); Phase = ReviewPhase(); Notify();
         if (pendingInput is { } input && RetryPace(input) != input.Pace) await InputsChangedAsync(preserveReview: true);
         return true;
     }
@@ -199,7 +230,7 @@ internal sealed partial class RewriteGeneration
         await takes.Audition.TakeChangedAsync(id);
         if (closed || version != selectionRevision || !current() || !Rows.Contains(row)) return false;
         core.UseTakeAnyway(id, clock.GetUtcNow());
-        explicitSelection = id; LeftOut = false; VideoChoice = null; Phase = ReviewPhase();
+        explicitSelection = id; LeftOut = false; VideoChoice = null; AutoChooseVideo(); Phase = ReviewPhase();
         Announcement = TakeRowPresentation.From(row, BestTakeId, PhraseNumber).Copy;
         Notify();
         return true;
@@ -270,7 +301,7 @@ internal sealed partial class RewriteGeneration
         if (closed) return;
         rejected.Add(id);
         BestTakeId = reviewEnd is VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop && !LeftOut ? AutomaticTake()?.Id : null;
-        if (SelectedTakeId == id) { explicitSelection = null; core.SelectTake(BestTakeId); VideoChoice = null; }
+        if (SelectedTakeId == id) { explicitSelection = null; core.SelectTake(BestTakeId); VideoChoice = null; AutoChooseVideo(); }
         Phase = ReviewPhase();
         Announcement = Selected is { } next ? $"Rejected Take {row.Index + 1}. Take {next.Index + 1} selected." : TakeRowPresentation.NonePassed;
         Notify();

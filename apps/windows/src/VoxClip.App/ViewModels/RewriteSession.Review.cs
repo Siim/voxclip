@@ -255,24 +255,37 @@ internal sealed partial class RewriteSession
         return result;
     }
 
-    internal bool AddExpression(int ordinal, string tag)
+    /// <summary>Adds <paramref name="tag"/> before token <paramref name="beforeToken"/> of the change; the default is before the
+    /// first changed word (design.md R2 "Expressions"). Click a word to move it (<see cref="MoveExpression"/>).</summary>
+    internal bool AddExpression(int ordinal, string tag, int beforeToken = 0)
     {
-        if (!ReviewIsCurrent || Review is null || ordinal <= 0 || ordinal > Review.Diff.Hunks.Count ||
+        if (!ExpressionsEditable || Review is null || ordinal <= 0 || ordinal > Review.Diff.Hunks.Count ||
             Review.Diff.Hunks[ordinal - 1] is not { Kind: VoiceLabDiffHunkKind.Voice } hunk || !VoiceLabAudioTags.Definitions.Any(definition => definition.Tag == tag) ||
             (Review.VoiceHunks.FirstOrDefault(phrase => phrase.Ordinals.Contains(ordinal))?.RequestAudioTags.Count ?? hunk.AudioTags.Count) >= 64) return false;
-        return SetExpressions(ordinal, hunk.AudioTags.Append(new(hunk.NewTokens.Count, tag)).ToArray());
+        return SetExpressions(ordinal, ShownAudioTags(ordinal).Append(new(Math.Clamp(beforeToken, 0, hunk.NewTokens.Count), tag)).ToArray());
+    }
+    /// <summary>Click-to-place: the expression at <paramref name="index"/> moves before token <paramref name="beforeToken"/>.</summary>
+    internal bool MoveExpression(int ordinal, int index, int beforeToken)
+    {
+        if (!ExpressionsEditable || Review is null || ordinal <= 0 || ordinal > Review.Diff.Hunks.Count) return false;
+        var tags = ShownAudioTags(ordinal);
+        if (index < 0 || index >= tags.Count) return false;
+        var hunk = Review.Diff.Hunks[ordinal - 1];
+        var moved = tags.Select((tag, at) => at == index ? tag with { BeforeToken = Math.Clamp(beforeToken, 0, hunk.NewTokens.Count) } : tag).ToArray();
+        return !moved.SequenceEqual(tags) && SetExpressions(ordinal, moved);
     }
     internal bool RemoveExpression(int ordinal, int index)
     {
-        if (!ReviewIsCurrent || Review is null || ordinal <= 0 || ordinal > Review.Diff.Hunks.Count ||
-            index < 0 || index >= Review.Diff.Hunks[ordinal - 1].AudioTags.Count) return false;
-        return SetExpressions(ordinal, Review.Diff.Hunks[ordinal - 1].AudioTags.Where((_, at) => at != index).ToArray());
+        if (!ExpressionsEditable || Review is null || ordinal <= 0 || ordinal > Review.Diff.Hunks.Count ||
+            index < 0 || index >= ShownAudioTags(ordinal).Count) return false;
+        return SetExpressions(ordinal, ShownAudioTags(ordinal).Where((_, at) => at != index).ToArray());
     }
     private bool SetExpressions(int ordinal, IReadOnlyList<VoiceLabAudioTag> annotations)
     {
         StopWordingFit();
         var captured = annotations.ToArray();
-        if (DeferPaidReviewChange(() => Task.FromResult(SetExpressions(ordinal, captured)))) return false;
+        // With takes, only this phrase changes: no discard prompt, other phrases keep their paid takes.
+        if (HasPaidTakes) return SetPhraseExpressions(ordinal, captured);
         if (!ReviewIsCurrent || Review is null || ordinal <= 0 || ordinal > Review.Diff.Hunks.Count) return false;
         var proposals = scopeHunks ?? Review.Diff.Hunks.Select(change => new ScopeRewriteDiff.Hunk(change, null, [], [], false)).ToArray();
         scopeHunks = proposals.Select((proposal, index) => index == ordinal - 1 ? proposal with
