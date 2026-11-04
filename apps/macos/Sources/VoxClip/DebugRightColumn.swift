@@ -59,7 +59,7 @@ import VoxClipMedia
         }
     }
     /// A Rewrite session on the fixture's words 12–25, as the Rewrite variants show it.
-    private static func openRewrite(_ variant: String, in model: EditorModel) throws {
+    static func openRewrite(_ variant: String, in model: EditorModel) throws {
         model.mediaResolved = true
         let envelope = AudioEnvelope(sampleRate: 48_000, levels: Array(repeating: 0.01, count: 10_000))
         let connector = RewriteConnector(connector: RewriteFixtureConnector(), model: "fixture-local", name: "Fixture", group: "local", plan: "")

@@ -59,7 +59,10 @@ import VoxClipCore
                 await model.start()
                 do {
                     let results: [DebugUISuite.Result]
-                    if CommandLine.arguments.contains("-timelinePerformanceAudit") {
+                    if CommandLine.arguments.contains("-spacingCaptures") {
+                        // Offscreen spacing captures (DebugSpacing.swift), on the -layoutAudit launch path.
+                        results = try await DebugSpacing.run(app: model, directory: directory)
+                    } else if CommandLine.arguments.contains("-timelinePerformanceAudit") {
                         // Headless counterpart of the timeline portion of -uiPerformanceTest.
                         // Keep -layoutAudit so AppModel uses the test-session launch path.
                         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
