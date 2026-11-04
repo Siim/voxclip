@@ -1,5 +1,56 @@
 # Windows fixed contracts
 
+### 2026-11-04 — Windows App: the learning fix loop, My words, Say it myself and their smoke twins (track/v2-win-app-own)
+
+App/UI twins of Mac track/v2-v4-timing (resolver), track/v2-bridge-words and track/v2-own-words, over the Core/Media package below. No Mac or Core code changed.
+
+- **The learning fix loop (Mac `RewriteAutoFix`, `RewriteWordingFit`).**
+  - `StuckTakeReason.Provider(error)` and `.Timing`, with `Rewords` (only `Length` and `Words`). `IsAccountFailure`, `ProviderFix` (Mac `ClipTakePlan.nextStep` copy) and `ProviderProblem`; a window's failure line now ends with its fix.
+  - `AdvanceAutoFix`: an account failure no longer stops the fixes; its card shows the cause and fix with [Price a take] and [Keep original words] (`Rewrite.Chip.PriceTake{n}`, `KeepPhrase{n}`; " for phrase N" with several phrases) and no wording chips. [Price a take] prices afresh (`AutoFixState.Priced`); its chip then reads "Make take · ≈ $x", and that click makes the take. A take with no word timing gets one more take, then keeps its original words. Only spending-limit failures still stop the fixes.
+  - `TriedWordings(index)` (Mac `triedWordings`) and `BridgeFor(index)`. Measured rounds send `VoiceLabFitPhrase.Tried` and `.Bridge`. A reply that drops the bridge words is recorded as `missingBridge` and gets one re-ask in the same round, charged as an AI send with no speech quote. A second drop ends the round with `DroppedBridgeProblem`. A manual suggestion shows the "left out" line. Automatic rounds refuse a repeat (`repeat`) and a wording that doesn't move toward the slot (`notShorter`/`notLonger`), and the easier-words re-ask sends the tried block and refuses repeats and dropped bridges (`AutoFix.Refused`).
+  - Reply suggestions on a stuck phrase's card come only for wording and fit failures, one per variant, never one that repeats a tried wording.
+  - `AutoFixHistoryLine` ("Round k of 3 · tried: …") under the phrase status (`Rewrite.RoundLine`).
+  - Footer: once Get Price armed the fixes, the takes footer applies even with no paid take. Its last fallbacks are `NoTakeYetStep` ([Price a take for phrase N], then [Make take for phrase N · ≈ $x]) and `NoTakeToUseStep` ([Keep original words for phrase N]); new `RewriteFooterAction.PriceTake`/`KeepOriginal` and `RewriteFooterStep.Phrase`.
+  - `LocalTiming`: `RewriteGenerationBackend` takes `AppServices.LocalTiming` (`VoiceLabLocalTimingSource.OnDevice` over the installed, verified Whisper models). Windows.Media.SpeechRecognition gives no word timings without a download, so it is not a source.
+- **My words (Mac `PhraseOwnWords`).** `PhraseWording`, `PhraseWordingCopy`, `RewriteOwnWordsFit` and `RewriteOwnWordsAdvice` in `RewriteSession.OwnWords.cs`; `RewritePanel.OwnWords.cs`.
+  - The phrase card has a segmented control (`Rewrite.WordingChoice`, short labels under 360 epx) and one visible field (`OwnWordsEditing`), which starts from the change without its bridge words.
+  - The live line comes from `VoiceLabPaceMatching.Measure`.
+  - ✦ Shorten/Lengthen my words fills the field and sends no take; a billed key gets an inline [Send · price unavailable] [Cancel].
+  - [Make take · ≈ $x] shows only once the quote is for these exact words; typing waits 600 ms, or Enter, before pricing. The take voices bridge + own words + bridge (`CurrentWording` feeds `GenerationInputAsync` and `VoicedOrdinals`), and its best passing take is then the one used.
+  - The resolver and the measured reword skip phrases not in Suggested.
+- **Say it myself (Mac `MicrophoneTake`).**
+  - Media:
+    - `VoiceLabMicrophoneTake.cs`: `MicrophoneTakeMaker.MakeAsync`/`Publish`, `VoiceLabRecordedPhraseTake`, `IMicrophoneTakeTranscriber`, `OnDeviceTakeTranscriber` (installed Whisper only; `VoiceLabLocalTimingSource.OnDevice` now uses it), and `MicrophoneTakeException`.
+    - The take is processed like a generated one: preflight from the planned input, `Process`, the asset store, `SilenceFit`, `TakeRenderer.Stage`, QA (`SpeakerUnmeasured = true`, no score) and rank.
+    - `Audio/PhraseCueOutput.cs`: WASAPI playback of the cue, headphones by endpoint form factor, and `HasMicrophone`.
+  - App:
+    - `RewritePhraseMicrophone`: `IPhraseMicrophone` over `VoiceMicrophoneRecorder`, a lead-in (up to 2 s of the clip before the phrase) with headphones or else a three-beep count-in, auto-stop at the gap + 1.5 s, the level and time, [Stop], and the take line.
+    - `RewriteSession.Microphone.cs` (`ConfigureMicrophone`, `DisclosureLine`). `RewriteGeneration.Recorded.cs` keeps own takes beside the core rows, with their own selection, scratch and Use anyway, and accepts them as `VoiceLabRecordedTake.Candidate`/`Segment` with no voice reference. `RewriteAcceptance.Voice` and `EditorViewModel.ApplyVoiceLab(voice)` are nullable.
+    - `RewritePanel.Microphone.cs` shows [● Record] with "Say: “…”"; while recording, the meter, time / gap and [Stop]; then "Your take · “words” · fits X s ✓ · free" with Play, [Use your take] or Use anyway, and [Record again], which replaces an unused own take. Denied access shows inline guidance and [Open Microphone Settings] (`ms-settings:privacy-microphone`); with no microphone, Record is hidden. The footer reads "Your own take is used as recorded: no AI label." when only own takes are used.
+    - `UseTakeAnywayAsync` no longer needs take playback to be configured.
+- **Smoke (`RewriteSmokeTests`).** S15 twins Mac S15 (bridge-word re-ask) and S16 twins Mac S14 (v4 timing quirks; Windows S14 is the collision after paid takes). S-own-typed, S-own-mic and S-own-mic-misfit use a stub microphone and recognizer through the real take maker on a decoded stand-in source. All 19 scenarios keep I1–I9. The harness now takes a runner per phrase (a stub runner holds one quote).
+- **Deviations.**
+  - Recognition is installed Whisper only; Windows speech recognition has no word timings without a download.
+  - Microphone access before the first recording is "a capture endpoint exists"; Windows' refusal shows on the first start, as the Create Voice flow does, and the denied state stays until a recording starts.
+  - Windows Rewrite has no lip sync, so the own-words footer is "Next: listen, then Use." and the own-take label line drops Mac's "unless you add lip sync".
+  - A provider-stuck phrase's chip prices afresh before it makes a take (Mac opens the priced button elsewhere).
+  - The billed ✦ Shorten/Lengthen send shows "price unavailable", as Windows' other fit approvals do.
+- **Verification (serial, local, absolute `VOXCLIP_SHARED_DIR`).**
+  - Release Core: **3,001 total, 2,972 passed, 29 skipped, 0 failed**.
+  - Portable Media (`Category!=RequiresFFmpeg&Category!=RequiresWindows`): **924 total, 919 passed, 5 skipped, 0 failed**.
+  - Release win-ui: **1,232 total, 1,227 passed, 5 skipped, 0 failed**; `--filter-method '*ReleaseSurrogate*'` 1/1. Builds: zero warnings or errors.
+  - Red runs:
+    - Item 1, behaviour lines backed out: 7 of 8 `RewriteLearningLoopTests` fail.
+    - Item 2, own-words input and resolver skip backed out: 2 of 4 `RewriteOwnWordsTests` fail.
+    - Item 3, row listing and `SpeakerUnmeasured` backed out: 3 of 6 `RewriteOwnTakeTests` and the Media maker test fail.
+    - Smoke, bridge re-ask and own-words selection backed out: S15 and S-own-typed fail.
+  - Two older tests relied on re-voicing a repeated wording and now give each round a new, shorter one.
+  - Allowlists: `ReleaseBoundary update` on the surrogate folder and the CLI, reviewed. `VoxClip.txt` +250 / −4 (the new App types and members; the old footer-step and backend constructors). `VoxClip.Media.txt` +48 (the microphone take, transcriber and cue output). Core and CLI unchanged.
+  - No live or paid calls, VM, real microphone or CI dispatch.
+- **Owed.**
+  - Native Windows runs: WASAPI recording and cue playback (including the shared-mode float format), headphone detection, the Settings link, the segmented control and own-take rows at 300–560 epx, Narrator names and keyboard order, and listening to a real own take's join.
+  - doc/spec and CHANGELOG lines for the Windows twins (out of scope here).
+
 ### 2026-11-04 — Windows Core and Media: own recorded takes, v4 tolerant timing and timing recovery, bridge words (track/v2-win-core-own)
 
 Twins of the Core and Media parts of Mac track/v2-own-words, track/v2-v4-timing and track/v2-bridge-words. No Mac code changed. App/UI twins are a later package (owed lists below).
@@ -34,22 +85,15 @@ Twins of the Core and Media parts of Mac track/v2-own-words, track/v2-v4-timing 
   - Red runs: without the Core port, 17 of 22 `VoiceLabRecordedTakeTests` fail (projects refused, saves, disclosure, accept-all, refusals); the old sidecar kind writes `voiceChanger`. The old client fails 3 dialogue tests (25 v4 cases refused or mislogged). Recovery disabled and timing fatal again: 7 Media take-run tests fail. Bridge/tried rendering removed: the bridge test fails.
   - Allowlists: `ReleaseBoundary update`, reviewed. `VoxClip.Core.txt`: the recorded-take, timing, bridge and tried types and members, the timing check-name literals, `RetimeNormalized` out. `VoxClip.Media.txt`: `VoiceLabLocalTiming`, `VoiceLabLocalTimingSource`, the take run's `LocalTiming` and recovery helpers. App and CLI unchanged.
   - Every Voice Lab generator, `check_drift.py` (recorded and v4 cases identical), `git diff --exit-code` and no untracked files; `tools/schemas/validate.py` OK; `tools/voice-lab` unittests OK. No live or paid calls, VM or CI dispatch.
-- **Still owed (App/UI package).** Resolver re-ask for dropped bridge words and filling `Bridge`/`Tried`; My words and Say it myself UI and recording; wiring `LocalTiming` (Whisper, Windows speech); smoke S15, the v4 timing smoke twin and the own-take scenarios. See the three entries below.
+- **Still owed (App/UI package).** Done in track/v2-win-app-own (entry above); only its native runs remain.
 
 ### 2026-11-04 — Owed from Mac "A reworded phrase that drops its bridge words" (track/v2-bridge-words)
 
-No Windows code changed. `voice-rewrite-fit.json` and every replayed fixture are unchanged. Windows owes (Core done in track/v2-win-core-own, entry above):
-
-- **App resolver.** Fill `VoiceLabFitPhrase.Bridge` (`VoiceLabFitBridge.From(input)`) for measured rounds and record a dropped reply as `missingBridge` in `Tried`. Check each measured reply with `Keeps` before it counts. A dropped reply gets one automatic re-ask in the same round, with the dropped wording in the tried history; the re-ask is an AI send under the cap, with no speech quote. A re-ask that still drops them ends the round, with "(dropped “…”, not used)" on the phrase card. A manual suggestion shows the "left out" line. `PrepareRewording` refuses a wording without the bridge words.
-- **Smoke S15** in `RewriteSmokeTests`.
+No Windows code changed. `voice-rewrite-fit.json` and every replayed fixture are unchanged. Core done in track/v2-win-core-own; the App resolver and smoke S15 done in track/v2-win-app-own (entries above). Nothing else is owed.
 
 ### 2026-11-04 — Owed: Rewrite's My words and Say it myself (Mac track/v2-own-words)
 
-Mac added both options of the approved phrase-card mockup (design.md §6.3.8 "Your own words", voice-lab.md §8.13). Windows Core now opens, validates, renders, saves and discloses Mac projects with an own take, with shared vectors (track/v2-win-core-own, entry above). Still owed, in order:
-
-- **App, My words.** The segmented control, one visible field, the live "Your voice reads this…" line from the plan's estimate and verdict, ✦ Shorten/Lengthen (fills the field; inline Send for billed keys), Make take through the existing priced path, typing drops an unpaid quote, and the resolver skip (Mac `RewriteAutoFix.advanceAutoFix`, `observeMeasuredTakes`).
-- **App, Say it myself.** Recording (WASAPI), lead-in cue with headphones or a count-in, auto-stop at the gap + 1.5 s, on-device recognition (Windows.Media.SpeechRecognition or the project's Whisper model), trim/level/fit/join through the existing take processing, the take as a free take source with Use your take / Use anyway / Record again, the inline permission and no-mic states, and the Use footer without the AI label when only own takes are used.
-- **Smoke.** S-own-typed, S-own-mic, S-own-mic-misfit (Mac `DebugRewriteSmokeOwnTakes.swift`).
+Mac added both options of the approved phrase-card mockup (design.md §6.3.8 "Your own words", voice-lab.md §8.13). Windows Core opens, validates, renders, saves and discloses Mac projects with an own take (track/v2-win-core-own). My words, Say it myself and the three own-take smoke scenarios are done in track/v2-win-app-own (entry above); its native runs remain owed there.
 
 ### 2026-11-04 — Windows Rewrite owed items: collision after paid takes, Keep text fixes only at once, ADR-R37 pooled voice check with [Choose Take N]
 
@@ -107,10 +151,7 @@ Mac added both options of the approved phrase-card mockup (design.md §6.3.8 "Yo
 
 ### 2026-11-04 — Owed from Mac "Eleven v4 timing quirks and the learning fix loop" (track/v2-v4-timing)
 
-No Windows code changed. `dialogue-cases.json`, `audio-tag-cases.json` and the fit prompt are unchanged, so every existing replay stays green. Core tolerant timing, the release log line and Media timing recovery are done (track/v2-win-core-own, entry above). Windows still owes:
-
-- **App resolver.** Provider and timing classes; [Price a take] and [Keep original words] for provider failures, with no wording chips. The tried history sent with each reworded round (Core `VoiceLabFitPhrase.Tried` renders it; the resolver must fill it). Automatic refusal of repeats and of wordings that don't move toward the slot. Suggestion dedupe. "Round k of 3 · tried: …" on the phrase card. The footer's last fallbacks ([Price a take for phrase N], [Keep original words for phrase N]) and the stopped-run fix line.
-- **Smoke:** a Windows twin of Mac smoke S14 (v4 timing quirks) in `RewriteSmokeTests`, under a new number, since Windows S14 is the collision after paid takes.
+No Windows code changed. `dialogue-cases.json`, `audio-tag-cases.json` and the fit prompt are unchanged, so every existing replay stays green. Core tolerant timing, the release log line and Media timing recovery are done (track/v2-win-core-own); the App resolver, the footer fallbacks, the stopped-run fix line and the smoke twin (Windows S16) are done in track/v2-win-app-own (entries above). Nothing else is owed.
 
 ### 2026-11-04 — Windows Rewrite voice budget is a note, and smoke S2 (two changes close together)
 
