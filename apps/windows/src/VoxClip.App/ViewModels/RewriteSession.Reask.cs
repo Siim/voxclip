@@ -26,20 +26,10 @@ internal sealed partial class RewriteSession
     internal IReadOnlyList<RewriteNextAction> ReplyNextActions { get; private set; } = [];
     internal string AiName => Connector?.Name ?? "the AI";
     internal string? ReaskingLine => Reasking is { } asked ? $"Asking {AiName}: “{asked.Label}”" : null;
-    /// <summary>The over-budget re-voice was accepted with [Re-voice all {v}] for this reply.</summary>
-    internal bool BudgetAccepted { get; private set; }
-    /// <summary>The budget only advises (Mac <c>voiceBudgetBlocks</c>): it holds takes back until [Re-voice all {v}].</summary>
-    internal bool VoiceBudgetBlocks => Review?.Budget.Copy is not null && !BudgetAccepted;
-    internal string? VoiceBudgetCallout => Review is { Budget: { Copy: not null } budget } && !BudgetAccepted
-        ? $"These changes re-voice {budget.VoiceTokenCount} words, a lot for a {budget.WordItems}-word clip. Long stretches in your voice can sound stitched." : null;
-    internal string ReVoiceAllTitle => $"Re-voice all {Review?.Budget.VoiceTokenCount ?? 0}";
-    internal void AcceptVoiceBudget()
-    {
-        if (!ReviewIsCurrent || Review?.Budget.Copy is null || BudgetAccepted) return;
-        BudgetAccepted = true;
-        InvalidateGenerationInputs();
-        Changed?.Invoke(this, EventArgs.Empty);
-    }
+    /// <summary>Over the voice budget the phrases are voiced anyway (voice-lab.md §8.2, Mac <c>budgetCallout</c>): a note while
+    /// a voice change is included, never a hold on takes.</summary>
+    internal string? VoiceBudgetCallout => Review is { Budget: { Copy: not null } budget } && IncludedHunks.Any(hunk => hunk.Kind == VoiceLabDiffHunkKind.Voice)
+        ? $"These changes re-voice {budget.VoiceTokenCount} words, a lot for a {budget.WordItems}-word clip. Long stretches in your voice can sound stitched; Rewrite goes on." : null;
 
     /// <summary>Sends <paramref name="reask"/> and lands its reply. With paid takes the inline discard confirmation comes first.</summary>
     internal Task<bool> ReaskAsync(RewriteReask reask)
@@ -101,7 +91,6 @@ internal sealed partial class RewriteSession
         if (Review is not { } review) return;
         InvalidateProposal();
         priceOverrides.Clear();
-        BudgetAccepted = false;
         ReplyNextActions = reply.NextActions;
         if (reask.Ordinals.Count == 0)
         {

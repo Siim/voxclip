@@ -112,7 +112,8 @@ internal sealed partial class RewritePanel
             box.Children.Add(chips);
             nextSteps.Children.Add(box);
         }
-        if (cards.Count > 0)
+        // A card folded under "Choose yourself…" carries no field, as on the Mac.
+        if (cards.Any(card => card.Asks))
         {
             tellTheAi.IsEnabled = tellTheAiSend.IsEnabled = session.Connector is not null && session.Review is not null && approval is null;
             nextSteps.Children.Add(tellTheAiRow);

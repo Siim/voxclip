@@ -20,29 +20,31 @@ public sealed class RewriteNextStepsTests
     private const string Fifteen = "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen";
 
     [Fact]
-    public async Task TheVoiceBudgetAdvisesWithReVoiceAllInsteadOfRefusing()
+    public async Task OverTheVoiceBudgetRewriteGoesOnWithANoteAndFoldedChips()
     {
         var connector = new Connector(Fifteen + " word11 word12", (_, ordinals) => Rows(ordinals, Fifteen))
         { NextActions = [new JsonObject { ["label"] = "Shorten the change", ["instruction"] = "Say it in five words.", ["ordinals"] = new JsonArray(1) }] };
         var runner = new Runner((_, _) => (Fit, Passed));
         using var session = Session(connector);
         Assert.True(await ProposeAsync(session));
-        Assert.True(session.VoiceBudgetBlocks);
-        Assert.Equal("These changes re-voice 15 words, a lot for a 80-word clip. Long stretches in your voice can sound stitched.", session.VoiceBudgetCallout);
+        Assert.Equal("These changes re-voice 15 words, a lot for a 80-word clip. Long stretches in your voice can sound stitched; Rewrite goes on.",
+            session.VoiceBudgetCallout);
+        // Over the budget the phrases are voiced anyway: the batch is prepared with no click.
         Configure(session, runner);
         await session.DiscoverWindowsAsync();
-        Assert.Null(session.PreparedBatch);
-        Assert.Equal("Choose how much to re-voice above.", session.FooterStep.Line);
-        var card = Assert.Single(session.NextStepCards, card => card.Id == "Rewrite.Steps.Budget");
-        Assert.Equal(["Re-voice all 15", "Change fewer words", "✦ Shorten the change"], card.Chips.Select(chip => chip.Label));
-        await card.Chips[0].Invoke!();
-        Assert.True(session.BudgetAccepted);
-        Assert.False(session.VoiceBudgetBlocks);
         await session.Generation!.PendingUpdate;
         Assert.NotNull(session.PreparedBatch);
-        Assert.DoesNotContain(session.NextStepCards, card => card.Id == "Rewrite.Steps.Budget");
-        session.Edit(Fifteen + " word11 word12 more");
-        Assert.False(session.BudgetAccepted);
+        Assert.Equal("Make the takes to hear the new words.", session.FooterStep.Line);
+        // The note shows; its chips wait under "Choose yourself…", with no free-text field until they show.
+        var folded = Assert.Single(session.NextStepCards, card => card.Id == "Rewrite.Steps.Budget");
+        Assert.Equal(session.VoiceBudgetCallout, folded.Sentence);
+        Assert.Equal(["Choose yourself…"], folded.Chips.Select(chip => chip.Label));
+        Assert.False(folded.Asks);
+        await folded.Chips[0].Invoke!();
+        var budget = Assert.Single(session.NextStepCards, card => card.Id == "Rewrite.Steps.Budget");
+        Assert.Equal(["Change fewer words", "✦ Shorten the change"], budget.Chips.Select(chip => chip.Label));
+        Assert.True(budget.Asks);
+        Assert.NotNull(session.PreparedBatch);
     }
 
     [Fact]

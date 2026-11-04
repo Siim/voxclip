@@ -130,7 +130,7 @@ internal sealed partial class RewriteSession : IDisposable
     internal async Task<VoiceLabTakeInput?> GenerationInputAsync(string recordId, string modelId, uint seed, bool providerConsent,
         RewriteSourceReader source, CancellationToken ct, int windowIndex = 0)
     {
-        if (!GenerationIsCurrent || Review is null || VoiceBudgetBlocks || PricedVoiceHunks.Count == 0) return null;
+        if (!GenerationIsCurrent || Review is null || PricedVoiceHunks.Count == 0) return null;
         if (PricedVoiceHunks.Count > VoiceLabTakeBatch.MaximumWindows)
             throw new RewriteGenerationException("Keep fewer changed passages before generating takes. Your edits are saved.");
         if (windowIndex < 0 || windowIndex >= PricedVoiceHunks.Count) return null;
@@ -343,7 +343,7 @@ internal sealed partial class RewriteSession : IDisposable
             ResetWordingFit();
             AutoFix.Reset();
             ReplyNextActions = nextActions;
-            BudgetAccepted = false; ReaskProblem = ""; LastReask = null;
+            ReaskProblem = ""; LastReask = null;
             NewWords = resultText;
             RefreshReview();
             ProposalRevision++;
@@ -378,7 +378,6 @@ internal sealed partial class RewriteSession : IDisposable
         StopWordingFit();
         StopAutoFix();
         StopReask();
-        BudgetAccepted = false;
         audioTags = VoiceLabAudioTags.Reanchored(ReviewAudioTags(), NewWords, text);
         InvalidateProposal();
         scopeHunks = null;

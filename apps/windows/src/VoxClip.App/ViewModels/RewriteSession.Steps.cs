@@ -11,8 +11,9 @@ internal sealed record RewriteChip(string Id, string Title, bool Ai, Func<Task>?
     internal string Label => Ai ? "✦ " + Title : Title;
 }
 
-/// <summary>A stuck state's card: one plain sentence and the chips that act on it, then the free-text field.</summary>
-internal sealed record RewriteNextStepCard(string Id, string Sentence, IReadOnlyList<RewriteChip> Chips);
+/// <summary>A stuck state's card: one plain sentence and the chips that act on it, then the free-text field. A card folded under
+/// "Choose yourself…" does not ask for the field (<see cref="Asks"/>), as Mac's collapsed steps carry no <c>ask</c>.</summary>
+internal sealed record RewriteNextStepCard(string Id, string Sentence, IReadOnlyList<RewriteChip> Chips, bool Asks = true);
 
 internal enum RewriteFooterAction { None, ApplyLocal, UseTakes, ApplyTextFixes, Done, KeepFixing, StopReask, StopAutoFix }
 
@@ -23,6 +24,7 @@ internal sealed partial class RewriteSession
 {
     internal const string AskAgainChip = "Rewrite.Chip.AskAgain";
     internal const string TellTheAiPlaceholder = "Tell the AI what to do instead…";
+    internal const string ChooseYourselfChip = "Rewrite.Chip.ChooseYourself";
 
     /// <summary>The AI's suggestions as ✦ chips, each a scoped re-ask.</summary>
     private IEnumerable<RewriteChip> AiChips() => ReplyNextActions.Select((action, index) => new RewriteChip("Rewrite.Chip.Ai" + (index + 1), action.Label, true,
@@ -53,14 +55,18 @@ internal sealed partial class RewriteSession
                     cards.Add(new("Rewrite.Steps.Failed", Problem, [new(AskAgainChip, "Ask again", false, null)]));
                 return cards;
             }
-            if (VoiceBudgetCallout is { } callout && !HasPaidTakes)
-                cards.Add(new("Rewrite.Steps.Budget", callout,
-                [
-                    new("Rewrite.Chip.ReVoiceAll", ReVoiceAllTitle, false, () => { AcceptVoiceBudget(); return Task.CompletedTask; }),
-                    new("Rewrite.Chip.FewerWords", "Change fewer words", false, () => ReaskAsync(FewerWordsReask())),
-                    .. TextFixCount > 0 ? [new RewriteChip("Rewrite.Chip.TextFixesOnly", "Keep text fixes only", false, () => { KeepTextFixesOnly(); return Task.CompletedTask; })] : Array.Empty<RewriteChip>(),
-                    .. AiChips()
-                ]));
+            // Over the voice budget Rewrite goes on (Mac ChangeList `advised`): the note shows, and its chips wait under
+            // "Choose yourself…" until it is opened.
+            if (VoiceBudgetCallout is { } callout)
+                cards.Add(AutoFix.ShowChoices
+                    ? new("Rewrite.Steps.Budget", callout,
+                    [
+                        new("Rewrite.Chip.FewerWords", "Change fewer words", false, () => ReaskAsync(FewerWordsReask())),
+                        .. AiChips(),
+                        .. TextFixCount > 0 ? [new RewriteChip("Rewrite.Chip.TextFixesOnly", "Keep text fixes only", false, () => { KeepTextFixesOnly(); return Task.CompletedTask; })] : Array.Empty<RewriteChip>()
+                    ])
+                    : new("Rewrite.Steps.Budget", callout,
+                        [new(ChooseYourselfChip, "Choose yourself…", false, () => { ShowAutoFixChoices(); return Task.CompletedTask; })], Asks: false));
             if (SentenceRefusedOrdinal is { } refused && SentenceProblem == SentenceUnavailable && ReviewIsCurrent)
                 cards.Add(new("Rewrite.Steps.Sentence" + refused,
                     $"Change {refused} at {ChangeTime(refused)}: its whole sentence doesn't fit inside this clip.",
@@ -150,7 +156,6 @@ internal sealed partial class RewriteSession
             if (LocalAction is { } local) return new($"{local} needs no new audio.", local, RewriteFooterAction.ApplyLocal);
             if (!HasPaidTakes)
             {
-                if (VoiceBudgetBlocks) return new("Choose how much to re-voice above.", null, RewriteFooterAction.None);
                 if (BlockedVoiceHunks.FirstOrDefault() is { } blocked)
                     return PricedVoiceHunks.Count == 0 && TextFixCount > 0
                         ? new($"Change {blocked.Ordinals[0]} needs a {(blocked.Fit?.TooLong ?? true ? "shorter" : "longer")} wording before takes. Or apply the text fixes now.", ApplyTextFixesTitle, RewriteFooterAction.ApplyTextFixes)

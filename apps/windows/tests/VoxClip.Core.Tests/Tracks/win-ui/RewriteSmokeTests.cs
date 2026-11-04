@@ -74,7 +74,7 @@ public sealed class RewriteSmokeTests
             {
                 using var smoke = new Smoke(id, new(Fifteen + " word11 word12", (_, ordinals) => Rows(ordinals, Fifteen)), new((_, _) => (Fit, Passed)));
                 await smoke.ProposeAsync();
-                await smoke.ClickAsync("Rewrite.Chip.ReVoiceAll");
+                // Over the voice budget Rewrite goes on: a note, and the batch is priced with no click.
                 await smoke.GetPriceAsync();
                 smoke.End(VoiceLabVideoMode.Source, voiced: 1);
                 return smoke;
