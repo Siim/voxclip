@@ -1348,7 +1348,7 @@
       "state": "active",
       "visible": true,
       "opacity": 1.0,
-      "scale": 1.1,
+      "scale": 1.0,
       "dy": 0.0,
       "fill": "#FFFFFFFF",
       "fillSource": "base"
@@ -1453,7 +1453,7 @@
       "state": "active",
       "visible": true,
       "opacity": 1.0,
-      "scale": 1.1,
+      "scale": 1.0,
       "dy": 0.0,
       "fill": "#FFFFFFFF",
       "fillSource": "base"

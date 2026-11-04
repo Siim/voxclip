@@ -1,0 +1,55 @@
+{
+  "images" : [
+    {
+      "crop" : {
+        "h" : 1,
+        "w" : 1,
+        "x" : 0,
+        "y" : 0
+      },
+      "file" : "s0.png",
+      "frame" : {
+        "height" : 1080,
+        "width" : 1920
+      },
+      "sample" : 0,
+      "sha256" : "5a5a47c83114f65dc9fd38cdf422e2eeded555162d7a1993bd336dd0dc8eb271",
+      "style" : null,
+      "t" : 0.1
+    },
+    {
+      "crop" : {
+        "h" : 100,
+        "w" : 1109,
+        "x" : 406,
+        "y" : 857
+      },
+      "file" : "s1.png",
+      "frame" : {
+        "height" : 1080,
+        "width" : 1920
+      },
+      "sample" : 1,
+      "sha256" : "2b1d9bd1bca3cd3edb685600d4feeacc9516e5f8aa29b8be84a187791f1304c4",
+      "style" : null,
+      "t" : 0.15
+    },
+    {
+      "crop" : {
+        "h" : 100,
+        "w" : 1261,
+        "x" : 329,
+        "y" : 857
+      },
+      "file" : "s19.png",
+      "frame" : {
+        "height" : 1080,
+        "width" : 1920
+      },
+      "sample" : 19,
+      "sha256" : "c90b44dba4b77461114e416caf1506548a548371423d621b454798b9cf2f1c98",
+      "style" : null,
+      "t" : 6.585
+    }
+  ]
+}
