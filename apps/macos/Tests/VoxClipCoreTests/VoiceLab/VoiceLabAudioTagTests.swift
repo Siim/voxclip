@@ -83,7 +83,8 @@ struct VoiceLabAudioTagTests {
             let raw = text.enumerated().map { index, character in
                 VoiceLabCharacterTiming(character: String(character), start: Double(index) / 100, end: Double(index + 1) / 100)
             }
-            let mapped = try VoiceLabAlignment.retimeNormalized(raw, expectedText: typed)
+            let mapped = try VoiceLabProviderTiming.retime(characters: raw.map(\.character), starts: raw.map(\.start),
+                ends: raw.map(\.end), typedText: typed, duration: raw.last?.end ?? 0)
             let words = try VoiceLabAlignment.words(characters: mapped.map(\.character), starts: mapped.map(\.start), ends: mapped.map(\.end), expectedText: typed)
             #expect(words.map(\.text) == row[ai: "expectedWords"].aiArray.compactMap(\.aiString))
             #expect(words.first?.start == raw.first?.start)

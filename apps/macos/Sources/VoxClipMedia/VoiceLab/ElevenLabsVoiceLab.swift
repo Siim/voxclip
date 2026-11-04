@@ -658,38 +658,71 @@ public actor ElevenLabsVoiceLab {
         acceptance?.preserve(VoiceLabAudioResult(pcm: pcm, sampleRate: 24_000, alignment: nil, receipt: provenance))
         let duration = Double(pcm.count) / 48_000
         do {
-            let normalized = row["normalized_alignment"] as? [String: Any]
-            let originalMissing = row["alignment"] == nil || row["alignment"] is NSNull
-            let timing: [VoiceLabCharacterTiming]
-            var characterCount = 0
-            if route == .textToDialogue, originalMissing, let normalized,
-               let characters = normalized["characters"] as? [String] {
-                let raw = try Self.parseAlignment(normalized, text: characters.joined(), duration: duration)
-                characterCount = raw.count
-                do { timing = try VoiceLabAlignment.retimeNormalized(raw, expectedText: text) }
-                catch { throw SpeechMetadataFailure(error: .invalidAlignment, check: "normalized_word_mapping", index: nil) }
-            } else {
-                timing = try Self.parseAlignment(row["alignment"], text: text, duration: duration)
-                characterCount = timing.count
+            let (timing, characterCount, tolerated) = try Self.speechTiming(row, route: route, text: text, duration: duration)
+            if let tolerated {
+                await logger.write(LogEntry(level: .info, category: "voice-lab",
+                    message: "voicelab speech timing tolerated \(tolerated.logFields) route=\(route.rawValue) model=\(modelID)"))
             }
             if route == .textToDialogue {
-                // §8.5: the provider has not specified which character array segments index.
-                // Until the live probe settles that, a valid normalized alignment can widen the bound.
-                if let normalized = row["normalized_alignment"] as? [String: Any],
-                   let characters = normalized["characters"] as? [String],
-                   let normalizedTiming = try? Self.parseAlignment(normalized, text: characters.joined(), duration: duration) {
-                    characterCount = max(characterCount, normalizedTiming.count)
-                }
+                // Unchanged shared contract (dialogue-cases.json); a refusal here is recovered by the take run (§8.5).
                 try Self.validateDialogueSegments(row["voice_segments"], voiceID: voice.id, characterCount: characterCount, duration: duration)
             }
             return VoiceLabAudioResult(pcm: pcm, sampleRate: 24_000, alignment: timing, receipt: provenance)
         } catch let failure as SpeechMetadataFailure {
+            // Release evidence for the next live failure: the check, the index and the scalars there, never the text.
+            await logger.write(LogEntry(level: .info, category: "voice-lab",
+                message: "voicelab speech timing failed \(failure.timing.logFields) route=\(route.rawValue) model=\(modelID)"))
             #if DEBUG
             await recordValidationDiagnostic(row: row, route: route, model: modelID, text: text,
                 duration: duration, requestID: requestID, failure: failure)
             #endif
             throw failure.error
         }
+    }
+
+    /// §8.5 timing: valid original `alignment` equal to the typed text is used as it is. Otherwise the original, then
+    /// (v4 dialogue) the normalized alignment, is mapped to the typed words tolerantly (`VoiceLabProviderTiming`). The
+    /// returned failure names the quirk a tolerated reply had. The count bounds the voice segments' indices.
+    private static func speechTiming(_ row: [String: Any], route: VoiceLabSpeechRoute, text: String, duration: Double) throws
+        -> (timing: [VoiceLabCharacterTiming], characterCount: Int, tolerated: VoiceLabTimingFailure?) {
+        func arrays(_ raw: Any?) -> (characters: [String], starts: [Double], ends: [Double])? {
+            guard let object = raw as? [String: Any], let characters = object["characters"] as? [String],
+                  let starts = object["character_start_times_seconds"] as? [Double],
+                  let ends = object["character_end_times_seconds"] as? [Double] else { return nil }
+            return (characters, starts, ends)
+        }
+        let original = arrays(row["alignment"]), normalized = route == .textToDialogue ? arrays(row["normalized_alignment"]) : nil
+        // §8.5: segments may index the normalized array, but only a valid normalized alignment widens their bound.
+        let widened = normalized.flatMap { source in
+            (try? parseAlignment(row["normalized_alignment"], text: source.characters.joined(), duration: duration)).map { $0.count }
+        } ?? 0
+        var first: VoiceLabTimingFailure
+        do {
+            let exact = try parseAlignment(row["alignment"], text: text, duration: duration)
+            return (exact, max(widened, exact.count), nil)
+        } catch let failure as SpeechMetadataFailure { first = failure.timing }
+        if first.check == "alignment_text_mismatch", let original {
+            let mismatch = VoiceLabProviderTiming.firstMismatch(typed: text, provider: original.characters.joined())
+            first = VoiceLabTimingFailure(check: first.check, index: mismatch.index, typedScalar: mismatch.typed, providerScalar: mismatch.provider)
+        }
+        var last = first
+        for source in [original, normalized].compactMap({ $0 }) {
+            do {
+                let timing = try VoiceLabProviderTiming.retime(characters: source.characters, starts: source.starts, ends: source.ends,
+                                                               typedText: text, duration: duration)
+                return (timing, max(widened, source.characters.count), first)
+            } catch let failure as VoiceLabTimingFailure { last = failure }
+        }
+        var check = original == nil && normalized == nil && row["alignment"] != nil && !(row["alignment"] is NSNull) ? first : last
+        if check.check == "alignment_words_mismatch", first.typedScalar != nil || first.providerScalar != nil {
+            check = VoiceLabTimingFailure(check: check.check, index: first.index, typedScalar: first.typedScalar, providerScalar: first.providerScalar)
+        }
+        throw SpeechMetadataFailure(error: .invalidAlignment, check: check.check, index: check.index, timing: check)
+    }
+
+    /// A redacted Voice Lab line in the release log: check names and counts, never text.
+    func note(_ message: String) async {
+        await logger.write(LogEntry(level: .info, category: "voice-lab", message: message))
     }
 
     /// A reviewed rewrite is generated only by this separate, explicitly approved call.
@@ -1009,6 +1042,11 @@ public actor ElevenLabsVoiceLab {
         let error: VoiceLabError
         let check: String
         var index: Int? = nil
+        var timing: VoiceLabTimingFailure { stored ?? VoiceLabTimingFailure(check: check, index: index) }
+        private var stored: VoiceLabTimingFailure?
+        init(error: VoiceLabError, check: String, index: Int? = nil, timing: VoiceLabTimingFailure? = nil) {
+            self.error = error; self.check = check; self.index = index; stored = timing
+        }
     }
     private static func validateDialogueSegments(_ raw: Any?, voiceID: String, characterCount: Int, duration: Double) throws {
         func fail(_ check: String, _ index: Int? = nil) -> SpeechMetadataFailure {
@@ -1081,7 +1119,7 @@ public actor ElevenLabsVoiceLab {
             "pcm_duration_seconds": duration, "voice_segments": row["voice_segments"] ?? NSNull(),
             "check": failure.check, "index": failure.index as Any? ?? NSNull()
         ]
-        if failure.check == "alignment_text_mismatch", let joined {
+        if ["alignment_text_mismatch", "alignment_words_mismatch"].contains(failure.check), let joined {
             let expected = Array(text.unicodeScalars), actual = Array(joined.unicodeScalars)
             let index = (0..<max(expected.count, actual.count)).first { index in
                 index >= expected.count || index >= actual.count || expected[index] != actual[index]
@@ -1106,8 +1144,6 @@ public actor ElevenLabsVoiceLab {
         } catch {
             // Diagnostic I/O must never replace the validation error or lose the paid PCM.
         }
-        await logger.write(LogEntry(level: .info, category: "voice-lab",
-            message: "voicelab dialogue validation failed check=\(failure.check)"))
     }
     private func redactedDiagnosticValue(_ value: Any) async -> Any {
         if let text = value as? String { return await logger.redact(text) }
