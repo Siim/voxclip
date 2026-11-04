@@ -35,7 +35,42 @@ public sealed class CaptionConformanceTests
         Assert.Contains(overlay.Pixels.Span.ToArray().Where((_, index) => index % 4 == 3), alpha => alpha > 0);
     }
 
-    public static IEnumerable<object[]> LayoutCases() => Directory.EnumerateFiles(Path.Combine(FixtureLoader.SharedRoot, "fixtures", "captions", "layout"), "*.json").Order(StringComparer.Ordinal).Select(path => new object[] { path });
+    public static IEnumerable<object[]> LayoutCases() => SetLayoutCases(SetOneRoot);
+
+    /// <summary>Fixture set 2 (tools/captions/style-sets.json): the Roboto Black styles, in their own folder.</summary>
+    public static IEnumerable<object[]> SetTwoLayoutCases() => SetLayoutCases(SetTwoRoot);
+
+    private static string SetOneRoot => Path.Combine(FixtureLoader.SharedRoot, "fixtures", "captions");
+    private static string SetTwoRoot => Path.Combine(FixtureLoader.SharedRoot, "fixtures", "captions", "styles-2");
+    private static IEnumerable<object[]> SetLayoutCases(string root) => Directory.EnumerateFiles(Path.Combine(root, "layout"), "*.json").Order(StringComparer.Ordinal).Select(path => new object[] { path });
+
+    /// <summary>The styles fixture set 2 covers, from its index.</summary>
+    private static string[] SetTwoStyles()
+    {
+        using var index = JsonDocument.Parse(File.ReadAllText(Path.Combine(SetTwoRoot, "index.json")));
+        Assert.Equal("voxclip-caption-style-set/1", index.RootElement.GetProperty("fixture").GetString());
+        return index.RootElement.GetProperty("styles").EnumerateArray().Select(item => item.GetString()!).ToArray();
+    }
+
+    [Theory]
+    [MemberData(nameof(SetTwoLayoutCases))]
+    public Task NativeShapingLayoutAndTimelineMatchEverySetTwoFixture(string path) => NativeShapingLayoutAndTimelineMatchEveryFixture(path);
+
+    [Fact]
+    public void SetTwoCoversTheRobotoBlackStylesInEveryAspect()
+    {
+        var styles = SetTwoStyles();
+        Assert.Equal(["emoji-pop", "glow", "heavy-shadow", "marker", "minimal", "punch-in", "sing-along"], styles);
+        Assert.Equal(21, SetTwoLayoutCases().Count());
+        foreach (var id in styles)
+        {
+            var style = CaptionFixtureSupport.Style(id);
+            Assert.Equal(("Roboto-Black.ttf", "Roboto", 900), (style.Font.File, style.Font.Family, style.Font.Weight));
+        }
+    }
+
+    [Fact]
+    public Task CommittedSetTwoGoldensMatchEverySampleAndGalleryTile() => RenderEveryGolden(true, SetTwoRoot);
 
     [Theory]
     [MemberData(nameof(LayoutCases))]
@@ -154,21 +189,22 @@ public sealed class CaptionConformanceTests
     }
 
     [Fact]
-    public Task GoldenRendersEveryStyleAndGalleryTile() => RenderEveryGolden(false);
+    public Task GoldenRendersEveryStyleAndGalleryTile() => RenderEveryGolden(false, SetOneRoot);
 
     [Fact]
-    public Task CommittedGoldensMatchEverySampleAndGalleryTile() => RenderEveryGolden(true);
+    public Task CommittedGoldensMatchEverySampleAndGalleryTile() => RenderEveryGolden(true, SetOneRoot);
 
-    private async Task RenderEveryGolden(bool compareGoldens)
+    private async Task RenderEveryGolden(bool compareGoldens, string setRoot)
     {
-        var committedRoot = Path.Combine(FixtureLoader.SharedRoot, "fixtures", "captions", "golden");
-        if (compareGoldens) Assert.SkipUnless(Directory.Exists(committedRoot), "The macOS caption goldens have not yet landed in shared/fixtures/captions/golden.");
+        var setTwo = setRoot == SetTwoRoot;
+        var committedRoot = Path.Combine(setRoot, "golden");
+        if (compareGoldens) Assert.SkipUnless(Directory.Exists(committedRoot), $"The macOS caption goldens have not yet landed in {committedRoot}.");
         var rasterizer = new SkiaCaptionRasterizer();
         var samples = 0;
         var expectedSamples = 0;
-        var goldenRoot = CaptionFixtureSupport.GoldenRoot;
+        var goldenRoot = setTwo ? null : CaptionFixtureSupport.GoldenRoot;
         var styles = new HashSet<(string Style, int Width, int Height)>();
-        foreach (var row in LayoutCases())
+        foreach (var row in SetLayoutCases(setRoot))
         {
             var path = (string)row[0];
             using var document = JsonDocument.Parse(File.ReadAllText(path));
@@ -193,12 +229,15 @@ public sealed class CaptionConformanceTests
             }
             if (goldenRoot is not null) File.WriteAllText(Path.Combine(goldenRoot, Path.GetFileName(path)), JsonSerializer.Serialize(new { images = entries }, CaptionFixtureSupport.Json));
         }
+        var laterSets = SetTwoStyles().ToHashSet(StringComparer.Ordinal);
         foreach (var style in Directory.EnumerateFiles(Path.Combine(FixtureLoader.SharedRoot, "caption-styles", "styles"), "*.json").Select(Path.GetFileNameWithoutExtension))
         {
+            // Every style file is covered by exactly one fixture set: set 1 here, the Roboto Black styles by set 2.
+            if (laterSets.Contains(style!) != setTwo) continue;
             Assert.Contains((style!, 1080, 1920), styles);
             Assert.Contains((style!, 1920, 1080), styles);
         }
-        using var tiles = FixtureLoader.ReadJson("fixtures/captions/preview-tiles.json");
+        using var tiles = JsonDocument.Parse(File.ReadAllText(Path.Combine(setRoot, "preview-tiles.json")));
         var tileEntries = new List<object>();
         var tileCount = 0;
         foreach (var tile in tiles.RootElement.GetProperty("tiles").EnumerateArray())
@@ -224,6 +263,7 @@ public sealed class CaptionConformanceTests
         if (goldenRoot is not null) File.WriteAllText(Path.Combine(goldenRoot, "tiles.json"), JsonSerializer.Serialize(new { images = tileEntries }, CaptionFixtureSupport.Json));
         Assert.Equal(expectedSamples, samples);
         Assert.Equal(tiles.RootElement.GetProperty("tiles").GetArrayLength(), tileCount);
+        if (setTwo) Assert.Equal((68, 14), (samples, tileCount));
     }
 
     [Fact]
