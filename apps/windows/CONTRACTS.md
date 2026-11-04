@@ -17,7 +17,10 @@
   - The advisory voice budget with [Re-voice all {v}].
   - Strict HTTP shaping of the optional field.
   - Keep the paid-take inline confirmation.
-- **Verification.** Release Core: 2,924 total, 2,895 passed, 29 skipped. Release win-ui: 1,152 total, 1,147 passed, five skipped. Zero failures. No shipping allowlist changed. These portable checks do not prove native Windows behaviour.
+- **Windows changes.**
+  - `PlaceAll` no longer refuses a merge over the patch budget, matching the regenerated `window-all-cases.json`. The private `BudgetHunk` is deleted, along with its Core allowlist line.
+  - The prompt-version expectation is updated.
+- **Verification.** The full suites are run by the lead. Next-action landing and the merge instruction are part of the owed twin.
 
 ### 2026-11-04 — Automatic wording-fit shared contract; Windows twin owed
 

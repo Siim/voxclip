@@ -29,13 +29,22 @@
   - The LLM fixtures were regenerated deliberately, and `gen.mjs` self-checks the new schema.
   - The new independent `generate_next_actions.py` writes `rewrite-next-actions-cases.json` (22 cases, its own schema id, on check_drift's EXACT list).
 - **Replaced / deleted.** The blocking budget footer and its old copy, replaced in place. `send()` now shares `reply(_:connector:accept:)` with the re-ask, and `showReplyInTranscript` shares `transcriptChange(_:ordinal:)`. `ExpressionFlow` and `PanelButtonEvidence` are now internal so the chips reuse them. No files are deleted and no duplicate path is left.
+- **Refused takes plans (MVP12 collision).**
+  - `placeAll` no longer refuses a merge over the advisory budget, on both Cores and in `window-all-cases.json`. `ClipTakePlan.preparePlan` no longer throws `Failure.budget`; that case and its copy are deleted.
+  - `Failure.placement` carries the refused hunk index. A collision reads "Phrase {n} is too close to phrase {m} to voice separately." with:
+    - [Keep original words for {n}];
+    - [Keep text fixes only];
+    - ✦ [Merge with phrase {m}]: a re-ask with the shared `mergeInstruction`, version 2 of `rewrite-next-actions.json`;
+    - the field.
+  - [Voice m–n as one phrase] is not built. After the guard removal a remaining collision is always geometric, so it could never act.
+  - A reply hunk spanning both asked phrases lands via `RewriteScopedReply.Outcome.absorbed`. `applyReask` removes the absorbed change and renumbers the later ones and every ordinal-keyed set.
+  - The session keeps `takePlanFailure`. Every `ClipTakePlan.copy` failure gets an acting chip, and `takePlanBlocker` replaces the price in the footer.
+  - The new `rewrite-collision` layout variant is measured at every width: 144 measurements and 58 heights.
 - **Verification.**
-  - Regression evidence: restoring the old behaviour (a blocking budget, an unscoped landing, no paid guard on a re-ask, an uncapped parser) fails the 4 key tests with 11 issues.
-  - Core: 1,157 tests in 106 suites pass, plus 2 known issues.
-  - App: APP_COUNTS.
-  - Media: MEDIA_COUNTS, including `MacUIIntegrationTests/rightColumnLayout`. The `rewrite-budget` and `rewrite-takes-none-passed` audit variants now draw ✦ chips at 300–560 pt.
-  - All 38 Voice Lab generators, `check_drift.py`, the LLM fixture check and `git diff --exit-code` on generated files pass.
-  - Windows Release Core: 2,924 total, 2,895 passed, 29 skipped. win-ui: 1,152 total, 1,147 passed, 5 skipped.
+  - Regression evidence: restoring the old behaviour (a blocking budget, an unscoped landing, no paid guard on a re-ask, an uncapped parser) fails the 4 key tests with 11 issues. The regenerated `window-all-cases.json` failed `placeAllVectors` before the placement change.
+  - Focused tests pass: ChangeList, RewriteScope (with the collision, merge, blocker and failure-chip tests), RewriteNextActions, VoiceLabWindow and `MacUIIntegrationTests/rightColumnLayout`.
+  - All 38 Voice Lab generators, `check_drift.py`, the LLM fixture check and `git diff --exit-code` pass.
+  - Full suites run by lead.
 - **Owed / next.**
   - The Windows twin: parsing, feedback, landing, chips and the advisory budget. Its prompt-version test expectation is updated.
   - Real-window `-uiSelfTest`, `-sceneAudit`, documentScene and VoiceOver acceptance of the chips.
