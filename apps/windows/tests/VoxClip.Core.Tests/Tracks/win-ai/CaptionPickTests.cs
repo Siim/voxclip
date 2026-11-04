@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using VoxClip.Core.Domain.Clips;
+using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Services.Settings;
@@ -178,6 +179,41 @@ public sealed class CaptionPickTests
         SettingsValidation.Validate(new AppSettings("voxclip-settings/1") { Values = new() { ["clipStyle.default"] = good.RootElement.Clone() } });
         Assert.ThrowsAny<JsonException>(() => SettingsValidation.Validate(new AppSettings("voxclip-settings/1") { Values = new() { ["clipStyle.default"] = picks.RootElement.Clone() } }));
         Assert.ThrowsAny<JsonException>(() => SettingsValidation.Validate(new AppSettings("voxclip-settings/1") { Values = new() { ["clipStyle.default"] = shapes.RootElement.Clone() } }));
+    }
+
+    [Fact]
+    public void TheCardShowsOnceAChoiceAppliesAFixedStyleAndAPickNeverOverridesIt()
+    {
+        var styles = ClipStyleCatalog.Load(Root);
+        var library = Library().Select(style => style.Id).ToHashSet(StringComparer.Ordinal);
+        var json = File.ReadAllText(Path.Combine(Root, "fixtures", "projects", "interview-take.voxclip"));
+        var bare = ProjectSerialization.Deserialize(json) with { Captions = ProjectSerialization.Deserialize(json).Captions with { StyleId = "box-highlight" } };
+        Assert.False(ClipStyleCard.Shows(bare, false, true));
+        ClipRange[] clips = [new("clip-a", bare.Transcript!.Words[0].Id, bare.Transcript.Words[1].Id, "Hook", VoxClip.Core.Domain.Editing.ClipOrigin.Manual, null, null, true),
+                             new("clip-b", bare.Transcript.Words[2].Id, bare.Transcript.Words[3].Id, "Story", VoxClip.Core.Domain.Editing.ClipOrigin.Manual, null, null, true)];
+        var project = bare with { Edits = bare.Edits with { Clips = clips, ActiveClipId = "clip-b" } };
+        Assert.True(ClipStyleCard.Shows(project, false, true));
+        Assert.False(ClipStyleCard.Shows(project, false, false));
+        Assert.Null(ClipStyleCard.StatusText(project, styles));
+        Assert.Equal("auto", ClipStyleCard.Showing(project, styles, null).Preset);
+
+        var auto = ClipStyleCard.Choose(project, styles.Find("auto").Style, library);
+        Assert.False(ClipStyleCard.Shows(auto, false, true));
+        Assert.True(ClipStyleCard.Shows(auto, true, true));
+        Assert.Equal("Style: Auto · ≤60 s · 16:9+9:16", ClipStyleCard.StatusText(auto, styles));
+        Assert.Equal("box-highlight", auto.Captions.StyleId);
+        var punchy = ClipStyleCard.Choose(auto, styles.Find("punchy").Style, library);
+        Assert.Equal(("punch-in", "Style: Punchy talking head · ≤45 s · 9:16"), (punchy.Captions.StyleId, ClipStyleCard.StatusText(punchy, styles)));
+
+        var picked = auto with { ClipStyle = auto.ClipStyle!.Recording(new Dictionary<string, ClipCaptionPick> { ["clip-b"] = new("minimal", "Quiet story.") }) };
+        var applied = ClipStyleCard.ApplyPick(picked, library);
+        Assert.Equal("minimal", applied?.Captions.StyleId);
+        Assert.Null(ClipStyleCard.ApplyPick(applied!, library));
+        var chosen = ClipStyleCard.ChooseCaptionStyle(applied!, "marker");
+        Assert.Equal(("marker", "marker", "mine"), (chosen.Captions.StyleId, chosen.ClipStyle!.Captions, chosen.ClipStyle.Preset));
+        var injected = chosen with { ClipStyle = chosen.ClipStyle with { CaptionPicks = new Dictionary<string, ClipCaptionPick> { ["clip-b"] = new("glow", "Injected.") } } };
+        Assert.Null(ClipStyleCard.ApplyPick(injected, library));
+        Assert.Throws<VoxClipException>(() => ClipStyleCard.Choose(project, styles.Find("auto").Style with { Shapes = [] }, library));
     }
 
     private sealed class PickConnector(string reply) : ILlmConnector

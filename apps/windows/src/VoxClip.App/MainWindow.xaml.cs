@@ -472,6 +472,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         if (Shell.Callout is null || ShowingHome) CalloutTip.IsOpen = false;
         SyncSelection();
         UpdateShellChrome();
+        RefreshClipStyle();
     }
     /// <summary>Keep the selected row equal to the shown page and the editor's activeClipId, without re-entering selection.</summary>
     private void SyncSelection()
