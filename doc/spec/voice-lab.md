@@ -1199,6 +1199,13 @@ The approved Get Price arms the resolver for that takes plan (`RewriteAutoFix.sw
 
 Only wording and fit failures (1, 2) reword. Each reworded round carries the phrase's tried wordings and results, never prices a repeat or a wording that does not move toward the slot, and the card shows "Round k of 3 · tried: …" (top of this document).
 
+**Bridge words (2026-11-04).** A measured round rewords the whole phrase, its bridge words included (the unchanged words joining the change to the source around it, §8.4). The request names them as required, from `voice-rewrite-tried.json` `bridge` ("Required: the text must begin with “{leading}” and end with “{trailing}”, exactly these words. …", or the leading-only or trailing-only line), as `VoiceLabFitPhrase.bridge` (absent when the window has none; the template's SHA then joins the fit fingerprint). Each reply is checked before it counts as a round with `VoiceLabFitBridge.keeps`, the take preflight's own check (`VoiceLabTakeProcessing.keepsBridgeWords`: the first and last words compared as the word check compares words). A reply without them can't be placed or priced:
+- it gets one free automatic re-ask in the same round, with the dropped wording added to the tried history as "dropped the joining words, not used" (`missingBridge`). The re-ask is an AI send only, charged against the cap when billed to a key; no speech is priced or paid for the dropped wording;
+- only a valid reply goes on to the repeat and direction checks, a quote and a take;
+- a re-ask that still drops them ends the round, with the reason on the card ("“…” (dropped “I use … as”, not used)"); the phrase keeps its words.
+
+`ClipTakePlan.prepareRewording` also refuses a wording without the bridge words and leaves the phrase's text unchanged. A manual measured suggestion that drops them shows "{AI} left out “…”, the words that join phrase N to your recording, so its wording wasn't used." with no re-ask. The "easier words" reword builds its text from the bridge words, so it can't drop them.
+
 Before takes: a collision's merge re-ask is sent once; a refused surrounding sentence (while armed) is voiced on the changed words when their own window is valid, else re-asked "Rewrite this change without changing any words outside it.", else left out with its text fixes kept; a failed or stale re-ask is sent once more; over the budget Rewrite goes on.
 
 - **Rounds.** At most 3 per phrase (`RewriteAutoFixState.maximumRounds`). After the last the phrase keeps its original words (`ClipTakePlan.leaveOut`): no take is used, every take stays, Undo restores the best passing take.
