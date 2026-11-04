@@ -2327,6 +2327,34 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(session.task.headline.sub == "Listen, pick a take, then use them.")
     }
 
+    /// A phrase with a passing take that fits is voiced: a later speaking-rate recalibration from measured takes, which
+    /// now estimates its words too long for the slot, never blocks it, its change row or Use (the Rewrite smoke's S6,
+    /// "Change 3 needs a shorter wording before takes." beside its fitting take). The new estimate holds back only a
+    /// phrase that isn't voiced.
+    @Test func recalibrationNeverBlocksAVoicedPhraseOrUse() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture); defer { editor.close() }
+        let plan = try #require(session.takePlan)
+        try approvePrice(session)
+        await settle(session)
+        let take = try #require(plan.phrases[0].selected)
+        #expect(take.row.selectable && plan.lengthFits(take: take), "\(plan.phrases[0].takeDetail)")
+        let ordinal = try #require(session.takePhraseOrdinals(plan.phrases[0]).first)
+        let model = try #require(plan.measuredInput(take: take.id)?.modelID)
+        session.pricedAnyway = []
+        #expect(session.voicedOrdinals == [ordinal] && session.blockedVoiceOrdinals.isEmpty)
+        // Measured takes read as speech six times slower than estimated.
+        for _ in 0..<10 { session.recordSpeakingRate(model: model, take: UUID(), measured: 6, baseline: 1) }
+        #expect(session.voiceReview(ordinal)?.timing?.fits == false)
+        session.showProposal()
+        #expect(session.blockedVoiceOrdinals.isEmpty)
+        #expect(session.task.footer.primary?.id == "useTakes", "\(session.task.footer)")
+        #expect(session.task.footer.note?.contains("before takes") != true, "\(session.task.footer)")
+        // Kept as recorded, the phrase isn't voiced any more: the new estimate holds its change back.
+        plan.leaveOut(phrase: 0)
+        #expect(session.voicedOrdinals.isEmpty && session.blockedVoiceOrdinals == [ordinal])
+    }
+
     /// A failed word check gets one automatic Try another; its passing take is chosen with no click.
     @Test func aFailedWordCheckTriesAnotherTakeWithNoClick() async throws {
         let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }

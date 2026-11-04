@@ -287,7 +287,7 @@ It drives the real Rewrite session through nine scenarios using only clicks a us
 - S6: over the voice budget.
 - S7: an expression added while another phrase has paid takes.
 - S8: a failure, then a stale reply.
-- S9: Stop during an automatic fix.
+- S9: Stop during an automatic fix, then finish from the panel Stop leaves.
 
 After every step it checks seven invariants:
 
@@ -295,11 +295,11 @@ After every step it checks seven invariants:
 - I2: no disabled control.
 - I3: at most one free-text field.
 - I4: the footer agrees with the panel.
-- I5: every scenario but S9 ends applied.
+- I5: every scenario ends applied; S9 may end with Done and the words as recorded.
 - I6: no paid take dropped without a confirm.
 - I7: an added tag shows in the phrase quote.
 
-It prints `summary.txt` and writes `rewrite-smoke.json`, plus a PNG of the panel for each failing step. It exits non-zero on any failure not named in `--known-failing`. The same run is `MacUIIntegrationTests/rewriteSmoke`, which keeps its own known-failing list. Hand over a build only when the smoke is clean, or when every remaining failure is named and the user has been told.
+It prints `summary.txt` and writes `rewrite-smoke.json`, plus a PNG of the panel for each failing step. It exits non-zero on any failure not named in `--known-failing`. The same run is `MacUIIntegrationTests/rewriteSmoke`, which asserts every invariant with no known failures. Hand over a build only when the smoke is clean, or when every remaining failure is named and the user has been told.
 
 ---
 

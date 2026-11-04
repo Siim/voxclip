@@ -40,34 +40,17 @@ extension HeavyMediaTests {
         for result in report { #expect(result.passed && result.skipped == nil, Comment(rawValue: result.name)) }
         #expect(report.filter { $0.name.hasPrefix("gallery at 404 with legacy scrollers") }.count == 2)
     }
-    /// The invariants (DebugRewriteSmoke.swift) this build still fails, each a known issue until the Rewrite fixes it. A
-    /// listed invariant that passes everywhere fails the test, so the list shrinks as the fixes land.
-    static let rewriteSmokeKnownFailing: [String: String] = [
-        "I2": "S9: the change list is disabled while the pre-pay wording fit runs (ChangeListCard .disabled(wordingLocked))",
-        "I5": "S6: after the takes fit, the recalibrated estimate blocks a phrase ('needs a shorter wording') and Use never shows",
-    ]
     /// The Rewrite smoke (doc/release.md, `scripts/rewrite-smoke.sh`): nine stuck scenarios through the real session with a
     /// scripted AI and ElevenLabs, offscreen. Every step keeps a control that acts, no disabled control, one free-text
     /// field at most, a footer that agrees with the panel, paid takes until a confirm, and a tag drawn as it is added;
-    /// every scenario but S9 ends with the Rewrite applied.
-    @Test("The Rewrite smoke reaches an applied Rewrite from every stuck scenario without a dead end") func rewriteSmoke() throws {
+    /// every scenario ends with the Rewrite applied, or (S9, after Stop) with Done and the words as recorded.
+    @Test("The Rewrite smoke completes every stuck scenario without a dead end") func rewriteSmoke() throws {
         let directory = try UIProcessHarness.run(mode: "-rewriteSmoke", name: "rewrite-smoke", acceptNonzeroWithReport: "results.json")
         defer { UIProcessHarness.cleanTemporary(directory) }
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
         let scenarios = Set(report.compactMap { $0.name.split(separator: " ").first.map(String.init) })
         #expect(scenarios == Set((1...9).map { "S\($0)" }))
-        func invariant(_ result: UIProcessHarness.Result) -> String? {
-            result.name.split(separator: " ").first { $0.hasPrefix("I") && $0.hasSuffix(":") }.map { String($0.dropLast()) }
-        }
-        for result in report where invariant(result).map({ Self.rewriteSmokeKnownFailing[$0] == nil }) ?? true {
-            #expect(result.passed, Comment(rawValue: result.name))
-        }
-        for (name, reason) in Self.rewriteSmokeKnownFailing.sorted(by: { $0.key < $1.key }) {
-            let failures = report.filter { invariant($0) == name && !$0.passed }
-            withKnownIssue(Comment(rawValue: "\(name): \(reason)")) {
-                for failure in failures { Issue.record(Comment(rawValue: failure.name)) }
-            }
-        }
+        for result in report { #expect(result.passed, Comment(rawValue: result.name)) }
     }
     @Test("Right-column content fits without opening a window") func rightColumnLayout() throws {
         let directory = try UIProcessHarness.run(mode: "-layoutAudit", name: "layout")
