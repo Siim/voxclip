@@ -29,6 +29,7 @@
     <Compile Include="RewritePaceMatchingTests.cs" />
     <Compile Include="RewriteWordingFitTests.cs" />
     <Compile Include="RewriteAutoFixTests.cs" />
+    <Compile Include="RewriteLearningLoopTests.cs" />
     <Compile Include="RewriteTakesRulesTests.cs" />
     <Compile Include="RewriteNextStepsTests.cs" />
     <Compile Include="RewritePhraseCardsTests.cs" />

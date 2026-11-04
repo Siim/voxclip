@@ -201,6 +201,16 @@ internal sealed class AppServices : IAsyncDisposable
             Get("llm.baseUrl." + wireId, ""), Get("llm.cliPath." + wireId, ""));
     }
 
+    /// <summary>On-device word timing for a take's own audio (voice-lab.md §8.5 "Timing recovery", Mac <c>VoiceLabLocalTiming</c>):
+    /// the installed, verified Whisper models only, never a download or a prompt. Null before local speech is ready.
+    /// Windows.Media.SpeechRecognition gives no word timings, so it is not a source.</summary>
+    internal VoxClip.Media.VoiceLab.VoiceLabLocalTiming? LocalTiming => localSpeech is { } speech
+        ? VoxClip.Media.VoiceLab.VoiceLabLocalTimingSource.OnDevice(speech, InstalledWhisperModelsAsync, Path.Combine(Data.Root, "VoiceLabScratch", "timing"))
+        : null;
+    /// <summary>The verified installed transcription models, by id.</summary>
+    internal async Task<IReadOnlyList<string>> InstalledWhisperModelsAsync(CancellationToken ct) =>
+        (await Downloads.ListInstalledAsync(ct)).Where(model => model.Verified).Select(model => model.Id).ToArray();
+
     internal IModelDownloader Installer(Func<TranscriptionModel, IReadOnlyList<TranscriptionModel>, CancellationToken, Task<bool>> confirm) =>
         new ModelStore(Models, Data.Root, confirmDownload: confirm);
 

@@ -47,7 +47,8 @@ public sealed class RewriteAutoFixTests
     [Fact]
     public async Task SpendIsCappedAtTheAllowanceAndKeepFixingRaisesItThenTheLastRoundKeepsTheOriginalWords()
     {
-        var connector = new Connector(Reply, (_, ordinals) => Rows(ordinals, "said briefly"));
+        // Each round's wording is new and shorter: the fix loop never voices a repeat (voice-lab.md §8.2.2).
+        var connector = new Connector(Reply, (request, ordinals) => Rows(ordinals, request switch { 1 => "said briefly", 2 => "so brief", _ => "brief" }));
         var runner = new Runner((_, _) => (5.8, Passed));
         using var session = await PricedAsync(connector, runner);
         await SettleAsync(session);
@@ -188,9 +189,9 @@ public sealed class RewriteAutoFixTests
         Assert.Null(session.AutoFix.Work);
     }
 
-    internal static async Task<RewriteSession> PricedAsync(Connector connector, Runner runner)
+    internal static async Task<RewriteSession> PricedAsync(Connector connector, Runner runner, Func<Connector, RewriteSession>? create = null)
     {
-        var session = Session(connector);
+        var session = (create ?? (value => Session(value)))(connector);
         Assert.True(await ProposeAsync(session));
         Configure(session, runner);
         await session.DiscoverWindowsAsync();
@@ -291,6 +292,8 @@ public sealed class RewriteAutoFixTests
         internal Func<int, VoiceLabTakeVoiceCheck>? Voice { get; init; }
         /// <summary>Holds each run after its take arrives until released, so a test can act while takes are being made.</summary>
         internal TaskCompletionSource? Hold { get; init; }
+        /// <summary>A run's failure by run: the row's exception and whether the run ends fatally; null makes the scripted take.</summary>
+        internal Func<int, VoiceLabTakeInput, (Exception Error, bool Fatal)?>? Fails { get; init; }
         internal TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private VoiceLabTakeRunQuote? pending;
         public Task<VoiceLabTakeRunQuote> PrepareAsync(VoiceLabTakeInput input, CancellationToken ct = default)
@@ -316,6 +319,14 @@ public sealed class RewriteAutoFixTests
             Sends++;
             var input = Input!;
             if (progress is not null) await progress([]);
+            if (Fails?.Invoke(Sends, input) is { } failure)
+            {
+                // A take the provider refused, or one whose word timing couldn't be read: no audio, the row's failure, and a
+                // fatal end for an account failure.
+                var failed = new VoiceLabTakeRow(Guid.NewGuid(), 0, 42, Quote: quote.Takes[0], Failure: failure.Error);
+                if (progress is not null) await progress([failed]);
+                return new([failed], failure.Fatal ? VoiceLabTakeRunEnd.Fatal : VoiceLabTakeRunEnd.Completed);
+            }
             var (seconds, qa) = script(Sends, input);
             if (seconds <= 0) seconds = input.Window.End - input.Window.Start;
             var frames = (int)Math.Round(seconds * 48_000);

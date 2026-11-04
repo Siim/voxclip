@@ -14,7 +14,8 @@ public sealed class RewriteTakesRulesTests
     [Fact]
     public async Task TheAutomaticTakeIsOneADurationCanCarryElseTheClosestToTheSlotNotTheBestScore()
     {
-        var connector = new Connector(Reply, (_, ordinals) => Rows(ordinals, "said briefly"));
+        // Each round's wording is new and shorter: the fix loop never voices a repeat (voice-lab.md §8.2.2).
+        var connector = new Connector(Reply, (request, ordinals) => Rows(ordinals, request == 1 ? "said briefly" : "so brief"));
         var runner = new Runner((run, _) => run switch { 1 => (5.8, Passed), 2 => (7.0, Passed), _ => (Fit, Passed) })
             { Score = run => run switch { 1 => .9, 2 => .3, _ => .1 } };
         using var session = await PricedAsync(connector, runner);

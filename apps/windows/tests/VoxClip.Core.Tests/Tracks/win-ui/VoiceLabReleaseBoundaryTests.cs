@@ -94,6 +94,27 @@ public sealed class VoiceLabReleaseBoundaryTests
         Assert.False(Directory.Exists(root));
     }
 
+    /// <summary>voice-lab.md §8.5 "Timing recovery": Rewrite's take runs fall back to on-device timing from the installed, verified
+    /// Whisper models (Core's <c>LocalTiming</c>), never a download, a prompt or a key read.</summary>
+    [Fact]
+    public async Task RewriteTakeRunsUseOnDeviceTimingFromTheInstalledWhisperModels()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "voxclip-local-timing-" + Guid.NewGuid().ToString("N"));
+        var data = new DataLocations(root, Path.Combine(root, "settings.json"), Path.Combine(root, "models"),
+            Path.Combine(root, "cache"), Path.Combine(root, "autosave"), Path.Combine(root, "keys"), Path.Combine(root, "logs"));
+        var keys = new ForbiddenKeys();
+        await using var log = new SilentLog();
+        VoxClip.Media.VoiceLab.VoiceLabLocalTiming timing = (_, _, _, _) => Task.FromResult<IReadOnlyList<VoiceLabWord>>([]);
+        using (var backend = new RewriteGenerationBackend(data, keys, log, VoiceLabPrices.Load(), ElevenLabsRegion.Default,
+            "isolated-test", () => false, action => { action(); return Task.CompletedTask; }, timing))
+            Assert.Same(timing, backend.Runner.LocalTiming);
+        Assert.Equal(0, keys.Reads);
+        Assert.Contains("VoiceLabPrices.Load(), region, session.Project.Id, Current, OnUi, App.Services.LocalTiming);", Source("Pages/EditorPage.xaml.cs"));
+        var services = Source("Services/AppServices.cs");
+        Assert.Contains("VoiceLabLocalTimingSource.OnDevice(speech, InstalledWhisperModelsAsync,", services);
+        Assert.Contains("(await Downloads.ListInstalledAsync(ct)).Where(model => model.Verified)", services);
+    }
+
     [Fact]
     public void ShippingToggleIsOffByDefaultAndUsesMacCopyWithCancelDefault()
     {

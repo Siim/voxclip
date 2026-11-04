@@ -382,7 +382,8 @@ internal sealed partial class RewriteGeneration : IDisposable
     }
     private void Fail(Exception error)
     {
-        Problem = RewriteSession.Refusal(error);
+        // A run stopped by an account failure says its one fix (Mac ClipTakePlan.nextStep).
+        Problem = RewriteSession.ProviderProblem(error);
         Announcement = Problem;
         if (runStarted || !Rows.Any(row => row.Selectable)) Phase = RewriteGenerationPhase.Failed;
     }

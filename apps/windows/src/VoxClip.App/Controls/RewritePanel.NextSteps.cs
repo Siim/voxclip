@@ -137,6 +137,8 @@ internal sealed partial class RewritePanel
             RewriteFooterAction.Done => "Rewrite.Done",
             RewriteFooterAction.KeepFixing => "Rewrite.FooterKeepFixing",
             RewriteFooterAction.ChooseTake => "Rewrite.ChooseTake",
+            RewriteFooterAction.PriceTake => "Rewrite.FooterPriceTake",
+            RewriteFooterAction.KeepOriginal => "Rewrite.FooterKeepOriginal",
             RewriteFooterAction.StopReask or RewriteFooterAction.StopAutoFix => "Rewrite.FooterStop",
             _ => "Rewrite.Apply"
         });
@@ -146,7 +148,7 @@ internal sealed partial class RewritePanel
         {
             RewriteFooterAction.ApplyLocal or RewriteFooterAction.ApplyTextFixes => !session.Editor.Busy && !session.Editor.IsReadOnly && !session.Editor.IsLeaving,
             RewriteFooterAction.UseTakes => session.CanAcceptAll,
-            RewriteFooterAction.KeepFixing => approval is null,
+            RewriteFooterAction.KeepFixing or RewriteFooterAction.PriceTake => approval is null && session.GenerationIsCurrent,
             _ => true
         };
     }
@@ -175,6 +177,8 @@ internal sealed partial class RewritePanel
                 break;
             case RewriteFooterAction.KeepFixing: session.KeepFixing(); break;
             case RewriteFooterAction.ChooseTake: await session.ChooseOfferedTakeAsync(); break;
+            case RewriteFooterAction.PriceTake: await session.PriceTakeAsync(session.FooterStep.Phrase); break;
+            case RewriteFooterAction.KeepOriginal: session.KeepOriginal(session.FooterStep.Phrase); break;
             case RewriteFooterAction.StopReask: session.StopReask(); break;
             case RewriteFooterAction.StopAutoFix: session.StopAutoFix(); break;
         }
