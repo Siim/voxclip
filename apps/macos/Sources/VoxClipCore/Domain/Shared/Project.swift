@@ -848,6 +848,8 @@ public struct Project: Codable, Sendable, Equatable {
     public var edits: ProjectEdits
     /// captions; doc/architecture.md §3; shared/schemas/project.schema.json
     public var captions: CaptionSettings
+    /// How clips should be made (design.md §6.9); nil until the user chooses on the clip style card.
+    public var clipStyle: ClipStyle?
     /// export; doc/architecture.md §3; shared/schemas/project.schema.json
     public var export: ProjectExport
     /// Share-helper state; publishing §2.1 and project schema.
@@ -881,6 +883,7 @@ public struct Project: Codable, Sendable, Equatable {
         self.extensions = extensions
         self.contextDemo = contextDemo
         self.motionCues = motionCues
+        self.clipStyle = nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -895,6 +898,7 @@ public struct Project: Codable, Sendable, Equatable {
         case transcript
         case edits
         case captions
+        case clipStyle
         case export
         case share
         case ai
@@ -917,6 +921,7 @@ public struct Project: Codable, Sendable, Equatable {
         self.transcript = try values.decode(Optional<Transcript>.self, forKey: .transcript)
         self.edits = try values.decode(ProjectEdits.self, forKey: .edits)
         self.captions = try values.decode(CaptionSettings.self, forKey: .captions)
+        self.clipStyle = try values.decodeIfPresent(ClipStyle.self, forKey: .clipStyle)
         self.export = try values.decode(ProjectExport.self, forKey: .export)
         self.share = try values.decode(ProjectShare.self, forKey: .share)
         self.ai = try values.decode(ProjectAI.self, forKey: .ai)
@@ -944,6 +949,7 @@ public struct Project: Codable, Sendable, Equatable {
         try values.encode(self.transcript, forKey: .transcript)
         try values.encode(self.edits, forKey: .edits)
         try values.encode(self.captions, forKey: .captions)
+        try values.encodeIfPresent(self.clipStyle, forKey: .clipStyle)
         try values.encode(self.export, forKey: .export)
         try values.encode(self.share, forKey: .share)
         try values.encode(self.ai, forKey: .ai)

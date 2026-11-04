@@ -24,7 +24,11 @@ enum ProjectValidation {
     static func validate(_ raw: JSONValue) throws {
         try ProjectMigrations.checkVersion(raw)
         let isV4 = try map(raw)["schemaVersion"] == .number(4)
-        let root = try object(raw, required: "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", optional: "title extensions" + (isV4 ? " contextDemo motionCues" : ""))
+        let root = try object(raw, required: "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", optional: "title extensions clipStyle" + (isV4 ? " contextDemo motionCues" : ""))
+        if let clipStyle = root["clipStyle"] {
+            let style = try object(clipStyle, required: "preset captions music maxLengthSec shapes rewording captionPicks")
+            for (_, pick) in try map(style["captionPicks"]) { _ = try object(pick, required: "styleId reason") }
+        }
         if let title = root["title"], case .string = title {} else if root["title"] != nil { try fail("Invalid project title") }
         _ = try object(root["savedBy"], required: "app version platform")
         let media = try object(root["media"], required: "source")
@@ -248,6 +252,10 @@ enum ProjectValidation {
             if let index = clip.aiClipIndex { try require(index >= 0, "Invalid AI clip index") }
         }
         try text(project.captions.styleId, pattern: slugPattern)
+        if let clipStyle = project.clipStyle {
+            try clipStyle.validate()
+            for id in clipStyle.captionPicks.keys { try text(id, pattern: idPattern) }
+        }
         for position in Array(project.captions.positionByAspect.values) + [project.captions.position].compactMap({ $0 }) {
             try number(position.x, max: 1); try number(position.y, max: 1)
         }
