@@ -4,6 +4,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Behind the scenes, VoxClip can now ask Claude Code at extra high effort for a complete postable-clip plan (cuts, a few re-voiced phrases, captions, three music picks, zooms, hook, post text and a score); the one-click Make it postable button comes next.
+- `voxclip-cli transcribe` saves its project again instead of stopping with "Invalid project text".
 - On Mac, Rewrite takes, Use and Export previews get ready faster: the voice mix is reworked and sounds exactly the same.
 - On Windows, each Rewrite phrase can use your own words or your own microphone take, and automatic fixes learn from what they tried and re-ask when the AI drops a phrase's joining words.
 - Windows opens Mac projects that use your own recorded take, and its Eleven v4 takes no longer fail on harmless timing differences.
