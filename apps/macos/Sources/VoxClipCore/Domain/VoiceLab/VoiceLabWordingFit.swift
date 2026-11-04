@@ -69,11 +69,45 @@ public struct VoiceLabFitPhrase: Codable, Sendable, Equatable {
     public let target: VoiceLabWordTarget
     public let measuredSeconds: Double?
     public let calibrated: Bool
+    /// The wordings already tried for this phrase with their measured results (voice-lab §8.2.2); nil encodes as absent.
+    public var tried: [VoiceLabFitTried]?
     public init(ordinal: Int, original: String, proposed: String, estimateSeconds: Double, slotSeconds: Double,
-                direction: String, target: VoiceLabWordTarget, measuredSeconds: Double? = nil, calibrated: Bool = false) {
+                direction: String, target: VoiceLabWordTarget, measuredSeconds: Double? = nil, calibrated: Bool = false,
+                tried: [VoiceLabFitTried]? = nil) {
         self.ordinal = ordinal; self.original = original; self.proposed = proposed; self.estimateSeconds = estimateSeconds
         self.slotSeconds = slotSeconds; self.direction = direction; self.target = target
-        self.measuredSeconds = measuredSeconds; self.calibrated = calibrated
+        self.measuredSeconds = measuredSeconds; self.calibrated = calibrated; self.tried = tried
+    }
+}
+
+/// One wording a stuck phrase already had, and what came of it: the fix loop's memory (voice-lab §8.2.2).
+public struct VoiceLabFitTried: Codable, Sendable, Equatable {
+    /// `tooLong`, `tooShort`, `words`, `fit`, `repeat`, `notShorter`, `notLonger` or `unchecked`
+    /// (`shared/prompts/voice-rewrite-tried.json` `results`).
+    public let text: String
+    public let result: String
+    public let seconds: Double?
+    public init(text: String, result: String, seconds: Double? = nil) { self.text = text; self.result = result; self.seconds = seconds }
+
+    /// Case-, punctuation- and spacing-blind identity of a wording: two wordings with one key are one variant.
+    public static func key(_ text: String) -> String {
+        EditingPrimitives.splitWords(VoiceLabAudioTags.strippingTags(text))
+            .map { EditingPrimitives.normalizeForMatch(EditingPrimitives.nfc($0)) }.filter { !$0.isEmpty }.joined(separator: " ")
+    }
+    /// The history block sent with every reworded round, from the shared template; nil when nothing was tried.
+    public static func block(_ tried: [VoiceLabFitTried], shared: SharedResources) throws -> (text: String, sha256: String)? {
+        guard !tried.isEmpty else { return nil }
+        let prompt = try VoiceLabLLMChecks.readPrompt(shared, "prompts/voice-rewrite-tried.json")
+        let document = prompt.document
+        guard document[ai: "schemaVersion"].aiInt == 1, let header = document[ai: "header"].aiString,
+              let line = document[ai: "line"].aiString else { throw VoxClipError.sharedResourcesMissing }
+        let lines = try tried.prefix(12).map { row -> String in
+            guard let template = document[ai: "results"][ai: row.result].aiString else { throw VoxClipError.sharedResourcesMissing }
+            let result = template.replacingOccurrences(of: "{seconds}", with: row.seconds.map(toFixed1) ?? "?")
+            let text = row.text.count > 400 ? String(row.text.prefix(399)) + "…" : row.text
+            return line.replacingOccurrences(of: "{text}", with: text).replacingOccurrences(of: "{result}", with: result)
+        }
+        return (([header] + lines).joined(separator: "\n"), prompt.sha256)
     }
 }
 

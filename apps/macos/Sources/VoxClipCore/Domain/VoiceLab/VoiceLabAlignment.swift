@@ -64,51 +64,6 @@ public enum VoiceLabAlignment {
         return words
     }
 
-    public static func retimeNormalized(_ timings: [VoiceLabCharacterTiming], expectedText: String) throws -> [VoiceLabCharacterTiming] {
-        let normalizedText = VoiceLabAudioTags.strippingTags(timings.map(\.character).joined())
-        let normalized = try words(characters: timings.map(\.character), starts: timings.map(\.start), ends: timings.map(\.end), expectedText: normalizedText)
-        let source = normalized.enumerated().map { index, word in
-            TimedWord(id: String(index), text: word.text, start: word.start, end: word.end)
-        }
-        let operations = try VoiceLabWordDiff.diff(source: source, newText: VoiceLabAudioTags.strippingTags(expectedText)).ops
-        var result: [VoiceLabWord] = []
-        var removed: [VoiceLabWord] = []
-        var inserted: [String] = []
-        func flush() throws {
-            guard !removed.isEmpty || !inserted.isEmpty else { return }
-            guard let first = removed.first, let last = removed.last, !inserted.isEmpty, last.end > first.start else {
-                throw VoiceLabGeometryError.alignmentMismatch
-            }
-            let total = Double(inserted.reduce(0) { $0 + max(1, $1.unicodeScalars.count) })
-            var cursor = first.start
-            for (index, token) in inserted.enumerated() {
-                let end = index == inserted.count - 1 ? last.end : cursor + (last.end - first.start) * Double(max(1, token.unicodeScalars.count)) / total
-                result.append(VoiceLabWord(text: token, start: cursor, end: end, synthetic: true))
-                cursor = end
-            }
-            removed = []; inserted = []
-        }
-        for operation in operations {
-            switch operation.kind {
-            case .equal:
-                try flush()
-                guard let id = operation.sourceWordId, let index = Int(id), let text = operation.newToken else { throw VoiceLabGeometryError.alignmentMismatch }
-                result.append(VoiceLabWord(text: text, start: normalized[index].start, end: normalized[index].end, synthetic: true))
-            case .delete:
-                guard let id = operation.sourceWordId, let index = Int(id) else { throw VoiceLabGeometryError.alignmentMismatch }
-                removed.append(normalized[index])
-            case .insert:
-                guard let text = operation.newToken else { throw VoiceLabGeometryError.alignmentMismatch }
-                inserted.append(text)
-            }
-        }
-        try flush()
-        return result.enumerated().flatMap { index, word in
-            let separator = index == 0 ? [] : [VoiceLabCharacterTiming(character: " ", start: word.start, end: word.start)]
-            return separator + [VoiceLabCharacterTiming(character: word.text, start: word.start, end: word.end)]
-        }
-    }
-
     /// `[max(0, firstStart − TTS_TRIM_LEAD), min(assetDuration, lastEnd + TTS_TRIM_TAIL)]` in asset seconds.
     public static func trim(words: [VoiceLabWord], assetDuration: Double) throws -> (start: Double, end: Double) {
         guard assetDuration.isFinite, assetDuration > 0 else { throw VoiceLabGeometryError.invalidInput() }

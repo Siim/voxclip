@@ -20,8 +20,21 @@ enum StuckTakeReason: Equatable {
     case voice
     /// The phrase is too short to check the voice on its own words: it needs its whole sentence.
     case shortSpeech
+    /// The provider refused or could not finish the takes (key, credit, permission, rate, network): its cause and
+    /// its one fix show; no wording round can help.
+    case provider(VoiceLabError)
+    /// No word timing even after recovery from the word check and on device (voice-lab §8.5): one more take.
+    case timing
     /// Any other failed check, in the take row's own words.
     case other(String)
+
+    /// Only wording and fit failures are fixed by rewording (voice-lab §8.2.2).
+    var rewords: Bool {
+        switch self {
+        case .length, .words: true
+        default: false
+        }
+    }
 }
 
 /// The step past the spending cap: what [Keep fixing · ≈ $y] approves.
@@ -66,6 +79,9 @@ struct AutoFixCap: Equatable {
     /// Expressions chosen while a request ran, by takes-plan phrase: shown at once, applied when it ends.
     var pendingExpressions: [Int: [VoiceLabAudioTag]] = [:]
     var expressionNote: [Int: String] = [:]
+    /// Wordings the AI suggested that were not used (a repeat, or not moving toward the slot), by takes-plan phrase:
+    /// the next round is told about them with the wordings that were voiced.
+    var refused: [Int: [VoiceLabFitTried]] = [:]
     @ObservationIgnored var applyingExpression = false
     @ObservationIgnored var token = UUID()
     @ObservationIgnored var work: Task<Void, Never>?
@@ -79,7 +95,7 @@ struct AutoFixCap: Equatable {
         token = UUID(); work?.cancel(); work = nil; plan = nil
         armed = false; stopped = false; stopReason = ""; allowance = 0; spent = 0; capped = nil
         rounds = [:]; triedAnother = []; lines = [:]; gaveUp = []; notes = []; showChoices = false
-        pendingExpressions = [:]; expressionNote = [:]; applyingExpression = false
+        pendingExpressions = [:]; expressionNote = [:]; applyingExpression = false; refused = [:]
     }
 }
 
@@ -179,6 +195,14 @@ extension RewriteSession {
                 return .length(tooLong: length > slot, measured: length, slot: slot, take: closest.id, number: closest.number, selected: false)
             }
         }
+        let providerFailures = current.compactMap { take -> VoiceLabError? in
+            if case .provider(let error) = take.row.failure, Self.isAccountFailure(error) { return error }
+            return nil
+        }
+        if providerFailures.count == current.count, let error = providerFailures.last { return .provider(error) }
+        if current.allSatisfy({ take in
+            take.length == nil && (take.row.failure == .invalidAlignment || take.row.failure == .provider(.invalidAlignment))
+        }) { return .timing }
         let failures = current.flatMap { take -> [VoiceLabTakeQAFailure] in
             if case .qa(let failed) = take.row.failure { return failed }
             return take.row.qa?.hardFailures ?? []
@@ -207,6 +231,14 @@ extension RewriteSession {
                        selected: phrase.selectedID == take.id)
     }
 
+    /// Provider failures no wording round can fix (voice-lab §8.2.2): each has one fix (`ClipTakePlan.nextStep`).
+    static func isAccountFailure(_ error: VoiceLabError) -> Bool {
+        switch error {
+        case .quotaExceeded, .unauthorized, .missingKey, .permissionMissing, .rateLimited, .network, .providerFailure,
+             .subscriptionRequired, .featureUnavailable, .voiceAccessDenied, .modelAccessDenied: true
+        default: false
+        }
+    }
     /// The phrase's one plain sentence for `reason` (design.md R2): what went wrong, never a list of checks.
     static func stuckSentence(_ reason: StuckTakeReason, phrase: Int) -> String {
         func seconds(_ value: Double) -> String { String(format: "%.1f s", locale: Locale(identifier: "en_US_POSIX"), value) }
@@ -217,6 +249,10 @@ extension RewriteSession {
         case .words: return "Phrase \(phrase): the word check heard different words in every take."
         case .voice: return "Phrase \(phrase): no take sounded enough like your voice."
         case .shortSpeech: return "Phrase \(phrase): too short to check your voice on its own words."
+        case .provider(let error):
+            let fix = ClipTakePlan.nextStep(.provider(error)).map { " " + $0 } ?? ""
+            return "Phrase \(phrase): \(TakeFailurePresentation.reason(for: .provider(error)))\(fix)"
+        case .timing: return "Phrase \(phrase): its take's word timing couldn't be read, even from the word check."
         case .other(let reason): return "Phrase \(phrase): \(reason)"
         }
     }
@@ -242,8 +278,11 @@ extension RewriteSession {
                   let reason = stuckReason(phrase, plan: plan) ?? estimateBlockedReason(phrase, blocked: blocked) else {
                 autoFix.lines[phrase.id] = nil; continue
             }
+            // A provider failure shows its cause and its one fix; a round of new words can't help it.
+            if case .provider = reason { autoFix.lines[phrase.id] = nil; autoFix.showChoices = true; continue }
             let used = autoFix.rounds[phrase.id, default: 0]
             guard used < RewriteAutoFixState.maximumRounds else { giveUp(phrase.id, plan: plan); continue }
+            if case .timing = reason, autoFix.triedAnother.contains(phrase.id) { giveUp(phrase.id, plan: plan); continue }
             autoFix.rounds[phrase.id] = used + 1
             let number = phrase.id + 1
             switch reason {
@@ -321,7 +360,10 @@ extension RewriteSession {
         guard let connector, let shared = editor.app.shared, plan.phrases.indices.contains(id) else { return }
         let phrase = plan.phrases[id]
         guard phrase.indices.count == 1, let ordinal = takePhraseOrdinals(phrase).first, changes.indices.contains(ordinal - 1) else { return }
-        let request = RewriteReask(label: "Easier words", instruction: Self.clearerInstruction, ordinals: [ordinal], reason: .take)
+        let tried = triedWordings(phrase, plan: plan)
+        let history = (try? VoiceLabFitTried.block(tried, shared: shared)?.text).flatMap { $0 } ?? ""
+        let request = RewriteReask(label: "Easier words", instruction: Self.clearerInstruction + (history.isEmpty ? "" : "\n" + history),
+                                   ordinals: [ordinal], reason: .take)
         do {
             let feedback = try reaskFeedback(request, shared: shared)
             let prepared = try await prepareSend(connector, feedback: feedback)
@@ -343,6 +385,11 @@ extension RewriteSession {
                 let text = (phrase.window.leftBridgeWordIds.compactMap { texts[$0] } + hunk.newTokens +
                     phrase.window.rightBridgeWordIds.compactMap { texts[$0] }).joined(separator: " ")
                 guard !text.utf8.elementsEqual(phrase.text.utf8) else { return }
+                // A wording already tried is never voiced again: the next round hears that it repeated.
+                guard !tried.contains(where: { VoiceLabFitTried.key($0.text) == VoiceLabFitTried.key(text) }) else {
+                    autoFix.refused[id, default: []].append(VoiceLabFitTried(text: text, result: "repeat"))
+                    return
+                }
                 takeQuotePhrase = id
                 await plan.prepareRewording(text, phrase: id)
                 autoFix.lines[id] = "Fixing phrase \(id + 1): making a take of the new wording…"
@@ -384,6 +431,52 @@ extension RewriteSession {
         autoFix.gaveUp.remove(phrase)
         plan.restore(phrase: phrase)
         showProposal()
+    }
+
+    // MARK: What the loop already tried
+
+    /// The wordings this phrase already had, oldest first, each with its latest measured result, then the AI's
+    /// wordings that were not used. One entry per variant (`VoiceLabFitTried.key`).
+    func triedWordings(_ phrase: ClipTakePlan.Phrase, plan: ClipTakePlan) -> [VoiceLabFitTried] {
+        var result: [VoiceLabFitTried] = []
+        func add(_ row: VoiceLabFitTried) {
+            let key = VoiceLabFitTried.key(row.text)
+            guard !key.isEmpty else { return }
+            if let index = result.firstIndex(where: { VoiceLabFitTried.key($0.text) == key }) { result[index] = row } else { result.append(row) }
+        }
+        for take in phrase.takes {
+            guard let text = plan.measuredInput(take: take.id)?.text else { continue }
+            let failed: [VoiceLabTakeQAFailure] = if case .qa(let list) = take.row.failure { list } else { take.row.qa?.hardFailures ?? [] }
+            if failed.contains(.transcript) { add(VoiceLabFitTried(text: text, result: "words")); continue }
+            guard let length = take.length else { add(VoiceLabFitTried(text: text, result: "unchecked")); continue }
+            let difference = length - phrase.originalLength
+            if plan.lengthFits(take: take) { add(VoiceLabFitTried(text: text, result: "fit")) }
+            else { add(VoiceLabFitTried(text: text, result: difference > 0 ? "tooLong" : "tooShort", seconds: abs(difference))) }
+        }
+        for row in autoFix.refused[phrase.id] ?? [] { add(row) }
+        return result
+    }
+
+    /// "Round k of 3 · tried: …" under a phrase the loop rewords (voice-lab §8.2.2), so its learning is visible.
+    func autoFixHistoryLine(_ phrase: ClipTakePlan.Phrase, plan: ClipTakePlan) -> String? {
+        guard autoFix.armed, let round = autoFix.rounds[phrase.id], round > 0 else { return nil }
+        let tried = triedWordings(phrase, plan: plan)
+        guard !tried.isEmpty else { return nil }
+        func seconds(_ value: Double?) -> String { String(format: "%.1f s", locale: Locale(identifier: "en_US_POSIX"), value ?? 0) }
+        let items = tried.suffix(4).map { row -> String in
+            let result = switch row.result {
+            case "tooLong": "\(seconds(row.seconds)) long"
+            case "tooShort": "\(seconds(row.seconds)) short"
+            case "words": "words misheard"
+            case "fit": "fits"
+            case "repeat": "repeat, not used"
+            case "notShorter": "not shorter, not used"
+            case "notLonger": "not longer, not used"
+            default: "not checked"
+            }
+            return "“\(row.text)” (\(result))"
+        }
+        return "Round \(min(round, RewriteAutoFixState.maximumRounds)) of \(RewriteAutoFixState.maximumRounds) · tried: " + items.joined(separator: ", ")
     }
 
     // MARK: Before takes: refusals, collisions, failed re-asks

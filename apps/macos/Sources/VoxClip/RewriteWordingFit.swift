@@ -256,10 +256,12 @@ extension RewriteSession {
                 minimumSeconds: lower, maximumSeconds: max(lower, timing.maximumSeconds ?? timing.slotSeconds),
                 overheadSeconds: max(0, base - speech) * ratio)
             let readings = editor.changeReadings.filter { ordinals.contains($0.change.ordinal) }
+            // The loop's memory (voice-lab §8.2.2): every wording this phrase had, with its measured result.
+            let tried = triedWordings(phrase, plan: plan)
             let request = VoiceLabFitPhrase(ordinal: ordinal, original: readings.flatMap(\.removed).joined(separator: " "),
                 proposed: phrase.text, estimateSeconds: seconds, slotSeconds: phrase.originalLength,
                 direction: suggestion.tooLong ? "shorter" : "longer", target: target,
-                measuredSeconds: suggestion.measuredSeconds, calibrated: true)
+                measuredSeconds: suggestion.measuredSeconds, calibrated: true, tried: tried.isEmpty ? nil : tried)
             let service = VoiceLabWordingFitService(shared: shared), language = project.transcript?.language ?? "en"
             let quote = try await service.prepare([request], connector: connector.connector.id, model: connector.model, language: language)
             guard current, wordingFit.token == token, !Task.isCancelled else { return }
@@ -287,6 +289,17 @@ extension RewriteSession {
                   plan.phrases[suggestion.phrase].selectedID == suggestion.selection, let update = updates.first else { return }
             wordingFit.measured?.keepOriginal = update.keepOriginal
             if !update.keepOriginal {
+                // An automatic round never prices a repeat, or a wording that doesn't move toward the slot; the next
+                // round hears why. A suggestion the user reviews is theirs to judge by ear.
+                if automatic, let refusal = try automaticRefusal(update.text, suggestion: suggestion, phrase: phrase, plan: plan,
+                                                                 tried: tried, rate: rate) {
+                    autoFix.refused[suggestion.phrase, default: []].append(VoiceLabFitTried(text: update.text, result: refusal))
+                    wordingFit.measured?.preparing = false
+                    wordingFit.measured?.problem = refusal == "repeat" ? "\(aiName) repeated a wording already tried, so it wasn't used."
+                        : "\(aiName)'s wording wasn't \(suggestion.tooLong ? "shorter" : "longer"), so it wasn't used."
+                    showProposal()
+                    return
+                }
                 wordingFit.measured?.text = update.text
                 takeQuotePhrase = suggestion.phrase
                 await plan.prepareRewording(update.text, phrase: suggestion.phrase)
@@ -299,6 +312,20 @@ extension RewriteSession {
             wordingFit.measured?.problem = Self.refusal(error)
             showProposal()
         }
+    }
+
+    /// Why an automatic round's wording is not voiced (voice-lab §8.2.2): a variant already tried, or one that does not
+    /// move toward the slot from the measured take's wording. Nil when it may be priced.
+    private func automaticRefusal(_ text: String, suggestion: MeasuredWordingSuggestion, phrase: ClipTakePlan.Phrase, plan: ClipTakePlan,
+                                  tried: [VoiceLabFitTried], rate: Double) throws -> String? {
+        let measuredText = plan.measuredInput(take: suggestion.take)?.text ?? phrase.text
+        let key = VoiceLabFitTried.key(text)
+        if key == VoiceLabFitTried.key(measuredText) || tried.contains(where: { VoiceLabFitTried.key($0.text) == key }) { return "repeat" }
+        let before = try VoiceLabPhraseTiming.estimate(text: measuredText, rate: rate)
+        let after = try VoiceLabPhraseTiming.estimate(text: text, rate: rate)
+        if suggestion.tooLong, after >= before { return "notShorter" }
+        if !suggestion.tooLong, after <= before { return "notLonger" }
+        return nil
     }
 
     func keepMeasuredTake() {

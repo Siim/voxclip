@@ -85,6 +85,55 @@ struct VoiceLabDialogueTests {
             #expect(result.alignment?.map(\.character).joined() == text)
         }
     }
+    /// voice-lab §8.5 "Tolerant timing": every v4 reply a correct provider could send maps to the typed words with the
+    /// shared fixture's times; replies whose words really differ are refused with the check the release log names.
+    @Test func v4TimingVariantsMapToTypedWordsOrNameTheirCheck() async throws {
+        let document = try #require(JSONSerialization.jsonObject(with: FixtureLoader.data("fixtures/voice-lab/v4-timing-cases.json")) as? [String: Any])
+        #expect(document["schema"] as? String == "voxclip-voice-lab-v4-timing-cases/1")
+        let cases = try #require(document["cases"] as? [[String: Any]])
+        #expect(cases.count == document["caseCount"] as? Int && cases.count >= 20)
+        var problems: [String] = []
+        for fixture in cases {
+            let id = try #require(fixture["id"] as? String), typed = try #require(fixture["typed"] as? String)
+            let samples = try #require(fixture["pcmSamples"] as? Int)
+            let expected = try #require(fixture["expected"] as? [String: Any])
+            let row: [String: Any] = ["audio_base64": Data(count: samples * 2).base64EncodedString(),
+                "alignment": fixture["alignment"] ?? NSNull(), "normalized_alignment": fixture["normalized_alignment"] ?? NSNull(),
+                "voice_segments": fixture["voice_segments"] ?? NSNull()]
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let client = try await lab(response: JSONSerialization.data(withJSONObject: row),
+                logger: RedactingLogger(homeDirectory: "/synthetic-home", directory: directory), diagnosticDirectory: directory)
+            let id0 = UUID(), options = VoiceLabSpeechOptions(seed: 0)
+            let quote = try await client.prepareSynthesis(text: typed, modelID: "eleven_v4", voice: voice, language: "en", options: options, requestID: id0)
+            do {
+                let result = try await client.synthesize(text: typed, modelID: "eleven_v4", voice: voice, language: "en", options: options,
+                    requestID: id0, authorization: VoiceLabAuthorization(quote: quote, approved: true))
+                guard expected["outcome"] as? String == "accepted" else { problems.append("\(id): accepted, expected \(expected["check"] ?? "")"); continue }
+                let timing = try #require(result.alignment)
+                let words = try VoiceLabAlignment.words(characters: timing.map(\.character), starts: timing.map(\.start),
+                    ends: timing.map(\.end), expectedText: typed)
+                let want = try #require(expected["words"] as? [[String: Any]])
+                let got = words.map { ["text": $0.text, "start": $0.start, "end": $0.end] as [String: Any] }
+                // Foundation's JSON reader may round 17-digit doubles by a few ULPs; the times are pinned to 1e-9 s.
+                func close(_ left: [Double], _ right: [Double]) -> Bool { left.count == right.count && zip(left, right).allSatisfy { abs($0 - $1) < 1e-9 } }
+                if words.map(\.text) != want.compactMap({ $0["text"] as? String })
+                    || !close(words.map(\.start), want.compactMap { $0["start"] as? Double }) || !close(words.map(\.end), want.compactMap { $0["end"] as? Double }) {
+                    problems.append("\(id): words \(got) expected \(want)")
+                }
+            } catch {
+                guard expected["outcome"] as? String == "rejected" else { problems.append("\(id): refused \(error)"); continue }
+                let check = try #require(expected["check"] as? String)
+                // A segment refusal keeps the shared dialogue contract; the take run recovers that take (§8.5).
+                let segment = expected["error"] as? String == "malformedResponse"
+                if error as? VoiceLabError != (segment ? .malformedResponse : .invalidAlignment) { problems.append("\(id): \(error)") }
+                let log = (try? String(contentsOf: directory.appendingPathComponent("voxclip.log"), encoding: .utf8)) ?? ""
+                if !log.contains("voicelab speech timing failed check=\(check)\(segment ? "_" : " ")") { problems.append("\(id): log \(log)") }
+                for word in typed.split(separator: " ") where word.count > 3 && log.contains(word) { problems.append("\(id): log has text") }
+            }
+        }
+        #expect(problems == [])
+    }
     @Test func diagnosticsUseTestOrExplicitDataRoot() {
         let explicit = ElevenLabsVoiceLab.defaultValidationDiagnosticDirectory(environment: ["VOXCLIP_DATA_DIR": "/tmp/isolated-tags"], arguments: ["Tests.xctest"])
         #expect(explicit.path == "/tmp/isolated-tags/Logs/Diagnostics/VoiceLab")
@@ -113,8 +162,9 @@ struct VoiceLabDialogueTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let logger = RedactingLogger(homeDirectory: "/synthetic-home", directory: directory)
         var row = try #require(JSONSerialization.jsonObject(with: response()) as? [String: Any])
-        row["alignment"] = ["characters": ["I", "’", "m"],
-            "character_start_times_seconds": [0, 0.1, 0.2], "character_end_times_seconds": [0.1, 0.2, 0.3]]
+        // A curly apostrophe alone is tolerated (v4-timing-cases.json); a different word is refused.
+        row["alignment"] = ["characters": ["I", "’", "d"],
+            "character_start_times_seconds": [0, 0.005, 0.01], "character_end_times_seconds": [0.005, 0.01, 0.02]]
         row["normalized_alignment"] = ["characters": ["I am"]]
         row["voice_segments"] = [["voice_id": "voice123", "dialogue_input_index": 0,
             "character_start_index": 0, "character_end_index": 3, "start_time_seconds": 0, "end_time_seconds": 0.3,
@@ -133,19 +183,19 @@ struct VoiceLabDialogueTests {
         let file = directory.appendingPathComponent("speech-validation-\(id.uuidString).json")
         let bytes = try Data(contentsOf: file)
         let diagnostic = try #require(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
-        #expect(diagnostic["check"] as? String == "alignment_text_mismatch")
+        #expect(diagnostic["check"] as? String == "alignment_words_mismatch")
         #expect(diagnostic["index"] as? Int == 1)
         #expect(diagnostic["typed_scalar"] as? String == "U+0027")
         #expect(diagnostic["alignment_scalar"] as? String == "U+2019")
         #expect(diagnostic["typed_text"] as? String == "I'm")
-        #expect(diagnostic["alignment_text"] as? String == "I’m")
+        #expect(diagnostic["alignment_text"] as? String == "I’d")
         #expect(diagnostic["normalized_alignment_text"] as? String == "I am")
         #expect(diagnostic["model"] as? String == model)
         #expect(diagnostic["route"] as? String == (model == "eleven_v4" ? "textToDialogue" : "textToSpeech"))
         #expect(diagnostic["pcm_duration_seconds"] as? Double == 0.02)
         let starts = try #require(diagnostic["alignment_starts"] as? [String: Any])
-        #expect(starts["first"] as? [Double] == [0, 0.1, 0.2])
-        #expect(starts["last"] as? [Double] == [0, 0.1, 0.2])
+        #expect(starts["first"] as? [Double] == [0, 0.005, 0.01])
+        #expect(starts["last"] as? [Double] == [0, 0.005, 0.01])
         let segments = try #require(diagnostic["voice_segments"] as? [[String: Any]])
         #expect(segments[0]["character_end_index"] as? Int == 3)
         let serialized = String(decoding: bytes, as: UTF8.self)
@@ -153,8 +203,8 @@ struct VoiceLabDialogueTests {
             #expect(!serialized.contains(forbidden))
         }
         let log = try String(contentsOf: directory.appendingPathComponent("voxclip.log"), encoding: .utf8)
-        #expect(log.contains("[info] voice-lab: voicelab dialogue validation failed check=alignment_text_mismatch"))
-        #expect(!log.contains("I'm") && !log.contains("I’m"))
+        #expect(log.contains("[info] voice-lab: voicelab speech timing failed check=alignment_words_mismatch index=1 typed=U+0027 provider=U+2019"))
+        #expect(!log.contains("I'm") && !log.contains("I’d"))
         #expect(acceptance.unalignedAudio?.pcm.isEmpty == false)
         #expect(recorder.paid.withLock { $0.count } == 1)
     }

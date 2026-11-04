@@ -285,10 +285,14 @@ struct VoiceLabTakeRunTests {
                 let text = state.recognized.isEmpty ? (state.qa <= state.mismatchCount ? "different" : text)
                     : state.recognized[(state.qa - 1) % state.recognized.count]
                 let tokens = text.split(separator: " ").map(String.init)
-                let step = (state.duration - 0.2) / Double(tokens.count)
+                // Words lie inside the audio sent: the QA mix (0.6 s in), or a take's own PCM when its timing is recovered.
+                let seconds = Double(size - 36) / 2 / 24_000
+                let fits = 0.6 + state.duration - 0.2 <= seconds
+                let origin = fits ? 0.6 : 0.1, length = fits ? state.duration - 0.2 : max(0.1, seconds - 0.2)
+                let step = length / Double(tokens.count)
                 var words = tokens.enumerated().map { index, token -> [String: Any] in
-                    ["type": "word", "text": token, "start": 0.6 + Double(index) * step,
-                     "end": 0.6 + Double(index + 1) * step]
+                    ["type": "word", "text": token, "start": origin + Double(index) * step,
+                     "end": origin + Double(index + 1) * step]
                 }
                 if tagged { words.append(["type": "audio_event", "text": "(laughs)", "start": 0.7, "end": 0.8]) }
                 return (200, [:], try JSONSerialization.data(withJSONObject: ["language_code": "eng", "words": words]))
@@ -432,33 +436,37 @@ struct VoiceLabTakeRunTests {
         _ = try JSONProjectStore.decode(ProjectJSON.encode(accepted))
         await fixture.run.invalidate()
     }
-    @Test(arguments: [false, true]) func dialogueBadAlignmentRecordsSpendAndSkipsQA(malformed: Bool) async throws {
+    /// voice-lab §8.5 timing recovery: a paid take with no usable provider timing is timed from its own word check, the
+    /// take's one approved Scribe request, which is then its QA. No second synthesis or Scribe request is made.
+    @Test(arguments: [false, true]) func dialogueBadAlignmentIsTimedFromItsWordCheck(malformed: Bool) async throws {
         let fixture = try await fixture({ $0.missingAlignment = !malformed; $0.malformedAlignment = malformed }, modelID: "eleven_v4")
         defer { try? FileManager.default.removeItem(at: fixture.root) }
         let quote = try await fixture.run.prepare(fixture.input)
         let result = try await fixture.run.execute(quote, approved: true)
         let row = try #require(result.rows.first)
-        #expect(row.failure == .provider(.invalidAlignment) && !row.selectable && result.best == nil)
-        #expect(row.generated?.alignment == nil && row.generated?.pcm.isEmpty == false)
+        #expect(row.failure == nil && row.selectable && row.qaReceipt != nil, "\(String(describing: row.failure))")
+        #expect(row.generated?.alignment?.isEmpty == false && row.generated?.pcm.isEmpty == false)
         #expect(row.receipt != nil && row.receipt == row.generated?.receipt)
-        #expect(fixture.http.value.withLock { $0.seeds.count == 1 && $0.qa == 0 })
-        #expect(await fixture.ledger.total(provider: "elevenlabs", at: fixture.clock.now())?.usd == quote.takes[0].synthesis.estimate.usd)
+        #expect(fixture.http.value.withLock { $0.seeds.count == result.rows.count && $0.qa == result.rows.count })
+        let spent = quote.takes.prefix(result.rows.count).reduce(Decimal(0)) { $0 + ($1.synthesis.estimate.usd ?? 0) + ($1.qa.estimate.usd ?? 0) }
+        #expect(await fixture.ledger.total(provider: "elevenlabs", at: fixture.clock.now())?.usd == spent)
         let paid = try #require(await fixture.run.paidAudioURL(for: row.id))
         #expect(FileManager.default.fileExists(atPath: paid.path))
         await fixture.run.invalidate()
     }
-    @Test func dialogueBadSegmentsKeepPaidPCMPlayableWithoutQAOrRetry() async throws {
+    /// Voice segments that fail the shared contract keep the paid PCM; its timing is recovered from its word check.
+    @Test func dialogueBadSegmentsAreTimedFromTheWordCheckWithoutRetry() async throws {
         let fixture = try await fixture({ $0.wrongDialogueVoice = true }, modelID: "eleven_v4")
         defer { try? FileManager.default.removeItem(at: fixture.root) }
         let quote = try await fixture.run.prepare(fixture.input, candidates: 1)
         let result = try await fixture.run.execute(quote, approved: true)
         let row = try #require(result.rows.first)
-        #expect(result.rows.count == 1 && result.best == nil && !row.selectable)
-        #expect(row.failure == .provider(.malformedResponse))
-        #expect(row.generated?.alignment == nil && row.generated?.pcm.isEmpty == false)
+        #expect(result.rows.count == 1 && row.failure == nil && row.qaReceipt != nil, "\(String(describing: row.failure))")
+        #expect(row.generated?.alignment?.isEmpty == false && row.generated?.pcm.isEmpty == false)
         #expect(row.receipt != nil && row.receipt == row.generated?.receipt)
-        #expect(fixture.http.value.withLock { $0.seeds.count == 1 && $0.qa == 0 })
-        #expect(await fixture.ledger.total(provider: "elevenlabs", at: fixture.clock.now())?.usd == quote.takes[0].synthesis.estimate.usd)
+        #expect(fixture.http.value.withLock { $0.seeds.count == 1 && $0.qa == 1 })
+        let spent = (quote.takes[0].synthesis.estimate.usd ?? 0) + (quote.takes[0].qa.estimate.usd ?? 0)
+        #expect(await fixture.ledger.total(provider: "elevenlabs", at: fixture.clock.now())?.usd == spent)
         let paid = try #require(await fixture.run.paidAudioURL(for: row.id))
         #expect(FileManager.default.fileExists(atPath: paid.path))
         await fixture.run.invalidate()
@@ -771,12 +779,23 @@ struct VoiceLabTakeRunTests {
         #expect(result.rows.count == 3 && result.best == nil)
         #expect(result.rows.allSatisfy { !$0.selectable && $0.qa?.failures.contains(speakerFailure ? .speaker : .transcript) == true })
     }
+    /// Recovery buys nothing: one synthesis and one Scribe request per take, as approved, never a fallback request.
     @Test(arguments: [false, true]) func missingOrMalformedAlignmentDoesNotBuyUnspecifiedFallback(malformed: Bool) async throws {
         let fixture = try await fixture { $0.missingAlignment = !malformed; $0.malformedAlignment = malformed }; defer { try? FileManager.default.removeItem(at: fixture.root) }
         let quote = try await fixture.run.prepare(fixture.input)
         let result = try await fixture.run.execute(quote, approved: true)
-        #expect(result.best == nil && result.rows.count == 1)
-        #expect(fixture.http.value.withLock { $0.qa == 0 && $0.seeds.count == 1 })
+        #expect(!result.rows.isEmpty && result.rows.count <= quote.takes.count)
+        #expect(fixture.http.value.withLock { $0.qa == result.rows.count && $0.seeds.count == result.rows.count })
+    }
+    /// The word check heard nothing: no timing can be recovered without the on-device transcriber, so the take fails
+    /// alone (`invalidAlignment`) and the run goes on to the next take: timing is never run-fatal.
+    @Test func anUnrecoverableTakeFailsAloneAndTheRunGoesOn() async throws {
+        let fixture = try await fixture { $0.missingAlignment = true; $0.recognized = [""] }; defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let quote = try await fixture.run.prepare(fixture.input)
+        let result = try await fixture.run.execute(quote, approved: true)
+        #expect(result.end == .completed && result.rows.count == quote.takes.count)
+        #expect(result.rows.allSatisfy { $0.failure == .provider(.invalidAlignment) && $0.qaReceipt != nil })
+        #expect(fixture.http.value.withLock { $0.qa == quote.takes.count && $0.seeds.count == quote.takes.count })
     }
     /// Live 2026-11-03 (Eleven v3): a take that ends on its last aligned character has no handle after its trim. A longer
     /// take that must shorten has no pad either, so the fitted asset once read past the paid file (invalidAudio).
@@ -1368,16 +1387,17 @@ struct VoiceLabTakeRunTests {
         var progress = VoiceLabTakeBatchProgress(batch: batch)
         try progress.finish(window: 0, result: result)
         let takes = batch.windows[0].quote.takes
-        #expect(result.rows.allSatisfy { $0.qaReceipt == nil })
+        #expect(result.rows.allSatisfy { ($0.qaReceipt == nil) == qa })
         if qa {
             #expect(result.end == .completed && result.rows.count == 3 && result.rows.allSatisfy { $0.receipt != nil })
             #expect(progress.sent == Set(takes.flatMap { [$0.synthesis.requestID, $0.qa.requestID] }))
             #expect(fixture.http.value.withLock { $0.seeds.count == 3 && $0.qa == 3 })
         } else {
-            #expect(result.end == .fatal && result.rows.count == 1)
+            // The missing timing is recovered from the take's word check (voice-lab §8.5): both of its requests are sent.
+            #expect(result.end != .fatal && !result.rows.isEmpty)
             #expect(result.rows.allSatisfy { $0.receipt != nil && $0.receipt == $0.generated?.receipt })
-            #expect(progress.sent == [takes[0].synthesis.requestID] && progress.sentEstimate.units == 1)
-            #expect(fixture.http.value.withLock { $0.seeds.count == 1 && $0.qa == 0 })
+            #expect(progress.sent == Set(takes.prefix(result.rows.count).flatMap { [$0.synthesis.requestID, $0.qa.requestID] }))
+            #expect(fixture.http.value.withLock { $0.seeds.count == result.rows.count && $0.qa == result.rows.count })
         }
         #expect(await fixture.ledger.total(provider: "elevenlabs", at: fixture.clock.now())?.usd == (progress.sentEstimate.usd ?? 0))
     }

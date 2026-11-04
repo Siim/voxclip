@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "promptVersion": 1,
+  "header": "Wordings already tried for this phrase, each with its measured result. Never return any of them again, even with different case or punctuation. Move toward the slot from the closest one:",
+  "line": "- “{text}”: {result}",
+  "results": {
+    "tooLong": "too long by {seconds} s",
+    "tooShort": "too short by {seconds} s",
+    "words": "the word check heard different words",
+    "fit": "fit its slot",
+    "repeat": "repeated an earlier wording, not used",
+    "notShorter": "was not shorter, not used",
+    "notLonger": "was not longer, not used",
+    "unchecked": "its take could not be checked"
+  }
+}

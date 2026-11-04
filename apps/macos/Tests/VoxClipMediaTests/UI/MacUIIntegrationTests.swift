@@ -45,7 +45,7 @@ extension HeavyMediaTests {
     /// field at most, a footer that agrees with the panel, paid takes until a confirm, and a tag drawn as it is added;
     /// every scenario ends with the Rewrite applied, or (S9, after Stop) with Done and the words as recorded; S10–S12
     /// also check the applied video duration and that no voice change was dropped.
-    /// One app process per take-length pass, each with its own deadline: realistic take lengths (S1–S13), and every
+    /// One app process per take-length pass, each with its own deadline: realistic take lengths (S1–S14), and every
     /// scenario but S13 with takes that fill their slots exactly ("S4-exact"). S-own-typed, S-own-mic and S-own-mic-misfit
     /// drive My words and Say it myself with a scripted microphone. Hosted runners take about twice as long.
     @Test("The Rewrite smoke completes every stuck scenario without a dead end", arguments: ["realistic", "exact"])
@@ -57,7 +57,7 @@ extension HeavyMediaTests {
         let scenarios = Set(report.compactMap { $0.name.split(separator: " ").first.map(String.init) })
         // The own-words scenarios (My words, Say it myself, Record again) run in both passes.
         let own = ["S-own-typed", "S-own-mic", "S-own-mic-misfit"]
-        let expected: [String] = lengths == "exact" ? ((1...12).map { "S\($0)" } + own).map { $0 + "-exact" } : (1...13).map { "S\($0)" } + own
+        let expected: [String] = lengths == "exact" ? ((1...12).map { "S\($0)" } + ["S14"] + own).map { $0 + "-exact" } : (1...14).map { "S\($0)" } + own
         #expect(scenarios == Set(expected))
         for result in report { #expect(result.passed, Comment(rawValue: result.name)) }
     }

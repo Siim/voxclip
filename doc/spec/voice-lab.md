@@ -1,5 +1,69 @@
 # Voice Lab
 
+### Eleven v4 timing and the learning fix loop (Mac, 2026-11-04)
+
+MVP18: every Eleven v4 take of a plain phrase failed "The take's word timing could not be validated", the
+next phrase stopped with "can't be checked yet", and the automatic fixes retried the same failure. The client
+compared the provider's characters with the typed text byte for byte and required each character to start
+after the previous one ended. A correct reply can differ in ways that do not change the words, so those
+replies were lost with the paid audio unusable.
+
+**Tolerant timing (`VoiceLabProviderTiming.retime`).** Original `alignment` equal to the typed text with ordered
+times is used exactly as before. Otherwise the original, then (v4 dialogue) `normalized_alignment`, is mapped to
+the typed words:
+
+- Characters are split into Unicode scalars with their times spread evenly. Times may end up to
+  `overrunTolerance` (0.25 s) past the PCM and are clamped to it; a later end is `alignment_end_beyond_duration`.
+  A character may start up to 1 ms before an earlier one (`alignment_time_order` otherwise) and may overlap the
+  one before it.
+- Every bracket expression (`[...]` without nested brackets or line breaks) is a direction, never a word: its
+  scalars become spaces, whether or not the request carried it.
+- Tokens split on Unicode White_Space are compared with `normalizeForMatch(nfc(...))`, so case, punctuation,
+  apostrophes (U+0027 and U+2019) and spacing never matter. The longest common subsequence of folded tokens is
+  walked forward; a tie drops the provider token first. Equal tokens keep their times (start clamped to the
+  previous word's end). A replaced run is accepted only when every typed word in it holds a digit or a symbol
+  (number, currency, `%&@#/+`) and the provider said something there; its span is shared by scalar length.
+  Typed punctuation-only tokens take the gap where they stand. Any other difference is
+  `alignment_words_mismatch`. The result is one timing per typed token with a space between tokens.
+- Voice segments keep the shared `dialogue-cases.json` contract unchanged (array bound, 50 ms). A segment
+  refusal is recovered by the take run below.
+- Every build logs `voicelab speech timing tolerated|failed check=… index=… typed=U+… provider=U+… route=… model=…`:
+  the check, the first differing scalar index and both code points, never text. DEBUG diagnostics are unchanged.
+
+**Timing recovery (`VoiceLabTakeRun`).** A take whose reply decoded but whose timing or segments failed, or whose
+timing does not map in take processing, is timed from what it already has, with no new paid request:
+
+1. Its own word check: the take's approved Scribe QA request, sent once on the take's PCM, mapped to the typed
+   words by `VoiceLabProviderTiming.recovered` (equal words keep their times; misheard or missed words share the
+   span around them). That transcript is then the take's word check; Scribe is not called again.
+2. Otherwise (no words heard, or no mapping) the on-device transcriber: Apple Speech when its assets are
+   installed, else an installed Whisper model (`VoiceLabLocalTimingSource.onDevice`). It never downloads or prompts.
+
+The take then goes through the normal word, speaker and fit checks and can be chosen. A take whose words really
+differ fails the word check, not timing. Only an unrecovered take fails `invalidAlignment`, on its own: timing is
+never run-fatal, and later phrases are sent as approved. `v4-timing-cases.json`
+(`voxclip-voice-lab-v4-timing-cases/1`, `generate_v4_timing.py`) pins 26 reply variants: 17 accepted with their
+word times (exact, normalized and tolerant paths), 2 segment refusals the take run recovers, and 7 refusals with
+their check. Windows replay is owed.
+
+**The fix loop learns (§8.2.2).** Stuck phrases are classed as wording/fit (length, word check), timing,
+provider (key, credit, permission, rate, network, plan) or voice. Only wording and fit failures reword. A provider
+failure shows its cause and its one fix ("Add credit to your ElevenLabs account, then choose Price a take.") with
+[Price a take] and [Keep original words], never wording chips, and takes no automatic round. A timing failure that
+recovery could not fix gets one Try another, then the original words.
+
+Every reworded round (measured fit and "easier words") sends the wordings this phrase already had, oldest first,
+each with its measured result (too long or short by N s, the word check heard different words, fit, not checked),
+and the AI's wordings that were not used, from `shared/prompts/voice-rewrite-tried.json`; the block forbids
+repeats. Variants are compared by `VoiceLabFitTried.key` (folded words, tags removed). An automatic round never
+prices a repeat, or a wording whose estimate does not move toward the slot from the measured take's wording
+(shorter when too long, longer when too short); it is recorded as "repeated an earlier wording" or "was not
+shorter/longer" and the next round hears it. Wording suggestion chips show only for wording and fit failures,
+once per variant and never for a tried wording. The phrase card shows "Round k of 3 · tried: “…” (0.6 s long),
+“…” (repeat, not used)". Stopped phrases name their fix; the footer's last states are [Price a take for phrase N]
+for a phrase with no take and [Keep original words for phrase N] for one with no usable take, never advice
+without its control.
+
 ### Automatic wording fit and Eleven v4 (Mac, 2026-11-04)
 
 New Rewrite voice phrases use `eleven_v4` at pace 1.00. The model is a fixed
@@ -115,11 +179,13 @@ there is no tag-specific renderer branch. The pause follows the expression,
 not just its neighboring lexical word. The shared `audio-tag-cases.json`
 `edgeExtents` and `eventFilters` sections pin this contract for both platforms.
 
-For v4 only, missing/null original `alignment` with valid `normalized_alignment`
-uses the latter's validated times. The ordered word-diff aligner maps normalized
-words back to typed words, including number/currency expansions, distributing
-replacement spans proportionally by typed scalar length. A malformed non-null
-original is still refused; both missing/null is still the clear alignment stop.
+For v4 only, original `alignment` that is missing, null or does not map to the typed
+words falls back to `normalized_alignment`, mapped back to typed words by
+`VoiceLabProviderTiming.retime` ("Eleven v4 timing and the learning fix loop" above),
+including number/currency expansions, distributing replacement spans proportionally
+by typed scalar length. Since 2026-11-04 a replaced span must hold a digit or a symbol;
+other different words are refused (they were accepted before). Both missing/null is still
+the clear alignment stop, which the take run then recovers from the word check.
 Voice-segment indices use raw provider character arrays, not the rebuilt typed
 array: the provisional upper bound is `max(original, valid normalized)` because
 the provider's indexed array remains unconfirmed. Routes and context policy do
@@ -1129,6 +1195,9 @@ The approved Get Price arms the resolver for that takes plan (`RewriteAutoFix.sw
 2. **Word check.** A homophone of an asked word passes (§8.11). Otherwise one automatic Try another; if that fails too, a scoped reword of that phrase alone with "Avoid words that are hard to say or hear; keep the meaning.", landed in the takes plan (as a measured reword is) so no other phrase's takes change, then a take of it.
 3. **Too short to check** (insufficient generated speech or an unmeasured voice): the phrase's whole sentence (the surrounding-sentence review, accepted automatically), then a take of it. Its failed short takes are replaced, as a manual Use surrounding sentence does.
 4. **Other failed checks**: Try another.
+5. **Provider failures** (key, credit, permission, rate, network, plan): no automatic step; the cause and its one fix show with [Price a take] and [Keep original words]. **Timing** a take's recovery could not fix: one Try another, then the original words.
+
+Only wording and fit failures (1, 2) reword. Each reworded round carries the phrase's tried wordings and results, never prices a repeat or a wording that does not move toward the slot, and the card shows "Round k of 3 · tried: …" (top of this document).
 
 Before takes: a collision's merge re-ask is sent once; a refused surrounding sentence (while armed) is voiced on the changed words when their own window is valid, else re-asked "Rewrite this change without changing any words outside it.", else left out with its text fixes kept; a failed or stale re-ask is sent once more; over the budget Rewrite goes on.
 
@@ -1246,7 +1315,7 @@ Content-Type: application/json
 
 V4 sends exactly one input and no context in this cut: `sendsSpeechContext == false`, and neither the quote nor the request binds previous/next text. The API spells the optional context fields `previous_text` and `future_text` (at most 100 characters each, not supported by every model); `next_text` is not a dialogue field. A later, separately validated context policy can enable them. Refuse dialogue text above min(model maximum, 2,000 Unicode scalars), before any paid send; TTS keeps min(model maximum, 5,000). Seed remains UInt32. The quote/claim binds region, endpoint, model, voice, language, seed and exact text, so approval cannot cross routes. Own-voice authorization requires the service-issued quote’s explicit `voiceID` to equal the consent record’s `voiceId` on both speech routes; the dialogue endpoint alone carries no voice identity. Send once, with the existing cancellation and ambiguous-dispatch rules. Pricing uses the existing `eleven_v4` per-character catalog rate and discovered character-cost multiplier; missing prices remain unknown.
 
-The dialogue response requires nonempty `voice_segments`. Every segment must name the requested voice and dialogue input 0, have integral character indices with start ≥ 0 and start ≤ exclusive end, with end bounded by `max(alignment.characters.count, normalized_alignment.characters.count)` when `normalized_alignment` is a valid alignment object (otherwise use the original array count), and finite times with start ≥ 0, start ≤ end, and end ≤ PCM duration + 0.05 s (the same 50 ms tolerance as alignment). This array-length bound is provisional pending the lead’s live probe: the provider documents indices as being in the characters array without specifying original versus normalized alignment, while this request uses `apply_text_normalization: "auto"`. Validate the normalized object with the existing character/timing rules over its own joined text; a missing, null or malformed normalized object cannot widen the bound and never replaces original alignment. Missing or invalid segments fail `malformedResponse`. Fault order is normative: decode `audio_base64` → validate PCM → validate original `alignment` → validate `voice_segments`. With null alignment and a wrong segment voice, the outcome is `invalidAlignment`, not `malformedResponse`. Original `alignment` must pass the existing text/timing validator; null, absent or malformed alignment fails `invalidAlignment`, even when `normalized_alignment` is valid. Never retry the paid call automatically. A permission-missing 403 on either speech route identifies `text_to_speech`. Valid decoded PCM and its provider receipt are retained on the failed row and stay playable as unchecked paid audio even when alignment or voice-segment validation fails; no such row can be selected or proceed to QA.
+The dialogue response requires nonempty `voice_segments`. Every segment must name the requested voice and dialogue input 0, have integral character indices with start ≥ 0 and start ≤ exclusive end, with end bounded by `max(alignment.characters.count, normalized_alignment.characters.count)` when `normalized_alignment` is a valid alignment object (otherwise use the original array count), and finite times with start ≥ 0, start ≤ end, and end ≤ PCM duration + 0.05 s (the same 50 ms tolerance as alignment). This array-length bound is provisional pending the lead’s live probe: the provider documents indices as being in the characters array without specifying original versus normalized alignment, while this request uses `apply_text_normalization: "auto"`. Validate the normalized object with the existing character/timing rules over its own joined text; a missing, null or malformed normalized object cannot widen the bound and never replaces original alignment. Missing or invalid segments fail `malformedResponse`. Fault order is normative: decode `audio_base64` → validate PCM → validate original `alignment` → validate `voice_segments`. With null alignment and a wrong segment voice, the outcome is `invalidAlignment`, not `malformedResponse`. Original `alignment` is used exactly when it equals the typed text with ordered times; otherwise it, then a valid `normalized_alignment`, is mapped tolerantly to the typed words (top of this document); no usable timing fails `invalidAlignment`. Never retry the paid call automatically. A permission-missing 403 on either speech route identifies `text_to_speech`. Valid decoded PCM and its provider receipt are retained even when alignment or voice-segment validation fails. Since 2026-11-04 the take run recovers its timing from the take's own word check or on device; only an unrecovered row stays playable as unchecked paid audio that cannot be selected.
 
 Shared contract: `shared/fixtures/voice-lab/dialogue-cases.json` (`voxclip-voice-lab-dialogue-cases/1`), generated by `tools/fixtures/voice-lab/generate_dialogue.py`. Request framing matches existing TTS cases and adds canonical sorted compact UTF-8 JSON bytes/length/SHA-256. Both Cores replay all request, response and route cases. Existing TTS goldens remain unchanged.
 
@@ -1279,12 +1348,12 @@ For `eleven_v3` and `eleven_v4`, `sendsSpeechContext` is false. V3 omits `previo
 A field that is empty after this is omitted. The quote binds the seed and the trimmed strings.
 
 - **Audio.** With `pcm_*` formats, `audio_base64` is raw 16-bit little-endian mono PCM at that rate. Resample to the source rate.
-- **Alignment.** Prefer valid original `alignment` so captions equal typed text. Mac and Windows v4 recover missing/null original alignment from valid normalized timing, mapped back to typed words as specified in Audio expressions. Malformed original timing, or no usable timing in either field, stops the run. Scribe/interpolation recovery remains deferred.
+- **Alignment.** Prefer valid original `alignment` so captions equal typed text. Mac and Windows v4 recover missing/null original alignment from valid normalized timing, mapped back to typed words as specified in Audio expressions. Timing that maps to no typed words in either field is recovered from the take's own Scribe word check, otherwise on device; an unrecovered take fails alone and never stops the run (top of this document).
 - **Pronunciation.** The user may type a respelling for a word ("say it like"). eleven_v4 also accepts IPA wrapped in `/…/`. The respelling is sent as the text; the caption keeps the typed word.
 - **Pace (the one caller voice-setting choice).** `VoiceLabSpeechOptions.pace` / `VoiceLabTakeInput.pace` is optional; nil means 1.0. TTS accepts finite values in **[0.7, 1.2]**, validates before quoting or sending (before rounding, never clamping), and sends `voice_settings.speed` rounded to two decimals, nearest with halfway values away from zero, only for a raw pace other than 1.0. Nil/1.0 leaves the existing request bytes/settings unchanged. All other voice settings remain the constants above. The quote/claim/review binds the unrounded pace; nil/1.0 are equivalent, but any other change needs a new approval, even if it rounds to the same speed. Receipts and persisted recipe/segment `provenance.pace` record the effective rounded pace, 1.0 when omitted. The project field is optional, so old projects remain valid without a schema-version change or migration. Pricing remains per character. `VoiceLabPace.clamp` is a pure caller helper with range constants, not provider validation; NaN maps to 1.0 and infinities to their boundary. No pace selection UI or automatic fitting policy is added here.
 
   Documentation checked read-only on 3 November 2026: [TTS with timestamps](https://elevenlabs.io/docs/api-reference/text-to-speech/convert-with-timestamps) accepts `VoiceSettingsResponseModel.speed`; [voice settings](https://elevenlabs.io/docs/api-reference/voices/settings/update) documents default 1.0 and slower/faster semantics; the [TTS guide](https://elevenlabs.io/docs/eleven-creative/playground/text-to-speech) gives minimum 0.7 and maximum 1.2. [Text to Dialogue](https://elevenlabs.io/docs/api-reference/text-to-dialogue/convert)'s settings list stability, similarity and clone strength, **not speed**. Dialogue therefore accepts only nil/1.0 pace and refuses non-default pace as `invalidInput` before quote or send, including values that round to 1.0. It never sends a speed field or silently ignores a requested pace.
-- **Retries.** Synthesis, voice conversion, clone creation and deletion are never retried automatically: a timeout can mean ElevenLabs already billed or completed the request. A different endpoint or model needs a new estimate, review and affirmative authorization. Both Core implementations offer Eleven v4 through Text to Dialogue with the validation and route-bound approval above. A reply without valid original alignment fails the paid take; it never triggers a fallback request. V4 Turbo remains hidden.
+- **Retries.** Synthesis, voice conversion, clone creation and deletion are never retried automatically: a timeout can mean ElevenLabs already billed or completed the request. A different endpoint or model needs a new estimate, review and affirmative authorization. Both Core implementations offer Eleven v4 through Text to Dialogue with the validation and route-bound approval above. A reply without usable timing never triggers a fallback request: its timing is recovered from the take's own approved word check or on device. V4 Turbo remains hidden.
 
 ### 8.6 Candidates
 

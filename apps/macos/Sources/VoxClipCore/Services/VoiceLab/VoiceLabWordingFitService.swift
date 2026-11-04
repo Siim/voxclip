@@ -42,6 +42,7 @@ public actor VoiceLabWordingFitService {
             if let measured = phrase.measuredSeconds {
                 line += "\n" + (try fill("measuredPhraseLine", ["measuredSeconds": toFixed1(measured), "slotSeconds": toFixed1(phrase.slotSeconds)]))
             }
+            if let tried = try VoiceLabFitTried.block(phrase.tried ?? [], shared: shared) { line += "\n" + tried.text }
             return line
         }
         let cached = try fill("sourceBlock", ["language": language, "phrases": lines.joined(separator: "\n\n")])
@@ -74,7 +75,9 @@ public actor VoiceLabWordingFitService {
     private func fingerprint(_ phrases: [VoiceLabFitPhrase], connector: ConnectorID, model: String, language: String) throws -> String {
         let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
         let prompt = try VoiceLabLLMChecks.readPrompt(shared, "prompts/voice-rewrite-fit.json")
-        return VoiceLabFingerprint.fields([VoiceLabFingerprint.bytes(try encoder.encode(phrases)), connector.rawValue, model, language, prompt.sha256])
+        let tried = try phrases.compactMap { try VoiceLabFitTried.block($0.tried ?? [], shared: shared)?.sha256 }.first
+        return VoiceLabFingerprint.fields([VoiceLabFingerprint.bytes(try encoder.encode(phrases)), connector.rawValue, model, language, prompt.sha256]
+            + (tried.map { [$0] } ?? []))
     }
 
     public func propose(_ phrases: [VoiceLabFitPhrase], connector: any LLMConnector, model: String, language: String,

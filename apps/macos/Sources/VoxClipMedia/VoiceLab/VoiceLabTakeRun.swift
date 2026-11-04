@@ -43,6 +43,8 @@ public actor VoiceLabTakeRun {
     private let useGuard: VoiceUseGuard
     private let inputsAreCurrent: @Sendable () async -> Bool
     private let storage: VoiceLabTakeStorage
+    /// The free on-device fallback of timing recovery (voice-lab §8.5); nil leaves only the take's Scribe word check.
+    private let localTiming: VoiceLabLocalTiming?
     private var scratches: [UUID: VoiceLabTakeScratch] = [:]
     private var paidAssets: [UUID: VoiceLabAsset] = [:]
     private let dispatchIfCurrent: VoiceLabTakeDispatchBoundary
@@ -62,8 +64,10 @@ public actor VoiceLabTakeRun {
     public init(client: ElevenLabsVoiceLab, store: VoiceConsentStore, speaker: VoiceSpeakerCheck,
                 storage: VoiceLabTakeStorage,
                 dispatchIfCurrent: @escaping VoiceLabTakeDispatchBoundary,
+                localTiming: VoiceLabLocalTiming? = nil,
                 inputsAreCurrent: @escaping @Sendable () async -> Bool) {
         self.client = client; self.store = store; self.speaker = speaker; useGuard = VoiceUseGuard(store: store, check: speaker)
+        self.localTiming = localTiming
         self.inputsAreCurrent = inputsAreCurrent
         self.dispatchIfCurrent = dispatchIfCurrent
         self.storage = storage
@@ -294,15 +298,39 @@ public actor VoiceLabTakeRun {
                     recordID: value.record.id, speech16k: value.sourceSpeech, approved: true)
                 try await authorization.capability?.bindDispatch(boundary(request: take.synthesis.requestID, value: value, revision: expected, dispatch: dispatch))
                 try await validate(value, revision: expected)
-                let result = try await client.synthesize(text: value.input.requestText, modelID: value.input.modelID,
-                    voice: .own(voiceID: value.record.voiceId, policy: authorization), language: value.input.language,
-                    options: value.input.options(take: take.index), requestID: take.synthesis.requestID,
-                    authorization: VoiceLabAuthorization(quote: take.synthesis, approved: true), acceptance: synthesisAccepted)
+                var result: VoiceLabAudioResult
+                do {
+                    result = try await client.synthesize(text: value.input.requestText, modelID: value.input.modelID,
+                        voice: .own(voiceID: value.record.voiceId, policy: authorization), language: value.input.language,
+                        options: value.input.options(take: take.index), requestID: take.synthesis.requestID,
+                        authorization: VoiceLabAuthorization(quote: take.synthesis, approved: true), acceptance: synthesisAccepted)
+                } catch let error as VoiceLabError where [.invalidAlignment, .malformedResponse].contains(error) && dispatch.started {
+                    // The paid PCM decoded but its timing or segment metadata did not validate: recover its timing below.
+                    guard let decoded = synthesisAccepted.unalignedAudio else { throw error }
+                    result = decoded
+                }
                 receipt = result.receipt
                 generated = result
                 let paid = try await preservePaidAudio(result, requestID: take.synthesis.requestID)
                 try await validate(value, revision: expected)
-                let analysis = try VoiceLabTakeProcessing.process(result, input: value.input, preflight: value.preflight)
+                // §8.5 timing recovery: a take whose provider timing does not map to its words is retimed from its own
+                // word check (the approved Scribe request, used once) or, failing that, on device. No new paid request.
+                var heard: [VoiceLabWord]?
+                let analysis: VoiceLabTakeAnalysis
+                do {
+                    guard result.alignment != nil else { throw VoiceLabError.invalidAlignment }
+                    analysis = try VoiceLabTakeProcessing.process(result, input: value.input, preflight: value.preflight)
+                } catch where Self.isTimingFailure(error) {
+                    let samples = try Self.samples(result)
+                    let recognized = try await wordCheck(samples, value: value, take: take, revision: expected, dispatch: dispatch,
+                                                         acceptance: qaAccepted)
+                    qaReceipt = recognized.receipt
+                    heard = recognized.words
+                    let timing = try await recoverTiming(recognized.words, samples: samples, input: value.input)
+                    result = VoiceLabAudioResult(pcm: result.pcm, sampleRate: result.sampleRate, alignment: timing, receipt: result.receipt)
+                    generated = result
+                    analysis = try VoiceLabTakeProcessing.process(result, input: value.input, preflight: value.preflight)
+                }
                 let snapshot = try VoiceLabAssets.preparePaid(asset: paid, projectId: storage.projectId, paidRoot: storage.paidRoot, scratchRoot: storage.scratchRoot)
                 let fitted = try VoiceLabSilenceFit.prepare(snapshot: snapshot, paidAsset: paid, fit: analysis.fit,
                     window: value.input.window, sourceSampleRate: value.input.sourceSampleRate)
@@ -336,19 +364,19 @@ public actor VoiceLabTakeRun {
                                         phrase: phraseID, passed: score >= value.record.speaker.threshold)
                 }
                 try await validate(value, revision: expected)
-                let store = store
-                let capability = VoiceOperationCapability(quote: take.qa, reserve: {
-                    try await store.dispatchPermit(value.record, requestID: take.qa.requestID)
-                }) { try await self.validate(value, revision: expected) }
-                try await capability.bindDispatch(boundary(request: take.qa.requestID, value: value, revision: expected, dispatch: dispatch))
-                let recognized = try await client.transcribeQA(processed.mixed, rate: processed.sampleRate,
-                    language: value.input.language, authorization: VoiceLabAuthorization(quote: take.qa, approved: true), capability: capability,
-                    acceptance: qaAccepted, hasAudioTags: !value.input.audioTags.isEmpty && VoiceLabAudioTags.supports(value.input.modelID))
-                qaReceipt = recognized.receipt
-                try await validate(value, revision: expected)
-                let lower = Double(processed.patchRange.lowerBound) / Double(processed.sampleRate)
-                let upper = Double(processed.patchRange.upperBound) / Double(processed.sampleRate)
-                let inside = recognized.words.filter { ($0.start + $0.end) / 2 >= lower && ($0.start + $0.end) / 2 < upper }.map(\.text)
+                let inside: [String]
+                if let heard {
+                    // The recovered take's word check already ran on its own audio: every word it heard is the take's.
+                    inside = heard.map(\.text)
+                } else {
+                    let recognized = try await wordCheck(processed.mixed, value: value, take: take, revision: expected, dispatch: dispatch,
+                                                         acceptance: qaAccepted)
+                    qaReceipt = recognized.receipt
+                    try await validate(value, revision: expected)
+                    let lower = Double(processed.patchRange.lowerBound) / Double(processed.sampleRate)
+                    let upper = Double(processed.patchRange.upperBound) / Double(processed.sampleRate)
+                    inside = recognized.words.filter { ($0.start + $0.end) / 2 >= lower && ($0.start + $0.end) / 2 < upper }.map(\.text)
+                }
                 let qa = try VoiceLabTakeQuality.evaluate(expected: value.input.text, recognized: inside, mixed: processed.mixed,
                     sampleRate: processed.sampleRate, seams: processed.seams, sourceSeamSteps: processed.sourceSeamSteps, sourceSeamPauses: processed.sourceSeamPauses,
                     generatedAfter: processed.generatedAfter,
@@ -392,6 +420,54 @@ public actor VoiceLabTakeRun {
         }
         return VoiceLabTakeRunResult(rows: rows, end: .completed)
     }
+    /// The take's one approved Scribe request (its word check), on `samples`.
+    private func wordCheck(_ samples: [Float], value: Pending, take: VoiceLabTakeQuote, revision expected: Int, dispatch: VoiceLabRunDispatch,
+                           acceptance: VoiceLabRequestAcceptance) async throws -> (words: [VoiceLabWord], receipt: VoiceLabReceipt) {
+        try await validate(value, revision: expected)
+        let store = store
+        let capability = VoiceOperationCapability(quote: take.qa, reserve: {
+            try await store.dispatchPermit(value.record, requestID: take.qa.requestID)
+        }) { try await self.validate(value, revision: expected) }
+        try await capability.bindDispatch(boundary(request: take.qa.requestID, value: value, revision: expected, dispatch: dispatch))
+        return try await client.transcribeQA(samples, rate: 24_000, language: value.input.language,
+            authorization: VoiceLabAuthorization(quote: take.qa, approved: true), capability: capability, acceptance: acceptance,
+            hasAudioTags: !value.input.audioTags.isEmpty && VoiceLabAudioTags.supports(value.input.modelID))
+    }
+    /// Word timing for a take whose provider timing did not map to its words (voice-lab §8.5 "Timing recovery"): what
+    /// its own word check heard, mapped to the typed words; then the on-device transcriber. The word check's words are
+    /// then the take's word check, so its Scribe request is never sent twice.
+    private func recoverTiming(_ heard: [VoiceLabWord], samples: [Float], input: VoiceLabTakeInput) async throws -> [VoiceLabCharacterTiming] {
+        do {
+            let timing = try VoiceLabProviderTiming.recovered(heard, typedText: input.requestText)
+            await client.note("voicelab speech timing recovered source=word_check words=\(heard.count)")
+            return timing
+        } catch let failure as VoiceLabTimingFailure {
+            guard let localTiming else {
+                await client.note("voicelab speech timing unrecovered \(failure.logFields) local=unavailable")
+                throw VoiceLabError.invalidAlignment
+            }
+            do {
+                let words = try await localTiming(samples, 24_000, input.language)
+                let timing = try VoiceLabProviderTiming.recovered(words, typedText: input.requestText)
+                await client.note("voicelab speech timing recovered source=on_device words=\(words.count)")
+                return timing
+            } catch {
+                await client.note("voicelab speech timing unrecovered \(failure.logFields) local=failed")
+                throw VoiceLabError.invalidAlignment
+            }
+        }
+    }
+    private static func samples(_ result: VoiceLabAudioResult) throws -> [Float] {
+        guard result.sampleRate == 24_000, !result.pcm.isEmpty, result.pcm.count.isMultiple(of: 2) else { throw VoiceLabError.invalidAudio }
+        return result.pcm.withUnsafeBytes { bytes in
+            (0..<(bytes.count / 2)).map { Float(Int16(littleEndian: bytes.loadUnaligned(fromByteOffset: $0 * 2, as: Int16.self))) / 32_768 }
+        }
+    }
+    private static func isTimingFailure(_ error: any Error) -> Bool {
+        if let error = error as? VoiceLabError { return error == .invalidAlignment }
+        guard let error = error as? VoiceLabGeometryError else { return false }
+        return [.alignmentMismatch, .alignmentUnavailable, .invalidWordTiming].contains(error)
+    }
     private func preservePaidAudio(_ result: VoiceLabAudioResult, requestID: UUID) async throws -> VoiceLabAsset {
         let storage = storage
         let paid = try await Task.detached(priority: .utility) {
@@ -428,7 +504,8 @@ public actor VoiceLabTakeRun {
         if error is VoiceConsentError || error is CancellationError || error is Abort || Task.isCancelled { return true }
         guard let error = error as? VoiceLabError else { return false }
         switch error {
-        case .unauthorized, .permissionMissing, .missingKey, .quotaExceeded, .consentRequired, .speakerMismatch, .cancelled, .invalidAlignment: return true
+        // Timing is never run-fatal (voice-lab §8.5): an unrecovered take fails on its own and the run goes on.
+        case .unauthorized, .permissionMissing, .missingKey, .quotaExceeded, .consentRequired, .speakerMismatch, .cancelled: return true
         default: return false
         }
     }

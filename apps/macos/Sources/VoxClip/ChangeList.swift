@@ -447,7 +447,22 @@ extension RewriteSession {
         if plan.phrases.contains(where: { $0.takes.contains { $0.row.voiceCheck == .waiting } }) {
             return PanelFooter(note: "Checking takes…\n" + spend)
         }
-        return PanelFooter(note: "Keep original words or try another take for a phrase above.\n" + spend)
+        // Every remaining state names its own control (house rule: no advice without the action that follows it).
+        if let unsent = plan.phrases.first(where: { !$0.leftOut && $0.takes.isEmpty }) {
+            let phrase = unsent.id
+            return PanelFooter(note: "Phrase \(phrase + 1) has no take yet.\n" + spend,
+                primary: PanelAction(id: "priceTake.\(phrase)", title: "Price a take for phrase \(phrase + 1)") { [weak self] in
+                    self?.priceAnotherTake(phrase: phrase)
+                })
+        }
+        if let open = plan.phrases.first(where: { !$0.leftOut && $0.selected == nil }) {
+            let phrase = open.id
+            return PanelFooter(note: "Phrase \(phrase + 1) has no take to use.\n" + spend,
+                primary: PanelAction(id: "keepOriginal.\(phrase)", title: "Keep original words for phrase \(phrase + 1)") { [weak self] in
+                    self?.keepOriginal(phrase: phrase)
+                })
+        }
+        return PanelFooter(note: spend)
     }
 
     /// The proposal has changes waiting for review, shown or set aside by R3: its tab shows the dirty dot (notes.md §5).

@@ -679,20 +679,12 @@ import VoxClipMedia
                     if result.end == .fatal {
                         fatalPhrases.insert(phrase)
                         phrases[phrase].status = .failed(problem.isEmpty ? Self.failureCopy(result) : problem)
+                        // Only an account, key, consent or stop failure ends a run; timing never does (voice-lab §8.5).
                         let failure = result.failure ?? result.rows.last?.failure
-                        let reason: String
-                        if failure == .provider(.invalidAlignment) {
-                            let model: String
-                            switch inputs[phrase].modelID {
-                            case "eleven_v4": model = "Eleven v4"
-                            case "eleven_v3": model = "Eleven v3"
-                            default: model = "The speech model"
-                            }
-                            reason = "\(model) replies can't be checked yet."
-                        } else { reason = problem.isEmpty ? Self.failureCopy(result) : problem }
+                        let reason = problem.isEmpty ? Self.failureCopy(result) : problem
+                        let next = failure.flatMap(Self.nextStep).map { " " + $0 } ?? ""
                         for later in batchIndices.dropFirst(offset + 1) {
                             let unsent = phrases[later].takes.isEmpty ? "Nothing sent for this phrase." : "No new take sent for this phrase."
-                            let next = failure == .provider(.invalidAlignment) ? " Try again after the timing issue is resolved." : ""
                             phrases[later].status = .stopped("Stopped: \(reason) \(unsent)\(next)")
                         }
                         break
@@ -1091,6 +1083,17 @@ import VoxClipMedia
         case Failure.placement(let reason, _): reason.copy ?? "These phrases cannot be voiced together. Edit the words or leave one out."
         case is CancellationError: "Stopped. Finished takes are kept."
         default: RewriteSession.refusal(error)
+        }
+    }
+    /// The one fix for a failure that ended a run (voice-lab §8.2.2): what the user does, then the phrase's take again.
+    static func nextStep(_ failure: VoiceLabTakeFailure) -> String? {
+        guard case .provider(let error) = failure else { return nil }
+        switch error {
+        case .quotaExceeded: return "Add credit to your ElevenLabs account, then choose Price a take."
+        case .unauthorized, .missingKey: return "Check the ElevenLabs key in Settings, then choose Price a take."
+        case .permissionMissing: return "Give the ElevenLabs key the Text to Speech permission, then choose Price a take."
+        case .rateLimited, .network, .providerFailure: return "Choose Price a take to send it again."
+        default: return nil
         }
     }
     private static func failureCopy(_ result: VoiceLabTakeRunResult) -> String {

@@ -1,5 +1,15 @@
 # Windows fixed contracts
 
+### 2026-11-04 — Owed from Mac "Eleven v4 timing quirks and the learning fix loop" (track/v2-v4-timing)
+
+No Windows code changed. `dialogue-cases.json`, `audio-tag-cases.json` and the fit prompt are unchanged, so every existing replay stays green. Windows owes:
+
+- **Core tolerant timing.** Twin `VoiceLabProviderTiming.retime`. Replay the new `shared/fixtures/voice-lab/v4-timing-cases.json` (`voxclip-voice-lab-v4-timing-cases/1`, 26 cases, `generate_v4_timing.py`): accepted word times to 1e-9 s, refusal checks, and segment refusals left to the take run. Windows' normalized fallback must also refuse non-number/symbol replacements (`normalized_different_word`).
+- **Release log line.** `voicelab speech timing tolerated|failed check=… index=… typed=U+… provider=U+…`, never text.
+- **Media timing recovery.** The take's Scribe word check on its own PCM, used once as its QA (`recovered` mapping), then an on-device fallback (Windows speech/Whisper if installed). `InvalidAlignment` is not run-fatal, and no "replies can't be checked yet" cascade.
+- **App resolver.** Provider and timing classes; [Price a take] and [Keep original words] for provider failures, with no wording chips. The tried history sent with each reworded round from `shared/prompts/voice-rewrite-tried.json` (`VoiceLabFitPhrase.tried`, absent when empty). Automatic refusal of repeats and of wordings that don't move toward the slot. Suggestion dedupe. "Round k of 3 · tried: …" on the phrase card. The footer's last fallbacks ([Price a take for phrase N], [Keep original words for phrase N]) and the stopped-run fix line.
+- **Smoke S14** in `RewriteSmokeTests`.
+
 ### 2026-11-04 — Windows Rewrite voice budget is a note, and smoke S2 (two changes close together)
 
 - **Budget parity (lead decision; Mac `ChangeList.budgetCallout`/`advised`, `RewriteNextSteps.budgetSteps`).** Over the voice budget the phrases are voiced anyway. Deleted: `VoiceBudgetBlocks`, `BudgetAccepted`, `AcceptVoiceBudget`, `ReVoiceAllTitle`, the `Rewrite.Chip.ReVoiceAll` chip, the "Choose how much to re-voice above." footer and the budget gate in `GenerationInputAsync`. `VoiceBudgetCallout` uses Mac's copy ("These changes re-voice {v} words, a lot for a {n}-word clip. Long stretches in your voice can sound stitched; Rewrite goes on.") while a voice change is included, before or after takes, as on the Mac. The `Rewrite.Steps.Budget` card shows the note with one [Choose yourself…] chip (`ChooseYourselfChip`, `ShowAutoFixChoices`) until it is opened; then Change fewer words, the ✦ suggestions and Keep text fixes only, in Mac's order. `RewriteNextStepCard.Asks`: a folded card carries no free-text field (Mac's collapsed steps have no `ask`); the panel shows the field only when some card asks.

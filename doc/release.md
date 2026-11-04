@@ -279,7 +279,7 @@ With no path it builds the DEBUG app first. It needs no unlocked console, no key
 
 The fixture is a small synthetic recording: 160×90 H.264 with 24 kHz LPCM audio, written at run time into the temporary data folder. That lets Cut and Match video prepare offscreen as they do for a real clip. Takes are as long as the fixture's speaker says their words, plus a per-scenario offset. A second pass runs every scenario again with takes that fill their slots exactly (`S4-exact`). `--lengths` picks one pass, and both run by default (about 3 minutes).
 
-It drives the real Rewrite session through thirteen scenarios using only clicks a user could make:
+It drives the real Rewrite session through fourteen scenarios using only clicks a user could make:
 
 - S1: happy path.
 - S2: two nearby changes refused as too close.
@@ -294,6 +294,7 @@ It drives the real Rewrite session through thirteen scenarios using only clicks 
 - S11: a take longer than its slot; only Match video fits it.
 - S12: Get Price while the estimate holds one change back.
 - S13: the happy path with takes that fill their slots exactly.
+- S14: every Eleven v4 reply has a timing quirk (a trailing newline, another first word): both phrases are timed, one from its own word check, and voiced.
 
 After every step it checks seven invariants, and at the end of S10–S12 two more:
 

@@ -23,6 +23,21 @@ private actor MeasuredFitConnector: LLMConnector {
             model: model, stop: .complete)
     }
 }
+/// Replies with each scripted wording in turn, as an AI that suggested the same wording twice did in MVP18.
+private actor ScriptedFitConnector: LLMConnector {
+    nonisolated let id: ConnectorID = .ollama
+    private(set) var requests: [LLMRequest] = []
+    private var replies: [String]
+    init(_ replies: [String]) { self.replies = replies }
+    func status() -> ConnectorStatus { .ready }
+    func models(refresh: Bool) -> [LLMModel] { [.init(id: "fixture", name: "Fixture", contextTokens: 128_000, source: .curated)] }
+    func contextTokens(model: String) -> Int? { 128_000 }
+    func send(_ request: LLMRequest, model: String) -> RawCompletion {
+        requests.append(request)
+        let text = replies.isEmpty ? "Welcome" : replies.removeFirst()
+        return RawCompletion(text: #"{"phrases":[{"ordinal":2,"action":"reword","text":""# + text + #""}]}"#, model: model, stop: .complete)
+    }
+}
 @MainActor private final class TakeReviewPlayback: VoiceLabAuditionBackend {
     var position = 0.0
     var stops = 0
@@ -52,6 +67,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         var speechMargin = 0.05
         var voicedFraction = 1.0
         var synthesisStatus = 200
+        /// The v4 dialogue route's status; 402 replies "quota_exceeded".
+        var dialogueStatus = 200
         var failQA = false
         var malformedSegments = false
         var malformedSynthesis = false
@@ -147,10 +164,11 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
             default: throw URLError(.unsupportedURL)
             }
             let url = try #require(request.url)
-            let status = url.path.contains("/text-to-speech/") ? Self.state.withLock { $0.synthesisStatus } : 200
+            let status = url.path.contains("/text-to-speech/") ? Self.state.withLock { $0.synthesisStatus }
+                : url.path.contains("/text-to-dialogue/") ? Self.state.withLock { $0.dialogueStatus } : 200
             let response = try #require(HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1", headerFields: [:]))
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocol(self, didLoad: status == 402 ? Data(#"{"detail":{"status":"quota_exceeded"}}"#.utf8) : data)
             client?.urlProtocolDidFinishLoading(self)
         } catch { client?.urlProtocol(self, didFailWithError: error) }
     }
@@ -724,50 +742,56 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(fixture.plan.problem == ClipTakePlan.copy(ClipTakePlan.Failure.spendingCap))
     }
 
+    /// MVP18: phrase 1's v4 replies carried no usable timing and every later phrase stopped with "can't be checked yet".
+    /// Now the take's own word check (its approved Scribe request, used once) times it; phrase 2 and 3 are still sent.
     @Test(arguments: ["eleven_v3", "eleven_v4"])
-    func alignmentFailureLabelsQueuedPhrasesAsStoppedAndRequiresFreshApproval(model: String) async throws {
+    func aTimingFailureIsRecoveredFromTheWordCheckAndLaterPhrasesAreSent(model: String) async throws {
         let fixture = try await fixture(dialogue: true)
         defer { try? FileManager.default.removeItem(at: fixture.root) }
         let plan = fixture.plan
         #expect(plan.changeModel(model))
-        ClipTakeHTTP.state.withLock { $0.malformedSynthesis = true }
+        ClipTakeHTTP.state.withLock { $0.malformedSynthesis = true; $0.echoQA = true }
+        fixture.afterPhrase = { phrase in if phrase == 0 { ClipTakeHTTP.state.withLock { $0.malformedSynthesis = false } } }
         await plan.prepare()
-        let originalApproval = try #require(plan.approvalID)
         await plan.start(approved: true)
-        let failed = try #require(plan.phrases[0].takes.first)
-        #expect(failed.row.failure == .provider(.invalidAlignment))
-        #expect(failed.playable && !failed.row.selectable && failed.row.receipt != nil)
-        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 && $0.qa == 0 })
-        let label = model == "eleven_v4" ? "Eleven v4" : "Eleven v3"
-        let copy = "Stopped: \(label) replies can't be checked yet. Nothing sent for this phrase. Try again after the timing issue is resolved."
-        for phrase in plan.phrases.dropFirst() {
-            #expect(phrase.takes.isEmpty && phrase.status == .stopped(copy))
-            #expect(phrase.takeDetail == copy)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 3 && $0.qa == 3 })
+        let recovered = try #require(plan.phrases[0].takes.first)
+        #expect(recovered.row.failure == nil && recovered.row.audio != nil && recovered.row.qa?.passed == true,
+            "\(String(describing: recovered.row.failure)) \(plan.phrases[0].takeDetail)")
+        #expect(recovered.row.qaReceipt != nil && recovered.length != nil)
+        for phrase in plan.phrases {
+            #expect(phrase.takes.count == 1, "\(phrase.status)")
+            if case .stopped(let message) = phrase.status { Issue.record("phrase \(phrase.id + 1) stopped: \(message)") }
         }
-        #expect(!plan.generating && plan.approvalID == nil)
-        ClipTakeHTTP.state.withLock { $0.malformedSynthesis = false }
-        await plan.prepareAnother(phrase: 1)
-        #expect(plan.approvalID != nil && plan.approvalID != originalApproval)
-        await plan.tryAnother(phrase: 1, approved: true, quoteID: originalApproval)
-        await plan.tryAnother(phrase: 1, approved: false)
-        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
-        await plan.tryAnother(phrase: 1, approved: true)
-        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 2 })
-        #expect(plan.phrases[0].takes.first?.id == failed.id && plan.phrases[2].takes.isEmpty)
+        #expect(plan.phrases.allSatisfy { $0.selected != nil })
     }
 
-    @Test func aNonfatalSegmentFailureKeepsTheBatchMoving() async throws {
+    /// The word check heard other words in a take with no provider timing: its timing is still recovered, and the take
+    /// is left out by the word check, never for timing. The run goes on.
+    @Test func aRecoveredTakeWithDifferentWordsFailsTheWordCheckNotTiming() async throws {
         let fixture = try await fixture(dialogue: true)
         defer { try? FileManager.default.removeItem(at: fixture.root) }
         #expect(fixture.plan.changeModel("eleven_v4"))
-        ClipTakeHTTP.state.withLock { $0.malformedSegments = true }
+        ClipTakeHTTP.state.withLock { $0.malformedSynthesis = true; $0.failQA = true }
+        await fixture.plan.prepare(); await fixture.plan.start(approved: true)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 3 && $0.qa == 3 })
+        for phrase in fixture.plan.phrases {
+            let take = try #require(phrase.takes.first)
+            #expect(take.row.failure == .qa([.transcript]) && take.length != nil, "\(String(describing: take.row.failure))")
+        }
+    }
+
+    @Test func aSegmentFailureIsRecoveredAndKeepsTheBatchMoving() async throws {
+        let fixture = try await fixture(dialogue: true)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        #expect(fixture.plan.changeModel("eleven_v4"))
+        ClipTakeHTTP.state.withLock { $0.malformedSegments = true; $0.echoQA = true }
         fixture.afterPhrase = { phrase in if phrase == 0 { ClipTakeHTTP.state.withLock { $0.malformedSegments = false } } }
         await fixture.plan.prepare(); await fixture.plan.start(approved: true)
-        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 3 && $0.qa == 2 })
-        let failed = try #require(fixture.plan.phrases[0].takes.first)
-        #expect(failed.row.failure == .provider(.malformedResponse))
-        #expect(failed.playable && !failed.row.selectable && failed.row.receipt != nil)
-        #expect(fixture.plan.phrases.dropFirst().allSatisfy { phrase in
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 3 && $0.qa == 3 })
+        let recovered = try #require(fixture.plan.phrases[0].takes.first)
+        #expect(recovered.row.failure == nil && recovered.row.receipt != nil)
+        #expect(fixture.plan.phrases.allSatisfy { phrase in
             phrase.takes.count == 1 && phrase.takes[0].row.qa != nil
         })
     }
@@ -793,7 +817,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         await fixture.plan.prepare(); await fixture.plan.start(approved: true)
         let reason = TakeFailurePresentation.reason(for: .provider(.quotaExceeded))
         for phrase in fixture.plan.phrases.dropFirst() {
-            #expect(phrase.status == .stopped("Stopped: \(reason) Nothing sent for this phrase."))
+            #expect(phrase.status == .stopped("Stopped: \(reason) Nothing sent for this phrase. Add credit to your ElevenLabs account, then choose Price a take."))
             #expect(phrase.takes.isEmpty)
         }
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
@@ -1010,22 +1034,26 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         let quotes = try #require(fixture.lastBatch?.windows.first?.quote.takes)
         await fixture.plan.start(approved: true)
         let rows = fixture.plan.phrases[0].takes.map(\.row)
-        #expect(rows.count == attempts && rows.allSatisfy { !$0.selectable && $0.qaReceipt == nil })
-        #expect(rows.allSatisfy { ($0.receipt != nil) == !lost && $0.acceptedRequestIDs.count == (qa ? 2 : 1) })
-        if !qa && !lost {
-            #expect(rows.allSatisfy { $0.receipt != nil && $0.receipt == $0.generated?.receipt })
+        // A malformed synthesis reply's paid audio is timed from its own word check (voice-lab §8.5): that one approved
+        // Scribe request is its QA, never a resend.
+        let recovered = !qa && !lost
+        #expect(rows.count == attempts && rows.allSatisfy { recovered ? $0.qaReceipt != nil : !$0.selectable && $0.qaReceipt == nil })
+        #expect(rows.allSatisfy { ($0.receipt != nil) == !lost && (recovered || $0.acceptedRequestIDs.count == (qa ? 2 : 1)) })
+        if recovered {
+            #expect(rows.allSatisfy { $0.receipt != nil && $0.receipt == $0.generated?.receipt && $0.generated?.alignment != nil })
         }
         let accepted = Set(rows.flatMap(\.acceptedRequestIDs))
         let expectedIDs = Set(quotes.prefix(attempts).flatMap { qa ? [$0.synthesis.requestID, $0.qa.requestID] : [$0.synthesis.requestID] })
-        #expect(accepted == expectedIDs)
+        #expect(recovered || accepted == expectedIDs)
         if lost {
             #expect(fixture.simulatedRequests.count == expectedIDs.count && Set(fixture.simulatedRequests) == expectedIDs)
             #expect(Set(quotes.prefix(attempts).map(\.seed)).count == attempts)
             #expect(ClipTakeHTTP.state.withLock { $0.texts.isEmpty && $0.qa == 0 })
         } else {
-            #expect(ClipTakeHTTP.state.withLock { $0.texts.count == attempts && $0.qa == (qa ? attempts : 0) && Set($0.seeds).count == attempts })
+            #expect(ClipTakeHTTP.state.withLock { $0.texts.count == attempts && $0.qa == (qa || recovered ? attempts : 0) && Set($0.seeds).count == attempts })
         }
-        #expect(fixture.plan.spent.units == Double(attempts) && fixture.plan.phrases[0].selected == nil)
+        #expect(fixture.plan.spent.units == Double(attempts) && (recovered || fixture.plan.phrases[0].selected == nil))
+        guard !recovered else { return }
         #expect(await fixture.ledger.total(provider: "elevenlabs", at: Date())?.usd == fixture.plan.spent.usd)
         await #expect(throws: ClipTakePlan.Failure.noSelection) { try await fixture.plan.acceptance() }
     }
@@ -2340,7 +2368,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
     /// reword still runs from the closest take, and a take of the new wording is made with no click; Use is all that's left.
     @Test func allTakesTooLongAreRewordedAndRetakenWithNoClick() async throws {
         let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
-        let connector = MeasuredFitConnector()
+        // An automatic round must move toward the slot (voice-lab §8.2.2): a too-long take gets a shorter wording.
+        let connector = ScriptedFitConnector(["Corrected Hi"])
         let (editor, session) = try await productionSession(fixture, rewriteConnector: connector); defer { editor.close() }
         let plan = try #require(session.takePlan)
         let first = plan.phrases[0].text
@@ -2349,7 +2378,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         try approvePrice(session)
         await settle(session)
         #expect(await connector.requests.count == 1)
-        #expect(ClipTakeHTTP.state.withLock { $0.texts } == [first, "Corrected Welcome today"])
+        #expect(ClipTakeHTTP.state.withLock { $0.texts } == [first, "Corrected Hi"])
         #expect(plan.phrases[0].takes.count == 2 && plan.phrases[0].selected?.row.selectable == true)
         #expect(plan.phrases[0].selected?.number == 2 && session.autoFix.rounds[0] == 1 && session.autoFix.lines.isEmpty)
         #expect(session.task.footer.primary?.id == "useTakes", "\(session.task.footer)")
@@ -2464,6 +2493,50 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         session.autoFix.spent = session.autoFix.allowance
         #expect(session.autoFixChargeSend(estimate, phrase: 0) == !billed)
         #expect((session.autoFix.capped != nil) == billed)
+    }
+
+    /// MVP18 ("always same variants"): every take runs long. Each reworded round sends the AI the wordings already
+    /// tried with their measured results and forbids repeats; a repeated wording is never voiced again, and the next
+    /// round is told it repeated. Three rounds, three distinct wordings at most, then the original words.
+    @Test func threeRoundsNeverRepeatAWordingAndSendTheTriedHistory() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let connector = ScriptedFitConnector(["Corrected Hi", "corrected, HI", "Corrected A"])
+        let (editor, session) = try await productionSession(fixture, rewriteConnector: connector); defer { editor.close() }
+        let plan = try #require(session.takePlan)
+        let first = plan.phrases[0].text
+        ClipTakeHTTP.state.withLock { $0.duration += 5; $0.echoQA = true }
+        try approvePrice(session)
+        session.autoFix.allowance = 100
+        await settle(session)
+        let requests = await connector.requests
+        let texts = ClipTakeHTTP.state.withLock { $0.texts }
+        #expect(requests.count == 3, "\(requests.map(\.cachedBlock))")
+        #expect(texts == [first, "Corrected Hi", "Corrected A"], "\(texts)")
+        #expect(Set(texts.map(VoiceLabFitTried.key)).count == texts.count)
+        let second = requests.dropFirst().first?.cachedBlock ?? "", third = requests.dropFirst(2).first?.cachedBlock ?? ""
+        #expect(second.contains("Never return any of them again") && second.contains("“\(first)”: too long by")
+            && second.contains("“Corrected Hi”: too long by"), "\(second)")
+        #expect(third.contains("“corrected, HI”: repeated an earlier wording, not used"), "\(third)")
+        #expect(session.autoFix.rounds[0] == RewriteAutoFixState.maximumRounds && session.autoFix.gaveUp == [0])
+        let history = try #require(session.autoFixHistoryLine(plan.phrases[0], plan: plan))
+        #expect(history.hasPrefix("Round 3 of 3 · tried: ") && history.contains("“corrected, HI” (repeat, not used)"), "\(history)")
+    }
+
+    /// A provider failure (here: out of credit) shows its cause and its one fix; no wording round or wording chip.
+    @Test func aProviderFailureShowsItsFixAndNeverRewords() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let connector = ScriptedFitConnector([])
+        let (editor, session) = try await productionSession(fixture, rewriteConnector: connector); defer { editor.close() }
+        let plan = try #require(session.takePlan)
+        ClipTakeHTTP.state.withLock { $0.dialogueStatus = 402 }
+        try approvePrice(session)
+        await settle(session)
+        #expect(plan.phrases[0].takes.first?.row.failure == .provider(.quotaExceeded))
+        #expect(await connector.requests.isEmpty && session.autoFix.rounds.isEmpty)
+        let steps = try #require(session.task.nextSteps.first { $0.id == "take.0" }, "\(session.task.nextSteps.map(\.id))")
+        #expect(steps.line?.contains("Add credit to your ElevenLabs account") == true, "\(steps.line ?? "")")
+        #expect(steps.chips.map(\.action.title) == ["Price a take", "Keep original words"])
+        #expect(!plan.phrases[0].takes.isEmpty)
     }
 
     /// One Stop for the whole resolver: it keeps the takes made so far and the chips show.

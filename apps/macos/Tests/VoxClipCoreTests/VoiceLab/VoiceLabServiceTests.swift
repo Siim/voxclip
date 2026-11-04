@@ -296,7 +296,8 @@ struct VoiceLabServiceTests {
         response.withLock { $0 = timing("Hi", audio: wav(pcm())) }
         do { _ = try await speak(); Issue.record("Expected encoded audio rejection") }
         catch VoiceLabError.invalidAudio {}
-        response.withLock { $0 = timing("Hi", audio: pcm(), alignment: "\"alignment\":{\"characters\":[\"H\",\"i\"],\"character_start_times_seconds\":[0,0.2],\"character_end_times_seconds\":[0.02,0.3]}") }
+        response.withLock { $0 = timing("Hi", audio: pcm(), alignment: "\"alignment\":{\"characters\":[\"H\",\"i\"],\"character_start_times_seconds\":[0,0.2],\"character_end_times_seconds\":[0.02,5]}") }
+        // Far past the PCM: up to 0.25 s past is a tolerated overrun (voice-lab §8.5), this is not.
         do { _ = try await speak(); Issue.record("Expected bad character timing") }
         catch VoiceLabError.invalidAlignment {}
         do { _ = try await service.prepareConversion(audio: Data([0, 1]), modelID: "new_sts_model", voice: .stock(voiceID: "stock123"), language: "en", seed: 7, cleanAudioOn: false, requestID: id); Issue.record("Expected WAV input validation") }
