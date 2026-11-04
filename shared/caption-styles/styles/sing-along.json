@@ -1,0 +1,86 @@
+{
+ "$schema": "../schema.json",
+ "schemaVersion": 1,
+ "id": "sing-along",
+ "name": "Sing-along",
+ "order": 220,
+ "description": "Sentence-case lyric lines in Roboto Black on a dark band; each word fills with cyan as it is sung or spoken.",
+ "tags": [
+  "sentence",
+  "active-word",
+  "box"
+ ],
+ "accent": "#5CE1FF",
+ "font": {
+  "file": "Roboto-Black.ttf",
+  "family": "Roboto",
+  "weight": 900,
+  "sizeSh": 0.05,
+  "lineHeightEm": 1.22,
+  "wordSpacingEm": 0.28
+ },
+ "text": {
+  "transform": "none",
+  "punctuation": "keep"
+ },
+ "layout": {
+  "maxWords": 8,
+  "maxLines": 2,
+  "maxLineWidthW": 0.84,
+  "balance": "balanced",
+  "holdGapSec": 0.5,
+  "maxPageSec": 4.5
+ },
+ "position": {
+  "x": 0.5,
+  "y": 0.74
+ },
+ "aspects": {
+  "landscape": {
+   "y": 0.84,
+   "maxLineWidthW": 0.7
+  }
+ },
+ "fill": {
+  "type": "solid",
+  "color": "#FFFFFF"
+ },
+ "box": {
+  "scope": "page",
+  "color": "#000000A6",
+  "paddingXEm": 0.36,
+  "paddingYEm": 0.16,
+  "radiusEm": 0.24
+ },
+ "words": {
+  "past": {
+   "fill": {
+    "type": "solid",
+    "color": "$accent"
+   }
+  },
+  "active": {
+   "fill": {
+    "type": "solid",
+    "color": "$accent"
+   }
+  },
+  "future": {
+   "opacity": 0.6
+  }
+ },
+ "reveal": {
+  "unit": "wipe"
+ },
+ "animation": {
+  "pageIn": {
+   "type": "fade",
+   "durationSec": 0.1
+  }
+ },
+ "preview": {
+  "text": "We kept on singing all night",
+  "activeWord": 3,
+  "progress": 0.55
+ }
+}

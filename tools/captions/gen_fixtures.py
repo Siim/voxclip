@@ -26,7 +26,7 @@ from captionref.fontdb import FontDB  # noqa: E402
 from captionref.layout import SAFE_INSETS, Lexicon, build_track  # noqa: E402
 from captionref.style import load_style, with_defaults  # noqa: E402
 from captionref.timeline import ease, evaluate, mulberry32  # noqa: E402
-from captionref.util import FIXTURES, STYLES, load_json, r3, r6, round_half_up, write_json  # noqa: E402
+from captionref.util import FIXTURES, STYLES, load_json, r3, r6, round_half_up, set_styles, style_sets, write_json  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FORMAT = "voxclip-caption-layout/1"
@@ -280,8 +280,7 @@ def math_fixture():
             "kappa": mathref.KAPPA, "roundedRects": rects, "gradients": grads}
 
 
-def preview_fixture(db, lex):
-    styles = sorted(f[:-5] for f in os.listdir(os.path.join(STYLES, "styles")) if f.endswith(".json"))
+def preview_fixture(db, lex, styles):
     out = []
     for sid in styles:
         style = load_style(sid)
@@ -309,7 +308,7 @@ def main():
         shutil.rmtree(layout_dir)
     index = {"fixture": "voxclip-caption-index/1", "layout": [], "files": ["text-normalization.json", "math.json", "preview-tiles.json"]}
     ids = set()
-    all_styles = {f[:-5] for f in os.listdir(os.path.join(STYLES, "styles")) if f.endswith(".json")}
+    all_styles = set(set_styles(1))
     cases = list(cases_doc["cases"])
     preview = load_style("box-highlight")["preview"]
     texts = preview["text"].split()
@@ -360,12 +359,36 @@ def main():
                                 "samples": len(doc["expected"]["samples"])})
     write_json(os.path.join(FIXTURES, "text-normalization.json"), text_fixture())
     write_json(os.path.join(FIXTURES, "math.json"), math_fixture())
-    write_json(os.path.join(FIXTURES, "preview-tiles.json"), preview_fixture(db, lex))
+    write_json(os.path.join(FIXTURES, "preview-tiles.json"), preview_fixture(db, lex, sorted(all_styles)))
     styles_covered = {c["style"] for c in cases}
     if all_styles - styles_covered:
         raise SystemExit("styles without a layout case: %s" % sorted(all_styles - styles_covered))
     write_json(os.path.join(FIXTURES, "index.json"), index)
     print("wrote %d layout fixtures + text, math, preview, index" % len(index["layout"]))
+    for later in style_sets()[1:]:
+        write_style_set(later, cases_doc, matrix, db, lex)
+
+
+def write_style_set(style_set, cases_doc, matrix, db, lex):
+    """A later style set (style-sets.json): the style x aspect matrix and the preview tiles of its
+    styles, in its own folder with its own index, so set 1's files stay byte-identical."""
+    root = style_set["fixtures"]
+    layout_dir = os.path.join(root, "layout")
+    if os.path.isdir(layout_dir):
+        shutil.rmtree(layout_dir)
+    names = {"portrait": (1080, 1920), "square": (1080, 1080), "landscape": (1920, 1080)}
+    index = {"fixture": "voxclip-caption-style-set/1", "set": style_set["id"], "styles": style_set["styles"],
+             "layout": [], "files": ["preview-tiles.json"]}
+    for sid in style_set["styles"]:
+        for aspect in matrix["aspects"]:
+            case = {"id": "%s-%s-%s" % (sid, aspect, matrix["words"]), "style": sid, "frame": list(names[aspect]), "words": matrix["words"]}
+            doc = case_fixture(case, cases_doc["wordSets"], db, lex)
+            write_json(os.path.join(layout_dir, case["id"] + ".json"), doc)
+            index["layout"].append({"file": "layout/%s.json" % case["id"], "style": sid, "frame": case["frame"],
+                                    "pages": len(doc["expected"]["pages"]), "samples": len(doc["expected"]["samples"])})
+    write_json(os.path.join(root, "preview-tiles.json"), preview_fixture(db, lex, style_set["styles"]))
+    write_json(os.path.join(root, "index.json"), index)
+    print("set %d: wrote %d layout fixtures + preview, index in %s" % (style_set["id"], len(index["layout"]), os.path.relpath(root, FIXTURES)))
 
 
 if __name__ == "__main__":
