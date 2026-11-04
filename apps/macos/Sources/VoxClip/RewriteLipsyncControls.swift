@@ -68,10 +68,12 @@ import VoxClipCore
             let duration = String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), seconds)
             Text("Uploads this phrase's \(duration) s of video and its new audio to fal.ai (sync-3) with your key. Exports say “Lip movement generated with AI.”")
             let verb = retry ? "Try Again" : "Lip Sync"
-            Button("\(verb) · ≈ \(offer.price)") { session.start(offer); changed() }
-                .accessibilityIdentifier("lipsync-approve-\(phrase)")
-                .disabled(busy || session.usingTakes)
-                .accessibilityLabel(Self.approveLabel(verb: verb, phrase: phrase, price: offer.price))
+            // Shown only while it can act: takes running or Use Takes waiting hide it (design.md: no disabled buttons).
+            if !busy, !session.usingTakes {
+                Button("\(verb) · ≈ \(offer.price)") { session.start(offer); changed() }
+                    .accessibilityIdentifier("lipsync-approve-\(phrase)")
+                    .accessibilityLabel(Self.approveLabel(verb: verb, phrase: phrase, price: offer.price))
+            }
         } else if session.refreshing { ProgressView("Preparing lip-sync price…").controlSize(.small) }
         else { Text("Lip sync isn't ready for this part. Choose a passing take and its video duration.") }
     }

@@ -82,7 +82,7 @@ import VoxClipCore
         case Failure.placementChanged, VoiceLabSpeechContextPlan.Failure.quoteBinding:
             "The complete sentence no longer matches the reviewed text and source range. Nothing was sent. Review it again."
         default:
-            "A complete surrounding sentence cannot safely fit this change inside the approved scope. Excluded changes and other takes are kept. Re-record this sentence instead. Nothing was sent."
+            "Its whole sentence can't fit inside this clip. Other changes and takes are kept. Nothing was sent."
         }
     }
 }
@@ -163,6 +163,8 @@ extension RewriteSession {
             surroundingSentenceOrdinal = nil
             speechContextProblem = RewriteSpeechContextReview.copy(error)
             speechContextRefusedOrdinals = [ordinal]
+            // Handled without a click: the changed words alone, a rewrite inside the change, or left out (RewriteAutoFix.swift).
+            Task { @MainActor [weak self] in self?.resolveRefusedContext() }
         }
     }
 

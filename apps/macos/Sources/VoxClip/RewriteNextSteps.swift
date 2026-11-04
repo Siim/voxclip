@@ -26,15 +26,13 @@ struct RewriteReask: Equatable {
     var retry: RewriteReask?
     /// The last reply's valid AI-suggested next steps.
     var suggestions: [RewriteNextAction] = []
-    /// [Re-voice all {v}] was chosen: the voice budget no longer holds Make Takes back (voice-lab.md §8.2).
-    var budgetAccepted = false
     @ObservationIgnored var token = UUID()
     @ObservationIgnored var work: Task<Void, Never>?
     @ObservationIgnored var lease: UUID?
 
     /// A new reply: nothing is asked again yet.
     func reset() {
-        notice = ""; noticeWarns = false; retry = nil; suggestions = []; budgetAccepted = false
+        notice = ""; noticeWarns = false; retry = nil; suggestions = []
     }
 }
 
@@ -104,6 +102,7 @@ extension RewriteSession {
                 reasking.notice = "Couldn't ask \(aiName). " + (reason.isEmpty ? "Nothing changed." : reason)
                 reasking.noticeWarns = true
                 reasking.retry = request
+                retryReaskOnce(request)
             }
         }
     }
@@ -131,6 +130,7 @@ extension RewriteSession {
         reasking.retry = request
         reasking.notice = "\(task.words.subject) changed while \(aiName) answered, so its reply was not used. Nothing changed."
         reasking.noticeWarns = true
+        retryReaskOnce(request)
     }
 
     private func showNotice(_ text: String, warns: Bool) {
@@ -201,8 +201,6 @@ extension RewriteSession {
         return VoiceBudgetAdvice(voiceWords: budget.voiceTokenCount, scopeWords: task.words.wordCount,
                                  limit: min(60, budget.wordItems * 15 / 100))
     }
-    /// The budget still holds Make Takes back: over it, and [Re-voice all] not chosen.
-    var voiceBudgetBlocks: Bool { voiceBudget != nil && !reasking.budgetAccepted }
 
     /// The AI chips for `stuck` phrases: suggestions whose phrases include one of them, scoped to the proposal's phrases.
     private func suggestionChips(stuck: [Int], reason: RewriteBlockedPhrase.Reason) -> [NextStepChip] {
@@ -228,22 +226,39 @@ extension RewriteSession {
             editor.sendRewriteAgain(self, reask: RewriteReask(label: label, instruction: trimmed, ordinals: stuck, reason: reason))
         }
     }
-    private func chip(_ id: String, _ title: String, perform: @escaping @MainActor () -> Void) -> NextStepChip {
+    func chip(_ id: String, _ title: String, perform: @escaping @MainActor () -> Void) -> NextStepChip {
         NextStepChip(action: PanelAction(id: id, title: title, perform: perform))
     }
-    private func keepOriginalChip(_ ordinals: [Int]) -> NextStepChip {
-        chip("keepOriginal", "Keep original words") { [weak self] in self?.phraseTimingAction(.original, ordinals: ordinals) }
+    /// The chips of a stuck state while automatic fixes run: one "Choose yourself…" that opens them (design.md R2).
+    private func collapsed(_ steps: [NextSteps]) -> [NextSteps] {
+        guard !autoFix.choicesShown, !steps.isEmpty else { return steps }
+        return [NextSteps(id: "choose", chips: [chip("chooseYourself", "Choose yourself…") { [weak self] in
+            guard let self else { return }
+            autoFix.showChoices = true
+            showProposal()
+        }])]
+    }
+    /// The phrases a merge would join, as the AI is asked to write them: a refused collision of the last plan.
+    func mergeReask() -> RewriteReask? {
+        guard let refusal = planRefusal, let earlier = refusal.earlier, connector != nil, let shared = editor.app.shared,
+              let merge = try? RewriteNextActionFeedback.merge(first: earlier, second: refusal.phrase, shared: shared) else { return nil }
+        return RewriteReask(label: "Merge with phrase \(earlier)", instruction: merge, ordinals: [earlier, refusal.phrase].sorted(), reason: .collision)
+    }
+    /// Where a change sits in the source, "5:40", for the chips that name it.
+    func changeTime(_ ordinal: Int) -> String? {
+        guard changes.indices.contains(ordinal - 1) else { return nil }
+        let hunk = changes[ordinal - 1].hunk
+        let seconds = hunk.sourceWordIds.first.flatMap { id in project.transcript?.words.first { $0.id == id }?.start } ?? hunk.anchorSeconds
+        guard let seconds, seconds.isFinite else { return nil }
+        let whole = Int(seconds.rounded(.down))
+        return "\(whole / 60):" + String(format: "%02d", whole % 60)
     }
 
-    /// Over the voice budget (voice-lab.md §8.2, advisory): Re-voice all, Change fewer words, the AI's suggestions and,
-    /// with free changes waiting, Keep text fixes only.
+    /// Over the voice budget (voice-lab.md §8.2, advisory): the phrases are voiced anyway, and the chips under
+    /// "Choose yourself…" offer Change fewer words, the AI's suggestions and, with free changes waiting, Keep text fixes only.
     func budgetSteps(_ advice: VoiceBudgetAdvice, freeChanges: Int) -> NextSteps {
         let voices = reviewedVoiceOrdinals
-        var chips = [chip("revoiceAll", "Re-voice all \(advice.voiceWords)") { [weak self] in
-            guard let self else { return }
-            reasking.budgetAccepted = true
-            showProposal()
-        }]
+        var chips: [NextStepChip] = []
         if connector != nil, let shared = editor.app.shared, let fewer = try? RewriteNextActionFeedback.fewerWords(limit: advice.limit, shared: shared) {
             let request = RewriteReask(label: "Change fewer words", instruction: fewer, ordinals: voices, reason: .budget)
             chips.append(chip("changeFewerWords", "Change fewer words") { [weak self] in
@@ -259,35 +274,100 @@ extension RewriteSession {
     }
 
     /// The next steps of every stuck state the proposal shows now, after its main cards: a phrase that still does not fit
-    /// (its built-in steps are on its row), a phrase whose takes all failed checks, and a refused surrounding sentence.
+    /// (its built-in steps are on its row), phrases whose takes all failed, phrases kept as recorded after their automatic
+    /// rounds, and a refused surrounding sentence. One "Tell the AI what to do instead…" field closes them, scoped to
+    /// every stuck phrase; chips that act on one phrase or change name it. While automatic fixes run the chips wait
+    /// under "Choose yourself…".
     func stuckSteps() -> [NextSteps] {
         guard !wordingIsLocked, !isReasking, ownProposal != nil else { return [] }
-        var steps: [NextSteps] = planSteps().map { [$0] } ?? []
+        var steps: [NextSteps] = []
+        var stuck: [Int] = []
+        var reason: RewriteBlockedPhrase.Reason?
+        func note(_ ordinals: [Int], _ why: RewriteBlockedPhrase.Reason) {
+            stuck += ordinals
+            if reason == nil { reason = why }
+        }
+        if let plan = planSteps() {
+            steps.append(plan)
+            if let refusal = planRefusal { note([refusal.earlier, refusal.phrase].compactMap { $0 }, .collision) }
+        }
         let blocked = blockedVoiceOrdinals
         if !blocked.isEmpty {
             let chips = suggestionChips(stuck: blocked, reason: .fit)
-            steps.append(NextSteps(id: "fit", chips: chips, ask: freeText("fit", stuck: blocked, reason: .fit)))
+            if !chips.isEmpty { steps.append(NextSteps(id: "fit", chips: chips)) }
+            note(blocked, .fit)
         }
-        if let plan = takePlan, !takesBusy, let phrase = plan.phrases.first(where: { phrase in
-            !phrase.takes.isEmpty && !phrase.takes.contains { $0.row.selectable } }) {
-            let ordinals = takePhraseOrdinals(phrase)
-            var chips = [chip("tryAnother", "Try another") { [weak self] in self?.priceAnotherTake(phrase: phrase.id) }]
-            if !ordinals.isEmpty { chips.append(keepOriginalChip(ordinals)) }
-            chips += suggestionChips(stuck: ordinals, reason: .take)
-            steps.append(NextSteps(id: "take", line: "Phrase \(phrase.id + 1): no take passed the checks.",
-                chips: chips, ask: freeText("take", stuck: ordinals, reason: .take)))
+        if let plan = takePlan, !takesBusy {
+            let several = plan.phrases.count > 1
+            for phrase in plan.phrases where !phrase.leftOut {
+                guard let why = stuckReason(phrase, plan: plan), autoFix.lines[phrase.id] == nil else { continue }
+                if case .length(_, _, _, _, _, true) = why { continue }    // its row has the length steps
+                let ordinals = takePhraseOrdinals(phrase)
+                let name = several ? " for phrase \(phrase.id + 1)" : ""
+                var chips = [chip("tryAnother.\(phrase.id)", "Try another" + name) { [weak self] in self?.priceAnotherTake(phrase: phrase.id) },
+                             chip("keepOriginal.\(phrase.id)", "Keep original words" + name) { [weak self] in self?.keepOriginal(phrase: phrase.id) }]
+                if canReviewSpeechContext(phrase: phrase) {
+                    chips.append(chip("surrounding.\(phrase.id)", "Use surrounding sentence" + name) { [weak self] in
+                        self?.reviewSpeechContext(phrase: phrase.id)
+                    })
+                }
+                chips += suggestionChips(stuck: ordinals, reason: .take)
+                steps.append(NextSteps(id: "take.\(phrase.id)", line: Self.stuckSentence(why, phrase: phrase.id + 1), chips: chips))
+                note(ordinals, .take)
+            }
+            for phrase in plan.phrases where phrase.leftOut && autoFix.gaveUp.contains(phrase.id) {
+                let tries = autoFix.rounds[phrase.id, default: RewriteAutoFixState.maximumRounds]
+                steps.append(NextSteps(id: "kept.\(phrase.id)",
+                    line: "Phrase \(phrase.id + 1) kept your original audio after \(tries) \(tries == 1 ? "try" : "tries").",
+                    chips: [chip("undoKeep.\(phrase.id)", "Undo") { [weak self] in self?.undoKeepOriginal(phrase: phrase.id) },
+                            chip("tryAnother.\(phrase.id)", "Try another for phrase \(phrase.id + 1)") { [weak self] in
+                                self?.undoKeepOriginal(phrase: phrase.id); self?.priceAnotherTake(phrase: phrase.id) }]))
+                note(takePhraseOrdinals(phrase), .take)
+            }
         }
         let refused = speechContextRefusedOrdinals.filter(reviewedVoiceOrdinals.contains)
         if !speechContextProblem.isEmpty, !refused.isEmpty {
-            var chips = [keepOriginalChip(refused)]
-            let priceable = refused.filter { blocked.contains($0) }
-            if !priceable.isEmpty {
-                chips.append(chip("priceAnyway", "Price it anyway") { [weak self] in self?.phraseTimingAction(.priceAnyway, ordinals: priceable) })
+            let several = refused.count > 1
+            var chips: [NextStepChip] = []
+            for ordinal in refused {
+                let name = several ? " \(ordinal)" : ""
+                chips.append(chip("leaveOut.\(ordinal)", "Leave out this change" + name) { [weak self] in self?.leaveOutChange(ordinal) })
+                if voiceReview(ordinal)?.window != nil, !blocked.contains(ordinal) || voiceReview(ordinal)?.timing != nil {
+                    chips.append(chip("changedWordsOnly.\(ordinal)", "Voice just the changed words" + name) { [weak self] in
+                        self?.phraseTimingAction(.priceAnyway, ordinals: [ordinal])
+                    })
+                }
+            }
+            if connector != nil {
+                let request = RewriteReask(label: "Rewrite without changing the sentence around it", instruction: Self.withinSentenceInstruction,
+                    ordinals: refused, reason: .context)
+                chips.append(NextStepChip(action: PanelAction(id: "withinSentence", title: request.label) { [weak self] in
+                    guard let self else { return }
+                    editor.sendRewriteAgain(self, reask: request)
+                }, suggested: true))
             }
             chips += suggestionChips(stuck: refused, reason: .context)
-            steps.append(NextSteps(id: "context", chips: chips, ask: freeText("context", stuck: refused, reason: .context)))
+            let names = refused.map { ordinal in changeTime(ordinal).map { "Change \(ordinal) at \($0)" } ?? "Change \(ordinal)" }
+            steps.append(NextSteps(id: "context", line: names.joined(separator: ", ") + ": " + speechContextProblem, chips: chips))
+            note(refused, .context)
         }
-        return steps
+        if !autoFix.notes.isEmpty { steps.insert(NextSteps(id: "autoNotes", line: autoFix.notes.joined(separator: "\n")), at: 0) }
+        var shown = collapsed(steps.filter { !$0.chips.isEmpty || $0.id == "autoNotes" || $0.id.hasPrefix("kept.") || $0.line != nil })
+        if autoFix.choicesShown, let reason, let ask = freeText("stuck", stuck: Array(Set(stuck)).sorted(), reason: reason) {
+            if shown.isEmpty { shown = [NextSteps(id: "stuck")] }
+            shown[shown.count - 1].ask = ask
+        }
+        return shown
+    }
+
+    /// Leave out this change: its text fixes still apply. A change voiced in the takes plan keeps its takes.
+    func leaveOutChange(_ ordinal: Int) {
+        speechContextProblem = ""; speechContextRefusedOrdinals.removeAll { $0 == ordinal }
+        if surroundingSentenceOrdinal == ordinal { surroundingSentenceOrdinal = nil }
+        if hasPaidTakes, let plan = takePlan {
+            for phrase in plan.phrases where takePhraseOrdinals(phrase).contains(ordinal) { plan.leaveOut(phrase: phrase.id) }
+            showProposal()
+        } else { review(ordinal, .undo) }
     }
 
     // MARK: Takes plan failures
@@ -295,7 +375,7 @@ extension RewriteSession {
     /// The proposal ordinal of hunk `index` of the last takes plan.
     private func planOrdinal(_ index: Int) -> Int? { takePlanOrdinals.indices.contains(index) ? takePlanOrdinals[index] : nil }
     /// A placement refusal of the last plan: the refused phrase, and the earlier one it collides with.
-    private var planRefusal: (phrase: Int, earlier: Int?)? {
+    var planRefusal: (phrase: Int, earlier: Int?)? {
         guard case ClipTakePlan.Failure.placement(let reason, let index)? = takePlanFailure, let phrase = planOrdinal(index) else { return nil }
         if case .collidesWithChange(let earlier) = reason { return (phrase, planOrdinal(earlier)) }
         return (phrase, nil)
@@ -331,14 +411,12 @@ extension RewriteSession {
             stuck = [refusal.earlier, refusal.phrase].compactMap { $0 }.sorted()
             // A forced merge is not offered: placement already merges whenever the joined phrase can be placed, so a
             // collision that remains cannot be voiced as one phrase (voice-lab.md §8.4).
-            chips.append(chip("keepOriginal", "Keep original words for \(refusal.phrase)") { [weak self] in
+            chips.append(chip("keepOriginal", "Keep original words for phrase \(refusal.phrase)") { [weak self] in
                 self?.phraseTimingAction(.original, ordinals: [refusal.phrase])
             })
             if freeChanges > 0 { chips.append(chip("keepTextFixes", "Keep text fixes only") { [weak self] in self?.applyFreeChanges() }) }
-            if let earlier = refusal.earlier, connector != nil, let shared = editor.app.shared,
-               let merge = try? RewriteNextActionFeedback.merge(first: earlier, second: refusal.phrase, shared: shared) {
-                let request = RewriteReask(label: "Merge with phrase \(earlier)", instruction: merge, ordinals: stuck, reason: .collision)
-                chips.append(NextStepChip(action: PanelAction(id: "mergePhrases", title: "Merge with phrase \(earlier)") { [weak self] in
+            if let request = mergeReask() {
+                chips.append(NextStepChip(action: PanelAction(id: "mergePhrases", title: request.label) { [weak self] in
                     guard let self else { return }
                     editor.sendRewriteAgain(self, reask: request)
                 }, suggested: true))
@@ -368,8 +446,7 @@ extension RewriteSession {
                 })
             }
         }
-        return NextSteps(id: "plan", line: line, chips: chips,
-                         ask: stuck.isEmpty ? nil : freeText("plan", stuck: stuck, reason: .collision))
+        return NextSteps(id: "plan", line: line, chips: chips)
     }
 
     /// Puts the last re-ask's notice and its "Ask again" chip on the first stuck state's chips, or on their own.

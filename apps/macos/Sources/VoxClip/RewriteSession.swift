@@ -87,6 +87,8 @@ struct RewriteChange: Equatable, Sendable {
     let wordingFit = RewriteWordingFitState()
     /// A next step's re-ask in flight, its AI suggestions and the advisory voice budget (RewriteNextSteps.swift).
     let reasking = RewriteReaskState()
+    /// The automatic fixes of stuck phrases after an approved price (RewriteAutoFix.swift).
+    let autoFix = RewriteAutoFixState()
     var calibratedTakeIDs: Set<UUID> = []
     /// The scope's items in order: the selection's, a clip's from its first to its last word, or the take's.
     private(set) var source: [TimedWord]
@@ -586,6 +588,7 @@ struct RewriteChange: Equatable, Sendable {
         pricedAnyway = []
         takePlanFailure = nil
         reasking.reset()
+        autoFix.reset()
         changes = checked.changes
         switch checked.review {
         case .success(let built): review = built
@@ -647,6 +650,7 @@ struct RewriteChange: Equatable, Sendable {
     private func invalidate() {
         stopWordingFit(refresh: false)
         stopReask(refresh: false)
+        autoFix.reset()
         takePlanFailure = nil
         speechContextOffer = nil; speechContextReview = nil; acceptedSpeechContext = nil; speechContextProblem = ""
         surroundingSentenceOrdinal = nil
@@ -802,7 +806,8 @@ struct RewriteChange: Equatable, Sendable {
         let displayed = editor.changeReadings.first { $0.change.ordinal == ordinal }?.text ?? original
         updateAudioTags([ordinal - 1: VoiceLabAudioTags.reanchored(tags, from: displayed, to: original)])
     }
-    func updateAudioTags(_ tags: [VoiceLabAudioTag], phrase: ClipTakePlan.Phrase) {
+    /// An expression on a phrase with no takes plan to hold it: the tags go into the phrase's changes.
+    func updateAudioTagsWithoutPlan(_ tags: [VoiceLabAudioTag], phrase: ClipTakePlan.Phrase) {
         var remaining = tags
         var retained: [Bool] = []
         for annotation in phrase.audioTags {

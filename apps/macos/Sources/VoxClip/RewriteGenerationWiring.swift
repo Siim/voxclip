@@ -53,7 +53,7 @@ extension RewriteSession {
             reviewTimingSpeechContext(ordinal: ordinal)
             return
         }
-        guard current, let generation, review != nil, !voiceBudgetBlocks, !isReasking, !includedVoice.isEmpty, let takeBackend else { return }
+        guard current, let generation, review != nil, !isReasking, !includedVoice.isEmpty, let takeBackend else { return }
         guard !hasPaidTakes else {
             generation.fail("Your paid takes are kept. Leave this review and confirm discarding them before making a fresh takes plan.")
             return
@@ -148,6 +148,8 @@ extension RewriteSession {
             takePlanFailure = error
             generation.fail("")
             showProposal()
+            // A collision goes to the AI once as one sentence, with no click (RewriteAutoFix.swift).
+            if planRefusal?.earlier != nil { resolveCollision() }
         }
     }
     func currentGenerationCap() async throws -> VoiceLabMonthlyCap? {

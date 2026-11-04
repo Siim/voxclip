@@ -33,11 +33,15 @@ import VoxClipMedia
         var takes: [Take] = []
         var selectedID: UUID?
         var explicitlySelected = false
+        /// Kept as recorded: the phrase's takes stay listed, none is used (automatic fixes' fallback or Keep original words).
+        var leftOut = false
+        /// Takes made before the phrase's expression changed, listed as "Before expression" and never chosen automatically.
+        var beforeExpression: Set<UUID> = []
         var videoChoice: VoiceLabVideoMode?
         var estimatedVoicedSeconds: Double?
         var selected: Take? { takes.first { $0.id == selectedID } }
         var bestMeasured: Take? {
-            takes.filter { $0.row.automaticallySelectable && $0.row.qa?.values.speakerScore?.isFinite == true }
+            takes.filter { $0.row.automaticallySelectable && $0.row.qa?.values.speakerScore?.isFinite == true && !beforeExpression.contains($0.id) }
                 .max { ($0.row.score ?? 0) < ($1.row.score ?? 0) }
         }
         var originalLength: Double { window.end - window.start }
@@ -113,6 +117,8 @@ import VoxClipMedia
     private(set) var spent = VoiceLabTakeRunQuote.total(of: [], takes: 0)
     let audition: VoiceLabAudition
     let lipsync = RewriteLipsyncSession()
+    /// Automatic fixes and expression changes add takes beside the old ones: a fourth take never replaces a paid one.
+    var keepsEveryTake = false
     @ObservationIgnored private var auditionTurn = UUID()
     @ObservationIgnored private var receivedInBatch: Set<UUID> = []
     @ObservationIgnored private var fatalPhrases: Set<Int> = []
@@ -435,6 +441,45 @@ import VoxClipMedia
         clearPreparedVideo()
     }
 
+    /// Keeps the phrase as recorded: no take is used for it, and every take stays listed (design.md R2 "Automatic fixes").
+    func leaveOut(phrase index: Int) {
+        guard phrases.indices.contains(index), !lipsync.blocksMutation(index) else { return }
+        stopAudition(); clearPreparedVideo()
+        phrases[index].leftOut = true; phrases[index].selectedID = nil; phrases[index].videoChoice = nil
+        phrases[index].explicitlySelected = false
+    }
+    /// Undo of `leaveOut`: the best passing take is chosen again, if there is one.
+    func restore(phrase index: Int) {
+        guard phrases.indices.contains(index), phrases[index].leftOut else { return }
+        phrases[index].leftOut = false
+        phrases[index].selectedID = phrases[index].bestMeasured?.id
+        onMeasuredTakesChanged?()
+    }
+    /// A new expression for one phrase (design.md R2 "Expressions"): only this phrase's text tags change, its takes so far
+    /// stay listed as "Before expression", and a fresh quote is prepared for it alone. Other phrases keep their takes.
+    func prepareExpression(_ tags: [VoiceLabAudioTag], phrase index: Int) async {
+        guard stillCurrent, phrases.indices.contains(index), !generating, !preparing, !publishing, !preparingVideo,
+              !lipsync.blocksMutation(index) else { return }
+        stopAudition()
+        phrases[index].audioTags = tags
+        phrases[index].beforeExpression.formUnion(phrases[index].takes.map(\.id))
+        if phrases[index].selectedID != nil { clearPreparedVideo() }
+        phrases[index].selectedID = nil; phrases[index].videoChoice = nil; phrases[index].explicitlySelected = false
+        keepsEveryTake = true
+        await prepareQuote(indices: [index], decoding: true, candidates: 1)
+    }
+    /// What a take's own length allows, selected or not: a take that failed its checks still says whether its length fits.
+    func lengthAvailability(take: Take) -> VideoDurationChoiceAvailability {
+        VideoDurationChoiceAvailability(row: take.row, sourceSampleRate: project.media.source.audio?.sampleRate ?? 48_000,
+            rendererReady: prepareDurationRender != nil && VoiceLabRenderInput.supportsVideoMode(.zoomCover))
+    }
+    /// The duration choices the selected take allows, in the panel's order.
+    func validVideoChoices(phrase index: Int) -> [VoiceLabVideoMode] {
+        guard phrases.indices.contains(index), phrases[index].selected?.row.selectable == true else { return [] }
+        let availability = videoAvailability(phrase: index)
+        return [VoiceLabVideoMode.source, .cut, .retimed].filter(availability.allows)
+    }
+
     private func retryPace(phrase index: Int) throws -> Double? {
         let input = inputs[index]
         guard input.modelID != "eleven_v4" else { return 1 }
@@ -643,6 +688,7 @@ import VoxClipMedia
         }
         phrases[phrase].selectedID = take
         phrases[phrase].explicitlySelected = true
+        phrases[phrase].leftOut = false
         if let input = takeInputs[take] {
             if phrases[phrase].text != input.text || phrases[phrase].audioTags != input.audioTags {
                 keepSelectedWording(phrase: phrase)
@@ -755,7 +801,7 @@ import VoxClipMedia
             }
             guard receivedInBatch.insert(row.id).inserted else { continue }
             guard !phrases[phrase].takes.contains(where: { $0.id == row.id }) else { continue }
-            if phrases[phrase].takes.count == 3 {
+            if phrases[phrase].takes.count >= 3, !keepsEveryTake {
                 let number = phrases[phrase].nextTakeNumber
                 if let replaced = phrases[phrase].takes.firstIndex(where: { $0.number == number }) {
                     let evicted = phrases[phrase].takes[replaced].id
@@ -772,6 +818,7 @@ import VoxClipMedia
         }
         guard (revision == version || stopping), !retired, isCurrent() else { return }
         guard !lipsync.blocksMutation(phrase) else { return }
+        if phrases[phrase].leftOut { return }
         if phrases[phrase].explicitlySelected {
             if let row = phrases[phrase].selected?.row, row.selectable, !row.requiresJoinAdvisoryAcceptance { return }
             phrases[phrase].explicitlySelected = false
