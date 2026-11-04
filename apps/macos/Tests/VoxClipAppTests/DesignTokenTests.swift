@@ -36,7 +36,23 @@ import Testing
         return ratio
     }
 
+    /// doc/design.md §16.1: the semantic spacing scale, on the 2 pt grid, with forms, cards and panels given air.
+    @Test func spacingScaleKeepsFormsCardsAndPanelsOnTheGrid() {
+        let scale: [CGFloat] = [VCTokens.spacing2, VCTokens.spacing3, VCTokens.spacing4, VCTokens.spacing5, VCTokens.spacing6, VCTokens.spacing7, VCTokens.spacing8]
+        #expect(scale == [4, 8, 12, 16, 20, 24, 32])
+        #expect(VCTokens.spacingLabelGap == 6 && VCTokens.spacingRowGap == 8 && VCTokens.spacingGroupGap == 12 && VCTokens.spacingSectionGap == 20)
+        #expect(VCTokens.spacingCardPadding == 12 && VCTokens.spacingFieldPaddingX == 10 && VCTokens.spacingFieldPaddingY == 8)
+        #expect(VCTokens.spacingDividerMargin >= 8 && VCTokens.spacingRowPaddingY >= 6 && VCTokens.spacingChipGap == 6 && VCTokens.spacingFooterPaddingY == 12)
+        let semantic: [CGFloat] = [VCTokens.spacingLabelGap, VCTokens.spacingRowGap, VCTokens.spacingGroupGap, VCTokens.spacingSectionGap, VCTokens.spacingCardPadding,
+                                   VCTokens.spacingFieldPaddingX, VCTokens.spacingFieldPaddingY, VCTokens.spacingDividerMargin, VCTokens.spacingRowPaddingY,
+                                   VCTokens.spacingChipGap, VCTokens.spacingFooterPaddingY]
+        #expect(semantic.allSatisfy { $0.truncatingRemainder(dividingBy: 2) == 0 })
+        // Each step up the hierarchy is wider than the one below it.
+        #expect(VCTokens.spacingLabelGap < VCTokens.spacingRowGap && VCTokens.spacingRowGap < VCTokens.spacingGroupGap && VCTokens.spacingGroupGap < VCTokens.spacingSectionGap)
+    }
+
     @Test func typeScaleUsesOnlyTheNativeTextStyleSizes() {
+
         #expect(VCType.allCases.map(\.size) == [15, 13, 12, 11, 10, 9])
         #expect(VCType.title3.size == NSFont.preferredFont(forTextStyle: .title3, options: [:]).pointSize)
         #expect(VCType.body.size == NSFont.systemFontSize)
