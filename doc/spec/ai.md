@@ -52,7 +52,7 @@ LLMRequest {
   schemaName: string             // "clips", "tighten_edits", "voice_rewrite_proposal", "patch_edits", "connection_test"
   schema: JSON object            // canonical subset, §2.2
   maxOutputTokens: int           // 16000 for clipFinder and aiTighten; voiceRewrite reserves for selected text up to the connector cap; 2048 for test
-  effort: low | medium | high | null
+  effort: low | medium | high | xhigh | max | null   // lowest first; every AI decision feature asks for xhigh
   timeout: seconds               // from catalog policy.timeoutsSeconds
   language: BCP-47 string?       // transcript language, used by the Apple locale gate
   tag: string                    // for logs only, e.g. "clips/best part 2 of 3"
@@ -118,7 +118,7 @@ public enum ConnectorID: String, Codable, Sendable, CaseIterable {
 }
 
 public enum LLMFeature: String, Sendable { case clipFinder, aiTighten, test }
-public enum Effort: String, Sendable { case low, medium, high }
+public enum Effort: String, Sendable { case low, medium, high, xhigh, max }
 
 public struct LLMRequest: Sendable {
     public var feature: LLMFeature
@@ -197,7 +197,7 @@ public actor LLMRunner {
 ```csharp
 public enum ConnectorId { Anthropic, OpenAI, Xai, Gemini, Ollama, LmStudio, AppleFoundation, ClaudeCode, Codex }
 public enum LlmFeature { ClipFinder, AiTighten, Test }
-public enum Effort { Low, Medium, High }
+public enum Effort { Low, Medium, High, XHigh, Max }
 
 public sealed record LlmRequest(
     LlmFeature Feature, string System, string? CachedBlock, string Instruction,
@@ -274,12 +274,33 @@ From `policy.timeoutsSeconds`. Each request is one window of one feature run.
 | Status probes (local servers, `/api/version`) | 3 |
 | Model-list refresh | 15 |
 | Test button, HTTP connectors | 30 |
-| Clip finder and AI tighten, cloud HTTP | 180 |
+| Clip finder, AI tighten and Voice Lab rewrite, cloud HTTP | 360 |
 | Ollama and LM Studio requests | 600 |
 | Apple Foundation Models, per window | 120 |
 | CLI detection commands | 10 |
 | Test button, CLI connectors | 120 |
-| CLI generation, per invocation | 300 |
+| CLI generation, per invocation | 600 |
+
+The AI decision features ask for `xhigh` effort (below), which thinks longer than the `medium` they sent before
+2026-11-04. Cloud HTTP doubles from 180 to 360 s, and CLI generation from 300 to 600 s, the catalog's longest wait
+(the local-server value): a CLI adds its own start-up and retries to the provider's reply.
+
+### 4.4.1 Effort
+
+Find Clips, AI Tighten, Rewrite, Fix with AI, wording fit and the Rewrite next actions (which send through Rewrite and
+Fix with AI) ask for `xhigh`: the user asked that Claude Code "make the best decisions … in extra high effort level".
+The connection test stays `low`. A connector sends the highest level it supports at or below the request, and omits
+effort when it supports none of those. "Supports" means:
+
+- Anthropic, OpenAI, Gemini and Claude Code: the catalog connector's `effort.values` (Anthropic and Claude Code list
+  `low`…`max`, so they send `xhigh`; OpenAI and Gemini stop at `high`). Each model gate below still applies.
+- Codex: a named model's `supportedReasoningEfforts` from model/list (none listed: no effort). "CLI default" uses the
+  `isDefault` model's list, else the catalog's `effort.values` (`low`, `medium`, `high`).
+- xAI, Ollama, LM Studio and Apple Foundation Models ignore effort (Ollama keeps its lowest-thinking rule, §6.5).
+
+The status bar shows the level next to the AI ("Claude Code · Opus (latest) · extra high") and Settings says "AI
+decisions use extra high effort." from the catalog alone. `shared/fixtures/llm/effort-requests.json` renders every
+connector at every level, plus the Codex model-list cases.
 
 ### 4.5 Strict JSON: replies and transport envelopes
 
@@ -443,7 +464,7 @@ Headers:
     ]
   }],
   "output_config": {
-    "effort": "medium",
+    "effort": "xhigh",
     "format": { "type": "json_schema", "schema": {} }
   },
   "fallbacks": "default"
@@ -498,7 +519,7 @@ Prompt caching: the clip-finder system prompt and the transcript block are byte-
   }],
   "text": { "format": { "type": "json_schema", "name": "{schemaName}", "strict": true, "schema": {} } },
   "max_output_tokens": 16000,
-  "reasoning": { "effort": "medium" },
+  "reasoning": { "effort": "high" },
   "store": false,
   "prompt_cache_key": "voxclip-0123456789abcdef"
 }
@@ -793,7 +814,7 @@ claude -p --output-format json
        [--model {model}]                 omitted when the model is "default"
        [--fallback-model {fallback}]     first fallbackOrder entry ≠ model, if --fallback-model is supported;
                                          never for a voiceRewrite send (§12.8)
-       [--effort {effort}]               if supported
+       [--effort {effort}]               if supported; the resolved level (§4.4.1), xhigh for AI decisions
        --safe-mode                       always (required flag)
        [--strict-mcp-config]             if supported
        [--disable-slash-commands]        if supported
@@ -945,7 +966,7 @@ Then emit a closing `"`. The argument is `developer_instructions=` followed by t
 - Read `result.data[]`: `id`, `displayName`, `isDefault`, `hidden` (skip hidden models), and `supportedReasoningEfforts[].reasoningEffort`. Then terminate the process.
 - The list is a catalog, not an entitlement check. If anything fails, use the curated list measured on 2026-10-25.
 - "CLI default" omits `--model`. With `--ignore-user-config`, that is Codex's built-in default (`gpt-6.1-sol` on 2026-10-25).
-- Effort is sent only if the chosen model lists it, or the model is "CLI default".
+- Effort is the highest level at or below the request that the chosen model lists (§4.4.1). "CLI default" uses the `isDefault` model's list, else the catalog's `effort.values`.
 
 ### 6.10 Rules shared by both CLI connectors
 
@@ -1417,7 +1438,7 @@ The same budget computation as §11.5, with `maxWordsPerRequest = 2000` and **no
   1. the chosen strength's `instruction` (`light`, `normal` or `strong`; default from `llm.tighten.strength`);
   2. `"Also: " + text`, if the user typed text (trimmed, at most 200 UTF-16 units);
   3. `windowLine`, when there is more than one window.
-- Schema `tighten_edits`, `maxOutputTokens` 16000, effort `medium`.
+- Schema `tighten_edits`, `maxOutputTokens` 16000, effort `xhigh` (§4.4.1).
 
 ### 12.5 Verification (normative)
 
