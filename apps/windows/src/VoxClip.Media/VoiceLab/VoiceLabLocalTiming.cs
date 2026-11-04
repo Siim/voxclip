@@ -15,31 +15,23 @@ public delegate Task<IReadOnlyList<VoiceLabWord>> VoiceLabLocalTiming(float[] sa
 public static class VoiceLabLocalTimingSource
 {
     /// <summary>The first installed local Whisper model that is ready for the language (Mac also tries Apple Speech first;
-    /// Windows speech recognition is an App-level WinRT engine and joins with the App's own-take package). Never downloads
-    /// a model and never prompts. The 16 kHz WAV lives in <paramref name="scratch"/> only while it is transcribed.</summary>
-    public static VoiceLabLocalTiming OnDevice(ITranscriber transcriber, Func<CancellationToken, Task<IReadOnlyList<string>>> installedModels, string scratch) =>
-        async (samples, rate, language, ct) =>
+    /// Windows.Media.SpeechRecognition gives no word timings without a download, so it is not a source). Never downloads a model
+    /// and never prompts (<see cref="OnDeviceTakeTranscriber"/>).</summary>
+    public static VoiceLabLocalTiming OnDevice(ITranscriber transcriber, Func<CancellationToken, Task<IReadOnlyList<string>>> installedModels, string scratch)
+    {
+        // One on-device recognizer for timing recovery and for the user's own microphone takes.
+        var heard = new OnDeviceTakeTranscriber(transcriber, installedModels, scratch);
+        return async (samples, rate, language, ct) =>
         {
             if (rate <= 0 || samples.Length == 0) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
-            var resampled = Resample(samples, rate, 16000);
-            var choice = new LanguageChoice.Forced(language);
-            foreach (var model in await installedModels(ct).ConfigureAwait(false))
+            try
             {
-                var plan = new TranscriptionPlan(transcriber.Engine, model, choice, new());
-                if (await transcriber.ReadinessAsync(plan, ct).ConfigureAwait(false) is not Readiness.Ready) continue;
-                Directory.CreateDirectory(scratch);
-                var path = Path.Combine(scratch, "timing-" + Guid.NewGuid().ToString("N") + ".wav");
-                try
-                {
-                    await File.WriteAllBytesAsync(path, VoiceLabTakeProcessing.EncodeQaWav(resampled, 16000), ct).ConfigureAwait(false);
-                    var audio = new ExtractedAudio(path, resampled.Length, resampled.Length / 16000.0, 0, 0);
-                    var raw = await transcriber.TranscribeAsync(new(plan, audio, "voice-lab-timing"), new Progress<TranscriptionProgress>(), ct).ConfigureAwait(false);
-                    return Words(raw);
-                }
-                finally { try { File.Delete(path); } catch (IOException) { } catch (UnauthorizedAccessException) { } }
+                var (_, words) = await heard.WordsAsync(Resample(samples, rate, 16000), language, ct).ConfigureAwait(false);
+                return words.Select(word => new VoiceLabWord(word.Text, word.Start, word.End, true)).ToArray().AsReadOnly();
             }
-            throw new VoiceLabException(VoiceLabErrorKind.InvalidAlignment);
+            catch (MicrophoneTakeException) { throw new VoiceLabException(VoiceLabErrorKind.InvalidAlignment); }
         };
+    }
 
     /// <summary>The transcript's spoken words with their times; events are not words, and a token that joins the previous
     /// one extends it.</summary>

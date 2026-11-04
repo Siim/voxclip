@@ -122,9 +122,11 @@ internal sealed partial class RewritePanel
     }
 
     /// <summary>The footer names the next step and carries its one primary action.</summary>
+    private TextBlock disclosureText = new();
     private void RenderFooter()
     {
         var step = session.FooterStep;
+        disclosureText.Text = session.DisclosureLine;
         acceptBlocker.Text = step.Line;
         acceptBlocker.Visibility = step.Line.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         apply.Visibility = step.Title is null ? Visibility.Collapsed : Visibility.Visible;

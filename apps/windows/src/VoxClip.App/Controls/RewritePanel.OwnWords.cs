@@ -11,7 +11,7 @@ namespace VoxClip.App.Controls;
 /// these words. No dialogs.</summary>
 internal sealed partial class RewritePanel
 {
-    private static readonly PhraseWording[] Wordings = [PhraseWording.Suggested, PhraseWording.OwnWords];
+    private static readonly PhraseWording[] Wordings = [PhraseWording.Suggested, PhraseWording.OwnWords, PhraseWording.Microphone];
     private readonly StackPanel wordingBox = Ui.Stack(6);
     private readonly CommunityToolkit.WinUI.Controls.Segmented wordingChoice = new() { HorizontalAlignment = HorizontalAlignment.Left };
     private readonly StackPanel ownWordsBox = Ui.Stack(6);
@@ -58,6 +58,8 @@ internal sealed partial class RewritePanel
         };
         wordingBox.Children.Add(wordingChoice);
         wordingBox.Children.Add(ownWordsBox);
+        BuildMicrophone();
+        wordingBox.Children.Add(microphoneBox);
     }
 
     private void RenderOwnWords(RewriteGeneration generation)
@@ -75,6 +77,7 @@ internal sealed partial class RewritePanel
         wordingChoice.IsEnabled = session.GenerationIsCurrent && !generation.IsRunning && !session.IsGeneratingBatch;
         updating = false;
         RenderOwnWordsBody(generation, index, wording == PhraseWording.OwnWords);
+        RenderMicrophone(generation, index, wording == PhraseWording.Microphone);
         renderedWordingPhrase = index;
     }
 

@@ -467,6 +467,7 @@ internal sealed partial class RewriteSession : IDisposable
         StopReask();
         StopWordingFit();
         AutoFix.Reset();
+        if (PhraseMicrophone is { } microphone) { microphone.Changed -= MicrophoneChanged; _ = microphone.DisposeAsync(); }
         Editor.SelectionChanged -= GenerationSelectionChanged;
         RetireGenerationWindows();
         InvalidateProposal();

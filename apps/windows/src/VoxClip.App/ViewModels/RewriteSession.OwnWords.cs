@@ -23,7 +23,7 @@ internal static class PhraseWordingCopy
         PhraseWording.Microphone => "● Say",
         _ => "✦ AI"
     };
-    internal const string OwnWordsFooter = "Next: listen, then Use. Lip sync follows if it's on.";
+    internal const string OwnWordsFooter = "Next: listen, then Use.";
     internal const string MicrophoneFooter = "Next: Use, then Export. No ElevenLabs cost for your own take.";
 }
 
@@ -105,6 +105,7 @@ internal sealed partial class RewriteSession
         if (generationWindows.ElementAtOrDefault(index) is not { } window || Wording(index) == wording) return;
         var before = CurrentWording(index);
         if (wording == PhraseWording.Suggested) wordings.Remove(index); else wordings[index] = wording;
+        if (wording != PhraseWording.Microphone) CancelPhraseMicrophone(index);
         if (wording == PhraseWording.OwnWords)
         {
             OwnWordsEditing = index;

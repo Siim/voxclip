@@ -207,6 +207,10 @@ internal sealed class AppServices : IAsyncDisposable
     internal VoxClip.Media.VoiceLab.VoiceLabLocalTiming? LocalTiming => localSpeech is { } speech
         ? VoxClip.Media.VoiceLab.VoiceLabLocalTimingSource.OnDevice(speech, InstalledWhisperModelsAsync, Path.Combine(Data.Root, "VoiceLabScratch", "timing"))
         : null;
+    /// <summary>Say it myself's on-device recognizer: the installed, verified Whisper models. Null before local speech is ready.</summary>
+    internal VoxClip.Media.VoiceLab.IMicrophoneTakeTranscriber? TakeTranscriber => localSpeech is { } speech
+        ? new VoxClip.Media.VoiceLab.OnDeviceTakeTranscriber(speech, InstalledWhisperModelsAsync, Path.Combine(Data.Root, "VoiceLabScratch", "heard"))
+        : null;
     /// <summary>The verified installed transcription models, by id.</summary>
     internal async Task<IReadOnlyList<string>> InstalledWhisperModelsAsync(CancellationToken ct) =>
         (await Downloads.ListInstalledAsync(ct)).Where(model => model.Verified).Select(model => model.Id).ToArray();
