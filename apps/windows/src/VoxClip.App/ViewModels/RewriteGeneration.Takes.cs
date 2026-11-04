@@ -54,6 +54,10 @@ internal sealed partial class RewriteGeneration
     internal bool CanUseTakeAnyway(Guid id) => !closed && !accepting && !IsRunning && current() &&
         reviewEnd is VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop &&
         Rows.FirstOrDefault(row => row.Id == id) is { Selectable: true, HasJoinAdvisory: true } && takes?.Scratch(id)?.IsValid == true;
+    /// <summary>Use anyway shows only where it can act (Mac smokereal): a passing take whose join still needs listening, not the
+    /// take already used, and only when some video duration can carry it.</summary>
+    internal bool UseAnywayCanAct(VoiceLabTakeRow row) => row.Selectable && row.RequiresJoinAdvisoryAcceptance && row.Id != SelectedTakeId && DurationAvailable(row);
+    internal bool ShowsUseAnyway(Guid id) => CanUseTakeAnyway(id) && Rows.FirstOrDefault(row => row.Id == id) is { } row && UseAnywayCanAct(row);
     internal string KeepSourceCopy => VideoOptions?.UnchangedUnavailableReason ??
         (VideoOptions is { AddedPauseSeconds: > 0 } options
             ? $"Adds {options.AddedPauseSeconds.ToString("F1", CultureInfo.InvariantCulture)} s of natural pauses in your room's sound. Speech keeps its pace."

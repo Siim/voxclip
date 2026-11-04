@@ -262,7 +262,7 @@ internal sealed partial class RewritePanel
             ToolTipService.SetToolTip(buttons.Play, generation.Audition?.UnavailableReason ?? (content.Selectable && playing ? content.PauseName : content.PlayHelp));
             if (buttons.Reject is { } reject) reject.IsEnabled = !generation.IsRunning;
             if (advisoryButtons.TryGetValue(row.Id, out var useAnyway))
-                useAnyway.IsEnabled = generation.CanUseTakeAnyway(row.Id);
+                useAnyway.Visibility = generation.ShowsUseAnyway(row.Id) ? Visibility.Visible : Visibility.Collapsed;
         }
     }
 }

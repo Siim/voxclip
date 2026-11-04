@@ -282,6 +282,8 @@ public sealed class RewriteAutoFixTests
     {
         internal VoiceLabTakeInput? Input;
         internal int Sends;
+        /// <summary>The take's voice score by run; passing takes score 1 and failed ones 0.2 without it.</summary>
+        internal Func<int, double>? Score { get; init; }
         private VoiceLabTakeRunQuote? pending;
         public Task<VoiceLabTakeRunQuote> PrepareAsync(VoiceLabTakeInput input, CancellationToken ct = default)
         {
@@ -314,7 +316,7 @@ public sealed class RewriteAutoFixTests
             var receipt = new VoiceLabReceipt("elevenlabs", ElevenLabsRegion.Default, "fixture", input.ModelId, "voice",
                 quote.Takes[0].Synthesis.Review.RequestId, null, null, input.Pace);
             var row = new VoiceLabTakeRow(receipt.ActionId, 0, 42, receipt, Quote: quote.Takes[0],
-                Audio: new(48_000, trimmed, [], 0, trimmed.Length, [], 0, null, fit), Qa: qa, Score: qa.Failures.Count == 0 ? 1 : .2);
+                Audio: new(48_000, trimmed, [], 0, trimmed.Length, [], 0, null, fit), Qa: qa, Score: Score?.Invoke(Sends) ?? (qa.Verdict == VoiceLabTakeQaVerdict.Failed ? .2 : 1));
             if (progress is not null) await progress([row]);
             return new([row], VoiceLabTakeRunEnd.Completed);
         }

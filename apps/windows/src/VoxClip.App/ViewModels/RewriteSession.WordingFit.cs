@@ -71,6 +71,7 @@ internal sealed partial class RewriteSession
     /// <summary>The row note after the rounds: reworded with before/after estimates, or kept as recorded.</summary>
     internal string? FitRowNote(int ordinal)
     {
+        if (VoicedOrdinals.Contains(ordinal)) return null;
         if (heldBack.Contains(ordinal) && priceOverrides.Contains(ordinal)) return HeldBackNote(ordinal);
         if (fitKept.Contains(ordinal))
             return $"kept your original words · {EditingFormat.ToFixed1(fitInitialSlots.GetValueOrDefault(ordinal))} s is too short to re-voice";

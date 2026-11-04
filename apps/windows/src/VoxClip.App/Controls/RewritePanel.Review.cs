@@ -128,7 +128,7 @@ internal sealed partial class RewritePanel
                 AutomationProperties.SetAutomationId(note, "Rewrite.FitNote" + ordinal);
                 reviewElements.Add(note); row.Children.Add(note);
             }
-            if (included && voiceHunk?.Fit is { } fit)
+            if (included && voiceHunk?.Fit is { } fit && session.ShowsEstimate(ordinal))
             {
                 var timing = Small(fit.Copy);
                 reviewElements.Add(timing);
@@ -167,7 +167,7 @@ internal sealed partial class RewritePanel
         if (current.VoiceHunks.Count > 0)
         {
             review.Children.Add(Small(ExpressionNote));
-            review.Children.Add(Small(session.ReviewFooter));
+            if (session.ReviewFooter.Length > 0) review.Children.Add(Small(session.ReviewFooter));
         }
         if (current.Summary is { } summary) review.Children.Add(Small(summary.Copy));
         if (current.Budget.Copy is { } budget) review.Children.Add(Small(budget));

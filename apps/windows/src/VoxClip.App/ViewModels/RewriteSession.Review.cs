@@ -46,14 +46,25 @@ internal sealed partial class RewriteSession
     private readonly HashSet<int> priceOverrides = [];
     private IReadOnlyList<VoiceLabAudioTag> audioTags = [];
     internal IReadOnlyList<RewriteHunkReview> PricedVoiceHunks => Review?.VoiceHunks.Where(CanPriceHunk).ToArray() ?? [];
-    internal IReadOnlyList<RewriteHunkReview> BlockedVoiceHunks => Review?.VoiceHunks.Where(hunk => hunk.Fit is { Fits: false } && !CanPriceHunk(hunk)).ToArray() ?? [];
+    internal IReadOnlyList<RewriteHunkReview> BlockedVoiceHunks => Review?.VoiceHunks.Where(hunk => hunk.Fit is { Fits: false } && !CanPriceHunk(hunk) &&
+        !hunk.Ordinals.All(VoicedOrdinals.Contains)).ToArray() ?? [];
+    /// <summary>Mac <c>voicedOrdinals</c>: changes whose phrase has a selected passing take that fits by length (keep source or a
+    /// cut), made for the phrase's wording now. Such a change is never held back by a re-estimate (a new speaking-rate
+    /// calibration), and its row shows no estimate or recovery.</summary>
+    internal IReadOnlySet<int> VoicedOrdinals => generationWindows.Select((window, index) => (Window: window, Hunk: PricedVoiceHunks.ElementAtOrDefault(index), Index: index))
+        .Where(item => item.Hunk is not null && !item.Window.LeftOut && item.Window.Selected is { Selectable: true } selected && item.Window.LengthFits(selected) &&
+            item.Window.InputFor(selected.Id)?.Text == (measuredWording.GetValueOrDefault(item.Index) ?? item.Hunk.PatchText))
+        .SelectMany(item => item.Hunk!.Ordinals).ToHashSet();
+    /// <summary>Whether change <paramref name="ordinal"/>'s row shows its estimate and length recovery: not once it is voiced.</summary>
+    internal bool ShowsEstimate(int ordinal) => !VoicedOrdinals.Contains(ordinal);
     internal string FitFooter => BlockedVoiceHunks.Count is var count && count > 0
         ? BlockedVoiceHunks.Any(hunk => hunk.Fit is { TooLong: false })
             ? count == 1 ? "1 phrase needs wording that fits." : $"{count} phrases need wording that fits."
             : count == 1 ? "1 phrase needs a shorter wording." : $"{count} phrases need a shorter wording."
         : "Nothing paid yet.";
     /// <summary>The review footer: the fitted summary once automatic rounds fit every phrase, otherwise the fit status.</summary>
-    internal string ReviewFooter => WordingFitCompleted && BlockedVoiceHunks.Count == 0 && PricedVoiceHunks.Count > 0 ? FitFittedFooter : FitFooter;
+    /// <summary>Only before paid takes: after them the takes footer names the next step.</summary>
+    internal string ReviewFooter => HasPaidTakes ? "" : WordingFitCompleted && BlockedVoiceHunks.Count == 0 && PricedVoiceHunks.Count > 0 ? FitFittedFooter : FitFooter;
     /// <summary>Ask for longer: fit the phrases outside their slots again, with the same consent rules as a reply.</summary>
     internal Task AskForLongerAsync()
     {
