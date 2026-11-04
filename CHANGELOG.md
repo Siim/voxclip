@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Stuck Rewrite phrases offer one-click fixes, some suggested by the AI, without starting over.
 - Clips in the sidebar show Rewrite and More buttons.
 - Rewrite rewords phrases until they fit your video, and new phrases use Eleven v4.
 - A laugh, sigh or pause at the start or end of a phrase is kept whole at the join, and the word check no longer trips on transcribed laughter.

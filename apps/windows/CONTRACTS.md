@@ -1,5 +1,24 @@
 # Windows fixed contracts
 
+### 2026-11-04 — Rewrite next steps: shared contract; Windows twin owed
+
+- **Shared changes.**
+  - `voice-rewrite.json` and `patch-rewrite.json` are now `promptVersion` 3, with the optional `nextActions: [{label, instruction, ordinals?}]` in both reply schemas.
+  - New `rewrite-next-actions.json` (version 1) holds the feedback templates.
+  - New fixture `rewrite-next-actions-cases.json` (`voxclip-voice-lab-next-actions-cases/1`, 22 cases: parsing, feedback, landing).
+  - Regenerated voice/patch/CLI LLM fixtures.
+- **Windows change.** Only the `PromptIsThePatchEditsSchemaWithTheBadgeCopy` expectation, now version 3 with the optional field. Windows Core reads the schema from the shared prompt and ignores the field.
+- **Owed twin (voice-lab.md §8.2.1).**
+  - Parse at most 4 valid next actions with the same drop rules.
+  - Render scoped and open feedback from the shared templates only.
+  - Land a scoped reply with `RewriteScopedReply`'s overlap rules, freezing every other change.
+  - Next-step chips in each stuck state, with ✦ for AI suggestions and the free-text field.
+  - "Asking {AI}: “{label}”" with Stop.
+  - The advisory voice budget with [Re-voice all {v}].
+  - Strict HTTP shaping of the optional field.
+  - Keep the paid-take inline confirmation.
+- **Verification.** Release Core: 2,924 total, 2,895 passed, 29 skipped. Release win-ui: 1,152 total, 1,147 passed, five skipped. Zero failures. No shipping allowlist changed. These portable checks do not prove native Windows behaviour.
+
 ### 2026-11-04 — Automatic wording-fit shared contract; Windows twin owed
 
 - **Verification.** Release Core: 2,920 total, 2,891 passed, 29 skipped. Release win-ui: 1,142 total, 1,137 passed, five skipped. Both have zero failures. Core/UI Release builds and the App typecheck have zero warnings/errors. No shipping allowlist changed, so no ReleaseSurrogate update is needed. These portable checks do not prove native Windows behavior or UI parity.

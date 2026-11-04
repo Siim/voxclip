@@ -1,5 +1,49 @@
 # macOS implementation contracts
 
+### 2026-11-04 — Rewrite never dead-ends: next-step chips and the advisory voice budget
+
+- **Built.** Every stuck state of the Rewrite panel shows a `.nextSteps` card: chips that wrap at any width, plus "Tell the AI what to do instead…". The states:
+  - over the voice budget;
+  - a phrase still not fitting after the automatic rounds (its row keeps its own recovery buttons);
+  - a phrase whose takes all failed checks;
+  - a refused surrounding sentence;
+  - R1x with a message error;
+  - R3 and a late or stopped re-ask.
+
+  Built-in chips call existing actions only: Re-voice all, Change fewer words, Keep text fixes only, Keep original words, Price it anyway, Try another, Back to the changes, Ask again. AI chips (✦) come from the reply's optional `nextActions`.
+- **Budget.** It is advisory. The callout reads "These changes re-voice {v} words, a lot for a {n}-word clip. Long stretches in your voice can sound stitched." [Re-voice all {v}] sets `reasking.budgetAccepted`, after which the footer is the in-budget one. A new reply resets it. `overBudget` is replaced by `voiceBudget` / `voiceBudgetBlocks`. `prepareTakes` and `makeTakes` honour the acceptance. Disclosure, AI MODIFIED and paid approval are unchanged.
+- **Re-ask.** An AI chip, Change fewer words and the field go through `EditorModel.sendRewriteAgain(_:reask:)` → `RewriteSession.reask`:
+  - It sends the session's own Rewrite request (same instruction and connector) with scoped feedback from `shared/prompts/rewrite-next-actions.json`, through the usual consent route and with its own LLM lease.
+  - `RewriteScopedReply.assign` lands only the asked phrases (replace, keep original or conflict). Every other change, its review state, popover edit, quote and take stays. `applyReask` rebuilds the review once.
+  - The running state is "Asking {AI}: “{label}”" with Stop; the list is locked and takes cannot start.
+  - Stop, an edit, a connector change or a stale reply change nothing and offer Ask again.
+  - Paid takes go through `confirmPaidProposalChange` first.
+  - Whole-scope runs from R1x and R3 use the open feedback block through the existing `sendRewriteAgain(_:instruction:feedback:)`.
+- **Core / shared.**
+  - `RewriteNextAction.parse`: at most 4 entries, bad entries dropped.
+  - `RewriteNextActionFeedback`: renders the feedback.
+  - `RewriteScopedReply`: lands a scoped reply.
+  - `VoiceRewriteProposal` / `PatchRewriteProposal` gain `nextActions`.
+  - `CanonicalResponseParser.validate` also returns per-key `dropped`, so patch `malformedItems` still counts only edits.
+  - Voice and patch prompts are now version 3 with the optional field; strict shaping makes it required.
+  - The LLM fixtures were regenerated deliberately, and `gen.mjs` self-checks the new schema.
+  - The new independent `generate_next_actions.py` writes `rewrite-next-actions-cases.json` (22 cases, its own schema id, on check_drift's EXACT list).
+- **Replaced / deleted.** The blocking budget footer and its old copy, replaced in place. `send()` now shares `reply(_:connector:accept:)` with the re-ask, and `showReplyInTranscript` shares `transcriptChange(_:ordinal:)`. `ExpressionFlow` and `PanelButtonEvidence` are now internal so the chips reuse them. No files are deleted and no duplicate path is left.
+- **Verification.**
+  - Regression evidence: restoring the old behaviour (a blocking budget, an unscoped landing, no paid guard on a re-ask, an uncapped parser) fails the 4 key tests with 11 issues.
+  - Core: 1,157 tests in 106 suites pass, plus 2 known issues.
+  - App: APP_COUNTS.
+  - Media: MEDIA_COUNTS, including `MacUIIntegrationTests/rightColumnLayout`. The `rewrite-budget` and `rewrite-takes-none-passed` audit variants now draw ✦ chips at 300–560 pt.
+  - All 38 Voice Lab generators, `check_drift.py`, the LLM fixture check and `git diff --exit-code` on generated files pass.
+  - Windows Release Core: 2,924 total, 2,895 passed, 29 skipped. win-ui: 1,152 total, 1,147 passed, 5 skipped.
+- **Owed / next.**
+  - The Windows twin: parsing, feedback, landing, chips and the advisory budget. Its prompt-version test expectation is updated.
+  - Real-window `-uiSelfTest`, `-sceneAudit`, documentScene and VoiceOver acceptance of the chips.
+  - The passage-only (pre-v2) panel still refuses over the budget.
+  - First replies seldom carry suggestions (the prompt asks only when feedback names a blocked phrase), so ✦ chips mostly appear after a re-ask.
+  - A reply that merges an asked phrase into a frozen one is refused for that phrase rather than widening it.
+  - Preserve `takePlanOrdinals` in `DebugRewriteGeneration.install` when merging the takes-panel lane.
+
 ### 2026-11-04 — Visible sidebar clip Rewrite and More actions
 
 - **Built.** A kept clip row shows trailing 22×20 borderless ✦ and ⋯ controls while selected, hovered or keyboard-focused. They replace the duration, not the AI-voice waveform. Rewrite uses the existing `canRewriteExplorerClip` / `rewriteExplorerClip` route, the clip number and “Rewrite Clip {n} (⇧⌘R)” help. More uses `ExplorerClipMenu`, exactly like right-click; there is still one menu definition. Titles keep tail truncation. Suggested rows retain their duration, Keep/Dismiss bar and context/accessibility actions, with no new buttons.
