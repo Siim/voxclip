@@ -32,7 +32,7 @@ import Testing
         let editor = try #require(shell.editor)
         editor.mediaResolved = true
         editor.refresh()
-        #expect(app.styles.count == 19)
+        #expect(app.styles.count == 26)
         return (shell, editor)
     }
     /// `content` laid out offscreen at `size`, settled until every tile and the property rows are placed.
@@ -42,7 +42,7 @@ import Testing
         for _ in 0..<200 {
             host.layoutSubtreeIfNeeded()
             let markers = DebugRightColumn.markers(in: host)
-            if markers.keys.filter({ $0.hasPrefix("caption.image.") }).count == 19, markers["captions.property.fineTune"] != nil { break }
+            if markers.keys.filter({ $0.hasPrefix("caption.image.") }).count == 26, markers["captions.property.fineTune"] != nil { break }
             await Task.yield()
         }
         host.layoutSubtreeIfNeeded()
@@ -196,9 +196,9 @@ import Testing
         let markers = DebugRightColumn.markers(in: view), texts = DebugRightColumn.texts(in: view)
         let order = CaptionsSection.galleryOrder(editor.app.styles)
         #expect(order.map(\.order) == order.map(\.order).sorted())
-        #expect(order.first?.id == "vox-bold" && order.last?.id == "vhs")
+        #expect(order.first?.id == "vox-bold" && order.last?.id == "minimal")
         let tiles = markers.filter { $0.key.hasPrefix("caption.image.") }
-        #expect(tiles.count == 19)
+        #expect(tiles.count == 26)
         let placed = tiles.sorted { ($0.value.minY, $0.value.minX) < ($1.value.minY, $1.value.minX) }.map { String($0.key.dropFirst("caption.image.".count)) }
         #expect(placed == order.map(\.id))
         for style in order { #expect(texts["caption.name.\(style.id)"] == style.name) }

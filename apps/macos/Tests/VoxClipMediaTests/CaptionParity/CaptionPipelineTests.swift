@@ -47,7 +47,7 @@ struct CaptionPipelineTests {
         let shared = try CaptionMediaFixtures.shared(), resources = try CaptionResources.load(shared: shared)
         let pipeline = try CaptionPipeline(shared: shared), shaper = CoreTextShaper(shared: shared)
         let library = try CaptionStyleLibrary(shared: shared)
-        #expect(library.styles.count == 19)
+        #expect(library.styles.count == 26)
         #expect(library.styles.map(\.order) == library.styles.map(\.order).sorted())
         #expect(library.style(id: "off") == nil)
         var mismatches = 0
