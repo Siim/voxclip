@@ -115,6 +115,7 @@ extension RewriteSession {
                 editor.llmRuns.release(lease)
                 if wordingFit.token == token {
                     wordingFit.running = false; wordingFit.completed = true; wordingFit.lease = nil
+                    if let plan = takePlan { applyPendingExpressions(plan) }
                     if current { showProposal() }
                 }
             }
@@ -170,6 +171,7 @@ extension RewriteSession {
     func observeMeasuredTakes(_ plan: ClipTakePlan) {
         guard current, takePlan === plan, !plan.generating, !plan.preparing, !plan.publishing else { return }
         autoChooseVideo(plan)
+        applyPendingExpressions(plan)
         if let suggestion = wordingFit.measured,
            !plan.phrases.indices.contains(suggestion.phrase) || plan.phrases[suggestion.phrase].selectedID != suggestion.selection {
             wordingFit.token = UUID()
@@ -307,14 +309,14 @@ extension RewriteSession {
         }
     }
 
-    /// A selected passing take whose length allows exactly one video duration gets it chosen (design.md R2): the
-    /// phrase card then reads it as one line, with nothing to choose.
+    /// A selected passing take gets a video duration chosen (design.md R2): the only valid one, or the first of keep
+    /// source, cut and match. The phrase card reads it as one line, with Change when another is valid, so Use is the
+    /// one action left.
     func autoChooseVideo(_ plan: ClipTakePlan) {
         var prepare = false
         for phrase in plan.phrases where phrase.videoChoice == nil && !plan.lipsync.blocksMutation(phrase.id) {
-            let valid = plan.validVideoChoices(phrase: phrase.id)
-            guard valid.count == 1, let only = valid.first, plan.chooseVideo(only, phrase: phrase.id) else { continue }
-            prepare = prepare || only != .source
+            guard let first = plan.validVideoChoices(phrase: phrase.id).first, plan.chooseVideo(first, phrase: phrase.id) else { continue }
+            prepare = prepare || first != .source
         }
         if prepare { Task { [weak plan] in await plan?.prepareVideoChoices(); await plan?.lipsync.refresh() } }
     }

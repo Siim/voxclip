@@ -70,6 +70,12 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         var listsDialogue = false
         /// Each synthesis request's `model_id`, in order.
         var models: [String] = []
+        /// A synthesis duration by request text, over `duration`.
+        var durations: [String: Double] = [:]
+        /// The first this many word checks hear "wrong".
+        var failFirstQA = 0
+        /// Words the echoing word check writes as another word, as Scribe writes "Claude" as "cloud".
+        var heardAs: [String: String] = [:]
     }
     static let state = Mutex(State())
     override class func canInit(with request: URLRequest) -> Bool { true }
@@ -98,7 +104,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
                 let pace = (body["voice_settings"] as? [String: Any])?["speed"] as? Double ?? 1
                 let duration = Self.state.withLock { state in
                     state.paces.append(pace)
-                    state.texts.append(text); state.seeds.append(seed); state.models.append(model); return state.duration
+                    state.texts.append(text); state.seeds.append(seed); state.models.append(model); return state.durations[text] ?? state.duration
                 }
                 let variance = Self.state.withLock { $0.amplitudeVariance }
                 let silent = Self.state.withLock { $0.silentSynthesis }
@@ -126,10 +132,11 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
                 data = try JSONSerialization.data(withJSONObject: reply)
             case ("POST", "/v1/speech-to-text"):
                 let state = Self.state.withLock { state in state.qa += 1; return state }
-                let word = state.failQA ? "wrong" : "Hello"
+                let failing = state.failQA || state.qa <= state.failFirstQA
+                let word = failing ? "wrong" : "Hello"
                 if state.malformedQA { data = Data(#"{"language_code":"eng"}"#.utf8) }
                 else {
-                    let words = state.echoQA ? (state.texts.last ?? word).split(separator: " ").map(String.init) : [word]
+                    let words = state.echoQA && !failing ? (state.texts.last ?? word).split(separator: " ").map { state.heardAs[String($0)] ?? String($0) } : [word]
                     let stride = (state.duration - 0.2) / Double(words.count)
                     let timed = words.enumerated().map { index, text in
                         ["type": "word", "text": text, "start": 0.1 + Double(index) * stride,
@@ -1455,7 +1462,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         let first = try #require(pendingPlan)
         #expect(first.phrases.count == 1 && session.takePlanOrdinals == [2])
         session.showProposal()
-        #expect(session.task.footer.note?.hasPrefix("1 phrase needs a shorter wording.") == true)
+        #expect(session.task.footer.note?.hasPrefix("Change 1 needs a shorter wording before takes.") == true)
         #expect(session.task.footer.note?.contains("ElevenLabs with your key") == true)
         session.phraseTimingAction(.priceAnyway, ordinal: 1)
         await generation.finishQuotePreparationForTests()
@@ -1535,13 +1542,13 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         await session.takesTask?.value
         session.updateAudioTags([.init(beforeToken: 1, tag: "sighs")], ordinal: 3)
         await session.takesTask?.value
-        let phrase = try #require(session.takePlan?.phrases.first)
+        let plan = try #require(session.takePlan)
+        let phrase = try #require(plan.phrases.first)
         #expect(phrase.audioTags.map(\.tag) == ["laughs", "sighs"])
+        // On the takes panel the merged phrase's own tags change, in its plan; the other tag stays where it was.
         session.updateAudioTags(Array(phrase.audioTags.dropFirst()), phrase: phrase)
         await session.takesTask?.value
-        #expect(session.changes[1].hunk.audioTags.isEmpty)
-        #expect(session.changes[2].hunk.audioTags == [.init(beforeToken: 1, tag: "sighs")])
-        #expect(session.takePlan?.phrases.first?.audioTags.map(\.tag) == ["sighs"])
+        #expect(session.takePlan === plan && plan.phrases[0].audioTags == Array(phrase.audioTags.dropFirst()))
     }
 
     @Test(arguments: ["price", "original", "keepVoice", "undoVoice", "keepFree", "undoFree", "keepAll", "edit", "tag"])
@@ -2279,6 +2286,230 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         generation.chooseVoice(nil); await generation.finishQuotePreparationForTests()
         #expect(session.takePlan === fixture.plan && session.hasPaidTakes && !fixture.plan.stillCurrent)
         #expect(generation.problem.contains("Your paid takes are kept") && ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
+    }
+
+    // MARK: Automatic fixes (RewriteAutoFix.swift, design.md R2 "Automatic fixes")
+
+    /// Approves Get Price as the user does: the footer's priced Make Takes, then its inline confirmation if it asks.
+    private func approvePrice(_ session: RewriteSession) throws {
+        let action = try #require(session.pricedTakeAction(), "\(session.task.footer)")
+        action.perform()
+        if let confirm = session.task.confirm { confirm.confirm.perform() }
+    }
+    /// Waits until takes, automatic steps and measured rewords are all done.
+    private func settle(_ session: RewriteSession) async {
+        for _ in 0..<200 {
+            if let task = session.takesTask { await task.value }
+            if let work = session.autoFix.work { await work.value; continue }
+            if let work = session.wordingFit.measuredWork { await work.value; continue }
+            await Task.yield()
+            if session.autoFix.work == nil, session.wordingFit.measuredWork == nil, !session.takesBusy { return }
+        }
+    }
+
+    /// Every take too long and failing its word check (MVP13's dead end, cause a): with no take selected the measured
+    /// reword still runs from the closest take, and a take of the new wording is made with no click; Use is all that's left.
+    @Test func allTakesTooLongAreRewordedAndRetakenWithNoClick() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let connector = MeasuredFitConnector()
+        let (editor, session) = try await productionSession(fixture, rewriteConnector: connector); defer { editor.close() }
+        let plan = try #require(session.takePlan)
+        let first = plan.phrases[0].text
+        ClipTakeHTTP.state.withLock { $0.durations[first] = $0.duration + 5; $0.failQA = false; $0.failFirstQA = 1 }
+        #expect(session.task.footer.note?.contains("Automatic fixes may spend up to $0.10 more.") == true, "\(session.task.footer)")
+        try approvePrice(session)
+        await settle(session)
+        #expect(await connector.requests.count == 1)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts } == [first, "Corrected Welcome today"])
+        #expect(plan.phrases[0].takes.count == 2 && plan.phrases[0].selected?.row.selectable == true)
+        #expect(plan.phrases[0].selected?.number == 2 && session.autoFix.rounds[0] == 1 && session.autoFix.lines.isEmpty)
+        #expect(session.task.footer.primary?.id == "useTakes", "\(session.task.footer)")
+        #expect(session.task.headline.sub == "Listen, pick a take, then use them.")
+    }
+
+    /// A failed word check gets one automatic Try another; its passing take is chosen with no click.
+    @Test func aFailedWordCheckTriesAnotherTakeWithNoClick() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture, rewriteConnector: MeasuredFitConnector()); defer { editor.close() }
+        let plan = try #require(session.takePlan)
+        ClipTakeHTTP.state.withLock { $0.failFirstQA = 1 }
+        try approvePrice(session)
+        await settle(session)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count } == 2)
+        #expect(plan.phrases[0].takes.count == 2 && plan.phrases[0].selected?.number == 2)
+        #expect(session.autoFix.triedAnother == [0] && session.task.footer.primary?.id == "useTakes",
+            "\(session.autoFix.rounds) \(plan.phrases[0].takes.map { "\($0.number) \($0.row.selectable) \(String(describing: $0.row.failure)) \(String(describing: $0.row.voiceCheck))" })")
+    }
+
+    /// MVP13 (cause b): Scribe spells a replacement word as the word it sounds like. The take passes; nothing is fixed.
+    @Test func aHomophoneOfTheAskedWordPassesWithNoRetry() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture, rewriteConnector: MeasuredFitConnector()); defer { editor.close() }
+        let plan = try #require(session.takePlan)
+        ClipTakeHTTP.state.withLock { $0.heardAs = ["Hello": "Hallo"] }
+        try approvePrice(session)
+        await settle(session)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count } == 1)
+        #expect(plan.phrases[0].selected?.row.selectable == true && session.autoFix.rounds.isEmpty)
+    }
+
+    /// Three rounds per phrase, then its original words: every paid take stays listed, nothing is discarded, the summary
+    /// says so with Undo, and the footer's Apply completes the Rewrite with the text fix.
+    @Test func afterThreeRoundsThePhraseKeepsItsOriginalWordsAndApplyCompletes() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture, rewriteConnector: MeasuredFitConnector()); defer { editor.close() }
+        let plan = try #require(session.takePlan)
+        ClipTakeHTTP.state.withLock { $0.failQA = true }
+        try approvePrice(session)
+        await settle(session)
+        #expect(session.autoFix.rounds[0] == RewriteAutoFixState.maximumRounds && session.autoFix.gaveUp == [0])
+        #expect(plan.phrases[0].leftOut && plan.phrases[0].selectedID == nil && !plan.isRetired && session.takePlan === plan)
+        let made = ClipTakeHTTP.state.withLock { $0.texts.count }
+        #expect(plan.phrases[0].takes.count == made && made >= 2, "\(made) synthesized, \(plan.phrases[0].takes.count) listed")
+        let kept = try #require(session.task.nextSteps.first { $0.id == "kept.0" })
+        #expect(kept.line == "Phrase 1 kept your original audio after 3 tries." && kept.chips.first?.action.title == "Undo")
+        let apply = try #require(session.task.footer.primary)
+        #expect(apply.id == "apply" && apply.title == "Apply 1 text fix", "\(session.task.footer)")
+        apply.perform()
+        #expect(!session.isOpen && editor.openRewrite == nil, "\(String(describing: editor.proposal?.changes.map { "\($0.ordinal) \($0.state) \($0.isFree)" })) \(session.task.state)")
+    }
+
+    /// The cap: the next automatic step past max($0.10, the price) waits for [Keep fixing · ≈ $y], which goes on.
+    @Test func theSpendingCapStopsAutomaticFixesUntilKeepFixing() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture, rewriteConnector: MeasuredFitConnector()); defer { editor.close() }
+        let plan = try #require(session.takePlan)
+        ClipTakeHTTP.state.withLock { $0.failFirstQA = 1 }
+        try approvePrice(session)
+        session.autoFix.allowance = 0
+        await settle(session)
+        let cap = try #require(session.autoFix.capped)
+        #expect(cap.phrase == 0 && ClipTakeHTTP.state.withLock { $0.texts.count } == 1 && !session.autoFix.running)
+        let keep = try #require(session.task.footer.primary)
+        #expect(keep.id == "keepFixing" && keep.title.hasPrefix("Keep fixing") && keep.priced, "\(keep.title)")
+        keep.perform()
+        await settle(session)
+        #expect(session.autoFix.capped == nil && ClipTakeHTTP.state.withLock { $0.texts.count } == 2)
+        #expect(plan.phrases[0].selected?.number == 2 && session.autoFix.spent > 0)
+    }
+
+    /// AI sends billed to a key count against the cap; a local or subscription AI's do not.
+    @Test(arguments: [false, true]) func billedAISendsCountTowardTheCap(billed: Bool) async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let connector = MeasuredFitConnector(id: billed ? .anthropic : .ollama)
+        let (editor, session) = try await productionSession(fixture, rewriteConnector: connector); defer { editor.close() }
+        #expect(session.sendAsksFirst == billed)
+        let plan = try #require(session.takePlan)
+        session.armAutoFix(plan)
+        let estimate = CostEstimate(provider: "anthropic", operation: "rewrite", units: 1, unit: "request", usd: Decimal(string: "0.04"), basis: "test")
+        #expect(session.autoFixChargeSend(estimate, phrase: 0))
+        #expect(session.autoFix.spent == (billed ? Decimal(string: "0.04")! : 0))
+        session.autoFix.spent = session.autoFix.allowance
+        #expect(session.autoFixChargeSend(estimate, phrase: 0) == !billed)
+        #expect((session.autoFix.capped != nil) == billed)
+    }
+
+    /// One Stop for the whole resolver: it keeps the takes made so far and the chips show.
+    @Test func stopKeepsTheTakesAndShowsTheChips() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture, rewriteConnector: MeasuredFitConnector()); defer { editor.close() }
+        let plan = try #require(session.takePlan)
+        ClipTakeHTTP.state.withLock { $0.failQA = true }
+        let barrier = ClipTakeBarrier()
+        var calls = 0
+        fixture.beforeProgress = { calls += 1; if calls == 2 { await barrier.pause() } }
+        try approvePrice(session)
+        await barrier.wait()
+        #expect(session.task.headline.stop?.id == "stopAutoFix", "\(session.task.headline)")
+        #expect(session.task.nextSteps.first { $0.id == "autofix" }?.line == "Fixing phrase 1: making a take…")
+        session.task.headline.stop?.perform()
+        barrier.resume()
+        await settle(session)
+        #expect(session.autoFix.stopped && session.takePlan === plan && !plan.phrases[0].takes.isEmpty)
+        #expect(session.task.nextSteps.contains { $0.id == "take.0" && $0.chips.contains { $0.action.id == "tryAnother.0" } })
+        #expect(session.task.nextSteps.compactMap(\.ask).count == 1)
+    }
+
+    // MARK: Expressions on a takes-panel phrase (design.md R2 "Expressions")
+
+    /// MVP13 (scope 3a): with paid takes an expression asked to discard every take, out of view. Now it changes that phrase
+    /// only: no confirmation, the plan and its takes stay, the old takes read "Before expression", a fresh quote is ready.
+    @Test func anExpressionWithPaidTakesKeepsThemAndRequotesOnlyThatPhrase() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture); defer { editor.close() }
+        let plan = try #require(session.takePlan)
+        await plan.start(approved: true, quoteID: plan.approvalID)
+        let takes = plan.phrases[0].takes.map(\.id)
+        #expect(!takes.isEmpty && session.hasPaidTakes)
+        let tags = [VoiceLabAudioTag(beforeToken: 1, tag: "laughs")]
+        session.updateAudioTags(tags, phrase: plan.phrases[0])
+        #expect(session.shownAudioTags(plan.phrases[0]) == tags)
+        await session.takesTask?.value
+        #expect(session.task.confirm == nil && session.takePlan === plan && !plan.isRetired)
+        #expect(plan.phrases[0].audioTags == tags && plan.phrases[0].takes.map(\.id) == takes)
+        #expect(plan.phrases[0].beforeExpression == Set(takes) && plan.phrases[0].selectedID == nil)
+        #expect(plan.approvalID != nil && session.takeQuotePhrase == 0)
+        // Removing it works the same way.
+        session.updateAudioTags([], phrase: plan.phrases[0])
+        await session.takesTask?.value
+        #expect(plan.phrases[0].audioTags.isEmpty && plan.phrases[0].takes.map(\.id) == takes && session.task.confirm == nil)
+    }
+
+    /// Scope 3b: a merged phrase gets the tag; a phrase whose hunks map to no change (a widened sentence) no longer
+    /// returns silently: the tag goes into the plan's phrase.
+    @Test(arguments: [false, true]) func anExpressionOnAMergedOrUnmappedPhraseIsAdded(unmapped: Bool) async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture, touchingVoices: true); defer { editor.close() }
+        let plan = try #require(session.takePlan)
+        let phrase = try #require(plan.phrases.first { $0.indices.count > 1 } ?? plan.phrases.first)
+        if unmapped { session.takePlanOrdinals = [] }
+        let tags = [VoiceLabAudioTag(beforeToken: 0, tag: "sighs")]
+        session.updateAudioTags(tags, phrase: phrase)
+        #expect(session.shownAudioTags(phrase) == tags)
+        await session.takesTask?.value
+        #expect(plan.phrases[phrase.id].audioTags == tags && session.task.confirm == nil && session.takePlan === plan)
+        // Nothing was paid yet: the whole set is priced again, so Get Price still covers every phrase.
+        #expect(plan.approvalID != nil && session.takeQuotePhrase == nil)
+    }
+
+    /// Scope 3c: while takes run the tag shows at once with a line saying why it waits, then it is applied.
+    @Test func anExpressionChosenWhileTakesRunIsShownThenApplied() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture); defer { editor.close() }
+        let plan = try #require(session.takePlan)
+        let tags = [VoiceLabAudioTag(beforeToken: 1, tag: "laughs")]
+        var shown: [VoiceLabAudioTag] = [], note: String?
+        fixture.beforeProgress = {
+            guard shown.isEmpty else { return }
+            session.updateAudioTags(tags, phrase: plan.phrases[0])
+            shown = session.shownAudioTags(plan.phrases[0]); note = session.autoFix.expressionNote[0]
+        }
+        await plan.start(approved: true, quoteID: plan.approvalID)
+        #expect(shown == tags && note == "The expression is added when the current takes finish.")
+        await session.takesTask?.value
+        #expect(plan.phrases[0].audioTags == tags && session.autoFix.expressionNote[0] == nil)
+    }
+
+    /// Scope 2: a single valid duration is chosen for the user; before a passing take the card's line says what's next.
+    @Test func aLoneValidDurationIsChosenAndWaitingSaysWhatIsNext() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture); defer { editor.close() }
+        let plan = try #require(session.takePlan)
+        #expect(session.phraseStatus(plan.phrases[0], plan: plan) == "Takes start after you approve the price.")
+        #expect(plan.validVideoChoices(phrase: 0).isEmpty)
+        await plan.start(approved: true, quoteID: plan.approvalID)
+        let valid = plan.validVideoChoices(phrase: 0)
+        #expect(!valid.isEmpty)
+        #expect(plan.phrases[0].videoChoice == valid[0])
+    }
+
+    /// Scope 2: the quote marks sit on the first and last words, so no space is left inside them.
+    @Test func theQuoteHasNoSpaceInsideItsMarks() {
+        let words = ["you're", "using", "your", "Claude"]
+        #expect(AudioTagPhrase.pieces(words: words, tags: [], caret: nil) == [.word(0, "“you're"), .word(1, "using"), .word(2, "your"), .word(3, "Claude”")])
+        let tagged = AudioTagPhrase.pieces(words: words, tags: [VoiceLabAudioTag(beforeToken: 3, tag: "laughs")], caret: nil)
+        #expect(tagged == [.word(0, "“you're"), .word(1, "using"), .word(2, "your"), .tag(0), .word(3, "Claude”")])
+        #expect(AudioTagPhrase.pieces(words: ["Hi"], tags: [VoiceLabAudioTag(beforeToken: 1, tag: "sighs")], caret: nil) == [.word(0, "“Hi"), .tag(0), .close])
     }
 }
 #endif

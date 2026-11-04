@@ -163,8 +163,9 @@ extension RewriteSession {
             surroundingSentenceOrdinal = nil
             speechContextProblem = RewriteSpeechContextReview.copy(error)
             speechContextRefusedOrdinals = [ordinal]
-            // Handled without a click: the changed words alone, a rewrite inside the change, or left out (RewriteAutoFix.swift).
-            Task { @MainActor [weak self] in self?.resolveRefusedContext() }
+            // Once automatic fixes are armed it is handled without a click: the changed words alone, a rewrite inside the
+            // change, or left out (RewriteAutoFix.swift). A manual try shows its acting chips instead.
+            if autoFix.armed { Task { @MainActor [weak self] in self?.resolveRefusedContext() } }
         }
     }
 

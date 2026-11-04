@@ -111,13 +111,15 @@ extension RewriteSession {
 
     static func firstTakeVerb(hasTakes: Bool) -> String { hasTakes ? "Try another" : "Make take" }
     static func priceTitle(_ count: Int) -> String { "Get Price · \(count) \(count == 1 ? "phrase" : "phrases")" }
-    static func shorterNote(_ count: Int) -> String {
-        count == 1 ? "1 phrase needs a shorter wording." : "\(count) phrases need a shorter wording."
+    /// The footer's line for changes the estimate holds back from takes. It names them, so it never reads as being about
+    /// a phrase whose takes failed (MVP13: "needs a shorter wording" beside "no take passed the checks").
+    static func shorterNote(_ ordinals: [Int]) -> String {
+        "\(changeNames(ordinals)) \(ordinals.count == 1 ? "needs" : "need") a shorter wording before takes."
     }
     var timingBlockedNote: String {
         let blocked = blockedVoiceOrdinals
-        if blocked.allSatisfy({ voiceReview($0)?.timing?.tooLong == true }) { return Self.shorterNote(blocked.count) }
-        return blocked.count == 1 ? "1 phrase needs wording that fits." : "\(blocked.count) phrases need wording that fits."
+        if blocked.allSatisfy({ voiceReview($0)?.timing?.tooLong == true }) { return Self.shorterNote(blocked) }
+        return "\(Self.changeNames(blocked)) \(blocked.count == 1 ? "needs" : "need") wording that fits before takes."
     }
 }
 

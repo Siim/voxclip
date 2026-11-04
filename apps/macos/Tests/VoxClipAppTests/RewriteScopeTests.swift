@@ -322,7 +322,7 @@ private final class WorkThreads: Sendable {
         try session.receivePassage(String(repeating: "collaboratively ", count: 8))
         session.finishRun(seconds: 0.1)
         #expect(session.includedVoice.isEmpty)
-        #expect(session.task.footer.note == "1 phrase needs a shorter wording.")
+        #expect(session.task.footer.note == "Change \(try #require(session.blockedVoiceOrdinals.first)) needs a shorter wording before takes.")
         #expect(session.task.footer.primary == nil)
     }
 
@@ -364,7 +364,7 @@ private final class WorkThreads: Sendable {
         let ordinal = try #require(session.blockedVoiceOrdinals.first)
         let timing = try #require(session.voiceReview(ordinal)?.timing)
         #expect(!timing.fits && !timing.tooLong)
-        #expect(session.task.footer.note == "1 phrase needs wording that fits.")
+        #expect(session.task.footer.note == "Change \(ordinal) needs wording that fits before takes.")
         #expect(session.task.footer.primary == nil)
         let recovery = PhraseTimingRecovery(tooLong: false, priceAnyway: true, action: { _ in })
         #expect(recovery.retryTitle == "Ask for longer")
@@ -1084,7 +1084,7 @@ extension RewriteScopeTests {
         await session.reasking.work?.value
         #expect(session.changes == before && !session.isReasking && !editor.llmRuns.isBusy)
         #expect(session.reasking.notice == "Stopped. Nothing changed.")
-        #expect(steps(session, "fit")?.chips.first?.action.id == "askAgain")
+        #expect(session.task.nextSteps.first?.chips.first?.action.id == "askAgain")
     }
 
     /// A chip that would discard paid takes asks first, inline, and sends nothing until Discard Changes.
@@ -1125,12 +1125,17 @@ extension RewriteScopeTests {
     @Test func everyStuckStateShowsNextSteps() async throws {
         let (session, _, editor) = try await nextStepsFixture()
         defer { editor.close() }
-        #expect(steps(session, "fit")?.ask != nil)
+        #expect(session.task.nextSteps.compactMap(\.ask).count == 1)
         session.speechContextProblem = RewriteSpeechContextReview.copy(RewriteSpeechContextReview.Failure.unsupported)
         session.speechContextRefusedOrdinals = [1]
         session.showProposal()
+        // MVP13 (cause d): the refusal names the change and acts; it no longer says to re-record.
         let context = try #require(steps(session, "context"))
-        #expect(context.chips.map(\.action.id).prefix(2) == ["keepOriginal", "priceAnyway"] && context.chips.contains { $0.suggested })
+        #expect(context.line?.hasPrefix("Change 1 at ") == true && context.line?.contains("Re-record") == false, "\(context.line ?? "")")
+        #expect(context.chips.map(\.action.id).prefix(2) == ["leaveOut.1", "changedWordsOnly.1"], "\(context.chips.map(\.action.id))")
+        #expect(context.chips.map(\.action.title).prefix(2) == ["Leave out this change", "Voice just the changed words"])
+        #expect(context.chips.contains { $0.suggested && $0.action.title == "Rewrite without changing the sentence around it" })
+        #expect(session.task.nextSteps.compactMap(\.ask).count == 1)
         context.chips[0].action.perform()
         #expect(session.ownProposal?[1]?.state == .excluded)
         session.fail(.message("The model returned no usable reply. Your edits are saved."))
@@ -1152,8 +1157,9 @@ extension RewriteScopeTests {
         let plan = try #require(steps(session, "plan"))
         #expect(plan.line == "Phrase 2 is too close to phrase 1 to voice separately.")
         // The reply's own suggestion for phrase 1 follows the built-in steps.
-        #expect(plan.chips.map(\.action.id) == ["keepOriginal", "mergePhrases", "suggestion.0"] && plan.chips[1].suggested && plan.ask != nil)
-        #expect(plan.chips.map(\.action.title) == ["Keep original words for 2", "Merge with phrase 1", "Say it in 6 words"])
+        #expect(plan.chips.map(\.action.id) == ["keepOriginal", "mergePhrases", "suggestion.0"] && plan.chips[1].suggested)
+        #expect(plan.chips.map(\.action.title) == ["Keep original words for phrase 2", "Merge with phrase 1", "Say it in 6 words"])
+        #expect(session.task.nextSteps.compactMap(\.ask).count == 1)
         #expect(session.task.footer.note == "Phrase 2 needs a fix above." && session.task.footer.primary == nil)
         let expected = try RewriteNextActionFeedback.merge(first: 1, second: 2, shared: try SharedResources.locate())
         await stub.configureRewrites([try reply("One merged and much shorter sentence")])
@@ -1202,7 +1208,7 @@ extension RewriteScopeTests {
         let plan = try #require(steps(session, "plan"))
         #expect(!plan.chips.isEmpty && plan.line == ClipTakePlan.copy(failure))
         #expect(session.task.footer.primary == nil && session.task.footer.note == session.takePlanBlocker)
-        if name == "geometry" { #expect(plan.chips.first?.action.title == "Keep original words for 1" && plan.ask != nil) }
+        if name == "geometry" { #expect(plan.chips.first?.action.title == "Keep original words for phrase 1" && session.task.nextSteps.compactMap(\.ask).count == 1) }
         if name == "stale" { #expect(plan.chips.contains { $0.action.id == "freshPrice" }) }
     }
 }
