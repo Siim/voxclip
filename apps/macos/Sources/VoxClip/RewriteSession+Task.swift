@@ -253,7 +253,9 @@ extension RewriteSession {
         var cards: [PanelCard] = []
         var footer = PanelFooter(note: sendLine, primary: tryAgain)
         switch error {
-        case .message(let text): cards = [.text(text)]
+        case .message(let text):
+            cards = [.text(text)]
+            if let steps = failureSteps { cards.append(.nextSteps(steps)) }
         case .signedOut(let cli, let command):
             cards = [.text("\(cli) isn't signed in. Run `\(command)` in Terminal and sign in, then choose Try Again.")]
         case .cliNetworkUnreachable(let cli, let detail):

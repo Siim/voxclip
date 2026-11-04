@@ -692,7 +692,9 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
             defer { try? FileManager.default.removeItem(at: fixture.root) }
             await fixture.plan.prepare()
             #expect(fixture.decoded == 0 && fixture.preparations == 0)
-        } catch { #expect(error as? ClipTakePlan.Failure == .placement(.geometry(.unknownWord("w999")))) }
+        } catch {
+            guard case .placement(.geometry(.unknownWord("w999")), _)? = error as? ClipTakePlan.Failure else { Issue.record("\(error)"); return }
+        }
         #expect(ClipTakeHTTP.state.withLock { $0.gets == 0 && $0.texts.isEmpty })
     }
 

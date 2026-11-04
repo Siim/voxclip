@@ -25,6 +25,11 @@ private actor ScopeStub: LLMConnector {
     func configureFit(_ replies: [String], hold: Bool = false) {
         fitReplies = replies; fitHold = hold; fitCalls = 0
     }
+    /// The passage replies the next `voice-rewrite` sends get, in order; `hold` makes the next one wait for `release()`.
+    private var rewriteReplies: [String] = []
+    private var holdNextRewrite = false
+    func configureRewrites(_ replies: [String], hold: Bool = false) { rewriteReplies = replies; holdNextRewrite = hold }
+    var rewriteRequests: [LLMRequest] { requests.filter { $0.tag == "voice-rewrite" } }
     private(set) var requests: [LLMRequest] = []
     init(id: ConnectorID = .ollama, authMethod: String? = nil, hold: Bool = false,
          reply: @escaping @Sendable ([RewriteFixtureReply.Line]) -> [Edit] = ScopeStub.cutFirstWord) {
@@ -40,7 +45,12 @@ private actor ScopeStub: LLMConnector {
     func contextTokens(model: String) -> Int? { 128_000 }
     func send(_ request: LLMRequest, model: String) async throws -> RawCompletion {
         requests.append(request)
-        if hold || (fitHold && request.tag == "voice-rewrite-fit") { await withTestDeadline { waiting = $0; arrivals.forEach { $0.resume() }; arrivals = [] } }
+        let holdsRewrite = holdNextRewrite && request.tag == "voice-rewrite"
+        if holdsRewrite { holdNextRewrite = false }
+        if hold || holdsRewrite || (fitHold && request.tag == "voice-rewrite-fit") { await withTestDeadline { waiting = $0; arrivals.forEach { $0.resume() }; arrivals = [] } }
+        if request.tag == "voice-rewrite", !rewriteReplies.isEmpty {
+            return RawCompletion(text: rewriteReplies.removeFirst(), model: model, stop: .complete)
+        }
         if request.tag == "voice-rewrite-fit", !fitReplies.isEmpty {
             let text = fitReplies[min(fitCalls, fitReplies.count - 1)]
             fitCalls += 1
@@ -995,6 +1005,205 @@ private final class WorkThreads: Sendable {
         await again.value
         #expect(app.rewriteSuggestions(for: editor.project.id).map(\.menuTitle).last == "Recent: “Shorter intro”")
         #expect(app.rewriteSuggestions(for: UUID().uuidString).count == 4, "recents belong to their project")
+    }
+}
+
+// MARK: Next steps (design.md R2 "Next steps", voice-lab.md §8.2.1)
+
+extension RewriteScopeTests {
+    /// Words 20–31 rewritten in two places: phrase 1 far too long for its slot, phrase 2 a short replacement.
+    private static let twoPhrases = (Array(repeating: "collaboratively", count: 8) + (22...29).map { "word\($0)" } + ["Other", "fresh", "words"])
+        .joined(separator: " ")
+    private func nextStepsFixture(_ connectorID: ConnectorID = .ollama) async throws -> (RewriteSession, ScopeStub, EditorModel) {
+        let stub = ScopeStub(id: connectorID)
+        let (app, _) = app(connectorID.rawValue, stub: stub)
+        let (editor, _) = try editor(app)
+        editor.selectedWordIDs = Set((20...31).map { "w\($0)" })
+        let session = try await rewrite(editor)
+        enableVoiceLab(app)
+        try session.receivePassage(Self.twoPhrases)
+        session.finishRun(seconds: 0.1)
+        session.reasking.suggestions = [RewriteNextAction(label: "Say it in 6 words", instruction: "Say phrase 1 in six words.", ordinals: [1])]
+        session.showProposal()
+        return (session, stub, editor)
+    }
+    private func steps(_ session: RewriteSession, _ id: String) -> NextSteps? { session.task.nextSteps.first { $0.id == id } }
+    private func reply(_ text: String, actions: [[String: Any]] = []) throws -> String {
+        let data = try JSONSerialization.data(withJSONObject: ["rewrite": text, "nextActions": actions])
+        return try #require(String(data: data, encoding: .utf8))
+    }
+    private func finish(_ session: RewriteSession, _ editor: EditorModel) async {
+        await editor.rewriteOpenTask?.value
+        await session.reasking.work?.value
+    }
+
+    /// A ✦ chip re-asks in the same session with its instruction as scoped feedback: only phrase 1 changes, phrase 2's
+    /// reply is ignored and its review (left out) stays, and the new reply's suggestions replace the old ones.
+    @Test func anAIChipReasksOnlyItsPhrasesAndFreezesTheRest() async throws {
+        let (session, stub, editor) = try await nextStepsFixture()
+        defer { editor.close() }
+        #expect(session.changes.count == 2 && session.blockedVoiceOrdinals.contains(1))
+        session.review(2, .undo)
+        let frozen = session.changes[1], frozenParts = session.ownProposal?[2]?.parts
+        let fit = try #require(steps(session, "fit"))
+        let chip = try #require(fit.chips.first { $0.suggested })
+        #expect(chip.action.title == "Say it in 6 words" && fit.ask?.placeholder == "Tell the AI what to do instead…")
+        let request = RewriteReask(label: "Say it in 6 words", instruction: "Say phrase 1 in six words.", ordinals: [1], reason: .fit)
+        let expected = try session.reaskFeedback(request, shared: try SharedResources.locate())
+        #expect(expected.contains("Phrase 1: it takes about") && !expected.contains("Phrase 2"))
+        let sentBefore = await stub.rewriteRequests.count
+        await stub.configureRewrites([try reply((["better", "words"] + (22...29).map { "word\($0)" } + ["Totally", "new", "ending"]).joined(separator: " "),
+            actions: [["label": "Drop 'better'", "instruction": "Drop the word better.", "ordinals": [1]], ["label": ""]])])
+        chip.action.perform()
+        await finish(session, editor)
+        let sent = await stub.rewriteRequests
+        #expect(sent.count == sentBefore + 1)
+        #expect(sent.last?.instruction.hasSuffix(expected) == true)
+        #expect(session.changes[0].hunk.newTokens == ["better", "words"])
+        #expect(session.changes[1] == frozen && session.ownProposal?[2]?.parts == frozenParts)
+        #expect(session.ownProposal?[2]?.state == .excluded && session.ownProposal?[1]?.state == .pending)
+        #expect(session.reasking.suggestions.map(\.label) == ["Drop 'better'"])
+        #expect(session.reasking.notice == "\(session.aiName) reworded phrase 1.")
+        #expect(session.isOpen && session.task.state != .running && !editor.llmRuns.isBusy)
+    }
+
+    /// While a re-ask runs the panel says "Asking {AI}: “{label}”" with Stop, and the list waits; Stop sends nothing more,
+    /// changes nothing and offers Ask again.
+    @Test func stopEndsAReaskWithNothingChanged() async throws {
+        let (session, stub, editor) = try await nextStepsFixture()
+        defer { editor.close() }
+        let before = session.changes
+        await stub.configureRewrites([try reply("short words")], hold: true)
+        try #require(steps(session, "fit")?.chips.first { $0.suggested }).action.perform()
+        await editor.rewriteOpenTask?.value
+        await stub.untilWaiting()
+        #expect(session.task.headline.text == "Asking \(session.aiName): “Say it in 6 words”")
+        #expect(session.task.wordingLocked && session.task.footer.primary == nil)
+        try #require(session.task.headline.stop).perform()
+        await stub.release()
+        await session.reasking.work?.value
+        #expect(session.changes == before && !session.isReasking && !editor.llmRuns.isBusy)
+        #expect(session.reasking.notice == "Stopped. Nothing changed.")
+        #expect(steps(session, "fit")?.chips.first?.action.id == "askAgain")
+    }
+
+    /// A chip that would discard paid takes asks first, inline, and sends nothing until Discard Changes.
+    @Test func aReaskOverPaidTakesConfirmsFirst() async throws {
+        let (session, stub, editor) = try await nextStepsFixture()
+        defer { editor.close() }
+        _ = try giveTake(session, editor: editor)
+        #expect(session.hasPaidTakes)
+        let sentBefore = await stub.rewriteRequests.count
+        await stub.configureRewrites([try reply(Self.twoPhrases)])
+        session.reask(RewriteReask(label: "Say it in 6 words", instruction: "Say phrase 1 in six words.", ordinals: [1], reason: .fit))
+        #expect(session.task.confirm?.question == "Discard these 2 changes?")
+        #expect(await stub.rewriteRequests.count == sentBefore && !session.isReasking)
+        try #require(session.task.confirm).cancel.perform()
+        #expect(session.hasPaidTakes && session.task.confirm == nil)
+        session.reask(RewriteReask(label: "Say it in 6 words", instruction: "Say phrase 1 in six words.", ordinals: [1], reason: .fit))
+        try #require(session.task.confirm).confirm.perform()
+        await finish(session, editor)
+        #expect(await stub.rewriteRequests.count == sentBefore + 1)
+        #expect(!session.hasPaidTakes)
+    }
+
+    /// "Tell the AI what to do instead…" re-asks the stuck phrases with the typed words, as a chip would.
+    @Test func freeTextReasksTheStuckPhrases() async throws {
+        let (session, stub, editor) = try await nextStepsFixture()
+        defer { editor.close() }
+        let blocked = session.blockedVoiceOrdinals
+        await stub.configureRewrites([try reply(Self.twoPhrases)])
+        try #require(steps(session, "fit")?.ask).submit("Use plain words and keep the name")
+        await finish(session, editor)
+        let instruction = try #require(await stub.rewriteRequests.last?.instruction)
+        #expect(instruction.contains("REQUESTED FIX") && instruction.contains("Use plain words and keep the name"))
+        for ordinal in blocked { #expect(instruction.contains("Phrase \(ordinal): ")) }
+    }
+
+    /// Every stuck state shows chips: a phrase that does not fit, a refused surrounding sentence, a failed Rewrite and
+    /// a stale reply; each one can act.
+    @Test func everyStuckStateShowsNextSteps() async throws {
+        let (session, _, editor) = try await nextStepsFixture()
+        defer { editor.close() }
+        #expect(steps(session, "fit")?.ask != nil)
+        session.speechContextProblem = RewriteSpeechContextReview.copy(RewriteSpeechContextReview.Failure.unsupported)
+        session.speechContextRefusedOrdinals = [1]
+        session.showProposal()
+        let context = try #require(steps(session, "context"))
+        #expect(context.chips.map(\.action.id).prefix(2) == ["keepOriginal", "priceAnyway"] && context.chips.contains { $0.suggested })
+        context.chips[0].action.perform()
+        #expect(session.ownProposal?[1]?.state == .excluded)
+        session.fail(.message("The model returned no usable reply. Your edits are saved."))
+        #expect(steps(session, "failure")?.ask != nil)
+        session.showChanged()
+        #expect(steps(session, "stale")?.ask != nil)
+    }
+
+    /// A refused takes plan is never a dead end (voice-lab.md §8.2.1): a collision names both phrases, the footer names the
+    /// blocker instead of a price, and ✦ Merge with phrase 1 re-asks both phrases and lands one merged phrase.
+    @Test func aCollisionNamesThePhrasesBlocksThePriceAndMergesInPlace() async throws {
+        let (session, stub, editor) = try await nextStepsFixture()
+        defer { editor.close() }
+        for ordinal in session.blockedVoiceOrdinals { session.pricedAnyway.insert(ordinal) }
+        session.showProposal()
+        session.takePlanOrdinals = [1, 2]
+        session.takePlanFailure = ClipTakePlan.Failure.placement(.collidesWithChange(0), index: 1)
+        session.showProposal()
+        let plan = try #require(steps(session, "plan"))
+        #expect(plan.line == "Phrase 2 is too close to phrase 1 to voice separately.")
+        // The reply's own suggestion for phrase 1 follows the built-in steps.
+        #expect(plan.chips.map(\.action.id) == ["keepOriginal", "mergePhrases", "suggestion.0"] && plan.chips[1].suggested && plan.ask != nil)
+        #expect(plan.chips.map(\.action.title) == ["Keep original words for 2", "Merge with phrase 1", "Say it in 6 words"])
+        #expect(session.task.footer.note == "Phrase 2 needs a fix above." && session.task.footer.primary == nil)
+        let expected = try RewriteNextActionFeedback.merge(first: 1, second: 2, shared: try SharedResources.locate())
+        await stub.configureRewrites([try reply("One merged and much shorter sentence")])
+        plan.chips[1].action.perform()
+        await finish(session, editor)
+        let instruction = try #require(await stub.rewriteRequests.last?.instruction)
+        #expect(instruction.contains(expected) && instruction.contains("Phrase 1: ") && instruction.contains("Phrase 2: "))
+        #expect(session.changes.count == 1 && session.ownProposal?.changes.map(\.ordinal) == [1])
+        #expect(session.changes[0].hunk.newTokens.joined(separator: " ") == "One merged and much shorter sentence")
+        #expect(session.takePlanFailure == nil && steps(session, "plan") == nil)
+        #expect(session.reasking.notice.contains("merged phrases 1, 2 into one phrase"))
+        #expect(session.task.footer.note != "Phrase 2 needs a fix above.")
+    }
+
+    /// Keep original words for the refused phrase resolves the collision in place: the footer prices the rest again.
+    @Test func keepingTheRefusedPhraseOriginalClearsTheBlocker() async throws {
+        let (session, _, editor) = try await nextStepsFixture()
+        defer { editor.close() }
+        for ordinal in session.blockedVoiceOrdinals { session.pricedAnyway.insert(ordinal) }
+        session.showProposal()
+        session.takePlanOrdinals = [1, 2]
+        session.takePlanFailure = ClipTakePlan.Failure.placement(.collidesWithChange(0), index: 1)
+        session.showProposal()
+        try #require(steps(session, "plan")?.chips.first).action.perform()
+        #expect(session.ownProposal?[2]?.state == .excluded && session.takePlanFailure == nil)
+        #expect(steps(session, "plan") == nil && session.task.footer.note != "Phrase 2 needs a fix above.")
+    }
+
+    /// Every other takes failure the panel can show has at least one chip that acts, and the footer names it.
+    @Test(arguments: ["stale", "noSelection", "spendingCap", "unknownSpend", "geometry"])
+    func everyTakesFailureHasAnActingChip(_ name: String) async throws {
+        let (session, _, editor) = try await nextStepsFixture()
+        defer { editor.close() }
+        for ordinal in session.blockedVoiceOrdinals { session.pricedAnyway.insert(ordinal) }
+        session.showProposal()
+        session.takePlanOrdinals = [1, 2]
+        let failure: ClipTakePlan.Failure = switch name {
+        case "stale": .stale
+        case "noSelection": .noSelection
+        case "spendingCap": .spendingCap
+        case "unknownSpend": .unknownSpend
+        default: .placement(.geometry(.roomToneUnavailable), index: 0)
+        }
+        session.takePlanFailure = failure
+        session.showProposal()
+        let plan = try #require(steps(session, "plan"))
+        #expect(!plan.chips.isEmpty && plan.line == ClipTakePlan.copy(failure))
+        #expect(session.task.footer.primary == nil && session.task.footer.note == session.takePlanBlocker)
+        if name == "geometry" { #expect(plan.chips.first?.action.title == "Keep original words for 1" && plan.ask != nil) }
+        if name == "stale" { #expect(plan.chips.contains { $0.action.id == "freshPrice" }) }
     }
 }
 #endif

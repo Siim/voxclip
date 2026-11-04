@@ -1,5 +1,27 @@
 # Windows fixed contracts
 
+### 2026-11-04 — Rewrite next steps: shared contract; Windows twin owed
+
+- **Shared changes.**
+  - `voice-rewrite.json` and `patch-rewrite.json` are now `promptVersion` 3, with the optional `nextActions: [{label, instruction, ordinals?}]` in both reply schemas.
+  - New `rewrite-next-actions.json` (version 1) holds the feedback templates.
+  - New fixture `rewrite-next-actions-cases.json` (`voxclip-voice-lab-next-actions-cases/1`, 22 cases: parsing, feedback, landing).
+  - Regenerated voice/patch/CLI LLM fixtures.
+- **Windows change.** Only the `PromptIsThePatchEditsSchemaWithTheBadgeCopy` expectation, now version 3 with the optional field. Windows Core reads the schema from the shared prompt and ignores the field.
+- **Owed twin (voice-lab.md §8.2.1).**
+  - Parse at most 4 valid next actions with the same drop rules.
+  - Render scoped and open feedback from the shared templates only.
+  - Land a scoped reply with `RewriteScopedReply`'s overlap rules, freezing every other change.
+  - Next-step chips in each stuck state, with ✦ for AI suggestions and the free-text field.
+  - "Asking {AI}: “{label}”" with Stop.
+  - The advisory voice budget with [Re-voice all {v}].
+  - Strict HTTP shaping of the optional field.
+  - Keep the paid-take inline confirmation.
+- **Windows changes.**
+  - `PlaceAll` no longer refuses a merge over the patch budget, matching the regenerated `window-all-cases.json`. The private `BudgetHunk` is deleted, along with its Core allowlist line.
+  - The prompt-version expectation is updated.
+- **Verification.** The full suites are run by the lead. Next-action landing and the merge instruction are part of the owed twin.
+
 ### 2026-11-04 — Mac Rewrite sync-3 twin owed
 
 - Windows keeps lip sync hidden; no Windows production code changes belong to this package. Owed: local face gate, chosen-duration mezzanine/WAV, approved fal REST upload/queue/retention/retry/cancel/cleanup, inline per-phrase/All controls, mutation ownership, receipt retention and shared preview/export crossfades.

@@ -319,6 +319,8 @@ public struct VoiceRewriteProposal: Sendable {
     public let sourceText: String
     public let proposedText: String
     public var audioTags: [VoiceLabAudioTag] = []
+    /// The reply's valid AI-suggested next steps (`RewriteNextAction.parse`); empty when it gave none.
+    public var nextActions: [RewriteNextAction] = []
     public let connector: ConnectorID
     public let model: String
     public let providerRequestID: String?

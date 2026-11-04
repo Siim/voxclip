@@ -46,10 +46,6 @@ def generate(reference):
         def bridge_tokens(ids):
             return [token for id_ in ids for token in split(corrections.get(id_, words[positions[id_]]['text']))]
 
-        def token_count(result):
-            window, hunk = result['window'], result['hunk']
-            return len(hunk['newTokens']) + len(bridge_tokens(window['leftBridgeWordIds'] + window['rightBridgeWordIds']))
-
         for offset, index in enumerate(order):
             working = deepcopy(accepted)
             current, indices, collision = deepcopy(hunks[index]), [index], None
@@ -100,13 +96,8 @@ def generate(reference):
                         indices = sorted(set(indices + earlier['indices'] + absorbed), key=key)
                         working.pop(hit)
                         continue
+                    # The patch budget is advisory (voice-lab.md §8.2, 2026-11-04): a merge over it still goes ahead.
                     result = {'status': 'placed', 'indices': indices, 'hunk': current, 'window': window}
-                    if collision is not None:
-                        count = sum(token_count(item) for item in working + [result])
-                        count += sum(len(hunks[at]['newTokens']) for at in order[offset + 1:])
-                        denominator = sum(word['kind'] == 'word' for word in words)
-                        if count * 100 > 15 * denominator or count > 60:
-                            raise failure('invalidInput')
                     working.append(result)
                     accepted = sorted(working, key=lambda item: item['window']['startSample'])
                     break
@@ -211,10 +202,11 @@ def generate(reference):
                 project['segments'].append({'id': 'check-%d' % len(project['segments']), 'enabled': True, 'window': accepted['window']})
     named = {case['name']: case for case in cases}
     for name in ('all-touch-merges-within-budget', 'all-overlap-after-seam-widening', 'all-fades-collide-without-touching',
-                 'all-project-correction-in-bridge', 'all-merge-at-15-percent', 'all-merge-at-60-tokens'):
+                 'all-project-correction-in-bridge', 'all-merge-at-15-percent', 'all-merge-at-60-tokens',
+                 'all-merge-over-15-percent', 'all-merge-over-60-tokens', 'all-bridges-cross-budget'):
         assert named[name]['expected'][0]['indices'] == [0, 1], name
-    for name in ('all-merge-over-15-percent', 'all-merge-over-60-tokens', 'all-bridges-cross-budget',
-                 'all-event-prevents-merge', 'all-unlabeled-prevents-merge'):
+        assert len(named[name]['expected']) == 1, name
+    for name in ('all-event-prevents-merge', 'all-unlabeled-prevents-merge'):
         assert len(named[name]['expected']) == 2, name
         assert named[name]['expected'][1]['reason']['error'] == 'collidesWithChange', name
     for name in ('all-review-cut-in-seam-search', 'all-review-cut-before-later-voice'):

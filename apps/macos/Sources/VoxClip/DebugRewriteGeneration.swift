@@ -46,6 +46,7 @@ private struct RewriteGenerationFixtureKeys: KeyProvider {
                 for phrase in plan.phrases { _ = plan.chooseVideo(.source, phrase: phrase.id) }
                 try plan.lipsync.showFixture(state, project: session.project, phrases: plan.phrases)
             }
+            session.takePlanOrdinals = session.changes.indices.filter { session.changes[$0].hunk.kind != .voice || session.includedVoice.contains($0 + 1) }.map { $0 + 1 }
             session.takePlan = plan
         }
     }

@@ -206,13 +206,7 @@ public static class VoiceLabWindowPlanner
                         remaining.RemoveAt(hit);
                         continue;
                     }
-                    if (collision is not null)
-                    {
-                        List<VoiceLabDiffHunk> budgetHunks = [.. remaining.Select(earlier => BudgetHunk(earlier.Hunk, earlier.Window, project)),
-                            BudgetHunk(current, placed, project), .. order.Skip(offset + 1).Select(candidate => hunks[candidate])];
-                        if (VoiceLabPatchBudget.Evaluate(new VoiceLabWordDiffResult([], budgetHunks), words).Flag != VoiceLabPatchBudgetFlag.Allowed)
-                            throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.InvalidInput);
-                    }
+                    // The patch budget is advisory (voice-lab.md §8.2): a merge over it goes ahead.
                     remaining.Add(new ReviewWindow(indices, current, placed));
                     accepted = remaining.OrderBy(earlier => earlier.Window.StartSample).ToList();
                     break;
@@ -257,14 +251,6 @@ public static class VoiceLabWindowPlanner
             AudioTags = earlier.AudioTags.Concat(VoiceLabAudioTags.Shifted(later.AudioTags, earlier.NewTokens.Count +
                 between.Sum(word => EditingAlgorithms.SplitWords(corrections.GetValueOrDefault(word.Id, word.Text)).Count))).ToArray(),
         };
-    }
-
-    static VoiceLabDiffHunk BudgetHunk(VoiceLabDiffHunk hunk, VoiceLabWindow window, Project project)
-    {
-        IReadOnlyList<TimedWord> words = project.Transcript?.Words ?? [];
-        IEnumerable<string> Tokens(IReadOnlyList<string> ids) => ids.SelectMany(id => words.FirstOrDefault(word => word.Id == id) is { } word
-            ? EditingAlgorithms.SplitWords(project.Edits.Corrections.GetValueOrDefault(id, word.Text)) : []);
-        return hunk with { NewTokens = [.. Tokens(window.LeftBridgeWordIds), .. hunk.NewTokens, .. Tokens(window.RightBridgeWordIds)] };
     }
 
     static VoiceLabSegment Reservation(string id, VoiceLabWindow window)

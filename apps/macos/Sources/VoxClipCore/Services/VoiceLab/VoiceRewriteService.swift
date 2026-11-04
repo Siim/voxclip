@@ -168,6 +168,7 @@ public actor VoiceRewriteService {
                                     model: completion.model, providerRequestID: completion.requestID,
                                     proposedLength: length, inRange: (input.minChars...input.maxChars).contains(length))
         proposal.audioTags = VoiceLabAudioTags.parse(parsed.object[ai: "audioTags"], text: rewrite)
+        proposal.nextActions = RewriteNextAction.parse(parsed.object[ai: "nextActions"])
         return proposal
     }
 }

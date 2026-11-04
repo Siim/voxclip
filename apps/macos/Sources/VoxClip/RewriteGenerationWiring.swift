@@ -53,13 +53,13 @@ extension RewriteSession {
             reviewTimingSpeechContext(ordinal: ordinal)
             return
         }
-        guard current, let generation, review != nil, overBudget == nil, !includedVoice.isEmpty, let takeBackend else { return }
+        guard current, let generation, review != nil, !voiceBudgetBlocks, !isReasking, !includedVoice.isEmpty, let takeBackend else { return }
         guard !hasPaidTakes else {
             generation.fail("Your paid takes are kept. Leave this review and confirm discarding them before making a fresh takes plan.")
             return
         }
         takePlan?.invalidate(); takePlan = nil
-        takeQuotePhrase = nil; takeRowsShown = true
+        takeQuotePhrase = nil; takeRowsShown = true; takePlanFailure = nil
         guard let recordID = generation.selectedVoiceID, let modelID = generation.selectedModelID,
               let audio = project.media.source.audio else { return }
         let revision = self.revision, ordinals = includedVoice
@@ -144,7 +144,10 @@ extension RewriteSession {
                 await plan.prepareSpeechContext(phrase: contextReview.targetPhraseID)
             } else { await plan.prepare() }
         } catch {
-            generation.fail(ClipTakePlan.copy(error))
+            // The next-steps card shows it with its chips (RewriteNextSteps.swift); the footer names the blocker.
+            takePlanFailure = error
+            generation.fail("")
+            showProposal()
         }
     }
     func currentGenerationCap() async throws -> VoiceLabMonthlyCap? {

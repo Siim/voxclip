@@ -337,13 +337,17 @@ for (const scope of ['passage', 'fullTake']) for (const withRequest of [true, fa
 assert(new Set(renderedRewrites.map(test => [test.input.targetSeconds, test.input.minChars, test.input.maxChars].join('/'))).size >= 3, 'at least three budgets')
 assert(renderedRewrites.some(test => test.input.minChars === test.input.maxChars), 'a budget with minChars == maxChars')
 
+// voice-lab §8.2.1: both Rewrite replies may carry at most four AI-suggested next steps; ordinals stay optional.
+const nextActionsSchema = { type: 'array', items: { type: 'object', additionalProperties: false, required: ['label', 'instruction'],
+  properties: { label: { type: 'string' }, instruction: { type: 'string' }, ordinals: { type: 'array', items: { type: 'integer' } } } } }
+equal(voiceLabPrompts.voiceRewrite.schema.properties.nextActions, nextActionsSchema, 'voice_rewrite_proposal next steps')
 // voice-lab §8.1 "Fix with AI": the clip finder's lines (ai.md §11.3), each with a synthetic character range.
 const patchSchema = { type: 'object', additionalProperties: false, required: ['edits'], properties: { edits: { type: 'array', items: {
   type: 'object', additionalProperties: false, required: ['line', 'text', 'reason'],
   properties: { line: { type: 'string' }, text: { type: 'string' }, reason: { type: 'string' }, audioTags: {
     type: 'array', items: { type: 'object', additionalProperties: false, required: ['beforeToken', 'tag'],
       properties: { beforeToken: { type: 'integer' }, tag: { type: 'string' } } }
-  } } } } } }
+  } } } }, nextActions: nextActionsSchema } }
 equal(voiceLabPrompts.patchRewrite.schema, patchSchema, 'patch_edits is the voice-lab §8.1 schema')
 equal(voiceLabPrompts.patchRewrite.schemaName, 'patch_edits', 'Fix with AI schema name')
 const indexed = (first, timed) => timed.map(([text, start, end], offset) => ({ index: first + offset, text, start, end }))

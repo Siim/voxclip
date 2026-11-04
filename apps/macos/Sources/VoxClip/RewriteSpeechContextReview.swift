@@ -162,6 +162,7 @@ extension RewriteSession {
             speechContextOffer = nil; speechContextReview = nil
             surroundingSentenceOrdinal = nil
             speechContextProblem = RewriteSpeechContextReview.copy(error)
+            speechContextRefusedOrdinals = [ordinal]
         }
     }
 
@@ -179,9 +180,12 @@ extension RewriteSession {
             speechContextReview = offer
             speechContextProblem = ""
         } catch {
+            let ordinals = phrase.flatMap { id in takePlan?.phrases.first { $0.id == id } }.map(takePhraseOrdinals)
+                ?? speechContextOffer.map { $0.plan.request.expandingHunkIndices.map { $0 + 1 } } ?? []
             speechContextOffer = nil; speechContextReview = nil
             surroundingSentenceOrdinal = nil
             speechContextProblem = RewriteSpeechContextReview.copy(error)
+            speechContextRefusedOrdinals = ordinals
         }
     }
 
@@ -239,6 +243,7 @@ extension RewriteSession {
             }
         } catch {
             speechContextProblem = RewriteSpeechContextReview.copy(error)
+            speechContextRefusedOrdinals = reviewed.plan.request.expandingHunkIndices.map { $0 + 1 }
         }
     }
 }

@@ -58,7 +58,8 @@ extension CanonicalResponseParser {
         return text
     }
 
-    public static func validate(_ completion: RawCompletion, schema: JSONValue) throws -> (object: JSONValue, droppedItems: Int) {
+    /// `dropped` counts the items each top-level array lost; `droppedItems` is their sum.
+    public static func validate(_ completion: RawCompletion, schema: JSONValue) throws -> (object: JSONValue, droppedItems: Int, dropped: [String: Int]) {
         switch completion.stop {
         case .truncated: throw LLMError.truncated
         case .refused(let category): throw LLMError.refused(category: category)
@@ -69,7 +70,7 @@ extension CanonicalResponseParser {
         guard let object = value.aiObject, !StrictJSON.nests(value, deeperThan: StrictJSON.maxDepth) else { throw LLMError.invalidOutput(reason: "not JSON") }
         let properties = schema[ai: "properties"].aiObject ?? [:]
         var result: [String: JSONValue] = [:]
-        var dropped = 0
+        var dropped: [String: Int] = [:]
         for key in properties.keys.sorted() {
             let property = properties[key]!
             guard let content = object[key] else {
@@ -79,14 +80,14 @@ extension CanonicalResponseParser {
             if property[ai: "type"].aiString == "array" {
                 guard case .array(let items) = content else { throw LLMError.invalidOutput(reason: "missing \"\(key)\"") }
                 let valid = items.filter { conforms($0, to: property[ai: "items"]) }
-                dropped += items.count - valid.count
+                if items.count > valid.count { dropped[key] = items.count - valid.count }
                 result[key] = .array(valid)
             } else {
                 guard conforms(content, to: property) else { throw LLMError.invalidOutput(reason: "missing \"\(key)\"") }
                 result[key] = content
             }
         }
-        return (.object(result), dropped)
+        return (.object(result), dropped.values.reduce(0, +), dropped)
     }
 
     private static func conforms(_ value: JSONValue, to schema: JSONValue) -> Bool {

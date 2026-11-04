@@ -262,6 +262,7 @@ import VoxClipCore
             }
         case .takes: RewriteTakesCard(model: model)
         case .wordingFit: RewriteWordingFitCard(model: model)
+        case .nextSteps(let steps): NextStepsCard(task: task, steps: steps, focused: $askFocused)
         }
     }
 }
@@ -528,7 +529,7 @@ import VoxClipCore
 /// Records each button the panel draws and whether SwiftUI enables it, so a scene runner
 /// can assert design.md's "no disabled buttons" headless. It sits inside the button's label,
 /// where a `disabled` on the button or any view around it reaches the environment.
-@MainActor private struct PanelButtonEvidence: ViewModifier {
+@MainActor struct PanelButtonEvidence: ViewModifier {
     let action: PanelAction
     @Environment(\.isEnabled) private var isEnabled
     func body(content: Content) -> some View {

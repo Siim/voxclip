@@ -65,7 +65,24 @@ import VoxClipMedia
         let connector = RewriteConnector(connector: RewriteFixtureConnector(), model: "fixture-local", name: "Fixture", group: "local", plan: "")
         let session = RewriteSession(editor: model, scope: .selection(12...25), envelope: envelope, connector: connector)
         model.rewrite = session
+        if variant == "rewrite-collision" {
+            // Two phrases whose takes plan refused the second as too close to the first (voice-lab.md §8.2.1).
+            var words = session.source.filter { $0.kind == .word }.map(\.text)
+            words[0] = "Clearly"; words[words.count - 1] = "finished."
+            try session.receivePassage(words.joined(separator: " ")); session.finishRun(seconds: 1)
+            for ordinal in session.blockedVoiceOrdinals { session.pricedAnyway.insert(ordinal) }
+            session.takePlanOrdinals = session.changes.indices.map { $0 + 1 }
+            session.takePlanFailure = ClipTakePlan.Failure.placement(.collidesWithChange(0), index: max(0, session.changes.count - 1))
+            session.showProposal()
+            return
+        }
         try session.receivePassage(variant == "rewrite-budget" ? Array(repeating: "replacement", count: 180).joined(separator: " ") : "A clearer way to explain what happened in this passage."); session.finishRun(seconds: 1)
+        if variant == "rewrite-budget" { session.showProposal() }
+        // ✦ chips at every column width: the budget and failed-take variants show two AI suggestions.
+        if variant == "rewrite-budget" || variant == "rewrite-takes-none-passed" {
+            session.reasking.suggestions = [RewriteNextAction(label: "Only phrases 1 and 3", instruction: "Keep only phrases 1 and 3 in my voice."),
+                                            RewriteNextAction(label: "Merge with the next sentence", instruction: "Merge it with the next sentence.")]
+        }
         if variant == "rewrite-takes-measured-fit" {
             try DebugRewriteGeneration.install("length-changed", in: session)
             session.wordingFit.measured = MeasuredWordingSuggestion(phrase: 0, take: UUID(), number: 2,
@@ -73,6 +90,7 @@ import VoxClipMedia
                 text: "Here is a naturally longer way to explain this thought.", preparing: false)
         } else if variant.hasPrefix("rewrite-takes-") {
             try DebugRewriteGeneration.install(String(variant.dropFirst(14)), in: session)
+            session.showProposal()
         } else if variant.hasPrefix("rewrite-fit-") {
             let ordinals = session.changes.indices.filter { session.changes[$0].hunk.kind == .voice }.map { $0 + 1 }
             session.wordingFit.phrases = try session.fitPhrases(ordinals: ordinals)
@@ -138,7 +156,7 @@ import VoxClipMedia
         let shell = WorkspaceShell(app: app)
         for (window, width, height) in sizes {
             // Every job's state at the sizes where the body is shortest, as well as at 1280 × 800.
-            let extra = window == "1440x900" ? [] : ["rewrite", "rewrite-budget", "fine-tune", "caption-error", "captions-off"] + DebugRewriteGeneration.variants
+            let extra = window == "1440x900" ? [] : ["rewrite", "rewrite-budget", "rewrite-collision", "fine-tune", "caption-error", "captions-off"] + DebugRewriteGeneration.variants
             for variant in ["source", "9:16", "1:1", "16:9"] + extra {
                 try Data("\(window) \(variant)".utf8).write(to: directory.appendingPathComponent("height-progress.txt"), options: .atomic)
                 let model = EditorModel(document: VoxClipDocument(project: fixture, demo: true), app: app, preview: DemoPreviewEngine())
@@ -250,7 +268,7 @@ import VoxClipMedia
         let height: CGFloat = 4096
         var measurements: [Measurement] = []
         for width: CGFloat in [300, 320, 340, 360, 440, 560] {
-          for variant in ["source", "9:16", "1:1", "16:9", "ai-rate-hours", "captions-off", "fine-tune", "caption-error", "rewrite", "rewrite-budget",
+          for variant in ["source", "9:16", "1:1", "16:9", "ai-rate-hours", "captions-off", "fine-tune", "caption-error", "rewrite", "rewrite-budget", "rewrite-collision",
                           "rewrite-fit-running", "rewrite-fit-approval", "rewrite-fit-fitted", "rewrite-fit-exhausted", "rewrite-takes-measured-fit"] + DebugRewriteGeneration.variants {
             let model = EditorModel(document: VoxClipDocument(project: fixture, demo: true), app: app, preview: DemoPreviewEngine())
             defer { model.close() }

@@ -221,6 +221,14 @@ struct EditorRenderSnapshot {
             sendAgain(session, instruction: instruction, feedback: feedback)
         }
     }
+    /// A next step's re-ask (an AI chip, Change fewer words or the free-text field) in `session`: only its phrases can
+    /// change, so nothing else is discarded; paid takes still ask first, inline (RewriteNextSteps.swift).
+    func sendRewriteAgain(_ session: RewriteSession, reask request: RewriteReask) {
+        session.stopWordingFit(refresh: false)
+        guard session.isOpen, !session.isProposing else { return }
+        cancelRewriteOpen()
+        session.reask(request)
+    }
     private func sendAgain(_ session: RewriteSession, instruction: String?, feedback: String? = nil) {
         guard session.isOpen, !session.isProposing else { return }
         cancelRewriteOpen()

@@ -8,6 +8,58 @@
 - **Regression evidence.** With the three behaviour lines backed out, the three new tests fail with seven issues. The borrow case throws `.invalidFadeHandles`, the paid-rate cut removes 67,201 samples instead of 67,202 and loses `allows(.cut)`, and the empty class removes 12,240 frames instead of 7,200 / 11,520. With the fixes, focused natural pacing passes 13/13.
 - **Headless gates.** Full Core passes 1,145 tests in 104 suites (two declared known issues), App 822 in 60 and Media 496 in 55, with an absolute `VOXCLIP_SHARED_DIR` and a temporary `VOXCLIP_DATA_DIR`. All voice-lab generators, `check_drift.py`, `git diff --exit-code` and the untracked check are clean. Real-window gates were not run; the Mac App is unchanged.
 - **Replaced / next.** No files deleted and no duplicate fitter. A future recipe that records the replacement window could move the reserve back to the unwidened window, but it would need a schema field and migration. Windows Cut rendering belongs to track/v2-cut-win.
+### 2026-11-04 — Rewrite never dead-ends: next-step chips and the advisory voice budget
+
+- **Built.** Every stuck state of the Rewrite panel shows a `.nextSteps` card: chips that wrap at any width, plus "Tell the AI what to do instead…". The states:
+  - over the voice budget;
+  - a phrase still not fitting after the automatic rounds (its row keeps its own recovery buttons);
+  - a phrase whose takes all failed checks;
+  - a refused surrounding sentence;
+  - R1x with a message error;
+  - R3 and a late or stopped re-ask.
+
+  Built-in chips call existing actions only: Re-voice all, Change fewer words, Keep text fixes only, Keep original words, Price it anyway, Try another, Back to the changes, Ask again. AI chips (✦) come from the reply's optional `nextActions`.
+- **Budget.** It is advisory. The callout reads "These changes re-voice {v} words, a lot for a {n}-word clip. Long stretches in your voice can sound stitched." [Re-voice all {v}] sets `reasking.budgetAccepted`, after which the footer is the in-budget one. A new reply resets it. `overBudget` is replaced by `voiceBudget` / `voiceBudgetBlocks`. `prepareTakes` and `makeTakes` honour the acceptance. Disclosure, AI MODIFIED and paid approval are unchanged.
+- **Re-ask.** An AI chip, Change fewer words and the field go through `EditorModel.sendRewriteAgain(_:reask:)` → `RewriteSession.reask`:
+  - It sends the session's own Rewrite request (same instruction and connector) with scoped feedback from `shared/prompts/rewrite-next-actions.json`, through the usual consent route and with its own LLM lease.
+  - `RewriteScopedReply.assign` lands only the asked phrases (replace, keep original or conflict). Every other change, its review state, popover edit, quote and take stays. `applyReask` rebuilds the review once.
+  - The running state is "Asking {AI}: “{label}”" with Stop; the list is locked and takes cannot start.
+  - Stop, an edit, a connector change or a stale reply change nothing and offer Ask again.
+  - Paid takes go through `confirmPaidProposalChange` first.
+  - Whole-scope runs from R1x and R3 use the open feedback block through the existing `sendRewriteAgain(_:instruction:feedback:)`.
+- **Core / shared.**
+  - `RewriteNextAction.parse`: at most 4 entries, bad entries dropped.
+  - `RewriteNextActionFeedback`: renders the feedback.
+  - `RewriteScopedReply`: lands a scoped reply.
+  - `VoiceRewriteProposal` / `PatchRewriteProposal` gain `nextActions`.
+  - `CanonicalResponseParser.validate` also returns per-key `dropped`, so patch `malformedItems` still counts only edits.
+  - Voice and patch prompts are now version 3 with the optional field; strict shaping makes it required.
+  - The LLM fixtures were regenerated deliberately, and `gen.mjs` self-checks the new schema.
+  - The new independent `generate_next_actions.py` writes `rewrite-next-actions-cases.json` (22 cases, its own schema id, on check_drift's EXACT list).
+- **Replaced / deleted.** The blocking budget footer and its old copy, replaced in place. `send()` now shares `reply(_:connector:accept:)` with the re-ask, and `showReplyInTranscript` shares `transcriptChange(_:ordinal:)`. `ExpressionFlow` and `PanelButtonEvidence` are now internal so the chips reuse them. No files are deleted and no duplicate path is left.
+- **Refused takes plans (MVP12 collision).**
+  - `placeAll` no longer refuses a merge over the advisory budget, on both Cores and in `window-all-cases.json`. `ClipTakePlan.preparePlan` no longer throws `Failure.budget`; that case and its copy are deleted.
+  - `Failure.placement` carries the refused hunk index. A collision reads "Phrase {n} is too close to phrase {m} to voice separately." with:
+    - [Keep original words for {n}];
+    - [Keep text fixes only];
+    - ✦ [Merge with phrase {m}]: a re-ask with the shared `mergeInstruction`, version 2 of `rewrite-next-actions.json`;
+    - the field.
+  - [Voice m–n as one phrase] is not built. After the guard removal a remaining collision is always geometric, so it could never act.
+  - A reply hunk spanning both asked phrases lands via `RewriteScopedReply.Outcome.absorbed`. `applyReask` removes the absorbed change and renumbers the later ones and every ordinal-keyed set.
+  - The session keeps `takePlanFailure`. Every `ClipTakePlan.copy` failure gets an acting chip, and `takePlanBlocker` replaces the price in the footer.
+  - The new `rewrite-collision` layout variant is measured at every width: 144 measurements and 58 heights.
+- **Verification.**
+  - Regression evidence: restoring the old behaviour (a blocking budget, an unscoped landing, no paid guard on a re-ask, an uncapped parser) fails the 4 key tests with 11 issues. The regenerated `window-all-cases.json` failed `placeAllVectors` before the placement change.
+  - Focused tests pass: ChangeList, RewriteScope (with the collision, merge, blocker and failure-chip tests), RewriteNextActions, VoiceLabWindow and `MacUIIntegrationTests/rightColumnLayout`.
+  - All 38 Voice Lab generators, `check_drift.py`, the LLM fixture check and `git diff --exit-code` pass.
+  - Full suites run by lead.
+- **Owed / next.**
+  - The Windows twin: parsing, feedback, landing, chips and the advisory budget. Its prompt-version test expectation is updated.
+  - Real-window `-uiSelfTest`, `-sceneAudit`, documentScene and VoiceOver acceptance of the chips.
+  - The passage-only (pre-v2) panel still refuses over the budget.
+  - First replies seldom carry suggestions (the prompt asks only when feedback names a blocked phrase), so ✦ chips mostly appear after a re-ask.
+  - A reply that merges an asked phrase into a frozen one is refused for that phrase rather than widening it.
+  - Preserve `takePlanOrdinals` in `DebugRewriteGeneration.install` when merging the takes-panel lane.
 
 ### 2026-11-04 — Visible sidebar clip Rewrite and More actions
 

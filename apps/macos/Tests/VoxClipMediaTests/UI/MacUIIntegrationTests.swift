@@ -48,7 +48,7 @@ extension HeavyMediaTests {
         for result in report { #expect(result.passed && result.skipped == nil, Comment(rawValue: result.name)) }
         struct Measurement: Decodable { let width: Double; let minimumWidth: Double; let proposedWidth: Double; let box: CGRect; let header: CGRect; let variant: String; let jobs: [String]; let lipsyncButtons: [String]; let viewOverflow: [String]; let accessibilityOverflow: [String] }
         let measurements = try JSONDecoder().decode([Measurement].self, from: Data(contentsOf: directory.appendingPathComponent("right-column-layout.json")))
-        #expect(measurements.count == 186)
+        #expect(measurements.count == 192)
         let captures = try JSONDecoder().decode([String].self, from: Data(contentsOf: directory.appendingPathComponent("rewrite-captures.json")))
         #expect(captures.count == 96)
         for name in captures { #expect(FileManager.default.fileExists(atPath: directory.appendingPathComponent(name).path)) }
@@ -83,7 +83,7 @@ extension HeavyMediaTests {
             let markers: [String: CGRect]
         }
         let heights = try JSONDecoder().decode([HeightMeasurement].self, from: Data(contentsOf: directory.appendingPathComponent("right-column-heights.json")))
-        #expect(heights.count == 79)
+        #expect(heights.count == 82)
         #expect(Set(heights.map(\.height)) == [322, 422, 522, 622])
         for measurement in heights {
             let viewport = try #require(measurement.scrollFrames.first)

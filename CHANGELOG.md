@@ -6,6 +6,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 - On Windows, a phrase whose take runs longer or shorter can cut the video at a pause or match the video to the take, as on Mac.
 - A paid take keeps its video-cut option, a short hard join keeps its pause when the take borrows silence, and pauses keep their usual minimum when the clip has none of that kind.
+- Stuck Rewrite phrases offer one-click fixes, some suggested by the AI, without starting over.
+- Changes too close to voice separately are joined into one phrase, or offer fixes in place when they can't be.
 - Clips in the sidebar show Rewrite and More buttons.
 - Rewrite rewords phrases until they fit your video, and new phrases use Eleven v4.
 - Lip sync phrases in your voice with fal.ai sync-3

@@ -64,7 +64,8 @@ import VoxClipCore
     }
 }
 
-private struct ExpressionFlow: Layout {
+/// Lays its subviews out in rows that wrap at the proposed width: expression chips and next-step chips.
+struct ExpressionFlow: Layout {
     let spacing: CGFloat
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         measure(width: proposal.width ?? 320, subviews: subviews).size
