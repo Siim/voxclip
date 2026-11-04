@@ -13,6 +13,13 @@ private struct DurationHookKeys: KeyProvider {
     }
 }
 
+/// No fal.ai key, as on a hosted runner: lip sync readiness never reads this Mac's Keychain, so the offers it builds
+/// after a video preparation race Use here exactly as they do on CI.
+private struct NoProviderKeys: ProviderKeyStore {
+    func hasKey(for provider: String) async -> Bool { false }
+    func save(_ value: String, for provider: String) async throws { Issue.record("Duration hook integration must not save keys") }
+}
+
 @Suite("Production duration hooks", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil), .offlineFixtures)
 @MainActor struct DurationHookIntegrationTests {
     @MainActor private final class Backend {
@@ -150,6 +157,7 @@ private struct DurationHookKeys: KeyProvider {
             project.edits.clips = [clip]; project.edits.activeClipId = clip.id
         }
         let app = AppModel(settingsStore: RegressionSettingsStore(), locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path]))
+        app.providerKeyStoreOverride = NoProviderKeys()
         app.settings.values["voiceLab.enabled"] = .bool(true)
         app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
         app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(true)
@@ -228,6 +236,11 @@ private struct DurationHookKeys: KeyProvider {
         #expect(input.prepared.outputPlan.duration > request.plan.duration)
         #expect(input.prepared.selectedSegmentRecipes.allSatisfy { $0.recipe.audio.stretch == 1 })
         #expect(plan.phrases.map(\.selectedID) == selected && plan.spent == spent && fixture.backend.executions == 2)
+        // Lip sync offers reuse the render prepared for these choices instead of preparing the same video again.
+        let published = fixture.backend.publications
+        await plan.lipsync.refresh()
+        #expect(requests.count == 1 && fixture.backend.publications == published)
+        #expect(plan.lipsync.allOffer?.request.voiceLab?.project == input.project, Comment(rawValue: plan.lipsync.problem))
         let undo = UndoManager(); undo.groupsByEvent = false; editor.undoManager = undo
         undo.beginUndoGrouping()
         let accepted = await session.acceptTakes()

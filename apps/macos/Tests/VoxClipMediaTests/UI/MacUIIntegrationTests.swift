@@ -45,13 +45,17 @@ extension HeavyMediaTests {
     /// field at most, a footer that agrees with the panel, paid takes until a confirm, and a tag drawn as it is added;
     /// every scenario ends with the Rewrite applied, or (S9, after Stop) with Done and the words as recorded; S10–S12
     /// also check the applied video duration and that no voice change was dropped.
-    @Test("The Rewrite smoke completes every stuck scenario without a dead end") func rewriteSmoke() throws {
-        let directory = try UIProcessHarness.run(mode: "-rewriteSmoke", name: "rewrite-smoke", acceptNonzeroWithReport: "results.json")
+    /// One app process per take-length pass, each with its own deadline: realistic take lengths (S1–S13), and every
+    /// scenario but S13 with takes that fill their slots exactly ("S4-exact"). Hosted runners take about twice as long.
+    @Test("The Rewrite smoke completes every stuck scenario without a dead end", arguments: ["realistic", "exact"])
+    func rewriteSmoke(lengths: String) throws {
+        let directory = try UIProcessHarness.run(mode: "-rewriteSmoke", name: "rewrite-smoke-\(lengths)",
+            arguments: ["-rewriteSmokeLengths", lengths], acceptNonzeroWithReport: "results.json", deadline: 300)
         defer { UIProcessHarness.cleanTemporary(directory) }
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
         let scenarios = Set(report.compactMap { $0.name.split(separator: " ").first.map(String.init) })
-        // Realistic take lengths (S1–S13), then every scenario but S13 with takes that fill their slots exactly.
-        #expect(scenarios == Set((1...13).map { "S\($0)" } + (1...12).map { "S\($0)-exact" }))
+        let expected: [String] = lengths == "exact" ? (1...12).map { "S\($0)-exact" } : (1...13).map { "S\($0)" }
+        #expect(scenarios == Set(expected))
         for result in report { #expect(result.passed, Comment(rawValue: result.name)) }
     }
     @Test("Right-column content fits without opening a window") func rightColumnLayout() throws {
@@ -386,8 +390,10 @@ final class MacUIRenderPerformanceTests: XCTestCase {
 private enum UIProcessHarness {
     struct Result: Decodable { let name: String; let passed: Bool; let skipped: String? }
     enum Failure: Error { case executableMissing, timedOut, appFailed(Int32), outputMissing }
-    /// Runs the app in `mode`, writing to a fresh folder; `arguments` follow the mode's own.
-    static func run(mode: String, name: String, arguments: [String] = [], acceptNonzeroWithReport: String? = nil, preparedDirectory: URL? = nil) throws -> URL {
+    /// Runs the app in `mode`, writing to a fresh folder; `arguments` follow the mode's own. The app is stopped after
+    /// `deadline` seconds (default 360 for the UI self-test, 120 otherwise).
+    static func run(mode: String, name: String, arguments: [String] = [], acceptNonzeroWithReport: String? = nil, preparedDirectory: URL? = nil,
+                    deadline seconds: Double? = nil) throws -> URL {
         let environment = ProcessInfo.processInfo.environment
         let adjacent = Bundle(for: MacUIRenderPerformanceTests.self).bundleURL.deletingLastPathComponent().appendingPathComponent("VoxClip")
         let override = mode == "-uiPerformanceTest" ? environment["VOXCLIP_UI_PERFORMANCE_EXECUTABLE"] ?? environment["VOXCLIP_APP_EXECUTABLE"] : environment["VOXCLIP_APP_EXECUTABLE"]
@@ -436,7 +442,7 @@ private enum UIProcessHarness {
         defer { try? log.close() }
         process.standardOutput = log; process.standardError = log
         try process.run()
-        let deadline = Date().addingTimeInterval(mode == "-uiSelfTest" || mode == "-rewriteSmoke" ? 360 : 120)
+        let deadline = Date().addingTimeInterval(seconds ?? (mode == "-uiSelfTest" ? 360 : 120))
         while process.isRunning && Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
         if process.isRunning {
             process.terminate()

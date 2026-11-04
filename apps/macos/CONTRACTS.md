@@ -1,5 +1,22 @@
 # macOS implementation contracts
 
+### 2026-11-04 — Hosted-CI timing: no third render request at Use, Rewrite smoke split per length pass
+
+- **Third render request (`DurationHookIntegrationTests.productionPlansPrepareExactStagedScopeAndCommitOneUndo`, CI only).**
+  - Cause: `autoChooseVideo` queues `prepareVideoChoices()` then `lipsync.refresh()`. The refresh read the fal.ai key, then `makeLipsyncOffers` published and called the render factory again with the same choices, while Use was rendering. Locally the key read went to the real Keychain (which holds a fal key) and stayed pending past the test, so the race never ran. On a runner with an empty Keychain it returned at once, and Use saw 3 identical `[zoomCover, source]` requests.
+  - Fix:
+    - `PreparedVideoDurationRender` keeps its `request`.
+    - `makeLipsyncOffers` waits for a running preparation, then reuses the prepared render while the choices are unchanged and every selected phrase has one. Same choices are never prepared twice.
+    - A refresh that finds `usingTakes` after its key and cap reads builds no offers. It runs again from `finishUseTakes`, so a failed Use still gets offers.
+    - The lip-sync key check is `app.providerKeyStore.hasKey(for: "fal")`, which checks presence with interaction disallowed (no secret read, no Keychain prompt). Tests can override it.
+  - Test: the fixture stubs `NoProviderKeys`, so the race reproduces locally (3 requests without the fix). A new assertion checks that a lip-sync refresh after preparation adds no render request or publication and offers the prepared project.
+- **`SourceContentKey.sha256` is CryptoKit.** The hand-written SHA-256 took about a quarter of the Rewrite smoke's time in debug builds, since every render preflight keys the source. Same digests (reference vector and editing fixtures).
+- **Rewrite smoke.**
+  - `MacUIIntegrationTests.rewriteSmoke(lengths:)` is one app process per pass, `realistic` then `exact` (`-rewriteSmokeLengths`), each with a 300 s deadline. `UIProcessHarness.run` takes `deadline:`, and `-rewriteSmoke` no longer has a mode default.
+  - `DebugRewriteSmoke.recording(script:root:)` makes each script's words, envelope, movie and content key once per run. Opens dropped from about 0.77 s to 0.05 s.
+  - Local timings under a parallel Core suite: realistic about 59 s, exact about 39 s (5/5). Before, one process took 172 s.
+- **Next.** The smoke's remaining time is product work in debug builds: source-audio decode and conversion (`VoiceLabSourceAudio.ConversionAccumulator`), `VoiceLabAudioRenderer.stage`, and `VoiceLabPaidRoot.fullSync`. Other App tests that build a real `AppModel` can still reach the user's Keychain through `app.secrets`. Stub `providerKeyStoreOverride` where a flow checks a key.
+
 ### 2026-11-04 — Windows Core twin: new shared vectors replayed on Mac
 
 - **Shared changes.**

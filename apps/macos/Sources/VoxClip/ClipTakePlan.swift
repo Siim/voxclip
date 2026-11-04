@@ -1048,15 +1048,25 @@ extension ClipTakePlan {
     }
 
     func makeLipsyncOffers() async throws -> ([Int: RewriteLipsyncSession.Offer], RewriteLipsyncSession.Offer?) {
+        // A running preparation finishes first, so its render serves the offers instead of a second one being prepared.
+        if let running = videoPreparation { await running.value }
         guard stillCurrent, !generating, !preparing, let prepareDurationRender else { throw Failure.stale }
         let bindings = lipsyncBindings
         let chosen = selectedPhrases.filter { $0.videoChoice != nil }
         let eligible = chosen.filter { lipsync.applied[$0.id] == nil && !lipsync.isRunning($0.id) }
         guard !eligible.isEmpty else { return ([:], nil) }
-        let base = try await publishSelection(at: Date(), onlyChosen: true)
-        let proposed = try VoiceLabEditCommand.acceptAll(segments: base.segments, assets: base.assets, voice: base.voice)
-            .applying(to: project, outputScope: scope, videoAssets: base.videoAssets)
-        let request = try await prepareDurationRender(proposed, scope)
+        // The cut or matched video prepared for these exact choices is the one lip sync uploads; the same choices are
+        // never prepared twice. Without one (only kept-source durations, or a phrase still unchosen) it is prepared here.
+        let request: RenderRequest, recordID: String
+        if let prepared = preparedVideoSelection, prepared.choices == videoChoices, chosen.count == selectedPhrases.count {
+            request = prepared.render.request; recordID = prepared.acceptance.voice.consentRecordId
+        } else {
+            let base = try await publishSelection(at: Date(), onlyChosen: true)
+            let proposed = try VoiceLabEditCommand.acceptAll(segments: base.segments, assets: base.assets, voice: base.voice)
+                .applying(to: project, outputScope: scope, videoAssets: base.videoAssets)
+            request = try await prepareDurationRender(proposed, scope)
+            recordID = base.voice.consentRecordId
+        }
         guard stillCurrent, bindings == lipsyncBindings, let input = request.voiceLab else { throw Failure.stale }
         let plan = input.prepared.outputPlan, rate = Int(plan.sampleRate)
         let total = plan.totalSourceSamples
@@ -1079,7 +1089,7 @@ extension ClipTakePlan {
             }.map(\.id))
             let bound = bindings.filter { dependencies.contains($0.key) }
             return RewriteLipsyncSession.Offer(id: UUID(), request: request, windows: windows, estimate: estimate,
-                recordID: base.voice.consentRecordId, dependencies: dependencies, isCurrent: { [weak self] in
+                recordID: recordID, dependencies: dependencies, isCurrent: { [weak self] in
                     guard let self, stillCurrent else { return false }
                     return lipsyncBindings.filter { dependencies.contains($0.key) } == bound
                 })

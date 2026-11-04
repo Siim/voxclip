@@ -228,9 +228,40 @@ import VoxClipCore
         project.id = UUID().uuidString.lowercased()
         project.voiceLab.segments = []; project.voiceLab.assets = []
         project.edits = ProjectEdits()
+        let recording = try await recording(script: fixture.script, root: root)
+        project.media.source.absolutePath = recording.movie.path
+        project.media.source.relativePath = recording.movie.lastPathComponent
+        project.media.source.sizeBytes = recording.sizeBytes
+        project.media.source.contentKey = recording.contentKey
+        project.media.source.video = MediaVideo(width: sourceVideoSize.width, height: sourceVideoSize.height, frameRate: 30, rotationDegrees: 0)
+        project.media.source.durationSeconds = recording.duration
+        project.media.source.audio?.sampleRate = recording.rate
+        project.transcript?.words = recording.words
+        project.transcript?.durationSeconds = recording.duration
+        project.transcript?.language = "en"
+        return (project, recording.envelope)
+    }
+
+    /// One script's synthetic recording: its words, audio envelope and source movie with the movie's content key.
+    struct Recording {
+        let words: [TimedWord]
+        let duration: Double
+        let rate: Int
+        let movie: URL
+        let sizeBytes: Int64
+        let contentKey: String
+        let envelope: AudioEnvelope
+    }
+    /// Recordings made this run, by data folder and script: every scenario and length pass on the same script opens the
+    /// same movie instead of synthesizing, hashing and keying it again.
+    private static var recordings: [String: Recording] = [:]
+
+    static func recording(script: String, root: URL) async throws -> Recording {
+        let cacheKey = root.standardizedFileURL.path + "\n" + script
+        if let cached = recordings[cacheKey], FileManager.default.fileExists(atPath: cached.movie.path) { return cached }
         var words: [TimedWord] = []
         var time = 0.6
-        for (index, text) in fixture.script.split(separator: " ").enumerated() {
+        for (index, text) in script.split(separator: " ").enumerated() {
             let length: Double = 0.1 + 0.045 * Double(text.count)
             words.append(TimedWord(id: "s\(index)", text: String(text), start: time, end: time + length))
             time += length + (text.hasSuffix(".") ? 0.6 : text.hasSuffix(",") ? 0.25 : 0.07)
@@ -251,17 +282,12 @@ import VoxClipCore
         }
         // The source is a movie, as a recording is: Cut and Match video prepare their render offscreen from its frames.
         let movie = try await sourceMovie(pcm, rate: rate, seconds: Int(duration), root: root)
-        project.media.source.absolutePath = movie.path
-        project.media.source.relativePath = movie.lastPathComponent
-        project.media.source.sizeBytes = Int64((try? FileManager.default.attributesOfItem(atPath: movie.path)[.size] as? Int) ?? 0)
-        project.media.source.contentKey = try JSONProjectStore.contentKey(for: movie)
-        project.media.source.video = MediaVideo(width: sourceVideoSize.width, height: sourceVideoSize.height, frameRate: 30, rotationDegrees: 0)
-        project.media.source.durationSeconds = duration
-        project.media.source.audio?.sampleRate = rate
-        project.transcript?.words = words
-        project.transcript?.durationSeconds = duration
-        project.transcript?.language = "en"
-        return (project, VoiceLabTakeProcessing.envelope(pcm, sampleRate: rate))
+        let recording = Recording(words: words, duration: duration, rate: rate, movie: movie,
+            sizeBytes: Int64((try? FileManager.default.attributesOfItem(atPath: movie.path)[.size] as? Int) ?? 0),
+            contentKey: try JSONProjectStore.contentKey(for: movie),
+            envelope: VoiceLabTakeProcessing.envelope(pcm, sampleRate: rate))
+        recordings[cacheKey] = recording
+        return recording
     }
 
     nonisolated static let sourceVideoSize = (width: 160, height: 90)
