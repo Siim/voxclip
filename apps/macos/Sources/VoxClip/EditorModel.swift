@@ -1156,8 +1156,22 @@ struct EditorRenderSnapshot {
         if project.edits.activeClipId != active { seekToActiveClip() }
     }
     func keep(_ id: String) {
+        rowAction([.setClipSelected(id: id, selected: true)] + focusNext(after: id), name: "Keep clip", announcing: keptAnnouncement(id))
+    }
+    /// A suggestion row's Rewrite or Export (design §3.4): keeps the suggestion as one "Keep clip" undo step, with no
+    /// prompt, and leaves the selection on it so the action that follows opens on that clip. False when it is not a
+    /// suggestion or the project cannot be edited.
+    @discardableResult func keepForRowAction(_ id: String) -> Bool {
+        guard isSuggestion(id), capabilities.edit else { return false }
+        let message = keptAnnouncement(id)
+        guard apply([.setClipSelected(id: id, selected: true)], name: "Keep clip") else { return false }
+        announce(message)
+        return true
+    }
+    /// "Clip 3 kept.": the number the clip takes once kept.
+    private func keptAnnouncement(_ id: String) -> String {
         let number = sortedClips.filter { $0.origin == .manual || $0.selected || $0.id == id }.firstIndex { $0.id == id }.map { $0 + 1 }
-        rowAction([.setClipSelected(id: id, selected: true)] + focusNext(after: id), name: "Keep clip", announcing: number.map { "Clip \($0) kept." } ?? "Clip kept.")
+        return number.map { "Clip \($0) kept." } ?? "Clip kept."
     }
     /// Keeps every suggestion as one undo step.
     func keepAll() {

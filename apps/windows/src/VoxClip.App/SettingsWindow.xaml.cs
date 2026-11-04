@@ -329,6 +329,7 @@ public sealed partial class SettingsWindow : Window
         var status = Ui.Text(keyUnreadable ? "This saved key can't be read. Forget it, then save a new key. Your media and edits are still here." : hasKey ? "Key saved securely." : account is null ? "Check detects availability; Test sends only a connection test." : "No key saved.", "HelperText");
         panel.Children.Add(status);
         var model = new TextBox { Header = "Model ID", Text = App.Services.Get("llm.model." + entry?.WireId, entry?.DefaultModel ?? "") };
+        if (entry is not null && AiEffortLabel.SettingsNote(entry.Metadata) is { } effortNote) panel.Children.Add(Ui.Text(effortNote, "HelperText"));
         if (entry is not null) { panel.Children.Add(model); TrackTextField(model, async () => { if (model.Text.Trim().Length == 0) { Ui.Show(notice, "Enter a model ID.", InfoBarSeverity.Warning); return false; } return await SaveTextAsync("llm.model." + entry.WireId, model.Text.Trim()); }); }
         if (entry?.Cli == true)
         {

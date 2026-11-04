@@ -62,8 +62,43 @@ public sealed class WindowsShellV2Tests
         Assert.True(row.ShowsDuration);
     }
 
+    /// <summary>The user never saw the row actions: a selected or hovered suggestion shows ✦ and ⋯ in its duration's place.</summary>
     [Theory]
-    [InlineData(SidebarKind.Suggestion)]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, true)]
+    [InlineData(false, true, true)]
+    public void SuggestionRowActionsShowOnSelectionOrHover(bool selected, bool hovered, bool visible)
+    {
+        var row = new SidebarRow(SidebarKind.Suggestion, "suggestion:first") { Number = "5", IsSelected = selected, IsPointerOver = hovered };
+        Assert.Equal(visible, row.ShowsActions);
+        Assert.Equal(!visible, row.ShowsDuration);
+        Assert.Equal(28, row.RowHeight);
+        Assert.Equal("Rewrite Clip 5", row.RewriteName);
+    }
+
+    /// <summary>Rewrite and Export on a suggestion keep it first, as one undo step with no prompt; a kept clip adds no step.</summary>
+    [Fact]
+    public void RowActionKeepsASuggestionInOneUndoStep()
+    {
+        var model = Model(suggestion: true);
+        var suggestion = model.Clips.First(clip => clip.IsSuggested).Id;
+        var kept = model.Clips.First(clip => !clip.IsSuggested).Id;
+        Assert.False(model.CanUndo);
+        Assert.True(model.KeepForRowAction(kept));
+        Assert.False(model.CanUndo);
+        Assert.True(model.KeepForRowAction(suggestion));
+        Assert.False(model.Clips.Single(clip => clip.Id == suggestion).IsSuggested);
+        Assert.True(model.CanUndo);
+        model.Undo();
+        Assert.True(model.Clips.Single(clip => clip.Id == suggestion).IsSuggested);
+        Assert.False(model.CanUndo);
+        Assert.False(model.KeepForRowAction("missing"));
+        model.SetMediaUnavailable(true);
+        Assert.False(model.KeepForRowAction(suggestion));
+        Assert.True(model.Clips.Single(clip => clip.Id == suggestion).IsSuggested);
+    }
+
+    [Theory]
     [InlineData(SidebarKind.FullTake)]
     [InlineData(SidebarKind.Home)]
     public void OtherRowsKeepTheirExistingActionsAndDuration(SidebarKind kind)
@@ -82,6 +117,7 @@ public sealed class WindowsShellV2Tests
         shell.Update(model, false, [], null);
         var row = Assert.Single(shell.Rows, row => row.Kind == SidebarKind.Clip && row.ClipId == clip.Id);
         Assert.True(row.CanRewrite);
+
         shell.Update(model, true, [], null);
         Assert.False(row.CanRewrite);
         model.Busy = true;
@@ -98,6 +134,18 @@ public sealed class WindowsShellV2Tests
         model.Select(last, true);
         model.CutSelection();
         shell.Update(model, false, [], null);
+        Assert.False(row.CanRewrite);
+    }
+
+    [Fact]
+    public void SuggestionRowsOfferRewriteLikeKeptClips()
+    {
+        var model = Model(suggestion: true);
+        var shell = new ShellViewModel();
+        shell.Update(model, false, [], null);
+        var row = Assert.Single(shell.Rows, row => row.Kind == SidebarKind.Suggestion);
+        Assert.True(row.CanRewrite);
+        shell.Update(model, true, [], null);
         Assert.False(row.CanRewrite);
     }
 
@@ -121,7 +169,17 @@ public sealed class WindowsShellV2Tests
         Assert.Equal(2, clip.Split("Style=\"{ThemeResource SubtleButtonStyle}\"").Length - 1);
         Assert.Contains("IsTabStop=\"False\"", clip);
         Assert.Equal(1, clip.Split("<MenuFlyout>").Length - 1);
-        Assert.DoesNotContain("RewriteClipClicked", suggestion);
+        Assert.Contains("PointerEntered=\"ClipRowPointerEntered\"", suggestion);
+        Assert.Contains("Visibility=\"{x:Bind ShowsActions, Mode=OneWay}\"", suggestion);
+        Assert.Contains("Visibility=\"{x:Bind ShowsDuration, Mode=OneWay}\"", suggestion);
+        Assert.Contains("Click=\"RewriteClipClicked\" Tapped=\"RowButtonTapped\"", suggestion);
+        Assert.Contains("Click=\"MoreClipClicked\" Tapped=\"RowButtonTapped\"", suggestion);
+        Assert.Equal(1, suggestion.Split("<MenuFlyout>").Length - 1);
+        foreach (var template in new[] { clip, suggestion })
+            foreach (var handler in new[] { "RewriteClipClicked", "CaptionsClipClicked", "FindMoreClipsClicked", "ExportClipClicked" })
+                Assert.Contains($"Click=\"{handler}\"", template.Split("</MenuFlyout>")[0]);
+        Assert.Contains("Text=\"Keep clip\"", suggestion);
+        Assert.Contains("Text=\"Dismiss\"", suggestion);
         Assert.Contains("Click=\"KeepClicked\" Tapped=\"RowButtonTapped\"", suggestion);
         Assert.Contains("Click=\"DismissClicked\" Tapped=\"RowButtonTapped\"", suggestion);
         var code = File.ReadAllText(Path.Combine(app, "MainWindow.xaml.cs"));
@@ -129,15 +187,36 @@ public sealed class WindowsShellV2Tests
         Assert.Contains("command.TryExecute()", code);
         var rewrite = code.Split("private void RewriteClipClicked")[1].Split("private void ScopeRowKeys")[0];
         Assert.Contains("ShowScope(id)", rewrite);
+        Assert.True(rewrite.IndexOf("KeepForRowAction(id)", StringComparison.Ordinal) is >= 0 and var keep && keep < rewrite.IndexOf("ShowScope(id)", StringComparison.Ordinal));
+        var export = code.Split("private async void ExportClipClicked")[1].Split("private void CaptionsClipClicked")[0];
+        Assert.True(export.IndexOf("KeepForRowAction(id)", StringComparison.Ordinal) is >= 0 and var kept && kept < export.IndexOf("ExportClipAsync(id)", StringComparison.Ordinal));
         Assert.Contains("page.ViewModel.ClearSelection()", rewrite);
         Assert.True(rewrite.IndexOf("ClearSelection()", StringComparison.Ordinal) < rewrite.IndexOf("command.TryExecute()", StringComparison.Ordinal));
         Assert.Contains("args.Handled = true", code);
     }
 
-    private static EditorViewModel Model()
+    /// <summary>The status bar and Settings name the effort AI decisions send (AI §2.1); a connector that ignores it shows none.</summary>
+    [Theory]
+    [InlineData("claude-code", "Claude Code", "opus", "Claude Code · Opus (latest) · extra high", "AI decisions use extra high effort.")]
+    [InlineData("anthropic", "Anthropic", "claude-sonnet-5-5", "Anthropic · Claude Sonnet 5.5 · extra high", "AI decisions use extra high effort.")]
+    [InlineData("openai", "OpenAI", "gpt-5.6-terra", "OpenAI · GPT-5.6 Terra · high", "AI decisions use high effort.")]
+    [InlineData("codex", "Codex", "custom-model", "Codex · custom-model · high", "AI decisions use high effort.")]
+    [InlineData("ollama", "Ollama", "gemma4:12b", "Ollama · gemma4:12b", null)]
+    public void TheAINamesItsDecisionEffort(string id, string shortName, string model, string status, string? note)
+    {
+        var shared = Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR")!;
+        using var catalog = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(shared, "catalog", "llm-providers.json")));
+        var connector = catalog.RootElement.GetProperty("connectors").EnumerateArray().Single(item => item.GetProperty("id").GetString() == id);
+        Assert.Equal(status, AiEffortLabel.Status(shortName, connector, model));
+        Assert.Equal(note, AiEffortLabel.SettingsNote(connector));
+    }
+
+    /// <summary>The long-take fixture; with <paramref name="suggestion"/>, its AI clip is still a suggestion (not kept).</summary>
+    private static EditorViewModel Model(bool suggestion = false)
     {
         var project = HomeViewModelTests.Fixture("clip-from-long-take.voxclip");
-        return new(project with { Edits = project.Edits with { ActiveClipId = null, CutWordIds = [], CutPauseIds = [], Corrections = new Dictionary<string, string>() } });
+        var clips = project.Edits.Clips.Select(clip => suggestion && clip.Origin == ClipOrigin.Ai ? clip with { Selected = false } : clip).ToArray();
+        return new(project with { Edits = project.Edits with { Clips = clips, ActiveClipId = null, CutWordIds = [], CutPauseIds = [], Corrections = new Dictionary<string, string>() } });
     }
 
     [Fact]

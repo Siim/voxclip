@@ -29,6 +29,8 @@ struct HarnessStatus: Equatable {
     let label: String
     /// The chosen model's name ("Sonnet (latest)"); empty when the AI has none set.
     let model: String
+    /// The effort AI decisions send ("extra high"); empty for a connector that ignores effort.
+    var effort: String = ""
     let readiness: Readiness
     /// The billing on the menu's trailing side ("Sonnet (latest) · no extra cost", "asks before each send"), only once
     /// detection ran in this session.
@@ -76,7 +78,7 @@ extension AppModel {
         guard let provider = providers.first(where: { $0.id == id }) else { return .notChosen }
         let readiness = harnessReadiness(provider)
         return HarnessStatus(connectorID: id, name: provider.shortName, label: provider.choiceName, model: harnessModelName(provider),
-                             readiness: readiness, billing: readiness == .unknown ? nil : harnessBilling(provider, readiness: readiness))
+                             effort: provider.decisionEffort?.label ?? "", readiness: readiness, billing: readiness == .unknown ? nil : harnessBilling(provider, readiness: readiness))
     }
     /// What this session's detection found for `provider`. A CLI counts as detected only with a known sign-in at its
     /// current path.

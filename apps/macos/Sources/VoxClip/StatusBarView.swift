@@ -30,7 +30,7 @@ struct StatusItem: Equatable {
     var parts: [StatusText]
     /// `text.tertiary` rather than `text.secondary` (the mockup's `.si.dim`).
     var dim = false
-    /// VoiceOver's value for the item: "Claude Code (installed CLI), Sonnet (latest), no extra cost on your plan".
+    /// VoiceOver's value for the item: "Claude Code (installed CLI), Sonnet (latest), extra high effort, no extra cost on your plan".
     var spoken: String
     /// VoiceOver's help: the summary's detail (design §3.5).
     var help: String? = nil
@@ -80,8 +80,10 @@ extension AppModel {
         case .asksFirst: "Billed to your key"
         case .unavailable(let reason): reason.prefix(1).uppercased() + reason.dropFirst()
         }
-        let name = [status.name, status.model].filter { !$0.isEmpty }.joined(separator: " · ")
-        let spoken = [status.label, status.model.isEmpty ? nil : status.model, billing?.lowercased()].compactMap { $0 }.joined(separator: ", ")
+        // "Claude Code · Opus (latest) · extra high": the effort AI decisions send (ai.md §2.1).
+        let name = [status.name, status.model, status.effort].filter { !$0.isEmpty }.joined(separator: " · ")
+        let spoken = [status.label, status.model.isEmpty ? nil : status.model, status.effort.isEmpty ? nil : "\(status.effort) effort",
+                      billing?.lowercased()].compactMap { $0 }.joined(separator: ", ")
         var items = [StatusItem(kind: .harness, lead: .dot(token: token, filled: status.detected), parts: [StatusText(string: name)], spoken: spoken)]
         if let billing { items.append(StatusItem(kind: .billing, parts: [StatusText(string: billing)], dim: true, spoken: billing)) }
         return items
