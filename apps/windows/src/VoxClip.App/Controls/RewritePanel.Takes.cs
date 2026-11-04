@@ -51,6 +51,8 @@ internal sealed partial class RewritePanel
             RenderTakes(generation);
         };
         BuildAutoFix();
+        BuildOwnWords();
+        generationBody.Children.Add(wordingBox);
         generationBody.Children.Add(takeExpression);
         generationBody.Children.Add(takeList);
         AutomationProperties.SetAutomationId(phraseStatus, "Rewrite.PhraseStatus");
@@ -205,6 +207,7 @@ internal sealed partial class RewritePanel
     }
     private void RenderTakes(RewriteGeneration generation)
     {
+        RenderOwnWords(generation);
         RenderTakeExpression(generation);
         var rows = generation.Rows;
         updating = true;

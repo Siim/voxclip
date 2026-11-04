@@ -317,7 +317,7 @@ internal sealed partial class RewriteSession
         for (var index = 0; index < generationWindows.Count; index++)
         {
             var window = generationWindows[index];
-            if (window.IsRunning || window.IsPreparing || !window.NeedsShorterWording || window.Selected is not { Audio: { } audio } selected ||
+            if (Wording(index) != PhraseWording.Suggested || window.IsRunning || window.IsPreparing || !window.NeedsShorterWording || window.Selected is not { Audio: { } audio } selected ||
                 measuredTakes.Contains(selected.Id) || (selected.Receipt?.ModelId ?? window.InputFor(selected.Id)?.ModelId) != synthesisModel ||
                 PricedVoiceHunks.ElementAtOrDefault(index) is not { Fit: { } fit }) continue;
             measuredTakes.Add(selected.Id);

@@ -108,6 +108,7 @@ internal sealed partial class RewriteSession
         Generation = null;
         AutoFix.Reset();
         VoiceChecks.Reset();
+        ResetWordings();
     }
 
     private static async Task DrainGenerationAsync(RewriteGeneration generation)

@@ -266,7 +266,8 @@ internal sealed partial class RewriteSession
         }
         for (var index = 0; index < generationWindows.Count; index++)
         {
-            if (StuckReason(index) is not { } reason) { AutoFix.Lines.Remove(index); continue; }
+            // The user's own words and own takes are final: the resolver never rewrites them (design.md §6.3.8).
+            if (Wording(index) != PhraseWording.Suggested || StuckReason(index) is not { } reason) { AutoFix.Lines.Remove(index); continue; }
             if (reason is StuckTakeReason.Provider) { AutoFix.Lines.Remove(index); AutoFix.ShowChoices = true; continue; }
             var used = AutoFix.Rounds.GetValueOrDefault(index);
             if (used >= RewriteAutoFixState.MaximumRounds) { GiveUp(index); continue; }
