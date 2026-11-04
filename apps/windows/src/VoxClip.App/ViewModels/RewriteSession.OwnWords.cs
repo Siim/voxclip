@@ -153,9 +153,13 @@ internal sealed partial class RewriteSession
     /// <summary>[Make take · ≈ $x] for the user's words: the existing priced path; the click is the approval.</summary>
     internal async Task MakeOwnWordsTakeAsync(int index, Func<string, CancellationToken, Task<bool>> confirm)
     {
-        if (OwnWordsTakeTitle(index) is null || generationWindows[index] is not { Quote: { } quote } window) return;
+        if (OwnWordsTakeTitle(index) is null || generationWindows[index] is not { Quote: { } quote } window || OwnWordsText(index) is not { } text) return;
         window.KeepEveryTake();
         await window.GenerateAsync(confirm, quote, autoplay: false);
+        // The click asked for these words: their best passing take is used, never an earlier take of the suggestion.
+        if (window.Ranked(window.Rows.Where(row => row.Selectable && !row.RequiresJoinAdvisoryAcceptance && window.InputFor(row.Id)?.Text == text))
+                .FirstOrDefault() is { } own && own.Id != window.SelectedTakeId)
+            await window.SelectTakeAsync(own.Id);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 

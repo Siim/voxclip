@@ -174,11 +174,7 @@ public sealed class RewriteOwnTakeTests : IDisposable
         var runner = new Runner((_, _) => (Fit, Passed));
         var session = Session(connector);
         Assert.True(await ProposeAsync(session));
-        session.ConfigureGenerationFactory(index => new(runner,
-            _ => Task.FromResult(new RewriteGenerationChoices([new("record", "My voice")], [new("eleven_v4", "Eleven v4", ["en"], true, false, 5000, 1)])),
-            (voice, model, seed, ct) => session.GenerationInputAsync(voice, model, seed, true,
-                (request, _) => Task.FromResult((Source, session.Envelope!)), ct, index),
-            _ => Task.FromResult(true), _ => Task.FromResult<decimal?>(null), () => session.GenerationIsCurrent));
+        ConfigureWithSource(session, _ => runner);
         await session.DiscoverWindowsAsync();
         var batch = session.PreparedBatch!;
         session.MarkBatchEstimateShown(batch);
@@ -192,9 +188,17 @@ public sealed class RewriteOwnTakeTests : IDisposable
         return (session, runner, microphone, cue, heard);
     }
 
+    /// <summary>Take windows that read <see cref="Source"/>, one runner per phrase.</summary>
+    internal static void ConfigureWithSource(RewriteSession session, Func<int, Runner> runners) =>
+        session.ConfigureGenerationFactory(index => new(runners(index),
+            _ => Task.FromResult(new RewriteGenerationChoices([new("record", "My voice")], [new("eleven_v4", "Eleven v4", ["en"], true, false, 5000, 1)])),
+            (voice, model, seed, ct) => session.GenerationInputAsync(voice, model, seed, true,
+                (request, _) => Task.FromResult((Source, session.Envelope!)), ct, index),
+            _ => Task.FromResult(true), _ => Task.FromResult<decimal?>(null), () => session.GenerationIsCurrent));
+
     /// <summary>The fix-loop editor's audio, decoded: a voice-like tone under each word (word k at k+1 to k+1.4 s), quiet room tone
     /// between them, 100 s at 48 kHz.</summary>
-    private static readonly VoiceLabSourceExcerpt Source = VoiceLabSourceExcerpt.Whole(Enumerable.Range(0, 48_000 * 100).Select(index =>
+    internal static readonly VoiceLabSourceExcerpt Source = VoiceLabSourceExcerpt.Whole(Enumerable.Range(0, 48_000 * 100).Select(index =>
     {
         var seconds = index / 48_000.0;
         var within = seconds - Math.Floor(seconds);
