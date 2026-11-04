@@ -106,13 +106,77 @@ public static class VoiceLabTakeQuality
         }
         return 2.0 * previous[^1] / (expected.Count + recognized.Count);
     }
+    /// <summary>The Soundex key of a lowercase word of letters only (the first letter, then up to three consonant-class
+    /// digits), or null for anything else: digits, apostrophes and words under three letters never sound alike here.</summary>
+    public static string? SoundKey(string word)
+    {
+        var letters = word.ToLowerInvariant();
+        if (letters.Length < 3 || letters.Any(letter => letter is < 'a' or > 'z')) return null;
+        static char? Code(char letter) => letter switch
+        {
+            'b' or 'f' or 'p' or 'v' => '1',
+            'c' or 'g' or 'j' or 'k' or 'q' or 's' or 'x' or 'z' => '2',
+            'd' or 't' => '3',
+            'l' => '4',
+            'm' or 'n' => '5',
+            'r' => '6',
+            _ => null,
+        };
+        var key = new StringBuilder().Append(char.ToUpperInvariant(letters[0]));
+        var last = Code(letters[0]);
+        foreach (var letter in letters.AsSpan(1))
+        {
+            var digit = Code(letter);
+            if (digit is { } value && digit != last) key.Append(value);
+            // h and w do not separate equal codes; vowels do.
+            if (letter is not ('h' or 'w')) last = digit;
+            if (key.Length == 4) break;
+        }
+        return key.ToString();
+    }
+    /// <summary>Whether the recognizer's <paramref name="heard"/> is a near-homophone of <paramref name="word"/>: the same
+    /// Soundex key and at most two letters longer or shorter ("Claude" heard as "cloud").</summary>
+    public static bool SoundsAlike(string word, string heard) =>
+        !string.Equals(word, heard, StringComparison.Ordinal) && Math.Abs(word.Length - heard.Length) <= 2 &&
+        SoundKey(word) is { } key && SoundKey(heard) == key;
+    /// <summary>The recognized tokens with each near-homophone of one of <paramref name="replacementWords"/> (the new words
+    /// the user asked for, normalized like <see cref="Tokens"/>) written as that word. A recognizer spells a brand name it
+    /// does not know as the common word it sounds like ("Claude Code" as "cloud code"); the take said what it was asked
+    /// to, so the word check must not fail it for that (voice-lab §8.11). A token that is itself expected is never
+    /// rewritten.</summary>
+    public static string[] NormalizingHomophones(IReadOnlyList<string> recognized, IReadOnlyList<string> expected, IReadOnlySet<string> replacementWords)
+    {
+        if (replacementWords.Count == 0) return recognized.ToArray();
+        var expectedSet = expected.ToHashSet(StringComparer.Ordinal);
+        var candidates = replacementWords.Where(expectedSet.Contains).Order(StringComparer.Ordinal).ToArray();
+        return recognized.Select(heard => expectedSet.Contains(heard) ? heard
+            : candidates.FirstOrDefault(word => SoundsAlike(word, heard)) ?? heard).ToArray();
+    }
+    /// <summary>The words of <paramref name="text"/> the window's recorded words do not already say: the user's own
+    /// replacement words, normalized like <see cref="Tokens"/>. Without the window's words, every word of the text.</summary>
+    public static IReadOnlySet<string> ReplacementWords(string text, IReadOnlyList<TimedWord> items, VoiceLabWindow window)
+    {
+        var asked = Tokens(VoiceLabAudioTags.StrippingTags(text)).ToHashSet(StringComparer.Ordinal);
+        int first = -1, last = -1;
+        for (var index = 0; index < items.Count; index++)
+        {
+            if (first < 0 && items[index].Id == window.FirstWordId) first = index;
+            if (last < 0 && items[index].Id == window.LastWordId) last = index;
+        }
+        if (first < 0 || last < 0 || first > last) return asked;
+        asked.ExceptWith(items.Skip(first).Take(last - first + 1).SelectMany(item => Tokens(VoiceLabAudioTags.StrippingTags(item.Text))));
+        return asked;
+    }
     public static VoiceLabTakeQaResult Evaluate(string expected, IReadOnlyList<string> recognized, float[] mixed, int sampleRate,
-        IReadOnlyList<int> seams, double speakerScore, double threshold, IReadOnlyList<bool>? generatedAfter = null, IReadOnlyList<double>? seamExcesses = null, bool hasTags = false)
+        IReadOnlyList<int> seams, double speakerScore, double threshold, IReadOnlyList<bool>? generatedAfter = null, IReadOnlyList<double>? seamExcesses = null, bool hasTags = false,
+        IReadOnlySet<string>? replacementWords = null)
     {
         if (!double.IsFinite(speakerScore) || speakerScore is < -1 or > 1 || !double.IsFinite(threshold) || threshold is < 0 or > 1)
             throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
         var expectedTokens = Tokens(VoiceLabAudioTags.StrippingTags(expected));
-        var recognizedTokens = VoiceLabAudioTags.FilterScribeEvents(expectedTokens, recognized.SelectMany(Tokens).ToArray(), hasTags);
+        var filtered = VoiceLabAudioTags.FilterScribeEvents(expectedTokens, recognized.SelectMany(Tokens).ToArray(), hasTags);
+        // A near-homophone of the user's own new word is that word (§8.11); the stored match is the normalized one.
+        var recognizedTokens = NormalizingHomophones(filtered, expectedTokens, replacementWords ?? new HashSet<string>(StringComparer.Ordinal));
         var ratio = TranscriptRatio(expectedTokens, recognizedTokens);
         var peak = VoiceLabLoudness.SamplePeakDbfs(mixed);
         if (!double.IsFinite(peak)) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);

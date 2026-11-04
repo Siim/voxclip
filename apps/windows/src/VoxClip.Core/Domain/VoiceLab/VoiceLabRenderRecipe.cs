@@ -35,6 +35,20 @@ public sealed record VoiceLabVideoRecipe(VoiceLabVideoMode Mode, long SourceStar
     double? RetimeFactor, double? Zoom, double? FaceX, double? FaceY, string? AssetId, string? Provider, string? Model,
     string? RequestId, long? WindowStartSample, long? WindowEndSample, string? SyncMode,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<VoiceLabVideoCut>? Cuts = null);
+/// <summary>A lip-synced Rewrite segment's video recipe (voice-lab.md §8.9): <c>mode = lipsync</c> keeps the source, cut or
+/// Match video fields of the video it was made over and stores the provider's sync mode that was actually used.</summary>
+public static class VoiceLabLipsync
+{
+    /// <summary>Whether a lip-synced recipe may record this provider sync mode: <c>remap</c> or <c>cut_off</c>.</summary>
+    public static bool IsSyncMode(string? value) => value is "remap" or "cut_off";
+    /// <summary>The video the lip sync was made over: a cut when the recipe holds cuts, a Match video when it holds a
+    /// retime factor, the source otherwise, with the lip-sync fields cleared (Mac <c>lipsyncBase</c>).</summary>
+    public static VoiceLabVideoRecipe Base(VoiceLabVideoRecipe video) => video with
+    {
+        Mode = video.Cuts is { Count: > 0 } ? VoiceLabVideoMode.Cut : video.RetimeFactor is not null ? VoiceLabVideoMode.ZoomCover : VoiceLabVideoMode.Source,
+        AssetId = null, Provider = null, Model = null, RequestId = null, WindowStartSample = null, WindowEndSample = null, SyncMode = null,
+    };
+}
 [JsonConverter(typeof(JsonStringEnumConverter<VoiceLabVoiceSource>))]
 public enum VoiceLabVoiceSource { [JsonStringEnumMemberName("own")] Own, [JsonStringEnumMemberName("stock")] Stock }
 public sealed record VoiceLabJoinAdvisorySeam(string Side, double ExcessLu);

@@ -1706,7 +1706,8 @@
             },
             {
               "enum": [
-                "remap"
+                "remap",
+                "cut_off"
               ]
             }
           ]

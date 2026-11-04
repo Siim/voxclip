@@ -69,6 +69,50 @@ struct VoiceLabTakeQualityTests {
         let items = [TimedWord(id: "a", text: "cloud", start: 0, end: 0.4), TimedWord(id: "b", text: "code", start: 0.5, end: 0.9)]
         #expect(VoiceLabTakeQuality.replacementWords(text: "Claude Code", items: items, window: window) == ["claude"])
     }
+    /// `homophone-word-check-cases.json` (§8.11), from the independent generator the Windows Core replays too.
+    private struct HomophoneCases: Decodable {
+        struct Key: Decodable { let word: String; let key: String? }
+        struct Alike: Decodable { let word: String; let heard: String; let expected: Bool }
+        struct Item: Decodable { let id: String; let text: String }
+        struct Replacement: Decodable { let id: String; let text: String; let items: [Item]; let firstWordId: String; let lastWordId: String; let expected: [String] }
+        struct Check: Decodable {
+            let id: String; let expected: String; let recognized: [String]; let replacementWords: [String]; let normalized: [String]
+            let rawMatch: Double; let transcriptMatch: Double; let exact: Bool; let passed: Bool
+        }
+        let schema: String; let caseCount: Int
+        let soundKeys: [Key]; let soundsAlike: [Alike]; let replacementWords: [Replacement]; let checks: [Check]
+    }
+    @Test func homophoneWordCheckReplaysSharedVectors() throws {
+        let data = try FixtureLoader.data("fixtures/voice-lab/homophone-word-check-cases.json")
+        let cases = try JSONDecoder().decode(HomophoneCases.self, from: data)
+        let keys = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any]).keys
+        #expect(Set(keys) == ["schema", "caseCount", "soundKeys", "soundsAlike", "replacementWords", "checks"])
+        #expect(cases.schema == "voxclip-homophone-word-check/1" && cases.caseCount == 42)
+        let total = cases.soundKeys.count + cases.soundsAlike.count + cases.replacementWords.count + cases.checks.count
+        #expect(total == cases.caseCount)
+        for row in cases.soundKeys { #expect(VoiceLabTakeQuality.soundKey(row.word) == row.key, "\(row.word)") }
+        for row in cases.soundsAlike { #expect(VoiceLabTakeQuality.soundsAlike(row.word, row.heard) == row.expected, "\(row.word) \(row.heard)") }
+        for row in cases.replacementWords {
+            let items = row.items.enumerated().map { TimedWord(id: $1.id, text: $1.text, start: Double($0), end: Double($0) + 0.5) }
+            let window = VoiceLabWindow(firstWordId: row.firstWordId, lastWordId: row.lastWordId, leftBridgeWordIds: [], rightBridgeWordIds: [],
+                start: 0, end: 1, startSample: 0, endSample: 24_000, leftSeam: .init(kind: .hard, time: 0, sample: 0, fadeSamples: 288),
+                rightSeam: .init(kind: .hard, time: 1, sample: 24_000, fadeSamples: 288))
+            #expect(VoiceLabTakeQuality.replacementWords(text: row.text, items: items, window: window).sorted() == row.expected, "\(row.id)")
+        }
+        let samples: [Float] = (0..<16_000).map { Float(0.1 * sin(2 * Double.pi * 220 * Double($0) / 16_000)) }
+        for row in cases.checks {
+            let words = Set(row.replacementWords)
+            let normalized = VoiceLabTakeQuality.normalizingHomophones(row.recognized, expected: VoiceLabTakeQuality.tokens(row.expected), replacementWords: words)
+            #expect(normalized == row.normalized, "\(row.id)")
+            let qa = try VoiceLabTakeQuality.evaluate(expected: row.expected, recognized: row.recognized, mixed: samples, sampleRate: 16_000,
+                seams: [], speakerScore: 0.9, threshold: 0.45, replacementWords: words)
+            #expect(qa.values.transcriptMatch == row.transcriptMatch, "\(row.id)")
+            #expect(qa.failures.contains(.transcript) == !row.passed, "\(row.id)")
+            let raw = try VoiceLabTakeQuality.evaluate(expected: row.expected, recognized: row.recognized, mixed: samples, sampleRate: 16_000,
+                seams: [], speakerScore: 0.9, threshold: 0.45)
+            #expect(raw.values.transcriptMatch == row.rawMatch, "\(row.id) raw")
+        }
+    }
     /// Live 2026-11-03 (car vlog): a gap seam sits in a pause, so one 400 ms side holds more speech than the other and the
     /// unedited source itself jumps 5 to 38 LU there. Only what a join adds beyond the source's own signed step is the join's.
     @Test func seamLoudnessCountsOnlyTheStepTheJoinAdds() throws {

@@ -23,7 +23,7 @@ public sealed class VoiceLabFitPlannerTests
     public void EveryAcceptedPlanBuildsAUnityRenderRecipe()
     {
         var template = ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/voice-lab/passage-render-v3.voxclip"));
-        var accepted = 0;
+        int accepted = 0, withoutDurationPolicy = 0, refusedWithoutDurationPolicy = 0;
         foreach (var test in Cases("cases").Concat(Cases("propertyCases")))
         {
             if (test.GetProperty("expected").TryGetProperty("error", out _)) continue;
@@ -72,6 +72,13 @@ public sealed class VoiceLabFitPlannerTests
             IReadOnlyList<VoiceLabVideoAsset> videos = [];
             if (result is VoiceLabFitResult.ChangedDuration)
             {
+                // Lip sync runs on the chosen duration's video: Match video (1.12× zoom cover) gives the base when its retime
+                // factor is in range; without a duration policy the lip-sync recipe must be refused, as on Mac.
+                var factor = (double)(sourceEndSample - sourceStartSample) / recipe.Video.OutputSamples;
+                if (factor is >= VoiceLabVideoDurationOptions.MinimumRetime and <= VoiceLabVideoDurationOptions.MaximumRetime)
+                    recipe = recipe with { Video = recipe.Video with { Mode = VoiceLabVideoMode.ZoomCover, RetimeFactor = factor,
+                        Zoom = VoiceLabVideoDurationOptions.MatchZoom, FaceX = .5, FaceY = .5 } };
+                else withoutDurationPolicy++;
                 recipe = recipe with { Video = recipe.Video with { Mode = VoiceLabVideoMode.Lipsync, AssetId = "video-fitted", Provider = "sync", Model = "lipsync-2",
                     RequestId = "request-fitted-video", SyncMode = "remap", WindowStartSample = sourceStartSample, WindowEndSample = sourceEndSample } };
                 videos = [new VoiceLabVideoAsset("video-fitted", template.Id + "/video-fitted.mp4", asset.Sha256, duration + 1, 30, 640, 360)];
@@ -102,15 +109,24 @@ public sealed class VoiceLabFitPlannerTests
                 }
                 else
                 {
-                    Assert.Equal(VoiceLabVideoMode.Lipsync, Assert.Single(prepared.SelectedSegmentRecipes).Recipe.Video.Mode);
+                    var video = Assert.Single(prepared.SelectedSegmentRecipes).Recipe.Video;
+                    Assert.Equal(VoiceLabVideoMode.Lipsync, video.Mode);
+                    Assert.Equal(VoiceLabVideoMode.ZoomCover, VoiceLabLipsync.Base(video).Mode);
                     Assert.Equal(VoiceLabProjectErrorCode.VideoModeUnsupported,
                         Assert.Throws<VoiceLabProjectException>(() => VoiceLabRenderInput.Capture(project, prepared, "not-opened")).Code);
                 }
             });
+            if (error is not null && recipe.Video.Mode == VoiceLabVideoMode.Lipsync && VoiceLabLipsync.Base(recipe.Video).Mode == VoiceLabVideoMode.Source)
+            {
+                refusedWithoutDurationPolicy++;
+                continue;
+            }
             Assert.True(error is null, $"{Text(test, "name")}: fitted recipe refused: {error}");
             accepted++;
         }
-        Assert.Equal(Cases("cases").Concat(Cases("propertyCases")).Count(test => !test.GetProperty("expected").TryGetProperty("error", out _)), accepted);
+        Assert.Equal(withoutDurationPolicy, refusedWithoutDurationPolicy);
+        Assert.Equal(Cases("cases").Concat(Cases("propertyCases")).Count(test => !test.GetProperty("expected").TryGetProperty("error", out _)),
+            accepted + refusedWithoutDurationPolicy);
     }
 
     static JsonElement[] Cases(string key) => Document.Value.GetProperty(key).EnumerateArray().ToArray();

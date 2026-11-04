@@ -159,15 +159,22 @@ public static class VoiceLabRenderValidation
                     (video.Mode == VoiceLabVideoMode.ZoomCover || video.Zoom is null && video.FaceX is null && video.FaceY is null), VoiceLabProjectErrorCode.InvalidSegment);
                 break;
             case VoiceLabVideoMode.Lipsync:
+                // The video the lip sync was made over keeps its own source, cut or Match video fields (Mac lipsyncBase).
+                var lipsyncBase = VoiceLabLipsync.Base(video);
+                if (lipsyncBase.Mode == VoiceLabVideoMode.Cut)
+                    Require(VoiceLabNaturalPacing.ValidCuts(lipsyncBase, rate), VoiceLabProjectErrorCode.InvalidRange);
+                else if (lipsyncBase.Mode == VoiceLabVideoMode.Source)
+                    Require(lipsyncBase.RetimeFactor is null && lipsyncBase.Zoom is null && lipsyncBase.FaceX is null && lipsyncBase.FaceY is null &&
+                        lipsyncBase.Cuts is null && output == end - start, VoiceLabProjectErrorCode.InvalidRange);
                 Require(video.AssetId is { } id && project.VoiceLab.VideoAssets!.Any(a => a.Id == id && a.DurationSeconds*rate >= output) && video.Provider?.Length > 0 && video.Model?.Length > 0 &&
                     Id(video.RequestId) && video.WindowStartSample is { } first && first >= 0 && first <= start &&
-                    video.WindowEndSample is { } last && last >= end && last > first && last <= total && video.SyncMode == "remap" &&
-                    video.RetimeFactor is null && video.Zoom is null && video.FaceX is null && video.FaceY is null, VoiceLabProjectErrorCode.MissingRenderPolicy);
+                    video.WindowEndSample is { } last && last >= end && last > first && last <= total && VoiceLabLipsync.IsSyncMode(video.SyncMode) &&
+                    VoiceLabRenderInput.SupportsVideoRecipe(lipsyncBase), VoiceLabProjectErrorCode.MissingRenderPolicy);
                 break;
             default: throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidSegment);
         }
         var qa = recipe.Qa;
-        Require(video.Mode == VoiceLabVideoMode.Cut || video.Cuts is null, VoiceLabProjectErrorCode.InvalidSegment);
+        Require(video.Mode is VoiceLabVideoMode.Cut or VoiceLabVideoMode.Lipsync || video.Cuts is null, VoiceLabProjectErrorCode.InvalidSegment);
         var joinAllowed = qa.JoinAdvisory?.Validates(qa.LufsJumpLu, recipe.Provenance.CreatedAt) ?? (Math.Abs(qa.LufsJumpLu) <= 2);
         Require(double.IsFinite(qa.LufsJumpLu) && joinAllowed && double.IsFinite(qa.PeakDbfs) && qa.PeakDbfs < 0, VoiceLabProjectErrorCode.QaRejected);
         if (segment.Kind == VoiceLabSegmentKind.Tts)
@@ -236,7 +243,7 @@ public static class VoiceLabRenderValidation
         Require(Enum.IsDefined(video.Mode) && video.SourceStartSample >= 0 && video.SourceEndSample >= 0 && video.OutputSamples >= 0 &&
             Finite(video.RetimeFactor) && Finite(video.Zoom) && Unit(video.FaceX) && Unit(video.FaceY) && (video.AssetId is null || Id(video.AssetId)) &&
             video.Provider is null or { Length: > 0 } && video.Model is null or { Length: > 0 } && (video.RequestId is null || Id(video.RequestId)) &&
-            video.WindowStartSample is null or >= 0 && video.WindowEndSample is null or >= 0 && video.SyncMode is null or "remap", VoiceLabProjectErrorCode.InvalidSegment);
+            video.WindowStartSample is null or >= 0 && video.WindowEndSample is null or >= 0 && (video.SyncMode is null || VoiceLabLipsync.IsSyncMode(video.SyncMode)), VoiceLabProjectErrorCode.InvalidSegment);
         Require(qa.TranscriptTokens is null or >= 0 && Unit(qa.TranscriptMatch) && double.IsFinite(qa.LufsJumpLu) && double.IsFinite(qa.PeakDbfs) &&
             Unit(qa.SpeakerScore) && Unit(qa.SpeakerThreshold) && qa.SpeakerModel is null or { Length: > 0 }, VoiceLabProjectErrorCode.InvalidSegment);
         if (qa.JoinAdvisory is { } advisory)

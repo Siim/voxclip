@@ -78,14 +78,15 @@ public sealed class VoiceRewriteService
         VoiceLabLlmChecks.CheckAnswer(connector.Id, model, answer);
         // §8.9.1: one spoken passage; extra keys are ignored, as in every reply (ai.md §2.3).
         var parsed = LlmOutput.Validate(answer, request.Schema);
-        if (parsed.Object is null || parsed.Dropped != 0 || parsed.Object["rewrite"] is not JsonValue value ||
+        // A malformed next step is dropped on its own (§8.2.1); any other dropped item still refuses the reply.
+        if (parsed.Object is null || parsed.Dropped - parsed.DroppedByKey.GetValueOrDefault("nextActions") != 0 || parsed.Object["rewrite"] is not JsonValue value ||
             !value.TryGetValue<string>(out var rewrite) || EditingAlgorithms.JsTrim(rewrite).Length == 0 || Encoding.UTF8.GetByteCount(rewrite) > 20000 ||
             Url.IsMatch(rewrite) || rewrite.Any(character => char.IsControl(character) && character != '\n'))
             throw LlmErrors.Create(LlmErrorKind.InvalidOutput, "", model, LlmFeature.VoiceRewrite);
         var length = VoiceLabTextLength.Length(rewrite);
         return new(Guid.NewGuid(), snapshot.Scope, snapshot.SourceWords, source, rewrite, connector.Id, answer.Model, answer.RequestId,
             length, length >= snapshot.MinChars && length <= snapshot.MaxChars)
-        { AudioTags = VoiceLabAudioTags.Parse(parsed.Object["audioTags"], rewrite) };
+        { AudioTags = VoiceLabAudioTags.Parse(parsed.Object["audioTags"], rewrite), NextActions = RewriteNextAction.Parse(parsed.Object["nextActions"]) };
     }
 
     private const string PromptFile = "prompts/voice-rewrite.json";

@@ -79,8 +79,10 @@ public sealed class PatchRewriteService
         catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or RegexMatchTimeoutException) { throw InvalidOutput(model); }
         // The whole reply keeps the 20,000-byte rule: the kept edits' texts hold at most that much together (§8.1).
         if (result.Edits.Sum(edit => Encoding.UTF8.GetByteCount(edit.Text)) > PatchRewriteValidator.MaxTextBytes) throw InvalidOutput(model);
-        return new(Guid.NewGuid(), result.Edits, result.UnknownLines, result.DuplicateLines, parsed.Dropped + result.MalformedItems, prompt.CheckThis,
-            connector.Id, answer.Model, answer.RequestId);
+        // Only dropped edits are malformed edits; a malformed next step is dropped on its own (§8.2.1).
+        return new(Guid.NewGuid(), result.Edits, result.UnknownLines, result.DuplicateLines, parsed.DroppedByKey.GetValueOrDefault("edits") + result.MalformedItems,
+            prompt.CheckThis, connector.Id, answer.Model, answer.RequestId)
+        { NextActions = RewriteNextAction.Parse(parsed.Object!["nextActions"]) };
     }
 
     private sealed record Prompt(JsonObject Document, string System, string SchemaName, JsonObject Schema, int OutputCap, string CheckThis, string Sha256);

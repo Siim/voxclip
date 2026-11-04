@@ -1,0 +1,530 @@
+{
+  "schema": "voxclip-homophone-word-check/1",
+  "caseCount": 42,
+  "soundKeys": [
+    {
+      "word": "claude",
+      "key": "C43"
+    },
+    {
+      "word": "cloud",
+      "key": "C43"
+    },
+    {
+      "word": "crowd",
+      "key": "C63"
+    },
+    {
+      "word": "clod",
+      "key": "C43"
+    },
+    {
+      "word": "ashcraft",
+      "key": "A261"
+    },
+    {
+      "word": "pfister",
+      "key": "P236"
+    },
+    {
+      "word": "tymczak",
+      "key": "T522"
+    },
+    {
+      "word": "robert",
+      "key": "R163"
+    },
+    {
+      "word": "rupert",
+      "key": "R163"
+    },
+    {
+      "word": "honeyman",
+      "key": "H555"
+    },
+    {
+      "word": "codex",
+      "key": "C32"
+    },
+    {
+      "word": "cortex",
+      "key": "C632"
+    },
+    {
+      "word": "an",
+      "key": null
+    },
+    {
+      "word": "t3",
+      "key": null
+    },
+    {
+      "word": "Claude",
+      "key": "C43"
+    },
+    {
+      "word": "naive2",
+      "key": null
+    }
+  ],
+  "soundsAlike": [
+    {
+      "word": "claude",
+      "heard": "cloud",
+      "expected": true
+    },
+    {
+      "word": "claude",
+      "heard": "claude",
+      "expected": false
+    },
+    {
+      "word": "claude",
+      "heard": "clod2",
+      "expected": false
+    },
+    {
+      "word": "t3",
+      "heard": "tea",
+      "expected": false
+    },
+    {
+      "word": "an",
+      "heard": "in",
+      "expected": false
+    },
+    {
+      "word": "claude",
+      "heard": "cld",
+      "expected": false
+    },
+    {
+      "word": "claude",
+      "heard": "clad",
+      "expected": true
+    },
+    {
+      "word": "robert",
+      "heard": "rupert",
+      "expected": true
+    },
+    {
+      "word": "codex",
+      "heard": "cortex",
+      "expected": false
+    },
+    {
+      "word": "claude",
+      "heard": "crowd",
+      "expected": false
+    }
+  ],
+  "replacementWords": [
+    {
+      "id": "claude-code-over-cloud-code",
+      "text": "Claude Code",
+      "items": [
+        {
+          "id": "b",
+          "text": "cloud"
+        },
+        {
+          "id": "c",
+          "text": "code,"
+        }
+      ],
+      "firstWordId": "b",
+      "lastWordId": "c",
+      "expected": [
+        "claude"
+      ]
+    },
+    {
+      "id": "words-outside-the-window-do-not-count",
+      "text": "Claude Code rocks",
+      "items": [
+        {
+          "id": "a",
+          "text": "So"
+        },
+        {
+          "id": "b",
+          "text": "cloud"
+        },
+        {
+          "id": "c",
+          "text": "code,"
+        },
+        {
+          "id": "d",
+          "text": "Claude"
+        }
+      ],
+      "firstWordId": "b",
+      "lastWordId": "c",
+      "expected": [
+        "claude",
+        "rocks"
+      ]
+    },
+    {
+      "id": "window-not-found-keeps-every-word",
+      "text": "Claude Code",
+      "items": [
+        {
+          "id": "a",
+          "text": "So"
+        },
+        {
+          "id": "b",
+          "text": "cloud"
+        },
+        {
+          "id": "c",
+          "text": "code,"
+        },
+        {
+          "id": "d",
+          "text": "Claude"
+        }
+      ],
+      "firstWordId": "b",
+      "lastWordId": "z",
+      "expected": [
+        "claude",
+        "code"
+      ]
+    },
+    {
+      "id": "reversed-window-keeps-every-word",
+      "text": "Claude Code",
+      "items": [
+        {
+          "id": "a",
+          "text": "So"
+        },
+        {
+          "id": "b",
+          "text": "cloud"
+        },
+        {
+          "id": "c",
+          "text": "code,"
+        },
+        {
+          "id": "d",
+          "text": "Claude"
+        }
+      ],
+      "firstWordId": "c",
+      "lastWordId": "b",
+      "expected": [
+        "claude",
+        "code"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "id": "claude-code-nine-words",
+      "expected": "bring your own Claude Code subscription or Codex subscription",
+      "recognized": [
+        "bring",
+        "your",
+        "own",
+        "cloud",
+        "code",
+        "subscription",
+        "or",
+        "codex",
+        "subscription"
+      ],
+      "replacementWords": [
+        "claude"
+      ],
+      "normalized": [
+        "bring",
+        "your",
+        "own",
+        "claude",
+        "code",
+        "subscription",
+        "or",
+        "codex",
+        "subscription"
+      ],
+      "rawMatch": 0.8888888888888888,
+      "transcriptMatch": 1.0,
+      "exact": true,
+      "passed": true
+    },
+    {
+      "id": "claude-code-nine-words-without-replacement-words",
+      "expected": "bring your own Claude Code subscription or Codex subscription",
+      "recognized": [
+        "bring",
+        "your",
+        "own",
+        "cloud",
+        "code",
+        "subscription",
+        "or",
+        "codex",
+        "subscription"
+      ],
+      "replacementWords": [],
+      "normalized": [
+        "bring",
+        "your",
+        "own",
+        "cloud",
+        "code",
+        "subscription",
+        "or",
+        "codex",
+        "subscription"
+      ],
+      "rawMatch": 0.8888888888888888,
+      "transcriptMatch": 0.8888888888888888,
+      "exact": false,
+      "passed": false
+    },
+    {
+      "id": "claude-code-eight-words",
+      "expected": "bring your own Claude Code subscription or Codex",
+      "recognized": [
+        "bring",
+        "your",
+        "own",
+        "cloud",
+        "code",
+        "subscription",
+        "or",
+        "codex"
+      ],
+      "replacementWords": [
+        "claude"
+      ],
+      "normalized": [
+        "bring",
+        "your",
+        "own",
+        "claude",
+        "code",
+        "subscription",
+        "or",
+        "codex"
+      ],
+      "rawMatch": 0.875,
+      "transcriptMatch": 1.0,
+      "exact": true,
+      "passed": true
+    },
+    {
+      "id": "short-phrase-made-exact",
+      "expected": "Claude Code",
+      "recognized": [
+        "cloud",
+        "code"
+      ],
+      "replacementWords": [
+        "claude"
+      ],
+      "normalized": [
+        "claude",
+        "code"
+      ],
+      "rawMatch": 0.5,
+      "transcriptMatch": 1.0,
+      "exact": true,
+      "passed": true
+    },
+    {
+      "id": "different-sound-stays-wrong",
+      "expected": "bring your own Claude Code subscription or Codex subscription",
+      "recognized": [
+        "bring",
+        "your",
+        "own",
+        "crowd",
+        "code",
+        "subscription",
+        "or",
+        "codex",
+        "subscription"
+      ],
+      "replacementWords": [
+        "claude"
+      ],
+      "normalized": [
+        "bring",
+        "your",
+        "own",
+        "crowd",
+        "code",
+        "subscription",
+        "or",
+        "codex",
+        "subscription"
+      ],
+      "rawMatch": 0.8888888888888888,
+      "transcriptMatch": 0.8888888888888888,
+      "exact": false,
+      "passed": false
+    },
+    {
+      "id": "only-replacement-words-are-normalized",
+      "expected": "bring your own Claude Code subscription or Codex subscription",
+      "recognized": [
+        "bring",
+        "your",
+        "own",
+        "cloud",
+        "code",
+        "subscription",
+        "or",
+        "cortex",
+        "subscription"
+      ],
+      "replacementWords": [
+        "subscription"
+      ],
+      "normalized": [
+        "bring",
+        "your",
+        "own",
+        "cloud",
+        "code",
+        "subscription",
+        "or",
+        "cortex",
+        "subscription"
+      ],
+      "rawMatch": 0.7777777777777778,
+      "transcriptMatch": 0.7777777777777778,
+      "exact": false,
+      "passed": false
+    },
+    {
+      "id": "expected-token-is-never-rewritten",
+      "expected": "the cloud runs Claude",
+      "recognized": [
+        "the",
+        "cloud",
+        "runs",
+        "cloud"
+      ],
+      "replacementWords": [
+        "claude"
+      ],
+      "normalized": [
+        "the",
+        "cloud",
+        "runs",
+        "cloud"
+      ],
+      "rawMatch": 0.75,
+      "transcriptMatch": 0.75,
+      "exact": false,
+      "passed": false
+    },
+    {
+      "id": "length-difference-over-two",
+      "expected": "Claude Code",
+      "recognized": [
+        "cld",
+        "code"
+      ],
+      "replacementWords": [
+        "claude"
+      ],
+      "normalized": [
+        "cld",
+        "code"
+      ],
+      "rawMatch": 0.5,
+      "transcriptMatch": 0.5,
+      "exact": false,
+      "passed": false
+    },
+    {
+      "id": "length-difference-of-two",
+      "expected": "Claude Code",
+      "recognized": [
+        "clad",
+        "code"
+      ],
+      "replacementWords": [
+        "claude"
+      ],
+      "normalized": [
+        "claude",
+        "code"
+      ],
+      "rawMatch": 0.5,
+      "transcriptMatch": 1.0,
+      "exact": true,
+      "passed": true
+    },
+    {
+      "id": "replacement-word-not-asked",
+      "expected": "cloud code",
+      "recognized": [
+        "clod",
+        "code"
+      ],
+      "replacementWords": [
+        "claude"
+      ],
+      "normalized": [
+        "clod",
+        "code"
+      ],
+      "rawMatch": 0.5,
+      "transcriptMatch": 0.5,
+      "exact": false,
+      "passed": false
+    },
+    {
+      "id": "first-sorted-candidate-wins",
+      "expected": "Claude and clod",
+      "recognized": [
+        "cloud",
+        "and",
+        "clod"
+      ],
+      "replacementWords": [
+        "clod",
+        "claude"
+      ],
+      "normalized": [
+        "claude",
+        "and",
+        "clod"
+      ],
+      "rawMatch": 0.6666666666666666,
+      "transcriptMatch": 1.0,
+      "exact": true,
+      "passed": true
+    },
+    {
+      "id": "digits-never-sound-alike",
+      "expected": "T3 Code",
+      "recognized": [
+        "tea",
+        "code"
+      ],
+      "replacementWords": [
+        "t3"
+      ],
+      "normalized": [
+        "tea",
+        "code"
+      ],
+      "rawMatch": 0.5,
+      "transcriptMatch": 0.5,
+      "exact": false,
+      "passed": false
+    }
+  ]
+}

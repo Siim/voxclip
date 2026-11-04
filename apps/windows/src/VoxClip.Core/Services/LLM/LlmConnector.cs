@@ -227,7 +227,7 @@ public sealed partial class LlmConnector
         return compatible;
     }
 
-    private static JsonNode HttpStructuredSchema(JsonNode schema)
+    internal static JsonNode HttpStructuredSchema(JsonNode schema)
     {
         var shaped = schema.DeepClone();
         if (shaped is not JsonObject value) return shaped;

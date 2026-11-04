@@ -1,0 +1,122 @@
+{
+  "schema": "voxclip-lipsync-project/1",
+  "caseCount": 12,
+  "project": "lipsync-render-v3.voxclip",
+  "segments": [
+    {
+      "id": "vl-passage",
+      "candidate": 0,
+      "syncMode": "cut_off",
+      "baseMode": "source",
+      "assetId": "lipsync-passage",
+      "windowStartSample": 1350,
+      "windowEndSample": 4350,
+      "outputSamples": 700,
+      "plainCandidate": 1
+    },
+    {
+      "id": "vl-thanks",
+      "candidate": 0,
+      "syncMode": "remap",
+      "baseMode": "cut",
+      "assetId": "lipsync-thanks",
+      "windowStartSample": 4000,
+      "windowEndSample": 7000,
+      "outputSamples": 650,
+      "plainCandidate": 1
+    }
+  ],
+  "renders": [
+    {
+      "id": "both-lip-synced",
+      "selected": {
+        "vl-passage": 0,
+        "vl-thanks": 0
+      },
+      "windows": "videoModeUnsupported",
+      "mac": null
+    },
+    {
+      "id": "passage-plain",
+      "selected": {
+        "vl-passage": 1,
+        "vl-thanks": 0
+      },
+      "windows": "videoModeUnsupported",
+      "mac": null
+    },
+    {
+      "id": "thanks-plain",
+      "selected": {
+        "vl-passage": 0,
+        "vl-thanks": 1
+      },
+      "windows": "videoModeUnsupported",
+      "mac": null
+    },
+    {
+      "id": "both-plain",
+      "selected": {
+        "vl-passage": 1,
+        "vl-thanks": 1
+      },
+      "windows": null,
+      "mac": null
+    }
+  ],
+  "invalid": [
+    {
+      "id": "unknown-sync-mode",
+      "segment": "vl-passage",
+      "set": {
+        "syncMode": "stretch"
+      },
+      "error": "missingRenderPolicy"
+    },
+    {
+      "id": "missing-sync-mode",
+      "segment": "vl-passage",
+      "set": {
+        "syncMode": null
+      },
+      "error": "missingRenderPolicy"
+    },
+    {
+      "id": "window-inside-the-segment",
+      "segment": "vl-passage",
+      "set": {
+        "windowStartSample": 2600
+      },
+      "error": "missingRenderPolicy"
+    },
+    {
+      "id": "unknown-video-asset",
+      "segment": "vl-thanks",
+      "set": {
+        "assetId": "lipsync-missing"
+      },
+      "error": "missingRenderPolicy"
+    },
+    {
+      "id": "source-base-with-a-zoom",
+      "segment": "vl-passage",
+      "set": {
+        "zoom": 1.3
+      },
+      "error": "invalidRange"
+    },
+    {
+      "id": "cut-base-inside-the-edge-guard",
+      "segment": "vl-thanks",
+      "set": {
+        "cuts": [
+          {
+            "startSample": 5350,
+            "endSample": 5400
+          }
+        ]
+      },
+      "error": "invalidRange"
+    }
+  ]
+}
