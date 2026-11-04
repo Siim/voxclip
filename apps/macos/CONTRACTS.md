@@ -1,5 +1,31 @@
 # macOS implementation contracts
 
+### 2026-11-04 — Rewrite smoke fixes: voiced phrases, idle takes footer, no inert fit controls
+
+- **Root causes.**
+  - **S6, I5.** After the takes, `observeMeasuredTakes` → `recordSpeakingRate` rebuilt the review with the new rate multiplier. The re-estimate failed change 3, even though it already had a passing 2.0 s take in its 2.0 s slot, so `blockedVoiceOrdinals` showed "Change 3 needs a shorter wording before takes." The stub's slot-filling takes read as slow speech, which made the multiplier large.
+  - **S6, no Use.** Phrase 4's only valid duration was Match, so its video had to be prepared. `autoChooseVideo` prepared only when it had just chosen Cut or Match itself. A later Use anyway on phrase 1 (`select` → `clearPreparedVideo`) dropped the prepared video, and nothing prepared it again. `canAccept` stayed false, so `takesNextStep` fell through to "Making takes…" with nothing running.
+  - **S9, I2.** `ChangeListCard` was `.disabled(task.wordingLocked)`, which drew + Expression and the recovery buttons disabled while the fit ran.
+  - **S9, end.** After Stop → Keep original words, the footer read "Keep a change to apply it." with no control.
+- **Built.**
+  - `RewriteSession.voicedOrdinals`: a change whose takes-plan phrase has a take that passed, fits by length (`lengthFits`), was made for its wording now and isn't from before an expression. Such a change is never in `blockedVoiceOrdinals`, and its row shows no estimate or recovery. Recalibration re-estimates only phrases not voiced yet.
+  - Resolver: `estimateBlockedReason` makes a takes-plan phrase the estimate holds back, with no fitting take, a `.length` step: a measured reword from its closest take, then its take, with no click.
+  - `ClipTakePlan.needsVideoPreparation`. `prepareVideoChoices` loops until the newest choices are prepared, then notifies `onMeasuredTakesChanged` so a refused automatic choice is made. `autoChooseVideo` prepares whenever the selection needs it. `retryVideoPreparation` backs [Prepare Video Again].
+  - `takesWaitingStep` replaces the "Making takes…" fallback. In order: the priced take's button, "Preparing the matched video…", the preparation failure with [Prepare Video Again], "Listen to phrase {n}'s take, then Use anyway or try another.", "Checking takes…", then a pointer to the rows.
+  - Locked rows: `ChangeRow(locked:)` and `AudioTagPhrase(editable:)` hide recovery buttons, + Expression and tag removal, and don't focus a change on click, because focusing stops the fit. `.disabled(wordingLocked)` is deleted.
+  - The nothing-included footer gains [Done] (`closeRewrite`).
+  - Smoke harness: S9 runs `finish()` after Stop, and I5 accepts "ended with Done, the original words kept" there (`mayEndUnchanged`). `MacUIIntegrationTests/rewriteSmoke` has no known-failing list.
+  - Test: `ClipTakePlanTests.recalibrationNeverBlocksAVoicedPhraseOrUse`. It fails 3 expectations without the voiced exclusion.
+- **Stub not changed (deviation).** I tried two realistic take-length models:
+  - the fixture's own word rate;
+  - the source rate within each window.
+
+  Both make takes 0.5–1 s shorter than their windows. Keep source is then refused, and Cut or Match is the only choice. The fixture is a WAV with no video, so `CompositionBuilder` can't prepare those offscreen, and S1, S3, S6 and S7 stop at "The matched video couldn't be prepared." The second model also exposed a real dead end, below. Making the stub realistic needs a video fixture or a scripted duration-render preparer.
+- **Next.**
+  - **Dead end:** a passing take too long for keep source and not auto-selected. The footer reads "Choose a take for phrase 1." with no control that acts (S4 with the rate-matched stub). `stuckReason` treats it as the user's pick, and no marked control selects it.
+  - A change the estimate holds back that is outside the takes plan (Get Price priced only the fitting ones) still waits for its row's controls. The resolver can't add a phrase to a paid plan.
+  - **Windows twin owed:** voiced changes kept out of the estimate block, the held-back plan phrase in the resolver, the idle takes footer steps, re-preparing the matched video, locked fit rows and the nothing-included [Done].
+
 ### 2026-11-04 — Rewrite smoke: nine stuck scenarios, seven invariants, one command
 
 - **Built.** `-rewriteSmoke <dir>` (`DebugRewriteSmoke.swift`, DEBUG, test session) opens the real `RewriteSession`, `ClipTakePlan` and `DirectorPanel` on a 94-word fixture. The fixture's 24 kHz source WAV is written to the temporary data folder.
