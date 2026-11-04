@@ -100,7 +100,7 @@ struct VoiceLabPricingTests {
         let inputs = try #require(Self.document()["inputs"] as? [String: String])
         #expect(inputs["shared/catalog/voice-lab.json"] == SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined())
         let catalog = try Self.catalog()
-        #expect(catalog.entries.count == 18)
+        #expect(catalog.entries.count == 19)
         #expect(catalog.entry(for: .elevenLabsDeleteClone, model: nil)?.formula == .zero)
         #expect(catalog.entry(for: .elevenLabsTextToSpeech, model: "eleven_v3")?.checked == "2026-10-25")
         #expect(catalog.entry(for: .falLipsync(endpoint: "fal-ai/sync-lipsync/v3"), model: nil)?.checked == "2026-10-26")

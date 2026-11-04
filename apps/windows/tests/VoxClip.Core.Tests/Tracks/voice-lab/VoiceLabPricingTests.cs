@@ -126,7 +126,7 @@ public sealed class VoiceLabPricingTests
         var bytes = File.ReadAllBytes(Path.Combine(FixtureLoader.SharedRoot, "catalog", "voice-lab.json"));
         Assert.Equal(Text(Document.Value["inputs"]!["shared/catalog/voice-lab.json"]), Convert.ToHexStringLower(SHA256.HashData(bytes)));
         var catalog = Catalog();
-        Assert.Equal(18, catalog.Entries.Count);
+        Assert.Equal(19, catalog.Entries.Count);
         Assert.Equal(VoiceLabPriceFormula.Zero, catalog.Find(VoiceLabPricedOperation.ElevenLabsDeleteClone, null)?.Formula);
         Assert.Equal("2026-10-25", catalog.Find(VoiceLabPricedOperation.ElevenLabsTextToSpeech, "eleven_v3")?.Checked);
         Assert.Equal("2026-10-26", catalog.Find(VoiceLabPricedOperation.FalLipsync("fal-ai/sync-lipsync/v3"), null)?.Checked);

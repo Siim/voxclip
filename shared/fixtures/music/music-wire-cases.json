@@ -1,0 +1,717 @@
+{
+  "format": "voxclip-music-wire-cases/1",
+  "project": "fixtures/music/music-project.voxclip",
+  "valid": [
+    {
+      "id": "library-and-generated",
+      "patches": []
+    },
+    {
+      "id": "library-only",
+      "patches": [
+        {
+          "path": "/music",
+          "value": [
+            {
+              "id": "music-main",
+              "clipId": "clip-main",
+              "asset": {
+                "file": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11/music-calm-intro.mp3",
+                "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "durationSeconds": 222
+              },
+              "source": "library",
+              "title": "Synthetic calm intro",
+              "creator": "Synthetic artist",
+              "license": "by",
+              "attribution": "\"Synthetic calm intro\" by Synthetic artist is licensed under CC BY 3.0.",
+              "sourceUrl": "https://example.com/track/1",
+              "prompt": null,
+              "gainDb": -20,
+              "ducking": true,
+              "fadeInSeconds": 0.5,
+              "fadeOutSeconds": 1.5,
+              "startOffsetSeconds": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "own-file",
+      "patches": [
+        {
+          "path": "/music",
+          "value": [
+            {
+              "id": "music-own",
+              "clipId": "clip-main",
+              "asset": {
+                "file": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11/music-own-file.m4a",
+                "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "durationSeconds": 222
+              },
+              "source": "file",
+              "title": "my-track",
+              "creator": null,
+              "license": "own",
+              "attribution": null,
+              "sourceUrl": null,
+              "prompt": null,
+              "gainDb": -20,
+              "ducking": true,
+              "fadeInSeconds": 0.5,
+              "fadeOutSeconds": 1.5,
+              "startOffsetSeconds": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cc0-without-attribution",
+      "patches": [
+        {
+          "path": "/music/0/license",
+          "value": "cc0"
+        },
+        {
+          "path": "/music/0/attribution",
+          "value": null
+        }
+      ]
+    },
+    {
+      "id": "public-domain",
+      "patches": [
+        {
+          "path": "/music/0/license",
+          "value": "pdm"
+        }
+      ]
+    },
+    {
+      "id": "no-music-is-omitted",
+      "patches": [
+        {
+          "path": "/music",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "aiff-and-wav",
+      "patches": [
+        {
+          "path": "/music/0/asset/file",
+          "value": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11/music-a.aiff"
+        },
+        {
+          "path": "/music/1/asset/file",
+          "value": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11/music-b.wav"
+        }
+      ]
+    },
+    {
+      "id": "quietest-and-loudest",
+      "patches": [
+        {
+          "path": "/music/0/gainDb",
+          "value": -40
+        },
+        {
+          "path": "/music/1/gainDb",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "longest-fades",
+      "patches": [
+        {
+          "path": "/music/0/fadeInSeconds",
+          "value": 10
+        },
+        {
+          "path": "/music/0/fadeOutSeconds",
+          "value": 10
+        }
+      ]
+    }
+  ],
+  "invalid": [
+    {
+      "id": "unknown-entry-field",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/unexpected",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "unknown-asset-field",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/asset/unexpected",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "missing-clipId",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/clipId",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "missing-creator",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/creator",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "missing-attribution",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/attribution",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "missing-sourceUrl",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/sourceUrl",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "missing-prompt",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/prompt",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "missing-ducking",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/ducking",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "missing-startOffsetSeconds",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/startOffsetSeconds",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "missing-asset-hash",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/asset/sha256",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "license-by-nc",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/license",
+          "value": "by-nc"
+        }
+      ]
+    },
+    {
+      "id": "license-by-sa",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/license",
+          "value": "by-sa"
+        }
+      ]
+    },
+    {
+      "id": "license-by-nd",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/license",
+          "value": "by-nd"
+        }
+      ]
+    },
+    {
+      "id": "license-by-nc-sa",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/license",
+          "value": "by-nc-sa"
+        }
+      ]
+    },
+    {
+      "id": "license-nc",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/license",
+          "value": "nc"
+        }
+      ]
+    },
+    {
+      "id": "license-sa",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/license",
+          "value": "sa"
+        }
+      ]
+    },
+    {
+      "id": "license-nd",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/license",
+          "value": "nd"
+        }
+      ]
+    },
+    {
+      "id": "library-generated-license",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/license",
+          "value": "generated"
+        }
+      ]
+    },
+    {
+      "id": "library-own-license",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/license",
+          "value": "own"
+        }
+      ]
+    },
+    {
+      "id": "generated-library-license",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/1/license",
+          "value": "cc0"
+        }
+      ]
+    },
+    {
+      "id": "own-file-cc-license",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music",
+          "value": [
+            {
+              "id": "music-own",
+              "clipId": "clip-main",
+              "asset": {
+                "file": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11/music-own-file.m4a",
+                "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "durationSeconds": 222
+              },
+              "source": "file",
+              "title": "my-track",
+              "creator": null,
+              "license": "by",
+              "attribution": null,
+              "sourceUrl": null,
+              "prompt": null,
+              "gainDb": -20,
+              "ducking": true,
+              "fadeInSeconds": 0.5,
+              "fadeOutSeconds": 1.5,
+              "startOffsetSeconds": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "unknown-source",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/source",
+          "value": "stream"
+        }
+      ]
+    },
+    {
+      "id": "by-without-attribution",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/attribution",
+          "value": null
+        }
+      ]
+    },
+    {
+      "id": "library-without-url",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/sourceUrl",
+          "value": null
+        }
+      ]
+    },
+    {
+      "id": "library-http-url",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/sourceUrl",
+          "value": "http://example.com/track/1"
+        }
+      ]
+    },
+    {
+      "id": "generated-without-prompt",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/1/prompt",
+          "value": null
+        }
+      ]
+    },
+    {
+      "id": "library-with-prompt",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/prompt",
+          "value": "calm"
+        }
+      ]
+    },
+    {
+      "id": "empty-title",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/title",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "id": "numeric-title",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/title",
+          "value": 7
+        }
+      ]
+    },
+    {
+      "id": "string-ducking",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/ducking",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "id": "numeric-ducking",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/ducking",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "id": "string-gain",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/gainDb",
+          "value": "-20"
+        }
+      ]
+    },
+    {
+      "id": "gain-too-loud",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/gainDb",
+          "value": 0.5
+        }
+      ]
+    },
+    {
+      "id": "gain-too-quiet",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/gainDb",
+          "value": -40.5
+        }
+      ]
+    },
+    {
+      "id": "fade-too-long",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/fadeOutSeconds",
+          "value": 10.5
+        }
+      ]
+    },
+    {
+      "id": "negative-fade",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/fadeInSeconds",
+          "value": -0.1
+        }
+      ]
+    },
+    {
+      "id": "negative-offset",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/startOffsetSeconds",
+          "value": -1
+        }
+      ]
+    },
+    {
+      "id": "zero-duration",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/asset/durationSeconds",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "too-long-track",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/asset/durationSeconds",
+          "value": 1800.5
+        }
+      ]
+    },
+    {
+      "id": "uppercase-hash",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/asset/sha256",
+          "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      ]
+    },
+    {
+      "id": "ogg-file",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/asset/file",
+          "value": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11/music-calm.ogg"
+        }
+      ]
+    },
+    {
+      "id": "unprefixed-file",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/asset/file",
+          "value": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11/calm.mp3"
+        }
+      ]
+    },
+    {
+      "id": "traversal-file",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/asset/file",
+          "value": "../music-calm.mp3"
+        }
+      ]
+    },
+    {
+      "id": "empty-music-list",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music",
+          "value": []
+        }
+      ]
+    },
+    {
+      "id": "null-music",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music",
+          "value": null
+        }
+      ]
+    },
+    {
+      "id": "bad-identifier",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/music/0/id",
+          "value": "-bad"
+        }
+      ]
+    },
+    {
+      "id": "other-project-folder",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/music/0/asset/file",
+          "value": "00000000-0000-0000-0000-000000000001/music-calm.mp3"
+        }
+      ]
+    },
+    {
+      "id": "unknown-clip",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/music/0/clipId",
+          "value": "clip-missing"
+        }
+      ]
+    },
+    {
+      "id": "two-tracks-one-clip",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/music/1/clipId",
+          "value": "clip-main"
+        }
+      ]
+    },
+    {
+      "id": "duplicate-identity",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/music/1/id",
+          "value": "music-main"
+        }
+      ]
+    },
+    {
+      "id": "offset-past-track",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/music/1/startOffsetSeconds",
+          "value": 8
+        }
+      ]
+    },
+    {
+      "id": "v1-music",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "id": "v2-music",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "id": "v3-music",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "id": "future-project",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 5
+        }
+      ],
+      "tooNew": true
+    }
+  ]
+}

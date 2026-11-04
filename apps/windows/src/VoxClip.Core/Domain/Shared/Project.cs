@@ -33,6 +33,17 @@ public sealed record Project(string Format, int SchemaVersion, string Id, DateTi
         get => motionCues.Count == 0 ? null : motionCues;
         init => motionCues = value ?? [];
     }
+    private IReadOnlyList<VoxClip.Core.Domain.Music.ProjectMusic> music = [];
+    /// <summary>Default-empty schema-v4 background tracks (doc/spec/music.md §2); omitted on the wire when empty.</summary>
+    [JsonIgnore]
+    public IReadOnlyList<VoxClip.Core.Domain.Music.ProjectMusic> Music { get => music; init => music = value; }
+    /// <summary>Serialization projection preserving the absent field shape of projects without music.</summary>
+    [JsonPropertyName("music"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<VoxClip.Core.Domain.Music.ProjectMusic>? PersistedMusic
+    {
+        get => music.Count == 0 ? null : music;
+        init => music = value ?? [];
+    }
 }
 
 /// <summary>Writer identity; runtime release version or schema-valid 0.0.0 fallback. Editing §10.2.</summary>

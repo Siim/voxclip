@@ -244,7 +244,7 @@ public actor AVExporter: Exporter {
         let outputNeeds = preflight.outputNeeds
         progress(ExportProgress(phase: .preparing, fraction: 0))
         let graph = try await builder.build(job.render)
-        defer { withExtendedLifetime((graph.voiceLabLease, graph.contextDemoLease)) {} }
+        defer { withExtendedLifetime((graph.voiceLabLease, graph.contextDemoLease, graph.musicLease)) {} }
         guard Self.canUseSourceOnlyVideo(job.render) || graph.videoComposition.customVideoCompositorClass != nil else {
             throw VoxClipError.exportFailed("This export requires the shared frame compositor")
         }
@@ -284,14 +284,16 @@ public actor AVExporter: Exporter {
         let videoProvider = videoReader.outputProvider(for: videoOutput)
         var audioReader: AVAssetReader?
         var audioProvider: AVAssetReaderOutput.Provider<CMReadySampleBuffer<CMSampleBuffer.DynamicContent>>?
-        if let track = graph.audioTrack {
-            guard let composition = graph.composition.copy() as? AVComposition,
-                  let audioTrack = composition.track(withTrackID: track.trackID) else {
+        if !graph.mixedAudioTracks.isEmpty {
+            // The voice track alone without music, exactly as before; with music its bed is the second mixed track.
+            guard let composition = graph.composition.copy() as? AVComposition else {
                 throw VoxClipError.decodeFailed("Cannot copy export audio composition")
             }
+            let audioTracks = graph.mixedAudioTracks.compactMap { composition.track(withTrackID: $0.trackID) }
+            guard audioTracks.count == graph.mixedAudioTracks.count else { throw VoxClipError.decodeFailed("Cannot copy export audio composition") }
             let reader = try AVAssetReader(asset: composition)
             reader.timeRange = timeRange
-            let audioOutput = AVAssetReaderAudioMixOutput(audioTracks: [audioTrack], audioSettings: MediaSupport.pcm(rate: 48000, channels: 2))
+            let audioOutput = AVAssetReaderAudioMixOutput(audioTracks: audioTracks, audioSettings: MediaSupport.pcm(rate: 48000, channels: 2))
             audioOutput.audioMix = graph.audioMix
             audioOutput.alwaysCopiesSampleData = false
             audioProvider = reader.outputProvider(for: audioOutput)
@@ -644,7 +646,7 @@ public actor AVExporter: Exporter {
                                bytes: try VoiceLabAudioRenderer.scratchBytes(input: input)))
         }
         try DiskCapacity.check(needs, provider: capacityProvider)
-        let graph = try await builder.build(request)
+        let graph = try await builder.build(request.withoutMusic)
         defer { withExtendedLifetime((graph.voiceLabLease, graph.contextDemoLease)) {} }
         guard let track = graph.audioTrack else { throw VoxClipError.noAudioTrack }
         let reader = try AVAssetReader(asset: graph.composition)

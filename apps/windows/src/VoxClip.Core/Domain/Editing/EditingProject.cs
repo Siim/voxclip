@@ -28,7 +28,8 @@ internal static class EditingProject
             Share = replaced ? new(new Dictionary<string, string>(StringComparer.Ordinal)) : project.Share,
             VoiceLab = replaced ? project.VoiceLab with { Segments = [] } : project.VoiceLab,
             ContextDemo = replaced ? null : project.ContextDemo,
-            MotionCues = replaced ? [] : project.MotionCues }, []);
+            MotionCues = replaced ? [] : project.MotionCues,
+            Music = replaced ? project.Music.Where(entry => entry.ClipId is null).ToArray() : project.Music }, []);
     }
 
     internal static ProjectModel Clean(ProjectModel project, List<string> warnings)
@@ -75,6 +76,7 @@ internal static class EditingProject
         }
         return project with { Edits = project.Edits with { CutWordIds = words.Where(word => cutWords.Contains(word.Id)).Select(word => word.Id).ToArray(),
             CutPauseIds = pauses.Where(pause => cutPauses.Contains(pause.Id)).Select(pause => pause.Id).ToArray(), Corrections = corrections, Clips = clips, ActiveClipId = active }, Share = new(share),
-            MotionCues = project.MotionCues.Where(cue => clipIds.Contains(cue.ClipID)).ToArray() };
+            MotionCues = project.MotionCues.Where(cue => clipIds.Contains(cue.ClipID)).ToArray(),
+            Music = VoxClip.Core.Domain.Music.MusicProject.Pruned(project.Music, clipIds) };
     }
 }

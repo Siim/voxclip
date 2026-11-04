@@ -76,6 +76,8 @@ struct EditorRenderSnapshot {
     @ObservationIgnored lazy var transcription = InlineTranscription(model: self)
     var contextDemoSession: ContextDemoSession?
     var motionCueEditing: MotionCueEditing?
+    /// The Music section's suggestions, search and audition (EditorModel+Music.swift).
+    let musicPanel = MusicPanel()
     var voiceChange: VoiceChangeSession?
     var correctionID: String?
     var correctionText = ""
@@ -454,6 +456,7 @@ struct EditorRenderSnapshot {
     @ObservationIgnored private var renderedVoiceLab: ProjectVoiceLab?
     @ObservationIgnored private var renderedContextDemo: ContextDemoDocument?
     @ObservationIgnored private var renderedMotionCues: [MotionCue] = []
+    @ObservationIgnored private var renderedMusic: [ProjectMusic] = []
     @ObservationIgnored private(set) var fillerCandidateIDs: Set<String> = []
     @ObservationIgnored private var planningSegments: [EditSegment]?
     @ObservationIgnored private var planningWordIndex: [String: Int] = [:]
@@ -705,7 +708,7 @@ struct EditorRenderSnapshot {
         let edits = project.edits
         let transcriptChanged = renderedTranscript != project.transcript
         let editChanged = renderedEdits != edits
-        guard transcriptChanged || editChanged || renderedMedia != project.media || renderedVoiceLab != project.voiceLab || renderedContextDemo != project.contextDemo || renderedMotionCues != project.motionCues || renderedEdits == nil else { return }
+        guard transcriptChanged || editChanged || renderedMedia != project.media || renderedVoiceLab != project.voiceLab || renderedContextDemo != project.contextDemo || renderedMotionCues != project.motionCues || renderedMusic != project.music || renderedEdits == nil else { return }
         let clipsChanged = renderedEdits?.clips != edits.clips
         if transcribed != (project.transcript != nil) { transcribed = project.transcript != nil }
         projectRevision += 1
@@ -774,7 +777,7 @@ struct EditorRenderSnapshot {
         }
         renderedTranscript = project.transcript; renderedEdits = edits; renderedMedia = project.media
         renderedVoiceLab = project.voiceLab
-        renderedContextDemo = project.contextDemo; renderedMotionCues = project.motionCues
+        renderedContextDemo = project.contextDemo; renderedMotionCues = project.motionCues; renderedMusic = project.music
         transcriptRevision += 1
         followWaveformKey()
         if edits.activeClipId != renderedActiveClipID {
@@ -992,7 +995,7 @@ struct EditorRenderSnapshot {
         guard let changed = history?.state else { return }
         guard changed != state || next != project else { return }
         next.edits = changed.projectEdits
-        if case .removeClip(let id) = command { next.motionCues.removeAll { $0.clipID == id } }
+        if case .removeClip(let id) = command { next.motionCues.removeAll { $0.clipID == id }; next.music.removeAll { $0.clipId == id } }
         let clipIDs = Set(changed.clips.map(\.id))
         next.share.captions = next.share.captions.filter { $0.key == "full" || clipIDs.contains($0.key) }
         // Only the scope changed: a tab switch, not an edit (impl-plan item 16).
@@ -1018,6 +1021,7 @@ struct EditorRenderSnapshot {
             return nil
         })
         next.motionCues.removeAll { removedClips.contains($0.clipID) }
+        next.music.removeAll { $0.clipId.map(removedClips.contains) ?? false }
         let clipIDs = Set(changed.clips.map(\.id))
         next.share.captions = next.share.captions.filter { $0.key == "full" || clipIDs.contains($0.key) }
         if onlyScopeDiffers(next) { return setScope(next.edits.activeClipId) }

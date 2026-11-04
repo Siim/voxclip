@@ -24,7 +24,7 @@ enum ProjectValidation {
     static func validate(_ raw: JSONValue) throws {
         try ProjectMigrations.checkVersion(raw)
         let isV4 = try map(raw)["schemaVersion"] == .number(4)
-        let root = try object(raw, required: "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", optional: "title extensions" + (isV4 ? " contextDemo motionCues" : ""))
+        let root = try object(raw, required: "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", optional: "title extensions" + (isV4 ? " contextDemo motionCues music" : ""))
         if let title = root["title"], case .string = title {} else if root["title"] != nil { try fail("Invalid project title") }
         _ = try object(root["savedBy"], required: "app version platform")
         let media = try object(root["media"], required: "source")
@@ -100,6 +100,7 @@ enum ProjectValidation {
             try require(root["id"] == .string(document.projectId) && source["contentKey"] == .string(document.sourceContentKey), "Context demo source binding mismatch")
         }
         if let cues = root["motionCues"] { try validateMotionCues(cues) }
+        if let music = root["music"] { try MusicProject.validateWire(music) }
         try validateDates(raw)
     }
 

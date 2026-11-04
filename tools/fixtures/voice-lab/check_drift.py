@@ -40,7 +40,9 @@ EXACT = ['shared/fixtures/voice-lab/pace-cases.json', 'shared/fixtures/voice-lab
          'shared/fixtures/voice-lab/enrollment-cases.json',
          'shared/fixtures/voice-lab/accept-all-review-cases.json',
          'shared/fixtures/voice-lab/window-cases.json', 'shared/fixtures/voice-lab/window-all-cases.json',
-         'shared/fixtures/v2/paragraphs.json', 'shared/fixtures/v2/timeline-cases.json']
+         'shared/fixtures/v2/paragraphs.json', 'shared/fixtures/v2/timeline-cases.json',
+         'shared/fixtures/music/music-project.voxclip', 'shared/fixtures/music/music-wire-cases.json',
+         'shared/schemas/project.schema.json']
 REL_TOL = 1e-10
 ABS_TOL = 1e-12
 
@@ -67,6 +69,9 @@ def main():
     # CI enumerates the older voice-lab generator directory; include the independent WC1 generator here.
     root = Path(__file__).resolve().parents[3]
     subprocess.run([sys.executable, str(root / "tools/fixtures/v2/generate_v2.py")], check=True)
+    # The background-music schema field and its shared vectors (doc/spec/music.md section 2).
+    subprocess.run([sys.executable, str(root / "tools/schemas/generate_music_schema.py")], check=True)
+    subprocess.run([sys.executable, str(root / "tools/fixtures/music/generate_music.py")], check=True)
     failed = False
     for path in EXACT:
         committed_bytes = subprocess.run(['git', 'show', f'HEAD:{path}'], check=True, capture_output=True).stdout

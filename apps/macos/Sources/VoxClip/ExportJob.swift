@@ -210,6 +210,8 @@ import VoxClipCore
     mutating func load(target: String, model: EditorModel) {
         draftTarget = target; disclosureLine = model.shareDisclosureLine(target); edited = false; addDisclosure = false
         captionDraft = Self.removingLine(disclosureLine, from: SharePostText.capCaption(model.shareCaption(target)))
+        // A track's licence asks for its credit in the post (music.md §5); appended once, kept if the user edits around it.
+        captionDraft = SharePostText.capCaption(MusicCredits.postText(captionDraft, music: model.musicCredit(for: target)))
     }
     mutating func edit(_ value: String) {
         captionDraft = SharePostText.capCaption(value); edited = true

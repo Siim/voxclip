@@ -1,5 +1,16 @@
 # Windows fixed contracts
 
+### 2026-11-04 — Windows Core: projects with background music open, validate and save unchanged; export refuses (track/v2-music)
+
+Twin of the Mac music contract (doc/spec/music.md §2, §8).
+
+- **Built.** `Domain/Music/ProjectMusic.cs`: `ProjectMusic`, `MusicAsset`, `MusicSource`, `MusicLicense` and `MusicProject` (`Validate`, `ValidateWire`, `Setting`, `Pruned`, `ExportUnsupportedMessage`). `Project.Music` (omitted when empty via `PersistedMusic`), the v4-only `music` key in `ProjectValidation`, and `MusicProject.Validate` in `ProjectSerialization.Validate`. Editing `Clean`, `ReplaceTranscript`, the App's `SyncProject` and undo keep or prune it like the Mac.
+- **Refusal.** `VoiceLabRenderContract.RequireWindowsVisualSupport` (and so `Prepare`, the CLI and the App export paths) stops a project with music: "Windows cannot mix background music into exports yet. Export this project on a Mac, or remove its music there. Your music and edits are unchanged." `ExportFingerprint` treats music like other unsupported visuals.
+- **Tests.** `Tracks/win-editing/MusicProjectWireTests` (5) replays `shared/fixtures/music/music-wire-cases.json` (new file, `voxclip-music-wire-cases/1`); `VoiceLabPricingTests` counts 19 catalog entries.
+- **Allowlists.** `ReleaseBoundary update` on all four; only `VoxClip.Core.txt` changes (+103 lines, the music types and `Project.Music`/`PersistedMusic`); Media, CLI and App are unchanged.
+- **Verification (serial, local, absolute `VOXCLIP_SHARED_DIR`, `-c Release -m:1 -nodeReuse:false -p:UseSharedCompilation=false`).** Builds zero warnings or errors (cross-platform solution, App typecheck surrogate, win-ui). Release Core **3,006 total, 0 failed, 29 skipped**; portable Media (`Category!=RequiresFFmpeg&Category!=RequiresWindows`) **924 total, 0 failed, 5 skipped**; Release win-ui **1,232 total, 0 failed, 5 skipped**; explicit `*ReleaseSurrogate*` 1/1. No VM, CI dispatch, live or paid calls.
+- **Owed.** The mix, the three sources and the Music UI.
+
 ### 2026-11-04 — Windows twin: AI decisions at extra high effort; Rewrite and More on the selected suggestion (track/v2-quickwins)
 
 Twin of the macOS entry of the same date; the user asked for fewer clicks and for Claude Code to decide at extra high effort.

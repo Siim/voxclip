@@ -472,6 +472,7 @@ extension EditorModel {
                     CaptionPropertyRow("Position", marker: "position") { positionMenu }
                     fineTuneDisclosure.id("captions.fineTune")
                     if fineTune { fineTuneControls }
+                    MusicSection(model: model)
                 }
                 .padding(.leading, Metrics.inset)
                 .padding(.trailing, Metrics.inset - 1)

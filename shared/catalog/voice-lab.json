@@ -89,6 +89,16 @@
     },
     {
       "provider": "elevenlabs",
+      "operation": "musicCompose",
+      "model": "music_v1",
+      "unit": "second",
+      "formula": "perMinute",
+      "usdParameters": { "perMinute": "0.15" },
+      "checked": "2026-11-04",
+      "source": "https://elevenlabs.io/pricing/api"
+    },
+    {
+      "provider": "elevenlabs",
       "operation": "forcedAlignment",
       "unit": "second",
       "formula": "perHour",

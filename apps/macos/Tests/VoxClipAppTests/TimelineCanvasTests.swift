@@ -977,13 +977,13 @@ private actor TimelineTestSettings: SettingsStore {
         let canvas = TimelineCanvasView(model: model, shell: shell)
         defer { canvas.tearDown() }
         let steps = model.undoSteps
-        #expect(TrackHeight.small.heights == [28, 32, 20, 20])
-        #expect(TrackHeight.medium.heights == [36, 44, 24, 24])
-        #expect(TrackHeight.large.heights == [52, 64, 28, 28])
+        #expect(TrackHeight.small.heights == [28, 32, 20, 20, 20])
+        #expect(TrackHeight.medium.heights == [36, 44, 24, 24, 24])
+        #expect(TrackHeight.large.heights == [52, 64, 28, 28, 28])
         for height in TrackHeight.allCases {
             shell.layout.trackHeight = height
             canvas.layoutSubtreeIfNeeded(); canvas.needsLayout = true; canvas.layoutSubtreeIfNeeded()
-            #expect([canvas.video, canvas.audio, canvas.captions, canvas.motion].map { $0.frame.height } == height.heights)
+            #expect([canvas.video, canvas.audio, canvas.captions, canvas.motion, canvas.music].map { $0.frame.height } == height.heights)
         }
         #expect(canvas.headers[0].button.isHidden)
         #expect(canvas.headers[2].button.accessibilityLabel() == "CC Captions, shown")
@@ -1538,7 +1538,9 @@ private actor TimelineTestSettings: SettingsStore {
         shell.layout.windowWidth = 1280
         let (canvas, window) = windowed(model, shell: shell)
         defer { canvas.tearDown(); window.close() }
-        #expect(canvas.headers.count == 4)
+        #expect(canvas.headers.count == 5)
+        #expect(canvas.headers[4].accessibilityLabel() == "M1 Music")
+        #expect(canvas.headers[4].button.accessibilityLabel() == "Choose background music" && canvas.headers[4].action != nil)
         #expect(canvas.headers[3].accessibilityLabel() == "FX Motion")
         #expect(canvas.headers[3].button.accessibilityLabel() == "Edit clip motion cues")
         #expect(!canvas.headers[3].button.isHidden && canvas.headers[3].action != nil)
