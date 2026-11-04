@@ -31,6 +31,9 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
     private CancellationTokenSource? running;
     private VoiceLabTakeRunEnd stop = VoiceLabTakeRunEnd.Cancelled;
     internal Func<string, Task>? Suspension { get; set; }
+    /// <summary>Automatic fixes (voice-lab.md §8.2.2): a new run keeps the earlier takes' checked audio beside its own, so a
+    /// paid take is never replaced. Off, each run starts from no takes, as before.</summary>
+    public bool KeepsEarlierTakes { get; set; }
     public VoiceLabTakeRun(ElevenLabsVoiceLab client, VoiceConsentStore store, VoiceSpeakerCheck speaker,
         VoiceLabTakeStorage storage, VoiceLabDispatchGate inputGate, Func<CancellationToken, Task<bool>> inputsAreCurrent)
         : this(client, store, storage, inputGate, inputsAreCurrent, ProductionChecks(store, speaker)) { }
@@ -175,8 +178,11 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                 {
                     transportStarted = true;
                     value = value with { Revision = ++revision };
-                    var retired = scratches.Values.ToArray(); scratches.Clear(); acceptedRows.Clear();
-                    launchCleanup = RetireAsync(retired);
+                    if (!KeepsEarlierTakes)
+                    {
+                        var retired = scratches.Values.ToArray(); scratches.Clear(); acceptedRows.Clear();
+                        launchCleanup = RetireAsync(retired);
+                    }
                 }
             }
         });

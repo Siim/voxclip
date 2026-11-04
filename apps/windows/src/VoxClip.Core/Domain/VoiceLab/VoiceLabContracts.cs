@@ -176,6 +176,9 @@ public sealed record VoiceRewriteRequest(Guid RequestId, VoiceRewriteScope Scope
     string Instruction, string Language, double TargetSeconds, int MinChars, int MaxChars)
 {
     public IReadOnlyList<VoiceRewriteTimingFeedback> ShorterPhrases { get; init; } = [];
+    /// <summary>A next step's feedback block (<see cref="RewriteNextActionFeedback"/>, voice-lab.md §8.2.1), sent after the
+    /// instruction. At most 20,000 UTF-8 bytes.</summary>
+    public string? Feedback { get; init; }
 }
 public sealed record VoiceRewriteTimingFeedback(string Original, string Proposed, double EstimateSeconds, double SlotSeconds)
 {

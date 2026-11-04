@@ -13,6 +13,7 @@ internal sealed partial class RewriteGeneration : IDisposable
     internal const string NonePassed = "These takes didn't sound right. Try different wording or re-record.";
     private readonly VoiceLabGenerationSession core;
     private readonly ObservedRunner runner;
+    private readonly IVoiceLabTakeRunner takeRunner;
     private readonly Func<CancellationToken, Task<RewriteGenerationChoices>> discover;
     private readonly Func<string, string, uint, CancellationToken, Task<VoiceLabTakeInput?>> buildInput;
     private readonly Func<CancellationToken, Task<bool>> consent;
@@ -91,6 +92,7 @@ internal sealed partial class RewriteGeneration : IDisposable
         Func<CancellationToken, Task<bool>> consent, Func<CancellationToken, Task<decimal?>> readMonthlyCap,
         Func<bool> current, Func<Action, Task>? onUi = null, Action? release = null, TimeProvider? timeProvider = null)
     {
+        this.takeRunner = takeRunner;
         this.discover = discover; this.buildInput = buildInput; this.consent = consent;
         this.current = current; this.onUi = onUi ?? (action => { action(); return Task.CompletedTask; });
         this.release = release ?? (() => (takeRunner as IDisposable)?.Dispose());
@@ -358,6 +360,13 @@ internal sealed partial class RewriteGeneration : IDisposable
                 runStarted = true; rejected.Clear(); BestTakeId = null; VideoChoice = null;
                 reviewEnd = null;
                 ReviewedInput = pendingInput;
+            }
+            // Automatic fixes keep every earlier take: this run's takes join them, reviewed with this run's input.
+            else if (!runInputRecorded && KeepsEveryTake)
+            {
+                runStarted = true;
+                if (pendingInput is { } next && (ReviewedInput is null || next.Text != ReviewedInput.Text || next.RequestText != ReviewedInput.RequestText))
+                    ReviewedInput = next;
             }
             // A run from reworded text reviews that text; earlier takes keep the input they were made from.
             else if (!runInputRecorded && pendingInput is { } reworded && ReviewedInput is { } reviewed && reworded.Text != reviewed.Text)

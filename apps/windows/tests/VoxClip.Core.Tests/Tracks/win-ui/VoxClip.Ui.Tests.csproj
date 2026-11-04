@@ -28,6 +28,7 @@
     <Compile Include="RewritePanelTests.cs" />
     <Compile Include="RewritePaceMatchingTests.cs" />
     <Compile Include="RewriteWordingFitTests.cs" />
+    <Compile Include="RewriteAutoFixTests.cs" />
     <Compile Include="InlineWorkflowTests.cs" />
     <Compile Include="IntegratedRewriteTests.cs" />
     <Compile Include="RewriteGenerationTests.cs" />

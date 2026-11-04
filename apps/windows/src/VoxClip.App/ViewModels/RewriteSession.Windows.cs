@@ -13,8 +13,10 @@ internal sealed partial class RewriteSession
     internal IReadOnlyList<RewriteGeneration> GenerationWindows => generationWindows;
     internal int ActiveWindow { get; private set; }
     internal bool IsGeneratingBatch { get; private set; }
-    internal bool CanAcceptAll => GenerationIsCurrent && !IsGeneratingBatch && !applyingBatch && generationWindows.Count > 0 &&
-        generationWindows.Count == PricedVoiceHunks.Count && generationWindows.All(window => window.ReadyToAccept);
+    /// <summary>Every phrase is ready or kept as recorded, and at least one take or text fix applies.</summary>
+    internal bool CanAcceptAll => GenerationIsCurrent && !IsGeneratingBatch && !applyingBatch && AutoFix.Work is null && generationWindows.Count > 0 &&
+        generationWindows.Count == PricedVoiceHunks.Count && generationWindows.All(window => window.LeftOut || window.ReadyToAccept) &&
+        (generationWindows.Any(window => !window.LeftOut) || LocalOperations().Count > 0);
     /// <summary>The footer's next step while selected takes cannot be used yet because a changed-duration phrase has no
     /// video choice (Mac ClipTakePlan.acceptanceBlocker); null otherwise.</summary>
     internal string? AcceptanceBlocker
@@ -23,7 +25,7 @@ internal sealed partial class RewriteSession
         {
             if (!GenerationIsCurrent || IsGeneratingBatch || applyingBatch || CanAcceptAll) return null;
             var missing = generationWindows.Select((window, index) => (window, number: index + 1))
-                .Where(item => item.window.Phase == RewriteGenerationPhase.LengthChanged &&
+                .Where(item => !item.window.LeftOut && item.window.Phase == RewriteGenerationPhase.LengthChanged &&
                     item.window.Selected is { Selectable: true, RequiresJoinAdvisoryAcceptance: false, Fits: false } && item.window.VideoChoice is null)
                 .Select(item => item.number).ToArray();
             return missing.Length == 0 ? null : $"Choose the video duration for {PhraseList(missing)}.";
@@ -66,6 +68,7 @@ internal sealed partial class RewriteSession
                  index == 0 && previous[index].Rows.Count == 0 && (previousHunks.Length == 0 || desired.Count == 0));
             var window = reusable ? previous[index] : generationFactory(index);
             window.FixedModelId = synthesisModel;
+            if (AutoFix.Armed) window.KeepEveryTake();
             generationWindows.Add(window);
             if (!reusable) window.Changed += GenerationChanged;
             else if (desired.Count == 0 || previousHunks.Length == 0) _ = window.InputsChangedAsync();
@@ -99,6 +102,7 @@ internal sealed partial class RewriteSession
         generationWindows.Clear();
         generatedVoiceHunks = [];
         Generation = null;
+        AutoFix.Reset();
     }
 
     private static async Task DrainGenerationAsync(RewriteGeneration generation)
@@ -186,6 +190,8 @@ internal sealed partial class RewriteSession
             var copy = $"Generate up to {batch.TakeCount} takes across {batch.Windows.Count} passages. " +
                 (decision.Text.Length == 0 ? "No charge." : decision.Text);
             if (!await confirm(batch, copy, Current, lifetime.Token) || !Current()) return;
+            // The approved price also covers automatic fixes up to max($0.10, the price) (voice-lab.md §8.2.2).
+            ArmAutoFix(batch);
             var progress = new VoiceLabTakeBatchProgress(batch);
             for (var index = 0; index < windows.Length; index++)
             {
@@ -213,6 +219,7 @@ internal sealed partial class RewriteSession
         finally
         {
             IsGeneratingBatch = false;
+            AdvanceAutoFix();
             Changed?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -232,7 +239,9 @@ internal sealed partial class RewriteSession
         List<RewriteAcceptance> prepared = [];
         try
         {
-            foreach (var generation in windows)
+            // A phrase kept as recorded adds no segment; its text fixes still apply.
+            if (windows.All(window => window.LeftOut)) return operations.Count > 0 && Editor.ApplyBatch(operations);
+            foreach (var generation in windows.Where(window => !window.LeftOut))
             {
                 var accepted = await generation.PrepareAcceptanceAsync(Editor, Project, operations);
                 if (accepted is null || !GenerationIsCurrent || ReviewIdentity != identity || !generationWindows.SequenceEqual(windows)) return false;

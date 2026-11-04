@@ -38,6 +38,10 @@ public sealed class VoiceLabGenerationSession(IVoiceLabTakeRunner runner)
     private Guid? selectedTakeId;
     private Guid? auditionedTakeId;
     private IReadOnlyList<VoiceLabTakeRow> rows = Array.Empty<VoiceLabTakeRow>();
+    private IReadOnlyList<VoiceLabTakeRow> earlier = Array.Empty<VoiceLabTakeRow>();
+    /// <summary>Automatic fixes (voice-lab.md §8.2.2): a new run's takes are listed after the earlier ones, numbered on from
+    /// them, so no paid take is replaced. Off, each run replaces the rows, as before.</summary>
+    public bool KeepsEarlierTakes { get; set; }
     public Func<CancellationToken, Task<decimal?>>? ReadMonthlyCapAsync { get; set; }
     public Func<string, CancellationToken, Task<bool>>? ConfirmCostAsync { get; set; }
     public VoiceLabTakeRunQuote? PendingQuote { get { lock (sync) { ExpireQuote(); return quote; } } }
@@ -96,7 +100,7 @@ public sealed class VoiceLabGenerationSession(IVoiceLabTakeRunner runner)
             Cancel(active);
             quote = null; cost = null; input = null; preparing = false;
             continuing = null;
-            rows = Array.Empty<VoiceLabTakeRow>(); selectedTakeId = null; auditionedTakeId = null;
+            rows = Array.Empty<VoiceLabTakeRow>(); earlier = Array.Empty<VoiceLabTakeRow>(); selectedTakeId = null; auditionedTakeId = null;
         }
         await serial.WaitAsync().ConfigureAwait(false);
         try { await runner.InvalidateAsync().ConfigureAwait(false); }
@@ -286,7 +290,13 @@ public sealed class VoiceLabGenerationSession(IVoiceLabTakeRunner runner)
                 lock (sync)
                 {
                     Validate(); action();
-                    if (!started) { rows = Array.Empty<VoiceLabTakeRow>(); selectedTakeId = null; auditionedTakeId = null; }
+                    if (!started)
+                    {
+                        earlier = KeepsEarlierTakes ? rows : Array.Empty<VoiceLabTakeRow>();
+                        rows = earlier;
+                        if (earlier.Count == 0) selectedTakeId = null;
+                        auditionedTakeId = null;
+                    }
                     started = true;
                 }
             });
@@ -341,13 +351,15 @@ public sealed class VoiceLabGenerationSession(IVoiceLabTakeRunner runner)
 
     private void UpdateRows(IReadOnlyList<VoiceLabTakeRow> updated)
     {
-        rows = Array.AsReadOnly(updated.Select(row =>
+        var offset = earlier.Count;
+        rows = Array.AsReadOnly(earlier.Concat(updated.Where(row => earlier.All(kept => kept.Id != row.Id))
+            .Select(row => offset == 0 ? row : row with { Index = offset + row.Index }).Select(row =>
         {
             var prior = rows.FirstOrDefault(candidate => candidate.Id == row.Id);
             var accepted = row.Selectable && row.HasJoinAdvisory && prior is { RequiresJoinAdvisoryAcceptance: false, AcceptedJoinAdvisory: { } acceptance } &&
                 acceptance.Seams.SequenceEqual(row.Qa!.JoinSeams) ? acceptance : null;
             return row with { AcceptedJoinAdvisory = accepted };
-        }).ToArray());
+        })).ToArray());
         if (selectedTakeId is { } selected && !rows.Any(row => row.Id == selected && row.Selectable && !row.RequiresJoinAdvisoryAcceptance)) selectedTakeId = null;
     }
 

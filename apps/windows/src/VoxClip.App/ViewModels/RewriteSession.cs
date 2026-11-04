@@ -116,6 +116,7 @@ internal sealed partial class RewriteSession : IDisposable
     private void GenerationChanged(object? sender, EventArgs args)
     {
         ObserveMeasuredTakes();
+        AdvanceAutoFix();
         Changed?.Invoke(this, EventArgs.Empty);
     }
     private void GenerationSelectionChanged(object? sender, EventArgs args)
@@ -336,6 +337,7 @@ internal sealed partial class RewriteSession : IDisposable
             changeStates.Clear();
             priceOverrides.Clear();
             ResetWordingFit();
+            AutoFix.Reset();
             NewWords = resultText;
             RefreshReview();
             ProposalRevision++;
@@ -368,6 +370,7 @@ internal sealed partial class RewriteSession : IDisposable
     {
         if (!IsOpen) return;
         StopWordingFit();
+        StopAutoFix();
         audioTags = VoiceLabAudioTags.Reanchored(ReviewAudioTags(), NewWords, text);
         InvalidateProposal();
         scopeHunks = null;
@@ -453,6 +456,7 @@ internal sealed partial class RewriteSession : IDisposable
         if (!IsOpen) return;
         IsOpen = false;
         StopWordingFit();
+        AutoFix.Reset();
         Editor.SelectionChanged -= GenerationSelectionChanged;
         RetireGenerationWindows();
         InvalidateProposal();

@@ -1865,6 +1865,8 @@ member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public ReadMonthlySpendA
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public RefreshMonthlyCapAsync(VoxClip.Core.Domain.VoiceLab.VoiceLabMonthlyCap,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public RejectAsync(System.Guid)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public Scratch(System.Guid)
+member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public get_KeepsEarlierTakes()
+member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public set_KeepsEarlierTakes(bool)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun+Pending :: method private .ctor(VoxClip.Media.VoiceLab.VoiceLabTakeRun+Pending)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun+Pending :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun+Pending :: method private get_EqualityContract()

@@ -15,6 +15,8 @@ internal sealed class RewriteMeasuredWording(int window, Guid take, int number, 
     internal double MeasuredSeconds { get; } = measuredSeconds;
     internal double SlotSeconds { get; } = slotSeconds;
     internal bool TooLong => MeasuredSeconds > SlotSeconds;
+    /// <summary>The automatic fixes reword from the closest take even when it isn't selected (it may have failed a check).</summary>
+    internal bool Unselected { get; init; }
     internal string? Text { get; set; }
     internal bool KeepOriginal { get; set; }
     internal bool Preparing { get; set; } = true;
@@ -69,6 +71,7 @@ internal sealed partial class RewriteSession
     /// <summary>The row note after the rounds: reworded with before/after estimates, or kept as recorded.</summary>
     internal string? FitRowNote(int ordinal)
     {
+        if (heldBack.Contains(ordinal) && priceOverrides.Contains(ordinal)) return HeldBackNote(ordinal);
         if (fitKept.Contains(ordinal))
             return $"kept your original words · {EditingFormat.ToFixed1(fitInitialSlots.GetValueOrDefault(ordinal))} s is too short to re-voice";
         if (!fitInitialEstimates.TryGetValue(ordinal, out var before) || Review?.VoiceHunks.FirstOrDefault(hunk => hunk.Ordinals.SequenceEqual([ordinal]))?.Fit is not { Fits: true } fit)
@@ -76,6 +79,19 @@ internal sealed partial class RewriteSession
         return $"reworded to fit · was ≈ {EditingFormat.ToFixed1(before)} s, now ≈ {EditingFormat.ToFixed1(fit.EstimateSeconds)} s · slot {EditingFormat.ToFixed1(fit.SlotSeconds)} s";
     }
     private readonly Dictionary<int, double> fitInitialSlots = [];
+    private readonly HashSet<int> heldBack = [];
+    internal static string HeldBackNote(int ordinal) => $"Change {ordinal} is priced as written; once its take is measured, Rewrite rewords it to fit.";
+    /// <summary>Mac <c>priceHeldBackChanges</c>: when the automatic fit ends (not after Stop, not with paid takes) with a change still
+    /// too long, it is priced as written, so Get Price voices it and the automatic fixes reword it from its measured take.</summary>
+    private void PriceHeldBackChanges()
+    {
+        if (WordingFitStopped || HasPaidTakes || Review is null) return;
+        var held = BlockedVoiceHunks.Where(hunk => hunk.Fit is { TooLong: true }).SelectMany(hunk => hunk.Ordinals).ToArray();
+        if (held.Length == 0) return;
+        heldBack.UnionWith(held);
+        priceOverrides.UnionWith(held);
+        RefreshReview(preserveGenerations: true);
+    }
     private string Language => Project.Transcript?.Language ?? "en";
 
     /// <summary>This project's (and this session's measured) speaking-rate samples for a model.</summary>
@@ -133,7 +149,7 @@ internal sealed partial class RewriteSession
     private void ResetWordingFit()
     {
         WordingFitRound = 0; WordingFitCompleted = false; WordingFitStopped = false; WordingFitProblem = "";
-        WordingFitPhrases = []; fitInitialEstimates.Clear(); fitInitialSlots.Clear(); fitFrozen.Clear(); fitKept.Clear();
+        WordingFitPhrases = []; fitInitialEstimates.Clear(); fitInitialSlots.Clear(); fitFrozen.Clear(); fitKept.Clear(); heldBack.Clear();
     }
 
     /// <summary>After a reply lands: fit every phrase outside its slot, automatically for a no-extra-cost connector and after one
@@ -221,6 +237,7 @@ internal sealed partial class RewriteSession
             if (token == fitToken)
             {
                 WordingFitRunning = false; WordingFitCompleted = true; fitting = null; fitLease = null;
+                if (IsOpen && !cancellation.IsCancellationRequested) PriceHeldBackChanges();
                 if (IsOpen) { InvalidateGenerationInputs(); Changed?.Invoke(this, EventArgs.Empty); }
             }
             cancellation.Dispose();
@@ -290,11 +307,12 @@ internal sealed partial class RewriteSession
         RecordCalibration();
         if (MeasuredWording is { } open)
         {
-            if (generationWindows.ElementAtOrDefault(open.Window)?.SelectedTakeId != open.Take && !open.AwaitingApproval && !open.Preparing && open.Text is null)
+            if (!open.Unselected && generationWindows.ElementAtOrDefault(open.Window)?.SelectedTakeId != open.Take && !open.AwaitingApproval && !open.Preparing && open.Text is null)
             { CancelMeasuredWording(); MeasuredWording = null; }
             return;
         }
-        if (Connector is null || WordingIsLocked || IsGeneratingBatch) return;
+        // Once Get Price armed the automatic fixes, they reword from the measured take themselves (RewriteSession.AutoFix).
+        if (Connector is null || WordingIsLocked || IsGeneratingBatch || AutoFix.Armed) return;
         for (var index = 0; index < generationWindows.Count; index++)
         {
             var window = generationWindows[index];
@@ -335,7 +353,7 @@ internal sealed partial class RewriteSession
     private async Task RewordMeasuredTakeAsync(bool approved)
     {
         if (MeasuredWording is not { } suggestion || Connector is not { } connector ||
-            generationWindows.ElementAtOrDefault(suggestion.Window) is not { } window || window.SelectedTakeId != suggestion.Take) return;
+            generationWindows.ElementAtOrDefault(suggestion.Window) is not { } window || !suggestion.Unselected && window.SelectedTakeId != suggestion.Take) return;
         var token = ++measuredToken;
         IDisposable? lease = null;
         var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
@@ -359,7 +377,7 @@ internal sealed partial class RewriteSession
             // The editor is busy while an AI request holds the project; release it before the new wording is quoted.
             lease.Dispose(); lease = null;
             if (token == measuredToken) measuredLease = null;
-            if (!IsOpen || token != measuredToken || !ReferenceEquals(MeasuredWording, suggestion) || window.SelectedTakeId != suggestion.Take) return;
+            if (!IsOpen || token != measuredToken || !ReferenceEquals(MeasuredWording, suggestion) || !suggestion.Unselected && window.SelectedTakeId != suggestion.Take) return;
             var update = updates[0];
             suggestion.KeepOriginal = update.KeepOriginal;
             if (!update.KeepOriginal)

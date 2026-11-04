@@ -389,7 +389,7 @@ internal sealed partial class RewritePanel : Grid
         generationBody.Children.Add(noVoice); generationBody.Children.Add(languageUnavailable);
         generationBody.Children.Add(Ui.Text("Takes", "BodyStrongTextBlockStyle"));
         BuildTakes();
-        generationBody.Children.Add(generate); generationBody.Children.Add(takeSend);
+        generationBody.Children.Add(generate); generationBody.Children.Add(autoFixAllowance); generationBody.Children.Add(takeSend);
         generationBody.Children.Add(generationBusy); generationBody.Children.Add(generationProgress);
         generationBody.Children.Add(cancelGeneration); generationBody.Children.Add(generationError); generationBody.Children.Add(nonePassed);
     }
@@ -444,6 +444,7 @@ internal sealed partial class RewritePanel : Grid
         generationError.IsOpen = generation.Problem.Length > 0;
         nonePassed.Visibility = generation.Phase == RewriteGenerationPhase.NonePassed ? Visibility.Visible : Visibility.Collapsed;
         RenderTakes(generation);
+        RenderAutoFix();
         if (batch is not null) DispatcherQueue.TryEnqueue(() => session.MarkBatchEstimateShown(batch));
         if (IsLoaded && generation.Announcement.Length > 0 && generation.Announcement != generationAnnouncement)
         {

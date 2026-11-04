@@ -45,8 +45,10 @@ internal sealed partial class RewritePanel
             if (takeList.SelectedItem is VoiceLabTakeRow row) await generation.SelectTakeAsync(row.Id);
             RenderTakes(generation);
         };
+        BuildAutoFix();
         generationBody.Children.Add(takeExpression);
         generationBody.Children.Add(takeList);
+        generationBody.Children.Add(autoFixBox);
         generationBody.Children.Add(nextPace);
         AutomationProperties.SetAutomationId(videoChoices, "Rewrite.VideoChoice");
         string[] titles = ["Keep source video duration", "Cut the video to this take", "Match video to this take's duration"];
@@ -80,11 +82,14 @@ internal sealed partial class RewritePanel
                 session.ReviewSurroundingSentence(hunk.Ordinals[0]);
             else await AskForShorterAsync(hunk.Ordinals[0]);
         };
+        // With paid takes this phrase alone keeps its words and every take stays (never a discard prompt).
         var keep = Ui.Button("Keep original words", () =>
         {
-            if (session.PricedVoiceHunks.ElementAtOrDefault(session.ActiveWindow) is { } hunk && session.Review is { } current)
+            if (session.HasPaidTakes) session.KeepOriginal(session.ActiveWindow);
+            else if (session.PricedVoiceHunks.ElementAtOrDefault(session.ActiveWindow) is { } hunk && session.Review is not null)
                 session.SetChangesIncluded(hunk.Ordinals, false);
         });
+        AutomationProperties.SetAutomationId(keep, "Rewrite.TakeKeepOriginal");
         takeRecovery.Children.Add(shorter); takeRecovery.Children.Add(keep);
         lengthBody.Children.Add(measuredFit);
         lengthBody.Children.Add(takeRecovery);
@@ -189,7 +194,7 @@ internal sealed partial class RewritePanel
         }
         takeList.SelectedItem = rows.FirstOrDefault(row => row.Id == generation.SelectedTakeId);
         lengthBody.Visibility = generation.Selected is { Fits: false } ? Visibility.Visible : Visibility.Collapsed;
-        takeRecovery.Visibility = generation.NeedsShorterWording ? Visibility.Visible : Visibility.Collapsed;
+        takeRecovery.Visibility = generation.NeedsShorterWording && !generation.LeftOut && FallbackShown ? Visibility.Visible : Visibility.Collapsed;
         foreach (var button in takeRecovery.Children.OfType<Button>()) button.IsEnabled = session.ReviewIsCurrent && !requestingApproval;
         if (takeRecovery.Children.OfType<Button>().FirstOrDefault() is { } retry)
             retry.Content = generation.Selected?.Audio?.Fit is VoiceLabFitResult.ChangedDuration { ResidualSeconds: < 0 } ? "Use surrounding sentence" : "Ask for shorter";

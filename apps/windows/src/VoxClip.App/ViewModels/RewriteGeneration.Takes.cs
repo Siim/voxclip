@@ -109,7 +109,7 @@ internal sealed partial class RewriteGeneration
     {
         reviewEnd = result.End;
         VideoChoice = null;
-        BestTakeId = TakeRowPresentation.Preselect(result, rejected);
+        BestTakeId = result.End is VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop && !LeftOut ? AutomaticTake()?.Id : null;
         var retained = explicitSelection is { } chosen && Rows.Any(row => row.Id == chosen && row.Selectable && !row.RequiresJoinAdvisoryAcceptance) ? explicitSelection : null;
         core.SelectTake(retained ?? BestTakeId);
         Phase = result.End switch
@@ -122,6 +122,60 @@ internal sealed partial class RewriteGeneration
             TakeRowPresentation.Completion(Rows.Count, Selected is { Fits: true, AutomaticallySelectable: true } row ? row.Index + 1 : null, Rows.Count(row => !row.Selectable && !row.Stopped));
         Notify();
     }
+    /// <summary>Automatic fixes (voice-lab.md §8.2.2): later runs add their takes beside these, so no paid take is replaced
+    /// (Mac <c>ClipTakePlan.keepsEveryTake</c>).</summary>
+    internal bool KeepsEveryTake { get; private set; }
+    internal void KeepEveryTake()
+    {
+        KeepsEveryTake = true;
+        core.KeepsEarlierTakes = true;
+        if (takeRunner is VoxClip.Media.VoiceLab.VoiceLabTakeRun run) run.KeepsEarlierTakes = true;
+    }
+    /// <summary>The phrase keeps its original words (Keep original words, or the last automatic round): no take is used and
+    /// every take stays listed (Mac <c>ClipTakePlan.leaveOut</c>). <see cref="Restore"/> undoes it.</summary>
+    internal bool LeftOut { get; private set; }
+    internal bool LeaveOut()
+    {
+        if (closed || accepting || IsRunning || LeftOut) return false;
+        selectionRevision++;
+        if (takes is not null) _ = takes.Audition.StopAsync();
+        LeftOut = true; explicitSelection = null; BestTakeId = null; core.SelectTake(null); VideoChoice = null;
+        Phase = ReviewPhase(); Notify();
+        return true;
+    }
+    /// <summary>Undo of <see cref="LeaveOut"/>: the automatic take is used again, if there is one.</summary>
+    internal bool Restore()
+    {
+        if (closed || !LeftOut) return false;
+        LeftOut = false;
+        BestTakeId = AutomaticTake()?.Id;
+        core.SelectTake(BestTakeId); VideoChoice = null;
+        Phase = ReviewPhase(); Notify();
+        return true;
+    }
+    /// <summary>The slot the take was made for: its window's source length, in seconds.</summary>
+    internal double? Slot(VoiceLabTakeRow row) => (InputFor(row.Id) ?? ReviewedInput)?.Window is { } window ? window.End - window.Start : null;
+    /// <summary>A take's fitted length, passing or not (a failed take is measured from its own fit).</summary>
+    internal static double? Length(VoiceLabTakeRow row) => row.Audio is { SampleRate: > 0 } audio ? audio.Fit.Plan.OutputFrames / (double)audio.SampleRate : null;
+    private VoiceLabVideoDurationOptions Options(VoiceLabTakeRow row) =>
+        new(row.Audio?.Fit, (InputFor(row.Id) ?? ReviewedInput)?.SourceSampleRate ?? 48_000, row.Audio?.SampleRate ?? 0);
+    /// <summary>Mac <c>lengthFits</c>: keep source or a cut carries the take, selected or not.</summary>
+    internal bool LengthFits(VoiceLabTakeRow row) => Options(row) is var options && (options.Allows(VoiceLabVideoMode.Source) || options.Allows(VoiceLabVideoMode.Cut));
+    /// <summary>Mac <c>durationAvailable</c>: some video duration (keep source, cut or match) carries this passing take.</summary>
+    internal bool DurationAvailable(VoiceLabTakeRow row) => row.Selectable && Options(row) is var options &&
+        (options.Allows(VoiceLabVideoMode.Source) || options.Allows(VoiceLabVideoMode.Cut) || options.Allows(VoiceLabVideoMode.Retimed));
+    /// <summary>The order passing takes are offered in (design.md R2, Mac <c>ranked</c>): one a video duration can carry first,
+    /// the best score among those, else the one closest to the slot.</summary>
+    internal IReadOnlyList<VoiceLabTakeRow> Ranked(IEnumerable<VoiceLabTakeRow> candidates) => candidates
+        .Select(row => (Row: row, Usable: DurationAvailable(row), Distance: Length(row) is { } length && Slot(row) is { } slot ? Math.Abs(length - slot) : double.PositiveInfinity,
+            Score: row.Score ?? 0))
+        .OrderByDescending(item => item.Usable).ThenBy(item => item.Usable ? -item.Score : item.Distance)
+        .ThenBy(item => item.Usable ? item.Distance : -item.Score).ThenBy(item => item.Row.Index).Select(item => item.Row).ToArray();
+    /// <summary>The take chosen automatically (Mac <c>ClipTakePlan.automaticTake</c>): passing takes with no join to listen to and a
+    /// measured voice, never a rejected one, ranked by <see cref="Ranked"/>.</summary>
+    internal VoiceLabTakeRow? AutomaticTake() => Ranked(Rows.Where(row => row.AutomaticallySelectable && !rejected.Contains(row.Id) &&
+        row.Qa?.SpeakerScore is { } score && double.IsFinite(score))).FirstOrDefault();
+
     internal async Task<bool> SelectTakeAsync(Guid id)
     {
         if (closed || accepting || IsRunning || !current() || reviewEnd is not (VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop) ||
@@ -130,7 +184,7 @@ internal sealed partial class RewriteGeneration
         var version = ++selectionRevision;
         if (takes is not null) await takes.Audition.TakeChangedAsync(id);
         if (closed || version != selectionRevision || !current() || !Rows.Any(row => row.Id == id)) return false;
-        explicitSelection = id; core.SelectTake(id); VideoChoice = null; Phase = ReviewPhase(); Notify();
+        explicitSelection = id; LeftOut = false; core.SelectTake(id); VideoChoice = null; Phase = ReviewPhase(); Notify();
         if (pendingInput is { } input && RetryPace(input) != input.Pace) await InputsChangedAsync(preserveReview: true);
         return true;
     }
@@ -141,7 +195,7 @@ internal sealed partial class RewriteGeneration
         await takes.Audition.TakeChangedAsync(id);
         if (closed || version != selectionRevision || !current() || !Rows.Contains(row)) return false;
         core.UseTakeAnyway(id, clock.GetUtcNow());
-        explicitSelection = id; VideoChoice = null; Phase = ReviewPhase();
+        explicitSelection = id; LeftOut = false; VideoChoice = null; Phase = ReviewPhase();
         Announcement = TakeRowPresentation.From(row, BestTakeId, PhraseNumber).Copy;
         Notify();
         return true;
@@ -211,7 +265,7 @@ internal sealed partial class RewriteGeneration
         }
         if (closed) return;
         rejected.Add(id);
-        BestTakeId = TakeRowPresentation.Preselect(new(Rows, reviewEnd ?? VoiceLabTakeRunEnd.Invalidated), rejected);
+        BestTakeId = reviewEnd is VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop && !LeftOut ? AutomaticTake()?.Id : null;
         if (SelectedTakeId == id) { explicitSelection = null; core.SelectTake(BestTakeId); VideoChoice = null; }
         Phase = ReviewPhase();
         Announcement = Selected is { } next ? $"Rejected Take {row.Index + 1}. Take {next.Index + 1} selected." : TakeRowPresentation.NonePassed;

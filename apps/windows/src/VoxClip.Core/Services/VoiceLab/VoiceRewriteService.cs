@@ -126,13 +126,15 @@ public sealed class VoiceRewriteService
             .Replace("{minChars}", input.MinChars.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
             .Replace("{maxChars}", input.MaxChars.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
         var request = EditingAlgorithms.JsTrim(input.Instruction);
-        return (block, (request.Length == 0 ? "" : requestBlock.Replace("{instruction}", request, StringComparison.Ordinal) + "\n\n") + returnLine + "\n" + length + VoiceRewriteFeedback.Render(input.ShorterPhrases, prompt));
+        return (block, (request.Length == 0 ? "" : requestBlock.Replace("{instruction}", request, StringComparison.Ordinal) + "\n\n") + returnLine + "\n" + length + VoiceRewriteFeedback.Render(input.ShorterPhrases, prompt) +
+            (input.Feedback is { } feedback ? "\n\n" + feedback : ""));
     }
 
     private static string Validate(VoiceRewriteRequest input)
     {
         if (input is null || input.RequestId == Guid.Empty || !Enum.IsDefined(input.Scope) || input.SourceWords is null || input.SourceWords.Count is < 1 or > 3000 ||
             input.Instruction is null || Encoding.UTF8.GetByteCount(input.Instruction) > 1000 ||
+            input.Feedback is { } feedback && Encoding.UTF8.GetByteCount(feedback) > 20_000 ||
             input.Language is null || !LanguageCode.IsMatch(input.Language) ||
             !double.IsFinite(input.TargetSeconds) || input.TargetSeconds is <= 0 or > 600 ||
             input.MinChars < 1 || input.MinChars > input.MaxChars || input.MaxChars > 5000) throw Invalid();

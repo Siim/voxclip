@@ -70,7 +70,8 @@ internal sealed partial class RewritePanel
     private void RenderMeasuredFit(RewriteGeneration generation)
     {
         measuredFit.Children.Clear();
-        if (session.MeasuredWording is not { } suggestion || !ReferenceEquals(session.GenerationWindows.ElementAtOrDefault(suggestion.Window), generation))
+        if (session.MeasuredWording is not { } suggestion || !ReferenceEquals(session.GenerationWindows.ElementAtOrDefault(suggestion.Window), generation) ||
+            !FallbackShown)
         {
             measuredFit.Visibility = Visibility.Collapsed;
             return;

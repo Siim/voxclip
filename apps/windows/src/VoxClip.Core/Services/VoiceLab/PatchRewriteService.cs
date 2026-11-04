@@ -130,7 +130,8 @@ public sealed class PatchRewriteService
         var instruction = instructionLine.Replace("{instruction}", EditingAlgorithms.JsTrim(input.Instruction), StringComparison.Ordinal);
         var feedback = input.ShorterPhrases.Count == 0 ? "" : VoiceRewriteFeedback.Render(input.ShorterPhrases,
             feedbackPrompt ?? throw Missing());
-        return (prefix + rendered + suffix, string.Join("\n", ranges.Prepend(rangesLine)) + "\n\n" + instruction + feedback);
+        return (prefix + rendered + suffix, string.Join("\n", ranges.Prepend(rangesLine)) + "\n\n" + instruction + feedback +
+            (input.Feedback is { } next ? "\n\n" + next : ""));
     }
 
     private static PatchRewriteRequest Snapshot(PatchRewriteRequest? input) => input?.Entries is null || input.Ranges is null || input.ShorterPhrases is null
@@ -141,6 +142,7 @@ public sealed class PatchRewriteService
     {
         if (input.RequestId == Guid.Empty || input.Entries.Count is < 1 or > 3000 || input.Instruction is null ||
             EditingAlgorithms.JsTrim(input.Instruction).Length == 0 || Encoding.UTF8.GetByteCount(input.Instruction) > 1000 ||
+            input.Feedback is { } feedback && Encoding.UTF8.GetByteCount(feedback) > 20_000 ||
             input.Language is null || !LanguageCode.IsMatch(input.Language)) throw Invalid();
         for (var position = 0; position < input.Entries.Count; position++)
         {

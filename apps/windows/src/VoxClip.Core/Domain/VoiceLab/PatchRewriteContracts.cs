@@ -16,6 +16,9 @@ public sealed record PatchRewriteRequest(Guid RequestId, IReadOnlyList<ClipWord>
     string Instruction, string Language)
 {
     public IReadOnlyList<VoiceRewriteTimingFeedback> ShorterPhrases { get; init; } = [];
+    /// <summary>A next step's feedback block (<see cref="Services.VoiceLab.RewriteNextActionFeedback"/>, voice-lab.md §8.2.1),
+    /// sent after the instruction. At most 20,000 UTF-8 bytes.</summary>
+    public string? Feedback { get; init; }
 }
 
 /// <summary>One validated line edit; review data is inert. <c>Text</c> is the new text of the whole line exactly as the model returned it,
