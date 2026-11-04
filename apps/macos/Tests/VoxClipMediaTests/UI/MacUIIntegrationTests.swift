@@ -45,7 +45,7 @@ extension HeavyMediaTests {
     /// field at most, a footer that agrees with the panel, paid takes until a confirm, and a tag drawn as it is added;
     /// every scenario ends with the Rewrite applied, or (S9, after Stop) with Done and the words as recorded; S10–S12
     /// also check the applied video duration and that no voice change was dropped.
-    /// One app process per take-length pass, each with its own deadline: realistic take lengths (S1–S14), and every
+    /// One app process per take-length pass, each with its own deadline: realistic take lengths (S1–S15), and every
     /// scenario but S13 with takes that fill their slots exactly ("S4-exact"). Hosted runners take about twice as long.
     @Test("The Rewrite smoke completes every stuck scenario without a dead end", arguments: ["realistic", "exact"])
     func rewriteSmoke(lengths: String) throws {
@@ -54,7 +54,7 @@ extension HeavyMediaTests {
         defer { UIProcessHarness.cleanTemporary(directory) }
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
         let scenarios = Set(report.compactMap { $0.name.split(separator: " ").first.map(String.init) })
-        let expected: [String] = lengths == "exact" ? ((1...12).map { "S\($0)-exact" } + ["S14-exact"]) : (1...14).map { "S\($0)" }
+        let expected: [String] = lengths == "exact" ? ((1...12).map { "S\($0)-exact" } + ["S14-exact", "S15-exact"]) : (1...15).map { "S\($0)" }
         #expect(scenarios == Set(expected))
         for result in report { #expect(result.passed, Comment(rawValue: result.name)) }
     }

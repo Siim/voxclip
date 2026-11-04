@@ -71,18 +71,50 @@ public struct VoiceLabFitPhrase: Codable, Sendable, Equatable {
     public let calibrated: Bool
     /// The wordings already tried for this phrase with their measured results (voice-lab §8.2.2); nil encodes as absent.
     public var tried: [VoiceLabFitTried]?
+    /// The bridge words the reworded phrase must keep (voice-lab §8.2.2); nil encodes as absent.
+    public var bridge: VoiceLabFitBridge?
     public init(ordinal: Int, original: String, proposed: String, estimateSeconds: Double, slotSeconds: Double,
                 direction: String, target: VoiceLabWordTarget, measuredSeconds: Double? = nil, calibrated: Bool = false,
-                tried: [VoiceLabFitTried]? = nil) {
+                tried: [VoiceLabFitTried]? = nil, bridge: VoiceLabFitBridge? = nil) {
         self.ordinal = ordinal; self.original = original; self.proposed = proposed; self.estimateSeconds = estimateSeconds
         self.slotSeconds = slotSeconds; self.direction = direction; self.target = target
-        self.measuredSeconds = measuredSeconds; self.calibrated = calibrated; self.tried = tried
+        self.measuredSeconds = measuredSeconds; self.calibrated = calibrated; self.tried = tried; self.bridge = bridge
+    }
+}
+
+/// The unchanged words that join a reworded phrase to the recording around it (voice-lab §8.2.2, §8.4). A measured
+/// round rewords the whole phrase, these words included; a reply without them can't be placed or priced, so the
+/// request names them and the reply is checked before it counts as a round.
+public struct VoiceLabFitBridge: Codable, Sendable, Equatable {
+    public let leading: [String]
+    public let trailing: [String]
+    public init(leading: [String], trailing: [String]) { self.leading = leading; self.trailing = trailing }
+    /// The take input's bridge words; nil when its window has none.
+    public init?(input: VoiceLabTakeInput) throws {
+        let words = try VoiceLabTakeProcessing.bridgeWords(input)
+        guard !words.leading.isEmpty || !words.trailing.isEmpty else { return nil }
+        self.init(leading: words.leading, trailing: words.trailing)
+    }
+    /// Whether a reworded phrase keeps them, as the take's preflight checks it.
+    public func keeps(_ text: String) -> Bool { VoiceLabTakeProcessing.keepsBridgeWords(text, bridge: (leading, trailing)) }
+    /// The words for a person: "I use … as".
+    public var display: String { [leading.joined(separator: " "), trailing.joined(separator: " ")].filter { !$0.isEmpty }.joined(separator: " … ") }
+    /// The line that requires them, from the shared template (`voice-rewrite-tried.json` `bridge`).
+    public func line(shared: SharedResources) throws -> (text: String, sha256: String) {
+        let prompt = try VoiceLabLLMChecks.readPrompt(shared, "prompts/voice-rewrite-tried.json")
+        let key = leading.isEmpty ? "trailing" : trailing.isEmpty ? "leading" : "both"
+        guard prompt.document[ai: "schemaVersion"].aiInt == 1, let template = prompt.document[ai: "bridge"][ai: key].aiString else {
+            throw VoxClipError.sharedResourcesMissing
+        }
+        let text = template.replacingOccurrences(of: "{leading}", with: leading.joined(separator: " "))
+            .replacingOccurrences(of: "{trailing}", with: trailing.joined(separator: " "))
+        return (text, prompt.sha256)
     }
 }
 
 /// One wording a stuck phrase already had, and what came of it: the fix loop's memory (voice-lab §8.2.2).
 public struct VoiceLabFitTried: Codable, Sendable, Equatable {
-    /// `tooLong`, `tooShort`, `words`, `fit`, `repeat`, `notShorter`, `notLonger` or `unchecked`
+    /// `tooLong`, `tooShort`, `words`, `fit`, `repeat`, `notShorter`, `notLonger`, `missingBridge` or `unchecked`
     /// (`shared/prompts/voice-rewrite-tried.json` `results`).
     public let text: String
     public let result: String

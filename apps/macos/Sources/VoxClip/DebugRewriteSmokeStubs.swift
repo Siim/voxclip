@@ -33,6 +33,8 @@ actor RewriteSmokeConnector: LLMConnector {
     private(set) var records: [RewriteSmokeRequestRecord] = []
     private var continuation: CheckedContinuation<Void, Never>?
     private(set) var holding = false
+    /// Fit replies sent without the bridge words their request named (S15).
+    private(set) var droppedBridgeReplies = 0
     init(rewrites: [RewriteSmokeReply], fits: [RewriteSmokeFit] = []) { self.rewrites = rewrites; self.fits = fits }
 
     func status() -> ConnectorStatus { .ready }
@@ -50,7 +52,11 @@ actor RewriteSmokeConnector: LLMConnector {
             return try await answer(reply, model: model)
         case "voice-rewrite-fit":
             let phrases = Self.fitPhrases(request)
-            let fit = fits.isEmpty ? .keepOriginal : fits.removeFirst()
+            // A reply that drops bridge words answers only a request that names some (a measured round's).
+            let named = phrases.contains { !$0.leading.isEmpty || !$0.trailing.isEmpty }
+            let next = fits.firstIndex { fit in if case .dropsBridgeWords = fit { named } else { true } }
+            let fit = next.map { fits.remove(at: $0) } ?? .keepOriginal
+            if case .dropsBridgeWords = fit { droppedBridgeReplies += 1 }
             if case .held(let then) = fit {
                 holding = true
                 await withCheckedContinuation { continuation = $0 }
@@ -81,19 +87,36 @@ actor RewriteSmokeConnector: LLMConnector {
     func release() { continuation?.resume(); continuation = nil }
     var sendCount: Int { records.count }
 
-    /// The fit request's phrases: "Phrase {ordinal}" and "Current proposal: {proposed}" (voice-rewrite-fit.json).
-    static func fitPhrases(_ request: LLMRequest) -> [(ordinal: Int, proposed: String)] {
+    /// The fit request's phrases: "Phrase {ordinal}", "Current proposal: {proposed}" (voice-rewrite-fit.json) and the
+    /// bridge words a measured round names ("must begin with “…”", "end with “…”", voice-rewrite-tried.json).
+    static func fitPhrases(_ request: LLMRequest) -> [RewriteSmokeFitPhrase] {
         let text = request.cachedBlock ?? request.instruction
-        var result: [(Int, String)] = []
+        var result: [RewriteSmokeFitPhrase] = []
         var ordinal: Int?
+        func quoted(_ line: Substring, after marker: String) -> [String] {
+            guard let start = line.range(of: marker + "“"), let end = line[start.upperBound...].firstIndex(of: "”") else { return [] }
+            return line[start.upperBound..<end].split(separator: " ").map(String.init)
+        }
         for line in text.split(separator: "\n") {
             if line.hasPrefix("Phrase "), let value = Int(line.dropFirst(7).trimmingCharacters(in: .whitespaces)) { ordinal = value }
             if line.hasPrefix("Current proposal: "), let current = ordinal {
-                result.append((current, String(line.dropFirst(18)))); ordinal = nil
+                result.append(RewriteSmokeFitPhrase(ordinal: current, proposed: String(line.dropFirst(18)))); ordinal = nil
+            }
+            if line.hasPrefix("Required: "), !result.isEmpty {
+                result[result.count - 1].leading = quoted(line, after: "begin with ")
+                result[result.count - 1].trailing = quoted(line, after: "end with ")
             }
         }
         return result
     }
+}
+
+/// One phrase of a fit request, as the scripted connector reads it.
+struct RewriteSmokeFitPhrase: Sendable {
+    let ordinal: Int
+    let proposed: String
+    var leading: [String] = []
+    var trailing: [String] = []
 }
 
 /// A scripted wording-fit reply.
@@ -108,17 +131,26 @@ indirect enum RewriteSmokeFit: Sendable {
     case halfWords
     /// Waits for release, then answers as `then`.
     case held(RewriteSmokeFit)
+    /// A measured round's phrase reworded shorter without the bridge words its request names, as an AI that rewrote
+    /// only the change did: it can't be placed. Answers only a request that names bridge words.
+    case dropsBridgeWords
 
-    func reply(_ phrases: [(ordinal: Int, proposed: String)]) -> String {
+    func reply(_ phrases: [RewriteSmokeFitPhrase]) -> String {
         let rows: [[String: Any]] = phrases.map { phrase in
+            let words = phrase.proposed.split(separator: " ").map(String.init)
+            // The words between the bridge words a measured round names: the ones a reword may change.
+            let inner = Array(words.dropFirst(phrase.leading.count).dropLast(phrase.trailing.count))
             switch self {
-            case .keepOriginal, .held: ["ordinal": phrase.ordinal, "action": "keepOriginal", "text": ""]
-            case .sameWords: ["ordinal": phrase.ordinal, "action": "reword", "text": phrase.proposed]
-            case .fewerWords: ["ordinal": phrase.ordinal, "action": "reword",
-                               "text": phrase.proposed.split(separator: " ").dropLast().joined(separator: " ")]
+            case .keepOriginal, .held: return ["ordinal": phrase.ordinal, "action": "keepOriginal", "text": ""]
+            case .sameWords: return ["ordinal": phrase.ordinal, "action": "reword", "text": phrase.proposed]
+            case .fewerWords:
+                let kept = phrase.leading + inner.dropLast() + phrase.trailing
+                return ["ordinal": phrase.ordinal, "action": "reword", "text": kept.joined(separator: " ")]
             case .halfWords:
-                ["ordinal": phrase.ordinal, "action": "reword",
-                 "text": phrase.proposed.split(separator: " ").prefix { _ in true }.prefix((phrase.proposed.split(separator: " ").count + 1) / 2).joined(separator: " ")]
+                return ["ordinal": phrase.ordinal, "action": "reword", "text": words.prefix((words.count + 1) / 2).joined(separator: " ")]
+            case .dropsBridgeWords:
+                let shorter = inner.count > 1 ? Array(inner.dropLast()) : inner
+                return ["ordinal": phrase.ordinal, "action": "reword", "text": shorter.joined(separator: " ")]
             }
         }
         let data = (try? JSONSerialization.data(withJSONObject: ["phrases": rows], options: [.sortedKeys])) ?? Data()

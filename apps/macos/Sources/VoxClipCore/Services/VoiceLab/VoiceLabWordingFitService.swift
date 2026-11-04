@@ -42,6 +42,7 @@ public actor VoiceLabWordingFitService {
             if let measured = phrase.measuredSeconds {
                 line += "\n" + (try fill("measuredPhraseLine", ["measuredSeconds": toFixed1(measured), "slotSeconds": toFixed1(phrase.slotSeconds)]))
             }
+            if let bridge = try phrase.bridge?.line(shared: shared) { line += "\n" + bridge.text }
             if let tried = try VoiceLabFitTried.block(phrase.tried ?? [], shared: shared) { line += "\n" + tried.text }
             return line
         }
@@ -75,7 +76,10 @@ public actor VoiceLabWordingFitService {
     private func fingerprint(_ phrases: [VoiceLabFitPhrase], connector: ConnectorID, model: String, language: String) throws -> String {
         let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
         let prompt = try VoiceLabLLMChecks.readPrompt(shared, "prompts/voice-rewrite-fit.json")
-        let tried = try phrases.compactMap { try VoiceLabFitTried.block($0.tried ?? [], shared: shared)?.sha256 }.first
+        // The fix loop's template joins the fingerprint only when a phrase sends its history or its bridge words.
+        let tried = try phrases.compactMap { phrase in
+            try VoiceLabFitTried.block(phrase.tried ?? [], shared: shared)?.sha256 ?? phrase.bridge?.line(shared: shared).sha256
+        }.first
         return VoiceLabFingerprint.fields([VoiceLabFingerprint.bytes(try encoder.encode(phrases)), connector.rawValue, model, language, prompt.sha256]
             + (tried.map { [$0] } ?? []))
     }

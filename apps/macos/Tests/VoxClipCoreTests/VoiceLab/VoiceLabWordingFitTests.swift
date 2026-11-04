@@ -133,6 +133,42 @@ import Testing
         }
     }
 
+    /// A measured round rewords the whole phrase, so the request names its bridge words as required, from the shared
+    /// template, and the reply is checked as the take's preflight checks it. Without bridge words the request and its
+    /// fingerprint are unchanged (the shared request goldens).
+    @Test func bridgeWordsAreRequiredInTheRequestAndCheckedAsThePreflightChecksThem() async throws {
+        let shared = try SharedResources.locate()
+        let service = VoiceLabWordingFitService(shared: shared)
+        let target = try VoiceLabWordingFit.wordTarget(wordsPerSecond: 2, multiplier: 1, minimumSeconds: 1, maximumSeconds: 2, overheadSeconds: 0)
+        var phrase = VoiceLabFitPhrase(ordinal: 1, original: "a similar way", proposed: "I use a similar method as",
+            estimateSeconds: 3, slotSeconds: 2, direction: "shorter", target: target, measuredSeconds: 3, calibrated: true)
+        let plain = try await service.request([phrase], connector: .ollama, language: "en")
+        let plainQuote = try await service.prepare([phrase], connector: .ollama, model: "fixture", language: "en")
+        #expect(plain.cachedBlock?.contains("Required:") == false)
+        #expect(String(decoding: try JSONEncoder().encode(phrase), as: UTF8.self).contains("bridge") == false)
+        let rows: [(VoiceLabFitBridge, String)] = [
+            (.init(leading: ["I", "use"], trailing: ["as"]), "Required: the text must begin with “I use” and end with “as”, exactly these words."),
+            (.init(leading: ["I", "use"], trailing: []), "Required: the text must begin with “I use”, exactly these words."),
+            (.init(leading: [], trailing: ["as"]), "Required: the text must end with “as”, exactly these words."),
+        ]
+        for (bridge, line) in rows {
+            phrase.bridge = bridge
+            let request = try await service.request([phrase], connector: .ollama, language: "en")
+            #expect(request.cachedBlock?.contains(line) == true, "\(request.cachedBlock ?? "")")
+            #expect(request.system == plain.system && request.instruction == plain.instruction)
+            let quote = try await service.prepare([phrase], connector: .ollama, model: "fixture", language: "en")
+            #expect(quote.fingerprint != plainQuote.fingerprint)
+        }
+        let bridge = VoiceLabFitBridge(leading: ["I", "use"], trailing: ["as,"])
+        #expect(bridge.display == "I use … as,")
+        #expect(bridge.keeps("I use a like method as"))
+        #expect(bridge.keeps("i USE, the same way AS"))
+        #expect(!bridge.keeps("a similar method as"))
+        #expect(!bridge.keeps("I use a similar method"))
+        #expect(!bridge.keeps(""))
+        #expect(VoiceLabFitBridge(leading: [], trailing: []).keeps("Anything"))
+    }
+
     @Test func fitQuoteCannotAuthorizeAnotherReplyOrAnUnapprovedSend() async throws {
         let service = VoiceLabWordingFitService(shared: try SharedResources.locate())
         let target = try VoiceLabWordingFit.wordTarget(wordsPerSecond: 2, multiplier: 1, minimumSeconds: 1, maximumSeconds: 2, overheadSeconds: 0)

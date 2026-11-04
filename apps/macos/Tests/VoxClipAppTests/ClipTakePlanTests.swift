@@ -2522,6 +2522,53 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(history.hasPrefix("Round 3 of 3 · tried: ") && history.contains("“corrected, HI” (repeat, not used)"), "\(history)")
     }
 
+    /// The AI's reworded phrase dropped its bridge word ("Corrected" joins the change to the recording before it), so
+    /// it could not be priced or placed, and the round was silently used up. The reply is checked before it counts:
+    /// one free re-ask in the same round names the words to keep and lists the dropped wording, and only the valid
+    /// wording is priced and voiced. No speech is paid for the dropped one.
+    @Test func aReplyThatDropsTheBridgeWordsIsReaskedOnceInTheSameRound() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let connector = ScriptedFitConnector(["Hi", "Corrected Hi"])
+        let (editor, session) = try await productionSession(fixture, rewriteConnector: connector); defer { editor.close() }
+        let plan = try #require(session.takePlan)
+        let first = plan.phrases[0].text
+        ClipTakeHTTP.state.withLock { $0.durations[first] = $0.duration + 5 }
+        try approvePrice(session)
+        session.autoFix.allowance = 100
+        await settle(session)
+        let requests = await connector.requests
+        let texts = ClipTakeHTTP.state.withLock { $0.texts }
+        #expect(requests.count == 2, "\(requests.map(\.cachedBlock))")
+        #expect(texts == [first, "Corrected Hi"], "\(texts) \(plan.problem)")
+        let firstAsk = requests.first?.cachedBlock ?? "", reask = requests.dropFirst().first?.cachedBlock ?? ""
+        #expect(firstAsk.contains("must begin with “Corrected”"), "\(firstAsk)")
+        #expect(reask.contains("must begin with “Corrected”") && reask.contains("“Hi”: dropped the joining words, not used"), "\(reask)")
+        #expect(session.autoFix.rounds[0] == 1 && session.autoFix.gaveUp.isEmpty, "\(session.autoFix.rounds)")
+        #expect(plan.phrases[0].text == "Corrected Hi" && plan.problem.isEmpty, "\(plan.phrases[0].text) \(plan.problem)")
+        #expect(plan.phrases[0].selected?.number == 2 && session.task.footer.primary?.id == "useTakes", "\(session.task.footer)")
+    }
+
+    /// A re-ask that still drops the bridge words ends its round with the reason on the phrase card, never a take of
+    /// words that can't be placed; the phrase's words stay as they were. After three such rounds the original words.
+    @Test func aReaskThatStillDropsTheBridgeWordsEndsTheRoundWithItsReason() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let connector = ScriptedFitConnector(["Hi", "Hey", "Hi there", "Hey there", "Hi you", "Hey you"])
+        let (editor, session) = try await productionSession(fixture, rewriteConnector: connector); defer { editor.close() }
+        let plan = try #require(session.takePlan)
+        let first = plan.phrases[0].text
+        ClipTakeHTTP.state.withLock { $0.durations[first] = $0.duration + 5 }
+        try approvePrice(session)
+        session.autoFix.allowance = 100
+        await settle(session)
+        let requests = await connector.requests
+        #expect(requests.count == 6, "\(requests.map(\.cachedBlock))")
+        #expect(ClipTakeHTTP.state.withLock { $0.texts } == [first])
+        #expect(plan.phrases[0].text == first, "\(plan.phrases[0].text)")
+        #expect(session.autoFix.rounds[0] == RewriteAutoFixState.maximumRounds && session.autoFix.gaveUp == [0])
+        let history = try #require(session.autoFixHistoryLine(plan.phrases[0], plan: plan))
+        #expect(history.hasPrefix("Round 3 of 3 · tried: ") && history.contains("“Hey you” (dropped “Corrected”, not used)"), "\(history)")
+    }
+
     /// A provider failure (here: out of credit) shows its cause and its one fix; no wording round or wording chip.
     @Test func aProviderFailureShowsItsFixAndNeverRewords() async throws {
         let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
