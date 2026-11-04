@@ -386,7 +386,10 @@ public actor CLIConnector: LLMConnector {
         if detected.flags.contains("--ignore-rules") { arguments.append("--ignore-rules") }
         arguments += ["--sandbox", "read-only", "--cd", directories.cwd.path]
         if model != "default" { arguments += ["--model", model] }
-        if let effort = request.effort, model == "default" || modelEfforts[model]?.contains(effort.rawValue) == true {
+        // A listed model takes the requested effort only when it lists it; `xhigh` falls back to the highest listed level below.
+        let listed = modelEfforts[model].map { Set($0.compactMap(Effort.init(rawValue:))) } ?? []
+        if let requested = request.effort,
+           let effort = model == "default" ? requested : requested == .xhigh ? requested.capped(to: listed) : listed.contains(requested) ? requested : nil {
             arguments += ["-c", "model_reasoning_effort=\"\(effort.rawValue)\""]
         }
         arguments += ["-c", "web_search=\"disabled\"", "-c", "approval_policy=\"never\"", "-c", "mcp_servers={}",

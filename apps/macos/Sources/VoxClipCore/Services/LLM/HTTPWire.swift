@@ -41,7 +41,7 @@ extension HTTPConnector {
                     "text": ["format": ["type": "json_schema", "name": canonical.schemaName, "strict": true, "schema": schema]],
                     "max_output_tokens": maximum, "store": false]
             let effortAllowed = modelConfiguration[ai: "effort"].aiBool == true || (modelConfiguration == .null && model.range(of: #"^(gpt-5|gpt-6|o[0-9])"#, options: .regularExpression) != nil)
-            if effortAllowed, let effort = canonical.effort { body["reasoning"] = ["effort": effort.rawValue] }
+            if effortAllowed, let effort = canonical.effort?.capped(to: [.low, .medium, .high]) { body["reasoning"] = ["effort": effort.rawValue] }
             if let block = canonical.cachedBlock { body["prompt_cache_key"] = "voxclip-" + AIHash.sha256(block).prefix(16) }
         case .xai:
             body = ["model": model, "max_completion_tokens": maximum, "messages": messages, "response_format": schemaFormat]
@@ -53,7 +53,8 @@ extension HTTPConnector {
             parts.append(["text": canonical.instruction])
             // 2026-10-30: https://ai.google.dev/api/generate-content does not confirm responseFormat GA for every curated model; retain responseJsonSchema.
             var generation: [String: Any] = ["maxOutputTokens": maximum, "responseMimeType": "application/json", "responseJsonSchema": schema]
-            if stripped.range(of: #"^gemini-([3-9]|[1-9][0-9]+)([.-]|$)"#, options: .regularExpression) != nil, let effort = canonical.effort {
+            if stripped.range(of: #"^gemini-([3-9]|[1-9][0-9]+)([.-]|$)"#, options: .regularExpression) != nil,
+               let effort = canonical.effort?.capped(to: [.low, .medium, .high]) {
                 generation["thinkingConfig"] = ["thinkingLevel": effort.rawValue.uppercased()]
             }
             body = ["systemInstruction": ["parts": [["text": canonical.system]]], "contents": [["role": "user", "parts": parts]],

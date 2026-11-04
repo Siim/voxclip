@@ -28,14 +28,26 @@ public enum LLMFeature: String, Codable, Sendable, Hashable, CaseIterable {
     case clipFinder
     case aiTighten
     case voiceRewrite
+    /// The "Make it postable" planner (ai.md §16): one plan for a clip, or a ranked series for a whole video.
+    case clipAutopilot
     case test
 }
 
-/// Reasoning policy; AI §3.1.
+/// Reasoning policy; AI §3.1. `xhigh` is Claude Code's `--effort xhigh`; a connector without it sends the highest level
+/// it supports below it (`Effort.capped`).
 public enum Effort: String, Codable, Sendable, Hashable, CaseIterable {
     case low
     case medium
     case high
+    case xhigh
+
+    /// The highest of `supported` at or below this effort, or nil when none is.
+    public func capped(to supported: some Sequence<Effort>) -> Effort? {
+        let levels = Set(supported)
+        return Self.allCases.prefix { $0 != self }.reversed().reduce(levels.contains(self) ? self : nil) { found, level in
+            found ?? (levels.contains(level) ? level : nil)
+        }
+    }
 }
 
 /// Canonical request; AI §3.1. Credentials never enter this value.
