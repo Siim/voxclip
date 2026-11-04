@@ -12,7 +12,7 @@ namespace VoxClip.Core.Domain.VoiceLab;
 public static class VoiceLabAlignment
 {
     /// <summary>Unicode White_Space, not JS_WHITESPACE (editing §4.5): U+0085 separates words and U+FEFF does not.</summary>
-    static bool IsWhiteSpace(int scalar) => scalar is >= 0x09 and <= 0x0d or 0x20 or 0x85 or 0xa0 or 0x1680 or >= 0x2000 and <= 0x200a
+    internal static bool IsWhiteSpace(int scalar) => scalar is >= 0x09 and <= 0x0d or 0x20 or 0x85 or 0xa0 or 0x1680 or >= 0x2000 and <= 0x200a
         or 0x2028 or 0x2029 or 0x202f or 0x205f or 0x3000;
 
     /// <summary>Noncharacters U+FDD0-U+FDEF and U+xFFFE/U+xFFFF. All three implementations refuse them before NFC.</summary>
@@ -94,50 +94,6 @@ public static class VoiceLabAlignment
         if (!derived.SequenceEqual(expected, StringComparer.Ordinal)) throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.AlignmentMismatch);
         if (words.Count == 0) throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.AlignmentUnavailable);
         return words;
-    }
-
-    public static IReadOnlyList<VoiceLabCharacterTiming> RetimeNormalized(IReadOnlyList<VoiceLabCharacterTiming> timings, string expectedText)
-    {
-        var normalized = Words(timings.Select(timing => timing.Character).ToArray(), timings.Select(timing => timing.Start).ToArray(),
-            timings.Select(timing => timing.End).ToArray(), VoiceLabAudioTags.StrippingTags(string.Concat(timings.Select(timing => timing.Character))));
-        var source = normalized.Select((word, index) => new TimedWord(index.ToString(System.Globalization.CultureInfo.InvariantCulture), word.Text,
-            WordKind.Word, word.Start, word.End, null, null, null, null, TimingSource.Native)).ToArray();
-        var operations = VoiceLabWordDiff.Diff(source, VoiceLabAudioTags.StrippingTags(expectedText)).Ops;
-        var result = new List<VoiceLabWord>();
-        var removed = new List<VoiceLabWord>();
-        var inserted = new List<string>();
-        void Flush()
-        {
-            if (removed.Count == 0 && inserted.Count == 0) return;
-            if (removed.Count == 0 || inserted.Count == 0 || removed[^1].End <= removed[0].Start)
-                throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.AlignmentMismatch);
-            var total = inserted.Sum(token => Math.Max(1, token.EnumerateRunes().Count()));
-            var cursor = removed[0].Start;
-            for (var index = 0; index < inserted.Count; index++)
-            {
-                var end = index == inserted.Count - 1 ? removed[^1].End : cursor + (removed[^1].End - removed[0].Start) *
-                    Math.Max(1, inserted[index].EnumerateRunes().Count()) / total;
-                result.Add(new(inserted[index], cursor, end, true));
-                cursor = end;
-            }
-            removed.Clear(); inserted.Clear();
-        }
-        foreach (var operation in operations)
-            switch (operation.Kind)
-            {
-                case VoiceLabDiffOpKind.Equal:
-                    Flush();
-                    var word = normalized[int.Parse(operation.SourceWordId!, System.Globalization.CultureInfo.InvariantCulture)];
-                    result.Add(word with { Text = operation.NewToken! });
-                    break;
-                case VoiceLabDiffOpKind.Delete:
-                    removed.Add(normalized[int.Parse(operation.SourceWordId!, System.Globalization.CultureInfo.InvariantCulture)]);
-                    break;
-                case VoiceLabDiffOpKind.Insert: inserted.Add(operation.NewToken!); break;
-            }
-        Flush();
-        return result.SelectMany((word, index) => index == 0 ? new[] { new VoiceLabCharacterTiming(word.Text, word.Start, word.End) } :
-            new[] { new VoiceLabCharacterTiming(" ", word.Start, word.Start), new VoiceLabCharacterTiming(word.Text, word.Start, word.End) }).ToArray();
     }
 
     /// <summary>[max(0, firstStart − TTS_TRIM_LEAD), min(assetDuration, lastEnd + TTS_TRIM_TAIL)] in asset seconds.</summary>

@@ -42,6 +42,8 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
     /// checks its own short takes at its end, borrowing earlier speech of <see cref="PhraseId"/> first.</summary>
     public VoiceLabShortTakePool? ShortTakePool { get; set; }
     public int? PhraseId { get; set; }
+    /// <summary>The free on-device fallback of timing recovery (voice-lab §8.5); null leaves only the take's Scribe word check.</summary>
+    public VoiceLabLocalTiming? LocalTiming { get; set; }
     public VoiceLabTakeRun(ElevenLabsVoiceLab client, VoiceConsentStore store, VoiceSpeakerCheck speaker,
         VoiceLabTakeStorage storage, VoiceLabDispatchGate inputGate, Func<CancellationToken, Task<bool>> inputsAreCurrent)
         : this(client, store, storage, inputGate, inputsAreCurrent, ProductionChecks(store, speaker)) { }
@@ -262,19 +264,54 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
             VoiceLabTakeAudio? audio = null;
             var synthesisAccepted = new VoiceLabRequestAcceptance();
             var qaAccepted = new VoiceLabRequestAcceptance();
+            // The take's one approved Scribe request (its word check), on the given samples.
+            async Task<VoiceLabQaTranscript> WordCheckAsync(float[] samples, int rate)
+            {
+                await ValidateAsync(value, ct).ConfigureAwait(false);
+                var qaPolicy = await checks.Authorize(value.Record, value.Speech, take.Qa, value.Binding, value.ModelRevision, ct).ConfigureAwait(false);
+                await Checkpoint("qaAuthorization", value, ct).ConfigureAwait(false);
+                return await client.TranscribeQaAsync(samples, rate, value.Input.Language, qaPolicy, approvals[take.Index * 2 + 1], ct, qaAccepted, value.Input.HasRequestTags).ConfigureAwait(false);
+            }
             try
             {
                 await ValidateAsync(value, ct).ConfigureAwait(false);
                 var policy = await checks.Authorize(value.Record, value.Speech, take.Synthesis, value.Binding, value.ModelRevision, ct).ConfigureAwait(false);
                 await Checkpoint("authorization", value, ct).ConfigureAwait(false);
-                generated = await client.SynthesizeAsync(value.Input.RequestText, value.Input.ModelId, VoiceLabVoiceChoice.Own(value.Record.VoiceId, policy),
-                    value.Input.Language, value.Input.Options(take.Index), approvals[take.Index * 2], ct, take.Synthesis.Review.RequestId, synthesisAccepted).ConfigureAwait(false);
+                try
+                {
+                    generated = await client.SynthesizeAsync(value.Input.RequestText, value.Input.ModelId, VoiceLabVoiceChoice.Own(value.Record.VoiceId, policy),
+                        value.Input.Language, value.Input.Options(take.Index), approvals[take.Index * 2], ct, take.Synthesis.Review.RequestId, synthesisAccepted).ConfigureAwait(false);
+                }
+                catch (VoiceLabException error) when (error.Kind is VoiceLabErrorKind.InvalidAlignment or VoiceLabErrorKind.MalformedResponse &&
+                    synthesisAccepted.UnalignedAudio is not null)
+                {
+                    // The paid PCM decoded but its timing or segment metadata did not validate: recover its timing below.
+                    generated = synthesisAccepted.UnalignedAudio;
+                }
                 await launchCleanup().ConfigureAwait(false);
                 value = current();
                 if (Suspension is { } afterSynthesis) await afterSynthesis("synthesis").ConfigureAwait(false);
                 var paid = await PreservePaidAudioAsync(generated, take.Synthesis.Review.RequestId).ConfigureAwait(false);
                 await ValidateAsync(value, ct).ConfigureAwait(false);
-                var analysis = VoiceLabTakeProcessing.Process(generated, value.Input, value.Preflight);
+                // §8.5 timing recovery: a take whose provider timing does not map to its words is retimed from its own word
+                // check (the approved Scribe request, used once) or, failing that, on device. No new paid request.
+                IReadOnlyList<VoiceLabWord>? heard = null;
+                VoiceLabTakeAnalysis analysis;
+                try
+                {
+                    if (generated.Alignment is null) throw new VoiceLabException(VoiceLabErrorKind.InvalidAlignment);
+                    analysis = VoiceLabTakeProcessing.Process(generated, value.Input, value.Preflight);
+                }
+                catch (Exception error) when (IsTimingFailure(error))
+                {
+                    var samples = Samples(generated);
+                    var recovered = await WordCheckAsync(samples, 24000).ConfigureAwait(false);
+                    qaReceipt = recovered.Receipt;
+                    heard = recovered.Words;
+                    var timing = await RecoverTimingAsync(recovered.Words, samples, value.Input, ct).ConfigureAwait(false);
+                    generated = generated with { Alignment = timing };
+                    analysis = VoiceLabTakeProcessing.Process(generated, value.Input, value.Preflight);
+                }
                 var snapshot = await VoiceLabAssets.PreparePaidAsync(paid, storage.ProjectId, storage.PaidRoot, storage.ScratchRoot, ct).ConfigureAwait(false);
                 VoiceLabTakeScratch? staged = null;
                 try
@@ -319,14 +356,18 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                 var ownerVector = VoiceConsentRecord.DecodeEmbedding(value.Record.Speaker.Embedding) ?? throw new VoiceConsentException(VoiceConsentError.InvalidRecord);
                 double? score = vector is null ? null : SpeakerAudio.Cosine(ownerVector, vector);
                 if (score is { } own) pool.Measured(take.Synthesis.Review.RequestId, voiced, value.Record, PhraseId, own >= value.Record.Speaker.Threshold);
-                var qaPolicy = await checks.Authorize(value.Record, value.Speech, take.Qa, value.Binding, value.ModelRevision, ct).ConfigureAwait(false);
-                await Checkpoint("qaAuthorization", value, ct).ConfigureAwait(false);
-                var recognized = await client.TranscribeQaAsync(audio.Mixed, audio.SampleRate, value.Input.Language, qaPolicy, approvals[take.Index * 2 + 1], ct, qaAccepted, value.Input.HasRequestTags).ConfigureAwait(false);
-                qaReceipt = recognized.Receipt;
-                await ValidateAsync(value, ct).ConfigureAwait(false);
-                var lower = audio.PatchStart / (double)audio.SampleRate;
-                var upper = audio.PatchEnd / (double)audio.SampleRate;
-                var inside = recognized.Words.Where(word => (word.Start + word.End) / 2 >= lower && (word.Start + word.End) / 2 < upper).Select(word => word.Text).ToArray();
+                string[] inside;
+                // The recovered take's word check already ran on its own audio: every word it heard is the take's.
+                if (heard is not null) inside = heard.Select(word => word.Text).ToArray();
+                else
+                {
+                    var recognized = await WordCheckAsync(audio.Mixed, audio.SampleRate).ConfigureAwait(false);
+                    qaReceipt = recognized.Receipt;
+                    await ValidateAsync(value, ct).ConfigureAwait(false);
+                    var lower = audio.PatchStart / (double)audio.SampleRate;
+                    var upper = audio.PatchEnd / (double)audio.SampleRate;
+                    inside = recognized.Words.Where(word => (word.Start + word.End) / 2 >= lower && (word.Start + word.End) / 2 < upper).Select(word => word.Text).ToArray();
+                }
                 var qa = VoiceLabTakeQuality.Evaluate(value.Input.Text, inside, audio.Mixed, audio.SampleRate, audio.Seams, score, value.Record.Speaker.Threshold,
                     audio.Seams.Select(seam => seam == audio.PatchStart).ToArray(), audio.SeamExcesses, value.Input.HasRequestTags,
                     VoiceLabTakeQuality.ReplacementWords(value.Input.Text, value.Input.Items, value.Input.Window));
@@ -375,6 +416,49 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
         }
         return new(rows.AsReadOnly(), VoiceLabTakeRunEnd.Completed);
     }
+    /// <summary>Word timing for a take whose provider timing did not map to its words (voice-lab §8.5 "Timing recovery"; Mac
+    /// <c>recoverTiming</c>): what its own word check heard, mapped to the typed words; then the on-device transcriber. The
+    /// word check's words are then the take's word check, so its Scribe request is never sent twice.</summary>
+    private async Task<IReadOnlyList<VoiceLabCharacterTiming>> RecoverTimingAsync(IReadOnlyList<VoiceLabWord> heard, float[] samples,
+        VoiceLabTakeInput input, CancellationToken ct)
+    {
+        try
+        {
+            var timing = VoiceLabProviderTiming.Recovered(heard, input.RequestText);
+            client.Note("voicelab speech timing recovered source=word_check words=" + heard.Count.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            return timing;
+        }
+        catch (VoiceLabTimingFailure failure)
+        {
+            if (LocalTiming is not { } local)
+            {
+                client.Note("voicelab speech timing unrecovered " + failure.LogFields + " local=unavailable");
+                throw new VoiceLabException(VoiceLabErrorKind.InvalidAlignment);
+            }
+            try
+            {
+                var words = await local(samples, 24000, input.Language, ct).ConfigureAwait(false);
+                var timing = VoiceLabProviderTiming.Recovered(words, input.RequestText);
+                client.Note("voicelab speech timing recovered source=on_device words=" + words.Count.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                return timing;
+            }
+            catch (Exception error) when (error is not OperationCanceledException)
+            {
+                client.Note("voicelab speech timing unrecovered " + failure.LogFields + " local=failed");
+                throw new VoiceLabException(VoiceLabErrorKind.InvalidAlignment);
+            }
+        }
+    }
+    private static float[] Samples(VoiceLabAudioResult result)
+    {
+        if (result.SampleRate != 24000 || result.Pcm.Length == 0 || result.Pcm.Length % 2 != 0) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
+        var samples = new float[result.Pcm.Length / 2];
+        for (var index = 0; index < samples.Length; index++)
+            samples[index] = System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(result.Pcm.AsSpan(index * 2)) / 32768f;
+        return samples;
+    }
+    private static bool IsTimingFailure(Exception error) => error is VoiceLabException { Kind: VoiceLabErrorKind.InvalidAlignment } ||
+        error is VoiceLabGeometryException { Code: VoiceLabGeometryErrorCode.AlignmentMismatch or VoiceLabGeometryErrorCode.AlignmentUnavailable or VoiceLabGeometryErrorCode.InvalidWordTiming };
     private async Task<VoiceLabAsset> PreservePaidAudioAsync(VoiceLabAudioResult result, Guid requestId)
     {
         var paid = await Task.Run(() => VoiceLabAssetStore.Write(result.Pcm, result.SampleRate, storage.ProjectId,
@@ -492,5 +576,5 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
     }
     private static bool Fatal(Exception error) => error is VoiceConsentException or VoiceCreatorMismatchException or OperationCanceledException or VoiceLabRunInvalidatedException ||
         error is VoiceLabException { Kind: VoiceLabErrorKind.Unauthorized or VoiceLabErrorKind.PermissionMissing or VoiceLabErrorKind.MissingKey or
-            VoiceLabErrorKind.QuotaExceeded or VoiceLabErrorKind.ConsentRequired or VoiceLabErrorKind.SpeakerMismatch or VoiceLabErrorKind.Cancelled or VoiceLabErrorKind.InvalidAlignment };
+            VoiceLabErrorKind.QuotaExceeded or VoiceLabErrorKind.ConsentRequired or VoiceLabErrorKind.SpeakerMismatch or VoiceLabErrorKind.Cancelled };
 }

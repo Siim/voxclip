@@ -458,23 +458,25 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         var receipt = Receipt(path, modelId, voice.Id, id, reply) with { Pace = VoiceLabPace.Rounded(options.Pace) };
         acceptance?.Preserve(new(pcm, 24000, null, receipt));
         var duration = pcm.Length / 48000.0;
-        IReadOnlyList<VoiceLabCharacterTiming> timing;
-        IReadOnlyList<VoiceLabCharacterTiming>? rawAlignment = null;
         var row = json.RootElement;
-        var originalMissing = !row.TryGetProperty("alignment", out var original) || original.ValueKind == JsonValueKind.Null;
-        var dialogue = model.SpeechRoute == VoiceLabSpeechRoute.TextToDialogue;
-        var rawCount = 0;
-        if (dialogue && originalMissing && row.TryGetProperty("normalized_alignment", out var normalized) && normalized.ValueKind == JsonValueKind.Object)
+        var route = model.SpeechRoute;
+        var routeName = route == VoiceLabSpeechRoute.TextToDialogue ? "textToDialogue" : "textToSpeech";
+        IReadOnlyList<VoiceLabCharacterTiming> timing;
+        IReadOnlyList<VoiceLabCharacterTiming>? rawAlignment;
+        try
         {
-            var raw = AlignmentObject(normalized, null, duration);
-            rawAlignment = raw;
-            rawCount = raw.Count;
-            try { timing = VoiceLabAlignment.RetimeNormalized(raw, text); }
-            catch (Exception error) when (error is VoiceLabGeometryException or VoiceLabWordDiffException)
-            { throw new VoiceLabException(VoiceLabErrorKind.InvalidAlignment); }
+            (timing, var characterCount, var tolerated, rawAlignment) = SpeechTiming(row, route == VoiceLabSpeechRoute.TextToDialogue, text, duration);
+            if (tolerated is not null)
+                log.Write(LogLevel.Info, "voice-lab", "voicelab speech timing tolerated " + tolerated.LogFields + " route=" + routeName + " model=" + modelId);
+            // Unchanged shared contract (dialogue-cases.json); a refusal here is recovered by the take run (§8.5).
+            if (route == VoiceLabSpeechRoute.TextToDialogue) ValidateVoiceSegments(row, voice.Id, characterCount, duration);
         }
-        else { timing = Alignment(row, text, duration); rawCount = timing.Count; }
-        if (dialogue) ValidateVoiceSegments(row, voice.Id, rawCount, duration);
+        catch (SpeechMetadataFailure failure)
+        {
+            // Release evidence for the next live failure: the check, the index and the scalars there, never the text.
+            log.Write(LogLevel.Info, "voice-lab", "voicelab speech timing failed " + failure.Timing.LogFields + " route=" + routeName + " model=" + modelId);
+            throw new VoiceLabException(failure.Kind);
+        }
         return new(pcm, 24000, timing, receipt) { RawAlignment = rawAlignment };
     }
 
@@ -995,59 +997,126 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         var frames = payload / 2;
         return frames >= (rate + 49) / 50 && frames <= (ulong)rate * 290;
     }
+    /// <summary>A redacted Voice Lab line in the release log: check names and counts, never text (Mac <c>note</c>).</summary>
+    public void Note(string message) => log.Write(LogLevel.Info, "voice-lab", message);
+    /// <summary>A refused timing or segment field (voice-lab §8.5): the error the caller sees and the redacted check the release
+    /// log names (Mac <c>SpeechMetadataFailure</c>).</summary>
+    private sealed class SpeechMetadataFailure(VoiceLabErrorKind kind, VoiceLabTimingFailure timing) : Exception(timing.Message)
+    {
+        internal VoiceLabErrorKind Kind { get; } = kind;
+        internal VoiceLabTimingFailure Timing { get; } = timing;
+    }
+    private static SpeechMetadataFailure TimingFailure(string check, int? index = null) => new(VoiceLabErrorKind.InvalidAlignment, new(check, index));
     private static void ValidateVoiceSegments(JsonElement row, string voiceId, int characters, double duration)
     {
+        static SpeechMetadataFailure Fail(string check, int? index = null) => new(VoiceLabErrorKind.MalformedResponse, new(check, index));
+        static double? Number(JsonElement segment, string key) => segment.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.Number &&
+            value.TryGetDouble(out var number) && double.IsFinite(number) ? number : null;
         if (!row.TryGetProperty("voice_segments", out var segments) || segments.ValueKind != JsonValueKind.Array || segments.GetArrayLength() == 0)
-            throw Malformed();
-        // Provisional STEP3 bound: valid normalized timing may expand the provider's character array.
-        if (row.TryGetProperty("normalized_alignment", out var normalized) && normalized.ValueKind == JsonValueKind.Object)
-        {
-            try { characters = Math.Max(characters, AlignmentObject(normalized, null, duration).Count); }
-            catch (VoiceLabException error) when (error.Kind == VoiceLabErrorKind.InvalidAlignment) { }
-        }
+            throw Fail("segments_missing_or_empty");
+        var index = 0;
         foreach (var segment in segments.EnumerateArray())
         {
-            if (segment.ValueKind != JsonValueKind.Object || RequiredString(segment, "voice_id") != voiceId ||
-                RequiredInt(segment, "dialogue_input_index") != 0) throw Malformed();
-            var start = RequiredInt(segment, "character_start_index");
-            var end = RequiredInt(segment, "character_end_index");
-            if (start < 0 || end < start || end > characters ||
-                !segment.TryGetProperty("start_time_seconds", out var startTime) || startTime.ValueKind != JsonValueKind.Number ||
-                !segment.TryGetProperty("end_time_seconds", out var endTime) || endTime.ValueKind != JsonValueKind.Number ||
-                !startTime.TryGetDouble(out var begin) || !endTime.TryGetDouble(out var finish) ||
-                !double.IsFinite(begin) || !double.IsFinite(finish) || begin < 0 || finish < begin || finish > duration + 0.05) throw Malformed();
+            if (segment.ValueKind != JsonValueKind.Object || !segment.TryGetProperty("voice_id", out var id) || id.ValueKind != JsonValueKind.String ||
+                id.GetString() != voiceId) throw Fail("segment_voice", index);
+            if (Number(segment, "dialogue_input_index") != 0) throw Fail("segment_input_index", index);
+            if (Number(segment, "character_start_index") is not { } start || Number(segment, "character_end_index") is not { } end ||
+                Math.Truncate(start) != start || Math.Truncate(end) != end || start < 0 || end < start || end > characters)
+                throw Fail("segment_character_range", index);
+            if (Number(segment, "start_time_seconds") is not { } begin || Number(segment, "end_time_seconds") is not { } finish || begin < 0 || finish < begin)
+                throw Fail("segment_time_order", index);
+            if (finish > duration + 0.05) throw Fail("segment_end_beyond_duration", index);
+            index++;
         }
     }
-    private static IReadOnlyList<VoiceLabCharacterTiming> Alignment(JsonElement row, string text, double duration)
+    /// <summary>§8.5 timing (Mac <c>speechTiming</c>): valid original <c>alignment</c> equal to the typed text is used as it
+    /// is. Otherwise the original, then (v4 dialogue) the normalized alignment, is mapped to the typed words tolerantly
+    /// (<see cref="VoiceLabProviderTiming"/>). The returned failure names the quirk a tolerated reply had. The count bounds
+    /// the voice segments' indices. A tolerated reply keeps the provider's own character timing, brackets included, as its
+    /// raw alignment for the edge expressions.</summary>
+    private static (IReadOnlyList<VoiceLabCharacterTiming> Timing, int CharacterCount, VoiceLabTimingFailure? Tolerated, IReadOnlyList<VoiceLabCharacterTiming>? Raw)
+        SpeechTiming(JsonElement row, bool dialogue, string text, double duration)
     {
-        if (!row.TryGetProperty("alignment", out var alignment)) throw new VoiceLabException(VoiceLabErrorKind.InvalidAlignment);
-        return AlignmentObject(alignment, text, duration);
+        static (string[] Characters, double[] Starts, double[] Ends)? Arrays(JsonElement row, string key)
+        {
+            if (!row.TryGetProperty(key, out var value) || value.ValueKind != JsonValueKind.Object ||
+                !value.TryGetProperty("characters", out var characters) || characters.ValueKind != JsonValueKind.Array ||
+                !value.TryGetProperty("character_start_times_seconds", out var starts) || starts.ValueKind != JsonValueKind.Array ||
+                !value.TryGetProperty("character_end_times_seconds", out var ends) || ends.ValueKind != JsonValueKind.Array ||
+                characters.EnumerateArray().Any(item => item.ValueKind != JsonValueKind.String) ||
+                starts.EnumerateArray().Concat(ends.EnumerateArray()).Any(item => item.ValueKind != JsonValueKind.Number || !item.TryGetDouble(out _)))
+                return null;
+            return (characters.EnumerateArray().Select(item => item.GetString()!).ToArray(), starts.EnumerateArray().Select(item => item.GetDouble()).ToArray(),
+                ends.EnumerateArray().Select(item => item.GetDouble()).ToArray());
+        }
+        static IReadOnlyList<VoiceLabCharacterTiming> Raw((string[] Characters, double[] Starts, double[] Ends) source) =>
+            source.Characters.Select((character, index) => new VoiceLabCharacterTiming(character, source.Starts[index], source.Ends[index])).ToArray();
+        var original = Arrays(row, "alignment");
+        var normalized = dialogue ? Arrays(row, "normalized_alignment") : null;
+        // §8.5: segments may index the normalized array, but only a valid normalized alignment widens their bound.
+        var widened = 0;
+        if (normalized is { } valid)
+            try { widened = AlignmentObject(row.GetProperty("normalized_alignment"), string.Concat(valid.Characters), duration).Count; }
+            catch (SpeechMetadataFailure) { }
+        VoiceLabTimingFailure first;
+        try
+        {
+            var exact = AlignmentObject(row.TryGetProperty("alignment", out var alignment) ? alignment : default, text, duration);
+            return (exact, Math.Max(widened, exact.Count), null, null);
+        }
+        catch (SpeechMetadataFailure failure) { first = failure.Timing; }
+        if (first.Check == "alignment_text_mismatch" && original is { } provider)
+        {
+            var mismatch = VoiceLabProviderTiming.FirstMismatch(text, string.Concat(provider.Characters));
+            first = new(first.Check, mismatch.Index, mismatch.Typed, mismatch.Provider);
+        }
+        var last = first;
+        foreach (var source in new[] { original, normalized })
+        {
+            if (source is not { } arrays) continue;
+            try
+            {
+                var timing = VoiceLabProviderTiming.Retime(arrays.Characters, arrays.Starts, arrays.Ends, text, duration);
+                return (timing, Math.Max(widened, arrays.Characters.Length), first, Raw(arrays));
+            }
+            catch (VoiceLabTimingFailure failure) { last = failure; }
+        }
+        var present = row.TryGetProperty("alignment", out var raw) && raw.ValueKind != JsonValueKind.Null;
+        var check = original is null && normalized is null && present ? first : last;
+        if (check.Check == "alignment_words_mismatch" && (first.TypedScalar is not null || first.ProviderScalar is not null))
+            check = new(check.Check, first.Index, first.TypedScalar, first.ProviderScalar);
+        throw new SpeechMetadataFailure(VoiceLabErrorKind.InvalidAlignment, check);
     }
-    private static IReadOnlyList<VoiceLabCharacterTiming> AlignmentObject(JsonElement alignment, string? expectedText, double duration)
+    /// <summary>The exact path: the provider's characters joined are the typed text (or its words when it has tags), with
+    /// ordered times inside the PCM (Mac <c>parseAlignment</c>, with its check names).</summary>
+    private static IReadOnlyList<VoiceLabCharacterTiming> AlignmentObject(JsonElement alignment, string expectedText, double duration)
     {
+        if (alignment.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null) throw TimingFailure("null_alignment");
         if (alignment.ValueKind != JsonValueKind.Object ||
             !alignment.TryGetProperty("characters", out var characters) || characters.ValueKind != JsonValueKind.Array ||
             !alignment.TryGetProperty("character_start_times_seconds", out var starts) || starts.ValueKind != JsonValueKind.Array ||
             !alignment.TryGetProperty("character_end_times_seconds", out var ends) || ends.ValueKind != JsonValueKind.Array ||
-            characters.GetArrayLength() == 0 || characters.GetArrayLength() != starts.GetArrayLength() || starts.GetArrayLength() != ends.GetArrayLength())
-            throw new VoiceLabException(VoiceLabErrorKind.InvalidAlignment);
+            characters.EnumerateArray().Any(item => item.ValueKind != JsonValueKind.String) ||
+            starts.EnumerateArray().Concat(ends.EnumerateArray()).Any(item => item.ValueKind != JsonValueKind.Number || !item.TryGetDouble(out _)))
+            throw TimingFailure("alignment_fields");
+        if (characters.GetArrayLength() == 0 || characters.GetArrayLength() != starts.GetArrayLength() || starts.GetArrayLength() != ends.GetArrayLength())
+            throw TimingFailure("alignment_count_mismatch");
+        var joined = string.Concat(characters.EnumerateArray().Select(item => item.GetString()));
+        if (joined != expectedText && !(VoiceLabAudioTags.TagRanges(expectedText).Count > 0 &&
+            EditingAlgorithms.SplitWords(VoiceLabAudioTags.StrippingTags(joined)).SequenceEqual(
+                EditingAlgorithms.SplitWords(VoiceLabAudioTags.StrippingTags(expectedText)), StringComparer.Ordinal)))
+            throw TimingFailure("alignment_text_mismatch");
         var output = new List<VoiceLabCharacterTiming>();
-        var joined = new StringBuilder();
         var previous = 0.0;
         for (var i = 0; i < characters.GetArrayLength(); i++)
         {
-            var character = characters[i]; var start = starts[i]; var end = ends[i];
-            if (character.ValueKind != JsonValueKind.String || start.ValueKind != JsonValueKind.Number || end.ValueKind != JsonValueKind.Number ||
-                !start.TryGetDouble(out var begin) || !end.TryGetDouble(out var finish) || !double.IsFinite(begin) || !double.IsFinite(finish) ||
-                begin < previous || finish < begin || finish > duration + 0.05) throw new VoiceLabException(VoiceLabErrorKind.InvalidAlignment);
-            var value = character.GetString()!;
-            if (value.Length == 0) throw new VoiceLabException(VoiceLabErrorKind.InvalidAlignment);
-            joined.Append(value); output.Add(new(value, begin, finish)); previous = finish;
+            var value = characters[i].GetString()!;
+            var begin = starts[i].GetDouble(); var finish = ends[i].GetDouble();
+            if (value.Length == 0) throw TimingFailure("alignment_empty_character", i);
+            if (!double.IsFinite(begin) || !double.IsFinite(finish) || begin < previous || finish < begin) throw TimingFailure("alignment_time_order", i);
+            if (finish > duration + 0.05) throw TimingFailure("alignment_end_beyond_duration", i);
+            output.Add(new(value, begin, finish)); previous = finish;
         }
-        if (expectedText is not null && joined.ToString() != expectedText && !(VoiceLabAudioTags.TagRanges(expectedText).Count > 0 &&
-            EditingAlgorithms.SplitWords(VoiceLabAudioTags.StrippingTags(joined.ToString())).SequenceEqual(
-                EditingAlgorithms.SplitWords(VoiceLabAudioTags.StrippingTags(expectedText)), StringComparer.Ordinal)))
-            throw new VoiceLabException(VoiceLabErrorKind.InvalidAlignment);
         return output;
     }
     private static JsonDocument Parse(byte[] bytes)

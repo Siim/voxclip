@@ -1647,6 +1647,13 @@ member VoxClip.Media.VoiceLab.VoiceLabLifetime :: method internal get_IsValid()
 member VoxClip.Media.VoiceLab.VoiceLabLifetime :: method public .ctor(System.Action)
 member VoxClip.Media.VoiceLab.VoiceLabLifetime+Lease :: method public .ctor(VoxClip.Media.VoiceLab.VoiceLabLifetime,System.Guid)
 member VoxClip.Media.VoiceLab.VoiceLabLifetime+Lease :: method public Dispose()
+member VoxClip.Media.VoiceLab.VoiceLabLocalTiming :: method public .ctor(object,nint)
+member VoxClip.Media.VoiceLab.VoiceLabLocalTiming :: method public BeginInvoke(float[],int,string,System.Threading.CancellationToken,System.AsyncCallback,object)
+member VoxClip.Media.VoiceLab.VoiceLabLocalTiming :: method public EndInvoke(System.IAsyncResult)
+member VoxClip.Media.VoiceLab.VoiceLabLocalTiming :: method public Invoke(float[],int,string,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.VoiceLabLocalTimingSource :: method public OnDevice(VoxClip.Core.Services.Speech.ITranscriber,System.Func`2<System.Threading.CancellationToken,System.Threading.Tasks.Task`1<System.Collections.Generic.IReadOnlyList`1<string>>>,string)
+member VoxClip.Media.VoiceLab.VoiceLabLocalTimingSource :: method public Resample(float[],int,int)
+member VoxClip.Media.VoiceLab.VoiceLabLocalTimingSource :: method public Words(VoxClip.Core.Domain.Transcript.RawTranscript)
 member VoxClip.Media.VoiceLab.VoiceLabPartialEntry :: method private .ctor(VoxClip.Media.VoiceLab.VoiceLabPartialEntry)
 member VoxClip.Media.VoiceLab.VoiceLabPartialEntry :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Media.VoiceLab.VoiceLabPartialEntry :: method private get_EqualityContract()
@@ -1878,9 +1885,12 @@ member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method private Check(long,VoxCl
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method private Checkpoint(string,VoxClip.Media.VoiceLab.VoiceLabTakeRun+Pending,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method private End(System.Exception)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method private Fatal(System.Exception)
+member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method private IsTimingFailure(System.Exception)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method private PerformAsync(System.Func`1<VoxClip.Media.VoiceLab.VoiceLabTakeRun+Pending>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabAuthorization>,System.Func`2<System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow>,System.Threading.Tasks.Task>,System.Func`1<bool>,System.Func`1<System.Threading.Tasks.Task>,VoxClip.Media.VoiceLab.VoiceLabShortTakePool,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method private PreservePaidAudioAsync(VoxClip.Core.Domain.VoiceLab.VoiceLabAudioResult,System.Guid)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method private ProductionChecks(VoxClip.Core.Services.VoiceLab.VoiceConsentStore,VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck)
+member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method private RecoverTimingAsync(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabWord>,float[],VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method private Samples(VoxClip.Core.Domain.VoiceLab.VoiceLabAudioResult)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method private StopAsync(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunEnd,bool)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method private ValidateAsync(VoxClip.Media.VoiceLab.VoiceLabTakeRun+Pending,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method private ValidateVoiceAsync(VoxClip.Media.VoiceLab.VoiceLabTakeRun+Pending,System.Threading.CancellationToken)
@@ -1903,10 +1913,12 @@ member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public RefreshMonthlyCap
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public RejectAsync(System.Guid)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public Scratch(System.Guid)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public get_KeepsEarlierTakes()
+member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public get_LocalTiming()
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public get_PhraseId()
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public get_ShortTakePool()
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public get_VoiceChecks()
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public set_KeepsEarlierTakes(bool)
+member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public set_LocalTiming(VoxClip.Media.VoiceLab.VoiceLabLocalTiming)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public set_PhraseId(System.Nullable`1<int>)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public set_ShortTakePool(VoxClip.Media.VoiceLab.VoiceLabShortTakePool)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public set_VoiceChecks(VoxClip.Media.VoiceLab.VoiceLabVoiceCheckSession)
@@ -2264,6 +2276,8 @@ type VoxClip.Media.VoiceLab.VoiceLabFittedAudio
 type VoxClip.Media.VoiceLab.VoiceLabFittedPublication
 type VoxClip.Media.VoiceLab.VoiceLabLifetime
 type VoxClip.Media.VoiceLab.VoiceLabLifetime+Lease
+type VoxClip.Media.VoiceLab.VoiceLabLocalTiming
+type VoxClip.Media.VoiceLab.VoiceLabLocalTimingSource
 type VoxClip.Media.VoiceLab.VoiceLabPartialEntry
 type VoxClip.Media.VoiceLab.VoiceLabPartialFiles
 type VoxClip.Media.VoiceLab.VoiceLabPartialFiles+DarwinInformation

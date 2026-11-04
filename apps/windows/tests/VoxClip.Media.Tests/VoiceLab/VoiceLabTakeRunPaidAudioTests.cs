@@ -11,7 +11,7 @@ public sealed partial class VoiceLabTakeRunTests
 {
     [Theory]
     [InlineData("eleven_v4", "both_alignments_null", VoiceLabErrorKind.InvalidAlignment, true)]
-    [InlineData("eleven_v4", "segments_wrong_voice", VoiceLabErrorKind.MalformedResponse, true)]
+    [InlineData("eleven_v4", "segments_wrong_voice", VoiceLabErrorKind.InvalidAlignment, true)]
     [InlineData("eleven_v3", "alignment_null", VoiceLabErrorKind.InvalidAlignment, true)]
     [InlineData("eleven_v4", "alignment_null", VoiceLabErrorKind.InvalidAudio, false)]
     [InlineData("eleven_v3", "alignment_null", VoiceLabErrorKind.InvalidAudio, false)]
@@ -26,6 +26,9 @@ public sealed partial class VoiceLabTakeRunTests
         await using var fixture = new Fixture(input => input with { ModelId = model, Text = "Hi" });
         fixture.Remote.SynthesisResponse = response;
         fixture.Remote.SynthesisText = "Hi";
+        // Decoded PCM is timed from its word check (voice-lab §8.5); here that check hears nothing, so the take keeps its
+        // failure (InvalidAlignment once recovery fails) with its paid audio preserved.
+        fixture.Remote.Heard = "";
         var quote = await fixture.Prepare();
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(Token);
         // Stop after this independently approved candidate; do not send the next two candidates.
@@ -48,11 +51,12 @@ public sealed partial class VoiceLabTakeRunTests
         Assert.Null(fixture.Run.Scratch(row.Id));
         var refusal = await Assert.ThrowsAsync<VoiceLabException>(() => fixture.Run.PublishForAcceptanceAsync(row.Id, DateTimeOffset.UtcNow, Token));
         Assert.Equal(VoiceLabErrorKind.ConsentRequired, refusal.Kind);
-        Assert.Equal(row.Id, Assert.Single(row.AcceptedRequestIds));
-        Assert.Equal(quote.Takes[0].Synthesis.Estimate.Usd,
+        var acceptedIds = validPcm ? new[] { row.Id, quote.Takes[0].Qa.Review.RequestId } : [row.Id];
+        Assert.Equal(acceptedIds.Order(), row.AcceptedRequestIds.Order());
+        Assert.Equal(validPcm ? quote.Takes[0].Synthesis.Estimate.Usd + quote.Takes[0].Qa.Estimate.Usd : quote.Takes[0].Synthesis.Estimate.Usd,
             (await fixture.Ledger.TotalAsync("elevenlabs", DateTimeOffset.UnixEpoch, Token))!.Usd);
         Assert.Single(fixture.Remote.Seeds);
-        Assert.Equal(0, fixture.Remote.Qa);
+        Assert.Equal(validPcm ? 1 : 0, fixture.Remote.Qa);
         var paidRoot = Path.Combine(fixture.Root, "Paid");
         var files = Directory.Exists(paidRoot) ? Directory.GetFiles(paidRoot, "*.wav", SearchOption.AllDirectories) : [];
         if (!validPcm)
@@ -87,7 +91,7 @@ public sealed partial class VoiceLabTakeRunTests
         Assert.Equal(VoiceLabErrorKind.ConsentRequired, refusal.Kind);
         await audition.StopAsync();
         Assert.False(snapshot.IsValid); Assert.False(File.Exists(snapshot.Path)); Assert.True(File.Exists(files[0]));
-        Assert.Single(fixture.Remote.Seeds); Assert.Equal(0, fixture.Remote.Qa);
+        Assert.Single(fixture.Remote.Seeds); Assert.Equal(1, fixture.Remote.Qa);
     }
 
     [Fact]

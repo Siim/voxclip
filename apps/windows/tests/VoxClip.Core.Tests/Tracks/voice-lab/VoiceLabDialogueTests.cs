@@ -91,6 +91,100 @@ public sealed class VoiceLabDialogueTests
         Assert.Equal(2.4, extended[0].End);
         Assert.Equal((.2 - VoiceLabPatchConstants.TTS_TRIM_LEAD, 2.4 + VoiceLabPatchConstants.TTS_TRIM_TAIL), VoiceLabAlignment.Trim(extended, 3));
     }
+    private sealed class CapturingLog : VoxClip.Core.Services.Logging.ILog
+    {
+        internal readonly List<string> Lines = [];
+        public void RegisterSecret(string secret) { }
+        public void Write(VoxClip.Core.Services.Logging.LogLevel level, string category, string message) { lock (Lines) Lines.Add(category + ": " + message); }
+        public Task<IReadOnlyList<string>> ReadRecentAsync(int count, CancellationToken ct) => Task.FromResult<IReadOnlyList<string>>(Lines.ToArray());
+        public Task FlushAsync(CancellationToken ct) => Task.CompletedTask;
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+    /// <summary>voice-lab §8.5 "Tolerant timing" (Mac <c>v4TimingVariantsMapToTypedWordsOrNameTheirCheck</c>): every v4 reply a
+    /// correct provider could send maps to the typed words with the shared fixture's times; replies whose words really
+    /// differ are refused with the check the release log names, and the log never holds the text.</summary>
+    [Fact]
+    public async Task V4TimingVariantsMapToTypedWordsOrNameTheirCheck()
+    {
+        var document = JsonNode.Parse(FixtureLoader.ReadText("fixtures/voice-lab/v4-timing-cases.json"))!;
+        Assert.Equal("voxclip-voice-lab-v4-timing-cases/1", document["schema"]!.GetValue<string>());
+        Assert.Equal(new[] { "schema", "modelID", "voiceID", "overrunTolerance", "orderTolerance", "caseCount", "cases" }, document.AsObject().Select(pair => pair.Key));
+        Assert.Equal(VoiceLabProviderTiming.OverrunTolerance, document["overrunTolerance"]!.GetValue<double>());
+        Assert.Equal(VoiceLabProviderTiming.OrderTolerance, document["orderTolerance"]!.GetValue<double>());
+        var cases = document["cases"]!.AsArray();
+        Assert.Equal(26, document["caseCount"]!.GetValue<int>());
+        Assert.Equal(26, cases.Count);
+        var model = document["modelID"]!.GetValue<string>();
+        Assert.Equal(Voice.Id, document["voiceID"]!.GetValue<string>());
+        var problems = new List<string>();
+        foreach (var fixture in cases)
+        {
+            var id = fixture!["id"]!.GetValue<string>();
+            var typed = fixture["typed"]!.GetValue<string>();
+            var expected = fixture["expected"]!;
+            var response = new JsonObject
+            {
+                ["audio_base64"] = Convert.ToBase64String(new byte[fixture["pcmSamples"]!.GetValue<int>() * 2]),
+                ["alignment"] = fixture["alignment"]?.DeepClone(), ["normalized_alignment"] = fixture["normalized_alignment"]?.DeepClone(),
+                ["voice_segments"] = fixture["voice_segments"]?.DeepClone()
+            };
+            var log = new CapturingLog();
+            using var handler = new Handler(Cases(), response);
+            using var client = ElevenLabsVoiceLab.ForTesting(new MemoryKeys("synthetic-key"), handler, ElevenLabsRegion.Default, logger: log);
+            await Discover(client);
+            try
+            {
+                var result = await Speak(client, typed, model);
+                if (expected["outcome"]!.GetValue<string>() != "accepted") { problems.Add(id + ": accepted, expected " + expected["check"]); continue; }
+                var timing = result.Alignment!;
+                var words = VoiceLabAlignment.Words(timing.Select(item => item.Character).ToArray(), timing.Select(item => item.Start).ToArray(),
+                    timing.Select(item => item.End).ToArray(), typed);
+                var want = expected["words"]!.AsArray();
+                if (!words.Select(word => word.Text).SequenceEqual(want.Select(word => word!["text"]!.GetValue<string>())) ||
+                    words.Zip(want).Any(pair => Math.Abs(pair.First.Start - pair.Second!["start"]!.GetValue<double>()) >= 1e-9 ||
+                        Math.Abs(pair.First.End - pair.Second!["end"]!.GetValue<double>()) >= 1e-9))
+                    problems.Add(id + ": words " + string.Join(",", words.Select(word => $"{word.Text}@{word.Start}-{word.End}")));
+                // The exact path logs nothing; a tolerated reply logs its quirk without the text.
+                var tolerated = log.Lines.Any(line => line.StartsWith("voice-lab: voicelab speech timing tolerated check=", StringComparison.Ordinal));
+                if (tolerated != (expected["path"]!.GetValue<string>() != "exact")) problems.Add(id + ": log " + string.Join(" | ", log.Lines));
+            }
+            catch (VoiceLabException error)
+            {
+                if (expected["outcome"]!.GetValue<string>() != "rejected") { problems.Add(id + ": refused " + error.Kind); continue; }
+                var check = expected["check"]!.GetValue<string>();
+                // A segment refusal keeps the shared dialogue contract; the take run recovers that take (§8.5).
+                var segment = expected["error"]!.GetValue<string>() == "malformedResponse";
+                if (error.Kind != (segment ? VoiceLabErrorKind.MalformedResponse : VoiceLabErrorKind.InvalidAlignment)) problems.Add(id + ": " + error.Kind);
+                if (!log.Lines.Any(line => line.Contains("voicelab speech timing failed check=" + check + (segment ? "_" : " "), StringComparison.Ordinal)))
+                    problems.Add(id + ": log " + string.Join(" | ", log.Lines));
+            }
+            foreach (var word in typed.Split(' ').Where(word => word.Length > 3))
+                if (log.Lines.Any(line => line.Contains(word, StringComparison.Ordinal))) problems.Add(id + ": log has text");
+        }
+        Assert.Empty(problems);
+    }
+    [Fact]
+    public async Task ATextMismatchLogsItsIndexAndScalarsNeverTheText()
+    {
+        var root = Cases();
+        var response = root["responses"]![0]!["response"]!.DeepClone();
+        response["audio_base64"] = Convert.ToBase64String(new byte[960]);
+        // A curly apostrophe alone is tolerated (v4-timing-cases.json); a different word is refused with the first mismatch.
+        response["alignment"] = JsonNode.Parse("""{"characters":["I","’","d"],"character_start_times_seconds":[0,0.005,0.01],"character_end_times_seconds":[0.005,0.01,0.02]}""");
+        response["normalized_alignment"] = JsonNode.Parse("""{"characters":["I am"],"character_start_times_seconds":[0],"character_end_times_seconds":[0.02]}""");
+        response["voice_segments"]![0]!["character_end_index"] = 3;
+        response["voice_segments"]![0]!["end_time_seconds"] = 0.02;
+        var log = new CapturingLog();
+        using var handler = new Handler(root, response);
+        using var client = ElevenLabsVoiceLab.ForTesting(new MemoryKeys("synthetic-key"), handler, ElevenLabsRegion.Default, logger: log);
+        await Discover(client);
+        var acceptance = new VoiceLabRequestAcceptance();
+        var error = await Assert.ThrowsAsync<VoiceLabException>(() => Speak(client, "I'm", acceptance: acceptance));
+        Assert.Equal(VoiceLabErrorKind.InvalidAlignment, error.Kind);
+        Assert.Contains("voice-lab: voicelab speech timing failed check=alignment_words_mismatch index=1 typed=U+0027 provider=U+2019 route=textToDialogue model=eleven_v4", log.Lines);
+        Assert.DoesNotContain(log.Lines, line => line.Contains("I'm", StringComparison.Ordinal) || line.Contains("I’d", StringComparison.Ordinal));
+        Assert.NotNull(acceptance.UnalignedAudio);
+    }
     private static Task<VoiceLabAudioResult> Speak(ElevenLabsVoiceLab client, string text = "Hi", string model = "eleven_v4",
         VoiceLabSpeechOptions? options = null, VoiceLabAuthorization? approval = null, Guid? requestId = null, VoiceLabRequestAcceptance? acceptance = null)
     {
@@ -308,8 +402,10 @@ public sealed class VoiceLabDialogueTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task NoTimingAndMalformedNonNullOriginalNeverGetRescued(bool malformedOriginal)
+    public async Task NoTimingIsRefusedAndAMalformedOriginalFallsBackToNormalized(bool malformedOriginal)
     {
+        // voice-lab §8.5 "Tolerant timing": otherwise the original, then (v4 dialogue) normalized_alignment. With neither,
+        // the reply has no timing; an unusable original leaves the normalized one (Mac speechTiming).
         var root = Cases();
         var response = root["responses"]![0]!["response"]!.DeepClone();
         response["normalized_alignment"] = malformedOriginal ? response["alignment"]!.DeepClone() : null;
@@ -317,7 +413,13 @@ public sealed class VoiceLabDialogueTests
         using var handler = new Handler(root, response);
         using var client = Client(handler);
         await Discover(client);
-        Assert.Equal(VoiceLabErrorKind.InvalidAlignment, (await Assert.ThrowsAsync<VoiceLabException>(() => Speak(client))).Kind);
+        if (!malformedOriginal)
+        {
+            Assert.Equal(VoiceLabErrorKind.InvalidAlignment, (await Assert.ThrowsAsync<VoiceLabException>(() => Speak(client))).Kind);
+            return;
+        }
+        var result = await Speak(client);
+        Assert.Equal("Hi", string.Concat(result.Alignment!.Select(item => item.Character)));
     }
     [Fact]
     public async Task SpeechAndDialogueQuotesCannotAuthorizeTheOtherRoute()

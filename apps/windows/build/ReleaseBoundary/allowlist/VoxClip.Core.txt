@@ -656,6 +656,13 @@ literal "VOXCLIP_LOG_LEVEL"
 literal "VOXCLIP_SHARED_DIR does not contain caption-styles and data/share-text.json."
 literal "VOXCLIP_SHARED_DIR"
 literal "agent_message"
+literal "alignment_count_mismatch"
+literal "alignment_empty_character"
+literal "alignment_end_beyond_duration"
+literal "alignment_fields"
+literal "alignment_text_mismatch"
+literal "alignment_time_order"
+literal "alignment_words_mismatch"
 literal "api_error_status"
 literal "apply_text_normalization"
 literal "audio_base64"
@@ -751,6 +758,7 @@ literal "next_page_token"
 literal "next_text"
 literal "node_modules"
 literal "normalized_alignment"
+literal "null_alignment"
 literal "num_ctx"
 literal "num_predict"
 literal "num_speakers"
@@ -765,10 +773,17 @@ literal "prompt_eval_count"
 literal "prompt_tokens"
 literal "prompt_tokens_details"
 literal "rate_limit_exceeded"
+literal "recovery_no_words"
 literal "remove_background_noise"
 literal "requires_verification"
 literal "response_format"
 literal "scribe_v2"
+literal "segment_character_range"
+literal "segment_end_beyond_duration"
+literal "segment_input_index"
+literal "segment_time_order"
+literal "segment_voice"
+literal "segments_missing_or_empty"
 literal "similarity_boost"
 literal "speaker_id"
 literal "speech_to_speech"
@@ -6138,12 +6153,11 @@ member VoxClip.Core.Domain.VoiceLab.VoiceEnrollmentRecovery :: method public set
 member VoxClip.Core.Domain.VoiceLab.VoiceEnrollmentRecovery :: method public set_Request(VoxClip.Core.Domain.VoiceLab.VoiceLabCloneRequest)
 member VoxClip.Core.Domain.VoiceLab.VoiceEnrollmentRecovery :: method public set_TrainingMilliseconds(long)
 member VoxClip.Core.Domain.VoiceLab.VoiceInsufficientGeneratedSpeechException :: method public .ctor()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabAlignment :: method internal IsWhiteSpace(int)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabAlignment :: method private Folded(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabAlignment :: method private IsNoncharacter(int)
-member VoxClip.Core.Domain.VoiceLab.VoiceLabAlignment :: method private IsWhiteSpace(int)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabAlignment :: method private SplitWhiteSpace(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabAlignment :: method public RelativeWords(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabWord>,double,double,double,double)
-member VoxClip.Core.Domain.VoiceLab.VoiceLabAlignment :: method public RetimeNormalized(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabCharacterTiming>,string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabAlignment :: method public Trim(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabWord>,double)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabAlignment :: method public Trim(VoxClip.Core.Domain.Transcript.AudioEnvelope,double)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabAlignment :: method public Words(System.Collections.Generic.IReadOnlyList`1<string>,System.Collections.Generic.IReadOnlyList`1<double>,System.Collections.Generic.IReadOnlyList`1<double>,string)
@@ -7918,6 +7932,36 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderPrice :: method public set_U
 member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderPriceBasis :: field public ProviderEstimate
 member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderPriceBasis :: field public ProviderPricingApi
 member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderPriceBasis :: field public value__
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming :: field public OrderTolerance
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming :: field public OverrunTolerance
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming :: method internal Expands(string)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming :: method internal Fold(string)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming :: method private BlankBrackets(System.Collections.Generic.List`1<System.Text.Rune>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming :: method private Map(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming+Token>,string,bool)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming :: method private ScalarCount(string)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming :: method private SplitScalars(string)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming :: method public FirstMismatch(string,string)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming :: method public Recovered(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabWord>,string)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming :: method public Retime(System.Collections.Generic.IReadOnlyList`1<string>,System.Collections.Generic.IReadOnlyList`1<double>,System.Collections.Generic.IReadOnlyList`1<double>,string,double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming+Token :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming+Token)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming+Token :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming+Token :: method private get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming+Token :: method public .ctor(string,string,double,double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming+Token :: method public Deconstruct(string&,string&,double&,double&)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming+Token :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming+Token)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming+Token :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming+Token :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming+Token :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming+Token :: method public get_End()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming+Token :: method public get_Folded()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming+Token :: method public get_Start()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming+Token :: method public get_Text()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming+Token :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming+Token,VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming+Token)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming+Token :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming+Token,VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming+Token)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming+Token :: method public set_End(double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming+Token :: method public set_Folded(string)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming+Token :: method public set_Start(double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming+Token :: method public set_Text(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabPublishedTake :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabPublishedTake)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabPublishedTake :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabPublishedTake :: method private get_EqualityContract()
@@ -9064,6 +9108,13 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabText :: method public set_AudioTags(
 member VoxClip.Core.Domain.VoiceLab.VoiceLabText :: method public set_New(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabText :: method public set_Original(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTextLength :: method public Length(string)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTimingFailure :: method private Code(System.Nullable`1<int>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTimingFailure :: method public .ctor(string,System.Nullable`1<int>,System.Nullable`1<int>,System.Nullable`1<int>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTimingFailure :: method public get_Check()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTimingFailure :: method public get_Index()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTimingFailure :: method public get_LogFields()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTimingFailure :: method public get_ProviderScalar()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTimingFailure :: method public get_TypedScalar()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoAsset :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabVideoAsset)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoAsset :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabVideoAsset :: method private get_EqualityContract()
@@ -11853,7 +11904,6 @@ member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method internal ForT
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method internal ListOwnClonesAsync(VoxClip.Core.Domain.VoiceLab.VoiceConsentCreator,System.Threading.CancellationToken)
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private .cctor()
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private .ctor(VoxClip.Core.Services.LLM.IKeyProvider,System.Net.Http.HttpClient,VoxClip.Core.Services.Speech.ElevenLabsRegion,VoxClip.Core.Services.Logging.ILog,System.TimeProvider,string,VoxClip.Core.Domain.VoiceLab.VoiceLabPriceCatalog,VoxClip.Core.Services.VoiceLab.VoiceLabSpendLedger)
-member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private Alignment(System.Text.Json.JsonElement,string,double)
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private AlignmentObject(System.Text.Json.JsonElement,string,double)
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private Auto(string)
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private CloneFingerprint(VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab+CloneUpload,VoxClip.Core.Domain.VoiceLab.OwnVoicePolicy)
@@ -11900,8 +11950,10 @@ member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private SendA
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private SpeechContext(string,bool)
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private SpeechPath(VoxClip.Core.Domain.VoiceLab.VoiceLabModel,string)
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private SpeechTextLimit(VoxClip.Core.Domain.VoiceLab.VoiceLabModel)
+member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private SpeechTiming(System.Text.Json.JsonElement,bool,string,double)
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private Splits(System.Text.Rune[],int)
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private SynthesisFingerprint(string,string,VoxClip.Core.Domain.VoiceLab.VoiceLabVoiceChoice,string,VoxClip.Core.Domain.VoiceLab.VoiceLabSpeechOptions)
+member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private TimingFailure(string,System.Nullable`1<int>)
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private TryParseWav(System.ReadOnlySpan`1<byte>,VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab+WavInfo&)
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private ValidId3(System.ReadOnlySpan`1<byte>)
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method private ValidatePace(System.Nullable`1<double>,VoxClip.Core.Domain.VoiceLab.VoiceLabModel)
@@ -11925,6 +11977,7 @@ member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method public Dispos
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method public Estimate(VoxClip.Core.Domain.VoiceLab.VoiceLabOperation,string,double,int)
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method public GetCreatorIdentityAsync(System.Threading.CancellationToken)
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method public ListOwnClonesAsync(System.Threading.CancellationToken)
+member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method public Note(string)
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method public PrepareConsentVerification(byte[],string,System.Guid)
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method public PrepareConversion(byte[],string,VoxClip.Core.Domain.VoiceLab.VoiceLabVoiceChoice,string,uint,bool,System.Guid)
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab :: method public PrepareDeletion(string,VoxClip.Core.Domain.VoiceLab.OwnVoicePolicy,System.Guid)
@@ -12014,6 +12067,9 @@ member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab+Reply :: method public 
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab+Reply :: method public get_RequestId()
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab+Reply :: method public get_SpendWarning()
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab+Reply :: method public get_Status()
+member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab+SpeechMetadataFailure :: method internal get_Kind()
+member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab+SpeechMetadataFailure :: method internal get_Timing()
+member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab+SpeechMetadataFailure :: method public .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabErrorKind,VoxClip.Core.Domain.VoiceLab.VoiceLabTimingFailure)
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab+WavInfo :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab+WavInfo :: method public .ctor(uint,uint)
 member VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab+WavInfo :: method public Deconstruct(uint&,uint&)
@@ -12999,6 +13055,8 @@ type VoxClip.Core.Domain.VoiceLab.VoiceLabProjectException
 type VoxClip.Core.Domain.VoiceLab.VoiceLabProvenance
 type VoxClip.Core.Domain.VoiceLab.VoiceLabProviderPrice
 type VoxClip.Core.Domain.VoiceLab.VoiceLabProviderPriceBasis
+type VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming
+type VoxClip.Core.Domain.VoiceLab.VoiceLabProviderTiming+Token
 type VoxClip.Core.Domain.VoiceLab.VoiceLabPublishedTake
 type VoxClip.Core.Domain.VoiceLab.VoiceLabQa
 type VoxClip.Core.Domain.VoiceLab.VoiceLabQaTranscript
@@ -13070,6 +13128,7 @@ type VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+ShortSpeechCheck
 type VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+WaitingCheck
 type VoxClip.Core.Domain.VoiceLab.VoiceLabText
 type VoxClip.Core.Domain.VoiceLab.VoiceLabTextLength
+type VoxClip.Core.Domain.VoiceLab.VoiceLabTimingFailure
 type VoxClip.Core.Domain.VoiceLab.VoiceLabVideoAsset
 type VoxClip.Core.Domain.VoiceLab.VoiceLabVideoCut
 type VoxClip.Core.Domain.VoiceLab.VoiceLabVideoDurationOptions
@@ -13286,6 +13345,7 @@ type VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab+CloneFile
 type VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab+CloneUpload
 type VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab+Part
 type VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab+Reply
+type VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab+SpeechMetadataFailure
 type VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab+WavInfo
 type VoxClip.Core.Services.VoiceLab.ONNXSpeakerEmbedder
 type VoxClip.Core.Services.VoiceLab.PatchRewriteService

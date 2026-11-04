@@ -116,7 +116,7 @@ public sealed partial class VoiceLabTakeRunTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task DialogueTakeUsesQaAndRecipeOrRecordsTheAcceptedAlignmentFailure(bool missingAlignment)
+    public async Task DialogueTakeUsesQaAndRecipeAndRecoversMissingTimingFromItsWordCheck(bool missingAlignment)
     {
         await using var fixture = new Fixture(input => input with { ModelId = "eleven_v4", ContentKey = new string('a', 64) });
         fixture.Remote.MissingAlignment = missingAlignment;
@@ -126,15 +126,14 @@ public sealed partial class VoiceLabTakeRunTests
         var row = Assert.Single(result.Rows);
         Assert.Single(fixture.Remote.Seeds);
         var total = await fixture.Ledger.TotalAsync("elevenlabs", DateTimeOffset.UnixEpoch, Token);
-        if (missingAlignment)
-        {
-            Assert.Equal(VoiceLabTakeRunEnd.Fatal, result.End);
-            Assert.Equal(VoiceLabErrorKind.InvalidAlignment, Assert.IsType<VoiceLabException>(row.Failure).Kind);
-            Assert.False(row.Selectable);
-            Assert.Equal(0, fixture.Remote.Qa);
-            Assert.Equal(quote.Takes[0].Synthesis.Estimate.Usd, total!.Usd);
-            return;
-        }
+        // voice-lab §8.5 timing recovery: a paid take with no provider timing is timed from its own word check, the take's
+        // one approved Scribe request, which is then its QA. No second synthesis or Scribe request is made.
+        Assert.NotNull(row.Generated!.Alignment);
+        var wav = Assert.Single(fixture.Remote.QaWavs);
+        var heardSeconds = (wav.Length - 44) / 2.0 / BinaryPrimitives.ReadInt32LittleEndian(wav.AsSpan(24));
+        // A recovered take's word check hears the take's own PCM; otherwise it hears the QA mix with its source context.
+        if (missingAlignment) Assert.Equal(fixture.Remote.Duration, heardSeconds, 2);
+        else Assert.True(heardSeconds > fixture.Remote.Duration + 0.5, heardSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
         Assert.Equal(VoiceLabTakeRunEnd.EarlyStop, result.End);
         Assert.True(row.Selectable, row.Failure?.ToString());
         Assert.True(row.Fits);
@@ -164,6 +163,57 @@ public sealed partial class VoiceLabTakeRunTests
         var prepared = VoiceLabRenderContract.Prepare(roundTrip, VoiceLabOutputScope.Full, VoiceLabLabelPosition.TopRight);
         Assert.Equal("v1/text-to-dialogue/with-timestamps", Assert.Single(prepared.SelectedSegmentRecipes).Recipe.Provenance.Endpoint);
     }
+    /// <summary>The word check heard nothing: no timing can be recovered without the on-device transcriber, so the take fails
+    /// alone (InvalidAlignment) and the run goes on to the next take: timing is never run-fatal (Mac
+    /// <c>anUnrecoverableTakeFailsAloneAndTheRunGoesOn</c>). Recovery buys nothing: one synthesis and one Scribe request per take.</summary>
+    [Fact]
+    public async Task AnUnrecoverableTakeFailsAloneAndTheRunGoesOn()
+    {
+        await using var fixture = new Fixture();
+        fixture.Remote.MissingAlignment = true;
+        fixture.Remote.Heard = "";
+        var quote = await fixture.Prepare();
+        var result = await fixture.Run.ExecuteAsync(quote, true, ct: Token);
+        Assert.Equal(VoiceLabTakeRunEnd.Completed, result.End);
+        Assert.Equal(quote.Takes.Count, result.Rows.Count);
+        Assert.All(result.Rows, row =>
+        {
+            Assert.Equal(VoiceLabErrorKind.InvalidAlignment, Assert.IsType<VoiceLabException>(row.Failure).Kind);
+            Assert.NotNull(row.QaReceipt);
+            Assert.False(row.Selectable);
+        });
+        Assert.Equal(quote.Takes.Count, fixture.Remote.Seeds.Count);
+        Assert.Equal(quote.Takes.Count, fixture.Remote.Qa);
+        var total = await fixture.Ledger.TotalAsync("elevenlabs", DateTimeOffset.UnixEpoch, Token);
+        Assert.Equal(quote.Takes.Sum(take => take.Synthesis.Estimate.Usd + take.Qa.Estimate.Usd), total!.Usd);
+    }
+    /// <summary>When the word check gives no timing, the free on-device transcriber does (voice-lab §8.5 step 2). The word
+    /// check still decides the words: a take its word check heard nothing in fails that check, never on timing.</summary>
+    [Fact]
+    public async Task TheOnDeviceTranscriberTimesATakeItsWordCheckCouldNot()
+    {
+        await using var fixture = new Fixture();
+        fixture.Remote.MissingAlignment = true;
+        fixture.Remote.Heard = "";
+        var local = new List<(int Samples, int Rate, string Language)>();
+        fixture.Run.LocalTiming = (samples, rate, language, ct) =>
+        {
+            local.Add((samples.Length, rate, language));
+            return Task.FromResult<IReadOnlyList<VoiceLabWord>>([new("hello", 0.1, fixture.Remote.Duration - 0.1, true)]);
+        };
+        var quote = await fixture.Prepare();
+        var result = await fixture.Run.ExecuteAsync(quote, true, ct: Token);
+        Assert.Equal(VoiceLabTakeRunEnd.Completed, result.End);
+        Assert.Equal(quote.Takes.Count, local.Count);
+        Assert.All(local, call => Assert.Equal(((int)(fixture.Remote.Duration * 24000), 24000, "en"), call));
+        Assert.All(result.Rows, row =>
+        {
+            Assert.Null(row.Failure);
+            Assert.NotNull(row.Generated!.Alignment);
+            Assert.Contains(VoiceLabTakeQaFailure.Transcript, row.Qa!.Failures);
+        });
+        Assert.Equal(quote.Takes.Count, fixture.Remote.Qa);
+    }
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -184,13 +234,15 @@ public sealed partial class VoiceLabTakeRunTests
             Assert.Equal(fatalSecond ? VoiceLabTakeRunEnd.EarlyStop : VoiceLabTakeRunEnd.Completed, first.End);
             Assert.Equal(fatalSecond ? 1 : 3, first.Rows.Count); progress.Finish(0, first);
             fixture.Clock.Advance(600); // Later windows outlive quote TTL under the union's approval.
-            fixture.Remote.MissingAlignment = fatalSecond;
+            // A rejected key is fatal (timing never is, voice-lab §8.5).
+            if (fatalSecond) { fixture.Remote.FirstStatus = 401; fixture.Remote.StatusAtSeed = 2; }
+            // The rejected synthesis bills nothing, so only the first window's two requests count as sent.
             var second = await runner.ExecuteAsync(batch, 1, ct: Token);
             if (fatalSecond)
             {
                 progress.Finish(1, second);
                 Assert.Equal(VoiceLabTakeRunEnd.Fatal, second.End); Assert.Null(progress.Window);
-                Assert.Equal(3, progress.Sent.Count); Assert.Equal(15, progress.Discarded.Count);
+                Assert.Equal(2, progress.Sent.Count); Assert.Equal(16, progress.Discarded.Count);
                 Assert.False(fixture.Client.QuotesAreFresh(batch.Windows[2].Quote.Actions));
                 await Assert.ThrowsAsync<VoiceLabException>(() => runner.ExecuteAsync(batch, 2, ct: Token));
                 Assert.Equal(2, fixture.Remote.Seeds.Count); Assert.True(runs[0].Scratch(first.Best!.Id)!.IsValid);
@@ -230,7 +282,9 @@ public sealed partial class VoiceLabTakeRunTests
             return;
         }
         await runner.ApproveAsync(batch);
+        // The take's paid reply has no timing, so its word check is sent to recover it, and the rejected key is fatal there.
         fixture.Remote.MissingAlignment = true;
+        fixture.Remote.QaStatus = 401;
         var result = await runner.ExecuteAsync(batch, 0, ct: Token);
         var progress = new VoiceLabTakeBatchProgress(batch); progress.Finish(0, result);
         Assert.Equal(VoiceLabTakeRunEnd.Fatal, result.End); Assert.Null(progress.Window);
@@ -678,6 +732,11 @@ public sealed partial class VoiceLabTakeRunTests
         internal readonly List<byte[]> QaWavs = [];
         internal int Qa;
         internal int FirstStatus = 200;
+        /// <summary>The synthesis (1-based) that answers <see cref="FirstStatus"/>.</summary>
+        internal int StatusAtSeed = 1;
+        internal int QaStatus = 200;
+        /// <summary>What every word check hears instead of the typed text; empty means no words.</summary>
+        internal string? Heard;
         internal int Mismatches;
         internal double Duration = 4.11;
         internal bool MissingAlignment;
@@ -707,7 +766,7 @@ public sealed partial class VoiceLabTakeRunTests
                 OnTts?.Invoke();
                 Assert.Null(body["previous_text"]);
                 Assert.Null(body["next_text"]);
-                if (Seeds.Count == 1 && FirstStatus != 200) return Json(new { }, FirstStatus);
+                if (Seeds.Count == StatusAtSeed && FirstStatus != 200) return Json(new { }, FirstStatus);
                 if (SynthesisResponse is { } response)
                 {
                     var reply = Json(response);
@@ -733,7 +792,13 @@ public sealed partial class VoiceLabTakeRunTests
             Assert.True(offset >= 0);
             var size = BinaryPrimitives.ReadInt32LittleEndian(bytes.AsSpan(offset + 4)) + 8;
             QaWavs.Add(bytes.AsSpan(offset, size).ToArray());
-            return Json(new { language_code = "eng", words = new[] { new { type = "word", text = Qa <= Mismatches ? "different" : "Hello", start = 0.65, end = Duration + 0.35 } } });
+            if (QaStatus != 200) return Json(new { }, QaStatus);
+            // Words lie inside the audio sent: the QA mix (0.6 s in), or a take's own PCM when its timing is recovered.
+            var seconds = (size - 44) / 2.0 / BinaryPrimitives.ReadInt32LittleEndian(bytes.AsSpan(offset + 24));
+            var fits = 0.65 + Duration - 0.3 <= seconds;
+            var heard = Heard ?? (Qa <= Mismatches ? "different" : "Hello");
+            return Json(new { language_code = "eng", words = heard.Length == 0 ? [] : new[] { new { type = "word", text = heard,
+                start = fits ? 0.65 : seconds > 0.3 ? 0.1 : seconds * 0.1, end = fits ? Duration + 0.35 : seconds > 0.3 ? seconds - 0.1 : seconds * 0.9 } } });
         }
     }
     private sealed class Fixture : IAsyncDisposable
@@ -1243,16 +1308,17 @@ public sealed partial class VoiceLabTakeRunTests
         await using var fixture = new Fixture();
         fixture.Remote.Duration = seconds; fixture.Remote.MissingAlignment = missing;
         var result = await fixture.Run.ExecuteAsync(await fixture.Prepare(), true, ct: Token);
-        Assert.Equal(missing ? 1 : 3, result.Rows.Count);
-        Assert.Equal(missing ? VoiceLabTakeRunEnd.Fatal : VoiceLabTakeRunEnd.Completed, result.End);
+        Assert.Equal(3, result.Rows.Count);
+        Assert.Equal(VoiceLabTakeRunEnd.Completed, result.End);
         // ADR-R37: a 2 s take is no longer refused; its words are checked and its run's three short takes are pooled.
-        if (!missing) Assert.All(result.Rows, row => { Assert.True(row.Selectable); Assert.False(row.Fits); });
-        else Assert.All(result.Rows, row => Assert.False(row.Selectable));
+        // A take with no provider timing is timed from its word check (voice-lab §8.5) and still never pretends to fit.
+        Assert.All(result.Rows, row => { Assert.True(row.Selectable, row.Failure?.ToString()); Assert.False(row.Fits); });
+        if (missing) Assert.All(result.Rows, row => Assert.NotNull(row.Generated!.Alignment));
         if (seconds == 2)
         {
             Assert.Equal(3, fixture.Remote.Qa);
             Assert.All(result.Rows, row => Assert.Equal(VoiceLabShortSpeechMode.Pooled, row.VoiceCheck.Evidence?.Mode));
         }
-        if (missing) Assert.Equal(0, fixture.Remote.Qa);
+        if (missing) Assert.Equal(3, fixture.Remote.Qa);
     }
 }

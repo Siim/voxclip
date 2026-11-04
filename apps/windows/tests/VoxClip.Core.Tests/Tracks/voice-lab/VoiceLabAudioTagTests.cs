@@ -84,7 +84,8 @@ public sealed class VoiceLabAudioTagTests
         {
             var text = row!["normalized"]!.GetValue<string>();
             var raw = text.Select((character, index) => new VoiceLabCharacterTiming(character.ToString(), index / 100.0, (index + 1) / 100.0)).ToArray();
-            var mapped = VoiceLabAlignment.RetimeNormalized(raw, row["typed"]!.GetValue<string>());
+            var mapped = VoiceLabProviderTiming.Retime(raw.Select(item => item.Character).ToArray(), raw.Select(item => item.Start).ToArray(),
+                raw.Select(item => item.End).ToArray(), row["typed"]!.GetValue<string>(), raw[^1].End);
             Assert.Equal(row["expectedWords"]!.AsArray().Select(value => value!.GetValue<string>()), mapped.Where(value => value.Character != " ").Select(value => value.Character));
             Assert.Equal(raw[0].Start, mapped[0].Start);
             Assert.Equal(raw[^1].End, mapped[^1].End);
