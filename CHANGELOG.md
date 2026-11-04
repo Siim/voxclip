@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Mac, Rewrite takes, Use and Export previews get ready faster: the voice mix is reworked and sounds exactly the same.
 - On Windows, each Rewrite phrase can use your own words or your own microphone take, and automatic fixes learn from what they tried and re-ask when the AI drops a phrase's joining words.
 - Windows opens Mac projects that use your own recorded take, and its Eleven v4 takes no longer fail on harmless timing differences.
 - On Windows, a change refused after its takes are paid gets a fix card, Keep text fixes only applies at once, and a take whose voice couldn't be measured is one click away (Choose Take).

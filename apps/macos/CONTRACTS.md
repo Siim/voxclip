@@ -1,5 +1,24 @@
 # macOS implementation contracts
 
+### 2026-11-04 — Voice Lab mix walks each piece block by block, bit-identical to the per-frame mix
+
+- **Built.** `VoiceLabAudioRenderer.mix` reads each piece's constants once, then works per 4,096-frame block:
+  - retained source runs touch only their 5 ms clip-edge fade frames (`SourceFades`, through the unchanged `ordinarySourceGain`; `ordinaryFadeFrames` holds the fade length);
+  - voiced pieces (`VoicedGain`) fill a per-frame gain and a room-tone bed into two scratch buffers and apply them with `vDSP_vmul`/`vDSP_vadd`. A constant gain uses `vDSP_vsmul`. No fused multiply-add is used, so every sample sees the same IEEE operations in the same order as before;
+  - each seam window is copied over its overlap with the block, later window first, so the incoming window still wins where two overlap.
+  - `ToneLoop` holds the room-tone loop's fade and period. It replaces `toneSample`, which rounded both on every call, in the mix, the seams, `synthSignal` and `stageTake`.
+  - `mix` is internal and takes the prepared segment IDs (`Set<String>`), so tests can call it.
+- **Deleted.** The per-frame loop in `mix` (with its `windows.first(where:)`) and `toneSample`. The old mix lives on only as `LegacyVoiceLabMix` inside `VoiceLabMixSpeedTests`, as the reference.
+- **Bit-exact evidence.**
+  - `voice-lab-mix-speed` (Media, 2 tests): 48 seeded random plans (16.8 M samples, 128 voiced pieces, 159 seams; cuts, clip-edge fades, touching takes, crossfades, hard joins with micro-pauses and edge gain, flat and ramped beds, 44.1 and 48 kHz, ±0, ±1 and subnormal samples) plus a realistic 60 s plan. Each is mixed by both implementations and compared bit for bit, in debug and in release.
+  - A temporary in-process hook (not committed) ran the old mix next to the new one after every real `stage()` in full Media, full App and `rewrite-smoke.sh`: 150 of 150 PCM hashes match. A second temporary hook hashed `stageTake` output across the same runs on old and new code: all 84 distinct inputs give identical output.
+- **Timings.**
+  - Realistic 60 s plan (12 pieces), median of 5: debug 2.13–2.64 s → 0.18–0.26 s (about 10×); release (`-c release -Xswiftc -enable-testing`) 0.056–0.066 s → 0.037 s, now mostly file I/O. `VOXCLIP_MIX_BENCHMARK=1` prints both.
+  - `rewrite-smoke.sh`, local debug, two runs each: realistic pass 81.7 / 75.7 s → 58.5 / 58.4 s, exact pass 58.2 / 52.5 s → 48.2 / 48.7 s, total 140.3 / 128.6 s → 107.0 / 107.5 s. Waits naming `takes: video` 36.8 / 31.4 s → 10.4 / 10.5 s.
+- **Windows.** Not changed. `VoiceLabAudioMixer` already renders per block: one binary search per block for the piece and for the seams, and seam spans are copied. It has no per-frame seam search. It still evaluates `Math.Pow` per frame in `ApplySynthGain`/`AddRoomTone`; that is a possible later speedup, not this pattern.
+- **Verification (absolute `VOXCLIP_SHARED_DIR`, `VOXCLIP_NO_KEYCHAIN=1`, isolated `VOXCLIP_DATA_DIR`, built with `-warn-long-expression-type-checking=300`, no warnings in changed files).** Core 1,191 / 113 suites (2 known issues), Media 502 / 58, App 879 / 62, `rewrite-smoke.sh` 35/35. No real-window gate: headless media change.
+- **Next.** Skipping the interior `× 1` of a source run differs from the old mix only for a signalling-NaN input sample, which staged PCM never carries. The rest of the realistic smoke pass is take preparation (source decode and resampling) and settling waits.
+
 ### 2026-11-04 — Mac Core replays recorded-take-cases.json; usage strings name Say it myself
 
 The Windows Core agent wrote `recorded-take-cases.json` (`voxclip-voice-lab-recorded-take-cases/1`, `generate_render_recorded.py`) from reading Mac code. This entry replays it against that code.
