@@ -1,19 +1,52 @@
 # Windows fixed contracts
 
+### 2026-11-04 — Windows Core and Media: own recorded takes, v4 tolerant timing and timing recovery, bridge words (track/v2-win-core-own)
+
+Twins of the Core and Media parts of Mac track/v2-own-words, track/v2-v4-timing and track/v2-bridge-words. No Mac code changed. App/UI twins are a later package (owed lists below).
+
+- **The `recorded` segment kind (Mac `VoiceLabRecordedTake`).**
+  - Core `VoiceLabSegmentKind.Recorded` (`"recorded"`, v3 only; below v3 it is `InvalidSegment`). Both read-time enum checks (`ProjectSerialization`, `ProjectValidation`) accept it.
+  - New `VoiceLabRecordedTake`: `Provider`/`Endpoint`/`VoiceId`/`Region`, `IsRecorded`, `Alignment` (one timing per text element, as Swift Characters), `WireKind`, `Candidate`/`Segment`, the internal `Validate` (recorded provenance, `voiceSource: "own"` with no `voiceRefId`/`consentVerifiedAt`/consent record, no speaker fields or short-speech evidence, `cost.usd == 0`, non-synthetic words, the word check), and the `HasAISpeech`/`IsAIModified` extensions. `VoiceLabSpokenWord`.
+  - `VoiceLabProject.Validate`: text/words as `tts`, rank required. `AcceptAll` skips the consent check for recorded candidates; `VoiceLabEditCommand.AcceptAll.Voice` and `VoiceLabEditHistory.Apply(… voice …)` are nullable.
+  - `VoiceLabRenderValidation`: room tone for any non-voice-changer passage; a recorded recipe returns after its own rules. `VoiceLabRenderContract`: recorded endpoint check; a recorded take is not AI output, so disclosure covers only its lip sync (kinds `["lipsync"]`). `VoiceLabOutputPlan` captions from recorded words.
+  - `VoiceLabRecipeBuilder.Assemble` (internal, shared by cloned and recorded candidates) and `Segment(…, kind)`.
+  - Media `VoiceLabDisclosureWriter` writes the segment's own kind (`recorded`), as Mac does.
+  - **Shared vectors.** `tools/fixtures/voice-lab/generate_render_recorded.py` writes `recorded-render-v3.voxclip`, `recorded-lipsync-render-v3.voxclip`, `recorded-beside-tts-render-v3.voxclip` and `recorded-take-cases.json` (`voxclip-voice-lab-recorded-take-cases/1`, 17 cases: disclosure, sidecar kinds and captions per project, accept-all without a voice reference, 12 refusals). On check_drift's EXACT list; `render-contract-README.md` describes it. Windows replays it (`VoiceLabRecordedTakeTests`, Media `SidecarListsARecordedTakeUnderItsOwnKind`).
+- **v4 tolerant timing (Mac `VoiceLabProviderTiming`).**
+  - Core `VoiceLabProviderTiming` (`Retime`, `Recovered`, `FirstMismatch`, `OverrunTolerance`, `OrderTolerance`) and `VoiceLabTimingFailure` (`LogFields`). `VoiceLabAlignment.RetimeNormalized` is deleted (its audio-tag replay now uses `Retime`).
+  - `ElevenLabsVoiceLab.SpeechTiming` (Mac `speechTiming`): exact original, else the original then (dialogue) the normalized alignment mapped tolerantly; every timing and segment refusal has Mac's check name. Release log: `voicelab speech timing tolerated|failed check=… index=… typed=U+… provider=U+… route=… model=…`, never text. `Note` writes the recovery lines.
+  - Replays all 26 `v4-timing-cases.json` cases through the client (`V4TimingVariantsMapToTypedWordsOrNameTheirCheck`).
+  - Media `VoiceLabTakeRun`: a decoded take whose timing or segments failed, or whose timing doesn't map in processing, is timed from its own word check (the approved Scribe request, sent once on the take's PCM and then used as its QA), then `LocalTiming` if set. `InvalidAlignment` is no longer run-fatal. New `VoiceLabLocalTiming` / `VoiceLabLocalTimingSource.OnDevice` (installed Whisper models through `ITranscriber`).
+- **Bridge words (Mac track/v2-bridge-words, Core part).** `VoiceLabTakeProcessing.BridgeWords`/`KeepsBridgeWords` (the preflight uses them). `VoiceLabFitBridge` (`From`, `Keeps`, `Display`) and `VoiceLabFitTried` (`Key`) with `VoiceLabFitPhrase.Bridge`/`.Tried`. `VoiceLabWordingFitService.BridgeLine`/`TriedBlock` render `voice-rewrite-tried.json` (promptVersion 2) after the measured line, bridge line first. The tried template's SHA and the bridge/tried values join the fit fingerprint only when sent, so plain rounds keep theirs.
+- **Deviations.**
+  - No Mac replay of `recorded-take-cases.json` (Mac code untouched); CI's generic `tools/schemas/validate.py` checks the three projects. Lead to decide whether Mac Core replays the cases; the expected values were derived from the Mac sources by reading them.
+  - A malformed non-null `alignment` now falls back to `normalized_alignment` (Mac `speechTiming`, voice-lab §8.5 "otherwise the original, then normalized"). The Windows-only test that said it is never rescued was rewritten.
+  - A tolerated reply keeps the provider arrays as `RawAlignment` for Windows' edge-expression step (Mac has no such step).
+  - On-device timing uses installed Whisper models only; Windows speech recognition is WinRT/App-level. `LocalTiming` stays null until the App wires it (owed).
+  - `VoiceLabRecordedTake.Candidate` needs a take QA with no speaker score and `SpeakerUnmeasured = true` (the Windows verdict otherwise fails a null score). The App's own-take rows must be built that way.
+  - `VoiceLabFitTried` and the tried block were ported here with the bridge line (same template, same fingerprint rule); only the App resolver that fills them is owed.
+  - Batch tests that used missing timing as their fatal trigger now use a 401.
+  - doc/spec/voice-lab.md and CHANGELOG.md are out of scope; the lead should note the Windows twins there.
+- **Verification (serial, local, absolute `VOXCLIP_SHARED_DIR`).**
+  - Release Core: **3,001 total, 2,972 passed, 29 skipped, 0 failed**.
+  - Portable Media (`Category!=RequiresFFmpeg&Category!=RequiresWindows`): **921 total, 916 passed, 5 skipped, 0 failed**.
+  - Release win-ui: **1,208 total, 1,203 passed, 5 skipped, 0 failed**; `--filter-method '*ReleaseSurrogate*'` 1/1. Builds: zero warnings or errors.
+  - Red runs: without the Core port, 17 of 22 `VoiceLabRecordedTakeTests` fail (projects refused, saves, disclosure, accept-all, refusals); the old sidecar kind writes `voiceChanger`. The old client fails 3 dialogue tests (25 v4 cases refused or mislogged). Recovery disabled and timing fatal again: 7 Media take-run tests fail. Bridge/tried rendering removed: the bridge test fails.
+  - Allowlists: `ReleaseBoundary update`, reviewed. `VoxClip.Core.txt`: the recorded-take, timing, bridge and tried types and members, the timing check-name literals, `RetimeNormalized` out. `VoxClip.Media.txt`: `VoiceLabLocalTiming`, `VoiceLabLocalTimingSource`, the take run's `LocalTiming` and recovery helpers. App and CLI unchanged.
+  - Every Voice Lab generator, `check_drift.py` (recorded and v4 cases identical), `git diff --exit-code` and no untracked files; `tools/schemas/validate.py` OK; `tools/voice-lab` unittests OK. No live or paid calls, VM or CI dispatch.
+- **Still owed (App/UI package).** Resolver re-ask for dropped bridge words and filling `Bridge`/`Tried`; My words and Say it myself UI and recording; wiring `LocalTiming` (Whisper, Windows speech); smoke S15, the v4 timing smoke twin and the own-take scenarios. See the three entries below.
+
 ### 2026-11-04 — Owed from Mac "A reworded phrase that drops its bridge words" (track/v2-bridge-words)
 
-No Windows code changed. `voice-rewrite-fit.json` and every replayed fixture are unchanged. Windows owes:
+No Windows code changed. `voice-rewrite-fit.json` and every replayed fixture are unchanged. Windows owes (Core done in track/v2-win-core-own, entry above):
 
-- **Core.** `VoiceLabTakeProcessing.BridgeWords`/`KeepsBridgeWords`, shared by the preflight. `VoiceLabFitBridge` and the optional `VoiceLabFitPhrase.Bridge`, rendered from `shared/prompts/voice-rewrite-tried.json` (`promptVersion` 2) `bridge.both|leading|trailing` after the measured line and before the tried block. The tried template's SHA joins the fit fingerprint when a history or bridge words are sent. The `missingBridge` result.
-- **App resolver.** Check each measured reply with `Keeps` before it counts. A dropped reply gets one automatic re-ask in the same round, with the dropped wording in the tried history; the re-ask is an AI send under the cap, with no speech quote. A re-ask that still drops them ends the round, with "(dropped “…”, not used)" on the phrase card. A manual suggestion shows the "left out" line. `PrepareRewording` refuses a wording without the bridge words.
+- **App resolver.** Fill `VoiceLabFitPhrase.Bridge` (`VoiceLabFitBridge.From(input)`) for measured rounds and record a dropped reply as `missingBridge` in `Tried`. Check each measured reply with `Keeps` before it counts. A dropped reply gets one automatic re-ask in the same round, with the dropped wording in the tried history; the re-ask is an AI send under the cap, with no speech quote. A re-ask that still drops them ends the round, with "(dropped “…”, not used)" on the phrase card. A manual suggestion shows the "left out" line. `PrepareRewording` refuses a wording without the bridge words.
 - **Smoke S15** in `RewriteSmokeTests`.
 
 ### 2026-11-04 — Owed: Rewrite's My words and Say it myself (Mac track/v2-own-words)
 
-Mac added both options of the approved phrase-card mockup (design.md §6.3.8 "Your own words", voice-lab.md §8.13). Windows has none of it yet. Owed, in order:
+Mac added both options of the approved phrase-card mockup (design.md §6.3.8 "Your own words", voice-lab.md §8.13). Windows Core now opens, validates, renders, saves and discloses Mac projects with an own take, with shared vectors (track/v2-win-core-own, entry above). Still owed, in order:
 
-- **Core (blocking: Mac projects with an own take).** `VoiceLabSegmentKind.Recorded` (`"recorded"`, v3 only; the schema's v3 enum and its text/words rule already have it, `generate_render_schema.py`). Validation twins of Mac `VoiceLabRecordedTake.validate` and the edits in `VoiceLabProject.validate` (text and words as `tts`; rank required), `VoiceLabRenderValidation` (room tone for a passage; recorded provenance `microphone`/`local`/`own-microphone`/region `local`, no consent, no pace; `voiceSource: "own"`, no `voiceRefId`/`consentVerifiedAt`; no speaker QA; `cost.usd == 0`; words `synthetic: false`; the `tts` word rule), `VoiceLabRenderContract` (recorded endpoint check; a recorded segment is not AI output: disclosure only for its lip sync, kinds `["lipsync"]`), `VoiceLabOutputPlan` captions from recorded words, and `AcceptAll` with an optional voice reference. Until then Windows refuses to open a Mac project that used an own take.
-- **Core vectors.** A new shared fixture file (own schema id, not a category in an existing file) with a recorded segment's project and expected render/disclosure, replayed on both platforms.
 - **App, My words.** The segmented control, one visible field, the live "Your voice reads this…" line from the plan's estimate and verdict, ✦ Shorten/Lengthen (fills the field; inline Send for billed keys), Make take through the existing priced path, typing drops an unpaid quote, and the resolver skip (Mac `RewriteAutoFix.advanceAutoFix`, `observeMeasuredTakes`).
 - **App, Say it myself.** Recording (WASAPI), lead-in cue with headphones or a count-in, auto-stop at the gap + 1.5 s, on-device recognition (Windows.Media.SpeechRecognition or the project's Whisper model), trim/level/fit/join through the existing take processing, the take as a free take source with Use your take / Use anyway / Record again, the inline permission and no-mic states, and the Use footer without the AI label when only own takes are used.
 - **Smoke.** S-own-typed, S-own-mic, S-own-mic-misfit (Mac `DebugRewriteSmokeOwnTakes.swift`).
@@ -74,12 +107,9 @@ Mac added both options of the approved phrase-card mockup (design.md §6.3.8 "Yo
 
 ### 2026-11-04 — Owed from Mac "Eleven v4 timing quirks and the learning fix loop" (track/v2-v4-timing)
 
-No Windows code changed. `dialogue-cases.json`, `audio-tag-cases.json` and the fit prompt are unchanged, so every existing replay stays green. Windows owes:
+No Windows code changed. `dialogue-cases.json`, `audio-tag-cases.json` and the fit prompt are unchanged, so every existing replay stays green. Core tolerant timing, the release log line and Media timing recovery are done (track/v2-win-core-own, entry above). Windows still owes:
 
-- **Core tolerant timing.** Twin `VoiceLabProviderTiming.retime`. Replay the new `shared/fixtures/voice-lab/v4-timing-cases.json` (`voxclip-voice-lab-v4-timing-cases/1`, 26 cases, `generate_v4_timing.py`): accepted word times to 1e-9 s, refusal checks, and segment refusals left to the take run. Windows' normalized fallback must also refuse non-number/symbol replacements (`normalized_different_word`).
-- **Release log line.** `voicelab speech timing tolerated|failed check=… index=… typed=U+… provider=U+…`, never text.
-- **Media timing recovery.** The take's Scribe word check on its own PCM, used once as its QA (`recovered` mapping), then an on-device fallback (Windows speech/Whisper if installed). `InvalidAlignment` is not run-fatal, and no "replies can't be checked yet" cascade.
-- **App resolver.** Provider and timing classes; [Price a take] and [Keep original words] for provider failures, with no wording chips. The tried history sent with each reworded round from `shared/prompts/voice-rewrite-tried.json` (`VoiceLabFitPhrase.tried`, absent when empty). Automatic refusal of repeats and of wordings that don't move toward the slot. Suggestion dedupe. "Round k of 3 · tried: …" on the phrase card. The footer's last fallbacks ([Price a take for phrase N], [Keep original words for phrase N]) and the stopped-run fix line.
+- **App resolver.** Provider and timing classes; [Price a take] and [Keep original words] for provider failures, with no wording chips. The tried history sent with each reworded round (Core `VoiceLabFitPhrase.Tried` renders it; the resolver must fill it). Automatic refusal of repeats and of wordings that don't move toward the slot. Suggestion dedupe. "Round k of 3 · tried: …" on the phrase card. The footer's last fallbacks ([Price a take for phrase N], [Keep original words for phrase N]) and the stopped-run fix line.
 - **Smoke:** a Windows twin of Mac smoke S14 (v4 timing quirks) in `RewriteSmokeTests`, under a new number, since Windows S14 is the collision after paid takes.
 
 ### 2026-11-04 — Windows Rewrite voice budget is a note, and smoke S2 (two changes close together)
