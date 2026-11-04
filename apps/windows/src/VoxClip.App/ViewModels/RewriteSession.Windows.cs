@@ -26,7 +26,8 @@ internal sealed partial class RewriteSession
             if (!GenerationIsCurrent || IsGeneratingBatch || applyingBatch || CanAcceptAll) return null;
             var missing = generationWindows.Select((window, index) => (window, number: index + 1))
                 .Where(item => !item.window.LeftOut && item.window.Phase == RewriteGenerationPhase.LengthChanged &&
-                    item.window.Selected is { Selectable: true, RequiresJoinAdvisoryAcceptance: false, Fits: false } && item.window.VideoChoice is null)
+                    item.window.Selected is { Selectable: true, RequiresJoinAdvisoryAcceptance: false, Fits: false } && item.window.VideoChoice is null &&
+                    item.window.ValidVideoChoices.Count > 0)
                 .Select(item => item.number).ToArray();
             return missing.Length == 0 ? null : $"Choose the video duration for {PhraseList(missing)}.";
         }

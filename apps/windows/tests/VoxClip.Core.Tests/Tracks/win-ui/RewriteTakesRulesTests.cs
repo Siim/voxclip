@@ -23,6 +23,8 @@ public sealed class RewriteTakesRulesTests
         Assert.NotNull(session.AutoFix.Capped);
         Assert.Equal(window.Rows[0].Id, window.AutomaticTake()!.Id);
         Assert.Equal(window.Rows[0].Id, window.SelectedTakeId);
+        // No duration can carry it, so the footer never asks for a duration choice that doesn't exist.
+        Assert.Null(session.AcceptanceBlocker);
         Assert.False(window.DurationAvailable(window.Rows[1]));
         session.KeepFixing();
         await SettleAsync(session);

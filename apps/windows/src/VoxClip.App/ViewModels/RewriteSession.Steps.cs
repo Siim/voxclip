@@ -46,8 +46,9 @@ internal sealed partial class RewriteSession
             if (!IsOpen || Reasking is not null || IsProposing || WordingIsLocked) return cards;
             if (ReaskProblem.Length > 0 && LastReask is { } last)
                 cards.Add(new("Rewrite.Steps.Reask", ReaskProblem, [new("Rewrite.Chip.ReaskAgain", "Ask again", false, () => ReaskAsync(last))]));
-            if (Review is null)
+            if (Review is null || Review.Diff.Hunks.Count == 0)
             {
+                // R1x: the reply failed or was refused; Ask again sends the same request.
                 if (Problem.Length > 0 && Connector is not null)
                     cards.Add(new("Rewrite.Steps.Failed", Problem, [new(AskAgainChip, "Ask again", false, null)]));
                 return cards;
@@ -143,7 +144,8 @@ internal sealed partial class RewriteSession
             if (ReaskingLine is { } asking) return new(asking, "Stop", RewriteFooterAction.StopReask);
             if (IsProposing) return new($"Asking {AiName}…", null, RewriteFooterAction.None);
             if (WordingIsLocked) return new(WordingFitAwaitingApproval ? "Approve the wording fit above, or skip it." : "Fitting the wording to the video…", null, RewriteFooterAction.None);
-            if (Review is null) return new(Problem.Length > 0 ? "Ask again, or change the instruction above." : "Describe the change, then Rewrite.", null, RewriteFooterAction.None);
+            if (Review is null || Review.Diff.Hunks.Count == 0 && (Problem.Length > 0 || ProposalRevision == 0))
+                return new(Problem.Length > 0 ? "Ask again, or change the instruction above." : "Describe the change, then Rewrite.", null, RewriteFooterAction.None);
             if (IncludedHunks.Count == 0) return new("Nothing is included. Your original words stay.", "Done", RewriteFooterAction.Done);
             if (LocalAction is { } local) return new($"{local} needs no new audio.", local, RewriteFooterAction.ApplyLocal);
             if (!HasPaidTakes)

@@ -240,6 +240,8 @@ public sealed class RewriteAutoFixTests
         internal List<LlmRequest> FitRequests { get; } = [];
         internal List<LlmRequest> Reasks { get; } = [];
         internal string? Reask { get; init; }
+        /// <summary>The first this-many Rewrite sends fail, as a connector error would.</summary>
+        internal int FailRewrites { get; set; }
         internal JsonArray? NextActions { get; set; }
         internal bool HoldFits { get; init; }
         internal bool HoldReasks { get; init; }
@@ -257,6 +259,7 @@ public sealed class RewriteAutoFixTests
             if (request.Tag != "voice-rewrite-fit")
             {
                 var reasked = request.Instruction.Contains("REQUESTED FIX", StringComparison.Ordinal);
+                if (!reasked && FailRewrites > 0) { FailRewrites--; throw new HttpRequestException("The stub connector could not be reached."); }
                 if (reasked)
                 {
                     Reasks.Add(request);
