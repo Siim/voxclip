@@ -1037,6 +1037,10 @@ import VoxClipMedia
         guard batch != nil, batchIndices == [index], inputs.indices.contains(index) else { return nil }
         return inputs[index].text
     }
+    /// Whether the held quote already voices `text` for this phrase, alone or with the others.
+    func quotes(_ text: String, phrase index: Int) -> Bool {
+        batch != nil && batchIndices.contains(index) && inputs.indices.contains(index) && inputs[index].text == text
+    }
     func microphoneTake(_ id: UUID) -> MicrophoneTake? { microphoneTakes[id] }
     /// Lists the user's own take beside the phrase's other takes; Record again replaces `replacing` when it is not used.
     @discardableResult func addMicrophoneTake(_ take: MicrophoneTake, phrase index: Int, replacing: UUID? = nil) -> Bool {

@@ -95,3 +95,12 @@ public enum VoiceLabRecordedTake {
               (count <= 5 ? qa.transcriptExact == true : match >= 0.9) else { throw VoiceLabProjectError.qaRejected }
     }
 }
+
+extension VoiceLabSegment {
+    /// Its speech is generated: every segment but the user's own recorded take.
+    public var hasAISpeech: Bool { kind != .recorded }
+    /// It changes the video with AI: generated speech, or lip sync on the user's own take (the export label's rule).
+    public var isAIModified: Bool {
+        hasAISpeech || (candidates.indices.contains(selectedCandidateIndex) && candidates[selectedCandidateIndex].recipe?.video.mode == .lipsync)
+    }
+}

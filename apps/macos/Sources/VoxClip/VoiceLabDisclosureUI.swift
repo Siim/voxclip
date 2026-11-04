@@ -8,7 +8,7 @@ extension EditorModel {
                   let first = index(clip.startWordId), let last = index(clip.endWordId) else { return false }
             lower = words[first].start; upper = words[last].end
         } else { lower = 0; upper = project.media.source.durationSeconds }
-        return project.voiceLab.segments.contains { $0.enabled && $0.replace.start < upper && $0.replace.end > lower }
+        return project.voiceLab.segments.contains { $0.enabled && $0.isAIModified && $0.replace.start < upper && $0.replace.end > lower }
     }
     func exportAccessibleName(_ name: String, targets: [ExportTarget]) -> String {
         name + (targets.contains { target in

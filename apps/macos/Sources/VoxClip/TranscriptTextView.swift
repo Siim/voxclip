@@ -1121,7 +1121,7 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
         guard let model, !span.pause, let position = model.index(span.id) else { return false }
         let word = model.words[position]
         return model.project.voiceLab.segments.contains { segment in
-            segment.enabled && word.start >= segment.replace.start && word.end <= segment.replace.end
+            segment.enabled && segment.hasAISpeech && word.start >= segment.replace.start && word.end <= segment.replace.end
         }
     }
     private func accessibilityStates(_ span: TranscriptSpan) -> [String] {

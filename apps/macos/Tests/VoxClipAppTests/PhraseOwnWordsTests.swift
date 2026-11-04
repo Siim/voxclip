@@ -336,6 +336,8 @@ private struct NoOwnWordsProviderKeys: ProviderKeyStore {
         let prepared = try VoiceLabRenderContract.prepare(used, scope: .full, labelPosition: .topRight)
         #expect(prepared.selectedSegmentRecipes.count == 1 && !prepared.disclosure.required && prepared.disclosure.kinds.isEmpty)
         #expect(Self.tokens.allSatisfy { word in prepared.outputPlan.captions.contains { $0.text == word } })
+        // Nothing in the editor labels the user's own speech as AI.
+        #expect(!editor.containsAISpeech() && segment.hasAISpeech == false && segment.isAIModified == false)
         let encoded = try JSONProjectStore.encode(used)
         #expect(try JSONProjectStore.encode(JSONProjectStore.decode(encoded)) == encoded)
         #expect(editor.undoSteps == 1 && undo.canUndo)

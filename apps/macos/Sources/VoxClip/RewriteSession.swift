@@ -966,7 +966,7 @@ struct RewriteChange: Equatable, Sendable {
     var localCommands: [EditCommand] { pendingFree.flatMap(editor.commands) }
     func close() {
         guard isOpen else { return }
-        isOpen = false; invalidate(); actionTask?.cancel(); takesTask?.cancel()
+        isOpen = false; phraseMicrophone.cancel(); invalidate(); actionTask?.cancel(); takesTask?.cancel()
         clearProposal()
     }
 

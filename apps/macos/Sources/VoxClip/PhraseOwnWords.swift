@@ -15,6 +15,13 @@ enum PhraseWording: String, CaseIterable, Identifiable {
         case .microphone: "● Say it myself"
         }
     }
+    var shortTitle: String {
+        switch self {
+        case .suggested: "✦ AI"
+        case .ownWords: "Mine"
+        case .microphone: "● Say"
+        }
+    }
     /// The words My words starts from: the phrase's change, without the bridge words it keeps from the recording.
     static func change(of phrase: ClipTakePlan.Phrase) -> String {
         let words = EditingPrimitives.splitWords(phrase.text)
@@ -102,7 +109,7 @@ extension RewriteSession {
     /// The quote [Make take · ≈ $x] approves: the user's words, priced for this phrase alone. Nothing is sent.
     func priceOwnWords(phrase index: Int) async {
         guard current, let plan = takePlan, plan.phrases.indices.contains(index), !takesBusy,
-              let text = ownWordsText(plan.phrases[index]), plan.quotedText(phrase: index) != text else { return }
+              let text = ownWordsText(plan.phrases[index]), !plan.quotes(text, phrase: index) else { return }
         takeQuotePhrase = index; focusedTakePhrase = index
         await plan.prepareRewording(text, phrase: index)
         showProposal()
@@ -171,11 +178,13 @@ extension RewriteSession {
     let phrase: ClipTakePlan.Phrase
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Picker("Words for phrase \(phrase.id + 1)", selection: Binding(get: { phrase.wording },
-                set: { session.chooseWording($0, phrase: phrase.id) })) {
-                ForEach(PhraseWording.allCases) { Text($0.title).tag($0) }
+            // Full labels where the column allows, short ones in a narrow column, else a menu: never clipped.
+            ViewThatFits(in: .horizontal) {
+                picker(short: false).pickerStyle(.segmented).fixedSize()
+                picker(short: true).pickerStyle(.segmented).fixedSize()
+                picker(short: false).pickerStyle(.menu).fixedSize()
             }
-            .pickerStyle(.segmented).labelsHidden().controlSize(.small)
+            .controlSize(.small)
             .modifier(PanelButtonEvidence(id: "wording.\(phrase.id)", title: phrase.wording.title))
             switch phrase.wording {
             case .suggested: EmptyView()
@@ -183,6 +192,14 @@ extension RewriteSession {
             case .microphone: PhraseMicrophoneRow(session: session, microphone: session.phraseMicrophone, plan: plan, phrase: phrase)
             }
         }
+    }
+
+    private func picker(short: Bool) -> some View {
+        Picker("Words for phrase \(phrase.id + 1)", selection: Binding(get: { phrase.wording },
+            set: { session.chooseWording($0, phrase: phrase.id) })) {
+            ForEach(PhraseWording.allCases) { Text(short ? $0.shortTitle : $0.title).tag($0) }
+        }
+        .labelsHidden().accessibilityLabel("Words for phrase \(phrase.id + 1)")
     }
 
     @ViewBuilder private var ownWords: some View {
