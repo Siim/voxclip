@@ -158,6 +158,8 @@ extension RewriteSession {
     private func startTakes(_ plan: ClipTakePlan, phrase: Int?, quoteID: UUID) {
         guard current, takePlan === plan, plan.stillCurrent, !takesBusy, plan.approvalID == quoteID else { return }
         wordingFit.measured = nil
+        // The approved price covers automatic fixes of stuck phrases up to its cap (RewriteAutoFix.swift).
+        if phrase == nil { armAutoFix(plan) }
         takesTask = Task { [weak self, weak plan] in
             guard let self, let plan, current, takePlan === plan else { return }
             if let phrase { await plan.tryAnother(phrase: phrase, approved: true, quoteID: quoteID) }
@@ -170,6 +172,22 @@ extension RewriteSession {
         takesTask = Task { [weak self, weak plan] in
             guard let self, let plan, current, takePlan === plan else { return }
             await plan.prepareAnother(phrase: phrase)
+        }
+    }
+    /// The phrase card's one status line, saying what happens next (design.md R2): the resolver's live line, the stuck
+    /// phrase's reason, "Takes start after you approve the price." before payment, "Making takes…" while they run.
+    func phraseStatus(_ phrase: ClipTakePlan.Phrase, plan: ClipTakePlan) -> String {
+        if autoFix.running, let line = autoFix.lines[phrase.id] { return line }
+        if phrase.leftOut { return "Keeps your original words. Its takes stay listed." }
+        if let reason = stuckReason(phrase, plan: plan) {
+            if case .length(_, _, _, _, _, true) = reason { return phrase.takeDetail }
+            return Self.stuckSentence(reason, phrase: phrase.id + 1)
+        }
+        switch phrase.status {
+        case .waiting:
+            return plan.generating ? "Making takes…" : phrase.takes.isEmpty ? "Takes start after you approve the price." : "A new take starts after you approve its price."
+        case .generating: return "Making takes…"
+        default: return phrase.takeDetail
         }
     }
     func selectTake(number: Int) {
@@ -241,11 +259,13 @@ extension ClipTakePlan.Phrase {
                     Button(Self.makeVoiceTitle) { session.editor.openVoiceJob() }
                     Button("Refresh Voices") { Task { await generation.discover(language: session.project.transcript?.language ?? "en") } }
                 }
+            } else if session.takesBusy || session.hasPaidTakes || generation.voices.count == 1 {
+                // The voice can't change now (takes made with it are kept): its name, not a disabled picker.
+                Text("Voice: " + (generation.voices.first { $0.id == generation.selectedVoiceID }?.voiceName ?? generation.voices[0].voiceName))
             } else {
                 Picker("Voice", selection: Binding(get: { generation.selectedVoiceID ?? "" }, set: { generation.chooseVoice($0) })) {
                     ForEach(generation.voices) { Text($0.voiceName).tag($0.id) }
                 }
-                .modifier(PanelButtonEvidence(id: "voicePicker", title: "Voice")).disabled(session.takesBusy || session.hasPaidTakes)
             }
             if let plan = session.takePlan {
                 ForEach(plan.phrases) { phrase in phraseRow(phrase, plan: plan) }
@@ -261,10 +281,6 @@ extension ClipTakePlan.Phrase {
             }
             if !generation.problem.isEmpty { Text(generation.problem).foregroundStyle(DesignValues.color("status.warning")) }
             RewriteSpeechContextReviewView(session: session)
-            if let ordinal = session.surroundingSentenceOrdinal, session.speechContextReview == nil {
-                Button("Use surrounding sentence") { session.reviewTimingSpeechContext(ordinal: ordinal) }
-                    .modifier(PanelButtonEvidence(id: "surrounding", title: "Use surrounding sentence")).disabled(session.takesBusy || generation.selectedVoiceID == nil)
-            }
             Button("Review Changes") { session.takeRowsShown = false; session.showProposal() }.buttonStyle(.plain)
         }
         .font(VCType.callout.font())
@@ -292,8 +308,8 @@ extension ClipTakePlan.Phrase {
                     }.buttonStyle(.plain).accessibilityLabel("\(plan.audition.isPlaying && plan.audition.takeId == phrase.selectedID ? "Pause" : "Play") phrase \(phrase.id + 1)")
                         .help(phrase.selected?.fits == true ? "Listen to the selected fitting take." : "Listen to the checked take. Its timing must fit before it can be used.")
                 }
-                AudioTagPhrase(text: phrase.text, tags: phrase.audioTags, phrase: phrase.id + 1,
-                    insertionBoundary: EditingPrimitives.splitWords(phrase.text).count - phrase.window.rightBridgeWordIds.compactMap { id in
+                AudioTagPhrase(text: phrase.text, tags: session.shownAudioTags(phrase), phrase: phrase.id + 1,
+                    insertionBoundary: phrase.window.leftBridgeWordIds.compactMap { id in
                         session.project.transcript?.words.first { $0.id == id }?.text
                     }.flatMap { EditingPrimitives.splitWords($0) }.count,
                     omitted: !VoiceLabAudioTags.supports(session.currentSynthesisModel ?? "")) {
@@ -311,12 +327,17 @@ extension ClipTakePlan.Phrase {
                         }
                         .buttonStyle(.plain).frame(width: 24, height: 24)
                         .background(phrase.selectedID == take.id ? DesignValues.color("bg.selectedRow") : .clear, in: .rect(cornerRadius: 4))
-                        .accessibilityLabel("Phrase \(phrase.id + 1), take \(take.number), \(take.fits ? "fits" : "timing change required")")
+                        .accessibilityLabel("Phrase \(phrase.id + 1), take \(take.number), \(take.fits ? "fits" : "timing change required")\(phrase.beforeExpression.contains(take.id) ? ", before expression" : "")")
                         .help(take.fits ? "Select this checked take. It fits the phrase." : "This take passed checks but changes the video's duration. Choose a video duration below.")
                         .accessibilityAddTraits(phrase.selectedID == take.id ? [.isButton, .isSelected] : .isButton)
                     }
                 }
-                Text(phrase.takeDetail).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
+                Text(session.phraseStatus(phrase, plan: plan)).font(VCType.small.font())
+                    .foregroundStyle(DesignValues.color(session.autoFix.lines[phrase.id] == nil ? "text.secondary" : "text.primary"))
+                    .columnLayoutEvidence("voice.phrase.\(phrase.id).status", text: session.phraseStatus(phrase, plan: plan))
+            }
+            if let note = session.autoFix.expressionNote[phrase.id] {
+                Text(note).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
             }
             if let pace = plan.phrasePace(phrase.id), pace != 1 {
                 Text("Next take at \(String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), pace))× pace")
@@ -374,20 +395,23 @@ extension ClipTakePlan.Phrase {
                     }
                 }
             }
-            VideoDurationChoiceView(availability: plan.videoAvailability(phrase: phrase.id), selection: phrase.videoChoice,
-                busy: session.takesBusy) { choice in
-                    guard choice != phrase.videoChoice else { return }
-                    session.mutateLipsync(phrase: phrase.id) {
-                        guard plan.chooseVideo(choice, phrase: phrase.id) else { return }
-                        Task { await plan.prepareVideoChoices(); await plan.lipsync.refresh() }
+            // Duration and lip sync appear once a passing take is selected; before that they could not act.
+            if phrase.selected?.row.selectable == true, !phrase.leftOut {
+                VideoDurationChoiceView(availability: plan.videoAvailability(phrase: phrase.id), selection: phrase.videoChoice,
+                    busy: session.takesBusy) { choice in
+                        guard choice != phrase.videoChoice else { return }
+                        session.mutateLipsync(phrase: phrase.id) {
+                            guard plan.chooseVideo(choice, phrase: phrase.id) else { return }
+                            Task { await plan.prepareVideoChoices(); await plan.lipsync.refresh() }
+                        }
                     }
-                }
+            }
             if plan.preparingVideo { ProgressView("Preparing video duration…").controlSize(.small) }
             if plan.lipsync.enabled, phrase.selected?.row.selectable == true, phrase.videoChoice != nil {
                 RewriteLipsyncControls(session: plan.lipsync, phrase: phrase.id, busy: session.takesBusy,
                     play: { session.playLipsync(phrase: phrase.id) }, changed: { session.showProposal() })
             }
-            if !session.takesBusy, session.takeNeedsWordingRecovery(phrase, plan: plan) {
+            if !session.takesBusy, session.autoFix.choicesShown, session.takeNeedsWordingRecovery(phrase, plan: plan) {
                 if session.wordingFit.measured?.phrase == phrase.id {
                     MeasuredWordingFitRow(session: session, plan: plan)
                 }
@@ -402,7 +426,7 @@ extension ClipTakePlan.Phrase {
                     }
                 }
             }
-            if !session.takesBusy, plan.spent.units > 0 || session.acceptedSpeechContext?.targetPhraseID == phrase.id {
+            if !session.takesBusy, session.autoFix.choicesShown, plan.spent.units > 0 || session.acceptedSpeechContext?.targetPhraseID == phrase.id {
                 if let action = session.pricedTakeAction(phrase: phrase.id) {
                     Text(session.takeSendLine).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
                     PanelButton(action: action, kind: .ghost)
@@ -411,11 +435,6 @@ extension ClipTakePlan.Phrase {
                         .buttonStyle(.plain).help("Prepare this phrase's price. Nothing is sent until you approve it.")
                         .modifier(PanelButtonEvidence(id: "priceAnother.\(phrase.id)", title: RewriteSession.firstTakeVerb(hasTakes: !phrase.takes.isEmpty) + "…"))
                 }
-            }
-            if session.canReviewSpeechContext(phrase: phrase),
-               !session.takeNeedsWordingRecovery(phrase, plan: plan) || (phrase.lengthDifference ?? 0) >= 0 {
-                Button("Use surrounding sentence") { session.reviewSpeechContext(phrase: phrase.id) }
-                    .modifier(PanelButtonEvidence(id: "surrounding.\(phrase.id)", title: "Use surrounding sentence")).disabled(session.takesBusy)
             }
         }
         .padding(8).frame(maxWidth: .infinity, alignment: .leading)

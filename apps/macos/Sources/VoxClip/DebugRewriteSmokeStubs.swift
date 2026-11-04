@@ -102,6 +102,8 @@ indirect enum RewriteSmokeFit: Sendable {
     case keepOriginal
     /// Every supplied phrase is reworded to the same words it had: the fit does not converge.
     case sameWords
+    /// Every supplied phrase is reworded without its last word: shorter, as a measured fit asks.
+    case fewerWords
     /// Waits for release, then answers as `then`.
     case held(RewriteSmokeFit)
 
@@ -110,6 +112,8 @@ indirect enum RewriteSmokeFit: Sendable {
             switch self {
             case .keepOriginal, .held: ["ordinal": phrase.ordinal, "action": "keepOriginal", "text": ""]
             case .sameWords: ["ordinal": phrase.ordinal, "action": "reword", "text": phrase.proposed]
+            case .fewerWords: ["ordinal": phrase.ordinal, "action": "reword",
+                               "text": phrase.proposed.split(separator: " ").dropLast().joined(separator: " ")]
             }
         }
         let data = (try? JSONSerialization.data(withJSONObject: ["phrases": rows], options: [.sortedKeys])) ?? Data()
@@ -121,6 +125,8 @@ indirect enum RewriteSmokeFit: Sendable {
 struct RewriteSmokeVoiceScript: Sendable {
     /// Each take's length as a multiple of the length that fits its phrase's slot.
     var lengthFactor = 1.0
+    /// The first takes' factors, in order; `lengthFactor` after them.
+    var lengthFactors: [Double] = []
     /// Word-check transcript substitutions, lowercased: "claude code" heard as "cloud code".
     var heard: [String: String] = [:]
     /// The length that fits each phrase, keyed by its words without tags; the harness fills it as the plan prepares.
@@ -139,6 +145,13 @@ final class RewriteSmokeHTTP: URLProtocol, @unchecked Sendable {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func stopLoading() {}
 
+    /// A reworded phrase's fitting length before the plan records it: the known phrase sharing most of its words, whose
+    /// window it keeps.
+    static func scaled(_ text: String, from fitting: [String: Double]) -> Double {
+        let words = Set(text.split(separator: " "))
+        return fitting.max(by: { Set($0.key.split(separator: " ")).intersection(words).count
+            < Set($1.key.split(separator: " ")).intersection(words).count })?.value ?? 1.2
+    }
     static func words(_ text: String) -> String {
         text.replacing(#/\[[^\]]*\]/#, with: "").split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
@@ -159,8 +172,10 @@ final class RewriteSmokeHTTP: URLProtocol, @unchecked Sendable {
                 let text = ((dialogue ? input?["text"] : body["text"]) as? String) ?? ""
                 let duration = Self.script.withLock { script -> Double in
                     script.syntheses += 1
-                    let fits = script.fitting[Self.words(text)] ?? script.fitting.first { Self.words(text).contains($0.key) }?.value ?? 1.2
-                    script.lastText = Self.words(text); script.lastDuration = fits * script.lengthFactor
+                    let fits = script.fitting[Self.words(text)] ?? script.fitting.first { Self.words(text).contains($0.key) }?.value
+                        ?? Self.scaled(Self.words(text), from: script.fitting)
+                    let factor = script.syntheses <= script.lengthFactors.count ? script.lengthFactors[script.syntheses - 1] : script.lengthFactor
+                    script.lastText = Self.words(text); script.lastDuration = fits * factor
                     return script.lastDuration
                 }
                 data = try Self.synthesis(text: text, duration: duration, dialogue: dialogue)
@@ -175,10 +190,14 @@ final class RewriteSmokeHTTP: URLProtocol, @unchecked Sendable {
                     }
                     return (heard, script.lastDuration)
                 }
+                // The check hears the take mixed into its source context; the take sits in its middle. Words are timed over
+                // that span, so the word check (which keeps the words inside the patch) hears each one.
+                let mixed = Self.wavSeconds(try Self.body(request)) ?? duration
+                let lead = max(0, (mixed - duration) / 2)
                 let words = text.split(separator: " ").map(String.init)
                 let stride = max(0.05, duration - 0.2) / Double(max(1, words.count))
                 let timed = words.enumerated().map { index, word in
-                    ["type": "word", "text": word, "start": 0.1 + Double(index) * stride, "end": 0.1 + Double(index + 1) * stride] as [String: Any]
+                    ["type": "word", "text": word, "start": lead + 0.1 + Double(index) * stride, "end": lead + 0.1 + Double(index + 1) * stride] as [String: Any]
                 }
                 data = try JSONSerialization.data(withJSONObject: ["language_code": "eng", "words": timed])
             default:
@@ -198,12 +217,15 @@ final class RewriteSmokeHTTP: URLProtocol, @unchecked Sendable {
         let margin = 0.05, gap = 0.07
         let words = text.split(separator: " ", omittingEmptySubsequences: false).map(String.init)
         let letters = Double(max(1, words.reduce(0) { $0 + $1.count }))
-        let speech: Double = max(0.05 * Double(words.count), duration - 2 * margin - gap * Double(max(0, words.count - 1)))
+        // The source's own pauses: longer after a sentence or a comma, so word timing across a sentence end holds.
+        func pause(_ word: String) -> Double { word.hasSuffix(".") ? 0.6 : word.hasSuffix(",") ? 0.25 : gap }
+        let pauses: Double = words.dropLast().reduce(0) { $0 + pause($1) }
+        let speech: Double = max(0.05 * Double(words.count), duration - 2 * margin - pauses)
         var spans: [(start: Double, end: Double)] = []
         var time = margin
         for word in words {
             let length: Double = speech * Double(word.count) / letters
-            spans.append((time, time + length)); time += length + gap
+            spans.append((time, time + length)); time += length + pause(word)
         }
         var pcm = Data()
         let count = Int((duration * 24_000).rounded())
@@ -211,7 +233,7 @@ final class RewriteSmokeHTTP: URLProtocol, @unchecked Sendable {
         var span = 0
         for index in 0..<count {
             let seconds: Double = Double(index) / 24_000
-            while span < spans.count - 1, seconds >= spans[span].end + gap / 2 { span += 1 }
+            while span < spans.count - 1, seconds >= spans[span + 1].start { span += 1 }
             let voiced = spans.indices.contains(span) && seconds >= spans[span].start && seconds < spans[span].end
             let level: Double = voiced ? sin(2 * Double.pi * 120 * seconds) * 3_277 : sin(2 * Double.pi * 60 * seconds) * 33
             var value = Int16(level.rounded()).littleEndian
@@ -235,6 +257,27 @@ final class RewriteSmokeHTTP: URLProtocol, @unchecked Sendable {
                 "character_end_index": characters.count, "start_time_seconds": 0, "end_time_seconds": duration]]
         }
         return try JSONSerialization.data(withJSONObject: reply)
+    }
+
+    /// The length of the first WAV in a (multipart) body: its `fmt ` byte rate and `data` size.
+    private static func wavSeconds(_ body: Data) -> Double? {
+        let bytes = [UInt8](body)
+        func find(_ tag: String, from start: Int) -> Int? {
+            let pattern = Array(tag.utf8)
+            guard bytes.count >= pattern.count else { return nil }
+            var index = start
+            while index + pattern.count <= bytes.count {
+                if Array(bytes[index..<index + pattern.count]) == pattern { return index }
+                index += 1
+            }
+            return nil
+        }
+        func uint32(_ at: Int) -> Int { Int(bytes[at]) | Int(bytes[at + 1]) << 8 | Int(bytes[at + 2]) << 16 | Int(bytes[at + 3]) << 24 }
+        guard let riff = find("RIFF", from: 0), let format = find("fmt ", from: riff), format + 20 < bytes.count,
+              let data = find("data", from: format), data + 8 <= bytes.count else { return nil }
+        let byteRate = uint32(format + 16)
+        guard byteRate > 0 else { return nil }
+        return Double(uint32(data + 4)) / Double(byteRate)
     }
 
     private static func body(_ request: URLRequest) throws -> Data {

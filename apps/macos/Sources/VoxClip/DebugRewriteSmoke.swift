@@ -359,6 +359,7 @@ import VoxClipCore
             if case .running = session.task.state { return true }
             return session.isProposing || session.takesBusy || session.isReasking || session.wordingFit.running
                 || session.wordingFit.measured?.preparing == true || session.takePlan?.lipsync.usingTakes == true
+                || session.autoFix.work != nil
         }
         /// Tells the scripted ElevenLabs each prepared phrase's fitting length (the plan's windows are known now).
         private func recordFitting() {
@@ -370,7 +371,9 @@ import VoxClipCore
                 let reserve: Double = VoiceLabHardJoin.pauseSeconds(windowDuration: duration)
                 let hard: Double = Double([window.leftSeam.kind, window.rightSeam.kind].filter { $0 == .hard }.count)
                 let lead: Double = window.leftSeam.kind == .hard ? 0 : max(0, 0.05 - VoiceLabPatchConstants.TTS_TRIM_LEAD)
-                fitting[RewriteSmokeHTTP.words(phrase.text)] = duration - hard * reserve + lead
+                // The stub's 50 ms quiet margins are trimmed as a take's lead and tail; a soft seam gives them back.
+                let margins: Double = 0.05 * (2 - hard)
+                fitting[RewriteSmokeHTTP.words(phrase.text)] = duration - hard * reserve + lead + margins
             }
             RewriteSmokeHTTP.script.withLock { $0.fitting.merge(fitting) { _, new in new } }
         }
@@ -429,10 +432,13 @@ import VoxClipCore
                 guard let session, session.isOpen else { completed = applied; return }
                 if await useAnywayIfOffered() { continue }
                 if await chooseDurationIfNeeded() { continue }
-                let order = ["approveTakeQuote", "discardChanges", "useTakes", "takeQuote-", "prepareTakes", "makeTakes", "revoiceAll", "keepOriginal",
-                             "mergePhrases", "suggestion.", "tryAnother", "freshPrice", "askAgain", "reviewTakes", "apply", "keepAll",
-                             "keepTextFixes", "tryAgain", "useTake"]
-                do { try await click(order) } catch {
+                var order = ["approveTakeQuote", "discardChanges", "useTakes", "takeQuote-", "prepareTakes", "makeTakes", "rewriteAgain",
+                             "keepFixing", "withinSentence", "revoiceAll", "keepOriginal", "mergePhrases", "suggestion.", "tryAnother", "freshPrice",
+                             "askAgain", "reviewTakes", "showTakes", "apply", "keepAll", "keepTextFixes", "tryAgain", "useTake"]
+                // The resolver's [Choose yourself…] opens the chips once; [Done] ends the Rewrite as it stands.
+                if !clicked.contains("chooseYourself") { order.append("chooseYourself") }
+                order.append("closeRewrite")
+                do { clicked.insert(try await click(order)) } catch {
                     if await rowActionIfOffered() { continue }
                     completed = applied; if !completed { throw error }; return
                 }
@@ -502,6 +508,7 @@ import VoxClipCore
             return false
         }
         private var rowActions = 0
+        private var clicked: Set<String> = []
 
         /// Chooses a duration for a phrase whose selected take passed but has none, as its radio would.
         private func chooseDurationIfNeeded() async -> Bool {
@@ -572,7 +579,7 @@ import VoxClipCore
                 snapshot.takes = (session.takePlan?.phrases ?? []).flatMap { phrase in
                     phrase.takes.map { take in
                         let length = take.length.map { String(format: "%.2f s", $0) } ?? "no length"
-                        let flags = "\(take.id == phrase.selectedID ? "selected" : "not selected"), score \(take.row.qa?.values.speakerScore.map { String(format: "%.2f", $0) } ?? "none")"
+                        let flags = "\(take.id == phrase.selectedID ? "selected" : "not selected"), words \(take.row.qa?.values.transcriptMatch.map { String(format: "%.2f", $0) } ?? "unchecked"), score \(take.row.qa?.values.speakerScore.map { String(format: "%.2f", $0) } ?? "none")"
                             + (take.row.hasJoinAdvisory ? ", join advisory: " + (TakeFailurePresentation.joinAdvisory(take.row, number: take.number) ?? "") + " jump \(take.row.qa?.values.lufsJumpLu ?? -1) seams \(take.row.qa?.joinSeams.map { "\($0.side) \($0.excessLu)" } ?? [])" : "")
                         let state = flags + ", " + (take.row.selectable ? (take.fits ? "passed, fits" : "passed, changes the duration")
                             : TakeFailurePresentation.reason(for: take.row) ?? "left out")
@@ -585,6 +592,7 @@ import VoxClipCore
                 }
                 snapshot.resolverRunning = task.headline.stop != nil
                     && (session.wordingFit.running || session.isReasking || session.wordingFit.measured?.preparing == true)
+                    || session.autoFix.work != nil
                 if let plan = session.takePlan {
                     snapshot.quotes = plan.phrases.map { phrase in
                         let words = EditingPrimitives.splitWords(phrase.text)
@@ -786,9 +794,9 @@ import VoxClipCore
             }
             try await harness.finish()
         },
-        Definition(id: "S3", title: "every take too long for its slot",
-            fixture: Fixture(rewrites: [.passage(replace([twoChanges[0]]))],
-                voice: RewriteSmokeVoiceScript(lengthFactor: 1.6))) { harness in
+        Definition(id: "S3", title: "the first takes too long for the slot, a shorter wording fits",
+            fixture: Fixture(rewrites: [.passage(replace([twoChanges[0]]))], fits: [.fewerWords, .fewerWords, .fewerWords],
+                voice: RewriteSmokeVoiceScript(lengthFactors: [1.6, 1.6]))) { harness in
             try await harness.start()
             try await harness.finish()
         },
@@ -820,7 +828,8 @@ import VoxClipCore
             try await harness.finish()
         },
         Definition(id: "S6", title: "over the voice budget",
-            fixture: Fixture(rewrites: [.passage(overBudget)])) { harness in
+            fixture: Fixture(rewrites: [.passage(replace(twoChanges + [("sent to a voice service", "passed to any speech provider"),
+                ("it only takes a few minutes", "it barely needs any real time")]))])) { harness in
             try await harness.start()
             try await harness.finish()
         },
@@ -851,15 +860,14 @@ import VoxClipCore
             }
             try await harness.finish()
         },
-        Definition(id: "S8", title: "a Rewrite failure, then a re-ask made stale by an edit",
-            fixture: Fixture(lastWord: 92, rewrites: [.failure, .passage(allButLast(overBudget)),
-                .held(.passage(allButLast(replace([twoChanges[0]])))), .passage(allButLast(replace([twoChanges[0]])))])) { harness in
+        Definition(id: "S8", title: "a Rewrite failure, then a reply made stale by an edit",
+            fixture: Fixture(rewrites: [.failure, .held(.passage(replace([twoChanges[0]]))),
+                .passage(replace([twoChanges[0]]).split(separator: " ").dropFirst().joined(separator: " "))])) { harness in
             try await harness.start()
             try await harness.click(["tryAgain"])
-            try await harness.click(["changeFewerWords", "suggestion."])
-            guard let editor = harness.editor, let last = editor.project.transcript?.words.last else { throw Failure.setup("S8 has no words") }
-            try await harness.act("cut the last word, outside the Rewrite, while the AI answers") {
-                editor.apply(.cutSelection(ids: [last.id]), name: "Cut selection")
+            guard let editor = harness.editor, let first = editor.project.transcript?.words.first else { throw Failure.setup("S8 has no words") }
+            try await harness.act("cut the first word, inside the Rewrite, while the AI answers") {
+                editor.apply(.cutSelection(ids: [first.id]), name: "Cut selection")
                 await harness.connector?.release()
             }
             try await harness.finish()

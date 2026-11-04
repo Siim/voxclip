@@ -194,11 +194,16 @@ extension RewriteSession {
         if review != nil, !problem.isEmpty { cards.append(.callout(problem)) }
         if (footer.takes || surroundingSentenceOrdinal != nil), takeRowsShown {
             cards = blockedVoiceOrdinals.isEmpty ? [.takes] : [.changes(set), .takes]
+            let fixing = autoFix.running ? autoFix.lines.sorted { $0.key < $1.key }.map(\.value) : []
+            if !fixing.isEmpty { cards.append(.nextSteps(NextSteps(id: "autofix", line: fixing.joined(separator: "\n")))) }
             cards += withReaskNotice(stuckSteps()).map(PanelCard.nextSteps)
             let count = takePlan?.phrases.count ?? includedVoice.count
             headline.text = count == 1 ? "1 phrase in your voice" : "\(count) phrases in your voice"
-            headline.sub = "Listen, pick a take, then use them."
-            if takesBusy {
+            headline.sub = fixing.isEmpty ? "Listen, pick a take, then use them." : "Fixing stuck phrases. Nothing else to do yet."
+            if !fixing.isEmpty || (autoFix.running && autoFix.work != nil) {
+                // One Stop for the whole automatic resolver: it keeps everything made so far.
+                headline.stop = PanelAction(id: "stopAutoFix", title: "Stop") { [weak self] in self?.stopAutoFix() }
+            } else if takesBusy {
                 headline.stop = PanelAction(id: "stopTakes", title: "Stop") { [weak self] in self?.stopTakes() }
             }
         } else {
@@ -274,10 +279,21 @@ extension RewriteSession {
             let turnOn = PanelAction(id: "turnOnVoiceLab", title: "Turn On Voice Lab") { [weak self] in self?.editor.openVoiceJob() }
             return (PanelFooter(note: "\(phrases(voices.count)) your voice. Voice Lab (beta) makes it from this \(task.words.noun).", link: turnOn, primary: apply(beside: true)), nil, false, nil)
         }
-        // Over the voice budget the callout advises and the chips choose (voice-lab.md §8.2): nothing is blocked.
-        if !included.isEmpty, voiceBudgetBlocks, let advice = voiceBudget {
-            let steps = withReaskNotice([budgetSteps(advice, freeChanges: free)])
-            return (PanelFooter(note: "Nothing paid yet. Make Takes appears once you choose."), budgetCallout(advice), false, steps.first)
+        // Over the voice budget the phrases are voiced anyway (voice-lab.md §8.2): the callout is a note, and the chips
+        // wait under "Choose yourself…".
+        let budget: (callout: String, steps: NextSteps?)? = included.isEmpty ? nil : voiceBudget.map { advice in
+            (budgetCallout(advice), withReaskNotice([budgetSteps(advice, freeChanges: free)]).first)
+        }
+        func advised(_ result: (footer: PanelFooter, callout: String?, takes: Bool, steps: NextSteps?)) -> (footer: PanelFooter, callout: String?, takes: Bool, steps: NextSteps?) {
+            guard let budget, result.callout == nil else { return result }
+            let steps = budget.steps.map { steps in
+                autoFix.showChoices ? steps : NextSteps(id: steps.id, chips: [chip("chooseYourself", "Choose yourself…") { [weak self] in
+                    guard let self else { return }
+                    autoFix.showChoices = true
+                    showProposal()
+                }])
+            }
+            return (result.footer, budget.callout, result.takes, result.steps ?? steps)
         }
         let blocked = blockedVoiceOrdinals.count
         if blocked > 0 {
@@ -288,18 +304,18 @@ extension RewriteSession {
             var footer = takesFooter(voice, keepAll: keepAll)
             let paidNote = takePlan == nil ? nil : footer.note
             footer.note = [timingBlockedNote, paidNote].compactMap { $0 }.joined(separator: "\n")
-            return (footer, nil, takePlan != nil, nil)
+            return advised((footer, nil, takePlan != nil, nil))
         }
         if let voice = included.first {
-            return (takesFooter(voice, keepAll: keepAll), nil, generation != nil, nil)
+            return advised((takesFooter(voice, keepAll: keepAll), nil, generation != nil, nil))
         }
         if free > 0 { return (PanelFooter(note: "No AI voice needed. Nothing is sent.", primary: apply(beside: false)), nil, false, nil) }
         if set.items.allSatisfy({ $0.state == .kept }) { return (PanelFooter(note: Self.everyChangeKept), nil, false, nil) }
         return (PanelFooter(note: "Keep a change to apply it."), nil, false, nil)
     }
-    /// design.md R2's advisory callout over the voice budget (voice-lab.md §8.2).
+    /// design.md R2's advisory note over the voice budget (voice-lab.md §8.2): Rewrite goes on and says so.
     func budgetCallout(_ advice: VoiceBudgetAdvice) -> String {
-        "These changes re-voice \(advice.voiceWords) words, a lot for a \(advice.scopeWords)-word \(task.words.noun). Long stretches in your voice can sound stitched."
+        "These changes re-voice \(advice.voiceWords) words, a lot for a \(advice.scopeWords)-word \(task.words.noun). Long stretches in your voice can sound stitched; Rewrite goes on."
     }
     /// R2's note once every change is kept: nothing is left to apply; ⌘Z of a Keep brings its change back for review.
     static let everyChangeKept = "Every change is kept."
@@ -321,8 +337,10 @@ extension RewriteSession {
                     primary: PanelAction(id: "useTakes", title: title) { [weak self] in self?.useTake() })
             }
             if let blocker = takePlan.acceptanceBlocker { return PanelFooter(note: blocker + " " + takeSpendLine) }
-            if takePlan.spent.units > 0 { return PanelFooter(note: "Left out until a take fits. " + takeSpendLine) }
-            if let action = pricedTakeAction() { return PanelFooter(note: takeSendLine, link: keepAll, primary: action) }
+            if takePlan.spent.units > 0 { return takesNextStep(takePlan) }
+            if let action = pricedTakeAction() {
+                return PanelFooter(note: [takeSendLine, autoFixAllowanceLine].compactMap { $0 }.joined(separator: "\n"), link: keepAll, primary: action)
+            }
             return PanelFooter(note: takePlan.problem.isEmpty ? "Prepare a fresh price to make takes." : takePlan.problem,
                 link: keepAll, primary: PanelAction(id: "prepareTakes", title: Self.priceTitle(includedVoice.count)) { [weak self] in self?.makeTakes() })
         }
@@ -345,6 +363,39 @@ extension RewriteSession {
         }
         return PanelFooter(note: unpaid + " " + takeSendLine, link: keepAll,
             primary: PanelAction(id: "prepareTakes", title: Self.priceTitle(includedVoice.count)) { [weak self] in self?.makeTakes() })
+    }
+
+    /// The footer once takes were made and none can be used yet (design.md R2): it always names the next step. A phrase
+    /// being fixed, the cap's [Keep fixing · ≈ $y], a phrase to fix above or a take to choose; and once every phrase is
+    /// kept as recorded, the text fixes' Apply, which completes the Rewrite.
+    func takesNextStep(_ plan: ClipTakePlan) -> PanelFooter {
+        let spend = takeSpendLine
+        if let cap = autoFix.capped {
+            let price = cap.usd.map { " · " + VoiceLabCostPresentation.format($0) } ?? ""
+            return PanelFooter(note: "Automatic fixes reached their \(Self.dollars(autoFix.allowance)) limit. " + spend,
+                primary: PanelAction(id: "keepFixing", title: "Keep fixing" + price, priced: true) { [weak self] in self?.keepFixing() })
+        }
+        if autoFix.running, let (phrase, line) = autoFix.lines.min(by: { $0.key < $1.key }) {
+            let verb = line.contains("wording") || line.contains("words") ? "is being reworded…" : "is being fixed…"
+            return PanelFooter(note: "Phrase \(phrase + 1) \(verb)\n" + spend)
+        }
+        if let stuck = plan.phrases.first(where: { !$0.leftOut && stuckReason($0, plan: plan) != nil }) {
+            return PanelFooter(note: "Fix phrase \(stuck.id + 1) above.\n" + spend)
+        }
+        if let choose = plan.phrases.first(where: { !$0.leftOut && $0.selected == nil && $0.takes.contains { $0.row.selectable } }) {
+            return PanelFooter(note: "Choose a take for phrase \(choose.id + 1).\n" + spend)
+        }
+        if plan.phrases.allSatisfy(\.leftOut) {
+            let fixes = editor.changeReadings.filter { $0.change.isFree && $0.change.state == .pending && !$0.applied }.count
+            if fixes > 0 {
+                let title = fixes == 1 ? "Apply 1 text fix" : "Apply \(fixes) text fixes"
+                return PanelFooter(note: "Your original audio is kept. " + spend,
+                    primary: PanelAction(id: "apply", title: title) { [weak self] in self?.applyFreeChanges() })
+            }
+            return PanelFooter(note: "Your original audio is kept. " + spend,
+                primary: PanelAction(id: "closeRewrite", title: "Done") { [weak self] in self?.editor.closeRewrite() })
+        }
+        return PanelFooter(note: "Making takes…\n" + spend)
     }
 
     /// The proposal has changes waiting for review, shown or set aside by R3: its tab shows the dirty dot (notes.md §5).
@@ -392,7 +443,7 @@ extension RewriteSession {
     /// changed makes no takes of a phrase other than the one the quote is for.
     func makeTakes() {
         guard current, !includedVoice.isEmpty || surroundingSentenceOrdinal != nil else { return }
-        guard !takesBusy, !isReasking, !voiceBudgetBlocks else { return }
+        guard !takesBusy, !isReasking else { return }
         takeRowsShown = true
         guard generation != nil else {
             takesTask = Task { [weak self] in await self?.discoverVoices() }
