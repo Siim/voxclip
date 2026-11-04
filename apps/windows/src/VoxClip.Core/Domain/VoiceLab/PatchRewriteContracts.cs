@@ -35,4 +35,8 @@ public sealed record PatchRewriteEdit(string Line, string Text, string Reason, i
 /// <c>CheckThisMessage</c> is the badge copy from <c>shared/prompts/patch-rewrite.json</c>. Review data cannot synthesize audio or
 /// change the original timed words.</summary>
 public sealed record PatchRewriteProposal(Guid Id, IReadOnlyList<PatchRewriteEdit> Edits, int UnknownLines, int DuplicateLines,
-    int MalformedItems, string CheckThisMessage, ConnectorId Connector, string Model, string? ProviderRequestId);
+    int MalformedItems, string CheckThisMessage, ConnectorId Connector, string Model, string? ProviderRequestId)
+{
+    /// <summary>The reply's valid AI-suggested next steps, at most four (voice-lab.md §8.2.1).</summary>
+    public IReadOnlyList<RewriteNextAction> NextActions { get; init; } = [];
+}

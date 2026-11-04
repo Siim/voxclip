@@ -117,15 +117,17 @@ internal static class LlmOutput
     }
 
     /// <summary>ai.md §2.3. A reply object a connector already parsed goes through the same strict parse as text, and nothing a
-    /// malformed reply can do escapes as anything but "not JSON".</summary>
-    internal static (JsonObject? Object, int Dropped, string? Reason) Validate(RawCompletion raw, JsonObject schema)
+    /// malformed reply can do escapes as anything but "not JSON". <c>DroppedByKey</c> counts the items each top-level array
+    /// lost; <c>Dropped</c> is their sum.</summary>
+    internal static (JsonObject? Object, int Dropped, string? Reason, IReadOnlyDictionary<string, int> DroppedByKey) Validate(RawCompletion raw, JsonObject schema)
     {
+        var none = new Dictionary<string, int>(StringComparer.Ordinal);
         try
         {
             var parsed = raw.Object is null ? Extract(raw.Text) : TryParse(raw.Object.ToJsonString(), out var reparsed) ? reparsed as JsonObject : null;
-            if (parsed is null) return (null, 0, "not JSON");
+            if (parsed is null) return (null, 0, "not JSON", none);
             var result = parsed.DeepClone().AsObject();
-            var dropped = 0;
+            var dropped = new Dictionary<string, int>(StringComparer.Ordinal);
             foreach (var property in schema["properties"]!.AsObject())
             {
                 var propertySchema = property.Value!.AsObject();
@@ -133,19 +135,20 @@ internal static class LlmOutput
                 if (!result.ContainsKey(property.Key) && !schema["required"]!.AsArray().Any(name => name!.GetValue<string>() == property.Key)) continue;
                 if (propertySchema["type"]!.GetValue<string>() == "array")
                 {
-                    if (value is not JsonArray array) return (null, 0, $"missing \"{property.Key}\"");
+                    if (value is not JsonArray array) return (null, 0, $"missing \"{property.Key}\"", none);
                     var valid = new JsonArray();
                     foreach (var item in array)
-                        if (Matches(item, propertySchema["items"]!.AsObject())) valid.Add(item?.DeepClone()); else dropped++;
+                        if (Matches(item, propertySchema["items"]!.AsObject())) valid.Add(item?.DeepClone());
+                    if (array.Count > valid.Count) dropped[property.Key] = array.Count - valid.Count;
                     result[property.Key] = valid;
                 }
-                else if (!Matches(value, propertySchema)) return (null, 0, $"missing \"{property.Key}\"");
+                else if (!Matches(value, propertySchema)) return (null, 0, $"missing \"{property.Key}\"", none);
             }
-            return (result, dropped, null);
+            return (result, dropped.Values.Sum(), null, dropped);
         }
         catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
         {
-            return (null, 0, "not JSON");
+            return (null, 0, "not JSON", none);
         }
     }
 

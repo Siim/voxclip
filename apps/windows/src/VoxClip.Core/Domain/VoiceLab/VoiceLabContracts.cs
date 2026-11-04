@@ -188,4 +188,6 @@ public sealed record VoiceRewriteProposal(Guid Id, VoiceRewriteScope Scope, IRea
     string SourceText, string ProposedText, ConnectorId Connector, string Model, string? ProviderRequestId, int ProposedLength, bool InRange)
 {
     public IReadOnlyList<VoiceLabAudioTag> AudioTags { get; init; } = [];
+    /// <summary>The reply's valid AI-suggested next steps, at most four (voice-lab.md §8.2.1).</summary>
+    public IReadOnlyList<RewriteNextAction> NextActions { get; init; } = [];
 }
