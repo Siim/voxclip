@@ -218,15 +218,18 @@ private final class WorkThreads: Sendable {
         #expect(session.takePlan == nil)
     }
 
-    @Test func automaticWordingKeepsRecoveryAfterThreeRounds() async throws {
+    /// Three rounds that never fit price the change as written (design.md R2): Get Price includes it and the automatic
+    /// fixes reword it from its measured take, instead of holding it outside the paid plan.
+    @Test func automaticWordingPricesTheChangeAsWrittenAfterThreeRounds() async throws {
         let (session, stub, editor) = try await fitFixture()
         defer { editor.close() }
         await stub.configureFit([try fitReply(session.changes[0].hunk.newTokens.joined(separator: " "))])
         await session.beginAutomaticWordingFit()
         #expect(session.wordingFit.round == 3)
         #expect(await stub.fitRequests.count == 3)
-        #expect(session.blockedVoiceOrdinals == [1])
-        #expect(session.task.footer.note == session.timingBlockedNote)
+        #expect(session.blockedVoiceOrdinals.isEmpty && session.includedVoice.contains(1))
+        #expect(session.autoFix.notes.contains { $0.hasPrefix("Change 1 is priced as written") })
+        #expect(session.task.footer.note != session.timingBlockedNote)
         #expect(!session.task.wordingLocked)
     }
 
@@ -275,8 +278,10 @@ private final class WorkThreads: Sendable {
             await session.fitWording(approved: true)
             #expect(await stub.fitRequests.count == 3)
             #expect(!session.wordingFit.awaitingApproval)
+            // The unfitted change is now priced as written, so another automatic fit has nothing to ask about and
+            // sends nothing: the approval covered that reply only.
             await session.beginAutomaticWordingFit()
-            #expect(session.wordingFit.awaitingApproval)
+            #expect(!session.wordingFit.awaitingApproval && session.blockedVoiceOrdinals.isEmpty)
             #expect(await stub.fitRequests.count == 3)
         } else {
             session.stopWordingFit()

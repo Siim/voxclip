@@ -227,6 +227,21 @@ import VoxClipMedia
     /// take or duration) makes that attempt stale; the newest choices are prepared next, so Use never waits on a
     /// preparation nobody runs.
     func prepareVideoChoices(at date: Date = Date()) async {
+        // One preparation at a time: a caller arriving while one runs waits for it (then prepares newer choices, if
+        // any) instead of returning early, so "prepare, then refresh lip sync" and Use never act on half-prepared video.
+        while let running = videoPreparation {
+            await running.value
+            if videoPreparation == running { videoPreparation = nil }
+        }
+        guard needsVideoPreparation else { return }
+        let task = Task { await runVideoPreparation(at: date) }
+        videoPreparation = task
+        await task.value
+        if videoPreparation == task { videoPreparation = nil }
+    }
+    private var videoPreparation: Task<Void, Never>?
+
+    private func runVideoPreparation(at date: Date) async {
         var attempted = false
         while stillCurrent, !generating, !preparing, !publishing, !preparingVideo, needsVideoPreparation, !Task.isCancelled {
             let turn = videoRevision, choices = videoChoices

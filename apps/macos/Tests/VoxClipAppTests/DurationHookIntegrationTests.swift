@@ -232,7 +232,7 @@ private struct DurationHookKeys: KeyProvider {
         undo.beginUndoGrouping()
         let accepted = await session.acceptTakes()
         undo.endUndoGrouping()
-        #expect(accepted && requests.count == 2)
+        #expect(accepted && requests.count == 2, Comment(rawValue: "requests \(requests.count): \(requests.map { $0.voiceLab?.prepared.selectedSegmentRecipes.map(\.recipe.video.mode) ?? [] })"))
         let proposed = editor.project
         #expect(proposed.edits == input.project.edits)
         #expect(proposed.voiceLab.segments.count == 2 && proposed.transcript == original.transcript && proposed.media == original.media)
