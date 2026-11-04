@@ -211,10 +211,13 @@ public sealed class VoiceProjectConsentTests
     [Fact]
     public async Task GeneratedDurationRefusalDoesNotClaimMeasuredMismatchOrEnableNative()
     {
-        await Assert.ThrowsAsync<VoiceInsufficientGeneratedSpeechException>(() => VoiceSpeakerCheck.Unavailable.GeneratedEmbeddingAsync(new float[71999], 24000, Token));
+        // ADR-R37: a short take's voiced speech waits for its run's pool; a pool under one calibrated window is never embedded.
+        await Assert.ThrowsAsync<VoiceInsufficientGeneratedSpeechException>(() => VoiceSpeakerCheck.Unavailable.VoicedEmbeddingAsync(new float[47999], Token));
         Assert.Equal(VoiceConsentError.SpeakerUnavailable, (await Assert.ThrowsAsync<VoiceConsentException>(() =>
-            VoiceSpeakerCheck.Unavailable.GeneratedEmbeddingAsync(new float[72000], 24000, Token))).Kind);
+            VoiceSpeakerCheck.Unavailable.VoicedEmbeddingAsync(new float[48000], Token))).Kind);
+        Assert.Equal(VoiceConsentError.SpeakerUnavailable, (await Assert.ThrowsAsync<VoiceConsentException>(() =>
+            VoiceSpeakerCheck.Unavailable.GeneratedVoicedAsync(new float[24000], 24000, Token))).Kind);
         Assert.Equal(VoiceLabErrorKind.InvalidAudio, (await Assert.ThrowsAsync<VoiceLabException>(() =>
-            VoiceSpeakerCheck.Unavailable.GeneratedEmbeddingAsync([float.NaN], 24000, Token))).Kind);
+            VoiceSpeakerCheck.Unavailable.GeneratedVoicedAsync([float.NaN], 24000, Token))).Kind);
     }
 }

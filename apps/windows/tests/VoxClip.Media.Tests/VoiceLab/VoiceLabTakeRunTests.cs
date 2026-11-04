@@ -753,8 +753,11 @@ public sealed partial class VoiceLabTakeRunTests
         internal readonly VoiceConsentRecord Record;
         /// <summary>The source speech each authorization was asked about.</summary>
         internal readonly List<float[]> Speech = [];
+        /// <summary>The voiced lengths each speaker embedding measured: a long take's own, or a pooled group's.</summary>
+        internal readonly List<int> Embedded = [];
         internal bool SpeakerFailure;
-        internal bool InsufficientSpeech;
+        /// <summary>The generated voiced speech each take yields (16 kHz frames); under 48,000 the take waits for its run's pool.</summary>
+        internal int VoicedFrames = 48000;
         internal bool Current = true;
         internal Fixture(Func<VoiceLabTakeInput, VoiceLabTakeInput>? input = null)
         {
@@ -778,10 +781,15 @@ public sealed partial class VoiceLabTakeRunTests
                     DispatchPermit = new(Store, record.RecordId, quote.Review.RequestId, () => Store.ValidateUse(record), binding),
                     ValidateDispatch = _ => Task.CompletedTask, ModelRevision = model
                 });
-            }, (_, _, ct) =>
+            }, (samples, rate, ct) =>
             {
                 ct.ThrowIfCancellationRequested();
-                if (InsufficientSpeech) throw new VoiceInsufficientGeneratedSpeechException();
+                return Task.FromResult(new float[Math.Min(VoicedFrames, (int)((long)samples.Length * 16000 / rate))]);
+            }, (voiced, ct) =>
+            {
+                ct.ThrowIfCancellationRequested();
+                if (voiced.Length < SpeakerAudio.WindowSize) throw new VoiceInsufficientGeneratedSpeechException();
+                lock (Embedded) Embedded.Add(voiced.Length);
                 return Task.FromResult(SpeakerFailure ? new float[] { 0, 1 } : [1f, 0f]);
             });
             Run = new(Client, Store, new(Guid.NewGuid().ToString("D"), Path.Combine(Root, "Paid"), Path.Combine(Root, "scratch")), Gate,
@@ -1237,8 +1245,14 @@ public sealed partial class VoiceLabTakeRunTests
         var result = await fixture.Run.ExecuteAsync(await fixture.Prepare(), true, ct: Token);
         Assert.Equal(missing ? 1 : 3, result.Rows.Count);
         Assert.Equal(missing ? VoiceLabTakeRunEnd.Fatal : VoiceLabTakeRunEnd.Completed, result.End);
-        if (seconds == 4.5) Assert.All(result.Rows, row => { Assert.True(row.Selectable); Assert.False(row.Fits); });
+        // ADR-R37: a 2 s take is no longer refused; its words are checked and its run's three short takes are pooled.
+        if (!missing) Assert.All(result.Rows, row => { Assert.True(row.Selectable); Assert.False(row.Fits); });
         else Assert.All(result.Rows, row => Assert.False(row.Selectable));
-        if (seconds == 2 || missing) Assert.Equal(0, fixture.Remote.Qa);
+        if (seconds == 2)
+        {
+            Assert.Equal(3, fixture.Remote.Qa);
+            Assert.All(result.Rows, row => Assert.Equal(VoiceLabShortSpeechMode.Pooled, row.VoiceCheck.Evidence?.Mode));
+        }
+        if (missing) Assert.Equal(0, fixture.Remote.Qa);
     }
 }

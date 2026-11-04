@@ -17,7 +17,7 @@ internal sealed record RewriteChip(string Id, string Title, bool Ai, Func<Task>?
 /// "Choose yourself…" does not ask for the field (<see cref="Asks"/>), as Mac's collapsed steps carry no <c>ask</c>.</summary>
 internal sealed record RewriteNextStepCard(string Id, string Sentence, IReadOnlyList<RewriteChip> Chips, bool Asks = true);
 
-internal enum RewriteFooterAction { None, ApplyLocal, UseTakes, ApplyTextFixes, Done, KeepFixing, StopReask, StopAutoFix }
+internal enum RewriteFooterAction { None, ApplyLocal, UseTakes, ApplyTextFixes, Done, KeepFixing, StopReask, StopAutoFix, ChooseTake }
 
 /// <summary>The footer always names the next step: a line, and the one primary action when there is one.</summary>
 internal sealed record RewriteFooterStep(string Line, string? Title, RewriteFooterAction Action);
@@ -155,6 +155,14 @@ internal sealed partial class RewriteSession
         finally { manualStep = false; Changed?.Invoke(this, EventArgs.Empty); }
     }
 
+    /// <summary>[Choose Take N]: selects the take the footer offers (Mac <c>chooseTake</c>), the user's explicit pick.</summary>
+    internal async Task<bool> ChooseOfferedTakeAsync()
+    {
+        foreach (var window in generationWindows.Where(window => !window.LeftOut && !window.ReadyToAccept).ToArray())
+            if (window.OfferedTake() is { } offered) return await window.SelectTakeAsync(offered.Id);
+        return false;
+    }
+
     /// <summary>Text fixes (cuts and corrections) among the included changes.</summary>
     internal int TextFixCount => IncludedHunks.Count(hunk => hunk.Kind != VoiceLabDiffHunkKind.Voice);
     internal string ApplyTextFixesTitle => TextFixCount == 1 ? "Apply 1 text fix" : $"Apply {TextFixCount} text fixes";
@@ -258,6 +266,10 @@ internal sealed partial class RewriteSession
             {
                 var window = generationWindows[index];
                 if (window.LeftOut || window.ReadyToAccept) continue;
+                // ADR-R37: a passing take the automatic choice may not pick (its voice couldn't be measured) is one click away;
+                // the footer never asks for a choice without the control that makes it.
+                if (window.OfferedTake() is { } offered)
+                    return new($"Choose a take for phrase {index + 1}.", $"Choose Take {offered.Index + 1}", RewriteFooterAction.ChooseTake);
                 if (window.Rows.Any(row => window.UseAnywayCanAct(row)))
                     return new($"Listen to phrase {index + 1}'s take, then Use anyway or try another.", null, RewriteFooterAction.None);
                 if (window.Rows.Count == 0) return new($"Phrase {index + 1} has no take yet. Make takes above.", null, RewriteFooterAction.None);

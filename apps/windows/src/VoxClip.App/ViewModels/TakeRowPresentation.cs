@@ -22,6 +22,9 @@ public sealed record TakeRowPresentation(string Title, string Duration, string N
         var title = "Take " + number;
         if (row.Stopped)
             return new(title, "", "", title + ", stopped", "", "", false, false, title + " stopped.");
+        // ADR-R37: a short take waits for its run's pooled voice check; it can't be chosen yet and has failed nothing.
+        if (row.VoiceCheck is VoiceLabTakeVoiceCheck.WaitingCheck && row.Failure is null && row.ShortPhraseCopy is { } waiting)
+            return new(title, "", waiting, title + ", " + waiting, "", "", false, false, null);
         if (!row.Selectable)
         {
             var notChecked = row.Audio is null && row.Generated is not null;
@@ -44,7 +47,9 @@ public sealed record TakeRowPresentation(string Title, string Duration, string N
         }
         var best = row.Id == bestId;
         var frames = audio.Fit.Plan.Edits.Sum(edit => edit.Kind == VoiceLabFitEditKind.Insert ? edit.Count : -edit.Count);
-        var note = best ? "Best match" : VoiceLabPauseFitNote.Format(frames / (double)audio.SampleRate);
+        var fit = best ? "Best match" : VoiceLabPauseFitNote.Format(frames / (double)audio.SampleRate);
+        // ADR-R37: a pooled check names its takes; an unmeasured voice says so, and only a click chooses it.
+        var note = row.ShortPhraseCopy is { } voice ? (best ? "Best match · " + voice : voice) : fit;
         return new(title, duration, note, title + ", " + duration + ", " + note,
             "Play take " + number, "Reject take " + number, true, best, null);
     }

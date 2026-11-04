@@ -4,9 +4,11 @@ using VoxClip.Core.Services.VoiceLab;
 
 namespace VoxClip.Media.VoiceLab;
 
+/// <summary>The run's consent and speaker checks. <see cref="Voiced"/> gives a generated take's voiced speech at 16 kHz;
+/// <see cref="Embedding"/> embeds voiced speech of at least one calibrated window (a long take's own, or a pooled group's).</summary>
 internal sealed record VoiceLabTakeRunChecks(Action<VoiceConsentRecord> Validate,
     Func<VoiceConsentRecord, float[], VoiceLabPreparedAction, VoiceLabDispatchBinding, long, CancellationToken, Task<OwnVoicePolicy>> Authorize,
-    Func<float[], int, CancellationToken, Task<float[]>> Embedding);
+    Func<float[], int, CancellationToken, Task<float[]>> Voiced, Func<float[], CancellationToken, Task<float[]>> Embedding);
 
 public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
 {
@@ -34,6 +36,12 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
     /// <summary>Automatic fixes (voice-lab.md §8.2.2): a new run keeps the earlier takes' checked audio beside its own, so a
     /// paid take is never replaced. Off, each run starts from no takes, as before.</summary>
     public bool KeepsEarlierTakes { get; set; }
+    /// <summary>ADR-R37: the Rewrite plan's generated speech and mismatches, shared by every phrase's run.</summary>
+    public VoiceLabVoiceCheckSession VoiceChecks { get; set; } = new();
+    /// <summary>The approved batch's pool, which the caller finishes after the batch's last phrase; null, each run pools and
+    /// checks its own short takes at its end, borrowing earlier speech of <see cref="PhraseId"/> first.</summary>
+    public VoiceLabShortTakePool? ShortTakePool { get; set; }
+    public int? PhraseId { get; set; }
     public VoiceLabTakeRun(ElevenLabsVoiceLab client, VoiceConsentStore store, VoiceSpeakerCheck speaker,
         VoiceLabTakeStorage storage, VoiceLabDispatchGate inputGate, Func<CancellationToken, Task<bool>> inputsAreCurrent)
         : this(client, store, storage, inputGate, inputsAreCurrent, ProductionChecks(store, speaker)) { }
@@ -50,7 +58,7 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                 throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
         }, (record, speech, quote, binding, model, ct) => guard.AuthorizeAsync("take:" + VoiceConsentStore.Hash(System.Runtime.InteropServices.MemoryMarshal.AsBytes(speech.AsSpan()).ToArray()),
             record.RecordId, speech, quote, true, ct: ct, binding: binding, modelRevision: model),
-            (samples, rate, ct) => speaker.GeneratedEmbeddingAsync(samples, rate, ct));
+            (samples, rate, ct) => speaker.GeneratedVoicedAsync(samples, rate, ct), (voiced, ct) => speaker.VoicedEmbeddingAsync(voiced, ct));
     }
     internal Guid? PreparedSetId { get { lock (sync) return pending?.Quote.Id; } }
     public VoiceLabTakeScratch? Scratch(Guid id) { lock (sync) return scratches.GetValueOrDefault(id); }
@@ -197,8 +205,18 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                 ?? client.ApproveTakeRun(quote, dispatch);
             await Checkpoint("approval", value, token).ConfigureAwait(false);
             await Checkpoint("launch", value, token).ConfigureAwait(false);
-            return await PerformAsync(() => value, approvals, progress ?? (_ => Task.CompletedTask),
-                () => transportStarted, () => launchCleanup, token).ConfigureAwait(false);
+            var shared = ShortTakePool;
+            var pool = shared ?? new VoiceLabShortTakePool(VoiceChecks, PhraseId);
+            var report = progress ?? (_ => Task.CompletedTask);
+            var result = await PerformAsync(() => value, approvals, report, () => transportStarted, () => launchCleanup, pool, token).ConfigureAwait(false);
+            if (shared is not null) return result;
+            // A run of its own checks its short takes at its end, Stop included, over the completed ones.
+            var checkedRows = await pool.FinishAsync().ConfigureAwait(false);
+            if (checkedRows.Count == 0) return result;
+            ApplyVoiceChecks(checkedRows);
+            var rows = result.Rows.Select(row => checkedRows.GetValueOrDefault(row.Id) ?? row).ToArray();
+            await report(Array.AsReadOnly(rows)).ConfigureAwait(false);
+            return new(Array.AsReadOnly(rows), result.End);
         }
         catch (VoiceLabConfirmationRequiredException) { retainQuote = !transportStarted; throw; }
         finally
@@ -217,8 +235,23 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
             }
         }
     }
+    /// <summary>ADR-R37: the pooled check's verdicts replace this run's waiting takes, so acceptance publishes the checked row.</summary>
+    public void ApplyVoiceChecks(IReadOnlyDictionary<Guid, VoiceLabTakeRow> checkedRows)
+    {
+        lock (sync)
+            foreach (var id in acceptedRows.Keys.Where(checkedRows.ContainsKey).ToArray())
+                acceptedRows[id] = (checkedRows[id], acceptedRows[id].Input);
+    }
+    /// <summary>The voice check before a verdict is used: current inputs and model, the speaker model and the consent record.
+    /// Unlike <see cref="ValidateAsync"/> it survives Stop, which drains the pooled check over completed takes.</summary>
+    private async Task ValidateVoiceAsync(Pending value, CancellationToken ct)
+    {
+        if (!await inputsAreCurrent(ct).ConfigureAwait(false) || client.ModelRevision != value.ModelRevision) throw new VoiceLabRunInvalidatedException();
+        checks.Validate(value.Record);
+        store.ValidateUse(value.Record);
+    }
     private async Task<VoiceLabTakeRunResult> PerformAsync(Func<Pending> current, IReadOnlyList<VoiceLabAuthorization> approvals,
-        Func<IReadOnlyList<VoiceLabTakeRow>, Task> progress, Func<bool> hasStarted, Func<Task> launchCleanup, CancellationToken ct)
+        Func<IReadOnlyList<VoiceLabTakeRow>, Task> progress, Func<bool> hasStarted, Func<Task> launchCleanup, VoiceLabShortTakePool pool, CancellationToken ct)
     {
         var rows = new List<VoiceLabTakeRow>();
         foreach (var take in current().Quote.Takes)
@@ -262,18 +295,21 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                     throw;
                 }
                 audio = staged.Audio;
-                float[] vector;
+                // ADR-R37: a take with three seconds of voiced speech keeps its own speaker check; a shorter one is checked for
+                // words and acoustics now and waits for its run's pooled voice check.
+                float[] voiced;
+                float[]? vector = null;
                 try
                 {
-                    if (audio.Trimmed.Length < audio.SampleRate * 3) throw new VoiceInsufficientGeneratedSpeechException();
-                    vector = await checks.Embedding(audio.Trimmed, audio.SampleRate, ct).ConfigureAwait(false);
+                    voiced = await checks.Voiced(audio.Trimmed, audio.SampleRate, ct).ConfigureAwait(false);
+                    if (voiced.Length >= SpeakerAudio.WindowSize) vector = await checks.Embedding(voiced, ct).ConfigureAwait(false);
                 }
-                catch (Exception error) when (error is VoiceInsufficientGeneratedSpeechException or VoiceConsentException { Kind: VoiceConsentError.SpeakerMismatch })
+                catch (VoiceConsentException error) when (error.Kind == VoiceConsentError.SpeakerMismatch)
                 {
-                    var failed = error is VoiceInsufficientGeneratedSpeechException
-                        ? new VoiceLabTakeQaResult(null, null, null, null, [VoiceLabTakeQaFailure.InsufficientGeneratedSpeech])
-                        : new VoiceLabTakeQaResult(null, VoiceLabLoudness.LufsJumpLu(audio.Mixed, audio.SampleRate, audio.Seams),
-                            VoiceLabLoudness.SamplePeakDbfs(audio.Mixed), null, [VoiceLabTakeQaFailure.Speaker]);
+                    // Rejected by generated-speaker extraction: the paid Scribe request is skipped.
+                    var failed = new VoiceLabTakeQaResult(null, VoiceLabLoudness.LufsJumpLu(audio.Mixed, audio.SampleRate, audio.Seams),
+                        VoiceLabLoudness.SamplePeakDbfs(audio.Mixed), null, [VoiceLabTakeQaFailure.Speaker]);
+                    pool.Measured(take.Synthesis.Review.RequestId, [], value.Record, PhraseId, passed: false);
                     rows.Add(new(take.Synthesis.Review.RequestId, take.Index, take.Seed, generated.Receipt, Generated: generated, Quote: take, Audio: audio, Qa: failed));
                     await progress(rows.AsReadOnly()).ConfigureAwait(false);
                     await ValidateAsync(value, ct).ConfigureAwait(false);
@@ -281,7 +317,8 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                 }
                 await ValidateAsync(value, ct).ConfigureAwait(false);
                 var ownerVector = VoiceConsentRecord.DecodeEmbedding(value.Record.Speaker.Embedding) ?? throw new VoiceConsentException(VoiceConsentError.InvalidRecord);
-                var score = SpeakerAudio.Cosine(ownerVector, vector);
+                double? score = vector is null ? null : SpeakerAudio.Cosine(ownerVector, vector);
+                if (score is { } own) pool.Measured(take.Synthesis.Review.RequestId, voiced, value.Record, PhraseId, own >= value.Record.Speaker.Threshold);
                 var qaPolicy = await checks.Authorize(value.Record, value.Speech, take.Qa, value.Binding, value.ModelRevision, ct).ConfigureAwait(false);
                 await Checkpoint("qaAuthorization", value, ct).ConfigureAwait(false);
                 var recognized = await client.TranscribeQaAsync(audio.Mixed, audio.SampleRate, value.Input.Language, qaPolicy, approvals[take.Index * 2 + 1], ct, qaAccepted, value.Input.HasRequestTags).ConfigureAwait(false);
@@ -295,12 +332,19 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                     VoiceLabTakeQuality.ReplacementWords(value.Input.Text, value.Input.Items, value.Input.Window));
                 var rank = VoiceLabTakeQuality.Rank(audio.Fit, value.Input.Window.End - value.Input.Window.Start,
                     qa.TranscriptMatch ?? throw new VoiceLabException(VoiceLabErrorKind.InvalidInput), VoiceLabLoudness.Flatness(audio.Trimmed, audio.SampleRate));
-                var row = new VoiceLabTakeRow(take.Synthesis.Review.RequestId, take.Index, take.Seed, generated.Receipt, qaReceipt, generated, take, audio, qa, rank);
+                var row = new VoiceLabTakeRow(take.Synthesis.Review.RequestId, take.Index, take.Seed, generated.Receipt, qaReceipt, generated, take, audio, qa, rank)
+                    { VoiceCheck = vector is null ? VoiceLabTakeVoiceCheck.Waiting : VoiceLabTakeVoiceCheck.PerTake };
                 rows.Add(row);
                 lock (sync) { Check(value.Revision, value.Binding, ct); acceptedRows[row.Id] = (row, value); }
+                if (vector is null)
+                {
+                    var checkedValue = value;
+                    pool.Append(new(row, voiced, PhraseId, value.Record, token => ValidateVoiceAsync(checkedValue, token), checks.Embedding));
+                }
                 await progress(rows.AsReadOnly()).ConfigureAwait(false);
                 await ValidateAsync(value, ct).ConfigureAwait(false);
-                if (row.AutomaticallySelectable && row.Fits) return new(rows.AsReadOnly(), VoiceLabTakeRunEnd.EarlyStop);
+                // A short take whose words and acoustics pass ends the run too: its voice is the pool's to check, not more takes'.
+                if (row.AutomaticallySelectable && row.Fits || row.PassesBeforeVoiceCheck) return new(rows.AsReadOnly(), VoiceLabTakeRunEnd.EarlyStop);
             }
             catch (VoiceLabConfirmationRequiredException) { throw; }
             catch (Exception error)

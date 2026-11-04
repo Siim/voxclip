@@ -180,6 +180,49 @@ internal sealed partial class RewriteGeneration
     /// measured voice, never a rejected one, ranked by <see cref="Ranked"/>.</summary>
     internal VoiceLabTakeRow? AutomaticTake() => Ranked(Rows.Where(row => row.AutomaticallySelectable && !rejected.Contains(row.Id) &&
         !beforeExpression.Contains(row.Id) && row.Qa?.SpeakerScore is { } score && double.IsFinite(score))).FirstOrDefault();
+    /// <summary>The passing take a phrase with none chosen offers for one click ([Choose Take N], Mac <c>offeredTake</c>): one the
+    /// automatic choice may not pick, such as a take whose voice couldn't be measured (ADR-R37). Takes with a join to listen to
+    /// are offered by their row's Use anyway instead.</summary>
+    internal VoiceLabTakeRow? OfferedTake()
+    {
+        if (closed || LeftOut || Selected is not null) return null;
+        var passing = Rows.Where(row => row.Selectable && !row.RequiresJoinAdvisoryAcceptance && !rejected.Contains(row.Id)).ToArray();
+        var current = passing.Where(row => !beforeExpression.Contains(row.Id)).ToArray();
+        return Ranked(current.Length > 0 ? current : passing).FirstOrDefault();
+    }
+    /// <summary>ADR-R37: this phrase's take runs share the Rewrite plan's voice-check session, so a short retry can borrow its
+    /// earlier generated speech.</summary>
+    internal void ShareVoiceChecks(VoxClip.Media.VoiceLab.VoiceLabVoiceCheckSession checks, int phrase)
+    {
+        if (takeRunner is not VoxClip.Media.VoiceLab.VoiceLabTakeRun run) return;
+        run.VoiceChecks = checks; run.PhraseId = phrase;
+    }
+    /// <summary>Whether this phrase's takes are voice-checked by Media's runs (a stub runner checks its own).</summary>
+    internal bool PoolsShortTakes => takeRunner is VoxClip.Media.VoiceLab.VoiceLabTakeRun;
+    /// <summary>The approved batch's pool for this phrase's run; null after the batch.</summary>
+    internal void UseShortTakePool(VoxClip.Media.VoiceLab.VoiceLabShortTakePool? pool)
+    {
+        if (takeRunner is VoxClip.Media.VoiceLab.VoiceLabTakeRun run) run.ShortTakePool = pool;
+    }
+    /// <summary>ADR-R37: the batch's pooled voice check settles this phrase's waiting takes. A measured passing take is chosen
+    /// automatically as after a run; an unmeasured one waits for [Choose Take N]; a valid explicit choice stays.</summary>
+    internal bool ApplyVoiceChecks(IReadOnlyDictionary<Guid, VoiceLabTakeRow> checkedRows)
+    {
+        if (closed) return false;
+        if (takeRunner is VoxClip.Media.VoiceLab.VoiceLabTakeRun run) run.ApplyVoiceChecks(checkedRows);
+        if (!core.ApplyVoiceChecks(checkedRows)) return false;
+        if (!LeftOut && reviewEnd is VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop)
+        {
+            BestTakeId = AutomaticTake()?.Id;
+            var retained = explicitSelection is { } chosen && Rows.Any(row => row.Id == chosen && row.Selectable && !row.RequiresJoinAdvisoryAcceptance) ? explicitSelection : null;
+            if ((retained ?? BestTakeId) is var target && target != SelectedTakeId) { core.SelectTake(target); VideoChoice = null; }
+            AutoChooseVideo();
+            Announcement = !Rows.Any(row => row.Selectable) ? TakeRowPresentation.NonePassed :
+                TakeRowPresentation.Completion(Rows.Count, Selected is { Fits: true, AutomaticallySelectable: true } row ? row.Index + 1 : null, Rows.Count(row => !row.Selectable && !row.Stopped));
+        }
+        Phase = ReviewPhase(); Notify();
+        return true;
+    }
     private readonly HashSet<Guid> beforeExpression = [];
     /// <summary>Takes made before this phrase's expression changed (design.md R2 "Expressions"): listed as "Before expression",
     /// never chosen automatically; a new take with the expression is made beside them.</summary>

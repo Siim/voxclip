@@ -136,6 +136,7 @@ internal sealed partial class RewritePanel
             RewriteFooterAction.ApplyTextFixes => "Rewrite.ApplyTextFixes",
             RewriteFooterAction.Done => "Rewrite.Done",
             RewriteFooterAction.KeepFixing => "Rewrite.FooterKeepFixing",
+            RewriteFooterAction.ChooseTake => "Rewrite.ChooseTake",
             RewriteFooterAction.StopReask or RewriteFooterAction.StopAutoFix => "Rewrite.FooterStop",
             _ => "Rewrite.Apply"
         });
@@ -173,6 +174,7 @@ internal sealed partial class RewritePanel
                 Close();
                 break;
             case RewriteFooterAction.KeepFixing: session.KeepFixing(); break;
+            case RewriteFooterAction.ChooseTake: await session.ChooseOfferedTakeAsync(); break;
             case RewriteFooterAction.StopReask: session.StopReask(); break;
             case RewriteFooterAction.StopAutoFix: session.StopAutoFix(); break;
         }
