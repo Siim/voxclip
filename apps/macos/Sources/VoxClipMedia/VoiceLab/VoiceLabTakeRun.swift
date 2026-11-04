@@ -321,11 +321,13 @@ public actor VoiceLabTakeRun {
                     guard result.alignment != nil else { throw VoiceLabError.invalidAlignment }
                     analysis = try VoiceLabTakeProcessing.process(result, input: value.input, preflight: value.preflight)
                 } catch where Self.isTimingFailure(error) {
-                    let recovery = try await recoverTiming(result, value: value, take: take, revision: expected, dispatch: dispatch,
-                                                           acceptance: qaAccepted)
-                    qaReceipt = recovery.receipt
-                    heard = recovery.heard
-                    result = VoiceLabAudioResult(pcm: result.pcm, sampleRate: result.sampleRate, alignment: recovery.timing, receipt: result.receipt)
+                    let samples = try Self.samples(result)
+                    let recognized = try await wordCheck(samples, value: value, take: take, revision: expected, dispatch: dispatch,
+                                                         acceptance: qaAccepted)
+                    qaReceipt = recognized.receipt
+                    heard = recognized.words
+                    let timing = try await recoverTiming(recognized.words, samples: samples, input: value.input)
+                    result = VoiceLabAudioResult(pcm: result.pcm, sampleRate: result.sampleRate, alignment: timing, receipt: result.receipt)
                     generated = result
                     analysis = try VoiceLabTakeProcessing.process(result, input: value.input, preflight: value.preflight)
                 }
@@ -431,35 +433,34 @@ public actor VoiceLabTakeRun {
             authorization: VoiceLabAuthorization(quote: take.qa, approved: true), capability: capability, acceptance: acceptance,
             hasAudioTags: !value.input.audioTags.isEmpty && VoiceLabAudioTags.supports(value.input.modelID))
     }
-    /// Word timing for a take whose provider timing did not map to its words (voice-lab §8.5 "Timing recovery"): the
-    /// take's own word check first, mapped to the typed words; then the on-device transcriber. `heard` is what the
-    /// word check heard, which then is the take's word check, so its Scribe request is never sent twice.
-    private func recoverTiming(_ result: VoiceLabAudioResult, value: Pending, take: VoiceLabTakeQuote, revision expected: Int,
-                               dispatch: VoiceLabRunDispatch, acceptance: VoiceLabRequestAcceptance) async throws
-        -> (timing: [VoiceLabCharacterTiming], heard: [VoiceLabWord], receipt: VoiceLabReceipt) {
-        guard result.sampleRate == 24_000, !result.pcm.isEmpty, result.pcm.count.isMultiple(of: 2) else { throw VoiceLabError.invalidAudio }
-        let samples: [Float] = result.pcm.withUnsafeBytes { bytes in
-            (0..<(bytes.count / 2)).map { Float(Int16(littleEndian: bytes.loadUnaligned(fromByteOffset: $0 * 2, as: Int16.self))) / 32_768 }
-        }
-        let recognized = try await wordCheck(samples, value: value, take: take, revision: expected, dispatch: dispatch, acceptance: acceptance)
+    /// Word timing for a take whose provider timing did not map to its words (voice-lab §8.5 "Timing recovery"): what
+    /// its own word check heard, mapped to the typed words; then the on-device transcriber. The word check's words are
+    /// then the take's word check, so its Scribe request is never sent twice.
+    private func recoverTiming(_ heard: [VoiceLabWord], samples: [Float], input: VoiceLabTakeInput) async throws -> [VoiceLabCharacterTiming] {
         do {
-            let timing = try VoiceLabProviderTiming.recovered(recognized.words, typedText: value.input.requestText)
-            await client.note("voicelab speech timing recovered source=word_check words=\(recognized.words.count)")
-            return (timing, recognized.words, recognized.receipt)
+            let timing = try VoiceLabProviderTiming.recovered(heard, typedText: input.requestText)
+            await client.note("voicelab speech timing recovered source=word_check words=\(heard.count)")
+            return timing
         } catch let failure as VoiceLabTimingFailure {
             guard let localTiming else {
                 await client.note("voicelab speech timing unrecovered \(failure.logFields) local=unavailable")
                 throw VoiceLabError.invalidAlignment
             }
             do {
-                let words = try await localTiming(samples, 24_000, value.input.language)
-                let timing = try VoiceLabProviderTiming.recovered(words, typedText: value.input.requestText)
+                let words = try await localTiming(samples, 24_000, input.language)
+                let timing = try VoiceLabProviderTiming.recovered(words, typedText: input.requestText)
                 await client.note("voicelab speech timing recovered source=on_device words=\(words.count)")
-                return (timing, recognized.words, recognized.receipt)
+                return timing
             } catch {
                 await client.note("voicelab speech timing unrecovered \(failure.logFields) local=failed")
                 throw VoiceLabError.invalidAlignment
             }
+        }
+    }
+    private static func samples(_ result: VoiceLabAudioResult) throws -> [Float] {
+        guard result.sampleRate == 24_000, !result.pcm.isEmpty, result.pcm.count.isMultiple(of: 2) else { throw VoiceLabError.invalidAudio }
+        return result.pcm.withUnsafeBytes { bytes in
+            (0..<(bytes.count / 2)).map { Float(Int16(littleEndian: bytes.loadUnaligned(fromByteOffset: $0 * 2, as: Int16.self))) / 32_768 }
         }
     }
     private static func isTimingFailure(_ error: any Error) -> Bool {
