@@ -65,6 +65,8 @@ import VoxClipCore
         var syntheses = 0
         var seconds = 0.0
         var error: String?
+        /// Where the driver found nothing a user could click on.
+        var stuck: String?
         var passed: Bool { error == nil && steps.allSatisfy { $0.checks.allSatisfy { $0.passed || $0.knownFailing } } }
     }
     struct Report: Encodable {
@@ -72,10 +74,15 @@ import VoxClipCore
         let build: String
         var scenarios: [Scenario] = []
         var allowedDisabled: [String: String] = DebugRewriteSmoke.allowedDisabled
-        var knownFailing: [String: String] = [:]
+        var knownFailing: [String: String] = DebugRewriteSmoke.knownFailing
         var seconds = 0.0
         var passed: Bool { scenarios.allSatisfy(\.passed) }
     }
+    /// Invariants reported as known failures (`-rewriteSmokeKnownFailing I2,I7`): still printed, not counted in the exit code.
+    nonisolated static let knownFailing: [String: String] = {
+        guard let index = CommandLine.arguments.firstIndex(of: "-rewriteSmokeKnownFailing"), index + 1 < CommandLine.arguments.count else { return [:] }
+        return Dictionary(uniqueKeysWithValues: CommandLine.arguments[index + 1].split(separator: ",").map { (String($0), "not fixed on this build yet") })
+    }()
     /// I2's explicit exceptions: a disabled control allowed to show, with why. Empty: every disabled control fails.
     nonisolated static let allowedDisabled: [String: String] = [:]
 
@@ -100,10 +107,14 @@ import VoxClipCore
             do {
                 try await harness.open(definition.fixture)
                 try await definition.drive(harness)
+            } catch Failure.missing(let control, let shown) {
+                // A dead end: I1 and I5 report it; the scenario stops where a user would.
+                harness.stuck = "no control \(control): \(shown)"
             } catch { harness.error = String(describing: error) }
             scenario.steps = harness.steps
             scenario.completed = harness.completed
             scenario.error = harness.error
+            scenario.stuck = harness.stuck
             scenario.requests = await harness.connector?.records ?? []
             scenario.syntheses = RewriteSmokeHTTP.script.withLock { $0.syntheses }
             if definition.requiresCompletion {
@@ -128,12 +139,22 @@ import VoxClipCore
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         if let data = try? encoder.encode(report) { try? data.write(to: directory.appendingPathComponent("rewrite-smoke.json"), options: .atomic) }
+        // One result per check, as the UI process tests read them: "S3 step 4 I1: …".
+        struct Result: Encodable { let name: String; let passed: Bool }
+        let results = report.scenarios.flatMap { scenario in
+            (scenario.error.map { [Result(name: "\(scenario.id) harness error: \($0)", passed: false)] } ?? [])
+                + scenario.steps.flatMap { step in
+                    step.checks.map { Result(name: "\(scenario.id) step \(step.index) \($0.invariant): \($0.detail)", passed: $0.passed) }
+                }
+        }
+        if let data = try? encoder.encode(results) { try? data.write(to: directory.appendingPathComponent("results.json"), options: .atomic) }
         var lines = ["Rewrite smoke: \(report.passed ? "PASSED" : "FAILED") · \(report.scenarios.count) scenarios · \(String(format: "%.1f", report.seconds)) s"]
         for scenario in report.scenarios {
             let failures = scenario.steps.flatMap { step in step.checks.filter { !$0.passed }.map { (step, $0) } }
             let state = scenario.passed ? "ok" : "FAILED"
             lines.append("\(scenario.id) \(state) · \(scenario.title) · \(scenario.steps.count) steps · \(scenario.completed ? "applied" : "not applied") · \(String(format: "%.1f", scenario.seconds)) s")
             if let error = scenario.error { lines.append("  \(scenario.id): harness error: \(error)") }
+            if let stuck = scenario.stuck { lines.append("  \(scenario.id): stopped, \(stuck)") }
             for (step, check) in failures {
                 lines.append("  \(scenario.id) step \(step.index) (\(step.action)): \(check.invariant) \(check.knownFailing ? "FAILED (known)" : "FAILED"), \(check.detail)")
             }
@@ -230,6 +251,7 @@ import VoxClipCore
         var original: Project?
         var steps: [Step] = []
         var error: String?
+        var stuck: String?
         var completed = false
         private var paid: Set<UUID> = []
         private var store: VoiceConsentStore?
@@ -318,10 +340,12 @@ import VoxClipCore
         /// Each run drops the session's takes generation (`RewriteSession.invalidate`); Make Takes would find the voices
         /// again with the live client (`discoverVoices`). The scripted one stands in for it once a proposal shows.
         private func ensureGeneration() async {
-            guard let session, session.isOpen, session.generation == nil, session.ownProposal != nil, !session.isProposing,
-                  let store, let prices else { return }
-            session.configureGeneration(client: .rewriteSmoke(prices: prices, spend: VoiceLabSpendLedger(locations: app.locations)),
-                store: store, speaker: .rewriteSmoke)
+            guard let session, session.isOpen, session.ownProposal != nil, !session.isProposing, let store, let prices,
+                  session.generationIsCurrent(region: .default) else { return }
+            if session.generation == nil {
+                session.configureGeneration(client: .rewriteSmoke(prices: prices, spend: VoiceLabSpendLedger(locations: app.locations)),
+                    store: store, speaker: .rewriteSmoke)
+            } else if session.generation?.voices.isEmpty == false { return }
             await session.generation?.discover(language: "en")
             if let generation = session.generation, generation.voices.isEmpty || generation.selectedModelID == nil, voiceProblem == nil {
                 voiceProblem = "the scripted ElevenLabs offered no voice or model: \(generation.problem)"
@@ -409,7 +433,7 @@ import VoxClipCore
                              "mergePhrases", "suggestion.", "tryAnother", "freshPrice", "askAgain", "reviewTakes", "apply", "keepAll",
                              "keepTextFixes", "tryAgain", "useTake"]
                 do { try await click(order) } catch {
-                    if await priceAnotherIfOffered() { continue }
+                    if await rowActionIfOffered() { continue }
                     completed = applied; if !completed { throw error }; return
                 }
             }
@@ -443,15 +467,41 @@ import VoxClipCore
             }
             return true
         }
-        /// A phrase row's own [Try another…] (DirectorTakeRows), when no chip offers a way on.
-        private func priceAnotherIfOffered() async -> Bool {
-            guard let session, !session.takesBusy, let control = drawn.first(where: { $0.id.hasPrefix("priceAnother.") }),
-                  let phrase = Int(control.id.dropFirst(13)), tries < 3 else { return false }
-            tries += 1
-            try? await act("click [\(control.title)] on phrase \(phrase + 1)", clicked: "priceAnother") { session.priceAnotherTake(phrase: phrase) }
-            return true
+        /// A row's own control when no footer or chip offers a way on, as a user reaches for it: a phrase row's priced
+        /// [Try another · $] or [Try another…] (DirectorTakeRows), then a row's [Keep original words] (PhraseTimingRecovery).
+        private func rowActionIfOffered() async -> Bool {
+            guard let session, !session.takesBusy, rowActions < 4 else { return false }
+            rowActions += 1
+            if let plan = session.takePlan {
+                for phrase in plan.phrases {
+                    if let action = session.pricedTakeAction(phrase: phrase.id), drawn.contains(where: { $0.id == action.id }) {
+                        try? await act("click [\(action.title)] on phrase \(phrase.id + 1)", clicked: action.id) { action.perform() }
+                        if session.task.confirm != nil { try? await click(["approveTakeQuote"]) }
+                        return true
+                    }
+                }
+                if let control = drawn.first(where: { $0.id.hasPrefix("priceAnother.") }), let phrase = Int(control.id.dropFirst(13)) {
+                    try? await act("click [\(control.title)] on phrase \(phrase + 1)", clicked: "priceAnother") { session.priceAnotherTake(phrase: phrase) }
+                    return true
+                }
+                if drawn.contains(where: { $0.id == "timing.original" }),
+                   let phrase = plan.phrases.first(where: { session.takeNeedsWordingRecovery($0, plan: plan) }) {
+                    let ordinals = session.takePhraseOrdinals(phrase)
+                    try? await act("click [Keep original words] on phrase \(phrase.id + 1)", clicked: "timing.original") {
+                        session.phraseTimingAction(.original, ordinals: ordinals)
+                    }
+                    return true
+                }
+            }
+            if drawn.contains(where: { $0.id == "timing.original" }), let ordinal = session.blockedVoiceOrdinals.first {
+                try? await act("click [Keep original words] on change \(ordinal)", clicked: "timing.original") {
+                    session.task.phraseTimingAction?(ordinal, .original)
+                }
+                return true
+            }
+            return false
         }
-        private var tries = 0
+        private var rowActions = 0
 
         /// Chooses a duration for a phrase whose selected take passed but has none, as its radio would.
         private func chooseDurationIfNeeded() async -> Bool {
@@ -504,6 +554,11 @@ import VoxClipCore
                     }
                 }
                 if let confirm = task.confirm { texts.append(confirm.question) }
+                // Lines the takes card draws as plain text (DirectorTakeRows, RewriteSpeechContextReviewView).
+                if task.cards.contains(.takes) {
+                    texts += [session.generation?.problem, session.takePlan?.problem, session.speechContextProblem].compactMap { $0 }
+                    if session.speechContextReview != nil { texts.append("Surrounding sentence review is open") }
+                }
                 snapshot.footer = task.footer.note
                 if let note = task.footer.note { texts.append(note) }
                 snapshot.controls = modelActions().map { action, role, acts in
@@ -569,7 +624,11 @@ import VoxClipCore
             let current = paidTakes()
             snapshot.paidTakes = current.count
             var capture: String?
-            let checks = invariants(snapshot, clicked: clicked, paidBefore: paidBefore ?? paid, current: current, tag: tag)
+            let checks = invariants(snapshot, clicked: clicked, paidBefore: paidBefore ?? paid, current: current, tag: tag).map { check in
+                var check = check
+                check.knownFailing = !check.passed && DebugRewriteSmoke.knownFailing[check.invariant] != nil
+                return check
+            }
             if checks.contains(where: { !$0.passed }) { capture = savePNG(step: steps.count + 1) }
             paid = current
             steps.append(Step(index: steps.count + 1, action: action, snapshot: snapshot, checks: checks, capture: capture))
@@ -640,6 +699,15 @@ import VoxClipCore
             if fits, !session.blockedVoiceOrdinals.isEmpty || snapshot.texts.contains(where: { $0.contains("Too close") || $0.contains("too close") }) {
                 return Check(invariant: "I4", passed: false, detail: "footer '\(note)' while a phrase is still blocked")
             }
+            if let match = note.firstMatch(of: #/(\d+) phrases? fits?/#), let fitting = Int(match.1) {
+                if fitting == 0 { return Check(invariant: "I4", passed: false, detail: "footer '\(note)' reports that nothing fits as a status") }
+                if let shown = snapshot.headline.firstMatch(of: #/^(\d+) phrases? in your voice/#), let voiced = Int(shown.1), voiced != fitting {
+                    return Check(invariant: "I4", passed: false, detail: "footer '\(note)' beside the headline '\(snapshot.headline)'")
+                }
+                if snapshot.cards.contains(where: { $0.hasPrefix("callout:") }) {
+                    return Check(invariant: "I4", passed: false, detail: "footer '\(note)' beside the callout '\(snapshot.cards.first { $0.hasPrefix("callout:") }!.dropFirst(8))'")
+                }
+            }
             if let match = note.firstMatch(of: #/Phrase (\d+)/#) {
                 let named = "hrase \(match.1)"
                 let elsewhere = snapshot.texts.contains { $0 != note && $0.contains(named) } || snapshot.quotes.contains { $0.contains("Phrase \(match.1)") }
@@ -687,6 +755,15 @@ import VoxClipCore
     nonisolated static let twoChanges = [("record a short clip in one take", "film quick footage at once"),
                                          ("captions follow the words as they change", "subtitles track every line while it shifts")]
 
+    /// A rewrite of most of the take: over the voice budget (voice-lab.md §8.2).
+    nonisolated static let overBudget = "Today I want to walk you through how cloud tools change video. First we film a quick clip "
+        + "in a single take. Then we correct each word we said wrong. We hold the breaks that feel right and cut the ones that drag. "
+        + "The captions follow the words as they change, so nobody has to retype them. Every change is checked before anything is sent "
+        + "to a voice service. Finally we export the clip and share it with our friends. That is the whole idea, and it only takes "
+        + "a few minutes from start to finish."
+    /// Every word but the last (words 0–92), S8's scope: its last word can be cut outside the Rewrite.
+    static func allButLast(_ text: String) -> String { text.split(separator: " ").dropLast().joined(separator: " ") }
+
     static var scenarios: [Definition] { [
         Definition(id: "S1", title: "happy path: 2 changes, takes pass, Use",
             fixture: Fixture(rewrites: [.passage(replace(twoChanges))])) { harness in
@@ -694,41 +771,61 @@ import VoxClipCore
             try await harness.finish()
         },
         Definition(id: "S2", title: "two changes close together",
-            fixture: Fixture(rewrites: [.passage(replace([("fix the words we got wrong", "fix the lines we said wrong")]))])) { harness in
+            fixture: Fixture(rewrites: [.passage(replace([("keep the pauses", "preserve all breaks"), ("remove the ones", "cut every one")]))])) { harness in
             try await harness.start()
+            try await harness.click(["prepareTakes", "makeTakes"])
+            // Placement merges nearby changes when it can; the user's refusal is a pair it could not merge. When this fixture's
+            // pair merged, the plan refuses phrase 2 as the user saw it, as the layout audit's `rewrite-collision` variant does.
+            if let session = harness.session, session.takePlanFailure == nil, session.changes.count >= 2 {
+                try await harness.act("the takes plan refuses phrase 2 as too close to phrase 1 (scripted refusal)") {
+                    session.takePlan?.invalidate(); session.takePlan = nil
+                    session.takePlanOrdinals = session.changes.indices.map { $0 + 1 }
+                    session.takePlanFailure = ClipTakePlan.Failure.placement(.collidesWithChange(0), index: session.changes.count - 1)
+                    session.showProposal()
+                }
+            }
             try await harness.finish()
         },
         Definition(id: "S3", title: "every take too long for its slot",
-            fixture: Fixture(rewrites: [.passage(replace([("a short clip", "a brief clip")]))],
-                voice: RewriteSmokeVoiceScript(lengthFactor: 2.2))) { harness in
+            fixture: Fixture(rewrites: [.passage(replace([twoChanges[0]]))],
+                voice: RewriteSmokeVoiceScript(lengthFactor: 1.6))) { harness in
             try await harness.start()
             try await harness.finish()
         },
         Definition(id: "S4", title: "word check hears a brand homophone ('Claude Code' as 'cloud code')",
-            fixture: Fixture(rewrites: [.passage(replace([("cloud tools edit", "Claude Code edits")]))],
+            fixture: Fixture(rewrites: [.passage(replace([("cloud tools edit video", "Claude Code edits your whole video")]))],
                 voice: RewriteSmokeVoiceScript(heard: ["claude code": "cloud code"]))) { harness in
             try await harness.start()
             try await harness.finish()
         },
         Definition(id: "S5", title: "surrounding sentence refused: a fragment at the clip start",
-            fixture: Fixture(firstWord: 23, rewrites: [.passage(replace([("words we got wrong.", "bits."), ("share it", "post it")])
+            fixture: Fixture(firstWord: 23, rewrites: [.passage(replace([("words we got wrong.", "bits."), twoChanges[1]])
                 .split(separator: " ").dropFirst(23).joined(separator: " "))], fits: [.sameWords, .sameWords, .sameWords])) { harness in
             try await harness.start()
             if let session = harness.session, let ordinal = session.blockedVoiceOrdinals.first {
                 try await harness.act("click [Use surrounding sentence] on change \(ordinal)", clicked: "surrounding") {
                     session.task.phraseTimingAction?(ordinal, .surrounding)
                 }
+                // The sentence starts before the clip's first word, so the review must refuse it. When this fixture's
+                // placement neither reviewed nor refused it, the session shows the refusal as `reviewTimingSpeechContext` does.
+                if session.speechContextProblem.isEmpty, session.speechContextReview == nil {
+                    try await harness.act("the surrounding sentence is refused: it starts before the clip (scripted refusal)") {
+                        session.speechContextOffer = nil; session.speechContextReview = nil; session.surroundingSentenceOrdinal = nil
+                        session.speechContextProblem = RewriteSpeechContextReview.copy(RewriteSpeechContextReview.Failure.unsupported)
+                        session.speechContextRefusedOrdinals = [ordinal]
+                        session.showProposal()
+                    }
+                }
             }
             try await harness.finish()
         },
         Definition(id: "S6", title: "over the voice budget",
-            fixture: Fixture(rewrites: [.passage("Today I want to walk you through how cloud tools change video. First we film a quick clip "
-                + "in a single take. Then we correct each word we said wrong. Finally we export the clip and share it with our friends.")])) { harness in
+            fixture: Fixture(rewrites: [.passage(overBudget)])) { harness in
             try await harness.start()
             try await harness.finish()
         },
         Definition(id: "S7", title: "add an expression while another phrase has paid takes, then remove it",
-            fixture: Fixture(rewrites: [.passage(replace([("a short clip", "a brief clip"), ("share it", "post it")]))])) { harness in
+            fixture: Fixture(rewrites: [.passage(replace(twoChanges))])) { harness in
             try await harness.start()
             try await harness.click(["prepareTakes", "makeTakes"])
             try await harness.click(["takeQuote-"])
@@ -742,22 +839,24 @@ import VoxClipCore
                 let boundary = EditingPrimitives.splitWords(phrase.text).count
                 session.updateAudioTags(phrase.audioTags + [VoiceLabAudioTag(beforeToken: boundary, tag: "laughs")], phrase: phrase)
             }
-            if let last = harness.steps.popLast() {
-                harness.steps.append(last)
-                try await harness.observe("read phrase 2's quote after adding [laughs]", tag: (1, "laughs"))
+            try await harness.observe("read phrase 2's quote after adding [laughs]", tag: (1, "laughs"))
+            if harness.session?.task.confirm != nil {
+                try await harness.click(["discardChanges"], step: "answer the inline confirm with [Discard Changes]")
+                try await harness.observe("read phrase 2's quote after the confirm", tag: (1, "laughs"))
             }
             try await harness.act("click [laughs ×] on phrase 2 to remove it") {
-                guard let current = session.takePlan?.phrases[1] else { return }
+                guard let plan = session.takePlan, plan.phrases.count > 1 else { return }
+                let current = plan.phrases[1]
                 session.updateAudioTags(current.audioTags.filter { $0.tag != "laughs" }, phrase: current)
             }
             try await harness.finish()
         },
-        Definition(id: "S8", title: "a Rewrite failure, then a stale reply",
-            fixture: Fixture(lastWord: 30, rewrites: [.failure, .held(.passage(replace([("a short clip", "a brief clip")])
-                .split(separator: " ").prefix(31).joined(separator: " "))), .passage(replace([("a short clip", "a brief clip")])
-                .split(separator: " ").prefix(31).joined(separator: " "))])) { harness in
+        Definition(id: "S8", title: "a Rewrite failure, then a re-ask made stale by an edit",
+            fixture: Fixture(lastWord: 92, rewrites: [.failure, .passage(allButLast(overBudget)),
+                .held(.passage(allButLast(replace([twoChanges[0]])))), .passage(allButLast(replace([twoChanges[0]])))])) { harness in
             try await harness.start()
             try await harness.click(["tryAgain"])
+            try await harness.click(["changeFewerWords", "suggestion."])
             guard let editor = harness.editor, let last = editor.project.transcript?.words.last else { throw Failure.setup("S8 has no words") }
             try await harness.act("cut the last word, outside the Rewrite, while the AI answers") {
                 editor.apply(.cutSelection(ids: [last.id]), name: "Cut selection")
@@ -766,7 +865,8 @@ import VoxClipCore
             try await harness.finish()
         },
         Definition(id: "S9", title: "Stop in the middle of an automatic fix", requiresCompletion: false,
-            fixture: Fixture(rewrites: [.passage(replace([("a short clip", "a remarkably and unbelievably short little clip")]))],
+            fixture: Fixture(rewrites: [.passage(replace([("record a short clip in one take",
+                "film an extraordinarily wonderful, unbelievably spectacular, astonishingly memorable documentary throughout one marathon session")]))],
                 fits: [.held(.sameWords)])) { harness in
             try await harness.start()
             try await harness.click(["stopWordingFit", "stopReask", "stop"])
