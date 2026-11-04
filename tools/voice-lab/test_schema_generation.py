@@ -33,6 +33,14 @@ class ProjectSchemaGenerationTests(unittest.TestCase):
         self.assertEqual(set(evidence['required']), {'mode', 'recordId', 'consentMethod', 'voicedFrames', 'takeCount'})
         self.assertNotIn('recordID', evidence['properties'])
 
+    def test_recorded_own_takes_are_v3_segments_with_words(self):
+        schema = json.loads((ROOT / 'shared/schemas/project.schema.json').read_bytes())
+        self.assertEqual(['tts', 'voiceChanger'], schema['$defs']['voiceLabSegment']['properties']['kind']['enum'])
+        v3 = schema['$defs']['voiceLabSegmentV3']
+        self.assertEqual(['tts', 'voiceChanger', 'recorded'], v3['properties']['kind']['enum'])
+        rule = next(rule for rule in v3['allOf'] if rule['if']['properties'].get('kind') == {'const': 'recorded'})
+        self.assertEqual({'text': {'type': 'object'}, 'words': {'type': 'array'}}, rule['then']['properties'])
+
     def test_lip_synced_video_records_either_sync_mode(self):
         schema = json.loads((ROOT / 'shared/schemas/project.schema.json').read_bytes())
         sync = schema['$defs']['voiceLabVideoRecipe']['properties']['syncMode']['oneOf']
