@@ -117,5 +117,6 @@ public static class ProjectSerialization
         }
         VoiceLabProject.Validate(project);
         ContextDemoProject.Validate(project);
+        VoxClip.Core.Domain.Music.MusicProject.Validate(project);
     }
 }

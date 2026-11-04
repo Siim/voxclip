@@ -22,7 +22,7 @@ internal static class ProjectValidation
         if (root.TryGetProperty("schemaVersion", out var version) && version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var number) && number > 4)
             throw new VoxClipException(VoxClipErrorCode.ProjectTooNew, "This project was saved by a newer VoxClip. Update VoxClip to open it.");
         var supportsContext = version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var schemaVersion) && schemaVersion == 4;
-        Object(root, "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", "title extensions" + (supportsContext ? " contextDemo motionCues" : ""));
+        Object(root, "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", "title extensions" + (supportsContext ? " contextDemo motionCues music" : ""));
         String(root.GetProperty("format"), "voxclip-project");
         Number(root.GetProperty("schemaVersion"), 1, 4, true);
         String(root.GetProperty("id"), "[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}");
@@ -141,6 +141,7 @@ internal static class ProjectValidation
             Require(context.ProjectId == root.GetProperty("id").GetString() && context.SourceContentKey == source.GetProperty("contentKey").GetString());
         }
         if (root.TryGetProperty("motionCues", out var cues)) MotionCue.ValidateWire(cues);
+        if (root.TryGetProperty("music", out var music)) VoxClip.Core.Domain.Music.MusicProject.ValidateWire(music);
     }
 
     private static void RenderRecipe(JsonElement recipe)
