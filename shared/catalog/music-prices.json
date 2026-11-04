@@ -1,0 +1,15 @@
+{
+  "schema": "voxclip-voice-lab-prices/1",
+  "description": "API list prices for background music that the Make it postable planner suggests (doc/spec/ai.md section 16.6), in USD, in the Voice Lab price format and read by the same parser. Kept apart from voice-lab.json, whose hash and entry count both Core suites pin. TODO(lead): verify the Eleven Music row against the ElevenLabs pricing page before the music package ships: the page lists 0.15 USD per minute of generated music but also says music is billed per generation.",
+  "entries": [
+    {
+      "provider": "elevenlabs",
+      "operation": "music",
+      "unit": "second",
+      "formula": "perMinute",
+      "usdParameters": { "perMinute": "0.15" },
+      "checked": "2026-11-04",
+      "source": "https://elevenlabs.io/pricing/api"
+    }
+  ]
+}
