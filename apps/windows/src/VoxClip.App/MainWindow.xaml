@@ -285,7 +285,7 @@
         <Grid x:Name="ShellStatusBar" Background="{ThemeResource VcBgStatusBarBrush}" MinHeight="24" Padding="8,0" ColumnSpacing="8">
             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
             <Button x:Name="ClipStyleStatus" Grid.Column="2" Click="ClipStyleStatusClicked" Style="{ThemeResource SubtleButtonStyle}" Padding="4,0" MinHeight="24" Visibility="Collapsed"
-                FontSize="12" ToolTipService.ToolTip="Change how clips are made." AutomationProperties.AutomationId="Shell.ClipStyle"/>
+                FontSize="12" ToolTipService.ToolTip="Change how clips are made." AutomationProperties.Name="Clip style" AutomationProperties.AutomationId="Shell.ClipStyle"/>
             <Button Content="Explorer" Click="ExplorerClicked" Style="{ThemeResource SubtleButtonStyle}" Padding="4,0" MinHeight="24" AutomationProperties.Name="Toggle Explorer (Ctrl+B)"/>
             <TextBlock x:Name="ShellStatus" Grid.Column="1" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Foreground="{ThemeResource VcTextSecondaryBrush}"/>
             <Button Grid.Column="3" Content="Commands" Click="CommandPaletteClicked" Style="{ThemeResource SubtleButtonStyle}" Padding="4,0" MinHeight="24" AutomationProperties.Name="Commands (Ctrl+K)"/>

@@ -10,7 +10,7 @@ public struct CaptionPickClip: Sendable, Equatable {
 }
 
 /// shared/prompts/caption-pick.json rendered into one request (AI §15). Pure: the same inputs give the same strings
-/// on both platforms (shared/fixtures/llm/caption-pick.json).
+/// on both platforms (shared/fixtures/clip-style/caption-pick.json).
 public struct CaptionPickPrompt: Sendable {
     public let document: JSONValue
 

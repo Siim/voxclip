@@ -3,11 +3,11 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-/// shared/fixtures/llm/caption-pick.json: the clip style contract (design.md §6.9) and the caption pick request (AI §15).
+/// shared/fixtures/clip-style/caption-pick.json: the clip style contract (design.md §6.9) and the caption pick request (AI §15).
 @Suite struct CaptionPickTests {
     private struct Clip: Decodable { var id: String; var title: String?; var seconds: Double; var text: String }
 
-    private static func fixture() throws -> JSONValue { try JSONDecoder().decode(JSONValue.self, from: FixtureLoader.data("fixtures/llm/caption-pick.json")) }
+    private static func fixture() throws -> JSONValue { try JSONDecoder().decode(JSONValue.self, from: FixtureLoader.data("fixtures/clip-style/caption-pick.json")) }
     private static func shared() throws -> SharedResources { SharedResources(root: try FixtureLoader.sharedRoot()) }
     private static func library() throws -> [CaptionStyle] { try CaptionStyleLibrary(shared: shared()).styles }
     private static func decode<T: Decodable>(_ type: T.Type, _ value: JSONValue) throws -> T { try JSONDecoder().decode(type, from: value.aiEncoded()) }

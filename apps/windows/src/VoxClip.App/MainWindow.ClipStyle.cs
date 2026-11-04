@@ -87,7 +87,7 @@ public sealed partial class MainWindow
         RefreshClipStyle();
     }
 
-    private void ClipStyleStatusClicked(object sender, RoutedEventArgs args)
+    private void ReopenClipStyleCard()
     {
         if (editor?.ViewModel is not { IsReadOnly: false } model) return;
         if (!Nav.IsPaneOpen) Nav.IsPaneOpen = true;

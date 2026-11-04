@@ -10,7 +10,7 @@ namespace VoxClip.Core.Services.LLM;
 public sealed record CaptionPickClip(string Id, string? Title, double Seconds, string Text);
 
 /// <summary>shared/prompts/caption-pick.json rendered into one request; AI §15. Pure: the same inputs give the same
-/// strings on both platforms (shared/fixtures/llm/caption-pick.json).</summary>
+/// strings on both platforms (shared/fixtures/clip-style/caption-pick.json).</summary>
 public sealed class CaptionPickPrompt
 {
     private readonly JsonObject document;

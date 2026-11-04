@@ -11,11 +11,11 @@ using Xunit;
 
 namespace VoxClip.Core.Tests.Tracks.WinAi;
 
-/// <summary>shared/fixtures/llm/caption-pick.json: the clip style contract (design §6.9) and the caption pick request (AI §15),
+/// <summary>shared/fixtures/clip-style/caption-pick.json: the clip style contract (design §6.9) and the caption pick request (AI §15),
 /// the twin of the Swift CaptionPickTests.</summary>
 public sealed class CaptionPickTests
 {
-    private static JsonObject Fixture() => AiTestSupport.Fixture("caption-pick").AsObject();
+    private static JsonObject Fixture() => JsonNode.Parse(File.ReadAllText(Path.Combine(FixtureLoader.SharedRoot, "fixtures", "clip-style", "caption-pick.json")))!.AsObject();
     private static string Root => FixtureLoader.SharedRoot;
     private static IReadOnlyList<VoxClip.Core.Domain.Captions.CaptionStyle> Library() => CaptionStyleLibrary.Load(Root).Styles;
 
