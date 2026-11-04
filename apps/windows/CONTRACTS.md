@@ -1,5 +1,59 @@
 # Windows fixed contracts
 
+### 2026-11-04 — Windows Rewrite owed items: collision after paid takes, Keep text fixes only at once, ADR-R37 pooled voice check with [Choose Take N]
+
+- **A collision found after paid takes (Mac's refused takes plan).** Get Price used to voice only the placed phrases. Once takes were paid, a change refused as too close to an earlier one had no card, and Use would have dropped it unvoiced.
+  - `RewriteSession.Collision` now holds before and after paid takes. The `Rewrite.Steps.Collision{n}` card shows after takes too, `CanAcceptAll` is false while it stands, and the paid footer reads "Change {n} needs a fix above." (Mac `takePlanBlocker`).
+  - `KeepCollidedOriginal(n)` is behind the card's [Keep original words for {n}]. With paid takes the refused change has no phrase, so excluding it moves no phrase and asks for no discard. It rebuilds the review first and changes nothing if any phrase with takes would move.
+  - The armed resolver (`AdvanceAutoFix`) does this with no click and no spend, with the note "Change {n} keeps its original words: it's too close to change {e} to voice separately." A merge would discard paid takes, so it is never automatic; ✦ [Merge with change {e}] stays on the card and goes through the inline discard confirmation, as on the Mac.
+- **Keep text fixes only applies immediately (Mac `applyFreeChanges`).** `KeepTextFixesOnly` applies the cuts and corrections as one undo step and Rewrite closes, as the footer's [Apply {k} text fixes] does. It asks for no discard, paid takes or not. When the editor can't apply, the voice changes keep their original words (phrases with takes are left out, never discarded) and the footer's [Apply {k} text fixes] is the next step. This replaces the earlier deviation (exclude, then a second click).
+- **ADR-R37 (Mac `VoiceLabShortTakePool`, `ClipTakePlan.automaticTake`/`offeredTake`).**
+  - Core:
+    - `VoiceLabTakeVoiceCheck` (`PerTake`, `Waiting`, `ShortSpeech(evidence)`) on `VoiceLabTakeRow.VoiceCheck`. `Selectable` needs `VoiceCheck.Complete`.
+    - `CheckingVoice` applies a verdict: the score (none when unmeasured), an added speaker failure that keeps a words failure, or a consent or provider failure.
+    - `ShortPhraseCopy` gives Mac's lines: "waiting for the voice check", "Short phrase · words checked · voice checked across {k} takes" and "voice couldn't be measured (under 3 s of speech)".
+    - `VoiceLabTakeQaResult.SpeakerUnmeasured`: an unmeasured take passes with no score and fails with an invented one. `Evaluate` takes a null score: words and acoustics are checked with no speaker failure.
+    - `VoiceLabShortSpeechEvidence.OwnClone`/`Usable` are `[JsonIgnore]`; the saved object keeps its five fields.
+    - `VoiceLabGenerationSession.ApplyVoiceChecks` settles waiting rows in place, keeping their numbers.
+    - `VoiceLabRecipeBuilder.Candidate` ports Mac's evidence rule: the evidence must match the record and consent method; unmeasured means no score and `speakerPassed: false`; measured means a passing score. The evidence goes into `qa.shortSpeech`.
+    - `VoiceSpeakerCheck.GeneratedVoicedAsync` (the same VAD at any length) and `VoicedEmbeddingAsync` (pooled voiced speech, the unchanged 3 s windows) replace `GeneratedEmbeddingAsync`.
+  - Media:
+    - New `VoiceLabShortTakePool.cs` with `VoiceLabVoiceCheckSession`, a C# port of Mac's actor pair.
+    - Groups are consecutive takes of one consent record, closing at 48,000 voiced frames; a shorter tail joins the group before it.
+    - A measured mismatch fails only its own group, and blocks unmeasured takes for that record across the plan, earlier ones included, until a later run passes. A pass in the failing run does not clear it.
+    - A retry borrows earlier generated speech: its phrase's first, most recent first, and the last donor is truncated. No source speech, padding or extra purchase.
+    - `VoiceLabTakeRun`: a short take is now checked by Scribe and waits for the pool. A waiting take that passes words, acoustics and fit ends the run (`PassesBeforeVoiceCheck`), so a short phrase buys one candidate as on the Mac.
+    - A run with no shared `ShortTakePool` checks its own short takes at its end, Stop included. `ApplyVoiceChecks` keeps acceptance on the checked row.
+    - The old `insufficientGeneratedSpeech` refusal path in the run is gone; the enum value stays for saved data.
+  - App:
+    - `RewriteSession.VoiceChecks` is shared by every phrase's run (`RewriteGeneration.ShareVoiceChecks`) and reset when the windows retire.
+    - `GenerateWindowsAsync` makes the approved batch one pool and finishes it after the last phrase, before the resolver's settle. Each window then `ApplyVoiceChecks`: a measured pass is chosen automatically, an unmeasured take is not, and a valid explicit choice stays.
+    - `RewriteGeneration.OfferedTake` (Mac `offeredTake`) drives the footer's "Choose a take for phrase {n}." with [Choose Take {k}] (`RewriteFooterAction.ChooseTake`, `Rewrite.ChooseTake`, `ChooseOfferedTakeAsync`).
+    - `StuckReason` follows Mac: a waiting take is not stuck, and a failed unmeasured take is a short-speech case. Take rows show the short-phrase copy.
+- **Smoke S14** (`RewriteSmokeTests`): S2's transcript priced with the collision standing. After the takes, the resolver keeps change 2's original words with no discard or extra take; I1–I4, I6 and I7 hold after every step, and I5, I8 and I9 at the end. I9 now also fails an included voice change that has no phrase (red before the fix). S2 itself was already there.
+- **Deviations.**
+  - The R37 speaker check stays inert in shipping Windows builds: `VoiceSpeakerCheck.WindowsNativeParityVerified` is still false, so no take runs natively until that gate opens.
+  - The pooled success line shows on every pooled row, not once per phrase.
+  - doc/spec/voice-lab.md (lines ~1140 and ~1770 still say Windows has no R37) and CHANGELOG.md are outside this task's scope, so the lead should update them.
+- **Verification (serial, local, absolute `VOXCLIP_SHARED_DIR`).**
+  - Release Core: **2,970 total, 2,941 passed, 29 skipped, 0 failed**. A later rerun under a load average near 200 timed out the two `RoundFourTransportTests.PublicW7NeverFollowsTlsRedirectsWithStoredKeys` loopback cases; that class then passed 8/8 alone, and no transport code changed.
+  - Portable Media (`Category!=RequiresFFmpeg&Category!=RequiresWindows`): **918 total, 913 passed, 5 skipped, 0 failed**.
+  - Release win-ui: **1,208 total, 1,203 passed, 5 skipped, 0 failed**, including `ReleaseSurrogateMatchesTheShippingAllowlistsExactly`.
+  - Builds: zero warnings or errors.
+  - Red runs:
+    - With the App changes stashed, 5 fail: both Keep-text-fixes tests, both collision-after-takes tests and smoke S14 (no resolution, no note, I9).
+    - With the R37 behaviour lines backed out, 8 fail: 4 Media, 3 win-ui and 1 Core. The backed-out lines were the footer offer, the window's `ApplyVoiceChecks`, the run's own pool finish, the short early stop and the unmeasured verdict.
+  - Allowlists: `ReleaseBoundary update` on the surrogate folder, reviewed.
+    - `VoxClip.txt`: `KeepCollidedOriginal`, `ChooseTake`, `OfferedTake`, `ApplyVoiceChecks`, `ShareVoiceChecks`, `UseShortTakePool`, `PoolsShortTakes`, `ChooseOfferedTakeAsync`, `VoiceChecks`.
+    - `VoxClip.Core.txt`: the voice-check types and members, the nullable `Evaluate` score, the speaker APIs; `GeneratedEmbeddingAsync` is out.
+    - `VoxClip.Media.txt`: the pool, the session, and the run's `VoiceChecks`/`ShortTakePool`/`PhraseId`/`ApplyVoiceChecks`.
+    - CLI unchanged.
+  - No live or paid calls, VM or CI dispatch.
+- **Owed.**
+  - Native Windows runs: the collision card after takes and [Choose Take N] at 300–560 epx, Narrator names, keyboard order.
+  - The R37 VAD on short generated audio (`GeneratedVoicedAsync` below 3 s) once the native speaker check is verified.
+  - The doc/spec and CHANGELOG lines above.
+
 ### 2026-11-04 — Windows Rewrite voice budget is a note, and smoke S2 (two changes close together)
 
 - **Budget parity (lead decision; Mac `ChangeList.budgetCallout`/`advised`, `RewriteNextSteps.budgetSteps`).** Over the voice budget the phrases are voiced anyway. Deleted: `VoiceBudgetBlocks`, `BudgetAccepted`, `AcceptVoiceBudget`, `ReVoiceAllTitle`, the `Rewrite.Chip.ReVoiceAll` chip, the "Choose how much to re-voice above." footer and the budget gate in `GenerationInputAsync`. `VoiceBudgetCallout` uses Mac's copy ("These changes re-voice {v} words, a lot for a {n}-word clip. Long stretches in your voice can sound stitched; Rewrite goes on.") while a voice change is included, before or after takes, as on the Mac. The `Rewrite.Steps.Budget` card shows the note with one [Choose yourself…] chip (`ChooseYourselfChip`, `ShowAutoFixChoices`) until it is opened; then Change fewer words, the ✦ suggestions and Keep text fixes only, in Mac's order. `RewriteNextStepCard.Asks`: a folded card carries no free-text field (Mac's collapsed steps have no `ask`); the panel shows the field only when some card asks.
@@ -11,9 +65,9 @@
 - **Deviations.**
   - Folding reads `AutoFix.ShowChoices` (Mac `autoFix.showChoices`), not `ChoicesShown` as the brief said: `ChoicesShown` is true whenever the resolver isn't running, so before takes the chips would never fold. Arming the resolver resets it, as on the Mac.
   - Windows says "change" before takes, so the collision copy reads "Change 2 … change 1" and "Merge with change 1" where Mac says "phrase".
-  - Keep text fixes only keeps Windows' behaviour (every voice change keeps its original words, then the footer's [Apply {k} text fixes]); Mac applies the free changes at once.
+  - Keep text fixes only keeps Windows' behaviour (every voice change keeps its original words, then the footer's [Apply {k} text fixes]); Mac applies the free changes at once. (Done: it applies at once now; see the owed-items entry above.)
 - **Verification (serial, local, absolute `VOXCLIP_SHARED_DIR`).** Release Core **2,965 total, 2,936 passed, 29 skipped, 0 failed**; portable Media **910 total, 905 passed, 5 skipped**; Release win-ui **1,199 total, 1,194 passed, 5 skipped, 0 failed**; explicit `*ReleaseSurrogate*` 1/1. Builds zero warnings or errors. Red: the renamed `OverTheVoiceBudgetRewriteGoesOnWithANoteAndFoldedChips` failed on the old copy before the change; S2 with the collision review backed out fails (no refusal, no card, `CollisionKeep2` not shown). Allowlists: `ReleaseBoundary update`, reviewed: only `VoxClip.txt` (the deleted budget members out; `Collision`, `CollidesWith`, `Asks`, `ChooseYourselfChip`, the collision helpers and the new card constructor in); Core, Media and CLI unchanged. No live or paid calls, VM or CI dispatch.
-- **Owed.** Native Windows runs: the folded budget card and the collision card at 300–560 epx, Narrator names, keyboard order. A collision found after paid takes still has no card (Mac's takes plan refuses it there; Windows prices only the placed phrases).
+- **Owed.** Native Windows runs: the folded budget card and the collision card at 300–560 epx, Narrator names, keyboard order.
 
 ### 2026-11-04 — Windows App twin of Rewrite's automatic fixes, next steps and phrase cards
 
@@ -28,11 +82,11 @@
 - **Replaced / deleted.** `RewritePanel.ApplyDefaultAsync` → `ApplyFooterAsync` (`RewritePanel.NextSteps.cs`); the footer's per-file apply/blocker code in `Render` and `RenderTakes` → `RenderFooter`; the passage panel's budget copy line → the budget card; the duration radios' disabled options → hidden; the take-row Use anyway `IsEnabled` → visibility. Old tests that pinned the replaced behaviour were updated in place: discard-before-tag (now no prompt), no duration preselection (now automatic), end-of-phrase tag default (now before the first changed word), and the footer source contracts.
 - **Deviations.**
   - [Re-voice all {v}] is kept as the brief asked; Mac's later stucktakes made the budget fully advisory with no click. Lead to decide. (Decided: removed in the budget-parity entry above.)
-  - [Choose Take N] (ADR-R37) is not built: Windows has no pooled voice check, so no take is unmeasured; owed with R37.
+  - [Choose Take N] (ADR-R37) is not built: Windows has no pooled voice check, so no take is unmeasured; owed with R37. (Done: see the owed-items entry above.)
   - Re-preparing the matched video one at a time (Mac 58639f1f) does not apply: Windows has no offscreen duration preparation; Cut and Match are recipe choices.
   - Scope: two Media lines (`VoiceLabTakeRun.KeepsEarlierTakes`) beyond the App/Core scope, without which paid takes could not be kept.
 - **Verification (serial, local, absolute `VOXCLIP_SHARED_DIR`).** Release Core **2,965 total, 2,936 passed, 29 skipped, 0 failed**; portable Media (`Category!=RequiresFFmpeg&Category!=RequiresWindows`) **910 total, 905 passed, 5 skipped**; Release win-ui **1,198 total, 1,193 passed, 5 skipped, 0 failed**; explicit `*ReleaseSurrogate*` 1/1. Builds zero warnings or errors. Red: arming and Core retention backed out → 4 of 7 resolver tests fail; held-back pricing backed out → 1; ranking, voiced rule, paid-only footer and Use anyway backed out → 5 of 5 takes-rules cases; budget acceptance, scoped landing and [Done] backed out → 3 of 6 next-steps tests; automatic duration and the per-phrase expression route backed out → 2 of 5 phrase-card tests; arming backed out → smoke S3, S4, S9, S12 fail I5/I9. Allowlists: `ReleaseBoundary update`, reviewed: `VoxClip.Core.txt` +7 (the two `Feedback` properties, `KeepsEarlierTakes`, the private `earlier` field), `VoxClip.Media.txt` +2 (`KeepsEarlierTakes`), `VoxClip.txt` the new App members and three replaced ones; CLI unchanged. No live or paid calls, VM or CI dispatch.
-- **Owed.** Native Windows runs (CI and the VM): the WinUI panel at 300–560 epx (narrow-width wrapping of chips and the duration line), Narrator names and announcements of the fixing line, chips and footer, and keyboard order. A Windows ADR-R37 pooled voice check with [Choose Take N]. The S2 collision scenario. A Use that publishes in the headless smoke (needs Media scratch fixtures). Lip sync stays hidden.
+- **Owed.** Native Windows runs (CI and the VM): the WinUI panel at 300–560 epx (narrow-width wrapping of chips and the duration line), Narrator names and announcements of the fixing line, chips and footer, and keyboard order. A Use that publishes in the headless smoke (needs Media scratch fixtures). Lip sync stays hidden.
 
 ### 2026-11-04 — Windows Core twin of the Mac Rewrite work: lip-synced recipes, homophones, next actions
 
@@ -43,7 +97,7 @@
 - **Next actions (§8.2.1).** `RewriteNextAction.Parse` (at most 4, the same drop rules), `RewriteNextActionFeedback` (scoped, open, merge and fewer-words, from the shared templates only) and `RewriteScopedReply.Assign` port Mac `RewriteNextActions.swift`. `VoiceRewriteProposal` and `PatchRewriteProposal` carry `NextActions`. `LlmOutput.Validate` returns drops per top-level array, as Mac's validator does. A malformed next step is dropped on its own; it no longer refuses a voice reply (the old `Dropped != 0` rule) or counts as a malformed patch edit. The strict HTTP shaping already required the field (`HttpStructuredSchema`, now `internal` so a test can pin it). Windows Core replays all 25 `rewrite-next-actions-cases.json` vectors and the three prompt hashes.
 - **Placement and recalibration rules (item 4).** Not ported: Mac keeps them only in the App layer. Voiced phrases are `RewritePhraseTiming.voicedOrdinals`; the automatic-take ranking and R37's measured-only automatic pick are `ClipTakePlan.automaticTake`, `offeredTake` and `ranked`. Mac Core's `bestAutomatic` is unchanged and matches Windows `BestAutomatic`. They are owed to the App package below.
 - **Owed to the Windows App package.**
-  - Placement and takes: voiced changes never held back by recalibration; the automatic-take ranking (a take some duration can carry, then the best score, else the take closest to the slot); R37 unmeasured takes never auto-picked, with [Choose Take N] (`offeredTake`) once Windows adopts ADR-R37 pooling; `priceHeldBackChanges`; the paid-only takes footer; the hidden inert Use anyway.
+  - Placement and takes: voiced changes never held back by recalibration; the automatic-take ranking (a take some duration can carry, then the best score, else the take closest to the slot); `priceHeldBackChanges`; the paid-only takes footer; the hidden inert Use anyway.
   - The automatic resolver (§8.2.2): 3 rounds; a max($0.10, quote) cap counting billed AI sends; [Keep fixing · ≈ $y]; one Stop; "Choose yourself…". Also: no eviction of paid takes during automatic runs; per-phrase leave-out that keeps takes; the held-back plan phrase as a `.length` step.
   - Next-step UI: chips in each stuck state with ✦ for AI suggestions; named and refused-sentence chips; one free-text field; "Asking {AI}: “{label}”" with Stop; landing a scoped reply in `RewriteSession` with `RewriteScopedReply`; the advisory voice budget with [Re-voice all {v}] (Windows `PlaceAll` still refuses over the budget on the passage panel); footers that name the next step, including [Apply {k} text fixes] and the idle takes steps; the nothing-included [Done]; locked fit rows; re-preparing the matched video; phrase cards without disabled controls; per-phrase expressions with "Before expression" takes and click-to-place.
   - Lip sync: the sync-3 editor route (face gate, mezzanine/WAV, fal upload/queue/retention/retry/cancel/cleanup, inline per-phrase/All controls, receipts, preview/export crossfades) and rendering `lipsync`. Also refusal copy that names lip sync: `UiError` and the CLI still show the generic `videoModeUnsupported` text.
