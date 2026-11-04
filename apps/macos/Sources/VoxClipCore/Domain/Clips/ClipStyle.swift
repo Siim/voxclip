@@ -155,7 +155,7 @@ public struct ClipStyle: Codable, Sendable, Hashable {
         guard (5...600).contains(maxLengthSec) else { throw fail("maxLengthSec") }
         guard !shapes.isEmpty, Set(shapes).count == shapes.count, !shapes.contains(.source) else { throw fail("shapes") }
         for (_, pick) in captionPicks {
-            guard Self.isSlug(pick.styleId), pick.styleId != "auto", pick.reason.count <= 120 else { throw fail("captionPicks") }
+            guard Self.isSlug(pick.styleId), pick.styleId != "auto", pick.reason.unicodeScalars.count <= 120 else { throw fail("captionPicks") }
         }
     }
 

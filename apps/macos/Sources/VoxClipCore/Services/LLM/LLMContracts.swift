@@ -28,6 +28,8 @@ public enum LLMFeature: String, Codable, Sendable, Hashable, CaseIterable {
     case clipFinder
     case aiTighten
     case voiceRewrite
+    /// A caption style per clip while the clip style's captions are Auto (AI §15, design.md §6.9).
+    case captionPick
     case test
 }
 
