@@ -992,7 +992,7 @@ struct EditorRenderSnapshot {
         guard let changed = history?.state else { return }
         guard changed != state || next != project else { return }
         next.edits = changed.projectEdits
-        if case .removeClip(let id) = command { next.motionCues.removeAll { $0.clipID == id } }
+        if case .removeClip(let id) = command { next.motionCues.removeAll { $0.clipID == id }; next.music.removeAll { $0.clipId == id } }
         let clipIDs = Set(changed.clips.map(\.id))
         next.share.captions = next.share.captions.filter { $0.key == "full" || clipIDs.contains($0.key) }
         // Only the scope changed: a tab switch, not an edit (impl-plan item 16).
@@ -1018,6 +1018,7 @@ struct EditorRenderSnapshot {
             return nil
         })
         next.motionCues.removeAll { removedClips.contains($0.clipID) }
+        next.music.removeAll { $0.clipId.map(removedClips.contains) ?? false }
         let clipIDs = Set(changed.clips.map(\.id))
         next.share.captions = next.share.captions.filter { $0.key == "full" || clipIDs.contains($0.key) }
         if onlyScopeDiffers(next) { return setScope(next.edits.activeClipId) }

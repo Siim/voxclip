@@ -42,6 +42,7 @@ extension Project {
         project.schemaVersion = 1
         project.extensions = nil
         project.motionCues = []
+        project.music = []
         project.contextDemo = nil
         project.edits.activeClipId = nil
         project.edits.clips = clip.map { [ClipRange(id: $0.id, startWordId: $0.startWordId, endWordId: $0.endWordId)] } ?? []
