@@ -38,7 +38,7 @@ Without VOXCLIP_DATA_DIR, locations follow architecture §2.5 (Application Suppo
 
 ## Parallel implementation
 
-Read [CONTRACTS.md](CONTRACTS.md) for the complete public type/protocol index, ownership, dated changes and the latest native gate results. Work only in your track's folders. The shared value contracts are frozen; propose changes in CONTRACTS.md before modifying them. `swift test` runs the Core and Media suites, which check the shared fixtures. The App target has no test target: its UI checks are DEBUG self-tests and audits started with launch arguments (for example `-uiSelfTest <folder>`), run with the console unlocked and idle.
+Read [CONTRACTS.md](CONTRACTS.md) for the complete public type/protocol index, ownership, dated changes and the latest native gate results. Work only in your track's folders. The shared value contracts are frozen; propose changes in CONTRACTS.md before modifying them. `swift test` runs the Core and Media suites, which check the shared fixtures. The App target has no test target: its UI checks are DEBUG self-tests and audits started with launch arguments (for example `-uiSelfTest <folder>`), run with the console unlocked and idle. The Rewrite smoke (`scripts/rewrite-smoke.sh`, doc/release.md §4.0) is the exception: it runs offscreen while the Mac is in use and is run before every handed-over test build.
 
 Release packaging is supplied by `bundle.sh`; see the release section below. No sandbox, signing credential or extra entitlement is introduced here.
 
