@@ -369,7 +369,7 @@ import Testing
         #expect(Effort.xhigh.capped(to: [.xhigh]) == .xhigh)
         #expect(Effort.medium.capped(to: [.low, .high]) == .low)
         #expect(Effort.low.capped(to: [.high]) == nil)
-        #expect(Effort.allCases.map(\.rawValue) == ["low", "medium", "high", "xhigh"])
+        #expect(Effort.allCases.map(\.rawValue) == ["low", "medium", "high", "xhigh", "max"])
     }
 
     static func runner() throws -> LLMRunner {

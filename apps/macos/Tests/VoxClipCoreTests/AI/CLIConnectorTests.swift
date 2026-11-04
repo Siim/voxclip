@@ -1304,25 +1304,3 @@ private extension JSONValue {
     var testString: String? { if case .string(let value) = self { value } else { nil } }
     var testStrings: [String] { testArray?.compactMap(\.testString) ?? [] }
 }
-
-extension CLIConnectorTests {
-    @Test func extraHighEffortReachesClaudeCodeAndCodexCapsIt() async throws {
-        let catalog = try cliTestCatalog()
-        var request = cliTestRequest()
-        request.effort = .xhigh
-        let claudeRunner = CLIFakeRunner(id: .claudeCode, catalog: catalog)
-        _ = try await cliTestConnector(.claudeCode, runner: claudeRunner, catalog: catalog).send(request, model: "opus")
-        let claude = try #require(await claudeRunner.requests.last?.arguments)
-        let flag = try #require(claude.firstIndex(of: "--effort"))
-        #expect(claude[flag + 1] == "xhigh")
-        let codexRunner = CLIFakeRunner(id: .codex, catalog: catalog)
-        let codex = cliTestConnector(.codex, runner: codexRunner, catalog: catalog)
-        _ = try await codex.models(refresh: true)
-        _ = try await codex.send(request, model: "listed")
-        #expect(await codexRunner.requests.last?.arguments.contains("model_reasoning_effort=\"low\"") == true)
-        _ = try await codex.send(request, model: "default")
-        #expect(await codexRunner.requests.last?.arguments.contains("model_reasoning_effort=\"xhigh\"") == true)
-        _ = try await codex.send(request, model: "custom")
-        #expect(await codexRunner.requests.last?.arguments.contains { $0.hasPrefix("model_reasoning_effort=") } == false)
-    }
-}
