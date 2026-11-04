@@ -216,7 +216,7 @@ enum VoiceLabAudioRenderer {
                 remainingFit -= item.piece.outputEndSample - item.piece.outputStartSample + handles
                 try reserveDisk(scratch, frames: plan.outputSamples + remainingFit)
             }
-            try mix(plan: plan, selected: input.prepared.selectedSegmentRecipes, prepared: prepared,
+            try mix(plan: plan, selected: input.prepared.selectedSegmentRecipes, prepared: Set(prepared.keys),
                     sourceURL: sourceURL, sourceFrames: sourceFrames, fitURLs: fitURLs, to: mixedURL)
             try Task.checkCancellation()
             return VoiceLabRenderLease(mixedAudioURL: mixedURL, scratch: operation, preparedAssets: prepared)
@@ -459,9 +459,10 @@ enum VoiceLabAudioRenderer {
         var end: Int64 { start + Int64(samples.count / 2) }
     }
 
-    private static func mix(plan: VoiceLabOutputPlan, selected: [VoiceLabSelectedRecipe],
-                            prepared: [String: PreparedVoiceLabAsset], sourceURL: URL, sourceFrames: Int64,
-                            fitURLs: [String: URL], to url: URL) throws {
+    /// Mixes the staged source and fitted takes onto the output grid. `prepared` names the segments with a snapshot.
+    static func mix(plan: VoiceLabOutputPlan, selected: [VoiceLabSelectedRecipe],
+                    prepared: Set<String>, sourceURL: URL, sourceFrames: Int64,
+                    fitURLs: [String: URL], to url: URL) throws {
         guard let pcm = AVAudioFormat(standardFormatWithSampleRate: plan.sampleRate, channels: 2) else {
             throw VoxClipError.decodeFailed("Cannot configure mixed audio")
         }
@@ -483,7 +484,7 @@ enum VoiceLabAudioRenderer {
                 guard piece.sourceEndSample <= sourceFrames else { throw VoxClipError.decodeFailed("Source audio ends before selected range") }
                 audio = source; offset = piece.sourceStartSample
             } else {
-                guard let id = piece.segmentId, let url = fitURLs[id], let recipe = recipes[id], prepared[id] != nil else {
+                guard let id = piece.segmentId, let url = fitURLs[id], let recipe = recipes[id], prepared.contains(id) else {
                     throw VoiceLabAssetError.invalidSelection(piece.segmentId ?? "segment")
                 }
                 audio = try AVAudioFile(forReading: url, commonFormat: .pcmFormatFloat32, interleaved: false)
