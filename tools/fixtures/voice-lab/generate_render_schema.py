@@ -86,6 +86,10 @@ d['voiceLabRenderRecipe']['properties']['provenance']['properties']['region'] = 
 segment = copy.deepcopy(d['voiceLabSegment'])
 segment['required'].append('scope')
 segment['properties']['scope'] = {'enum': ['passage', 'fullTake']}
+# The user's own microphone take of a Rewrite phrase (voice-lab.md §8.13): text and words as a tts segment has.
+segment['properties']['kind'] = {'enum': ['tts', 'voiceChanger', 'recorded']}
+tts_rule = next(rule for rule in segment['allOf'] if rule['if']['properties'].get('kind') == {'const': 'tts'})
+segment['allOf'].insert(segment['allOf'].index(tts_rule) + 1, {'if': {'properties': {'kind': {'const': 'recorded'}}}, 'then': copy.deepcopy(tts_rule['then'])})
 segment['properties']['provenance'] = copy.deepcopy(d['voiceLabRenderRecipe']['properties']['provenance'])
 segment['properties']['groupId'] = idref
 segment['allOf'].append({'if': {'properties': {'scope': {'const': 'fullTake'}}}, 'then': {'required': ['groupId']}})

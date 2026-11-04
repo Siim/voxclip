@@ -96,6 +96,7 @@ public enum VoiceLabRenderContract {
                 let dialogue = endpoint == "v1/text-to-dialogue/with-timestamps" && recipe.provenance.model == "eleven_v4"
                 guard tts || dialogue else { throw VoiceLabProjectError.endpointUnsupported }
             }
+            if segment.kind == .recorded, !VoiceLabRecordedTake.isRecorded(recipe.provenance) { throw VoiceLabProjectError.endpointUnsupported }
             if recipe.video.mode == .retimed || (recipe.video.mode == .source &&
                 piece.sourceEndSample - piece.sourceStartSample != piece.outputEndSample - piece.outputStartSample) {
                 throw VoiceLabProjectError.videoModeUnsupported
@@ -195,11 +196,16 @@ public enum VoiceLabRenderContract {
             }
         }
     }
-    private static func deriveDisclosure(project: Project, plan: VoiceLabOutputPlan, selected: [VoiceLabSelectedRecipe], position: VoiceLabLabelPosition) -> VoiceLabDisclosurePlan {
+    private static func deriveDisclosure(project: Project, plan: VoiceLabOutputPlan, selected all: [VoiceLabSelectedRecipe], position: VoiceLabLabelPosition) -> VoiceLabDisclosurePlan {
+        // The user's own microphone take is real speech, not AI: only its lip sync, if any, is disclosed.
+        let selected = all.filter { item in
+            item.recipe.video.mode == .lipsync || project.voiceLab.segments.first(where: { $0.id == item.segmentId })?.kind != .recorded
+        }
         let required = !selected.isEmpty
         let kinds = Set(selected.flatMap { item -> [String] in
-            let kind = project.voiceLab.segments.first(where: { $0.id == item.segmentId })!.kind.rawValue
-            return item.recipe.video.mode == .lipsync ? [kind, "lipsync"] : [kind]
+            let kind = project.voiceLab.segments.first(where: { $0.id == item.segmentId })!.kind
+            if kind == .recorded { return ["lipsync"] }
+            return item.recipe.video.mode == .lipsync ? [kind.rawValue, "lipsync"] : [kind.rawValue]
         }).sorted()
         let aiSeconds = Double(selected.reduce(Int64(0)) { $0 + $1.piece.outputEndSample - $1.piece.outputStartSample }) / plan.sampleRate
         let voiceSeconds = Double(selected.filter { item in project.voiceLab.segments.first(where: { $0.id == item.segmentId })?.kind == .voiceChanger }

@@ -33,7 +33,7 @@ extension EditorModel {
         guard let feedback = currentVoiceFeedback, let undoManager else { return false }
         return capabilities.edit && undoManager.canUndo && undoManager.undoActionName == feedback.undoName
     }
-    func finishVoiceRewrite(phrases: [ClipTakePlan.Phrase], segments: [VoiceLabSegment], voice: VoiceLabVoiceReference,
+    func finishVoiceRewrite(phrases: [ClipTakePlan.Phrase], segments: [VoiceLabSegment], voice: VoiceLabVoiceReference?,
                             spent: CostEstimate, scope: DirectorScope, cuts: Int, fixes: Int) {
         guard !segments.isEmpty, segments.allSatisfy({ project.voiceLab.segments.contains($0) }),
               phrases.count == segments.count else { return }
@@ -44,7 +44,7 @@ extension EditorModel {
                 length: segment.outDuration, start: segment.replace.start)
         }
         voiceRewriteFeedback = VoiceRewriteFeedback(project: project, revision: projectRevision, undoName: scope.title,
-            message: message, voiceName: voice.displayName, phrases: used, spent: spent)
+            message: message, voiceName: voice?.displayName ?? "Your own take", phrases: used, spent: spent)
         voiceRewriteToastVisible = true
         voiceRewriteToastTask?.cancel()
         let revision = projectRevision

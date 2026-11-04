@@ -129,6 +129,8 @@ extension RewriteSession {
                 self.observeMeasuredTakes(plan)
             }
             plan.prepareDurationRender = durationRenderPreparer()
+            plan.microphoneStorage = takeStorage
+            phraseMicrophone.cancel(); ownWordsEditing = nil
             configureLipsync(plan)
             if let contextReview, let contextRequest {
                 try contextReview.validatePreparedPhrases(plan.phrases, current: contextRequest, envelope: envelope)

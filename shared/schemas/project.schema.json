@@ -2252,7 +2252,8 @@
         "kind": {
           "enum": [
             "tts",
-            "voiceChanger"
+            "voiceChanger",
+            "recorded"
           ]
         },
         "enabled": {
@@ -2573,6 +2574,25 @@
             "properties": {
               "kind": {
                 "const": "tts"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "text": {
+                "type": "object"
+              },
+              "words": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "recorded"
               }
             }
           },

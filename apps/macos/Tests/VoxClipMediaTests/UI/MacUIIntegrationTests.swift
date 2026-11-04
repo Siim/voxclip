@@ -46,7 +46,8 @@ extension HeavyMediaTests {
     /// every scenario ends with the Rewrite applied, or (S9, after Stop) with Done and the words as recorded; S10–S12
     /// also check the applied video duration and that no voice change was dropped.
     /// One app process per take-length pass, each with its own deadline: realistic take lengths (S1–S14), and every
-    /// scenario but S13 with takes that fill their slots exactly ("S4-exact"). Hosted runners take about 110 s and 70 s
+    /// scenario but S13 with takes that fill their slots exactly ("S4-exact"). S-own-typed, S-own-mic and S-own-mic-misfit
+    /// drive My words and Say it myself with a scripted microphone. Hosted runners take about 110 s and 70 s
     /// (locally about 57 s and 33 s); the app's progress lines are relayed to stderr, also when a pass hits its deadline.
     @Test("The Rewrite smoke completes every stuck scenario without a dead end", arguments: ["realistic", "exact"])
     func rewriteSmoke(lengths: String) throws {
@@ -55,7 +56,9 @@ extension HeavyMediaTests {
         defer { UIProcessHarness.cleanTemporary(directory) }
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
         let scenarios = Set(report.compactMap { $0.name.split(separator: " ").first.map(String.init) })
-        let expected: [String] = lengths == "exact" ? ((1...12).map { "S\($0)-exact" } + ["S14-exact"]) : (1...14).map { "S\($0)" }
+        // The own-words scenarios (My words, Say it myself, Record again) run in both passes.
+        let own = ["S-own-typed", "S-own-mic", "S-own-mic-misfit"]
+        let expected: [String] = lengths == "exact" ? ((1...12).map { "S\($0)" } + ["S14"] + own).map { $0 + "-exact" } : (1...14).map { "S\($0)" } + own
         #expect(scenarios == Set(expected))
         for result in report { #expect(result.passed, Comment(rawValue: result.name)) }
     }

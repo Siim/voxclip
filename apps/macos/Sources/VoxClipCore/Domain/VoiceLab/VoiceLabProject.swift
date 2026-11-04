@@ -15,7 +15,8 @@ public struct VoiceLabAsset: Codable, Sendable, Equatable {
     }
 }
 
-public enum VoiceLabSegmentKind: String, Codable, Sendable { case tts, voiceChanger }
+/// `recorded` is the user's own microphone take of a Rewrite phrase (voice-lab.md §8.13): real speech, no clone, no consent.
+public enum VoiceLabSegmentKind: String, Codable, Sendable { case tts, voiceChanger, recorded }
 public struct VoiceLabReplacement: Codable, Sendable, Equatable {
     public var start: Double
     public var end: Double
@@ -252,7 +253,7 @@ public enum VoiceLabProject {
             for candidate in segment.candidates {
                 if let candidateID = candidate.assetId, !assetIDs.contains(candidateID) { throw VoiceLabProjectError.danglingAsset }
                 if let score = candidate.score, (!score.isFinite || score < 0 || score > 1) { throw VoiceLabProjectError.invalidCandidate }
-                let requiresRank = project.schemaVersion < 3 || segment.kind == .tts
+                let requiresRank = project.schemaVersion < 3 || segment.kind != .voiceChanger
                 if candidate.rejected == nil && (candidate.assetId == nil || (requiresRank && candidate.score == nil)) {
                     throw VoiceLabProjectError.invalidCandidate
                 }
@@ -270,7 +271,7 @@ public enum VoiceLabProject {
             if let match = qa.transcriptMatch, !(0...1).contains(match) { throw VoiceLabProjectError.invalidSegment }
             if let score = qa.speakerScore, !(0...1).contains(score) { throw VoiceLabProjectError.invalidSegment }
             switch segment.kind {
-            case .tts:
+            case .tts, .recorded:
                 guard let text = segment.text, !text.new.isEmpty,
                       text.audioTags.map({ VoiceLabAudioTags.validated($0, text: text.new) == $0 }) ?? true, let captionWords = segment.words, !captionWords.isEmpty else { throw VoiceLabProjectError.invalidWords }
                 var previous = 0.0
@@ -325,7 +326,7 @@ public enum VoiceLabProject {
             if index > 0, segment.replace.start < ordered[index - 1].replace.end { throw VoiceLabProjectError.overlappingReplacement }
             // Every unrejected own-voice candidate, selected or not, needs active consent (§6.10, §10.5).
             for candidate in segment.candidates where candidate.rejected == nil {
-                guard let recipe = candidate.recipe, recipe.voiceSource == .own else { continue }
+                guard let recipe = candidate.recipe, recipe.voiceSource == .own, segment.kind != .recorded else { continue }
                 guard result.voiceLab.voices?.first(where: { $0.id == recipe.voiceRefId })?.status == .active else { throw VoiceLabProjectError.consentUnverified }
             }
         }
