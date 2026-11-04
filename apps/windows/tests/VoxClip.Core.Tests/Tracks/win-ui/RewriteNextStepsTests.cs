@@ -142,5 +142,111 @@ public sealed class RewriteNextStepsTests
         Assert.True(editor.CanUndo);
         Assert.Empty(editor.Project.VoiceLab.Segments);
     }
+
+    /// <summary>Over the budget with a text fix: words 10–25 re-voiced and word 12 capitalized (a correction).</summary>
+    private const string OverWithFix = Fifteen + " word11 Word12";
+
+    [Fact]
+    public async Task KeepTextFixesOnlyAppliesTheTextFixesAtOnceAsOneUndoStepAndClosesRewrite()
+    {
+        var connector = new Connector(OverWithFix, (_, ordinals) => Rows(ordinals, Fifteen));
+        using var session = Session(connector);
+        Assert.True(await ProposeAsync(session));
+        Assert.Equal(1, session.TextFixCount);
+        var editor = session.Editor;
+        var budget = Assert.Single(session.NextStepCards, card => card.Id == "Rewrite.Steps.Budget");
+        await budget.Chips.Single(chip => chip.Id == RewriteSession.ChooseYourselfChip).Invoke!();
+        budget = Assert.Single(session.NextStepCards, card => card.Id == "Rewrite.Steps.Budget");
+        await budget.Chips.Single(chip => chip.Label == "Keep text fixes only").Invoke!();
+        // Applied at once (Mac applyFreeChanges): one undo step, the voice change keeps its words, Rewrite closes.
+        Assert.False(session.IsOpen);
+        Assert.Equal("Word12", editor.Project.Edits.Corrections["w12"]);
+        Assert.Equal("word10", editor.Project.Transcript!.Words[10].Text);
+        Assert.Empty(editor.Project.VoiceLab.Segments);
+        Assert.True(editor.CanUndo);
+        editor.Undo();
+        Assert.False(editor.Project.Edits.Corrections.ContainsKey("w12"));
+    }
+
+    [Fact]
+    public async Task KeepTextFixesOnlyWithPaidTakesAppliesWithoutADiscardPrompt()
+    {
+        var connector = new Connector(OverWithFix, (_, ordinals) => Rows(ordinals, Fifteen));
+        var runner = new Runner((_, _) => (Fit, Passed));
+        using var session = await PricedAsync(connector, runner);
+        await SettleAsync(session);
+        Assert.True(session.HasPaidTakes);
+        session.ShowAutoFixChoices();
+        var budget = Assert.Single(session.NextStepCards, card => card.Id == "Rewrite.Steps.Budget");
+        var editor = session.Editor;
+        await budget.Chips.Single(chip => chip.Label == "Keep text fixes only").Invoke!();
+        Assert.Null(session.PendingPaidReviewChange);
+        Assert.False(session.IsOpen);
+        Assert.Equal("Word12", editor.Project.Edits.Corrections["w12"]);
+        Assert.Empty(editor.Project.VoiceLab.Segments);
+        Assert.True(editor.CanUndo);
+    }
+
+    [Fact]
+    public async Task ACollisionFoundAfterPaidTakesIsResolvedByTheFixesWithNoDiscard()
+    {
+        var connector = new Connector(RewriteSmokeTests.Close, (_, ordinals) => Rows(ordinals, "x"));
+        var runner = new Runner((_, _) => (Fit, Passed));
+        using var session = Session(connector, last: 13, editor: RewriteSmokeTests.CloseTogether());
+        Assert.True(await ProposeAsync(session));
+        Assert.Equal((2, 1), session.Collision);
+        Configure(session, runner);
+        await session.DiscoverWindowsAsync();
+        session.MarkBatchEstimateShown(session.PreparedBatch!);
+        await session.GenerateWindowsAsync((_, _, _, _) => Task.FromResult(true), _ => Task.FromResult<VoiceLabMonthlyCap?>(null));
+        await SettleAsync(session);
+        var window = Assert.Single(session.GenerationWindows);
+        Assert.True(session.HasPaidTakes);
+        Assert.Null(session.Collision);
+        Assert.Equal(TranscriptChangeState.Excluded, session.ChangeStates[2]);
+        Assert.Contains("Change 2 keeps its original words: it's too close to change 1 to voice separately.", session.AutoFix.Notes);
+        Assert.Null(session.PendingPaidReviewChange);
+        Assert.Same(window, session.Generation);
+        Assert.Single(window.Rows);
+        Assert.NotNull(window.SelectedTakeId);
+        Assert.Equal(1, runner.Sends);
+        // Use's readiness needs Media scratch audio the stub has none of; the collision no longer blocks it.
+        Assert.NotEqual("Change 2 needs a fix above.", session.FooterStep.Line);
+    }
+
+    [Fact]
+    public async Task ACollisionFoundAfterPaidTakesWhileTheFixesAreStoppedGetsACardAndUseWaits()
+    {
+        var connector = new Connector(RewriteSmokeTests.Close, (_, ordinals) => Rows(ordinals, "x"));
+        var hold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var runner = new Runner((_, _) => (Fit, Passed)) { Hold = hold };
+        using var session = Session(connector, last: 13, editor: RewriteSmokeTests.CloseTogether());
+        Assert.True(await ProposeAsync(session));
+        Configure(session, runner);
+        await session.DiscoverWindowsAsync();
+        session.MarkBatchEstimateShown(session.PreparedBatch!);
+        var making = session.GenerateWindowsAsync((_, _, _, _) => Task.FromResult(true), _ => Task.FromResult<VoiceLabMonthlyCap?>(null));
+        await runner.Started.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        session.StopAutoFix();
+        hold.SetResult();
+        await making;
+        await SettleAsync(session);
+        var window = Assert.Single(session.GenerationWindows);
+        Assert.True(session.HasPaidTakes);
+        Assert.Equal((2, 1), session.Collision);
+        var card = Assert.Single(session.NextStepCards, card => card.Id == "Rewrite.Steps.Collision2");
+        Assert.Equal("Change 2 is too close to change 1 to voice separately.", card.Sentence);
+        Assert.Equal(["Keep original words for 2", "✦ Merge with change 1"], card.Chips.Select(chip => chip.Label));
+        Assert.Equal(new RewriteFooterStep("Change 2 needs a fix above.", null, RewriteFooterAction.None), session.FooterStep);
+        Assert.False(session.CanAcceptAll);
+        await card.Chips[0].Invoke!();
+        Assert.Null(session.PendingPaidReviewChange);
+        Assert.Equal(TranscriptChangeState.Excluded, session.ChangeStates[2]);
+        Assert.Same(window, session.Generation);
+        Assert.Single(window.Rows);
+        Assert.Null(session.Collision);
+        Assert.DoesNotContain(session.NextStepCards, card => card.Id.StartsWith("Rewrite.Steps.Collision", StringComparison.Ordinal));
+        Assert.NotEqual("Change 2 needs a fix above.", session.FooterStep.Line);
+    }
 }
 #endif

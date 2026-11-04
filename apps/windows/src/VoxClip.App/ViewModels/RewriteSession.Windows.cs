@@ -14,7 +14,7 @@ internal sealed partial class RewriteSession
     internal int ActiveWindow { get; private set; }
     internal bool IsGeneratingBatch { get; private set; }
     /// <summary>Every phrase is ready or kept as recorded, and at least one take or text fix applies.</summary>
-    internal bool CanAcceptAll => GenerationIsCurrent && !IsGeneratingBatch && !applyingBatch && AutoFix.Work is null && generationWindows.Count > 0 &&
+    internal bool CanAcceptAll => GenerationIsCurrent && !IsGeneratingBatch && !applyingBatch && AutoFix.Work is null && generationWindows.Count > 0 && Collision is null &&
         generationWindows.Count == PricedVoiceHunks.Count && generationWindows.All(window => window.LeftOut || window.ReadyToAccept) &&
         (generationWindows.Any(window => !window.LeftOut) || LocalOperations().Count > 0);
     /// <summary>The footer's next step while selected takes cannot be used yet because a changed-duration phrase has no

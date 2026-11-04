@@ -4129,6 +4129,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal GenerateWindowsA
 member VoxClip.App.ViewModels.RewriteSession :: method internal GenerationHunk(VoxClip.Core.Domain.VoiceLab.VoiceLabDiffHunk,int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal GenerationInputAsync(string,string,uint,bool,VoxClip.App.ViewModels.RewriteSourceReader,System.Threading.CancellationToken,int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal HeldBackNote(int)
+member VoxClip.App.ViewModels.RewriteSession :: method internal KeepCollidedOriginal(int)
 member VoxClip.App.ViewModels.RewriteSession :: method internal KeepFixing()
 member VoxClip.App.ViewModels.RewriteSession :: method internal KeepMeasuredTakeAsync()
 member VoxClip.App.ViewModels.RewriteSession :: method internal KeepOriginal(int)

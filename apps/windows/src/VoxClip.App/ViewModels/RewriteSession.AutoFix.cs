@@ -212,6 +212,14 @@ internal sealed partial class RewriteSession
             StopAutoFix(failed.Problem);
             return;
         }
+        // A collision found after paid takes (Mac's refused takes plan): a merge would discard the paid takes, so the refused
+        // change keeps its original words, which costs nothing and moves no take. Its card shows if that can't be done.
+        if (HasPaidTakes && Collision is { } collision && KeepCollidedOriginal(collision.Change))
+        {
+            var note = $"Change {collision.Change} keeps its original words: it's too close to change {collision.Earlier} to voice separately.";
+            AutoFix.Notes.Add(note);
+            AutoFix.Announcement = note;
+        }
         for (var index = 0; index < generationWindows.Count; index++)
         {
             if (StuckReason(index) is not { } reason) { AutoFix.Lines.Remove(index); continue; }
