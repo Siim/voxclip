@@ -203,7 +203,7 @@ public enum VoiceLabOutputPlanner {
                 if end > start { captions.append(CaptionWord(id: word.id, text: state.textOf(word), start: start, end: end)) }
             }
         }
-        for segment in enabled where segment.kind == .tts {
+        for segment in enabled where segment.kind != .voiceChanger {
             guard let piece = pieces.first(where: { $0.segmentId == segment.id }) else { continue }
             for (index, word) in (segment.words ?? []).enumerated() {
                 let start = Double(piece.outputStartSample + Int64(EditingPrimitives.jsRound(word.start * rate))) / rate

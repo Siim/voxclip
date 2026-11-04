@@ -124,6 +124,30 @@ public enum VoiceLabRecipeBuilder {
         let measuredPassed: Bool = score.map { $0.isFinite && $0 >= record.speaker.threshold } ?? false
         let voiceAllowed: Bool = unmeasured ? score == nil : measuredPassed
         guard evidenceMatches, voiceAllowed else { throw VoiceLabProjectError.qaRejected }
+        let tokens = VoiceLabTakeQuality.tokens(input.text).count
+        let qa = VoiceLabRenderQA(transcriptTokens: tokens, transcriptExact: tokens <= 5 ? match == 1 : nil,
+            transcriptMatch: match, lufsJumpLu: jump, peakDbfs: peak, speakerScore: score,
+            speakerThreshold: record.speaker.threshold, speakerModel: record.speaker.model, speakerPassed: !unmeasured,
+            shortSpeech: evidence, joinAdvisory: row.acceptedJoinAdvisory)
+        var provenance = VoiceLabProvenance(provider: receipt.provider, endpoint: receipt.endpoint, model: input.modelID,
+            voiceId: record.voiceId, consentRecordId: record.id, requestId: receipt.requestID.uuidString,
+            seed: row.seed, createdAt: createdAt)
+        provenance.region = receipt.region.rawValue
+        provenance.pace = receipt.pace
+        let usd: Double?
+        if let synthesis = quote.synthesis.estimate.usd, let qa = quote.qa.estimate.usd { usd = NSDecimalNumber(decimal: synthesis + qa).doubleValue }
+        else { usd = nil }
+        let cost = VoiceLabCost(quoteId: quote.synthesis.id.uuidString, usd: usd)
+        return try assemble(row: row, take: take, input: input, published: published, asset: asset, videoChoice: videoChoice,
+            words: published.words, qa: qa, provenance: provenance, cost: cost, voiceRefId: record.id, consentVerifiedAt: verifiedAt)
+    }
+
+    /// The recipe every accepted take shares, cloned or recorded (`VoiceLabRecordedTake`): its video duration, seams and
+    /// audio, with the take's own checks, provenance, cost and voice reference.
+    package static func assemble(row: VoiceLabTakeRow, take: VoiceLabTakeAudio, input: VoiceLabTakeInput,
+                                 published: VoiceLabPublishedTake, asset: VoiceLabAsset, videoChoice: VoiceLabVideoMode?,
+                                 words: [VoiceLabWord], qa: VoiceLabRenderQA, provenance: VoiceLabProvenance, cost: VoiceLabCost,
+                                 voiceRefId: String?, consentVerifiedAt: Date?) throws -> VoiceLabCandidate {
         let plan = take.fit.plan
         let options = VoiceLabVideoDurationOptions(row: row, sourceSampleRate: input.sourceSampleRate)
         guard let videoChoice, options.allows(videoChoice) else { throw VoiceLabProjectError.videoModeUnsupported }
@@ -151,31 +175,17 @@ public enum VoiceLabRecipeBuilder {
                 sourceHandleSamples: edge.fadeSamples - inner, assetHandleFrames: frames,
                 microPause: incoming ? take.microPauseIn : take.microPauseOut)
         }
-        let tokens = VoiceLabTakeQuality.tokens(input.text).count
-        let qa = VoiceLabRenderQA(transcriptTokens: tokens, transcriptExact: tokens <= 5 ? match == 1 : nil,
-            transcriptMatch: match, lufsJumpLu: jump, peakDbfs: peak, speakerScore: score,
-            speakerThreshold: record.speaker.threshold, speakerModel: record.speaker.model, speakerPassed: !unmeasured,
-            shortSpeech: evidence, joinAdvisory: row.acceptedJoinAdvisory)
-        var provenance = VoiceLabProvenance(provider: receipt.provider, endpoint: receipt.endpoint, model: input.modelID,
-            voiceId: record.voiceId, consentRecordId: record.id, requestId: receipt.requestID.uuidString,
-            seed: row.seed, createdAt: createdAt)
-        provenance.region = receipt.region.rawValue
-        provenance.pace = receipt.pace
         var video = VoiceLabVideoRecipe(mode: mode, sourceStartSample: plan.windowStartSample, sourceEndSample: plan.windowEndSample,
             outputSamples: outputSamples, retimeFactor: mode == .zoomCover ? factor : nil,
             zoom: mode == .cut ? VoiceLabNaturalPacing.CUT_PUNCH_IN : mode == .zoomCover ? 1.12 : nil,
             faceX: mode == .zoomCover || mode == .cut ? 0.5 : nil, faceY: mode == .zoomCover || mode == .cut ? 0.5 : nil, assetId: nil, provider: nil, model: nil, requestId: nil,
             windowStartSample: nil, windowEndSample: nil, syncMode: nil)
         video.cuts = mode == .cut ? options.cuts : nil
-        let usd: Double?
-        if let synthesis = quote.synthesis.estimate.usd, let qa = quote.qa.estimate.usd { usd = NSDecimalNumber(decimal: synthesis + qa).doubleValue }
-        else { usd = nil }
-        let cost = VoiceLabCost(quoteId: quote.synthesis.id.uuidString, usd: usd)
         let seams = try VoiceLabSeams(in: seam(input.window.leftSeam, incoming: true), out: seam(input.window.rightSeam, incoming: false))
-        var recipe = VoiceLabRenderRecipe(audio: published.audio, words: published.words, outDuration: published.outDuration,
+        var recipe = VoiceLabRenderRecipe(audio: published.audio, words: words, outDuration: published.outDuration,
             seed: row.seed, chunks: published.chunks, roomTone: take.roomTone,
-            seams: seams, video: video, qa: qa, provenance: provenance, cost: cost, voiceSource: .own, voiceRefId: record.id,
-            consentVerifiedAt: verifiedAt)
+            seams: seams, video: video, qa: qa, provenance: provenance, cost: cost, voiceSource: .own, voiceRefId: voiceRefId,
+            consentVerifiedAt: consentVerifiedAt)
         recipe.edgeGain = take.edgeGain
         var candidate = VoiceLabCandidate(assetId: published.audio.assetId, score: row.score)
         candidate.recipe = recipe
@@ -183,11 +193,11 @@ public enum VoiceLabRecipeBuilder {
     }
 
     public static func segment(id: String, candidates: [VoiceLabCandidate], selected: Int, input: VoiceLabTakeInput,
-                               plan: VoiceLabFitPlan) throws -> VoiceLabSegment {
+                               plan: VoiceLabFitPlan, kind: VoiceLabSegmentKind = .tts) throws -> VoiceLabSegment {
         guard candidates.indices.contains(selected), let recipe = candidates[selected].recipe,
               candidates[selected].rejected == nil else { throw VoiceLabProjectError.invalidCandidate }
         let original = input.items.filter { $0.kind == .word && $0.end > plan.windowStart && $0.start < plan.windowEnd }.map(\.text).joined(separator: " ")
-        var segment = VoiceLabSegment(id: id, kind: .tts, enabled: true,
+        var segment = VoiceLabSegment(id: id, kind: kind, enabled: true,
             replace: VoiceLabReplacement(start: plan.windowStart, end: plan.windowEnd,
                 firstWordId: input.window.firstWordId, lastWordId: input.window.lastWordId),
             outDuration: recipe.outDuration, audio: recipe.audio, text: VoiceLabText(original: original, new: input.text, audioTags: VoiceLabAudioTags.recorded(input.audioTags, modelID: input.modelID)),

@@ -13,8 +13,11 @@ import VoxClipMedia
         case waiting, generating(String), ready, stopped(String), failed(String)
     }
     struct Take: Identifiable {
+        /// Where a take's audio came from: the cloned voice, or the user's own microphone (MicrophoneTake.swift).
+        enum Source: Equatable { case clonedVoice, microphone }
         let number: Int
         let row: VoiceLabTakeRow
+        var source: Source = .clonedVoice
         var id: UUID { row.id }
         var length: Double? { row.audio.map { Double($0.fit.plan.outputFrames) / Double($0.sampleRate) } }
         var fits: Bool { row.selectable && row.fits }
@@ -39,6 +42,10 @@ import VoxClipMedia
         var beforeExpression: Set<UUID> = []
         var videoChoice: VoiceLabVideoMode?
         var estimatedVoicedSeconds: Double?
+        /// The card's segment (PhraseOwnWords.swift): Suggested, My words or Say it myself. Switching keeps every take.
+        var wording: PhraseWording = .suggested
+        /// The user's own words for the phrase's change, between its bridge words; nil until My words is first chosen.
+        var ownWords: String?
         var selected: Take? { takes.first { $0.id == selectedID } }
         var originalLength: Double { window.end - window.start }
         var lengthDifference: Double? { selected?.length.map { $0 - originalLength } }
@@ -54,7 +61,8 @@ import VoxClipMedia
     struct Acceptance {
         let segments: [VoiceLabSegment]
         let assets: [VoiceLabAsset]
-        let voice: VoiceLabVoiceReference
+        /// nil when every selected take is the user's own microphone take, which uses no clone.
+        let voice: VoiceLabVoiceReference?
         var videoAssets: [VoiceLabVideoAsset] = []
     }
     private struct PreparedVideoSelection {
@@ -132,8 +140,12 @@ import VoxClipMedia
     @ObservationIgnored private var preparedVideoSelection: PreparedVideoSelection?
     @ObservationIgnored private(set) var videoPreparationFailure: (any Error)?
     @ObservationIgnored private var videoRevision = UUID()
-    @ObservationIgnored private var inputs: [VoiceLabTakeInput] = []
+    @ObservationIgnored private(set) var inputs: [VoiceLabTakeInput] = []
     @ObservationIgnored private var takeInputs: [UUID: VoiceLabTakeInput] = [:]
+    /// The user's own microphone takes, by take ID: kept on this Mac, published at Use (MicrophoneTake.swift).
+    @ObservationIgnored private var microphoneTakes: [UUID: MicrophoneTake] = [:]
+    /// Where microphone takes are written: the project's Voice Lab folders, as for paid takes.
+    @ObservationIgnored var microphoneStorage: VoiceLabTakeStorage?
     @ObservationIgnored var onMeasuredTakesChanged: (@MainActor () -> Void)?
     @ObservationIgnored private var nextSeeds: [UInt32] = []
     @ObservationIgnored private var batch: VoiceLabTakeBatch?
@@ -761,7 +773,9 @@ import VoxClipMedia
         phrases[phrase].selectedID = take
         phrases[phrase].explicitlySelected = true
         phrases[phrase].leftOut = false
-        if let input = takeInputs[take] {
+        if let microphone = microphoneTakes[take] {
+            phrases[phrase].text = microphone.text; phrases[phrase].audioTags = []
+        } else if let input = takeInputs[take] {
             if phrases[phrase].text != input.text || phrases[phrase].audioTags != input.audioTags {
                 keepSelectedWording(phrase: phrase)
             }
@@ -819,7 +833,9 @@ import VoxClipMedia
         stopAudition()
         guard !wasPlaying else { return }
         let turn = auditionTurn
-        guard let audio = await backend?.scratch(phrase, id), turn == auditionTurn, stillCurrent,
+        var found = microphoneTakes[id]?.scratch
+        if found == nil { found = await backend?.scratch(phrase, id) }
+        guard let audio = found, turn == auditionTurn, stillCurrent,
               phrases[phrase].takes.contains(where: { $0.id == id }), !generating, !preparing, !publishing else { return }
         do { try audition.play(audio, takeId: id, selectionId: String(phrase)) }
         catch { report(error) }
@@ -840,7 +856,8 @@ import VoxClipMedia
 
     func scratch(take: UUID, phrase: Int) async -> VoiceLabTakeScratch? {
         guard stillCurrent, phrases.indices.contains(phrase), phrases[phrase].takes.contains(where: { $0.id == take && $0.row.selectable }) else { return nil }
-        let scratch = await backend?.scratch(phrase, take)
+        var scratch = microphoneTakes[take]?.scratch
+        if scratch == nil { scratch = await backend?.scratch(phrase, take) }
         return stillCurrent ? scratch : nil
     }
 
@@ -970,6 +987,16 @@ import VoxClipMedia
         for phrase in selected {
             guard let row = phrase.selected?.row, row.selectable, !row.requiresJoinAdvisoryAcceptance,
                   let fit = row.audio?.fit.plan else { throw Failure.noSelection }
+            if let microphone = microphoneTakes[row.id] {
+                guard let storage = microphoneStorage else { throw Failure.stale }
+                let published = try MicrophoneTakeMaker.publish(microphone, storage: storage, at: date)
+                let candidate = try VoiceLabRecordedTake.candidate(row: row, input: microphone.input, published: published,
+                    model: microphone.model, createdAt: date, videoChoice: phrase.videoChoice)
+                segments.append(try VoiceLabRecordedTake.segment(id: UUID().uuidString.lowercased(), candidate: candidate,
+                    input: microphone.input, plan: fit))
+                for asset in published.assets where !assets.contains(where: { $0.id == asset.id }) { assets.append(asset) }
+                continue
+            }
             let made = input(for: row, phrase: phrase.id)
             let (published, record) = try await backend.publish(phrase.id, row, made, date)
             try checkCurrent(version)
@@ -987,8 +1014,51 @@ import VoxClipMedia
             guard voice == nil || voice == reference else { throw Failure.stale }
             voice = reference
         }
-        guard let voice else { throw Failure.noSelection }
+        guard !segments.isEmpty else { throw Failure.noSelection }
         return Acceptance(segments: segments, assets: assets, voice: voice)
+    }
+
+    // MARK: Own words and own takes (PhraseOwnWords.swift, MicrophoneTake.swift)
+
+    func chooseWording(_ wording: PhraseWording, phrase index: Int) {
+        guard phrases.indices.contains(index), phrases[index].wording != wording else { return }
+        if wording == .ownWords, phrases[index].ownWords == nil { phrases[index].ownWords = PhraseWording.change(of: phrases[index]) }
+        phrases[index].wording = wording
+    }
+    /// Typing the user's own words drops a held quote of this phrase that is not paid yet; no take is ever dropped.
+    func editOwnWords(_ text: String, phrase index: Int) {
+        guard phrases.indices.contains(index), phrases[index].ownWords != text else { return }
+        phrases[index].ownWords = text
+        guard batch != nil, batchIndices.contains(index), !generating, !preparing, operation == nil else { return }
+        revision += 1; batch = nil; batchIndices = []; progress = nil; cost = nil; estimate = nil
+    }
+    /// The words of the held quote when it is for `phrase` alone: what [Make take · ≈ $x] would voice.
+    func quotedText(phrase index: Int) -> String? {
+        guard batch != nil, batchIndices == [index], inputs.indices.contains(index) else { return nil }
+        return inputs[index].text
+    }
+    func microphoneTake(_ id: UUID) -> MicrophoneTake? { microphoneTakes[id] }
+    /// Lists the user's own take beside the phrase's other takes; Record again replaces `replacing` when it is not used.
+    @discardableResult func addMicrophoneTake(_ take: MicrophoneTake, phrase index: Int, replacing: UUID? = nil) -> Bool {
+        guard stillCurrent, phrases.indices.contains(index), !generating, !publishing, !preparingVideo else {
+            Task { await take.scratch.invalidate() }
+            return false
+        }
+        stopAudition()
+        keepsEveryTake = true
+        microphoneTakes[take.row.id] = take; takeInputs[take.row.id] = take.input
+        if let replacing, replacing != phrases[index].selectedID, microphoneTakes[replacing] != nil,
+           let at = phrases[index].takes.firstIndex(where: { $0.id == replacing }) {
+            phrases[index].takes[at] = Take(number: phrases[index].takes[at].number, row: take.row, source: .microphone)
+            let old = microphoneTakes.removeValue(forKey: replacing); takeInputs[replacing] = nil
+            Task { await old?.scratch.invalidate() }
+        } else {
+            let number = (phrases[index].takes.map(\.number).max() ?? 0) + 1
+            phrases[index].takes.append(Take(number: number, row: take.row, source: .microphone))
+        }
+        if case .generating = phrases[index].status {} else { phrases[index].status = .ready }
+        onMeasuredTakesChanged?()
+        return true
     }
 
     private func validate(_ windows: [VoiceLabWindow]) throws {
@@ -1059,15 +1129,15 @@ extension ClipTakePlan {
         // never prepared twice. Without one (only kept-source durations, or a phrase still unchosen) it is prepared here.
         let request: RenderRequest, recordID: String
         if let prepared = preparedVideoSelection, prepared.choices == videoChoices, chosen.count == selectedPhrases.count {
-            request = prepared.render.request; recordID = prepared.acceptance.voice.consentRecordId
+            request = prepared.render.request; recordID = prepared.acceptance.voice?.consentRecordId ?? inputs.first?.recordID ?? ""
         } else {
             let base = try await publishSelection(at: Date(), onlyChosen: true)
             let proposed = try VoiceLabEditCommand.acceptAll(segments: base.segments, assets: base.assets, voice: base.voice)
                 .applying(to: project, outputScope: scope, videoAssets: base.videoAssets)
             request = try await prepareDurationRender(proposed, scope)
-            recordID = base.voice.consentRecordId
+            recordID = base.voice?.consentRecordId ?? inputs.first?.recordID ?? ""
         }
-        guard stillCurrent, bindings == lipsyncBindings, let input = request.voiceLab else { throw Failure.stale }
+        guard stillCurrent, bindings == lipsyncBindings, !recordID.isEmpty, let input = request.voiceLab else { throw Failure.stale }
         let plan = input.prepared.outputPlan, rate = Int(plan.sampleRate)
         let total = plan.totalSourceSamples
         let windows = try eligible.map { phrase -> LipsyncWindow in

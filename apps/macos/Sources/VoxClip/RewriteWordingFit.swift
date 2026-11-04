@@ -198,7 +198,7 @@ extension RewriteSession {
             let rate = try VoiceLabPhraseTiming.speakingRate(transcript: RewriteReview.timingTranscript(reviewInputs))
             for phrase in plan.phrases {
                 for take in phrase.takes {
-                    guard let audio = take.row.audio, let input = plan.measuredInput(take: take.id) else { continue }
+                    guard take.source == .clonedVoice, let audio = take.row.audio, let input = plan.measuredInput(take: take.id) else { continue }
                     let estimate = try VoiceLabPhraseTiming.estimate(text: input.text, rate: rate)
                         + VoiceLabAudioTags.allowance(input.audioTags, text: input.text, modelID: input.modelID)
                     recordSpeakingRate(model: input.modelID, take: take.id,
@@ -209,7 +209,7 @@ extension RewriteSession {
             guard autoFix.plan !== plan else { advanceAutoFix(); return }
             guard connector != nil, wordingFit.measuredWork == nil, wordingFit.measured == nil,
                   let phrase = plan.phrases.first(where: { phrase in
-                      guard let take = phrase.selected, !wordingFit.measuredTakes.contains(take.id),
+                      guard phrase.wording == .suggested, let take = phrase.selected, !wordingFit.measuredTakes.contains(take.id),
                             plan.measuredInput(take: take.id)?.modelID == VoiceLabWordingFit.modelID else { return false }
                       let availability = plan.videoAvailability(phrase: phrase.id)
                       return !availability.allows(.source) && !availability.allows(.cut)

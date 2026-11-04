@@ -225,6 +225,9 @@ extension ClipTakePlan.Phrase {
             return takes.isEmpty ? "No take selected." : "No usable take selected. Review the reasons below."
         }
         let duration = String(format: "%.1f s", locale: Locale(identifier: "en_US_POSIX"), length)
+        if selected.source == .microphone {
+            return "Your take · \(selected.fits ? "fits \(duration) ✓" : duration) · free"
+        }
         let effectivePace = selected.row.receipt?.pace ?? selected.row.quote?.synthesis.pace ?? 1
         let pace = String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), effectivePace)
         let paceLabel = (VoiceLabNaturalPacing.NATURAL_PACE_MIN...VoiceLabNaturalPacing.NATURAL_PACE_MAX).contains(effectivePace) ? "natural pace" : "pace"
@@ -316,6 +319,7 @@ extension ClipTakePlan.Phrase {
                         session.updateAudioTags($0, phrase: phrase)
                     }.frame(maxWidth: .infinity, alignment: .leading)
             }
+            PhraseWordingSection(session: session, plan: plan, phrase: phrase)
             HStack(spacing: 4) {
                 ForEach(phrase.takes) { take in
                     if take.row.selectable, !take.row.requiresJoinAdvisoryAcceptance, !session.takesBusy {
@@ -431,7 +435,8 @@ extension ClipTakePlan.Phrase {
                     }
                 }
             }
-            if !session.takesBusy, session.autoFix.choicesShown, plan.spent.units > 0 || session.acceptedSpeechContext?.targetPhraseID == phrase.id {
+            if phrase.wording == .suggested, !session.takesBusy, session.autoFix.choicesShown,
+               plan.spent.units > 0 || session.acceptedSpeechContext?.targetPhraseID == phrase.id {
                 if let action = session.pricedTakeAction(phrase: phrase.id) {
                     Text(session.takeSendLine).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
                     PanelButton(action: action, kind: .ghost)

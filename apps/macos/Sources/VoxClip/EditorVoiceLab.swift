@@ -9,7 +9,7 @@ extension EditorModel {
     }
 
     /// Commits all included takes, cuts and fixes through one native project-snapshot undo transaction.
-    func applyVoiceLab(_ segments: [VoiceLabSegment], assets: [VoiceLabAsset], voice: VoiceLabVoiceReference,
+    func applyVoiceLab(_ segments: [VoiceLabSegment], assets: [VoiceLabAsset], voice: VoiceLabVoiceReference?,
                       scope: RewriteScope, localCommands: [EditCommand] = [], videoAssets: [VoiceLabVideoAsset] = []) throws {
         let output: VoiceLabOutputScope
         let words: DirectorScope

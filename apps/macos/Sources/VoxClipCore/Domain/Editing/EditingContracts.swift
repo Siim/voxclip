@@ -2,7 +2,8 @@ import Foundation
 
 public enum VoiceLabEditCommand: Sendable {
     case accept(VoiceLabSegment, assets: [VoiceLabAsset], voice: VoiceLabVoiceReference)
-    case acceptAll(segments: [VoiceLabSegment], assets: [VoiceLabAsset], voice: VoiceLabVoiceReference)
+    /// `voice` is nil when every segment is the user's own recorded take, which uses no clone (VoiceLabRecordedTake).
+    case acceptAll(segments: [VoiceLabSegment], assets: [VoiceLabAsset], voice: VoiceLabVoiceReference?)
     case setEnabled(segmentID: String, enabled: Bool)
     case delete(segmentID: String)
     case chooseCandidate(segmentID: String, index: Int)
@@ -37,9 +38,11 @@ public enum VoiceLabEditCommand: Sendable {
         case .acceptAll(let segments, let assets, let voice):
             guard !segments.isEmpty else { throw VoiceLabProjectError.invalidSegment }
             var result = try VoiceLabProject.upgradeToV3(project)
-            if let existing = result.voiceLab.voices?.first(where: { $0.id == voice.id }) {
-                guard existing == voice else { throw VoiceLabProjectError.consentUnverified }
-            } else { result = try VoiceLabProject.addVoiceReference(voice, to: result) }
+            if let voice {
+                if let existing = result.voiceLab.voices?.first(where: { $0.id == voice.id }) {
+                    guard existing == voice else { throw VoiceLabProjectError.consentUnverified }
+                } else { result = try VoiceLabProject.addVoiceReference(voice, to: result) }
+            }
             guard Set(assets.map(\.id)).count == assets.count else { throw VoiceLabProjectError.invalidAsset }
             let existing = result.voiceLab.assets ?? []
             for asset in assets {

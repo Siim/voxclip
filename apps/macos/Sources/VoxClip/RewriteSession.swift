@@ -137,6 +137,12 @@ struct RewriteChange: Equatable, Sendable {
     var takeQuotePhrase: Int?
     var focusedTakePhrase = 0
     var takeRowsShown = true
+    /// The phrase whose My words field shows: one free-text field at a time (PhraseOwnWords.swift).
+    var ownWordsEditing: Int?
+    let ownWordsAdvice = OwnWordsAdvice()
+    /// Say it myself's recorder, one phrase at a time (MicrophoneTake.swift).
+    let phraseMicrophone = PhraseMicrophoneTake()
+    @ObservationIgnored var takeStorage: VoiceLabTakeStorage?
     @ObservationIgnored var takeBackend: ((Int, @escaping VoiceLabTakeDispatchBoundary) -> ClipTakePlan.Backend)?
     @ObservationIgnored var takePlanOrdinals: [Int] = []
     @ObservationIgnored var takeRegion: ElevenLabsRegion?
@@ -157,6 +163,12 @@ struct RewriteChange: Equatable, Sendable {
         let scratchRoot: URL = dataRoot.appendingPathComponent("VoiceLabScratch", isDirectory: true)
         let storage = VoiceLabTakeStorage(projectId: model.project.id,
             paidRoot: paidRoot, scratchRoot: scratchRoot)
+        takeStorage = storage
+        if phraseMicrophone.transcriber == nil {
+            let engine = model.project.transcript?.engine
+            let whisper = engine?.id == .whispercpp ? engine?.modelId.flatMap { id in model.app.shared.map { (BundledModelCatalog(shared: $0), id) } } : nil
+            phraseMicrophone.transcriber = OnDeviceTakeTranscriber(locations: model.app.locations, whisper: whisper)
+        }
         let run = VoiceLabTakeRun(client: client, store: store, speaker: speaker, storage: storage, dispatchIfCurrent: { [weak self] _, start in
             guard let generation = await self?.generation else { throw VoiceLabError.consentRequired }
             try await generation.dispatchWithCurrentCost(start)

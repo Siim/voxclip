@@ -182,7 +182,7 @@ public enum VoiceLabRenderValidation {
             if project.transcript?.words.contains(where: { samples($0.start, rate) < tone.sourceEndSample && samples($0.end, rate) > tone.sourceStartSample }) == true { throw VoiceLabProjectError.missingRenderPolicy }
         }
         if project.voiceLab.cleanAudio?.mode == .on && recipe.roomTone != nil { throw VoiceLabProjectError.missingRenderPolicy }
-        if segment.kind == .tts && segment.scope == .passage && project.voiceLab.cleanAudio?.mode == .off && recipe.roomTone == nil { throw VoiceLabProjectError.missingRenderPolicy }
+        if segment.kind != .voiceChanger && segment.scope == .passage && project.voiceLab.cleanAudio?.mode == .off && recipe.roomTone == nil { throw VoiceLabProjectError.missingRenderPolicy }
         try validateSeam(recipe.seams.in, edge: start == 0, sourceAvailable: end-start, asset: asset, trim: recipe.audio.trimStart, stretch: recipe.audio.stretch, rate: rate, incoming: true)
         try validateSeam(recipe.seams.out, edge: end == total, sourceAvailable: end-start, asset: asset, trim: recipe.audio.trimEnd, stretch: recipe.audio.stretch, rate: rate, incoming: false)
         let inRight = recipe.seams.in.fadeSamples - recipe.seams.in.fadeSamples / 2
@@ -244,6 +244,9 @@ public enum VoiceLabRenderValidation {
             guard let count = qa.transcriptTokens, count > 0,
                   let match = qa.transcriptMatch, match.isFinite, (0...1).contains(match),
                   (count <= 5 ? qa.transcriptExact == true : match >= 0.9) else { throw VoiceLabProjectError.qaRejected }
+        } else if segment.kind == .recorded {
+            try VoiceLabRecordedTake.validate(recipe, sampleRate: rate, outputSamples: out)
+            return
         } else if recipe.words != nil { throw VoiceLabProjectError.invalidWords }
         if recipe.voiceSource == .own {
             guard let id = recipe.voiceRefId, let voice = project.voiceLab.voices?.first(where: { $0.id == id }),

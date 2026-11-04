@@ -237,7 +237,9 @@ extension RewriteSession {
         }
         let blocked = Set(blockedVoiceOrdinals)
         for phrase in plan.phrases {
-            guard let reason = stuckReason(phrase, plan: plan) ?? estimateBlockedReason(phrase, blocked: blocked) else {
+            // The user's own words and own takes are final: the resolver never rewrites them (design.md §6.3).
+            guard phrase.wording == .suggested,
+                  let reason = stuckReason(phrase, plan: plan) ?? estimateBlockedReason(phrase, blocked: blocked) else {
                 autoFix.lines[phrase.id] = nil; continue
             }
             let used = autoFix.rounds[phrase.id, default: 0]
