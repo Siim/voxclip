@@ -13,12 +13,12 @@ import SwiftUI
                 Text("This replaces the whole sentence, not just the changed word. It is not cropped back to the short phrase. Other changes and takes stay as they are.")
                 Text("The longer text and source window need a fresh TTS + bounded audio-check quote. Any unsent short-phrase approval is discarded. This review sends nothing and approves no charge; you must approve the new price separately.")
                 HStack {
-                    Button("Keep short phrase") { session.cancelSpeechContextReview() }
-                    Button("Accept sentence for new quote") { Task { await session.acceptSpeechContextReview() } }
+                    Button("Keep short phrase") { session.cancelSpeechContextReview() }.modifier(PanelButtonEvidence(id: "context.keepShort", title: "Keep short phrase"))
+                    Button("Accept sentence for new quote") { Task { await session.acceptSpeechContextReview() } }.modifier(PanelButtonEvidence(id: "context.accept", title: "Accept sentence for new quote"))
                 }.disabled(session.takesBusy)
             } else if session.speechContextOffer != nil {
                 Button("Use surrounding sentence") { session.reviewSpeechContext() }
-                    .disabled(session.takesBusy)
+                    .modifier(PanelButtonEvidence(id: "context.offer", title: "Use surrounding sentence")).disabled(session.takesBusy)
             }
             if !session.speechContextProblem.isEmpty {
                 Text(session.speechContextProblem).foregroundStyle(DesignValues.color("status.warning"))

@@ -1,5 +1,51 @@
 # macOS implementation contracts
 
+### 2026-11-04 — Rewrite smoke: nine stuck scenarios, seven invariants, one command
+
+- **Built.** `-rewriteSmoke <dir>` (`DebugRewriteSmoke.swift`, DEBUG, test session) opens the real `RewriteSession`, `ClipTakePlan` and `DirectorPanel` on a 94-word fixture. The fixture's 24 kHz source WAV is written to the temporary data folder.
+  - **Scripted stand-ins** (`DebugRewriteSmokeStubs.swift`), so nothing is paid or sent:
+    - `RewriteSmokeConnector` gives Rewrite replies with `nextActions`, fit replies and held replies.
+    - `RewriteSmokeHTTP` (a URL protocol behind `ElevenLabsVoiceLab.rewriteSmoke`) serves models, voices, synthesis with timestamps and speech-to-text. Take lengths come from a per-take factor; word-check transcripts can mishear words.
+    - A matching speaker embedder, and prices from `shared/catalog/voice-lab.json`.
+  - **Driving and checking.**
+    - Each scenario clicks only `PanelAction`s and the row controls a user would.
+    - After each run the harness installs the scripted generation, which stands in for `discoverVoices`.
+    - The panel is rendered in a borderless window that is never ordered in. After every step it checks I1–I7 from the task model and the layout evidence.
+  - **Output.**
+    - `rewrite-smoke.json`, `summary.txt` and `results.json` (one result per check).
+    - A PNG of the panel for each failing step.
+  - **Runner and test.**
+    - `scripts/rewrite-smoke.sh` runs it with a clean environment.
+    - `MacUIIntegrationTests/rewriteSmoke` asserts every check, with `rewriteSmokeKnownFailing` as known issues.
+- **Evidence markers.** SwiftUI builds no accessibility tree offscreen without an assistive client (probed: 31 elements, none from SwiftUI). So `PanelButtonEvidence` gains `init(id:title:)`, and these controls now carry DEBUG layout evidence of their enabled state:
+  - the duration radios;
+  - the voice picker;
+  - Use surrounding sentence;
+  - Try another…;
+  - Use anyway;
+  - PhraseTimingRecovery's buttons;
+  - the speech-context review buttons;
+  - Lip Sync;
+  - + Expression.
+
+  `AudioTagPhrase` reports its drawn quote (`voice.quote.{n}`). No behaviour changed. Where stucktakes deleted a disabled control, its side of the merge was taken.
+- **Scripted states.** S2 and S5 first try the natural path. When the fixture's placement merges the pair, or neither reviews nor refuses the sentence, the session is put in the product's own state:
+  - S2: `takePlanFailure = .placement(.collidesWithChange)`, as the layout audit's `rewrite-collision` variant does;
+  - S5: `reviewTimingSpeechContext`'s refusal.
+
+  Each such step is labelled "(scripted …)" in the report.
+- **Results.**
+  - At cf40f4f2, every scenario fails: I2 in all nine, plus I1 (S4), I3 (S5), I5 (S3, S4, S6), I6 (S3) and I7 (S7).
+  - At ca4bd3e2 (lead with stucktakes), seven scenarios pass. S6 fails I5 and S9 fails I2; both are known issues in the test.
+  - A full run takes about 35 s.
+- **Next.**
+  - Fixture limits:
+    - The synthetic takes carry a join advisory, so the driver clicks Use anyway.
+    - Cut and Match need real video, so the driver prefers Keep source.
+    - Stub takes fill their slot exactly, which reads as slow speech to the speaking-rate calibration. This is part of S6's I5.
+  - Remove a known-failing entry once its invariant passes; the test then fails until you do.
+  - New stuck states belong in `DebugRewriteSmoke.scenarios`, with their action ids in `Harness.finish`'s order.
+
 ### 2026-11-04 — Rewrite fixes its own stuck phrases; phrase cards show only what can act
 
 - **Built.**

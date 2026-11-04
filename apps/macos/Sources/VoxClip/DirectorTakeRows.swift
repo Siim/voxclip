@@ -369,6 +369,7 @@ extension ClipTakePlan.Phrase {
                                     session.mutateLipsync(phrase: phrase.id) { _ = plan.useAnyway(take: take.id, phrase: phrase.id) }
                                 }.buttonStyle(.plain).frame(minHeight: 22)
                                     .accessibilityLabel("Use take \(take.number) anyway, phrase \(phrase.id + 1), accept join advisory")
+                                    .modifier(PanelButtonEvidence(id: "useAnyway.\(phrase.id).\(take.number)", title: "Use anyway"))
                             }.font(VCType.callout.font())
                         }
                     }
@@ -432,6 +433,7 @@ extension ClipTakePlan.Phrase {
                 } else {
                     Button(RewriteSession.firstTakeVerb(hasTakes: !phrase.takes.isEmpty) + "…") { session.priceAnotherTake(phrase: phrase.id) }
                         .buttonStyle(.plain).help("Prepare this phrase's price. Nothing is sent until you approve it.")
+                        .modifier(PanelButtonEvidence(id: "priceAnother.\(phrase.id)", title: RewriteSession.firstTakeVerb(hasTakes: !phrase.takes.isEmpty) + "…"))
                 }
             }
         }

@@ -267,6 +267,40 @@ The installed CLI smoke test sets `VOXCLIP_DATA_DIR` to a fresh directory under 
 8. Publish stable releases with `gh release edit vX.Y.Z --draft=false --latest`. Publish betas with `gh release edit vX.Y.Z-beta.N --draft=false`, keeping the draft's prerelease flag; never pass `--latest` for a beta.
 9. **Stable releases only:** after the approved Pages publication succeeds, inspect the download links on `https://clip.voxconvo.com`: Mac, Windows x64, Windows Arm and FFmpeg corresponding source must link to the correct new tag and actual assets on GitHub Releases; verify each target returns the expected file. Check the version, sizes, any listed SHA-256, and video/caption playback. There are no voxconvo.com/download redirects. Betas keep the last stable app release on the page.
 
+### 4.0 Rewrite smoke: run before every handed-over test build
+
+Run it before any build goes to the user, test builds included:
+
+```sh
+apps/macos/scripts/rewrite-smoke.sh [<VoxClip.app | debug executable>] [--keep <dir>] [--only S1,S4] [--known-failing I2,I5]
+```
+
+With no path it builds the DEBUG app first. It needs no unlocked console, no keys and no network, and it is safe while the Mac is in use: the app runs `-rewriteSmoke <dir>` offscreen, in a window that is never shown, with a temporary data folder. A scripted AI and a scripted ElevenLabs (`DebugRewriteSmokeStubs.swift`) answer every request. Nothing is paid and nothing is sent.
+
+It drives the real Rewrite session through nine scenarios using only clicks a user could make:
+
+- S1: happy path.
+- S2: two nearby changes refused as too close.
+- S3: takes too long for the slot.
+- S4: "Claude Code" heard as "cloud code".
+- S5: a refused surrounding sentence at the clip start.
+- S6: over the voice budget.
+- S7: an expression added while another phrase has paid takes.
+- S8: a failure, then a stale reply.
+- S9: Stop during an automatic fix.
+
+After every step it checks seven invariants:
+
+- I1: a control that acts, or the resolver, is visible.
+- I2: no disabled control.
+- I3: at most one free-text field.
+- I4: the footer agrees with the panel.
+- I5: every scenario but S9 ends applied.
+- I6: no paid take dropped without a confirm.
+- I7: an added tag shows in the phrase quote.
+
+It prints `summary.txt` and writes `rewrite-smoke.json`, plus a PNG of the panel for each failing step. It exits non-zero on any failure not named in `--known-failing`. The same run is `MacUIIntegrationTests/rewriteSmoke`, which keeps its own known-failing list. Hand over a build only when the smoke is clean, or when every remaining failure is named and the user has been told.
+
 ---
 
 ### 4.1 Launch page go-live — user's approval required
