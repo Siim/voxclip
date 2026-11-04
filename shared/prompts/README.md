@@ -19,7 +19,7 @@ The macOS and Windows apps send the same prompts to every LLM connector. The pro
 | `ai-tighten.json` | AI tighten: system prompt, strength levels, verification limits, output schema `tighten_edits` | M2 |
 | `voice-rewrite.json` | Voice Lab passage/full-take proposal (`promptVersion` 3): system prompt, request templates with the length budget (`targetSeconds`, `minChars`, `maxChars`), optional expression annotations and next steps, output schema `voice_rewrite_proposal` | Swift and Windows Core services; Windows annotation behavior owed |
 | `patch-rewrite.json` | Voice Lab Fix with AI line edits (`promptVersion` 3): system prompt with the editing rules, transcript block in the clip finder's line format, request templates for each line's range of letters and digits and for the instruction, optional expression annotations and next steps, output schema `patch_edits`, the "Check this" badge copy | Swift and Windows Core services; Windows annotation behavior owed |
-| `rewrite-next-actions.json` | Rewrite next steps (`promptVersion` 1): scoped and open feedback blocks, phrase line, blocked reasons, the "Change fewer words" instruction (voice-lab.md §8.2.1) | Swift app; Windows owed |
+| `rewrite-next-actions.json` | Rewrite next steps (`promptVersion` 2): scoped and open feedback blocks, phrase line, blocked reasons, the "Change fewer words" and merge instructions (voice-lab.md §8.2.1) | Swift app; Windows owed |
 
 The connector catalog, including the connection-test request, is `../catalog/llm-providers.json`. The normative behaviour (how requests are built, windowed, validated and finalised) is in [`doc/spec/ai.md`](../../doc/spec/ai.md).
 
@@ -53,9 +53,9 @@ Voice and patch Rewrite are `promptVersion` 3: both replies may add the optional
 structured `nextActions` (at most four `{label, instruction, ordinals?}` one-click
 fixes for blocked phrases; labels are display only). Mac HTTP strict shaping makes
 the field and `ordinals` required, so the reply may give an empty array.
-`rewrite-next-actions.json` (`promptVersion` 1) holds the scoped and open feedback
-blocks, the per-phrase line and reasons, and the built-in "Change fewer words"
-instruction that a next step sends back through the request's `feedback`
+`rewrite-next-actions.json` (`promptVersion` 2) holds the scoped and open feedback
+blocks, the per-phrase line and reasons (including `collision`), the built-in "Change fewer words"
+and "Merge with phrase {m}" (`mergeInstruction`) instructions that a next step sends back through the request's `feedback`
 (voice-lab.md §8.2.1). `tools/fixtures/voice-lab/generate_next_actions.py` pins all
 three files' hashes. Windows consumes the new field only as schema; its behaviour is
 owed.

@@ -1428,6 +1428,7 @@ The current connectors return one answer, so nothing streams: R1 waits until the
   - A phrase that still does not fit after the automatic rounds: its row keeps Ask for shorter/longer, Keep original words, Use surrounding sentence and Price it anyway; the chips row adds the ✦ suggestions for the blocked phrases.
   - A phrase whose takes all failed the checks: "Phrase {n}: no take passed the checks." [Try another] [Keep original words] [✦ …].
   - A refused surrounding sentence: [Keep original words] [Price it anyway] (while the phrase is blocked) [✦ …].
+  - A takes plan that could not be made: "Phrase {n} is too close to phrase {m} to voice separately." [Keep original words for {n}] [Keep text fixes only] [✦ Merge with phrase {m}] [✦ …] and the field; other failures name themselves with [Get a fresh price], [Choose durations], [Spending limit…] or [Use {k} Takes]. The footer then reads "Phrase {n} needs a fix above." (or "Fix the problem above to go on.") with no price: never "N phrases fit" beside Get Price while the plan is refused.
   - A failed Rewrite (R1x with a message): [Back to the changes] when a proposal was replaced, and the field.
   - R3, and a re-ask whose reply came too late: the field; a late or stopped re-ask also shows its line and [Ask again].
   - Chips are bordered capsules that wrap at any column width. An AI suggestion starts with ✦, and VoiceOver reads "Suggested by the AI: {label}". Its label is display text only; clicking sends its instruction.
