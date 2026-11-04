@@ -83,4 +83,67 @@ extension RewriteSession {
         phraseMicrophone.meters = false
     }
 }
+extension DebugRewriteSmoke {
+    /// My words and Say it myself (design.md §6.3), driven as a user clicks them, with the scripted microphone above.
+    static var ownTakeScenarios: [Definition] { [
+        Definition(id: "S-own-typed", title: "My words: the user types the wording, the cloned voice reads it, Use", voiced: 1,
+            fixture: Fixture(rewrites: [.passage(replace([twoChanges[0]]))], voice: RewriteSmokeVoiceScript(offset: -0.2))) { harness in
+            try await harness.start()
+            try await harness.click(["prepareTakes", "makeTakes"])
+            guard let session = harness.session, session.takePlan?.phrases.isEmpty == false else { throw Failure.setup("S-own-typed needs a takes plan") }
+            try await harness.act("choose [My words] on phrase 1", clicked: "wording") { session.chooseWording(.ownWords, phrase: 0) }
+            try await harness.act("type 'shoot the clip in one go' in My words", clicked: "ownWords") {
+                session.editOwnWords("shoot the clip in one go", phrase: 0)
+                await session.priceOwnWords(phrase: 0)
+            }
+            guard let action = session.ownWordsTakeAction(phrase: 0) else { throw Failure.missing("Make take", "My words has no priced take") }
+            try await harness.act("click [\(action.title)]", clicked: action.id) { action.perform() }
+            if session.task.confirm != nil { try await harness.click(["approveTakeQuote"]) }
+            try await harness.finish()
+        },
+        Definition(id: "S-own-mic", title: "Say it myself: the user records the phrase, it is checked on this Mac, Use", voiced: 1,
+            fixture: Fixture(rewrites: [.passage(replace([twoChanges[0]]))], voice: RewriteSmokeVoiceScript(offset: -0.2))) { harness in
+            try await harness.start()
+            try await harness.click(["prepareTakes", "makeTakes"])
+            try await recordOwnTake(harness, factor: 1, step: "click [● Record]")
+            try await useOwnTake(harness)
+            try await harness.finish()
+        },
+        Definition(id: "S-own-mic-misfit", title: "Say it myself runs too long, then Record again fits, Use", voiced: 1,
+            fixture: Fixture(rewrites: [.passage(replace([twoChanges[0]]))], voice: RewriteSmokeVoiceScript(offset: -0.2))) { harness in
+            try await harness.start()
+            try await harness.click(["prepareTakes", "makeTakes"])
+            try await recordOwnTake(harness, factor: 2.2, step: "click [● Record]")
+            try await recordOwnTake(harness, factor: 1, step: "click [Record again]")
+            try await useOwnTake(harness)
+            try await harness.finish()
+        },
+    ] }
+
+    /// Chooses Say it myself on phrase 1, records a take `factor` times the gap's speech, and stops.
+    @MainActor private static func recordOwnTake(_ harness: Harness, factor: Double, step: String) async throws {
+        guard let session = harness.session, let plan = session.takePlan, !plan.phrases.isEmpty else { throw Failure.setup("no takes plan") }
+        let phrase = plan.phrases[0]
+        try await harness.act("choose [● Say it myself] on phrase 1", clicked: "wording") {
+            session.useScriptedMicrophone(words: EditingPrimitives.splitWords(phrase.text),
+                speechSeconds: (phrase.window.end - phrase.window.start - 0.25) * factor)
+            session.chooseWording(.microphone, phrase: 0)
+        }
+        try await harness.act(step, clicked: "microphone.record") { await session.phraseMicrophone.record(phrase: 0, plan: plan) }
+        try await harness.act("click [Stop]", clicked: "microphone.stop") { await session.phraseMicrophone.stop() }
+        if !session.phraseMicrophone.problem.isEmpty { throw Failure.setup("the take could not be checked: " + session.phraseMicrophone.problem) }
+    }
+
+    /// [Use your take], or [Use anyway] for a join to listen to first.
+    @MainActor private static func useOwnTake(_ harness: Harness) async throws {
+        guard let session = harness.session, let plan = session.takePlan,
+              let take = plan.phrases.first?.takes.last(where: { $0.source == .microphone }) else { throw Failure.setup("no own take") }
+        let anyway = take.row.requiresJoinAdvisoryAcceptance || !plan.lengthFits(take: take)
+        try await harness.act("click [\(anyway ? "Use anyway" : "Use your take")] on phrase 1", clicked: "microphone.use") {
+            session.mutateLipsync(phrase: 0) {
+                _ = take.row.requiresJoinAdvisoryAcceptance ? plan.useAnyway(take: take.id, phrase: 0) : plan.select(take: take.id, phrase: 0)
+            }
+        }
+    }
+}
 #endif

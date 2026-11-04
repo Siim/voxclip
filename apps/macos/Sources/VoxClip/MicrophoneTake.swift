@@ -300,9 +300,11 @@ enum PhraseMicrophoneCopy {
             Text(microphone.state == .cueing ? "Get ready…" :
                 "\(PhraseMicrophoneCopy.seconds(microphone.seconds)) / gap \(PhraseMicrophoneCopy.seconds(phrase.originalLength))")
                 .font(VCType.small.font()).monospacedDigit()
-            Button("Stop") { Task { await microphone.stop() } }
-                .buttonStyle(.plain).disabled(microphone.state != .recording)
-                .modifier(PanelButtonEvidence(id: "microphone.stop.\(phrase.id)", title: "Stop"))
+            // Stop shows once recording starts; during the count-in or lead-in it could not act yet.
+            if microphone.state == .recording {
+                Button("Stop") { Task { await microphone.stop() } }
+                    .buttonStyle(.plain).modifier(PanelButtonEvidence(id: "microphone.stop.\(phrase.id)", title: "Stop"))
+            }
         }
         .accessibilityElement(children: .combine).accessibilityLabel("Recording phrase \(phrase.id + 1)")
     }

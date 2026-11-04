@@ -1,5 +1,5 @@
 #!/bin/zsh
-# The Rewrite smoke (doc/release.md): drives the Rewrite flow through thirteen stuck scenarios with a scripted AI and
+# The Rewrite smoke (doc/release.md): drives the Rewrite flow through its stuck and own-words scenarios with a scripted AI and
 # ElevenLabs, offscreen, and checks the panel after every step. Run it before every handed-over test build.
 #
 #   apps/macos/scripts/rewrite-smoke.sh [<VoxClip.app | debug executable | build directory>] [--keep <dir>]

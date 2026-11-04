@@ -1091,6 +1091,6 @@ import VoxClipCore
             try await harness.start()
             try await harness.finish()
         },
-    ] }
+    ] + ownTakeScenarios }
 }
 #endif

@@ -30,8 +30,9 @@ struct OwnWordsFit: Equatable {
     let gap: Double
     let lower: Double
     let upper: Double
-    var fits: Bool { seconds >= lower && seconds <= upper }
-    var tooLong: Bool { seconds > upper }
+    /// The plan's own verdict for these words in this gap (`VoiceLabPhraseTiming`).
+    let fits: Bool
+    let tooLong: Bool
     var line: String {
         let about = String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), seconds)
         let slot = String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), gap)
@@ -79,7 +80,8 @@ extension RewriteSession {
                 sourceItems: spoken, sourceEnvelope: envelope, rateMultiplier: calibrated)
             let lower = timing.minimumSeconds ?? timing.slotSeconds
             return OwnWordsFit(words: EditingPrimitives.splitWords(text).count, seconds: timing.estimateSeconds,
-                gap: phrase.originalLength, lower: lower, upper: max(lower, timing.maximumSeconds ?? timing.slotSeconds))
+                gap: phrase.originalLength, lower: lower, upper: max(lower, timing.maximumSeconds ?? timing.slotSeconds),
+                fits: timing.fits, tooLong: timing.tooLong)
         } catch { return nil }
     }
 
@@ -174,7 +176,6 @@ extension RewriteSession {
                 ForEach(PhraseWording.allCases) { Text($0.title).tag($0) }
             }
             .pickerStyle(.segmented).labelsHidden().controlSize(.small)
-            .disabled(session.takesBusy)
             .modifier(PanelButtonEvidence(id: "wording.\(phrase.id)", title: phrase.wording.title))
             switch phrase.wording {
             case .suggested: EmptyView()
