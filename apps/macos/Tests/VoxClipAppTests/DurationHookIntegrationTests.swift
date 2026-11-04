@@ -186,7 +186,10 @@ private struct DurationHookKeys: KeyProvider {
         #expect(plan.approvalID != nil && fixture.backend.preparations == 1)
         await plan.start(approved: true)
         #expect(plan.problem.isEmpty, Comment(rawValue: "\(plan.problem) cause: \(String(reflecting: plan.videoPreparationFailure))"))
-        #expect(plan.phrases.allSatisfy { $0.selected?.row.selectable == true && $0.videoChoice == nil })
+        // A passing take's first valid duration is chosen automatically (design.md §6.3.7); any choice must be valid.
+        #expect(plan.phrases.allSatisfy { phrase in
+            phrase.selected?.row.selectable == true && phrase.videoChoice.map { plan.videoAvailability(phrase: phrase.id).allows($0) } != false
+        })
         #expect(!plan.canAccept && fixture.backend.publications == 0)
         return plan
     }
