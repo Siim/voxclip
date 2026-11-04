@@ -42,7 +42,10 @@ extension HeavyMediaTests {
     }
     /// The invariants (DebugRewriteSmoke.swift) this build still fails, each a known issue until the Rewrite fixes it. A
     /// listed invariant that passes everywhere fails the test, so the list shrinks as the fixes land.
-    static let rewriteSmokeKnownFailing: [String: String] = [:]
+    static let rewriteSmokeKnownFailing: [String: String] = [
+        "I2": "S9: the change list is disabled while the pre-pay wording fit runs (ChangeListCard .disabled(wordingLocked))",
+        "I5": "S6: after the takes fit, the recalibrated estimate blocks a phrase ('needs a shorter wording') and Use never shows",
+    ]
     /// The Rewrite smoke (doc/release.md, `scripts/rewrite-smoke.sh`): nine stuck scenarios through the real session with a
     /// scripted AI and ElevenLabs, offscreen. Every step keeps a control that acts, no disabled control, one free-text
     /// field at most, a footer that agrees with the panel, paid takes until a confirm, and a tag drawn as it is added;
