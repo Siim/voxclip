@@ -98,6 +98,21 @@ public static class VoiceLabRecipeBuilder
             throw Error(VoiceLabProjectErrorCode.QaRejected);
         if (row.AcceptedJoinAdvisory is { } accepted && (!row.HasJoinAdvisory || !accepted.Seams.SequenceEqual(qa.JoinSeams) || !accepted.Validates(jump, createdAt)))
             throw Error(VoiceLabProjectErrorCode.QaRejected);
+        var tokens = VoiceLabTakeQuality.Tokens(input.Text).Length;
+        var checkedQa = new VoiceLabRenderQa(tokens, tokens <= 5 ? match == 1 : null, match, jump, peak,
+            score, record.Speaker.Threshold, record.Speaker.Model, !unmeasured, evidence, JoinAdvisory: row.AcceptedJoinAdvisory);
+        var provenance = new VoiceLabProvenance(receipt.Provider, receipt.Endpoint.TrimStart('/'), input.ModelId, record.VoiceId, record.RecordId,
+            receipt.ActionId.ToString("D"), row.Seed, createdAt) { Region = receipt.Region.ToString().ToLowerInvariant(), Pace = receipt.Pace };
+        var usd = quote.Synthesis.Estimate.Usd is { } synthesis && quote.Qa.Estimate.Usd is { } transcription ? (double?)(synthesis + transcription) : null;
+        return Assemble(row, take, input, published, asset, videoChoice, face, Array.AsReadOnly(published.Words.ToArray()), checkedQa, provenance,
+            new(quote.Synthesis.Token.ToString("D"), usd), record.RecordId, record.Attestations.AcceptedAt);
+    }
+    /// <summary>The recipe every accepted take shares, cloned or recorded (<see cref="VoiceLabRecordedTake"/>): its video
+    /// duration, seams and audio, with the take's own checks, provenance, cost and voice reference (Mac <c>assemble</c>).</summary>
+    internal static VoiceLabCandidate Assemble(VoiceLabTakeRow row, VoiceLabTakeAudio take, VoiceLabTakeInput input, VoiceLabPublishedTake published,
+        VoiceLabAsset asset, VoiceLabVideoMode? videoChoice, VoiceLabZoomCover? face, IReadOnlyList<VoiceLabWord> words, VoiceLabRenderQa checkedQa,
+        VoiceLabProvenance provenance, VoiceLabCost cost, string? voiceRefId, DateTimeOffset? consentVerifiedAt)
+    {
         var plan = take.Fit.Plan;
         // A fitting take keeps its source duration. A changed-duration take needs an explicit choice: Cut, Match video
         // (Retimed: centered 1.12× crop) or a ZoomCover with an explicit face position.
@@ -130,27 +145,22 @@ public static class VoiceLabRecipeBuilder
             if (!double.IsFinite(frames) || frames < 0 || frames >= (double)long.MaxValue) throw Error(VoiceLabProjectErrorCode.InvalidFadeHandles);
             return new(edge.Kind, edge.FadeSamples, edge.FadeSamples - inner, (long)frames, incoming ? take.MicroPauseIn : take.MicroPauseOut);
         }
-        var tokens = VoiceLabTakeQuality.Tokens(input.Text).Length;
-        var checkedQa = new VoiceLabRenderQa(tokens, tokens <= 5 ? match == 1 : null, match, jump, peak,
-            score, record.Speaker.Threshold, record.Speaker.Model, !unmeasured, evidence, JoinAdvisory: row.AcceptedJoinAdvisory);
-        var provenance = new VoiceLabProvenance(receipt.Provider, receipt.Endpoint.TrimStart('/'), input.ModelId, record.VoiceId, record.RecordId,
-            receipt.ActionId.ToString("D"), row.Seed, createdAt) { Region = receipt.Region.ToString().ToLowerInvariant(), Pace = receipt.Pace };
         var zoomCover = mode == VoiceLabVideoMode.ZoomCover;
         var video = new VoiceLabVideoRecipe(mode, plan.WindowStartSample, plan.WindowEndSample, output,
             zoomCover ? factor : null, zoomCover ? VoiceLabVideoDurationOptions.MatchZoom : mode == VoiceLabVideoMode.Cut ? VoiceLabNaturalPacing.CUT_PUNCH_IN : null,
             face?.FaceX, face?.FaceY, null, null, null, null, null, null, null) { Cuts = mode == VoiceLabVideoMode.Cut ? options.Cuts : null };
-        var usd = quote.Synthesis.Estimate.Usd is { } synthesis && quote.Qa.Estimate.Usd is { } transcription ? (double?)(synthesis + transcription) : null;
-        var recipe = new VoiceLabRenderRecipe(published.Audio, Array.AsReadOnly(published.Words.ToArray()), published.OutDuration, row.Seed,
+        var recipe = new VoiceLabRenderRecipe(published.Audio, words, published.OutDuration, row.Seed,
             Array.AsReadOnly(published.Chunks.ToArray()), take.RoomTone, new(Seam(input.Window.LeftSeam, true), Seam(input.Window.RightSeam, false)),
-            video, checkedQa, provenance, new(quote.Synthesis.Token.ToString("D"), usd), VoiceLabVoiceSource.Own, record.RecordId, record.Attestations.AcceptedAt, take.EdgeGain);
+            video, checkedQa, provenance, cost, VoiceLabVoiceSource.Own, voiceRefId, consentVerifiedAt, take.EdgeGain);
         return new(published.Audio.AssetId, row.Score, null) { Recipe = recipe };
     }
-    public static VoiceLabSegment Segment(string id, IReadOnlyList<VoiceLabCandidate> candidates, int selected, VoiceLabTakeInput input, VoiceLabFitPlan plan)
+    public static VoiceLabSegment Segment(string id, IReadOnlyList<VoiceLabCandidate> candidates, int selected, VoiceLabTakeInput input, VoiceLabFitPlan plan,
+        VoiceLabSegmentKind kind = VoiceLabSegmentKind.Tts)
     {
         if (selected < 0 || selected >= candidates.Count || candidates[selected].Rejected is not null || candidates[selected].Recipe is not { } recipe)
             throw Error(VoiceLabProjectErrorCode.InvalidCandidate);
         var original = string.Join(" ", input.Items.Where(word => word.Kind == WordKind.Word && word.End > plan.WindowStart && word.Start < plan.WindowEnd).Select(word => word.Text));
-        return new(id, VoiceLabSegmentKind.Tts, true, new(plan.WindowStart, plan.WindowEnd, input.Window.FirstWordId, input.Window.LastWordId), recipe.OutDuration,
+        return new(id, kind, true, new(plan.WindowStart, plan.WindowEnd, input.Window.FirstWordId, input.Window.LastWordId), recipe.OutDuration,
             recipe.Audio, new(original, input.Text) { AudioTags = input.HasRequestTags ? VoiceLabAudioTags.Validated(input.AudioTags, input.Text) : null }, recipe.Words, recipe.Provenance, new(recipe.Qa.TranscriptMatch, recipe.Qa.LufsJumpLu, recipe.Qa.PeakDbfs, recipe.Qa.SpeakerScore),
             Array.AsReadOnly(candidates.ToArray()), selected) { Scope = VoiceLabSegmentScope.Passage };
     }

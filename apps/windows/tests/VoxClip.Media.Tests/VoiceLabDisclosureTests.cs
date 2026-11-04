@@ -113,6 +113,47 @@ public sealed class VoiceLabDisclosureTests
         finally { Directory.Delete(folder, true); }
     }
 
+    /// <summary>The provenance sidecar lists the user's own recorded take under its own kind (Mac writes
+    /// <c>segment.kind.rawValue</c>), with no consent record and no speaker verification, beside the cloned take that is
+    /// disclosed. An export whose only change is an own take needs no disclosure, so no sidecar is staged, as on the Mac
+    /// (recorded-take-cases.json).</summary>
+    [Fact]
+    public async Task SidecarListsARecordedTakeUnderItsOwnKind()
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "voxclip-disclosure-recorded-" +
+            Guid.NewGuid().ToString("N"))).FullName;
+        try
+        {
+            var source = Path.Combine(FixtureLoader.SharedRoot, "fixtures", "media", "bars-1080p.mp4");
+            var own = Project("recorded-render-v3");
+            var ownPrepared = Prepare(own);
+            Assert.False(ownPrepared.Disclosure.Required);
+            await Assert.ThrowsAsync<InvalidDataException>(() => VoiceLabDisclosureWriter.StageAsync(source, Path.Combine(folder, "own.mp4"),
+                "published.mp4", own, ownPrepared, "0.1.0", DateTimeOffset.UtcNow, TestContext.Current.CancellationToken));
+            Assert.False(File.Exists(Path.Combine(folder, "own.mp4")));
+
+            var project = Project("recorded-beside-tts-render-v3");
+            var prepared = Prepare(project);
+            var staged = await VoiceLabDisclosureWriter.StageAsync(source, Path.Combine(folder, "stage.mp4"), "published.mp4",
+                project, prepared, "0.1.0", DateTimeOffset.UtcNow, TestContext.Current.CancellationToken);
+            using var json = JsonDocument.Parse(staged.SidecarData);
+            var segments = json.RootElement.GetProperty("aiSegments").EnumerateArray().ToArray();
+            Assert.Equal(["tts", "recorded"], segments.Select(item => item.GetProperty("kind").GetString()));
+            var recorded = segments[1];
+            Assert.Equal("vl-follow", recorded.GetProperty("segmentId").GetString());
+            Assert.Equal(VoiceLabRecordedTake.Provider, recorded.GetProperty("provider").GetString());
+            Assert.Equal(VoiceLabRecordedTake.VoiceId, recorded.GetProperty("voiceId").GetString());
+            Assert.False(recorded.TryGetProperty("consentRecordId", out _));
+            Assert.False(recorded.TryGetProperty("verification", out _));
+            Assert.True(segments[0].TryGetProperty("consentRecordId", out _));
+            var disclosure = json.RootElement.GetProperty("disclosure");
+            Assert.True(disclosure.GetProperty("required").GetBoolean());
+            Assert.Equal("Some words in this video were re-voiced with an AI copy of my own voice.", disclosure.GetProperty("postText").GetString());
+            Assert.Equal(1, json.RootElement.GetProperty("consent").GetArrayLength());
+        }
+        finally { Directory.Delete(folder, true); }
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

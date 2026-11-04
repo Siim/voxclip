@@ -1,0 +1,262 @@
+{
+  "schema": "voxclip-voice-lab-recorded-take-cases/1",
+  "caseCount": 17,
+  "renders": [
+    {
+      "id": "recorded-source",
+      "project": "recorded-render-v3.voxclip",
+      "disclosure": {
+        "required": false,
+        "kinds": [],
+        "aiSeconds": 0.0,
+        "persistent": false,
+        "labelIntervals": [],
+        "text": null
+      },
+      "aiSegments": [
+        {
+          "segmentId": "vl-passage",
+          "kind": "recorded"
+        }
+      ],
+      "captions": [
+        {
+          "id": "vl-passage:word:0",
+          "text": "new",
+          "start": 2.6,
+          "end": 2.8
+        },
+        {
+          "id": "vl-passage:word:1",
+          "text": "words",
+          "start": 2.8,
+          "end": 3.1
+        }
+      ]
+    },
+    {
+      "id": "recorded-lipsync",
+      "project": "recorded-lipsync-render-v3.voxclip",
+      "disclosure": {
+        "required": true,
+        "kinds": [
+          "lipsync"
+        ],
+        "aiSeconds": 0.7,
+        "persistent": false,
+        "labelIntervals": [
+          [
+            0,
+            3.7
+          ]
+        ],
+        "text": "Lip movements in parts of it were generated with AI."
+      },
+      "aiSegments": [
+        {
+          "segmentId": "vl-passage",
+          "kind": "recorded"
+        }
+      ],
+      "captions": [
+        {
+          "id": "vl-passage:word:0",
+          "text": "new",
+          "start": 2.6,
+          "end": 2.8
+        },
+        {
+          "id": "vl-passage:word:1",
+          "text": "words",
+          "start": 2.8,
+          "end": 3.1
+        }
+      ]
+    },
+    {
+      "id": "recorded-beside-tts",
+      "project": "recorded-beside-tts-render-v3.voxclip",
+      "disclosure": {
+        "required": true,
+        "kinds": [
+          "tts"
+        ],
+        "aiSeconds": 0.7,
+        "persistent": false,
+        "labelIntervals": [
+          [
+            0,
+            3.7
+          ]
+        ],
+        "text": "Some words in this video were re-voiced with an AI copy of my own voice."
+      },
+      "aiSegments": [
+        {
+          "segmentId": "vl-passage",
+          "kind": "tts"
+        },
+        {
+          "segmentId": "vl-follow",
+          "kind": "recorded"
+        }
+      ],
+      "captions": [
+        {
+          "id": "vl-passage:word:0",
+          "text": "new",
+          "start": 2.6,
+          "end": 2.8
+        },
+        {
+          "id": "vl-passage:word:1",
+          "text": "words",
+          "start": 2.8,
+          "end": 3.1
+        },
+        {
+          "id": "vl-follow:word:0",
+          "text": "next",
+          "start": 3.25,
+          "end": 3.45
+        }
+      ]
+    }
+  ],
+  "acceptAll": [
+    {
+      "id": "recorded-needs-no-voice",
+      "project": "recorded-render-v3.voxclip",
+      "segment": "vl-passage",
+      "kind": "recorded",
+      "error": null
+    },
+    {
+      "id": "cloned-needs-consent",
+      "project": "recorded-render-v3.voxclip",
+      "segment": "vl-passage",
+      "kind": "tts",
+      "error": "consentUnverified"
+    }
+  ],
+  "invalid": [
+    {
+      "id": "own-voice-without-consent-as-tts",
+      "error": "consentUnverified",
+      "set": {
+        "kind": "tts",
+        "candidates/0/recipe/words/0/synthetic": true,
+        "candidates/0/recipe/words/1/synthetic": true,
+        "candidates/1/recipe/words/0/synthetic": true,
+        "candidates/1/recipe/words/1/synthetic": true
+      },
+      "project": "recorded-render-v3.voxclip",
+      "segment": "vl-passage"
+    },
+    {
+      "id": "consent-record",
+      "error": "invalidSegment",
+      "set": {
+        "candidates/0/recipe/provenance/consentRecordId": "consent-fixture",
+        "provenance/consentRecordId": "consent-fixture"
+      },
+      "project": "recorded-render-v3.voxclip",
+      "segment": "vl-passage"
+    },
+    {
+      "id": "voice-reference",
+      "error": "invalidSegment",
+      "set": {
+        "candidates/0/recipe/voiceRefId": "voice-fixture"
+      },
+      "project": "recorded-render-v3.voxclip",
+      "segment": "vl-passage"
+    },
+    {
+      "id": "consent-verified-at",
+      "error": "invalidSegment",
+      "set": {
+        "candidates/0/recipe/consentVerifiedAt": "2026-10-25T12:09:00Z"
+      },
+      "project": "recorded-render-v3.voxclip",
+      "segment": "vl-passage"
+    },
+    {
+      "id": "cloned-provider",
+      "error": "invalidSegment",
+      "set": {
+        "candidates/0/recipe/provenance/provider": "elevenlabs",
+        "provenance/provider": "elevenlabs"
+      },
+      "project": "recorded-render-v3.voxclip",
+      "segment": "vl-passage"
+    },
+    {
+      "id": "paced",
+      "error": "invalidSegment",
+      "set": {
+        "candidates/0/recipe/provenance/pace": 1.1,
+        "provenance/pace": 1.1
+      },
+      "project": "recorded-render-v3.voxclip",
+      "segment": "vl-passage"
+    },
+    {
+      "id": "speaker-score",
+      "error": "invalidSegment",
+      "set": {
+        "candidates/0/recipe/qa/speakerScore": 0.9,
+        "qa/speakerScore": 0.9
+      },
+      "project": "recorded-render-v3.voxclip",
+      "segment": "vl-passage"
+    },
+    {
+      "id": "paid",
+      "error": "invalidSegment",
+      "set": {
+        "candidates/0/recipe/cost/usd": 0.01
+      },
+      "project": "recorded-render-v3.voxclip",
+      "segment": "vl-passage"
+    },
+    {
+      "id": "synthetic-words",
+      "error": "alignmentUnavailable",
+      "set": {
+        "candidates/0/recipe/words/0/synthetic": true
+      },
+      "project": "recorded-render-v3.voxclip",
+      "segment": "vl-passage"
+    },
+    {
+      "id": "word-check-failed",
+      "error": "qaRejected",
+      "set": {
+        "candidates/0/recipe/qa/transcriptMatch": 0.5,
+        "candidates/0/recipe/qa/transcriptExact": false,
+        "qa/transcriptMatch": 0.5
+      },
+      "project": "recorded-render-v3.voxclip",
+      "segment": "vl-passage"
+    },
+    {
+      "id": "passage-without-room-tone",
+      "error": "missingRenderPolicy",
+      "set": {
+        "candidates/0/recipe/roomTone": null
+      },
+      "project": "recorded-render-v3.voxclip",
+      "segment": "vl-passage"
+    },
+    {
+      "id": "unranked",
+      "error": "invalidCandidate",
+      "set": {
+        "candidates/0/score": null
+      },
+      "project": "recorded-render-v3.voxclip",
+      "segment": "vl-passage"
+    }
+  ]
+}

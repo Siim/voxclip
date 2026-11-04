@@ -100,7 +100,7 @@ internal static class ProjectValidation
             Array(voice.GetProperty("segments"), segment =>
             {
                 Object(segment, "id kind enabled replace outDuration audio text words provenance qa candidates selectedCandidateIndex" + (projectVersion >= 3 ? " scope" : ""), projectVersion >= 3 ? "groupId" : "");
-                if (projectVersion >= 3) { Choice(segment.GetProperty("scope"), "passage", "fullTake"); Choice(segment.GetProperty("kind"), "tts", "voiceChanger"); }
+                if (projectVersion >= 3) { Choice(segment.GetProperty("scope"), "passage", "fullTake"); Choice(segment.GetProperty("kind"), "tts", "voiceChanger", "recorded"); }
                 Object(segment.GetProperty("replace"), "start end firstWordId lastWordId");
                 Object(segment.GetProperty("audio"), "assetId trimStart trimEnd stretch gainDb");
                 Nullable(segment.GetProperty("text"), text =>

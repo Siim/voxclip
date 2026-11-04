@@ -107,6 +107,8 @@ public static class VoiceLabRenderContract
             var timestampedDialogue = provenance.Endpoint == "v1/text-to-dialogue/with-timestamps" && provenance.Model == "eleven_v4";
             if (segment.Kind == VoiceLabSegmentKind.Tts && !timestampedSpeech && !timestampedDialogue)
                 throw new VoiceLabProjectException(VoiceLabProjectErrorCode.EndpointUnsupported);
+            if (segment.Kind == VoiceLabSegmentKind.Recorded && !VoiceLabRecordedTake.IsRecorded(provenance))
+                throw new VoiceLabProjectException(VoiceLabProjectErrorCode.EndpointUnsupported);
             var sourceSamples = piece.SourceEndSample - piece.SourceStartSample;
             var outputSamples = piece.OutputEndSample - piece.OutputStartSample;
             var video = recipe.Video;
@@ -200,13 +202,18 @@ public static class VoiceLabRenderContract
             }
         }
     }
-    static VoiceLabDisclosurePlan DeriveDisclosure(Project project, VoiceLabOutputPlan plan, IReadOnlyList<VoiceLabSelectedRecipe> selected, VoiceLabLabelPosition position)
+    static VoiceLabDisclosurePlan DeriveDisclosure(Project project, VoiceLabOutputPlan plan, IReadOnlyList<VoiceLabSelectedRecipe> all, VoiceLabLabelPosition position)
     {
-        var required = selected.Count > 0;
+        // The user's own microphone take is real speech, not AI: only its lip sync, if any, is disclosed (Mac deriveDisclosure).
+        var selected = all.Where(item => item.Recipe.Video.Mode == VoiceLabVideoMode.Lipsync ||
+            project.VoiceLab.Segments.First(s => s.Id == item.SegmentId).Kind != VoiceLabSegmentKind.Recorded).ToArray();
+        var required = selected.Length > 0;
         var kinds = selected.SelectMany(item =>
         {
-            var kind = project.VoiceLab.Segments.First(s => s.Id == item.SegmentId).Kind == VoiceLabSegmentKind.Tts ? "tts" : "voiceChanger";
-            return item.Recipe.Video.Mode == VoiceLabVideoMode.Lipsync ? new[] { kind, "lipsync" } : new[] { kind };
+            var kind = project.VoiceLab.Segments.First(s => s.Id == item.SegmentId).Kind;
+            if (kind == VoiceLabSegmentKind.Recorded) return new[] { "lipsync" };
+            var wire = VoiceLabRecordedTake.WireKind(kind);
+            return item.Recipe.Video.Mode == VoiceLabVideoMode.Lipsync ? new[] { wire, "lipsync" } : new[] { wire };
         }).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
         var aiSeconds = selected.Sum(item => item.Piece.OutputEndSample-item.Piece.OutputStartSample) / plan.SampleRate;
         var voiceSeconds = selected.Where(item => project.VoiceLab.Segments.First(s => s.Id == item.SegmentId).Kind == VoiceLabSegmentKind.VoiceChanger)

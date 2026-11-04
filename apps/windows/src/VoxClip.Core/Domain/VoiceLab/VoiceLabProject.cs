@@ -12,7 +12,9 @@ public sealed record VoiceLabAsset(string Id, string Kind, string File, string S
 public enum VoiceLabSegmentKind
 {
     [JsonStringEnumMemberName("tts")] Tts,
-    [JsonStringEnumMemberName("voiceChanger")] VoiceChanger
+    [JsonStringEnumMemberName("voiceChanger")] VoiceChanger,
+    /// <summary>The user's own microphone take of a Rewrite phrase (voice-lab.md §8.13): real speech, no clone, no consent (v3 only).</summary>
+    [JsonStringEnumMemberName("recorded")] Recorded
 }
 public sealed record VoiceLabReplacement(double Start, double End, string FirstWordId, string LastWordId);
 public sealed record VoiceLabAudio(string AssetId, double TrimStart, double TrimEnd, double Stretch, double GainDb);
@@ -159,7 +161,7 @@ public static class VoiceLabProject
             {
                 if (candidate.AssetId is { } candidateId) Require(assetIds.Contains(candidateId), VoiceLabProjectErrorCode.DanglingAsset);
                 if (candidate.Score is { } score) Require(double.IsFinite(score) && score >= 0 && score <= 1, VoiceLabProjectErrorCode.InvalidCandidate);
-                var requiresRank = project.SchemaVersion < 3 || segment.Kind == VoiceLabSegmentKind.Tts;
+                var requiresRank = project.SchemaVersion < 3 || segment.Kind != VoiceLabSegmentKind.VoiceChanger;
                 if (candidate.Rejected is null) Require(candidate.AssetId is not null && (!requiresRank || candidate.Score is not null), VoiceLabProjectErrorCode.InvalidCandidate);
             }
             var provenance = segment.Provenance;
@@ -172,7 +174,9 @@ public static class VoiceLabProject
                 if (value is { } number) Require(double.IsFinite(number), VoiceLabProjectErrorCode.InvalidSegment);
             if (segment.Qa.TranscriptMatch is { } match) Require(match >= 0 && match <= 1, VoiceLabProjectErrorCode.InvalidSegment);
             if (segment.Qa.SpeakerScore is { } speaker) Require(speaker >= 0 && speaker <= 1, VoiceLabProjectErrorCode.InvalidSegment);
-            if (segment.Kind == VoiceLabSegmentKind.Tts)
+            // A recorded take (the user's own microphone, v3 only) keeps text and words as a generated one does.
+            if (segment.Kind == VoiceLabSegmentKind.Recorded) Require(project.SchemaVersion >= 3, VoiceLabProjectErrorCode.InvalidSegment);
+            if (segment.Kind is VoiceLabSegmentKind.Tts or VoiceLabSegmentKind.Recorded)
             {
                 Require(segment.Text is { New.Length: > 0 } && segment.Words is { Count: > 0 }, VoiceLabProjectErrorCode.InvalidWords);
                 Require(ValidAudioTags(segment.Text!), VoiceLabProjectErrorCode.InvalidWords);
@@ -226,7 +230,8 @@ public static class VoiceLabProject
             var segment = ordered[index];
 
             if (index > 0) Require(segment.Replace.Start >= ordered[index - 1].Replace.End, VoiceLabProjectErrorCode.OverlappingReplacement);
-            foreach (var candidate in segment.Candidates.Where(item => item.Rejected is null))
+            // Every unrejected own-voice candidate needs active consent (§6.10, §10.5), except the user's own recorded take.
+            foreach (var candidate in segment.Candidates.Where(item => item.Rejected is null && segment.Kind != VoiceLabSegmentKind.Recorded))
                 if (candidate.Recipe is { VoiceSource: VoiceLabVoiceSource.Own } recipe)
                     Require(project.VoiceLab.Voices?.FirstOrDefault(v => v.Id == recipe.VoiceRefId)?.Status == VoiceLabVoiceStatus.Active, VoiceLabProjectErrorCode.ConsentUnverified);
         }

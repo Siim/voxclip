@@ -158,7 +158,7 @@ public static class VoiceLabDisclosureWriter
                 var provenance = selected.Recipe.Provenance;
                 var asset = project.VoiceLab.Assets!.Single(item => item.Id == selected.Recipe.Audio.AssetId);
                 json.WriteStartObject(); json.WriteString("segmentId", segment.Id);
-                json.WriteString("kind", segment.Kind == VoiceLabSegmentKind.Tts ? "tts" : "voiceChanger");
+                json.WriteString("kind", VoiceLabRecordedTake.WireKind(segment.Kind));
                 json.WriteNumber("outputStart", selected.Piece.OutputStartSample / prepared.OutputPlan.SampleRate);
                 json.WriteNumber("outputEnd", selected.Piece.OutputEndSample / prepared.OutputPlan.SampleRate);
                 json.WriteNumber("candidateIndex", segment.SelectedCandidateIndex); json.WriteString("assetSha256", asset.Sha256);

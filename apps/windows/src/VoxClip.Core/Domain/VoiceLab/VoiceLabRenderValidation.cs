@@ -126,7 +126,7 @@ public static class VoiceLabRenderValidation
             Require(project.Transcript?.Words.Any(w => Samples(w.Start,rate) < tone.SourceEndSample && Samples(w.End,rate) > tone.SourceStartSample) != true, VoiceLabProjectErrorCode.MissingRenderPolicy);
         }
         if (project.VoiceLab.CleanAudio!.Mode == VoiceLabCleanAudioMode.On) Require(recipe.RoomTone is null, VoiceLabProjectErrorCode.MissingRenderPolicy);
-        if (segment.Kind == VoiceLabSegmentKind.Tts && segment.Scope == VoiceLabSegmentScope.Passage && project.VoiceLab.CleanAudio.Mode == VoiceLabCleanAudioMode.Off)
+        if (segment.Kind != VoiceLabSegmentKind.VoiceChanger && segment.Scope == VoiceLabSegmentScope.Passage && project.VoiceLab.CleanAudio.Mode == VoiceLabCleanAudioMode.Off)
             Require(recipe.RoomTone is not null, VoiceLabProjectErrorCode.MissingRenderPolicy);
         Require(Enum.IsDefined(recipe.Video.Mode) && Enum.IsDefined(recipe.VoiceSource) &&
             Enum.IsDefined(recipe.Seams.In.Kind) && Enum.IsDefined(recipe.Seams.Out.Kind), VoiceLabProjectErrorCode.InvalidSegment);
@@ -191,6 +191,11 @@ public static class VoiceLabRenderValidation
             }
             Require(qa.TranscriptTokens is { } count && count > 0 && qa.TranscriptMatch is { } match && double.IsFinite(match) && match is >= 0 and <= 1 &&
                 (count <= 5 ? qa.TranscriptExact == true : match >= 0.9), VoiceLabProjectErrorCode.QaRejected);
+        }
+        else if (segment.Kind == VoiceLabSegmentKind.Recorded)
+        {
+            VoiceLabRecordedTake.Validate(recipe, rate, output);
+            return;
         }
         else Require(recipe.Words is null, VoiceLabProjectErrorCode.InvalidWords);
         if (recipe.VoiceSource == VoiceLabVoiceSource.Own)

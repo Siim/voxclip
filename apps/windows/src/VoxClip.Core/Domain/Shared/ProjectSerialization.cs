@@ -69,7 +69,7 @@ public static class ProjectSerialization
         foreach (var reference in RequireKind(voice, "voices", JsonValueKind.Array).EnumerateArray()) Choice(reference, "status", "active", "deleted");
         foreach (var segment in RequireKind(voice, "segments", JsonValueKind.Array).EnumerateArray())
         {
-            Choice(segment, "kind", "tts", "voiceChanger");
+            Choice(segment, "kind", "tts", "voiceChanger", "recorded");
             Choice(segment, "scope", "passage", "fullTake");
             foreach (var candidate in RequireKind(segment, "candidates", JsonValueKind.Array).EnumerateArray())
             {

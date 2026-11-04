@@ -7,7 +7,8 @@ public abstract record VoiceLabEditCommand
 {
     private VoiceLabEditCommand() { }
     public sealed record Accept(VoiceLabSegment Segment, IReadOnlyList<VoiceLabAsset> Assets, VoiceLabVoiceReference Voice) : VoiceLabEditCommand;
-    public sealed record AcceptAll(IReadOnlyList<VoiceLabSegment> Segments, IReadOnlyList<VoiceLabAsset> Assets, VoiceLabVoiceReference Voice) : VoiceLabEditCommand;
+    /// <summary><c>Voice</c> is null when every segment is the user's own recorded take, which uses no clone (<see cref="VoiceLabRecordedTake"/>).</summary>
+    public sealed record AcceptAll(IReadOnlyList<VoiceLabSegment> Segments, IReadOnlyList<VoiceLabAsset> Assets, VoiceLabVoiceReference? Voice) : VoiceLabEditCommand;
     public sealed record SetEnabled(string SegmentId, bool Enabled) : VoiceLabEditCommand;
     public sealed record Delete(string SegmentId) : VoiceLabEditCommand;
     public sealed record ChooseCandidate(string SegmentId, int Index) : VoiceLabEditCommand;
@@ -35,9 +36,12 @@ public abstract record VoiceLabEditCommand
     {
         if (command.Segments.Count == 0) throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidSegment);
         var upgraded = VoiceLabProject.UpgradeToV3(project);
-        var voice = upgraded.VoiceLab.Voices!.FirstOrDefault(item => item.Id == command.Voice.Id);
-        if (voice is not null && voice != command.Voice) throw new VoiceLabProjectException(VoiceLabProjectErrorCode.ConsentUnverified);
-        if (voice is null) upgraded = VoiceLabProject.AddVoiceReference(upgraded, command.Voice);
+        if (command.Voice is { } reference)
+        {
+            var voice = upgraded.VoiceLab.Voices!.FirstOrDefault(item => item.Id == reference.Id);
+            if (voice is not null && voice != reference) throw new VoiceLabProjectException(VoiceLabProjectErrorCode.ConsentUnverified);
+            if (voice is null) upgraded = VoiceLabProject.AddVoiceReference(upgraded, reference);
+        }
         var assets = upgraded.VoiceLab.Assets!.ToDictionary(asset => asset.Id, StringComparer.Ordinal);
         var added = new List<VoiceLabAsset>();
         var introduced = new HashSet<string>(StringComparer.Ordinal);
@@ -68,7 +72,7 @@ public sealed record VoiceLabEditHistory(Project Present, IReadOnlyList<VoiceLab
         if (command is VoiceLabEditCommand.AcceptAll) throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidScope);
         return ApplyCore(command, outputScope ?? VoiceLabOutputScope.Full, command.ActionName, modifiedAt);
     }
-    public VoiceLabEditHistory Apply(IReadOnlyList<VoiceLabSegment> segments, IReadOnlyList<VoiceLabAsset> assets, VoiceLabVoiceReference voice,
+    public VoiceLabEditHistory Apply(IReadOnlyList<VoiceLabSegment> segments, IReadOnlyList<VoiceLabAsset> assets, VoiceLabVoiceReference? voice,
         VoiceLabOutputScope scope, string actionName, DateTimeOffset? modifiedAt = null)
     {
         if (!(actionName == "Rewrite full take" || System.Text.RegularExpressions.Regex.IsMatch(actionName, @"\ARewrite (clip [1-9][0-9]*|[1-9][0-9]* words)\z")))

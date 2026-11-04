@@ -187,7 +187,7 @@ public static class VoiceLabOutputPlanner
                 if (end > start) captions.Add(new(word.Id, state.Corrections.GetValueOrDefault(word.Id, word.Text), start, end));
             }
         }
-        foreach (var segment in enabled.Where(segment => segment.Kind == VoiceLabSegmentKind.Tts))
+        foreach (var segment in enabled.Where(segment => segment.Kind != VoiceLabSegmentKind.VoiceChanger))
         {
             var piece = pieces.FirstOrDefault(item => item.SegmentId == segment.Id);
             if (piece is null) continue;

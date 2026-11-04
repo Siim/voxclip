@@ -515,6 +515,7 @@ attribute VoxClip.Core.Domain.VoiceLab.VoiceLabSeamKind :: field public SynthToS
 attribute VoxClip.Core.Domain.VoiceLab.VoiceLabSeamKind @ System.Text.Json.Serialization.JsonConverterAttribute("System.Text.Json.Serialization.JsonStringEnumConverter`1[VoxClip.Core.Domain.VoiceLab.VoiceLabSeamKind], System.Text.Json")
 attribute VoxClip.Core.Domain.VoiceLab.VoiceLabSegment :: property GroupId @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.VoiceLab.VoiceLabSegment :: property Scope @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.VoiceLab.VoiceLabSegmentKind :: field public Recorded @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("recorded")
 attribute VoxClip.Core.Domain.VoiceLab.VoiceLabSegmentKind :: field public Tts @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("tts")
 attribute VoxClip.Core.Domain.VoiceLab.VoiceLabSegmentKind :: field public VoiceChanger @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("voiceChanger")
 attribute VoxClip.Core.Domain.VoiceLab.VoiceLabSegmentKind @ System.Text.Json.Serialization.JsonConverterAttribute("System.Text.Json.Serialization.JsonStringEnumConverter`1[VoxClip.Core.Domain.VoiceLab.VoiceLabSegmentKind], System.Text.Json")
@@ -8033,10 +8034,23 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabReceipt :: method public set_Provide
 member VoxClip.Core.Domain.VoiceLab.VoiceLabReceipt :: method public set_Region(VoxClip.Core.Services.Speech.ElevenLabsRegion)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabReceipt :: method public set_SpendWarning(VoxClip.Core.Services.VoiceLab.VoiceLabSpendWarning)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabReceipt :: method public set_VoiceId(string)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRecipeBuilder :: method internal Assemble(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput,VoxClip.Core.Domain.VoiceLab.VoiceLabPublishedTake,VoxClip.Core.Domain.VoiceLab.VoiceLabAsset,System.Nullable`1<VoxClip.Core.Domain.VoiceLab.VoiceLabVideoMode>,VoxClip.Core.Domain.VoiceLab.VoiceLabZoomCover,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabWord>,VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa,VoxClip.Core.Domain.VoiceLab.VoiceLabProvenance,VoxClip.Core.Domain.VoiceLab.VoiceLabCost,string,System.Nullable`1<System.DateTimeOffset>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRecipeBuilder :: method private Error(VoxClip.Core.Domain.VoiceLab.VoiceLabProjectErrorCode)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRecipeBuilder :: method private Unit(double)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRecipeBuilder :: method public Candidate(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput,VoxClip.Core.Domain.VoiceLab.VoiceLabPublishedTake,VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord,System.DateTimeOffset,System.Nullable`1<VoxClip.Core.Domain.VoiceLab.VoiceLabVideoMode>,VoxClip.Core.Domain.VoiceLab.VoiceLabZoomCover)
-member VoxClip.Core.Domain.VoiceLab.VoiceLabRecipeBuilder :: method public Segment(string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabCandidate>,int,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput,VoxClip.Core.Domain.VoiceLab.VoiceLabFitPlan)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRecipeBuilder :: method public Segment(string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabCandidate>,int,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput,VoxClip.Core.Domain.VoiceLab.VoiceLabFitPlan,VoxClip.Core.Domain.VoiceLab.VoiceLabSegmentKind)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRecordedTake :: field public Endpoint
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRecordedTake :: field public Provider
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRecordedTake :: field public Region
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRecordedTake :: field public VoiceId
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRecordedTake :: method internal Validate(VoxClip.Core.Domain.VoiceLab.VoiceLabRenderRecipe,double,long)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRecordedTake :: method public Alignment(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabSpokenWord>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRecordedTake :: method public Candidate(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput,VoxClip.Core.Domain.VoiceLab.VoiceLabPublishedTake,string,System.DateTimeOffset,System.Nullable`1<VoxClip.Core.Domain.VoiceLab.VoiceLabVideoMode>,VoxClip.Core.Domain.VoiceLab.VoiceLabZoomCover)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRecordedTake :: method public HasAISpeech(VoxClip.Core.Domain.VoiceLab.VoiceLabSegment)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRecordedTake :: method public IsAIModified(VoxClip.Core.Domain.VoiceLab.VoiceLabSegment)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRecordedTake :: method public IsRecorded(VoxClip.Core.Domain.VoiceLab.VoiceLabProvenance)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRecordedTake :: method public Segment(string,VoxClip.Core.Domain.VoiceLab.VoiceLabCandidate,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput,VoxClip.Core.Domain.VoiceLab.VoiceLabFitPlan)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRecordedTake :: method public WireKind(VoxClip.Core.Domain.VoiceLab.VoiceLabSegmentKind)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderContract :: method private DeriveDisclosure(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabSelectedRecipe>,VoxClip.Core.Domain.VoiceLab.VoiceLabLabelPosition)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderContract :: method private SelectedRecipes(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan,string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderContract :: method private ValidateSelectedSeams(VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabRenderContract+SeamPiece>)
@@ -8476,6 +8490,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabSegment :: method public set_Scope(S
 member VoxClip.Core.Domain.VoiceLab.VoiceLabSegment :: method public set_SelectedCandidateIndex(int)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabSegment :: method public set_Text(VoxClip.Core.Domain.VoiceLab.VoiceLabText)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabSegment :: method public set_Words(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabWord>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSegmentKind :: field public Recorded
 member VoxClip.Core.Domain.VoiceLab.VoiceLabSegmentKind :: field public Tts
 member VoxClip.Core.Domain.VoiceLab.VoiceLabSegmentKind :: field public VoiceChanger
 member VoxClip.Core.Domain.VoiceLab.VoiceLabSegmentKind :: field public value__
@@ -8612,6 +8627,23 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabSpendTotal :: method public op_Equal
 member VoxClip.Core.Domain.VoiceLab.VoiceLabSpendTotal :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabSpendTotal,VoxClip.Core.Domain.VoiceLab.VoiceLabSpendTotal)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabSpendTotal :: method public set_UnknownCount(int)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabSpendTotal :: method public set_Usd(System.Decimal)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSpokenWord :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabSpokenWord)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSpokenWord :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSpokenWord :: method private get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSpokenWord :: method public .ctor(string,double,double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSpokenWord :: method public Deconstruct(string&,double&,double&)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSpokenWord :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceLabSpokenWord)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSpokenWord :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSpokenWord :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSpokenWord :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSpokenWord :: method public get_End()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSpokenWord :: method public get_Start()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSpokenWord :: method public get_Text()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSpokenWord :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceLabSpokenWord,VoxClip.Core.Domain.VoiceLab.VoiceLabSpokenWord)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSpokenWord :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabSpokenWord,VoxClip.Core.Domain.VoiceLab.VoiceLabSpokenWord)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSpokenWord :: method public set_End(double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSpokenWord :: method public set_Start(double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSpokenWord :: method public set_Text(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabSubscription :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabSubscription)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabSubscription :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabSubscription :: method private get_EqualityContract()
@@ -12974,6 +13006,7 @@ type VoxClip.Core.Domain.VoiceLab.VoiceLabRateCandidate
 type VoxClip.Core.Domain.VoiceLab.VoiceLabRateSample
 type VoxClip.Core.Domain.VoiceLab.VoiceLabReceipt
 type VoxClip.Core.Domain.VoiceLab.VoiceLabRecipeBuilder
+type VoxClip.Core.Domain.VoiceLab.VoiceLabRecordedTake
 type VoxClip.Core.Domain.VoiceLab.VoiceLabRenderContract
 type VoxClip.Core.Domain.VoiceLab.VoiceLabRenderContract+SeamPiece
 type VoxClip.Core.Domain.VoiceLab.VoiceLabRenderQa
@@ -13012,6 +13045,7 @@ type VoxClip.Core.Domain.VoiceLab.VoiceLabSpeechRateSource
 type VoxClip.Core.Domain.VoiceLab.VoiceLabSpeechRoute
 type VoxClip.Core.Domain.VoiceLab.VoiceLabSpendDocument
 type VoxClip.Core.Domain.VoiceLab.VoiceLabSpendTotal
+type VoxClip.Core.Domain.VoiceLab.VoiceLabSpokenWord
 type VoxClip.Core.Domain.VoiceLab.VoiceLabSubscription
 type VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis
 type VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio
