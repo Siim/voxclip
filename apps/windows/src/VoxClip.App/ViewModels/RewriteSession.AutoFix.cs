@@ -21,8 +21,16 @@ internal abstract record StuckTakeReason
     internal sealed record Voice : StuckTakeReason;
     /// <summary>The phrase is too short to check the voice on its own words: it needs its whole sentence.</summary>
     internal sealed record ShortSpeech : StuckTakeReason;
+    /// <summary>The provider refused or could not finish the takes (key, credit, permission, rate, network): its cause and its one
+    /// fix show; no wording round can help.</summary>
+    internal sealed record Provider(Exception Error) : StuckTakeReason;
+    /// <summary>No word timing even after recovery from the word check and on device (voice-lab.md §8.5): one more take.</summary>
+    internal sealed record Timing : StuckTakeReason;
     /// <summary>Any other failed check, in the take row's own words.</summary>
     internal sealed record Other(string Reason) : StuckTakeReason;
+
+    /// <summary>Only wording and fit failures are fixed by rewording (voice-lab.md §8.2.2).</summary>
+    internal bool Rewords => this is Length or Words;
 }
 
 /// <summary>The step past the spending cap: what [Keep fixing · ≈ $y] approves. <see cref="Take"/>: a take whose quote is ready.</summary>
@@ -54,6 +62,12 @@ internal sealed class RewriteAutoFixState
     internal List<string> Notes { get; } = [];
     /// <summary>"Choose yourself…" was opened: the chips show while fixes run.</summary>
     internal bool ShowChoices { get; set; }
+    /// <summary>Wordings the AI suggested that were not used (a repeat, not moving toward the slot, or without the bridge words),
+    /// by phrase: the next round is told about them with the wordings that were voiced.</summary>
+    internal Dictionary<int, List<VoiceLabFitTried>> Refused { get; } = [];
+    /// <summary>Phrases [Price a take] priced afresh (after an account failure, or with no take yet): their control now makes the
+    /// take at the price it shows.</summary>
+    internal HashSet<int> Priced { get; } = [];
     internal string Announcement { get; set; } = "";
     internal int Token { get; set; }
     internal Task? Work { get; set; }
@@ -67,6 +81,7 @@ internal sealed class RewriteAutoFixState
         Token++; Work = null;
         Armed = false; Stopped = false; StopReason = ""; Allowance = 0; Spent = 0; Capped = null; NextApproved = false;
         Rounds.Clear(); TriedAnother.Clear(); Lines.Clear(); GaveUp.Clear(); Notes.Clear(); ShowChoices = false; Announcement = "";
+        Refused.Clear(); Priced.Clear();
     }
 }
 
@@ -177,6 +192,10 @@ internal sealed partial class RewriteSession
             var slot = window.Slot(closest)!.Value;
             return new StuckTakeReason.Length(length > slot, length, slot, closest.Id, closest.Index + 1, false);
         }
+        var providers = current.Select(row => row.Failure).OfType<VoiceLabException>().Where(error => IsAccountFailure(error.Kind)).ToArray();
+        if (providers.Length == current.Length) return new StuckTakeReason.Provider(providers[^1]);
+        if (current.All(row => RewriteGeneration.Length(row) is null && row.Failure is VoiceLabException { Kind: VoiceLabErrorKind.InvalidAlignment }))
+            return new StuckTakeReason.Timing();
         var failures = current.SelectMany(row => row.Qa?.Failures ?? []).ToArray();
         if (failures.Contains(VoiceLabTakeQaFailure.InsufficientGeneratedSpeech) || current.Any(row => row.Failure is VoiceInsufficientGeneratedSpeechException ||
                 row.VoiceCheck.Evidence?.Mode == VoiceLabShortSpeechMode.Unmeasured))
@@ -197,10 +216,30 @@ internal sealed partial class RewriteSession
             StuckTakeReason.Words => $"Phrase {phrase}: the word check heard different words in every take.",
             StuckTakeReason.Voice => $"Phrase {phrase}: no take sounded enough like your voice.",
             StuckTakeReason.ShortSpeech => $"Phrase {phrase}: too short to check your voice on its own words.",
+            StuckTakeReason.Provider provider => $"Phrase {phrase}: {ProviderProblem(provider.Error)}",
+            StuckTakeReason.Timing => $"Phrase {phrase}: its take's word timing couldn't be read, even from the word check.",
             StuckTakeReason.Other other => $"Phrase {phrase}: {other.Reason}",
             _ => $"Phrase {phrase}: its takes did not pass the checks."
         };
     }
+
+    /// <summary>Provider failures no wording round can fix (voice-lab.md §8.2.2; Mac <c>isAccountFailure</c>): each has one fix.</summary>
+    internal static bool IsAccountFailure(VoiceLabErrorKind kind) => kind is VoiceLabErrorKind.QuotaExceeded or VoiceLabErrorKind.Unauthorized or
+        VoiceLabErrorKind.MissingKey or VoiceLabErrorKind.PermissionMissing or VoiceLabErrorKind.RateLimited or VoiceLabErrorKind.Network or
+        VoiceLabErrorKind.ProviderFailure or VoiceLabErrorKind.PlanUnavailable or VoiceLabErrorKind.FeatureUnavailable or
+        VoiceLabErrorKind.VoiceAccessDenied or VoiceLabErrorKind.ModelAccessDenied;
+    /// <summary>The one fix an account failure names (Mac <c>ClipTakePlan.nextStep</c>); null when it has none.</summary>
+    internal static string? ProviderFix(VoiceLabErrorKind kind) => kind switch
+    {
+        VoiceLabErrorKind.QuotaExceeded => "Add credit to your ElevenLabs account, then choose Price a take.",
+        VoiceLabErrorKind.Unauthorized or VoiceLabErrorKind.MissingKey => "Check the ElevenLabs key in Settings, then choose Price a take.",
+        VoiceLabErrorKind.PermissionMissing => "Give the ElevenLabs key the Text to Speech permission, then choose Price a take.",
+        VoiceLabErrorKind.RateLimited or VoiceLabErrorKind.Network or VoiceLabErrorKind.ProviderFailure => "Choose Price a take to send it again.",
+        _ => null
+    };
+    /// <summary>A failure's cause, then its one fix when it is an account failure: a run stopped by one says what to do next.</summary>
+    internal static string ProviderProblem(Exception error) =>
+        Refusal(error) + (error is VoiceLabException { Kind: var kind } && ProviderFix(kind) is { } fix ? " " + fix : "");
 
     /// <summary>Takes the next automatic step, if one is due: one phrase, one step at a time. Called whenever the takes settle.</summary>
     internal void AdvanceAutoFix()
@@ -209,8 +248,10 @@ internal sealed partial class RewriteSession
         if (!AutoFix.Running || AutoFix.Work is not null || !IsOpen || !GenerationIsCurrent || IsGeneratingBatch || applyingBatch ||
             MeasuredWording is { Preparing: true } || PendingPaidReviewChange is not null ||
             generationWindows.Any(window => window.IsRunning || window.IsPreparing)) return;
-        // A spending limit or a provider failure ends the fixes the same way Stop does.
-        if (generationWindows.FirstOrDefault(window => window.Phase == RewriteGenerationPhase.Failed && window.Problem.Length > 0) is { } failed)
+        // A spending limit ends the fixes the same way Stop does. An account failure on a phrase's takes shows its cause and its
+        // one fix on that phrase's card instead (voice-lab.md §8.2.2): a round of new words can't help it.
+        if (generationWindows.Select((window, index) => (window, index)).FirstOrDefault(item => item.window.Phase == RewriteGenerationPhase.Failed &&
+                item.window.Problem.Length > 0 && StuckReason(item.index) is not StuckTakeReason.Provider) is { window: { } failed })
         {
             StopAutoFix(failed.Problem);
             return;
@@ -225,9 +266,12 @@ internal sealed partial class RewriteSession
         }
         for (var index = 0; index < generationWindows.Count; index++)
         {
-            if (StuckReason(index) is not { } reason) { AutoFix.Lines.Remove(index); continue; }
+            // The user's own words and own takes are final: the resolver never rewrites them (design.md §6.3.8).
+            if (Wording(index) != PhraseWording.Suggested || StuckReason(index) is not { } reason) { AutoFix.Lines.Remove(index); continue; }
+            if (reason is StuckTakeReason.Provider) { AutoFix.Lines.Remove(index); AutoFix.ShowChoices = true; continue; }
             var used = AutoFix.Rounds.GetValueOrDefault(index);
             if (used >= RewriteAutoFixState.MaximumRounds) { GiveUp(index); continue; }
+            if (reason is StuckTakeReason.Timing && AutoFix.TriedAnother.Contains(index)) { GiveUp(index); continue; }
             AutoFix.Rounds[index] = used + 1;
             var phrase = index;
             var number = index + 1;
@@ -306,7 +350,7 @@ internal sealed partial class RewriteSession
         if (!AutoFixChargeSend(index)) { Changed?.Invoke(this, EventArgs.Empty); return; }
         CancelMeasuredWording();
         MeasuredWording = new(index, reason.Take, reason.Number, reason.Measured, reason.Slot) { Unselected = !reason.Selected };
-        await (MeasuredWork = RewordMeasuredTakeAsync(true));
+        await (MeasuredWork = RewordMeasuredTakeAsync(true, automatic: !manualStep));
         if (MeasuredWording is not { } suggestion) return;
         if (suggestion.KeepOriginal) { GiveUp(index); return; }
         if (suggestion.Text is null || suggestion.Problem.Length > 0) return;
@@ -321,7 +365,10 @@ internal sealed partial class RewriteSession
             generationWindows.ElementAtOrDefault(index) is not { } window || Review is null) return;
         var ordinal = phrase.Ordinals[0];
         if (!AutoFixChargeSend(index)) { Changed?.Invoke(this, EventArgs.Empty); return; }
-        var reply = await SendReaskAsync(new("Easier words", ClearerInstruction, [ordinal], RewriteBlockedReason.Take), lifetime.Token);
+        // The loop's memory (voice-lab.md §8.2.2): the wordings this phrase already had, with their results.
+        var tried = TriedWordings(index);
+        var history = fitService.TriedBlock(tried)?.Text;
+        var reply = await SendReaskAsync(new("Easier words", ClearerInstruction + (history is null ? "" : "\n" + history), [ordinal], RewriteBlockedReason.Take), lifetime.Token);
         if (reply is null || !IsOpen || Review is null) return;
         var outcomes = RewriteScopedReply.Assign(Review.Diff.Hunks, new HashSet<int> { ordinal - 1 }, reply.Hunks);
         switch (outcomes.GetValueOrDefault(ordinal - 1))
@@ -332,6 +379,17 @@ internal sealed partial class RewriteSession
                 string Text(string id) => Transcript.First(word => word.Id == id).Text;
                 var text = string.Join(" ", placed.LeftBridgeWordIds.Select(Text).Concat(hunk.NewTokens).Concat(placed.RightBridgeWordIds.Select(Text)));
                 if (text == (measuredWording.GetValueOrDefault(index) ?? phrase.PatchText)) return;
+                // A wording already tried is never voiced again: the next round hears that it repeated.
+                if (tried.Any(row => VoiceLabFitTried.Key(row.Text) == VoiceLabFitTried.Key(text)))
+                {
+                    Refuse(index, new(text, "repeat"));
+                    return;
+                }
+                if (BridgeFor(index) is { } bridge && !bridge.Keeps(text))
+                {
+                    Refuse(index, new(text, "missingBridge"));
+                    return;
+                }
                 measuredWording[index] = text;
                 await window.InputsChangedAsync(preserveReview: true);
                 await StartAutomaticTakeAsync(index);
@@ -393,6 +451,71 @@ internal sealed partial class RewriteSession
         Changed?.Invoke(this, EventArgs.Empty);
         return true;
     }
+    private void Refuse(int index, VoiceLabFitTried row)
+    {
+        if (!AutoFix.Refused.TryGetValue(index, out var list)) AutoFix.Refused[index] = list = [];
+        list.Add(row);
+    }
+
+    /// <summary>The bridge words phrase <paramref name="index"/>'s wording must keep (Mac <c>ClipTakePlan.bridge</c>); null when its
+    /// window has none.</summary>
+    internal VoiceLabFitBridge? BridgeFor(int index)
+    {
+        if (generationWindows.ElementAtOrDefault(index) is not { } window) return null;
+        var input = window.ReviewedInput ?? window.PreparedWindow?.Input ?? window.Rows.Select(row => window.InputFor(row.Id)).LastOrDefault(input => input is not null);
+        if (input is null) return null;
+        try { return VoiceLabFitBridge.From(input); }
+        catch (VoiceLabException) { return null; }
+    }
+
+    /// <summary>The wordings phrase <paramref name="index"/> already had, oldest first, each with its latest measured result, then the
+    /// AI's wordings that were not used (Mac <c>triedWordings</c>). One entry per variant (<see cref="VoiceLabFitTried.Key"/>).</summary>
+    internal IReadOnlyList<VoiceLabFitTried> TriedWordings(int index)
+    {
+        List<VoiceLabFitTried> result = [];
+        void Add(VoiceLabFitTried row)
+        {
+            var key = VoiceLabFitTried.Key(row.Text);
+            if (key.Length == 0) return;
+            var found = result.FindIndex(item => VoiceLabFitTried.Key(item.Text) == key);
+            if (found >= 0) result[found] = row; else result.Add(row);
+        }
+        if (generationWindows.ElementAtOrDefault(index) is not { } window) return result;
+        foreach (var row in window.Rows)
+        {
+            if (window.InputFor(row.Id)?.Text is not { } text) continue;
+            if (row.Qa?.Failures.Contains(VoiceLabTakeQaFailure.Transcript) == true) { Add(new(text, "words")); continue; }
+            if (RewriteGeneration.Length(row) is not { } length || window.Slot(row) is not { } slot) { Add(new(text, "unchecked")); continue; }
+            var difference = length - slot;
+            Add(window.LengthFits(row) ? new(text, "fit") : new(text, difference > 0 ? "tooLong" : "tooShort", Math.Abs(difference)));
+        }
+        foreach (var row in AutoFix.Refused.GetValueOrDefault(index) ?? []) Add(row);
+        return result;
+    }
+
+    /// <summary>"Round k of 3 · tried: …" under a phrase the loop rewords (voice-lab.md §8.2.2), so its learning is visible.</summary>
+    internal string? AutoFixHistoryLine(int index)
+    {
+        if (!AutoFix.Armed || AutoFix.Rounds.GetValueOrDefault(index) is not (> 0 and var round)) return null;
+        var tried = TriedWordings(index);
+        if (tried.Count == 0) return null;
+        static string Seconds(double? value) => (value ?? 0).ToString("F1", CultureInfo.InvariantCulture) + " s";
+        var bridge = BridgeFor(index)?.Display;
+        var items = tried.TakeLast(4).Select(row => $"“{row.Text}” ({row.Result switch
+        {
+            "tooLong" => Seconds(row.Seconds) + " long",
+            "tooShort" => Seconds(row.Seconds) + " short",
+            "words" => "words misheard",
+            "fit" => "fits",
+            "repeat" => "repeat, not used",
+            "notShorter" => "not shorter, not used",
+            "notLonger" => "not longer, not used",
+            "missingBridge" => bridge is null ? "dropped the joining words, not used" : $"dropped “{bridge}”, not used",
+            _ => "not checked"
+        }})");
+        return $"Round {Math.Min(round, RewriteAutoFixState.MaximumRounds)} of {RewriteAutoFixState.MaximumRounds} · tried: " + string.Join(", ", items);
+    }
+
     /// <summary>Phrases kept as recorded, by phrase index.</summary>
     internal IReadOnlyList<int> LeftOutPhrases => generationWindows.Select((window, index) => (window, index)).Where(item => item.window.LeftOut)
         .Select(item => item.index).ToArray();

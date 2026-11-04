@@ -19,7 +19,7 @@ internal sealed class RewriteGenerationBackend : IDisposable
     private readonly Func<bool> current;
     internal VoiceLabTakeRun Runner { get; }
     internal RewriteGenerationBackend(DataLocations data, IKeyProvider keys, ILog log, VoiceLabPriceCatalog prices,
-        ElevenLabsRegion region, string projectId, Func<bool> current, Func<Action, Task> onUi)
+        ElevenLabsRegion region, string projectId, Func<bool> current, Func<Action, Task> onUi, VoiceLabLocalTiming? localTiming = null)
     {
         this.current = current;
         store = new(data);
@@ -32,7 +32,9 @@ internal sealed class RewriteGenerationBackend : IDisposable
                 var valid = false;
                 await onUi(() => valid = !ct.IsCancellationRequested && current());
                 return valid;
-            });
+            })
+        // A take with no usable provider or word-check timing is timed on device from its own PCM (voice-lab.md §8.5).
+        { LocalTiming = localTiming };
     }
     internal async Task<PreparedVoiceLabAsset?> PaidAudioAsync(Guid id, CancellationToken ct)
     {

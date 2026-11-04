@@ -58,8 +58,9 @@ internal sealed partial class RewriteGeneration : IDisposable
     internal VoiceLabTakeRunQuote? Quote => core.PendingQuote;
     internal VoiceLabTakeBatch.Window? PreparedWindow => Quote is { } quote && pendingInput is { } input ? new(input, quote) : null;
     internal VoiceLabCostPresentationResult? Cost => core.Cost;
-    internal IReadOnlyList<VoiceLabTakeRow> Rows => core.Rows.Where(row => !rejected.Contains(row.Id)).ToArray();
-    internal Guid? SelectedTakeId => core.SelectedTakeId;
+    /// <summary>The phrase's one take list: its generated takes, then the user's own recorded takes (Say it myself).</summary>
+    internal IReadOnlyList<VoiceLabTakeRow> Rows => core.Rows.Where(row => !rejected.Contains(row.Id)).Concat(recordedRows).ToArray();
+    internal Guid? SelectedTakeId => recordedSelection ?? core.SelectedTakeId;
     internal Guid? AuditionedTakeId => core.AuditionedTakeId;
     internal VoiceLabTakeInput? ReviewedInput { get; private set; }
     internal VoiceLabTakeRunResult? LastRunResult => runner.Result;
@@ -346,7 +347,7 @@ internal sealed partial class RewriteGeneration : IDisposable
     }
     internal void SelectTake(Guid id) => _ = SelectTakeAsync(id);
     internal void AuditionTake(Guid? id) { core.AuditionTake(id); Notify(); }
-    private RewriteGenerationPhase ReviewPhase() => core.SelectedTakeId is { } selected && Rows.FirstOrDefault(row => row.Id == selected) is { } row
+    private RewriteGenerationPhase ReviewPhase() => SelectedTakeId is { } selected && Rows.FirstOrDefault(row => row.Id == selected) is { } row
         ? row.Fits || VideoChoice is not null ? RewriteGenerationPhase.ReadyToAccept : RewriteGenerationPhase.LengthChanged
         : Rows.Count == 0 ? RewriteGenerationPhase.Idle : RewriteGenerationPhase.NonePassed;
     private async Task ProgressAsync()
@@ -382,7 +383,8 @@ internal sealed partial class RewriteGeneration : IDisposable
     }
     private void Fail(Exception error)
     {
-        Problem = RewriteSession.Refusal(error);
+        // A run stopped by an account failure says its one fix (Mac ClipTakePlan.nextStep).
+        Problem = RewriteSession.ProviderProblem(error);
         Announcement = Problem;
         if (runStarted || !Rows.Any(row => row.Selectable)) Phase = RewriteGenerationPhase.Failed;
     }
@@ -420,6 +422,7 @@ internal sealed partial class RewriteGeneration : IDisposable
                 await takes.Audition.InvalidateAsync();
                 await takes.Audition.DisposeAsync();
             }
+            foreach (var take in recordedTakes.Values) await take.Scratch.InvalidateAsync();
             await core.InvalidateAsync(); await discovery; await PendingUpdate;
         }
         finally { release?.Invoke(); lifetime.Dispose(); }

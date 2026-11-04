@@ -20,6 +20,7 @@ internal sealed partial class RewritePanel
     private readonly TextBlock videoLine = Ui.Text("");
     private readonly Button changeVideo = new() { Content = "Change" };
     private readonly TextBlock phraseStatus = Ui.Text("");
+    private readonly TextBlock roundLine = Ui.Text("");
     private bool showVideoChoices;
     private readonly StackPanel takeRecovery = Ui.Stack(6);
     private readonly TextBlock nextPace = Ui.Text("");
@@ -50,11 +51,19 @@ internal sealed partial class RewritePanel
             RenderTakes(generation);
         };
         BuildAutoFix();
+        BuildOwnWords();
+        generationBody.Children.Add(wordingBox);
         generationBody.Children.Add(takeExpression);
         generationBody.Children.Add(takeList);
         AutomationProperties.SetAutomationId(phraseStatus, "Rewrite.PhraseStatus");
         phraseStatus.TextWrapping = TextWrapping.Wrap;
         generationBody.Children.Add(phraseStatus);
+        // "Round k of 3 · tried: …": what the fix loop learned for this phrase (voice-lab.md §8.2.2).
+        AutomationProperties.SetAutomationId(roundLine, "Rewrite.RoundLine");
+        roundLine.TextWrapping = TextWrapping.Wrap;
+        roundLine.FontSize = 11;
+        Themed(roundLine, TextBlock.ForegroundProperty, "VcTextSecondaryBrush");
+        generationBody.Children.Add(roundLine);
         generationBody.Children.Add(autoFixBox);
         generationBody.Children.Add(nextPace);
         AutomationProperties.SetAutomationId(videoChoices, "Rewrite.VideoChoice");
@@ -198,6 +207,7 @@ internal sealed partial class RewritePanel
     }
     private void RenderTakes(RewriteGeneration generation)
     {
+        RenderOwnWords(generation);
         RenderTakeExpression(generation);
         var rows = generation.Rows;
         updating = true;
@@ -212,6 +222,8 @@ internal sealed partial class RewritePanel
         lengthBody.Visibility = generation.Selected is { Selectable: true, Fits: false } && !generation.LeftOut ? Visibility.Visible : Visibility.Collapsed;
         phraseStatus.Text = session.PhraseStatus(session.ActiveWindow);
         phraseStatus.Visibility = phraseStatus.Text.Length > 0 && generation.Rows.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        roundLine.Text = session.AutoFixHistoryLine(session.ActiveWindow) ?? "";
+        roundLine.Visibility = roundLine.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         takeRecovery.Visibility = generation.NeedsShorterWording && !generation.LeftOut && FallbackShown ? Visibility.Visible : Visibility.Collapsed;
         foreach (var button in takeRecovery.Children.OfType<Button>()) button.IsEnabled = session.ReviewIsCurrent && !requestingApproval;
         if (takeRecovery.Children.OfType<Button>().FirstOrDefault() is { } retry)

@@ -317,7 +317,7 @@ internal sealed partial class RewriteSession
         for (var index = 0; index < generationWindows.Count; index++)
         {
             var window = generationWindows[index];
-            if (window.IsRunning || window.IsPreparing || !window.NeedsShorterWording || window.Selected is not { Audio: { } audio } selected ||
+            if (Wording(index) != PhraseWording.Suggested || window.IsRunning || window.IsPreparing || !window.NeedsShorterWording || window.Selected is not { Audio: { } audio } selected ||
                 measuredTakes.Contains(selected.Id) || (selected.Receipt?.ModelId ?? window.InputFor(selected.Id)?.ModelId) != synthesisModel ||
                 PricedVoiceHunks.ElementAtOrDefault(index) is not { Fit: { } fit }) continue;
             measuredTakes.Add(selected.Id);
@@ -347,11 +347,35 @@ internal sealed partial class RewriteSession
         var target = VoiceLabWordingFit.WordTarget(wordsPerSecond, ratio, lower, Math.Max(lower, timing.MaximumSeconds ?? timing.SlotSeconds),
             Math.Max(0, baseline - speech) * ratio);
         var original = string.Join(" ", hunk.Hunk.SourceWordIds.Select(id => Transcript.First(word => word.Id == id).Text));
+        // The loop's memory (voice-lab.md §8.2.2): every wording this phrase had, with its measured result. The whole phrase is
+        // reworded, so the words joining it to the recording are named as required.
+        var tried = TriedWordings(suggestion.Window);
         return new(hunk.Ordinals[0], original, text, baseline * calibrated + VoiceLabAudioTags.Allowance(tags, text, synthesisModel),
-            suggestion.SlotSeconds, suggestion.TooLong ? "shorter" : "longer", target, suggestion.MeasuredSeconds, Calibrated: true);
+            suggestion.SlotSeconds, suggestion.TooLong ? "shorter" : "longer", target, suggestion.MeasuredSeconds, Calibrated: true)
+            { Tried = tried.Count == 0 ? null : tried, Bridge = BridgeFor(suggestion.Window) };
     }
 
-    private async Task RewordMeasuredTakeAsync(bool approved)
+    /// <summary>Why a reworded phrase is not voiced when the AI dropped its bridge words (voice-lab.md §8.2.2).</summary>
+    internal static string DroppedBridgeProblem(string ai, VoiceLabFitBridge bridge, int window) =>
+        $"{ai} left out “{bridge.Display}”, the words that join phrase {window + 1} to your recording, so its wording wasn't used.";
+
+    /// <summary>Why an automatic round's wording is not voiced (Mac <c>automaticRefusal</c>): a variant already tried, or one that does
+    /// not move toward the slot from the measured take's wording. Null when it may be priced.</summary>
+    private string? AutomaticRefusal(string text, RewriteMeasuredWording suggestion, IReadOnlyList<VoiceLabFitTried> tried)
+    {
+        if (generationWindows.ElementAtOrDefault(suggestion.Window) is not { } window) return null;
+        var measured = window.InputFor(suggestion.Take)?.Text ?? PricedVoiceHunks.ElementAtOrDefault(suggestion.Window)?.PatchText ?? "";
+        var key = VoiceLabFitTried.Key(text);
+        if (key == VoiceLabFitTried.Key(measured) || tried.Any(row => VoiceLabFitTried.Key(row.Text) == key)) return "repeat";
+        var rate = SpeakingRate().Rate;
+        var before = VoiceLabRewriteFit.Estimate(measured, rate);
+        var after = VoiceLabRewriteFit.Estimate(text, rate);
+        if (suggestion.TooLong && after >= before) return "notShorter";
+        if (!suggestion.TooLong && after <= before) return "notLonger";
+        return null;
+    }
+
+    private async Task RewordMeasuredTakeAsync(bool approved, bool automatic = false)
     {
         if (MeasuredWording is not { } suggestion || Connector is not { } connector ||
             generationWindows.ElementAtOrDefault(suggestion.Window) is not { } window || !suggestion.Unselected && window.SelectedTakeId != suggestion.Take) return;
@@ -373,16 +397,49 @@ internal sealed partial class RewriteSession
             Changed?.Invoke(this, EventArgs.Empty);
             lease = Editor.LlmRuns.TryAcquire() ?? throw new RewriteGenerationException(FitBusy);
             measuredLease = lease;
+            bool StillAsked() => IsOpen && token == measuredToken && ReferenceEquals(MeasuredWording, suggestion) &&
+                (suggestion.Unselected || window.SelectedTakeId == suggestion.Take);
             var action = fitService.Prepare([request], connector.Connector.Id, connector.Model, Language);
             var updates = await fitService.ProposeAsync([request], connector.Connector, connector.Model, Language, fitService.Approve(action, true), cancellation.Token);
+            if (!StillAsked()) return;
+            var update = updates[0];
+            // A reply that dropped the bridge words can't be priced or placed, so it never counts as a round: an automatic round
+            // asks once more, free of speech cost, naming them and listing the dropped wording (voice-lab.md §8.2.2).
+            if (!update.KeepOriginal && request.Bridge is { } bridge && !bridge.Keeps(update.Text))
+            {
+                if (!automatic) { suggestion.Problem = DroppedBridgeProblem(AiName, bridge, suggestion.Window); return; }
+                Refuse(suggestion.Window, new(update.Text, "missingBridge"));
+                AutoFix.Lines[suggestion.Window] = $"Fixing phrase {suggestion.Window + 1}: asking {AiName} again to keep “{bridge.Display}”…";
+                Changed?.Invoke(this, EventArgs.Empty);
+                if (!AutoFixChargeSend(suggestion.Window)) { MeasuredWording = null; return; }
+                var again = MeasuredPhrase(suggestion);
+                var retry = fitService.Prepare([again], connector.Connector.Id, connector.Model, Language);
+                updates = await fitService.ProposeAsync([again], connector.Connector, connector.Model, Language, fitService.Approve(retry, true), cancellation.Token);
+                if (!StillAsked()) return;
+                update = updates[0];
+                if (!update.KeepOriginal && !bridge.Keeps(update.Text))
+                {
+                    // Still without them: this round ends, and the phrase card's "Round k of 3 · tried: …" says why.
+                    Refuse(suggestion.Window, new(update.Text, "missingBridge"));
+                    suggestion.Problem = DroppedBridgeProblem(AiName, bridge, suggestion.Window);
+                    return;
+                }
+            }
             // The editor is busy while an AI request holds the project; release it before the new wording is quoted.
             lease.Dispose(); lease = null;
             if (token == measuredToken) measuredLease = null;
-            if (!IsOpen || token != measuredToken || !ReferenceEquals(MeasuredWording, suggestion) || !suggestion.Unselected && window.SelectedTakeId != suggestion.Take) return;
-            var update = updates[0];
             suggestion.KeepOriginal = update.KeepOriginal;
             if (!update.KeepOriginal)
             {
+                // An automatic round never prices a repeat, or a wording that doesn't move toward the slot; the next round hears
+                // why. A suggestion the user reviews is theirs to judge by ear.
+                if (automatic && AutomaticRefusal(update.Text, suggestion, request.Tried ?? []) is { } refusal)
+                {
+                    Refuse(suggestion.Window, new(update.Text, refusal));
+                    suggestion.Problem = refusal == "repeat" ? $"{AiName} repeated a wording already tried, so it wasn't used."
+                        : $"{AiName}'s wording wasn't {(suggestion.TooLong ? "shorter" : "longer")}, so it wasn't used.";
+                    return;
+                }
                 suggestion.Text = update.Text;
                 measuredWording[suggestion.Window] = update.Text;
                 await window.InputsChangedAsync(preserveReview: true);

@@ -17,10 +17,11 @@ internal sealed record RewriteChip(string Id, string Title, bool Ai, Func<Task>?
 /// "Choose yourself…" does not ask for the field (<see cref="Asks"/>), as Mac's collapsed steps carry no <c>ask</c>.</summary>
 internal sealed record RewriteNextStepCard(string Id, string Sentence, IReadOnlyList<RewriteChip> Chips, bool Asks = true);
 
-internal enum RewriteFooterAction { None, ApplyLocal, UseTakes, ApplyTextFixes, Done, KeepFixing, StopReask, StopAutoFix, ChooseTake }
+internal enum RewriteFooterAction { None, ApplyLocal, UseTakes, ApplyTextFixes, Done, KeepFixing, StopReask, StopAutoFix, ChooseTake, PriceTake, KeepOriginal }
 
-/// <summary>The footer always names the next step: a line, and the one primary action when there is one.</summary>
-internal sealed record RewriteFooterStep(string Line, string? Title, RewriteFooterAction Action);
+/// <summary>The footer always names the next step: a line, and the one primary action when there is one. <see cref="Phrase"/> is the
+/// phrase a per-phrase action acts on.</summary>
+internal sealed record RewriteFooterStep(string Line, string? Title, RewriteFooterAction Action, int Phrase = -1);
 
 internal sealed partial class RewriteSession
 {
@@ -29,8 +30,18 @@ internal sealed partial class RewriteSession
     internal const string ChooseYourselfChip = "Rewrite.Chip.ChooseYourself";
 
     /// <summary>The AI's suggestions as ✦ chips, each a scoped re-ask.</summary>
-    private IEnumerable<RewriteChip> AiChips() => ReplyNextActions.Select((action, index) => new RewriteChip("Rewrite.Chip.Ai" + (index + 1), action.Label, true,
-        () => ReaskAsync(new(action.Label, action.Instruction, action.Ordinals.Count > 0 ? action.Ordinals : StuckOrdinals, RewriteBlockedReason.Asked))));
+    private IEnumerable<RewriteChip> AiChips() => AiChips([]);
+    /// <summary>The AI's suggestions, one chip per variant and none that offers a wording already tried (voice-lab.md §8.2.2).</summary>
+    private IEnumerable<RewriteChip> AiChips(IReadOnlyList<VoiceLabFitTried> tried)
+    {
+        var triedKeys = tried.Select(row => VoiceLabFitTried.Key(row.Text)).ToHashSet(StringComparer.Ordinal);
+        HashSet<string> seen = new(StringComparer.Ordinal);
+        return ReplyNextActions.Select((action, index) => (action, index))
+            .Where(item => seen.Add(VoiceLabFitTried.Key(item.action.Instruction)) && !triedKeys.Contains(VoiceLabFitTried.Key(item.action.Instruction)) &&
+                !triedKeys.Contains(VoiceLabFitTried.Key(item.action.Label)))
+            .Select(item => new RewriteChip("Rewrite.Chip.Ai" + (item.index + 1), item.action.Label, true,
+                () => ReaskAsync(new(item.action.Label, item.action.Instruction, item.action.Ordinals.Count > 0 ? item.action.Ordinals : StuckOrdinals, RewriteBlockedReason.Asked))));
+    }
 
     private string ChangeTime(int ordinal)
     {
@@ -95,7 +106,7 @@ internal sealed partial class RewriteSession
                         .. AiChips()
                     ]));
                 }
-            if (HasPaidTakes && AutoFix.ChoicesShown && !IsGeneratingBatch)
+            if ((HasPaidTakes || AutoFix.Armed) && AutoFix.ChoicesShown && !IsGeneratingBatch)
                 for (var index = 0; index < generationWindows.Count; index++)
                 {
                     if (StuckReason(index) is not { } reason) continue;
@@ -103,6 +114,16 @@ internal sealed partial class RewriteSession
                     var window = generationWindows[index];
                     var price = window.Quote?.Estimate.Usd is { } usd ? " · ≈ " + Dollars(usd) : "";
                     List<RewriteChip> chips = [];
+                    if (reason is StuckTakeReason.Provider)
+                    {
+                        // The cause and its one fix (voice-lab.md §8.2.2): never wording chips.
+                        var name = generationWindows.Count > 1 ? $" for phrase {index + 1}" : "";
+                        chips.Add(new("Rewrite.Chip.PriceTake" + (index + 1), PriceTakeTitle(index) + name + (IsPricedAfresh(index) ? price : ""), false,
+                            () => PriceTakeAsync(phrase)));
+                        chips.Add(new("Rewrite.Chip.KeepPhrase" + (index + 1), "Keep original words" + name, false, () => { KeepOriginal(phrase); return Task.CompletedTask; }));
+                        cards.Add(new("Rewrite.Steps.Phrase" + (index + 1), StuckSentence(reason, index + 1), chips));
+                        continue;
+                    }
                     if (reason is StuckTakeReason.Length length)
                         chips.Add(new("Rewrite.Chip.Fit" + (index + 1), $"Reword phrase {index + 1} to fit", true, () => ManualStepAsync(() => RewordForLengthAsync(phrase, length))));
                     if (reason is StuckTakeReason.Words)
@@ -110,7 +131,8 @@ internal sealed partial class RewriteSession
                     if (reason is not StuckTakeReason.Length)
                         chips.Add(new("Rewrite.Chip.TryAnother" + (index + 1), "Try another" + price, false, () => ManualStepAsync(() => StartAutomaticTakeAsync(phrase))));
                     chips.Add(new("Rewrite.Chip.KeepPhrase" + (index + 1), $"Keep original words for {index + 1}", false, () => { KeepOriginal(phrase); return Task.CompletedTask; }));
-                    chips.AddRange(AiChips());
+                    // Wording suggestions only for wording and fit failures, never one that repeats a tried wording.
+                    if (reason.Rewords) chips.AddRange(AiChips(TriedWordings(index)));
                     cards.Add(new("Rewrite.Steps.Phrase" + (index + 1), StuckSentence(reason, index + 1), chips));
                 }
             return cards;
@@ -154,6 +176,36 @@ internal sealed partial class RewriteSession
         try { await step(); }
         finally { manualStep = false; Changed?.Invoke(this, EventArgs.Empty); }
     }
+
+    /// <summary>[Price a take]: prices a new take of phrase <paramref name="index"/> when it has no fresh quote, so its chip shows the
+    /// price; once priced, the chip's click (its price on it) makes the take. Every earlier take stays.</summary>
+    internal async Task PriceTakeAsync(int index)
+    {
+        if (generationWindows.ElementAtOrDefault(index) is not { } window || !GenerationIsCurrent || window.IsRunning) return;
+        if (window.IsPreparing) await window.PendingUpdate;
+        if (!IsPricedAfresh(index))
+        {
+            // A fresh quote: the account may have changed since the failure (a key, credit or permission).
+            window.KeepEveryTake();
+            await window.InputsChangedAsync(preserveReview: true);
+            if (window.Quote is { } quote) { window.MarkEstimateShown(quote); AutoFix.Priced.Add(index); }
+            Changed?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+        AutoFix.Priced.Remove(index);
+        await ManualStepAsync(() => StartAutomaticTakeAsync(index));
+    }
+    /// <summary>[Price a take] already priced this phrase and its quote is still current.</summary>
+    internal bool IsPricedAfresh(int index) => AutoFix.Priced.Contains(index) &&
+        generationWindows.ElementAtOrDefault(index) is { Quote: not null, IsPreparing: false, IsRunning: false };
+    private string PriceTakeTitle(int index) => IsPricedAfresh(index) ? "Make take" : "Price a take";
+
+    /// <summary>The footer's last fallback for a phrase with no take yet (Mac <c>takesWaitingStep</c>): its own priced control.</summary>
+    internal static RewriteFooterStep NoTakeYetStep(int index) =>
+        new($"Phrase {index + 1} has no take yet.", $"Price a take for phrase {index + 1}", RewriteFooterAction.PriceTake, index);
+    /// <summary>The footer's last fallback for a phrase with takes but none to use: keep its original words.</summary>
+    internal static RewriteFooterStep NoTakeToUseStep(int index) =>
+        new($"Phrase {index + 1} has no take to use.", $"Keep original words for phrase {index + 1}", RewriteFooterAction.KeepOriginal, index);
 
     /// <summary>[Choose Take N]: selects the take the footer offers (Mac <c>chooseTake</c>), the user's explicit pick.</summary>
     internal async Task<bool> ChooseOfferedTakeAsync()
@@ -235,7 +287,8 @@ internal sealed partial class RewriteSession
                 return new(Problem.Length > 0 ? "Ask again, or change the instruction above." : "Describe the change, then Rewrite.", null, RewriteFooterAction.None);
             if (IncludedHunks.Count == 0) return new("Nothing is included. Your original words stay.", "Done", RewriteFooterAction.Done);
             if (LocalAction is { } local) return new($"{local} needs no new audio.", local, RewriteFooterAction.ApplyLocal);
-            if (!HasPaidTakes)
+            // Once an approved Get Price armed the fixes, the takes footer applies even if no take was paid (an account failure).
+            if (!HasPaidTakes && !AutoFix.Armed)
             {
                 if (Collision is { } collision) return new($"Change {collision.Change} needs a fix above.", null, RewriteFooterAction.None);
                 if (BlockedVoiceHunks.FirstOrDefault() is { } blocked)
@@ -272,8 +325,13 @@ internal sealed partial class RewriteSession
                     return new($"Choose a take for phrase {index + 1}.", $"Choose Take {offered.Index + 1}", RewriteFooterAction.ChooseTake);
                 if (window.Rows.Any(row => window.UseAnywayCanAct(row)))
                     return new($"Listen to phrase {index + 1}'s take, then Use anyway or try another.", null, RewriteFooterAction.None);
-                if (window.Rows.Count == 0) return new($"Phrase {index + 1} has no take yet. Make takes above.", null, RewriteFooterAction.None);
-                return new($"Choose a take for phrase {index + 1} above, or keep its original words.", null, RewriteFooterAction.None);
+                // Every remaining state names its own control (house rule: no advice without the action that follows it).
+                // Once priced, the same control carries its price: that click is the approval.
+                if (window.Rows.Count == 0)
+                    return IsPricedAfresh(index) && window.Quote is { } quote
+                        ? NoTakeYetStep(index) with { Title = $"Make take for phrase {index + 1}" + (quote.Estimate.Usd is { } usd ? " · ≈ " + Dollars(usd) : "") }
+                        : NoTakeYetStep(index);
+                return NoTakeToUseStep(index);
             }
             return new("Checking takes…", null, RewriteFooterAction.None);
         }

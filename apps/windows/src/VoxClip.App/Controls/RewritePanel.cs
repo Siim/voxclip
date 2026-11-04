@@ -153,7 +153,8 @@ internal sealed partial class RewritePanel : Grid
         disclosure.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
         disclosure.Children.Add(Themed(new FontIcon { Glyph = "\uE946", FontSize = 12, VerticalAlignment = VerticalAlignment.Top },
             IconElement.ForegroundProperty, "VcTextSecondaryBrush"));
-        var disclosureText = Small("Exports show AI MODIFIED on the video and in the post.");
+        disclosureText = Small(RewriteSession.AiDisclosureLine);
+        AutomationProperties.SetAutomationId(disclosureText, "Rewrite.Disclosure");
         Grid.SetColumn(disclosureText, 1); disclosure.Children.Add(disclosureText);
         footerContent.Children.Add(disclosure);
         acceptBlocker.TextWrapping = TextWrapping.Wrap;

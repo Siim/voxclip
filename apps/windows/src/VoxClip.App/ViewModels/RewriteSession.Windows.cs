@@ -108,6 +108,8 @@ internal sealed partial class RewriteSession
         Generation = null;
         AutoFix.Reset();
         VoiceChecks.Reset();
+        ResetWordings();
+        CancelPhraseMicrophone();
     }
 
     private static async Task DrainGenerationAsync(RewriteGeneration generation)
@@ -265,11 +267,13 @@ internal sealed partial class RewriteSession
                 if (accepted is null || !GenerationIsCurrent || ReviewIdentity != identity || !generationWindows.SequenceEqual(windows)) return false;
                 prepared.Add(accepted);
             }
-            if (prepared.Any(item => !item.IsCurrent()) || prepared.Select(item => item.Voice).Distinct().Count() != 1) return false;
+            // Generated phrases share one voice; the user's own recorded takes carry none.
+            var voices = prepared.Select(item => item.Voice).OfType<VoiceLabVoiceReference>().Distinct().ToArray();
+            if (prepared.Any(item => !item.IsCurrent()) || voices.Length > 1) return false;
             var assets = prepared.SelectMany(item => item.Assets).ToArray();
             if (assets.GroupBy(asset => asset.Id).Any(group => group.Distinct().Count() != 1)) return false;
             return Editor.ApplyVoiceLab(prepared.Select(item => item.Segment).ToArray(), assets.DistinctBy(asset => asset.Id).ToArray(),
-                prepared[0].Voice, Scope, RewriteActionName, Project, operations, CalibratedRates());
+                voices.FirstOrDefault(), Scope, RewriteActionName, Project, operations, CalibratedRates());
         }
         finally { applyingBatch = false; Changed?.Invoke(this, EventArgs.Empty); }
     }

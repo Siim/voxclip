@@ -138,8 +138,9 @@ internal sealed partial class RewriteSession : IDisposable
         var hunk = PricedVoiceHunks[windowIndex];
         if (hunk.Window is not { } window || hunk.PatchText is not { } patch)
             throw new RewriteGenerationException(hunk.Refusal ?? "This change can't be placed in this take. Your edits are saved.");
-        // A measured rewording replaces the whole spoken phrase of this window; its tags follow the words.
-        var text = measuredWording.TryGetValue(windowIndex, out var reworded) ? reworded : patch;
+        // A measured rewording, or the user's own words (My words), replaces the whole spoken phrase of this window; its tags
+        // follow the words.
+        var text = CurrentWording(windowIndex) is { } current && current != patch ? current : patch;
         var requestTags = ReferenceEquals(text, patch) ? hunk.RequestAudioTags : VoiceLabAudioTags.Reanchored(hunk.RequestAudioTags, patch, text);
         var combined = Editor.ProjectWithLocalOperations(Project, LocalOperations());
         try { VoiceLabRenderContract.ValidatePlacement(combined, Scope, window); }
@@ -466,6 +467,7 @@ internal sealed partial class RewriteSession : IDisposable
         StopReask();
         StopWordingFit();
         AutoFix.Reset();
+        if (PhraseMicrophone is { } microphone) { microphone.Changed -= MicrophoneChanged; _ = microphone.DisposeAsync(); }
         Editor.SelectionChanged -= GenerationSelectionChanged;
         RetireGenerationWindows();
         InvalidateProposal();

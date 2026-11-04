@@ -53,7 +53,7 @@ internal sealed partial class RewriteSession
     /// calibration), and its row shows no estimate or recovery.</summary>
     internal IReadOnlySet<int> VoicedOrdinals => generationWindows.Select((window, index) => (Window: window, Hunk: PricedVoiceHunks.ElementAtOrDefault(index), Index: index))
         .Where(item => item.Hunk is not null && !item.Window.LeftOut && item.Window.Selected is { Selectable: true } selected && item.Window.LengthFits(selected) &&
-            item.Window.InputFor(selected.Id)?.Text == (measuredWording.GetValueOrDefault(item.Index) ?? item.Hunk.PatchText))
+            item.Window.InputFor(selected.Id)?.Text == CurrentWording(item.Index))
         .SelectMany(item => item.Hunk!.Ordinals).ToHashSet();
     /// <summary>Whether change <paramref name="ordinal"/>'s row shows its estimate and length recovery: not once it is voiced.</summary>
     internal bool ShowsEstimate(int ordinal) => !VoicedOrdinals.Contains(ordinal);

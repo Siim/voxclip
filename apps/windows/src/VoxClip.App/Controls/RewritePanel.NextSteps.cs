@@ -122,9 +122,11 @@ internal sealed partial class RewritePanel
     }
 
     /// <summary>The footer names the next step and carries its one primary action.</summary>
+    private TextBlock disclosureText = new();
     private void RenderFooter()
     {
         var step = session.FooterStep;
+        disclosureText.Text = session.DisclosureLine;
         acceptBlocker.Text = step.Line;
         acceptBlocker.Visibility = step.Line.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         apply.Visibility = step.Title is null ? Visibility.Collapsed : Visibility.Visible;
@@ -137,6 +139,8 @@ internal sealed partial class RewritePanel
             RewriteFooterAction.Done => "Rewrite.Done",
             RewriteFooterAction.KeepFixing => "Rewrite.FooterKeepFixing",
             RewriteFooterAction.ChooseTake => "Rewrite.ChooseTake",
+            RewriteFooterAction.PriceTake => "Rewrite.FooterPriceTake",
+            RewriteFooterAction.KeepOriginal => "Rewrite.FooterKeepOriginal",
             RewriteFooterAction.StopReask or RewriteFooterAction.StopAutoFix => "Rewrite.FooterStop",
             _ => "Rewrite.Apply"
         });
@@ -146,7 +150,7 @@ internal sealed partial class RewritePanel
         {
             RewriteFooterAction.ApplyLocal or RewriteFooterAction.ApplyTextFixes => !session.Editor.Busy && !session.Editor.IsReadOnly && !session.Editor.IsLeaving,
             RewriteFooterAction.UseTakes => session.CanAcceptAll,
-            RewriteFooterAction.KeepFixing => approval is null,
+            RewriteFooterAction.KeepFixing or RewriteFooterAction.PriceTake => approval is null && session.GenerationIsCurrent,
             _ => true
         };
     }
@@ -175,6 +179,8 @@ internal sealed partial class RewritePanel
                 break;
             case RewriteFooterAction.KeepFixing: session.KeepFixing(); break;
             case RewriteFooterAction.ChooseTake: await session.ChooseOfferedTakeAsync(); break;
+            case RewriteFooterAction.PriceTake: await session.PriceTakeAsync(session.FooterStep.Phrase); break;
+            case RewriteFooterAction.KeepOriginal: session.KeepOriginal(session.FooterStep.Phrase); break;
             case RewriteFooterAction.StopReask: session.StopReask(); break;
             case RewriteFooterAction.StopAutoFix: session.StopAutoFix(); break;
         }

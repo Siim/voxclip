@@ -335,7 +335,7 @@ public sealed class EditorViewModel : ObservableObject
         foreach (var operation in operations) local = reduce(local, operation);
         return EditingEngine.ApplyToProject(snapshot, local);
     }
-    public bool ApplyVoiceLab(IReadOnlyList<VoiceLabSegment> segments, IReadOnlyList<VoiceLabAsset> assets, VoiceLabVoiceReference voice,
+    public bool ApplyVoiceLab(IReadOnlyList<VoiceLabSegment> segments, IReadOnlyList<VoiceLabAsset> assets, VoiceLabVoiceReference? voice,
         VoiceLabOutputScope scope, string actionName, Project? expectedProject = null, IReadOnlyList<EditOperation>? localOperations = null,
         IReadOnlyDictionary<string, IReadOnlyList<VoiceLabRateSample>>? speakingRateSamples = null)
         => ApplyVoiceLabCore(new VoiceLabEditCommand.AcceptAll(segments, assets, voice), expectedProject, localOperations, scope, actionName, speakingRateSamples);

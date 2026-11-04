@@ -22,7 +22,12 @@ public sealed class RewriteSmokeTests
     internal const string Close = "much better word11 nicer";
     private const string Fifteen = "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen";
 
-    public static TheoryData<string> Scenarios => new(["S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9", "S10", "S11", "S12", "S13", "S14"]);
+    /// <summary>S15 twins Mac S15 (bridge words); S16 twins Mac S14 (Eleven v4 timing quirks), renumbered because Windows S14 is the
+    /// collision after paid takes; the own-take scenarios keep Mac's names.</summary>
+    public static TheoryData<string> Scenarios => new(["S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9", "S10", "S11", "S12", "S13", "S14",
+        "S15", "S16", "S-own-typed", "S-own-mic", "S-own-mic-misfit"]);
+    /// <summary>S16's reply: words 10 and 14 change, words 11–13 stay, so two phrases are voiced.</summary>
+    private const string TwoChanges = "a much clearer phrasing word11 word12 word13 a much brighter phrasing word15 word16";
 
     [Theory]
     [MemberData(nameof(Scenarios))]
@@ -175,6 +180,87 @@ public sealed class RewriteSmokeTests
                 smoke.End(VoiceLabVideoMode.Source, voiced: 1);
                 return smoke;
             }
+            case "S15":
+            {
+                // Mac S15: the measured round's first reply drops the words joining phrase 1 to the recording (word10), so it can't be
+                // placed or priced. The free re-ask in the same round names them; its shorter wording keeps them and is voiced.
+                var connector = RewriteLearningLoopTests.Measured(RewriteLearningLoopTests.BridgedReply, request => request == 1 ? "brief words" : "word10 brief words");
+                using var smoke = new Smoke(id, connector, new((run, _) => run == 1 ? (5.8, Passed) : (Fit, Passed)), editor: RewriteLearningLoopTests.BridgedEditor());
+                await smoke.ProposeAsync();
+                await smoke.GetPriceAsync();
+                var measured = connector.FitRequests.Where(request => request.CachedBlock!.Contains("Measured take:", StringComparison.Ordinal)).ToArray();
+                if (measured.Length != 2 || !measured[0].CachedBlock!.Contains("Required: the text must begin with “word10”", StringComparison.Ordinal) ||
+                    !measured[1].CachedBlock!.Contains("- “brief words”: dropped the joining words, not used", StringComparison.Ordinal))
+                    smoke.Failures.Add($"{id}: the round didn't name the bridge words and ask again once ({measured.Length} measured requests)");
+                if (smoke.Session.AutoFix.Rounds.GetValueOrDefault(0) != 1) smoke.Failures.Add($"{id}: the re-ask counted as another round");
+                smoke.End(VoiceLabVideoMode.Source, voiced: 1);
+                return smoke;
+            }
+            case "S16":
+            {
+                // Mac S14 (MVP18): phrase 1's reply timing is tolerated (its take arrives timed); phrase 2's take has no word timing even
+                // after recovery. Its run is not fatal, so the batch goes on, and the resolver makes one more take of it: both phrases
+                // are voiced, never stopped for timing or retried into the same failure.
+                var second = new Runner((_, _) => (Fit, Passed)) { Fails = (run, _) => run == 1 ? (new VoiceLabException(VoiceLabErrorKind.InvalidAlignment), false) : null };
+                Runner[] runners = [new((_, _) => (Fit, Passed)), second];
+                using var smoke = new Smoke(id, new(TwoChanges, (_, ordinals) => Rows(ordinals, "x")), runners[0], last: 16, runners: index => runners[index]);
+                await smoke.ProposeAsync();
+                await smoke.GetPriceAsync();
+                if (smoke.Session.AutoFix.Stopped) smoke.Failures.Add($"{id}: the fixes stopped: {smoke.Session.AutoFix.StopReason}");
+                if (second.Sends != 2 || !smoke.Session.AutoFix.TriedAnother.Contains(1)) smoke.Failures.Add($"{id}: phrase 2 wasn't retimed by one more take ({second.Sends} runs)");
+                smoke.End(VoiceLabVideoMode.Source, voiced: 2);
+                return smoke;
+            }
+            case "S-own-typed":
+            {
+                // Mac S-own-typed: the user types the wording, the cloned voice reads it, Use.
+                using var smoke = new Smoke(id, new(Reply, (_, ordinals) => Rows(ordinals, "x")), new((_, _) => (Fit, Passed)));
+                await smoke.ProposeAsync();
+                await smoke.GetPriceAsync();
+                await smoke.Session.ChooseWordingAsync(PhraseWording.OwnWords, 0);
+                smoke.Observe("choose [My words] on phrase 1");
+                smoke.Session.EditOwnWords("shoot the clip in one go", 0);
+                await smoke.Session.PriceOwnWordsAsync(0);
+                smoke.Observe("type 'shoot the clip in one go' in My words");
+                if (smoke.Session.OwnWordsTakeTitle(0) is not { } title) { smoke.Failures.Add($"{id}: My words has no priced take"); return smoke; }
+                await smoke.Session.MakeOwnWordsTakeAsync(0, (_, _) => Task.FromResult(true));
+                smoke.Observe("click [" + title + "]");
+                var window = smoke.Session.Generation!;
+                if (window.Selected is not { } used || window.InputFor(used.Id)?.Text != "shoot the clip in one go")
+                    smoke.Failures.Add($"{id}: Use would apply another wording than the user's");
+                smoke.End(VoiceLabVideoMode.Source, voiced: 1);
+                return smoke;
+            }
+            case "S-own-mic":
+            {
+                // Mac S-own-mic: the user records the phrase, it is checked on this PC, Use.
+                using var smoke = new Smoke(id, new(Reply, (_, ordinals) => Rows(ordinals, "x")), new((_, _) => (Fit, Passed)), source: true);
+                await smoke.ProposeAsync();
+                await smoke.GetPriceAsync();
+                await smoke.RecordAsync(1.3, "click [● Record]");
+                await smoke.UseOwnTakeAsync();
+                if (smoke.Session.DisclosureLine != RewriteSession.OwnTakeDisclosureLine) smoke.Failures.Add($"{id}: the footer labels the own take as AI");
+                smoke.End(null, voiced: 1);
+                return smoke;
+            }
+            case "S-own-mic-misfit":
+            {
+                // Mac S-own-mic-misfit: the first take runs too long for the gap; Record again replaces it and fits; Use.
+                using var smoke = new Smoke(id, new(Reply, (_, ordinals) => Rows(ordinals, "x")), new((_, _) => (Fit, Passed)), source: true);
+                await smoke.ProposeAsync();
+                await smoke.GetPriceAsync();
+                await smoke.RecordAsync(3.3, "click [● Record]");
+                var window = smoke.Session.Generation!;
+                var first = window.Rows[^1];
+                var line = RewritePhraseMicrophone.TakeLine(first, window.RecordedTake(first.Id)?.Text ?? "", window.Slot(first) ?? 0, window.LengthFits(first), window.DurationAvailable(first));
+                if (!line.Contains("long", StringComparison.Ordinal)) smoke.Failures.Add($"{id}: the misfit's line doesn't say it runs long: {line}");
+                await smoke.RecordAsync(1.3, "click [Record again]");
+                if (window.Rows.Any(row => row.Id == first.Id) || window.Rows.Count(row => window.IsRecorded(row.Id)) != 1)
+                    smoke.Failures.Add($"{id}: Record again didn't replace the unused misfit");
+                await smoke.UseOwnTakeAsync();
+                smoke.End(null, voiced: 1);
+                return smoke;
+            }
             case "S12":
             {
                 using var smoke = new Smoke(id, new(Long + " word11 word12", (round, ordinals) => Rows(ordinals, round <= 3 ? Long : "said briefly")),
@@ -213,17 +299,54 @@ public sealed class RewriteSmokeTests
     {
         private readonly string id;
         private readonly Runner runner;
+        private readonly Func<int, Runner>? runners;
+        private readonly RewriteOwnTakeTests.FakeMicrophone microphone = new();
+        private readonly RewriteOwnTakeTests.FakeHeard heard = new() { Words = RewriteOwnTakeTests.Words };
+        private readonly string root = Path.Combine(Path.GetTempPath(), "voxclip-smoke-" + Guid.NewGuid().ToString("N"));
         private HashSet<Guid> paid = [];
         internal RewriteSession Session { get; }
         internal List<string> Failures { get; } = [];
         internal List<string> Log { get; } = [];
         private int step;
 
-        internal Smoke(string id, Connector connector, Runner runner, int last = 12, EditorViewModel? editor = null)
+        internal Smoke(string id, Connector connector, Runner runner, int last = 12, EditorViewModel? editor = null, Func<int, Runner>? runners = null,
+            bool source = false)
         {
-            this.id = id; this.runner = runner;
+            this.id = id; this.runner = runner; this.runners = runners;
             Session = RewriteAutoFixTests.Session(connector, last: last, editor: editor);
-            Configure(Session, runner);
+            // Say it myself needs the decoded source; several phrases need a runner each (a stub runner holds one quote).
+            if (source || runners is not null) RewriteOwnTakeTests.ConfigureWithSource(Session, runners ?? (_ => runner));
+            else Configure(Session, runner);
+            if (source)
+                Session.ConfigureMicrophone(new RewritePhraseMicrophone(microphone, new RewriteOwnTakeTests.FakeCue(),
+                    heard, () => PhraseMicrophoneAccess.Allowed, () => false, meters: false),
+                    new(Session.Project.Id, Path.Combine(root, "VoiceLab"), Path.Combine(root, "VoiceLabScratch")));
+        }
+
+        /// <summary>[● Record] (or [Record again]) on phrase 1, speaking for <paramref name="seconds"/>, then [Stop] or the limit.</summary>
+        internal async Task RecordAsync(double seconds, string label)
+        {
+            if (Session.PhraseMicrophone is not { } phrase) { Failures.Add($"{id}: no microphone"); return; }
+            await Session.RecordPhraseAsync(0);
+            Observe(label);
+            microphone.Seconds = Math.Min(seconds, phrase.Limit);
+            // The recognizer hears the three words across the whole recording, so the take is as long as the user spoke.
+            var span = (microphone.Seconds - 0.35) / 3;
+            heard.Words = new[] { "much", "clearer", "words" }.Select((word, index) => new VoiceLabSpokenWord(word, 0.15 + index * span, 0.15 + index * span + span * 0.85)).ToArray();
+            if (seconds >= phrase.Limit) await phrase.TickAsync(Session); else await Session.StopPhraseRecordingAsync();
+            Observe(seconds >= phrase.Limit ? "it stops at the gap + 1.5 s" : "click [Stop]");
+            if (phrase.Problem.Length > 0) Failures.Add($"{id}: the take could not be checked: {phrase.Problem}");
+        }
+
+        /// <summary>[Use your take], or [Use anyway] for a join to listen to first or a take a changed video duration carries.</summary>
+        internal async Task UseOwnTakeAsync()
+        {
+            var window = Session.Generation!;
+            if (window.Rows.LastOrDefault(row => window.IsRecorded(row.Id)) is not { } take) { Failures.Add($"{id}: no own take"); return; }
+            var anyway = take.RequiresJoinAdvisoryAcceptance;
+            if (!await (anyway ? window.UseTakeAnywayAsync(take.Id) : window.SelectTakeAsync(take.Id))) Failures.Add($"{id}: Use your take didn't act");
+            Observe(anyway ? "click [Use anyway]" : "click [Use your take]");
+            if (window.SelectedTakeId != take.Id) Failures.Add($"{id}: the own take isn't the one used");
         }
 
         internal async Task ProposeAsync(bool expectReply = true)
@@ -339,10 +462,15 @@ public sealed class RewriteSmokeTests
             // I9 also: an included voice change with no phrase would be dropped unvoiced by Use.
             foreach (var hunk in Session.Review?.VoiceHunks.Except(Session.PricedVoiceHunks) ?? [])
                 Failures.Add($"{id} I9: change {hunk.Ordinals[0]} is included but has no phrase to voice it");
-            Log.Add($"{id} end: {applying.Length} voiced, {runner.Sends} take runs, spent {RewriteSession.Dollars(Session.AutoFix.Spent)}");
+            var runs = runners is null ? runner.Sends : Enumerable.Range(0, windows.Count).Sum(index => runners(index).Sends);
+            Log.Add($"{id} end: {applying.Length} voiced, {runs} take runs, spent {RewriteSession.Dollars(Session.AutoFix.Spent)}");
         }
 
-        public void Dispose() => Session.Dispose();
+        public void Dispose()
+        {
+            Session.Dispose();
+            try { Directory.Delete(root, true); } catch (DirectoryNotFoundException) { }
+        }
     }
 }
 #endif

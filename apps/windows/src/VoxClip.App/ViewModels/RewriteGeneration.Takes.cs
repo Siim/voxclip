@@ -10,8 +10,9 @@ internal sealed record RewriteTakeAccess(VoiceLabAudition Audition, Func<Guid, V
     Func<Guid, Task> Reject, Func<Guid, DateTimeOffset, CancellationToken, Task<(VoiceLabPublishedTake Take, VoiceConsentRecord Consent)>> Publish,
     Func<Guid, CancellationToken, Task<PreparedVoiceLabAsset?>>? PaidAudio = null);
 
+/// <summary>A phrase ready to apply. <see cref="Voice"/> is null for the user's own recorded take (no voice reference).</summary>
 internal sealed record RewriteAcceptance(VoiceLabSegment Segment, IReadOnlyList<VoiceLabAsset> Assets,
-    VoiceLabVoiceReference Voice, Func<bool> IsCurrent);
+    VoiceLabVoiceReference? Voice, Func<bool> IsCurrent);
 
 internal sealed partial class RewriteGeneration
 {
@@ -37,7 +38,7 @@ internal sealed partial class RewriteGeneration
     internal VoiceLabVideoMode? VideoChoice { get; private set; }
     internal bool ReadyToAccept => !closed && !accepting && !IsRunning && current() && ReviewedInputsCurrent &&
         reviewEnd is VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop &&
-        Phase == RewriteGenerationPhase.ReadyToAccept && Selected is { Selectable: true, RequiresJoinAdvisoryAcceptance: false } selected && takes?.Scratch(selected.Id)?.IsValid == true;
+        Phase == RewriteGenerationPhase.ReadyToAccept && Selected is { Selectable: true, RequiresJoinAdvisoryAcceptance: false } selected && ScratchFor(selected.Id)?.IsValid == true;
     internal string AcceptTitle => "Use Take " + ((Selected?.Index ?? 0) + 1).ToString(CultureInfo.InvariantCulture);
     internal VoiceLabAuditionState? Audition => takes?.Audition.Snapshot;
     internal int PhraseNumber { get; set; } = 1;
@@ -50,10 +51,10 @@ internal sealed partial class RewriteGeneration
     internal bool CanCut => Selected is { Fits: false } && VideoOptions?.Allows(VoiceLabVideoMode.Cut) == true;
     internal bool NeedsShorterWording => Selected is { Fits: false } && !CanRetime && !CanCut && !IsRunning;
     internal bool CanPlayTake(Guid id) => CanPlay && Rows.FirstOrDefault(row => row.Id == id) is { Stopped: false } row &&
-        (row.Audio is not null ? takes?.Scratch(id)?.IsValid == true : row.Generated is not null && takes?.PaidAudio is not null);
+        (row.Audio is not null ? ScratchFor(id)?.IsValid == true : row.Generated is not null && takes?.PaidAudio is not null);
     internal bool CanUseTakeAnyway(Guid id) => !closed && !accepting && !IsRunning && current() &&
         reviewEnd is VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop &&
-        Rows.FirstOrDefault(row => row.Id == id) is { Selectable: true, HasJoinAdvisory: true } && takes?.Scratch(id)?.IsValid == true;
+        Rows.FirstOrDefault(row => row.Id == id) is { Selectable: true, HasJoinAdvisory: true } && ScratchFor(id)?.IsValid == true;
     /// <summary>Use anyway shows only where it can act (Mac smokereal): a passing take whose join still needs listening, not the
     /// take already used, and only when some video duration can carry it.</summary>
     internal bool UseAnywayCanAct(VoiceLabTakeRow row) => row.Selectable && row.RequiresJoinAdvisoryAcceptance && row.Id != SelectedTakeId && DurationAvailable(row);
@@ -115,7 +116,7 @@ internal sealed partial class RewriteGeneration
         VideoChoice = null;
         BestTakeId = result.End is VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop && !LeftOut ? AutomaticTake()?.Id : null;
         var retained = explicitSelection is { } chosen && Rows.Any(row => row.Id == chosen && row.Selectable && !row.RequiresJoinAdvisoryAcceptance) ? explicitSelection : null;
-        core.SelectTake(retained ?? BestTakeId);
+        Select(retained ?? BestTakeId);
         AutoChooseVideo();
         Phase = result.End switch
         {
@@ -144,7 +145,7 @@ internal sealed partial class RewriteGeneration
         if (closed || accepting || IsRunning || LeftOut) return false;
         selectionRevision++;
         if (takes is not null) _ = takes.Audition.StopAsync();
-        LeftOut = true; explicitSelection = null; BestTakeId = null; core.SelectTake(null); VideoChoice = null;
+        LeftOut = true; explicitSelection = null; BestTakeId = null; Select(null); VideoChoice = null;
         Phase = ReviewPhase(); Notify();
         return true;
     }
@@ -154,7 +155,7 @@ internal sealed partial class RewriteGeneration
         if (closed || !LeftOut) return false;
         LeftOut = false;
         BestTakeId = AutomaticTake()?.Id;
-        core.SelectTake(BestTakeId); VideoChoice = null; AutoChooseVideo();
+        Select(BestTakeId); VideoChoice = null; AutoChooseVideo();
         Phase = ReviewPhase(); Notify();
         return true;
     }
@@ -215,7 +216,7 @@ internal sealed partial class RewriteGeneration
         {
             BestTakeId = AutomaticTake()?.Id;
             var retained = explicitSelection is { } chosen && Rows.Any(row => row.Id == chosen && row.Selectable && !row.RequiresJoinAdvisoryAcceptance) ? explicitSelection : null;
-            if ((retained ?? BestTakeId) is var target && target != SelectedTakeId) { core.SelectTake(target); VideoChoice = null; }
+            if ((retained ?? BestTakeId) is var target && target != SelectedTakeId) { Select(target); VideoChoice = null; }
             AutoChooseVideo();
             Announcement = !Rows.Any(row => row.Selectable) ? TakeRowPresentation.NonePassed :
                 TakeRowPresentation.Completion(Rows.Count, Selected is { Fits: true, AutomaticallySelectable: true } row ? row.Index + 1 : null, Rows.Count(row => !row.Selectable && !row.Stopped));
@@ -262,17 +263,18 @@ internal sealed partial class RewriteGeneration
         var version = ++selectionRevision;
         if (takes is not null) await takes.Audition.TakeChangedAsync(id);
         if (closed || version != selectionRevision || !current() || !Rows.Any(row => row.Id == id)) return false;
-        explicitSelection = id; LeftOut = false; core.SelectTake(id); VideoChoice = null; AutoChooseVideo(); Phase = ReviewPhase(); Notify();
+        explicitSelection = id; LeftOut = false; Select(id); VideoChoice = null; AutoChooseVideo(); Phase = ReviewPhase(); Notify();
         if (pendingInput is { } input && RetryPace(input) != input.Pace) await InputsChangedAsync(preserveReview: true);
         return true;
     }
     internal async Task<bool> UseTakeAnywayAsync(Guid id)
     {
-        if (!CanUseTakeAnyway(id) || takes is null || Rows.FirstOrDefault(row => row.Id == id) is not { } row) return false;
+        if (!CanUseTakeAnyway(id) || Rows.FirstOrDefault(row => row.Id == id) is not { } row) return false;
         var version = ++selectionRevision;
-        await takes.Audition.TakeChangedAsync(id);
+        if (takes is not null) await takes.Audition.TakeChangedAsync(id);
         if (closed || version != selectionRevision || !current() || !Rows.Contains(row)) return false;
-        core.UseTakeAnyway(id, clock.GetUtcNow());
+        if (recordedTakes.ContainsKey(id)) UseRecordedAnyway(id, clock.GetUtcNow());
+        else core.UseTakeAnyway(id, clock.GetUtcNow());
         explicitSelection = id; LeftOut = false; VideoChoice = null; AutoChooseVideo(); Phase = ReviewPhase();
         Announcement = TakeRowPresentation.From(row, BestTakeId, PhraseNumber).Copy;
         Notify();
@@ -296,7 +298,7 @@ internal sealed partial class RewriteGeneration
             if (!Current()) return;
             outputChecked = true;
             if (!takes.Audition.Snapshot.CanPlay) return;
-            if (row.Audio is not null && takes.Scratch(id) is { IsValid: true } scratch)
+            if (row.Audio is not null && ScratchFor(id) is { IsValid: true } scratch)
             {
                 Task Start(CancellationToken token)
                 {
@@ -339,12 +341,12 @@ internal sealed partial class RewriteGeneration
         {
             await takes.Audition.StopAsync();
             await takes.Audition.RejectAsync(id);
-            await takes.Reject(id);
+            if (!recordedTakes.ContainsKey(id)) await takes.Reject(id);
         }
         if (closed) return;
-        rejected.Add(id);
+        if (!await RemoveRecordedAsync(id)) rejected.Add(id);
         BestTakeId = reviewEnd is VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop && !LeftOut ? AutomaticTake()?.Id : null;
-        if (SelectedTakeId == id) { explicitSelection = null; core.SelectTake(BestTakeId); VideoChoice = null; AutoChooseVideo(); }
+        if (SelectedTakeId == id) { explicitSelection = null; Select(BestTakeId); VideoChoice = null; AutoChooseVideo(); }
         Phase = ReviewPhase();
         Announcement = Selected is { } next ? $"Rejected Take {row.Index + 1}. Take {next.Index + 1} selected." : TakeRowPresentation.NonePassed;
         Notify();
@@ -370,6 +372,7 @@ internal sealed partial class RewriteGeneration
     {
         if (!ReadyToAccept || takes is null || ReviewedInput is not { } reviewed || Selected is not { } selected ||
             !ReferenceEquals(project, editor.Project)) return null;
+        if (recordedTakes.ContainsKey(selected.Id)) return await PrepareRecordedAcceptanceAsync(editor, project, localOperations, selected);
         var input = InputFor(selected.Id) ?? reviewed;
         VoiceLabTakeInput Made(VoiceLabTakeRow row) => InputFor(row.Id) ?? reviewed;
         var version = revision; var selection = selectionRevision;
@@ -388,7 +391,8 @@ internal sealed partial class RewriteGeneration
             List<VoiceLabCandidate> candidates = []; List<VoiceLabAsset> assets = [];
             VoiceLabVoiceReference? voice = null; int? selectedIndex = null;
             var date = clock.GetUtcNow();
-            foreach (var row in Rows.Where(row => row.Selectable && !row.RequiresJoinAdvisoryAcceptance && (row.Fits || row.Id == selected.Id) &&
+            // The user's own recorded takes are never candidates of a generated segment: they are a recorded segment of their own.
+            foreach (var row in Rows.Where(row => !recordedTakes.ContainsKey(row.Id) && row.Selectable && !row.RequiresJoinAdvisoryAcceptance && (row.Fits || row.Id == selected.Id) &&
                 Made(row).Text == input.Text && Made(row).RequestText == input.RequestText &&
                 row.Audio!.Fit.Plan.WindowStartSample == selected.Audio!.Fit.Plan.WindowStartSample &&
                 row.Audio.Fit.Plan.WindowEndSample == selected.Audio.Fit.Plan.WindowEndSample))

@@ -601,6 +601,28 @@ if (insertion ||
     private void ConfigureRewriteGeneration(RewriteSession session)
     {
         session.ConfigureGenerationFactory(index => CreateRewriteGeneration(session, index));
+        ConfigureRewriteMicrophone(session);
+    }
+    /// <summary>Say it myself (design.md §6.3.8): the WASAPI microphone, a lead-in through headphones or a count-in, and on-device
+    /// recognition from the installed Whisper models. Its takes are written to the project's Voice Lab folders; nothing is sent.</summary>
+    private void ConfigureRewriteMicrophone(RewriteSession session)
+    {
+        Task OnUi(Action action)
+        {
+            if (DispatcherQueue.HasThreadAccess) { action(); return Task.CompletedTask; }
+            return DispatcherQueue.TryEnqueue(() => action()) ? Task.CompletedTask : Task.FromCanceled(new CancellationToken(true));
+        }
+        var data = App.Services.Data;
+        var transcriber = App.Services.TakeTranscriber;
+        var microphone = new RewritePhraseMicrophone(new RecorderMicrophone(new VoxClip.Media.Audio.VoiceMicrophoneRecorder(App.Services.Log)),
+            new CueSpeaker(), transcriber,
+            () => VoxClip.Media.Audio.PhraseCueOutput.HasMicrophone() ? PhraseMicrophoneAccess.Allowed : PhraseMicrophoneAccess.NoMicrophone,
+            VoxClip.Media.Audio.PhraseCueOutput.DefaultOutputIsHeadphones, OnUi);
+        session.ConfigureMicrophone(microphone, new(session.Project.Id, Path.Combine(data.Root, "VoiceLab"), Path.Combine(data.Root, "VoiceLabScratch")));
+    }
+    private sealed class CueSpeaker : IPhraseCuePlayer
+    {
+        public Task PlayAsync(float[] samples, int sampleRate, CancellationToken ct) => VoxClip.Media.Audio.PhraseCueOutput.PlayAsync(samples, sampleRate, ct);
     }
     private RewriteGeneration CreateRewriteGeneration(RewriteSession session, int windowIndex)
     {
@@ -621,7 +643,7 @@ if (insertion ||
         bool Current() => session.GenerationIsCurrent && App.Services.VoiceLabEnabled &&
             ElevenLabsRegions.FromSettings(App.Services.Settings, App.Services.Log) == region;
         var backend = new RewriteGenerationBackend(App.Services.Data, App.Services.Keys, App.Services.Log,
-            VoiceLabPrices.Load(), region, session.Project.Id, Current, OnUi);
+            VoiceLabPrices.Load(), region, session.Project.Id, Current, OnUi, App.Services.LocalTiming);
         IVoiceLabTakeRunner runner = backend.Runner;
         Func<CancellationToken, Task<RewriteGenerationChoices>> discover = ct => backend.DiscoverAsync(session.Project.Transcript?.Language ?? "en", ct);
         var readSource = RewriteSourceRequest.Reader(() => media?.Path ?? "", VoiceLabSourceAudio.RewriteSourceAsync);
