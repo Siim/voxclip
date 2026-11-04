@@ -61,6 +61,7 @@ import VoxClipMedia
     @ObservationIgnored private var turn = UUID()
     @ObservationIgnored private var invalidated: Set<UUID> = []
     @ObservationIgnored private var refreshAgain = false
+    @ObservationIgnored private var refreshAfterUse = false
 
     var running: Bool { operation != nil }
     var enabled: Bool { backend != nil }
@@ -90,6 +91,9 @@ import VoxClipMedia
         consentAccepted = backend.hasConsent()
         do {
             monthlyCap = try await backend.cap()
+            // Use started while the key and cap were read: offers would publish and prepare beside it. They are made
+            // after Use if it fails.
+            guard !usingTakes else { refreshAfterUse = true; return }
             let (offers, all) = try await backend.offers()
             guard revision == turn, offers.values.allSatisfy({ $0.isCurrent() }) else { return }
             self.offers = offers; self.allOffer = all; problem = ""
@@ -213,7 +217,10 @@ import VoxClipMedia
         try Task.checkCancellation()
     }
 
-    func finishUseTakes() { usingTakes = false }
+    func finishUseTakes() {
+        usingTakes = false
+        if refreshAfterUse { refreshAfterUse = false; Task { await refresh() } }
+    }
 
     static func reason(_ error: any Error) -> String {
         if error as? LipsyncPreparationError == .noClearFace { return "No clear face in this part." }

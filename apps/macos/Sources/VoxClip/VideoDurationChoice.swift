@@ -6,13 +6,15 @@ import VoxClipMedia
 typealias VideoDurationRenderPreparer = @MainActor (Project, VoiceLabOutputScope) async throws -> RenderRequest
 
 struct PreparedVideoDurationRender {
+    /// The request the render was prepared from; lip sync offers reuse it while the choices are unchanged.
+    let request: RenderRequest
     let input: VoiceLabRenderInput
     private let graph: RenderGraph
     var prepared: VoiceLabPreparedRender { input.prepared }
     var labelPosition: VoiceLabLabelPosition { input.labelPosition }
 
-    fileprivate init(input: VoiceLabRenderInput, graph: RenderGraph) {
-        self.input = input; self.graph = graph
+    fileprivate init(request: RenderRequest, input: VoiceLabRenderInput, graph: RenderGraph) {
+        self.request = request; self.input = input; self.graph = graph
     }
 }
 
@@ -54,7 +56,7 @@ struct VideoDurationChoiceAvailability: Equatable {
         }) else { throw VoiceLabProjectError.videoModeUnsupported }
         let graph = try await CompositionBuilder().build(request)
         guard graph.voiceLabLease != nil else { throw VoiceLabProjectError.unsupportedRendering }
-        return PreparedVideoDurationRender(input: input, graph: graph)
+        return PreparedVideoDurationRender(request: request, input: input, graph: graph)
     }
 }
 

@@ -54,7 +54,8 @@ extension RewriteSession {
             guard let plan else { throw CancellationError() }
             return try await plan.makeLipsyncOffers()
         }, hasKey: {
-            (try? await app.secrets.key(for: "fal"))?.isEmpty == false
+            // Presence only, without reading the secret (no Keychain prompt); tests replace the store.
+            await app.providerKeyStore.hasKey(for: "fal")
         }, hasConsent: {
             app.bool("voiceLab.providerConsent.fal")
         }, acceptConsent: {
