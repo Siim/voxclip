@@ -3,9 +3,9 @@
   "id": "connector-requests",
   "origin": "voxclip",
   "sources": {
-    "shared/prompts/clip-finder.json": "f087788566198c36c19ddcc7e263f321d539fec4ed41d69a1d472eea152e4a89",
-    "shared/prompts/ai-tighten.json": "0bdb47a851a41a0747235c248641905cf1d62cd39c70c651b2f765a14acc4163",
-    "shared/catalog/llm-providers.json": "3b8a590a559fa299f9bfee33239f94e44ac56bb83d460567a7039fd610bc3ebd"
+    "shared/prompts/clip-finder.json": "4b2c46b55d7d6311e7d84909d38e789d1997ca70c4c00ef3c3581aacb8d364e8",
+    "shared/prompts/ai-tighten.json": "1cb479c404416b426bedfbbc937c8fa9614a7ae6511d3aeae0335375e88e0f79",
+    "shared/catalog/llm-providers.json": "cb31f8df3115d31672e1fa2c976be9cc5a85070b3d078a9853b1eca0028ab1c1"
   },
   "cases": [
     {
@@ -865,7 +865,7 @@
             }
           },
           "maxOutputTokens": 16000,
-          "effort": "medium",
+          "effort": "xhigh",
           "language": "en"
         },
         "connector": "anthropic",
@@ -876,7 +876,7 @@
       "expected": {
         "kind": "http",
         "model": "claude-opus-5-5",
-        "timeoutSeconds": 180,
+        "timeoutSeconds": 360,
         "method": "POST",
         "url": "https://api.anthropic.com/v1/messages",
         "headers": {
@@ -907,7 +907,7 @@
             }
           ],
           "output_config": {
-            "effort": "medium",
+            "effort": "xhigh",
             "format": {
               "type": "json_schema",
               "schema": {
@@ -1008,7 +1008,7 @@
             }
           },
           "maxOutputTokens": 16000,
-          "effort": "medium",
+          "effort": "xhigh",
           "language": "en"
         },
         "connector": "anthropic",
@@ -1019,7 +1019,7 @@
       "expected": {
         "kind": "http",
         "model": "claude-haiku-5-5",
-        "timeoutSeconds": 180,
+        "timeoutSeconds": 360,
         "method": "POST",
         "url": "https://api.anthropic.com/v1/messages",
         "headers": {
@@ -1050,7 +1050,7 @@
             }
           ],
           "output_config": {
-            "effort": "medium",
+            "effort": "xhigh",
             "format": {
               "type": "json_schema",
               "schema": {
@@ -1151,7 +1151,7 @@
             }
           },
           "maxOutputTokens": 16000,
-          "effort": "medium",
+          "effort": "xhigh",
           "language": "en"
         },
         "connector": "anthropic",
@@ -1162,7 +1162,7 @@
       "expected": {
         "kind": "http",
         "model": "legacy-model",
-        "timeoutSeconds": 180,
+        "timeoutSeconds": 360,
         "method": "POST",
         "url": "https://api.anthropic.com/v1/messages",
         "headers": {
@@ -1293,7 +1293,7 @@
             }
           },
           "maxOutputTokens": 16000,
-          "effort": "medium",
+          "effort": "xhigh",
           "language": "en"
         },
         "connector": "anthropic",
@@ -1305,7 +1305,7 @@
       "expected": {
         "kind": "http",
         "model": "custom-model",
-        "timeoutSeconds": 180,
+        "timeoutSeconds": 360,
         "method": "POST",
         "url": "https://api.anthropic.com/v1/messages",
         "headers": {
@@ -1392,7 +1392,7 @@
             }
           },
           "maxOutputTokens": 16000,
-          "effort": "medium",
+          "effort": "xhigh",
           "language": "en"
         },
         "connector": "anthropic",
@@ -1403,7 +1403,7 @@
       "expected": {
         "kind": "http",
         "model": "claude-fable-5-custom",
-        "timeoutSeconds": 180,
+        "timeoutSeconds": 360,
         "method": "POST",
         "url": "https://api.anthropic.com/v1/messages",
         "headers": {
@@ -1434,7 +1434,7 @@
             }
           ],
           "output_config": {
-            "effort": "medium",
+            "effort": "xhigh",
             "format": {
               "type": "json_schema",
               "schema": {
@@ -1535,7 +1535,7 @@
             }
           },
           "maxOutputTokens": 16000,
-          "effort": "medium",
+          "effort": "xhigh",
           "language": "en"
         },
         "connector": "anthropic",
@@ -1547,7 +1547,7 @@
       "expected": {
         "kind": "http",
         "model": "discovered-model",
-        "timeoutSeconds": 180,
+        "timeoutSeconds": 360,
         "method": "POST",
         "url": "https://api.anthropic.com/v1/messages",
         "headers": {
@@ -1578,7 +1578,7 @@
             }
           ],
           "output_config": {
-            "effort": "medium",
+            "effort": "xhigh",
             "format": {
               "type": "json_schema",
               "schema": {
@@ -1679,7 +1679,7 @@
             }
           },
           "maxOutputTokens": 16000,
-          "effort": "medium",
+          "effort": "xhigh",
           "language": "en"
         },
         "connector": "openai",
@@ -1690,7 +1690,7 @@
       "expected": {
         "kind": "http",
         "model": "gpt-4.1",
-        "timeoutSeconds": 180,
+        "timeoutSeconds": 360,
         "method": "POST",
         "url": "https://api.openai.com/v1/responses",
         "headers": {
@@ -1821,7 +1821,7 @@
             }
           },
           "maxOutputTokens": 16000,
-          "effort": "medium",
+          "effort": "xhigh",
           "language": "en"
         },
         "connector": "openai",
@@ -1832,7 +1832,7 @@
       "expected": {
         "kind": "http",
         "model": "o3-custom",
-        "timeoutSeconds": 180,
+        "timeoutSeconds": 360,
         "method": "POST",
         "url": "https://api.openai.com/v1/responses",
         "headers": {
@@ -1906,7 +1906,7 @@
           },
           "max_output_tokens": 16000,
           "reasoning": {
-            "effort": "medium"
+            "effort": "high"
           },
           "store": false,
           "prompt_cache_key": "voxclip-61bc1853ea7b637c"
@@ -1966,7 +1966,7 @@
             }
           },
           "maxOutputTokens": 16000,
-          "effort": "medium",
+          "effort": "xhigh",
           "language": "en"
         },
         "connector": "gemini",
@@ -1977,7 +1977,7 @@
       "expected": {
         "kind": "http",
         "model": "models/custom/model with space?#",
-        "timeoutSeconds": 180,
+        "timeoutSeconds": 360,
         "method": "POST",
         "url": "https://generativelanguage.googleapis.com/v1beta/models/custom%2Fmodel%20with%20space%3F%23:generateContent",
         "headers": {
@@ -2105,7 +2105,7 @@
             }
           },
           "maxOutputTokens": 16000,
-          "effort": "medium",
+          "effort": "xhigh",
           "language": "en"
         },
         "connector": "gemini",
@@ -2116,7 +2116,7 @@
       "expected": {
         "kind": "http",
         "model": "gemini-2.5-pro",
-        "timeoutSeconds": 180,
+        "timeoutSeconds": 360,
         "method": "POST",
         "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent",
         "headers": {
@@ -2244,7 +2244,7 @@
             }
           },
           "maxOutputTokens": 16000,
-          "effort": "medium",
+          "effort": "xhigh",
           "language": "en"
         },
         "connector": "ollama",
@@ -2381,7 +2381,7 @@
             }
           },
           "maxOutputTokens": 16000,
-          "effort": "medium",
+          "effort": "xhigh",
           "language": "en"
         },
         "connector": "ollama",
@@ -2524,7 +2524,7 @@
             }
           },
           "maxOutputTokens": 16000,
-          "effort": "medium",
+          "effort": "xhigh",
           "language": "en"
         },
         "connector": "ollama",
@@ -2666,7 +2666,7 @@
             }
           },
           "maxOutputTokens": 16000,
-          "effort": "medium",
+          "effort": "xhigh",
           "language": "en"
         },
         "connector": "ollama",
@@ -2807,7 +2807,7 @@
             }
           },
           "maxOutputTokens": 16000,
-          "effort": "medium",
+          "effort": "xhigh",
           "language": "en"
         },
         "connector": "ollama",
@@ -2949,7 +2949,7 @@
             }
           },
           "maxOutputTokens": 16000,
-          "effort": "medium",
+          "effort": "xhigh",
           "language": "en"
         },
         "connector": "lmstudio",
@@ -3084,7 +3084,7 @@
             }
           },
           "maxOutputTokens": 16000,
-          "effort": "medium",
+          "effort": "xhigh",
           "language": "en"
         },
         "connector": "apple-foundation",
@@ -3217,7 +3217,7 @@
             }
           },
           "maxOutputTokens": 16000,
-          "effort": "medium",
+          "effort": "xhigh",
           "language": "en"
         },
         "connector": "claude-code",
@@ -3238,7 +3238,7 @@
       "expected": {
         "kind": "cli",
         "model": "default",
-        "timeoutSeconds": 300,
+        "timeoutSeconds": 600,
         "executable": "claude",
         "argv": [
           "-p",
@@ -3311,7 +3311,7 @@
             }
           },
           "maxOutputTokens": 16000,
-          "effort": "medium",
+          "effort": "xhigh",
           "language": "en"
         },
         "connector": "codex",
@@ -3350,7 +3350,7 @@
       "expected": {
         "kind": "cli",
         "model": "gpt-6.1-sol",
-        "timeoutSeconds": 300,
+        "timeoutSeconds": 600,
         "executable": "codex",
         "argv": [
           "exec",
@@ -3366,7 +3366,7 @@
           "--model",
           "gpt-6.1-sol",
           "-c",
-          "model_reasoning_effort=\"medium\"",
+          "model_reasoning_effort=\"high\"",
           "-c",
           "web_search=\"disabled\"",
           "-c",
@@ -3407,7 +3407,7 @@
       }
     },
     {
-      "id": "codex-model-unsupported-effort",
+      "id": "codex-model-lower-effort",
       "kind": "connector-request",
       "origin": "voxclip",
       "source": "doc/spec/ai.md §6",
@@ -3459,7 +3459,7 @@
             }
           },
           "maxOutputTokens": 16000,
-          "effort": "medium",
+          "effort": "xhigh",
           "language": "en"
         },
         "connector": "codex",
@@ -3496,7 +3496,7 @@
       "expected": {
         "kind": "cli",
         "model": "custom-model",
-        "timeoutSeconds": 300,
+        "timeoutSeconds": 600,
         "executable": "codex",
         "argv": [
           "exec",
@@ -3511,6 +3511,8 @@
           "<cwd>",
           "--model",
           "custom-model",
+          "-c",
+          "model_reasoning_effort=\"low\"",
           "-c",
           "web_search=\"disabled\"",
           "-c",
@@ -3603,7 +3605,7 @@
             }
           },
           "maxOutputTokens": 16000,
-          "effort": "medium",
+          "effort": "xhigh",
           "language": "en"
         },
         "connector": "codex",
@@ -3638,7 +3640,7 @@
       "expected": {
         "kind": "cli",
         "model": "default",
-        "timeoutSeconds": 300,
+        "timeoutSeconds": 600,
         "executable": "codex",
         "argv": [
           "exec",
@@ -3651,7 +3653,7 @@
           "--cd",
           "<cwd>",
           "-c",
-          "model_reasoning_effort=\"medium\"",
+          "model_reasoning_effort=\"high\"",
           "-c",
           "web_search=\"disabled\"",
           "-c",

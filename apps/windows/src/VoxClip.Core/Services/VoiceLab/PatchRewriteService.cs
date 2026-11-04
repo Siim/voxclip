@@ -111,7 +111,7 @@ public sealed class PatchRewriteService
             connector is ConnectorId.Ollama or ConnectorId.LmStudio ? "localServer" : "cloud");
         // A Voice Lab rewrite send, so each connector makes it once, like the passage rewrite.
         return new(LlmFeature.VoiceRewrite, prompt.System, cachedBlock, instruction, prompt.SchemaName, prompt.Schema.DeepClone().AsObject(),
-            maxOutput, Effort.Medium, timeout, input.Language, "patch-rewrite");
+            maxOutput, EffortLevel.Decision, timeout, input.Language, "patch-rewrite");
     }
 
     /// <summary>Renders the request from the shared prompt (voice-lab §8.1): the clip finder's transcript block, then one range per

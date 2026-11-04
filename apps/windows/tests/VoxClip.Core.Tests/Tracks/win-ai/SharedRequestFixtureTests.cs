@@ -98,7 +98,7 @@ public sealed partial class SharedFixtureTests
         using var runner = new FixtureProcessRunner(id, catalog, options);
         using var client = new HttpClient(new StubHttp((_, _, _) => throw new InvalidOperationException("CLI must not use HTTP.")));
         var adapter = new LlmConnector(id, catalog, client, new MemoryKeys(null), new Redactor(), processes: runner, binaryOverride: runner.BinaryPath);
-        if (options["supportedEfforts"] is not null) await adapter.GetModelsAsync(true, CancellationToken.None);
+        if (options["supportedEfforts"] is not null || options["defaultEfforts"] is not null) await adapter.GetModelsAsync(true, CancellationToken.None);
         await adapter.SendAsync(request, model, CancellationToken.None);
         var process = Assert.Single(runner.Generations);
         var cwd = process.WorkingDirectory!;
@@ -158,7 +158,14 @@ internal sealed class FixtureProcessRunner : IProcessRunner, IDisposable
         else if (args.Contains("features")) output = string.Join("\n", (options["features"] as JsonArray ?? catalog.Provider(id)["cli"]!["disableFeatures"]!.AsArray()).Select(value => value is JsonObject feature ? feature["name"]!.GetValue<string>() + " " + feature["stage"]!.GetValue<string>() + " true" : value!.GetValue<string>() + " stable true"));
         else if (args.Contains("auth")) output = "{\"loggedIn\":true,\"authMethod\":\"oauth\"}";
         else if (args.Contains("login")) output = "Logged in using ChatGPT";
-        else if (args.Contains("app-server")) output = new JsonObject { ["id"] = 2, ["result"] = new JsonObject { ["data"] = new JsonArray(new JsonObject { ["id"] = options["model"]?.DeepClone() ?? JsonValue.Create("default"), ["supportedReasoningEfforts"] = new JsonArray((options["supportedEfforts"] as JsonArray ?? []).Select(value => (JsonNode)new JsonObject { ["reasoningEffort"] = value!.DeepClone() }).ToArray()) }) } }.ToJsonString();
+        else if (args.Contains("app-server"))
+        {
+            static JsonArray Efforts(JsonNode? values) => new((values as JsonArray ?? []).Select(value => (JsonNode)new JsonObject { ["reasoningEffort"] = value!.DeepClone() }).ToArray());
+            var data = new JsonArray(new JsonObject { ["id"] = options["model"]?.DeepClone() ?? JsonValue.Create("default"), ["supportedReasoningEfforts"] = Efforts(options["supportedEfforts"]) });
+            // defaultEfforts: model/list also reports an isDefault model with these supportedReasoningEfforts.
+            if (options["defaultEfforts"] is { } defaults) data.Add((JsonNode)new JsonObject { ["id"] = "cli-default-model", ["isDefault"] = true, ["supportedReasoningEfforts"] = Efforts(defaults) });
+            output = new JsonObject { ["id"] = 2, ["result"] = new JsonObject { ["data"] = data } }.ToJsonString();
+        }
         else
         {
             Generations.Add(request);

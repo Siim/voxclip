@@ -139,7 +139,7 @@ public actor VoiceRewriteService {
         }
         let request = LLMRequest(feature: .voiceRewrite, system: rendered.system, cachedBlock: rendered.cachedBlock, instruction: rendered.instruction,
                                  schemaName: rendered.schemaName, schema: document[ai: "schema"], maxOutputTokens: maxOutput,
-                                 effort: .medium, timeout: catalog.timeout(for: connector.id, feature: .voiceRewrite),
+                                 effort: .decision, timeout: catalog.timeout(for: connector.id, feature: .voiceRewrite),
                                  language: input.language, tag: "voice-rewrite")
         try Task.checkCancellation()
         guard prepared.removeValue(forKey: quote.id) != nil else { throw VoiceLabError.consentRequired }

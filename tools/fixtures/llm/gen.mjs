@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as reference from './reference.mjs'
-import { appleSchema, canonicalRequest, clipInstruction, renderConnector, sha256, tomlBasicString, windowBudget, tightenWindowBudget } from './requests.mjs'
+import { appleSchema, canonicalRequest, clipInstruction, effortLevels, renderConnector, sha256, tomlBasicString, windowBudget, tightenWindowBudget } from './requests.mjs'
 import { candidate, f1Words, f1Rendered, fixedVectors, timeVectors, finalizeVectors, snapVectors, w1Bounds, tightenVectors, t1Entries, u100Words, syntheticWords, randomValues } from './vectors.mjs'
 import { patchRewriteRequest, voiceLabEstimate, voiceRewriteRequest } from './voicelab.mjs'
 
@@ -619,7 +619,7 @@ const variants = [
   ['apple-macos-26', 'apple-foundation', { macOSMajor: 26, clipBudget: 5 }],
   ['claude-cli-default-required-flags-only', 'claude-code', { model: 'default', supportedFlags: connectors['claude-code'].cli.detect.help.requiredFlags }],
   ['codex-model-supported-effort', 'codex', { model: 'gpt-6.1-sol', supportedEfforts: ['low', 'medium', 'high'] }],
-  ['codex-model-unsupported-effort', 'codex', { model: 'custom-model', supportedEfforts: ['low'] }],
+  ['codex-model-lower-effort', 'codex', { model: 'custom-model', supportedEfforts: ['low'] }],
   ['codex-removed-and-unknown-features', 'codex', { supportedFlags: connectors.codex.cli.detect.help.requiredFlags, features: [{ name: 'shell_tool', stage: 'stable' }, { name: 'plugins', stage: 'removed' }, { name: 'unknown-feature', stage: 'experimental' }] }]
 ]
 for (const [id, connector, overrides] of variants) {
@@ -681,6 +681,32 @@ for (const connector of catalog.connectors) {
   const request = { ...testRequest, effort: null }
   const options = baselineOptions(connector)
   add('connector-requests', `null-effort-${connector.id}`, 'connector-request', { request, connector: connector.id, options }, renderConnector(request, connector, catalog, options), 'doc/spec/ai.md §2.1; §6')
+}
+// effort-requests.json (ai.md §2.1): every connector at every canonical level. Each sends the highest level it supports
+// at or below the request (Claude Code's --effort and Anthropic take xhigh; OpenAI, Gemini and the Codex default stop at
+// high), or omits effort; xAI, local servers and Apple ignore it.
+for (const connector of catalog.connectors) {
+  for (const effort of effortLevels) {
+    const request = { ...testRequest, effort }
+    const options = baselineOptions(connector)
+    add('effort-requests', `${connector.id}-${effort}`, 'connector-request', { request, connector: connector.id, options }, renderConnector(request, connector, catalog, options), 'doc/spec/ai.md §2.1; §6')
+  }
+}
+for (const [id, model, efforts, effort, expected] of [
+  ['codex-model-lists-xhigh', 'gpt-6.1-sol', { supportedEfforts: ['low', 'medium', 'high', 'xhigh'] }, 'xhigh', 'xhigh'],
+  ['codex-model-stops-at-high', 'gpt-5.6-terra', { supportedEfforts: ['low', 'medium', 'high'] }, 'xhigh', 'high'],
+  ['codex-model-max-asks-xhigh', 'gpt-6.1-sol', { supportedEfforts: ['medium', 'xhigh', 'max'] }, 'xhigh', 'xhigh'],
+  ['codex-model-only-higher', 'gpt-6-luna', { supportedEfforts: ['high'] }, 'low', null],
+  ['codex-model-lists-none', 'gpt-6-astra', { supportedEfforts: [] }, 'xhigh', null],
+  ['codex-default-lists-xhigh', 'default', { defaultEfforts: ['low', 'medium', 'high', 'xhigh'] }, 'xhigh', 'xhigh'],
+  ['codex-default-lists-medium', 'default', { defaultEfforts: ['minimal', 'low', 'medium'] }, 'xhigh', 'medium']
+]) {
+  const request = { ...testRequest, effort }
+  const options = { ...baselineOptions(connectors.codex), model, ...efforts }
+  const rendered = renderConnector(request, connectors.codex, catalog, options)
+  const sent = rendered.argv.find(argument => argument.startsWith('model_reasoning_effort='))
+  equal(sent ?? null, expected === null ? null : `model_reasoning_effort="${expected}"`, `Codex effort ${id}`)
+  add('effort-requests', id, 'connector-request', { request, connector: 'codex', options }, rendered, 'doc/spec/ai.md §2.1; §6.9')
 }
 
 const wire = wireSet(bestRequest, 5)

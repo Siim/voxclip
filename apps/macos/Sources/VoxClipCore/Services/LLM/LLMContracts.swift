@@ -31,11 +31,27 @@ public enum LLMFeature: String, Codable, Sendable, Hashable, CaseIterable {
     case test
 }
 
-/// Reasoning policy; AI §3.1.
+/// Reasoning policy; AI §3.1. Cases run lowest first.
 public enum Effort: String, Codable, Sendable, Hashable, CaseIterable {
     case low
     case medium
     case high
+    case xhigh
+    case max
+
+    /// What every AI decision feature asks for: Find Clips, AI Tighten, Rewrite, Fix with AI and wording fit (ai.md §2.1).
+    public static let decision: Effort = .xhigh
+
+    /// The level as Settings and the status bar read it: "low", "medium", "high", "extra high", "max".
+    public var label: String { self == .xhigh ? "extra high" : rawValue }
+
+    /// The highest of `supported` at or below `requested`, matched case-insensitively; nil when none is (ai.md §2.1).
+    /// A connector sends this level, and omits effort when it is nil.
+    public static func resolved(_ requested: Effort?, supported: some Sequence<String>) -> Effort? {
+        guard let requested, let ceiling = allCases.firstIndex(of: requested) else { return nil }
+        let allowed = Set(supported.map { $0.lowercased() })
+        return allCases[...ceiling].last { allowed.contains($0.rawValue) }
+    }
 }
 
 /// Canonical request; AI §3.1. Credentials never enter this value.

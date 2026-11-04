@@ -25,7 +25,7 @@ extension HTTPConnector {
             var output: [String: Any] = [:]
             if !unsupportedSchema { output["format"] = ["type": "json_schema", "schema": schema] }
             let effortAllowed = modelConfiguration[ai: "effort"].aiBool == true || discovered[ai: "capabilities"][ai: "effort"][ai: "supported"].aiBool == true || (custom && model.range(of: #"^claude-(opus|sonnet|haiku|fable)-5"#, options: .regularExpression) != nil)
-            if effortAllowed, let effort = canonical.effort { output["effort"] = effort.rawValue }
+            if effortAllowed, let effort = Effort.resolved(canonical.effort, supported: catalog.effortLevels(for: id)) { output["effort"] = effort.rawValue }
             body = ["model": model, "max_tokens": maximum, "system": canonical.system, "messages": [["role": "user", "content": content]]]
             body["output_config"] = output
             // A Voice Lab rewrite is billed for the quoted model only, so it never asks for a fallback (ai.md §12.8).
@@ -41,7 +41,7 @@ extension HTTPConnector {
                     "text": ["format": ["type": "json_schema", "name": canonical.schemaName, "strict": true, "schema": schema]],
                     "max_output_tokens": maximum, "store": false]
             let effortAllowed = modelConfiguration[ai: "effort"].aiBool == true || (modelConfiguration == .null && model.range(of: #"^(gpt-5|gpt-6|o[0-9])"#, options: .regularExpression) != nil)
-            if effortAllowed, let effort = canonical.effort { body["reasoning"] = ["effort": effort.rawValue] }
+            if effortAllowed, let effort = Effort.resolved(canonical.effort, supported: catalog.effortLevels(for: id)) { body["reasoning"] = ["effort": effort.rawValue] }
             if let block = canonical.cachedBlock { body["prompt_cache_key"] = "voxclip-" + AIHash.sha256(block).prefix(16) }
         case .xai:
             body = ["model": model, "max_completion_tokens": maximum, "messages": messages, "response_format": schemaFormat]
@@ -53,7 +53,8 @@ extension HTTPConnector {
             parts.append(["text": canonical.instruction])
             // 2026-10-30: https://ai.google.dev/api/generate-content does not confirm responseFormat GA for every curated model; retain responseJsonSchema.
             var generation: [String: Any] = ["maxOutputTokens": maximum, "responseMimeType": "application/json", "responseJsonSchema": schema]
-            if stripped.range(of: #"^gemini-([3-9]|[1-9][0-9]+)([.-]|$)"#, options: .regularExpression) != nil, let effort = canonical.effort {
+            if stripped.range(of: #"^gemini-([3-9]|[1-9][0-9]+)([.-]|$)"#, options: .regularExpression) != nil,
+               let effort = Effort.resolved(canonical.effort, supported: catalog.effortLevels(for: id)) {
                 generation["thinkingConfig"] = ["thinkingLevel": effort.rawValue.uppercased()]
             }
             body = ["systemInstruction": ["parts": [["text": canonical.system]]], "contents": [["role": "user", "parts": parts]],

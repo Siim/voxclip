@@ -157,7 +157,7 @@ public sealed partial class LlmConnector
     {
         var maxOut = catalog.Cap(Id, request.MaxOutputTokens);
         var schema = HttpStructuredSchema(request.Schema);
-        var effort = request.Effort?.ToString().ToLowerInvariant();
+        var effort = EffortLevel.Resolve(request.Effort, catalog.EffortLevels(Id))?.Wire();
         var supportsEffort = catalog.Model(Id, model)?["effort"]?.GetValue<bool>() == true;
         if (Id == ConnectorId.Anthropic)
         {

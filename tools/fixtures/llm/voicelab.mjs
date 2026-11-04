@@ -12,7 +12,7 @@ const fill = (template, values) => {
 
 const canonical = (prompt, cachedBlock, instruction, language) => ({
   feature: 'voiceRewrite', system: prompt.system, cachedBlock, instruction,
-  schemaName: prompt.schemaName, schema: prompt.schema, effort: 'medium', language
+  schemaName: prompt.schemaName, schema: prompt.schema, effort: 'xhigh', language
 })
 
 // voice-lab §8.1 and §8.9.1: the quote estimates the whole rendered request with est() (ai.md §11.5), at no known price.

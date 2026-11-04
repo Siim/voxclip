@@ -59,7 +59,7 @@
   ],
   "generation": {
     "maxOutputTokens": 16000,
-    "effort": "medium"
+    "effort": "xhigh"
   },
   "output": {
     "name": "tighten_edits",
