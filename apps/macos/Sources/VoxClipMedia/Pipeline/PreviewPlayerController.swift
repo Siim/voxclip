@@ -99,7 +99,7 @@ final class LeasedPlayerItem: AVPlayerItem {
         return old.sourceURL == next.sourceURL && old.sourceContentKey == next.sourceContentKey &&
             old.timeline == next.timeline && old.voiceLab == next.voiceLab && old.output == next.output &&
             old.motionCues == next.motionCues && old.motionClipID == next.motionClipID &&
-            old.reduceMotion == next.reduceMotion
+            old.reduceMotion == next.reduceMotion && old.music == next.music
     }
 
     public func seek(to editedTime: Double, exact: Bool) async throws {

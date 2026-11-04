@@ -55,7 +55,13 @@ public struct RenderGraph {
     /// Keeps paid snapshots and staged CAF alive through every player/reader callback.
     public let voiceLabLease: VoiceLabRenderLease?
     public let contextDemoLease: ContextDemoCompositionLease?
-    public init(composition: AVMutableComposition, videoTrack: AVMutableCompositionTrack, audioTrack: AVMutableCompositionTrack?, videoComposition: AVVideoComposition, audioMix: AVAudioMix?, renderSize: CGSize, frameDuration: CMTime, voiceLabLease: VoiceLabRenderLease? = nil, contextDemoLease: ContextDemoCompositionLease? = nil) {
+    /// The music bed under the voice (doc/spec/music.md §4), a second audio track; nil without music.
+    public let musicTrack: AVMutableCompositionTrack?
+    public let musicLease: MusicBedLease?
+    /// The tracks a reader mixes: the voice, then the music bed when there is one.
+    public var mixedAudioTracks: [AVMutableCompositionTrack] { [audioTrack, musicTrack].compactMap { $0 } }
+    public init(composition: AVMutableComposition, videoTrack: AVMutableCompositionTrack, audioTrack: AVMutableCompositionTrack?, videoComposition: AVVideoComposition, audioMix: AVAudioMix?, renderSize: CGSize, frameDuration: CMTime, voiceLabLease: VoiceLabRenderLease? = nil, contextDemoLease: ContextDemoCompositionLease? = nil, musicTrack: AVMutableCompositionTrack? = nil, musicLease: MusicBedLease? = nil) {
+        self.musicTrack = musicTrack; self.musicLease = musicLease
         self.composition = composition; self.videoTrack = videoTrack; self.audioTrack = audioTrack; self.videoComposition = videoComposition; self.audioMix = audioMix; self.renderSize = renderSize; self.frameDuration = frameDuration
         self.voiceLabLease = voiceLabLease
         self.contextDemoLease = contextDemoLease
@@ -156,6 +162,22 @@ public struct CompositionBuilder: Sendable {
             includeDisclosure: includeDisclosure, colorCorrection: colorCorrection)
         let size = videoComposition.renderSize
         let frameDuration = videoComposition.frameDuration
+        var musicTrack: AVMutableCompositionTrack?
+        var musicLease: MusicBedLease?
+        if let music = request.music {
+            let bed = try await MusicBedRenderer.stage(music, composition: composition, voiceTrack: audio,
+                                                       durationSeconds: duration.seconds, scratchRoot: scratchRoot)
+            let bedAsset = AVURLAsset(url: bed.url) // Held while its track is inserted.
+            guard let bedTrack = try await MediaSupport.audioTrack(in: bedAsset),
+                  let track = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else {
+                throw VoxClipError.decodeFailed("Cannot add the music track")
+            }
+            let bedRange = try await bedTrack.load(.timeRange)
+            try withExtendedLifetime(bedAsset) {
+                try track.insertTimeRange(CMTimeRange(start: .zero, duration: min(bedRange.duration, duration)), of: bedTrack, at: .zero)
+            }
+            musicTrack = track; musicLease = bed
+        }
         var mix: AVAudioMix?
         if let audio, !synthetic {
             let parameters = AVMutableAudioMixInputParameters(track: audio)
@@ -166,7 +188,7 @@ public struct CompositionBuilder: Sendable {
         }
         return RenderGraph(composition: composition, videoTrack: video, audioTrack: audio, videoComposition: videoComposition,
                            audioMix: mix, renderSize: size, frameDuration: frameDuration, voiceLabLease: lease,
-                           contextDemoLease: demos.lease)
+                           contextDemoLease: demos.lease, musicTrack: musicTrack, musicLease: musicLease)
     }
 
     func makeVideoComposition(_ request: RenderRequest, trackID: CMPersistentTrackID, duration: CMTime,

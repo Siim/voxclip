@@ -250,3 +250,32 @@ public enum MusicProject {
         return music.filter { $0.clipId.map(identities.contains) ?? true }
     }
 }
+
+/// The track a preview or export mixes under the voice: the project's entry and its file in the data folder.
+public struct MusicRenderInput: Sendable, Equatable {
+    public let entry: ProjectMusic
+    public let assetURL: URL
+
+    public init(entry: ProjectMusic, assetURL: URL) { self.entry = entry; self.assetURL = assetURL }
+
+    /// `<data folder>/Music`, holding one folder per project id.
+    public static func root(dataRoot: URL) -> URL { dataRoot.appendingPathComponent("Music", isDirectory: true) }
+
+    public static func url(for asset: MusicAsset, dataRoot: URL) -> URL {
+        root(dataRoot: dataRoot).appendingPathComponent(asset.file, isDirectory: false)
+    }
+
+    /// The input for a clip's (or with nil the full video's) track, or nil without one.
+    public static func resolve(project: Project, clipId: String?, dataRoot: URL) -> MusicRenderInput? {
+        MusicProject.entry(for: clipId, in: project).map { MusicRenderInput(entry: $0, assetURL: url(for: $0.asset, dataRoot: dataRoot)) }
+    }
+}
+
+extension RenderRequest {
+    /// The same render without its music bed: edited-audio checks and probes read the voice alone.
+    public var withoutMusic: RenderRequest {
+        var result = self
+        result.music = nil
+        return result
+    }
+}

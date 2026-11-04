@@ -53,13 +53,15 @@ public struct MusicCandidate: Sendable, Equatable, Identifiable {
     /// The quoted price (generated only).
     public var estimate: CostEstimate?
     public var reason: String?
+    /// The source's tags and genres, used for ranking and shown as the reason when Claude gave none.
+    public var tags: [String]
 
     public init(id: String, source: MusicSource, title: String, creator: String? = nil, license: MusicLicense, attribution: String? = nil,
                 sourceUrl: String? = nil, audioURL: URL? = nil, fileExtension: String, prompt: String? = nil, durationSeconds: Double? = nil,
-                estimate: CostEstimate? = nil, reason: String? = nil) {
+                estimate: CostEstimate? = nil, reason: String? = nil, tags: [String] = []) {
         self.id = id; self.source = source; self.title = title; self.creator = creator; self.license = license; self.attribution = attribution
         self.sourceUrl = sourceUrl; self.audioURL = audioURL; self.fileExtension = fileExtension; self.prompt = prompt
-        self.durationSeconds = durationSeconds; self.estimate = estimate; self.reason = reason
+        self.durationSeconds = durationSeconds; self.estimate = estimate; self.reason = reason; self.tags = tags
     }
 
     /// Paid before it can play.
