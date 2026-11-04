@@ -90,13 +90,14 @@ public sealed class RewriteTakeReviewTests
     {
         var panel = AppSource("Controls/RewritePanel.cs");
         var takes = AppSource("Controls/RewritePanel.Takes.cs");
-        Assert.Contains("Rewrite.UseTake", takes); Assert.Contains("AccentButtonStyle", takes);
-        Assert.Contains("apply.IsEnabled = session.CanAcceptAll", takes);
-        Assert.Contains("apply.IsEnabled && ShortcutPolicy.EditorMayHandle", panel);
+        var footer = AppSource("Controls/RewritePanel.NextSteps.cs");
+        Assert.Contains("Rewrite.UseTake", footer); Assert.Contains("AccentButtonStyle", footer);
+        Assert.Contains("RewriteFooterAction.UseTakes => session.CanAcceptAll", footer);
+        Assert.Contains("apply.IsEnabled && apply.Visibility == Visibility.Visible &&", panel);
         Assert.Contains("InputState.IsTextFocus(FocusManager.GetFocusedElement(XamlRoot)), correctionOpen()", panel);
         Assert.Contains("!NativeReturnTarget(FocusManager.GetFocusedElement(XamlRoot) as DependencyObject)", panel);
         Assert.Contains("Controls.Primitives.ButtonBase or ComboBox", panel);
-        Assert.Contains("ReturnFocusOnClose = await session.ApplyTakeAsync()", panel);
+        Assert.Contains("ReturnFocusOnClose = await session.ApplyTakeAsync()", footer);
         Assert.Contains("if (applyingTake) return", panel);
         Assert.Contains("private void Close() { session.Dispose(); }", panel);
         Assert.DoesNotContain("KeyboardAccelerator", takes);

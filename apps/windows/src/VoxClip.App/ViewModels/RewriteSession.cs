@@ -98,7 +98,7 @@ internal sealed partial class RewriteSession : IDisposable
     /// could be listed in it (<see cref="VoiceLabSession.VoicesUnavailable"/>). With no voice listed, the voice row explains instead
     /// of offering Create Your Voice… or voice discovery.</summary>
     internal bool VoicesUnavailable { get; }
-    internal bool GenerationIsCurrent => IsOpen && ReferenceEquals(Project, Editor.Project) && !IsProposing && !WordingIsLocked &&
+    internal bool GenerationIsCurrent => IsOpen && ReferenceEquals(Project, Editor.Project) && !IsProposing && !WordingIsLocked && Reasking is null &&
         !Editor.Busy && !Editor.IsLeaving && !Editor.IsReadOnly && connectorIsCurrent() && contextIsCurrent();
     internal void ConfigureGeneration(RewriteGeneration generation)
     {
@@ -129,7 +129,7 @@ internal sealed partial class RewriteSession : IDisposable
     internal async Task<VoiceLabTakeInput?> GenerationInputAsync(string recordId, string modelId, uint seed, bool providerConsent,
         RewriteSourceReader source, CancellationToken ct, int windowIndex = 0)
     {
-        if (!GenerationIsCurrent || Review is not { } review || review.Budget.Copy is not null || PricedVoiceHunks.Count == 0) return null;
+        if (!GenerationIsCurrent || Review is null || VoiceBudgetBlocks || PricedVoiceHunks.Count == 0) return null;
         if (PricedVoiceHunks.Count > VoiceLabTakeBatch.MaximumWindows)
             throw new RewriteGenerationException("Keep fewer changed passages before generating takes. Your edits are saved.");
         if (windowIndex < 0 || windowIndex >= PricedVoiceHunks.Count) return null;
@@ -317,6 +317,7 @@ internal sealed partial class RewriteSession : IDisposable
                 !ReferenceEquals(Project, Editor.Project) || !ReferenceEquals(Prepared, action) || !ReferenceEquals(request, input) || !ReferenceEquals(scopePlan, scopedInput)) return false;
             dispatched = true;
             string resultText;
+            IReadOnlyList<RewriteNextAction> nextActions;
             if (scopedInput is not null)
             {
                 var patch = await patchService.ProposeAsync(scopedInput.Request, Connector.Connector, Connector.Model,
@@ -326,18 +327,22 @@ internal sealed partial class RewriteSession : IDisposable
                 var edits = patch.Edits.ToDictionary(edit => edit.Line, StringComparer.Ordinal);
                 resultText = string.Join(" ", scopedInput.Lines.Select(line => edits.TryGetValue(line.Label, out var edit)
                     ? edit.Text : string.Join(" ", line.Items.Where(word => word.Kind == WordKind.Word).Select(word => word.Text))));
+                nextActions = patch.NextActions;
             }
             else
             {
                 var result = await service.ProposeAsync(input!, Connector.Connector, Connector.Model, service.Approve(action, true), cancellation.Token);
                 resultText = result.ProposedText;
                 audioTags = result.AudioTags;
+                nextActions = result.NextActions;
             }
             if (!IsOpen || revision != current) return false;
             changeStates.Clear();
             priceOverrides.Clear();
             ResetWordingFit();
             AutoFix.Reset();
+            ReplyNextActions = nextActions;
+            BudgetAccepted = false; ReaskProblem = ""; LastReask = null;
             NewWords = resultText;
             RefreshReview();
             ProposalRevision++;
@@ -371,6 +376,8 @@ internal sealed partial class RewriteSession : IDisposable
         if (!IsOpen) return;
         StopWordingFit();
         StopAutoFix();
+        StopReask();
+        BudgetAccepted = false;
         audioTags = VoiceLabAudioTags.Reanchored(ReviewAudioTags(), NewWords, text);
         InvalidateProposal();
         scopeHunks = null;
@@ -455,6 +462,7 @@ internal sealed partial class RewriteSession : IDisposable
     {
         if (!IsOpen) return;
         IsOpen = false;
+        StopReask();
         StopWordingFit();
         AutoFix.Reset();
         Editor.SelectionChanged -= GenerationSelectionChanged;

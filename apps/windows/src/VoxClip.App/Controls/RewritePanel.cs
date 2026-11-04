@@ -138,7 +138,9 @@ internal sealed partial class RewritePanel : Grid
         newHeader.Children.Add(changeSummary);
         body.Children.Add(newHeader);
         BuildWordingFit();
+        BuildNextSteps();
         body.Children.Add(words); body.Children.Add(wordingFit); body.Children.Add(review); body.Children.Add(paidReviewChange); body.Children.Add(sentenceReview); body.Children.Add(problem);
+        body.Children.Add(nextSteps);
         BuildGeneration();
         body.Children.Add(generationBody);
         var scroll = new ScrollViewer { Content = body, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
@@ -157,7 +159,7 @@ internal sealed partial class RewritePanel : Grid
         AutomationProperties.SetAutomationId(acceptBlocker, "Rewrite.AcceptBlocker");
         footerContent.Children.Add(acceptBlocker);
         footerContent.Children.Add(apply);
-        apply.Click += async (_, _) => await ApplyDefaultAsync();
+        apply.Click += async (_, _) => await ApplyFooterAsync();
         var footer = Themed(new Border { Padding = new(16, 12, 16, 12), BorderThickness = new(0, 1, 0, 0),
             Child = footerContent }, Border.BorderBrushProperty, "VcLineDefaultBrush");
         Grid.SetRow(footer, 1); Children.Add(footer);
@@ -320,10 +322,6 @@ internal sealed partial class RewritePanel : Grid
         propose.IsEnabled = session.CanPropose;
         busy.IsActive = session.Editor.LlmRuns.IsBusy;
         busy.Visibility = busy.IsActive ? Visibility.Visible : Visibility.Collapsed;
-        apply.Content = session.LocalAction ?? "";
-        apply.Visibility = session.LocalAction is null ? Visibility.Collapsed : Visibility.Visible;
-        apply.IsEnabled = session.LocalAction is not null && !session.Editor.Busy && !session.Editor.IsReadOnly && !session.Editor.IsLeaving;
-        SetName(apply, session.LocalAction ?? "Apply changes");
         estimate.Text = session.EstimateCopy;
         estimate.FontSize = 11;
         problem.Text = session.Problem;
@@ -332,6 +330,8 @@ internal sealed partial class RewritePanel : Grid
         RenderChangeReview();
         if (session.Prepared is { } action) DispatcherQueue.TryEnqueue(() => session.MarkEstimateShown(action));
         RenderGeneration();
+        RenderNextSteps();
+        RenderFooter();
         if (IsLoaded)
             foreach (var message in announcements.Next(session.IsProposing, session.ProposalRevision, session.Problem, session.Review?.ChangeSummary ?? ""))
                 Ui.Announce(this, message, "rewrite", AutomationNotificationProcessing.All);
@@ -485,12 +485,14 @@ internal sealed partial class RewritePanel : Grid
     {
         if (args.Handled || textFocus?.OwnsComposition == true) return;
         if (args.Key == VirtualKey.Enter && !InputState.Down(VirtualKey.Control) && !InputState.Down(VirtualKey.Menu) &&
-            !InputState.Down(VirtualKey.Shift) && apply.IsEnabled && ShortcutPolicy.EditorMayHandle(
+            !InputState.Down(VirtualKey.Shift) && apply.IsEnabled && apply.Visibility == Visibility.Visible &&
+            session.FooterStep.Action is RewriteFooterAction.ApplyLocal or RewriteFooterAction.UseTakes or RewriteFooterAction.ApplyTextFixes or RewriteFooterAction.Done &&
+            ShortcutPolicy.EditorMayHandle(
                 InputState.IsTextFocus(FocusManager.GetFocusedElement(XamlRoot)), correctionOpen(), false, false, true) &&
             !NativeReturnTarget(FocusManager.GetFocusedElement(XamlRoot) as DependencyObject))
         {
             args.Handled = true;
-            await ApplyDefaultAsync();
+            await ApplyFooterAsync();
             return;
         }
         if (args.Key != VirtualKey.Escape) return;
@@ -504,21 +506,6 @@ internal sealed partial class RewritePanel : Grid
             target = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(target);
         }
         return false;
-    }
-    private async Task ApplyDefaultAsync()
-    {
-        if (session.LocalAction is null)
-        {
-            if (!session.CanAcceptAll) return;
-            applyingTake = true;
-            try { ReturnFocusOnClose = await session.ApplyTakeAsync(); }
-            finally { applyingTake = false; }
-            if (ReturnFocusOnClose || !session.IsOpen) Closed?.Invoke(this, EventArgs.Empty);
-            return;
-        }
-        ReturnFocusOnClose = true;
-        if (!session.ApplyLocalChanges()) ReturnFocusOnClose = false;
-        await Task.CompletedTask;
     }
     private void Close() { session.Dispose(); }
 }

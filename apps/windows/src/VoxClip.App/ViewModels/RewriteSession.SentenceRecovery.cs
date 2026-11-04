@@ -13,6 +13,8 @@ internal sealed partial class RewriteSession
     internal const string SentenceOverlap = "This sentence overlaps another selected change. Review a combined rewrite instead. No changes were merged and nothing was sent.";
     internal const string SentenceStale = "The rewrite or source changed. Review the surrounding sentence again. Nothing was sent.";
     internal RewriteSentenceReview? SentenceReview { get; private set; }
+    /// <summary>The change whose surrounding sentence was refused last: its next steps name it.</summary>
+    internal int? SentenceRefusedOrdinal { get; private set; }
     internal string SentenceProblem { get; private set; } = "";
     private readonly Dictionary<int, VoiceLabDiffHunk> sentenceReplacements = [];
     internal VoiceLabDiffHunk GenerationHunk(VoiceLabDiffHunk hunk, int ordinal) => sentenceReplacements.GetValueOrDefault(ordinal) ?? hunk;
@@ -21,6 +23,7 @@ internal sealed partial class RewriteSession
     {
         SentenceReview = null;
         SentenceProblem = SentenceUnavailable;
+        SentenceRefusedOrdinal = ordinal;
         if (!ReviewIsCurrent || Review is null || Envelope is null || generationWindows.Any(window => window.IsRunning || window.IsPreparing) ||
             sentenceReplacements.ContainsKey(ordinal) ||
             Review.VoiceHunks.FirstOrDefault(hunk => hunk.Ordinals.Contains(ordinal)) is not { Ordinals.Count: 1 } target) return SentenceRecoveryChanged(false);
@@ -110,7 +113,7 @@ internal sealed partial class RewriteSession
                 if (VoiceLabPatchBudget.Evaluate(proposed, words).Flag != VoiceLabPatchBudgetFlag.Allowed) continue;
                 SentenceReview = new(ReviewIdentity, Generation?.ModelId, Generation?.VoiceId, ordinal, expanded, window,
                     string.Join(" ", sentence.Select(word => word.Text)), text);
-                SentenceProblem = "";
+                SentenceProblem = ""; SentenceRefusedOrdinal = null;
                 return SentenceRecoveryChanged(true);
             }
         }
@@ -136,7 +139,7 @@ internal sealed partial class RewriteSession
         return SentenceRecoveryChanged(true);
     }
 
-    internal void CancelSurroundingSentence() { SentenceReview = null; SentenceProblem = ""; SentenceRecoveryChanged(false); }
+    internal void CancelSurroundingSentence() { SentenceReview = null; SentenceProblem = ""; SentenceRefusedOrdinal = null; SentenceRecoveryChanged(false); }
     private bool SentenceRecoveryChanged(bool result) { Changed?.Invoke(this, EventArgs.Empty); return result; }
     private static bool EndsSentence(string text) => text.TrimEnd().TrimEnd('"', '\'', '”', '’', ')', ']', '»') is { Length: > 0 } trimmed && ".!?…。！？".Contains(trimmed[^1]);
 }

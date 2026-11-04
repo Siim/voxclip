@@ -205,18 +205,7 @@ internal sealed partial class RewritePanel
         RenderVideoChoices(generation);
         updating = false;
         RenderTakeButtons(generation);
-        if (session.LocalAction is null)
-        {
-            var title = session.GenerationWindows.Count > 1 ? "Use Reviewed Takes" : generation.AcceptTitle;
-            apply.Content = title; SetName(apply, title);
-            AutomationProperties.SetAutomationId(apply, "Rewrite.UseTake");
-            apply.Style = (Style)Application.Current.Resources["AccentButtonStyle"];
-            apply.Visibility = rows.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-            apply.IsEnabled = session.CanAcceptAll;
-        }
-        else AutomationProperties.SetAutomationId(apply, "Rewrite.Apply");
-        acceptBlocker.Text = session.LocalAction is null ? session.AcceptanceBlocker ?? "" : "";
-        acceptBlocker.Visibility = acceptBlocker.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        RenderFooter();
     }
     /// <summary>Keep source, Cut and Match video as on Mac: Cut is listed only when its quiet-boundary cut is valid, the
     /// others always, each with its reason; nothing is preselected.</summary>

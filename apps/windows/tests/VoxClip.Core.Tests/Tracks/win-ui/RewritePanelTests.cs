@@ -379,9 +379,10 @@ public sealed class RewritePanelTests
         Assert.NotEmpty(focus);
         Assert.Equal(expected, enabled && ShortcutPolicy.EditorMayHandle(textFocus, correctionOpen, false, false, true));
         var panel = AppSource("Controls", "RewritePanel.cs");
-        Assert.Contains("apply.IsEnabled && ShortcutPolicy.EditorMayHandle", panel);
+        Assert.Contains("apply.IsEnabled && apply.Visibility == Visibility.Visible &&", panel);
+        Assert.Contains("ShortcutPolicy.EditorMayHandle(", panel);
         Assert.Contains("InputState.IsTextFocus(FocusManager.GetFocusedElement(XamlRoot)), correctionOpen()", panel);
-        Assert.Contains("apply.IsEnabled = session.LocalAction is not null && !session.Editor.Busy", panel);
+        Assert.Contains("RewriteFooterAction.ApplyLocal or RewriteFooterAction.ApplyTextFixes => !session.Editor.Busy", AppSource("Controls", "RewritePanel.NextSteps.cs"));
         Assert.Contains("new RewritePanel(rewrite, () => Transcript.CorrectionOpen, owner)", AppSource("Pages", "EditorPage.xaml.cs"));
     }
 
@@ -394,6 +395,7 @@ public sealed class RewritePanelTests
         using var session = new RewriteSession(editor, 10, 12, Envelope(), null);
         session.Edit(text);
         Assert.Equal(label, session.LocalAction);
+        Assert.Equal(new RewriteFooterStep($"{label} needs no new audio.", label, RewriteFooterAction.ApplyLocal), session.FooterStep);
         Assert.True(session.ApplyLocalChanges());
         Assert.False(session.IsOpen);
         Assert.True(editor.CanUndo);
@@ -402,7 +404,7 @@ public sealed class RewritePanelTests
         var panel = AppSource("Controls", "RewritePanel.cs");
         Assert.Contains("args.Key == VirtualKey.Enter", panel);
         Assert.Contains("PreviewKeyDown += Escape", panel);
-        Assert.Contains("session.LocalAction is not null && !session.Editor.Busy", panel);
+        Assert.Contains("RewriteFooterAction.ApplyLocal:", AppSource("Controls", "RewritePanel.NextSteps.cs"));
     }
 
     /// <summary>voice-lab.md §6.5.2: with the speaker check calibrated only for English, an Estonian project's voice row explains why no
@@ -472,15 +474,16 @@ public sealed class RewritePanelTests
         Assert.Contains("SetName(words, \"New words\")", panel);
         Assert.Contains("instruction.Focus(FocusState.Programmatic)", panel);
         Assert.Contains("VirtualKey.Escape", panel);
-        Assert.Contains("ReturnFocusOnClose = true", panel);
-        Assert.Contains("if (!session.ApplyLocalChanges()) ReturnFocusOnClose = false", panel);
+        var footer = File.ReadAllText(Path.Combine(app, "Controls", "RewritePanel.NextSteps.cs"));
+        Assert.Contains("ReturnFocusOnClose = true", footer);
+        Assert.Contains("ReturnFocusOnClose = session.ApplyLocalChanges()", footer);
         Assert.Contains("ReferenceEquals(surface.Child, director) ? director.FocusTarget : null", column);
         Assert.Contains("FocusManager.FindFirstFocusableElement(this)", AppSource("Controls", "DirectorPanel.cs"));
         Assert.Contains("EditorFocusRegion.Captions: if (rightContent", page);
         Assert.Contains("panel.ReturnFocusOnClose", page);
         Assert.Contains("FocusTranscript()", page);
 #if DEBUG
-        Assert.Contains("session.CanAcceptAll", panel);
+        Assert.Contains("session.CanAcceptAll", footer);
 #endif
         Assert.Contains("Content = \"Generate Takes\"", panel);
     }

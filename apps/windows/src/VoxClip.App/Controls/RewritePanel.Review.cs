@@ -170,7 +170,6 @@ internal sealed partial class RewritePanel
             if (session.ReviewFooter.Length > 0) review.Children.Add(Small(session.ReviewFooter));
         }
         if (current.Summary is { } summary) review.Children.Add(Small(summary.Copy));
-        if (current.Budget.Copy is { } budget) review.Children.Add(Small(budget));
         if (current.VoiceHunks.Count > VoiceLabTakeBatch.MaximumWindows)
             review.Children.Add(Small($"Keep at most {VoiceLabTakeBatch.MaximumWindows} changed passages before generating takes. Your edits are saved."));
         foreach (var child in review.Children) reviewElements.Add(child);
@@ -195,7 +194,9 @@ internal sealed partial class RewritePanel
             keep.IsEnabled = accept.IsEnabled = session.ReviewIsCurrent && !session.GenerationWindows.Any(window => window.IsRunning || window.IsPreparing);
             sentenceReview.Children.Add(keep); sentenceReview.Children.Add(accept);
         }
-        if (session.SentenceProblem.Length > 0) sentenceReview.Children.Add(Ui.Text(session.SentenceProblem));
+        // A refused sentence is named in its next-steps card, with the chips that act on it.
+        if (session.SentenceProblem.Length > 0 && session.SentenceProblem != RewriteSession.SentenceUnavailable)
+            sentenceReview.Children.Add(Ui.Text(session.SentenceProblem));
         sentenceReview.Visibility = sentenceReview.Children.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 

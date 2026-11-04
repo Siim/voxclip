@@ -74,6 +74,7 @@ internal sealed partial class RewriteSession
 {
     internal const string ClearerInstruction = "Avoid words that are hard to say or hear; keep the meaning.";
     internal RewriteAutoFixState AutoFix { get; } = new();
+    private bool manualStep;
     /// <summary>The settled automatic step, for tests and the smoke: completes when no step runs.</summary>
     internal Task AutoFixWork => AutoFix.Work ?? Task.CompletedTask;
 
@@ -101,6 +102,8 @@ internal sealed partial class RewriteSession
     /// <summary>Counts <paramref name="usd"/> against the allowance. Past it the step waits for Keep fixing and its round is given back.</summary>
     private bool AutoFixCharge(decimal? usd, int phrase, bool take)
     {
+        // A chip the user clicked carries its own price: the click approves it, outside the automatic allowance.
+        if (manualStep) return true;
         if (AutoFix.NextApproved)
         {
             AutoFix.NextApproved = false;
@@ -331,7 +334,7 @@ internal sealed partial class RewriteSession
     {
         if (PricedVoiceHunks.ElementAtOrDefault(index) is not { Ordinals.Count: 1 } phrase) return false;
         var widened = ReviewSurroundingSentence(phrase.Ordinals[0]);
-        SentenceReview = null; SentenceProblem = "";
+        SentenceReview = null; SentenceProblem = ""; SentenceRefusedOrdinal = null;
         return widened;
     }
 
