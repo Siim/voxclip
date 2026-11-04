@@ -5,6 +5,7 @@
 #   dotnet run --project apps/windows/build/ReleaseBoundary -c Release -- update <Release assembly> <this file>
 # then review the diff. Fakes, harnesses, probes, seams and DEBUG-only helpers belong under #if DEBUG.
 attribute VoxClip.Media.Audio.MicrophoneDevices @ System.Runtime.Versioning.SupportedOSPlatformAttribute("windows")
+attribute VoxClip.Media.Audio.PhraseCueOutput @ System.Runtime.Versioning.SupportedOSPlatformAttribute("windows")
 attribute VoxClip.Media.Audio.SharedWasapiOutput @ System.Runtime.Versioning.SupportedOSPlatformAttribute("windows")
 attribute VoxClip.Media.Audio.WasapiAudioPlayer @ System.Runtime.Versioning.SupportedOSPlatformAttribute("windows")
 attribute VoxClip.Media.Audio.WasapiAuditionEndpoint @ System.Runtime.Versioning.SupportedOSPlatformAttribute("windows")
@@ -165,6 +166,9 @@ member VoxClip.Media.Audio.MicrophoneTake :: method public op_Equality(VoxClip.M
 member VoxClip.Media.Audio.MicrophoneTake :: method public op_Inequality(VoxClip.Media.Audio.MicrophoneTake,VoxClip.Media.Audio.MicrophoneTake)
 member VoxClip.Media.Audio.MicrophoneTake :: method public set_Mono(float[])
 member VoxClip.Media.Audio.MicrophoneTake :: method public set_Rate(int)
+member VoxClip.Media.Audio.PhraseCueOutput :: method public DefaultOutputIsHeadphones()
+member VoxClip.Media.Audio.PhraseCueOutput :: method public HasMicrophone()
+member VoxClip.Media.Audio.PhraseCueOutput :: method public PlayAsync(float[],int,System.Threading.CancellationToken)
 member VoxClip.Media.Audio.SharedWasapiOutput :: field private player
 member VoxClip.Media.Audio.SharedWasapiOutput :: method public .ctor()
 member VoxClip.Media.Audio.SharedWasapiOutput :: method public Dispose()
@@ -1282,10 +1286,21 @@ member VoxClip.Media.Thumbnails.PosterFrames :: method private Read(string,Syste
 member VoxClip.Media.Thumbnails.PosterFrames :: method public Candidates(double,double,double,double)
 member VoxClip.Media.Thumbnails.PosterFrames :: method public IsBlack(VoxClip.Core.Domain.Captions.PixelBuffer)
 member VoxClip.Media.Thumbnails.PosterFrames :: method public ReadJpegAsync(string,System.Collections.Generic.IReadOnlyList`1<double>,int,int,int,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.IMicrophoneTakeTranscriber :: method public WordsAsync(float[],string,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.IVoiceLabSource :: method public Read(long,System.Span`1<float>,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.MicrophoneTakeError :: field public NoSpeech
+member VoxClip.Media.VoiceLab.MicrophoneTakeError :: field public TranscriptionUnavailable
+member VoxClip.Media.VoiceLab.MicrophoneTakeError :: field public value__
+member VoxClip.Media.VoiceLab.MicrophoneTakeException :: method public .ctor(VoxClip.Media.VoiceLab.MicrophoneTakeError)
+member VoxClip.Media.VoiceLab.MicrophoneTakeException :: method public get_Error()
+member VoxClip.Media.VoiceLab.MicrophoneTakeMaker :: field public AssetRate
+member VoxClip.Media.VoiceLab.MicrophoneTakeMaker :: method public MakeAsync(float[],int,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput,VoxClip.Media.VoiceLab.IMicrophoneTakeTranscriber,VoxClip.Media.VoiceLab.VoiceLabTakeStorage,System.Guid,System.DateTimeOffset,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.MicrophoneTakeMaker :: method public Publish(VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake,System.DateTimeOffset,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.NativeVoiceLabSource :: field private next
 member VoxClip.Media.VoiceLab.NativeVoiceLabSource :: method public .ctor(VoxClip.Media.Ffmpeg.AudioDecoder)
 member VoxClip.Media.VoiceLab.NativeVoiceLabSource :: method public Read(long,System.Span`1<float>,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.OnDeviceTakeTranscriber :: method public .ctor(VoxClip.Core.Services.Speech.ITranscriber,System.Func`2<System.Threading.CancellationToken,System.Threading.Tasks.Task`1<System.Collections.Generic.IReadOnlyList`1<string>>>,string)
+member VoxClip.Media.VoiceLab.OnDeviceTakeTranscriber :: method public WordsAsync(float[],string,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.PreparedVoiceLabAsset :: field private lifetime
 member VoxClip.Media.VoiceLab.PreparedVoiceLabAsset :: field private scratch
 member VoxClip.Media.VoiceLab.PreparedVoiceLabAsset :: method internal .ctor(string,string,string,string,int,int,long,long,long,double,double,string)
@@ -1737,6 +1752,32 @@ member VoxClip.Media.VoiceLab.VoiceLabPartialOwner :: method public op_Equality(
 member VoxClip.Media.VoiceLab.VoiceLabPartialOwner :: method public op_Inequality(VoxClip.Media.VoiceLab.VoiceLabPartialOwner,VoxClip.Media.VoiceLab.VoiceLabPartialOwner)
 member VoxClip.Media.VoiceLab.VoiceLabPartialOwner :: method public set_ProcessId(int)
 member VoxClip.Media.VoiceLab.VoiceLabPartialOwner :: method public set_StartTicks(long)
+member VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake :: method private .ctor(VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake)
+member VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake :: method private get_EqualityContract()
+member VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake :: method public .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow,VoxClip.Media.VoiceLab.VoiceLabTakeScratch,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabSpokenWord>,string,double,VoxClip.Media.VoiceLab.VoiceLabTakeStorage)
+member VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake :: method public Deconstruct(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow&,VoxClip.Media.VoiceLab.VoiceLabTakeScratch&,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabSpokenWord>&,string&,double&,VoxClip.Media.VoiceLab.VoiceLabTakeStorage&)
+member VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake :: method public Equals(VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake)
+member VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake :: method public Equals(object)
+member VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake :: method public GetHashCode()
+member VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake :: method public ToString()
+member VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake :: method public get_Input()
+member VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake :: method public get_Model()
+member VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake :: method public get_RecordedSeconds()
+member VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake :: method public get_Row()
+member VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake :: method public get_Scratch()
+member VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake :: method public get_Storage()
+member VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake :: method public get_Text()
+member VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake :: method public get_Words()
+member VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake :: method public op_Equality(VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake,VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake)
+member VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake :: method public op_Inequality(VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake,VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake)
+member VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake :: method public set_Input(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput)
+member VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake :: method public set_Model(string)
+member VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake :: method public set_RecordedSeconds(double)
+member VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake :: method public set_Row(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow)
+member VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake :: method public set_Scratch(VoxClip.Media.VoiceLab.VoiceLabTakeScratch)
+member VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake :: method public set_Storage(VoxClip.Media.VoiceLab.VoiceLabTakeStorage)
+member VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake :: method public set_Words(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabSpokenWord>)
 member VoxClip.Media.VoiceLab.VoiceLabRenderSession :: field private assets
 member VoxClip.Media.VoiceLab.VoiceLabRenderSession :: field private disposed
 member VoxClip.Media.VoiceLab.VoiceLabRenderSession :: field private tracks
@@ -2177,6 +2218,7 @@ type VoxClip.Media.Audio.MicrophonePacket
 type VoxClip.Media.Audio.MicrophoneSampleKind
 type VoxClip.Media.Audio.MicrophoneSnapshot
 type VoxClip.Media.Audio.MicrophoneTake
+type VoxClip.Media.Audio.PhraseCueOutput
 type VoxClip.Media.Audio.SharedWasapiOutput
 type VoxClip.Media.Audio.VoiceLabAudition
 type VoxClip.Media.Audio.VoiceLabAudition+Playback
@@ -2251,8 +2293,13 @@ type VoxClip.Media.Speech.WhisperRunMetrics
 type VoxClip.Media.Speech.WhisperTokens
 type VoxClip.Media.Thumbnails.CurrentFrames
 type VoxClip.Media.Thumbnails.PosterFrames
+type VoxClip.Media.VoiceLab.IMicrophoneTakeTranscriber
 type VoxClip.Media.VoiceLab.IVoiceLabSource
+type VoxClip.Media.VoiceLab.MicrophoneTakeError
+type VoxClip.Media.VoiceLab.MicrophoneTakeException
+type VoxClip.Media.VoiceLab.MicrophoneTakeMaker
 type VoxClip.Media.VoiceLab.NativeVoiceLabSource
+type VoxClip.Media.VoiceLab.OnDeviceTakeTranscriber
 type VoxClip.Media.VoiceLab.PreparedVoiceLabAsset
 type VoxClip.Media.VoiceLab.VoiceConsentSaveException
 type VoxClip.Media.VoiceLab.VoiceEnrollment
@@ -2286,6 +2333,7 @@ type VoxClip.Media.VoiceLab.VoiceLabPartialFiles+WindowsInformation
 type VoxClip.Media.VoiceLab.VoiceLabPartialJournal
 type VoxClip.Media.VoiceLab.VoiceLabPartialJson
 type VoxClip.Media.VoiceLab.VoiceLabPartialOwner
+type VoxClip.Media.VoiceLab.VoiceLabRecordedPhraseTake
 type VoxClip.Media.VoiceLab.VoiceLabRenderSession
 type VoxClip.Media.VoiceLab.VoiceLabShortTakePool
 type VoxClip.Media.VoiceLab.VoiceLabShortTakePool+Member
