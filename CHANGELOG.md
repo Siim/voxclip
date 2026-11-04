@@ -4,6 +4,10 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Rewrite fixes its own stuck phrases automatically within a spending cap, so you only listen and press Use.
+- A phrase whose takes all fail now explains why and offers a fix, and a Rewrite can always finish with its text fixes.
+- Phrase cards show only controls you can use, and an expression goes where you click without discarding other takes.
+- The word check no longer fails a take when the transcript spells your new word as one that sounds the same, such as "cloud" for "Claude".
 - On Windows, a phrase whose take runs longer or shorter can cut the video at a pause or match the video to the take, as on Mac.
 - A paid take keeps its video-cut option, a short hard join keeps its pause when the take borrows silence, and pauses keep their usual minimum when the clip has none of that kind.
 - Stuck Rewrite phrases offer one-click fixes, some suggested by the AI, without starting over.

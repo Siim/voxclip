@@ -1,5 +1,20 @@
 # Windows fixed contracts
 
+### 2026-11-04 — Automatic fixes of stuck Rewrite phrases: Windows twin owed
+
+- **Shared.** No shared files changed. Mac's homophone rule in the word check (voice-lab.md §8.11) has no fixture yet.
+- **Owed twin.**
+  - The word check's near-homophone normalization of replacement words (`VoiceLabTakeQuality.normalizingHomophones`).
+  - The automatic resolver with 3 rounds, a max($0.10, quote) cap counting billed AI sends, [Keep fixing · ≈ $y], one Stop and "Choose yourself…" (§8.2.2).
+  - Per-phrase leave-out that keeps takes.
+  - No eviction of paid takes during automatic runs.
+  - Footers that name the next step, including [Apply {k} text fixes].
+  - One free-text field.
+  - Named chips and the refused-sentence chips.
+  - Phrase cards without disabled controls, with the duration chosen automatically.
+  - Per-phrase expressions with "Before expression" takes and click-to-place.
+- **Windows change.** None.
+
 ### 2026-11-04 — Rewrite next steps: shared contract; Windows twin owed
 
 - **Shared changes.**
