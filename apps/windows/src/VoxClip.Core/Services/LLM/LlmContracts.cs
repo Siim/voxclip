@@ -37,7 +37,9 @@ public enum LlmFeature
     /// <summary>Connection test.</summary>
     Test,
     /// <summary>One explicitly approved, review-only Voice Lab rewrite.</summary>
-    VoiceRewrite
+    VoiceRewrite,
+    /// <summary>A caption style per clip while the clip style's captions are Auto; AI §15, design §6.9.</summary>
+    CaptionPick
 }
 /// <summary>Portable effort selection, lowest first; AI §3.2.</summary>
 public enum Effort

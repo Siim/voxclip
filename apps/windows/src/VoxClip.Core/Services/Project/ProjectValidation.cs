@@ -22,7 +22,7 @@ internal static class ProjectValidation
         if (root.TryGetProperty("schemaVersion", out var version) && version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var number) && number > 4)
             throw new VoxClipException(VoxClipErrorCode.ProjectTooNew, "This project was saved by a newer VoxClip. Update VoxClip to open it.");
         var supportsContext = version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var schemaVersion) && schemaVersion == 4;
-        Object(root, "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", "title extensions" + (supportsContext ? " contextDemo motionCues" : ""));
+        Object(root, "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", "title extensions clipStyle" + (supportsContext ? " contextDemo motionCues" : ""));
         String(root.GetProperty("format"), "voxclip-project");
         Number(root.GetProperty("schemaVersion"), 1, 4, true);
         String(root.GetProperty("id"), "[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}");
@@ -62,6 +62,22 @@ internal static class ProjectValidation
         var captions = root.GetProperty("captions"); Object(captions, "styleId overrides position positionByAspect"); String(captions.GetProperty("styleId"), Slug);
         Require(captions.GetProperty("overrides").ValueKind == JsonValueKind.Object); Nullable(captions.GetProperty("position"), Position);
         Dictionary(captions.GetProperty("positionByAspect"), key => Require(key is "16:9" or "9:16" or "1:1"), Position);
+        if (root.TryGetProperty("clipStyle", out var clipStyle))
+        {
+            // Project schema $defs/clipStyle (design §6.9).
+            Object(clipStyle, "preset captions music maxLengthSec shapes rewording captionPicks");
+            Choice(clipStyle.GetProperty("preset"), "auto", "punchy", "calm", "demo", "mine"); String(clipStyle.GetProperty("captions"), Slug);
+            Choice(clipStyle.GetProperty("music"), "auto", "off"); Number(clipStyle.GetProperty("maxLengthSec"), 5, 600, true);
+            var shapes = clipStyle.GetProperty("shapes");
+            Array(shapes, shape => Choice(shape, "16:9", "9:16", "1:1"));
+            Require(shapes.GetArrayLength() > 0 && shapes.EnumerateArray().Select(shape => shape.GetString()).Distinct().Count() == shapes.GetArrayLength());
+            Choice(clipStyle.GetProperty("rewording"), "off", "fix-only", "tighten");
+            Dictionary(clipStyle.GetProperty("captionPicks"), key => Pattern(key, Id), pick =>
+            {
+                Object(pick, "styleId reason"); String(pick.GetProperty("styleId"), Slug); Require(pick.GetProperty("styleId").GetString() != "auto");
+                Require(pick.GetProperty("reason").ValueKind == JsonValueKind.String && pick.GetProperty("reason").GetString()!.EnumerateRunes().Count() <= 120);
+            });
+        }
         var export = root.GetProperty("export"); Object(export, "aspect quality srt folder"); Choice(export.GetProperty("aspect"), "source", "16:9", "9:16", "1:1");
         Choice(export.GetProperty("quality"), "standard", "high"); Boolean(export.GetProperty("srt")); Nullable(export.GetProperty("folder"), value => Text(value, 1, 4096));
         var share = root.GetProperty("share"); Object(share, "captions"); Dictionary(share.GetProperty("captions"), key => Pattern(key, "(?:full|" + Id + ")"), value => Text(value, 0, 3000));

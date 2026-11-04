@@ -16,6 +16,9 @@ public sealed record Project(string Format, int SchemaVersion, string Id, DateTi
     /// <summary>Optional project title, absent rather than null; project schema.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Title { get; init; }
+    /// <summary>How clips should be made (design §6.9); absent until the user chooses on the clip style card.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ClipStyle? ClipStyle { get; init; }
     /// <summary>Unknown reverse-DNS fork entries preserved unchanged; editing §10.7.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyDictionary<string, JsonElement>? Extensions { get; init; }
