@@ -1,12 +1,13 @@
 #!/bin/zsh
-# The Rewrite smoke (doc/release.md): drives the Rewrite flow through nine stuck scenarios with a scripted AI and
+# The Rewrite smoke (doc/release.md): drives the Rewrite flow through thirteen stuck scenarios with a scripted AI and
 # ElevenLabs, offscreen, and checks the panel after every step. Run it before every handed-over test build.
 #
 #   apps/macos/scripts/rewrite-smoke.sh [<VoxClip.app | debug executable | build directory>] [--keep <dir>]
 #       [--only S1,S4] [--lengths realistic|exact|both] [--known-failing I2,I7]
 #
 # Takes are as long as the fixture's speaker would say them (realistic) and, in a second pass, fill each slot exactly
-# ("S4-exact"); --lengths picks one pass. With no path it builds the DEBUG app (swift build --product VoxClip) in apps/macos and runs .build/debug/VoxClip.
+# ("S4-exact"); --lengths picks one pass. With no path it builds the DEBUG app (swift build --product VoxClip) in
+# apps/macos and runs .build/debug/VoxClip.
 # It prints summary.txt and exits non-zero when any invariant not named in --known-failing fails. The report
 # (rewrite-smoke.json, summary.txt and a PNG of the panel per failing step) stays in --keep's directory, else in a
 # temporary one that is printed. No paid or live request is made; it is safe while the Mac is in use.
@@ -25,7 +26,7 @@ while (( $# > 0 )); do
         --only) only=$2; shift 2 ;;
         --lengths) lengths=$2; shift 2 ;;
         --known-failing) known=$2; shift 2 ;;
-        -h|--help) sed -n 2,12p "$0"; exit 0 ;;
+        -h|--help) sed -n 2,13p "$0"; exit 0 ;;
         *) target=$1; shift ;;
     esac
 done

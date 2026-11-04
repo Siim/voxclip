@@ -364,12 +364,17 @@ extension ClipTakePlan.Phrase {
                                     Task { await session.playTake(take.id, phrase: phrase.id) }
                                 }.buttonStyle(.plain).frame(minHeight: 22)
                                     .accessibilityLabel("\(playing ? "Pause" : "Play") phrase \(phrase.id + 1), take \(take.number), join advisory")
-                                Button("Use anyway") {
-                                    session.focusedTakePhrase = phrase.id
-                                    session.mutateLipsync(phrase: phrase.id) { _ = plan.useAnyway(take: take.id, phrase: phrase.id) }
-                                }.buttonStyle(.plain).frame(minHeight: 22)
-                                    .accessibilityLabel("Use take \(take.number) anyway, phrase \(phrase.id + 1), accept join advisory")
-                                    .modifier(PanelButtonEvidence(id: "useAnyway.\(phrase.id).\(take.number)", title: "Use anyway"))
+                                // Use anyway acts only where it moves the phrase on: not on the take already used, and not
+                                // on a phrase kept as recorded when no video duration can carry the take.
+                                let used = phrase.selectedID == take.id && !take.row.requiresJoinAdvisoryAcceptance
+                                if !used, !phrase.leftOut || plan.durationAvailable(take: take) {
+                                    Button("Use anyway") {
+                                        session.focusedTakePhrase = phrase.id
+                                        session.mutateLipsync(phrase: phrase.id) { _ = plan.useAnyway(take: take.id, phrase: phrase.id) }
+                                    }.buttonStyle(.plain).frame(minHeight: 22)
+                                        .accessibilityLabel("Use take \(take.number) anyway, phrase \(phrase.id + 1), accept join advisory")
+                                        .modifier(PanelButtonEvidence(id: "useAnyway.\(phrase.id).\(take.number)", title: "Use anyway"))
+                                }
                             }.font(VCType.callout.font())
                         }
                     }

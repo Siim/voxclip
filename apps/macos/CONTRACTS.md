@@ -1,5 +1,28 @@
 # macOS implementation contracts
 
+### 2026-11-04 — Realistic Rewrite smoke: video fixture, spoken take lengths, Choose Take, held-back changes priced
+
+- **Smoke fixtures.**
+  - `DebugRewriteSmoke.sourceMovie` writes the fixture's source as a 160×90 H.264 + 24 kHz LPCM movie into the temporary data folder at run time. Video and audio are interleaved through one `AVAssetWriter`; a passthrough `AVAssetExportSession` failed with -11800/-12780 here. The project gets its `contentKey`, size and video metadata, because the render preflight checks source identity. Cut and Match video now prepare offscreen. Nothing is committed: the movie is about 2 MB, nearly all of it audio.
+  - `RewriteSmokeVoiceScript`: `exactFit`, else `naturalSeconds(text) + offset` (the fixture's per-word timing, its pauses and 50 ms margins). Per-scenario offsets run from -0.9 s to +0.7 s. `-rewriteSmokeLengths realistic|exact|both` (`--lengths`, default both) runs a second, exact-fit pass with ids `S1-exact`…`S12-exact`.
+  - Stub fix: each word's last letter now ends exactly at the word's end. `start + n·step` could land one ulp after the following space's start, so ElevenLabs' `alignment_time_order` check rejected the take ("word timing could not be validated").
+  - New scenarios: S10 (shorter take → Cut), S11 (longer take → Match, recorded as `zoomCover`), S12 (Get Price with one change held back), S13 (exact-fit happy path). New end checks: I8 (applied video mode; `source` in the exact pass) and I9 (every voice change applied). `UIProcessHarness` gives `-rewriteSmoke` 360 s.
+- **Root causes and fixes.**
+  - **(A) "Choose a take for phrase 1." with nothing to click.** The cause was not keep-source length. The realistic take was under 3 s of speech, so its voice was `unmeasured`, and ADR-R37 (design.md) keeps unmeasured takes out of automatic selection. `bestMeasured` returned nil, and the footer asked for a choice with no primary.
+    - Fix: `ClipTakePlan.offeredTake(phrase:)` (passing, no join to accept, current expression first) backs a footer primary [Choose Take N] (`chooseTake`). R37's explicit click stays.
+    - `Phrase.bestMeasured` is deleted. `ClipTakePlan.automaticTake(phrase:)` ranks measured takes: one some duration can carry (`durationAvailable`) first, best score among those, else the one closest to the slot.
+    - A phrase with only join-advisory takes now reads "Listen to phrase N's take, then Use anyway or try another."
+  - **(B) "The matched video couldn't be prepared."** The fixture had no video and a stale `contentKey`; the source movie above fixes both. No product change.
+  - **(C) A held-back change outside the paid plan.** The automatic wording fit ended without fitting a too-long change, and Get Price then priced only the fitting changes.
+    - Fix: `RewriteSession.priceHeldBackChanges()` runs when the fit ends: not after Stop, not with paid takes, only for `tooLong`. It adds those ordinals to `pricedAnyway`, with the note "Change N is priced as written; once its take is measured, Rewrite rewords it to fit." Get Price includes them, and the resolver's existing length path rewords from the measured take inside the auto-fix cap. S12 voices both changes.
+    - Too-short changes keep their surrounding-sentence route (S5).
+  - **Found by the new lengths:**
+    - The pre-price "N phrases fit · K kept as recorded" line overwrote the takes footer after payment; it now shows only before paid takes.
+    - [Use anyway] stayed on a take already used, and on a kept-as-recorded phrase whose take no duration can carry (an S5 dead end). Both are hidden now.
+- **Not done (deviation).** "Adding phrase N · ≈ $0.02", a resolver follow-up that adds a phrase to an existing paid plan, is not built. `ClipTakePlan` places its phrases once and keys runs, inputs, quotes and spend by phrase index, so an inserted phrase would renumber paid takes. With `priceHeldBackChanges`, no automatic route leaves a held-back change outside a paid plan. The only remaining route is the user's Stop during the fit, then Get Price; the change then keeps its row's acting controls. A follow-up phrase needs plan re-placement that carries paid phrases' takes, runs and charges across.
+- **Tests.** `ClipTakePlanTests.heldBackChangeIsPricedOnceTheAutomaticFitEnds`; `reviewerUnmeasuredNeedsExplicitSelection` now also asserts `automaticTake` is nil and `offeredTake` is the take. Before the fixes, the smoke under realistic lengths failed S4 (I1, I5) and dropped S12's change 2 (what I9 now checks).
+- **Windows twin owed:** offered take with [Choose Take N] (R37), the automatic-take ranking, `priceHeldBackChanges`, the paid-only takes footer, the hidden inert Use anyway, and a smoke with a video fixture and realistic lengths.
+
 ### 2026-11-04 — Rewrite smoke fixes: voiced phrases, idle takes footer, no inert fit controls
 
 - **Root causes.**

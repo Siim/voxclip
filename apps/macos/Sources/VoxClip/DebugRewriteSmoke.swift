@@ -9,7 +9,7 @@ import VoxClipCore
 // (doc/release.md). Each scenario opens the real `RewriteSession` on a small fixture with scripted stand-ins
 // (DebugRewriteSmokeStubs.swift), clicks only what a user could click, and after every step reads the panel as it is
 // drawn: its task model and, offscreen in a window that is never shown, its view and accessibility tree. The invariants
-// I1–I7 are checked at every step and written to rewrite-smoke.json and summary.txt.
+// I1–I7 are checked at every step (I8–I9 at the end of S10–S12) and written to rewrite-smoke.json and summary.txt.
 
 @MainActor enum DebugRewriteSmoke {
     // MARK: Report
@@ -117,7 +117,7 @@ import VoxClipCore
         for (exact, definition) in runs {
             let begun = ProcessInfo.processInfo.systemUptime
             let id = exact ? definition.id + "-exact" : definition.id
-            var scenario = Scenario(id: id, title: definition.title + (exact || definition.fixture.voice.exactFit ? " (takes fill their slots exactly)" : ""))
+            var scenario = Scenario(id: id, title: definition.title + (exact ? " (takes fill their slots exactly)" : ""))
             let harness = Harness(app: app, directory: directory, scenario: id)
             var fixture = definition.fixture
             if exact { fixture.voice.exactFit = true }
@@ -141,8 +141,20 @@ import VoxClipCore
                 let check = Check(invariant: "I5", passed: applied || ended,
                     detail: applied ? "Rewrite applied" : ended ? "Rewrite ended with Done, the original words kept"
                         : "Rewrite not applied: " + (harness.steps.last.map { summary($0.snapshot) } ?? "no steps"))
+                var checks = [check]
+                // Takes that fill their slots keep the source video whatever length the scenario's realistic takes have.
+                if let mode = exact && definition.video != nil ? .source : definition.video {
+                    let modes = harness.appliedVideoModes
+                    checks.append(Check(invariant: "I8", passed: modes.contains(mode),
+                        detail: "applied video: " + (modes.isEmpty ? "none" : modes.map(\.rawValue).joined(separator: ", ")) + ", expected \(mode.rawValue)"))
+                }
+                if let voiced = definition.voiced {
+                    let count = harness.appliedVideoModes.count
+                    checks.append(Check(invariant: "I9", passed: count == voiced,
+                        detail: "\(count) of \(voiced) voice change\(voiced == 1 ? "" : "s") applied in your voice"))
+                }
                 if var last = scenario.steps.popLast() {
-                    last = Step(index: last.index, action: last.action, snapshot: last.snapshot, checks: last.checks + [check], capture: last.capture)
+                    last = Step(index: last.index, action: last.action, snapshot: last.snapshot, checks: last.checks + checks, capture: last.capture)
                     scenario.steps.append(last)
                 }
             }
@@ -582,6 +594,15 @@ import VoxClipCore
                 || editor.project.edits != original.edits || editor.project.transcript != original.transcript)
         }
 
+        /// The video mode of each voice segment the Rewrite added.
+        var appliedVideoModes: [VoiceLabVideoMode] {
+            guard let editor, let original else { return [] }
+            let before = Set(original.voiceLab.segments.map(\.id))
+            return editor.project.voiceLab.segments.filter { !before.contains($0.id) }.compactMap { segment in
+                segment.candidates.indices.contains(segment.selectedCandidateIndex) ? segment.candidates[segment.selectedCandidateIndex].recipe?.video.mode : nil
+            }
+        }
+
         /// The evidence controls the panel drew last.
         private var drawn: [Control] { steps.last?.snapshot.controls.filter { $0.source == "evidence" && $0.enabled } ?? [] }
         /// A passing take with a join advisory waits for its row's [Use anyway] (DirectorTakeRows), which the user clicks.
@@ -880,6 +901,10 @@ import VoxClipCore
         var requiresCompletion = true
         /// I5 also passes when the Rewrite ends with Done and nothing changed (S9: Stop, then keep the words).
         var mayEndUnchanged = false
+        /// I8: the applied take keeps, cuts or matches the video as this scenario's take length requires.
+        var video: VoiceLabVideoMode? = nil
+        /// I9: the Rewrite applied this many voice segments: no voice change was dropped on the way.
+        var voiced: Int? = nil
         let fixture: Fixture
         let drive: @MainActor (Harness) async throws -> Void
     }
@@ -905,12 +930,13 @@ import VoxClipCore
 
     static var scenarios: [Definition] { [
         Definition(id: "S1", title: "happy path: 2 changes, takes pass, Use",
-            fixture: Fixture(rewrites: [.passage(replace(twoChanges))])) { harness in
+            fixture: Fixture(rewrites: [.passage(replace(twoChanges))], voice: RewriteSmokeVoiceScript(offset: -0.2))) { harness in
             try await harness.start()
             try await harness.finish()
         },
         Definition(id: "S2", title: "two changes close together",
-            fixture: Fixture(rewrites: [.passage(replace([("keep the pauses", "preserve all breaks"), ("remove the ones", "cut every one")]))])) { harness in
+            fixture: Fixture(rewrites: [.passage(replace([("keep the pauses", "preserve all breaks"), ("remove the ones", "cut every one")]))],
+                voice: RewriteSmokeVoiceScript(offset: 0.1))) { harness in
             try await harness.start()
             try await harness.click(["prepareTakes", "makeTakes"])
             // Placement merges nearby changes when it can; the user's refusal is a pair it could not merge. When this fixture's
@@ -939,7 +965,8 @@ import VoxClipCore
         },
         Definition(id: "S5", title: "surrounding sentence refused: a fragment at the clip start",
             fixture: Fixture(firstWord: 23, rewrites: [.passage(replace([("words we got wrong.", "bits."), twoChanges[1]])
-                .split(separator: " ").dropFirst(23).joined(separator: " "))], fits: [.sameWords, .sameWords, .sameWords])) { harness in
+                .split(separator: " ").dropFirst(23).joined(separator: " "))], fits: [.sameWords, .sameWords, .sameWords],
+                voice: RewriteSmokeVoiceScript(offset: -0.1))) { harness in
             try await harness.start()
             if let session = harness.session, let ordinal = session.blockedVoiceOrdinals.first {
                 try await harness.act("click [Use surrounding sentence] on change \(ordinal)", clicked: "surrounding") {
@@ -960,12 +987,12 @@ import VoxClipCore
         },
         Definition(id: "S6", title: "over the voice budget",
             fixture: Fixture(rewrites: [.passage(replace(twoChanges + [("sent to a voice service", "passed to any speech provider"),
-                ("it only takes a few minutes", "it barely needs any real time")]))])) { harness in
+                ("it only takes a few minutes", "it barely needs any real time")]))], voice: RewriteSmokeVoiceScript(offset: 0.15))) { harness in
             try await harness.start()
             try await harness.finish()
         },
         Definition(id: "S7", title: "add an expression while another phrase has paid takes, then remove it",
-            fixture: Fixture(rewrites: [.passage(replace(twoChanges))])) { harness in
+            fixture: Fixture(rewrites: [.passage(replace(twoChanges))], voice: RewriteSmokeVoiceScript(offset: -0.15))) { harness in
             try await harness.start()
             try await harness.click(["prepareTakes", "makeTakes"])
             try await harness.click(["takeQuote-"])
@@ -993,7 +1020,8 @@ import VoxClipCore
         },
         Definition(id: "S8", title: "a Rewrite failure, then a reply made stale by an edit",
             fixture: Fixture(rewrites: [.failure, .held(.passage(replace([twoChanges[0]]))),
-                .passage(replace([twoChanges[0]]).split(separator: " ").dropFirst().joined(separator: " "))])) { harness in
+                .passage(replace([twoChanges[0]]).split(separator: " ").dropFirst().joined(separator: " "))],
+                voice: RewriteSmokeVoiceScript(offset: 0.1))) { harness in
             try await harness.start()
             try await harness.click(["tryAgain"])
             guard let editor = harness.editor, let first = editor.project.transcript?.words.first else { throw Failure.setup("S8 has no words") }
@@ -1012,6 +1040,29 @@ import VoxClipCore
             await harness.connector?.release()
             await harness.settle()
             try await harness.observe("after Stop, the held reply arrives")
+            try await harness.finish()
+        },
+        Definition(id: "S10", title: "a take shorter than its slot: the video is cut to it", video: .cut,
+            fixture: Fixture(rewrites: [.passage(replace([twoChanges[1]]))], voice: RewriteSmokeVoiceScript(offset: -0.9))) { harness in
+            try await harness.start()
+            try await harness.finish()
+        },
+        // Match video is recorded as the zoom-cover recipe (VoiceLabRecipeBuilder).
+        Definition(id: "S11", title: "a take longer than its slot: only matching the video fits it", video: .zoomCover,
+            fixture: Fixture(rewrites: [.passage(replace([twoChanges[1]]))], voice: RewriteSmokeVoiceScript(offset: 0.7))) { harness in
+            try await harness.start()
+            try await harness.finish()
+        },
+        Definition(id: "S12", title: "Get Price while one change is held back by its estimate", voiced: 2,
+            fixture: Fixture(rewrites: [.passage(replace([twoChanges[0], ("captions follow the words as they change",
+                "subtitles carefully and patiently track every single spoken line, every little word and every tiny pause while all of them shift around")]))],
+                fits: [.sameWords, .sameWords, .sameWords, .halfWords, .halfWords, .halfWords])) { harness in
+            try await harness.start()
+            try await harness.finish()
+        },
+        Definition(id: "S13", title: "happy path with takes that fill their slots exactly",
+            fixture: Fixture(rewrites: [.passage(replace(twoChanges))], voice: RewriteSmokeVoiceScript(exactFit: true))) { harness in
+            try await harness.start()
             try await harness.finish()
         },
     ] }

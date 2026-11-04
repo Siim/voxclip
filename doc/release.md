@@ -272,12 +272,14 @@ The installed CLI smoke test sets `VOXCLIP_DATA_DIR` to a fresh directory under 
 Run it before any build goes to the user, test builds included:
 
 ```sh
-apps/macos/scripts/rewrite-smoke.sh [<VoxClip.app | debug executable>] [--keep <dir>] [--only S1,S4] [--known-failing I2,I5]
+apps/macos/scripts/rewrite-smoke.sh [<VoxClip.app | debug executable>] [--keep <dir>] [--only S1,S4] [--lengths realistic|exact|both] [--known-failing I2,I5]
 ```
 
 With no path it builds the DEBUG app first. It needs no unlocked console, no keys and no network, and it is safe while the Mac is in use: the app runs `-rewriteSmoke <dir>` offscreen, in a window that is never shown, with a temporary data folder. A scripted AI and a scripted ElevenLabs (`DebugRewriteSmokeStubs.swift`) answer every request. Nothing is paid and nothing is sent.
 
-It drives the real Rewrite session through nine scenarios using only clicks a user could make:
+The fixture is a small synthetic recording: 160×90 H.264 with 24 kHz LPCM audio, written at run time into the temporary data folder. That lets Cut and Match video prepare offscreen as they do for a real clip. Takes are as long as the fixture's speaker says their words, plus a per-scenario offset. A second pass runs every scenario again with takes that fill their slots exactly (`S4-exact`). `--lengths` picks one pass, and both run by default (about 3 minutes).
+
+It drives the real Rewrite session through thirteen scenarios using only clicks a user could make:
 
 - S1: happy path.
 - S2: two nearby changes refused as too close.
@@ -288,8 +290,12 @@ It drives the real Rewrite session through nine scenarios using only clicks a us
 - S7: an expression added while another phrase has paid takes.
 - S8: a failure, then a stale reply.
 - S9: Stop during an automatic fix, then finish from the panel Stop leaves.
+- S10: a take shorter than its slot; the video is cut to it.
+- S11: a take longer than its slot; only Match video fits it.
+- S12: Get Price while the estimate holds one change back.
+- S13: the happy path with takes that fill their slots exactly.
 
-After every step it checks seven invariants:
+After every step it checks seven invariants, and at the end of S10–S12 two more:
 
 - I1: a control that acts, or the resolver, is visible.
 - I2: no disabled control.
@@ -298,6 +304,8 @@ After every step it checks seven invariants:
 - I5: every scenario ends applied; S9 may end with Done and the words as recorded.
 - I6: no paid take dropped without a confirm.
 - I7: an added tag shows in the phrase quote.
+- I8: the applied take cuts or matches the video as its length requires; it keeps the source video in the exact pass.
+- I9: every voice change is applied in your voice; none is dropped on the way.
 
 It prints `summary.txt` and writes `rewrite-smoke.json`, plus a PNG of the panel for each failing step. It exits non-zero on any failure not named in `--known-failing`. The same run is `MacUIIntegrationTests/rewriteSmoke`, which asserts every invariant with no known failures. Hand over a build only when the smoke is clean, or when every remaining failure is named and the user has been told.
 

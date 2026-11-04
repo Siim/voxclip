@@ -184,7 +184,8 @@ extension RewriteSession {
                 footer: PanelFooter(note: sendAsksFirst ? "Fit requests are billed to your key. Making a take needs a separate paid click." : "Nothing is paid until Get Price."), askAgain: askAgain)
         }
         if wordingFit.completed || wordingFit.stopped || !wordingFit.problem.isEmpty { cards.insert(.wordingFit, at: 0) }
-        if wordingFit.completed, blockedVoiceOrdinals.isEmpty, takePlanFailure == nil,
+        // The fit's own result, before any take: once takes are paid the takes footer says what Use waits for.
+        if wordingFit.completed, !hasPaidTakes, blockedVoiceOrdinals.isEmpty, takePlanFailure == nil,
            includedVoice.allSatisfy({ voiceReview($0)?.timing?.fits == true }) {
             footer.footer.note = "\(includedVoice.count) phrases fit · \(wordingFit.kept.count) kept as recorded"
         }

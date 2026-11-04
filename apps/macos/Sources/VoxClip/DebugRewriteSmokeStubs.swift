@@ -104,6 +104,8 @@ indirect enum RewriteSmokeFit: Sendable {
     case sameWords
     /// Every supplied phrase is reworded without its last word: shorter, as a measured fit asks.
     case fewerWords
+    /// Every supplied phrase is reworded to the first half of its words: much shorter.
+    case halfWords
     /// Waits for release, then answers as `then`.
     case held(RewriteSmokeFit)
 
@@ -114,6 +116,9 @@ indirect enum RewriteSmokeFit: Sendable {
             case .sameWords: ["ordinal": phrase.ordinal, "action": "reword", "text": phrase.proposed]
             case .fewerWords: ["ordinal": phrase.ordinal, "action": "reword",
                                "text": phrase.proposed.split(separator: " ").dropLast().joined(separator: " ")]
+            case .halfWords:
+                ["ordinal": phrase.ordinal, "action": "reword",
+                 "text": phrase.proposed.split(separator: " ").prefix { _ in true }.prefix((phrase.proposed.split(separator: " ").count + 1) / 2).joined(separator: " ")]
             }
         }
         let data = (try? JSONSerialization.data(withJSONObject: ["phrases": rows], options: [.sortedKeys])) ?? Data()
@@ -261,7 +266,9 @@ final class RewriteSmokeHTTP: URLProtocol, @unchecked Sendable {
             let step: Double = (spans[offset].end - spans[offset].start) / Double(max(1, word.count))
             for (position, character) in word.enumerated() {
                 characters.append(String(character))
-                starts.append(spans[offset].start + Double(position) * step); ends.append(spans[offset].start + Double(position + 1) * step)
+                // The last letter ends exactly where the word does, so the space after it never starts before it ends.
+                let end: Double = position == word.count - 1 ? spans[offset].end : spans[offset].start + Double(position + 1) * step
+                starts.append(spans[offset].start + Double(position) * step); ends.append(end)
             }
         }
         var reply: [String: Any] = ["audio_base64": pcm.base64EncodedString(),

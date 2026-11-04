@@ -43,13 +43,15 @@ extension HeavyMediaTests {
     /// The Rewrite smoke (doc/release.md, `scripts/rewrite-smoke.sh`): nine stuck scenarios through the real session with a
     /// scripted AI and ElevenLabs, offscreen. Every step keeps a control that acts, no disabled control, one free-text
     /// field at most, a footer that agrees with the panel, paid takes until a confirm, and a tag drawn as it is added;
-    /// every scenario ends with the Rewrite applied, or (S9, after Stop) with Done and the words as recorded.
+    /// every scenario ends with the Rewrite applied, or (S9, after Stop) with Done and the words as recorded; S10–S12
+    /// also check the applied video duration and that no voice change was dropped.
     @Test("The Rewrite smoke completes every stuck scenario without a dead end") func rewriteSmoke() throws {
         let directory = try UIProcessHarness.run(mode: "-rewriteSmoke", name: "rewrite-smoke", acceptNonzeroWithReport: "results.json")
         defer { UIProcessHarness.cleanTemporary(directory) }
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
         let scenarios = Set(report.compactMap { $0.name.split(separator: " ").first.map(String.init) })
-        #expect(scenarios == Set((1...9).map { "S\($0)" }))
+        // Realistic take lengths (S1–S13), then every scenario but S13 with takes that fill their slots exactly.
+        #expect(scenarios == Set((1...13).map { "S\($0)" } + (1...12).map { "S\($0)-exact" }))
         for result in report { #expect(result.passed, Comment(rawValue: result.name)) }
     }
     @Test("Right-column content fits without opening a window") func rightColumnLayout() throws {
@@ -434,7 +436,7 @@ private enum UIProcessHarness {
         defer { try? log.close() }
         process.standardOutput = log; process.standardError = log
         try process.run()
-        let deadline = Date().addingTimeInterval(mode == "-uiSelfTest" ? 360 : 120)
+        let deadline = Date().addingTimeInterval(mode == "-uiSelfTest" || mode == "-rewriteSmoke" ? 360 : 120)
         while process.isRunning && Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
         if process.isRunning {
             process.terminate()

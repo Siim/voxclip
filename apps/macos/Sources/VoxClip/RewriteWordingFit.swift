@@ -115,6 +115,7 @@ extension RewriteSession {
                 editor.llmRuns.release(lease)
                 if wordingFit.token == token {
                     wordingFit.running = false; wordingFit.completed = true; wordingFit.lease = nil
+                    priceHeldBackChanges()
                     if let plan = takePlan { applyPendingExpressions(plan) }
                     if current { showProposal() }
                 }
@@ -147,6 +148,20 @@ extension RewriteSession {
         }
         wordingFit.work = work
         await work.value
+    }
+
+    /// The automatic wording fit ended and a change is still too long for its estimate (design.md R2): Get Price
+    /// includes it as written rather than leaving it out of the paid plan, where nothing could add it back. Once its
+    /// take is measured, the automatic fixes reword it from that take within their spending limit (RewriteAutoFix.swift).
+    /// A change too short keeps its surrounding-sentence route; Stop is the user's choice, and the change keeps its
+    /// row's choices.
+    func priceHeldBackChanges() {
+        guard current, !wordingFit.stopped, !hasPaidTakes, !autoFix.stopped else { return }
+        let held = blockedVoiceOrdinals.filter { voiceReview($0)?.timing?.tooLong == true }
+        guard !held.isEmpty else { return }
+        pricedAnyway.formUnion(held)
+        autoFix.notes.append("\(Self.changeNames(held)) \(held.count == 1 ? "is" : "are") priced as written; "
+            + "once \(held.count == 1 ? "its take is" : "their takes are") measured, Rewrite rewords \(held.count == 1 ? "it" : "them") to fit.")
     }
 
     func stopWordingFit(refresh: Bool = true) {

@@ -488,7 +488,10 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         let row = try #require(fixture.plan.phrases[0].takes.first?.row)
         #expect(row.selectable && row.voiceCheck.evidence?.mode == .unmeasured)
         #expect(fixture.plan.phrases[0].selectedID == nil)
+        // ADR-R37: never chosen automatically, but offered for the user's one click (the footer's [Choose Take 1]).
+        #expect(fixture.plan.automaticTake(phrase: 0) == nil && fixture.plan.offeredTake(phrase: 0)?.id == row.id)
         #expect(fixture.plan.select(take: row.id, phrase: 0))
+        #expect(fixture.plan.offeredTake(phrase: 0) == nil)
     }
 
     @Test func reviewerRetryCannotBypassFailedPool() async throws {
@@ -1442,6 +1445,32 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
             #expect(session.wordingFit.measured == nil)
         }
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
+    }
+
+    /// The automatic wording fit ended with a change still too long (the Rewrite smoke's S12): Get Price includes it as
+    /// written instead of pricing only the fitting changes, where no automatic fix could add it to the paid plan later.
+    /// Stop is the user's choice and changes nothing.
+    @Test func heldBackChangeIsPricedOnceTheAutomaticFitEnds() async throws {
+        let fixture = try await fixture(indices: [10, 17]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture)
+        defer { editor.close() }
+        let long = VoiceLabDiffHunk(kind: .voice, sourceWordIds: ["w10"],
+            newTokens: [String(repeating: "collaboratively", count: 8)], correctedTexts: [], absorbedItemIds: [],
+            bridgeWordIds: [], sourceStartIndex: 10, sourceEndIndex: 11, anchorSeconds: nil)
+        session.receive(([long] + hunks([17], text: "Welcome")).map { RewriteChange(hunk: $0) })
+        session.finishRun(seconds: 1)
+        session.showProposal()
+        #expect(session.blockedVoiceOrdinals == [1] && session.includedVoice == [2])
+        #expect(session.voiceReview(1)?.timing?.tooLong == true)
+        session.wordingFit.stopped = true
+        session.priceHeldBackChanges()
+        #expect(session.blockedVoiceOrdinals == [1] && session.includedVoice == [2] && session.autoFix.notes.isEmpty)
+        session.wordingFit.stopped = false
+        session.priceHeldBackChanges()
+        #expect(session.blockedVoiceOrdinals.isEmpty && session.includedVoice == [1, 2])
+        #expect(session.autoFix.notes == ["Change 1 is priced as written; once its take is measured, Rewrite rewords it to fit."])
+        session.showProposal()
+        #expect(session.task.footer.primary?.title == "Get Price · 2 phrases", "\(session.task.footer)")
     }
 
     @Test func productionQuoteLeavesOutBlockedPhrasesUntilExplicitOverride() async throws {
