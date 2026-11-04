@@ -9003,7 +9003,6 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabWindow :: method public set_Start(do
 member VoxClip.Core.Domain.VoiceLab.VoiceLabWindow :: method public set_StartSample(long)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner :: field private HardSeamReach
 member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner :: method internal ReplacedItems(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope,VoxClip.Core.Domain.Transcript.AudioEnvelope)
-member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner :: method private BudgetHunk(VoxClip.Core.Domain.VoiceLab.VoiceLabDiffHunk,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner :: method private Editing`1(System.Func`1<!!0>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner :: method private IndexOf(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner :: method private Merge(VoxClip.Core.Domain.VoiceLab.VoiceLabDiffHunk,VoxClip.Core.Domain.VoiceLab.VoiceLabDiffHunk,VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabDiffHunk>,System.Collections.Generic.IReadOnlyDictionary`2<string,int>)
