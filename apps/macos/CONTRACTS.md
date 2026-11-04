@@ -1,5 +1,26 @@
 # macOS implementation contracts
 
+### 2026-11-05 — One spacing scale: phrase cards, Rewrite panel, fields and chips
+
+User request (2026-11-04): "some of the paddings, especially between inputs and some lines, are too close together". The look is kept; the rhythm is fixed. Spec: doc/design.md §16.1.
+
+- **Built.**
+  - Semantic spacing tokens in `shared/design/tokens.json`, generated for Swift (`VCTokens.spacing<Name>`) and XAML (`VcSpacing<Name>`): `labelGap` 6, `rowGap` 8, `groupGap` 12, `sectionGap` 20, `cardPadding` 12, `fieldPaddingX`/`Y` 10/8, `dividerMargin` 8, `rowPaddingY` 6, `chipGap` 6, `footerPaddingY` 12.
+  - `Design/FieldChrome.swift`: `vcFieldChrome(multiline:)`, the panels' custom field look (bg.input, line.edge, 28 pt one-line height). The My words field and the panel key field use it.
+  - Phrase cards (`DirectorTakeRows.phraseRow`): lines 4 → 8 apart, padding 8 → 12, radius 8; the Video duration and Lip sync blocks sit a group gap under the takes. The wording segment sits 8 above its field; own-take rows, mic rows, the expression line and tag chips use the label and chip gaps.
+  - Rewrite panel (`DirectorPanel`): body top 8 → 12 and bottom 12 → 16, headline to cards 10 → 16, cards 10 → 12 apart, callout padding 10 → 12, work-log rows 5 → 6, chooser rows 5 → 6 (28 high), footer 9 → 12 vertical. Inline send confirm, Ask and next-step fields, transcription choices, voice steps, Export and Home drop their off-grid 3, 5, 9, 10, 14 and 18 values.
+  - Timeline: in the 64 pt header (below 1000 wide) the take's length keeps a label gap and the word "Take" gives way instead of touching it.
+  - Explorer: Suggested count to Keep All 5 → 8 (spacing only, for track/v2-quickwins).
+  - `DebugSpacing.swift`: `-layoutAudit <dir> -spacingCaptures` draws 35 surfaces offscreen with cacheDisplay in a window parked off every screen (no screencapture). `DebugRightColumn.openRewrite` is internal so it can reuse the Rewrite states.
+  - Windows: HomePage, EditorPage and SettingsWindow bind their spacing to the same tokens. MainWindow and the C#-built Rewrite cards are unchanged.
+- **Kept dense on purpose.** Transcript, timeline lanes, Captions gallery and property rows (pinned to f1 and the right-column height tests), PanelHost's 30 pt header, native `NSSearchField` and grouped Settings forms.
+- **Deleted.** The unused `spacing.inspectorRowGap` and `spacing.inspectorSectionGap` tokens; no view read them.
+- **Evidence.** /tmp/voxclip-spacing/index.html (before/after, 25 of 35 captures changed, 10 pixel-identical).
+- **Verification** (`VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`): Core 1,191 / 113 suites (2 known issues), App 879 / 62, `mac-ui` 14 / 2 (right-column layout at 300–560 and 960 × 600, both smoke passes), `rewrite-smoke.sh` 35 / 35, design tokens generate/check/test. Media in the parallel full run: 502 / 58 with one S15-realistic load race (ended 0.3 s into step 1); S15 passes alone 3 / 3 and in the serial `mac-ui` rerun. Windows on macOS: win-ui Release 1,227 passed and 5 skipped of 1,232, `*ReleaseSurrogate*` 1 / 1, ReleaseBoundary `update` of all four allowlists with no diff.
+- **Owed.** A native WinUI build of the bound XAML (Windows CI or the VM). The real-window `-sceneAudit` and `-uiSelfTest` gates were not run.
+- **Next package must know.** Use the semantic tokens, never a literal, for new gaps in forms, cards and panels. The Lip sync price reads "≈ ≈ $1.90" (a doubled approximate sign in the phrase card and footer), which this package did not change. Next-step chip capsules show a 1 px sliver outside their stroke in offscreen captures, before and after.
+
+
 ### 2026-11-04 — Voice Lab mix walks each piece block by block, bit-identical to the per-frame mix
 
 - **Built.** `VoiceLabAudioRenderer.mix` reads each piece's constants once, then works per 4,096-frame block:
