@@ -54,7 +54,7 @@ extension HeavyMediaTests {
         defer { UIProcessHarness.cleanTemporary(directory) }
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
         let scenarios = Set(report.compactMap { $0.name.split(separator: " ").first.map(String.init) })
-        let expected = lengths == "exact" ? (1...12).map { "S\($0)-exact" } : (1...13).map { "S\($0)" }
+        let expected: [String] = lengths == "exact" ? (1...12).map { "S\($0)-exact" } : (1...13).map { "S\($0)" }
         #expect(scenarios == Set(expected))
         for result in report { #expect(result.passed, Comment(rawValue: result.name)) }
     }
