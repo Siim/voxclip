@@ -47,6 +47,9 @@ struct VideoDurationChoiceAvailability: Equatable {
     static func prepare(_ project: Project, scope: VoiceLabOutputScope,
                         using prepare: VideoDurationRenderPreparer?) async throws -> PreparedVideoDurationRender {
         guard let prepare else { throw VoiceLabProjectError.videoModeUnsupported }
+        #if DEBUG
+        let started = ProcessInfo.processInfo.systemUptime
+        #endif
         _ = try VoiceLabRenderContract.prepare(project, scope: scope, labelPosition: .topRight)
         let request = try await prepare(project, scope)
         guard let input = request.voiceLab, input.project == project, input.scope == scope else { throw VoiceLabProjectError.staleRenderContract }
@@ -54,10 +57,22 @@ struct VideoDurationChoiceAvailability: Equatable {
         guard input.prepared.selectedSegmentRecipes.allSatisfy({
             $0.recipe.audio.stretch == 1 && VoiceLabRenderInput.supportsVideoMode($0.recipe.video.mode)
         }) else { throw VoiceLabProjectError.videoModeUnsupported }
+        #if DEBUG
+        let building = ProcessInfo.processInfo.systemUptime
+        defer {
+            debugPreparations.count += 1
+            debugPreparations.build += ProcessInfo.processInfo.systemUptime - building
+            debugPreparations.seconds += ProcessInfo.processInfo.systemUptime - started
+        }
+        #endif
         let graph = try await CompositionBuilder().build(request)
         guard graph.voiceLabLease != nil else { throw VoiceLabProjectError.unsupportedRendering }
         return PreparedVideoDurationRender(request: request, input: input, graph: graph)
     }
+    #if DEBUG
+    /// Renders prepared this process and their seconds, whole and in `CompositionBuilder.build`, for the Rewrite smoke's report.
+    static var debugPreparations: (count: Int, seconds: Double, build: Double) = (0, 0, 0)
+    #endif
 }
 
 struct VideoDurationChoiceView: View {
