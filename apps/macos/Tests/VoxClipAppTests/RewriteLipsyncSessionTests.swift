@@ -7,6 +7,16 @@ import Testing
 
 @Suite("Rewrite lip-sync job ownership", .serialized) @MainActor
 struct RewriteLipsyncSessionTests {
+    /// The formatted price already carries its "≈"; the controls must not add a second one (MVP21 showed "≈ ≈ $1.90").
+    @Test func lipSyncPriceCopyCarriesOneApproximationSign() {
+        let price = VoiceLabCostPresentation.format(Decimal(string: "1.90")!)
+        #expect(price == "≈ $1.90")
+        let label = RewriteLipsyncControls.approveLabel(verb: "Lip sync", phrase: 0, price: price)
+        #expect(label == "Lip sync, phrase 1, approximately $1.90, upload video and audio to fal.ai sync-3")
+        let source = try? String(contentsOfFile: #filePath.replacingOccurrences(of: "Tests/VoxClipAppTests/RewriteLipsyncSessionTests.swift", with: "Sources/VoxClip/RewriteLipsyncControls.swift"), encoding: .utf8)
+        #expect(source?.contains("≈ \\(") == false, "a literal ≈ before an already formatted price")
+    }
+
     @MainActor private final class RunGate {
         var started = false
         var consent = false

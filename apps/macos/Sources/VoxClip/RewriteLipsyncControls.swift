@@ -35,17 +35,17 @@ import VoxClipCore
                         }.accessibilityLabel(Self.undoLabel(phrase))
                             .accessibilityIdentifier("lipsync-undo-\(phrase)")
                     }
-                    Text("≈ \(price) on your fal.ai account. Undo keeps your original video for this phrase.")
+                    Text("\(price) on your fal.ai account. Undo keeps your original video for this phrase.")
                     if session.applied[phrase]?.result.colorWarning == true {
                         Text("The lip-sync clip's colours differ slightly.").foregroundStyle(DesignValues.color("status.warning"))
                     }
                 case .failed(let reason, let price, let mayBill):
-                    Text("Couldn't lip sync phrase \(phrase + 1): \(reason)" + (mayBill ? " fal.ai may still charge ≈ \(price)." : " No upload or charge."))
+                    Text("Couldn't lip sync phrase \(phrase + 1): \(reason)" + (mayBill ? " fal.ai may still charge \(price)." : " No upload or charge."))
                         .foregroundStyle(DesignValues.color("status.warning"))
                     approval(retry: true)
                     Text("or keep the original video")
                 case .cancelled(let price):
-                    Text("Lip sync cancelled. fal.ai may still charge ≈ \(price). Your original video is kept.")
+                    Text("Lip sync cancelled. fal.ai may still charge \(price). Your original video is kept.")
                     approval(retry: true)
                 }
             } else { approval(retry: false) }
@@ -71,7 +71,7 @@ import VoxClipCore
             let verb = retry ? "Try Again" : "Lip Sync"
             // Shown only while it can act: takes running or Use Takes waiting hide it (design.md: no disabled buttons).
             if !busy, !session.usingTakes {
-                Button("\(verb) · ≈ \(offer.price)") { session.start(offer); changed() }
+                Button("\(verb) · \(offer.price)") { session.start(offer); changed() }
                     .accessibilityIdentifier("lipsync-approve-\(phrase)")
                     .accessibilityLabel(Self.approveLabel(verb: verb, phrase: phrase, price: offer.price))
             }
@@ -97,7 +97,7 @@ import VoxClipCore
     static func playLabel(_ phrase: Int) -> String { "Play lip-synced phrase \(phrase + 1)" }
     static func undoLabel(_ phrase: Int) -> String { "Undo lip sync, phrase \(phrase + 1), keep original video" }
     static func approveLabel(verb: String, phrase: Int, price: String) -> String {
-        "\(verb), phrase \(phrase + 1), approximately \(price), upload video and audio to fal.ai sync-3"
+        "\(verb), phrase \(phrase + 1), \(price.replacingOccurrences(of: "≈ ", with: "approximately ")), upload video and audio to fal.ai sync-3"
     }
 
     static func elapsed(_ seconds: Double) -> String {
