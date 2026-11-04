@@ -19,7 +19,8 @@ npm --prefix tools/fixtures/llm run check
 | `tighten-verifier.json` | 16 | T1–T8 plus duplicates, kinds, no-ops, Unicode, punctuation and review thresholds |
 | `clip-finder-requests.json` | 30 | Every preset, with/without instructions, single/multiple windows; 252 connector renderings |
 | `ai-tighten-requests.json` | 20 | All strengths, instructions, windows, sparse indices; 180 connector renderings |
-| `connector-requests.json` | 37 | Connection tests, capability branches, CLI escaping/flags, Apple mapping; 37 renderings |
+| `connector-requests.json` | 44 | Connection tests, capability branches, CLI escaping/flags, Apple mapping; 44 renderings |
+| `effort-requests.json` | 52 | Every connector at every effort (`low`…`max`, ai.md §4.4.1): the highest supported level at or below the request, or none; Codex named-model and CLI-default (`isDefault`) model-list cases |
 | `voice-rewrite-requests.json` | 7 | Voice Lab rewrite (voice-lab §8.9.1): passage and full take, with and without a request, six budgets including `minChars` = `maxChars`, a decomposed source; each with the quote's estimate and preflight |
 | `patch-rewrite-requests.json` | 5 | Voice Lab Fix with AI (voice-lab §8.1): the line ranges and instruction, equal `minChars` and `maxChars`, a trimmed instruction, F1, sparse indices, decomposed Estonian text; each with the quote's estimate and preflight |
 | `cli-replies.json` | 98 | Claude and Codex CLI transport envelopes (ai.md §4.5, §6.8–§6.10): stops, structured/text replies, depth and strict-JSON bounds, signed 64-bit integer ranking and usage, ignored Codex cache-write counts, category-ordered failures, selected-line malformed-envelope classification, single Codex fallback, first app-server response selection, optional fields, line endings and stderr selection |
@@ -32,7 +33,7 @@ Codex failure rows pin auth before limit, limit before overload, overload before
 
 Two Codex usage rows supply integral and out-of-range `cache_write_input_tokens` values. Both expect absent cache-write usage and preserve only input, cached input and output counts (§6.9 step 4). Claude's cache-creation usage is unchanged.
 
-Current `cli-replies.json` SHA-256: `fbd24df5069fd52c099c1a8edc23dddb42f3c6d4989c613b4410e8f3ec56e0ce`.
+Current `cli-replies.json` SHA-256: `75adb305c9966201aba009e31c7158d67afc0d990c6a5ed99b37dccaadf70f78`.
 
 Each UTF-8 file has stable insertion-order keys, LF line endings and one trailing
 newline. Its envelope is:

@@ -21,7 +21,7 @@ struct TightenRequestBuilder: Sendable {
                           instruction: try renderInstruction(lines: window.lines, strength: strength, instruction: instruction, windowCount: windowCount),
                           schemaName: document[ai: "output"][ai: "name"].aiString ?? "tighten_edits", schema: document[ai: "output"][ai: "schema"],
                           maxOutputTokens: window.maxOutputTokens ?? document[ai: "generation"][ai: "maxOutputTokens"].aiInt ?? 16000,
-                          effort: Effort(rawValue: document[ai: "generation"][ai: "effort"].aiString ?? "medium"), timeout: timeout,
+                          effort: Effort(rawValue: document[ai: "generation"][ai: "effort"].aiString ?? Effort.decision.rawValue), timeout: timeout,
                           language: language, tag: "tighten/\(strength)\(windowCount > 1 ? " part \(windowIndex + 1) of \(windowCount)" : "")")
     }
 

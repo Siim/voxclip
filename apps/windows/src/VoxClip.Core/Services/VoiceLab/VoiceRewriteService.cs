@@ -106,7 +106,7 @@ public sealed class VoiceRewriteService
         var timeout = catalog.Timeout(connector is ConnectorId.ClaudeCode or ConnectorId.Codex ? "cli" :
             connector is ConnectorId.Ollama or ConnectorId.LmStudio ? "localServer" : "cloud");
         return new(LlmFeature.VoiceRewrite, system, sourceBlock, instruction, name, schema.DeepClone().AsObject(),
-            maxOutput, Effort.Medium, timeout, input.Language, "voice-rewrite");
+            maxOutput, EffortLevel.Decision, timeout, input.Language, "voice-rewrite");
     }
 
     /// <summary>Renders the request from the shared prompt's templates (voice-lab §8.9.1); no prompt text lives in code.</summary>

@@ -8,6 +8,8 @@ struct ProviderChoice: Decodable, Identifiable, Sendable {
     struct Auth: Decodable, Sendable { let keyAccount: String?; let keyHint: String? }
     struct Model: Decodable, Identifiable, Sendable { let id: String; let name: String; let tier: String? }
     struct CLI: Decodable, Sendable { let executable: String; let signInHint: String; let installHint: String }
+    /// The catalog's `effort.values`; absent or null for a connector that ignores effort.
+    struct EffortLevels: Decodable, Sendable { let values: [String] }
     let id: String
     let label: String
     let group: String
@@ -19,6 +21,7 @@ struct ProviderChoice: Decodable, Identifiable, Sendable {
     let defaultModel: String?
     let baseUrl: String?
     let models: [Model]
+    let effort: EffortLevels?
 }
 
 struct ProviderCatalogue: Decodable { let connectors: [ProviderChoice] }
@@ -29,6 +32,11 @@ protocol ProviderKeyStore: Sendable {
 extension SecretStore: ProviderKeyStore {}
 enum ConnectorConsentAction { case findClips, rewrite, test }
 extension ProviderChoice {
+    /// The effort AI decisions send on this connector (ai.md §2.1): Claude Code and Anthropic "extra high", OpenAI,
+    /// Gemini and the Codex default "high"; nil for xAI, local servers and Apple, which ignore effort.
+    var decisionEffort: Effort? { Effort.resolved(.decision, supported: effort?.values ?? []) }
+    /// "AI decisions use extra high effort." for Settings; nil when the connector ignores effort.
+    var decisionEffortNote: String? { decisionEffort.map { "AI decisions use \($0.label) effort." } }
     func detectedBillingMethod(_ raw: String?) -> String? {
         guard let raw else { return nil }
         let method = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().replacingOccurrences(of: "-", with: "_").replacingOccurrences(of: ".", with: "_")

@@ -53,6 +53,8 @@
                         <MenuFlyout>
                             <MenuFlyoutItem Text="{x:Bind RewriteName, Mode=OneWay}" Tag="{x:Bind ClipId}" Click="RewriteClipClicked" Visibility="{x:Bind CanRewrite, Mode=OneWay}"/>
                             <!-- On Home the project's rows only navigate: the commands that act on the hidden editor are disabled. -->
+                            <MenuFlyoutItem Text="Captions" Tag="{x:Bind ClipId}" Click="CaptionsClipClicked" IsEnabled="{x:Bind Edits, Mode=OneWay}"/>
+                            <MenuFlyoutItem Text="Find more clips" Tag="{x:Bind ClipId}" Click="FindMoreClipsClicked" IsEnabled="{x:Bind Edits, Mode=OneWay}"/>
                             <MenuFlyoutItem Text="Export clip…" Tag="{x:Bind ClipId}" Click="ExportClipClicked" IsEnabled="{x:Bind Edits, Mode=OneWay}"/>
                             <MenuFlyoutItem Text="Rename…" KeyboardAcceleratorTextOverride="F2" Tag="{x:Bind ClipId}" Click="RenameClipClicked" IsEnabled="{x:Bind Edits, Mode=OneWay}"/>
                             <MenuFlyoutItem Text="Copy text" Tag="{x:Bind ClipId}" Click="CopyClipTextClicked"/>
@@ -101,13 +103,19 @@
             </DataTemplate>
             <DataTemplate x:Key="SuggestionRow" x:DataType="vm:SidebarRow">
                 <ContentControl IsTabStop="False" HorizontalContentAlignment="Stretch" MinHeight="28" Tag="{x:Bind ClipId}" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}" AutomationProperties.HelpText="{x:Bind ToolTip, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ToolTip, Mode=OneWay}"
-                    KeyboardAcceleratorPlacementMode="Hidden" Loaded="ScopeRowKeys">
+                    KeyboardAcceleratorPlacementMode="Hidden" Loaded="ScopeRowKeys" PointerEntered="ClipRowPointerEntered" PointerExited="ClipRowPointerExited">
                     <ContentControl.KeyboardAccelerators>
                         <KeyboardAccelerator Key="Enter" Modifiers="Control" Invoked="KeepSuggestionInvoked"/>
                         <KeyboardAccelerator Key="Delete" Invoked="DismissSuggestionInvoked"/>
                     </ContentControl.KeyboardAccelerators>
                     <ContentControl.ContextFlyout>
                         <MenuFlyout>
+                            <!-- Rewrite and Export keep the suggestion first, in one undo step, then act on it as on a kept clip. -->
+                            <MenuFlyoutItem Text="{x:Bind RewriteName, Mode=OneWay}" Tag="{x:Bind ClipId}" Click="RewriteClipClicked" Visibility="{x:Bind CanRewrite, Mode=OneWay}"/>
+                            <MenuFlyoutItem Text="Captions" Tag="{x:Bind ClipId}" Click="CaptionsClipClicked" IsEnabled="{x:Bind Edits, Mode=OneWay}"/>
+                            <MenuFlyoutItem Text="Find more clips" Tag="{x:Bind ClipId}" Click="FindMoreClipsClicked" IsEnabled="{x:Bind Edits, Mode=OneWay}"/>
+                            <MenuFlyoutItem Text="Export clip…" Tag="{x:Bind ClipId}" Click="ExportClipClicked" IsEnabled="{x:Bind Edits, Mode=OneWay}"/>
+                            <MenuFlyoutSeparator/>
                             <MenuFlyoutItem Text="Keep clip" KeyboardAcceleratorTextOverride="Ctrl+Enter" Tag="{x:Bind ClipId}" Click="KeepClicked" IsEnabled="{x:Bind Edits, Mode=OneWay}"/>
                             <MenuFlyoutItem Text="Dismiss" KeyboardAcceleratorTextOverride="Delete" Tag="{x:Bind ClipId}" Click="DismissClicked" IsEnabled="{x:Bind Edits, Mode=OneWay}"/>
                         </MenuFlyout>
@@ -127,7 +135,14 @@
                             <Grid ColumnSpacing="8">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                 <TextBlock Text="{x:Bind Title, Mode=OneWay}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" FontSize="14"/>
-                                <TextBlock Grid.Column="1" Text="{x:Bind MetaTime, Mode=OneWay}" FontFamily="{StaticResource VcMonoFontFamily}" FontSize="12" Foreground="{ThemeResource VcTextSecondaryBrush}" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="1" Text="{x:Bind MetaTime, Mode=OneWay}" FontFamily="{StaticResource VcMonoFontFamily}" FontSize="12" Foreground="{ThemeResource VcTextSecondaryBrush}" VerticalAlignment="Center" Visibility="{x:Bind ShowsDuration, Mode=OneWay}"/>
+                                <!-- Selected or hovered: ✦ Rewrite and ⋯ More take the duration's place; the title truncates first. -->
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" Visibility="{x:Bind ShowsActions, Mode=OneWay}">
+                                    <Button Width="32" Height="32" Padding="0" Style="{ThemeResource SubtleButtonStyle}" IsTabStop="False" Tag="{x:Bind ClipId}" Click="RewriteClipClicked" Tapped="RowButtonTapped"
+                                        Visibility="{x:Bind CanRewrite, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind RewriteHelp, Mode=OneWay}" AutomationProperties.Name="{x:Bind RewriteName, Mode=OneWay}"><TextBlock Text="✦" FontSize="14"/></Button>
+                                    <Button Width="32" Height="32" Padding="0" Style="{ThemeResource SubtleButtonStyle}" IsTabStop="False" Click="MoreClipClicked" Tapped="RowButtonTapped"
+                                        ToolTipService.ToolTip="More" AutomationProperties.Name="More"><FontIcon Glyph="&#xE712;" FontSize="14"/></Button>
+                                </StackPanel>
                             </Grid>
                             <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" Visibility="{x:Bind HasMetaStatus, Mode=OneWay}"><Run Text="{x:Bind MetaLine, Mode=OneWay}"/></TextBlock>
                         </StackPanel>

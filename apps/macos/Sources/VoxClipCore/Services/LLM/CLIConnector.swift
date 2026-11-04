@@ -22,6 +22,8 @@ public actor CLIConnector: LLMConnector {
     private var capabilities: CLICapabilities?
     private var discoveredModels: [LLMModel]?
     private var modelEfforts: [String: Set<String>] = [:]
+    /// The `isDefault` model's supportedReasoningEfforts from the last model/list; nil when it reported none.
+    private var defaultModelEfforts: Set<String>?
     private var occupied = false
     private var authenticatedPreflight: (fingerprint: CLIFingerprint, at: ContinuousClock.Instant)?
     public internal(set) var refreshWarning: String?
@@ -97,6 +99,7 @@ public actor CLIConnector: LLMConnector {
         if !refresh { return discoveredModels ?? curatedModels(configuration) }
         let previousModels = discoveredModels
         let previousEfforts = modelEfforts
+        let previousDefaultEfforts = defaultModelEfforts
         do {
             let detected = try await detect(configuration, refresh: false)
             let models = try await refreshCodexModels(detected, configuration: configuration)
@@ -108,6 +111,7 @@ public actor CLIConnector: LLMConnector {
         catch {
             discoveredModels = previousModels
             modelEfforts = previousEfforts
+            defaultModelEfforts = previousDefaultEfforts
             let failure = error as? LLMError ?? probeFailure
             refreshWarning = "Couldn't refresh: " + (await failureMessage(failure, includeEditsSaved: true))
             return previousModels ?? curatedModels(configuration)
@@ -255,6 +259,7 @@ public actor CLIConnector: LLMConnector {
         if capabilities?.fingerprint != fingerprint {
             discoveredModels = nil
             modelEfforts = [:]
+            defaultModelEfforts = nil
         }
         capabilities = nil
         let detect = configuration["cli"]?.cliObject?["detect"]?.cliObject ?? [:]
@@ -353,6 +358,7 @@ public actor CLIConnector: LLMConnector {
                 capabilities = nil
                 discoveredModels = nil
                 modelEfforts = [:]
+                defaultModelEfforts = nil
             }
             return result
         } catch is CancellationError { throw LLMError.cancelled }
@@ -372,7 +378,8 @@ public actor CLIConnector: LLMConnector {
            let fallback = configuration["fallbackOrder"]?.cliStrings.first(where: { $0 != model }) {
             arguments += ["--fallback-model", fallback]
         }
-        if let effort = request.effort, detected.flags.contains("--effort") { arguments += ["--effort", effort.rawValue] }
+        if detected.flags.contains("--effort"),
+           let effort = Effort.resolved(request.effort, supported: catalog.effortLevels(for: id)) { arguments += ["--effort", effort.rawValue] }
         arguments.append("--safe-mode")
         for flag in ["--strict-mcp-config", "--disable-slash-commands"] where detected.flags.contains(flag) {
             arguments.append(flag)
@@ -386,7 +393,10 @@ public actor CLIConnector: LLMConnector {
         if detected.flags.contains("--ignore-rules") { arguments.append("--ignore-rules") }
         arguments += ["--sandbox", "read-only", "--cd", directories.cwd.path]
         if model != "default" { arguments += ["--model", model] }
-        if let effort = request.effort, model == "default" || modelEfforts[model]?.contains(effort.rawValue) == true {
+        // A named model sends only a level its supportedReasoningEfforts lists; the CLI default uses the isDefault
+        // model's list, or the catalog's levels when model/list reported none (ai.md §6.9).
+        let supported = model == "default" ? Array(defaultModelEfforts ?? Set(catalog.effortLevels(for: id))) : Array(modelEfforts[model] ?? [])
+        if let effort = Effort.resolved(request.effort, supported: supported) {
             arguments += ["-c", "model_reasoning_effort=\"\(effort.rawValue)\""]
         }
         arguments += ["-c", "web_search=\"disabled\"", "-c", "approval_policy=\"never\"", "-c", "mcp_servers={}",
@@ -585,6 +595,7 @@ public actor CLIConnector: LLMConnector {
             }
             guard let entries else { throw probeFailure }
             var efforts: [String: Set<String>] = [:]
+            var defaultEfforts: Set<String>?
             var seen = Set<String>()
             let models = entries.compactMap { value -> LLMModel? in
                 guard let item = value.cliObject, item["hidden"]?.cliBool != true,
@@ -592,10 +603,12 @@ public actor CLIConnector: LLMConnector {
                 efforts[id] = Set((item["supportedReasoningEfforts"]?.cliArray ?? []).compactMap {
                     $0.cliObject?["reasoningEffort"]?.cliString
                 })
+                if item["isDefault"]?.cliBool == true, defaultEfforts == nil, efforts[id]?.isEmpty == false { defaultEfforts = efforts[id] }
                 return LLMModel(id: id, name: item["displayName"]?.cliString ?? id, source: .discovered)
             }
             guard !models.isEmpty else { throw LLMError.noModels }
             modelEfforts = efforts
+            defaultModelEfforts = defaultEfforts
             return [LLMModel(id: "default", name: "CLI default", source: .curated)] + models.filter { $0.id != "default" }
         }
     }

@@ -39,7 +39,7 @@ public enum LlmFeature
     /// <summary>One explicitly approved, review-only Voice Lab rewrite.</summary>
     VoiceRewrite
 }
-/// <summary>Portable effort selection; AI §3.2.</summary>
+/// <summary>Portable effort selection, lowest first; AI §3.2.</summary>
 public enum Effort
 {
     /// <summary>Low reasoning effort.</summary>
@@ -47,7 +47,29 @@ public enum Effort
     /// <summary>Medium reasoning effort.</summary>
     Medium,
     /// <summary>High reasoning effort.</summary>
-    High
+    High,
+    /// <summary>Extra high reasoning effort ("xhigh").</summary>
+    XHigh,
+    /// <summary>The provider's maximum reasoning effort.</summary>
+    Max
+}
+/// <summary>Effort names and the shared resolution rule; AI §2.1.</summary>
+public static class EffortLevel
+{
+    /// <summary>What every AI decision feature asks for: Find Clips, AI Tighten, Rewrite, Fix with AI and wording fit.</summary>
+    public const Effort Decision = Effort.XHigh;
+    /// <summary>The wire name: "low", "medium", "high", "xhigh", "max".</summary>
+    public static string Wire(this Effort effort) => effort.ToString().ToLowerInvariant();
+    /// <summary>The name Settings and the status bar show: "low", "medium", "high", "extra high", "max".</summary>
+    public static string Label(this Effort effort) => effort == Effort.XHigh ? "extra high" : effort.Wire();
+    /// <summary>The highest of <paramref name="supported"/> at or below <paramref name="requested"/>, case-insensitively; null when none is.</summary>
+    public static Effort? Resolve(Effort? requested, IEnumerable<string> supported)
+    {
+        if (requested is not { } ceiling) return null;
+        var allowed = supported.Select(value => value.ToLowerInvariant()).ToHashSet(StringComparer.Ordinal);
+        for (var level = ceiling; level >= Effort.Low; level--) if (allowed.Contains(level.Wire())) return level;
+        return null;
+    }
 }
 /// <summary>Model-list provenance; AI §3.2.</summary>
 public enum ModelSource

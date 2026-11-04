@@ -4,7 +4,7 @@ import Testing
 
 @Suite("CLI shared request goldens", .enabled(if: aiSharedFixturesAvailable, aiSharedFixturesSkipReason), .offlineFixtures)
 struct CLIRequestFixtureTests {
-    @Test(arguments: ["clip-finder-requests", "ai-tighten-requests", "connector-requests"])
+    @Test(arguments: ["clip-finder-requests", "ai-tighten-requests", "connector-requests", "effort-requests"])
     func everyCLIRenderingMatchesGolden(_ file: String) async throws {
         let shared = try #require(CLIGoldenFixtures.sharedRoot())
         let document = try JSONDecoder().decode(CLIGoldenDocument.self,
@@ -66,7 +66,7 @@ struct CLIRequestFixtureTests {
         let connector = CLIConnector(id: id, runner: processRunner, catalog: catalog,
             log: RedactingLogger(homeDirectory: "/synthetic/home"), executable: executable, environment: [:],
             temporaryDirectory: directory.url, loginShellPATH: "/synthetic/path")
-        if id == .codex, model != "default" { _ = try await connector.models(refresh: true) }
+        if id == .codex, model != "default" || options?.goldenObject?["defaultEfforts"] != nil { _ = try await connector.models(refresh: true) }
         do {
             _ = try await connector.send(LLMRequest(feature: request.feature, system: request.system,
                 cachedBlock: request.cachedBlock, instruction: request.instruction, schemaName: request.schemaName,
@@ -144,6 +144,8 @@ private actor CLIGoldenRunner: ProcessRunner {
     let features: [JSONValue]
     let model: String
     let efforts: [JSONValue]
+    /// `defaultEfforts`: model/list also reports an `isDefault` model with these supportedReasoningEfforts.
+    let defaultEfforts: [JSONValue]?
     var generations: [CLIGoldenObserved] = []
 
     init(id: ConnectorID, catalog: LLMCatalog, options: [String: JSONValue], model: String) {
@@ -157,6 +159,7 @@ private actor CLIGoldenRunner: ProcessRunner {
             ((help["requiredFlags"]?.goldenArray ?? []) + (help["optionalFlags"]?.goldenArray ?? []))).compactMap(\.goldenString)
         features = options["features"]?.goldenArray ?? cli["disableFeatures"]?.goldenArray ?? []
         efforts = options["supportedEfforts"]?.goldenArray ?? []
+        defaultEfforts = options["defaultEfforts"]?.goldenArray
     }
 
     func run(_ request: ProcessRequest) throws -> ProcessResult {
@@ -173,9 +176,13 @@ private actor CLIGoldenRunner: ProcessRunner {
         if request.arguments == ["auth", "status", "--json"] { return result(#"{"loggedIn":true,"authMethod":"oauth"}"#) }
         if request.arguments == ["login", "status"] { return result("Logged in using ChatGPT") }
         if request.arguments.first == "app-server" {
-            let response: JSONValue = .object(["id": .number(2), "result": .object(["data": .array([
-                .object(["id": .string(model), "displayName": .string(model), "supportedReasoningEfforts": .array(
-                    efforts.map { .object(["reasoningEffort": $0]) })])])])])
+            var entries: [JSONValue] = [.object(["id": .string(model), "displayName": .string(model), "supportedReasoningEfforts": .array(
+                efforts.map { .object(["reasoningEffort": $0]) })])]
+            if let defaultEfforts {
+                entries.append(.object(["id": .string("cli-default-model"), "isDefault": .bool(true), "supportedReasoningEfforts": .array(
+                    defaultEfforts.map { .object(["reasoningEffort": $0]) })]))
+            }
+            let response: JSONValue = .object(["id": .number(2), "result": .object(["data": .array(entries)])])
             return ProcessResult(exitCode: 0, stdout: try JSONEncoder().encode(response), stderr: Data())
         }
         guard request.arguments.first == "-p" || request.arguments.first == "exec" else {

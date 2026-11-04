@@ -19,6 +19,8 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
     private Detection? detected;
     private IReadOnlyList<LlmModel>? cachedModels;
     private readonly Dictionary<string, HashSet<string>> efforts = new(StringComparer.Ordinal);
+    /// <summary>The <c>isDefault</c> model's supportedReasoningEfforts from the last model/list; null when it reported none.</summary>
+    private HashSet<string>? defaultEfforts;
     private string Label => provider["label"]!.GetValue<string>();
     internal bool IsApiKeyAuth { get; private set; }
     internal string? AuthMethod { get; private set; }
@@ -213,7 +215,7 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
                 args.AddRange(new[] { "-p", "--output-format", "json", "--json-schema", request.Schema.ToJsonString(LlmRuntime.CompactJson), "--system-prompt", request.System, "--tools", "", "--no-session-persistence" });
                 if (model != "default") args.AddRange(new[] { "--model", model });
                 if (request.Feature != LlmFeature.VoiceRewrite && catalog.Fallback(id, model) is { } fallback && Supports(detection.Help, "--fallback-model")) args.AddRange(new[] { "--fallback-model", fallback });
-                if (request.Effort is not null && Supports(detection.Help, "--effort")) args.AddRange(new[] { "--effort", request.Effort.Value.ToString().ToLowerInvariant() });
+                if (Supports(detection.Help, "--effort") && EffortLevel.Resolve(request.Effort, catalog.EffortLevels(id)) is { } claudeEffort) args.AddRange(new[] { "--effort", claudeEffort.Wire() });
                 args.Add("--safe-mode");
                 foreach (var optional in new[] { "--strict-mcp-config", "--disable-slash-commands" }) if (Supports(detection.Help, optional)) args.Add(optional);
             }
@@ -224,8 +226,10 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
                 if (Supports(detection.Help, "--ignore-rules")) args.Add("--ignore-rules");
                 args.AddRange(new[] { "--sandbox", "read-only", "--cd", workspace.Cwd });
                 if (model != "default") args.AddRange(new[] { "--model", model });
-                var effort = request.Effort?.ToString().ToLowerInvariant();
-                if (effort is not null && (model == "default" || efforts.GetValueOrDefault(model)?.Contains(effort) == true)) args.AddRange(new[] { "-c", "model_reasoning_effort=" + Toml(effort) });
+                // A named model sends only a level its supportedReasoningEfforts lists; the CLI default uses the isDefault model's list,
+                // or the catalog's levels when model/list reported none (AI §6.9).
+                IEnumerable<string> supported = model == "default" ? defaultEfforts ?? (IEnumerable<string>)catalog.EffortLevels(id) : efforts.GetValueOrDefault(model) ?? [];
+                if (EffortLevel.Resolve(request.Effort, supported) is { } codexEffort) args.AddRange(new[] { "-c", "model_reasoning_effort=" + Toml(codexEffort.Wire()) });
                 args.AddRange(new[] { "-c", "web_search=\"disabled\"", "-c", "approval_policy=\"never\"", "-c", "mcp_servers={}", "-c", "developer_instructions=" + Toml(request.System) });
                 foreach (var feature in Strings(settings["disableFeatures"]).Where(detection.Features.Contains)) args.AddRange(new[] { "--disable", feature });
                 args.AddRange(new[] { "--output-schema", schemaFile, "--output-last-message", outputFile, "-" });
@@ -339,14 +343,18 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
                 if ((response?["result"] as JsonObject)?["data"] is not JsonArray data)
                     throw new IOException("The app server returned no model list.");
                 var models = new List<LlmModel> { new("default", "CLI default", null, null, ModelSource.Curated) };
+                HashSet<string>? listedDefault = null;
                 foreach (var item in data)
                 {
                     if (item is not JsonObject entry || entry["hidden"] is JsonValue hidden && hidden.TryGetValue<bool>(out var isHidden) && isHidden ||
                         Text(entry["id"]) is not { } model) continue;
                     efforts[model] = (entry["supportedReasoningEfforts"] as JsonArray ?? []).Select(effort => Text((effort as JsonObject)?["reasoningEffort"]))
                         .OfType<string>().ToHashSet(StringComparer.Ordinal);
+                    if (listedDefault is null && entry["isDefault"] is JsonValue isDefault && isDefault.TryGetValue<bool>(out var flagged) && flagged && efforts[model].Count > 0)
+                        listedDefault = efforts[model];
                     models.Add(new(model, Text(entry["displayName"]) ?? model, null, null, ModelSource.Discovered));
                 }
+                defaultEfforts = listedDefault;
                 LastRefreshError = null;
                 ModelsFetchedAt = DateTimeOffset.UtcNow;
                 return cachedModels = models;

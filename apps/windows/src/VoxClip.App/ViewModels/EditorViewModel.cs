@@ -485,6 +485,10 @@ public sealed class EditorViewModel : ObservableObject
     }
     /// <summary>Keep a suggestion: it becomes the next numbered clip.</summary>
     public bool Keep(string id) => Announce(ApplyBatch([new EditOperation.SetClipSelected(id, true)]), () => $"Clip {Number(id)} kept.");
+    /// <summary>A row's Rewrite or Export (design §3.4): a suggestion is kept first, as one undo step with no prompt, so the
+    /// action opens on it exactly as on a kept clip. True when the clip is kept now; false for an unknown clip or a
+    /// suggestion this project cannot keep.</summary>
+    public bool KeepForRowAction(string id) => Clips.FirstOrDefault(clip => clip.Id == id) is { } row && (!row.IsSuggested || !IsReadOnly && Keep(id));
     /// <summary>Keep every suggestion as one undo step.</summary>
     public bool KeepAll()
     {

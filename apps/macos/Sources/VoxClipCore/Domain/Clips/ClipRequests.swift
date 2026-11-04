@@ -69,7 +69,7 @@ public struct ClipRequestBuilder: Sendable {
                           instruction: renderInstruction(words: words, lines: window.lines, preset: preset, instruction: instruction, windowCount: windowCount, maxClips: window.maxClips, lastTopicEnd: windowIndex > 0 ? lastTopicEnd : nil),
                           schemaName: document[ai: "output"][ai: "name"].aiString ?? "clips", schema: document[ai: "output"][ai: "schema"],
                           maxOutputTokens: window.maxOutputTokens ?? document[ai: "generation"][ai: "maxOutputTokens"].aiInt ?? 16000,
-                          effort: Effort(rawValue: document[ai: "generation"][ai: "effort"].aiString ?? "medium"), timeout: timeout, language: language,
+                          effort: Effort(rawValue: document[ai: "generation"][ai: "effort"].aiString ?? Effort.decision.rawValue), timeout: timeout, language: language,
                           tag: "clips/\(preset.id.rawValue)\(windowCount > 1 ? " part \(windowIndex + 1) of \(windowCount)" : "")")
     }
 

@@ -31,7 +31,7 @@ private struct AIGoldenVector: Sendable, CustomStringConvertible {
 }
 
 private enum AIGoldenCorpus {
-    static let files = ["ai-tighten-requests", "cli-replies", "clip-finder-requests", "connector-requests", "extensions", "finalize-clips", "format-transcript", "patch-rewrite-requests", "tighten-verifier", "to-fixed", "voice-rewrite-requests"]
+    static let files = ["ai-tighten-requests", "cli-replies", "clip-finder-requests", "connector-requests", "effort-requests", "extensions", "finalize-clips", "format-transcript", "patch-rewrite-requests", "tighten-verifier", "to-fixed", "voice-rewrite-requests"]
     static func document(_ file: String) throws -> JSONValue {
         try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: aiGoldenSharedRoot().appendingPathComponent("fixtures/llm/\(file).json")))
     }

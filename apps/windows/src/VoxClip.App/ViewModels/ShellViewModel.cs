@@ -89,7 +89,8 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     public bool CanRewrite { get => canRewrite; set => SetProperty(ref canRewrite, value); }
     public bool IsSelected { get => isSelected; set { if (SetProperty(ref isSelected, value)) RefreshActions(); } }
     public bool IsPointerOver { get => isPointerOver; set { if (SetProperty(ref isPointerOver, value)) RefreshActions(); } }
-    public bool ShowsActions => Kind == SidebarKind.Clip && (IsSelected || IsPointerOver);
+    /// <summary>✦ Rewrite and ⋯ More: on the selected or hovered clip or suggestion row (a suggestion keeps ✓ and ✕ too).</summary>
+    public bool ShowsActions => Kind is SidebarKind.Clip or SidebarKind.Suggestion && (IsSelected || IsPointerOver);
     public bool ShowsDuration => !ShowsActions;
     private void RefreshActions()
     {
@@ -228,7 +229,8 @@ public sealed class ShellViewModel
                 row.Edits = !showingHome;
                 var first = editor.Index(clip.Clip.StartWordId);
                 var last = editor.Index(clip.Clip.EndWordId);
-                row.CanRewrite = !suggestion && row.Edits && !editor.IsReadOnly && editor.CanFindClips && first >= 0 && last >= first
+                // A suggestion's Rewrite keeps it first (MainWindow.RewriteClipClicked), so it offers Rewrite like a kept clip.
+                row.CanRewrite = row.Edits && !editor.IsReadOnly && editor.CanFindClips && first >= 0 && last >= first
                     && editor.Words.Skip(first).Take(last - first + 1).Any(word => editor.State?.CutWordIds.Contains(word.Id) != true);
                 if (suggestion && number == kept.Length + 1) next.Add(SuggestedHeader(suggested.Length, showingHome));
                 next.Add(row);

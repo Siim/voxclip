@@ -7,12 +7,12 @@ import Testing
 
 @Suite("Explorer", .serialized, .offlineFixtures)
 @MainActor struct ExplorerTests {
-    private func open() async throws -> (WorkspaceShell, EditorModel) {
+    private func open(demo: Bool = true) async throws -> (WorkspaceShell, EditorModel) {
         _ = NSApplication.shared
         let shared = try SharedResources.locate()
         let base = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
         let shell = WorkspaceShell(app: AppModel(settingsStore: RegressionSettingsStore()))
-        await shell.attachForTesting(VoxClipDocument(project: try DebugExplorer.fiveQuestions(from: base), demo: true), selection: .fullTake)
+        await shell.attachForTesting(VoxClipDocument(project: try DebugExplorer.fiveQuestions(from: base), demo: demo), selection: .fullTake)
         let editor = try #require(shell.editor)
         editor.mediaResolved = true
         editor.refresh()
@@ -30,20 +30,20 @@ import Testing
         #expect(checks.allSatisfy { $0.passed })
     }
 
-    @Test(arguments: ["selected", "focused", "hovered", "idle", "suggested"], [176.0, 196.0, 200.0, 224.0])
-    func clipRowActionsReplaceDurationOnlyForActiveKeptRows(_ state: String, width: Double) async throws {
+    @Test(arguments: ["selected", "focused", "hovered", "idle", "suggested", "suggestedIdle"], [176.0, 196.0, 200.0, 224.0])
+    func clipRowActionsReplaceDurationOnSelectedHoveredOrFocusedRows(_ state: String, width: Double) async throws {
         let (shell, editor) = try await open()
         defer { editor.close() }
-        let suggested = state == "suggested"
+        let suggested = state.hasPrefix("suggested")
         var clip = try #require(suggested ? editor.suggestedClips.first : editor.keptClips.first)
         clip.title = "A long clip title that must truncate before the trailing row actions"
-        if state == "selected" || suggested { shell.choose(.clip(clip.id)) }
+        if state == "selected" || state == "suggested" { shell.choose(.clip(clip.id)) }
         let row = NSHostingView(rootView: ClipRow(shell: shell, editor: editor, clip: clip, suggested: suggested,
                                                 selectedFocused: state == "focused", hovering: state == "hovered").frame(width: width))
         row.frame = NSRect(x: 0, y: 0, width: width, height: 28)
         row.layoutSubtreeIfNeeded()
         let markers = DebugRightColumn.markers(in: row)
-        let showsActions = state == "selected" || state == "focused" || state == "hovered"
+        let showsActions = state != "idle" && state != "suggestedIdle"
         #expect((markers["explorer.clipActions"] != nil) == showsActions)
         #expect((markers["explorer.clipDuration"] != nil) == !showsActions)
         #expect(row.fittingSize.height == 28)
@@ -56,13 +56,85 @@ import Testing
         }
     }
 
-    @Test func suggestedRowsNeverGainActionsEvenWhileHoveredAndFocused() async throws {
+    /// The user never saw the row actions: the selected suggestion always shows ✦ and ⋯, and so does a hovered or
+    /// focused one; an idle, unselected suggestion keeps its duration.
+    @Test func suggestedRowsShowActionsWhileSelectedHoveredOrFocused() async throws {
         let (shell, editor) = try await open()
         defer { editor.close() }
         let clip = try #require(editor.suggestedClips.first)
+        #expect(!ClipRow(shell: shell, editor: editor, clip: clip, suggested: true).showsActions)
+        #expect(ClipRow(shell: shell, editor: editor, clip: clip, suggested: true, hovering: true).showsActions)
+        #expect(ClipRow(shell: shell, editor: editor, clip: clip, suggested: true, focused: true).showsActions)
         shell.choose(.clip(clip.id))
-        let row = ClipRow(shell: shell, editor: editor, clip: clip, suggested: true, focused: true, selectedFocused: true, hovering: true)
-        #expect(!row.showsActions)
+        #expect(ClipRow(shell: shell, editor: editor, clip: clip, suggested: true).showsActions)
+        #expect(shell.canRewriteExplorerClip(clip.id))
+        let host = NSHostingView(rootView: ClipRow(shell: shell, editor: editor, clip: clip, suggested: true).frame(width: 196))
+        host.frame = NSRect(x: 0, y: 0, width: 196, height: 28)
+        host.layoutSubtreeIfNeeded()
+        let markers = DebugRightColumn.markers(in: host)
+        #expect(markers["explorer.clipRewrite"]?.size == CGSize(width: 22, height: 20))
+        #expect(markers["explorer.clipMore"]?.size == CGSize(width: 22, height: 20))
+        #expect(host.fittingSize.height == 28)
+    }
+
+    /// The user: suggested clips "should also have the same option for the rewrite". Rewrite on a suggestion keeps it
+    /// first, as one undo step with no prompt, then opens Rewrite on that clip exactly as on a kept clip.
+    @Test func rewriteFromASuggestedRowKeepsItThenOpensRewriteOnTheClip() async throws {
+        let (shell, editor) = try await open()
+        defer { editor.close() }
+        editor.app.settings.values["voiceLab.enabled"] = .bool(false)
+        editor.app.settings.values["llm.connector"] = .string("ollama")
+        editor.app.connectorOverride = { _ in ConsentFixtureConnector(id: .ollama) }
+        editor.waveform = WaveformData(fine: Array(repeating: 0.01, count: 100_000))
+        #expect(editor.isSuggestion("five-5"))
+        let undo = try #require(editor.undoManager)
+        let steps = editor.undoSteps
+        undo.beginUndoGrouping(); shell.rewriteExplorerClip("five-5"); undo.endUndoGrouping()
+        await editor.rewriteOpenTask?.value
+        #expect(!editor.isSuggestion("five-5") && editor.keptClips.contains { $0.id == "five-5" })
+        #expect(editor.undoSteps == steps + 1 && undo.undoActionName == "Keep clip")
+        #expect(!editor.sendConfirmation.isPresented)
+        let session = try #require(editor.openRewrite)
+        #expect(session.rewriteScope == .clip("five-5") && session.scope == .clip("five-5"))
+        #expect(editor.project.edits.activeClipId == "five-5" && shell.tabs.active == .clip("five-5") && shell.tabs.preview == nil)
+        editor.closeRewrite(returnFocus: false)
+        undo.undo()
+        #expect(editor.isSuggestion("five-5"))
+    }
+
+    /// Export on a suggestion keeps it the same way, then opens the Export job on that clip.
+    @Test func exportFromASuggestedRowKeepsItThenOpensExportOnTheClip() async throws {
+        let (shell, editor) = try await open(demo: false)
+        defer { editor.close() }
+        #expect(shell.canExportExplorerClip("five-5"))
+        let undo = try #require(editor.undoManager)
+        let steps = editor.undoSteps
+        undo.beginUndoGrouping(); shell.exportExplorerClip("five-5"); undo.endUndoGrouping()
+        #expect(!editor.isSuggestion("five-5") && editor.undoSteps == steps + 1 && undo.undoActionName == "Keep clip")
+        #expect(editor.exportJob.isOpen && editor.exportJob.requestedIDs == ["five-5"] && editor.exportJob.scope == .thisClip)
+        // A kept row exports without another undo step.
+        let kept = editor.undoSteps
+        shell.exportExplorerClip("five-1")
+        #expect(editor.undoSteps == kept && editor.exportJob.requestedIDs == ["five-1"])
+    }
+
+    /// ⋯'s Captions shows the Captions job on that clip; Find More Clips opens Find Clips with no AI chosen and is off
+    /// while a search runs. Neither is an undo step.
+    @Test func moreMenuCaptionsAndFindMoreClipsAct() async throws {
+        let (shell, editor) = try await open()
+        defer { editor.close() }
+        let steps = editor.undoSteps
+        shell.captionExplorerClip("five-5")
+        #expect(shell.selection == .clip("five-5") && shell.panelJob(for: editor) == .captions)
+        #expect(editor.isSuggestion("five-5"))
+        editor.app.settings.values["llm.connector"] = .string("")
+        #expect(shell.canFindMoreClips)
+        shell.findMoreClips()
+        #expect(editor.showFindClips && editor.findClipsAnchor == .sidebar)
+        editor.finding = true
+        #expect(!shell.canFindMoreClips)
+        editor.finding = false
+        #expect(editor.undoSteps == steps && !editor.document.isDocumentEdited)
     }
 
     @Test func unavailableRewriteLeavesMoreVisibleWithoutAddingAnAction() async throws {
@@ -91,7 +163,13 @@ import Testing
         #expect(row.contains(".focusable(false)"))
         let actions = try #require(row.components(separatedBy: ".accessibilityActions {").last)
         #expect(actions.contains("Button(\"Rewrite Clip \\(number)\")"))
-        #expect(actions.contains("Button(\"Export Clip\")"))
+        #expect(actions.contains("Button(\"Export Clip\") { shell.exportExplorerClip(clip.id) }"))
+        for name in ["Captions", "Find More Clips", "Keep", "Dismiss"] { #expect(actions.contains("Button(\"\(name)\")")) }
+        // ⋯ and the context menu: the shared actions for every row, then Keep and Dismiss for a suggestion.
+        let menu = try #require(source.components(separatedBy: "@MainActor private struct ExplorerClipMenu").last?.components(separatedBy: "private var clipText").first)
+        let shared = try #require(menu.components(separatedBy: "if suggested {").first)
+        for name in ["Rewrite Clip \\(", "Captions", "Find More Clips", "Export Clip…"] { #expect(shared.contains("Button(\"\(name)")) }
+        #expect(menu.contains("Button(\"Keep Clip\")") && menu.contains("Button(\"Dismiss\")"))
         #expect(row.contains(".accessibilityElement(children: shell.renaming == clip.id ? .contain : .combine)"))
     }
 

@@ -1120,7 +1120,7 @@ Letters and digits allowed in the new text of each line, not counting spaces and
 Instruction: I said 2024; it's 2025.
 ```
 
-The send is a `voiceRewrite` request (`ai.md` §2.1) with medium effort, the schema `patch_edits` and the tag `patch-rewrite`, so, as for the passage rewrite, the connector makes one attempt, never resends it and names no fallback model (`ai.md` §12.8). Both suites send the 5 cases of `shared/fixtures/llm/patch-rewrite-requests.json` through `PatchRewriteService`, compare `system`, `cachedBlock` and `instruction` byte for byte, compare the quote's estimate with `expected.estimate`, and check the preflight of `ai.md` §12.8 with `expected.preflight`.
+The send is a `voiceRewrite` request (`ai.md` §2.1) with `xhigh` effort (`ai.md` §4.4.1), the schema `patch_edits` and the tag `patch-rewrite`, so, as for the passage rewrite, the connector makes one attempt, never resends it and names no fallback model (`ai.md` §12.8). Both suites send the 5 cases of `shared/fixtures/llm/patch-rewrite-requests.json` through `PatchRewriteService`, compare `system`, `cachedBlock` and `instruction` byte for byte, compare the quote's estimate with `expected.estimate`, and check the preflight of `ai.md` §12.8 with `expected.preflight`.
 
 **Answer.** The answering model must be the quoted one, by the rule of `ai.md` §12.8, where a Claude Code alias accepts the model it names. A reply from any other model fails with the invalid-output error (`LLMError.invalidOutput`, `LlmErrorKind.InvalidOutput`). Then a truncated reply fails with the truncated error, and a refusal with the refused error (`LLMError.refused`, `LlmErrorKind.Refused`), which keeps the passage rewrite's copy: "The model declined to rewrite this recording."
 

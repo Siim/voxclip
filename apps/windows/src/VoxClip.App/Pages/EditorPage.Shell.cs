@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using VoxClip.App.Controls;
+using VoxClip.App.Services;
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Editing;
 using Windows.System;
@@ -28,7 +29,16 @@ public sealed partial class EditorPage
         : FindClips.Running is { } finding ? $"Finding clips · {finding}"
         : ViewModel.LlmRuns.IsBusy ? "AI request running"
         : ViewModel.Busy ? "Working…"
-        : $"{ViewModel.SummaryLine} · {ViewModel.TimeLabel}" + (ViewModel.IsReadOnly ? " · Read-only" : "");
+        : $"{ViewModel.SummaryLine} · {ViewModel.TimeLabel}" + (aiStatus.Length > 0 ? " · " + aiStatus : "") + (ViewModel.IsReadOnly ? " · Read-only" : "");
+    /// <summary>The chosen AI, its model and the effort AI decisions send: "Claude Code · Opus (latest) · extra high"; empty with
+    /// no AI chosen.</summary>
+    private string aiStatus = "";
+    private async Task RefreshAiStatusAsync()
+    {
+        var selected = App.Services.Get("llm.connector", "");
+        var entry = selected.Length == 0 ? null : (await ProviderCatalog.ReadAsync(lifetime.Token)).FirstOrDefault(item => item.WireId == selected);
+        aiStatus = entry is null ? "" : AiEffortLabel.Status(entry.ShortName, entry.Metadata, App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel));
+    }
 
     public void ConfigureShellJobs(ShellJobBindings? bindings)
     {
@@ -159,6 +169,13 @@ public sealed partial class EditorPage
         }
         else await ExportAsync(clipId);
     }, "Export");
+
+    /// <summary>A row's "Captions": the right column shows, and focus goes to the open scope's Captions panel.</summary>
+    internal void ShowCaptions()
+    {
+        if (Viewer.IsChecked != true) SetViewerVisible(true);
+        captions?.FocusTarget.Focus(FocusState.Programmatic);
+    }
 
     internal IReadOnlyList<ShellCommand> ShellCommands()
     {

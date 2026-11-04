@@ -225,7 +225,7 @@
               }
             }
           },
-          "effort": "medium",
+          "effort": "xhigh",
           "language": "en"
         },
         "estimate": {
@@ -460,7 +460,7 @@
               }
             }
           },
-          "effort": "medium",
+          "effort": "xhigh",
           "language": "en"
         },
         "estimate": {
@@ -1019,7 +1019,7 @@
               }
             }
           },
-          "effort": "medium",
+          "effort": "xhigh",
           "language": "en"
         },
         "estimate": {
@@ -1159,7 +1159,7 @@
               }
             }
           },
-          "effort": "medium",
+          "effort": "xhigh",
           "language": "en"
         },
         "estimate": {
@@ -1334,7 +1334,7 @@
               }
             }
           },
-          "effort": "medium",
+          "effort": "xhigh",
           "language": "et"
         },
         "estimate": {

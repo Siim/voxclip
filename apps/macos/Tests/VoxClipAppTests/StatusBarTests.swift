@@ -59,9 +59,9 @@ import Testing
         defer { bar.tearDown(); editor.close() }
         // Before detection: the name and a ring, no billing phrase anywhere, also not for VoiceOver.
         let before = try #require(bar.content[.harness])
-        #expect(before.text == "Claude Code · Sonnet (latest)" && before.lead == .dot(token: "text.tertiary", filled: false))
+        #expect(before.text == "Claude Code · Sonnet (latest) · extra high" && before.lead == .dot(token: "text.tertiary", filled: false))
         #expect(bar.content[.billing] == nil && !bar.shown.contains(.billing))
-        #expect(bar.itemView(.harness)?.accessibilityValue() as? String == "Claude Code (installed CLI), Sonnet (latest)")
+        #expect(bar.itemView(.harness)?.accessibilityValue() as? String == "Claude Code (installed CLI), Sonnet (latest), extra high effort")
         // A send's or the picker's detection in this session brings the C8 phrase and the dot.
         await detect(app)
         lay(bar, width: 1280)
@@ -69,7 +69,7 @@ import Testing
         #expect(after.lead == .dot(token: "status.success", filled: true))
         #expect(bar.content[.billing]?.text == "No extra cost on your plan" && bar.content[.billing]?.dim == true)
         #expect(Array(bar.shown.prefix(2)) == [.harness, .billing])
-        #expect(bar.itemView(.harness)?.accessibilityValue() as? String == "Claude Code (installed CLI), Sonnet (latest), no extra cost on your plan")
+        #expect(bar.itemView(.harness)?.accessibilityValue() as? String == "Claude Code (installed CLI), Sonnet (latest), extra high effort, no extra cost on your plan")
     }
 
     @Test(arguments: [
@@ -87,6 +87,24 @@ import Testing
         bar.render()
         #expect(bar.content[.billing]?.text == phrase)
         if case .dot(let token, true) = bar.content[.harness]?.lead { #expect(token == dot) } else { Issue.record("no filled dot after detection") }
+    }
+
+    /// The bar names the effort AI decisions send (ai.md §2.1), and Settings says it too; a connector that ignores
+    /// effort shows none.
+    @Test(arguments: [
+        ("claude-code", ConnectorID.claudeCode, "Claude Code · Sonnet (latest) · extra high" as String?, "AI decisions use extra high effort." as String?),
+        ("anthropic", .anthropic, "Anthropic · Claude Opus 5.5 · extra high", "AI decisions use extra high effort."),
+        ("openai", .openai, "OpenAI · GPT-5.6 Terra · high", "AI decisions use high effort."),
+        ("codex", .codex, "Codex · CLI default · high", "AI decisions use high effort."),
+        ("ollama", .ollama, nil, nil),
+    ])
+    func theAINamesItsDecisionEffort(_ id: String, _ connector: ConnectorID, _ text: String?, _ note: String?) async throws {
+        let app = app(id, [id: ConsentFixtureConnector(id: connector, readiness: .ready, authMethod: nil)])
+        let (_, editor, _, bar) = try await open(app)
+        defer { bar.tearDown(); editor.close() }
+        let harness = try #require(bar.content[.harness]?.text)
+        if let text { #expect(harness == text) } else { #expect(!harness.contains("high")) }
+        #expect(app.providers.first { $0.id == id }?.decisionEffortNote == note)
     }
 
     @Test func withNoAIChosenTheBarShowsNoAI() async throws {
@@ -266,7 +284,7 @@ import Testing
         let children = try #require(bar.accessibilityChildren() as? [NSView])
         #expect(children.map { $0.accessibilityLabel() ?? "" } == ["AI", "In progress", "Edit summary", "Frame", "Export"])
         #expect(children.map { $0.accessibilityValue() as? String ?? "" } == [
-            "Claude Code (installed CLI), Sonnet (latest), no extra cost on your plan", "Finding clips, 12 seconds",
+            "Claude Code (installed CLI), Sonnet (latest), extra high effort, no extra cost on your plan", "Finding clips, 12 seconds",
             "Clip 2, 20 seconds, 2 cuts", "16:9, 1080p30", "Not exported",
         ])
         #expect(children.map { $0.accessibilityRole() } == [.staticText, .staticText, .staticText, .popUpButton, .staticText])

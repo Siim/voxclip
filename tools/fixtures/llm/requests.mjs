@@ -106,6 +106,16 @@ export function appleSchema(schema, name, clipBudget = null, propertyName = null
   return { type: { string: 'String', integer: 'Int', number: 'Double', boolean: 'Bool' }[schema.type] }
 }
 
+// ai.md §2.1: canonical effort levels, lowest first. A connector sends the highest level it supports at or below the
+// requested one, and omits effort when it supports none of those.
+export const effortLevels = ['low', 'medium', 'high', 'xhigh', 'max']
+export function resolveEffort(requested, supported) {
+  if (!requested) return null
+  const allowed = new Set((supported ?? []).map(value => String(value).toLowerCase()))
+  for (let index = effortLevels.indexOf(requested); index >= 0; index--) if (allowed.has(effortLevels[index])) return effortLevels[index]
+  return null
+}
+
 export function renderConnector(request, connector, catalog, options = {}) {
   const model = options.model ?? connector.defaultModel ?? (connector.id === 'ollama' ? 'gemma4:12b' : 'local-model')
   const modelInfo = connector.models.find(candidate => candidate.id === model)
@@ -120,8 +130,12 @@ export function renderConnector(request, connector, catalog, options = {}) {
   const messages = [{ role: 'system', content: request.system }, { role: 'user', content: user }]
   if (connector.cli) {
     const flags = new Set(options.supportedFlags ?? [...connector.cli.detect.help.requiredFlags, ...connector.cli.detect.help.optionalFlags])
-    const supportedEfforts = options.supportedEfforts ?? []
-    const effort = request.effort && (connector.id !== 'codex' || model === 'default' || supportedEfforts.includes(request.effort)) ? request.effort : null
+    // Claude Code: the catalog's --effort levels. Codex: a named model's supportedReasoningEfforts; the CLI default uses
+    // the isDefault model's list, or the catalog's levels when model/list reported none (ai.md §6.9).
+    const supportedEfforts = connector.id !== 'codex' ? connector.effort.values
+      : model !== 'default' ? options.supportedEfforts ?? []
+        : options.defaultEfforts?.length ? options.defaultEfforts : connector.effort.values
+    const effort = resolveEffort(request.effort, supportedEfforts)
     const fallbackModel = flags.has('--fallback-model') ? connector.fallbackOrder.find(candidate => candidate !== model) : null
     const values = {
       schemaJson: compactSchema, system: request.system, systemToml: tomlBasicString(request.system),
@@ -177,31 +191,36 @@ export function renderConnector(request, connector, catalog, options = {}) {
         { type: 'text', text: request.cachedBlock, cache_control: { type: 'ephemeral' } }, { type: 'text', text: instruction }
       ]
       const outputConfig = {}
-      if (request.effort && (modelInfo?.effort || options.effortSupported || (!modelInfo && /^claude-(opus|sonnet|haiku|fable)-5/.test(model)))) outputConfig.effort = request.effort
+      const effort = resolveEffort(request.effort, connector.effort.values)
+      if (effort && (modelInfo?.effort || options.effortSupported || (!modelInfo && /^claude-(opus|sonnet|haiku|fable)-5/.test(model)))) outputConfig.effort = effort
       if (structured) outputConfig.format = { type: 'json_schema', schema }
       body = { model, max_tokens: maxOut, system: request.system, messages: [{ role: 'user', content }], output_config: outputConfig }
       if (fallback) Object.assign(body, connector.serverSideFallback.body)
       break
     }
-    case 'openai':
+    case 'openai': {
+      const effort = resolveEffort(request.effort, connector.effort.values)
       body = {
         model, instructions: request.system, input: [{ role: 'user', content: chunks.map(text => ({ type: 'input_text', text })) }],
         text: { format: { type: 'json_schema', name: request.schemaName, strict: true, schema } }, max_output_tokens: maxOut
       }
-      if (request.effort && (modelInfo?.effort || (!modelInfo && /^(gpt-5|gpt-6|o[0-9])/.test(model)))) body.reasoning = { effort: request.effort }
+      if (effort && (modelInfo?.effort || (!modelInfo && /^(gpt-5|gpt-6|o[0-9])/.test(model)))) body.reasoning = { effort }
       body.store = false
       if (request.cachedBlock !== null) body.prompt_cache_key = 'voxclip-' + sha256(request.cachedBlock).slice(0, 16)
       break
+    }
     case 'xai':
       body = { model, max_completion_tokens: maxOut, messages, response_format: { type: 'json_schema', json_schema: { name: request.schemaName, strict: true, schema } } }
       break
-    case 'gemini':
+    case 'gemini': {
+      const effort = resolveEffort(request.effort, connector.effort.values)
       body = {
         systemInstruction: { parts: [{ text: request.system }] }, contents: [{ role: 'user', parts: chunks.map(text => ({ text })) }],
         generationConfig: { maxOutputTokens: maxOut, responseMimeType: 'application/json', responseJsonSchema: schema }
       }
-      if (request.effort && /^gemini-([3-9]|[1-9][0-9]+)([.-]|$)/.test(model.replace(/^models\//, ''))) body.generationConfig.thinkingConfig = { thinkingLevel: request.effort.toUpperCase() }
+      if (effort && /^gemini-([3-9]|[1-9][0-9]+)([.-]|$)/.test(model.replace(/^models\//, ''))) body.generationConfig.thinkingConfig = { thinkingLevel: effort.toUpperCase() }
       break
+    }
     case 'ollama': {
       const needed = estimateTokens(request.system) + estimateTokens(request.cachedBlock) + estimateTokens(request.instruction) + estimateTokens(compactSchema) + maxOut + 256
       body = { model, stream: false, messages, format: schema, options: { num_ctx: Math.min(options.modelContext ?? 32768, Math.max(8192, Math.ceil(needed / 1024) * 1024)), num_predict: maxOut, temperature: 0 } }

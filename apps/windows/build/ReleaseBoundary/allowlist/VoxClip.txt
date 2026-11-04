@@ -1451,6 +1451,7 @@ member VoxClip.App.MainWindow :: method private CalloutTipActionClicked(Microsof
 member VoxClip.App.MainWindow :: method private CancelFindingClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.MainWindow :: method private CancelRecentTranscriptionClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.MainWindow :: method private CancelTakeTranscriptionClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
+member VoxClip.App.MainWindow :: method private CaptionsClipClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.MainWindow :: method private ClipCommand(string,System.Func`2<VoxClip.App.ViewModels.EditorViewModel,bool>)
 member VoxClip.App.MainWindow :: method private ClipRowPointerEntered(object,Microsoft.UI.Xaml.Input.PointerRoutedEventArgs)
 member VoxClip.App.MainWindow :: method private ClipRowPointerExited(object,Microsoft.UI.Xaml.Input.PointerRoutedEventArgs)
@@ -1471,6 +1472,7 @@ member VoxClip.App.MainWindow :: method private FileDragLeave(object,Microsoft.U
 member VoxClip.App.MainWindow :: method private FileDragOver(object,Microsoft.UI.Xaml.DragEventArgs)
 member VoxClip.App.MainWindow :: method private FileDropped(object,Microsoft.UI.Xaml.DragEventArgs)
 member VoxClip.App.MainWindow :: method private FindClipsAgainClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
+member VoxClip.App.MainWindow :: method private FindMoreClipsClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.MainWindow :: method private FinishInlineRename(bool,bool)
 member VoxClip.App.MainWindow :: method private FocusInDialog()
 member VoxClip.App.MainWindow :: method private FocusInPane()
@@ -1530,6 +1532,7 @@ member VoxClip.App.MainWindow :: method private WindowNoticeClosed(Microsoft.UI.
 member VoxClip.App.MainWindow :: method private get_ShowingHome()
 member VoxClip.App.MainWindow :: method private set_ProjectPath(string)
 member VoxClip.App.MainWindow :: method public .ctor()
+member VoxClip.App.Pages.EditorPage :: field private aiStatus
 member VoxClip.App.Pages.EditorPage :: field private askCompositionJustEnded
 member VoxClip.App.Pages.EditorPage :: field private askInput
 member VoxClip.App.Pages.EditorPage :: field private askScope
@@ -1593,6 +1596,7 @@ member VoxClip.App.Pages.EditorPage :: method internal RetryExportAsync(string)
 member VoxClip.App.Pages.EditorPage :: method internal RevealOutline(int)
 member VoxClip.App.Pages.EditorPage :: method internal SelectScope(string,bool)
 member VoxClip.App.Pages.EditorPage :: method internal ShellCommands()
+member VoxClip.App.Pages.EditorPage :: method internal ShowCaptions()
 member VoxClip.App.Pages.EditorPage :: method internal ShowFindClips(Microsoft.UI.Xaml.FrameworkElement)
 member VoxClip.App.Pages.EditorPage :: method internal ToggleShellCuts()
 member VoxClip.App.Pages.EditorPage :: method internal ToggleShellTimeline()
@@ -1659,6 +1663,7 @@ member VoxClip.App.Pages.EditorPage :: method private PreviewCutClicked(object,M
 member VoxClip.App.Pages.EditorPage :: method private PreviewFailed(System.Exception)
 member VoxClip.App.Pages.EditorPage :: method private RediscoverRewriteAsync(VoxClip.App.ViewModels.RewriteSession,System.Collections.Generic.IReadOnlyList`1<VoxClip.App.ViewModels.RewriteGeneration>)
 member VoxClip.App.Pages.EditorPage :: method private RedoClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
+member VoxClip.App.Pages.EditorPage :: method private RefreshAiStatusAsync()
 member VoxClip.App.Pages.EditorPage :: method private RememberRightWidth()
 member VoxClip.App.Pages.EditorPage :: method private RenderUnavailableCaptionsAsync()
 member VoxClip.App.Pages.EditorPage :: method private RequestWaveform()
@@ -2379,6 +2384,9 @@ member VoxClip.App.ViewModels.AiCallout :: method public op_Inequality(VoxClip.A
 member VoxClip.App.ViewModels.AiCallout :: method public set_Action(string)
 member VoxClip.App.ViewModels.AiCallout :: method public set_Message(string)
 member VoxClip.App.ViewModels.AiCallout :: method public set_Title(string)
+member VoxClip.App.ViewModels.AiEffortLabel :: method public DecisionEffort(System.Text.Json.JsonElement)
+member VoxClip.App.ViewModels.AiEffortLabel :: method public SettingsNote(System.Text.Json.JsonElement)
+member VoxClip.App.ViewModels.AiEffortLabel :: method public Status(string,System.Text.Json.JsonElement,string)
 member VoxClip.App.ViewModels.AutoFixCap :: method private .ctor(VoxClip.App.ViewModels.AutoFixCap)
 member VoxClip.App.ViewModels.AutoFixCap :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.App.ViewModels.AutoFixCap :: method private get_EqualityContract()
@@ -2972,6 +2980,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public ExportBlocked(boo
 member VoxClip.App.ViewModels.EditorViewModel :: method public Index(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public Keep(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public KeepAll()
+member VoxClip.App.ViewModels.EditorViewModel :: method public KeepForRowAction(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public MakeClip()
 member VoxClip.App.ViewModels.EditorViewModel :: method public MoveSentence(int)
 member VoxClip.App.ViewModels.EditorViewModel :: method public Nudge(VoxClip.App.ViewModels.ClipRow,bool,int)
@@ -6216,6 +6225,7 @@ type VoxClip.App.ViewModels.AccessibilityEffects
 type VoxClip.App.ViewModels.AccessibilityMonitor
 type VoxClip.App.ViewModels.AccessibilitySnapshot
 type VoxClip.App.ViewModels.AiCallout
+type VoxClip.App.ViewModels.AiEffortLabel
 type VoxClip.App.ViewModels.AutoFixCap
 type VoxClip.App.ViewModels.CacheUpkeep
 type VoxClip.App.ViewModels.CaptionDragGeometry

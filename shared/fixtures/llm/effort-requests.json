@@ -1,0 +1,4888 @@
+{
+  "schema": "voxclip-llm-fixtures/1",
+  "id": "effort-requests",
+  "origin": "voxclip",
+  "sources": {
+    "shared/prompts/clip-finder.json": "4b2c46b55d7d6311e7d84909d38e789d1997ca70c4c00ef3c3581aacb8d364e8",
+    "shared/prompts/ai-tighten.json": "1cb479c404416b426bedfbbc937c8fa9614a7ae6511d3aeae0335375e88e0f79",
+    "shared/catalog/llm-providers.json": "cb31f8df3115d31672e1fa2c976be9cc5a85070b3d078a9853b1eca0028ab1c1"
+  },
+  "cases": [
+    {
+      "id": "anthropic-low",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "low",
+          "language": "en"
+        },
+        "connector": "anthropic",
+        "options": {}
+      },
+      "expected": {
+        "kind": "http",
+        "model": "claude-opus-5-5",
+        "timeoutSeconds": 30,
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "headers": {
+          "anthropic-version": "2026-10-21",
+          "content-type": "application/json",
+          "x-api-key": "<key>",
+          "anthropic-beta": "server-side-fallback-2026-07-01"
+        },
+        "body": {
+          "model": "claude-opus-5-5",
+          "max_tokens": 2048,
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Return ok as true and echo as the word voxclip."
+                }
+              ]
+            }
+          ],
+          "output_config": {
+            "effort": "low",
+            "format": {
+              "type": "json_schema",
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "ok",
+                  "echo"
+                ],
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "echo": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "fallbacks": "default"
+        }
+      }
+    },
+    {
+      "id": "anthropic-medium",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "medium",
+          "language": "en"
+        },
+        "connector": "anthropic",
+        "options": {}
+      },
+      "expected": {
+        "kind": "http",
+        "model": "claude-opus-5-5",
+        "timeoutSeconds": 30,
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "headers": {
+          "anthropic-version": "2026-10-21",
+          "content-type": "application/json",
+          "x-api-key": "<key>",
+          "anthropic-beta": "server-side-fallback-2026-07-01"
+        },
+        "body": {
+          "model": "claude-opus-5-5",
+          "max_tokens": 2048,
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Return ok as true and echo as the word voxclip."
+                }
+              ]
+            }
+          ],
+          "output_config": {
+            "effort": "medium",
+            "format": {
+              "type": "json_schema",
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "ok",
+                  "echo"
+                ],
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "echo": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "fallbacks": "default"
+        }
+      }
+    },
+    {
+      "id": "anthropic-high",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "high",
+          "language": "en"
+        },
+        "connector": "anthropic",
+        "options": {}
+      },
+      "expected": {
+        "kind": "http",
+        "model": "claude-opus-5-5",
+        "timeoutSeconds": 30,
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "headers": {
+          "anthropic-version": "2026-10-21",
+          "content-type": "application/json",
+          "x-api-key": "<key>",
+          "anthropic-beta": "server-side-fallback-2026-07-01"
+        },
+        "body": {
+          "model": "claude-opus-5-5",
+          "max_tokens": 2048,
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Return ok as true and echo as the word voxclip."
+                }
+              ]
+            }
+          ],
+          "output_config": {
+            "effort": "high",
+            "format": {
+              "type": "json_schema",
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "ok",
+                  "echo"
+                ],
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "echo": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "fallbacks": "default"
+        }
+      }
+    },
+    {
+      "id": "anthropic-xhigh",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "xhigh",
+          "language": "en"
+        },
+        "connector": "anthropic",
+        "options": {}
+      },
+      "expected": {
+        "kind": "http",
+        "model": "claude-opus-5-5",
+        "timeoutSeconds": 30,
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "headers": {
+          "anthropic-version": "2026-10-21",
+          "content-type": "application/json",
+          "x-api-key": "<key>",
+          "anthropic-beta": "server-side-fallback-2026-07-01"
+        },
+        "body": {
+          "model": "claude-opus-5-5",
+          "max_tokens": 2048,
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Return ok as true and echo as the word voxclip."
+                }
+              ]
+            }
+          ],
+          "output_config": {
+            "effort": "xhigh",
+            "format": {
+              "type": "json_schema",
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "ok",
+                  "echo"
+                ],
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "echo": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "fallbacks": "default"
+        }
+      }
+    },
+    {
+      "id": "anthropic-max",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "max",
+          "language": "en"
+        },
+        "connector": "anthropic",
+        "options": {}
+      },
+      "expected": {
+        "kind": "http",
+        "model": "claude-opus-5-5",
+        "timeoutSeconds": 30,
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "headers": {
+          "anthropic-version": "2026-10-21",
+          "content-type": "application/json",
+          "x-api-key": "<key>",
+          "anthropic-beta": "server-side-fallback-2026-07-01"
+        },
+        "body": {
+          "model": "claude-opus-5-5",
+          "max_tokens": 2048,
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Return ok as true and echo as the word voxclip."
+                }
+              ]
+            }
+          ],
+          "output_config": {
+            "effort": "max",
+            "format": {
+              "type": "json_schema",
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "ok",
+                  "echo"
+                ],
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "echo": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "fallbacks": "default"
+        }
+      }
+    },
+    {
+      "id": "openai-low",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "low",
+          "language": "en"
+        },
+        "connector": "openai",
+        "options": {}
+      },
+      "expected": {
+        "kind": "http",
+        "model": "gpt-5.6-terra",
+        "timeoutSeconds": 30,
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "headers": {
+          "content-type": "application/json",
+          "Authorization": "Bearer <key>"
+        },
+        "body": {
+          "model": "gpt-5.6-terra",
+          "instructions": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "input": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "input_text",
+                  "text": "Return ok as true and echo as the word voxclip."
+                }
+              ]
+            }
+          ],
+          "text": {
+            "format": {
+              "type": "json_schema",
+              "name": "connection_test",
+              "strict": true,
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "ok",
+                  "echo"
+                ],
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "echo": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "max_output_tokens": 2048,
+          "reasoning": {
+            "effort": "low"
+          },
+          "store": false
+        }
+      }
+    },
+    {
+      "id": "openai-medium",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "medium",
+          "language": "en"
+        },
+        "connector": "openai",
+        "options": {}
+      },
+      "expected": {
+        "kind": "http",
+        "model": "gpt-5.6-terra",
+        "timeoutSeconds": 30,
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "headers": {
+          "content-type": "application/json",
+          "Authorization": "Bearer <key>"
+        },
+        "body": {
+          "model": "gpt-5.6-terra",
+          "instructions": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "input": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "input_text",
+                  "text": "Return ok as true and echo as the word voxclip."
+                }
+              ]
+            }
+          ],
+          "text": {
+            "format": {
+              "type": "json_schema",
+              "name": "connection_test",
+              "strict": true,
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "ok",
+                  "echo"
+                ],
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "echo": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "max_output_tokens": 2048,
+          "reasoning": {
+            "effort": "medium"
+          },
+          "store": false
+        }
+      }
+    },
+    {
+      "id": "openai-high",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "high",
+          "language": "en"
+        },
+        "connector": "openai",
+        "options": {}
+      },
+      "expected": {
+        "kind": "http",
+        "model": "gpt-5.6-terra",
+        "timeoutSeconds": 30,
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "headers": {
+          "content-type": "application/json",
+          "Authorization": "Bearer <key>"
+        },
+        "body": {
+          "model": "gpt-5.6-terra",
+          "instructions": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "input": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "input_text",
+                  "text": "Return ok as true and echo as the word voxclip."
+                }
+              ]
+            }
+          ],
+          "text": {
+            "format": {
+              "type": "json_schema",
+              "name": "connection_test",
+              "strict": true,
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "ok",
+                  "echo"
+                ],
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "echo": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "max_output_tokens": 2048,
+          "reasoning": {
+            "effort": "high"
+          },
+          "store": false
+        }
+      }
+    },
+    {
+      "id": "openai-xhigh",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "xhigh",
+          "language": "en"
+        },
+        "connector": "openai",
+        "options": {}
+      },
+      "expected": {
+        "kind": "http",
+        "model": "gpt-5.6-terra",
+        "timeoutSeconds": 30,
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "headers": {
+          "content-type": "application/json",
+          "Authorization": "Bearer <key>"
+        },
+        "body": {
+          "model": "gpt-5.6-terra",
+          "instructions": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "input": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "input_text",
+                  "text": "Return ok as true and echo as the word voxclip."
+                }
+              ]
+            }
+          ],
+          "text": {
+            "format": {
+              "type": "json_schema",
+              "name": "connection_test",
+              "strict": true,
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "ok",
+                  "echo"
+                ],
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "echo": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "max_output_tokens": 2048,
+          "reasoning": {
+            "effort": "high"
+          },
+          "store": false
+        }
+      }
+    },
+    {
+      "id": "openai-max",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "max",
+          "language": "en"
+        },
+        "connector": "openai",
+        "options": {}
+      },
+      "expected": {
+        "kind": "http",
+        "model": "gpt-5.6-terra",
+        "timeoutSeconds": 30,
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "headers": {
+          "content-type": "application/json",
+          "Authorization": "Bearer <key>"
+        },
+        "body": {
+          "model": "gpt-5.6-terra",
+          "instructions": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "input": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "input_text",
+                  "text": "Return ok as true and echo as the word voxclip."
+                }
+              ]
+            }
+          ],
+          "text": {
+            "format": {
+              "type": "json_schema",
+              "name": "connection_test",
+              "strict": true,
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "ok",
+                  "echo"
+                ],
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "echo": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "max_output_tokens": 2048,
+          "reasoning": {
+            "effort": "high"
+          },
+          "store": false
+        }
+      }
+    },
+    {
+      "id": "xai-low",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "low",
+          "language": "en"
+        },
+        "connector": "xai",
+        "options": {}
+      },
+      "expected": {
+        "kind": "http",
+        "model": "grok-4.5",
+        "timeoutSeconds": 30,
+        "method": "POST",
+        "url": "https://api.x.ai/v1/chat/completions",
+        "headers": {
+          "content-type": "application/json",
+          "Authorization": "Bearer <key>"
+        },
+        "body": {
+          "model": "grok-4.5",
+          "max_completion_tokens": 2048,
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are a connection test for a desktop app. Reply only with the requested JSON."
+            },
+            {
+              "role": "user",
+              "content": "Return ok as true and echo as the word voxclip."
+            }
+          ],
+          "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+              "name": "connection_test",
+              "strict": true,
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "ok",
+                  "echo"
+                ],
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "echo": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "xai-medium",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "medium",
+          "language": "en"
+        },
+        "connector": "xai",
+        "options": {}
+      },
+      "expected": {
+        "kind": "http",
+        "model": "grok-4.5",
+        "timeoutSeconds": 30,
+        "method": "POST",
+        "url": "https://api.x.ai/v1/chat/completions",
+        "headers": {
+          "content-type": "application/json",
+          "Authorization": "Bearer <key>"
+        },
+        "body": {
+          "model": "grok-4.5",
+          "max_completion_tokens": 2048,
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are a connection test for a desktop app. Reply only with the requested JSON."
+            },
+            {
+              "role": "user",
+              "content": "Return ok as true and echo as the word voxclip."
+            }
+          ],
+          "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+              "name": "connection_test",
+              "strict": true,
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "ok",
+                  "echo"
+                ],
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "echo": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "xai-high",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "high",
+          "language": "en"
+        },
+        "connector": "xai",
+        "options": {}
+      },
+      "expected": {
+        "kind": "http",
+        "model": "grok-4.5",
+        "timeoutSeconds": 30,
+        "method": "POST",
+        "url": "https://api.x.ai/v1/chat/completions",
+        "headers": {
+          "content-type": "application/json",
+          "Authorization": "Bearer <key>"
+        },
+        "body": {
+          "model": "grok-4.5",
+          "max_completion_tokens": 2048,
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are a connection test for a desktop app. Reply only with the requested JSON."
+            },
+            {
+              "role": "user",
+              "content": "Return ok as true and echo as the word voxclip."
+            }
+          ],
+          "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+              "name": "connection_test",
+              "strict": true,
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "ok",
+                  "echo"
+                ],
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "echo": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "xai-xhigh",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "xhigh",
+          "language": "en"
+        },
+        "connector": "xai",
+        "options": {}
+      },
+      "expected": {
+        "kind": "http",
+        "model": "grok-4.5",
+        "timeoutSeconds": 30,
+        "method": "POST",
+        "url": "https://api.x.ai/v1/chat/completions",
+        "headers": {
+          "content-type": "application/json",
+          "Authorization": "Bearer <key>"
+        },
+        "body": {
+          "model": "grok-4.5",
+          "max_completion_tokens": 2048,
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are a connection test for a desktop app. Reply only with the requested JSON."
+            },
+            {
+              "role": "user",
+              "content": "Return ok as true and echo as the word voxclip."
+            }
+          ],
+          "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+              "name": "connection_test",
+              "strict": true,
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "ok",
+                  "echo"
+                ],
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "echo": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "xai-max",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "max",
+          "language": "en"
+        },
+        "connector": "xai",
+        "options": {}
+      },
+      "expected": {
+        "kind": "http",
+        "model": "grok-4.5",
+        "timeoutSeconds": 30,
+        "method": "POST",
+        "url": "https://api.x.ai/v1/chat/completions",
+        "headers": {
+          "content-type": "application/json",
+          "Authorization": "Bearer <key>"
+        },
+        "body": {
+          "model": "grok-4.5",
+          "max_completion_tokens": 2048,
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are a connection test for a desktop app. Reply only with the requested JSON."
+            },
+            {
+              "role": "user",
+              "content": "Return ok as true and echo as the word voxclip."
+            }
+          ],
+          "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+              "name": "connection_test",
+              "strict": true,
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "ok",
+                  "echo"
+                ],
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "echo": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "gemini-low",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "low",
+          "language": "en"
+        },
+        "connector": "gemini",
+        "options": {}
+      },
+      "expected": {
+        "kind": "http",
+        "model": "gemini-3.8-flash",
+        "timeoutSeconds": 30,
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+        "headers": {
+          "content-type": "application/json",
+          "x-goog-api-key": "<key>"
+        },
+        "body": {
+          "systemInstruction": {
+            "parts": [
+              {
+                "text": "You are a connection test for a desktop app. Reply only with the requested JSON."
+              }
+            ]
+          },
+          "contents": [
+            {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "Return ok as true and echo as the word voxclip."
+                }
+              ]
+            }
+          ],
+          "generationConfig": {
+            "maxOutputTokens": 2048,
+            "responseMimeType": "application/json",
+            "responseJsonSchema": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "ok",
+                "echo"
+              ],
+              "properties": {
+                "ok": {
+                  "type": "boolean"
+                },
+                "echo": {
+                  "type": "string"
+                }
+              }
+            },
+            "thinkingConfig": {
+              "thinkingLevel": "LOW"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "gemini-medium",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "medium",
+          "language": "en"
+        },
+        "connector": "gemini",
+        "options": {}
+      },
+      "expected": {
+        "kind": "http",
+        "model": "gemini-3.8-flash",
+        "timeoutSeconds": 30,
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+        "headers": {
+          "content-type": "application/json",
+          "x-goog-api-key": "<key>"
+        },
+        "body": {
+          "systemInstruction": {
+            "parts": [
+              {
+                "text": "You are a connection test for a desktop app. Reply only with the requested JSON."
+              }
+            ]
+          },
+          "contents": [
+            {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "Return ok as true and echo as the word voxclip."
+                }
+              ]
+            }
+          ],
+          "generationConfig": {
+            "maxOutputTokens": 2048,
+            "responseMimeType": "application/json",
+            "responseJsonSchema": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "ok",
+                "echo"
+              ],
+              "properties": {
+                "ok": {
+                  "type": "boolean"
+                },
+                "echo": {
+                  "type": "string"
+                }
+              }
+            },
+            "thinkingConfig": {
+              "thinkingLevel": "MEDIUM"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "gemini-high",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "high",
+          "language": "en"
+        },
+        "connector": "gemini",
+        "options": {}
+      },
+      "expected": {
+        "kind": "http",
+        "model": "gemini-3.8-flash",
+        "timeoutSeconds": 30,
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+        "headers": {
+          "content-type": "application/json",
+          "x-goog-api-key": "<key>"
+        },
+        "body": {
+          "systemInstruction": {
+            "parts": [
+              {
+                "text": "You are a connection test for a desktop app. Reply only with the requested JSON."
+              }
+            ]
+          },
+          "contents": [
+            {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "Return ok as true and echo as the word voxclip."
+                }
+              ]
+            }
+          ],
+          "generationConfig": {
+            "maxOutputTokens": 2048,
+            "responseMimeType": "application/json",
+            "responseJsonSchema": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "ok",
+                "echo"
+              ],
+              "properties": {
+                "ok": {
+                  "type": "boolean"
+                },
+                "echo": {
+                  "type": "string"
+                }
+              }
+            },
+            "thinkingConfig": {
+              "thinkingLevel": "HIGH"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "gemini-xhigh",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "xhigh",
+          "language": "en"
+        },
+        "connector": "gemini",
+        "options": {}
+      },
+      "expected": {
+        "kind": "http",
+        "model": "gemini-3.8-flash",
+        "timeoutSeconds": 30,
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+        "headers": {
+          "content-type": "application/json",
+          "x-goog-api-key": "<key>"
+        },
+        "body": {
+          "systemInstruction": {
+            "parts": [
+              {
+                "text": "You are a connection test for a desktop app. Reply only with the requested JSON."
+              }
+            ]
+          },
+          "contents": [
+            {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "Return ok as true and echo as the word voxclip."
+                }
+              ]
+            }
+          ],
+          "generationConfig": {
+            "maxOutputTokens": 2048,
+            "responseMimeType": "application/json",
+            "responseJsonSchema": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "ok",
+                "echo"
+              ],
+              "properties": {
+                "ok": {
+                  "type": "boolean"
+                },
+                "echo": {
+                  "type": "string"
+                }
+              }
+            },
+            "thinkingConfig": {
+              "thinkingLevel": "HIGH"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "gemini-max",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "max",
+          "language": "en"
+        },
+        "connector": "gemini",
+        "options": {}
+      },
+      "expected": {
+        "kind": "http",
+        "model": "gemini-3.8-flash",
+        "timeoutSeconds": 30,
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+        "headers": {
+          "content-type": "application/json",
+          "x-goog-api-key": "<key>"
+        },
+        "body": {
+          "systemInstruction": {
+            "parts": [
+              {
+                "text": "You are a connection test for a desktop app. Reply only with the requested JSON."
+              }
+            ]
+          },
+          "contents": [
+            {
+              "role": "user",
+              "parts": [
+                {
+                  "text": "Return ok as true and echo as the word voxclip."
+                }
+              ]
+            }
+          ],
+          "generationConfig": {
+            "maxOutputTokens": 2048,
+            "responseMimeType": "application/json",
+            "responseJsonSchema": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "ok",
+                "echo"
+              ],
+              "properties": {
+                "ok": {
+                  "type": "boolean"
+                },
+                "echo": {
+                  "type": "string"
+                }
+              }
+            },
+            "thinkingConfig": {
+              "thinkingLevel": "HIGH"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "ollama-low",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "low",
+          "language": "en"
+        },
+        "connector": "ollama",
+        "options": {
+          "model": "gemma4:12b",
+          "modelContext": 32768,
+          "capabilities": [
+            "completion",
+            "thinking"
+          ],
+          "thinkingValues": [
+            false,
+            true
+          ]
+        }
+      },
+      "expected": {
+        "kind": "http",
+        "model": "gemma4:12b",
+        "timeoutSeconds": 30,
+        "method": "POST",
+        "url": "http://127.0.0.1:11434/api/chat",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "model": "gemma4:12b",
+          "stream": false,
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are a connection test for a desktop app. Reply only with the requested JSON."
+            },
+            {
+              "role": "user",
+              "content": "Return ok as true and echo as the word voxclip."
+            }
+          ],
+          "format": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "options": {
+            "num_ctx": 8192,
+            "num_predict": 2048,
+            "temperature": 0
+          },
+          "think": false,
+          "keep_alive": "10m"
+        }
+      }
+    },
+    {
+      "id": "ollama-medium",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "medium",
+          "language": "en"
+        },
+        "connector": "ollama",
+        "options": {
+          "model": "gemma4:12b",
+          "modelContext": 32768,
+          "capabilities": [
+            "completion",
+            "thinking"
+          ],
+          "thinkingValues": [
+            false,
+            true
+          ]
+        }
+      },
+      "expected": {
+        "kind": "http",
+        "model": "gemma4:12b",
+        "timeoutSeconds": 30,
+        "method": "POST",
+        "url": "http://127.0.0.1:11434/api/chat",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "model": "gemma4:12b",
+          "stream": false,
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are a connection test for a desktop app. Reply only with the requested JSON."
+            },
+            {
+              "role": "user",
+              "content": "Return ok as true and echo as the word voxclip."
+            }
+          ],
+          "format": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "options": {
+            "num_ctx": 8192,
+            "num_predict": 2048,
+            "temperature": 0
+          },
+          "think": false,
+          "keep_alive": "10m"
+        }
+      }
+    },
+    {
+      "id": "ollama-high",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "high",
+          "language": "en"
+        },
+        "connector": "ollama",
+        "options": {
+          "model": "gemma4:12b",
+          "modelContext": 32768,
+          "capabilities": [
+            "completion",
+            "thinking"
+          ],
+          "thinkingValues": [
+            false,
+            true
+          ]
+        }
+      },
+      "expected": {
+        "kind": "http",
+        "model": "gemma4:12b",
+        "timeoutSeconds": 30,
+        "method": "POST",
+        "url": "http://127.0.0.1:11434/api/chat",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "model": "gemma4:12b",
+          "stream": false,
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are a connection test for a desktop app. Reply only with the requested JSON."
+            },
+            {
+              "role": "user",
+              "content": "Return ok as true and echo as the word voxclip."
+            }
+          ],
+          "format": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "options": {
+            "num_ctx": 8192,
+            "num_predict": 2048,
+            "temperature": 0
+          },
+          "think": false,
+          "keep_alive": "10m"
+        }
+      }
+    },
+    {
+      "id": "ollama-xhigh",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "xhigh",
+          "language": "en"
+        },
+        "connector": "ollama",
+        "options": {
+          "model": "gemma4:12b",
+          "modelContext": 32768,
+          "capabilities": [
+            "completion",
+            "thinking"
+          ],
+          "thinkingValues": [
+            false,
+            true
+          ]
+        }
+      },
+      "expected": {
+        "kind": "http",
+        "model": "gemma4:12b",
+        "timeoutSeconds": 30,
+        "method": "POST",
+        "url": "http://127.0.0.1:11434/api/chat",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "model": "gemma4:12b",
+          "stream": false,
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are a connection test for a desktop app. Reply only with the requested JSON."
+            },
+            {
+              "role": "user",
+              "content": "Return ok as true and echo as the word voxclip."
+            }
+          ],
+          "format": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "options": {
+            "num_ctx": 8192,
+            "num_predict": 2048,
+            "temperature": 0
+          },
+          "think": false,
+          "keep_alive": "10m"
+        }
+      }
+    },
+    {
+      "id": "ollama-max",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "max",
+          "language": "en"
+        },
+        "connector": "ollama",
+        "options": {
+          "model": "gemma4:12b",
+          "modelContext": 32768,
+          "capabilities": [
+            "completion",
+            "thinking"
+          ],
+          "thinkingValues": [
+            false,
+            true
+          ]
+        }
+      },
+      "expected": {
+        "kind": "http",
+        "model": "gemma4:12b",
+        "timeoutSeconds": 30,
+        "method": "POST",
+        "url": "http://127.0.0.1:11434/api/chat",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "model": "gemma4:12b",
+          "stream": false,
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are a connection test for a desktop app. Reply only with the requested JSON."
+            },
+            {
+              "role": "user",
+              "content": "Return ok as true and echo as the word voxclip."
+            }
+          ],
+          "format": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "options": {
+            "num_ctx": 8192,
+            "num_predict": 2048,
+            "temperature": 0
+          },
+          "think": false,
+          "keep_alive": "10m"
+        }
+      }
+    },
+    {
+      "id": "lmstudio-low",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "low",
+          "language": "en"
+        },
+        "connector": "lmstudio",
+        "options": {
+          "model": "local-model"
+        }
+      },
+      "expected": {
+        "kind": "http",
+        "model": "local-model",
+        "timeoutSeconds": 30,
+        "method": "POST",
+        "url": "http://127.0.0.1:1234/v1/chat/completions",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "model": "local-model",
+          "max_tokens": 2048,
+          "temperature": 0,
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are a connection test for a desktop app. Reply only with the requested JSON."
+            },
+            {
+              "role": "user",
+              "content": "Return ok as true and echo as the word voxclip."
+            }
+          ],
+          "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+              "name": "connection_test",
+              "strict": true,
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "ok",
+                  "echo"
+                ],
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "echo": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "lmstudio-medium",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "medium",
+          "language": "en"
+        },
+        "connector": "lmstudio",
+        "options": {
+          "model": "local-model"
+        }
+      },
+      "expected": {
+        "kind": "http",
+        "model": "local-model",
+        "timeoutSeconds": 30,
+        "method": "POST",
+        "url": "http://127.0.0.1:1234/v1/chat/completions",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "model": "local-model",
+          "max_tokens": 2048,
+          "temperature": 0,
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are a connection test for a desktop app. Reply only with the requested JSON."
+            },
+            {
+              "role": "user",
+              "content": "Return ok as true and echo as the word voxclip."
+            }
+          ],
+          "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+              "name": "connection_test",
+              "strict": true,
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "ok",
+                  "echo"
+                ],
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "echo": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "lmstudio-high",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "high",
+          "language": "en"
+        },
+        "connector": "lmstudio",
+        "options": {
+          "model": "local-model"
+        }
+      },
+      "expected": {
+        "kind": "http",
+        "model": "local-model",
+        "timeoutSeconds": 30,
+        "method": "POST",
+        "url": "http://127.0.0.1:1234/v1/chat/completions",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "model": "local-model",
+          "max_tokens": 2048,
+          "temperature": 0,
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are a connection test for a desktop app. Reply only with the requested JSON."
+            },
+            {
+              "role": "user",
+              "content": "Return ok as true and echo as the word voxclip."
+            }
+          ],
+          "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+              "name": "connection_test",
+              "strict": true,
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "ok",
+                  "echo"
+                ],
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "echo": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "lmstudio-xhigh",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "xhigh",
+          "language": "en"
+        },
+        "connector": "lmstudio",
+        "options": {
+          "model": "local-model"
+        }
+      },
+      "expected": {
+        "kind": "http",
+        "model": "local-model",
+        "timeoutSeconds": 30,
+        "method": "POST",
+        "url": "http://127.0.0.1:1234/v1/chat/completions",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "model": "local-model",
+          "max_tokens": 2048,
+          "temperature": 0,
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are a connection test for a desktop app. Reply only with the requested JSON."
+            },
+            {
+              "role": "user",
+              "content": "Return ok as true and echo as the word voxclip."
+            }
+          ],
+          "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+              "name": "connection_test",
+              "strict": true,
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "ok",
+                  "echo"
+                ],
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "echo": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "lmstudio-max",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "max",
+          "language": "en"
+        },
+        "connector": "lmstudio",
+        "options": {
+          "model": "local-model"
+        }
+      },
+      "expected": {
+        "kind": "http",
+        "model": "local-model",
+        "timeoutSeconds": 30,
+        "method": "POST",
+        "url": "http://127.0.0.1:1234/v1/chat/completions",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "model": "local-model",
+          "max_tokens": 2048,
+          "temperature": 0,
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are a connection test for a desktop app. Reply only with the requested JSON."
+            },
+            {
+              "role": "user",
+              "content": "Return ok as true and echo as the word voxclip."
+            }
+          ],
+          "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+              "name": "connection_test",
+              "strict": true,
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "ok",
+                  "echo"
+                ],
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "echo": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "apple-foundation-low",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "low",
+          "language": "en"
+        },
+        "connector": "apple-foundation",
+        "options": {
+          "macOSMajor": 27,
+          "clipBudget": null
+        }
+      },
+      "expected": {
+        "kind": "logical",
+        "model": "system",
+        "timeoutSeconds": 30,
+        "session": {
+          "fresh": true,
+          "instructions": "You are a connection test for a desktop app. Reply only with the requested JSON."
+        },
+        "prompt": "Return ok as true and echo as the word voxclip.",
+        "schema": {
+          "root": {
+            "name": "connection_test",
+            "properties": [
+              {
+                "name": "ok",
+                "schema": {
+                  "type": "Bool"
+                },
+                "isOptional": false
+              },
+              {
+                "name": "echo",
+                "schema": {
+                  "type": "String"
+                },
+                "isOptional": false
+              }
+            ]
+          },
+          "dependencies": []
+        },
+        "options": {
+          "samplingMode": "greedy",
+          "maximumResponseTokens": 1500
+        },
+        "language": "en"
+      }
+    },
+    {
+      "id": "apple-foundation-medium",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "medium",
+          "language": "en"
+        },
+        "connector": "apple-foundation",
+        "options": {
+          "macOSMajor": 27,
+          "clipBudget": null
+        }
+      },
+      "expected": {
+        "kind": "logical",
+        "model": "system",
+        "timeoutSeconds": 30,
+        "session": {
+          "fresh": true,
+          "instructions": "You are a connection test for a desktop app. Reply only with the requested JSON."
+        },
+        "prompt": "Return ok as true and echo as the word voxclip.",
+        "schema": {
+          "root": {
+            "name": "connection_test",
+            "properties": [
+              {
+                "name": "ok",
+                "schema": {
+                  "type": "Bool"
+                },
+                "isOptional": false
+              },
+              {
+                "name": "echo",
+                "schema": {
+                  "type": "String"
+                },
+                "isOptional": false
+              }
+            ]
+          },
+          "dependencies": []
+        },
+        "options": {
+          "samplingMode": "greedy",
+          "maximumResponseTokens": 1500
+        },
+        "language": "en"
+      }
+    },
+    {
+      "id": "apple-foundation-high",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "high",
+          "language": "en"
+        },
+        "connector": "apple-foundation",
+        "options": {
+          "macOSMajor": 27,
+          "clipBudget": null
+        }
+      },
+      "expected": {
+        "kind": "logical",
+        "model": "system",
+        "timeoutSeconds": 30,
+        "session": {
+          "fresh": true,
+          "instructions": "You are a connection test for a desktop app. Reply only with the requested JSON."
+        },
+        "prompt": "Return ok as true and echo as the word voxclip.",
+        "schema": {
+          "root": {
+            "name": "connection_test",
+            "properties": [
+              {
+                "name": "ok",
+                "schema": {
+                  "type": "Bool"
+                },
+                "isOptional": false
+              },
+              {
+                "name": "echo",
+                "schema": {
+                  "type": "String"
+                },
+                "isOptional": false
+              }
+            ]
+          },
+          "dependencies": []
+        },
+        "options": {
+          "samplingMode": "greedy",
+          "maximumResponseTokens": 1500
+        },
+        "language": "en"
+      }
+    },
+    {
+      "id": "apple-foundation-xhigh",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "xhigh",
+          "language": "en"
+        },
+        "connector": "apple-foundation",
+        "options": {
+          "macOSMajor": 27,
+          "clipBudget": null
+        }
+      },
+      "expected": {
+        "kind": "logical",
+        "model": "system",
+        "timeoutSeconds": 30,
+        "session": {
+          "fresh": true,
+          "instructions": "You are a connection test for a desktop app. Reply only with the requested JSON."
+        },
+        "prompt": "Return ok as true and echo as the word voxclip.",
+        "schema": {
+          "root": {
+            "name": "connection_test",
+            "properties": [
+              {
+                "name": "ok",
+                "schema": {
+                  "type": "Bool"
+                },
+                "isOptional": false
+              },
+              {
+                "name": "echo",
+                "schema": {
+                  "type": "String"
+                },
+                "isOptional": false
+              }
+            ]
+          },
+          "dependencies": []
+        },
+        "options": {
+          "samplingMode": "greedy",
+          "maximumResponseTokens": 1500
+        },
+        "language": "en"
+      }
+    },
+    {
+      "id": "apple-foundation-max",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "max",
+          "language": "en"
+        },
+        "connector": "apple-foundation",
+        "options": {
+          "macOSMajor": 27,
+          "clipBudget": null
+        }
+      },
+      "expected": {
+        "kind": "logical",
+        "model": "system",
+        "timeoutSeconds": 30,
+        "session": {
+          "fresh": true,
+          "instructions": "You are a connection test for a desktop app. Reply only with the requested JSON."
+        },
+        "prompt": "Return ok as true and echo as the word voxclip.",
+        "schema": {
+          "root": {
+            "name": "connection_test",
+            "properties": [
+              {
+                "name": "ok",
+                "schema": {
+                  "type": "Bool"
+                },
+                "isOptional": false
+              },
+              {
+                "name": "echo",
+                "schema": {
+                  "type": "String"
+                },
+                "isOptional": false
+              }
+            ]
+          },
+          "dependencies": []
+        },
+        "options": {
+          "samplingMode": "greedy",
+          "maximumResponseTokens": 1500
+        },
+        "language": "en"
+      }
+    },
+    {
+      "id": "claude-code-low",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "low",
+          "language": "en"
+        },
+        "connector": "claude-code",
+        "options": {
+          "supportedFlags": [
+            "--print",
+            "--output-format",
+            "--json-schema",
+            "--tools",
+            "--system-prompt",
+            "--model",
+            "--no-session-persistence",
+            "--safe-mode",
+            "--strict-mcp-config",
+            "--disable-slash-commands",
+            "--effort",
+            "--fallback-model"
+          ]
+        }
+      },
+      "expected": {
+        "kind": "cli",
+        "model": "sonnet",
+        "timeoutSeconds": 120,
+        "executable": "claude",
+        "argv": [
+          "-p",
+          "--output-format",
+          "json",
+          "--json-schema",
+          "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"ok\",\"echo\"],\"properties\":{\"ok\":{\"type\":\"boolean\"},\"echo\":{\"type\":\"string\"}}}",
+          "--system-prompt",
+          "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "--tools",
+          "",
+          "--no-session-persistence",
+          "--model",
+          "sonnet",
+          "--fallback-model",
+          "haiku",
+          "--effort",
+          "low",
+          "--safe-mode",
+          "--strict-mcp-config",
+          "--disable-slash-commands"
+        ],
+        "stdin": "Return ok as true and echo as the word voxclip.",
+        "cwd": "<cwd>",
+        "files": {}
+      }
+    },
+    {
+      "id": "claude-code-medium",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "medium",
+          "language": "en"
+        },
+        "connector": "claude-code",
+        "options": {
+          "supportedFlags": [
+            "--print",
+            "--output-format",
+            "--json-schema",
+            "--tools",
+            "--system-prompt",
+            "--model",
+            "--no-session-persistence",
+            "--safe-mode",
+            "--strict-mcp-config",
+            "--disable-slash-commands",
+            "--effort",
+            "--fallback-model"
+          ]
+        }
+      },
+      "expected": {
+        "kind": "cli",
+        "model": "sonnet",
+        "timeoutSeconds": 120,
+        "executable": "claude",
+        "argv": [
+          "-p",
+          "--output-format",
+          "json",
+          "--json-schema",
+          "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"ok\",\"echo\"],\"properties\":{\"ok\":{\"type\":\"boolean\"},\"echo\":{\"type\":\"string\"}}}",
+          "--system-prompt",
+          "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "--tools",
+          "",
+          "--no-session-persistence",
+          "--model",
+          "sonnet",
+          "--fallback-model",
+          "haiku",
+          "--effort",
+          "medium",
+          "--safe-mode",
+          "--strict-mcp-config",
+          "--disable-slash-commands"
+        ],
+        "stdin": "Return ok as true and echo as the word voxclip.",
+        "cwd": "<cwd>",
+        "files": {}
+      }
+    },
+    {
+      "id": "claude-code-high",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "high",
+          "language": "en"
+        },
+        "connector": "claude-code",
+        "options": {
+          "supportedFlags": [
+            "--print",
+            "--output-format",
+            "--json-schema",
+            "--tools",
+            "--system-prompt",
+            "--model",
+            "--no-session-persistence",
+            "--safe-mode",
+            "--strict-mcp-config",
+            "--disable-slash-commands",
+            "--effort",
+            "--fallback-model"
+          ]
+        }
+      },
+      "expected": {
+        "kind": "cli",
+        "model": "sonnet",
+        "timeoutSeconds": 120,
+        "executable": "claude",
+        "argv": [
+          "-p",
+          "--output-format",
+          "json",
+          "--json-schema",
+          "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"ok\",\"echo\"],\"properties\":{\"ok\":{\"type\":\"boolean\"},\"echo\":{\"type\":\"string\"}}}",
+          "--system-prompt",
+          "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "--tools",
+          "",
+          "--no-session-persistence",
+          "--model",
+          "sonnet",
+          "--fallback-model",
+          "haiku",
+          "--effort",
+          "high",
+          "--safe-mode",
+          "--strict-mcp-config",
+          "--disable-slash-commands"
+        ],
+        "stdin": "Return ok as true and echo as the word voxclip.",
+        "cwd": "<cwd>",
+        "files": {}
+      }
+    },
+    {
+      "id": "claude-code-xhigh",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "xhigh",
+          "language": "en"
+        },
+        "connector": "claude-code",
+        "options": {
+          "supportedFlags": [
+            "--print",
+            "--output-format",
+            "--json-schema",
+            "--tools",
+            "--system-prompt",
+            "--model",
+            "--no-session-persistence",
+            "--safe-mode",
+            "--strict-mcp-config",
+            "--disable-slash-commands",
+            "--effort",
+            "--fallback-model"
+          ]
+        }
+      },
+      "expected": {
+        "kind": "cli",
+        "model": "sonnet",
+        "timeoutSeconds": 120,
+        "executable": "claude",
+        "argv": [
+          "-p",
+          "--output-format",
+          "json",
+          "--json-schema",
+          "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"ok\",\"echo\"],\"properties\":{\"ok\":{\"type\":\"boolean\"},\"echo\":{\"type\":\"string\"}}}",
+          "--system-prompt",
+          "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "--tools",
+          "",
+          "--no-session-persistence",
+          "--model",
+          "sonnet",
+          "--fallback-model",
+          "haiku",
+          "--effort",
+          "xhigh",
+          "--safe-mode",
+          "--strict-mcp-config",
+          "--disable-slash-commands"
+        ],
+        "stdin": "Return ok as true and echo as the word voxclip.",
+        "cwd": "<cwd>",
+        "files": {}
+      }
+    },
+    {
+      "id": "claude-code-max",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "max",
+          "language": "en"
+        },
+        "connector": "claude-code",
+        "options": {
+          "supportedFlags": [
+            "--print",
+            "--output-format",
+            "--json-schema",
+            "--tools",
+            "--system-prompt",
+            "--model",
+            "--no-session-persistence",
+            "--safe-mode",
+            "--strict-mcp-config",
+            "--disable-slash-commands",
+            "--effort",
+            "--fallback-model"
+          ]
+        }
+      },
+      "expected": {
+        "kind": "cli",
+        "model": "sonnet",
+        "timeoutSeconds": 120,
+        "executable": "claude",
+        "argv": [
+          "-p",
+          "--output-format",
+          "json",
+          "--json-schema",
+          "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"ok\",\"echo\"],\"properties\":{\"ok\":{\"type\":\"boolean\"},\"echo\":{\"type\":\"string\"}}}",
+          "--system-prompt",
+          "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "--tools",
+          "",
+          "--no-session-persistence",
+          "--model",
+          "sonnet",
+          "--fallback-model",
+          "haiku",
+          "--effort",
+          "max",
+          "--safe-mode",
+          "--strict-mcp-config",
+          "--disable-slash-commands"
+        ],
+        "stdin": "Return ok as true and echo as the word voxclip.",
+        "cwd": "<cwd>",
+        "files": {}
+      }
+    },
+    {
+      "id": "codex-low",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "low",
+          "language": "en"
+        },
+        "connector": "codex",
+        "options": {
+          "supportedFlags": [
+            "--json",
+            "--output-schema",
+            "--output-last-message",
+            "--skip-git-repo-check",
+            "--ephemeral",
+            "--ignore-user-config",
+            "--sandbox",
+            "--cd",
+            "--model",
+            "--ignore-rules"
+          ],
+          "features": [
+            "shell_tool",
+            "unified_exec",
+            "apps",
+            "plugins",
+            "multi_agent",
+            "image_generation",
+            "hooks",
+            "browser_use",
+            "computer_use"
+          ]
+        }
+      },
+      "expected": {
+        "kind": "cli",
+        "model": "default",
+        "timeoutSeconds": 120,
+        "executable": "codex",
+        "argv": [
+          "exec",
+          "--json",
+          "--ephemeral",
+          "--skip-git-repo-check",
+          "--ignore-user-config",
+          "--ignore-rules",
+          "--sandbox",
+          "read-only",
+          "--cd",
+          "<cwd>",
+          "-c",
+          "model_reasoning_effort=\"low\"",
+          "-c",
+          "web_search=\"disabled\"",
+          "-c",
+          "approval_policy=\"never\"",
+          "-c",
+          "mcp_servers={}",
+          "-c",
+          "developer_instructions=\"You are a connection test for a desktop app. Reply only with the requested JSON.\"",
+          "--disable",
+          "shell_tool",
+          "--disable",
+          "unified_exec",
+          "--disable",
+          "apps",
+          "--disable",
+          "plugins",
+          "--disable",
+          "multi_agent",
+          "--disable",
+          "image_generation",
+          "--disable",
+          "hooks",
+          "--disable",
+          "browser_use",
+          "--disable",
+          "computer_use",
+          "--output-schema",
+          "<io>/schema.json",
+          "--output-last-message",
+          "<io>/last.json",
+          "-"
+        ],
+        "stdin": "Return ok as true and echo as the word voxclip.",
+        "cwd": "<cwd>",
+        "files": {
+          "<io>/schema.json": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"ok\",\"echo\"],\"properties\":{\"ok\":{\"type\":\"boolean\"},\"echo\":{\"type\":\"string\"}}}"
+        }
+      }
+    },
+    {
+      "id": "codex-medium",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "medium",
+          "language": "en"
+        },
+        "connector": "codex",
+        "options": {
+          "supportedFlags": [
+            "--json",
+            "--output-schema",
+            "--output-last-message",
+            "--skip-git-repo-check",
+            "--ephemeral",
+            "--ignore-user-config",
+            "--sandbox",
+            "--cd",
+            "--model",
+            "--ignore-rules"
+          ],
+          "features": [
+            "shell_tool",
+            "unified_exec",
+            "apps",
+            "plugins",
+            "multi_agent",
+            "image_generation",
+            "hooks",
+            "browser_use",
+            "computer_use"
+          ]
+        }
+      },
+      "expected": {
+        "kind": "cli",
+        "model": "default",
+        "timeoutSeconds": 120,
+        "executable": "codex",
+        "argv": [
+          "exec",
+          "--json",
+          "--ephemeral",
+          "--skip-git-repo-check",
+          "--ignore-user-config",
+          "--ignore-rules",
+          "--sandbox",
+          "read-only",
+          "--cd",
+          "<cwd>",
+          "-c",
+          "model_reasoning_effort=\"medium\"",
+          "-c",
+          "web_search=\"disabled\"",
+          "-c",
+          "approval_policy=\"never\"",
+          "-c",
+          "mcp_servers={}",
+          "-c",
+          "developer_instructions=\"You are a connection test for a desktop app. Reply only with the requested JSON.\"",
+          "--disable",
+          "shell_tool",
+          "--disable",
+          "unified_exec",
+          "--disable",
+          "apps",
+          "--disable",
+          "plugins",
+          "--disable",
+          "multi_agent",
+          "--disable",
+          "image_generation",
+          "--disable",
+          "hooks",
+          "--disable",
+          "browser_use",
+          "--disable",
+          "computer_use",
+          "--output-schema",
+          "<io>/schema.json",
+          "--output-last-message",
+          "<io>/last.json",
+          "-"
+        ],
+        "stdin": "Return ok as true and echo as the word voxclip.",
+        "cwd": "<cwd>",
+        "files": {
+          "<io>/schema.json": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"ok\",\"echo\"],\"properties\":{\"ok\":{\"type\":\"boolean\"},\"echo\":{\"type\":\"string\"}}}"
+        }
+      }
+    },
+    {
+      "id": "codex-high",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "high",
+          "language": "en"
+        },
+        "connector": "codex",
+        "options": {
+          "supportedFlags": [
+            "--json",
+            "--output-schema",
+            "--output-last-message",
+            "--skip-git-repo-check",
+            "--ephemeral",
+            "--ignore-user-config",
+            "--sandbox",
+            "--cd",
+            "--model",
+            "--ignore-rules"
+          ],
+          "features": [
+            "shell_tool",
+            "unified_exec",
+            "apps",
+            "plugins",
+            "multi_agent",
+            "image_generation",
+            "hooks",
+            "browser_use",
+            "computer_use"
+          ]
+        }
+      },
+      "expected": {
+        "kind": "cli",
+        "model": "default",
+        "timeoutSeconds": 120,
+        "executable": "codex",
+        "argv": [
+          "exec",
+          "--json",
+          "--ephemeral",
+          "--skip-git-repo-check",
+          "--ignore-user-config",
+          "--ignore-rules",
+          "--sandbox",
+          "read-only",
+          "--cd",
+          "<cwd>",
+          "-c",
+          "model_reasoning_effort=\"high\"",
+          "-c",
+          "web_search=\"disabled\"",
+          "-c",
+          "approval_policy=\"never\"",
+          "-c",
+          "mcp_servers={}",
+          "-c",
+          "developer_instructions=\"You are a connection test for a desktop app. Reply only with the requested JSON.\"",
+          "--disable",
+          "shell_tool",
+          "--disable",
+          "unified_exec",
+          "--disable",
+          "apps",
+          "--disable",
+          "plugins",
+          "--disable",
+          "multi_agent",
+          "--disable",
+          "image_generation",
+          "--disable",
+          "hooks",
+          "--disable",
+          "browser_use",
+          "--disable",
+          "computer_use",
+          "--output-schema",
+          "<io>/schema.json",
+          "--output-last-message",
+          "<io>/last.json",
+          "-"
+        ],
+        "stdin": "Return ok as true and echo as the word voxclip.",
+        "cwd": "<cwd>",
+        "files": {
+          "<io>/schema.json": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"ok\",\"echo\"],\"properties\":{\"ok\":{\"type\":\"boolean\"},\"echo\":{\"type\":\"string\"}}}"
+        }
+      }
+    },
+    {
+      "id": "codex-xhigh",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "xhigh",
+          "language": "en"
+        },
+        "connector": "codex",
+        "options": {
+          "supportedFlags": [
+            "--json",
+            "--output-schema",
+            "--output-last-message",
+            "--skip-git-repo-check",
+            "--ephemeral",
+            "--ignore-user-config",
+            "--sandbox",
+            "--cd",
+            "--model",
+            "--ignore-rules"
+          ],
+          "features": [
+            "shell_tool",
+            "unified_exec",
+            "apps",
+            "plugins",
+            "multi_agent",
+            "image_generation",
+            "hooks",
+            "browser_use",
+            "computer_use"
+          ]
+        }
+      },
+      "expected": {
+        "kind": "cli",
+        "model": "default",
+        "timeoutSeconds": 120,
+        "executable": "codex",
+        "argv": [
+          "exec",
+          "--json",
+          "--ephemeral",
+          "--skip-git-repo-check",
+          "--ignore-user-config",
+          "--ignore-rules",
+          "--sandbox",
+          "read-only",
+          "--cd",
+          "<cwd>",
+          "-c",
+          "model_reasoning_effort=\"high\"",
+          "-c",
+          "web_search=\"disabled\"",
+          "-c",
+          "approval_policy=\"never\"",
+          "-c",
+          "mcp_servers={}",
+          "-c",
+          "developer_instructions=\"You are a connection test for a desktop app. Reply only with the requested JSON.\"",
+          "--disable",
+          "shell_tool",
+          "--disable",
+          "unified_exec",
+          "--disable",
+          "apps",
+          "--disable",
+          "plugins",
+          "--disable",
+          "multi_agent",
+          "--disable",
+          "image_generation",
+          "--disable",
+          "hooks",
+          "--disable",
+          "browser_use",
+          "--disable",
+          "computer_use",
+          "--output-schema",
+          "<io>/schema.json",
+          "--output-last-message",
+          "<io>/last.json",
+          "-"
+        ],
+        "stdin": "Return ok as true and echo as the word voxclip.",
+        "cwd": "<cwd>",
+        "files": {
+          "<io>/schema.json": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"ok\",\"echo\"],\"properties\":{\"ok\":{\"type\":\"boolean\"},\"echo\":{\"type\":\"string\"}}}"
+        }
+      }
+    },
+    {
+      "id": "codex-max",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "max",
+          "language": "en"
+        },
+        "connector": "codex",
+        "options": {
+          "supportedFlags": [
+            "--json",
+            "--output-schema",
+            "--output-last-message",
+            "--skip-git-repo-check",
+            "--ephemeral",
+            "--ignore-user-config",
+            "--sandbox",
+            "--cd",
+            "--model",
+            "--ignore-rules"
+          ],
+          "features": [
+            "shell_tool",
+            "unified_exec",
+            "apps",
+            "plugins",
+            "multi_agent",
+            "image_generation",
+            "hooks",
+            "browser_use",
+            "computer_use"
+          ]
+        }
+      },
+      "expected": {
+        "kind": "cli",
+        "model": "default",
+        "timeoutSeconds": 120,
+        "executable": "codex",
+        "argv": [
+          "exec",
+          "--json",
+          "--ephemeral",
+          "--skip-git-repo-check",
+          "--ignore-user-config",
+          "--ignore-rules",
+          "--sandbox",
+          "read-only",
+          "--cd",
+          "<cwd>",
+          "-c",
+          "model_reasoning_effort=\"high\"",
+          "-c",
+          "web_search=\"disabled\"",
+          "-c",
+          "approval_policy=\"never\"",
+          "-c",
+          "mcp_servers={}",
+          "-c",
+          "developer_instructions=\"You are a connection test for a desktop app. Reply only with the requested JSON.\"",
+          "--disable",
+          "shell_tool",
+          "--disable",
+          "unified_exec",
+          "--disable",
+          "apps",
+          "--disable",
+          "plugins",
+          "--disable",
+          "multi_agent",
+          "--disable",
+          "image_generation",
+          "--disable",
+          "hooks",
+          "--disable",
+          "browser_use",
+          "--disable",
+          "computer_use",
+          "--output-schema",
+          "<io>/schema.json",
+          "--output-last-message",
+          "<io>/last.json",
+          "-"
+        ],
+        "stdin": "Return ok as true and echo as the word voxclip.",
+        "cwd": "<cwd>",
+        "files": {
+          "<io>/schema.json": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"ok\",\"echo\"],\"properties\":{\"ok\":{\"type\":\"boolean\"},\"echo\":{\"type\":\"string\"}}}"
+        }
+      }
+    },
+    {
+      "id": "codex-model-lists-xhigh",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6.9",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "xhigh",
+          "language": "en"
+        },
+        "connector": "codex",
+        "options": {
+          "supportedFlags": [
+            "--json",
+            "--output-schema",
+            "--output-last-message",
+            "--skip-git-repo-check",
+            "--ephemeral",
+            "--ignore-user-config",
+            "--sandbox",
+            "--cd",
+            "--model",
+            "--ignore-rules"
+          ],
+          "features": [
+            "shell_tool",
+            "unified_exec",
+            "apps",
+            "plugins",
+            "multi_agent",
+            "image_generation",
+            "hooks",
+            "browser_use",
+            "computer_use"
+          ],
+          "model": "gpt-6.1-sol",
+          "supportedEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ]
+        }
+      },
+      "expected": {
+        "kind": "cli",
+        "model": "gpt-6.1-sol",
+        "timeoutSeconds": 120,
+        "executable": "codex",
+        "argv": [
+          "exec",
+          "--json",
+          "--ephemeral",
+          "--skip-git-repo-check",
+          "--ignore-user-config",
+          "--ignore-rules",
+          "--sandbox",
+          "read-only",
+          "--cd",
+          "<cwd>",
+          "--model",
+          "gpt-6.1-sol",
+          "-c",
+          "model_reasoning_effort=\"xhigh\"",
+          "-c",
+          "web_search=\"disabled\"",
+          "-c",
+          "approval_policy=\"never\"",
+          "-c",
+          "mcp_servers={}",
+          "-c",
+          "developer_instructions=\"You are a connection test for a desktop app. Reply only with the requested JSON.\"",
+          "--disable",
+          "shell_tool",
+          "--disable",
+          "unified_exec",
+          "--disable",
+          "apps",
+          "--disable",
+          "plugins",
+          "--disable",
+          "multi_agent",
+          "--disable",
+          "image_generation",
+          "--disable",
+          "hooks",
+          "--disable",
+          "browser_use",
+          "--disable",
+          "computer_use",
+          "--output-schema",
+          "<io>/schema.json",
+          "--output-last-message",
+          "<io>/last.json",
+          "-"
+        ],
+        "stdin": "Return ok as true and echo as the word voxclip.",
+        "cwd": "<cwd>",
+        "files": {
+          "<io>/schema.json": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"ok\",\"echo\"],\"properties\":{\"ok\":{\"type\":\"boolean\"},\"echo\":{\"type\":\"string\"}}}"
+        }
+      }
+    },
+    {
+      "id": "codex-model-stops-at-high",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6.9",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "xhigh",
+          "language": "en"
+        },
+        "connector": "codex",
+        "options": {
+          "supportedFlags": [
+            "--json",
+            "--output-schema",
+            "--output-last-message",
+            "--skip-git-repo-check",
+            "--ephemeral",
+            "--ignore-user-config",
+            "--sandbox",
+            "--cd",
+            "--model",
+            "--ignore-rules"
+          ],
+          "features": [
+            "shell_tool",
+            "unified_exec",
+            "apps",
+            "plugins",
+            "multi_agent",
+            "image_generation",
+            "hooks",
+            "browser_use",
+            "computer_use"
+          ],
+          "model": "gpt-5.6-terra",
+          "supportedEfforts": [
+            "low",
+            "medium",
+            "high"
+          ]
+        }
+      },
+      "expected": {
+        "kind": "cli",
+        "model": "gpt-5.6-terra",
+        "timeoutSeconds": 120,
+        "executable": "codex",
+        "argv": [
+          "exec",
+          "--json",
+          "--ephemeral",
+          "--skip-git-repo-check",
+          "--ignore-user-config",
+          "--ignore-rules",
+          "--sandbox",
+          "read-only",
+          "--cd",
+          "<cwd>",
+          "--model",
+          "gpt-5.6-terra",
+          "-c",
+          "model_reasoning_effort=\"high\"",
+          "-c",
+          "web_search=\"disabled\"",
+          "-c",
+          "approval_policy=\"never\"",
+          "-c",
+          "mcp_servers={}",
+          "-c",
+          "developer_instructions=\"You are a connection test for a desktop app. Reply only with the requested JSON.\"",
+          "--disable",
+          "shell_tool",
+          "--disable",
+          "unified_exec",
+          "--disable",
+          "apps",
+          "--disable",
+          "plugins",
+          "--disable",
+          "multi_agent",
+          "--disable",
+          "image_generation",
+          "--disable",
+          "hooks",
+          "--disable",
+          "browser_use",
+          "--disable",
+          "computer_use",
+          "--output-schema",
+          "<io>/schema.json",
+          "--output-last-message",
+          "<io>/last.json",
+          "-"
+        ],
+        "stdin": "Return ok as true and echo as the word voxclip.",
+        "cwd": "<cwd>",
+        "files": {
+          "<io>/schema.json": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"ok\",\"echo\"],\"properties\":{\"ok\":{\"type\":\"boolean\"},\"echo\":{\"type\":\"string\"}}}"
+        }
+      }
+    },
+    {
+      "id": "codex-model-max-asks-xhigh",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6.9",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "xhigh",
+          "language": "en"
+        },
+        "connector": "codex",
+        "options": {
+          "supportedFlags": [
+            "--json",
+            "--output-schema",
+            "--output-last-message",
+            "--skip-git-repo-check",
+            "--ephemeral",
+            "--ignore-user-config",
+            "--sandbox",
+            "--cd",
+            "--model",
+            "--ignore-rules"
+          ],
+          "features": [
+            "shell_tool",
+            "unified_exec",
+            "apps",
+            "plugins",
+            "multi_agent",
+            "image_generation",
+            "hooks",
+            "browser_use",
+            "computer_use"
+          ],
+          "model": "gpt-6.1-sol",
+          "supportedEfforts": [
+            "medium",
+            "xhigh",
+            "max"
+          ]
+        }
+      },
+      "expected": {
+        "kind": "cli",
+        "model": "gpt-6.1-sol",
+        "timeoutSeconds": 120,
+        "executable": "codex",
+        "argv": [
+          "exec",
+          "--json",
+          "--ephemeral",
+          "--skip-git-repo-check",
+          "--ignore-user-config",
+          "--ignore-rules",
+          "--sandbox",
+          "read-only",
+          "--cd",
+          "<cwd>",
+          "--model",
+          "gpt-6.1-sol",
+          "-c",
+          "model_reasoning_effort=\"xhigh\"",
+          "-c",
+          "web_search=\"disabled\"",
+          "-c",
+          "approval_policy=\"never\"",
+          "-c",
+          "mcp_servers={}",
+          "-c",
+          "developer_instructions=\"You are a connection test for a desktop app. Reply only with the requested JSON.\"",
+          "--disable",
+          "shell_tool",
+          "--disable",
+          "unified_exec",
+          "--disable",
+          "apps",
+          "--disable",
+          "plugins",
+          "--disable",
+          "multi_agent",
+          "--disable",
+          "image_generation",
+          "--disable",
+          "hooks",
+          "--disable",
+          "browser_use",
+          "--disable",
+          "computer_use",
+          "--output-schema",
+          "<io>/schema.json",
+          "--output-last-message",
+          "<io>/last.json",
+          "-"
+        ],
+        "stdin": "Return ok as true and echo as the word voxclip.",
+        "cwd": "<cwd>",
+        "files": {
+          "<io>/schema.json": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"ok\",\"echo\"],\"properties\":{\"ok\":{\"type\":\"boolean\"},\"echo\":{\"type\":\"string\"}}}"
+        }
+      }
+    },
+    {
+      "id": "codex-model-only-higher",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6.9",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "low",
+          "language": "en"
+        },
+        "connector": "codex",
+        "options": {
+          "supportedFlags": [
+            "--json",
+            "--output-schema",
+            "--output-last-message",
+            "--skip-git-repo-check",
+            "--ephemeral",
+            "--ignore-user-config",
+            "--sandbox",
+            "--cd",
+            "--model",
+            "--ignore-rules"
+          ],
+          "features": [
+            "shell_tool",
+            "unified_exec",
+            "apps",
+            "plugins",
+            "multi_agent",
+            "image_generation",
+            "hooks",
+            "browser_use",
+            "computer_use"
+          ],
+          "model": "gpt-6-luna",
+          "supportedEfforts": [
+            "high"
+          ]
+        }
+      },
+      "expected": {
+        "kind": "cli",
+        "model": "gpt-6-luna",
+        "timeoutSeconds": 120,
+        "executable": "codex",
+        "argv": [
+          "exec",
+          "--json",
+          "--ephemeral",
+          "--skip-git-repo-check",
+          "--ignore-user-config",
+          "--ignore-rules",
+          "--sandbox",
+          "read-only",
+          "--cd",
+          "<cwd>",
+          "--model",
+          "gpt-6-luna",
+          "-c",
+          "web_search=\"disabled\"",
+          "-c",
+          "approval_policy=\"never\"",
+          "-c",
+          "mcp_servers={}",
+          "-c",
+          "developer_instructions=\"You are a connection test for a desktop app. Reply only with the requested JSON.\"",
+          "--disable",
+          "shell_tool",
+          "--disable",
+          "unified_exec",
+          "--disable",
+          "apps",
+          "--disable",
+          "plugins",
+          "--disable",
+          "multi_agent",
+          "--disable",
+          "image_generation",
+          "--disable",
+          "hooks",
+          "--disable",
+          "browser_use",
+          "--disable",
+          "computer_use",
+          "--output-schema",
+          "<io>/schema.json",
+          "--output-last-message",
+          "<io>/last.json",
+          "-"
+        ],
+        "stdin": "Return ok as true and echo as the word voxclip.",
+        "cwd": "<cwd>",
+        "files": {
+          "<io>/schema.json": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"ok\",\"echo\"],\"properties\":{\"ok\":{\"type\":\"boolean\"},\"echo\":{\"type\":\"string\"}}}"
+        }
+      }
+    },
+    {
+      "id": "codex-model-lists-none",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6.9",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "xhigh",
+          "language": "en"
+        },
+        "connector": "codex",
+        "options": {
+          "supportedFlags": [
+            "--json",
+            "--output-schema",
+            "--output-last-message",
+            "--skip-git-repo-check",
+            "--ephemeral",
+            "--ignore-user-config",
+            "--sandbox",
+            "--cd",
+            "--model",
+            "--ignore-rules"
+          ],
+          "features": [
+            "shell_tool",
+            "unified_exec",
+            "apps",
+            "plugins",
+            "multi_agent",
+            "image_generation",
+            "hooks",
+            "browser_use",
+            "computer_use"
+          ],
+          "model": "gpt-6-astra",
+          "supportedEfforts": []
+        }
+      },
+      "expected": {
+        "kind": "cli",
+        "model": "gpt-6-astra",
+        "timeoutSeconds": 120,
+        "executable": "codex",
+        "argv": [
+          "exec",
+          "--json",
+          "--ephemeral",
+          "--skip-git-repo-check",
+          "--ignore-user-config",
+          "--ignore-rules",
+          "--sandbox",
+          "read-only",
+          "--cd",
+          "<cwd>",
+          "--model",
+          "gpt-6-astra",
+          "-c",
+          "web_search=\"disabled\"",
+          "-c",
+          "approval_policy=\"never\"",
+          "-c",
+          "mcp_servers={}",
+          "-c",
+          "developer_instructions=\"You are a connection test for a desktop app. Reply only with the requested JSON.\"",
+          "--disable",
+          "shell_tool",
+          "--disable",
+          "unified_exec",
+          "--disable",
+          "apps",
+          "--disable",
+          "plugins",
+          "--disable",
+          "multi_agent",
+          "--disable",
+          "image_generation",
+          "--disable",
+          "hooks",
+          "--disable",
+          "browser_use",
+          "--disable",
+          "computer_use",
+          "--output-schema",
+          "<io>/schema.json",
+          "--output-last-message",
+          "<io>/last.json",
+          "-"
+        ],
+        "stdin": "Return ok as true and echo as the word voxclip.",
+        "cwd": "<cwd>",
+        "files": {
+          "<io>/schema.json": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"ok\",\"echo\"],\"properties\":{\"ok\":{\"type\":\"boolean\"},\"echo\":{\"type\":\"string\"}}}"
+        }
+      }
+    },
+    {
+      "id": "codex-default-lists-xhigh",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6.9",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "xhigh",
+          "language": "en"
+        },
+        "connector": "codex",
+        "options": {
+          "supportedFlags": [
+            "--json",
+            "--output-schema",
+            "--output-last-message",
+            "--skip-git-repo-check",
+            "--ephemeral",
+            "--ignore-user-config",
+            "--sandbox",
+            "--cd",
+            "--model",
+            "--ignore-rules"
+          ],
+          "features": [
+            "shell_tool",
+            "unified_exec",
+            "apps",
+            "plugins",
+            "multi_agent",
+            "image_generation",
+            "hooks",
+            "browser_use",
+            "computer_use"
+          ],
+          "model": "default",
+          "defaultEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ]
+        }
+      },
+      "expected": {
+        "kind": "cli",
+        "model": "default",
+        "timeoutSeconds": 120,
+        "executable": "codex",
+        "argv": [
+          "exec",
+          "--json",
+          "--ephemeral",
+          "--skip-git-repo-check",
+          "--ignore-user-config",
+          "--ignore-rules",
+          "--sandbox",
+          "read-only",
+          "--cd",
+          "<cwd>",
+          "-c",
+          "model_reasoning_effort=\"xhigh\"",
+          "-c",
+          "web_search=\"disabled\"",
+          "-c",
+          "approval_policy=\"never\"",
+          "-c",
+          "mcp_servers={}",
+          "-c",
+          "developer_instructions=\"You are a connection test for a desktop app. Reply only with the requested JSON.\"",
+          "--disable",
+          "shell_tool",
+          "--disable",
+          "unified_exec",
+          "--disable",
+          "apps",
+          "--disable",
+          "plugins",
+          "--disable",
+          "multi_agent",
+          "--disable",
+          "image_generation",
+          "--disable",
+          "hooks",
+          "--disable",
+          "browser_use",
+          "--disable",
+          "computer_use",
+          "--output-schema",
+          "<io>/schema.json",
+          "--output-last-message",
+          "<io>/last.json",
+          "-"
+        ],
+        "stdin": "Return ok as true and echo as the word voxclip.",
+        "cwd": "<cwd>",
+        "files": {
+          "<io>/schema.json": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"ok\",\"echo\"],\"properties\":{\"ok\":{\"type\":\"boolean\"},\"echo\":{\"type\":\"string\"}}}"
+        }
+      }
+    },
+    {
+      "id": "codex-default-lists-medium",
+      "kind": "connector-request",
+      "origin": "voxclip",
+      "source": "doc/spec/ai.md §2.1; §6.9",
+      "input": {
+        "request": {
+          "feature": "test",
+          "system": "You are a connection test for a desktop app. Reply only with the requested JSON.",
+          "cachedBlock": null,
+          "instruction": "Return ok as true and echo as the word voxclip.",
+          "schemaName": "connection_test",
+          "schema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ok",
+              "echo"
+            ],
+            "properties": {
+              "ok": {
+                "type": "boolean"
+              },
+              "echo": {
+                "type": "string"
+              }
+            }
+          },
+          "maxOutputTokens": 2048,
+          "effort": "xhigh",
+          "language": "en"
+        },
+        "connector": "codex",
+        "options": {
+          "supportedFlags": [
+            "--json",
+            "--output-schema",
+            "--output-last-message",
+            "--skip-git-repo-check",
+            "--ephemeral",
+            "--ignore-user-config",
+            "--sandbox",
+            "--cd",
+            "--model",
+            "--ignore-rules"
+          ],
+          "features": [
+            "shell_tool",
+            "unified_exec",
+            "apps",
+            "plugins",
+            "multi_agent",
+            "image_generation",
+            "hooks",
+            "browser_use",
+            "computer_use"
+          ],
+          "model": "default",
+          "defaultEfforts": [
+            "minimal",
+            "low",
+            "medium"
+          ]
+        }
+      },
+      "expected": {
+        "kind": "cli",
+        "model": "default",
+        "timeoutSeconds": 120,
+        "executable": "codex",
+        "argv": [
+          "exec",
+          "--json",
+          "--ephemeral",
+          "--skip-git-repo-check",
+          "--ignore-user-config",
+          "--ignore-rules",
+          "--sandbox",
+          "read-only",
+          "--cd",
+          "<cwd>",
+          "-c",
+          "model_reasoning_effort=\"medium\"",
+          "-c",
+          "web_search=\"disabled\"",
+          "-c",
+          "approval_policy=\"never\"",
+          "-c",
+          "mcp_servers={}",
+          "-c",
+          "developer_instructions=\"You are a connection test for a desktop app. Reply only with the requested JSON.\"",
+          "--disable",
+          "shell_tool",
+          "--disable",
+          "unified_exec",
+          "--disable",
+          "apps",
+          "--disable",
+          "plugins",
+          "--disable",
+          "multi_agent",
+          "--disable",
+          "image_generation",
+          "--disable",
+          "hooks",
+          "--disable",
+          "browser_use",
+          "--disable",
+          "computer_use",
+          "--output-schema",
+          "<io>/schema.json",
+          "--output-last-message",
+          "<io>/last.json",
+          "-"
+        ],
+        "stdin": "Return ok as true and echo as the word voxclip.",
+        "cwd": "<cwd>",
+        "files": {
+          "<io>/schema.json": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"ok\",\"echo\"],\"properties\":{\"ok\":{\"type\":\"boolean\"},\"echo\":{\"type\":\"string\"}}}"
+        }
+      }
+    }
+  ]
+}

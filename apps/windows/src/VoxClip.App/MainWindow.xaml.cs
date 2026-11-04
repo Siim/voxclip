@@ -619,6 +619,8 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     {
         if (sender is not FrameworkElement { Tag: string id } || editor is not { } page
             || !Shell.Rows.Any(row => row.ClipId == id && row.CanRewrite)) return;
+        // A suggestion is kept first, in one undo step with no prompt, then opens exactly as a kept clip does.
+        if (!page.ViewModel.KeepForRowAction(id)) return;
         ShowScope(id);
         if (page.ViewModel.State?.ActiveClipId != id) return;
         page.ViewModel.ClearSelection();
@@ -705,7 +707,24 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     {
         if (sender is FrameworkElement { Tag: string id } && editor?.ViewModel.Clips.FirstOrDefault(clip => clip.Id == id) is { } clip) ShareHelpers.Copy(clip.Excerpt);
     }
-    private async void ExportClipClicked(object sender, RoutedEventArgs args) { if (editor is not null && sender is FrameworkElement { Tag: string id } && RowEdits(id)) await editor.ExportClipAsync(id); }
+    /// <summary>Export clip…: a suggestion is kept first, as for Rewrite.</summary>
+    private async void ExportClipClicked(object sender, RoutedEventArgs args)
+    {
+        if (editor is not null && sender is FrameworkElement { Tag: string id } && RowEdits(id) && editor.ViewModel.KeepForRowAction(id)) await editor.ExportClipAsync(id);
+    }
+    /// <summary>Captions: shows the row's clip and its Captions panel. Changes nothing in the project.</summary>
+    private void CaptionsClipClicked(object sender, RoutedEventArgs args)
+    {
+        if (sender is not FrameworkElement { Tag: string id } || editor is not { } page || !RowEdits(id)) return;
+        ShowScope(id);
+        page.ShowCaptions();
+    }
+    /// <summary>Find more clips: the same Find clips job as Ctrl+Shift+K; new clips land in Suggested.</summary>
+    private void FindMoreClipsClicked(object sender, RoutedEventArgs args)
+    {
+        if (sender is FrameworkElement { Tag: string id } && RowEdits(id)
+            && editor?.ShellCommands().FirstOrDefault(command => command.Id == "job.find") is { IsEnabled: true } command) command.TryExecute();
+    }
     private Task RenameClipAsync(string id)
     {
         if (!RowEdits(id) || editor?.ViewModel is not { } model || model.IsReadOnly || model.Busy || model.IsLeaving
