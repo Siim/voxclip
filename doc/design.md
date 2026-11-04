@@ -2225,7 +2225,7 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 `shared/design/tokens.json` (format `voxclip-tokens/1`) is the only source of colours, type, spacing, radii, strokes, motion and fixed sizes. `tools/design` generates:
 
 - `apps/macos/Sources/VoxClip/Design/Tokens.swift`: `extension Color { static let vcTextPrimary = Color(nsColor: NSColor(name: "vcTextPrimary") { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light }) }`, plus `CGFloat` constants and `Font` helpers. A colour with an `increaseContrast` extension also matches the `accessibilityHighContrast` appearances and draws that value under Increase Contrast (`DesignValues.nsColor` reads tokens.json the same way). Typography helpers use the system font (`SF Mono` means its monospaced design); `fontFiles` adds file-URL loaders for the bundled DM Sans and Geist Mono, which only rendered video uses. `system:` values map to the named `NSColor`.
-- `apps/windows/src/VoxClip.App/Themes/Tokens.xaml`: a `ResourceDictionary` with `ThemeDictionaries` keyed `Default` (dark), `Light` and `HighContrast` (from `windowsHighContrast`), `SolidColorBrush` per colour token named `Vc<Group><Name>Brush`, `x:Double` and `Thickness`/`CornerRadius` resources for dimensions. A dimension's `$value` is the macOS value; its `windows` extension replaces it here, for example the transcript gutter (84 on macOS, 76 on Windows).
+- `apps/windows/src/VoxClip.App/Themes/Tokens.xaml`: a `ResourceDictionary` with `ThemeDictionaries` keyed `Default` (dark), `Light` and `HighContrast` (from `windowsHighContrast`), `SolidColorBrush` per colour token named `Vc<Group><Name>Brush`, `x:Double` and `Thickness`/`CornerRadius` resources for dimensions. A dimension's `$value` is the macOS value; its `windows` extension replaces it here, for example the transcript gutter (80 on macOS, 76 on Windows).
 - `apps/macos/Resources/Assets.xcassets/AccentColor.colorset`: `accent.default` (marked `macosAsset`), light for Any and dark for Dark, compiled by `bundle.sh`. The generator owns the catalog: `check` fails on any file there it does not produce.
 
 Naming: token path `color.text.primary` → Swift `vcTextPrimary`, XAML `VcTextPrimaryBrush`. Generated files carry `GENERATED from shared/design/tokens.json - do not edit`. CI regenerates and fails on drift.
@@ -2276,7 +2276,32 @@ Summary (full values in tokens.json):
 | `overlay.foreground` | `#F5F4F0` | `#F5F4F0` | text over video |
 | `stage` | `#000000` | `#000000` | video surround and caption-card backdrop |
 
-Typography uses the system font: the transcript at 19/32 (SF Pro; Segoe UI Variable Text on Windows; zoom 13–28 with the line height at 32/19) and SF Mono / Cascadia Mono for timecodes, status labels and pause tokens. DM Sans and Geist Mono appear only in rendered video. Spacing is a 4-point grid with pane padding 16 on both platforms, a transcript gutter of 84 / 76 and a paragraph gap of 18 / 20 (macOS / Windows). Radii are 4 for badges, chips and the playing word, the aliases `control` 6, `pane` 10 and `sheet` 14, and 8, 12, 16 and capsule. Motion is 120 / 150 / 240 ms, ease-out `cubic-bezier(.23,1,.32,1)`, spring 0.32 / 0.82, instant under Reduce Motion. Fixed sizes include the sidebar (220–320, ideal 252; Windows 264), the right column (300–560, ideal 360 / 388), the timeline (72, with a 30 track), the selection bar (36 / 40), the largest 9:16 stage (180 × 320) and caption tiles at 0.45 of their width high.
+Typography uses the system font: the transcript at 19/32 (SF Pro; Segoe UI Variable Text on Windows; zoom 13–28 with the line height at 32/19) and SF Mono / Cascadia Mono for timecodes, status labels and pause tokens. DM Sans and Geist Mono appear only in rendered video. Spacing is a 4-point grid with pane padding 16 on both platforms, a transcript gutter of 80 / 76 and a paragraph gap of 14 / 20 (macOS / Windows); §16.1 gives the semantic scale. Radii are 4 for badges, chips and the playing word, the aliases `control` 6, `pane` 10 and `sheet` 14, and 8, 12, 16 and capsule. Motion is 120 / 150 / 240 ms, ease-out `cubic-bezier(.23,1,.32,1)`, spring 0.32 / 0.82, instant under Reduce Motion. Fixed sizes include the sidebar (220–320, ideal 252; Windows 264), the right column (300–560, ideal 360 / 388), the timeline (72, with a 30 track), the selection bar (36 / 40), the largest 9:16 stage (180 × 320) and caption tiles at 0.45 of their width high.
+
+### 16.1 Spacing
+
+One scale on the 4 pt grid: 4, 8, 12, 16, 20, 24 and 32 (`spacing.2` to `spacing.8`; 2 and 48 exist for hairline offsets and empty states). Views name the semantic tokens below rather than a number. Swift reads them as `VCTokens.spacing<Name>` and XAML as `{StaticResource VcSpacing<Name>}` (`…Thickness` for a uniform padding), with the same names on both platforms.
+
+| Token | Value | Use |
+|---|---|---|
+| `labelGap` | 6 | a label, hint or status line to the control it describes; a field's helper line under it; an icon beside its text |
+| `rowGap` | 8 | stacked rows and controls inside one group: a card's lines, a note above its buttons, buttons in a row |
+| `groupGap` | 12 | groups inside a panel or card: a phrase card's take list, its Video block and its Lip sync block; panel cards |
+| `sectionGap` | 20 | sections of a panel or form, and above a section header |
+| `cardPadding` | 12 | inside cards and callouts (phrase cards, notices, the work log, the inline send confirm) |
+| `fieldPaddingX` / `fieldPaddingY` | 10 / 8 | a custom text field's inner padding; a one-line field keeps the 28 pt large control height and pads only across |
+| `dividerMargin` | 8 | at least this much on each side of a hairline divider |
+| `rowPaddingY` | 6 | a list row's vertical padding, at least (chooser rows, work-log steps) |
+| `chipGap` | 6 | between chips in a row and between wrapped chip rows (next-step chips, expression tags) |
+| `footerPaddingY` | 12 | a pinned panel footer; it keeps the 16 pt pane padding across |
+
+Rules:
+
+- Forms, cards and panels get air: nothing that reads as its own line sits closer than `labelGap` to its neighbour, and two groups are never closer than `groupGap`. A section header has `sectionGap` above it and `rowGap` below.
+- Tools stay dense. The transcript (19/32 lines, 14 / 20 paragraph gap), the timeline lanes and headers, the Captions gallery and property rows (notes.md §4, f1) keep their measured values. Where a dense header narrows, a label gives way rather than touch its neighbour: the timeline's 64 pt header keeps the take's length and drops the word "Take".
+- Custom fields use `vcFieldChrome()` (macOS, `Design/FieldChrome.swift`): `bg.input`, the `line.edge` outline, `radius.control`. System controls (`NSSearchField`, grouped `Form` rows, segmented pickers) keep their native padding and the HIG control sizes.
+- Spacing changes are reviewed as pictures: `-layoutAudit <dir> -spacingCaptures` (DEBUG, `DebugSpacing.swift`) draws Home, the editor at 1280 × 800 and 960 × 600, the Explorer at 224 and 220, the timeline, Captions and nine Rewrite states at 404 and 300 and each Settings pane offscreen, without reading the screen. The right-column layout audit (`MacUIIntegrationTests.rightColumnLayout`) must still pass at 300 wide and at the 960 × 600 minimum.
+
 
 ---
 
