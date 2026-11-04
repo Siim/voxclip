@@ -46,7 +46,8 @@ extension HeavyMediaTests {
     /// every scenario ends with the Rewrite applied, or (S9, after Stop) with Done and the words as recorded; S10–S12
     /// also check the applied video duration and that no voice change was dropped.
     /// One app process per take-length pass, each with its own deadline: realistic take lengths (S1–S14), and every
-    /// scenario but S13 with takes that fill their slots exactly ("S4-exact"). Hosted runners take about twice as long.
+    /// scenario but S13 with takes that fill their slots exactly ("S4-exact"). Hosted runners take about 110 s and 70 s
+    /// (locally about 57 s and 33 s); the app's progress lines are relayed to stderr, also when a pass hits its deadline.
     @Test("The Rewrite smoke completes every stuck scenario without a dead end", arguments: ["realistic", "exact"])
     func rewriteSmoke(lengths: String) throws {
         let directory = try UIProcessHarness.run(mode: "-rewriteSmoke", name: "rewrite-smoke-\(lengths)",
@@ -450,9 +451,11 @@ private enum UIProcessHarness {
             while process.isRunning && Date() < grace { Thread.sleep(forTimeInterval: 0.05) }
             if process.isRunning { kill(process.processIdentifier, SIGKILL) }
             process.waitUntilExit()
+            relayProgress(directory, name: name, note: "stopped at its \(Int(seconds ?? 120)) s deadline")
             throw Failure.timedOut
         }
         process.waitUntilExit()
+        relayProgress(directory, name: name, note: nil)
         if process.terminationStatus != 0 {
             guard let report = acceptNonzeroWithReport,
                   let data = try? Data(contentsOf: directory.appendingPathComponent(report)),
@@ -468,6 +471,14 @@ private enum UIProcessHarness {
             if environment["VOXCLIP_UI_EVIDENCE_DIR"] == nil { try? FileManager.default.removeItem(at: directory) }
             throw error
         }
+    }
+    /// The app's progress lines ("rewrite-smoke: S3 ok in 12.4 s · …") on the test's stderr, so a hosted run's log shows
+    /// the timings even when the process is stopped at its deadline.
+    private static func relayProgress(_ directory: URL, name: String, note: String?) {
+        guard let log = try? String(contentsOf: directory.appendingPathComponent("app.log"), encoding: .utf8) else { return }
+        let lines = log.split(separator: "\n").filter { $0.hasPrefix("rewrite-smoke: ") }.map { "[\(name)] \($0.dropFirst(15))" }
+        guard !lines.isEmpty || note != nil else { return }
+        FileHandle.standardError.write(Data(((lines + (note.map { ["[\(name)] \($0)"] } ?? [])).joined(separator: "\n") + "\n").utf8))
     }
     /// Hosted CI keeps no UI evidence, so name the failing checks and the end of the app log.
     private static func reportFailure(_ directory: URL) {

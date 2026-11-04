@@ -16,6 +16,22 @@
 - **Tests (each failing before its fix, checked by restoring the base sources with a compile shim).** Core `VoiceLabDialogueTests.v4TimingVariantsMapToTypedWordsOrNameTheirCheck` (21 problems before). App `aTimingFailureIsRecoveredFromTheWordCheckAndLaterPhrasesAreSent(model:)`, `aRecoveredTakeWithDifferentWordsFailsTheWordCheckNotTiming`, `aSegmentFailureIsRecoveredAndKeepsTheBatchMoving`, `threeRoundsNeverRepeatAWordingAndSendTheTriedHistory` and `aProviderFailureShowsItsFixAndNeverRewords` all failed before. New `VoiceLabProviderTimingTests` (recovery mapping, history keys). Tests that pinned the old behaviour now pin recovery: the take-run bad-alignment and bad-segment tests, accepted-failure receipts, the plan's malformed-synthesis receipts, the account-failure copy, and the diagnostic's mismatch (now a real word difference). `allTakesTooLongAreRewordedAndRetakenWithNoClick` replies with a shorter wording. The take-run QA stub keeps word times inside the audio it is sent.
 - **Verification (absolute `VOXCLIP_SHARED_DIR`, `VOXCLIP_NO_KEYCHAIN=1`).** Core 1,182 passed (2 known issues). App 869 passed. Media 495; its only failures were the smoke's scenario list, since fixed, and `rewriteSmoke` then passes 2/2. `rewrite-smoke.sh`: 27/27 ok. Fixture generators, `check_drift` (with `v4-timing-cases.json` added to EXACT) and the tools/voice-lab, release, parity, schema and caption checks are clean. No Windows suite was run: no Windows code or replayed fixture changed.
 - **Next.** A live v4 take is still owed: read the `voicelab speech timing` line to confirm which check the real reply trips. The on-device fallback only runs when Scribe heard nothing; it is not covered by a native-engine test (tests inject nothing, and production uses installed engines only). The AI's reply that drops bridge words still fails `prepareRewording` silently; this predates the package.
+### 2026-11-04 — Rewrite smoke on hosted CI: the synthetic movie no longer stalls, and timings are reported
+
+- **Root cause.** The smoke never reached its first scenario on hosted runners. Run 41804290595 printed no progress line in 1500 s per pass. `DebugRewriteSmoke.sourceMovie` fed both `AVAssetWriter` inputs from one polling loop and slept while neither was ready. With a slow encoder, the audio input ran ahead and was never marked finished, so the writer waited forever. It reproduces locally under `taskpolicy -c background` (efficiency cores). Encoding speed was not the issue: the CI encoder probe shows a working paravirtualized H.264 encoder.
+- **Fix.** `DebugRewriteSmoke.MovieFeed` feeds each input on its own queue through `requestMediaDataWhenReady` and marks it finished when its data runs out. The movie is still 160×90 H.264 + 24 kHz LPCM, made once per run.
+- **Harness.**
+  - `settle` waits up to 90 s, since one automatic fix (S12) takes over 20 s on a slow runner.
+  - The last step keeps its timings when I5–I9 are added.
+- **Timings.**
+  - Each step records `seconds` and `waits` (busy reasons: `takes: preparing`, `takes: video`, `measuring`, `auto fix`, …). Each scenario records `setupSeconds` and `waits`, and the report records `recordingSeconds`.
+  - `rewrite-smoke: …` progress lines go to stdout per step and scenario. `summary.txt` has a timing line per scenario.
+  - DEBUG `VideoDurationRenderReadiness.debugPreparations` counts duration renders.
+  - `UIProcessHarness.relayProgress` copies the progress lines to stderr when the app exits or is stopped at its deadline.
+- **Measured.**
+  - Hosted CI (run 41816569053): realistic 107.6 s, of which 29.0 s is 25 duration renders; exact 69.5 s. Both well inside the 300 s deadline.
+  - Locally: realistic about 57 s, exact about 33 s.
+- **Next.** About a quarter of the realistic pass is `VoiceLabAudioRenderer.mix` at -Onone. Its per-frame `windows.first(where:)` and channel iterators dominate. Source-audio decode and resampling for take preparation is most of the rest. Hoisting the seam lookup out of the per-frame loop in `mix` is the next speedup. It is product media code, so it needs its own golden check.
 
 ### 2026-11-04 — Hosted-CI timing: no third render request at Use, Rewrite smoke split per length pass
 

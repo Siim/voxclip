@@ -56,6 +56,10 @@ import VoxClipCore
         let snapshot: Snapshot
         let checks: [Check]
         var capture: String?
+        /// Wall time since the previous step ended: the action, settling and this observation.
+        var seconds = 0.0
+        /// What kept the session busy while the step settled, in seconds by reason ("takes", "lipsync", …).
+        var waits: [String: Double] = [:]
     }
     struct Scenario: Encodable {
         let id: String
@@ -65,6 +69,10 @@ import VoxClipCore
         var requests: [RewriteSmokeRequestRecord] = []
         var syntheses = 0
         var seconds = 0.0
+        /// Opening the fixture: its recording (once per script and run), project, editor, session and consent record.
+        var setupSeconds = 0.0
+        /// Every step's waits added up, by reason.
+        var waits: [String: Double] = [:]
         var error: String?
         /// Where the driver found nothing a user could click on.
         var stuck: String?
@@ -77,6 +85,8 @@ import VoxClipCore
         var allowedDisabled: [String: String] = DebugRewriteSmoke.allowedDisabled
         var knownFailing: [String: String] = DebugRewriteSmoke.knownFailing
         var seconds = 0.0
+        /// Making each synthetic recording, by part ("movie", "content key", "envelope"), in seconds.
+        var recordingSeconds: [String: Double] = [:]
         var passed: Bool { scenarios.allSatisfy(\.passed) }
     }
     /// Invariants reported as known failures (`-rewriteSmokeKnownFailing I2,I7`): still printed, not counted in the exit code.
@@ -123,6 +133,8 @@ import VoxClipCore
             if exact { fixture.voice.exactFit = true }
             do {
                 try await harness.open(fixture)
+                scenario.setupSeconds = ProcessInfo.processInfo.systemUptime - begun
+                progress("\(id) opened in \(seconds(scenario.setupSeconds))")
                 try await definition.drive(harness)
             } catch Failure.missing(let control, let shown) {
                 // A dead end: I1 and I5 report it; the scenario stops where a user would.
@@ -154,16 +166,28 @@ import VoxClipCore
                         detail: "\(count) of \(voiced) voice change\(voiced == 1 ? "" : "s") applied in your voice"))
                 }
                 if var last = scenario.steps.popLast() {
-                    last = Step(index: last.index, action: last.action, snapshot: last.snapshot, checks: last.checks + checks, capture: last.capture)
-                    scenario.steps.append(last)
+                    var completed = Step(index: last.index, action: last.action, snapshot: last.snapshot, checks: last.checks + checks, capture: last.capture)
+                    completed.seconds = last.seconds; completed.waits = last.waits
+                    scenario.steps.append(completed)
                 }
             }
             harness.close()
             scenario.seconds = ProcessInfo.processInfo.systemUptime - begun
+            scenario.waits = scenario.steps.reduce(into: [:]) { total, step in total.merge(step.waits, uniquingKeysWith: +) }
+            progress("\(id) \(scenario.passed ? "ok" : "FAILED") in \(seconds(scenario.seconds)) · \(timingLine(scenario))")
             report.scenarios.append(scenario)
+            // The partial report after every scenario: a pass stopped at its deadline still shows what finished.
+            report.recordingSeconds = recordingSeconds
+            report.seconds = ProcessInfo.processInfo.systemUptime - started
+            write(report, to: directory)
         }
+        report.recordingSeconds = recordingSeconds
         report.seconds = ProcessInfo.processInfo.systemUptime - started
         write(report, to: directory)
+        let renders = VideoDurationRenderReadiness.debugPreparations
+        progress("finished in \(seconds(report.seconds)) · recordings: " + recordingSeconds.sorted { $0.key < $1.key }
+            .map { "\($0.key) \(seconds($0.value))" }.joined(separator: ", ")
+            + " · \(renders.count) duration renders prepared in \(seconds(renders.seconds)) (audio staging \(seconds(renders.build)))")
         return report.passed
     }
 
@@ -185,6 +209,7 @@ import VoxClipCore
             let failures = scenario.steps.flatMap { step in step.checks.filter { !$0.passed }.map { (step, $0) } }
             let state = scenario.passed ? "ok" : "FAILED"
             lines.append("\(scenario.id) \(state) · \(scenario.title) · \(scenario.steps.count) steps · \(scenario.completed ? "applied" : "not applied") · \(String(format: "%.1f", scenario.seconds)) s")
+            lines.append("  \(scenario.id) timing: \(timingLine(scenario))")
             if let error = scenario.error { lines.append("  \(scenario.id): harness error: \(error)") }
             if let stuck = scenario.stuck { lines.append("  \(scenario.id): stopped, \(stuck)") }
             for (step, check) in failures {
@@ -193,6 +218,29 @@ import VoxClipCore
         }
         let text = lines.joined(separator: "\n") + "\n"
         try? Data(text.utf8).write(to: directory.appendingPathComponent("summary.txt"), options: .atomic)
+    }
+
+    // MARK: Timing
+
+    /// A progress line on stdout as it happens ("rewrite-smoke: S3 ok in 12.4 s · …"); the UI process tests relay these.
+    static func progress(_ line: String) {
+        FileHandle.standardOutput.write(Data(("rewrite-smoke: " + line + "\n").utf8))
+    }
+    static func seconds(_ value: Double) -> String { String(format: "%.1f s", value) }
+    /// A scenario's setup, its slowest steps and what it waited on most.
+    static func timingLine(_ scenario: Scenario) -> String {
+        let slowest = scenario.steps.sorted { $0.seconds > $1.seconds }.prefix(3)
+            .map { "step \($0.index) \(seconds($0.seconds)) (\($0.action.prefix(48)))" }
+        let waits = scenario.waits.sorted { $0.value > $1.value }.prefix(4).map { "\($0.key) \(seconds($0.value))" }
+        return "setup \(seconds(scenario.setupSeconds)); slowest " + (slowest.isEmpty ? "none" : slowest.joined(separator: ", "))
+            + "; waits " + (waits.isEmpty ? "none" : waits.joined(separator: ", "))
+    }
+    /// Seconds spent making recordings this run, by part.
+    private static var recordingSeconds: [String: Double] = [:]
+    private static func timed<T>(_ part: String, _ work: () async throws -> T) async rethrows -> T {
+        let start = ProcessInfo.processInfo.systemUptime
+        defer { recordingSeconds[part, default: 0] += ProcessInfo.processInfo.systemUptime - start }
+        return try await work()
     }
 
     /// One line of what the panel shows: its headline, footer and the controls that act.
@@ -281,11 +329,12 @@ import VoxClipCore
             }
         }
         // The source is a movie, as a recording is: Cut and Match video prepare their render offscreen from its frames.
-        let movie = try await sourceMovie(pcm, rate: rate, seconds: Int(duration), root: root)
+        let movie = try await timed("movie") { try await sourceMovie(pcm, rate: rate, seconds: Int(duration), root: root) }
+        let contentKey = try await timed("content key") { try JSONProjectStore.contentKey(for: movie) }
+        let envelope = await timed("envelope") { VoiceLabTakeProcessing.envelope(pcm, sampleRate: rate) }
         let recording = Recording(words: words, duration: duration, rate: rate, movie: movie,
             sizeBytes: Int64((try? FileManager.default.attributesOfItem(atPath: movie.path)[.size] as? Int) ?? 0),
-            contentKey: try JSONProjectStore.contentKey(for: movie),
-            envelope: VoiceLabTakeProcessing.envelope(pcm, sampleRate: rate))
+            contentKey: contentKey, envelope: envelope)
         recordings[cacheKey] = recording
         return recording
     }
@@ -336,44 +385,22 @@ import VoxClipCore
         }
         guard writer.startWriting() else { throw writer.error ?? CocoaError(.fileWriteUnknown) }
         writer.startSession(atSourceTime: .zero)
-        let total = seconds * 30, samples = min(pcm.count, seconds * rate)
-        var written = 0, frame = 0
-        do {
-            // Whichever input is behind in time and ready goes next, so the writer's interleaving never waits on the other.
-            while written < samples || frame < total {
-                guard writer.status == .writing else { throw writer.error ?? CocoaError(.fileWriteUnknown) }
-                let audioTime: Double = Double(written) / Double(rate)
-                let videoTime: Double = Double(frame) / 30
-                let audioBehind = frame >= total || audioTime <= videoTime
-                if written < samples, audio.isReadyForMoreMediaData, audioBehind || !video.isReadyForMoreMediaData {
-                    let count = min(1_600, samples - written)
-                    guard audio.append(try lpcm(pcm, from: written, count: count, rate: rate, format: format)) else {
-                        throw writer.error ?? CocoaError(.fileWriteUnknown)
-                    }
-                    written += count
-                } else if frame < total, video.isReadyForMoreMediaData {
-                    guard adaptor.append(frames[(frame / 30) % frames.count], withPresentationTime: CMTime(value: Int64(frame), timescale: 30)) else {
-                        throw writer.error ?? CocoaError(.fileWriteUnknown)
-                    }
-                    frame += 1
-                } else {
-                    try await Task.sleep(for: .milliseconds(1))
-                }
-            }
-            audio.markAsFinished(); video.markAsFinished()
-            writer.endSession(atSourceTime: CMTime(value: Int64(seconds), timescale: 1))
-            await writer.finishWriting()
-            guard writer.status == .completed else { throw writer.error ?? CocoaError(.fileWriteUnknown) }
-        } catch {
-            writer.cancelWriting()
+        // Each input is fed on its own queue as the writer asks for it, and finished as soon as its data runs out. A
+        // single loop polling both inputs could wait forever when a slow encoder (hosted runners) left neither ready.
+        let feed = MovieFeed(pcm: Array(pcm.prefix(seconds * rate)), rate: rate, format: format, frames: frames, total: seconds * 30,
+            audio: audio, video: video, adaptor: adaptor)
+        let fed = await feed.run()
+        writer.endSession(atSourceTime: CMTime(value: Int64(seconds), timescale: 1))
+        if fed { await writer.finishWriting() } else { writer.cancelWriting() }
+        guard fed, writer.status == .completed else {
             try? FileManager.default.removeItem(at: destination)
-            throw error
+            throw writer.error ?? CocoaError(.fileWriteUnknown)
         }
         return destination
     }
 
     /// `count` samples of `pcm` from `start` as one 16-bit LPCM sample buffer.
-    private static func lpcm(_ pcm: [Float], from start: Int, count: Int, rate: Int, format: AVAudioFormat) throws -> CMSampleBuffer {
+    nonisolated static func lpcm(_ pcm: [Float], from start: Int, count: Int, rate: Int, format: AVAudioFormat) throws -> CMSampleBuffer {
         var bytes = Data(count: count * 2)
         bytes.withUnsafeMutableBytes { raw in
             for index in 0..<count {
@@ -391,6 +418,66 @@ import VoxClipCore
             presentationTimeStamp: CMTime(value: Int64(start), timescale: CMTimeScale(rate)), decodeTimeStamp: .invalid)
         return try CMSampleBuffer(dataBuffer: block, formatDescription: format.formatDescription, numSamples: count,
             sampleTimings: [timing], sampleSizes: [2])
+    }
+
+    /// Feeds the synthetic movie's two writer inputs, each on its own queue, until both are finished.
+    nonisolated final class MovieFeed: @unchecked Sendable {
+        private let pcm: [Float]
+        private let rate: Int
+        private let format: AVAudioFormat
+        private let frames: [CVPixelBuffer]
+        private let total: Int
+        private let audio: AVAssetWriterInput
+        private let video: AVAssetWriterInput
+        private let adaptor: AVAssetWriterInputPixelBufferAdaptor
+        private let audioQueue = DispatchQueue(label: "voxclip.smoke.movie.audio")
+        private let videoQueue = DispatchQueue(label: "voxclip.smoke.movie.video")
+        /// Touched only on `audioQueue` and `videoQueue` respectively.
+        private var written = 0, frame = 0
+
+        init(pcm: [Float], rate: Int, format: AVAudioFormat, frames: [CVPixelBuffer], total: Int, audio: AVAssetWriterInput,
+             video: AVAssetWriterInput, adaptor: AVAssetWriterInputPixelBufferAdaptor) {
+            self.pcm = pcm; self.rate = rate; self.format = format; self.frames = frames; self.total = total
+            self.audio = audio; self.video = video; self.adaptor = adaptor
+        }
+
+        /// True when every sample and frame was appended.
+        func run() async -> Bool {
+            async let sound = feedAudio()
+            async let picture = feedVideo()
+            let (audioFed, videoFed) = await (sound, picture)
+            return audioFed && videoFed
+        }
+
+        private func feedAudio() async -> Bool {
+            await withCheckedContinuation { (done: CheckedContinuation<Bool, Never>) in
+                audio.requestMediaDataWhenReady(on: audioQueue) { [self] in
+                    while audio.isReadyForMoreMediaData {
+                        guard written < pcm.count else { audio.markAsFinished(); done.resume(returning: true); return }
+                        let count = min(1_600, pcm.count - written)
+                        guard let buffer = try? DebugRewriteSmoke.lpcm(pcm, from: written, count: count, rate: rate, format: format),
+                              audio.append(buffer) else {
+                            audio.markAsFinished(); done.resume(returning: false); return
+                        }
+                        written += count
+                    }
+                }
+            }
+        }
+
+        private func feedVideo() async -> Bool {
+            await withCheckedContinuation { (done: CheckedContinuation<Bool, Never>) in
+                video.requestMediaDataWhenReady(on: videoQueue) { [self] in
+                    while video.isReadyForMoreMediaData {
+                        guard frame < total else { video.markAsFinished(); done.resume(returning: true); return }
+                        guard adaptor.append(frames[(frame / 30) % frames.count], withPresentationTime: CMTime(value: Int64(frame), timescale: 30)) else {
+                            video.markAsFinished(); done.resume(returning: false); return
+                        }
+                        frame += 1
+                    }
+                }
+            }
+        }
     }
 
     // MARK: Harness
@@ -460,6 +547,7 @@ import VoxClipCore
             try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
             self.store = store; self.prices = prices
             makeHost()
+            stepStarted = ProcessInfo.processInfo.systemUptime
         }
 
         func close() {
@@ -493,17 +581,31 @@ import VoxClipCore
 
         // MARK: Waiting
 
-        /// Waits until the session has nothing in flight but a scripted reply the scenario holds.
-        func settle(timeout: Double = 20) async {
+        /// Waits until the session has nothing in flight but a scripted reply the scenario holds. The limit only stops a
+        /// session that never settles; a slow runner (hosted CI) can take 20 s and more for one automatic fix.
+        func settle(timeout: Double = 90) async {
             let start = ProcessInfo.processInfo.systemUptime
             var calm = 0
+            var last = start
+            var settled = false
             while ProcessInfo.processInfo.systemUptime - start < timeout {
                 try? await Task.sleep(for: .milliseconds(15))
-                if await busy() { calm = 0 } else { calm += 1; if calm >= 5 { break } }
+                let reason = await busyReason()
+                let now = ProcessInfo.processInfo.systemUptime
+                waits[reason ?? "settling", default: 0] += now - last
+                last = now
+                if reason != nil { calm = 0 } else { calm += 1; if calm >= 5 { settled = true; break } }
             }
+            if !settled { DebugRewriteSmoke.progress("\(scenario) stopped settling after \(DebugRewriteSmoke.seconds(timeout)), still busy") }
+            let discovering = ProcessInfo.processInfo.systemUptime
             await ensureGeneration()
+            waits["voices", default: 0] += ProcessInfo.processInfo.systemUptime - discovering
             recordFitting()
         }
+        /// Waits since the last observed step, by reason; `observe` moves them onto its step.
+        private var waits: [String: Double] = [:]
+        /// When the last step ended (or the fixture opened).
+        private var stepStarted = ProcessInfo.processInfo.systemUptime
         /// Each run drops the session's takes generation (`RewriteSession.invalidate`); Make Takes would find the voices
         /// again with the live client (`discoverVoices`). The scripted one stands in for it once a proposal shows.
         private func ensureGeneration() async {
@@ -520,13 +622,25 @@ import VoxClipCore
             }
             session.showProposal()
         }
-        private func busy() async -> Bool {
-            guard let session, session.isOpen else { return false }
-            if await connector?.holding == true { return false }
-            if case .running = session.task.state { return true }
-            return session.isProposing || session.takesBusy || session.isReasking || session.wordingFit.running
-                || session.wordingFit.measured?.preparing == true || session.takePlan?.lipsync.usingTakes == true
-                || session.autoFix.work != nil
+        /// What the session still has in flight ("takes+lipsync"), or nil when only a held scripted reply is left.
+        private func busyReason() async -> String? {
+            guard let session, session.isOpen else { return nil }
+            if await connector?.holding == true { return nil }
+            var reasons: [String] = []
+            if case .running = session.task.state { reasons.append("running") }
+            if session.isProposing { reasons.append("proposing") }
+            if let plan = session.takePlan {
+                if plan.preparing { reasons.append("takes: preparing") }
+                if plan.generating { reasons.append("takes: generating") }
+                if plan.publishing { reasons.append("takes: publishing") }
+                if plan.preparingVideo { reasons.append("takes: video") }
+            }
+            if session.isReasking { reasons.append("reask") }
+            if session.wordingFit.running { reasons.append("wording fit") }
+            if session.wordingFit.measured?.preparing == true { reasons.append("measuring") }
+            if session.takePlan?.lipsync.usingTakes == true { reasons.append("lipsync") }
+            if session.autoFix.work != nil { reasons.append("auto fix") }
+            return reasons.isEmpty ? nil : reasons.joined(separator: "+")
         }
         /// Tells the scripted ElevenLabs each prepared phrase's fitting length (the plan's windows are known now).
         private func recordFitting() {
@@ -815,7 +929,16 @@ import VoxClipCore
             }
             if checks.contains(where: { !$0.passed }) { capture = savePNG(step: steps.count + 1) }
             paid = current
-            steps.append(Step(index: steps.count + 1, action: action, snapshot: snapshot, checks: checks, capture: capture))
+            var step = Step(index: steps.count + 1, action: action, snapshot: snapshot, checks: checks, capture: capture)
+            let now = ProcessInfo.processInfo.systemUptime
+            step.seconds = now - stepStarted
+            step.waits = waits
+            waits = [:]; stepStarted = now
+            let busiest = step.waits.filter { $0.key != "settling" }.sorted { $0.value > $1.value }.prefix(3)
+                .map { "\($0.key) \(DebugRewriteSmoke.seconds($0.value))" }
+            DebugRewriteSmoke.progress("\(scenario) step \(step.index) \(DebugRewriteSmoke.seconds(step.seconds)) · \(action.prefix(60))"
+                + (busiest.isEmpty ? "" : " · " + busiest.joined(separator: ", ")))
+            steps.append(step)
         }
 
         /// Row buttons that only listen, navigate or show more do not move the Rewrite on.
