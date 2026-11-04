@@ -71,7 +71,7 @@ enum LipSyncAvailability {
             if session.visibleRecords.isEmpty { Text("No voice yet").foregroundStyle(.secondary) }
             ForEach(session.visibleRecords) { record in
                 let context = contexts["record-\(record.id)", default: ""]
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) {
                     Text(record.voiceName).fontWeight(.medium)
                     Text("Created \(Self.createdDate(record.createdAt, shared: app.shared)) · \(record.voiceId)").font(.caption).textSelection(.enabled)
                     if record.status == .verificationRequired { Text("ElevenLabs needs to verify this voice before it can be used. Finish verification on elevenlabs.io, then come back.").font(.caption) }
@@ -216,7 +216,7 @@ enum LipSyncAvailability {
         return Group {
             ForEach(operations) { operation in
                 let context = contexts["operation-\(operation.id)", default: ""]
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) {
                     Text(operation.kind == .create ? "Voice creation" : "Voice removal").fontWeight(.medium)
                     Text(operation.displayState).font(.caption)
                     if operation.needsCreatorRecoveryReview, operation.recoveryNeedsReview == true {

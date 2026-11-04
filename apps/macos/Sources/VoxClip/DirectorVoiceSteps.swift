@@ -20,7 +20,7 @@ import VoxClipCore
     private var enrollment: some View {
         VStack(spacing: 0) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: VCTokens.spacing5) {
                     HStack {
                         Button { session.returnToRewrite() } label: { Label("Back to Rewrite", systemImage: "chevron.left") }
                             .buttonStyle(.plain)
@@ -269,7 +269,7 @@ import VoxClipCore
                 Text("Saved in the macOS Keychain and used only by VoxClip for Voice Lab. Never passed to Claude Code, Codex or any other AI app. Saving makes no request.").font(.system(size: 11))
             } else {
                 Text("ONE CLICK DOES THIS").font(.system(size: 11, weight: .semibold))
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: VCTokens.spacingGroupGap) {
                     Label(session.enabled ? "Voice Lab is on" : "Turn on Voice Lab", systemImage: session.enabled ? "checkmark" : "circle")
                     Text("Turn it off any time in Settings.").font(.system(size: 11))
                     Label(library.installed ? "Own-voice check installed" : "Download the own-voice check", systemImage: library.installed ? "checkmark" : "circle")

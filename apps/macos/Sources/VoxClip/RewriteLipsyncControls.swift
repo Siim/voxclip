@@ -9,7 +9,7 @@ import VoxClipCore
     let changed: @MainActor () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) {
             Text("Lip sync").font(VCType.callout.font()).fontWeight(.medium)
             if let state = session.states[phrase] {
                 switch state {
@@ -25,8 +25,9 @@ import VoxClipCore
                     Text("Usually under a minute. You can keep choosing takes for other phrases.")
                 case .done(let seconds, let price):
                     Text("✓ Lip synced · \(Self.elapsed(seconds))")
-                    HStack(spacing: 12) {
-                        Button("▶ Play", action: play).accessibilityLabel(Self.playLabel(phrase))
+                    HStack(spacing: VCTokens.spacingGroupGap) {
+                        Button("▶ Play", action: play)
+.accessibilityLabel(Self.playLabel(phrase))
                             .accessibilityIdentifier("lipsync-play-\(phrase)")
                         Button("Undo") {
                             session.undo(phrase); changed()

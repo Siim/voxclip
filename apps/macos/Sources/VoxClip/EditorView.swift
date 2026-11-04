@@ -169,7 +169,7 @@ import VoxClipCore
                 else { ScrollView { InlineTranscriptionView(transcription: model.transcription) } }
             }
             if let progress = model.progress, !model.transcription.isRunning {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: VCTokens.spacing5) {
                     ForEach(0..<6) { line in RoundedRectangle(cornerRadius: 4).fill(DesignValues.color("bg.muted")).frame(width: line.isMultiple(of: 2) ? 300 : 240, height: 12) }
                     Text(progress)
                     Button("Cancel") { model.workTask?.cancel(); model.progress = nil }

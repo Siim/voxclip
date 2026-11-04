@@ -123,7 +123,7 @@ import VoxClipCore
         }.onAppear { if job.draft.draftTarget == nil { job.selectShareTarget(model.exportClipIDs.first ?? "full", model: model) } }
     }
     private var setup: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: VCTokens.spacingGroupGap) {
             CaptionPropertyRow("What", marker: "export.what") {
                 Picker("What", selection: Binding(get: { job.scope }, set: { job.selectScope($0, model: model) })) {
                     if !model.exportTargets(.thisClip, requestedIDs: job.requestedIDs).isEmpty { Text(model.exportScopeLabel(.thisClip, requestedIDs: job.requestedIDs)).tag(ExportScope.thisClip) }
@@ -174,7 +174,7 @@ import VoxClipCore
                 if model.exportError != nil { Button("Try again") { model.beginExport(targets: targets, folder: folder) } }
                 Button("Done") { model.finishExportJob() }.accessibilityIdentifier("voxclip.export.done")
             }
-        }.padding(.horizontal, CaptionsPanelMetrics.inset).padding(.bottom, 10)
+        }.padding(.horizontal, CaptionsPanelMetrics.inset).padding(.bottom, VCTokens.spacingGroupGap)
     }
     private var targets: [ExportTarget] { model.exportTargets(job.scope, requestedIDs: job.requestedIDs) }
     private var output: OutputSpec { ExportFingerprint.output(model.project) }

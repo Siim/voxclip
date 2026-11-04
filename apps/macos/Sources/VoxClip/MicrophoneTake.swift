@@ -252,7 +252,7 @@ enum PhraseMicrophoneCopy {
     var body: some View {
         let active = microphone.phrase == phrase.id
         let access = microphone.access()
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: VCTokens.spacingRowGap) {
             if active, microphone.state == .recording || microphone.state == .cueing {
                 recordingRow
             } else if active, microphone.state == .checking {
@@ -341,7 +341,8 @@ enum PhraseMicrophoneCopy {
         let used = phrase.selectedID == take.id
         let line = PhraseMicrophoneRow.line(take, words: words, slot: phrase.originalLength, fits: plan.lengthFits(take: take),
             carried: plan.durationAvailable(take: take))
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) {
+
             Text(line).font(VCType.callout.font())
                 .foregroundStyle(DesignValues.color(take.row.selectable && plan.durationAvailable(take: take) ? "text.primary" : "status.warning"))
                 .fixedSize(horizontal: false, vertical: true)

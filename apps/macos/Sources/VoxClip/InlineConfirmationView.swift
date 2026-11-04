@@ -11,11 +11,11 @@ import SwiftUI
 
     var body: some View {
         if let prompt = confirmation.prompt {
-            HStack(alignment: .top, spacing: 9) {
+            HStack(alignment: .top, spacing: VCTokens.spacingRowGap) {
                 Image(systemName: prompt.billed ? "key" : "person.crop.circle")
                     .font(.system(size: 14)).foregroundStyle(DesignValues.color("text.secondary"))
                     .padding(.top, 2).accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: VCTokens.spacing2) {
                     Text(prompt.message).font(.system(size: 12)).foregroundStyle(DesignValues.color("text.primary"))
                     ForEach(Array(prompt.details.enumerated()), id: \.offset) { _, line in
                         Text(line).font(.system(size: 11)).foregroundStyle(DesignValues.color("text.tertiary"))
@@ -29,20 +29,20 @@ import SwiftUI
                                 .onSubmit { Task { await confirmation.saveKey() } }
                             Button("Save Key") { Task { await confirmation.saveKey() } }
                                 .disabled(confirmation.savingKey || confirmation.key.isEmpty)
-                        }.padding(.top, 6)
+                        }.padding(.vertical, VCTokens.spacing2)
                         if let error = confirmation.keyError { Text(error).font(.system(size: 11)).foregroundStyle(DesignValues.color("status.warning")) }
                     }
                     ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 9) { actions(prompt); Spacer(minLength: 4); note(prompt) }
-                        VStack(alignment: .leading, spacing: 6) { HStack(spacing: 9) { actions(prompt) }; note(prompt) }
-                    }.padding(.top, 6)
+                        HStack(spacing: VCTokens.spacingRowGap) { actions(prompt); Spacer(minLength: 4); note(prompt) }
+                        VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) { HStack(spacing: VCTokens.spacingRowGap) { actions(prompt) }; note(prompt) }
+                    }.padding(.top, VCTokens.spacingRowGap)
                 }
             }
-            .padding(.vertical, 9).padding(.horizontal, 10)
+            .padding(.vertical, VCTokens.spacingFieldPaddingY).padding(.horizontal, VCTokens.spacingCardPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(DesignValues.color("bg.raised"), in: .rect(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(DesignValues.color("line.edge"), lineWidth: 1))
-            .padding(.horizontal, compact ? 12 : 0).padding(.vertical, 8)
+            .padding(.horizontal, compact ? VCTokens.spacingCardPadding : 0).padding(.vertical, VCTokens.spacingRowGap)
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityElement(children: .contain).accessibilityLabel("Confirm send")
             .accessibilityIdentifier("voxclip.inline.confirmSend")
@@ -78,7 +78,8 @@ import SwiftUI
         }
         Button(prompt.cancel) { confirmation.cancel() }.buttonStyle(.plain)
             .font(.system(size: 12)).foregroundStyle(DesignValues.color("text.secondary"))
-            .frame(minHeight: 22).padding(.horizontal, 9)
+            .frame(minHeight: 22).padding(.horizontal, VCTokens.spacingRowGap)
+
     }
     @ViewBuilder private func note(_ prompt: ConnectorSendPrompt) -> some View {
         if prompt.needsKey { Text("Send appears once the key is saved.").font(.system(size: 11)).foregroundStyle(DesignValues.color("text.tertiary")) }

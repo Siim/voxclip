@@ -251,7 +251,7 @@ extension ClipTakePlan.Phrase {
     @Bindable var session: RewriteSession
     @Bindable var generation: RewriteGenerationSession
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: VCTokens.spacingGroupGap) {
             Text(Self.rewriteModelLabel)
                 .accessibilityLabel("Speech model: " + Self.rewriteModelLabel)
             if generation.voices.isEmpty {
@@ -299,8 +299,9 @@ extension ClipTakePlan.Phrase {
         .onDisappear { session.takePlan?.stopAudition() }
     }
     private func phraseRow(_ phrase: ClipTakePlan.Phrase, plan: ClipTakePlan) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .top, spacing: 8) {
+        // A phrase card (doc/design.md §16.1): its lines a row gap apart, the duration and lip sync blocks a group gap.
+        VStack(alignment: .leading, spacing: VCTokens.spacingRowGap) {
+            HStack(alignment: .top, spacing: VCTokens.spacing3) {
                 if phrase.selected?.row.selectable == true, !session.takesBusy {
                     Button {
                         session.focusedTakePhrase = phrase.id
@@ -320,7 +321,7 @@ extension ClipTakePlan.Phrase {
                     }.frame(maxWidth: .infinity, alignment: .leading)
             }
             PhraseWordingSection(session: session, plan: plan, phrase: phrase)
-            HStack(spacing: 4) {
+            HStack(spacing: VCTokens.spacingLabelGap) {
                 ForEach(phrase.takes) { take in
                     if take.row.selectable, !take.row.requiresJoinAdvisoryAcceptance, !session.takesBusy {
                         Button(String(take.number)) {
@@ -423,11 +424,13 @@ extension ClipTakePlan.Phrase {
                             Task { await plan.prepareVideoChoices(); await plan.lipsync.refresh() }
                         }
                     }
+                    .padding(.top, VCTokens.spacingGroupGap - VCTokens.spacingRowGap)
             }
             if plan.preparingVideo { ProgressView("Preparing video duration…").controlSize(.small) }
             if plan.lipsync.enabled, phrase.selected?.row.selectable == true, phrase.videoChoice != nil {
                 RewriteLipsyncControls(session: plan.lipsync, phrase: phrase.id, busy: session.takesBusy,
                     play: { session.playLipsync(phrase: phrase.id) }, changed: { session.showProposal() })
+                    .padding(.top, VCTokens.spacingGroupGap - VCTokens.spacingRowGap)
             }
             if !session.takesBusy, session.autoFix.choicesShown, session.takeNeedsWordingRecovery(phrase, plan: plan) {
                 if session.wordingFit.measured?.phrase == phrase.id {
@@ -456,8 +459,9 @@ extension ClipTakePlan.Phrase {
                 }
             }
         }
-        .padding(8).frame(maxWidth: .infinity, alignment: .leading)
-        .background(session.focusedTakePhrase == phrase.id ? DesignValues.color("bg.selectedRow") : .clear, in: .rect(cornerRadius: 6))
+        .padding(VCTokens.spacingCardPadding).frame(maxWidth: .infinity, alignment: .leading)
+        .background(session.focusedTakePhrase == phrase.id ? DesignValues.color("bg.selectedRow") : .clear, in: .rect(cornerRadius: VCTokens.radiusMd))
+
         .accessibilityElement(children: .contain).accessibilityLabel("Phrase \(phrase.id + 1) of \(plan.phrases.count)")
         .columnLayoutEvidence("voice.phrase.\(phrase.id)", text: phrase.takeDetail)
         .onTapGesture { session.focusedTakePhrase = phrase.id }

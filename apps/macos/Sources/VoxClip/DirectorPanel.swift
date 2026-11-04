@@ -30,12 +30,12 @@ import VoxClipCore
                 VStack(alignment: .leading, spacing: 0) {
                     contextRow
                     PanelHeadlineView(headline: task.headline)
-                        .padding(.top, 6).padding(.bottom, task.cards.isEmpty ? 0 : 10)
-                    VStack(alignment: .leading, spacing: 10) {
+                        .padding(.top, VCTokens.spacingRowGap).padding(.bottom, task.cards.isEmpty ? 0 : VCTokens.spacing5)
+                    VStack(alignment: .leading, spacing: VCTokens.spacingGroupGap) {
                         ForEach(task.cards) { card in cardView(card) }
                     }
                 }
-                .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 12)
+                .padding(.horizontal, VCTokens.spacingPanePaddingMacos).padding(.top, VCTokens.spacingGroupGap).padding(.bottom, VCTokens.spacing5)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             // A question (`PanelConfirm`) stands in the footer's place until it is answered: inline, not an alert (§13.1).
@@ -250,8 +250,8 @@ import VoxClipCore
         case .callout(let text):
             Label { Text(text).fixedSize(horizontal: false, vertical: true) } icon: { Image(systemName: "exclamationmark.triangle.fill") }
                 .font(VCType.callout.font()).foregroundStyle(DesignValues.color("status.warning"))
-                .padding(10).frame(maxWidth: .infinity, alignment: .leading)
-                .overlay { RoundedRectangle(cornerRadius: 6).strokeBorder(DesignValues.color("line.default"), lineWidth: 1) }
+                .padding(VCTokens.spacingCardPadding).frame(maxWidth: .infinity, alignment: .leading)
+                .overlay { RoundedRectangle(cornerRadius: VCTokens.radiusMd).strokeBorder(DesignValues.color("line.default"), lineWidth: 1) }
                 .accessibilityElement(children: .combine)
                 .columnLayoutEvidence("director.callout", text: text)
         case .ask(let placeholder):
@@ -354,16 +354,16 @@ import VoxClipCore
                         Text(tool).font(VCType.label.mono()).foregroundStyle(DesignValues.color("text.tertiary"))
                     }
                 }
-                .padding(.horizontal, 10).padding(.vertical, 5)
+                .padding(.horizontal, VCTokens.spacingCardPadding).padding(.vertical, VCTokens.spacingRowPaddingY)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(step.accessibilityLabel)
                 .accessibilityAddTraits(.updatesFrequently)
                 .columnLayoutEvidence("director.step.\(step.id)", text: step.accessibilityLabel)
             }
         }
-        .padding(.vertical, 3)
+        .padding(.vertical, VCTokens.spacing2)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(DesignValues.color("line.default"), lineWidth: 1) }
+        .overlay { RoundedRectangle(cornerRadius: VCTokens.radiusMd).strokeBorder(DesignValues.color("line.default"), lineWidth: 1) }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Steps")
     }
@@ -384,7 +384,7 @@ import VoxClipCore
     let saveKey: PanelAction?
     var keyFieldFocused: FocusState<Bool>.Binding
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: VCTokens.spacing2) {
             ForEach(rows) { row in
                 let chosen = task.choice == row.id
                 Button { task.choose(row.id) } label: {
@@ -402,8 +402,8 @@ import VoxClipCore
                         .fixedSize(horizontal: false, vertical: true)
                         Spacer(minLength: 0)
                     }
-                    .padding(.horizontal, 8).padding(.vertical, 5)
-                    .frame(minHeight: 26)
+                    .padding(.horizontal, VCTokens.spacingRowGap).padding(.vertical, VCTokens.spacingRowPaddingY)
+                    .frame(minHeight: 28)
                     .background(chosen ? DesignValues.color("bg.selectedRow") : .clear, in: .rect(cornerRadius: 6))
                     .contentShape(Rectangle())
                 }
@@ -413,11 +413,11 @@ import VoxClipCore
                 .accessibilityAddTraits(chosen ? [.isButton, .isSelected] : .isButton)
                 .columnLayoutEvidence("director.choice.\(row.id)", text: row.status)
                 if row.needsKey, let save = saveKey {
-                    HStack(spacing: 6) {
+                    HStack(spacing: VCTokens.spacingRowGap) {
                         KeyField(label: "Paste your \(row.shortName) API key", text: $task.keyDraft, focused: keyFieldFocused) { save.perform() }
                         PanelButton(action: save, kind: .bordered)
                     }
-                    .padding(.leading, 29).padding(.trailing, 8).padding(.bottom, 4)
+                    .padding(.leading, 29).padding(.trailing, VCTokens.spacingRowGap).padding(.top, VCTokens.spacing2).padding(.bottom, VCTokens.spacingRowGap)
                     .columnLayoutEvidence("director.key.\(row.id)")
                 }
             }
@@ -436,13 +436,11 @@ import VoxClipCore
     let submit: () -> Void
     var body: some View {
         SecureField(label, text: $text)
-            .textFieldStyle(.plain).textContentType(.password)
+            .textContentType(.password)
             .font(VCType.callout.font())
             .focused(focused)
             .onSubmit(submit)
-            .padding(.horizontal, 8).frame(height: 26)
-            .background(DesignValues.color("bg.input"), in: .rect(cornerRadius: 6))
-            .overlay { RoundedRectangle(cornerRadius: 6).strokeBorder(DesignValues.color("line.edge"), lineWidth: 1) }
+            .vcFieldChrome()
             .accessibilityLabel(label)
     }
 }
@@ -457,22 +455,23 @@ import VoxClipCore
     var answerFocus: FocusState<Bool>.Binding?
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) {
+            HStack(spacing: VCTokens.spacingGroupGap) {
                 if footer.note == nil { Spacer(minLength: 0) }
                 else { note.frame(minWidth: 150, idealWidth: 150, maxWidth: .infinity, alignment: .leading) }
                 buttons
             }
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: VCTokens.spacingRowGap) {
                 note
-                HStack(spacing: 8) { Spacer(minLength: 0); buttons }
+                HStack(spacing: VCTokens.spacingRowGap) { Spacer(minLength: 0); buttons }
             }
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: VCTokens.spacingRowGap) {
                 note
-                VStack(alignment: .trailing, spacing: 8) { buttons }
+                VStack(alignment: .trailing, spacing: VCTokens.spacingRowGap) { buttons }
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
-        .padding(.horizontal, 16).padding(.vertical, 9)
+        .padding(.horizontal, VCTokens.spacingPanePaddingMacos).padding(.vertical, VCTokens.spacingFooterPaddingY)
+
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(DesignValues.color("bg.window"))
         .overlay(alignment: .top) { Rectangle().fill(DesignValues.color("line.default")).frame(height: 1) }

@@ -88,7 +88,7 @@ extension AppModel {
     }
     var body: some View {
         let placeholder = Self.placeholder(words)
-        HStack(spacing: 6) {
+        HStack(spacing: VCTokens.spacingLabelGap) {
             Image(systemName: "sparkles").foregroundStyle(.secondary).accessibilityHidden(true)
             TextField(placeholder, text: $editor.rewriteInstruction)
                 .textFieldStyle(.plain).font(VCType.callout.font()).focused(focused)
@@ -103,7 +103,8 @@ extension AppModel {
             .accessibilityLabel("Suggestions").help("Suggestions")
         }
         // notes.md §3: inputs on `raised` inside a `line2` outline.
-        .padding(.horizontal, 8).frame(minHeight: 28)
+        .padding(.horizontal, VCTokens.spacingFieldPaddingX).frame(minHeight: 28)
+
         .background(DesignValues.color("bg.input"), in: RoundedRectangle(cornerRadius: 6))
         .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(DesignValues.color("line.edge"), lineWidth: 1))
     }

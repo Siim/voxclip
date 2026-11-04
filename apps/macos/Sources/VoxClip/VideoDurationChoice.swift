@@ -86,9 +86,9 @@ struct VideoDurationChoiceView: View {
     var valid: [VoiceLabVideoMode] { [VoiceLabVideoMode.source, .cut, .retimed].filter(availability.allows) }
     @State private var changing = false
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) {
             if let shown = selection ?? (valid.count == 1 ? valid.first : nil), !changing || busy || valid.count == 1 {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                HStack(alignment: .firstTextBaseline, spacing: VCTokens.spacingRowGap) {
                     Text("Video: " + title(shown).prefix(1).lowercased() + title(shown).dropFirst())
                     if valid.count > 1, !busy {
                         Button("Change") { changing = true }.buttonStyle(.plain)
@@ -129,8 +129,9 @@ struct VideoDurationChoiceView: View {
     }
 
     private func option(_ choice: VoiceLabVideoMode, title: String, detail: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: VCTokens.spacing2) {
             Button { choose(choice); changing = false } label: {
+
                 Label(title, systemImage: selection == choice ? "largecircle.fill.circle" : "circle")
             }
             .buttonStyle(.plain)

@@ -9,7 +9,7 @@ import VoxClipCore
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: VCTokens.spacing5) {
                     Button { if session.close() { back() } } label: { Label("Back", systemImage: "chevron.left") }
                         .buttonStyle(.plain).disabled(!session.canClose)
                     Text(session.snapshot.title).font(.headline).accessibilityAddTraits(.isHeader)

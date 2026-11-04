@@ -53,22 +53,23 @@ import VoxClipCore
             title
             if transcription.again {
                 bufferLine("exclamationmark.triangle", text: transcription.warning)
-                    .padding(.top, 10)
-                detail("Clips and cuts belong to the old words, so they can't carry over. Your exports stay.").padding(.top, 3)
-            } else { detail("This video isn't transcribed yet. It plays while you \(transcription.isDownloading ? "wait" : "choose").").padding(.top, 4) }
-            languageRow.padding(.top, 18)
-            engineRows.padding(.top, 6)
-            if transcription.isDownloading { downloadRow.padding(.top, 10) }
-            Divider().overlay(DesignValues.color("line.default")).padding(.leading, 80).padding(.top, 14).padding(.bottom, 12)
+                    .padding(.top, VCTokens.spacingGroupGap)
+                detail("Clips and cuts belong to the old words, so they can't carry over. Your exports stay.").padding(.top, VCTokens.spacing2)
+            } else { detail("This video isn't transcribed yet. It plays while you \(transcription.isDownloading ? "wait" : "choose").").padding(.top, VCTokens.spacing2) }
+            languageRow.padding(.top, VCTokens.spacingSectionGap)
+            engineRows.padding(.top, VCTokens.spacingLabelGap)
+            if transcription.isDownloading { downloadRow.padding(.top, VCTokens.spacingGroupGap) }
+            Divider().overlay(DesignValues.color("line.default")).padding(.leading, 80).padding(.top, VCTokens.spacing5).padding(.bottom, VCTokens.spacingGroupGap)
             if !(transcription.again && !transcription.againConfirmed && !transcription.needsDownload && !transcription.paid) {
                 bufferLine(transcription.error != nil ? "exclamationmark.triangle" : transcription.paid ? "arrow.up" : transcription.isDownloading ? "clock" : "arrow.down", text: transcription.sendLine)
-                detail(transcription.sendDetail).padding(.top, 3)
-                if let kept = transcription.keptDownloadCopy { detail(kept).padding(.top, 3) }
+                detail(transcription.sendDetail).padding(.top, VCTokens.spacing2)
+                if let kept = transcription.keptDownloadCopy { detail(kept).padding(.top, VCTokens.spacing2) }
                 if transcription.needsDownload && !transcription.paid, let item = transcription.selectedModel {
-                    Link("Source page", destination: item.sourcePage).font(.system(size: 11)).padding(.leading, 80).padding(.top, 3)
+                    Link("Source page", destination: item.sourcePage).font(.system(size: 11)).padding(.leading, 80).padding(.top, VCTokens.spacing2)
                 }
             }
-            if !transcription.isDownloading || transcription.paid { actions.padding(.top, 12) }
+            if !transcription.isDownloading || transcription.paid { actions.padding(.top, VCTokens.spacingGroupGap) }
+
         }
     }
     private var title: some View {
@@ -163,7 +164,7 @@ import VoxClipCore
         }.padding(.vertical, 4)
     }
     private var downloadRow: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) {
             HStack {
                 if let progress = transcription.downloadProgress {
                     let percent = Int(Double(progress.receivedBytes) / Double(max(1, progress.totalBytes)) * 100)
@@ -216,7 +217,7 @@ import VoxClipCore
             .font(.system(size: 11)).foregroundStyle(DesignValues.color("text.tertiary"))
     }
     private var folded: some View {
-        HStack(spacing: 9) {
+        HStack(spacing: VCTokens.spacingRowGap) {
             Text("This video isn't transcribed yet.")
             Button("Transcribe…") { Task { await transcription.open() } }.buttonStyle(.plain)
         }.padding(.leading, 80)

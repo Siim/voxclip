@@ -40,7 +40,7 @@ import VoxClipCore
     var body: some View {
         let words = EditingPrimitives.splitWords(text.trimmingCharacters(in: .whitespacesAndNewlines))
         let boundary = min(words.count, max(0, chosen ?? insertionBoundary ?? words.count))
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) {
             ExpressionFlow(spacing: 3) {
                 ForEach(Self.pieces(words: words, tags: tags, caret: choosing ? boundary : nil), id: \.self) { piece in
                     switch piece {
@@ -84,7 +84,8 @@ import VoxClipCore
             }
             if choosing, editable {
                 Text(Self.placementHint).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
-                ExpressionFlow(spacing: 5) {
+                ExpressionFlow(spacing: VCTokens.spacingChipGap) {
+
                     ForEach(VoiceLabAudioTags.definitions, id: \.tag) { definition in
                         Button(definition.tag) {
                             changed(tags + [VoiceLabAudioTag(beforeToken: boundary, tag: definition.tag)])

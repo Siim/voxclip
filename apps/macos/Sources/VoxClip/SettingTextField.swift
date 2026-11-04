@@ -20,7 +20,7 @@ import VoxClipCore
     }
     var body: some View {
         @Bindable var draft = draft
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) {
             TextField(title, text: $draft.text).focused($focused)
                 .accessibilityIdentifier("setting.\(key)")
                 .onSubmit { draft.commit(key: key, app: app) }

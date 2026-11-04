@@ -427,8 +427,9 @@ private struct ExplorerVoiceGlyph: View {
     let editor: EditorModel
     var keepAll = true
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: VCTokens.spacingRowGap) {
             ExplorerHeader(shell: shell, section: .suggested, count: editor.suggestedClips.count)
+
             if keepAll {
                 Button { editor.keepAll() } label: { Text("Keep All").modifier(SidebarActionTarget()) }
                     .buttonStyle(.borderless).font(.system(size: 11, weight: .medium)).fixedSize()

@@ -21,7 +21,7 @@ import VoxClipCore
                     dropBar
                     callouts
                     recentHeader.padding(.top, VCTokens.spacing7)
-                    recentGrid.padding(.top, 10)
+                    recentGrid.padding(.top, VCTokens.spacingGroupGap)
                 }
             }
             .padding(.horizontal, VCTokens.spacing8)
@@ -173,7 +173,7 @@ import VoxClipCore
     let action: String
     let perform: () -> Void
     var body: some View {
-        HStack(spacing: 9) {
+        HStack(spacing: VCTokens.spacingRowGap) {
             Image(systemName: "sparkles").foregroundStyle(DesignValues.color("text.secondary"))
             Text(text).foregroundStyle(DesignValues.color("text.primary"))
             Spacer(minLength: VCTokens.spacing4)

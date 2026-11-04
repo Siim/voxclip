@@ -177,7 +177,7 @@ extension RewriteSession {
     @Bindable var plan: ClipTakePlan
     let phrase: ClipTakePlan.Phrase
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: VCTokens.spacingRowGap) {
             // Full labels where the column allows, short ones in a narrow column, else a menu: never clipped.
             ViewThatFits(in: .horizontal) {
                 picker(short: false).pickerStyle(.segmented).fixedSize()
@@ -207,7 +207,7 @@ extension RewriteSession {
         if session.ownWordsEditing == phrase.id {
             TextField("Your words for phrase \(phrase.id + 1)", text: Binding(get: { phrase.ownWords ?? "" },
                 set: { session.editOwnWords($0, phrase: phrase.id) }), axis: .vertical)
-                .textFieldStyle(.roundedBorder).lineLimit(1...3)
+                .lineLimit(1...3).font(VCType.callout.font()).vcFieldChrome(multiline: true)
                 .onSubmit { Task { await session.priceOwnWords(phrase: phrase.id) } }
                 .task(id: phrase.ownWords) {
                     // The price follows the words once typing pauses; nothing is sent until [Make take · ≈ $x].
@@ -216,7 +216,7 @@ extension RewriteSession {
                 }
                 .accessibilityLabel("Your words for phrase \(phrase.id + 1)")
         } else if let words = phrase.ownWords, !words.isEmpty {
-            HStack(spacing: 6) {
+            HStack(spacing: VCTokens.spacingLabelGap) {
                 Text("My words: “\(words)”").font(VCType.callout.font()).frame(maxWidth: .infinity, alignment: .leading)
                 Button("Edit") { session.ownWordsEditing = phrase.id; session.focusedTakePhrase = phrase.id }
                     .buttonStyle(.plain).modifier(PanelButtonEvidence(id: "ownWords.edit.\(phrase.id)", title: "Edit"))
@@ -248,8 +248,9 @@ extension RewriteSession {
         } else if advice.phrase == phrase.id, let estimate = advice.awaiting {
             Text("Sends your words to \(session.aiName) with your key. It fills the field; no take is made.")
                 .font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
-            HStack(spacing: 8) {
+            HStack(spacing: VCTokens.spacingRowGap) {
                 PanelButton(action: PanelAction(id: "ownWords.send.\(phrase.id)",
+
                     title: "Send · " + (estimate.usd.map(VoiceLabCostPresentation.format) ?? "price unavailable"), priced: true) {
                         Task { await session.adviseOwnWords(phrase: phrase.id, approved: true) }
                     }, kind: .ghost)

@@ -499,20 +499,20 @@ extension RewriteSession {
     var focused: FocusState<Bool>.Binding
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: VCTokens.spacingRowGap) {
             if let line = steps.line, !line.isEmpty {
                 Text(line).font(VCType.callout.font()).foregroundStyle(DesignValues.color("text.secondary"))
                     .fixedSize(horizontal: false, vertical: true)
                     .columnLayoutEvidence("director.nextSteps.\(steps.id).line", text: line)
             }
             if !steps.chips.isEmpty {
-                ExpressionFlow(spacing: 6) {
+                ExpressionFlow(spacing: VCTokens.spacingChipGap) {
                     ForEach(steps.chips) { chip in NextStepChipButton(chip: chip) }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             if let ask = steps.ask {
-                HStack(spacing: 6) {
+                HStack(spacing: VCTokens.spacingLabelGap) {
                     Image(systemName: "sparkles").foregroundStyle(.secondary).accessibilityHidden(true)
                     TextField(ask.placeholder, text: $task.nextStepDraft)
                         .textFieldStyle(.plain).font(VCType.callout.font()).focused(focused)
@@ -523,8 +523,9 @@ extension RewriteSession {
                             .buttonStyle(.plain).accessibilityLabel("Send to the AI").help("Send to the AI")
                     }
                 }
-                .padding(.horizontal, 8).frame(minHeight: 28)
+                .padding(.horizontal, VCTokens.spacingFieldPaddingX).frame(minHeight: 28)
                 .background(DesignValues.color("bg.input"), in: RoundedRectangle(cornerRadius: 6))
+
                 .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(DesignValues.color("line.edge"), lineWidth: 1))
                 .columnLayoutEvidence("director.nextSteps.\(steps.id).ask", text: ask.placeholder)
             }

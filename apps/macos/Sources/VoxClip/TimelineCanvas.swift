@@ -715,10 +715,17 @@ struct TimelineOverviewLabel: Equatable {
             DesignValues.nsColor("text.secondary").setStroke()
             frame.stroke()
         }
-        // The header: "Take" and its length (f1).
-        Self.draw("Take", font: VCType.small.nsFont(), color: DesignValues.nsColor("text.tertiary"), x: 10, baseline: 16)
+        // The header: "Take" and its length (f1). In the narrow 64 pt header the word gives way to the length rather
+        // than touch it: they keep the label gap between them (doc/design.md §16.1), as the narrow lane headers keep
+        // only V1 and A1.
         let length = VCType.label.nsMono()
-        Self.draw(state.takeLabel, font: length, color: DesignValues.nsColor("text.disabled"), x: headerWidth - 6 - Self.width(state.takeLabel, font: length), baseline: 16)
+        let lengthX = headerWidth - 6 - Self.width(state.takeLabel, font: length)
+        let word = VCType.small.nsFont()
+        if 10 + Self.width("Take", font: word) + VCTokens.spacingLabelGap <= lengthX {
+            Self.draw("Take", font: word, color: DesignValues.nsColor("text.tertiary"), x: 10, baseline: 16)
+        }
+        Self.draw(state.takeLabel, font: length, color: DesignValues.nsColor("text.disabled"), x: lengthX, baseline: 16)
+
     }
 }
 

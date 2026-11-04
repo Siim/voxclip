@@ -78,7 +78,7 @@ import VoxClipCore
     }
 
     private var sourceFields: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: VCTokens.spacingGroupGap) {
             Picker("Starting point", selection: Binding(get: { session.targetKind.rawValue }, set: {
                 if let kind = ContextDemoTargetKind(rawValue: $0) { session.chooseKind(kind) }
             })) {
