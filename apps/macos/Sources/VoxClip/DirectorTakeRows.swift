@@ -354,7 +354,11 @@ extension ClipTakePlan.Phrase {
             ForEach(TakeFailurePresentation.shortSpeechSummary(phrase.takes.map(\.row), selected: phrase.selectedID), id: \.self) { copy in
                 Text(copy).font(VCType.callout.font()).foregroundStyle(DesignValues.color("text.secondary"))
             }
-            ForEach(phrase.takes.filter { $0.row.hasJoinAdvisory }) { take in
+            // The user's own takes read as their own rows, in this one take list whatever the segment (MicrophoneTake.swift).
+            ForEach(phrase.takes.filter { $0.source == .microphone }) { take in
+                OwnTakeRow(session: session, microphone: session.phraseMicrophone, plan: plan, phrase: phrase, take: take)
+            }
+            ForEach(phrase.takes.filter { $0.row.hasJoinAdvisory && $0.source == .clonedVoice }) { take in
                 if let copy = TakeFailurePresentation.joinAdvisory(take.row, number: take.number) {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(copy).font(VCType.callout.font()).foregroundStyle(DesignValues.color("status.warning"))
@@ -384,7 +388,7 @@ extension ClipTakePlan.Phrase {
                     }
                 }
             }
-            ForEach(phrase.takes.filter { !$0.row.selectable }) { take in
+            ForEach(phrase.takes.filter { !$0.row.selectable && $0.source == .clonedVoice }) { take in
                 if let copy = TakeFailurePresentation.leftOut(take.row, number: take.number) {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         if take.playable, !session.takesBusy {

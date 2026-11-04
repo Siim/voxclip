@@ -64,6 +64,7 @@ public enum MicrophoneTakeMaker {
         // The room tone and source level come from the phrase as planned; the take itself says the recognized words.
         let preflight = try VoiceLabTakeProcessing.preflight(input)
         let analysis = try VoiceLabTakeProcessing.process(result, input: spoken, preflight: preflight)
+        try FileManager.default.createDirectory(at: storage.scratchRoot, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         let asset = try VoiceLabAssetStore.write(pcm16: pcm, sampleRate: assetRate, projectId: storage.projectId,
             assetId: UUID().uuidString.lowercased(), paidRoot: storage.paidRoot, createdAt: date)
         let snapshot = try VoiceLabAssets.preparePaid(asset: asset, projectId: storage.projectId, paidRoot: storage.paidRoot,

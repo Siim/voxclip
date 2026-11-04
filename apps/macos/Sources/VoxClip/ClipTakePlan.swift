@@ -790,7 +790,7 @@ import VoxClipMedia
         guard !generating, !preparing, !publishing, !preparingVideo, !retired, isCurrent(), phrases.indices.contains(phrase),
               let index = phrases[phrase].takes.firstIndex(where: { $0.id == take }),
               let row = try? phrases[phrase].takes[index].row.acceptingJoinAdvisory(at: date) else { return false }
-        phrases[phrase].takes[index] = Take(number: phrases[phrase].takes[index].number, row: row)
+        phrases[phrase].takes[index] = Take(number: phrases[phrase].takes[index].number, row: row, source: phrases[phrase].takes[index].source)
         return select(take: take, phrase: phrase)
     }
 

@@ -61,7 +61,7 @@ public enum VoiceLabRecordedTake {
             speakerModel: nil, speakerPassed: nil, joinAdvisory: row.acceptedJoinAdvisory)
         let request = row.id.uuidString.lowercased()
         var provenance = VoiceLabProvenance(provider: provider, endpoint: endpoint, model: model, voiceId: voiceID,
-            consentRecordId: nil, requestId: request, seed: nil, createdAt: createdAt)
+            consentRecordId: nil, requestId: request, seed: row.seed, createdAt: createdAt)
         provenance.region = region
         let words = published.words.map { VoiceLabWord(text: $0.text, start: $0.start, end: $0.end, synthetic: false) }
         return try VoiceLabRecipeBuilder.assemble(row: row, take: take, input: input, published: published, asset: asset,

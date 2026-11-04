@@ -279,7 +279,6 @@ enum PhraseMicrophoneCopy {
                     .fixedSize(horizontal: false, vertical: true)
                     .columnLayoutEvidence("voice.phrase.\(phrase.id).microphone.problem.line", text: microphone.problem)
             }
-            ForEach(phrase.takes.filter { $0.source == .microphone }) { take in ownTake(take) }
             Text(PhraseOwnWordsCopy.microphoneFooter).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
                 .columnLayoutEvidence("voice.phrase.\(phrase.id).microphone.next.line", text: PhraseOwnWordsCopy.microphoneFooter)
         }
@@ -308,12 +307,38 @@ enum PhraseMicrophoneCopy {
         .accessibilityElement(children: .combine).accessibilityLabel("Recording phrase \(phrase.id + 1)")
     }
 
+    /// `fits`: its length fits with the source video or a cut; `carried`: some video duration can carry it.
+    static func line(_ take: ClipTakePlan.Take, words: String, slot: Double, fits: Bool, carried: Bool) -> String {
+        let length = take.length.map(PhraseMicrophoneCopy.seconds) ?? "no length"
+        guard take.row.selectable else {
+            return "Your take · “\(words)” · \(TakeFailurePresentation.reason(for: take.row) ?? "didn't pass the checks.") Record again."
+        }
+        let difference = (take.length ?? slot) - slot
+        if !carried {
+            return "Your take · “\(words)” · runs \(length) for a \(PhraseMicrophoneCopy.seconds(slot)) gap, too \(difference < 0 ? "short" : "long") to fit. Record again."
+        }
+        let join = take.row.hasJoinAdvisory ? " · the join may sound uneven, listen before using" : ""
+        if take.fits { return "Your take · “\(words)” · fits \(length) ✓\(join) · free" }
+        let verdict = fits ? "\(PhraseMicrophoneCopy.seconds(abs(difference))) \(difference < 0 ? "shorter" : "longer"), the video is cut to it"
+            : "\(PhraseMicrophoneCopy.seconds(abs(difference))) \(difference < 0 ? "shorter" : "longer"), the video is matched to it"
+        return "Your take · “\(words)” · \(verdict)\(join) · free"
+    }
+}
+
+/// One of the user's own takes in the phrase's take list, with Play, Use your take (or Use anyway) and Record again.
+@MainActor struct OwnTakeRow: View {
+    @Bindable var session: RewriteSession
+    @Bindable var microphone: PhraseMicrophoneTake
+    @Bindable var plan: ClipTakePlan
+    let phrase: ClipTakePlan.Phrase
+    let take: ClipTakePlan.Take
     /// "Your take · “recognized words” · fits 1.4 s ✓ · free", with [Use your take] and [Record again], or the misfit's
     /// measured length with Record again and, where a video duration can carry it, Use anyway.
-    @ViewBuilder private func ownTake(_ take: ClipTakePlan.Take) -> some View {
+    var body: some View {
         let words = plan.microphoneTake(take.id)?.text ?? ""
         let used = phrase.selectedID == take.id
-        let line = PhraseMicrophoneRow.line(take, words: words, slot: phrase.originalLength, fits: plan.lengthFits(take: take))
+        let line = PhraseMicrophoneRow.line(take, words: words, slot: phrase.originalLength, fits: plan.lengthFits(take: take),
+            carried: plan.durationAvailable(take: take))
         VStack(alignment: .leading, spacing: 4) {
             Text(line).font(VCType.callout.font())
                 .foregroundStyle(DesignValues.color(take.row.selectable && plan.durationAvailable(take: take) ? "text.primary" : "status.warning"))
@@ -335,9 +360,9 @@ enum PhraseMicrophoneCopy {
                         }
                         .buttonStyle(.plain).modifier(PanelButtonEvidence(id: "microphone.use.\(phrase.id).\(take.number)", title: title))
                     }
-                    if access(), plan.inputs.indices.contains(phrase.id) {
+                    if [.allowed, .notDetermined].contains(microphone.access()), plan.inputs.indices.contains(phrase.id) {
                         Button("Record again") {
-                            session.focusedTakePhrase = phrase.id
+                            session.chooseWording(.microphone, phrase: phrase.id)
                             Task { await microphone.record(phrase: phrase.id, plan: plan) }
                         }
                         .buttonStyle(.plain).modifier(PanelButtonEvidence(id: "microphone.again.\(phrase.id).\(take.number)", title: "Record again"))
@@ -345,19 +370,5 @@ enum PhraseMicrophoneCopy {
                 }.font(VCType.callout.font())
             }
         }
-    }
-    private func access() -> Bool { [.allowed, .notDetermined].contains(microphone.access()) }
-
-    static func line(_ take: ClipTakePlan.Take, words: String, slot: Double, fits: Bool) -> String {
-        let length = take.length.map(PhraseMicrophoneCopy.seconds) ?? "no length"
-        guard take.row.selectable else {
-            return "Your take · “\(words)” · \(TakeFailurePresentation.reason(for: take.row) ?? "didn't pass the checks.") Record again."
-        }
-        if take.row.hasJoinAdvisory { return "Your take · “\(words)” · \(length) · the join may sound uneven. Listen before using · free" }
-        if take.fits { return "Your take · “\(words)” · fits \(length) ✓ · free" }
-        let difference = (take.length ?? slot) - slot
-        let verdict = fits ? "\(PhraseMicrophoneCopy.seconds(abs(difference))) \(difference < 0 ? "shorter" : "longer"), the video adjusts"
-            : "runs \(length) for a \(PhraseMicrophoneCopy.seconds(slot)) gap, too \(difference < 0 ? "short" : "long") to fit"
-        return "Your take · “\(words)” · \(verdict) · free"
     }
 }
