@@ -1,5 +1,15 @@
 # macOS implementation contracts
 
+### 2026-11-04 — Windows Core twin: new shared vectors replayed on Mac
+
+- **Shared changes.**
+  - New `homophone-word-check-cases.json` (`voxclip-homophone-word-check/1`, 42 cases, `generate_homophone_word_check.py`). Mac replays it in `VoiceLabTakeQualityTests.homophoneWordCheckReplaysSharedVectors`: Soundex keys, sound-alike pairs, `replacementWords` sets, and 12 word checks with their raw and normalized match.
+  - New `lipsync-render-v3.voxclip` and `lipsync-project-cases.json` (`voxclip-lipsync-project/1`, 12 cases, `generate_render_lipsync.py`): one `cut_off` segment over the source and one `remap` segment over a cut. Mac replays them in `Lipsync/LipsyncProjectVectorTests`: decoded fields and `lipsyncBase` equal to the plain candidate, an unchanged save, every selection prepares, and six invalid edits with the shared `VoiceLabProjectError`.
+  - The project schema now allows `syncMode` `cut_off`, which Mac already writes (`generate_render_schema.py`; `tools/voice-lab` schema test).
+- **Mac change.** None in Sources; tests only.
+- **Windows.** Its Core now validates Mac's lip-synced recipes, applies the homophone rule and parses `nextActions`. The placement, recalibration and automatic-take rules live in Mac's App layer (`ClipTakePlan`, `RewritePhraseTiming`), so they are owed to the Windows App package; the list is in apps/windows/CONTRACTS.md.
+- **Verification.** `swift test --filter "VoiceLabTakeQualityTests|LipsyncProjectVectorTests|RewriteNextActionsTests"`: 19/19. `exampleProjectsKeepTheirTimestamps` (it decodes the new project): 1/1.
+
 ### 2026-11-04 — Realistic Rewrite smoke: video fixture, spoken take lengths, Choose Take, held-back changes priced
 
 - **Smoke fixtures.**

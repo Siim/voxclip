@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Windows opens and saves projects with lip-synced Rewrite phrases from a Mac, accepts sound-alike spellings of your new words in the word check, and reads Rewrite's suggested next steps.
 - A take whose voice couldn't be measured is one click away (Choose Take), and a change that is still too long is priced with the others and reworded once its take is heard.
 - A phrase that already has a fitting take is never held back for a shorter wording later, and Use always shows once its takes fit.
 - Rewrite fixes its own stuck phrases automatically within a spending cap, so you only listen and press Use.
