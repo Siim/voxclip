@@ -1,5 +1,19 @@
 # macOS implementation contracts
 
+### 2026-11-04 — Mac Core replays recorded-take-cases.json; usage strings name Say it myself
+
+The Windows Core agent wrote `recorded-take-cases.json` (`voxclip-voice-lab-recorded-take-cases/1`, `generate_render_recorded.py`) from reading Mac code. This entry replays it against that code.
+
+- **Built.** `VoiceLabRecordedTakeReplayTests` (Core, 5 tests) replays all 17 cases and the three projects (`recorded-`, `recorded-lipsync-`, `recorded-beside-tts-render-v3.voxclip`):
+  - *renders (3):* `VoiceLabProject.validate` + `VoiceLabRenderValidation.validate`, an unchanged save, `VoiceLabRenderContract.prepare`/`verify`, the disclosure (required, kinds, AI seconds, persistent, label intervals, post text), the selected segment IDs and kinds, `isAIModified` against the label, and the output plan's word captions;
+  - *acceptAll (2):* `VoiceLabProject.acceptAll` and `VoiceLabEditCommand.acceptAll(voice: nil)` into the project without the segment. Recorded: no voice reference, and the save equals the fixture. As `tts`: both give `consentUnverified`;
+  - *invalid (12):* each `set` applied by path, then refused with the shared error by decode and both validators;
+  - *recipe builder:* `VoiceLabRecordedTake.candidate`/`segment` rebuild the stored recorded recipe exactly (the fixture's 0.9999999999999999 stretch, inherited from the passage fixture, is the only difference: a recorded take is never stretched), and accepting it without a voice needs no label.
+- **Disagreements.** None: every expected value matches the Mac code, and §8.13 agrees.
+- **Info.plist.** `NSMicrophoneUsageDescription` adds "a Rewrite phrase you say yourself". `NSSpeechRecognitionUsageDescription` now reads "VoxClip recognizes speech on this Mac to transcribe your videos so you can edit them by their words, and to check the words you record for a Rewrite phrase."
+- **Deleted.** Nothing.
+- **Verification.** Core 1,191 tests in 113 suites pass with `VOXCLIP_SHARED_DIR` set, as CI sets it (without it, audio-tag and take-run tests fail because `SharedResources` cannot find `shared/data` from the test helper). The new suite fails when the fixture is mutated (5 changed values → 6 issues). Voice Lab generators plus `check_drift.py`: no drift, clean tree. `bundle.sh --sign-only`: built and signed, and the bundled Info.plist carries both strings.
+- **Next package must know.** `doc/spec/transcription.md` (line 998) quotes an older speech-recognition string ("… with Apple's on-device speech recognition. Audio stays on this Mac.") as defined in `doc/release.md` §2.2, which no longer holds it; the docs were out of this package's scope.
 ### 2026-11-04 — Rewrite phrase cards: My words and Say it myself
 
 User request (approved mockup, both options): "we should have option to dictate manually the rephrased sentences since we have video set and just need to add better wording". Design: design.md §6.3.8 "Your own words"; spec: voice-lab.md §8.13.
