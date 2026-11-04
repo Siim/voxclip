@@ -166,8 +166,9 @@ import VoxClipCore
                         detail: "\(count) of \(voiced) voice change\(voiced == 1 ? "" : "s") applied in your voice"))
                 }
                 if var last = scenario.steps.popLast() {
-                    last = Step(index: last.index, action: last.action, snapshot: last.snapshot, checks: last.checks + checks, capture: last.capture)
-                    scenario.steps.append(last)
+                    var completed = Step(index: last.index, action: last.action, snapshot: last.snapshot, checks: last.checks + checks, capture: last.capture)
+                    completed.seconds = last.seconds; completed.waits = last.waits
+                    scenario.steps.append(completed)
                 }
             }
             harness.close()
@@ -384,44 +385,22 @@ import VoxClipCore
         }
         guard writer.startWriting() else { throw writer.error ?? CocoaError(.fileWriteUnknown) }
         writer.startSession(atSourceTime: .zero)
-        let total = seconds * 30, samples = min(pcm.count, seconds * rate)
-        var written = 0, frame = 0
-        do {
-            // Whichever input is behind in time and ready goes next, so the writer's interleaving never waits on the other.
-            while written < samples || frame < total {
-                guard writer.status == .writing else { throw writer.error ?? CocoaError(.fileWriteUnknown) }
-                let audioTime: Double = Double(written) / Double(rate)
-                let videoTime: Double = Double(frame) / 30
-                let audioBehind = frame >= total || audioTime <= videoTime
-                if written < samples, audio.isReadyForMoreMediaData, audioBehind || !video.isReadyForMoreMediaData {
-                    let count = min(1_600, samples - written)
-                    guard audio.append(try lpcm(pcm, from: written, count: count, rate: rate, format: format)) else {
-                        throw writer.error ?? CocoaError(.fileWriteUnknown)
-                    }
-                    written += count
-                } else if frame < total, video.isReadyForMoreMediaData {
-                    guard adaptor.append(frames[(frame / 30) % frames.count], withPresentationTime: CMTime(value: Int64(frame), timescale: 30)) else {
-                        throw writer.error ?? CocoaError(.fileWriteUnknown)
-                    }
-                    frame += 1
-                } else {
-                    try await Task.sleep(for: .milliseconds(1))
-                }
-            }
-            audio.markAsFinished(); video.markAsFinished()
-            writer.endSession(atSourceTime: CMTime(value: Int64(seconds), timescale: 1))
-            await writer.finishWriting()
-            guard writer.status == .completed else { throw writer.error ?? CocoaError(.fileWriteUnknown) }
-        } catch {
-            writer.cancelWriting()
+        // Each input is fed on its own queue as the writer asks for it, and finished as soon as its data runs out. A
+        // single loop polling both inputs could wait forever when a slow encoder (hosted runners) left neither ready.
+        let feed = MovieFeed(pcm: Array(pcm.prefix(seconds * rate)), rate: rate, format: format, frames: frames, total: seconds * 30,
+            audio: audio, video: video, adaptor: adaptor)
+        let fed = await feed.run()
+        writer.endSession(atSourceTime: CMTime(value: Int64(seconds), timescale: 1))
+        if fed { await writer.finishWriting() } else { writer.cancelWriting() }
+        guard fed, writer.status == .completed else {
             try? FileManager.default.removeItem(at: destination)
-            throw error
+            throw writer.error ?? CocoaError(.fileWriteUnknown)
         }
         return destination
     }
 
     /// `count` samples of `pcm` from `start` as one 16-bit LPCM sample buffer.
-    private static func lpcm(_ pcm: [Float], from start: Int, count: Int, rate: Int, format: AVAudioFormat) throws -> CMSampleBuffer {
+    nonisolated static func lpcm(_ pcm: [Float], from start: Int, count: Int, rate: Int, format: AVAudioFormat) throws -> CMSampleBuffer {
         var bytes = Data(count: count * 2)
         bytes.withUnsafeMutableBytes { raw in
             for index in 0..<count {
@@ -439,6 +418,66 @@ import VoxClipCore
             presentationTimeStamp: CMTime(value: Int64(start), timescale: CMTimeScale(rate)), decodeTimeStamp: .invalid)
         return try CMSampleBuffer(dataBuffer: block, formatDescription: format.formatDescription, numSamples: count,
             sampleTimings: [timing], sampleSizes: [2])
+    }
+
+    /// Feeds the synthetic movie's two writer inputs, each on its own queue, until both are finished.
+    nonisolated final class MovieFeed: @unchecked Sendable {
+        private let pcm: [Float]
+        private let rate: Int
+        private let format: AVAudioFormat
+        private let frames: [CVPixelBuffer]
+        private let total: Int
+        private let audio: AVAssetWriterInput
+        private let video: AVAssetWriterInput
+        private let adaptor: AVAssetWriterInputPixelBufferAdaptor
+        private let audioQueue = DispatchQueue(label: "voxclip.smoke.movie.audio")
+        private let videoQueue = DispatchQueue(label: "voxclip.smoke.movie.video")
+        /// Touched only on `audioQueue` and `videoQueue` respectively.
+        private var written = 0, frame = 0
+
+        init(pcm: [Float], rate: Int, format: AVAudioFormat, frames: [CVPixelBuffer], total: Int, audio: AVAssetWriterInput,
+             video: AVAssetWriterInput, adaptor: AVAssetWriterInputPixelBufferAdaptor) {
+            self.pcm = pcm; self.rate = rate; self.format = format; self.frames = frames; self.total = total
+            self.audio = audio; self.video = video; self.adaptor = adaptor
+        }
+
+        /// True when every sample and frame was appended.
+        func run() async -> Bool {
+            async let sound = feedAudio()
+            async let picture = feedVideo()
+            let (audioFed, videoFed) = await (sound, picture)
+            return audioFed && videoFed
+        }
+
+        private func feedAudio() async -> Bool {
+            await withCheckedContinuation { (done: CheckedContinuation<Bool, Never>) in
+                audio.requestMediaDataWhenReady(on: audioQueue) { [self] in
+                    while audio.isReadyForMoreMediaData {
+                        guard written < pcm.count else { audio.markAsFinished(); done.resume(returning: true); return }
+                        let count = min(1_600, pcm.count - written)
+                        guard let buffer = try? DebugRewriteSmoke.lpcm(pcm, from: written, count: count, rate: rate, format: format),
+                              audio.append(buffer) else {
+                            audio.markAsFinished(); done.resume(returning: false); return
+                        }
+                        written += count
+                    }
+                }
+            }
+        }
+
+        private func feedVideo() async -> Bool {
+            await withCheckedContinuation { (done: CheckedContinuation<Bool, Never>) in
+                video.requestMediaDataWhenReady(on: videoQueue) { [self] in
+                    while video.isReadyForMoreMediaData {
+                        guard frame < total else { video.markAsFinished(); done.resume(returning: true); return }
+                        guard adaptor.append(frames[(frame / 30) % frames.count], withPresentationTime: CMTime(value: Int64(frame), timescale: 30)) else {
+                            video.markAsFinished(); done.resume(returning: false); return
+                        }
+                        frame += 1
+                    }
+                }
+            }
+        }
     }
 
     // MARK: Harness
@@ -542,8 +581,9 @@ import VoxClipCore
 
         // MARK: Waiting
 
-        /// Waits until the session has nothing in flight but a scripted reply the scenario holds.
-        func settle(timeout: Double = 20) async {
+        /// Waits until the session has nothing in flight but a scripted reply the scenario holds. The limit only stops a
+        /// session that never settles; a slow runner (hosted CI) can take 20 s and more for one automatic fix.
+        func settle(timeout: Double = 90) async {
             let start = ProcessInfo.processInfo.systemUptime
             var calm = 0
             var last = start
