@@ -50,7 +50,7 @@ public static class MusicProject
 {
     /// <summary>The reason a Windows render or export of a project with music stops.</summary>
     public const string ExportUnsupportedMessage =
-        "Windows cannot mix background music into exports yet. Remove the clip's music on Windows, or export it on a Mac. Your music and edits are unchanged.";
+        "Windows cannot mix background music into exports yet. Export this project on a Mac, or remove its music there. Your music and edits are unchanged.";
 
     private const string Identifier = "[A-Za-z0-9][A-Za-z0-9._:-]{0,63}";
     private const string File = "[0-9a-f-]{36}/music-[a-z0-9][a-z0-9_-]{0,57}\\.(mp3|m4a|wav|aif|aiff|flac)";

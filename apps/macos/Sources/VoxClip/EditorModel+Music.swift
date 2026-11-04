@@ -165,6 +165,9 @@ struct MusicPanelServices: Sendable {
 
     func dismissFailure() { if case .failed = phase { phase = .idle } }
 
+    /// Waits for the current search or Use to finish (the autopilot plan and tests wait on it).
+    func settled() async { await work?.value }
+
     /// The candidate id a stored entry answers to, so the row that made it shows "Using".
     static func usingID(_ entry: ProjectMusic) -> String { "using-" + entry.id }
 

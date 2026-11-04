@@ -13,6 +13,7 @@ struct PopUpInventoryTests {
     static let allowed: [String: (count: Int, why: String)] = [
         "EditorModel.swift": (1, "Locate…'s NSOpenPanel: a system file picker"),
         "ExportJob.swift": (1, "the Export job's folder NSOpenPanel: a system file picker"),
+        "MusicSection.swift": (1, "the Music section's Add a file… NSOpenPanel: a system file picker"),
         "SettingsView.swift": (4, "Settings pages: two NSOpenPanels, the licences and privacy text sheets"),
         "LocalModelsView.swift": (1, "Settings model download confirmation; editor downloads are inline"),
         "VoiceLabSettings.swift": (1, "Settings-only saved-voice deletion; enrollment is inline"),

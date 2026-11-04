@@ -13,4 +13,4 @@
 
 Topic specifications: [editing](spec/editing.md), [transcription](spec/transcription.md),
 [captions](spec/captions.md), [AI connectors](spec/ai.md), [Voice Lab](spec/voice-lab.md),
-[context demonstrations and motion](spec/context-demo.md), and [ingest](spec/ingest.md). Historical notes live in [archive/](archive/).
+[context demonstrations and motion](spec/context-demo.md), [background music](spec/music.md), and [ingest](spec/ingest.md). Historical notes live in [archive/](archive/).

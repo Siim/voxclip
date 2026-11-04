@@ -80,12 +80,6 @@ private final class FetchLog: Sendable {
         return Fixture(root: root, folder: folder, app: app, editor: editor, audition: audition, fetches: fetches)
     }
 
-    private func settle(_ panel: MusicPanel) async {
-        for _ in 0..<2_000 {
-            switch panel.phase { case .searching, .using: await Task.yield(); default: return }
-        }
-    }
-
     @Test func withoutSuggestionsItListsTheMusicFolderAndNamesTheNextStep() throws {
         let fixture = try fixture(files: ["calm evening.m4a", "drums.mp3", "notes.txt"])
         defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
@@ -105,7 +99,7 @@ private final class FetchLog: Sendable {
         let panel = fixture.editor.musicPanel
         panel.query = "calm piano"
         panel.search(model: fixture.editor)
-        await settle(panel)
+        await panel.settled()
         let rows = panel.rows(model: fixture.editor)
         #expect(rows.map(\.source) == [.library, .generated, .file])
         #expect(rows.map(MusicCandidateRow.badge) == ["CC BY", "Eleven", "Yours"])
@@ -119,7 +113,7 @@ private final class FetchLog: Sendable {
         defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
         let panel = fixture.editor.musicPanel
         panel.suggest(MusicBrief(mood: "calm"), model: fixture.editor)
-        await settle(panel)
+        await panel.settled()
         fixture.editor.isPlaying = true
         panel.toggleAudition(Self.library, model: fixture.editor)
         #expect(!fixture.editor.isPlaying && panel.playing == Self.library.id && fixture.audition.played == [Self.library.audioURL!])
@@ -133,9 +127,9 @@ private final class FetchLog: Sendable {
         let editor = fixture.editor, panel = editor.musicPanel
         let steps = editor.undoSteps
         panel.suggest(MusicBrief(mood: "calm"), model: editor)
-        await settle(panel)
+        await panel.settled()
         panel.use(Self.library, model: editor)
-        await settle(panel)
+        await panel.settled()
         #expect(panel.phase == .idle)
         let entry = try #require(editor.currentMusic)
         #expect(entry.clipId == editor.renderedActiveClipID && entry.license == .by && entry.gainDb == -20 && entry.ducking)
@@ -160,9 +154,9 @@ private final class FetchLog: Sendable {
         defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
         let panel = fixture.editor.musicPanel
         panel.suggest(MusicBrief(mood: "calm"), model: fixture.editor)
-        await settle(panel)
+        await panel.settled()
         panel.use(Self.generated(), model: fixture.editor)
-        await settle(panel)
+        await panel.settled()
         guard case .failed(let message) = panel.phase else { Issue.record("expected a failure, got \(panel.phase)"); return }
         #expect(!message.isEmpty && fixture.editor.project.music.isEmpty)
         #expect(MusicSection.footer(phase: panel.phase, using: nil, hasRows: true) == "Nothing was changed. Try another track, or try this one again.")
@@ -181,21 +175,13 @@ private final class FetchLog: Sendable {
         canvas.layoutSubtreeIfNeeded()
         #expect(canvas.music.state.music == nil && canvas.music.accessibilityLabel() == "Music: none")
         fixture.editor.musicPanel.use(Self.library, model: fixture.editor)
-        await fixture.editor.musicPanel.settleForTests()
+        await fixture.editor.musicPanel.settled()
         canvas.renderContent()
         #expect(canvas.music.state.music?.title == "Quiet piano")
         #expect(canvas.music.accessibilityLabel() == "Music: Quiet piano, \u{2212}20 dB")
         shell.choosePanelJob(.export, for: fixture.editor)
         canvas.headers[4].action?()
         #expect(shell.panelJob(for: fixture.editor) == .captions)
-    }
-}
-
-extension MusicPanel {
-    func settleForTests() async {
-        for _ in 0..<2_000 {
-            switch phase { case .searching, .using: await Task.yield(); default: return }
-        }
     }
 }
 #endif
