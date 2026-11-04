@@ -33,6 +33,11 @@ class ProjectSchemaGenerationTests(unittest.TestCase):
         self.assertEqual(set(evidence['required']), {'mode', 'recordId', 'consentMethod', 'voicedFrames', 'takeCount'})
         self.assertNotIn('recordID', evidence['properties'])
 
+    def test_lip_synced_video_records_either_sync_mode(self):
+        schema = json.loads((ROOT / 'shared/schemas/project.schema.json').read_bytes())
+        sync = schema['$defs']['voiceLabVideoRecipe']['properties']['syncMode']['oneOf']
+        self.assertIn({'enum': ['remap', 'cut_off']}, sync)
+
     def test_render_schema_regeneration_preserves_v4_byte_for_byte(self):
         relative = Path('tools/fixtures/voice-lab/generate_render_schema.py')
         schema_relative = Path('shared/schemas/project.schema.json')

@@ -42,7 +42,7 @@ d['voiceLabSeams'] = obj({'in': {'$ref': '#/$defs/voiceLabSeam'}, 'out': {'$ref'
 d['voiceLabChunk'] = obj({'sourceStartSample': integer, 'sourceEndSample': integer, 'requestId': idref, 'seed': {'type': 'integer', 'minimum': 0, 'maximum': 4294967295}, 'assetId': idref, 'assetSha256': {'type': 'string', 'pattern': '^[0-9a-f]{64}$'}, 'assembledStartFrame': integer, 'assembledEndFrame': integer})
 video_fields = {'mode': {'enum': ['source', 'cut', 'retimed', 'zoomCover', 'lipsync']}, 'sourceStartSample': integer, 'sourceEndSample': integer, 'outputSamples': integer,
                 'retimeFactor': num, 'zoom': num, 'faceX': {'type': 'number', 'minimum': 0, 'maximum': 1}, 'faceY': {'type': 'number', 'minimum': 0, 'maximum': 1},
-                'assetId': idref, 'provider': string, 'model': string, 'requestId': idref, 'windowStartSample': integer, 'windowEndSample': integer, 'syncMode': {'enum': ['remap']}}
+                'assetId': idref, 'provider': string, 'model': string, 'requestId': idref, 'windowStartSample': integer, 'windowEndSample': integer, 'syncMode': {'enum': ['remap', 'cut_off']}}
 for key in set(video_fields) - {'mode', 'sourceStartSample', 'sourceEndSample', 'outputSamples'}:
     video_fields[key] = nullable(video_fields[key])
 # Every key is written, with null for the fields a mode does not use, so both Cores read every saved recipe.
