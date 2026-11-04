@@ -56,7 +56,8 @@ enum CLIWorkflow {
         try Task.checkCancellation()
         let attributes = try FileManager.default.attributesOfItem(atPath: source.path)
         guard let bytes = (attributes[.size] as? NSNumber)?.int64Value else { throw VoxClipError.mediaMissing(source.lastPathComponent) }
-        return Project(id: UUID().uuidString, title: source.deletingPathExtension().lastPathComponent, createdAt: Date(), modifiedAt: Date(),
+        // Project ids are lowercase UUIDs (ProjectValidation); `uuidString` is uppercase.
+        return Project(id: UUID().uuidString.lowercased(), title: source.deletingPathExtension().lastPathComponent, createdAt: Date(), modifiedAt: Date(),
             savedBy: ProjectWriter(version: AppVersion.projectWriterVersion),
             media: ProjectMedia(source: MediaReference(absolutePath: source.path, sizeBytes: bytes, durationSeconds: probe.durationSeconds,
                                                        contentKey: key, video: probe.video, audio: probe.audio)), transcript: transcript,
