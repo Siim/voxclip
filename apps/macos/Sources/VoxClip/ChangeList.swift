@@ -242,7 +242,8 @@ extension RewriteSession {
             while let last = text.last, kind != .fix, ",;.".contains(last) { text.removeLast() }
             return text
         }
-        let timing = kind == .voice ? voiceReview(change.ordinal)?.timing : nil
+        // A voiced change's measured take is its timing (the takes card shows it): no estimate line or recovery under it.
+        let timing = kind == .voice && !voicedOrdinals.contains(change.ordinal) ? voiceReview(change.ordinal)?.timing : nil
         let spoken = change.description(prefix: "Change", count: count, removed: reading.removed, inserted: reading.inserted)
         let annotations = changes.indices.contains(change.ordinal - 1) ? changes[change.ordinal - 1].hunk.audioTags : []
         let original = changes.indices.contains(change.ordinal - 1) ? changes[change.ordinal - 1].hunk.newTokens.joined(separator: " ") : reading.text
@@ -311,7 +312,10 @@ extension RewriteSession {
         }
         if free > 0 { return (PanelFooter(note: "No AI voice needed. Nothing is sent.", primary: apply(beside: false)), nil, false, nil) }
         if set.items.allSatisfy({ $0.state == .kept }) { return (PanelFooter(note: Self.everyChangeKept), nil, false, nil) }
-        return (PanelFooter(note: "Keep a change to apply it."), nil, false, nil)
+        // Every change left out (Keep original words, or after Stop): Done ends the Rewrite with the words as recorded,
+        // as when every phrase is kept as recorded after takes; Keep on a row still brings a change back.
+        return (PanelFooter(note: "Keep a change to apply it.",
+            primary: PanelAction(id: "closeRewrite", title: "Done") { [weak self] in self?.editor.closeRewrite() }), nil, false, nil)
     }
     /// design.md R2's advisory note over the voice budget (voice-lab.md §8.2): Rewrite goes on and says so.
     func budgetCallout(_ advice: VoiceBudgetAdvice) -> String {
@@ -400,7 +404,33 @@ extension RewriteSession {
             return PanelFooter(note: "Your original audio is kept. " + spend,
                 primary: PanelAction(id: "closeRewrite", title: "Done") { [weak self] in self?.editor.closeRewrite() })
         }
-        return PanelFooter(note: "Making takes…\n" + spend)
+        return takesWaitingStep(plan, spend: spend)
+    }
+    /// Past every stuck or unchosen phrase, what Use still waits for, never "Making takes…" while nothing runs: a
+    /// priced take to approve, the matched video (prepared again after a failure), a join to listen to, or a check.
+    private func takesWaitingStep(_ plan: ClipTakePlan, spend: String) -> PanelFooter {
+        if let action = pricedTakeAction(phrase: takeQuotePhrase) {
+            return PanelFooter(note: takeSendLine + "\n" + spend, primary: action)
+        }
+        if plan.preparingVideo { return PanelFooter(note: "Preparing the matched video…\n" + spend) }
+        if plan.videoPreparationFailure != nil {
+            let note = plan.problem.isEmpty ? "The matched video couldn't be prepared." : plan.problem
+            return PanelFooter(note: note + "\n" + spend, primary: PanelAction(id: "prepareVideo", title: "Prepare Video Again") { [weak self, weak plan] in
+                guard let self, let plan else { return }
+                plan.retryVideoPreparation()
+                takesTask = Task { [weak self, weak plan] in
+                    await plan?.prepareVideoChoices(); await plan?.lipsync.refresh()
+                    self?.showProposal()
+                }
+            })
+        }
+        if let listen = plan.phrases.first(where: { !$0.leftOut && $0.selected?.row.requiresJoinAdvisoryAcceptance == true }) {
+            return PanelFooter(note: "Listen to phrase \(listen.id + 1)'s take, then Use anyway or try another.\n" + spend)
+        }
+        if plan.phrases.contains(where: { $0.takes.contains { $0.row.voiceCheck == .waiting } }) {
+            return PanelFooter(note: "Checking takes…\n" + spend)
+        }
+        return PanelFooter(note: "Keep original words or try another take for a phrase above.\n" + spend)
     }
 
     /// The proposal has changes waiting for review, shown or set aside by R3: its tab shows the dirty dot (notes.md §5).
@@ -474,7 +504,7 @@ extension RewriteSession {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(set.items) { item in
-                ChangeRow(item: item, focused: item.ordinal == set.focused,
+                ChangeRow(item: item, focused: item.ordinal == set.focused, locked: task.wordingLocked,
                     tagsChanged: { task.audioTagsChanged?(item.ordinal, $0) },
                     timingAction: { task.phraseTimingAction?(item.ordinal, $0) }, review: { task.review?(item.ordinal, $0) })
             }
@@ -488,7 +518,6 @@ extension RewriteSession {
             }
         }
         .padding(.horizontal, -8)
-        .disabled(task.wordingLocked)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Changes")
         .columnLayoutEvidence("director.changes")
@@ -498,6 +527,9 @@ extension RewriteSession {
 @MainActor private struct ChangeRow: View {
     let item: ProposalItem
     let focused: Bool
+    /// The wording is being fitted or re-asked: the row shows its words and timing only, no control that can't act
+    /// (the headline's live line has Stop).
+    let locked: Bool
     let tagsChanged: ([VoiceLabAudioTag]) -> Void
     let timingAction: (PhraseTimingAction) -> Void
     let review: (ChangeReview) -> Void
@@ -505,7 +537,7 @@ extension RewriteSession {
     /// Keep and Undo where they can act, then Edit, as the transcript offers them: a waiting change Keep and Undo, a change
     /// left out Keep, a kept voice change Undo. A kept cut or fix is in the project; ⌘Z takes it back.
     private var actions: [ChangeReview] {
-        guard item.reviewable else { return [] }
+        guard item.reviewable, !locked else { return [] }
         switch item.state {
         case .pending: return [.keep, .undo, .edit]
         case .excluded: return [.keep, .edit]
@@ -543,7 +575,8 @@ extension RewriteSession {
                     .frame(width: 3, height: 14)
                 Image(systemName: glyph).font(.system(size: 12)).foregroundStyle(DesignValues.color("text.tertiary")).frame(width: 14)
                 if item.kind == .voice {
-                    AudioTagPhrase(text: item.quote, tags: item.audioTags, phrase: item.ordinal, omitted: item.tagsOmitted, changed: tagsChanged)
+                    AudioTagPhrase(text: item.quote, tags: item.audioTags, phrase: item.ordinal, omitted: item.tagsOmitted, editable: !locked,
+                                   changed: tagsChanged)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     Text(item.quote).font(VCType.callout.font())
@@ -558,7 +591,7 @@ extension RewriteSession {
                 Text(timing.copy).font(VCType.small.font().monospaced())
                     .foregroundStyle(DesignValues.color("text.tertiary"))
                     .padding(.leading, 33).padding(.bottom, 6)
-                if !timing.fits, item.state != .excluded {
+                if !timing.fits, item.state != .excluded, !locked {
                     PhraseTimingRecovery(tooLong: timing.tooLong, priceAnyway: !item.pricedAnyway, action: timingAction)
                         .padding(.leading, 33).padding(.bottom, 8)
                 }
@@ -577,7 +610,8 @@ extension RewriteSession {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(focused ? DesignValues.color("bg.selectedRow") : .clear, in: .rect(cornerRadius: 5))
         .contentShape(Rectangle())
-        .onTapGesture { review(.focus) }
+        // Focusing a change stops a running fit (`RewriteSession.review`): the locked row only reads.
+        .onTapGesture { if !locked { review(.focus) } }
         .contextMenu {
             ForEach(actions, id: \.self) { action in
                 Button(action == .keep ? "Keep Change" : action == .undo ? "Undo Change" : "Edit Change") { review(action) }
@@ -586,7 +620,7 @@ extension RewriteSession {
         .accessibilityElement(children: item.kind == .voice || item.timing?.fits == false ? .contain : .ignore)
         .accessibilityLabel(item.spoken)
         .accessibilityAddTraits(focused ? [.isButton, .isSelected] : .isButton)
-        .accessibilityAction { review(.focus) }
+        .accessibilityAction { if !locked { review(.focus) } }
         .modifier(ChangeRowActions(actions: actions, ordinal: item.ordinal, review: review))
         .columnLayoutEvidence("director.change.\(item.ordinal)", text: item.spoken)
     }

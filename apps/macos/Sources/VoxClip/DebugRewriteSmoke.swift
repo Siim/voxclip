@@ -112,15 +112,18 @@ import VoxClipCore
                 harness.stuck = "no control \(control): \(shown)"
             } catch { harness.error = String(describing: error) }
             scenario.steps = harness.steps
-            scenario.completed = harness.completed
+            scenario.completed = harness.completed || (definition.mayEndUnchanged && harness.ended)
             scenario.error = harness.error
             scenario.stuck = harness.stuck
             scenario.requests = await harness.connector?.records ?? []
             scenario.syntheses = RewriteSmokeHTTP.script.withLock { $0.syntheses }
             if definition.requiresCompletion {
                 let applied = harness.completed
-                let check = Check(invariant: "I5", passed: applied,
-                    detail: applied ? "Rewrite applied" : "Rewrite not applied: " + (harness.steps.last.map { summary($0.snapshot) } ?? "no steps"))
+                // S9 stops the fix that would have shortened its only change: Done with the words as recorded completes it.
+                let ended = !applied && definition.mayEndUnchanged && harness.ended
+                let check = Check(invariant: "I5", passed: applied || ended,
+                    detail: applied ? "Rewrite applied" : ended ? "Rewrite ended with Done, the original words kept"
+                        : "Rewrite not applied: " + (harness.steps.last.map { summary($0.snapshot) } ?? "no steps"))
                 if var last = scenario.steps.popLast() {
                     last = Step(index: last.index, action: last.action, snapshot: last.snapshot, checks: last.checks + [check], capture: last.capture)
                     scenario.steps.append(last)
@@ -253,6 +256,8 @@ import VoxClipCore
         var error: String?
         var stuck: String?
         var completed = false
+        /// The driver closed Rewrite from the panel's own control (Use, Apply or Done).
+        var ended = false
         private var paid: Set<UUID> = []
         private var store: VoiceConsentStore?
         private var prices: VoiceLabPriceCatalog?
@@ -429,7 +434,7 @@ import VoxClipCore
         /// control the panel offers. Stops when Rewrite closes or nothing can act.
         func finish(maximumSteps: Int = 12) async throws {
             for _ in 0..<maximumSteps {
-                guard let session, session.isOpen else { completed = applied; return }
+                guard let session, session.isOpen else { completed = applied; ended = true; return }
                 if await useAnywayIfOffered() { continue }
                 if await chooseDurationIfNeeded() { continue }
                 var order = ["approveTakeQuote", "discardChanges", "useTakes", "takeQuote-", "prepareTakes", "makeTakes", "rewriteAgain",
@@ -749,6 +754,8 @@ import VoxClipCore
         let id: String
         let title: String
         var requiresCompletion = true
+        /// I5 also passes when the Rewrite ends with Done and nothing changed (S9: Stop, then keep the words).
+        var mayEndUnchanged = false
         let fixture: Fixture
         let drive: @MainActor (Harness) async throws -> Void
     }
@@ -872,7 +879,7 @@ import VoxClipCore
             }
             try await harness.finish()
         },
-        Definition(id: "S9", title: "Stop in the middle of an automatic fix", requiresCompletion: false,
+        Definition(id: "S9", title: "Stop in the middle of an automatic fix, then finish from the panel Stop leaves", mayEndUnchanged: true,
             fixture: Fixture(rewrites: [.passage(replace([("record a short clip in one take",
                 "film an extraordinarily wonderful, unbelievably spectacular, astonishingly memorable documentary throughout one marathon session")]))],
                 fits: [.held(.sameWords)])) { harness in
@@ -881,6 +888,7 @@ import VoxClipCore
             await harness.connector?.release()
             await harness.settle()
             try await harness.observe("after Stop, the held reply arrives")
+            try await harness.finish()
         },
     ] }
 }

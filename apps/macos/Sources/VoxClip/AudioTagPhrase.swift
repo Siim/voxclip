@@ -10,6 +10,8 @@ import VoxClipCore
     /// Where a new tag goes unless a word is clicked: before the first changed word (after the left bridge words).
     var insertionBoundary: Int? = nil
     var omitted = false
+    /// False while the wording is being fitted: the tags read as text and no + Expression shows (no control that can't act).
+    var editable = true
     let changed: ([VoiceLabAudioTag]) -> Void
     @State private var choosing = false
     /// The word boundary the user clicked while choosing: the tag goes before that word.
@@ -52,6 +54,10 @@ import VoxClipCore
                                 .buttonStyle(.plain)
                                 .accessibilityLabel("Put the expression before \(words[index])")
                         } else { Text(word) }
+                    case .tag(let offset) where !editable:
+                        Text("[\(tags[offset].tag)]")
+                            .padding(.horizontal, 5).padding(.vertical, 2)
+                            .background(DesignValues.color("bg.selectedRow"), in: .rect(cornerRadius: 4))
                     case .tag(let offset):
                         Button { changed(tags.enumerated().filter { $0.offset != offset }.map(\.element)) } label: {
                             HStack(spacing: 3) {
@@ -68,13 +74,15 @@ import VoxClipCore
             }
             .font(VCType.callout.font())
             .foregroundStyle(DesignValues.color("text.primary"))
-            Button("+ Expression") { choosing.toggle(); if !choosing { chosen = nil } }
-                .buttonStyle(.plain).font(VCType.small.font())
-                .foregroundStyle(DesignValues.color("text.secondary"))
-                .accessibilityLabel("Add expression to phrase \(phrase)")
-                .accessibilityValue(choosing ? "Expanded" : "Collapsed")
-                .modifier(PanelButtonEvidence(id: "expression.\(phrase)", title: "+ Expression"))
-            if choosing {
+            if editable {
+                Button("+ Expression") { choosing.toggle(); if !choosing { chosen = nil } }
+                    .buttonStyle(.plain).font(VCType.small.font())
+                    .foregroundStyle(DesignValues.color("text.secondary"))
+                    .accessibilityLabel("Add expression to phrase \(phrase)")
+                    .accessibilityValue(choosing ? "Expanded" : "Collapsed")
+                    .modifier(PanelButtonEvidence(id: "expression.\(phrase)", title: "+ Expression"))
+            }
+            if choosing, editable {
                 Text(Self.placementHint).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
                 ExpressionFlow(spacing: 5) {
                     ForEach(VoiceLabAudioTags.definitions, id: \.tag) { definition in

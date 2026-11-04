@@ -208,33 +208,51 @@ import VoxClipMedia
         return true
     }
 
+    /// [Prepare Video Again]: forgets the failed attempt so the same choices are prepared once more.
+    func retryVideoPreparation() {
+        guard !preparingVideo, videoPreparationFailure != nil else { return }
+        videoPreparationFailure = nil; problem = ""
+    }
+
     private func clearPreparedVideo() {
         videoRevision = UUID(); preparedVideoSelection = nil
         videoPreparationFailure = nil
     }
 
+    /// Every selected phrase has a duration, one of them cuts or matches the video, and that video is neither prepared
+    /// for these choices nor failed for them: Use waits for `prepareVideoChoices`.
+    var needsVideoPreparation: Bool {
+        !selectedPhrases.isEmpty && selectedPhrases.allSatisfy({ $0.videoChoice != nil })
+            && selectedPhrases.contains(where: { $0.videoChoice == .retimed || $0.videoChoice == .cut })
+            && preparedVideoSelection?.choices != videoChoices && videoPreparationFailure == nil
+    }
+
+    /// Prepares the cut or matched video of the selected takes. A selection that changes while it runs (another phrase's
+    /// take or duration) makes that attempt stale; the newest choices are prepared next, so Use never waits on a
+    /// preparation nobody runs.
     func prepareVideoChoices(at date: Date = Date()) async {
-        guard stillCurrent, !generating, !preparing, !publishing, !preparingVideo,
-              !selectedPhrases.isEmpty, selectedPhrases.allSatisfy({ $0.videoChoice != nil }),
-              selectedPhrases.contains(where: { $0.videoChoice == .retimed || $0.videoChoice == .cut }) else { return }
-        if preparedVideoSelection?.choices == videoChoices { return }
-        let turn = videoRevision, choices = videoChoices
-        preparingVideo = true
-        defer { preparingVideo = false }
-        do {
-            let output = try await publishSelection(at: date)
-            let proposed = try VoiceLabEditCommand.acceptAll(segments: output.segments, assets: output.assets, voice: output.voice)
-                .applying(to: project, outputScope: scope)
-            let render = try await VideoDurationRenderReadiness.prepare(proposed, scope: scope, using: prepareDurationRender)
-            try Task.checkCancellation()
-            guard stillCurrent, turn == videoRevision, choices == videoChoices else { throw Failure.stale }
-            preparedVideoSelection = PreparedVideoSelection(choices: choices, acceptance: output, render: render)
-            problem = ""
-        } catch {
-            if turn == videoRevision {
-                preparedVideoSelection = nil; videoPreparationFailure = error; report(error)
+        var attempted = false
+        while stillCurrent, !generating, !preparing, !publishing, !preparingVideo, needsVideoPreparation, !Task.isCancelled {
+            let turn = videoRevision, choices = videoChoices
+            preparingVideo = true; attempted = true
+            do {
+                let output = try await publishSelection(at: date)
+                let proposed = try VoiceLabEditCommand.acceptAll(segments: output.segments, assets: output.assets, voice: output.voice)
+                    .applying(to: project, outputScope: scope)
+                let render = try await VideoDurationRenderReadiness.prepare(proposed, scope: scope, using: prepareDurationRender)
+                try Task.checkCancellation()
+                guard stillCurrent, turn == videoRevision, choices == videoChoices else { throw Failure.stale }
+                preparedVideoSelection = PreparedVideoSelection(choices: choices, acceptance: output, render: render)
+                problem = ""
+            } catch {
+                if turn == videoRevision {
+                    preparedVideoSelection = nil; videoPreparationFailure = error; report(error)
+                }
             }
+            preparingVideo = false
         }
+        // A duration the session chose while this ran was refused; it is chosen now.
+        if attempted { onMeasuredTakesChanged?() }
     }
 
     init(project: Project, scope: VoiceLabOutputScope, envelope: AudioEnvelope, hunks: [VoiceLabDiffHunk],

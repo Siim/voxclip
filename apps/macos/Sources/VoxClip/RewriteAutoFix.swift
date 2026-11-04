@@ -191,6 +191,22 @@ extension RewriteSession {
         return .other(current.last.flatMap { TakeFailurePresentation.reason(for: $0.row) } ?? "Its takes did not pass the checks.")
     }
 
+    /// A takes-plan phrase the estimate holds back ("Change N needs a shorter wording before takes") with no take that
+    /// fits yet: the resolver rewords it from its closest measured take and makes a take of the new wording, with no
+    /// click, as for a take too long. A phrase with a passing take that fits is voiced and never held back.
+    func estimateBlockedReason(_ phrase: ClipTakePlan.Phrase, blocked: Set<Int>) -> StuckTakeReason? {
+        guard !phrase.leftOut, !blocked.isDisjoint(with: takePhraseOrdinals(phrase)) else { return nil }
+        if case .generating = phrase.status { return nil }
+        guard !phrase.takes.contains(where: { $0.row.voiceCheck == .waiting }) else { return nil }
+        let slot = phrase.originalLength
+        let measured = phrase.takes.filter { $0.length != nil && !phrase.beforeExpression.contains($0.id) }
+        guard let take = phrase.selected ?? measured.min(by: { abs($0.length! - slot) < abs($1.length! - slot) }),
+              let length = take.length else { return nil }
+        let tooLong = takePhraseOrdinals(phrase).compactMap { voiceReview($0)?.timing?.tooLong }.first ?? (length > slot)
+        return .length(tooLong: tooLong, measured: length, slot: slot, take: take.id, number: take.number,
+                       selected: phrase.selectedID == take.id)
+    }
+
     /// The phrase's one plain sentence for `reason` (design.md R2): what went wrong, never a list of checks.
     static func stuckSentence(_ reason: StuckTakeReason, phrase: Int) -> String {
         func seconds(_ value: Double) -> String { String(format: "%.1f s", locale: Locale(identifier: "en_US_POSIX"), value) }
@@ -219,8 +235,11 @@ extension RewriteSession {
             return
         default: break
         }
+        let blocked = Set(blockedVoiceOrdinals)
         for phrase in plan.phrases {
-            guard let reason = stuckReason(phrase, plan: plan) else { autoFix.lines[phrase.id] = nil; continue }
+            guard let reason = stuckReason(phrase, plan: plan) ?? estimateBlockedReason(phrase, blocked: blocked) else {
+                autoFix.lines[phrase.id] = nil; continue
+            }
             let used = autoFix.rounds[phrase.id, default: 0]
             guard used < RewriteAutoFixState.maximumRounds else { giveUp(phrase.id, plan: plan); continue }
             autoFix.rounds[phrase.id] = used + 1

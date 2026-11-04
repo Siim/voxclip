@@ -67,7 +67,7 @@ import Testing
             "r2-use-take": ("Exports show AI MODIFIED on the video. The post disclosure is optional.", nil, "Use Takes"),
             "r2-several-voices": ("Nothing paid yet.\nTakes < $0.01 on ElevenLabs.", "Keep All", "Get Price · 2 phrases"),
             "r2-over-budget": ("Change 2 needs wording that fits before takes.", "Keep All", "Apply 1 Free Change"),
-            "r2-nothing-included": ("Keep a change to apply it.", nil, nil),
+            "r2-nothing-included": ("Keep a change to apply it.", nil, "Done"),
         ]
         for scene in scenes {
             let task = scene.task

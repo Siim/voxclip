@@ -4,13 +4,27 @@ import VoxClipCore
 enum PhraseTimingAction { case shorter, longer, surrounding, original, priceAnyway }
 
 extension RewriteSession {
+    /// Voice changes the estimate holds back from takes. A change already voiced (`voicedOrdinals`) is never one: the
+    /// speaking-rate recalibration from measured takes re-estimates only phrases not voiced yet.
     var blockedVoiceOrdinals: [Int] {
         guard let proposal = ownProposal else { return [] }
+        let voiced = voicedOrdinals
         return proposal.changes.filter {
-            $0.kind == .voice && $0.state != .excluded && $0.reviewable &&
+            $0.kind == .voice && $0.state != .excluded && $0.reviewable && !voiced.contains($0.ordinal) &&
                 voiceReview($0.ordinal)?.timing?.fits == false && !pricedAnyway.contains($0.ordinal) &&
                 acceptedSpeechContext?.plan.request.expandingHunkIndices.contains($0.ordinal - 1) != true
         }.map(\.ordinal)
+    }
+    /// Voice changes whose takes-plan phrase has a take that passed its checks and fits the slot, for its wording now.
+    /// The measured take is the phrase's timing from then on: no later estimate blocks it, its row or Use.
+    var voicedOrdinals: Set<Int> {
+        guard let plan = takePlan, !plan.isRetired else { return [] }
+        return Set(plan.phrases.filter { phrase in
+            !phrase.leftOut && phrase.takes.contains { take in
+                take.row.selectable && plan.lengthFits(take: take) && !phrase.beforeExpression.contains(take.id)
+                    && plan.measuredInput(take: take.id)?.text == phrase.text
+            }
+        }.flatMap(takePhraseOrdinals))
     }
 
     func phraseTimingAction(_ action: PhraseTimingAction, ordinal: Int) {

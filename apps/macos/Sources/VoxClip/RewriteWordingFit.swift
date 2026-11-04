@@ -311,13 +311,14 @@ extension RewriteSession {
 
     /// A selected passing take gets a video duration chosen (design.md R2): the only valid one, or the first of keep
     /// source, cut and match. The phrase card reads it as one line, with Change when another is valid, so Use is the
-    /// one action left.
+    /// one action left. A cut or matched video is prepared whenever the selection needs it, also after another phrase's
+    /// choice cleared the one prepared before.
     func autoChooseVideo(_ plan: ClipTakePlan) {
-        var prepare = false
+        guard !plan.preparingVideo else { return }
         for phrase in plan.phrases where phrase.videoChoice == nil && !plan.lipsync.blocksMutation(phrase.id) {
-            guard let first = plan.validVideoChoices(phrase: phrase.id).first, plan.chooseVideo(first, phrase: phrase.id) else { continue }
-            prepare = prepare || first != .source
+            guard let first = plan.validVideoChoices(phrase: phrase.id).first else { continue }
+            plan.chooseVideo(first, phrase: phrase.id)
         }
-        if prepare { Task { [weak plan] in await plan?.prepareVideoChoices(); await plan?.lipsync.refresh() } }
+        if plan.needsVideoPreparation { Task { [weak plan] in await plan?.prepareVideoChoices(); await plan?.lipsync.refresh() } }
     }
 }
