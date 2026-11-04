@@ -108,7 +108,7 @@ extension RewriteSession {
 
     private func measuredTakeLength(_ phrase: ClipTakePlan.Phrase) -> Double? {
         if let length = phrase.selected?.length { return length }
-        let best = phrase.bestMeasured ?? phrase.takes.filter { $0.length != nil }.max { ($0.row.score ?? 0) < ($1.row.score ?? 0) }
+        let best = takePlan?.automaticTake(phrase: phrase.id) ?? phrase.takes.filter { $0.length != nil }.max { ($0.row.score ?? 0) < ($1.row.score ?? 0) }
         return best?.length
     }
 

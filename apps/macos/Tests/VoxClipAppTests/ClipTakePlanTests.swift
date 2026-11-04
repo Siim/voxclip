@@ -441,7 +441,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         let advisory = try #require(plan.phrases[0].takes.last?.row)
         try #require(advisory.qa?.verdict == .passedWithAdvisory)
         #expect(advisory.score! >= plan.phrases[0].selected!.row.score!)
-        #expect(plan.phrases[0].selectedID == clean && plan.phrases[0].bestMeasured?.id == clean)
+        #expect(plan.phrases[0].selectedID == clean && plan.automaticTake(phrase: 0)?.id == clean)
         let genericSelection = plan.select(take: advisory.id, phrase: 0)
         #expect(!genericSelection)
         let used = plan.useAnyway(take: advisory.id, phrase: 0)
@@ -577,7 +577,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         await plan.prepareAnother(phrase: 0)
         await plan.tryAnother(phrase: 0, approved: true)
         #expect(plan.phrases[0].takes.last?.row.voiceCheck.evidence?.mode == .unmeasured)
-        #expect(plan.phrases[0].selectedID == original && plan.phrases[0].bestMeasured?.id == original)
+        #expect(plan.phrases[0].selectedID == original && plan.automaticTake(phrase: 0)?.id == original)
     }
 
     @Test func reviewerExplicitUnmeasuredChoiceSurvivesMeasuredRetry() async throws {

@@ -386,8 +386,17 @@ extension RewriteSession {
         if let stuck = plan.phrases.first(where: { !$0.leftOut && stuckReason($0, plan: plan) != nil }) {
             return PanelFooter(note: "Fix phrase \(stuck.id + 1) above.\n" + spend)
         }
-        if let choose = plan.phrases.first(where: { !$0.leftOut && $0.selected == nil && $0.takes.contains { $0.row.selectable } }) {
-            return PanelFooter(note: "Choose a take for phrase \(choose.id + 1).\n" + spend)
+        // A passing take the automatic choice may not pick (its voice couldn't be measured, ADR-R37) is one click away:
+        // the footer never asks for a choice without the control that makes it.
+        if let choose = plan.phrases.first(where: { plan.offeredTake(phrase: $0.id) != nil }), let take = plan.offeredTake(phrase: choose.id) {
+            let phrase = choose.id
+            return PanelFooter(note: "Choose a take for phrase \(phrase + 1).\n" + spend,
+                primary: PanelAction(id: "chooseTake", title: "Choose Take \(take.number)") { [weak self, weak plan] in
+                    guard let self, let plan else { return }
+                    focusedTakePhrase = phrase
+                    mutateLipsync(phrase: phrase) { _ = plan.select(take: take.id, phrase: phrase) }
+                    showProposal()
+                })
         }
         if plan.phrases.allSatisfy(\.leftOut) {
             let fixes = editor.changeReadings.filter { $0.change.isFree && $0.change.state == .pending && !$0.applied }.count
@@ -424,7 +433,10 @@ extension RewriteSession {
                 }
             })
         }
-        if let listen = plan.phrases.first(where: { !$0.leftOut && $0.selected?.row.requiresJoinAdvisoryAcceptance == true }) {
+        if let listen = plan.phrases.first(where: { phrase in
+            !phrase.leftOut && (phrase.selected?.row.requiresJoinAdvisoryAcceptance == true
+                || (phrase.selected == nil && phrase.takes.contains { $0.row.selectable && $0.row.requiresJoinAdvisoryAcceptance }))
+        }) {
             return PanelFooter(note: "Listen to phrase \(listen.id + 1)'s take, then Use anyway or try another.\n" + spend)
         }
         if plan.phrases.contains(where: { $0.takes.contains { $0.row.voiceCheck == .waiting } }) {

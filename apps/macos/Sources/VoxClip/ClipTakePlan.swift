@@ -40,10 +40,6 @@ import VoxClipMedia
         var videoChoice: VoiceLabVideoMode?
         var estimatedVoicedSeconds: Double?
         var selected: Take? { takes.first { $0.id == selectedID } }
-        var bestMeasured: Take? {
-            takes.filter { $0.row.automaticallySelectable && $0.row.qa?.values.speakerScore?.isFinite == true && !beforeExpression.contains($0.id) }
-                .max { ($0.row.score ?? 0) < ($1.row.score ?? 0) }
-        }
         var originalLength: Double { window.end - window.start }
         var lengthDifference: Double? { selected?.length.map { $0 - originalLength } }
         var nextTakeNumber: Int {
@@ -470,7 +466,7 @@ import VoxClipMedia
     func restore(phrase index: Int) {
         guard phrases.indices.contains(index), phrases[index].leftOut else { return }
         phrases[index].leftOut = false
-        phrases[index].selectedID = phrases[index].bestMeasured?.id
+        phrases[index].selectedID = automaticTake(phrase: index)?.id
         onMeasuredTakesChanged?()
     }
     /// A new expression for one phrase (design.md R2 "Expressions"): only this phrase's text tags change, its takes so far
@@ -492,6 +488,47 @@ import VoxClipMedia
         let options = VoiceLabVideoDurationOptions(fit: take.row.audio?.fit, sourceSampleRate: project.media.source.audio?.sampleRate ?? 48_000,
             assetSampleRate: take.row.audio?.sampleRate ?? 0)
         return options.allows(.source) || (prepareDurationRender != nil && options.allows(.cut))
+    }
+    /// Whether some video duration (keep source, cut or match) can carry this take, selected or not.
+    func durationAvailable(take: Take) -> Bool {
+        let availability = VideoDurationChoiceAvailability(row: take.row.selectable ? take.row : nil,
+            sourceSampleRate: project.media.source.audio?.sampleRate ?? 48_000,
+            rendererReady: prepareDurationRender != nil && VoiceLabRenderInput.supportsVideoMode(.zoomCover))
+        return [VoiceLabVideoMode.source, .cut, .retimed].contains(where: availability.allows)
+    }
+    /// The order passing takes are offered in (design.md R2): one a video duration can carry first, then the one
+    /// closest to the slot, then the better voice score.
+    private func ranked(_ takes: [Take], phrase index: Int) -> [Take] {
+        let slot = phrases[index].originalLength
+        let keyed = takes.map { take -> (take: Take, usable: Bool, distance: Double, score: Double) in
+            (take, durationAvailable(take: take), take.length.map { abs($0 - slot) } ?? .infinity, take.row.score ?? 0)
+        }
+        return keyed.sorted { left, right in
+            if left.usable != right.usable { return left.usable }
+            if left.usable { return left.score != right.score ? left.score > right.score : left.distance < right.distance }
+            return left.distance != right.distance ? left.distance < right.distance : left.score > right.score
+        }.map(\.take)
+    }
+    /// The take chosen automatically (ADR-R37): only measured passing takes with no join to listen to, never one made
+    /// before the expression changed. Among usable takes the best score wins, as before; when no duration can carry any
+    /// of them, the one closest to the slot, so the automatic fixes reword from the nearest take.
+    func automaticTake(phrase index: Int) -> Take? {
+        guard phrases.indices.contains(index) else { return nil }
+        let phrase = phrases[index]
+        let measured = phrase.takes.filter {
+            $0.row.automaticallySelectable && $0.row.qa?.values.speakerScore?.isFinite == true && !phrase.beforeExpression.contains($0.id)
+        }
+        return ranked(measured, phrase: index).first
+    }
+    /// The passing take a phrase with none chosen offers for the user's one click ([Choose Take N] in the footer): a take
+    /// the automatic choice may not pick, such as one whose voice couldn't be measured (ADR-R37: it needs the user's
+    /// explicit click). Takes with a join to listen to are offered by their row's Use anyway instead.
+    func offeredTake(phrase index: Int) -> Take? {
+        guard phrases.indices.contains(index), !phrases[index].leftOut, phrases[index].selected == nil else { return nil }
+        let phrase = phrases[index]
+        let passing = phrase.takes.filter { $0.row.selectable && !$0.row.requiresJoinAdvisoryAcceptance }
+        let current = passing.filter { !phrase.beforeExpression.contains($0.id) }
+        return ranked(current.isEmpty ? passing : current, phrase: index).first
     }
     /// The duration choices the selected take allows, in the panel's order.
     func validVideoChoices(phrase index: Int) -> [VoiceLabVideoMode] {
@@ -843,7 +880,7 @@ import VoxClipMedia
             if let row = phrases[phrase].selected?.row, row.selectable, !row.requiresJoinAdvisoryAcceptance { return }
             phrases[phrase].explicitlySelected = false
         }
-        let best = phrases[phrase].bestMeasured
+        let best = automaticTake(phrase: phrase)
         if best?.id != phrases[phrase].selectedID {
             clearPreparedVideo()
             phrases[phrase].videoChoice = nil

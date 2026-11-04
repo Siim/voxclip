@@ -123,7 +123,12 @@ indirect enum RewriteSmokeFit: Sendable {
 
 /// How the scripted ElevenLabs answers takes in one scenario.
 struct RewriteSmokeVoiceScript: Sendable {
-    /// Each take's length as a multiple of the length that fits its phrase's slot.
+    /// Exact fit: each take fills its phrase's slot to the sample. Otherwise (realistic) a take is as long as the
+    /// fixture's own speaker says its words (`naturalSeconds`) plus `offset`, so it rarely fills the slot exactly.
+    var exactFit = false
+    /// Seconds added to every realistic take: a scenario's voice runs a little slower or faster than the source.
+    var offset = 0.0
+    /// Each take's length as a multiple of its base length: the slot's (exact fit) or the spoken one (realistic).
     var lengthFactor = 1.0
     /// The first takes' factors, in order; `lengthFactor` after them.
     var lengthFactors: [Double] = []
@@ -152,6 +157,14 @@ final class RewriteSmokeHTTP: URLProtocol, @unchecked Sendable {
         return fitting.max(by: { Set($0.key.split(separator: " ")).intersection(words).count
             < Set($1.key.split(separator: " ")).intersection(words).count })?.value ?? 1.2
     }
+    /// How long the fixture's speaker says `text` (DebugRewriteSmoke.project): each word 0.1 s plus 45 ms a letter, the
+    /// source's pauses between words, and the take's 50 ms quiet margins.
+    static func naturalSeconds(_ text: String) -> Double {
+        let words = Self.words(text).split(separator: " ").map(String.init)
+        let spoken: Double = words.reduce(0) { $0 + 0.1 + 0.045 * Double($1.count) }
+        let pauses: Double = words.dropLast().reduce(0) { $0 + ($1.hasSuffix(".") ? 0.6 : $1.hasSuffix(",") ? 0.25 : 0.07) }
+        return spoken + pauses + 0.1
+    }
     static func words(_ text: String) -> String {
         text.replacing(#/\[[^\]]*\]/#, with: "").split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
@@ -175,7 +188,8 @@ final class RewriteSmokeHTTP: URLProtocol, @unchecked Sendable {
                     let fits = script.fitting[Self.words(text)] ?? script.fitting.first { Self.words(text).contains($0.key) }?.value
                         ?? Self.scaled(Self.words(text), from: script.fitting)
                     let factor = script.syntheses <= script.lengthFactors.count ? script.lengthFactors[script.syntheses - 1] : script.lengthFactor
-                    script.lastText = Self.words(text); script.lastDuration = fits * factor
+                    let base: Double = script.exactFit ? fits : Self.naturalSeconds(text) + script.offset
+                    script.lastText = Self.words(text); script.lastDuration = max(0.3, base * factor)
                     return script.lastDuration
                 }
                 data = try Self.synthesis(text: text, duration: duration, dialogue: dialogue)

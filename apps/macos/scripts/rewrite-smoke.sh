@@ -3,9 +3,10 @@
 # ElevenLabs, offscreen, and checks the panel after every step. Run it before every handed-over test build.
 #
 #   apps/macos/scripts/rewrite-smoke.sh [<VoxClip.app | debug executable | build directory>] [--keep <dir>]
-#       [--only S1,S4] [--known-failing I2,I7]
+#       [--only S1,S4] [--lengths realistic|exact|both] [--known-failing I2,I7]
 #
-# With no path it builds the DEBUG app (swift build --product VoxClip) in apps/macos and runs .build/debug/VoxClip.
+# Takes are as long as the fixture's speaker would say them (realistic) and, in a second pass, fill each slot exactly
+# ("S4-exact"); --lengths picks one pass. With no path it builds the DEBUG app (swift build --product VoxClip) in apps/macos and runs .build/debug/VoxClip.
 # It prints summary.txt and exits non-zero when any invariant not named in --known-failing fails. The report
 # (rewrite-smoke.json, summary.txt and a PNG of the panel per failing step) stays in --keep's directory, else in a
 # temporary one that is printed. No paid or live request is made; it is safe while the Mac is in use.
@@ -17,12 +18,14 @@ target=""
 keep=""
 only=""
 known=""
+lengths=both
 while (( $# > 0 )); do
     case $1 in
         --keep) keep=$2; shift 2 ;;
         --only) only=$2; shift 2 ;;
+        --lengths) lengths=$2; shift 2 ;;
         --known-failing) known=$2; shift 2 ;;
-        -h|--help) sed -n 2,10p "$0"; exit 0 ;;
+        -h|--help) sed -n 2,12p "$0"; exit 0 ;;
         *) target=$1; shift ;;
     esac
 done
@@ -42,7 +45,7 @@ fi
 work=$(mktemp -d /tmp/voxclip-rewrite-smoke.XXXXXX)
 output=${keep:-$work/out}
 mkdir -p "$output" "$work/data"
-arguments=(-ApplePersistenceIgnoreState YES -NSQuitAlwaysKeepsWindows NO -rewriteSmoke "$output")
+arguments=(-ApplePersistenceIgnoreState YES -NSQuitAlwaysKeepsWindows NO -rewriteSmoke "$output" -rewriteSmokeLengths "$lengths")
 [[ -n $only ]] && arguments+=(-rewriteSmokeOnly "$only")
 [[ -n $known ]] && arguments+=(-rewriteSmokeKnownFailing "$known")
 

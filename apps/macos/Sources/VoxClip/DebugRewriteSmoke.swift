@@ -1,5 +1,6 @@
 #if DEBUG
 import AppKit
+import AVFoundation
 import SwiftUI
 import VoxClipCore
 @_spi(Testing) import VoxClipMedia
@@ -83,6 +84,15 @@ import VoxClipCore
         guard let index = CommandLine.arguments.firstIndex(of: "-rewriteSmokeKnownFailing"), index + 1 < CommandLine.arguments.count else { return [:] }
         return Dictionary(uniqueKeysWithValues: CommandLine.arguments[index + 1].split(separator: ",").map { (String($0), "not fixed on this build yet") })
     }()
+    /// `-rewriteSmokeLengths realistic|exact|both` (default both): the take-length passes, false for realistic lengths.
+    nonisolated static let lengthPasses: [Bool] = {
+        guard let index = CommandLine.arguments.firstIndex(of: "-rewriteSmokeLengths"), index + 1 < CommandLine.arguments.count else { return [false, true] }
+        switch CommandLine.arguments[index + 1] {
+        case "realistic": return [false]
+        case "exact": return [true]
+        default: return [false, true]
+        }
+    }()
     /// I2's explicit exceptions: a disabled control allowed to show, with why. Empty: every disabled control fails.
     nonisolated static let allowedDisabled: [String: String] = [:]
 
@@ -100,12 +110,19 @@ import VoxClipCore
             index + 1 < CommandLine.arguments.count ? Set(CommandLine.arguments[index + 1].split(separator: ",").map(String.init)) : nil
         }
         do { try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true) } catch {}
-        for definition in scenarios where only?.contains(definition.id) ?? true {
+        // Realistic take lengths first, then every scenario again with takes that fill their slots exactly ("S4-exact").
+        let runs = lengthPasses.flatMap { exact in
+            scenarios.filter { (only?.contains($0.id) ?? true) && !(exact && $0.fixture.voice.exactFit) }.map { (exact, $0) }
+        }
+        for (exact, definition) in runs {
             let begun = ProcessInfo.processInfo.systemUptime
-            var scenario = Scenario(id: definition.id, title: definition.title)
-            let harness = Harness(app: app, directory: directory, scenario: definition.id)
+            let id = exact ? definition.id + "-exact" : definition.id
+            var scenario = Scenario(id: id, title: definition.title + (exact || definition.fixture.voice.exactFit ? " (takes fill their slots exactly)" : ""))
+            let harness = Harness(app: app, directory: directory, scenario: id)
+            var fixture = definition.fixture
+            if exact { fixture.voice.exactFit = true }
             do {
-                try await harness.open(definition.fixture)
+                try await harness.open(fixture)
                 try await definition.drive(harness)
             } catch Failure.missing(let control, let shown) {
                 // A dead end: I1 and I5 report it; the scenario stops where a user would.
@@ -194,7 +211,7 @@ import VoxClipCore
         + "to a voice service. Finally we export the clip and share it with our friends. That is the whole idea, and it only takes "
         + "a few minutes from start to finish."
 
-    static func project(_ fixture: Fixture, root: URL, shared: SharedResources) throws -> (Project, AudioEnvelope) {
+    static func project(_ fixture: Fixture, root: URL, shared: SharedResources) async throws -> (Project, AudioEnvelope) {
         var project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
         project.id = UUID().uuidString.lowercased()
         project.voiceLab.segments = []; project.voiceLab.assets = []
@@ -220,15 +237,122 @@ import VoxClipCore
                 pcm[index] = Float(0.1 * sin(2 * Double.pi * 120 * seconds))
             }
         }
-        let audio = root.appendingPathComponent("source-\(project.id).wav")
-        try VoiceTrainingAudio.wav(pcm, rate: rate).write(to: audio)
-        project.media.source.absolutePath = audio.path
+        // The source is a movie, as a recording is: Cut and Match video prepare their render offscreen from its frames.
+        let movie = try await sourceMovie(pcm, rate: rate, seconds: Int(duration), root: root)
+        project.media.source.absolutePath = movie.path
+        project.media.source.relativePath = movie.lastPathComponent
+        project.media.source.sizeBytes = Int64((try? FileManager.default.attributesOfItem(atPath: movie.path)[.size] as? Int) ?? 0)
+        project.media.source.contentKey = try JSONProjectStore.contentKey(for: movie)
+        project.media.source.video = MediaVideo(width: sourceVideoSize.width, height: sourceVideoSize.height, frameRate: 30, rotationDegrees: 0)
         project.media.source.durationSeconds = duration
         project.media.source.audio?.sampleRate = rate
         project.transcript?.words = words
         project.transcript?.durationSeconds = duration
         project.transcript?.language = "en"
         return (project, VoiceLabTakeProcessing.envelope(pcm, sampleRate: rate))
+    }
+
+    nonisolated static let sourceVideoSize = (width: 160, height: 90)
+
+    /// A small synthetic recording: `seconds` of 160×90 H.264 at 30 fps (a grey frame with a bar that moves each second),
+    /// interleaved with the fixture's PCM as 24 kHz LPCM. Written at run time into `root` (the smoke's temporary data
+    /// folder), once per audio; nothing is read from or kept in the source tree.
+    static func sourceMovie(_ pcm: [Float], rate: Int, seconds: Int, root: URL) async throws -> URL {
+        let key = VoiceLabFingerprint.bytes(try VoiceTrainingAudio.wav(pcm, rate: rate)).prefix(16)
+        let destination = root.appendingPathComponent("smoke-source-\(key).mov")
+        if FileManager.default.fileExists(atPath: destination.path) { return destination }
+        let (width, height) = sourceVideoSize
+        let writer = try AVAssetWriter(outputURL: destination, fileType: .mov)
+        let video = AVAssetWriterInput(mediaType: .video, outputSettings: [AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoWidthKey: width, AVVideoHeightKey: height,
+            AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: 40_000, AVVideoMaxKeyFrameIntervalKey: 30, AVVideoExpectedSourceFrameRateKey: 30]])
+        video.expectsMediaDataInRealTime = false
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: video, sourcePixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferWidthKey as String: width, kCVPixelBufferHeightKey as String: height])
+        guard let format = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: Double(rate), channels: 1, interleaved: true) else {
+            throw Failure.setup("no 16-bit PCM format")
+        }
+        let audio = AVAssetWriterInput(mediaType: .audio, outputSettings: nil, sourceFormatHint: format.formatDescription)
+        audio.expectsMediaDataInRealTime = false
+        writer.add(video); writer.add(audio)
+        var frames: [CVPixelBuffer] = []
+        for second in 0..<10 {
+            var buffer: CVPixelBuffer?
+            guard CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA, nil, &buffer) == kCVReturnSuccess,
+                  let buffer else { throw Failure.setup("no pixel buffer") }
+            CVPixelBufferLockBaseAddress(buffer, [])
+            if let base = CVPixelBufferGetBaseAddress(buffer) {
+                let row = CVPixelBufferGetBytesPerRow(buffer)
+                let pixels = base.assumingMemoryBound(to: UInt8.self)
+                for y in 0..<height {
+                    for x in 0..<width {
+                        let value: UInt8 = x / 16 == second ? 200 : 90
+                        let offset = y * row + x * 4
+                        pixels[offset] = value; pixels[offset + 1] = value; pixels[offset + 2] = value; pixels[offset + 3] = 255
+                    }
+                }
+            }
+            CVPixelBufferUnlockBaseAddress(buffer, [])
+            frames.append(buffer)
+        }
+        guard writer.startWriting() else { throw writer.error ?? CocoaError(.fileWriteUnknown) }
+        writer.startSession(atSourceTime: .zero)
+        let total = seconds * 30, samples = min(pcm.count, seconds * rate)
+        var written = 0, frame = 0
+        do {
+            // Whichever input is behind in time and ready goes next, so the writer's interleaving never waits on the other.
+            while written < samples || frame < total {
+                guard writer.status == .writing else { throw writer.error ?? CocoaError(.fileWriteUnknown) }
+                let audioTime: Double = Double(written) / Double(rate)
+                let videoTime: Double = Double(frame) / 30
+                let audioBehind = frame >= total || audioTime <= videoTime
+                if written < samples, audio.isReadyForMoreMediaData, audioBehind || !video.isReadyForMoreMediaData {
+                    let count = min(1_600, samples - written)
+                    guard audio.append(try lpcm(pcm, from: written, count: count, rate: rate, format: format)) else {
+                        throw writer.error ?? CocoaError(.fileWriteUnknown)
+                    }
+                    written += count
+                } else if frame < total, video.isReadyForMoreMediaData {
+                    guard adaptor.append(frames[(frame / 30) % frames.count], withPresentationTime: CMTime(value: Int64(frame), timescale: 30)) else {
+                        throw writer.error ?? CocoaError(.fileWriteUnknown)
+                    }
+                    frame += 1
+                } else {
+                    try await Task.sleep(for: .milliseconds(1))
+                }
+            }
+            audio.markAsFinished(); video.markAsFinished()
+            writer.endSession(atSourceTime: CMTime(value: Int64(seconds), timescale: 1))
+            await writer.finishWriting()
+            guard writer.status == .completed else { throw writer.error ?? CocoaError(.fileWriteUnknown) }
+        } catch {
+            writer.cancelWriting()
+            try? FileManager.default.removeItem(at: destination)
+            throw error
+        }
+        return destination
+    }
+
+    /// `count` samples of `pcm` from `start` as one 16-bit LPCM sample buffer.
+    private static func lpcm(_ pcm: [Float], from start: Int, count: Int, rate: Int, format: AVAudioFormat) throws -> CMSampleBuffer {
+        var bytes = Data(count: count * 2)
+        bytes.withUnsafeMutableBytes { raw in
+            for index in 0..<count {
+                let value: Float = max(-1, min(1, pcm[start + index])) * 32_767
+                raw.storeBytes(of: Int16(value).littleEndian, toByteOffset: index * 2, as: Int16.self)
+            }
+        }
+        var block: CMBlockBuffer?
+        guard CMBlockBufferCreateWithMemoryBlock(allocator: kCFAllocatorDefault, memoryBlock: nil, blockLength: bytes.count,
+                  blockAllocator: kCFAllocatorDefault, customBlockSource: nil, offsetToData: 0, dataLength: bytes.count,
+                  flags: 0, blockBufferOut: &block) == noErr, let block,
+              bytes.withUnsafeBytes({ CMBlockBufferReplaceDataBytes(with: $0.baseAddress!, blockBuffer: block, offsetIntoDestination: 0,
+                  dataLength: $0.count) }) == noErr else { throw Failure.setup("no audio block") }
+        let timing = CMSampleTimingInfo(duration: CMTime(value: 1, timescale: CMTimeScale(rate)),
+            presentationTimeStamp: CMTime(value: Int64(start), timescale: CMTimeScale(rate)), decodeTimeStamp: .invalid)
+        return try CMSampleBuffer(dataBuffer: block, formatDescription: format.formatDescription, numSamples: count,
+            sampleTimings: [timing], sampleSizes: [2])
     }
 
     // MARK: Harness
@@ -273,7 +397,7 @@ import VoxClipCore
             RewriteSmokeHTTP.script.withLock { $0 = fixture.voice }
             let root = app.locations.root
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-            let (project, envelope) = try DebugRewriteSmoke.project(fixture, root: root, shared: shared)
+            let (project, envelope) = try await DebugRewriteSmoke.project(fixture, root: root, shared: shared)
             original = project
             let editor = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
             editor.mediaResolved = true; editor.refresh()
@@ -437,7 +561,7 @@ import VoxClipCore
                 guard let session, session.isOpen else { completed = applied; ended = true; return }
                 if await useAnywayIfOffered() { continue }
                 if await chooseDurationIfNeeded() { continue }
-                var order = ["approveTakeQuote", "discardChanges", "useTakes", "takeQuote-", "prepareTakes", "makeTakes", "rewriteAgain",
+                var order = ["approveTakeQuote", "discardChanges", "useTakes", "chooseTake", "takeQuote-", "prepareTakes", "makeTakes", "rewriteAgain",
                              "keepFixing", "withinSentence", "revoiceAll", "keepOriginal", "mergePhrases", "suggestion.", "tryAnother", "freshPrice",
                              "askAgain", "reviewTakes", "showTakes", "apply", "keepAll", "keepTextFixes", "tryAgain", "useTake"]
                 // The resolver's [Choose yourself…] opens the chips once; [Done] ends the Rewrite as it stands.

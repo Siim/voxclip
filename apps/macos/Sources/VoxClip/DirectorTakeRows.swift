@@ -343,7 +343,7 @@ extension ClipTakePlan.Phrase {
                 Text("Next take at \(String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), pace))× pace")
                     .font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
             }
-            if let best = phrase.bestMeasured, phrase.takes.filter({ $0.row.selectable }).count > 1,
+            if let best = plan.automaticTake(phrase: phrase.id), phrase.takes.filter({ $0.row.selectable }).count > 1,
                phrase.selectedID == best.id {
                 Text("Best match").font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
             }
