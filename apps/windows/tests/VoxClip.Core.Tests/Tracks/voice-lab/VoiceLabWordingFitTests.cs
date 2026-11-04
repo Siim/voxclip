@@ -96,6 +96,73 @@ public sealed class VoiceLabWordingFitTests
         }
     }
 
+    /// <summary>A measured round rewords the whole phrase, so the request names its bridge words as required, from the shared
+    /// template (<c>voice-rewrite-tried.json</c> promptVersion 2), and the reply is checked as the take's preflight checks it.
+    /// Without bridge words or a history the request is unchanged (Mac
+    /// <c>bridgeWordsAreRequiredInTheRequestAndCheckedAsThePreflightChecksThem</c>).</summary>
+    [Fact]
+    public async Task BridgeWordsAreRequiredInTheRequestAndCheckedAsThePreflightChecksThem()
+    {
+        var tried = JsonNode.Parse(FixtureLoader.ReadText("prompts/voice-rewrite-tried.json"))!;
+        Assert.Equal(1, tried["schemaVersion"]!.GetValue<int>());
+        Assert.Equal(2, tried["promptVersion"]!.GetValue<int>());
+        var service = new VoiceLabWordingFitService(new LlmCatalog());
+        var target = VoiceLabWordingFit.WordTarget(2, 1, 1, 2, 0);
+        var phrase = new VoiceLabFitPhrase(1, "a similar way", "I use a similar method as", 3, 2, "shorter", target, 3, true);
+        var plain = service.Request([phrase], ConnectorId.Ollama, "en");
+        Assert.DoesNotContain("Required:", plain.CachedBlock);
+        Assert.Null(service.TriedBlock([]));
+        var rows = new (VoiceLabFitBridge Bridge, string Line)[]
+        {
+            (new(["I", "use"], ["as"]), "Required: the text must begin with “I use” and end with “as”, exactly these words."),
+            (new(["I", "use"], []), "Required: the text must begin with “I use”, exactly these words."),
+            (new([], ["as"]), "Required: the text must end with “as”, exactly these words."),
+        };
+        foreach (var (bridge, line) in rows)
+        {
+            var bridged = phrase with { Bridge = bridge };
+            var request = service.Request([bridged], ConnectorId.Ollama, "en");
+            Assert.Contains(line, request.CachedBlock);
+            Assert.Equal(plain.System, request.System);
+            Assert.Equal(plain.Instruction, request.Instruction);
+            // A plain round's approval never covers the bridged one.
+            var connector = new Connector(new JsonArray(Row(1, "reword", "I use one way as")));
+            var approval = service.Approve(service.Prepare([phrase], connector.Id, "fixture", "en"), true);
+            await Assert.ThrowsAnyAsync<Exception>(() => service.ProposeAsync([bridged], connector, "fixture", "en", approval, CancellationToken.None));
+            Assert.Equal(0, connector.Sends);
+        }
+        // The bridge line follows the measured line and comes before the tried block.
+        var history = phrase with { Bridge = rows[0].Bridge, Tried = [new("I use a similar method as", "tooLong", 1.04), new("I use one as", "missingBridge"), new(new string('a', 450), "words")] };
+        var block = service.Request([history], ConnectorId.Ollama, "en").CachedBlock!;
+        var measured = block.IndexOf("3.0", StringComparison.Ordinal);
+        var required = block.IndexOf("Required:", StringComparison.Ordinal);
+        var header = block.IndexOf("Wordings already tried for this phrase", StringComparison.Ordinal);
+        Assert.True(measured >= 0 && measured < required && required < header, block);
+        Assert.Contains("- “I use a similar method as”: too long by 1.0 s", block);
+        Assert.Contains("- “I use one as”: dropped the joining words, not used", block);
+        Assert.Contains("- “" + new string('a', 399) + "…”: the word check heard different words", block);
+        Assert.Equal(13, service.TriedBlock(Enumerable.Range(0, 20).Select(index => new VoiceLabFitTried("try " + index, "fit")).ToArray())!.Value.Text.Split('\n').Length);
+        Assert.Throws<VoxClipException>(() => service.TriedBlock([new("x", "unknownResult")]));
+
+        var keeps = new VoiceLabFitBridge(["I", "use"], ["as,"]);
+        Assert.Equal("I use … as,", keeps.Display);
+        Assert.True(keeps.Keeps("I use a like method as"));
+        Assert.True(keeps.Keeps("i USE, the same way AS"));
+        Assert.False(keeps.Keeps("a similar method as"));
+        Assert.False(keeps.Keeps("I use a similar method"));
+        Assert.False(keeps.Keeps(""));
+        Assert.True(new VoiceLabFitBridge([], []).Keeps("Anything"));
+        Assert.Equal(keeps, new VoiceLabFitBridge(["I", "use"], ["as,"]));
+    }
+
+    [Fact]
+    public void TriedKeysIgnoreCasePunctuationAndTags()
+    {
+        Assert.Equal(VoiceLabFitTried.Key("use a similar method as"), VoiceLabFitTried.Key("Use a SIMILAR method,  as"));
+        Assert.Equal(VoiceLabFitTried.Key("claudes way"), VoiceLabFitTried.Key("[laughs] Claude’s way"));
+        Assert.NotEqual(VoiceLabFitTried.Key("a similar approach"), VoiceLabFitTried.Key("a similar method"));
+    }
+
     [Fact]
     public void RequestRefusesMalformedPhrasesBeforeAnySend()
     {

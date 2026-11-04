@@ -6927,6 +6927,24 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabEstimate :: method public set_Usd(Sy
 member VoxClip.Core.Domain.VoiceLab.VoiceLabException :: method public .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabErrorKind,string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabException :: method public get_Detail()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabException :: method public get_Kind()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitBridge :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabFitBridge)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitBridge :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitBridge :: method private get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitBridge :: method public .ctor(System.Collections.Generic.IReadOnlyList`1<string>,System.Collections.Generic.IReadOnlyList`1<string>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitBridge :: method public Deconstruct(System.Collections.Generic.IReadOnlyList`1<string>&,System.Collections.Generic.IReadOnlyList`1<string>&)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitBridge :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceLabFitBridge)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitBridge :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitBridge :: method public From(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitBridge :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitBridge :: method public Keeps(string)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitBridge :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitBridge :: method public get_Display()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitBridge :: method public get_Leading()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitBridge :: method public get_Trailing()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitBridge :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceLabFitBridge,VoxClip.Core.Domain.VoiceLab.VoiceLabFitBridge)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitBridge :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabFitBridge,VoxClip.Core.Domain.VoiceLab.VoiceLabFitBridge)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitBridge :: method public set_Leading(System.Collections.Generic.IReadOnlyList`1<string>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitBridge :: method public set_Trailing(System.Collections.Generic.IReadOnlyList`1<string>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitEdit :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabFitEdit)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitEdit :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitEdit :: method private get_EqualityContract()
@@ -6984,6 +7002,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase :: method public Equals(Vo
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase :: method public Equals(object)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase :: method public GetHashCode()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase :: method public get_Bridge()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase :: method public get_Calibrated()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase :: method public get_Direction()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase :: method public get_EstimateSeconds()
@@ -6993,8 +7012,10 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase :: method public get_Origi
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase :: method public get_Proposed()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase :: method public get_SlotSeconds()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase :: method public get_Target()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase :: method public get_Tried()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase,VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase,VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase :: method public set_Bridge(VoxClip.Core.Domain.VoiceLab.VoiceLabFitBridge)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase :: method public set_Calibrated(bool)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase :: method public set_Direction(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase :: method public set_EstimateSeconds(double)
@@ -7004,6 +7025,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase :: method public set_Origi
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase :: method public set_Proposed(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase :: method public set_SlotSeconds(double)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase :: method public set_Target(VoxClip.Core.Domain.VoiceLab.VoiceLabWordTarget)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase :: method public set_Tried(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabFitTried>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPlan :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabFitPlan)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPlan :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPlan :: method private get_EqualityContract()
@@ -7157,6 +7179,24 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabFitTake :: method public set_Envelop
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitTake :: method public set_TrimEnd(double)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitTake :: method public set_TrimStart(double)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitTake :: method public set_Words(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabWord>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitTried :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabFitTried)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitTried :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitTried :: method private get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitTried :: method public .ctor(string,string,System.Nullable`1<double>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitTried :: method public Deconstruct(string&,string&,System.Nullable`1<double>&)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitTried :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceLabFitTried)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitTried :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitTried :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitTried :: method public Key(string)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitTried :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitTried :: method public get_Result()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitTried :: method public get_Seconds()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitTried :: method public get_Text()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitTried :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceLabFitTried,VoxClip.Core.Domain.VoiceLab.VoiceLabFitTried)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitTried :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabFitTried,VoxClip.Core.Domain.VoiceLab.VoiceLabFitTried)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitTried :: method public set_Result(string)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitTried :: method public set_Seconds(System.Nullable`1<double>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitTried :: method public set_Text(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitUpdate :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabFitUpdate)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitUpdate :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitUpdate :: method private get_EqualityContract()
@@ -8888,8 +8928,10 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight :: method public set_S
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeProcessing :: field public MaximumQaSeconds
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeProcessing :: method private Frames(double,int)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeProcessing :: method private SourceFrames(double,int)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeProcessing :: method public BridgeWords(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeProcessing :: method public EncodeQaWav(System.ReadOnlySpan`1<float>,int)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeProcessing :: method public Envelope(float[],int)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeProcessing :: method public KeepsBridgeWords(string,System.ValueTuple`2<System.Collections.Generic.IReadOnlyList`1<string>,System.Collections.Generic.IReadOnlyList`1<string>>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeProcessing :: method public Preflight(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeProcessing :: method public Process(VoxClip.Core.Domain.VoiceLab.VoiceLabAudioResult,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput,VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaFailure :: field public Clipping
@@ -12430,6 +12472,7 @@ member VoxClip.Core.Services.VoiceLab.VoiceLabSpendWarningKind :: field public v
 member VoxClip.Core.Services.VoiceLab.VoiceLabWordingFitService :: field private LanguageCode
 member VoxClip.Core.Services.VoiceLab.VoiceLabWordingFitService :: field private Placeholder
 member VoxClip.Core.Services.VoiceLab.VoiceLabWordingFitService :: field private PromptFile
+member VoxClip.Core.Services.VoiceLab.VoiceLabWordingFitService :: field private TriedFile
 member VoxClip.Core.Services.VoiceLab.VoiceLabWordingFitService :: field private Url
 member VoxClip.Core.Services.VoiceLab.VoiceLabWordingFitService :: field private actions
 member VoxClip.Core.Services.VoiceLab.VoiceLabWordingFitService :: field private catalog
@@ -12441,9 +12484,11 @@ member VoxClip.Core.Services.VoiceLab.VoiceLabWordingFitService :: method privat
 member VoxClip.Core.Services.VoiceLab.VoiceLabWordingFitService :: method private Validate(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase>,string)
 member VoxClip.Core.Services.VoiceLab.VoiceLabWordingFitService :: method public .ctor(VoxClip.Core.Services.LLM.LlmCatalog)
 member VoxClip.Core.Services.VoiceLab.VoiceLabWordingFitService :: method public Approve(VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedAction,bool)
+member VoxClip.Core.Services.VoiceLab.VoiceLabWordingFitService :: method public BridgeLine(VoxClip.Core.Domain.VoiceLab.VoiceLabFitBridge)
 member VoxClip.Core.Services.VoiceLab.VoiceLabWordingFitService :: method public Prepare(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase>,VoxClip.Core.Services.LLM.ConnectorId,string,string)
 member VoxClip.Core.Services.VoiceLab.VoiceLabWordingFitService :: method public ProposeAsync(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase>,VoxClip.Core.Services.LLM.ILlmConnector,string,string,VoxClip.Core.Domain.VoiceLab.VoiceLabAuthorization,System.Threading.CancellationToken)
 member VoxClip.Core.Services.VoiceLab.VoiceLabWordingFitService :: method public Request(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabFitPhrase>,VoxClip.Core.Services.LLM.ConnectorId,string)
+member VoxClip.Core.Services.VoiceLab.VoiceLabWordingFitService :: method public TriedBlock(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabFitTried>)
 member VoxClip.Core.Services.VoiceLab.VoiceOperation :: method private .ctor(VoxClip.Core.Services.VoiceLab.VoiceOperation)
 member VoxClip.Core.Services.VoiceLab.VoiceOperation :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Services.VoiceLab.VoiceOperation :: method private get_EqualityContract()
@@ -12986,6 +13031,7 @@ type VoxClip.Core.Domain.VoiceLab.VoiceLabEditStep
 type VoxClip.Core.Domain.VoiceLab.VoiceLabErrorKind
 type VoxClip.Core.Domain.VoiceLab.VoiceLabEstimate
 type VoxClip.Core.Domain.VoiceLab.VoiceLabException
+type VoxClip.Core.Domain.VoiceLab.VoiceLabFitBridge
 type VoxClip.Core.Domain.VoiceLab.VoiceLabFitEdit
 type VoxClip.Core.Domain.VoiceLab.VoiceLabFitEditKind
 type VoxClip.Core.Domain.VoiceLab.VoiceLabFitMeter
@@ -12999,6 +13045,7 @@ type VoxClip.Core.Domain.VoiceLab.VoiceLabFitResult+ChangedDuration
 type VoxClip.Core.Domain.VoiceLab.VoiceLabFitResult+Exact
 type VoxClip.Core.Domain.VoiceLab.VoiceLabFitSeam
 type VoxClip.Core.Domain.VoiceLab.VoiceLabFitTake
+type VoxClip.Core.Domain.VoiceLab.VoiceLabFitTried
 type VoxClip.Core.Domain.VoiceLab.VoiceLabFitUpdate
 type VoxClip.Core.Domain.VoiceLab.VoiceLabFitVerdict
 type VoxClip.Core.Domain.VoiceLab.VoiceLabGenerationAction

@@ -14,6 +14,7 @@ namespace VoxClip.Core.Services.VoiceLab;
 public sealed class VoiceLabWordingFitService
 {
     private const string PromptFile = "prompts/voice-rewrite-fit.json";
+    private const string TriedFile = "prompts/voice-rewrite-tried.json";
     private static readonly Regex LanguageCode = new(@"\A[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*\z", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
     private static readonly Regex Placeholder = new(@"\{([A-Za-z]+)\}", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
     private static readonly Regex Url = new("https?://", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
@@ -53,6 +54,8 @@ public sealed class VoiceLabWordingFitService
             if (phrase.MeasuredSeconds is { } measured)
                 line += "\n" + Fill("measuredPhraseLine", new Dictionary<string, string>
                     { ["measuredSeconds"] = EditingFormat.ToFixed1(measured), ["slotSeconds"] = EditingFormat.ToFixed1(phrase.SlotSeconds) });
+            if (phrase.Bridge is { } bridge) line += "\n" + BridgeLine(bridge).Text;
+            if (TriedBlock(phrase.Tried ?? []) is { } tried) line += "\n" + tried.Text;
             return line;
         }).ToArray();
         var cached = Fill("sourceBlock", new Dictionary<string, string> { ["language"] = language, ["phrases"] = string.Join("\n\n", lines) });
@@ -142,11 +145,53 @@ public sealed class VoiceLabWordingFitService
             request.System, request.CachedBlock, request.Instruction, request.SchemaName, request.Schema.ToJsonString(),
             request.MaxOutputTokens.ToString(CultureInfo.InvariantCulture) };
         foreach (var phrase in phrases)
+        {
             parts.AddRange([phrase.Ordinal.ToString(CultureInfo.InvariantCulture), phrase.Original, phrase.Proposed,
                 phrase.EstimateSeconds.ToString("R", CultureInfo.InvariantCulture), phrase.SlotSeconds.ToString("R", CultureInfo.InvariantCulture),
                 phrase.Direction, phrase.Target.Minimum.ToString(CultureInfo.InvariantCulture), phrase.Target.Maximum.ToString(CultureInfo.InvariantCulture),
                 phrase.MeasuredSeconds?.ToString("R", CultureInfo.InvariantCulture), phrase.Calibrated ? "calibrated" : "default"]);
+            // The fix loop's memory and bridge words join only when sent, so a plain round keeps its fingerprint.
+            if (phrase.Bridge is { } bridge) parts.AddRange(["bridge", string.Join(' ', bridge.Leading), string.Join(' ', bridge.Trailing)]);
+            foreach (var tried in phrase.Tried ?? [])
+                parts.AddRange(["tried", tried.Text, tried.Result, tried.Seconds?.ToString("R", CultureInfo.InvariantCulture)]);
+        }
+        // The fix loop's template joins the fingerprint only when a phrase sends its history or its bridge words (Mac fingerprint).
+        if (phrases.Any(phrase => phrase.Bridge is not null || phrase.Tried is { Count: > 0 }))
+            parts.Add(VoiceLabLlmChecks.ReadPrompt(catalog, TriedFile).Sha256);
         return VoiceLabActionGate.Fingerprint(parts.ToArray());
+    }
+
+    /// <summary>The line that requires a phrase's bridge words, from the shared template (<c>voice-rewrite-tried.json</c>
+    /// <c>bridge</c>), with the template's SHA-256.</summary>
+    public (string Text, string Sha256) BridgeLine(VoiceLabFitBridge bridge)
+    {
+        ArgumentNullException.ThrowIfNull(bridge);
+        var (document, sha256) = VoiceLabLlmChecks.ReadPrompt(catalog, TriedFile);
+        var key = bridge.Leading.Count == 0 ? "trailing" : bridge.Trailing.Count == 0 ? "leading" : "both";
+        if (document["schemaVersion"]?.GetValue<int>() != 1 || document["bridge"]?[key] is not JsonValue value || !value.TryGetValue<string>(out var template))
+            throw Missing();
+        return (template.Replace("{leading}", string.Join(' ', bridge.Leading), StringComparison.Ordinal)
+            .Replace("{trailing}", string.Join(' ', bridge.Trailing), StringComparison.Ordinal), sha256);
+    }
+
+    /// <summary>The history block sent with every reworded round, from the shared template, with the template's SHA-256;
+    /// null when nothing was tried. At most 12 wordings, each at most 400 characters.</summary>
+    public (string Text, string Sha256)? TriedBlock(IReadOnlyList<VoiceLabFitTried> tried)
+    {
+        if (tried is not { Count: > 0 }) return null;
+        var (document, sha256) = VoiceLabLlmChecks.ReadPrompt(catalog, TriedFile);
+        if (document["schemaVersion"]?.GetValue<int>() != 1 || document["header"] is not JsonValue headerValue || !headerValue.TryGetValue<string>(out var header) ||
+            document["line"] is not JsonValue lineValue || !lineValue.TryGetValue<string>(out var line)) throw Missing();
+        var lines = tried.Take(12).Select(row =>
+        {
+            if (document["results"]?[row.Result] is not JsonValue resultValue || !resultValue.TryGetValue<string>(out var template)) throw Missing();
+            var result = template.Replace("{seconds}", row.Seconds is { } seconds ? EditingFormat.ToFixed1(seconds) : "?", StringComparison.Ordinal);
+            // Swift counts Characters: grapheme clusters, as text elements here.
+            var elements = new StringInfo(row.Text);
+            var text = elements.LengthInTextElements > 400 ? elements.SubstringByTextElements(0, 399) + "…" : row.Text;
+            return line.Replace("{text}", text, StringComparison.Ordinal).Replace("{result}", result, StringComparison.Ordinal);
+        });
+        return (string.Join("\n", new[] { header }.Concat(lines)), sha256);
     }
 
     private static VoxClipException Missing() => new(VoxClipErrorCode.SharedResourcesMissing, "VoxClip is missing some of its files. Reinstall VoxClip.");

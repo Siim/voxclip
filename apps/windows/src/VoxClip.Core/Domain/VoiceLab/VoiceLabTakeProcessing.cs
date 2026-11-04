@@ -21,17 +21,7 @@ public static class VoiceLabTakeProcessing
             !double.IsFinite(window.Start) || !double.IsFinite(window.End) || window.Start < 0 || window.End <= window.Start ||
             window.End > total / (double)rate || SourceFrames(window.Start, rate) != window.StartSample || SourceFrames(window.End, rate) != window.EndSample)
             throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
-        var tokens = VoiceLabTakeQuality.Tokens(input.Text);
-        string[] Bridge(IReadOnlyList<string> ids) => ids.SelectMany(id =>
-        {
-            var word = input.Items.FirstOrDefault(item => item.Id == id && item.Kind == Shared.WordKind.Word && !input.CutWordIds.Contains(id))
-                ?? throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
-            return VoiceLabTakeQuality.Tokens(word.Text);
-        }).ToArray();
-        var leading = Bridge(window.LeftBridgeWordIds);
-        var trailing = Bridge(window.RightBridgeWordIds);
-        if (tokens.Length == 0 || !tokens.Take(leading.Length).SequenceEqual(leading) || !tokens.TakeLast(trailing.Length).SequenceEqual(trailing))
-            throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
+        if (!KeepsBridgeWords(input.Text, BridgeWords(input))) throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
         var level = VoiceLabLoudness.NeighbourhoodVoicedRmsDb(input.Source, rate, window.StartSample, window.EndSample);
         var tone = input.CleanAudioOn ? null : VoiceLabRoomToneSelection.Select(input.Items, input.SourceEnvelope, rate, total,
             VoiceLabRoomToneSelection.ExcludeDigitalSilence(input.Items, input.SourceEnvelope, rate, total, window, input.HardJoinSmoothing));
@@ -75,6 +65,25 @@ public static class VoiceLabTakeProcessing
             input.SourceSampleRate, input.HardJoinSmoothing, profile,
             VoiceLabNaturalPacing.PauseTags(input.AudioTags, input.ModelId, words.Count), input.SourceEnvelope, input.Items);
         return new(rate, trimmed, gain, preflight.RoomTone, fit);
+    }
+    /// <summary>The bridge words a take's text must begin and end with (voice-lab §8.4; Mac <c>bridgeWords</c>): the unchanged
+    /// words that join the change to the source around it, as the input's items spell them. Throws when a bridge word is cut
+    /// or not a word.</summary>
+    public static (IReadOnlyList<string> Leading, IReadOnlyList<string> Trailing) BridgeWords(VoiceLabTakeInput input)
+    {
+        string[] Texts(IReadOnlyList<string> ids) => ids.Select(id =>
+            (input.CutWordIds.Contains(id) ? null : input.Items.FirstOrDefault(item => item.Id == id && item.Kind == Shared.WordKind.Word))?.Text
+                ?? throw new VoiceLabException(VoiceLabErrorKind.InvalidInput)).ToArray();
+        return (Texts(input.Window.LeftBridgeWordIds), Texts(input.Window.RightBridgeWordIds));
+    }
+    /// <summary>Whether <paramref name="text"/> begins with the leading bridge words and ends with the trailing ones, compared
+    /// as the word check compares words (case, punctuation and tags aside). A wording that drops them can't be placed or priced.</summary>
+    public static bool KeepsBridgeWords(string text, (IReadOnlyList<string> Leading, IReadOnlyList<string> Trailing) bridge)
+    {
+        var tokens = VoiceLabTakeQuality.Tokens(text);
+        var leading = bridge.Leading.SelectMany(VoiceLabTakeQuality.Tokens).ToArray();
+        var trailing = bridge.Trailing.SelectMany(VoiceLabTakeQuality.Tokens).ToArray();
+        return tokens.Length > 0 && tokens.Take(leading.Length).SequenceEqual(leading) && tokens.TakeLast(trailing.Length).SequenceEqual(trailing);
     }
     public static byte[] EncodeQaWav(ReadOnlySpan<float> samples, int rate)
     {

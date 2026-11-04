@@ -11,7 +11,44 @@ public sealed record VoiceLabWordTarget(int Minimum, int Maximum);
 
 /// <summary>One phrase an automatic wording-fit round asks the connector to reword (voice-lab.md, automatic wording fit).</summary>
 public sealed record VoiceLabFitPhrase(int Ordinal, string Original, string Proposed, double EstimateSeconds, double SlotSeconds,
-    string Direction, VoiceLabWordTarget Target, double? MeasuredSeconds = null, bool Calibrated = false);
+    string Direction, VoiceLabWordTarget Target, double? MeasuredSeconds = null, bool Calibrated = false)
+{
+    /// <summary>The wordings already tried for this phrase with their measured results (voice-lab §8.2.2); null when none.</summary>
+    public IReadOnlyList<VoiceLabFitTried>? Tried { get; init; }
+    /// <summary>The bridge words the reworded phrase must keep (voice-lab §8.2.2); null when its window has none.</summary>
+    public VoiceLabFitBridge? Bridge { get; init; }
+}
+
+/// <summary>The unchanged words that join a reworded phrase to the recording around it (voice-lab §8.2.2, §8.4; Mac
+/// <c>VoiceLabFitBridge</c>). A measured round rewords the whole phrase, these words included; a reply without them can't be
+/// placed or priced, so the request names them and the reply is checked before it counts as a round.</summary>
+public sealed record VoiceLabFitBridge(IReadOnlyList<string> Leading, IReadOnlyList<string> Trailing)
+{
+    /// <summary>The take input's bridge words; null when its window has none.</summary>
+    public static VoiceLabFitBridge? From(VoiceLabTakeInput input)
+    {
+        var (leading, trailing) = VoiceLabTakeProcessing.BridgeWords(input);
+        return leading.Count == 0 && trailing.Count == 0 ? null : new(leading, trailing);
+    }
+    /// <summary>Whether a reworded phrase keeps them, as the take's preflight checks it.</summary>
+    public bool Keeps(string text) => VoiceLabTakeProcessing.KeepsBridgeWords(text, (Leading, Trailing));
+    /// <summary>The words for a person: "I use … as".</summary>
+    public string Display => string.Join(" … ", new[] { string.Join(' ', Leading), string.Join(' ', Trailing) }.Where(part => part.Length > 0));
+    public bool Equals(VoiceLabFitBridge? other) => other is not null && Leading.SequenceEqual(other.Leading, StringComparer.Ordinal) &&
+        Trailing.SequenceEqual(other.Trailing, StringComparer.Ordinal);
+    public override int GetHashCode() => HashCode.Combine(string.Join('\u001f', Leading), string.Join('\u001f', Trailing));
+}
+
+/// <summary>One wording a stuck phrase already had, and what came of it: the fix loop's memory (voice-lab §8.2.2; Mac
+/// <c>VoiceLabFitTried</c>). <c>Result</c> is <c>tooLong</c>, <c>tooShort</c>, <c>words</c>, <c>fit</c>, <c>repeat</c>,
+/// <c>notShorter</c>, <c>notLonger</c>, <c>missingBridge</c> or <c>unchecked</c> (<c>shared/prompts/voice-rewrite-tried.json</c>
+/// <c>results</c>).</summary>
+public sealed record VoiceLabFitTried(string Text, string Result, double? Seconds = null)
+{
+    /// <summary>Case-, punctuation- and spacing-blind identity of a wording: two wordings with one key are one variant.</summary>
+    public static string Key(string text) => string.Join(' ', EditingAlgorithms.SplitWords(VoiceLabAudioTags.StrippingTags(text))
+        .Select(word => EditingAlgorithms.NormalizeForMatch(EditingAlgorithms.Nfc(word))).Where(word => word.Length > 0));
+}
 
 /// <summary>The structured answer for one requested phrase: reworded text, or keep the original recording.</summary>
 public sealed record VoiceLabFitUpdate(int Ordinal, bool KeepOriginal, string Text);
