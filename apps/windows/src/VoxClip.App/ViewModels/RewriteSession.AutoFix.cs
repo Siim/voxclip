@@ -158,6 +158,8 @@ internal sealed partial class RewriteSession
     {
         if (generationWindows.ElementAtOrDefault(index) is not { } window || window.LeftOut || window.Rows.Count == 0 ||
             window.IsRunning || window.IsPreparing) return null;
+        // ADR-R37: a short take waiting for its run's pooled voice check is not stuck yet.
+        if (window.Rows.Any(row => row.VoiceCheck is VoiceLabTakeVoiceCheck.WaitingCheck)) return null;
         var current = window.Rows.Where(row => !row.Stopped && !window.IsBeforeExpression(row.Id)).ToArray();
         if (current.Length == 0) return null;
         if (window.Selected is { Selectable: true } selected)
@@ -176,7 +178,8 @@ internal sealed partial class RewriteSession
             return new StuckTakeReason.Length(length > slot, length, slot, closest.Id, closest.Index + 1, false);
         }
         var failures = current.SelectMany(row => row.Qa?.Failures ?? []).ToArray();
-        if (failures.Contains(VoiceLabTakeQaFailure.InsufficientGeneratedSpeech) || current.Any(row => row.Failure is VoiceInsufficientGeneratedSpeechException))
+        if (failures.Contains(VoiceLabTakeQaFailure.InsufficientGeneratedSpeech) || current.Any(row => row.Failure is VoiceInsufficientGeneratedSpeechException ||
+                row.VoiceCheck.Evidence?.Mode == VoiceLabShortSpeechMode.Unmeasured))
             return new StuckTakeReason.ShortSpeech();
         if (failures.Contains(VoiceLabTakeQaFailure.Transcript)) return new StuckTakeReason.Words();
         if (failures.Contains(VoiceLabTakeQaFailure.Speaker)) return new StuckTakeReason.Voice();
@@ -211,6 +214,14 @@ internal sealed partial class RewriteSession
         {
             StopAutoFix(failed.Problem);
             return;
+        }
+        // A collision found after paid takes (Mac's refused takes plan): a merge would discard the paid takes, so the refused
+        // change keeps its original words, which costs nothing and moves no take. Its card shows if that can't be done.
+        if (HasPaidTakes && Collision is { } collision && KeepCollidedOriginal(collision.Change))
+        {
+            var note = $"Change {collision.Change} keeps its original words: it's too close to change {collision.Earlier} to voice separately.";
+            AutoFix.Notes.Add(note);
+            AutoFix.Announcement = note;
         }
         for (var index = 0; index < generationWindows.Count; index++)
         {

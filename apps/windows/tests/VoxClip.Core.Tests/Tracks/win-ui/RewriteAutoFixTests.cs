@@ -287,6 +287,11 @@ public sealed class RewriteAutoFixTests
         internal int Sends;
         /// <summary>The take's voice score by run; passing takes score 1 and failed ones 0.2 without it.</summary>
         internal Func<int, double>? Score { get; init; }
+        /// <summary>The take's voice check by run (ADR-R37); null: checked on its own speech. Waiting and unmeasured takes carry no score.</summary>
+        internal Func<int, VoiceLabTakeVoiceCheck>? Voice { get; init; }
+        /// <summary>Holds each run after its take arrives until released, so a test can act while takes are being made.</summary>
+        internal TaskCompletionSource? Hold { get; init; }
+        internal TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private VoiceLabTakeRunQuote? pending;
         public Task<VoiceLabTakeRunQuote> PrepareAsync(VoiceLabTakeInput input, CancellationToken ct = default)
         {
@@ -318,9 +323,15 @@ public sealed class RewriteAutoFixTests
             var fit = VoiceLabRewriteFit.Hypothetical(input.Window, input.IncomingSilence, input.OutgoingSilence, seconds, 48_000, hardJoinSmoothing: false);
             var receipt = new VoiceLabReceipt("elevenlabs", ElevenLabsRegion.Default, "fixture", input.ModelId, "voice",
                 quote.Takes[0].Synthesis.Review.RequestId, null, null, input.Pace);
+            var check = Voice?.Invoke(Sends) ?? VoiceLabTakeVoiceCheck.PerTake;
+            if (check is not VoiceLabTakeVoiceCheck.PerTakeCheck)
+                qa = qa with { SpeakerScore = Score?.Invoke(Sends), SpeakerUnmeasured = check.Evidence?.Mode == VoiceLabShortSpeechMode.Unmeasured };
             var row = new VoiceLabTakeRow(receipt.ActionId, 0, 42, receipt, Quote: quote.Takes[0],
-                Audio: new(48_000, trimmed, [], 0, trimmed.Length, [], 0, null, fit), Qa: qa, Score: Score?.Invoke(Sends) ?? (qa.Verdict == VoiceLabTakeQaVerdict.Failed ? .2 : 1));
+                Audio: new(48_000, trimmed, [], 0, trimmed.Length, [], 0, null, fit), Qa: qa, Score: Score?.Invoke(Sends) ?? (qa.Verdict == VoiceLabTakeQaVerdict.Failed ? .2 : 1))
+                { VoiceCheck = check };
             if (progress is not null) await progress([row]);
+            Started.TrySetResult();
+            if (Hold is { } hold) await hold.Task.WaitAsync(ct);
             return new([row], VoiceLabTakeRunEnd.Completed);
         }
         public bool IsQuoteFresh(VoiceLabTakeRunQuote quote) => ReferenceEquals(quote, pending);

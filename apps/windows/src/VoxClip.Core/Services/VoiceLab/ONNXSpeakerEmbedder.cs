@@ -35,9 +35,10 @@ public sealed class ONNXSpeakerEmbedder : IDisposable
         model.VerifiedFiles(directory);
     }
     public VoiceSpeakerCheck SpeakerCheck(string language = "en") => VoiceSpeakerCheck.Create(this, model, language);
-    public async Task<IReadOnlyList<(int Start, int End)>> VoicedRangesAsync(float[] pcm16k, CancellationToken ct)
+    public Task<IReadOnlyList<(int Start, int End)>> VoicedRangesAsync(float[] pcm16k, CancellationToken ct) => VoicedRangesAsync(pcm16k, 48000, ct);
+    private async Task<IReadOnlyList<(int Start, int End)>> VoicedRangesAsync(float[] pcm16k, int minimum, CancellationToken ct)
     {
-        if (pcm16k.Length is < 48000 or > 16000 * 240 || pcm16k.Any(sample => !float.IsFinite(sample))) throw new VoiceConsentException(VoiceConsentError.SpeakerMismatch);
+        if (pcm16k.Length < minimum || pcm16k.Length > 16000 * 240 || pcm16k.Any(sample => !float.IsFinite(sample))) throw new VoiceConsentException(VoiceConsentError.SpeakerMismatch);
         ct.ThrowIfCancellationRequested();
         using var factory = WhisperVadFactory.FromPath(vad);
         await using var detector = factory.CreateBuilder().WithUseGpu(false).WithThreads(2).WithThreshold(0.5f)
@@ -58,12 +59,37 @@ public sealed class ONNXSpeakerEmbedder : IDisposable
     }
     public async Task<float[]> EmbeddingAsync(float[] pcm16k, CancellationToken ct) =>
         SpeakerAudio.Embedding(await WindowEmbeddingsAsync(pcm16k, ct).ConfigureAwait(false));
-    internal async Task<float[]> GeneratedEmbeddingAsync(float[] pcm16k, CancellationToken ct) =>
-        SpeakerAudio.Embedding(await WindowEmbeddingsAsync(pcm16k, ct, generated: true).ConfigureAwait(false));
     /// <summary>A project span's embedding and its parts (voice-lab.md §6.6, <see cref="SpeakerAudio.PartEmbeddings"/>).</summary>
     public async Task<(float[] Whole, float[][] Parts)> PartEmbeddingsAsync(float[] pcm16k, CancellationToken ct) =>
         SpeakerAudio.PartEmbeddings(await WindowEmbeddingsAsync(pcm16k, ct).ConfigureAwait(false));
-    private async Task<float[][]> WindowEmbeddingsAsync(float[] pcm16k, CancellationToken ct, bool generated = false)
+    /// <summary>ADR-R37: a generated take's voiced speech at 16 kHz, through the same VAD, however short. Short takes pool it.</summary>
+    internal async Task<float[]> GeneratedVoicedAsync(float[] pcm16k, CancellationToken ct)
+    {
+        var snapshot = pcm16k.ToArray();
+        await gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            ValidateAvailability();
+            var ranges = await VoicedRangesAsync(snapshot, 1, ct).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+            return SpeakerAudio.Select(snapshot, ranges);
+        }
+        finally { gate.Release(); }
+    }
+    /// <summary>ADR-R37: the embedding of already-voiced generated speech (a pooled group of short takes), with the unchanged
+    /// 3 s windows and 1.5 s hops.</summary>
+    internal async Task<float[]> VoicedEmbeddingAsync(float[] voiced, CancellationToken ct)
+    {
+        var snapshot = voiced.ToArray();
+        await gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            ValidateAvailability();
+            return SpeakerAudio.Embedding(Embed(SpeakerAudio.GeneratedWindows(snapshot), ct));
+        }
+        finally { gate.Release(); }
+    }
+    private async Task<float[][]> WindowEmbeddingsAsync(float[] pcm16k, CancellationToken ct)
     {
         var snapshot = pcm16k.ToArray();
         await gate.WaitAsync(ct).ConfigureAwait(false);
@@ -73,22 +99,25 @@ public sealed class ONNXSpeakerEmbedder : IDisposable
             var ranges = await VoicedRangesAsync(snapshot, ct).ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
             var voiced = SpeakerAudio.Select(snapshot, ranges);
-            var windows = generated ? SpeakerAudio.GeneratedWindows(voiced) : SpeakerAudio.Windows(voiced);
-            var embedded = new List<float[]>();
-            foreach (var window in windows)
-            {
-                ct.ThrowIfCancellationRequested();
-                var features = SpeakerAudio.Features(window);
-                var tensor = new DenseTensor<float>(features, [1, 298, 80]);
-                using var result = session.Run([NamedOnnxValue.CreateFromTensor("feats", tensor)], ["embs"]);
-                var raw = result.Single().AsTensor<float>().ToArray();
-                if (raw.Length != Dimension) throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
-                embedded.Add(SpeakerAudio.Normalized(raw));
-            }
-            ct.ThrowIfCancellationRequested();
-            return embedded.ToArray();
+            return Embed(SpeakerAudio.Windows(voiced), ct);
         }
         finally { gate.Release(); }
+    }
+    private float[][] Embed(IEnumerable<float[]> windows, CancellationToken ct)
+    {
+        var embedded = new List<float[]>();
+        foreach (var window in windows)
+        {
+            ct.ThrowIfCancellationRequested();
+            var features = SpeakerAudio.Features(window);
+            var tensor = new DenseTensor<float>(features, [1, 298, 80]);
+            using var result = session.Run([NamedOnnxValue.CreateFromTensor("feats", tensor)], ["embs"]);
+            var raw = result.Single().AsTensor<float>().ToArray();
+            if (raw.Length != Dimension) throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
+            embedded.Add(SpeakerAudio.Normalized(raw));
+        }
+        ct.ThrowIfCancellationRequested();
+        return embedded.ToArray();
     }
     public void Dispose()
     {
@@ -134,13 +163,21 @@ public sealed class VoiceSpeakerCheck
         ValidateAvailability();
         return embedder!.EmbeddingAsync(pcm16k, ct);
     }
-    public Task<float[]> GeneratedEmbeddingAsync(float[] samples, int sampleRate, CancellationToken ct)
+    /// <summary>ADR-R37: a generated take's voiced speech (16 kHz) from its 24 kHz trimmed audio, however short.</summary>
+    public Task<float[]> GeneratedVoicedAsync(float[] samples, int sampleRate, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        if (sampleRate != 24000 || samples.Any(sample => !float.IsFinite(sample))) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
-        if (samples.Length < sampleRate * 3) throw new VoiceInsufficientGeneratedSpeechException();
+        if (sampleRate != 24000 || samples.Length == 0 || samples.Any(sample => !float.IsFinite(sample))) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
         ValidateAvailability();
-        return embedder!.GeneratedEmbeddingAsync(VoiceConsentAudio.Resample(samples, sampleRate), ct);
+        return embedder!.GeneratedVoicedAsync(VoiceConsentAudio.Resample(samples, sampleRate), ct);
+    }
+    /// <summary>ADR-R37: the embedding of voiced generated speech, a long take's own or a pooled group's.</summary>
+    public Task<float[]> VoicedEmbeddingAsync(float[] voiced, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (voiced.Length < SpeakerAudio.WindowSize) throw new VoiceInsufficientGeneratedSpeechException();
+        ValidateAvailability();
+        return embedder!.VoicedEmbeddingAsync(voiced, ct);
     }
     public Task<(float[] Whole, float[][] Parts)> PartEmbeddingsAsync(float[] pcm16k, CancellationToken ct)
     {

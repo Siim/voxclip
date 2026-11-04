@@ -19,10 +19,10 @@ public sealed class RewriteSmokeTests
 {
     private const string Long = "a much much longer phrasing than this slot could hold";
     /// <summary>S2's reply: words 10 and 13 change, word 11 stays (scope words 10–13 of <see cref="CloseTogether"/>).</summary>
-    private const string Close = "much better word11 nicer";
+    internal const string Close = "much better word11 nicer";
     private const string Fifteen = "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen";
 
-    public static TheoryData<string> Scenarios => new(["S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9", "S10", "S11", "S12", "S13"]);
+    public static TheoryData<string> Scenarios => new(["S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9", "S10", "S11", "S12", "S13", "S14"]);
 
     [Theory]
     [MemberData(nameof(Scenarios))]
@@ -161,6 +161,20 @@ public sealed class RewriteSmokeTests
                 smoke.End(VoiceLabVideoMode.Retimed, voiced: 1);
                 return smoke;
             }
+            case "S14":
+            {
+                // A collision found after paid takes (Mac's refused takes plan): Get Price voices change 1 while change 2 waits;
+                // after the takes the resolver keeps change 2's original words, with no discard and no extra spend.
+                using var smoke = new Smoke(id, new(Close, (_, ordinals) => Rows(ordinals, "x")), new((_, _) => (Fit, Passed)), last: 13, editor: CloseTogether());
+                await smoke.ProposeAsync();
+                await smoke.GetPriceAsync();
+                if (smoke.Session.Collision is not null || smoke.Session.ChangeStates.GetValueOrDefault(2) != TranscriptChangeState.Excluded)
+                    smoke.Failures.Add($"{id}: the collision after paid takes isn't resolved");
+                if (!smoke.Session.AutoFix.Notes.Contains("Change 2 keeps its original words: it's too close to change 1 to voice separately."))
+                    smoke.Failures.Add($"{id}: no note says change 2 keeps its original words");
+                smoke.End(VoiceLabVideoMode.Source, voiced: 1);
+                return smoke;
+            }
             case "S12":
             {
                 using var smoke = new Smoke(id, new(Long + " word11 word12", (round, ordinals) => Rows(ordinals, round <= 3 ? Long : "said briefly")),
@@ -184,7 +198,7 @@ public sealed class RewriteSmokeTests
 
     /// <summary>Words 10–13 within half a second, with a sound (word 12, an event) between the two changes: the diff keeps
     /// them apart and placement cannot merge across the sound (shared window-all `all-event-prevents-merge`).</summary>
-    private static EditorViewModel CloseTogether()
+    internal static EditorViewModel CloseTogether()
     {
         var project = Editor().Project;
         var words = project.Transcript!.Words.ToArray();
@@ -322,6 +336,9 @@ public sealed class RewriteSmokeTests
             if (video is { } mode && applying.Any(window => (window.Selected!.Fits ? VoiceLabVideoMode.Source : window.VideoChoice) != mode))
                 Failures.Add($"{id} I8: Use would apply {string.Join(", ", applying.Select(window => window.Selected!.Fits ? VoiceLabVideoMode.Source : window.VideoChoice))}, expected {mode}");
             if (applying.Length != voiced) Failures.Add($"{id} I9: {applying.Length} voice changes applied, expected {voiced}");
+            // I9 also: an included voice change with no phrase would be dropped unvoiced by Use.
+            foreach (var hunk in Session.Review?.VoiceHunks.Except(Session.PricedVoiceHunks) ?? [])
+                Failures.Add($"{id} I9: change {hunk.Ordinals[0]} is included but has no phrase to voice it");
             Log.Add($"{id} end: {applying.Length} voiced, {runner.Sends} take runs, spent {RewriteSession.Dollars(Session.AutoFix.Spent)}");
         }
 

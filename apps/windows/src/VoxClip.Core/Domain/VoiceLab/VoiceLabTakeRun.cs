@@ -80,9 +80,13 @@ public sealed record VoiceLabTakeQaResult(double? TranscriptMatch, double? LufsJ
     IReadOnlyList<VoiceLabTakeQaFailure> Failures)
 {
     public IReadOnlyList<VoiceLabJoinAdvisorySeam> JoinSeams { get; init; } = [];
+    /// <summary>ADR-R37: the take's voice could not be measured (its pool held under three seconds of voiced speech), so it
+    /// carries no speaker score; only the take row's own-clone evidence lets it be chosen, and never automatically.</summary>
+    public bool SpeakerUnmeasured { get; init; }
     public VoiceLabTakeQaVerdict Verdict => TranscriptMatch is not { } match || !double.IsFinite(match) ||
         LufsJumpLu is not { } jump || !double.IsFinite(jump) || PeakDbfs is not { } peak || !double.IsFinite(peak) ||
-        SpeakerScore is not { } score || !double.IsFinite(score) || Failures.Any(failure => failure != VoiceLabTakeQaFailure.Loudness)
+        (SpeakerScore is not { } score ? !SpeakerUnmeasured : !double.IsFinite(score) || SpeakerUnmeasured) ||
+        Failures.Any(failure => failure != VoiceLabTakeQaFailure.Loudness)
             ? VoiceLabTakeQaVerdict.Failed
             : Failures.Count == 0 && jump is >= 0 and <= 2 ? VoiceLabTakeQaVerdict.Passed
             : Failures.Count > 0 && jump > 2 ? VoiceLabTakeQaVerdict.PassedWithAdvisory : VoiceLabTakeQaVerdict.Failed;
@@ -168,10 +172,11 @@ public static class VoiceLabTakeQuality
         return asked;
     }
     public static VoiceLabTakeQaResult Evaluate(string expected, IReadOnlyList<string> recognized, float[] mixed, int sampleRate,
-        IReadOnlyList<int> seams, double speakerScore, double threshold, IReadOnlyList<bool>? generatedAfter = null, IReadOnlyList<double>? seamExcesses = null, bool hasTags = false,
+        IReadOnlyList<int> seams, double? speakerScore, double threshold, IReadOnlyList<bool>? generatedAfter = null, IReadOnlyList<double>? seamExcesses = null, bool hasTags = false,
         IReadOnlySet<string>? replacementWords = null)
     {
-        if (!double.IsFinite(speakerScore) || speakerScore is < -1 or > 1 || !double.IsFinite(threshold) || threshold is < 0 or > 1)
+        // A null score: a short take whose voice waits for its run's pooled check (ADR-R37); its words and acoustics are checked now.
+        if (speakerScore is { } given && (!double.IsFinite(given) || given is < -1 or > 1) || !double.IsFinite(threshold) || threshold is < 0 or > 1)
             throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
         var expectedTokens = Tokens(VoiceLabAudioTags.StrippingTags(expected));
         var filtered = VoiceLabAudioTags.FilterScribeEvents(expectedTokens, recognized.SelectMany(Tokens).ToArray(), hasTags);
@@ -190,7 +195,7 @@ public static class VoiceLabTakeQuality
         if (expectedTokens.Length <= 5 ? !expectedTokens.SequenceEqual(recognizedTokens) : ratio < 0.9) failures.Add(VoiceLabTakeQaFailure.Transcript);
         if (peak >= 0) failures.Add(VoiceLabTakeQaFailure.Clipping);
         if (jump > 2) failures.Add(VoiceLabTakeQaFailure.Loudness);
-        if (speakerScore < threshold) failures.Add(VoiceLabTakeQaFailure.Speaker);
+        if (speakerScore is { } measured && measured < threshold) failures.Add(VoiceLabTakeQaFailure.Speaker);
         return new(ratio, jump, peak, speakerScore, Array.AsReadOnly(failures.ToArray())) { JoinSeams = Array.AsReadOnly(joinSeams) };
     }
     public static double Rank(VoiceLabFitResult fit, double windowSeconds, double matchRatio, double flatness)
@@ -234,8 +239,36 @@ public sealed record VoiceLabTakeRow(Guid Id, int Index, uint Seed, VoiceLabRece
     /// <summary>An interrupted take retains paid request IDs without claiming its speech failed QA.</summary>
     public bool Stopped => Failure is OperationCanceledException or VoxClip.Core.Services.VoiceLab.VoiceLabRunInvalidatedException
         or VoiceLabException { Kind: VoiceLabErrorKind.Cancelled };
-    public bool Selectable => Failure is null && Qa is { Verdict: not VoiceLabTakeQaVerdict.Failed } && Audio is not null;
+    public bool Selectable => VoiceCheck.Complete && Failure is null && Qa is { Verdict: not VoiceLabTakeQaVerdict.Failed } && Audio is not null;
     public bool Fits => Audio?.Fit is VoiceLabFitResult.Exact;
+    /// <summary>How this take's voice was checked (ADR-R37); a short take waits for its run's pooled check.</summary>
+    public VoiceLabTakeVoiceCheck VoiceCheck { get; init; } = VoiceLabTakeVoiceCheck.PerTake;
+    /// <summary>A waiting short take whose words, acoustics and fit already pass: its run needs no further candidate.</summary>
+    public bool PassesBeforeVoiceCheck => VoiceCheck is VoiceLabTakeVoiceCheck.WaitingCheck && Failure is null && Audio is not null && Fits &&
+        Qa is { Failures.Count: 0, TranscriptMatch: not null, LufsJumpLu: not null, PeakDbfs: not null };
+    /// <summary>The row's short-phrase line (Mac <c>shortPhraseCopy</c>); null for a take checked on its own speech.</summary>
+    public string? ShortPhraseCopy => VoiceCheck switch
+    {
+        VoiceLabTakeVoiceCheck.WaitingCheck => "waiting for the voice check",
+        VoiceLabTakeVoiceCheck.ShortSpeechCheck { Pool: { Usable: true } evidence } => evidence.Mode == VoiceLabShortSpeechMode.Unmeasured
+            ? "voice couldn't be measured (under 3 s of speech)"
+            : Selectable && Qa?.SpeakerScore is { } score && double.IsFinite(score)
+                ? "Short phrase · words checked · voice checked across " + evidence.TakeCount.ToString(System.Globalization.CultureInfo.InvariantCulture) + " takes" : null,
+        _ => null
+    };
+    /// <summary>The run's pooled voice check applied to this waiting take (Mac <c>checkingVoice</c>): its score (none when
+    /// unmeasured), an added speaker failure, or a consent/provider failure that replaces the row's. A separate words failure stays.</summary>
+    public VoiceLabTakeRow CheckingVoice(VoiceLabTakeVoiceCheck check, double? score = null, bool speakerFailed = false, Exception? failure = null)
+    {
+        var qa = Qa is null ? null : Qa with
+        {
+            SpeakerScore = score,
+            SpeakerUnmeasured = check.Evidence?.Mode == VoiceLabShortSpeechMode.Unmeasured && score is null,
+            Failures = Array.AsReadOnly(speakerFailed && !Qa.Failures.Contains(VoiceLabTakeQaFailure.Speaker)
+                ? Qa.Failures.Append(VoiceLabTakeQaFailure.Speaker).ToArray() : Qa.Failures.ToArray())
+        };
+        return this with { Qa = qa, VoiceCheck = check, Failure = failure ?? Failure };
+    }
 }
 public enum VoiceLabTakeRunEnd { Completed, EarlyStop, Cancelled, Invalidated, Fatal }
 public sealed record VoiceLabTakeRunResult(IReadOnlyList<VoiceLabTakeRow> Rows, VoiceLabTakeRunEnd End)

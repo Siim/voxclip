@@ -5,6 +5,8 @@ namespace VoxClip.App.ViewModels;
 internal sealed partial class RewriteSession
 {
     private readonly List<RewriteGeneration> generationWindows = [];
+    /// <summary>ADR-R37: this Rewrite plan's generated speech and voice mismatches, shared by every phrase's take runs.</summary>
+    internal VoxClip.Media.VoiceLab.VoiceLabVoiceCheckSession VoiceChecks { get; } = new();
     private readonly List<Task> retiredGenerations = [];
     private Func<int, RewriteGeneration>? generationFactory;
     private RewriteReview? generatedReview;
@@ -14,7 +16,7 @@ internal sealed partial class RewriteSession
     internal int ActiveWindow { get; private set; }
     internal bool IsGeneratingBatch { get; private set; }
     /// <summary>Every phrase is ready or kept as recorded, and at least one take or text fix applies.</summary>
-    internal bool CanAcceptAll => GenerationIsCurrent && !IsGeneratingBatch && !applyingBatch && AutoFix.Work is null && generationWindows.Count > 0 &&
+    internal bool CanAcceptAll => GenerationIsCurrent && !IsGeneratingBatch && !applyingBatch && AutoFix.Work is null && generationWindows.Count > 0 && Collision is null &&
         generationWindows.Count == PricedVoiceHunks.Count && generationWindows.All(window => window.LeftOut || window.ReadyToAccept) &&
         (generationWindows.Any(window => !window.LeftOut) || LocalOperations().Count > 0);
     /// <summary>The footer's next step while selected takes cannot be used yet because a changed-duration phrase has no
@@ -69,6 +71,7 @@ internal sealed partial class RewriteSession
                  index == 0 && previous[index].Rows.Count == 0 && (previousHunks.Length == 0 || desired.Count == 0));
             var window = reusable ? previous[index] : generationFactory(index);
             window.FixedModelId = synthesisModel;
+            window.ShareVoiceChecks(VoiceChecks, index);
             if (AutoFix.Armed) window.KeepEveryTake();
             generationWindows.Add(window);
             if (!reusable) window.Changed += GenerationChanged;
@@ -104,6 +107,7 @@ internal sealed partial class RewriteSession
         generatedVoiceHunks = [];
         Generation = null;
         AutoFix.Reset();
+        VoiceChecks.Reset();
     }
 
     private static async Task DrainGenerationAsync(RewriteGeneration generation)
@@ -178,6 +182,7 @@ internal sealed partial class RewriteSession
         var identity = ReviewIdentity;
         var windows = generationWindows.ToArray();
         var started = -1;
+        VoxClip.Media.VoiceLab.VoiceLabShortTakePool? pool = null;
         bool Current() => GenerationIsCurrent && identity == ReviewIdentity && generationWindows.SequenceEqual(windows) &&
             windows.Skip(started + 1).Select((window, offset) =>
                 ReferenceEquals(window.Quote, batch.Windows[started + 1 + offset].Quote)).All(same => same);
@@ -193,6 +198,12 @@ internal sealed partial class RewriteSession
             if (!await confirm(batch, copy, Current, lifetime.Token) || !Current()) return;
             // The approved price also covers automatic fixes up to max($0.10, the price) (voice-lab.md §8.2.2).
             ArmAutoFix(batch);
+            // ADR-R37: the batch is one approved run; its short takes are voice-checked together after its last phrase.
+            if (windows.Any(window => window.PoolsShortTakes))
+            {
+                pool = new(VoiceChecks);
+                foreach (var window in windows) window.UseShortTakePool(pool);
+            }
             var progress = new VoiceLabTakeBatchProgress(batch);
             for (var index = 0; index < windows.Length; index++)
             {
@@ -219,6 +230,12 @@ internal sealed partial class RewriteSession
         }
         finally
         {
+            if (pool is not null)
+            {
+                foreach (var window in windows) window.UseShortTakePool(null);
+                var checkedRows = await pool.FinishAsync();
+                if (IsOpen) foreach (var window in windows) window.ApplyVoiceChecks(checkedRows);
+            }
             IsGeneratingBatch = false;
             AdvanceAutoFix();
             Changed?.Invoke(this, EventArgs.Empty);

@@ -17,7 +17,7 @@ internal sealed record RewriteChip(string Id, string Title, bool Ai, Func<Task>?
 /// "Choose yourself…" does not ask for the field (<see cref="Asks"/>), as Mac's collapsed steps carry no <c>ask</c>.</summary>
 internal sealed record RewriteNextStepCard(string Id, string Sentence, IReadOnlyList<RewriteChip> Chips, bool Asks = true);
 
-internal enum RewriteFooterAction { None, ApplyLocal, UseTakes, ApplyTextFixes, Done, KeepFixing, StopReask, StopAutoFix }
+internal enum RewriteFooterAction { None, ApplyLocal, UseTakes, ApplyTextFixes, Done, KeepFixing, StopReask, StopAutoFix, ChooseTake }
 
 /// <summary>The footer always names the next step: a line, and the one primary action when there is one.</summary>
 internal sealed record RewriteFooterStep(string Line, string? Title, RewriteFooterAction Action);
@@ -117,10 +117,11 @@ internal sealed partial class RewriteSession
         }
     }
 
-    /// <summary>A change placement refused as too close to an earlier one (Mac <c>planRefusal</c>), before takes: placement
-    /// already merges whenever the joined phrase can be placed, so no forced merge is offered.</summary>
-    internal (int Change, int Earlier)? Collision => HasPaidTakes ? null
-        : Review?.VoiceHunks.FirstOrDefault(hunk => hunk.CollidesWith is not null) is { CollidesWith: { } earlier } hunk ? (hunk.Ordinals[0], earlier) : null;
+    /// <summary>A change placement refused as too close to an earlier one (Mac <c>planRefusal</c>), before or after paid takes:
+    /// placement already merges whenever the joined phrase can be placed, so no forced merge is offered. After takes the refused
+    /// change has no phrase and no price; Use waits until it is resolved, so it is never dropped unvoiced.</summary>
+    internal (int Change, int Earlier)? Collision =>
+        Review?.VoiceHunks.FirstOrDefault(hunk => hunk.CollidesWith is not null) is { CollidesWith: { } earlier } hunk ? (hunk.Ordinals[0], earlier) : null;
     private static string CollisionSentence((int Change, int Earlier) collision) =>
         $"Change {collision.Change} is too close to change {collision.Earlier} to voice separately.";
     /// <summary>Mac <c>planSteps</c> for a collision: keep the refused change's original words, keep text fixes only, ✦ merge
@@ -130,7 +131,7 @@ internal sealed partial class RewriteSession
         var (change, earlier) = collision;
         List<RewriteChip> chips =
         [
-            new("Rewrite.Chip.CollisionKeep" + change, $"Keep original words for {change}", false, () => { SetChangeIncluded(change, false); return Task.CompletedTask; }),
+            new("Rewrite.Chip.CollisionKeep" + change, $"Keep original words for {change}", false, () => { KeepCollidedOriginal(change); return Task.CompletedTask; }),
         ];
         if (TextFixCount > 0)
             chips.Add(new("Rewrite.Chip.CollisionTextFixes" + change, "Keep text fixes only", false, () => { KeepTextFixesOnly(); return Task.CompletedTask; }));
@@ -154,16 +155,65 @@ internal sealed partial class RewriteSession
         finally { manualStep = false; Changed?.Invoke(this, EventArgs.Empty); }
     }
 
+    /// <summary>[Choose Take N]: selects the take the footer offers (Mac <c>chooseTake</c>), the user's explicit pick.</summary>
+    internal async Task<bool> ChooseOfferedTakeAsync()
+    {
+        foreach (var window in generationWindows.Where(window => !window.LeftOut && !window.ReadyToAccept).ToArray())
+            if (window.OfferedTake() is { } offered) return await window.SelectTakeAsync(offered.Id);
+        return false;
+    }
+
     /// <summary>Text fixes (cuts and corrections) among the included changes.</summary>
     internal int TextFixCount => IncludedHunks.Count(hunk => hunk.Kind != VoiceLabDiffHunkKind.Voice);
     internal string ApplyTextFixesTitle => TextFixCount == 1 ? "Apply 1 text fix" : $"Apply {TextFixCount} text fixes";
-    /// <summary>Keep text fixes only: every voice change keeps its original words; cuts and corrections stay.</summary>
-    internal void KeepTextFixesOnly()
+    /// <summary>Keep text fixes only (Mac <c>applyFreeChanges</c>): the cuts and corrections apply at once as one undo step and
+    /// Rewrite closes; every voice change keeps its original words and no discard is asked first, paid takes or not. When the
+    /// editor can't apply now, the voice changes keep their original words (a phrase with takes is left out, its takes kept) and
+    /// the footer's [Apply {k} text fixes] is the next step.</summary>
+    internal bool KeepTextFixesOnly()
     {
-        if (Review is null) return;
-        var voices = Review.Diff.Hunks.Select((hunk, index) => (hunk, ordinal: index + 1)).Where(item => item.hunk.Kind == VoiceLabDiffHunkKind.Voice)
-            .Select(item => item.ordinal).ToArray();
-        if (voices.Length > 0) SetChangesIncluded(voices, false);
+        StopWordingFit();
+        if (Review is null || TextFixCount == 0 || !ReviewIsCurrent) return false;
+        if (ApplyTextFixesOnly()) return true;
+        if (HasPaidTakes)
+        {
+            foreach (var window in generationWindows) window.LeaveOut();
+            if (Collision is { } collision) KeepCollidedOriginal(collision.Change);
+        }
+        else
+        {
+            var voices = Review.Diff.Hunks.Select((hunk, index) => (hunk, ordinal: index + 1)).Where(item => item.hunk.Kind == VoiceLabDiffHunkKind.Voice)
+                .Select(item => item.ordinal).ToArray();
+            if (voices.Length > 0) SetChangesIncluded(voices, false);
+        }
+        Changed?.Invoke(this, EventArgs.Empty);
+        return false;
+    }
+
+    /// <summary>Keep original words for a change refused as too close to an earlier one. Before takes it is an ordinary exclusion.
+    /// With paid takes the refused change has no phrase, so leaving it out moves no other phrase: no discard is asked and every
+    /// take stays. If leaving it out would move a phrase that has takes, nothing changes here.</summary>
+    internal bool KeepCollidedOriginal(int ordinal)
+    {
+        if (!HasPaidTakes) return SetChangeIncluded(ordinal, false);
+        StopWordingFit();
+        if (!ReviewIsCurrent || Review?.VoiceHunks.Any(hunk => hunk.CollidesWith is not null && hunk.Ordinals.Contains(ordinal)) != true) return false;
+        var previous = changeStates.TryGetValue(ordinal, out var state) ? state : (TranscriptChangeState?)null;
+        changeStates[ordinal] = TranscriptChangeState.Excluded;
+        try
+        {
+            var kept = RewriteReview.Build(this, prices, synthesisModel).VoiceHunks.Where(CanPriceHunk).ToArray();
+            if (kept.Length != generatedVoiceHunks.Length || !kept.Zip(generatedVoiceHunks).All(pair => SameVoicePhrase(pair.Second, pair.First)))
+                throw new InvalidOperationException();
+        }
+        catch (Exception error) when (error is InvalidOperationException or VoiceLabWordDiffException)
+        {
+            if (previous is { } restored) changeStates[ordinal] = restored; else changeStates.Remove(ordinal);
+            return false;
+        }
+        RefreshReview(preserveGenerations: true);
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
     }
     /// <summary>[Apply {k} text fixes]: applies only the cuts and corrections, as one undo step, with no discard prompt; every
     /// voice change keeps its original words and paid takes stay where they were.</summary>
@@ -197,6 +247,8 @@ internal sealed partial class RewriteSession
                 return TextFixCount > 0 ? new("These changes can't be voiced here. The text fixes still apply.", ApplyTextFixesTitle, RewriteFooterAction.ApplyTextFixes)
                     : new("Nothing can be voiced here. Your original words stay.", "Done", RewriteFooterAction.Done);
             }
+            // Mac `takePlanBlocker`: a collision found after paid takes names its fix; Use waits for it.
+            if (Collision is { } refused) return new($"Change {refused.Change} needs a fix above.", null, RewriteFooterAction.None);
             if (CanAcceptAll)
                 return generationWindows.All(window => window.LeftOut)
                     ? new("Every phrase keeps its original words. The text fixes still apply.", ApplyTextFixesTitle, RewriteFooterAction.ApplyTextFixes)
@@ -214,6 +266,10 @@ internal sealed partial class RewriteSession
             {
                 var window = generationWindows[index];
                 if (window.LeftOut || window.ReadyToAccept) continue;
+                // ADR-R37: a passing take the automatic choice may not pick (its voice couldn't be measured) is one click away;
+                // the footer never asks for a choice without the control that makes it.
+                if (window.OfferedTake() is { } offered)
+                    return new($"Choose a take for phrase {index + 1}.", $"Choose Take {offered.Index + 1}", RewriteFooterAction.ChooseTake);
                 if (window.Rows.Any(row => window.UseAnywayCanAct(row)))
                     return new($"Listen to phrase {index + 1}'s take, then Use anyway or try another.", null, RewriteFooterAction.None);
                 if (window.Rows.Count == 0) return new($"Phrase {index + 1} has no take yet. Make takes above.", null, RewriteFooterAction.None);

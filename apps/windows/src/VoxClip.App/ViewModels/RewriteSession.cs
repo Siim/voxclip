@@ -105,6 +105,7 @@ internal sealed partial class RewriteSession : IDisposable
         generationFactory = null;
         RetireGenerationWindows();
         generation.FixedModelId = synthesisModel;
+        generation.ShareVoiceChecks(VoiceChecks, 0);
         generationWindows.Add(generation);
         ActiveWindow = 0;
         Generation = generation;

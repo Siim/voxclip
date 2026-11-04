@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Windows, a change refused after its takes are paid gets a fix card, Keep text fixes only applies at once, and a take whose voice couldn't be measured is one click away (Choose Take).
 - Eleven v4 takes no longer fail on harmless timing differences: a take is timed from its own word check when needed, later phrases are still sent, and automatic fixes never repeat a wording and say what they tried.
 - On Windows, Rewrite fixes its own stuck phrases within a spending cap, offers next steps instead of dead ends, and its phrase cards show only what you can use.
 - Windows opens and saves projects with lip-synced Rewrite phrases from a Mac, accepts sound-alike spellings of your new words in the word check, and reads Rewrite's suggested next steps.

@@ -363,6 +363,22 @@ public sealed class VoiceLabGenerationSession(IVoiceLabTakeRunner runner)
         if (selectedTakeId is { } selected && !rows.Any(row => row.Id == selected && row.Selectable && !row.RequiresJoinAdvisoryAcceptance)) selectedTakeId = null;
     }
 
+    /// <summary>ADR-R37: the approved run's pooled voice check settles its waiting short takes in place, keeping their numbers
+    /// and order. A selection the check fails is cleared. Returns whether any row changed.</summary>
+    public bool ApplyVoiceChecks(IReadOnlyDictionary<Guid, VoiceLabTakeRow> checkedRows)
+    {
+        lock (sync)
+        {
+            if (!rows.Any(row => checkedRows.ContainsKey(row.Id))) return false;
+            VoiceLabTakeRow Checked(VoiceLabTakeRow row) => checkedRows.TryGetValue(row.Id, out var update)
+                ? update with { Index = row.Index, AcceptedJoinAdvisory = row.AcceptedJoinAdvisory } : row;
+            rows = Array.AsReadOnly(rows.Select(Checked).ToArray());
+            earlier = Array.AsReadOnly(earlier.Select(Checked).ToArray());
+            if (selectedTakeId is { } selected && !rows.Any(row => row.Id == selected && row.Selectable && !row.RequiresJoinAdvisoryAcceptance)) selectedTakeId = null;
+            return true;
+        }
+    }
+
     private VoiceLabTakeRunQuote RequireQuote()
     {
         ExpireQuote();
