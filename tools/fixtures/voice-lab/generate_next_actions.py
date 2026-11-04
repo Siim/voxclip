@@ -105,15 +105,21 @@ def touches(a, b):
 
 
 def assign(current, asked, reply):
+    candidates = {index: [found for found, span in enumerate(reply) if touches(current[index], span)] for index in asked}
     result = {}
     for index in sorted(asked):
-        candidates = [found for found, span in enumerate(reply) if touches(current[index], span)]
-        if not candidates:
+        if str(index) in result:
+            continue
+        if not candidates[index]:
             result[str(index)] = "keepOriginal"
-        elif len(candidates) > 1 or any(other != index and touches(current[other], reply[candidates[0]]) for other in range(len(current))):
-            result[str(index)] = "conflict"
-        else:
-            result[str(index)] = f"replace:{candidates[0]}"
+            continue
+        found = candidates[index][0]
+        group = [other for other in range(len(current)) if touches(current[other], reply[found])]
+        lands = len(candidates[index]) == 1 and all(other in asked and candidates[other] == [found] for other in group)
+        for member in group:
+            if member in asked:
+                result[str(member)] = "conflict" if not lands else f"replace:{found}" if member == group[0] else f"absorbed:{group[0]}"
+        result.setdefault(str(index), "conflict")
     return result
 
 
@@ -160,6 +166,7 @@ def main():
         dict(ordinal=5, reason="take", original="it is faster", proposed="it runs faster"),
         dict(ordinal=6, reason="context", original="ok", proposed="all right"),
         dict(ordinal=7, reason="asked", original="{instruction}", proposed="{phrases} stays literal"),
+        dict(ordinal=8, reason="collision", original="and then", proposed="and right after that"),
     ]
     budget = dict(voiceWords=72, scopeWords=118)
     feedback = [
@@ -171,6 +178,8 @@ def main():
              expected=fill(templates["openFeedbackBlock"], dict(instruction="Keep the names, make it shorter."))),
         dict(id="fewer-words", instruction="", phrases=[], budget=None, limit=17,
              expected=fill(templates["fewerWordsInstruction"], dict(limit="17"))),
+        dict(id="merge", instruction="", phrases=[], budget=None, merge=[3, 4],
+             expected=fill(templates["mergeInstruction"], dict(first="3", second="4"))),
     ]
     landing_cases = [
         ("reworded-in-place", [[0, 2], [5, 7], [9, 10]], [1], [[0, 2], [5, 7], [9, 10]]),
@@ -181,6 +190,8 @@ def main():
         ("insertion-at-edge", [[3, 3], [6, 8]], [0], [[2, 3]]),
         ("adjacent-not-touching", [[0, 2], [2, 4]], [1], [[2, 4]]),
         ("two-asked-one-merged-reply", [[0, 2], [3, 5]], [0, 1], [[0, 5]]),
+        ("merge-reaching-a-frozen-change", [[0, 2], [3, 5], [6, 8]], [0, 1], [[0, 7]]),
+        ("merge-with-a-split-partner", [[0, 2], [3, 6]], [0, 1], [[0, 4], [5, 6]]),
         ("other-phrases-ignored", [[0, 2], [5, 7], [9, 10]], [0], [[0, 1], [5, 6], [9, 10], [12, 13]]),
     ]
     landing = [dict(id=name, current=current, asked=asked, reply=reply, expected=assign(current, set(asked), reply))

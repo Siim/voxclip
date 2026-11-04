@@ -1138,5 +1138,72 @@ extension RewriteScopeTests {
         session.showChanged()
         #expect(steps(session, "stale")?.ask != nil)
     }
+
+    /// A refused takes plan is never a dead end (voice-lab.md §8.2.1): a collision names both phrases, the footer names the
+    /// blocker instead of a price, and ✦ Merge with phrase 1 re-asks both phrases and lands one merged phrase.
+    @Test func aCollisionNamesThePhrasesBlocksThePriceAndMergesInPlace() async throws {
+        let (session, stub, editor) = try await nextStepsFixture()
+        defer { editor.close() }
+        for ordinal in session.blockedVoiceOrdinals { session.pricedAnyway.insert(ordinal) }
+        session.showProposal()
+        session.takePlanOrdinals = [1, 2]
+        session.takePlanFailure = ClipTakePlan.Failure.placement(.collidesWithChange(0), index: 1)
+        session.showProposal()
+        let plan = try #require(steps(session, "plan"))
+        #expect(plan.line == "Phrase 2 is too close to phrase 1 to voice separately.")
+        // The reply's own suggestion for phrase 1 follows the built-in steps.
+        #expect(plan.chips.map(\.action.id) == ["keepOriginal", "mergePhrases", "suggestion.0"] && plan.chips[1].suggested && plan.ask != nil)
+        #expect(plan.chips.map(\.action.title) == ["Keep original words for 2", "Merge with phrase 1", "Say it in 6 words"])
+        #expect(session.task.footer.note == "Phrase 2 needs a fix above." && session.task.footer.primary == nil)
+        let expected = try RewriteNextActionFeedback.merge(first: 1, second: 2, shared: try SharedResources.locate())
+        await stub.configureRewrites([try reply("One merged and much shorter sentence")])
+        plan.chips[1].action.perform()
+        await finish(session, editor)
+        let instruction = try #require(await stub.rewriteRequests.last?.instruction)
+        #expect(instruction.contains(expected) && instruction.contains("Phrase 1: ") && instruction.contains("Phrase 2: "))
+        #expect(session.changes.count == 1 && session.ownProposal?.changes.map(\.ordinal) == [1])
+        #expect(session.changes[0].hunk.newTokens.joined(separator: " ") == "One merged and much shorter sentence")
+        #expect(session.takePlanFailure == nil && steps(session, "plan") == nil)
+        #expect(session.reasking.notice.contains("merged phrases 1, 2 into one phrase"))
+        #expect(session.task.footer.note != "Phrase 2 needs a fix above.")
+    }
+
+    /// Keep original words for the refused phrase resolves the collision in place: the footer prices the rest again.
+    @Test func keepingTheRefusedPhraseOriginalClearsTheBlocker() async throws {
+        let (session, _, editor) = try await nextStepsFixture()
+        defer { editor.close() }
+        for ordinal in session.blockedVoiceOrdinals { session.pricedAnyway.insert(ordinal) }
+        session.showProposal()
+        session.takePlanOrdinals = [1, 2]
+        session.takePlanFailure = ClipTakePlan.Failure.placement(.collidesWithChange(0), index: 1)
+        session.showProposal()
+        try #require(steps(session, "plan")?.chips.first).action.perform()
+        #expect(session.ownProposal?[2]?.state == .excluded && session.takePlanFailure == nil)
+        #expect(steps(session, "plan") == nil && session.task.footer.note != "Phrase 2 needs a fix above.")
+    }
+
+    /// Every other takes failure the panel can show has at least one chip that acts, and the footer names it.
+    @Test(arguments: ["stale", "noSelection", "spendingCap", "unknownSpend", "geometry"])
+    func everyTakesFailureHasAnActingChip(_ name: String) async throws {
+        let (session, _, editor) = try await nextStepsFixture()
+        defer { editor.close() }
+        for ordinal in session.blockedVoiceOrdinals { session.pricedAnyway.insert(ordinal) }
+        session.showProposal()
+        session.takePlanOrdinals = [1, 2]
+        let failure: ClipTakePlan.Failure = switch name {
+        case "stale": .stale
+        case "noSelection": .noSelection
+        case "spendingCap": .spendingCap
+        case "unknownSpend": .unknownSpend
+        default: .placement(.geometry(.roomToneUnavailable), index: 0)
+        }
+        session.takePlanFailure = failure
+        session.showProposal()
+        let plan = try #require(steps(session, "plan"))
+        #expect(!plan.chips.isEmpty && plan.line == ClipTakePlan.copy(failure))
+        #expect(session.task.footer.primary == nil && session.task.footer.note == session.takePlanBlocker)
+        if name == "geometry" { #expect(plan.chips.first?.action.title == "Keep original words for 1" && plan.ask != nil) }
+        if name == "stale" { #expect(plan.chips.contains { $0.action.id == "freshPrice" }) }
+    }
 }
 #endif

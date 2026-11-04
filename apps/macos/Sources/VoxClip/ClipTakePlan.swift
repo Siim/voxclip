@@ -48,7 +48,8 @@ import VoxClipMedia
         }
     }
     enum Failure: Error, Equatable {
-        case placement(VoiceLabWindowRefusal), budget, spendingCap, unknownSpend, stale, noSelection
+        /// `index` is the refused hunk's index in the plan's hunks.
+        case placement(VoiceLabWindowRefusal, index: Int), spendingCap, unknownSpend, stale, noSelection
     }
     struct Acceptance {
         let segments: [VoiceLabSegment]
@@ -102,7 +103,10 @@ import VoxClipMedia
     private(set) var generating = false
     private(set) var publishing = false
     private(set) var preparingVideo = false
-    private(set) var problem = ""
+    /// The take panel's problem line; `failure` is the error behind it, for its next steps (RewriteNextSteps.swift).
+    private(set) var problem = "" { didSet { if problem.isEmpty { failure = nil } } }
+    private(set) var failure: (any Error)?
+    private func report(_ error: any Error) { problem = Self.copy(error); failure = error }
     private(set) var estimate: CostEstimate?
     private(set) var cost: VoiceLabCostPresentation.Kind?
     private(set) var spent = VoiceLabTakeRunQuote.total(of: [], takes: 0)
@@ -219,7 +223,7 @@ import VoxClipMedia
             problem = ""
         } catch {
             if turn == videoRevision {
-                preparedVideoSelection = nil; videoPreparationFailure = error; problem = Self.copy(error)
+                preparedVideoSelection = nil; videoPreparationFailure = error; report(error)
             }
         }
     }
@@ -241,15 +245,13 @@ import VoxClipMedia
 
     static func preparePlan(project: Project, scope: VoiceLabOutputScope, envelope: AudioEnvelope,
                             hunks: [VoiceLabDiffHunk]) throws -> [Phrase] {
-        guard VoiceLabPatchBudget.evaluate(hunks: hunks, transcript: project.transcript?.words ?? []).flag != .reRecordInstead else {
-            throw Failure.budget
-        }
+        // The patch budget is advisory (voice-lab.md §8.2): the Rewrite panel advises and the user chooses before a plan.
         let placed = VoiceLabWindowPlanner.placeAll(project: project, scope: scope, envelope: envelope, hunks: hunks)
         let texts = Dictionary(RewriteSession.corrected(project).map { ($0.id, $0.text) }, uniquingKeysWith: { first, _ in first })
         var phrases: [Phrase] = []
         for result in placed {
             switch result {
-            case .refused(_, _, let reason): throw Failure.placement(reason)
+            case .refused(let index, _, let reason): throw Failure.placement(reason, index: index)
             case .placed(let indices, let hunk, let window):
                 let words = window.leftBridgeWordIds.compactMap { texts[$0] } + hunk.newTokens + window.rightBridgeWordIds.compactMap { texts[$0] }
                 phrases.append(Phrase(id: phrases.count, indices: indices, text: words.joined(separator: " "),
@@ -494,7 +496,7 @@ import VoxClipMedia
                 try await hold(quoted, indices: indices, version: version)
             } catch {
                 await backend.discard()
-                if revision == version { problem = Self.copy(error) }
+                if revision == version { report(error) }
             }
             if revision == version { preparing = false }
         }
@@ -571,7 +573,7 @@ import VoxClipMedia
                 }
             } catch {
                 if revision == version {
-                    problem = Self.copy(error)
+                    report(error)
                     if let phrase = runningPhrase {
                         fatalPhrases.insert(phrase)
                         phrases[phrase].status = .failed(problem)
@@ -669,7 +671,7 @@ import VoxClipMedia
         guard let audio = await scratch(take: take.id, phrase: phrase), turn == auditionTurn, stillCurrent,
               phrases[phrase].selectedID == take.id, !generating, !preparing, !publishing else { return }
         do { try audition.play(audio, takeId: take.id, selectionId: String(phrase)) }
-        catch { problem = Self.copy(error) }
+        catch { report(error) }
     }
 
     /// Plays one take's checked mix, failed or not, without selecting it: a failed take stays left out, but the user can
@@ -686,7 +688,7 @@ import VoxClipMedia
             guard let url = await backend?.paidAudio(phrase, id), turn == auditionTurn, stillCurrent,
                   phrases[phrase].takes.contains(where: { $0.id == id }), !generating, !preparing, !publishing else { return }
             do { try audition.play(paidAudio: url, takeId: id, selectionId: String(phrase)) }
-            catch { problem = Self.copy(error) }
+            catch { report(error) }
             return
         }
         let wasPlaying = audition.isPlaying && audition.takeId == id
@@ -696,7 +698,7 @@ import VoxClipMedia
         guard let audio = await backend?.scratch(phrase, id), turn == auditionTurn, stillCurrent,
               phrases[phrase].takes.contains(where: { $0.id == id }), !generating, !preparing, !publishing else { return }
         do { try audition.play(audio, takeId: id, selectionId: String(phrase)) }
-        catch { problem = Self.copy(error) }
+        catch { report(error) }
     }
 
     func dispatch(_ request: UUID, start: @escaping @Sendable () throws -> Void) async throws {
@@ -706,7 +708,7 @@ import VoxClipMedia
         guard generating, let remaining = progress?.remainingEstimate(from: request) else { throw Failure.stale }
         do { try await checkCap(remaining, version: version) }
         catch {
-            if revision == version { problem = Self.copy(error) }
+            if revision == version { report(error) }
             throw VoiceLabError.consentRequired
         }
         try start()
@@ -880,13 +882,12 @@ import VoxClipMedia
         switch error {
         case Failure.spendingCap: "Your ElevenLabs spending limit was reached. Finished takes are kept."
         case Failure.unknownSpend: "VoxClip can't check your ElevenLabs spending limit. Nothing more was sent."
-        case Failure.budget: "These changes re-voice too many words. Leave a phrase out or re-record."
         case Failure.stale: "The rewrite changed. Make a fresh takes plan before sending anything."
         case Failure.noSelection: "Choose a valid video duration for every selected passage before using takes."
         case is RewriteSpeechContextReview.Failure, is VoiceLabSpeechContextPlan.Failure:
             RewriteSpeechContextReview.copy(error)
-        case Failure.placement(.geometry(let error)): RewriteSession.refusal(error)
-        case Failure.placement(let reason): reason.copy ?? "These phrases cannot be voiced together. Edit the words or leave one out."
+        case Failure.placement(.geometry(let error), _): RewriteSession.refusal(error)
+        case Failure.placement(let reason, _): reason.copy ?? "These phrases cannot be voiced together. Edit the words or leave one out."
         case is CancellationError: "Stopped. Finished takes are kept."
         default: RewriteSession.refusal(error)
         }

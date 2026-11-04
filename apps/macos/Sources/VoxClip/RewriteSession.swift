@@ -127,6 +127,9 @@ struct RewriteChange: Equatable, Sendable {
     var speechContextProblem = ""
     /// The phrases a refused surrounding sentence was for: their next steps show with `speechContextProblem`.
     var speechContextRefusedOrdinals: [Int] = []
+    /// Why the last takes plan could not be made or used (`ClipTakePlan.Failure` and the rest): its next steps, and the
+    /// footer's blocker, show until the inputs change or a fresh plan is made.
+    var takePlanFailure: (any Error)?
     var takeQuotePhrase: Int?
     var focusedTakePhrase = 0
     var takeRowsShown = true
@@ -581,6 +584,7 @@ struct RewriteChange: Equatable, Sendable {
         wordingFit.initialEstimates = [:]; wordingFit.frozen = []; wordingFit.kept = []; wordingFit.problem = ""
         wordingFit.measured = nil
         pricedAnyway = []
+        takePlanFailure = nil
         reasking.reset()
         changes = checked.changes
         switch checked.review {
@@ -643,6 +647,7 @@ struct RewriteChange: Equatable, Sendable {
     private func invalidate() {
         stopWordingFit(refresh: false)
         stopReask(refresh: false)
+        takePlanFailure = nil
         speechContextOffer = nil; speechContextReview = nil; acceptedSpeechContext = nil; speechContextProblem = ""
         surroundingSentenceOrdinal = nil
         takePlan?.invalidate(); takePlan = nil
@@ -702,9 +707,10 @@ struct RewriteChange: Equatable, Sendable {
         }
         return TranscriptChange(ordinal: ordinal, parts: [TranscriptChange.Part(hunk)], anchor: anchor)
     }
-    /// Replaces the changes at `replacements` (by ordinal) with a re-ask's reply and leaves out `kept`, keeping every other
-    /// change, its review and its parts as they are. Throws, changing nothing, when the review cannot be built again.
-    func applyReask(replacing replacements: [Int: RewriteChange], keepingOriginal kept: Set<Int>) throws {
+    /// Replaces the changes at `replacements` (by ordinal) with a re-ask's reply, leaves out `kept`, and removes `absorbed`
+    /// (merged into a replacement), keeping every other change, its review and its parts as they are; changes after an
+    /// absorbed one move up a number. Throws, changing nothing, when the review cannot be built again.
+    func applyReask(replacing replacements: [Int: RewriteChange], keepingOriginal kept: Set<Int>, absorbing absorbed: Set<Int> = []) throws {
         guard var proposal = ownProposal else { throw CancellationError() }
         var next = changes
         for (ordinal, change) in replacements {
@@ -719,9 +725,39 @@ struct RewriteChange: Equatable, Sendable {
             guard let index = proposal.changes.firstIndex(where: { $0.ordinal == ordinal }) else { continue }
             proposal.changes[index].state = .excluded
         }
+        // A merge: the absorbed changes go, and every later change moves up to stay numbered from 1 in transcript order.
+        var renumber: [Int: Int] = [:]
+        if !absorbed.isEmpty {
+            var kept: [RewriteChange] = [], made: [TranscriptChange] = []
+            for (offset, change) in next.enumerated() where !absorbed.contains(offset + 1) {
+                let old = offset + 1, new = kept.count + 1
+                renumber[old] = new
+                kept.append(change)
+                guard let shown = proposal.changes.first(where: { $0.ordinal == old }) else { throw CancellationError() }
+                var moved = TranscriptChange(ordinal: new, parts: shown.parts, anchor: shown.anchor, state: shown.state)
+                moved.reviewable = shown.reviewable
+                made.append(moved)
+            }
+            next = kept
+            proposal.changes = made
+            proposal.focused = proposal.focused.flatMap { renumber[$0] } ?? made.first?.ordinal
+        }
         let built = try RewriteReview.build(next.map(\.hunk), reviewInputs)
+        if !absorbed.isEmpty {
+            func moved(_ ordinals: Set<Int>) -> Set<Int> { Set(ordinals.compactMap { renumber[$0] }) }
+            replyParts = Dictionary(replyParts.compactMap { key, value in renumber[key].map { ($0, value) } }, uniquingKeysWith: { first, _ in first })
+            pricedAnyway = moved(pricedAnyway); leftOutUnavailable = moved(leftOutUnavailable)
+            wordingFit.kept = moved(wordingFit.kept); wordingFit.frozen = moved(wordingFit.frozen)
+            wordingFit.initialEstimates = Dictionary(wordingFit.initialEstimates.compactMap { key, value in renumber[key].map { ($0, value) } },
+                                                     uniquingKeysWith: { first, _ in first })
+            speechContextRefusedOrdinals = speechContextRefusedOrdinals.compactMap { renumber[$0] }
+            surroundingSentenceOrdinal = nil
+            takePlan?.invalidate(); takePlan = nil; takePlanOrdinals = []
+            generation?.inputsChanged()
+        }
         changes = next; review = built; problem = ""
-        let touched = Set(replacements.keys).union(kept)
+        takePlanFailure = nil
+        let touched = Set(replacements.keys.compactMap { absorbed.isEmpty ? $0 : renumber[$0] }).union(kept.compactMap { absorbed.isEmpty ? $0 : renumber[$0] })
         pricedAnyway.subtract(touched)
         wordingFit.kept.subtract(touched)
         for ordinal in touched { wordingFit.initialEstimates[ordinal] = nil }
@@ -895,7 +931,7 @@ struct RewriteChange: Equatable, Sendable {
                 editor.closeRewrite()
                 if let first { editor.select(first) }
                 return true
-            } catch { problem = ClipTakePlan.copy(error); return false }
+            } catch { problem = ClipTakePlan.copy(error); takePlanFailure = error; return false }
         }
         return false
     }
@@ -968,6 +1004,7 @@ struct RewriteChange: Equatable, Sendable {
     private func move(to next: Project) {
         guard next != project else { return }
         let requote = takePlan != nil
+        takePlanFailure = nil
         speechContextOffer = nil; speechContextReview = nil; acceptedSpeechContext = nil; speechContextProblem = ""
         surroundingSentenceOrdinal = nil
         takePlan?.invalidate(); takePlan = nil

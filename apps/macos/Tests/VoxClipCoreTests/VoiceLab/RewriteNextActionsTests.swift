@@ -10,7 +10,7 @@ import Testing
         struct Parsing: Decodable { let id: String; let input: JSONValue; let expected: [RewriteNextAction] }
         struct Feedback: Decodable {
             let id: String; let instruction: String; let phrases: [RewriteBlockedPhrase]
-            let budget: Budget?; let limit: Int?; let expected: String
+            let budget: Budget?; let limit: Int?; let merge: [Int]?; let expected: String
             struct Budget: Decodable { let voiceWords: Int; let scopeWords: Int }
         }
         struct Landing: Decodable { let id: String; let current: [[Int]]; let asked: [Int]; let reply: [[Int]]; let expected: [String: String] }
@@ -43,7 +43,9 @@ import Testing
         let shared = SharedResources(root: try FixtureLoader.sharedRoot())
         for row in try vectors().feedback {
             let rendered: String
-            if let limit = row.limit {
+            if let merge = row.merge {
+                rendered = try RewriteNextActionFeedback.merge(first: merge[0], second: merge[1], shared: shared)
+            } else if let limit = row.limit {
                 rendered = try RewriteNextActionFeedback.fewerWords(limit: limit, shared: shared)
             } else if row.phrases.isEmpty {
                 rendered = try RewriteNextActionFeedback.open(instruction: row.instruction, shared: shared)
@@ -72,6 +74,7 @@ import Testing
                 switch outcome {
                 case .replace(let found): (String(index), "replace:\(found)")
                 case .keepOriginal: (String(index), "keepOriginal")
+                case .absorbed(let into): (String(index), "absorbed:\(into)")
                 case .conflict: (String(index), "conflict")
                 }
             })

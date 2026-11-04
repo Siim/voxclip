@@ -67,7 +67,7 @@ public struct RewriteNextAction: Sendable, Equatable, Codable {
 /// A phrase a scoped re-ask names in its feedback (`shared/prompts/rewrite-next-actions.json`).
 public struct RewriteBlockedPhrase: Sendable, Equatable, Codable {
     /// Why the phrase is blocked: its `reasons` template.
-    public enum Reason: String, Sendable, Codable { case fit, budget, take, context, asked }
+    public enum Reason: String, Sendable, Codable { case fit, budget, take, context, collision, asked }
     public let ordinal: Int
     public let reason: Reason
     public let original: String
@@ -124,6 +124,12 @@ public enum RewriteNextActionFeedback {
         fill(try template(try templates(shared), "openFeedbackBlock"), ["instruction": try checked(instruction)])
     }
 
+    /// The "Merge with phrase {first}" instruction for two phrases too close to voice separately.
+    public static func merge(first: Int, second: Int, shared: SharedResources) throws -> String {
+        guard first > 0, second > first else { throw VoiceLabError.invalidInput }
+        return fill(try template(try templates(shared), "mergeInstruction"), ["first": String(first), "second": String(second)])
+    }
+
     /// The built-in "Change fewer words" instruction for a budget of `limit` re-voiced words.
     public static func fewerWords(limit: Int, shared: SharedResources) throws -> String {
         guard limit >= 0 else { throw VoiceLabError.invalidInput }
@@ -158,20 +164,29 @@ public enum RewriteScopedReply {
         case replace(Int)
         /// The reply leaves the phrase's words as recorded: the original words are kept.
         case keepOriginal
-        /// The reply's change here also reaches a frozen change, another asked phrase, or comes in several pieces; the phrase
-        /// stays as it was.
+        /// One reply hunk spans this phrase and an earlier asked one (a merge): it goes into that phrase, here the index of
+        /// it, and this phrase leaves the proposal.
+        case absorbed(into: Int)
+        /// The reply's change here also reaches a frozen change, comes in several pieces, or reaches an asked phrase that
+        /// cannot take it; the phrase stays as it was.
         case conflict
     }
 
-    /// The outcome for each asked hunk index (`asked`, indexes into `current`).
+    /// The outcome for each asked hunk index (`asked`, indexes into `current`). A reply hunk lands only when it reaches no
+    /// frozen change and every asked phrase it reaches has it as its only reply hunk; then the first of them takes it and
+    /// the others are absorbed. Otherwise every asked phrase it reaches stays as it was.
     public static func assign(current: [VoiceLabDiffHunk], asked: Set<Int>, reply: [VoiceLabDiffHunk]) -> [Int: Outcome] {
+        let indices = asked.sorted().filter(current.indices.contains)
+        let candidates = Dictionary(uniqueKeysWithValues: indices.map { index in (index, reply.indices.filter { touches(current[index], reply[$0]) }) })
         var result: [Int: Outcome] = [:]
-        for index in asked.sorted() where current.indices.contains(index) {
-            let candidates = reply.indices.filter { touches(current[index], reply[$0]) }
-            guard let only = candidates.first else { result[index] = .keepOriginal; continue }
-            guard candidates.count == 1 else { result[index] = .conflict; continue }
-            let reaches = current.indices.contains { $0 != index && touches(current[$0], reply[only]) }
-            result[index] = reaches ? .conflict : .replace(only)
+        for index in indices where result[index] == nil {
+            guard let found = candidates[index]?.first else { result[index] = .keepOriginal; continue }
+            let group = current.indices.filter { touches(current[$0], reply[found]) }
+            let lands = candidates[index]?.count == 1 && group.allSatisfy { asked.contains($0) && candidates[$0] == [found] }
+            for member in group where asked.contains(member) {
+                result[member] = !lands ? .conflict : member == group[0] ? .replace(found) : .absorbed(into: group[0])
+            }
+            if result[index] == nil { result[index] = .conflict }
         }
         return result
     }

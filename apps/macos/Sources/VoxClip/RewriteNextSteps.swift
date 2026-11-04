@@ -159,11 +159,12 @@ extension RewriteSession {
     private func land(_ reply: [RewriteChange], request: RewriteReask, nextActions: [RewriteNextAction]) throws {
         let asked = Set(request.ordinals.map { $0 - 1 })
         let outcomes = RewriteScopedReply.assign(current: changes.map(\.hunk), asked: asked, reply: reply.map(\.hunk))
-        var replacements: [Int: RewriteChange] = [:], kept: Set<Int> = [], unchanged: [Int] = []
+        var replacements: [Int: RewriteChange] = [:], kept: Set<Int> = [], unchanged: [Int] = [], absorbed: Set<Int> = []
         for (index, outcome) in outcomes {
             switch outcome {
             case .replace(let found): replacements[index + 1] = reply[found]
             case .keepOriginal: kept.insert(index + 1)
+            case .absorbed: absorbed.insert(index + 1)
             case .conflict: unchanged.append(index + 1)
             }
         }
@@ -173,14 +174,16 @@ extension RewriteSession {
             reasking.suggestions = nextActions
             return
         }
-        try applyReask(replacing: replacements, keepingOriginal: kept)
-        reasking.suggestions = nextActions
+        try applyReask(replacing: replacements, keepingOriginal: kept, absorbing: absorbed)
+        reasking.suggestions = absorbed.isEmpty ? nextActions : []
         func phrases(_ ordinals: [Int]) -> String {
             let sorted = ordinals.sorted().map(String.init)
             return (sorted.count == 1 ? "phrase " : "phrases ") + sorted.joined(separator: ", ")
         }
         var parts: [String] = []
-        if !replacements.isEmpty { parts.append("\(aiName) reworded \(phrases(Array(replacements.keys))).") }
+        if !absorbed.isEmpty, let into = replacements.keys.min() {
+            parts.append("\(aiName) merged \(phrases(Array(replacements.keys) + Array(absorbed))) into one phrase, now change \(into).")
+        } else if !replacements.isEmpty { parts.append("\(aiName) reworded \(phrases(Array(replacements.keys))).") }
         if !kept.isEmpty { parts.append("Kept your original words for \(phrases(Array(kept))).") }
         if !unchanged.isEmpty { parts.append("\(phrases(unchanged).prefix(1).uppercased() + phrases(unchanged).dropFirst()) stayed as before: the reply also changed other words there.") }
         reasking.notice = parts.joined(separator: " ")
@@ -259,7 +262,7 @@ extension RewriteSession {
     /// (its built-in steps are on its row), a phrase whose takes all failed checks, and a refused surrounding sentence.
     func stuckSteps() -> [NextSteps] {
         guard !wordingIsLocked, !isReasking, ownProposal != nil else { return [] }
-        var steps: [NextSteps] = []
+        var steps: [NextSteps] = planSteps().map { [$0] } ?? []
         let blocked = blockedVoiceOrdinals
         if !blocked.isEmpty {
             let chips = suggestionChips(stuck: blocked, reason: .fit)
@@ -285,6 +288,88 @@ extension RewriteSession {
             steps.append(NextSteps(id: "context", chips: chips, ask: freeText("context", stuck: refused, reason: .context)))
         }
         return steps
+    }
+
+    // MARK: Takes plan failures
+
+    /// The proposal ordinal of hunk `index` of the last takes plan.
+    private func planOrdinal(_ index: Int) -> Int? { takePlanOrdinals.indices.contains(index) ? takePlanOrdinals[index] : nil }
+    /// A placement refusal of the last plan: the refused phrase, and the earlier one it collides with.
+    private var planRefusal: (phrase: Int, earlier: Int?)? {
+        guard case ClipTakePlan.Failure.placement(let reason, let index)? = takePlanFailure, let phrase = planOrdinal(index) else { return nil }
+        if case .collidesWithChange(let earlier) = reason { return (phrase, planOrdinal(earlier)) }
+        return (phrase, nil)
+    }
+    /// A takes plan failure as the panel says it: a collision names both phrases.
+    func takePlanCopy(_ error: any Error) -> String {
+        if case ClipTakePlan.Failure.placement(.collidesWithChange(let earlier), let index) = error,
+           let phrase = planOrdinal(index), let other = planOrdinal(earlier) {
+            return "Phrase \(phrase) is too close to phrase \(other) to voice separately."
+        }
+        return ClipTakePlan.copy(error)
+    }
+    /// The footer's line while the last plan failed: what needs a fix above, never a price (design.md R2).
+    var takePlanBlocker: String? {
+        guard let failure = takePlanFailure else { return nil }
+        if let refusal = planRefusal { return "Phrase \(refusal.phrase) needs a fix above." }
+        if case ClipTakePlan.Failure.noSelection = failure { return "Choose a video duration above to use takes." }
+        return "Fix the problem above to go on."
+    }
+
+    /// Next steps for every takes failure the panel shows (`ClipTakePlan.copy`): a placement or collision, a stale plan,
+    /// a missing duration choice, the spending limit and a spend that can't be checked. Each has at least one chip that
+    /// acts now; the free-text field re-asks the refused phrases.
+    func planSteps() -> NextSteps? {
+        let failure = takePlanFailure ?? takePlan?.failure
+        guard let failure, !takesBusy else { return nil }
+        let freeChanges = editor.changeReadings.filter { $0.change.isFree && $0.change.state == .pending && !$0.applied }.count
+        var chips: [NextStepChip] = []
+        var stuck: [Int] = []
+        // A plan's own problem already shows in its take rows; a refused or unusable plan shows its line here.
+        let line: String? = takePlanFailure == nil ? nil : takePlanCopy(failure)
+        if let refusal = planRefusal {
+            stuck = [refusal.earlier, refusal.phrase].compactMap { $0 }.sorted()
+            // A forced merge is not offered: placement already merges whenever the joined phrase can be placed, so a
+            // collision that remains cannot be voiced as one phrase (voice-lab.md §8.4).
+            chips.append(chip("keepOriginal", "Keep original words for \(refusal.phrase)") { [weak self] in
+                self?.phraseTimingAction(.original, ordinals: [refusal.phrase])
+            })
+            if freeChanges > 0 { chips.append(chip("keepTextFixes", "Keep text fixes only") { [weak self] in self?.applyFreeChanges() }) }
+            if let earlier = refusal.earlier, connector != nil, let shared = editor.app.shared,
+               let merge = try? RewriteNextActionFeedback.merge(first: earlier, second: refusal.phrase, shared: shared) {
+                let request = RewriteReask(label: "Merge with phrase \(earlier)", instruction: merge, ordinals: stuck, reason: .collision)
+                chips.append(NextStepChip(action: PanelAction(id: "mergePhrases", title: "Merge with phrase \(earlier)") { [weak self] in
+                    guard let self else { return }
+                    editor.sendRewriteAgain(self, reask: request)
+                }, suggested: true))
+            }
+            chips += suggestionChips(stuck: stuck, reason: .collision).filter { chip in !chips.contains { $0.action.title == chip.action.title } }
+        } else {
+            switch failure {
+            case ClipTakePlan.Failure.noSelection:
+                chips.append(chip("reviewTakes", "Choose durations") { [weak self] in
+                    guard let self else { return }
+                    takeRowsShown = true; showProposal()
+                })
+            case ClipTakePlan.Failure.spendingCap, ClipTakePlan.Failure.unknownSpend:
+                chips.append(chip("voiceLabSettings", "Spending limit…") { openVoxClipSettings(pane: "voiceLab") })
+            default: break
+            }
+            if usableTakeCount > 0, takePlan?.stillCurrent == true {
+                chips.append(chip("useTakes", usableTakeCount == 1 ? "Use 1 Take" : "Use \(usableTakeCount) Takes") { [weak self] in self?.useTake() })
+            }
+            if !hasPaidTakes, !includedVoice.isEmpty {
+                chips.append(chip("freshPrice", "Get a fresh price") { [weak self] in self?.makeTakes() })
+            }
+            if chips.isEmpty {
+                chips.append(chip("reviewChanges", "Review Changes") { [weak self] in
+                    guard let self else { return }
+                    takeRowsShown = false; showProposal()
+                })
+            }
+        }
+        return NextSteps(id: "plan", line: line, chips: chips,
+                         ask: stuck.isEmpty ? nil : freeText("plan", stuck: stuck, reason: .collision))
     }
 
     /// Puts the last re-ask's notice and its "Ask again" chip on the first stuck state's chips, or on their own.

@@ -132,6 +132,7 @@ extension RewriteSession {
         let included = includedVoice
         guard included != includedVoicesSeen || takePlan.map({ !$0.isRetired && !$0.stillCurrent }) == true else { return }
         includedVoicesSeen = included
+        takePlanFailure = nil
         if hasPaidTakes {
             takePlan?.invalidate()
             generation?.inputsChanged(prepareNewQuote: false)
@@ -183,7 +184,7 @@ extension RewriteSession {
                 footer: PanelFooter(note: sendAsksFirst ? "Fit requests are billed to your key. Making a take needs a separate paid click." : "Nothing is paid until Get Price."), askAgain: askAgain)
         }
         if wordingFit.completed || wordingFit.stopped || !wordingFit.problem.isEmpty { cards.insert(.wordingFit, at: 0) }
-        if wordingFit.completed, blockedVoiceOrdinals.isEmpty,
+        if wordingFit.completed, blockedVoiceOrdinals.isEmpty, takePlanFailure == nil,
            includedVoice.allSatisfy({ voiceReview($0)?.timing?.fits == true }) {
             footer.footer.note = "\(includedVoice.count) phrases fit · \(wordingFit.kept.count) kept as recorded"
         }
@@ -307,6 +308,8 @@ extension RewriteSession {
     /// "Make Takes · ≈ $x" that replaces it is pressed. A first "Make Takes" that only priced read as a failed click.
     /// The footer prepares one plan for the entire included set. V18 supplies the phrase rows.
     private func takesFooter(_ voice: ProposalItem, keepAll: PanelAction?) -> PanelFooter {
+        // A plan that was refused or could not be used names its blocker; no price shows until a next step resolves it.
+        if let blocker = takePlanBlocker { return PanelFooter(note: blocker, link: keepAll) }
         if let takePlan {
             guard !takesBusy else { return PanelFooter(note: takeSpendLine) }
             if usableTakeCount > 0, takePlan.stillCurrent {
