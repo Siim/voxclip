@@ -1,3 +1,4 @@
+import Accelerate
 import AVFoundation
 import Darwin
 import Foundation
@@ -38,6 +39,7 @@ enum VoiceLabAudioRenderer {
             guard lower >= 0, upper > lower, let run = source.samples(lower..<upper) else { throw VoiceLabError.invalidAudio }
             tone = run.flatMap { [$0, $0] }
         } else { tone = [] }
+        let loop = ToneLoop(tone, rate: Double(rate))
         let gain = Float(pow(10, analysis.gainDb / 20)), toneGain = Float(pow(10, (analysis.roomTone?.gainDb ?? 0) / 20))
         let duration = fitted.outDuration
         let incomingPause = plan.hardJoinSmoothing && input.window.leftSeam.kind == .hard ? VoiceLabHardJoin.pause(words: plan.words, duration: duration, incoming: true) : nil
@@ -50,7 +52,7 @@ enum VoiceLabAudioRenderer {
             return Float(pow(10, room.gainDb(atFrame: Double(relative), of: smoothing ? duration * Double(rate) : Double(length)) / 20))
         }
         func background(_ relative: Int) -> Float {
-            tone.isEmpty ? 0 : toneSample(tone, at: Int64(relative), channel: 0, rate: Double(rate)) * bedGain(relative)
+            tone.isEmpty ? 0 : loop.sample(at: Int64(relative), channel: 0) * bedGain(relative)
         }
         func signal(_ relative: Int) throws -> Float {
             let frame = fitted.trimStartFrame + Int64(relative)
@@ -471,6 +473,8 @@ enum VoiceLabAudioRenderer {
         let output = try AVAudioFile(forWriting: url, settings: pcm.settings, commonFormat: .pcmFormatFloat32, interleaved: false)
         guard let buffer = AVAudioPCMBuffer(pcmFormat: pcm, frameCapacity: AVAudioFrameCount(block)),
               let channels = buffer.floatChannelData else { throw VoxClipError.decodeFailed("Cannot allocate mixed audio") }
+        let scratch = UnsafeMutablePointer<Float>.allocate(capacity: block * 2)
+        defer { scratch.deallocate() }
         for (index, piece) in plan.pieces.enumerated() {
             try Task.checkCancellation()
             let windows = try [index > 0 ? makeSeam(left: plan.pieces[index - 1], right: piece, plan: plan,
@@ -480,6 +484,7 @@ enum VoiceLabAudioRenderer {
             let length = piece.outputEndSample - piece.outputStartSample
             let audio: AVAudioFile
             let offset: Int64
+            var voiced: VoicedGain?
             if piece.kind == .source {
                 guard piece.sourceEndSample <= sourceFrames else { throw VoxClipError.decodeFailed("Source audio ends before selected range") }
                 audio = source; offset = piece.sourceStartSample
@@ -489,20 +494,12 @@ enum VoiceLabAudioRenderer {
                 }
                 audio = try AVAudioFile(forReading: url, commonFormat: .pcmFormatFloat32, interleaved: false)
                 offset = recipe.seams.in.fadeSamples / 2
+                voiced = try VoicedGain(recipe: recipe, source: source, rate: plan.sampleRate)
             }
-            let tone: [Float]?
-            let toneGain: Float
-            var toneRamp: (VoiceLabRoomTone, Double)?
-            if piece.kind == .synth, let id = piece.segmentId, let room = recipes[id]?.roomTone {
-                if room.endGainDb != nil, let recipe = recipes[id] { toneRamp = (room, recipe.outDuration * plan.sampleRate) }
-                tone = try read(source, start: room.sourceStartSample, count: Int(room.sourceEndSample - room.sourceStartSample))
-                toneGain = Float(pow(10, room.gainDb / 20))
-            } else { tone = nil; toneGain = 0 }
-            let synthGain: Float = piece.kind == .synth ? Float(pow(10, (recipes[piece.segmentId ?? ""]?.audio.gainDb ?? 0) / 20)) : 1
-            let generatedBefore = index > 0 && plan.pieces[index - 1].kind == .synth
-            let generatedAfter = index + 1 < plan.pieces.count && plan.pieces[index + 1].kind == .synth
-            let recipe = piece.kind == .synth ? recipes[piece.segmentId ?? ""] : nil
-            let smooth = recipe.map { $0.seams.in.microPause != nil || $0.seams.out.microPause != nil } ?? false
+            let fades = piece.kind == .source ? SourceFades(length: length, rate: plan.sampleRate,
+                fadeIn: !(index > 0 && plan.pieces[index - 1].kind == .synth) && piece.sourceStartSample > 0,
+                fadeOut: !(index + 1 < plan.pieces.count && plan.pieces[index + 1].kind == .synth) &&
+                    piece.sourceEndSample < plan.totalSourceSamples) : nil
             var position: Int64 = 0
             while position < length {
                 try Task.checkCancellation()
@@ -510,29 +507,20 @@ enum VoiceLabAudioRenderer {
                 audio.framePosition = offset + position
                 try audio.read(into: buffer, frameCount: AVAudioFrameCount(count))
                 guard buffer.frameLength == count else { throw VoxClipError.decodeFailed("Selected audio ended before its planned span") }
-                for frame in 0..<count {
-                    let absolute = piece.outputStartSample + position + Int64(frame)
-                    var gain = synthGain
-                    if piece.kind == .source {
-                        gain = ordinarySourceGain(local: position + Int64(frame), length: length, rate: plan.sampleRate,
-                                                 fadeIn: !generatedBefore && piece.sourceStartSample > 0,
-                                                 fadeOut: !generatedAfter && piece.sourceEndSample < plan.totalSourceSamples)
-                    }
-                    let seconds = Double(position + Int64(frame)) / plan.sampleRate
-                    let voice = smooth ? VoiceLabHardJoin.generatedWeight(seconds: seconds, duration: recipe!.outDuration, incoming: recipe!.seams.in.microPause, outgoing: recipe!.seams.out.microPause) : 1
-                    let boost = recipe?.edgeGain.map { pow(10, VoiceLabHardJoin.edgeGainDb(seconds: seconds, duration: recipe!.outDuration, edgeGain: $0) / 20) } ?? 1
-                    let bed = toneRamp.map { Float(pow(10, $0.gainDb(atFrame: Double(position + Int64(frame)), of: $1) / 20)) } ?? toneGain
-                    let weight = smooth ? VoiceLabHardJoin.bedWeight(seconds: seconds, duration: recipe!.outDuration, words: recipe!.words ?? [], incoming: recipe!.seams.in.microPause, outgoing: recipe!.seams.out.microPause) : 1
-                    for channel in 0..<2 {
-                        channels[channel][frame] *= gain * Float(voice * boost)
-                        if let tone {
-                            channels[channel][frame] += toneSample(tone, at: position + Int64(frame), channel: channel, rate: plan.sampleRate) * bed * Float(weight)
+                let left = channels[0], right = channels[1]
+                fades?.apply(left: left, right: right, position: position, count: count)
+                voiced?.apply(left: left, right: right, position: position, count: count, scratch: scratch)
+                // A seam replaces the whole frame; where two windows overlap, the incoming (first) one wins.
+                let first = piece.outputStartSample + position
+                for seam in windows.reversed() {
+                    let from = max(first, seam.start), to = min(first + Int64(count), seam.end)
+                    guard from < to else { continue }
+                    seam.samples.withUnsafeBufferPointer { samples in
+                        var slot = Int(from - seam.start) * 2
+                        for frame in Int(from - first)..<Int(to - first) {
+                            left[frame] = samples[slot]; right[frame] = samples[slot + 1]
+                            slot += 2
                         }
-                    }
-                    if let seam = windows.first(where: { absolute >= $0.start && absolute < $0.end }) {
-                        let slot = Int(absolute - seam.start) * 2
-                        channels[0][frame] = seam.samples[slot]
-                        channels[1][frame] = seam.samples[slot + 1]
                     }
                 }
                 try output.write(from: buffer)
@@ -542,29 +530,143 @@ enum VoiceLabAudioRenderer {
         guard output.length == plan.outputSamples else { throw VoxClipError.decodeFailed("Voice Lab mix has the wrong sample count") }
     }
 
-    private static func toneSample(_ tone: [Float], at frame: Int64, channel: Int, rate: Double) -> Float {
-        let total = tone.count / 2
-        let fade = min(total / 2, Int(EditingPrimitives.jsRound(0.05 * rate)))
-        let period = total - fade
-        if frame >= 0 && frame < Int64(period) { return tone[Int(frame) * 2 + channel] }
-        let index = Int(((frame % Int64(period)) + Int64(period)) % Int64(period))
-        guard index < fade else { return tone[index * 2 + channel] }
-        let u = Double(index) / Double(max(1, fade - 1))
-        return tone[(period + index) * 2 + channel] * Float(cos(.pi * u / 2)) +
-            tone[index * 2 + channel] * Float(sin(.pi * u / 2))
+    /// The stored room-tone run as an endless loop: as recorded for its first period, then each repeat opens with an
+    /// equal-power crossfade from the run's tail.
+    private struct ToneLoop {
+        let samples: [Float]
+        let fade: Int
+        let period: Int
+
+        init(_ samples: [Float], rate: Double) {
+            let total = samples.count / 2
+            self.samples = samples
+            fade = min(total / 2, Int(EditingPrimitives.jsRound(0.05 * rate)))
+            period = total - fade
+        }
+
+        func sample(at frame: Int64, channel: Int) -> Float {
+            if frame >= 0 && frame < Int64(period) { return samples[Int(frame) * 2 + channel] }
+            let index = Int(((frame % Int64(period)) + Int64(period)) % Int64(period))
+            guard index < fade else { return samples[index * 2 + channel] }
+            let u = Double(index) / Double(max(1, fade - 1))
+            return samples[(period + index) * 2 + channel] * Float(cos(.pi * u / 2)) +
+                samples[index * 2 + channel] * Float(sin(.pi * u / 2))
+        }
+    }
+
+    /// A retained source run's clip-edge fades. Every other frame keeps gain 1, so only the fade frames are touched.
+    private struct SourceFades {
+        let length: Int64
+        let rate: Double
+        let fadeIn: Bool
+        let fadeOut: Bool
+        let ranges: [Range<Int64>]
+
+        init(length: Int64, rate: Double, fadeIn: Bool, fadeOut: Bool) {
+            let fade = VoiceLabAudioRenderer.ordinaryFadeFrames(length: length, rate: rate)
+            self.length = length; self.rate = rate; self.fadeIn = fadeIn; self.fadeOut = fadeOut
+            ranges = fade > 0 ? (fadeIn ? [0..<fade] : []) + (fadeOut ? [(length - fade)..<length] : []) : []
+        }
+
+        func apply(left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>, position: Int64, count: Int) {
+            for range in ranges {
+                let from = max(range.lowerBound, position), to = min(range.upperBound, position + Int64(count))
+                guard from < to else { continue }
+                for local in from..<to {
+                    let gain = VoiceLabAudioRenderer.ordinarySourceGain(local: local, length: length, rate: rate,
+                                                                        fadeIn: fadeIn, fadeOut: fadeOut)
+                    let frame = Int(local - position)
+                    left[frame] *= gain; right[frame] *= gain
+                }
+            }
+        }
+    }
+
+    /// A generated piece's level, hard-join envelope, edge gain and room-tone bed, read once per piece.
+    private struct VoicedGain {
+        let gain: Float
+        let rate: Double
+        let duration: Double
+        let incoming: VoiceLabMicroPause?
+        let outgoing: VoiceLabMicroPause?
+        let smooth: Bool
+        let edgeGain: VoiceLabEdgeGain?
+        let words: [VoiceLabWord]
+        let tone: ToneLoop?
+        let toneGain: Float
+        /// A bed whose two sides differ ramps across the window in dB (§8.7 item 3).
+        let ramp: (room: VoiceLabRoomTone, frames: Double)?
+
+        init(recipe: VoiceLabRenderRecipe, source: AVAudioFile, rate: Double) throws {
+            gain = Float(pow(10, recipe.audio.gainDb / 20))
+            self.rate = rate
+            duration = recipe.outDuration
+            incoming = recipe.seams.in.microPause; outgoing = recipe.seams.out.microPause
+            smooth = incoming != nil || outgoing != nil
+            edgeGain = recipe.edgeGain
+            words = recipe.words ?? []
+            if let room = recipe.roomTone {
+                tone = ToneLoop(try VoiceLabAudioRenderer.read(source, start: room.sourceStartSample,
+                                                               count: Int(room.sourceEndSample - room.sourceStartSample)), rate: rate)
+                toneGain = Float(pow(10, room.gainDb / 20))
+                ramp = room.endGainDb != nil ? (room, recipe.outDuration * rate) : nil
+            } else {
+                tone = nil; toneGain = 0; ramp = nil
+            }
+        }
+
+        /// `scratch` holds `2 × count` floats.
+        func apply(left: UnsafeMutablePointer<Float>, right: UnsafeMutablePointer<Float>, position: Int64, count: Int,
+                   scratch: UnsafeMutablePointer<Float>) {
+            let n = vDSP_Length(count)
+            if smooth || edgeGain != nil {
+                for frame in 0..<count {
+                    let seconds = Double(position + Int64(frame)) / rate
+                    let voice = smooth ? VoiceLabHardJoin.generatedWeight(seconds: seconds, duration: duration,
+                                                                         incoming: incoming, outgoing: outgoing) : 1
+                    var boost = 1.0
+                    if let edgeGain { boost = pow(10, VoiceLabHardJoin.edgeGainDb(seconds: seconds, duration: duration, edgeGain: edgeGain) / 20) }
+                    scratch[frame] = gain * Float(voice * boost)
+                }
+                vDSP_vmul(left, 1, scratch, 1, left, 1, n)
+                vDSP_vmul(right, 1, scratch, 1, right, 1, n)
+            } else {
+                var level = gain
+                vDSP_vsmul(left, 1, &level, left, 1, n)
+                vDSP_vsmul(right, 1, &level, right, 1, n)
+            }
+            guard let tone else { return }
+            let second = scratch + count
+            for frame in 0..<count {
+                let local = position + Int64(frame)
+                var bed = toneGain
+                if let ramp { bed = Float(pow(10, ramp.room.gainDb(atFrame: Double(local), of: ramp.frames) / 20)) }
+                let weight = Float(smooth ? VoiceLabHardJoin.bedWeight(seconds: Double(local) / rate, duration: duration, words: words,
+                                                                       incoming: incoming, outgoing: outgoing) : 1)
+                scratch[frame] = tone.sample(at: local, channel: 0) * bed * weight
+                second[frame] = tone.sample(at: local, channel: 1) * bed * weight
+            }
+            vDSP_vadd(left, 1, scratch, 1, left, 1, n)
+            vDSP_vadd(right, 1, second, 1, right, 1, n)
+        }
     }
 
     /// Editing §7.7 applies independently to every retained source run, including clip edges.
     /// A generated seam replaces only the fade on the boundary it covers.
     static func ordinarySourceGain(local: Int64, length: Int64, rate: Double,
                                    fadeIn: Bool, fadeOut: Bool) -> Float {
-        let fade = min(Int64(EditingPrimitives.jsRound(0.005 * rate)), length / 2)
+        let fade = ordinaryFadeFrames(length: length, rate: rate)
         guard fade > 0 else { return 1 }
         var gain: Float = 1
         if fadeIn && local < fade { gain *= Float(local) / Float(fade) }
         let remaining = length - 1 - local
         if fadeOut && remaining < fade { gain *= Float(remaining) / Float(fade) }
         return gain
+    }
+
+    /// The 5 ms ordinary fade, at most half the run.
+    static func ordinaryFadeFrames(length: Int64, rate: Double) -> Int64 {
+        min(Int64(EditingPrimitives.jsRound(0.005 * rate)), length / 2)
     }
 
     private static func read(_ file: AVAudioFile, start: Int64, count: Int) throws -> [Float] {
@@ -602,14 +704,14 @@ enum VoiceLabAudioRenderer {
             guard count >= Int(ceil(0.002 * plan.sampleRate)), Int64(count) <= available else { throw VoiceLabProjectError.invalidFadeHandles }
             let sourceStart = incoming ? left.sourceEndSample - Int64(count) : right.sourceStartSample
             var samples = try read(source, start: sourceStart, count: count)
-            let tone = try recipe.roomTone.map { try read(source, start: $0.sourceStartSample, count: Int($0.sourceEndSample - $0.sourceStartSample)) }
+            let tone = try recipe.roomTone.map { ToneLoop(try read(source, start: $0.sourceStartSample, count: Int($0.sourceEndSample - $0.sourceStartSample)), rate: plan.sampleRate) }
             for frame in 0..<count {
                 let local = incoming ? frame - count : frame
                 let relative = incoming ? Int64(local) : left.outputEndSample - left.outputStartSample + Int64(local)
                 let weight = VoiceLabHardJoin.sourceWeight(secondsFromJoin: Double(local) / plan.sampleRate, incoming: incoming, fadeSeconds: Double(count) / plan.sampleRate)
                 let bed = recipe.roomTone.map { Float(pow(10, $0.gainDb(atFrame: Double(relative), of: recipe.outDuration * plan.sampleRate) / 20)) } ?? 0
                 for channel in 0..<2 {
-                    let background = tone.map { toneSample($0, at: relative, channel: channel, rate: plan.sampleRate) * bed } ?? 0
+                    let background = tone.map { $0.sample(at: relative, channel: channel) * bed } ?? 0
                     samples[frame * 2 + channel] = samples[frame * 2 + channel] * Float(weight) + background * Float(sqrt(max(0, 1 - weight * weight)))
                 }
             }
@@ -651,8 +753,8 @@ enum VoiceLabAudioRenderer {
                                     source: AVAudioFile, rate: Double) throws -> [Float] {
         var output = samples
         let gain = Float(pow(10, recipe.audio.gainDb / 20))
-        let tone = try recipe.roomTone.map { try read(source, start: $0.sourceStartSample,
-                                                      count: Int($0.sourceEndSample - $0.sourceStartSample)) }
+        let tone = try recipe.roomTone.map { ToneLoop(try read(source, start: $0.sourceStartSample,
+                                                               count: Int($0.sourceEndSample - $0.sourceStartSample)), rate: rate) }
         let toneGain = Float(pow(10, (recipe.roomTone?.gainDb ?? 0) / 20))
         for frame in 0..<(samples.count / 2) {
             try Task.checkCancellation()
@@ -668,8 +770,7 @@ enum VoiceLabAudioRenderer {
                 output[slot] *= gain * Float(voice * boost)
                 if let tone {
                     let weight = smooth ? VoiceLabHardJoin.bedWeight(seconds: seconds, duration: recipe.outDuration, words: recipe.words ?? [], incoming: recipe.seams.in.microPause, outgoing: recipe.seams.out.microPause) : 1
-                    output[slot] += toneSample(tone, at: bodyOffset + Int64(frame), channel: channel,
-                                               rate: rate) * bed * Float(weight)
+                    output[slot] += tone.sample(at: bodyOffset + Int64(frame), channel: channel) * bed * Float(weight)
                 }
             }
         }
