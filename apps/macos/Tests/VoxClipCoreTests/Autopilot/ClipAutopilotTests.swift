@@ -61,7 +61,7 @@ import Testing
 
     @Test func promptFileFillsItsLimitsAndKeepsBothSchemasInStep() throws {
         let prompt = try ClipAutopilotPrompt(shared: Self.shared())
-        #expect(prompt.promptVersion == 2)
+        #expect(prompt.promptVersion == 3)
         #expect(!prompt.system.contains("{") && !prompt.system.contains("}"))
         #expect(prompt.system.contains("Never more than \(prompt.limits.maxRewrites) in a clip"))
         #expect(prompt.system.contains("never over \(Int(prompt.limits.maxClipSeconds)) s"))
@@ -116,7 +116,10 @@ import Testing
         #expect(request.timeout >= .seconds(1200))
         #expect(request.maxOutputTokens == 16_000)
         let block = try #require(request.cachedBlock)
-        #expect(block.hasPrefix("Language: en\nRecording: 8.3 s\nCaption preference: karaoke, font Roboto weight 900, case asSaid\n\nCaption styles:\n- vox-bold: Bold."))
+        // 23 spoken words over 8.3 s, less 0.7 s of filler and laughter and the 1.05 s a tightened pause loses: 6.55 s.
+        let head = "Language: en\nRecording: 8.3 s\nPace: about 211 words a minute once fillers and pauses are cut, so 45 s holds about 158 words.\n"
+            + "Caption preference: karaoke, font Roboto weight 900, case asSaid\n\nCaption styles:\n- vox-bold: Bold."
+        #expect(String(block.prefix(head.count)) == head)
         #expect(block.contains("Fonts:\n- Roboto, weight 900 (default)\n- Anton, weight 400\n"))
         #expect(!block.contains("[1]um") && block.contains("0:00 [2]the [3]big"))
         #expect(request.instruction.hasPrefix("Plan the clip from word 2 to word 26 (8.3 s) as one finished, postable short."))
@@ -125,7 +128,8 @@ import Testing
         #expect(series.schemaName == "clip_autopilot_series")
         #expect(series.maxOutputTokens == 64_000)
         #expect(series.instruction.hasPrefix("Find every clip in this video worth posting, at most 12, ranked best first"))
-        #expect(series.cachedBlock?.contains("Recording: 12.0 s\nCaption preference: none; choose what suits the clip") == true)
+        #expect(series.cachedBlock?.contains("Recording: 12.0 s\nPace: about ") == true)
+        #expect(series.cachedBlock?.contains("\nCaption preference: none; choose what suits the clip\n") == true)
     }
 
     @Test func requestRefusesAnEmptyScopeABadLanguageAndALongNote() async throws {
@@ -231,7 +235,7 @@ import Testing
                                                                  mode: .clip(0...29)), connector: stub, model: "fixture")
         let plan = try #require(result.plan)
         #expect(plan.rewrites.count == 1 && plan.cuts.count == 2)
-        #expect(result.promptVersion == 2 && result.promptSHA256.count == 64)
+        #expect(result.promptVersion == 3 && result.promptSHA256.count == 64)
         let sent = await stub.requests
         #expect(sent.count == 2)
         #expect(sent.allSatisfy { $0.effort == .xhigh && $0.feature == .clipAutopilot })

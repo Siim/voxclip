@@ -136,7 +136,7 @@ public struct ClipAutopilotPrompt: Sendable {
     /// Fills `{name}` placeholders; a placeholder without a value is a defect of the shared file.
     static func fill(_ template: String, _ values: [String: String]) throws -> String {
         var missing = false
-        let result = template.replacing(#/\{([A-Za-z]+)\}/#) { match in
+        let result = template.replacing(#/\{([A-Za-z][A-Za-z0-9]*)\}/#) { match in
             guard let value = values[String(match.1)] else { missing = true; return String(match.0) }
             return value
         }

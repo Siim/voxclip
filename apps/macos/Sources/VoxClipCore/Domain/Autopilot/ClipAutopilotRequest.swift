@@ -140,7 +140,10 @@ public enum ClipAutopilotRequestBuilder {
         }
         let first = words[listed.first!], last = words[listed.last!]
         let seconds: Double = request.isSeries ? request.transcript.durationSeconds : last.end - first.start
+        let rate = pace(words: words, listed: listed, corrections: request.edits.corrections,
+                        pauses: pauses.filter { !request.edits.cutPauseIds.contains($0.id) }, keepSeconds: request.edits.pauseKeepSeconds)
         let block = try prompt.request("contextBlock", ["language": language, "seconds": toFixed1(max(0, seconds)),
+            "wordsPerMinute": String(Int((rate * 60).rounded())), "words45": String(Int((rate * 45).rounded())),
             "captionPreference": preference, "styles": styleLines.joined(separator: "\n"), "fonts": fontLines.joined(separator: "\n"),
             "transcript": transcriptText])
         var instruction: String
@@ -155,6 +158,23 @@ public enum ClipAutopilotRequestBuilder {
             instruction += "\n\n" + (try prompt.request("creatorNote", ["instruction": note]))
         }
         return Rendered(cachedBlock: block, instruction: instruction, scope: scope, listedWords: listed.count)
+    }
+
+    /// Words a second once fillers and pauses are cut (ai.md §16.3): the listed words that are not fillers, over the scope's
+    /// time less every listed filler, event and unlabeled item, and less each detected pause beyond the kept length. Zero
+    /// when nothing is left to time.
+    static func pace(words: [TimedWord], listed: [Int], corrections: [String: String], pauses: [Pause], keepSeconds: Double) -> Double {
+        guard let firstIndex = listed.first, let lastIndex = listed.last else { return 0 }
+        var spoken = 0
+        var seconds = words[lastIndex].end - words[firstIndex].start
+        for index in listed {
+            let word = words[index]
+            if word.kind == .word && !EditingPrimitives.filler(corrections[word.id] ?? word.text) { spoken += 1 }
+            else { seconds -= word.end - word.start }
+        }
+        let scope = firstIndex..<lastIndex
+        for pause in pauses where scope.contains(pause.afterIndex) { seconds -= max(0, pause.end - pause.start - keepSeconds) }
+        return seconds > 0 ? Double(spoken) / seconds : 0
     }
 
     /// The `voxclip-indexed-words-v1` transcript: lines of `[index]word`, a new line after a sentence end, a pause or
