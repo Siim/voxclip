@@ -204,12 +204,17 @@ extension RewriteSession {
     }
 
     /// The AI chips for `stuck` phrases: suggestions whose phrases include one of them, scoped to the proposal's phrases.
-    private func suggestionChips(stuck: [Int], reason: RewriteBlockedPhrase.Reason) -> [NextStepChip] {
+    private func suggestionChips(stuck: [Int], reason: RewriteBlockedPhrase.Reason, tried: [VoiceLabFitTried] = []) -> [NextStepChip] {
         guard connector != nil, !stuck.isEmpty, let proposal = ownProposal else { return [] }
         let known = Set(proposal.changes.map(\.ordinal))
+        let triedKeys = Set(tried.map { VoiceLabFitTried.key($0.text) })
+        var seen: Set<String> = []
         return reasking.suggestions.enumerated().compactMap { offset, suggestion in
             let ordinals = suggestion.ordinals.isEmpty ? stuck : suggestion.ordinals.filter(known.contains)
             guard !ordinals.isEmpty, !Set(ordinals).isDisjoint(with: stuck) else { return nil }
+            // One chip per variant, and none that offers a wording already tried (voice-lab §8.2.2).
+            let key = VoiceLabFitTried.key(suggestion.instruction)
+            guard seen.insert(key).inserted, !triedKeys.contains(key), !triedKeys.contains(VoiceLabFitTried.key(suggestion.label)) else { return nil }
             let request = RewriteReask(label: suggestion.label, instruction: suggestion.instruction, ordinals: ordinals, reason: reason)
             return NextStepChip(action: PanelAction(id: "suggestion.\(offset)", title: suggestion.label) { [weak self] in
                 guard let self else { return }
@@ -308,14 +313,21 @@ extension RewriteSession {
                 if case .length(_, _, _, _, _, true) = why { continue }    // its row has the length steps
                 let ordinals = takePhraseOrdinals(phrase)
                 let name = several ? " for phrase \(phrase.id + 1)" : ""
-                var chips = [chip("tryAnother.\(phrase.id)", "Try another" + name) { [weak self] in self?.priceAnotherTake(phrase: phrase.id) },
-                             chip("keepOriginal.\(phrase.id)", "Keep original words" + name) { [weak self] in self?.keepOriginal(phrase: phrase.id) }]
-                if canReviewSpeechContext(phrase: phrase) {
-                    chips.append(chip("surrounding.\(phrase.id)", "Use surrounding sentence" + name) { [weak self] in
-                        self?.reviewSpeechContext(phrase: phrase.id)
-                    })
+                let keep = chip("keepOriginal.\(phrase.id)", "Keep original words" + name) { [weak self] in self?.keepOriginal(phrase: phrase.id) }
+                var chips: [NextStepChip]
+                if case .provider = why {
+                    // The cause and its one fix (voice-lab §8.2.2): never wording chips.
+                    chips = [chip("priceTake.\(phrase.id)", "Price a take" + name) { [weak self] in self?.priceAnotherTake(phrase: phrase.id) }, keep]
+                } else {
+                    chips = [chip("tryAnother.\(phrase.id)", "Try another" + name) { [weak self] in self?.priceAnotherTake(phrase: phrase.id) }, keep]
+                    if why == .shortSpeech || why.rewords, canReviewSpeechContext(phrase: phrase) {
+                        chips.append(chip("surrounding.\(phrase.id)", "Use surrounding sentence" + name) { [weak self] in
+                            self?.reviewSpeechContext(phrase: phrase.id)
+                        })
+                    }
+                    // Wording suggestions only for wording and fit failures, never one that repeats a tried wording.
+                    if why.rewords { chips += suggestionChips(stuck: ordinals, reason: .take, tried: triedWordings(phrase, plan: plan)) }
                 }
-                chips += suggestionChips(stuck: ordinals, reason: .take)
                 steps.append(NextSteps(id: "take.\(phrase.id)", line: Self.stuckSentence(why, phrase: phrase.id + 1), chips: chips))
                 note(ordinals, .take)
             }

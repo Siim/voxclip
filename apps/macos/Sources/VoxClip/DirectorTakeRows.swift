@@ -336,6 +336,11 @@ extension ClipTakePlan.Phrase {
                     .foregroundStyle(DesignValues.color(session.autoFix.lines[phrase.id] == nil ? "text.secondary" : "text.primary"))
                     .columnLayoutEvidence("voice.phrase.\(phrase.id).status", text: session.phraseStatus(phrase, plan: plan))
             }
+            if let history = session.autoFixHistoryLine(phrase, plan: plan) {
+                Text(history).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .columnLayoutEvidence("voice.phrase.\(phrase.id).history", text: history)
+            }
             if let note = session.autoFix.expressionNote[phrase.id] {
                 Text(note).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
             }

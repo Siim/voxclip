@@ -157,10 +157,13 @@ struct RewriteChange: Equatable, Sendable {
         let scratchRoot: URL = dataRoot.appendingPathComponent("VoiceLabScratch", isDirectory: true)
         let storage = VoiceLabTakeStorage(projectId: model.project.id,
             paidRoot: paidRoot, scratchRoot: scratchRoot)
+        // §8.5 timing recovery's free fallback: an on-device transcriber already installed, never a download.
+        let localTiming = VoiceLabLocalTimingSource.onDevice(locations: model.app.locations,
+            scratch: scratchRoot.appendingPathComponent("timing", isDirectory: true))
         let run = VoiceLabTakeRun(client: client, store: store, speaker: speaker, storage: storage, dispatchIfCurrent: { [weak self] _, start in
             guard let generation = await self?.generation else { throw VoiceLabError.consentRequired }
             try await generation.dispatchWithCurrentCost(start)
-        }) { [weak self] in
+        }, localTiming: localTiming) { [weak self] in
             await self?.generationIsCurrent(region: region) ?? false
         }
         generation = RewriteGenerationSession(run: run) { [weak self] in self?.generationIsCurrent(region: region) ?? false }
@@ -168,7 +171,8 @@ struct RewriteChange: Equatable, Sendable {
         generation?.prepareDurationRender = durationRenderPreparer()
         takeBackend = { [weak self] count, dispatch in
             let runs = (0..<count).map { _ in
-                VoiceLabTakeRun(client: client, store: store, speaker: speaker, storage: storage, dispatchIfCurrent: dispatch) { [weak self] in
+                VoiceLabTakeRun(client: client, store: store, speaker: speaker, storage: storage, dispatchIfCurrent: dispatch,
+                                localTiming: localTiming) { [weak self] in
                     await self?.generationIsCurrent(region: region) ?? false
                 }
             }
