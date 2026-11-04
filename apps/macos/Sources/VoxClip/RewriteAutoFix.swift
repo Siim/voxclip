@@ -28,6 +28,8 @@ enum StuckTakeReason: Equatable {
 struct AutoFixCap: Equatable {
     let phrase: Int
     let usd: Decimal?
+    /// The step was a take whose quote is ready: Keep fixing makes it.
+    var take = false
 }
 
 @MainActor @Observable final class RewriteAutoFixState {
@@ -136,6 +138,13 @@ extension RewriteSession {
         guard let cap = autoFix.capped else { return }
         autoFix.allowance = autoFix.spent + max(cap.usd ?? 0, RewriteAutoFixState.minimumAllowance)
         autoFix.capped = nil
+        if cap.take, let plan = takePlan, plan.approvalID != nil, takeQuotePhrase == cap.phrase {
+            autoFix.rounds[cap.phrase, default: 0] += 1
+            runAutoStep(cap.phrase, line: "Fixing phrase \(cap.phrase + 1): making a take…") { [weak self] plan in
+                await self?.startAutomaticTakes(plan, phrase: cap.phrase)
+            }
+            return
+        }
         advanceAutoFix()
     }
     /// Stop: keeps everything made so far; the chips show.
@@ -166,8 +175,7 @@ extension RewriteSession {
         if current.contains(where: { $0.row.selectable }) { return nil }
         if let closest = current.filter({ $0.length != nil }).min(by: { abs($0.length! - slot) < abs($1.length! - slot) }),
            let length = closest.length {
-            let availability = plan.lengthAvailability(take: closest)
-            if !availability.allows(.source), availability.options?.allows(.cut) != true {
+            if !plan.lengthFits(take: closest) {
                 return .length(tooLong: length > slot, measured: length, slot: slot, take: closest.id, number: closest.number, selected: false)
             }
         }
@@ -265,8 +273,8 @@ extension RewriteSession {
     /// Makes the take of the quote a step prepared, within the cap.
     func startAutomaticTakes(_ plan: ClipTakePlan, phrase: Int) async {
         guard current, takePlan === plan, plan.stillCurrent, !takesBusy, let quoteID = plan.approvalID, takeQuotePhrase == phrase else { return }
-        if case .confirm? = plan.cost { _ = autoFixCharge(nil, phrase: phrase); return }
-        guard autoFixCharge(plan.estimate?.usd, phrase: phrase) else { return }
+        let usd: Decimal? = if case .confirm? = plan.cost { nil } else { plan.estimate?.usd }
+        guard autoFixCharge(usd, phrase: phrase) else { autoFix.capped?.take = true; return }
         autoFix.lines[phrase] = "Fixing phrase \(phrase + 1): making a take…"
         wordingFit.measured = nil
         await plan.tryAnother(phrase: phrase, approved: true, quoteID: quoteID)
@@ -450,7 +458,8 @@ extension RewriteSession {
         autoFix.expressionNote[phrase] = nil
         guard tags != plan.phrases[phrase].audioTags else { autoFix.pendingExpressions[phrase] = nil; return }
         let hadTakes = !plan.phrases[phrase].takes.isEmpty
-        takeQuotePhrase = phrase
+        // Before any take the whole set is priced again; after, only this phrase.
+        takeQuotePhrase = plan.spent.units > 0 ? phrase : nil
         autoFix.applyingExpression = true
         takesTask = Task { [weak self, weak plan] in
             guard let self, let plan else { return }

@@ -466,12 +466,14 @@ import VoxClipMedia
         if phrases[index].selectedID != nil { clearPreparedVideo() }
         phrases[index].selectedID = nil; phrases[index].videoChoice = nil; phrases[index].explicitlySelected = false
         keepsEveryTake = true
-        await prepareQuote(indices: [index], decoding: true, candidates: 1)
+        await prepareQuote(indices: spent.units > 0 ? [index] : phrases.map(\.id), decoding: true, candidates: 1)
     }
-    /// What a take's own length allows, selected or not: a take that failed its checks still says whether its length fits.
-    func lengthAvailability(take: Take) -> VideoDurationChoiceAvailability {
-        VideoDurationChoiceAvailability(row: take.row, sourceSampleRate: project.media.source.audio?.sampleRate ?? 48_000,
-            rendererReady: prepareDurationRender != nil && VoiceLabRenderInput.supportsVideoMode(.zoomCover))
+    /// Whether a take's own length fits its slot with the source video or a cut, selected or not: a take that failed its
+    /// checks still says whether its length fits.
+    func lengthFits(take: Take) -> Bool {
+        let options = VoiceLabVideoDurationOptions(fit: take.row.audio?.fit, sourceSampleRate: project.media.source.audio?.sampleRate ?? 48_000,
+            assetSampleRate: take.row.audio?.sampleRate ?? 0)
+        return options.allows(.source) || (prepareDurationRender != nil && options.allows(.cut))
     }
     /// The duration choices the selected take allows, in the panel's order.
     func validVideoChoices(phrase index: Int) -> [VoiceLabVideoMode] {

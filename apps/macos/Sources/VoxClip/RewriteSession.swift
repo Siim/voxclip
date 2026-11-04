@@ -90,6 +90,8 @@ struct RewriteChange: Equatable, Sendable {
     /// The automatic fixes of stuck phrases after an approved price (RewriteAutoFix.swift).
     let autoFix = RewriteAutoFixState()
     var calibratedTakeIDs: Set<UUID> = []
+    /// The takes footer's Apply with every phrase kept as recorded: no take could be used, so nothing asks to discard.
+    @ObservationIgnored var applyingTextFixesOnly = false
     /// The scope's items in order: the selection's, a clip's from its first to its last word, or the take's.
     private(set) var source: [TimedWord]
     /// Where voice changes are placed (`VoiceLabWindowPlanner`): the clip of a clip, or of a selection inside the tab's
@@ -806,8 +808,9 @@ struct RewriteChange: Equatable, Sendable {
         let displayed = editor.changeReadings.first { $0.change.ordinal == ordinal }?.text ?? original
         updateAudioTags([ordinal - 1: VoiceLabAudioTags.reanchored(tags, from: displayed, to: original)])
     }
-    /// An expression on a phrase with no takes plan to hold it: the tags go into the phrase's changes.
-    func updateAudioTagsWithoutPlan(_ tags: [VoiceLabAudioTag], phrase: ClipTakePlan.Phrase) {
+    /// An expression on a phrase with no paid takes: the tags go into the phrase's changes, mapped through the plan's
+    /// hunks. False when the phrase maps to none of them (a widened sentence) or nothing changed.
+    @discardableResult func updateAudioTagsWithoutPlan(_ tags: [VoiceLabAudioTag], phrase: ClipTakePlan.Phrase) -> Bool {
         var remaining = tags
         var retained: [Bool] = []
         for annotation in phrase.audioTags {
@@ -831,17 +834,17 @@ struct RewriteChange: Equatable, Sendable {
                 VoiceLabAudioTag(beforeToken: changes[last].hunk.newTokens.count, tag: $0.tag)
             }
         }
-        updateAudioTags(updates)
+        return updateAudioTags(updates)
     }
-    private func updateAudioTags(_ updates: [Int: [VoiceLabAudioTag]]) {
-        stopWordingFit(refresh: false)
+    @discardableResult private func updateAudioTags(_ updates: [Int: [VoiceLabAudioTag]]) -> Bool {
         guard current, !isProposing, !updates.isEmpty,
-              updates.keys.allSatisfy({ changes.indices.contains($0) && changes[$0].hunk.kind == .voice }) else { return }
+              updates.keys.allSatisfy({ changes.indices.contains($0) && changes[$0].hunk.kind == .voice }) else { return false }
         let changed = updates.filter { index, tags in
             VoiceLabAudioTags.validated(tags, text: changes[index].hunk.newTokens.joined(separator: " ")) != changes[index].hunk.audioTags
         }
-        guard !changed.isEmpty else { return }
-        if confirmPaidProposalChange(perform: { [weak self] in self?.updateAudioTags(changed) }) { return }
+        guard !changed.isEmpty else { return false }
+        stopWordingFit(refresh: false)
+        if confirmPaidProposalChange(perform: { [weak self] in self?.updateAudioTags(changed) }) { return true }
         let requote = generation != nil
         takePlan?.invalidate(); takePlan = nil
         speechContextOffer = nil; speechContextReview = nil; acceptedSpeechContext = nil
@@ -855,6 +858,7 @@ struct RewriteChange: Equatable, Sendable {
         generation?.inputsChanged(prepareNewQuote: false)
         showProposal()
         if requote { makeTakes() }
+        return true
     }
     var hasPaidTakes: Bool { takePlan?.generating == true || (takePlan?.spent.units ?? 0) > 0 || generation?.rows.isEmpty == false }
     var currentSynthesisModel: String? {
@@ -874,7 +878,7 @@ struct RewriteChange: Equatable, Sendable {
         editor.announce(question)
     }
     func confirmPaidProposalChange(perform: @escaping @MainActor () -> Void) -> Bool {
-        guard hasPaidTakes else { return false }
+        guard hasPaidTakes, !applyingTextFixesOnly else { return false }
         confirmDiscardChanges { [weak self] in
             guard let self, current else { return }
             if takesBusy, let plan = takePlan {

@@ -4,6 +4,10 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Rewrite fixes its own stuck phrases automatically within a spending cap, so you only listen and press Use.
+- A phrase whose takes all fail now explains why and offers a fix, and a Rewrite can always finish with its text fixes.
+- Phrase cards show only controls you can use, and an expression goes where you click without discarding other takes.
+- The word check no longer fails a take when the transcript spells your new word as one that sounds the same, such as "cloud" for "Claude".
 - On Windows, a phrase whose take runs longer or shorter can cut the video at a pause or match the video to the take, as on Mac.
 - A paid take keeps its video-cut option, a short hard join keeps its pause when the take borrows silence, and pauses keep their usual minimum when the clip has none of that kind.
 - Stuck Rewrite phrases offer one-click fixes, some suggested by the AI, without starting over.
@@ -115,7 +119,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 - Burn captions in 19 styles and export MP4 at the source size, 16:9, 9:16 or 1:1, with an optional SRT file.
 - Share after export: show the file, copy a caption, or open X or LinkedIn with your text.
 - Save and reopen projects. A command-line tool, voxclip-cli, is included.
-- 0.1.0 ships text Rewrite. Voice Lab is a beta behind its setting: Mac can create your voice, re-voice rewritten words and change the voice of a passage or full take; Windows re-voice is not available until voice creation is. Lip sync is later (M3+).
+- 0.1.0 ships text Rewrite. Voice Lab is a beta behind its setting: Mac can create your voice, re-voice rewritten words, change the voice of a passage or full take, and lip sync chosen Rewrite takes with fal.ai sync-3; Windows re-voice and lip sync are not available until voice creation is.
 - Rewrite starts at once when it costs you nothing extra: Claude Code or Codex signed in on your plan, a local model, or Apple's on-device model. With an API key, VoxClip asks before every send.
 - Find Clips and the Test button in AI settings follow the same rule on Mac: they start at once when they cost you nothing extra, and ask before every send on an API key or on Claude Code or Codex signed in with one. The privacy notice still appears once for each AI, before its first send, and cancelling either one leaves everything as it was.
 - Voice Lab (beta, off until you turn it on): say the new words in your own cloned voice with your ElevenLabs key. Each paid step shows its cost and asks first.

@@ -79,6 +79,7 @@ extension RewriteSession {
                 editor.llmRuns.release(lease)
                 if reasking.token == token {
                     reasking.running = nil; reasking.lease = nil; reasking.work = nil
+                    if let plan = takePlan { applyPendingExpressions(plan) }
                     if isOpen, case .proposal = task.state { showProposal() }
                 }
             }
@@ -230,9 +231,12 @@ extension RewriteSession {
         NextStepChip(action: PanelAction(id: id, title: title, perform: perform))
     }
     /// The chips of a stuck state while automatic fixes run: one "Choose yourself…" that opens them (design.md R2).
+    /// What automatic fixes decided and phrases whose rounds ended stay in view, with their chips.
     private func collapsed(_ steps: [NextSteps]) -> [NextSteps] {
-        guard !autoFix.choicesShown, !steps.isEmpty else { return steps }
-        return [NextSteps(id: "choose", chips: [chip("chooseYourself", "Choose yourself…") { [weak self] in
+        guard !autoFix.choicesShown else { return steps }
+        let kept = steps.filter { $0.id == "autoNotes" || $0.id.hasPrefix("kept.") }
+        guard steps.count > kept.count else { return kept }
+        return kept + [NextSteps(id: "choose", chips: [chip("chooseYourself", "Choose yourself…") { [weak self] in
             guard let self else { return }
             autoFix.showChoices = true
             showProposal()

@@ -9,7 +9,10 @@ private struct RewriteGenerationFixtureKeys: KeyProvider {
 
 @MainActor enum DebugRewriteGeneration {
     static let states = ["no-voice", "ready", "generating", "provider-error", "none-passed", "length-changed", "cost-confirmation", "cancelled",
-        "lipsync-idle", "lipsync-first-use", "lipsync-running", "lipsync-done", "lipsync-missing-key", "lipsync-failed", "lipsync-cancelled", "lipsync-waiting"]
+        "lipsync-idle", "lipsync-first-use", "lipsync-running", "lipsync-done", "lipsync-missing-key", "lipsync-failed", "lipsync-cancelled", "lipsync-waiting",
+        "waiting", "all-failed", "fixing", "fixed", "kept-original"]
+    /// The automatic-fix states (RewriteAutoFix.swift) and the fixture take state each starts from.
+    private static let autoFixBase = ["all-failed": "none-passed", "fixing": "none-passed", "fixed": "ready", "kept-original": "none-passed"]
     static var variants: [String] { states.map { "rewrite-takes-" + $0 } }
     static func show(_ state: String, app: AppModel) async throws {
         guard states.contains(state), let root = app.shared?.root else { throw VoiceLabError.invalidInput }
@@ -41,13 +44,27 @@ private struct RewriteGenerationFixtureKeys: KeyProvider {
             let plan = try ClipTakePlan(project: session.project, scope: session.scope, envelope: envelope,
                 hunks: session.changes.enumerated().filter { $0.element.hunk.kind != .voice || session.includedVoice.contains($0.offset + 1) }.map { $0.element.hunk },
                 makeInput: { _ in throw VoiceLabError.invalidInput })
-            plan.showFixture(state.hasPrefix("lipsync-") ? "ready" : state)
+            if state != "waiting" { plan.showFixture(state.hasPrefix("lipsync-") ? "ready" : autoFixBase[state] ?? state) }
             if state.hasPrefix("lipsync-") {
                 for phrase in plan.phrases { _ = plan.chooseVideo(.source, phrase: phrase.id) }
                 try plan.lipsync.showFixture(state, project: session.project, phrases: plan.phrases)
             }
             session.takePlanOrdinals = session.changes.indices.filter { session.changes[$0].hunk.kind != .voice || session.includedVoice.contains($0 + 1) }.map { $0 + 1 }
             session.takePlan = plan
+            if autoFixBase[state] != nil {
+                session.autoFix.armed = true; session.autoFix.plan = plan
+                session.autoFix.allowance = RewriteAutoFixState.minimumAllowance
+                switch state {
+                case "all-failed": session.autoFix.stopped = true
+                case "fixing": session.autoFix.rounds[0] = 1
+                    session.autoFix.lines[0] = "Fixing phrase 1: asking \(session.aiName) for a shorter wording…"
+                case "fixed": session.autoFix.rounds[0] = 1
+                    session.autoFix.notes = ["Phrase 1 is voiced as its whole sentence, so your voice can be checked."]
+                default:
+                    session.autoFix.rounds[0] = RewriteAutoFixState.maximumRounds; session.autoFix.gaveUp = [0]
+                    plan.leaveOut(phrase: 0)
+                }
+            }
         }
     }
     static func captures(app: AppModel, directory: URL) throws -> [String] {

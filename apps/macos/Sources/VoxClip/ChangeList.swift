@@ -299,7 +299,7 @@ extension RewriteSession {
         if blocked > 0 {
             let priceable = included.filter { includedVoice.contains($0.ordinal) }
             guard let voice = priceable.first else {
-                return (PanelFooter(note: timingBlockedNote, link: keepAll, primary: apply(beside: true)), nil, false, nil)
+                return advised((PanelFooter(note: timingBlockedNote, link: keepAll, primary: apply(beside: true)), nil, false, nil))
             }
             var footer = takesFooter(voice, keepAll: keepAll)
             let paidNote = takePlan == nil ? nil : footer.note
@@ -390,7 +390,12 @@ extension RewriteSession {
             if fixes > 0 {
                 let title = fixes == 1 ? "Apply 1 text fix" : "Apply \(fixes) text fixes"
                 return PanelFooter(note: "Your original audio is kept. " + spend,
-                    primary: PanelAction(id: "apply", title: title) { [weak self] in self?.applyFreeChanges() })
+                    primary: PanelAction(id: "apply", title: title) { [weak self] in
+                        guard let self else { return }
+                        applyingTextFixesOnly = true
+                        defer { applyingTextFixesOnly = false }
+                        applyFreeChanges()
+                    })
             }
             return PanelFooter(note: "Your original audio is kept. " + spend,
                 primary: PanelAction(id: "closeRewrite", title: "Done") { [weak self] in self?.editor.closeRewrite() })

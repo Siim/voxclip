@@ -67,13 +67,19 @@ struct VideoDurationChoiceView: View {
     /// Only the choices this take allows are shown, never a disabled one (design.md: a control that can't act is absent).
     /// A single valid choice is chosen for the user (`ClipTakePlan.autoChooseVideo`) and reads as one line.
     var valid: [VoiceLabVideoMode] { [VoiceLabVideoMode.source, .cut, .retimed].filter(availability.allows) }
+    @State private var changing = false
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if valid.count == 1, let only = valid.first {
-                Text("Video: " + title(only).prefix(1).lowercased() + title(only).dropFirst())
-                Text(detail(only)).foregroundStyle(DesignValues.color("text.secondary"))
-            } else if busy, let selection {
-                Text("Video: " + title(selection).prefix(1).lowercased() + title(selection).dropFirst())
+            if let shown = selection ?? (valid.count == 1 ? valid.first : nil), !changing || busy || valid.count == 1 {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("Video: " + title(shown).prefix(1).lowercased() + title(shown).dropFirst())
+                    if valid.count > 1, !busy {
+                        Button("Change") { changing = true }.buttonStyle(.plain)
+                            .foregroundStyle(DesignValues.color("text.secondary"))
+                            .accessibilityLabel("Change video duration")
+                    }
+                }
+                Text(detail(shown)).foregroundStyle(DesignValues.color("text.secondary"))
             } else if !busy, !valid.isEmpty {
                 Text("Choose video duration for this passage")
                 ForEach(valid, id: \.self) { choice in option(choice, title: title(choice), detail: detail(choice)) }
@@ -107,7 +113,7 @@ struct VideoDurationChoiceView: View {
 
     private func option(_ choice: VoiceLabVideoMode, title: String, detail: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Button { choose(choice) } label: {
+            Button { choose(choice); changing = false } label: {
                 Label(title, systemImage: selection == choice ? "largecircle.fill.circle" : "circle")
             }
             .buttonStyle(.plain)
