@@ -28,6 +28,8 @@ public enum LLMFeature: String, Codable, Sendable, Hashable, CaseIterable {
     case clipFinder
     case aiTighten
     case voiceRewrite
+    /// The "Make it postable" planner (ai.md §16): one plan for a clip, or a ranked series for a whole video.
+    case clipAutopilot
     case test
 }
 
@@ -51,6 +53,11 @@ public enum Effort: String, Codable, Sendable, Hashable, CaseIterable {
         guard let requested, let ceiling = allCases.firstIndex(of: requested) else { return nil }
         let allowed = Set(supported.map { $0.lowercased() })
         return allCases[...ceiling].last { allowed.contains($0.rawValue) }
+    }
+
+    /// The highest of `supported` at or below this effort, or nil when none is: `resolved` over typed levels.
+    public func capped(to supported: some Sequence<Effort>) -> Effort? {
+        Self.resolved(self, supported: supported.map(\.rawValue))
     }
 }
 

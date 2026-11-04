@@ -9,6 +9,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 - Find Clips, Rewrite and the other AI decisions now think at extra high effort (Claude Code and Anthropic; others at their highest), and the status bar and Settings say so, for example "Claude Code · Opus (latest) · extra high".
 - The selected clip, kept or suggested, always shows Rewrite and More. On a suggested clip, Rewrite and Export keep it first (one undo step), then open on it. More also offers Captions and Find More Clips.
 - On Mac, clips can have background music from a free library, made for the clip with Eleven Music, or from your own files; it dips while you talk, fades out at the end, and its credit goes in the post text. Windows opens and saves these projects.
+- Behind the scenes, VoxClip can now ask Claude Code at extra high effort for a complete postable-clip plan (cuts, a few re-voiced phrases, captions, three music picks, zooms, hook, post text and a score); the one-click Make it postable button comes next.
+- `voxclip-cli transcribe` saves its project again instead of stopping with "Invalid project text".
 - On Mac, Rewrite takes, Use and Export previews get ready faster: the voice mix is reworked and sounds exactly the same.
 - On Windows, each Rewrite phrase can use your own words or your own microphone take, and automatic fixes learn from what they tried and re-ask when the AI drops a phrase's joining words.
 - Windows opens Mac projects that use your own recorded take, and its Eleven v4 takes no longer fail on harmless timing differences.

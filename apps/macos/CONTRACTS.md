@@ -55,6 +55,47 @@ User decision (2026-11-04): music from an open library, from Eleven Music and fr
 - **Verification (absolute `VOXCLIP_SHARED_DIR`, `VOXCLIP_NO_KEYCHAIN=1`; App with an isolated `VOXCLIP_DATA_DIR`, as CI runs it).** Core 1,208 / 115 suites (2 known issues), Media 520 / 62, App 885 / 63, `rewrite-smoke.sh` 35/35. Voice Lab generators, `check_drift.py` (now also the music schema and fixture generators): no drift, clean tree; `validate.py`, `test_music_schema.py` and `test_schema_generation.py` pass. Red: admitting `by-nc`/`by-sa`/`by-nd` fails `licenseFilteringDropsNoncommercialNoDerivativesAndShareAlike`; turning ducking off fails `bedSitsTwentyDecibelsUnderSpeechDucksTwelveAndFades`.
 - **Owed.** Real-window gates (scene audit, self-test) were not run: the console was in use. The default 216 pt timeline ends just above M1 (scroll, or a taller default from the spacing track). Claude's suggestion reaches the section only through `MusicPanel.suggest`; the autopilot plan (track/v2-autopilot-planner) must call it, and its one-click path must call `use` for the chosen candidate (a generation is paid: its click must stay the approval, within the spend cap). Windows owes the mix, sources and UI.
 - **Next package must know.** Music files live in `<data>/Music/<projectId>/`, outside the project and outside Voice Lab's paid root; nothing collects unused ones yet. The bed must be a CAF: a composition cannot insert a track from the float WAVs `PCMFile` writes, and an `AVURLAsset` must stay alive while its track is inserted.
+### 2026-11-05 — Make it postable planner (headless Core): plan contract, xhigh request, item-by-item checks, editor operations, price
+
+User request (2026-11-04): "too many click to actually use it. claude code should make the best decisions. in extra high effort level." Approved mockup "One-click postable clips". Spec: doc/spec/ai.md §16. No UI.
+
+- **Built.**
+  - `ClipAutopilotPlan` (v1): span, title, hook, cuts, pause cuts, bridge-word rewrites, captions (style, font, case, words per caption), three music picks with `musicPick`, zooms, post text, score, verdict, questions, repairs. `ClipAutopilotSeries` (v1) holds a whole video's ranked, non-overlapping clips.
+  - `shared/prompts/clip-autopilot.json` (`promptVersion` 3): system prompt with `{limit}` placeholders filled from `limits`, the `voxclip-indexed-words-v1` transcript (`[index]word`, `(filler)`, pause lines from the editor's own detection, already-cut words left out, corrections applied), a measured pace line, styles and bundled fonts, and plan and series schemas.
+  - `ClipAutopilotService`: sends through `LLMRunner` with `feature: .clipAutopilot` and `effort: .xhigh`. The timeout is at least 1,200 s, the output cap 16k for a clip and 64k for a series, with a context check.
+  - `ClipAutopilotValidator`: repairs or drops each item and lists it in `repairs`; it never refuses a plan. Rewrites must keep their bridge words (`VoiceLabTakeProcessing.keepsBridgeWords`); cuts are split around rewrites; unknown styles, fonts and cases fall back to the preference, then the defaults; music is made instrumental and clamped; zooms are shortened to 6 s.
+  - `ClipAutopilotMapping`: plan → operations, each with a stable id:
+    - `updateClip` or `addClip`, `renameClip`, and `cutSelection` of word and pause ids;
+    - a Rewrite proposal (`RewriteScope.selection`);
+    - `CaptionSettings` with merge-patch overrides, with `pendingFont` for unbundled Roboto;
+    - constant-scale `MotionCue`s;
+    - the music cue and the hook, both pending;
+    - share text.
+
+    `apply` applies what the editor can, including motion cues through `ContextDemoProject.settingMotionCues` (v4 upgrade).
+  - `ClipAutopilotPricing`: TTS of the rewrites' whole texts, plus the picked track from `shared/catalog/music-prices.json` (a new file in the Voice Lab price format, 0.15 USD/min, **TODO lead: verify**), plus LLM `none` on a plan, local or Apple and `unknown` otherwise.
+  - `Effort.xhigh`, the minimal case: Claude Code `--effort xhigh`; Anthropic `xhigh`; OpenAI and Gemini cap to high; Codex sends the highest listed level for a listed model and `xhigh` for `default`. `Effort.capped(to:)`. `LLMFeature.clipAutopilot` with its own refusal and truncation copy.
+  - `voxclip-cli transcribe` saved an uppercase project id, which validation refuses, so every transcribe failed with "Invalid project text". It now lowercases the id.
+- **Deleted.** Nothing replaced.
+- **Shared vectors.** `shared/fixtures/autopilot/plan-validation-cases.json` (`voxclip-autopilot-validation/1`, a new folder, so neither twin's fixture enumeration changes) holds:
+  - a synthetic transcript (not user media);
+  - two rendered-transcript vectors;
+  - eleven hand-derived validation cases (repairs pinned as sorted `[field, action]`);
+  - the prompt's SHA-256 in `sources`.
+- **Tests.** `ClipAutopilotTests` (17 tests, 27 cases), `CLIConnectorTests.extraHighEffortReachesClaudeCodeAndCodexCapsIt` and `HTTPConnectorTests.extraHighEffortMapsToEachProvidersLevel` (3 cases). No live calls. `ClipAutopilotLiveEvalTests` runs only with `VOXCLIP_AUTOPILOT_LIVE_EVAL=1`: it refuses an API-key sign-in before sending and writes only under `/tmp/voxclip-autopilot-eval/`.
+- **Live evaluation** (local, three prompt rounds, results not committed): series plans took 236–338 s and clip plans 44–80 s at xhigh. 0 rewrites; the final prompt's top clip is 38 s after cuts, most others 48–56 s.
+- **Next package must know.**
+  - **UI:**
+    - the ✦ action needs a price before planning: use the music price for the clip length plus a rewrite ceiling, or plan first;
+    - a series takes minutes, so plan in the background with progress;
+    - the review lists `ClipAutopilotOperation`s with Undo or Change and applies them as one undo step;
+    - rewrites go through the existing Rewrite flow, which adds window bridges and the quote;
+    - questions show with their pre-picked answers.
+  - **Roboto Black** is not bundled: add the OFL font and notices to `shared/fonts`, or captions keep the style's font (`pendingFont`).
+  - **Music:** generation and ducking are the next package. Verify the price row, which may become a `voice-lab.json` row once both suites' entry counts and hashes are regenerated.
+  - **track/v2-quickwins** also adds `Effort.xhigh`; at merge keep one enum case and its connector mapping.
+  - **Windows** twin owed: replay `plan-validation-cases.json`.
+  - **Next contract version:** a `corrections` list (the model asked about misheard names it cannot fix) and an optional colour grade.
 
 ### 2026-11-04 — Voice Lab mix walks each piece block by block, bit-identical to the per-frame mix
 

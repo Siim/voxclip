@@ -1,0 +1,1797 @@
+{
+ "schema": "voxclip-autopilot-validation/1",
+ "id": "plan-validation-cases",
+ "origin": "voxclip",
+ "sources": {
+  "shared/prompts/clip-autopilot.json": "9be27b582900e648a96cfb33053ac90119dba1e480816c6c01be484040f01d57"
+ },
+ "description": "Hand-derived vectors for the Make it postable planner (doc/spec/ai.md section 16): the indexed transcript the request renders, and how the validator repairs or drops each reply item. 'repairs' lists [field, action] pairs sorted; the detail text is not pinned. Edit this file by hand and replay it in every Core suite that implements the planner.",
+ "transcript": {
+  "words": [
+   {
+    "id": "w0",
+    "text": "So",
+    "kind": "word",
+    "start": 0.0,
+    "end": 0.2
+   },
+   {
+    "id": "w1",
+    "text": "um",
+    "kind": "word",
+    "start": 0.3,
+    "end": 0.5
+   },
+   {
+    "id": "w2",
+    "text": "the",
+    "kind": "word",
+    "start": 0.6,
+    "end": 0.7
+   },
+   {
+    "id": "w3",
+    "text": "big",
+    "kind": "word",
+    "start": 0.7,
+    "end": 0.9
+   },
+   {
+    "id": "w4",
+    "text": "idea",
+    "kind": "word",
+    "start": 0.9,
+    "end": 1.3
+   },
+   {
+    "id": "w5",
+    "text": "is",
+    "kind": "word",
+    "start": 1.3,
+    "end": 1.4
+   },
+   {
+    "id": "w6",
+    "text": "simple.",
+    "kind": "word",
+    "start": 1.4,
+    "end": 1.9
+   },
+   {
+    "id": "w7",
+    "text": "Coffee",
+    "kind": "word",
+    "start": 3.1,
+    "end": 3.6
+   },
+   {
+    "id": "w8",
+    "text": "is",
+    "kind": "word",
+    "start": 3.6,
+    "end": 3.7
+   },
+   {
+    "id": "w9",
+    "text": "is",
+    "kind": "word",
+    "start": 3.7,
+    "end": 3.8
+   },
+   {
+    "id": "w10",
+    "text": "great,",
+    "kind": "word",
+    "start": 3.8,
+    "end": 4.3
+   },
+   {
+    "id": "w11",
+    "text": "uh",
+    "kind": "word",
+    "start": 4.4,
+    "end": 4.6
+   },
+   {
+    "id": "w12",
+    "text": "but",
+    "kind": "word",
+    "start": 4.7,
+    "end": 4.9
+   },
+   {
+    "id": "w13",
+    "text": "sleep",
+    "kind": "word",
+    "start": 4.9,
+    "end": 5.4
+   },
+   {
+    "id": "w14",
+    "text": "is",
+    "kind": "word",
+    "start": 5.4,
+    "end": 5.5
+   },
+   {
+    "id": "w15",
+    "text": "better.",
+    "kind": "word",
+    "start": 5.5,
+    "end": 5.9
+   },
+   {
+    "id": "w16",
+    "text": "(laughter)",
+    "kind": "event",
+    "start": 6.0,
+    "end": 6.5
+   },
+   {
+    "id": "w17",
+    "text": "You",
+    "kind": "word",
+    "start": 6.6,
+    "end": 6.8
+   },
+   {
+    "id": "w18",
+    "text": "still",
+    "kind": "word",
+    "start": 6.8,
+    "end": 7.1
+   },
+   {
+    "id": "w19",
+    "text": "need",
+    "kind": "word",
+    "start": 7.1,
+    "end": 7.3
+   },
+   {
+    "id": "w20",
+    "text": "to",
+    "kind": "word",
+    "start": 7.3,
+    "end": 7.4
+   },
+   {
+    "id": "w21",
+    "text": "water",
+    "kind": "word",
+    "start": 7.4,
+    "end": 7.6
+   },
+   {
+    "id": "w22",
+    "text": "the",
+    "kind": "word",
+    "start": 7.6,
+    "end": 7.7
+   },
+   {
+    "id": "w23",
+    "text": "plants",
+    "kind": "word",
+    "start": 7.7,
+    "end": 8.1
+   },
+   {
+    "id": "w24",
+    "text": "one",
+    "kind": "word",
+    "start": 8.1,
+    "end": 8.3
+   },
+   {
+    "id": "w25",
+    "text": "by",
+    "kind": "word",
+    "start": 8.3,
+    "end": 8.4
+   },
+   {
+    "id": "w26",
+    "text": "one.",
+    "kind": "word",
+    "start": 8.4,
+    "end": 8.9
+   },
+   {
+    "id": "w27",
+    "text": "That's",
+    "kind": "word",
+    "start": 10.4,
+    "end": 10.7
+   },
+   {
+    "id": "w28",
+    "text": "the",
+    "kind": "word",
+    "start": 10.7,
+    "end": 10.8
+   },
+   {
+    "id": "w29",
+    "text": "job.",
+    "kind": "word",
+    "start": 10.8,
+    "end": 11.3
+   }
+  ],
+  "durationSeconds": 12.0,
+  "pauseThresholdSeconds": 1.0
+ },
+ "rendering": [
+  {
+   "id": "whole",
+   "scope": [
+    0,
+    29
+   ],
+   "edits": {},
+   "transcript": "<transcript>\n0:00 [0]So [1]um(filler) [2]the [3]big [4]idea [5]is [6]simple.\n(pause 1.2 s after [6])\n0:03 [7]Coffee [8]is [9]is [10]great, [11]uh(filler) [12]but [13]sleep [14]is [15]better.\n0:06 [16](laughter) [17]You [18]still [19]need [20]to [21]water [22]the [23]plants [24]one [25]by [26]one.\n(pause 1.5 s after [26])\n0:10 [27]That's [28]the [29]job.\n</transcript>"
+  },
+  {
+   "id": "edited",
+   "scope": [
+    0,
+    29
+   ],
+   "edits": {
+    "cutWordIds": [
+     "w1"
+    ],
+    "cutPauseIds": [
+     "pause-after-w26"
+    ],
+    "corrections": {
+     "w13": "naps"
+    }
+   },
+   "transcript": "<transcript>\n0:00 [0]So [2]the [3]big [4]idea [5]is [6]simple.\n(pause 1.2 s after [6])\n0:03 [7]Coffee [8]is [9]is [10]great, [11]uh(filler) [12]but [13]naps [14]is [15]better.\n0:06 [16](laughter) [17]You [18]still [19]need [20]to [21]water [22]the [23]plants [24]one [25]by [26]one.\n0:10 [27]That's [28]the [29]job.\n</transcript>"
+  }
+ ],
+ "cases": [
+  {
+   "id": "valid-clip",
+   "mode": "clip",
+   "scope": [
+    0,
+    29
+   ],
+   "reply": {
+    "startWord": 0,
+    "endWord": 29,
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
+    "cuts": [
+     {
+      "startWord": 1,
+      "endWord": 1,
+      "kind": "filler",
+      "reason": "um"
+     },
+     {
+      "startWord": 9,
+      "endWord": 9,
+      "kind": "repeat",
+      "reason": "doubled is"
+     },
+     {
+      "startWord": 11,
+      "endWord": 11,
+      "kind": "filler",
+      "reason": "uh"
+     }
+    ],
+    "pauseCuts": [
+     {
+      "afterWord": 6,
+      "reason": "dead air"
+     }
+    ],
+    "rewrites": [
+     {
+      "startWord": 17,
+      "endWord": 23,
+      "text": "You still need to feed the plants",
+      "reason": "feed is the verb"
+     }
+    ],
+    "captionStyle": "vox-bold",
+    "captionFont": "Roboto",
+    "captionWeight": 900,
+    "captionCase": "upper",
+    "wordsPerCaption": 3,
+    "music": [
+     {
+      "title": "Pulse",
+      "mood": "driven",
+      "prompt": "Instrumental minimal techno, 120 BPM, warm bass",
+      "reason": "matches the pace",
+      "underVoiceDb": 18
+     },
+     {
+      "title": "Glass",
+      "mood": "calm",
+      "prompt": "Soft piano and pads, instrumental, 80 BPM",
+      "reason": "reflective",
+      "underVoiceDb": 20
+     },
+     {
+      "title": "Grit",
+      "mood": "gritty",
+      "prompt": "Lo-fi hip hop beat, 90 BPM, instrumental",
+      "reason": "casual",
+      "underVoiceDb": 16
+     }
+    ],
+    "musicPick": 0,
+    "zooms": [
+     {
+      "word": 13,
+      "untilWord": 15,
+      "scale": 1.2,
+      "reason": "the contrast"
+     }
+    ],
+    "postText": "Coffee is great. Sleep is better.",
+    "score": 8,
+    "verdict": "post",
+    "scoreReason": "A clear contrast with a payoff.",
+    "questions": [
+     {
+      "question": "Is it plants?",
+      "answer": "Yes",
+      "options": [
+       "Yes",
+       "No"
+      ]
+     }
+    ]
+   },
+   "expect": {
+    "span": [
+     0,
+     29
+    ],
+    "cuts": [
+     [
+      1,
+      1,
+      "filler"
+     ],
+     [
+      9,
+      9,
+      "repeat"
+     ],
+     [
+      11,
+      11,
+      "filler"
+     ]
+    ],
+    "pauseCuts": [
+     6
+    ],
+    "rewrites": [
+     [
+      17,
+      23,
+      "You still need to feed the plants"
+     ]
+    ],
+    "captions": {
+     "styleId": "vox-bold",
+     "family": "Roboto",
+     "weight": 900,
+     "case": "upper",
+     "wordsPerCaption": 3
+    },
+    "music": [
+     [
+      "Pulse",
+      "Instrumental minimal techno, 120 BPM, warm bass",
+      18
+     ],
+     [
+      "Glass",
+      "Soft piano and pads, instrumental, 80 BPM",
+      20
+     ],
+     [
+      "Grit",
+      "Lo-fi hip hop beat, 90 BPM, instrumental",
+      16
+     ]
+    ],
+    "musicPick": 0,
+    "zooms": [
+     [
+      13,
+      15,
+      1.2
+     ]
+    ],
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
+    "score": 8,
+    "verdict": "post",
+    "questions": 1,
+    "repairs": []
+   }
+  },
+  {
+   "id": "out-of-range",
+   "mode": "clip",
+   "scope": [
+    0,
+    29
+   ],
+   "reply": {
+    "startWord": -5,
+    "endWord": 40,
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
+    "cuts": [
+     {
+      "startWord": 40,
+      "endWord": 45,
+      "kind": "filler",
+      "reason": ""
+     },
+     {
+      "startWord": -3,
+      "endWord": 1,
+      "kind": "filler",
+      "reason": "warm-up"
+     }
+    ],
+    "pauseCuts": [
+     {
+      "afterWord": 50,
+      "reason": ""
+     }
+    ],
+    "rewrites": [
+     {
+      "startWord": 25,
+      "endWord": 35,
+      "text": "by one and more",
+      "reason": ""
+     }
+    ],
+    "captionStyle": "vox-bold",
+    "captionFont": "Roboto",
+    "captionWeight": 900,
+    "captionCase": "upper",
+    "wordsPerCaption": 3,
+    "music": [
+     {
+      "title": "Pulse",
+      "mood": "driven",
+      "prompt": "Instrumental minimal techno, 120 BPM, warm bass",
+      "reason": "matches the pace",
+      "underVoiceDb": 18
+     },
+     {
+      "title": "Glass",
+      "mood": "calm",
+      "prompt": "Soft piano and pads, instrumental, 80 BPM",
+      "reason": "reflective",
+      "underVoiceDb": 20
+     },
+     {
+      "title": "Grit",
+      "mood": "gritty",
+      "prompt": "Lo-fi hip hop beat, 90 BPM, instrumental",
+      "reason": "casual",
+      "underVoiceDb": 16
+     }
+    ],
+    "musicPick": 0,
+    "zooms": [
+     {
+      "word": 99,
+      "untilWord": 100,
+      "scale": 1.2,
+      "reason": ""
+     }
+    ],
+    "postText": "Coffee is great. Sleep is better.",
+    "score": 8,
+    "verdict": "post",
+    "scoreReason": "A clear contrast with a payoff.",
+    "questions": []
+   },
+   "expect": {
+    "span": [
+     0,
+     29
+    ],
+    "cuts": [
+     [
+      0,
+      1,
+      "filler"
+     ]
+    ],
+    "pauseCuts": [],
+    "rewrites": [],
+    "captions": {
+     "styleId": "vox-bold",
+     "family": "Roboto",
+     "weight": 900,
+     "case": "upper",
+     "wordsPerCaption": 3
+    },
+    "music": [
+     [
+      "Pulse",
+      "Instrumental minimal techno, 120 BPM, warm bass",
+      18
+     ],
+     [
+      "Glass",
+      "Soft piano and pads, instrumental, 80 BPM",
+      20
+     ],
+     [
+      "Grit",
+      "Lo-fi hip hop beat, 90 BPM, instrumental",
+      16
+     ]
+    ],
+    "musicPick": 0,
+    "zooms": [],
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
+    "score": 8,
+    "verdict": "post",
+    "questions": 0,
+    "repairs": [
+     [
+      "cuts[0]",
+      "dropped"
+     ],
+     [
+      "cuts[1]",
+      "repaired"
+     ],
+     [
+      "pauseCuts[0]",
+      "dropped"
+     ],
+     [
+      "rewrites[0]",
+      "dropped"
+     ],
+     [
+      "startWord",
+      "repaired"
+     ],
+     [
+      "zooms[0]",
+      "dropped"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "overlaps",
+   "mode": "clip",
+   "scope": [
+    0,
+    29
+   ],
+   "reply": {
+    "startWord": 0,
+    "endWord": 29,
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
+    "cuts": [
+     {
+      "startWord": 18,
+      "endWord": 20,
+      "kind": "tangent",
+      "reason": ""
+     },
+     {
+      "startWord": 15,
+      "endWord": 18,
+      "kind": "other",
+      "reason": ""
+     },
+     {
+      "startWord": 0,
+      "endWord": 1,
+      "kind": "filler",
+      "reason": ""
+     },
+     {
+      "startWord": 1,
+      "endWord": 2,
+      "kind": "filler",
+      "reason": ""
+     }
+    ],
+    "pauseCuts": [
+     {
+      "afterWord": 20,
+      "reason": ""
+     },
+     {
+      "afterWord": 26,
+      "reason": ""
+     },
+     {
+      "afterWord": 26,
+      "reason": ""
+     }
+    ],
+    "rewrites": [
+     {
+      "startWord": 17,
+      "endWord": 23,
+      "text": "You still need to feed the plants",
+      "reason": ""
+     },
+     {
+      "startWord": 20,
+      "endWord": 25,
+      "text": "to feed those plants one by",
+      "reason": ""
+     }
+    ],
+    "captionStyle": "vox-bold",
+    "captionFont": "Roboto",
+    "captionWeight": 900,
+    "captionCase": "upper",
+    "wordsPerCaption": 3,
+    "music": [
+     {
+      "title": "Pulse",
+      "mood": "driven",
+      "prompt": "Instrumental minimal techno, 120 BPM, warm bass",
+      "reason": "matches the pace",
+      "underVoiceDb": 18
+     },
+     {
+      "title": "Glass",
+      "mood": "calm",
+      "prompt": "Soft piano and pads, instrumental, 80 BPM",
+      "reason": "reflective",
+      "underVoiceDb": 20
+     },
+     {
+      "title": "Grit",
+      "mood": "gritty",
+      "prompt": "Lo-fi hip hop beat, 90 BPM, instrumental",
+      "reason": "casual",
+      "underVoiceDb": 16
+     }
+    ],
+    "musicPick": 0,
+    "zooms": [],
+    "postText": "Coffee is great. Sleep is better.",
+    "score": 8,
+    "verdict": "post",
+    "scoreReason": "A clear contrast with a payoff.",
+    "questions": []
+   },
+   "expect": {
+    "span": [
+     0,
+     29
+    ],
+    "cuts": [
+     [
+      0,
+      2,
+      "filler"
+     ],
+     [
+      15,
+      16,
+      "other"
+     ]
+    ],
+    "pauseCuts": [
+     26
+    ],
+    "rewrites": [
+     [
+      17,
+      23,
+      "You still need to feed the plants"
+     ]
+    ],
+    "captions": {
+     "styleId": "vox-bold",
+     "family": "Roboto",
+     "weight": 900,
+     "case": "upper",
+     "wordsPerCaption": 3
+    },
+    "music": [
+     [
+      "Pulse",
+      "Instrumental minimal techno, 120 BPM, warm bass",
+      18
+     ],
+     [
+      "Glass",
+      "Soft piano and pads, instrumental, 80 BPM",
+      20
+     ],
+     [
+      "Grit",
+      "Lo-fi hip hop beat, 90 BPM, instrumental",
+      16
+     ]
+    ],
+    "musicPick": 0,
+    "zooms": [],
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
+    "score": 8,
+    "verdict": "post",
+    "questions": 0,
+    "repairs": [
+     [
+      "cuts[0]",
+      "dropped"
+     ],
+     [
+      "cuts[1]",
+      "repaired"
+     ],
+     [
+      "pauseCuts[0]",
+      "dropped"
+     ],
+     [
+      "pauseCuts[2]",
+      "dropped"
+     ],
+     [
+      "rewrites[1]",
+      "dropped"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "unknown-style",
+   "mode": "clip",
+   "scope": [
+    0,
+    29
+   ],
+   "preference": {
+    "styleId": "karaoke"
+   },
+   "reply": {
+    "startWord": 0,
+    "endWord": 29,
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
+    "cuts": [],
+    "pauseCuts": [],
+    "rewrites": [],
+    "captionStyle": "fancy",
+    "captionFont": "Comic Sans",
+    "captionWeight": 400,
+    "captionCase": "Title",
+    "wordsPerCaption": 20,
+    "music": [
+     {
+      "title": "Pulse",
+      "mood": "driven",
+      "prompt": "Instrumental minimal techno, 120 BPM, warm bass",
+      "reason": "matches the pace",
+      "underVoiceDb": 18
+     },
+     {
+      "title": "Glass",
+      "mood": "calm",
+      "prompt": "Soft piano and pads, instrumental, 80 BPM",
+      "reason": "reflective",
+      "underVoiceDb": 20
+     },
+     {
+      "title": "Grit",
+      "mood": "gritty",
+      "prompt": "Lo-fi hip hop beat, 90 BPM, instrumental",
+      "reason": "casual",
+      "underVoiceDb": 16
+     }
+    ],
+    "musicPick": 0,
+    "zooms": [],
+    "postText": "Coffee is great. Sleep is better.",
+    "score": 8,
+    "verdict": "post",
+    "scoreReason": "A clear contrast with a payoff.",
+    "questions": []
+   },
+   "expect": {
+    "span": [
+     0,
+     29
+    ],
+    "cuts": [],
+    "pauseCuts": [],
+    "rewrites": [],
+    "captions": {
+     "styleId": "karaoke",
+     "family": "Roboto",
+     "weight": 900,
+     "case": "upper",
+     "wordsPerCaption": 8
+    },
+    "music": [
+     [
+      "Pulse",
+      "Instrumental minimal techno, 120 BPM, warm bass",
+      18
+     ],
+     [
+      "Glass",
+      "Soft piano and pads, instrumental, 80 BPM",
+      20
+     ],
+     [
+      "Grit",
+      "Lo-fi hip hop beat, 90 BPM, instrumental",
+      16
+     ]
+    ],
+    "musicPick": 0,
+    "zooms": [],
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
+    "score": 8,
+    "verdict": "post",
+    "questions": 0,
+    "repairs": [
+     [
+      "captionCase",
+      "repaired"
+     ],
+     [
+      "captionFont",
+      "repaired"
+     ],
+     [
+      "captionStyle",
+      "repaired"
+     ],
+     [
+      "wordsPerCaption",
+      "repaired"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "off-style-bundled-font",
+   "mode": "clip",
+   "scope": [
+    0,
+    29
+   ],
+   "reply": {
+    "startWord": 0,
+    "endWord": 29,
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
+    "cuts": [],
+    "pauseCuts": [],
+    "rewrites": [],
+    "captionStyle": "off",
+    "captionFont": "Montserrat",
+    "captionWeight": 900,
+    "captionCase": "asSaid",
+    "wordsPerCaption": 1,
+    "music": [
+     {
+      "title": "Pulse",
+      "mood": "driven",
+      "prompt": "Instrumental minimal techno, 120 BPM, warm bass",
+      "reason": "matches the pace",
+      "underVoiceDb": 18
+     },
+     {
+      "title": "Glass",
+      "mood": "calm",
+      "prompt": "Soft piano and pads, instrumental, 80 BPM",
+      "reason": "reflective",
+      "underVoiceDb": 20
+     },
+     {
+      "title": "Grit",
+      "mood": "gritty",
+      "prompt": "Lo-fi hip hop beat, 90 BPM, instrumental",
+      "reason": "casual",
+      "underVoiceDb": 16
+     }
+    ],
+    "musicPick": 0,
+    "zooms": [],
+    "postText": "Coffee is great. Sleep is better.",
+    "score": 8,
+    "verdict": "post",
+    "scoreReason": "A clear contrast with a payoff.",
+    "questions": []
+   },
+   "expect": {
+    "span": [
+     0,
+     29
+    ],
+    "cuts": [],
+    "pauseCuts": [],
+    "rewrites": [],
+    "captions": {
+     "styleId": "vox-bold",
+     "family": "Montserrat",
+     "weight": 900,
+     "case": "asSaid",
+     "wordsPerCaption": 1
+    },
+    "music": [
+     [
+      "Pulse",
+      "Instrumental minimal techno, 120 BPM, warm bass",
+      18
+     ],
+     [
+      "Glass",
+      "Soft piano and pads, instrumental, 80 BPM",
+      20
+     ],
+     [
+      "Grit",
+      "Lo-fi hip hop beat, 90 BPM, instrumental",
+      16
+     ]
+    ],
+    "musicPick": 0,
+    "zooms": [],
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
+    "score": 8,
+    "verdict": "post",
+    "questions": 0,
+    "repairs": [
+     [
+      "captionStyle",
+      "repaired"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "bridge-words",
+   "mode": "clip",
+   "scope": [
+    0,
+    29
+   ],
+   "reply": {
+    "startWord": 0,
+    "endWord": 29,
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
+    "cuts": [],
+    "pauseCuts": [],
+    "rewrites": [
+     {
+      "startWord": 17,
+      "endWord": 23,
+      "text": "We must feed plants",
+      "reason": ""
+     },
+     {
+      "startWord": 2,
+      "endWord": 4,
+      "text": "The big idea",
+      "reason": ""
+     },
+     {
+      "startWord": 12,
+      "endWord": 15,
+      "text": "but see https://example.com is better.",
+      "reason": ""
+     },
+     {
+      "startWord": 16,
+      "endWord": 20,
+      "text": "You still need to",
+      "reason": ""
+     },
+     {
+      "startWord": 24,
+      "endWord": 26,
+      "text": "one after one.",
+      "reason": "smoother"
+     }
+    ],
+    "captionStyle": "vox-bold",
+    "captionFont": "Roboto",
+    "captionWeight": 900,
+    "captionCase": "upper",
+    "wordsPerCaption": 3,
+    "music": [
+     {
+      "title": "Pulse",
+      "mood": "driven",
+      "prompt": "Instrumental minimal techno, 120 BPM, warm bass",
+      "reason": "matches the pace",
+      "underVoiceDb": 18
+     },
+     {
+      "title": "Glass",
+      "mood": "calm",
+      "prompt": "Soft piano and pads, instrumental, 80 BPM",
+      "reason": "reflective",
+      "underVoiceDb": 20
+     },
+     {
+      "title": "Grit",
+      "mood": "gritty",
+      "prompt": "Lo-fi hip hop beat, 90 BPM, instrumental",
+      "reason": "casual",
+      "underVoiceDb": 16
+     }
+    ],
+    "musicPick": 0,
+    "zooms": [],
+    "postText": "Coffee is great. Sleep is better.",
+    "score": 8,
+    "verdict": "post",
+    "scoreReason": "A clear contrast with a payoff.",
+    "questions": []
+   },
+   "expect": {
+    "span": [
+     0,
+     29
+    ],
+    "cuts": [],
+    "pauseCuts": [],
+    "rewrites": [
+     [
+      24,
+      26,
+      "one after one."
+     ]
+    ],
+    "captions": {
+     "styleId": "vox-bold",
+     "family": "Roboto",
+     "weight": 900,
+     "case": "upper",
+     "wordsPerCaption": 3
+    },
+    "music": [
+     [
+      "Pulse",
+      "Instrumental minimal techno, 120 BPM, warm bass",
+      18
+     ],
+     [
+      "Glass",
+      "Soft piano and pads, instrumental, 80 BPM",
+      20
+     ],
+     [
+      "Grit",
+      "Lo-fi hip hop beat, 90 BPM, instrumental",
+      16
+     ]
+    ],
+    "musicPick": 0,
+    "zooms": [],
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
+    "score": 8,
+    "verdict": "post",
+    "questions": 0,
+    "repairs": [
+     [
+      "rewrites[0]",
+      "dropped"
+     ],
+     [
+      "rewrites[1]",
+      "dropped"
+     ],
+     [
+      "rewrites[2]",
+      "dropped"
+     ],
+     [
+      "rewrites[3]",
+      "dropped"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "rewrite-limit",
+   "mode": "clip",
+   "scope": [
+    0,
+    29
+   ],
+   "reply": {
+    "startWord": 0,
+    "endWord": 29,
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
+    "cuts": [],
+    "pauseCuts": [],
+    "rewrites": [
+     {
+      "startWord": 2,
+      "endWord": 4,
+      "text": "the bold idea",
+      "reason": ""
+     },
+     {
+      "startWord": 7,
+      "endWord": 10,
+      "text": "Coffee is really great,",
+      "reason": ""
+     },
+     {
+      "startWord": 12,
+      "endWord": 15,
+      "text": "but sleep is still better.",
+      "reason": ""
+     },
+     {
+      "startWord": 17,
+      "endWord": 23,
+      "text": "You still need to feed the plants",
+      "reason": ""
+     }
+    ],
+    "captionStyle": "vox-bold",
+    "captionFont": "Roboto",
+    "captionWeight": 900,
+    "captionCase": "upper",
+    "wordsPerCaption": 3,
+    "music": [
+     {
+      "title": "Pulse",
+      "mood": "driven",
+      "prompt": "Instrumental minimal techno, 120 BPM, warm bass",
+      "reason": "matches the pace",
+      "underVoiceDb": 18
+     },
+     {
+      "title": "Glass",
+      "mood": "calm",
+      "prompt": "Soft piano and pads, instrumental, 80 BPM",
+      "reason": "reflective",
+      "underVoiceDb": 20
+     },
+     {
+      "title": "Grit",
+      "mood": "gritty",
+      "prompt": "Lo-fi hip hop beat, 90 BPM, instrumental",
+      "reason": "casual",
+      "underVoiceDb": 16
+     }
+    ],
+    "musicPick": 0,
+    "zooms": [],
+    "postText": "Coffee is great. Sleep is better.",
+    "score": 8,
+    "verdict": "post",
+    "scoreReason": "A clear contrast with a payoff.",
+    "questions": []
+   },
+   "expect": {
+    "span": [
+     0,
+     29
+    ],
+    "cuts": [],
+    "pauseCuts": [],
+    "rewrites": [
+     [
+      2,
+      4,
+      "the bold idea"
+     ],
+     [
+      7,
+      10,
+      "Coffee is really great,"
+     ],
+     [
+      12,
+      15,
+      "but sleep is still better."
+     ]
+    ],
+    "captions": {
+     "styleId": "vox-bold",
+     "family": "Roboto",
+     "weight": 900,
+     "case": "upper",
+     "wordsPerCaption": 3
+    },
+    "music": [
+     [
+      "Pulse",
+      "Instrumental minimal techno, 120 BPM, warm bass",
+      18
+     ],
+     [
+      "Glass",
+      "Soft piano and pads, instrumental, 80 BPM",
+      20
+     ],
+     [
+      "Grit",
+      "Lo-fi hip hop beat, 90 BPM, instrumental",
+      16
+     ]
+    ],
+    "musicPick": 0,
+    "zooms": [],
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
+    "score": 8,
+    "verdict": "post",
+    "questions": 0,
+    "repairs": [
+     [
+      "rewrites[3]",
+      "dropped"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "malformed",
+   "mode": "clip",
+   "scope": [
+    0,
+    29
+   ],
+   "reply": {
+    "startWord": 0,
+    "endWord": 29,
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
+    "cuts": [
+     {
+      "startWord": "a",
+      "endWord": 2,
+      "kind": "filler",
+      "reason": ""
+     },
+     {
+      "startWord": 3,
+      "endWord": 1,
+      "kind": "weird",
+      "reason": ""
+     }
+    ],
+    "pauseCuts": [],
+    "rewrites": [],
+    "captionStyle": "vox-bold",
+    "captionFont": "Roboto",
+    "captionWeight": 900,
+    "captionCase": "upper",
+    "wordsPerCaption": 3,
+    "music": [
+     {
+      "title": "A",
+      "mood": "m",
+      "prompt": "",
+      "reason": "r",
+      "underVoiceDb": 10
+     },
+     {
+      "title": "B",
+      "mood": "m",
+      "prompt": "Ambient synth pads, 70 BPM",
+      "reason": "r",
+      "underVoiceDb": 50
+     }
+    ],
+    "musicPick": 7,
+    "zooms": [
+     {
+      "word": 13,
+      "untilWord": 29,
+      "scale": 3,
+      "reason": ""
+     }
+    ],
+    "postText": "Coffee is great. Sleep is better.",
+    "score": "high",
+    "verdict": "maybe",
+    "scoreReason": "A clear contrast with a payoff.",
+    "questions": [
+     {
+      "question": "Q?",
+      "answer": "",
+      "options": []
+     }
+    ]
+   },
+   "expect": {
+    "span": [
+     0,
+     29
+    ],
+    "cuts": [
+     [
+      1,
+      3,
+      "other"
+     ]
+    ],
+    "pauseCuts": [],
+    "rewrites": [],
+    "captions": {
+     "styleId": "vox-bold",
+     "family": "Roboto",
+     "weight": 900,
+     "case": "upper",
+     "wordsPerCaption": 3
+    },
+    "music": [
+     [
+      "B",
+      "Ambient synth pads, 70 BPM, instrumental, no vocals",
+      30
+     ]
+    ],
+    "musicPick": 0,
+    "zooms": [
+     [
+      13,
+      28,
+      1.35
+     ]
+    ],
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
+    "score": 5,
+    "verdict": "casualPost",
+    "questions": 0,
+    "repairs": [
+     [
+      "cuts[0]",
+      "dropped"
+     ],
+     [
+      "cuts[1]",
+      "repaired"
+     ],
+     [
+      "cuts[1].kind",
+      "repaired"
+     ],
+     [
+      "musicPick",
+      "repaired"
+     ],
+     [
+      "music[0]",
+      "dropped"
+     ],
+     [
+      "music[1].prompt",
+      "repaired"
+     ],
+     [
+      "music[1].underVoiceDb",
+      "repaired"
+     ],
+     [
+      "questions[0]",
+      "dropped"
+     ],
+     [
+      "score",
+      "repaired"
+     ],
+     [
+      "verdict",
+      "repaired"
+     ],
+     [
+      "zooms[0].scale",
+      "repaired"
+     ],
+     [
+      "zooms[0].untilWord",
+      "repaired"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "cut-everything",
+   "mode": "clip",
+   "scope": [
+    27,
+    29
+   ],
+   "reply": {
+    "startWord": 27,
+    "endWord": 29,
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
+    "cuts": [
+     {
+      "startWord": 27,
+      "endWord": 29,
+      "kind": "tangent",
+      "reason": ""
+     }
+    ],
+    "pauseCuts": [],
+    "rewrites": [],
+    "captionStyle": "vox-bold",
+    "captionFont": "Roboto",
+    "captionWeight": 900,
+    "captionCase": "upper",
+    "wordsPerCaption": 3,
+    "music": [
+     {
+      "title": "Pulse",
+      "mood": "driven",
+      "prompt": "Instrumental minimal techno, 120 BPM, warm bass",
+      "reason": "matches the pace",
+      "underVoiceDb": 18
+     },
+     {
+      "title": "Glass",
+      "mood": "calm",
+      "prompt": "Soft piano and pads, instrumental, 80 BPM",
+      "reason": "reflective",
+      "underVoiceDb": 20
+     },
+     {
+      "title": "Grit",
+      "mood": "gritty",
+      "prompt": "Lo-fi hip hop beat, 90 BPM, instrumental",
+      "reason": "casual",
+      "underVoiceDb": 16
+     }
+    ],
+    "musicPick": 0,
+    "zooms": [],
+    "postText": "Coffee is great. Sleep is better.",
+    "score": 8,
+    "verdict": "post",
+    "scoreReason": "A clear contrast with a payoff.",
+    "questions": []
+   },
+   "expect": {
+    "span": [
+     27,
+     29
+    ],
+    "cuts": [],
+    "pauseCuts": [],
+    "rewrites": [],
+    "captions": {
+     "styleId": "vox-bold",
+     "family": "Roboto",
+     "weight": 900,
+     "case": "upper",
+     "wordsPerCaption": 3
+    },
+    "music": [
+     [
+      "Pulse",
+      "Instrumental minimal techno, 120 BPM, warm bass",
+      18
+     ],
+     [
+      "Glass",
+      "Soft piano and pads, instrumental, 80 BPM",
+      20
+     ],
+     [
+      "Grit",
+      "Lo-fi hip hop beat, 90 BPM, instrumental",
+      16
+     ]
+    ],
+    "musicPick": 0,
+    "zooms": [],
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
+    "score": 8,
+    "verdict": "post",
+    "questions": 0,
+    "repairs": [
+     [
+      "cuts",
+      "dropped"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "span-tightened-no-music",
+   "mode": "clip",
+   "scope": [
+    0,
+    29
+   ],
+   "reply": {
+    "startWord": 16,
+    "endWord": 26,
+    "title": "",
+    "hook": "\u0007Hook",
+    "cuts": [],
+    "pauseCuts": [],
+    "rewrites": [],
+    "captionStyle": "vox-bold",
+    "captionFont": "Roboto",
+    "captionWeight": 900,
+    "captionCase": "upper",
+    "wordsPerCaption": 3,
+    "music": [],
+    "musicPick": 0,
+    "zooms": [],
+    "postText": "Coffee is great. Sleep is better.",
+    "score": 8,
+    "verdict": "post",
+    "scoreReason": "A clear contrast with a payoff.",
+    "questions": []
+   },
+   "expect": {
+    "span": [
+     17,
+     26
+    ],
+    "cuts": [],
+    "pauseCuts": [],
+    "rewrites": [],
+    "captions": {
+     "styleId": "vox-bold",
+     "family": "Roboto",
+     "weight": 900,
+     "case": "upper",
+     "wordsPerCaption": 3
+    },
+    "music": [],
+    "musicPick": null,
+    "zooms": [],
+    "title": "You still need to water the plants",
+    "hook": "Hook",
+    "score": 8,
+    "verdict": "post",
+    "questions": 0,
+    "repairs": []
+   }
+  },
+  {
+   "id": "series",
+   "mode": "series",
+   "scope": [
+    0,
+    29
+   ],
+   "reply": {
+    "clips": [
+     {
+      "startWord": 0,
+      "endWord": 26,
+      "title": "Coffee is great",
+      "hook": "Coffee is great. Sleep is better.",
+      "cuts": [],
+      "pauseCuts": [],
+      "rewrites": [],
+      "captionStyle": "vox-bold",
+      "captionFont": "Roboto",
+      "captionWeight": 900,
+      "captionCase": "upper",
+      "wordsPerCaption": 3,
+      "music": [
+       {
+        "title": "Pulse",
+        "mood": "driven",
+        "prompt": "Instrumental minimal techno, 120 BPM, warm bass",
+        "reason": "matches the pace",
+        "underVoiceDb": 18
+       },
+       {
+        "title": "Glass",
+        "mood": "calm",
+        "prompt": "Soft piano and pads, instrumental, 80 BPM",
+        "reason": "reflective",
+        "underVoiceDb": 20
+       },
+       {
+        "title": "Grit",
+        "mood": "gritty",
+        "prompt": "Lo-fi hip hop beat, 90 BPM, instrumental",
+        "reason": "casual",
+        "underVoiceDb": 16
+       }
+      ],
+      "musicPick": 0,
+      "zooms": [],
+      "postText": "Coffee is great. Sleep is better.",
+      "score": 8,
+      "verdict": "post",
+      "scoreReason": "A clear contrast with a payoff.",
+      "questions": []
+     },
+     {
+      "startWord": 17,
+      "endWord": 29,
+      "title": "Coffee is great",
+      "hook": "Coffee is great. Sleep is better.",
+      "cuts": [],
+      "pauseCuts": [],
+      "rewrites": [],
+      "captionStyle": "vox-bold",
+      "captionFont": "Roboto",
+      "captionWeight": 900,
+      "captionCase": "upper",
+      "wordsPerCaption": 3,
+      "music": [
+       {
+        "title": "Pulse",
+        "mood": "driven",
+        "prompt": "Instrumental minimal techno, 120 BPM, warm bass",
+        "reason": "matches the pace",
+        "underVoiceDb": 18
+       },
+       {
+        "title": "Glass",
+        "mood": "calm",
+        "prompt": "Soft piano and pads, instrumental, 80 BPM",
+        "reason": "reflective",
+        "underVoiceDb": 20
+       },
+       {
+        "title": "Grit",
+        "mood": "gritty",
+        "prompt": "Lo-fi hip hop beat, 90 BPM, instrumental",
+        "reason": "casual",
+        "underVoiceDb": 16
+       }
+      ],
+      "musicPick": 0,
+      "zooms": [],
+      "postText": "Coffee is great. Sleep is better.",
+      "score": 8,
+      "verdict": "post",
+      "scoreReason": "A clear contrast with a payoff.",
+      "questions": []
+     },
+     {
+      "startWord": 27,
+      "endWord": 29,
+      "title": "Coffee is great",
+      "hook": "Coffee is great. Sleep is better.",
+      "cuts": [],
+      "pauseCuts": [],
+      "rewrites": [],
+      "captionStyle": "vox-bold",
+      "captionFont": "Roboto",
+      "captionWeight": 900,
+      "captionCase": "upper",
+      "wordsPerCaption": 3,
+      "music": [
+       {
+        "title": "Pulse",
+        "mood": "driven",
+        "prompt": "Instrumental minimal techno, 120 BPM, warm bass",
+        "reason": "matches the pace",
+        "underVoiceDb": 18
+       },
+       {
+        "title": "Glass",
+        "mood": "calm",
+        "prompt": "Soft piano and pads, instrumental, 80 BPM",
+        "reason": "reflective",
+        "underVoiceDb": 20
+       },
+       {
+        "title": "Grit",
+        "mood": "gritty",
+        "prompt": "Lo-fi hip hop beat, 90 BPM, instrumental",
+        "reason": "casual",
+        "underVoiceDb": 16
+       }
+      ],
+      "musicPick": 0,
+      "zooms": [],
+      "postText": "Coffee is great. Sleep is better.",
+      "score": 8,
+      "verdict": "post",
+      "scoreReason": "A clear contrast with a payoff.",
+      "questions": []
+     },
+     {
+      "startWord": "x",
+      "endWord": 29,
+      "title": "Coffee is great",
+      "hook": "Coffee is great. Sleep is better.",
+      "cuts": [],
+      "pauseCuts": [],
+      "rewrites": [],
+      "captionStyle": "vox-bold",
+      "captionFont": "Roboto",
+      "captionWeight": 900,
+      "captionCase": "upper",
+      "wordsPerCaption": 3,
+      "music": [
+       {
+        "title": "Pulse",
+        "mood": "driven",
+        "prompt": "Instrumental minimal techno, 120 BPM, warm bass",
+        "reason": "matches the pace",
+        "underVoiceDb": 18
+       },
+       {
+        "title": "Glass",
+        "mood": "calm",
+        "prompt": "Soft piano and pads, instrumental, 80 BPM",
+        "reason": "reflective",
+        "underVoiceDb": 20
+       },
+       {
+        "title": "Grit",
+        "mood": "gritty",
+        "prompt": "Lo-fi hip hop beat, 90 BPM, instrumental",
+        "reason": "casual",
+        "underVoiceDb": 16
+       }
+      ],
+      "musicPick": 0,
+      "zooms": [],
+      "postText": "Coffee is great. Sleep is better.",
+      "score": 8,
+      "verdict": "post",
+      "scoreReason": "A clear contrast with a payoff.",
+      "questions": []
+     }
+    ]
+   },
+   "expect": {
+    "plans": [
+     [
+      0,
+      26
+     ]
+    ],
+    "repairs": [
+     [
+      "clips[1]",
+      "dropped"
+     ],
+     [
+      "clips[2]",
+      "dropped"
+     ],
+     [
+      "clips[3]",
+      "dropped"
+     ]
+    ]
+   }
+  }
+ ]
+}
