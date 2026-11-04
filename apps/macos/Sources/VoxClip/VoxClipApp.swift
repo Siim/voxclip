@@ -77,6 +77,15 @@ import VoxClipCore
             }
             return
         }
+        // The Rewrite smoke (doc/release.md): offscreen, scripted, run before every handed-over test build.
+        if let index = CommandLine.arguments.firstIndex(of: "-rewriteSmoke"), index + 1 < CommandLine.arguments.count {
+            let directory = URL(fileURLWithPath: CommandLine.arguments[index + 1])
+            Task {
+                await model.start()
+                exit(await DebugRewriteSmoke.run(app: model, directory: directory) ? 0 : 1)
+            }
+            return
+        }
         if let index = CommandLine.arguments.firstIndex(where: { ["-round4SelfTest", "-round5SelfTest", "-round6SelfTest"].contains($0) }), index + 1 < CommandLine.arguments.count {
             let directory = URL(fileURLWithPath: CommandLine.arguments[index + 1])
             Task { await model.start(); await DebugRound4.run(app: model, directory: directory) }

@@ -245,7 +245,7 @@ extension ClipTakePlan.Phrase {
                 Picker("Voice", selection: Binding(get: { generation.selectedVoiceID ?? "" }, set: { generation.chooseVoice($0) })) {
                     ForEach(generation.voices) { Text($0.voiceName).tag($0.id) }
                 }
-                .disabled(session.takesBusy || session.hasPaidTakes)
+                .modifier(PanelButtonEvidence(id: "voicePicker", title: "Voice")).disabled(session.takesBusy || session.hasPaidTakes)
             }
             if let plan = session.takePlan {
                 ForEach(plan.phrases) { phrase in phraseRow(phrase, plan: plan) }
@@ -263,7 +263,7 @@ extension ClipTakePlan.Phrase {
             RewriteSpeechContextReviewView(session: session)
             if let ordinal = session.surroundingSentenceOrdinal, session.speechContextReview == nil {
                 Button("Use surrounding sentence") { session.reviewTimingSpeechContext(ordinal: ordinal) }
-                    .disabled(session.takesBusy || generation.selectedVoiceID == nil)
+                    .modifier(PanelButtonEvidence(id: "surrounding", title: "Use surrounding sentence")).disabled(session.takesBusy || generation.selectedVoiceID == nil)
             }
             Button("Review Changes") { session.takeRowsShown = false; session.showProposal() }.buttonStyle(.plain)
         }
@@ -348,6 +348,7 @@ extension ClipTakePlan.Phrase {
                                     session.mutateLipsync(phrase: phrase.id) { _ = plan.useAnyway(take: take.id, phrase: phrase.id) }
                                 }.buttonStyle(.plain).frame(minHeight: 22)
                                     .accessibilityLabel("Use take \(take.number) anyway, phrase \(phrase.id + 1), accept join advisory")
+                                    .modifier(PanelButtonEvidence(id: "useAnyway.\(phrase.id).\(take.number)", title: "Use anyway"))
                             }.font(VCType.callout.font())
                         }
                     }
@@ -408,12 +409,13 @@ extension ClipTakePlan.Phrase {
                 } else {
                     Button(RewriteSession.firstTakeVerb(hasTakes: !phrase.takes.isEmpty) + "…") { session.priceAnotherTake(phrase: phrase.id) }
                         .buttonStyle(.plain).help("Prepare this phrase's price. Nothing is sent until you approve it.")
+                        .modifier(PanelButtonEvidence(id: "priceAnother.\(phrase.id)", title: RewriteSession.firstTakeVerb(hasTakes: !phrase.takes.isEmpty) + "…"))
                 }
             }
             if session.canReviewSpeechContext(phrase: phrase),
                !session.takeNeedsWordingRecovery(phrase, plan: plan) || (phrase.lengthDifference ?? 0) >= 0 {
                 Button("Use surrounding sentence") { session.reviewSpeechContext(phrase: phrase.id) }
-                    .disabled(session.takesBusy)
+                    .modifier(PanelButtonEvidence(id: "surrounding.\(phrase.id)", title: "Use surrounding sentence")).disabled(session.takesBusy)
             }
         }
         .padding(8).frame(maxWidth: .infinity, alignment: .leading)

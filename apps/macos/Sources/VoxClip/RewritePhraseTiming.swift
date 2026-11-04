@@ -131,14 +131,14 @@ struct PhraseTimingRecovery: View {
             Text(tooLong ? VoiceLabPhraseTiming.warning : VoiceLabPhraseTiming.shortWarning).font(VCType.callout.font())
                 .foregroundStyle(DesignValues.color("status.warning"))
             HStack(spacing: 12) {
-                Button(retryTitle) { action(tooLong ? .shorter : .longer) }
-                Button("Keep original words") { action(.original) }
+                Button(retryTitle) { action(tooLong ? .shorter : .longer) }.modifier(PanelButtonEvidence(id: "timing.retry", title: retryTitle))
+                Button("Keep original words") { action(.original) }.modifier(PanelButtonEvidence(id: "timing.original", title: "Keep original words"))
             }
             .buttonStyle(.plain).font(VCType.callout.font())
-            Button("Use surrounding sentence") { action(.surrounding) }
+            Button("Use surrounding sentence") { action(.surrounding) }.modifier(PanelButtonEvidence(id: "timing.surrounding", title: "Use surrounding sentence"))
                 .buttonStyle(.plain).font(VCType.callout.font())
             if priceAnyway {
-                Button("Price it anyway") { action(.priceAnyway) }
+                Button("Price it anyway") { action(.priceAnyway) }.modifier(PanelButtonEvidence(id: "timing.priceAnyway", title: "Price it anyway"))
                     .buttonStyle(.plain).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
             }
         }

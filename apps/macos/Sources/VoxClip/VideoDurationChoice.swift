@@ -94,7 +94,7 @@ struct VideoDurationChoiceView: View {
                 Label(title, systemImage: selection == choice ? "largecircle.fill.circle" : "circle")
             }
             .buttonStyle(.plain)
-            .disabled(busy || !availability.allows(choice))
+            .modifier(PanelButtonEvidence(id: "duration.\(choice.rawValue)", title: title)).disabled(busy || !availability.allows(choice))
             .accessibilityAddTraits(selection == choice ? [.isButton, .isSelected] : .isButton)
             Text(detail).foregroundStyle(DesignValues.color("text.secondary"))
         }

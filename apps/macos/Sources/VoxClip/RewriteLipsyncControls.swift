@@ -70,7 +70,7 @@ import VoxClipCore
             let verb = retry ? "Try Again" : "Lip Sync"
             Button("\(verb) · ≈ \(offer.price)") { session.start(offer); changed() }
                 .accessibilityIdentifier("lipsync-approve-\(phrase)")
-                .disabled(busy || session.usingTakes)
+                .modifier(PanelButtonEvidence(id: "lipsync.\(phrase)", title: "\(verb) · ≈ \(offer.price)")).disabled(busy || session.usingTakes)
                 .accessibilityLabel(Self.approveLabel(verb: verb, phrase: phrase, price: offer.price))
         } else if session.refreshing { ProgressView("Preparing lip-sync price…").controlSize(.small) }
         else { Text("Lip sync isn't ready for this part. Choose a passing take and its video duration.") }

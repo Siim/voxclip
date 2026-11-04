@@ -40,6 +40,7 @@ import VoxClipCore
                 .foregroundStyle(DesignValues.color("text.secondary"))
                 .accessibilityLabel("Add expression to phrase \(phrase)")
                 .accessibilityValue(choosing ? "Expanded" : "Collapsed")
+                .modifier(PanelButtonEvidence(id: "expression.\(phrase)", title: "+ Expression"))
             if choosing {
                 ExpressionFlow(spacing: 5) {
                     ForEach(VoiceLabAudioTags.definitions, id: \.tag) { definition in
@@ -61,6 +62,7 @@ import VoxClipCore
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Phrase \(phrase)")
+        .columnLayoutEvidence("voice.quote.\(phrase)", text: "Phrase \(phrase): " + Self.drawn(text, tags: tags))
     }
 }
 
@@ -94,5 +96,18 @@ struct ExpressionFlow: Layout {
             rowHeight = max(rowHeight, size.height)
         }
         return (CGSize(width: min(available, usedWidth), height: vertical + rowHeight), positions)
+    }
+}
+
+extension AudioTagPhrase {
+    /// The quote as the phrase card draws it, each tag in brackets before its word: the Rewrite smoke's evidence (I7).
+    static func drawn(_ text: String, tags: [VoiceLabAudioTag]) -> String {
+        let words = EditingPrimitives.splitWords(text)
+        var pieces: [String] = []
+        for boundary in 0...words.count {
+            pieces += tags.filter { min($0.beforeToken, words.count) == boundary }.map { "[\($0.tag)]" }
+            if boundary < words.count { pieces.append(words[boundary]) }
+        }
+        return "“" + pieces.joined(separator: " ") + "”"
     }
 }

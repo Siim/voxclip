@@ -530,10 +530,14 @@ import VoxClipCore
 /// can assert design.md's "no disabled buttons" headless. It sits inside the button's label,
 /// where a `disabled` on the button or any view around it reaches the environment.
 @MainActor struct PanelButtonEvidence: ViewModifier {
-    let action: PanelAction
+    let id: String
+    let title: String
+    init(action: PanelAction) { id = action.id; title = action.title }
+    /// A plain SwiftUI control in the panel (a radio, a row button): its enabled state for the Rewrite smoke's I2.
+    init(id: String, title: String) { self.id = id; self.title = title }
     @Environment(\.isEnabled) private var isEnabled
     func body(content: Content) -> some View {
-        content.columnLayoutEvidence("director.button.\(action.id)", text: (isEnabled ? "" : DirectorPanel.disabledPrefix) + action.title)
+        content.columnLayoutEvidence("director.button.\(id)", text: (isEnabled ? "" : DirectorPanel.disabledPrefix) + title)
     }
 }
 
