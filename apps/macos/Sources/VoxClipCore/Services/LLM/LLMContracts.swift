@@ -44,9 +44,7 @@ public enum Effort: String, Codable, Sendable, Hashable, CaseIterable {
     /// The highest of `supported` at or below this effort, or nil when none is.
     public func capped(to supported: some Sequence<Effort>) -> Effort? {
         let levels = Set(supported)
-        return Self.allCases.prefix { $0 != self }.reversed().reduce(levels.contains(self) ? self : nil) { found, level in
-            found ?? (levels.contains(level) ? level : nil)
-        }
+        return Self.allCases.prefix(through: Self.allCases.firstIndex(of: self)!).last(where: levels.contains)
     }
 }
 

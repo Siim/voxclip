@@ -388,8 +388,12 @@ public actor CLIConnector: LLMConnector {
         if model != "default" { arguments += ["--model", model] }
         // A listed model takes the requested effort only when it lists it; `xhigh` falls back to the highest listed level below.
         let listed = modelEfforts[model].map { Set($0.compactMap(Effort.init(rawValue:))) } ?? []
-        if let requested = request.effort,
-           let effort = model == "default" ? requested : requested == .xhigh ? requested.capped(to: listed) : listed.contains(requested) ? requested : nil {
+        let effort: Effort? = request.effort.flatMap { requested in
+            if model == "default" { return requested }
+            if requested == .xhigh { return requested.capped(to: listed) }
+            return listed.contains(requested) ? requested : nil
+        }
+        if let effort {
             arguments += ["-c", "model_reasoning_effort=\"\(effort.rawValue)\""]
         }
         arguments += ["-c", "web_search=\"disabled\"", "-c", "approval_policy=\"never\"", "-c", "mcp_servers={}",
