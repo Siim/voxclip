@@ -11,7 +11,7 @@ namespace VoxClip.Core.Tests.Tracks.WinUi;
 /// <summary>The "Rewrite as" strip on Windows (design §6.3.1) and the review's tone row (§6.7), twin of the Mac
 /// <c>RewriteToneEntryTests</c>: one order with the clip style's tone first; the scope bar's tone row, the selection flyout, Ctrl+R and
 /// a clip row each ask Rewrite on their own words; saved tones are chips and Settings renames and deletes them; the review names the
-/// tone, and Change re-plans the clip in another tone as one undo step. Ask Claude's two groups are owed with Ask Claude itself.</summary>
+/// tone, and Change re-plans the clip in another tone as one undo step. ✦ Ask Claude's "Reword these words" runs the same chips on the asked words or clip, and never mixes them with its effect chips.</summary>
 public sealed class RewriteToneEntryTests
 {
     private static readonly RewriteToneCatalog Catalog = RewriteToneCatalog.Load(Root);
@@ -184,6 +184,36 @@ public sealed class RewriteToneEntryTests
         Assert.True(editor.ApplyBatch([new EditOperation.SetWordCuts(["w50"], true)]));
         Assert.Equal(["s1", "s0"], editor.SuggestedClips.Select(clip => clip.Id));
         Assert.Equal(["s1", "s0"], editor.RankedSuggestions.Select(clip => clip.Id));
+    }
+
+    [Fact]
+    public void AskClaudeRewordsTheAskedWordsAndKeepsEditsApart()
+    {
+        var (editor, _, requests) = Open("funny");
+        editor.AskClaudeServices = new AskClaudeServices { Ask = (_, _) => throw new InvalidOperationException("not sent"), Available = () => true, CostLine = () => "" };
+        editor.SetScope("c1");
+        editor.Select(12);
+        editor.Select(14, extend: true);
+        Assert.True(editor.OpenAskClaudeOnSelection());
+        var quick = editor.AskClaudeQuickTones;
+        Assert.Equal(["funny", RewriteStripItem.FixMistakesId, RewriteStripItem.ShorterId, "punchy-reel"], quick.Select(item => item.Id));
+        Assert.True(quick[0].IsDefault);
+        Assert.Equal(quick, editor.AskClaudeTones);
+        // Tones never join the effect chips.
+        var effects = AskClaudeState.Chips.Select(chip => chip.Label).ToHashSet();
+        Assert.DoesNotContain(editor.RewriteStripItems, item => effects.Contains(item.Title));
+        // More… shows every chip of the strip, in place.
+        editor.ShowAllAskClaudeTones();
+        Assert.Equal(editor.RewriteStripItems, editor.AskClaudeTones);
+        // A chip is the strip's chip: Rewrite runs at once on the asked words with that tone, and the field closes.
+        Assert.True(editor.AskClaudeRewriteAs(quick[0]));
+        Assert.Equal(new RewriteAsRequest(quick[0].Instruction, quick[0].Title, Words: (12, 14)), requests[^1]);
+        Assert.False(editor.AskClaude.IsOpen);
+        // On a whole clip it rewords the clip.
+        Assert.True(editor.OpenAskClaudeOnClip("c1"));
+        var shorter = editor.RewriteStripItems.First(item => item.Id == RewriteStripItem.ShorterId);
+        Assert.True(editor.AskClaudeRewriteAs(shorter));
+        Assert.Equal(new RewriteAsRequest(shorter.Instruction, shorter.Title, ClipId: "c1"), requests[^1]);
     }
 
     [Fact]
