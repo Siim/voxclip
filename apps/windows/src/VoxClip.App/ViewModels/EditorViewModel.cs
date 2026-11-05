@@ -590,7 +590,7 @@ public sealed partial class EditorViewModel : ObservableObject
             next.Project.Media.Source.SizeBytes == project.Media.Source.SizeBytes;
         project = project with { Edits = next.Project.Edits, Captions = next.Project.Captions, ClipStyle = next.Project.ClipStyle, VoiceLab = next.Project.VoiceLab,
             ContextDemo = sameSource ? next.Project.ContextDemo : null, MotionCues = sameSource ? next.Project.MotionCues : [],
-            Music = next.Project.Music, SchemaVersion = next.Project.SchemaVersion, ModifiedAt = next.Project.ModifiedAt };
+            Music = next.Project.Music, ClipControls = next.Project.ClipControls, SchemaVersion = next.Project.SchemaVersion, ModifiedAt = next.Project.ModifiedAt };
         Refresh();
     }
 
@@ -785,7 +785,8 @@ public sealed partial class EditorViewModel : ObservableObject
         project = project with { ModifiedAt = now(), Edits = new(state.PauseThresholdSeconds, state.PauseKeepSeconds,
             state.CutWordIds.ToArray(), state.CutPauseIds.ToArray(), new Dictionary<string, string>(state.Corrections), state.Clips.ToArray(), state.ActiveClipId),
             MotionCues = project.MotionCues.Where(cue => clipIds.Contains(cue.ClipID)).ToArray(),
-            Music = VoxClip.Core.Domain.Music.MusicProject.Pruned(project.Music, clipIds) };
+            Music = VoxClip.Core.Domain.Music.MusicProject.Pruned(project.Music, clipIds),
+            ClipControls = VoxClip.Core.Domain.Clips.ClipControlsProject.Pruned(project.ClipControls, clipIds) };
     }
 
     private void Refresh()

@@ -47,6 +47,17 @@ public sealed record Project(string Format, int SchemaVersion, string Id, DateTi
         get => music.Count == 0 ? null : music;
         init => music = value ?? [];
     }
+    private IReadOnlyList<ProjectClipControls> clipControls = [];
+    /// <summary>Default-empty schema-v4 per-clip speed, frame, look, volume, fades, mute, flip and rotation (design §6.8).</summary>
+    [JsonIgnore]
+    public IReadOnlyList<ProjectClipControls> ClipControls { get => clipControls; init => clipControls = value; }
+    /// <summary>Serialization projection preserving the absent field shape of projects without clip controls.</summary>
+    [JsonPropertyName("clipControls"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<ProjectClipControls>? PersistedClipControls
+    {
+        get => clipControls.Count == 0 ? null : clipControls;
+        init => clipControls = value ?? [];
+    }
 }
 
 /// <summary>Writer identity; runtime release version or schema-valid 0.0.0 fallback. Editing §10.2.</summary>

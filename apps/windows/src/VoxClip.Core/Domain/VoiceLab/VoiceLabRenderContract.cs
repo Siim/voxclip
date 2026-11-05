@@ -63,6 +63,8 @@ public static class VoiceLabRenderContract
                 "Windows cannot render or export context-demo placements or motion cues yet. Your media and saved edits are unchanged.");
         if (project.Music.Count > 0)
             throw new VoxClipException(VoxClipErrorCode.ExportFailed, VoxClip.Core.Domain.Music.MusicProject.ExportUnsupportedMessage);
+        if (project.ClipControls.Count > 0)
+            throw new VoxClipException(VoxClipErrorCode.ExportFailed, VoxClip.Core.Domain.Clips.ClipControlsProject.ExportUnsupportedMessage);
     }
 
     public static VoiceLabPreparedRender Prepare(Project project, VoiceLabOutputScope scope, VoiceLabLabelPosition labelPosition)
