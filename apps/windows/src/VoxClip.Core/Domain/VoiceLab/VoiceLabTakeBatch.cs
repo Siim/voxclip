@@ -77,8 +77,6 @@ public sealed class VoiceLabTakeRunParts
             throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
         Estimate = VoiceLabTakeRunQuote.Total(Windows.SelectMany(window => window.Quote.Actions).Select(action => action.Estimate.ToCostEstimate()), TakeCount);
     }
-    /// <summary>The part a window (zero-based, in run order) belongs to.</summary>
-    public static int PartOf(int window) => window / VoiceLabTakeBatch.MaximumWindows;
     public VoiceLabCostPresentationResult Kind(VoiceLabMonthlyCap? cap = null) =>
         VoiceLabCostPresentation.Kind(Estimate, false, VoiceLabTakeBatch.ProviderName, cap);
     /// <summary>A window quoted again just before its part runs: the same inputs, by value, and the same estimate and takes.</summary>

@@ -9028,13 +9028,16 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio :: method public set_Sampl
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio :: method public set_SeamExcesses(System.Collections.Generic.IReadOnlyList`1<double>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio :: method public set_Seams(System.Collections.Generic.IReadOnlyList`1<int>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio :: method public set_Trimmed(float[])
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeBatch :: field public MaximumRunPhrases
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeBatch :: field public MaximumWindows
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeBatch :: field public ProviderName
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeBatch :: method private Invalid()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeBatch :: method private Validate(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput>,int)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeBatch :: method public .ctor(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabTakeBatch+Window>,System.Nullable`1<System.Guid>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeBatch :: method public EstimateOf(System.Collections.Generic.IReadOnlySet`1<System.Guid>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeBatch :: method public Kind(VoxClip.Core.Domain.VoiceLab.VoiceLabMonthlyCap)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeBatch :: method public Validate(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeBatch :: method public ValidateRun(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeBatch :: method public get_Estimate()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeBatch :: method public get_Id()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeBatch :: method public get_TakeCount()
@@ -9269,6 +9272,14 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunEnd :: field public EarlyStop
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunEnd :: field public Fatal
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunEnd :: field public Invalidated
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunEnd :: field public value__
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunParts :: method private SameWindow(VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunParts :: method public .ctor(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabTakeBatch+Window>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunParts :: method public Kind(VoxClip.Core.Domain.VoiceLab.VoiceLabMonthlyCap)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunParts :: method public SamePrice(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeBatch+Window,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeBatch+Window)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunParts :: method public get_Estimate()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunParts :: method public get_Parts()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunParts :: method public get_TakeCount()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunParts :: method public get_Windows()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunQuote :: method internal Total(System.Collections.Generic.IEnumerable`1<VoxClip.Core.Services.LLM.CostEstimate>,int)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunQuote :: method public .ctor(System.Guid,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuote>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunQuote :: method public get_Actions()
@@ -11677,6 +11688,7 @@ member VoxClip.Core.Services.Project.CacheTimestampConverter :: method private .
 member VoxClip.Core.Services.Project.CacheTimestampConverter :: method public .ctor()
 member VoxClip.Core.Services.Project.CacheTimestampConverter :: method public Read(System.Text.Json.Utf8JsonReader&,System.Type,System.Text.Json.JsonSerializerOptions)
 member VoxClip.Core.Services.Project.CacheTimestampConverter :: method public Write(System.Text.Json.Utf8JsonWriter,System.DateTimeOffset,System.Text.Json.JsonSerializerOptions)
+member VoxClip.Core.Services.Project.DataLocations :: method internal Resolve(string,string,bool)
 member VoxClip.Core.Services.Project.DataLocations :: method private .ctor(VoxClip.Core.Services.Project.DataLocations)
 member VoxClip.Core.Services.Project.DataLocations :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Services.Project.DataLocations :: method private get_EqualityContract()
@@ -11792,6 +11804,11 @@ member VoxClip.Core.Services.Project.RuntimeAgreementFiles :: method public Writ
 member VoxClip.Core.Services.Project.SharedResources :: method private Require(string)
 member VoxClip.Core.Services.Project.SharedResources :: method private Valid(string)
 member VoxClip.Core.Services.Project.SharedResources :: method public ResolveRoot(string)
+member VoxClip.Core.Services.Project.TestProcess :: field private EnvironmentPrefixes
+member VoxClip.Core.Services.Project.TestProcess :: method internal Detect(System.Collections.Generic.IEnumerable`1<string>,string,System.Collections.Generic.IReadOnlyList`1<string>,System.Collections.Generic.IEnumerable`1<string>,string)
+member VoxClip.Core.Services.Project.TestProcess :: method private .cctor()
+member VoxClip.Core.Services.Project.TestProcess :: method public get_IsRunning()
+member VoxClip.Core.Services.Project.TestProcess :: method public get_Logs()
 member VoxClip.Core.Services.Project.WindowsRuntimeAgreement :: field private AppSdkHeading
 member VoxClip.Core.Services.Project.WindowsRuntimeAgreement :: field private AppSdkSha256
 member VoxClip.Core.Services.Project.WindowsRuntimeAgreement :: field private ReceiptFormat
@@ -13437,6 +13454,7 @@ type VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuality
 type VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuote
 type VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow
 type VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunEnd
+type VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunParts
 type VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunQuote
 type VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunResult
 type VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck
@@ -13623,6 +13641,7 @@ type VoxClip.Core.Services.Project.ProjectStore
 type VoxClip.Core.Services.Project.ProjectValidation
 type VoxClip.Core.Services.Project.RuntimeAgreementFiles
 type VoxClip.Core.Services.Project.SharedResources
+type VoxClip.Core.Services.Project.TestProcess
 type VoxClip.Core.Services.Project.WindowsRuntimeAgreement
 type VoxClip.Core.Services.Project.WindowsRuntimeTerms
 type VoxClip.Core.Services.ServiceStub
