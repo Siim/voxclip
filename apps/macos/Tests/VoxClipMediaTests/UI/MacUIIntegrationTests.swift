@@ -60,18 +60,21 @@ extension HeavyMediaTests {
         // The use-time voice check blocks a guest's phrase, hears words through road noise, and Make it keeps a blocked
         // phrase as recorded (DebugRewriteSmokeGuard.swift).
         let guardScenarios = ["S-guard-blocked", "S-guard-noisy", "S-guard-claude"]
+        // MVP32 Clip 7: a padded line still long after one fit keeps its words; a take with no valid render recipe keeps its
+        // phrase's audio and Use goes on (DebugRewriteSmokeFit.swift). Both passes.
+        let fitScenarios = ["S-viral-fit", "S-make-it-long", "S-render-recipe"]
         // The realistic pass only: ✦ Ask Claude on a selection (DebugRewriteSmokeAskClaude.swift) makes no takes, and
         // S-clip-controls exports a clip at 1.25× with the Muted look and checks its length and caption alignment.
         // S-claude-does-it-all drops a video and waits, then Export all (DebugRewriteSmokeClaudeMode.swift); it makes no takes.
         let realisticOnly = lengths == "exact" ? [] : ["S-ask-bleep-blur", "S-ask-overlay", "S-clip-controls", "S-claude-does-it-all"]
-        let names = (1...15).map { "S\($0)" } + own + guardScenarios + makeIt + realisticOnly
+        let names = (1...15).map { "S\($0)" } + own + guardScenarios + fitScenarios + makeIt + realisticOnly
         let directory = try UIProcessHarness.run(mode: "-rewriteSmoke", name: "rewrite-smoke-\(lengths)",
             arguments: ["-rewriteSmokeLengths", lengths, "-rewriteSmokeOnly", names.joined(separator: ",")],
             acceptNonzeroWithReport: "results.json", deadline: 300)
         defer { UIProcessHarness.cleanTemporary(directory) }
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
         let scenarios = Set(report.compactMap { $0.name.split(separator: " ").first.map(String.init) })
-        let expected: [String] = lengths == "exact" ? ((1...12).map { "S\($0)" } + ["S14", "S15"] + own + guardScenarios + makeIt).map { $0 + "-exact" } : names
+        let expected: [String] = lengths == "exact" ? ((1...12).map { "S\($0)" } + ["S14", "S15"] + own + guardScenarios + fitScenarios + makeIt).map { $0 + "-exact" } : names
         #expect(scenarios == Set(expected))
         for result in report { #expect(result.passed, Comment(rawValue: result.name)) }
     }
