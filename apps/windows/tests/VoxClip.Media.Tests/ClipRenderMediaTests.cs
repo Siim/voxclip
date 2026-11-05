@@ -572,8 +572,11 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
         foreach (var effect in new[] { arrow, progress })
         {
             var graded = Finish(frame, new(mono, Effects(effect)));
-            output.WriteLine($"{effect.Kind}: {AccentPixels(graded)} accent pixels under B&W");
+            var ungraded = Finish(frame, new(null, Effects(effect)));
+            output.WriteLine($"{effect.Kind}: {AccentPixels(graded)} accent pixels under B&W, {AccentPixels(ungraded)} without");
             Assert.True(AccentPixels(graded) > 40, $"{effect.Kind}: {AccentPixels(graded)}");
+            // The yellow bar itself still turns grey: only the overlay keeps the accent.
+            Assert.True(AccentPixels(graded) < AccentPixels(ungraded) - 1_000, $"{effect.Kind}: {AccentPixels(graded)} vs {AccentPixels(ungraded)}");
         }
     }
 
