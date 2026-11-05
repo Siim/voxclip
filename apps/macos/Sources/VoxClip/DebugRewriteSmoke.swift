@@ -270,6 +270,10 @@ import VoxClipCore
         /// Broadband noise between the words, as a car's road noise, quiet enough that the gaps still read as pauses: the
         /// voice check hears it as someone else.
         var roadNoise = false
+        /// The owner's pitch per sentence (0-based), as recordings on other microphones: the scripted voice check hears
+        /// 120 Hz (the default) as the consent statement's own voice, 135 Hz at 35° from it (passes) and 150 Hz at 70°
+        /// (blocked on its own, but within 35° of a 135 Hz reference).
+        var ownerPitches: [Int: Double] = [:]
     }
     nonisolated static let baseScript = "Today I want to show you how cloud tools edit video. First we record a short clip in one take. "
         + "Then we fix the words we got wrong. We keep the pauses that sound natural and remove the ones that drag. "
@@ -282,7 +286,8 @@ import VoxClipCore
         project.id = UUID().uuidString.lowercased()
         project.voiceLab.segments = []; project.voiceLab.assets = []
         project.edits = ProjectEdits()
-        let recording = try await recording(script: fixture.script, root: root, guestSentence: fixture.guestSentence, roadNoise: fixture.roadNoise)
+        let recording = try await recording(script: fixture.script, root: root, guestSentence: fixture.guestSentence, roadNoise: fixture.roadNoise,
+                                            ownerPitches: fixture.ownerPitches)
         project.media.source.absolutePath = recording.movie.path
         project.media.source.relativePath = recording.movie.lastPathComponent
         project.media.source.sizeBytes = recording.sizeBytes
@@ -310,11 +315,14 @@ import VoxClipCore
     /// same movie instead of synthesizing, hashing and keying it again.
     private static var recordings: [String: Recording] = [:]
 
-    static func recording(script: String, root: URL, guestSentence: Int? = nil, roadNoise: Bool = false) async throws -> Recording {
-        let cacheKey = root.standardizedFileURL.path + "\n" + script + "\n\(guestSentence ?? -1)\n\(roadNoise)"
+    static func recording(script: String, root: URL, guestSentence: Int? = nil, roadNoise: Bool = false,
+                          ownerPitches: [Int: Double] = [:]) async throws -> Recording {
+        let pitchKey = ownerPitches.keys.sorted().map { "\($0):\(ownerPitches[$0] ?? 0)" }.joined(separator: ",")
+        let cacheKey = root.standardizedFileURL.path + "\n" + script + "\n\(guestSentence ?? -1)\n\(roadNoise)\n" + pitchKey
         if let cached = recordings[cacheKey], FileManager.default.fileExists(atPath: cached.movie.path) { return cached }
         var words: [TimedWord] = []
         var guestWords: Set<String> = []
+        var pitches: [String: Double] = [:]
         var time = 0.6
         var sentence = 0
         for (index, text) in script.split(separator: " ").enumerated() {
@@ -323,6 +331,7 @@ import VoxClipCore
             let speaker: String? = guestSentence == nil ? nil : guest ? "guest" : "owner"
             words.append(TimedWord(id: "s\(index)", text: String(text), start: time, end: time + length, speaker: speaker))
             if guest { guestWords.insert("s\(index)") }
+            if let pitch = ownerPitches[sentence] { pitches["s\(index)"] = pitch }
             time += length + (text.hasSuffix(".") ? 0.6 : text.hasSuffix(",") ? 0.25 : 0.07)
             if text.hasSuffix(".") { sentence += 1 }
         }
@@ -342,7 +351,7 @@ import VoxClipCore
         }
         for word in words {
             let first = Int(word.start * Double(rate)), last = min(pcm.count, Int(word.end * Double(rate)))
-            let pitch: Double = guestWords.contains(word.id) ? 200 : 120
+            let pitch: Double = guestWords.contains(word.id) ? 200 : pitches[word.id] ?? 120
             for index in first..<last {
                 let seconds: Double = Double(index) / Double(rate)
                 pcm[index] = Float(0.1 * sin(2 * Double.pi * pitch * seconds))
@@ -529,7 +538,9 @@ import VoxClipCore
         /// The driver closed Rewrite from the panel's own control (Use, Apply or Done).
         var ended = false
         private var paid: Set<UUID> = []
-        private var store: VoiceConsentStore?
+        private(set) var store: VoiceConsentStore?
+        private(set) var lastPlanInputs: [VoiceLabTakeInput] = []
+        private(set) var lastPlanVoiced: [Bool] = []
         private var prices: VoiceLabPriceCatalog?
         /// Why the scripted voice could not be found, once.
         private var voiceProblem: String?
@@ -952,6 +963,11 @@ import VoxClipCore
             }
             let current = paidTakes()
             snapshot.paidTakes = current.count
+            // The last plan's inputs and whether each phrase was voiced, for checks after Use closes the plan (G5).
+            if let plan = session?.takePlan, !plan.inputs.isEmpty {
+                lastPlanInputs = plan.inputs
+                lastPlanVoiced = plan.phrases.map { !$0.takes.isEmpty && $0.blocked == nil }
+            }
             var capture: String?
             let checks = invariants(snapshot, clicked: clicked, paidBefore: paidBefore ?? paid, current: current, tag: tag).map { check in
                 var check = check

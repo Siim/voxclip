@@ -383,9 +383,10 @@ final class RewriteSmokeHTTP: URLProtocol, @unchecked Sendable {
     }
 }
 
-/// The voice check's embedder. The smoke's speaker talks in a 120 Hz tone, as its takes do; a window that crosses zero
-/// more than 320 times a second is someone else: a guest's 200 Hz words (`Fixture.guestSentence`) or road noise between
-/// the words (`Fixture.roadNoise`). Every other window is the voice owner.
+/// The voice check's embedder. The smoke's speaker talks in a 120 Hz tone, as its takes do, which is the consent
+/// statement's own voice; a window that crosses zero more than 320 times a second is someone else: a guest's 200 Hz words
+/// (`Fixture.guestSentence`) or road noise between the words (`Fixture.roadNoise`). The owner on other microphones
+/// (`Fixture.ownerPitches`) turns away from the statement: 135 Hz by 35° (passes τ 0.45), 150 Hz by 70° (doesn't).
 actor RewriteSmokeSpeaker: SpeakerEmbedder {
     nonisolated let modelID = "fixture-calibrated"
     nonisolated let dimension = 2
@@ -394,7 +395,13 @@ actor RewriteSmokeSpeaker: SpeakerEmbedder {
         var crossings = 0
         for index in pcm16k.indices.dropFirst() where (pcm16k[index - 1] < 0) != (pcm16k[index] < 0) { crossings += 1 }
         let seconds: Double = Double(max(1, pcm16k.count)) / 16_000
-        return Double(crossings) / seconds > 320 ? [0, 1] : [1, 0]
+        let rate: Double = Double(crossings) / seconds
+        // Someone else, opposite every reading of the owner, so no reference learned from the owner ever carries them.
+        if rate > 320 { return [0, -1] }
+        // The owner: 240 a second (120 Hz) is the statement's own voice; each further 60 a second turns 70° from it.
+        let degrees: Double = min(max((rate - 240) / 60, 0), 1.2) * 70
+        let radians: Double = degrees * Double.pi / 180
+        return [Float(cos(radians)), Float(sin(radians))]
     }
 }
 

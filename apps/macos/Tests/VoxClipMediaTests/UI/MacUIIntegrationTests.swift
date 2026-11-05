@@ -59,7 +59,7 @@ extension HeavyMediaTests {
         let makeIt = ["S-make-it", "S-make-top3"]
         // The use-time voice check blocks a guest's phrase, hears words through road noise, and Make it keeps a blocked
         // phrase as recorded (DebugRewriteSmokeGuard.swift).
-        let guardScenarios = ["S-guard-blocked", "S-guard-noisy", "S-guard-claude"]
+        let guardScenarios = ["S-guard-blocked", "S-guard-noisy", "S-guard-claude", "S-guard-learns", "S-guard-guest"]
         // The realistic pass only: ✦ Ask Claude on a selection (DebugRewriteSmokeAskClaude.swift) makes no takes, and
         // S-clip-controls exports a clip at 1.25× with the Muted look and checks its length and caption alignment.
         // S-claude-does-it-all drops a video and waits, then Export all (DebugRewriteSmokeClaudeMode.swift); it makes no takes.
