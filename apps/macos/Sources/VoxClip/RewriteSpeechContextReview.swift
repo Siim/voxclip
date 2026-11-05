@@ -73,7 +73,7 @@ import VoxClipCore
         return phrases
     }
 
-    static func copy(_ error: any Error) -> String {
+    nonisolated static func copy(_ error: any Error) -> String {
         switch error {
         case Failure.mergeRequired:
             "This sentence overlaps another selected change. Review a combined rewrite instead. No changes were merged and nothing was sent."

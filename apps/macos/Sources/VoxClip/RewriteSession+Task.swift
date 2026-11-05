@@ -217,7 +217,7 @@ extension RewriteSession {
             return .message(plan == .empty ? "\(task.words.subject) has no words left to rewrite. Your edits are saved."
                                             : "\(task.words.subject) can't be rewritten as it stands. Your edits are saved.")
         }
-        guard let error = error as? LLMError else { return .message(await editor.app.log.redact(Self.refusal(error))) }
+        guard let error = error as? LLMError else { return .message(await editor.app.log.redact(reported(error, stage: "proposal"))) }
         switch error {
         case .cancelled: return .message("The rewrite stopped before a reply was received. Try Again. Your edits are saved.")
         case .cliNetworkUnreachable(let detail):

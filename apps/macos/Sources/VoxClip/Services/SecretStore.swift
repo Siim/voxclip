@@ -18,10 +18,7 @@ actor SecretStore: KeyProvider {
         let environment = ProcessInfo.processInfo.environment
         if environment["VOXCLIP_NO_KEYCHAIN"] == "1" { return true }
         if environment["VOXCLIP_ALLOW_KEYCHAIN_IN_TESTS"] == "1" { return false }
-        let name = ProcessInfo.processInfo.processName
-        return name.contains("swiftpm-testing-helper") || name == "xctest"
-            || environment["XCTestConfigurationFilePath"] != nil || environment["XCTestBundlePath"] != nil
-            || Bundle.allBundles.contains { $0.bundlePath.hasSuffix(".xctest") }
+        return TestProcess.isRunning
         #else
         return false
         #endif

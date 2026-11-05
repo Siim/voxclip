@@ -295,6 +295,7 @@ It drives the real Rewrite session through fourteen scenarios using only clicks 
 - S12: Get Price while the estimate holds one change back.
 - S13: the happy path with takes that fill their slots exactly.
 - S14: every Eleven v4 reply has a timing quirk (a trailing newline, another first word): both phrases are timed, one from its own word check, and voiced.
+- S16: a nine-minute full take with 36 changes: one price and one approval, every phrase voiced part by part and applied. `MacUIIntegrationTests/rewriteSmokeLongTake` runs it in its own process.
 
 After every step it checks seven invariants, and at the end of S10–S12 two more:
 

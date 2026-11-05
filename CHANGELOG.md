@@ -6,6 +6,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 - Seven new caption styles in Roboto Black (Marker, Punch-in, Sing-along, Heavy shadow, Glow, Emoji pop, Minimal), and a "How should clips be made?" card above the clips: pick Auto and Claude chooses a caption style for each clip and says why, or fix your own style and it is never changed.
 - Behind the scenes, the Make it postable planner now picks only a video's strongest moments and lands each clip at 20–45 s, plans a 6-minute video in under two minutes, fixes misheard names in the captions, and chooses a caption style, a colour look and, where it helps, a speed for each clip.
+- A Rewrite of a whole long take, such as 34 changed phrases, now gets one price and one approval and voices every phrase, instead of stopping with "The operation could not finish"; pricing shows its progress and is much faster, and take failures always say what went wrong and what to do.
 - Rewrite phrase cards, panels, fields and next-step chips have even, roomier spacing, and the timeline's header no longer crowds at the smallest window.
 - Find Clips, Rewrite and the other AI decisions now think at extra high effort (Claude Code and Anthropic; others at their highest), and the status bar and Settings say so, for example "Claude Code · Opus (latest) · extra high".
 - The selected clip, kept or suggested, always shows Rewrite and More. On a suggested clip, Rewrite and Export keep it first (one undo step), then open on it. More also offers Captions and Find More Clips.

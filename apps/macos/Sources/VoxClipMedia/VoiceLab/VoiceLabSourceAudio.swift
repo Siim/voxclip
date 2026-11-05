@@ -42,14 +42,18 @@ public enum VoiceLabSourceAudio {
     /// decodes the track in 280 s chunks and keeps no samples, so memory stays bounded however long the recording is.
     /// `incomingSilence` and `outgoingSilence` are the window's §8.9.2 outside silences, as the take run's fit reads them
     /// (`VoiceLabWindowPlanner.lendableSilence`).
+    /// `envelope` is `rewriteEnvelope(source:frames:sampleRate:)` of the same source, when the caller already decoded it: a
+    /// Rewrite of many phrases decodes the whole take once, not once per phrase.
     public static func rewriteSource(source: URL, frames: Int64, sampleRate: Int, window: VoiceLabWindow,
                                      incomingSilence: Double?, outgoingSilence: Double?,
-                                     items: [TimedWord], hardJoinSmoothing: Bool = true) async throws -> (excerpt: VoiceLabSourceExcerpt, envelope: AudioEnvelope) {
+                                     items: [TimedWord], hardJoinSmoothing: Bool = true,
+                                     envelope decoded: AudioEnvelope? = nil) async throws -> (excerpt: VoiceLabSourceExcerpt, envelope: AudioEnvelope) {
         guard (8_000...96_000).contains(sampleRate) else { throw VoiceLabSourceAudioError.unsupportedRate }
         guard frames > 0 else { throw VoiceLabSourceAudioError.rangeOutsideMedia }
-        var levels = EnvelopeAccumulator(sampleRate: sampleRate)
-        try await decodeMono(source: source, range: 0..<frames, sampleRate: sampleRate) { levels.append($0) }
-        let envelope = levels.envelope, total = Int(frames)
+        let envelope: AudioEnvelope
+        if let decoded, decoded.sampleRate == Double(sampleRate) { envelope = decoded }
+        else { envelope = try await rewriteEnvelope(source: source, frames: frames, sampleRate: sampleRate) }
+        let total = Int(frames)
         var ranges = [nearWindow(window, incomingSilence: incomingSilence, outgoingSilence: outgoingSilence, total: total, rate: sampleRate)]
         // A search that finds no run leaves the refusal to the take run's own preflight, which repeats it.
         if let tone = try? VoiceLabRoomToneSelection.select(items: items, envelope: envelope, sourceSampleRate: Double(sampleRate), totalSamples: frames,
@@ -65,6 +69,15 @@ public enum VoiceLabSourceAudio {
             regions.append(.init(start: range.lowerBound, samples: samples))
         }
         return (VoiceLabSourceExcerpt(totalFrames: total, regions: regions), envelope)
+    }
+
+    /// The whole take's 10 ms levels as `rewriteSource` measures them, decoded from `source`.
+    public static func rewriteEnvelope(source: URL, frames: Int64, sampleRate: Int) async throws -> AudioEnvelope {
+        guard (8_000...96_000).contains(sampleRate) else { throw VoiceLabSourceAudioError.unsupportedRate }
+        guard frames > 0 else { throw VoiceLabSourceAudioError.rangeOutsideMedia }
+        var levels = EnvelopeAccumulator(sampleRate: sampleRate)
+        try await decodeMono(source: source, range: 0..<frames, sampleRate: sampleRate) { levels.append($0) }
+        return levels.envelope
     }
 
     /// Source-clock RMS buckets for conversion planning. The display waveform may include a

@@ -78,10 +78,8 @@ public actor ElevenLabsVoiceLab {
     private var validationDiagnosticDirectory = ElevenLabsVoiceLab.defaultValidationDiagnosticDirectory()
     package static func defaultValidationDiagnosticDirectory(environment: [String: String] = ProcessInfo.processInfo.environment,
                                                               arguments: [String] = CommandLine.arguments) -> URL {
-        let testing = arguments.contains { $0.contains(".xctest") || $0.contains("swift-testing") || $0.hasSuffix("Tests") || $0.hasSuffix("Tests-product") } || environment["XCTestConfigurationFilePath"] != nil
-        let hasOverride = environment["VOXCLIP_DATA_DIR"].map { !$0.isEmpty } == true
-        let root = testing && !hasOverride ? FileManager.default.temporaryDirectory.appendingPathComponent("VoxClipTests-\(ProcessInfo.processInfo.processIdentifier)/Logs") : DataLocations(environment: environment).logs
-        return root.appendingPathComponent("Diagnostics/VoiceLab", isDirectory: true)
+        let testing = TestProcess.detect(environment: environment, processName: ProcessInfo.processInfo.processName, arguments: arguments)
+        return DataLocations(environment: environment, testing: testing).logs.appendingPathComponent("Diagnostics/VoiceLab", isDirectory: true)
     }
     private var enforceCapabilities = true
     private var dispatchHook: (@Sendable () async -> Void)?
