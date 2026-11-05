@@ -1784,6 +1784,69 @@ A new project's card starts from the Settings default, or from Auto when there i
 - **Persistence.** Each choice is one undo step. Settings saves `clipStyle.default` without `captionPicks`. Picks for deleted clips are pruned at the next pick.
 - **Still owed.** Per-clip caption styles at export (today only the active clip's pick is applied to the project's style). Claude-sourced emoji for Emoji pop (it uses the keyword rule for now). The Windows Pick styles action and its consent (Windows records and applies picks, but has no button yet). Music, Length, Shape and Rewording are stored for the planner and music packages, which consume them.
 
+### 6.8 ✦ Ask Claude on a selection, clip or time range
+
+The user points at part of the video and says what they want in plain words ("blur the invoice on screen and bleep the amount"). Claude answers with edits from a shared toolbox, the editor applies the free ones at once, and the user checks them in a change list. The request, its prompt and the reply contract are AI spec §18; the effects are stored as the project's `clipEffects` (project schema v4) and render the same in the preview and the export.
+
+**Where it opens.** Every entry opens the same inline field in the right panel (a panel job, "Ask Claude", sparkles). It is never a sheet, an alert or a pop-over, and it is offered only when the project can change and an AI is chosen.
+
+- **Selection bar.** "✦ Ask Claude" is the first item of the word selection bar, before Cut and the rest, with a divider after it.
+- **Timeline range.** Dragging across empty timeline time marks a range; the timeline toolbar then shows "✦ Ask Claude" for "0:12–0:15". A click anywhere clears the range.
+- **Clip row.** The clip row's ⋯ menu has "Ask Claude…", which asks about the whole clip ("Clip 2").
+
+**The field.** The heading reads "✦ Ask Claude about {label}": the first eight selected words in quotes (with "…" past eight), "Clip {n}", or the time range. Below it:
+
+- **Field.** A multi-line text field (1 to 4 lines, field chrome), placeholder "blur the invoice on screen and bleep the amount". Return sends; nothing is sent before Return or the Ask Claude button.
+- **Chips.** Bleep it · Blur the screen · Add a title "Day 1" · Arrow at the button · Emoji reaction · Slow-mo this bit · Zoom in. A chip only fills the field with its words. They wrap in a flow layout `spacing.chipGap` apart and step aside while Claude works.
+- **Consent.** The inline connector confirmation (consent action `askClaude`, verb "Ask Claude") shows in place when the provider needs it.
+- **Progress.** "Looking at the picture" (Vision finds faces and text), "Claude is working on it", then "Following what moves" while tracked blurs are traced.
+- **Footer.** "↵ Ask Claude · {cost}" with Cancel, and Ask Claude once the field has text. The cost reads "Free on your Claude plan" on Claude Code, "Free on your ChatGPT plan" on Codex, "Billed to your {provider} key" on an API key and "Free on this Mac" for a local model. While Claude works the footer reads "Claude is working · Stop keeps the project as it is" with Stop.
+
+**The change list.** The answer applies as one undo step, "Ask Claude". The panel then shows "Done for {label} · {n} changes" with Undo all, Claude's one-line summary, and one row per change. Each row has a title ("Bleep", "Blur, tracked", "Title", "Emoji", "Sound: Pop", "Zoom in", "Rewrite in your voice"…), a detail line (its time range and text) and its actions:
+
+- **▶** plays the change's stretch in the viewer.
+- **Adjust** opens the row's inline editor (below).
+- **Undo** takes that change out as its own undo step; the row stays, marked undone. Undo all takes every remaining change out in one step.
+- **Claude chose … · Change.** When the request was ambiguous ("blur the face" with two faces), Claude picks one and the row says so, for example "Claude chose the face at the left · Change". Change opens Adjust. Claude never asks a blocking question.
+- **Paid rows.** A change that can cost money is not applied. A music change shows "Find music · free library first", which opens Music with Claude's mood. A rewrite in the cloned voice shows one priced button, "Voice it · about $0.04", priced at the text-to-speech rate; it hands the words to Rewrite (§6.3), which confirms the exact price inline. Nothing is spent without that click.
+- **Later rows.** A change the editor cannot make yet says why and that nothing changed ("Speed for part of a clip arrives with Clip controls. Nothing changed.").
+- **Footer.** "Play a change to check it, then Done" with Ask again (the same selection, the field empty) and Done.
+
+**Adjust.** Inline, under the row, each edit one undo step:
+
+- **Time.** Nudge the start and end by 0.1 s.
+- **Text.** Titles and lower thirds edit their text, and pick a position (top, centre or bottom; bottom left or right for a lower third).
+- **Emoji.** A Size stepper in 25 % steps.
+- **Box.** Blur, pixelate, arrow and circle show their box on the viewer; drag it to move it. The Box row moves it in small steps and makes it smaller or bigger. The box maps through the export crop, so it lands where the export draws it. Follow picks "Hold still", "A face" or "The moving subject" and traces again.
+- **Sound.** Whoosh, Pop or Ding.
+- **Zoom.** "Edit the zoom in Motion" opens the motion cue (§6.4).
+
+**On the timeline.** A sixth lane, E1 "Effects", below M1, draws each effect as a labelled block like the FX motion lane. Its header has no add button. Clicking a block opens its row's Adjust. A full-take timeline draws the effects at their source times.
+
+**What Claude can do** (the toolbox, AI spec §18.2):
+
+| Group | Change | Status on Mac |
+|---|---|---|
+| Censor | Bleep (a 1 kHz tone), mute (silence), each with 10 ms ramps at exact word bounds; captions show × for each letter | Rendered |
+| Censor | Blur, pixelate: a box, held still or tracking a face or the moving subject | Rendered |
+| Overlays | Title (Roboto Black), lower third (DM Sans Bold), emoji (bundled Noto), arrow, circle, progress bar | Rendered |
+| Timing | Freeze frame (up to 5 s), zoom (a motion cue), jump cut | Rendered |
+| Timing | Speed for part of a clip | Later: Clip controls |
+| Words | Fix a word (correction) | Applied |
+| Words | Rewrite in your voice | Paid row, hands off to Rewrite |
+| Words | Translated captions | Later: not rendered yet |
+| Sound | Whoosh, pop, ding (bundled CC0), mixed under the voice like the music bed | Rendered |
+| Sound | Music change: "Find music · free library first" opens Music with Claude's mood; nothing is bought | Row with one click |
+| Sound | Duck the music | Applied when the clip has music |
+
+**Rules.**
+
+- **Defaults.** A project without `clipEffects` renders exactly as before; every effect is off until Claude or the user adds one.
+- **Scope.** Censor effects apply wherever their words or time appear, in every clip and the full edit. Other effects belong to the clip they were made in.
+- **Edits.** Removing a clip removes its effects; replacing the transcript clears them.
+- **Windows.** Windows opens, saves and validates projects with effects, and refuses to export them with "Windows cannot render Ask Claude effects (bleeps, blurs, overlays, freeze frames or sound effects) into exports yet. Export this project on a Mac…". The Windows Ask Claude field is owed.
+- **Still owed.** Frame thumbnails in the request (connectors take text only, so Vision detections stand in). Library sound effects from Openverse (the contract stores them; Ask Claude uses the bundled three). Speed for part of a clip (Clip controls). Rendering translated captions. Masking on the Voice Lab synthetic caption path.
+
 ---
 
 ## 7. Home

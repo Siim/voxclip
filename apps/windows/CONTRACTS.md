@@ -1,5 +1,14 @@
 # Windows fixed contracts
 
+### 2026-11-05 — Windows twin: Ask Claude's clip effects open, save and stay valid (track/v2-ask-claude)
+
+Twin of the macOS entry of the same date. Spec: doc/spec/ai.md §18.2 and §18.7, doc/design.md §6.8.
+
+- **Core (done).** `Domain/Effects/ClipEffects.cs` keeps each `clipEffects` entry as its `JsonElement`, so a project saves the effects unchanged. `ValidateWire`/`ValidateWireEntry` check the exact keys per kind, ranges, rects, track samples and sounds against `shared/fixtures/clip-effects/effects-wire-cases.json`; `Validate(Project)` runs on load and save (`ProjectSerialization`), and `ProjectValidation` allows the v4-only root key. `Adding` and `Pruned` mirror the Mac Core. `EditingProject` clears effects when the transcript is replaced and prunes a removed clip's effects; the App's `EditorViewModel` restores them on undo and prunes them on sync.
+- **Export.** `VoiceLabRenderContract.RequireWindowsVisualSupport` refuses a project with effects: "Windows cannot render Ask Claude effects (bleeps, blurs, overlays, freeze frames or sound effects) into exports yet. Export this project on a Mac…". Nothing renders them wrongly.
+- **Tests.** `Tracks/win-editing/ClipEffectsWireTests.cs` (with the music wire tests, 10 of 10 pass locally): every wire case, the effects fixture round trip, pruning and the export refusal.
+- **Owed.** The Ask Claude request and validator twin (`shared/prompts/ask-claude.json`, `shared/fixtures/ask-claude/ask-claude-cases.json`), the field and change list, the E1 lane, and the effect renderers (censors, overlays, freeze, bleep and sound audio), then lifting the export refusal. Native checks wait for the VM.
+
 ### 2026-11-05 — Windows twin: Roboto Black caption set 2, clip style contract, caption pick and the clip style card (track/v2-captions-style)
 
 Twin of the macOS entry of the same date.

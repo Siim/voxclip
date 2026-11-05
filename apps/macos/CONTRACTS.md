@@ -1,5 +1,25 @@
 # macOS implementation contracts
 
+### 2026-11-05 — ✦ Ask Claude on a selection, clip or time range, with the shared toolbox (track/v2-ask-claude)
+
+User request (2026-11-04): Ask Claude on a selection, clip or time range, with one toolbox the planner shares; free edits apply at once, paid ones wait for one priced inline click. Spec: doc/design.md §6.8, doc/spec/ai.md §18.
+
+- **Built.**
+  - **Contract.** `Domain/Effects/ClipEffect.swift`: `ClipEffect` (bleep, mute, blur, pixelate, title, lowerThird, sticker, arrow, circle, progress, freeze, sound) with exact keys per kind, and `ClipEffects` (validate, validateWire, adding, removing, pruned, rendered, nextID, masked, maskingBleeps, smoothed, trackTimes). The project root `clipEffects` is v4 only and omitted when empty; `ProjectValidation` allows it. `EditSession.removeClip` removes a clip's effects and `replaceTranscript` clears them. The schema comes from `tools/schemas/generate_clip_effects_schema.py` (5 tests); the vectors from `tools/fixtures/clip-effects/generate_clip_effects.py`.
+  - **Toolbox.** `ClipAutopilotOperation` gains, additively, `Decision` bleep, blur, overlay, freeze, sound, stretch, translate, duck and `Action` `.effect`, `.stretch` (pending: the Clip controls seam), `.translateCaptions` (pending) and `.musicDucking`, plus a public memberwise init. `ClipAutopilotMapping.apply` adds effects via `ClipEffects.adding`.
+  - **Request.** `shared/prompts/ask-claude.json` (v1); `AskClaude.swift` (`AskClaudeSelection`, `AskClaudeDetection`, `AskClaudeScope`, `AskClaudePrompt`, `AskClaudeAnswer`, `AskClaudeValidator`); `AskClaudeService` (feature `askClaude`, effort xhigh). Vectors: `shared/fixtures/ask-claude/ask-claude-cases.json` from `tools/fixtures/ask-claude/generate_ask_claude.py`.
+  - **Rendering.** `ClipEffectsRenderInput` resolved in `RenderCallerInputs.prepare` (preview = export). `VoxClipMedia/Effects/`: `EffectFrames` (Core Image censors before motion, overlays after), `EffectAudio` (silenced ranges with 10 ms ramps in the voice tap, the 1 kHz tone and sounds staged as one CAF track in `mixedAudioTracks`, freezes in the composition), `ClipEffectVision` (detect; track every 0.25 s, smoothed). Bundled CC0 sounds `shared/data/sfx/{whoosh,pop,ding}.wav` from `tools/media/sfx/gen_sfx.py`. `withoutMusic` drops sound effects but keeps bleeps and mutes, so the edited-audio export stays censored.
+  - **Captions.** Bleeped and muted words show × (U+00D7) per letter or digit in preview, export, SRT and the export fingerprint. █ is in no bundled caption font and `*` is punctuation that strip-punctuation styles remove; both made the font cascade or the layout drop the word (caught by the smoke).
+  - **App.** `EditorModel+AskClaude.swift` (state, open, send, apply as one undo step "Ask Claude", rows, undo one and all, adjust, paid and later rows, FX lane data) and `AskClaudePanel.swift` (field, chips, consent, change list, adjusters, `AskClaudeRectOverlay` on the viewer). Entry points: the selection bar's ✦ Ask Claude first, the timeline toolbar after a drag range, the clip row's ⋯ "Ask Claude…". PanelJob `.askClaude`; `ConnectorConsentAction.askClaude`; the timeline's sixth lane E1 "Effects".
+  - **Smoke.** `DebugRewriteSmokeAskClaude.swift`: S-ask-bleep-blur (the mockup's example) and S-ask-overlay, with a scripted Claude Code connector, checks A1–A12, appended to `DebugRewriteSmoke.scenarios`; they skip the exact-length pass.
+- **Deleted.** Nothing.
+- **Tests.** Core `ClipEffectsWireTests` (9), `AskClaudeTests` (6); Media `EffectRenderTests` (12, goldens in `shared/fixtures/media/effects/`, re-record with `VOXCLIP_RECORD_EFFECT_GOLDENS=1`); App `AskClaudeAppTests` (5); `PanelHostTests` and `TimelineCanvasTests` updated for the new job and lane.
+- **Owed.** Frame thumbnails in the request (Vision detections stand in); Openverse sound-effect search (the contract stores library sounds); stretch rendering (Clip controls); translated-caption rendering; × masking on the Voice Lab synthetic caption path (`prepared.outputPlan.captions`); the Windows Ask Claude UI, request and renderers; real-window gates.
+- **Next package must know.**
+  - Make it postable's exhaustive `switch operation.action` (MakeItPostable.swift) needs cases for `.effect`, `.stretch`, `.translateCaptions` and `.musicDucking` at merge. PanelJob, `PanelHost`, `TimelineCanvas` and `EditorModel` will conflict trivially with `.makeIt`.
+  - Clip controls: `ClipAutopilotMapping.apply` returns `.stretch` as pending; wire it to the clip-controls speed command there and the row turns from "later" to applied with no UI change.
+  - Effects are source-timed; censor kinds render in every clip, others only in their `clipId`.
+
 ### 2026-11-05 — Caption types in Roboto Black, Claude's caption pick, and the clip style card (track/v2-captions-style)
 
 User request (2026-11-04): new caption types with Roboto Black; Claude picks the caption type per clip while the style is Auto; a "How should clips be made?" card. Spec: doc/design.md §6.1 and §6.6, doc/spec/ai.md §17, doc/spec/captions.md §16.1 and §17.
