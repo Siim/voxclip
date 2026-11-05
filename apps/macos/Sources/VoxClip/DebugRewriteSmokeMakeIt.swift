@@ -54,7 +54,7 @@ extension DebugRewriteSmoke.Harness {
 
     /// Leaves the Rewrite the harness opened by itself: Make it postable opens its own.
     /// `plan` answers one span of a request; a `.clips` request (Make top 3) gets one plan per span, as the service does.
-    private func makeItPrepare(_ plan: @escaping @MainActor (ClosedRange<Int>, [TimedWord]) -> ClipAutopilotPlan?) throws -> EditorModel {
+    func makeItPrepare(_ plan: @escaping @MainActor (ClosedRange<Int>, [TimedWord]) -> ClipAutopilotPlan?) throws -> EditorModel {
         guard let editor else { throw DebugRewriteSmoke.Failure.setup("no editor") }
         session?.close(); editor.closeRewrite(returnFocus: false); session = nil
         // The record is keyed by the harness's identity, which a later harness may reuse: each scenario starts empty.
@@ -93,7 +93,7 @@ extension DebugRewriteSmoke.Harness {
     }
 
     /// Appends checks to the last observed step.
-    private func makeItAppend(_ checks: [DebugRewriteSmoke.Check]) {
+    func makeItAppend(_ checks: [DebugRewriteSmoke.Check]) {
         guard let last = steps.popLast() else { return }
         var step = DebugRewriteSmoke.Step(index: last.index, action: last.action, snapshot: last.snapshot, checks: last.checks + checks, capture: last.capture)
         step.seconds = last.seconds; step.waits = last.waits

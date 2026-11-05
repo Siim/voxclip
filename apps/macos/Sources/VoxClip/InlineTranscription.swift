@@ -161,6 +161,8 @@ import VoxClipMedia
     func openOnImport() async {
         guard !begun, !model.transcribed, mediaReady, !model.document.demo else { return }
         begun = true
+        // A newly opened video: in Claude mode, Claude makes its clips once it is transcribed (design.md §6.6).
+        model.armClaudeMode()
         await open(automatic: true)
     }
     func open(automatic: Bool = false, again: Bool = false) async {

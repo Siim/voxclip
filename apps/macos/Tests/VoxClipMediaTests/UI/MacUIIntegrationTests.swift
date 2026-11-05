@@ -59,7 +59,8 @@ extension HeavyMediaTests {
         let makeIt = ["S-make-it", "S-make-top3"]
         // The realistic pass only: ✦ Ask Claude on a selection (DebugRewriteSmokeAskClaude.swift) makes no takes, and
         // S-clip-controls exports a clip at 1.25× with the Muted look and checks its length and caption alignment.
-        let realisticOnly = lengths == "exact" ? [] : ["S-ask-bleep-blur", "S-ask-overlay", "S-clip-controls"]
+        // S-claude-does-it-all drops a video and waits, then Export all (DebugRewriteSmokeClaudeMode.swift); it makes no takes.
+        let realisticOnly = lengths == "exact" ? [] : ["S-ask-bleep-blur", "S-ask-overlay", "S-clip-controls", "S-claude-does-it-all"]
         let names = (1...15).map { "S\($0)" } + own + makeIt + realisticOnly
         let directory = try UIProcessHarness.run(mode: "-rewriteSmoke", name: "rewrite-smoke-\(lengths)",
             arguments: ["-rewriteSmokeLengths", lengths, "-rewriteSmokeOnly", names.joined(separator: ",")],

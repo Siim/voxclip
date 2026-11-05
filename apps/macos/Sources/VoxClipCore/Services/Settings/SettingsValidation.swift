@@ -2,7 +2,7 @@ import Foundation
 
 extension SettingsDocument {
     static func isKnownKey(_ key: String) -> Bool {
-        defaults[key] != nil || ["llm.baseUrl.ollama", "llm.baseUrl.lmstudio", RewriteToneCatalog.settingsKey].contains(key) || layoutRanges[key] != nil || layoutChoices[key] != nil ||
+        defaults[key] != nil || ["llm.baseUrl.ollama", "llm.baseUrl.lmstudio", ClipsMode.key, RewriteToneCatalog.settingsKey].contains(key) || layoutRanges[key] != nil || layoutChoices[key] != nil ||
         ProjectValidation.matches(key, "(?:llm\\.model|llm\\.cloudConsent|voiceLab\\.providerConsent|voiceLab\\.monthlyCapUsd)\\.[a-z0-9]+(?:-[a-z0-9]+)*")
     }
 
@@ -44,7 +44,8 @@ extension SettingsDocument {
         "update.lastCheckAt": .null, "update.latestVersion": .null, "update.htmlURL": .null, "llm.connector": .string(""),
         "llm.cliPath.claude-code": .string(""), "llm.cliPath.codex": .string(""), "llm.clips.snapToLines": .bool(true),
         "llm.clips.lastPreset": .string("best"), "llm.tighten.strength": .string("normal"), "voiceLab.enabled": .bool(false),
-        "voiceLab.labelPosition": .string("top-right"), "voiceLab.c2pa": .bool(true), "voiceLab.betaNoticeAccepted": .bool(false)
+        "voiceLab.labelPosition": .string("top-right"), "voiceLab.c2pa": .bool(true), "voiceLab.betaNoticeAccepted": .bool(false),
+        ClipsMode.countKey: .number(Double(ClipsMode.defaultCount)), ClipsMode.capKey: .number(Double(ClipsMode.defaultCapUSD))
     ]
 
     public subscript(_ key: String) -> JSONValue? {
@@ -66,7 +67,8 @@ extension SettingsDocument {
             "voiceLab.labelPosition": ["top-right", "top-left", "bottom-right", "bottom-left"],
             "transcription.engineMode": ["local", "apple", "elevenlabs", "ask"], "transcription.elevenlabs.region": ["default", "us", "eu", "in", "sg"],
             "export.defaultAspect": ["source", "16:9", "9:16", "1:1"], "export.quality": ["standard", "high"],
-            "llm.clips.lastPreset": ["best", "hooks", "topics", "quotes", "custom"], "llm.tighten.strength": ["light", "normal", "strong"]
+            "llm.clips.lastPreset": ["best", "hooks", "topics", "quotes", "custom"], "llm.tighten.strength": ["light", "normal", "strong"],
+            ClipsMode.key: ClipsMode.allCases.map(\.rawValue)
         ].merging(Self.layoutChoices) { current, _ in current }
         for (key, value) in values {
             if let allowed = enums[key] {
@@ -94,6 +96,9 @@ extension SettingsDocument {
                 continue
             }
             switch key {
+            case ClipsMode.countKey, ClipsMode.capKey:
+                let allowed = key == ClipsMode.countKey ? ClipsMode.counts : ClipsMode.capsUSD
+                guard case .number(let number) = value, allowed.contains(where: { Double($0) == number }) else { throw VoxClipError.projectUnreadable("Invalid Claude mode setting") }
             case "cache.limitGB":
                 guard case .number(let number) = value, [2, 5, 10, 20].contains(number) else { throw VoxClipError.projectUnreadable("Invalid cache limit") }
             case "general.transcriptTextSize":

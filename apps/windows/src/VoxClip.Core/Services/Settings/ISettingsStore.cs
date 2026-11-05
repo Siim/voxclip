@@ -21,7 +21,8 @@ public sealed record AppSettings
         "update.autoCheck":true,"update.lastCheckAt":null,"update.latestVersion":null,"update.htmlURL":null,
         "llm.connector":"","llm.cliPath.claude-code":"","llm.cliPath.codex":"","llm.clips.snapToLines":true,
         "llm.clips.lastPreset":"best","llm.tighten.strength":"normal","voiceLab.enabled":false,
-        "voiceLab.labelPosition":"top-right","voiceLab.c2pa":true,"voiceLab.betaNoticeAccepted":false}
+        "voiceLab.labelPosition":"top-right","voiceLab.c2pa":true,"voiceLab.betaNoticeAccepted":false,
+        "clips.autopilot.count":3,"clips.autopilot.capUSD":2}
         """;
 
     /// <summary>Hand-coded schema defaults; verified against settings.schema.json, plan W8.</summary>

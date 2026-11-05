@@ -84,6 +84,8 @@ struct EditorRenderSnapshot {
     let musicPanel = MusicPanel()
     /// ✦ Make it postable's runs, queue and scores (MakeItPostable.swift).
     let makeIt = MakeItController()
+    /// "✦ Claude does it all" on a newly opened video: the automatic run, its card and Export all (ClaudeMode.swift).
+    let claudeMode = ClaudeModeState()
     /// The next plan's note to Claude (a question's other answer), sent once.
     @ObservationIgnored var makeItNote: String?
     /// The window shows the Make it postable job, a panel job, or a clip's inline rename.
@@ -95,6 +97,11 @@ struct EditorRenderSnapshot {
     /// step its driver takes.
     @ObservationIgnored var makeItGeneration: ((RewriteSession) async -> Void)?
     @ObservationIgnored var makeItStepObserver: ((String) async -> Void)?
+    /// S-claude-does-it-all renders the smoke's synthetic (demo) recording through the real exporter; the Claude mode
+    /// captures draw Export all as a real video shows it.
+    @ObservationIgnored var smokeExportsDemo = false
+    /// Tests read the copied post text here instead of the user's pasteboard.
+    @ObservationIgnored var pasteboardOverride: ((String) -> Void)?
     #endif
     /// One undo step over several project changes (Make it postable's run): `replace` registers nothing while a group
     /// owns the edits, and the group registers one step back to where it began.
@@ -362,6 +369,8 @@ struct EditorRenderSnapshot {
     var exportClipIDs: [String] = []
     var activeExportKey: String?
     var failedExports: [String: URL] = [:]
+    /// Export all (Claude mode) goes on past a file that fails; each failure is named here, "Clip 2 · 9:16: …".
+    var exportFileFailures: [String] = []
     var exporting = false
     var exportJob = ExportJobState()
     @ObservationIgnored var onPresentExport: (() -> Void)?
@@ -602,7 +611,15 @@ struct EditorRenderSnapshot {
     /// "Export Video…" for the full take, "Export Clip…" for a clip (design §3.5).
     var exportTitle: String { activeClip == nil ? "Export Video…" : "Export Clip…" }
     /// The video is there to export: not a demo, found and readable (design §5.4.4).
-    var mediaExportable: Bool { !document.demo && mediaUsable }
+    var mediaExportable: Bool { !exportBlockedAsDemo && mediaUsable }
+    /// Demo projects have no video to export; the smoke's S-claude-does-it-all exports its synthetic recording anyway.
+    var exportBlockedAsDemo: Bool {
+        #if DEBUG
+        document.demo && !smokeExportsDemo
+        #else
+        document.demo
+        #endif
+    }
     /// The project's video is there, readable and confirmed: no relink waits for Use It. Until then the editor only
     /// reads (editing.md §10.3, v5 f24c and f24, lead decision 7): the edit verbs, Rewrite and Export can't act, while
     /// the transcript, selection, Explorer, timeline and caption position work.
@@ -623,7 +640,7 @@ struct EditorRenderSnapshot {
         if let clip = activeClip, isSuggestion(clip.id) { return "Keep this clip to export it." }
         return canExport || exporting ? nil : "Keep at least one word before exporting."
     }
-    var canExport: Bool { capabilities.export && !document.demo && (voiceLabPlan.map { $0.outputSamples > 0 } ?? (words.isEmpty ? sourceDuration > 0 : editingAvailable && summary.canExport)) }
+    var canExport: Bool { capabilities.export && !exportBlockedAsDemo && (voiceLabPlan.map { $0.outputSamples > 0 } ?? (words.isEmpty ? sourceDuration > 0 : editingAvailable && summary.canExport)) }
     var playingWordID: String? {
         let transcript = words
         var lower = 0, upper = transcript.count
@@ -1582,7 +1599,7 @@ extension EditorModel {
                     try Task.checkCancellation()
                     let usedFallback = await finder.lastUsedFallback == true && result.model != selectedModel
                     guard project.transcript == transcript else { return }
-                    guard !result.clips.isEmpty else { clipError = Self.noClipsMatched; return }
+                    guard !result.clips.isEmpty else { clipError = Self.noClipsMatched; claudeModeFindEnded(); return }
                     var next = project
                     next.ai.results.append(result)
                     let ranges = result.clips.enumerated().map { position, clip in ClipRange(id: UUID().uuidString.lowercased(), startWordId: clip.startWordId, endWordId: clip.endWordId, title: clip.title, origin: .ai, aiResultId: result.id, aiClipIndex: position) }
@@ -1601,10 +1618,13 @@ extension EditorModel {
                     focusedSuggestion = added.min { (index($0.startWordId) ?? .max) < (index($1.startWordId) ?? .max) }?.id
                     fallbackNote = usedFallback ? "Answered by \(result.model) because \(selectedModel) was busy." : nil
                     announce([added.count == 1 ? "Found 1 clip." : "Found \(added.count) clips.", fallbackNote].compactMap { $0 }.joined(separator: " "))
-                } catch is CancellationError {} catch LLMError.cancelled {} catch VoxClipError.cancelled {} catch {
+                    // Claude mode on a newly opened video goes straight on (ClaudeMode.swift).
+                    claudeModeFindEnded()
+                } catch is CancellationError { claudeModeFindEnded() } catch LLMError.cancelled { claudeModeFindEnded() } catch VoxClipError.cancelled { claudeModeFindEnded() } catch {
                     let message = await app.safeError(error, context: "ai:\(provider.label)")
                     // A connector that is not ready fails in the route, before the run revealed the sidebar.
                     if !message.isEmpty { clipError = message; fallbackNote = nil; onNeedsSidebar?() }
+                    claudeModeFindEnded()
                 }
             }
         }

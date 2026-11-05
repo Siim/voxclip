@@ -32,7 +32,7 @@ internal static class SettingsValidation
     private static readonly HashSet<string> KnownKeys = AppSettings.Defaults.Keys.ToHashSet(StringComparer.Ordinal);
 
     internal static bool KnownKey(string key)
-        => KnownKeys.Contains(key) || key is "llm.baseUrl.ollama" or "llm.baseUrl.lmstudio" or "ui.layout.trackHeight" or "clipStyle.default" or Domain.Clips.RewriteToneCatalog.SettingsKey ||
+        => KnownKeys.Contains(key) || key is "llm.baseUrl.ollama" or "llm.baseUrl.lmstudio" or "ui.layout.trackHeight" or "clipStyle.default" or ClipsMode.Key or Domain.Clips.RewriteToneCatalog.SettingsKey ||
             Regex.IsMatch(key, "\\A(?:llm\\.(?:model|cloudConsent)|voiceLab\\.(?:providerConsent|monthlyCapUsd))\\.[a-z0-9]+(?:-[a-z0-9]+)*\\z", RegexOptions.CultureInvariant);
 
     internal static void Validate(AppSettings settings)
@@ -46,6 +46,9 @@ internal static class SettingsValidation
             {
                 case "ui.layout.trackHeight": Choice(value, "small", "medium", "large"); break;
                 case "clipStyle.default": ClipStyleDefault(value); break;
+                case ClipsMode.Key: Choice(value, ClipsMode.Claude, ClipsMode.Pick); break;
+                case ClipsMode.CountKey: Require(value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var count) && ClipsMode.Counts.Contains(count)); break;
+                case ClipsMode.CapKey: Require(value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var cap) && ClipsMode.CapsUsd.Contains(cap)); break;
                 case Domain.Clips.RewriteToneCatalog.SettingsKey: Require(Domain.Clips.MyRewriteTones.Validates(value)); break;
                 case "general.appearance": Choice(value, "system", "light", "dark"); break;
                 case "general.transcriptTextSize": if (value.ValueKind != JsonValueKind.Null) Require(value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var size) && double.IsFinite(size) && size >= 13 && size <= 28); break;

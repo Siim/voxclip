@@ -8,45 +8,129 @@ import VoxClipCore
 
     var body: some View {
         if let catalog = editor.clipStyles, let style = editor.cardClipStyle {
-            VStack(alignment: .leading, spacing: VCTokens.spacingGroupGap) {
-                HStack(alignment: .firstTextBaseline, spacing: VCTokens.spacingRowGap) {
-                    Text("How should clips be made?").font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(DesignValues.color("text.primary")).fixedSize(horizontal: false, vertical: true)
-                        .accessibilityAddTraits(.isHeader)
-                    Spacer(minLength: VCTokens.spacingRowGap)
-                    Button("Done") { editor.collapseClipStyleCard() }.buttonStyle(.borderless).font(.system(size: 12))
-                        .accessibilityIdentifier("voxclip.clipStyle.done")
-                }
+            card(catalog: catalog, style: style)
+                .padding(VCTokens.spacingCardPadding)
+                .background(DesignValues.color("bg.surface"), in: .rect(cornerRadius: VCTokens.radiusPane))
+                .overlay(RoundedRectangle(cornerRadius: VCTokens.radiusPane).strokeBorder(DesignValues.color("line.default")))
+                .padding(.vertical, VCTokens.spacingLabelGap)
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("How should clips be made?")
+                .accessibilityIdentifier("voxclip.clipStyle.card")
+        }
+    }
+
+    private func card(catalog: ClipStyleCatalog, style: ClipStyle) -> some View {
+        VStack(alignment: .leading, spacing: VCTokens.spacingGroupGap) {
+            header
+            modeControl
+            if !editor.claudeModeOn {
                 ClipStyleFlowLayout(spacing: VCTokens.spacingLabelGap) {
                     ForEach(catalog.presets) { preset in
                         chip(preset, selected: style.preset == preset.id)
                     }
                 }
-                VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) {
-                    captionsRow(style)
-                    optionRow("Music", value: catalog.music.first { $0.id == style.music.rawValue }?.label ?? style.music.rawValue,
-                              help: catalog.music.first { $0.id == style.music.rawValue }?.detail, options: catalog.music.map { ($0.id, [$0.label, $0.detail].compactMap { $0 }.joined(separator: " · ")) }, selected: style.music.rawValue) { id in
-                        editor.updateClipStyle { $0.music = ClipMusicPreference(rawValue: id) ?? $0.music }
-                    }
-                    optionRow("Length", value: "Up to \(style.maxLengthSec) s", options: catalog.lengthChoicesSec.map { ("\($0)", "Up to \($0) s") }, selected: "\(style.maxLengthSec)") { id in
-                        editor.updateClipStyle { $0.maxLengthSec = Int(id) ?? $0.maxLengthSec }
-                    }
-                    shapeRow(style, shapes: catalog.shapes)
-                    optionRow("Rewording", value: catalog.rewording.first { $0.id == style.rewording.rawValue }?.label ?? style.rewording.rawValue,
-                              options: catalog.rewording.map { ($0.id, $0.label) }, selected: style.rewording.rawValue) { id in
-                        editor.updateClipStyle { $0.rewording = ClipRewording(rawValue: id) ?? $0.rewording }
-                    }
-                    ClipStyleToneRow(editor: editor, style: style)
-                }
             }
-            .padding(VCTokens.spacingCardPadding)
-            .background(DesignValues.color("bg.surface"), in: .rect(cornerRadius: VCTokens.radiusPane))
-            .overlay(RoundedRectangle(cornerRadius: VCTokens.radiusPane).strokeBorder(DesignValues.color("line.default")))
-            .padding(.vertical, VCTokens.spacingLabelGap)
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("How should clips be made?")
-            .accessibilityIdentifier("voxclip.clipStyle.card")
+            // One vertical stack of rows: Claude mode's own (Clips, Spend), then the style's.
+            VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) {
+                if editor.claudeModeOn { claudeRows(style, catalog: catalog) }
+                if !editor.claudeModeOn { pickRows(style, catalog: catalog) }
+                shapeRow(style, shapes: catalog.shapes)
+                if !editor.claudeModeOn { rewordingRow(style, catalog: catalog) }
+                // The tone row (its own view) sits under the rows in both modes.
+                ClipStyleToneRow(editor: editor, style: style)
+            }
+            footer
         }
+    }
+
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline, spacing: VCTokens.spacingRowGap) {
+            Text("How should clips be made?").font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(DesignValues.color("text.primary")).fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+            Spacer(minLength: VCTokens.spacingRowGap)
+            Button("Done") { editor.collapseClipStyleCard() }.buttonStyle(.borderless).font(.system(size: 12))
+                .accessibilityIdentifier("voxclip.clipStyle.done")
+        }
+    }
+
+    /// The card's footer names the next step.
+    private var footer: some View {
+        Text(editor.claudeModeOn
+             ? "Free on your Claude plan; the cap covers ElevenLabs voice and generated music. Claude never spends past it. Next: Done, then drop a video."
+             : "Claude suggests clips; ✦ Make it postable on a clip uses this style. Next: Done.")
+            .font(.system(size: 11)).foregroundStyle(DesignValues.color("text.tertiary")).fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func rewordingRow(_ style: ClipStyle, catalog: ClipStyleCatalog) -> some View {
+        optionRow("Rewording", value: catalog.rewording.first { $0.id == style.rewording.rawValue }?.label ?? style.rewording.rawValue,
+                  options: catalog.rewording.map { ($0.id, $0.label) }, selected: style.rewording.rawValue) { id in
+            editor.updateClipStyle { $0.rewording = ClipRewording(rawValue: id) ?? $0.rewording }
+        }
+    }
+
+    /// "I'll pick" rows above Shape: Captions, Music and Length.
+    @ViewBuilder private func pickRows(_ style: ClipStyle, catalog: ClipStyleCatalog) -> some View {
+        captionsRow(style)
+        optionRow("Music", value: catalog.music.first { $0.id == style.music.rawValue }?.label ?? style.music.rawValue,
+                  help: catalog.music.first { $0.id == style.music.rawValue }?.detail, options: catalog.music.map { ($0.id, [$0.label, $0.detail].compactMap { $0 }.joined(separator: " · ")) }, selected: style.music.rawValue) { id in
+            editor.updateClipStyle { $0.music = ClipMusicPreference(rawValue: id) ?? $0.music }
+        }
+        optionRow("Length", value: "Up to \(style.maxLengthSec) s", options: catalog.lengthChoicesSec.map { ("\($0)", "Up to \($0) s") }, selected: "\(style.maxLengthSec)") { id in
+            editor.updateClipStyle { $0.maxLengthSec = Int(id) ?? $0.maxLengthSec }
+        }
+    }
+
+    /// Claude mode's rows: Clips, Spend, Rewording and Style (the presets as one menu); Shape follows for both modes.
+    @ViewBuilder private func claudeRows(_ style: ClipStyle, catalog: ClipStyleCatalog) -> some View {
+        let settings = editor.clipsAutopilot
+        optionRow("Clips", value: "Top \(settings.count) per video", options: ClipsMode.counts.map { ("\($0)", "Top \($0) per video") },
+                  selected: "\(settings.count)") { id in editor.setClaudeClipCount(Int(id) ?? settings.count) }
+        optionRow("Spend", value: Self.spendLabel(settings.capUSD), options: ClipsMode.capsUSD.map { ("\($0)", Self.spendLabel($0)) },
+                  selected: "\(settings.capUSD)") { id in editor.setClaudeSpendCap(Int(id) ?? settings.capUSD) }
+        rewordingRow(style, catalog: catalog)
+        let preset = catalog.preset(style.preset)
+        optionRow("Style", value: Self.presetTitle(preset), options: catalog.presets.map { ($0.id.rawValue, Self.presetTitle($0)) },
+                  selected: style.preset.rawValue) { id in
+            if let chosen = ClipStylePresetID(rawValue: id) { editor.chooseClipPreset(chosen, collapse: false) }
+        }
+    }
+
+    /// "✦ Claude does it all | I'll pick": the remembered mode, on top of the card.
+    private var modeControl: some View {
+        let mode = editor.clipsAutopilot.mode
+        return HStack(alignment: .center, spacing: VCTokens.spacing1) {
+            segment("✦ Claude does it all", on: mode == .claude, ai: true) { editor.chooseClipsMode(.claude) }
+                .accessibilityIdentifier("voxclip.clipStyle.mode.claude")
+            segment("I'll pick", on: mode == .pick, ai: false) { editor.chooseClipsMode(.pick) }
+                .accessibilityIdentifier("voxclip.clipStyle.mode.pick")
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(VCTokens.spacing1)
+        .background(DesignValues.color("bg.muted"), in: .rect(cornerRadius: VCTokens.radiusControl + 1))
+        .overlay(RoundedRectangle(cornerRadius: VCTokens.radiusControl + 1).strokeBorder(DesignValues.color("line.default")))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Who makes the clips")
+    }
+
+    private func segment(_ title: String, on: Bool, ai: Bool, choose: @escaping () -> Void) -> some View {
+        Button(action: choose) {
+            Text(title).font(.system(size: 12, weight: on ? .semibold : .regular))
+                .foregroundStyle(DesignValues.color(on ? (ai ? "ai.tint" : "text.primary") : "text.secondary"))
+                .lineLimit(2).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, maxHeight: .infinity).padding(.vertical, VCTokens.spacing2 + 1)
+                .background(on ? DesignValues.color("bg.selectedRow") : Color.clear, in: .rect(cornerRadius: VCTokens.radiusControl - 1))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? .isSelected : [])
+        .modifier(PanelButtonEvidence(id: "clipStyle.mode.\(ai ? "claude" : "pick")", title: title))
+    }
+
+    static func spendLabel(_ usd: Int) -> String { usd == 0 ? "No paid voice or music ($0)" : "Up to \(EditorModel.makeItDollars(Decimal(usd))) per video" }
+
+    static func presetTitle(_ preset: ClipStyleCatalog.Preset) -> String {
+        preset.id == .auto ? "✦ \(preset.label)" + (preset.detail.map { " · \($0)" } ?? "") : preset.label
     }
 
     private func chip(_ preset: ClipStyleCatalog.Preset, selected: Bool) -> some View {

@@ -139,6 +139,8 @@ import VoxClipCore
             .accessibilityElement(children: .contain).accessibilityLabel(ExplorerSection.take.accessibilityLabel(count: 1, title: shell.projectTitle))
             Section {
                 if shell.explorerExpanded(.clips) {
+                    if editor.showsClipsModeCard { ClipsModeCard(editor: editor).selectionDisabled() }
+                    if editor.claudeModeOn, editor.claudeMode.phase != .idle { ClaudeModeCard(editor: editor).selectionDisabled() }
                     if editor.showsClipStyleCard { ClipStyleCard(editor: editor).selectionDisabled() }
                     if editor.keptClips.isEmpty && !editor.words.isEmpty {
                         Text("No clips yet. Select words and press ⌥⌘K.")
@@ -334,6 +336,9 @@ import VoxClipCore
                 }
                 .fixedSize().foregroundStyle(SidebarStyle.meta(emphasized))
                 .columnLayoutEvidence("explorer.clipActions")
+            } else if let state = editor.claudeClipState(clip.id) {
+                // Claude mode's pill stands in for the score and length while Claude makes this clip, and after.
+                ClaudeClipPill(state: state)
             } else {
                 if suggested, let score = editor.suggestionScore(clip) {
                     Text("\(score)").font(DesignValues.mono(10)).foregroundStyle(DesignValues.color("ai.tint")).fixedSize()

@@ -147,6 +147,53 @@ struct MakeItRow: Identifiable, Equatable {
     var options: [String] = []
 }
 
+/// Claude mode's per-video spend (design.md §6.7): every run of the video draws on one pool. The cap the creator set is
+/// the approval for paid voice and generated music; a step that needs more waits at the cap until Continue approves
+/// exactly the shortfall, or Stop. Nothing is ever spent past `approved`.
+@MainActor @Observable final class MakeItBudget {
+    /// The per-video cap the creator chose (Settings `clips.autopilot.capUSD`).
+    let cap: Decimal
+    /// The cap plus every amount Continue approved.
+    private(set) var approved: Decimal
+    private(set) var spent: Decimal = 0
+    /// What the waiting step needs beyond what is left, in whole cents; nil while nothing waits.
+    private(set) var needed: Decimal?
+    @ObservationIgnored private var waiting: CheckedContinuation<Bool, Never>?
+
+    init(cap: Decimal) { self.cap = cap; approved = cap }
+
+    var remaining: Decimal { max(0, approved - spent) }
+    /// A $0 cap means no paid voice or music at all: fixes are cuts and wording only, and nothing asks for more.
+    var paidAllowed: Bool { cap > 0 }
+    func charge(_ usd: Decimal) { spent += usd }
+
+    /// Waits at the cap for the creator: true once Continue approved `shortfall` (rounded up to the cent), false after Stop.
+    func ask(_ shortfall: Decimal) async -> Bool {
+        guard paidAllowed, shortfall > 0, waiting == nil else { return false }
+        var value = shortfall * 100, cents = Decimal()
+        NSDecimalRound(&cents, &value, 0, .up)
+        needed = cents / 100
+        return await withCheckedContinuation { waiting = $0 }
+    }
+
+    /// Continue: approves exactly what the waiting step needs, and it goes on.
+    func approveNeeded() {
+        guard let needed, let waiting else { return }
+        approved += needed
+        self.needed = nil
+        self.waiting = nil
+        waiting.resume(returning: true)
+    }
+
+    /// Stop while a step waits: it keeps the creator's words, and nothing more is approved.
+    func decline() {
+        needed = nil
+        let waiting = self.waiting
+        self.waiting = nil
+        waiting?.resume(returning: false)
+    }
+}
+
 /// One clip's run, from the click to the review.
 @MainActor @Observable final class MakeItRun {
     enum Phase: Equatable {
@@ -177,12 +224,15 @@ struct MakeItRow: Identifiable, Equatable {
     @ObservationIgnored var task: Task<Void, Never>?
     @ObservationIgnored var inverses: [String: MakeItInverse] = [:]
     @ObservationIgnored var cancelled = false
+    /// Claude mode: the video's shared pool this run draws on instead of its own cap.
+    let budget: MakeItBudget?
 
-    init(clipID: String, cap: Decimal?) { self.clipID = clipID; self.cap = cap }
+    init(clipID: String, cap: Decimal?, budget: MakeItBudget? = nil) { self.clipID = clipID; self.cap = cap; self.budget = budget }
 
     var running: Bool { phase == .planning || phase == .applying }
-    /// What the run may still spend.
-    var remaining: Decimal? { cap.map { max(0, $0 - spent) } }
+    /// What the run may still spend: its own cap's rest, or the video pool's.
+    var remaining: Decimal? { budget.map(\.remaining) ?? cap.map { max(0, $0 - spent) } }
+    func charge(_ usd: Decimal) { spent += usd; budget?.charge(usd) }
     func line(_ text: String) { if lines.last != text { lines.append(text) } }
 }
 
@@ -201,6 +251,8 @@ struct MakeItRow: Identifiable, Equatable {
     private(set) var voiceReady = false
     @ObservationIgnored var services: MakeItServices?
     @ObservationIgnored var style: MakeItStyle?
+    /// Claude mode's pool for the series under way (`makeTopPostable(_:budget:)`).
+    private(set) var budget: MakeItBudget?
     /// The tone a Change on the review's tone row asks for, used by the next request only.
     @ObservationIgnored var toneOverride: ClipTone?
     @ObservationIgnored private var queueTask: Task<Void, Never>?
@@ -218,7 +270,7 @@ struct MakeItRow: Identifiable, Equatable {
     func record(score: Int, verdict: ClipAutopilotPlan.Verdict, for clipID: String) { scores[clipID] = (score, verdict) }
     func forget(_ clipID: String) { runs[clipID] = nil; scores[clipID] = nil; if shownClipID == clipID { shownClipID = nil } }
     func insert(_ run: MakeItRun) { runs[run.clipID] = run; shownClipID = run.clipID }
-    func setSeries(_ ids: [String]) { series = ids; queue = ids }
+    func setSeries(_ ids: [String], budget: MakeItBudget? = nil) { series = ids; queue = ids; self.budget = budget }
     func clearQueue() { queue = []; queueTask?.cancel(); queueTask = nil }
     func holdQueue(_ task: Task<Void, Never>) { queueTask = task }
     /// Waits until the series' queue has run (the smoke and tests).
@@ -306,15 +358,16 @@ extension EditorModel {
     }
 
     /// "✦ Make top 3 postable": the best three suggestions by score. One request plans all three at once (`.clips`, on
-    /// three lanes), then each is applied as its own run: its own cap, its own undo step, kept first.
-    func makeTopPostable(_ count: Int = 3) {
+    /// three lanes), then each is applied as its own run: its own cap, its own undo step, kept first. Claude mode passes
+    /// the video's `budget`: the runs share it instead of each having its own cap.
+    func makeTopPostable(_ count: Int = 3, budget: MakeItBudget? = nil) {
         let ranked = suggestedClips.prefix(count).compactMap { clip -> (id: String, span: ClosedRange<Int>)? in
             guard let lower = index(clip.startWordId), let upper = index(clip.endWordId), lower <= upper else { return nil }
             return (clip.id, lower...upper)
         }
         guard !ranked.isEmpty, makeIt.active == nil, capabilities.ai, capabilities.edit, let transcript = project.transcript else { return }
-        makeIt.setSeries(ranked.map(\.id))
-        let runs = ranked.map { MakeItRun(clipID: $0.id, cap: makeItCap(clipID: $0.id)) }
+        makeIt.setSeries(ranked.map(\.id), budget: budget)
+        let runs = ranked.map { MakeItRun(clipID: $0.id, cap: budget?.cap ?? makeItCap(clipID: $0.id), budget: budget) }
         for run in runs.reversed() { makeIt.insert(run); run.line("Waiting for Claude…") }
         onShowMakeIt?()
         let request = ClipAutopilotRequest(transcript: transcript, edits: project.edits, mode: .clips(ranked.map(\.span)),
@@ -384,6 +437,7 @@ extension EditorModel {
         let running = makeIt.running
         guard !running.isEmpty else { return }
         for run in running { run.cancelled = true; run.line("Stopping after this step…") }
+        makeIt.budget?.decline()
         makeIt.clearQueue()
     }
 
@@ -497,7 +551,7 @@ extension EditorModel {
         if let operation = operations.first(where: { $0.decision == .music }), case .music(let cue) = operation.action, !makeItStopped(run) {
             if style.music {
                 run.line("Picking music…")
-                rows.append(await musicStep(cue, run: run, generated: style.generatedMusic))
+                rows.append(await musicStep(cue, run: run, generated: style.generatedMusic && run.budget?.paidAllowed != false))
             }
         }
         if let hookRow { rows.append(hookRow) }
@@ -632,9 +686,22 @@ extension EditorModel {
         let play = words[safe: range.lowerBound].map { max(0, $0.start - 1) }
         var row = MakeItRow(id: operation.id, text: "Rewrote “\(text)”", detail: operation.reason, play: play, change: .phrase(range))
         guard allowed else { row.kind = .note; row.text = "Claude suggests “\(text)”"; row.detail = "This clip style keeps your words."; return row }
-        let outcome = await services.voice(MakeItRewriteRequest(range: range, text: text, clipID: run.clipID, budget: run.remaining), self)
-        run.spent += outcome.spent
+        if run.budget?.paidAllowed == false {
+            row.kind = .note; row.text = "Claude suggests “\(text)”"
+            row.detail = "Spend is $0 per video, so your words stay. Change voices it in Rewrite."
+            return row
+        }
+        var outcome = await services.voice(MakeItRewriteRequest(range: range, text: text, clipID: run.clipID, budget: run.remaining), self)
+        run.charge(outcome.spent)
         run.voiceSpent += outcome.spent
+        // Claude mode stops at the video's cap and asks for exactly the shortfall; Continue voices it, Stop keeps the words.
+        while case .overCap(let next?) = outcome.result, let budget = run.budget, !makeItStopped(run) {
+            let shortfall = next - budget.remaining
+            guard shortfall > 0, await makeItWaitAtCap(run, budget: budget, shortfall: shortfall), !makeItStopped(run) else { break }
+            outcome = await services.voice(MakeItRewriteRequest(range: range, text: text, clipID: run.clipID, budget: run.remaining), self)
+            run.charge(outcome.spent)
+            run.voiceSpent += outcome.spent
+        }
         switch outcome.result {
         case .voiced(let segments):
             run.inverses[operation.id] = .voice(segments: segments)
@@ -644,7 +711,9 @@ extension EditorModel {
         case .overCap(let next):
             row.kind = .note
             row.text = "Kept your words for “\(text)”"
-            row.detail = "The next take (\(next.map(Self.makeItDollars) ?? "price unknown")) would pass this click's cap. Your paid takes stay in Rewrite."
+            let price = next.map(Self.makeItDollars) ?? "price unknown"
+            row.detail = run.budget == nil ? "The next take (\(price)) would pass this click's cap. Your paid takes stay in Rewrite."
+                : "The next take (\(price)) would pass this video's cap. Your paid takes stay in Rewrite."
         case .needsYou(let reason):
             row.kind = .note
             row.text = "“\(text)” needs you"
@@ -668,9 +737,13 @@ extension EditorModel {
         await panel.settled()
         let free = panel.candidates.first { $0.source != .generated }
         var candidate = free
-        if candidate == nil, generated, let made = panel.candidates.first(where: { $0.source == .generated }),
-           let usd = made.estimate?.usd, let remaining = run.remaining, usd <= remaining {
-            candidate = made
+        if candidate == nil, generated, let made = panel.candidates.first(where: { $0.source == .generated }), let usd = made.estimate?.usd {
+            if let remaining = run.remaining, usd <= remaining {
+                candidate = made
+            } else if let budget = run.budget, !makeItStopped(run),
+                      await makeItWaitAtCap(run, budget: budget, shortfall: usd - budget.remaining), usd <= budget.remaining {
+                candidate = made
+            }
         }
         guard let candidate, !makeItStopped(run) else {
             row.kind = .note
@@ -685,13 +758,25 @@ extension EditorModel {
             panel.dismissFailure()
             row.kind = .note; row.detail = (reason.isEmpty ? "The track couldn't be added." : reason) + " Change to try another."; return row
         }
-        if candidate.source == .generated { run.spent += candidate.estimate?.usd ?? 0 }
+        if candidate.source == .generated { run.charge(candidate.estimate?.usd ?? 0) }
         panel.setGain(-cue.picked.underVoiceDb, model: self)
         run.inverses["music"] = .music(clipID: run.clipID, previous: previous)
         row.text = "Claude chose music “\(entry.title)”" + (candidate.source == .generated ? " (generated)" : "")
         row.detail = [cue.picked.reason, "\(Int(cue.picked.underVoiceDb.rounded())) dB under your voice"].filter { !$0.isEmpty }.joined(separator: " · ")
         row.undoable = true
         return row
+    }
+
+    /// Claude mode at the cap: the run waits for Continue (exactly `shortfall`) or Stop. The creator's edits meanwhile are
+    /// their own undo steps, not the run's.
+    private func makeItWaitAtCap(_ run: MakeItRun, budget: MakeItBudget, shortfall: Decimal) async -> Bool {
+        guard budget.paidAllowed, shortfall > 0 else { return false }
+        run.line("Needs about \(Self.makeItDollars(shortfall)) more…")
+        let owned = undoGroup?.ownsEdits
+        undoGroup?.ownsEdits = false
+        let approved = await budget.ask(shortfall)
+        if let owned { undoGroup?.ownsEdits = owned }
+        return approved
     }
 
     // MARK: The review's actions
@@ -884,6 +969,9 @@ extension EditorModel {
     func copyMakeItPostText(_ run: MakeItRun) {
         let text = makeItPostCopy(run)
         guard !text.isEmpty else { return }
+        #if DEBUG
+        if let pasteboardOverride { pasteboardOverride(text); run.copied = true; return }
+        #endif
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         run.copied = true

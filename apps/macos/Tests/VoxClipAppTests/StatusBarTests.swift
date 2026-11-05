@@ -20,8 +20,11 @@ import Testing
         return project
     }
     /// An app with `connector` chosen and fixture connectors for detection; nothing leaves the Mac.
-    private func app(_ connector: String?, _ fakes: [String: ConsentFixtureConnector] = [:]) -> AppModel {
+    /// Card A ("Who makes the clips?") is answered with "I'll pick", so the bar shows the V11a items alone;
+    /// `theClipModeItemNamesTheMode` covers the other answers.
+    private func app(_ connector: String?, _ fakes: [String: ConsentFixtureConnector] = [:], mode: ClipsMode? = .pick) -> AppModel {
         let app = AppModel(settingsStore: RegressionSettingsStore())
+        if let mode { app.set(ClipsMode.key, .string(mode.rawValue)) }
         app.connectorOverride = { id in fakes[id] ?? ConsentFixtureConnector(id: ConnectorID(rawValue: id) ?? .ollama, readiness: .cliMissing, authMethod: nil) }
         if let connector { app.set("llm.connector", .string(connector)) }
         return app
@@ -105,6 +108,24 @@ import Testing
         let harness = try #require(bar.content[.harness]?.text)
         if let text { #expect(harness == text) } else { #expect(!harness.contains("high")) }
         #expect(app.providers.first { $0.id == id }?.decisionEffortNote == note)
+    }
+
+    /// The clip mode item always names the mode (design §6.6): "Choose how clips are made" until chosen, then
+    /// "✦ Claude does it all · top 3 · ≤$2", which opens the clip style card in place.
+    @Test func theClipModeItemNamesTheMode() async throws {
+        let (_, editor, _, bar) = try await open(app(nil, mode: nil))
+        defer { bar.tearDown(); editor.close() }
+        #expect(bar.content[.clipStyle]?.text == "Choose how clips are made" && bar.shown.contains(.clipStyle))
+        editor.chooseClipsMode(.claude)
+        lay(bar, width: 1280)
+        let item = try #require(bar.itemView(.clipStyle))
+        #expect(bar.content[.clipStyle]?.text == "✦ Claude does it all · top 3 · ≤$2" && bar.content[.clipStyle]?.dim == false)
+        #expect(!editor.showsClipStyleCard)
+        item.onPress?()
+        #expect(editor.showsClipStyleCard, "pressing it opens card B")
+        editor.chooseClipsMode(.pick)
+        lay(bar, width: 1280)
+        #expect(bar.content[.clipStyle]?.text.hasPrefix("Style: ") != false, "I'll pick reads Style: … once the project has a style")
     }
 
     @Test func withNoAIChosenTheBarShowsNoAI() async throws {
