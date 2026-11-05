@@ -10,6 +10,8 @@ public struct VoiceLabPatchBudgetResult: Sendable, Equatable {
 
 public enum VoiceLabPatchBudget {
     public static let disabledCopy = "That's a lot to re-voice. Re-record these sentences instead."
+    /// The most new words one review re-voices (§8.2), besides the 15% share of the take's words.
+    public static let maximumVoiceTokens = 60
 
     /// §8.2 patch budget over a review's hunks after every merge: a passage's `VoiceLabWordDiff` hunks, or a clip or Full
     /// take's `ScopeRewriteDiff` hunks. `transcript` is the whole take's.
@@ -18,7 +20,7 @@ public enum VoiceLabPatchBudget {
             total + hunk.newTokens.count
         }
         let wordItems: Int = transcript.filter { $0.kind == .word }.count
-        let disabled: Bool = count * 100 > 15 * wordItems || count > 60
+        let disabled: Bool = count * 100 > 15 * wordItems || count > maximumVoiceTokens
         return VoiceLabPatchBudgetResult(voiceTokenCount: count, wordItems: wordItems,
                                          flag: disabled ? .reRecordInstead : .allowed, copy: disabled ? disabledCopy : nil)
     }

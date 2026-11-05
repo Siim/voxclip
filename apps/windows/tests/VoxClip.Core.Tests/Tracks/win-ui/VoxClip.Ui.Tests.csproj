@@ -36,6 +36,7 @@
     <Compile Include="RewriteNextStepsTests.cs" />
     <Compile Include="RewritePhraseCardsTests.cs" />
     <Compile Include="RewriteSmokeTests.cs" />
+    <Compile Include="RewriteLongRunTests.cs" />
     <Compile Include="InlineWorkflowTests.cs" />
     <Compile Include="IntegratedRewriteTests.cs" />
     <Compile Include="RewriteGenerationTests.cs" />

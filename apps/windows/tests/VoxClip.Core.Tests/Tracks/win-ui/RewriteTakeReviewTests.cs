@@ -40,21 +40,19 @@ public sealed class RewriteTakeReviewTests
         Assert.DoesNotContain("Try Another", source);
         Assert.True(32 + 40 + 42 + 32 + 4 * 4 + 80 <= 300 - 32);
     }
+    /// <summary>ADR-R39: an advisory take is a normal 40 epx row whose note reads "join may sound slightly louder" beside its
+    /// play button; no Use anyway button, no dialog.</summary>
     [Fact]
-    public void AdvisoryActionsAreInlineWrappedAndKeyboardReachable()
+    public void AdvisoryTakesAreNormalRowsWithANoteAndNoUseAnyway()
     {
         var source = AppSource("Controls/RewritePanel.Takes.cs");
-        var advisory = source[source.IndexOf("if (content.JoinAdvisory)", StringComparison.Ordinal)..source.IndexOf("else if (!content.Selectable)", StringComparison.Ordinal)];
-        Assert.Contains("TextWrapping.Wrap", advisory);
-        Assert.Contains("content.Copy", advisory);
-        Assert.Contains("Content = \"Use anyway\"", advisory);
-        Assert.Contains("content.UseAnywayName", advisory);
-        Assert.Contains("IsTabStop = true", advisory);
-        Assert.Contains("UseTakeAnywayAsync(row.Id)", advisory);
-        Assert.Contains("PlayTakeAsync(row.Id)", advisory);
-        Assert.Contains("args.ItemContainer.Height = content.JoinAdvisory ? double.NaN : 40", source);
-        Assert.DoesNotContain("ContentDialog", advisory);
-        Assert.DoesNotContain("Flyout", advisory);
+        Assert.DoesNotContain("Use anyway", source);
+        Assert.DoesNotContain("UseTakeAnyway", source);
+        Assert.DoesNotContain("if (content.JoinAdvisory)", source);
+        Assert.Contains("args.ItemContainer.Height = 40", source);
+        Assert.Contains("content.Note", source);
+        Assert.DoesNotContain("ContentDialog", source);
+        Assert.DoesNotContain("UseTakeAnyway", AppSource("ViewModels/RewriteGeneration.Takes.cs"));
     }
 
     [Fact]

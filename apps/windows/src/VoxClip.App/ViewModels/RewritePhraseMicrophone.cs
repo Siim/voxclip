@@ -262,7 +262,7 @@ internal sealed class RewritePhraseMicrophone
         var difference = (RewriteGeneration.Length(row) ?? slot) - slot;
         if (!carried)
             return $"Your take · “{words}” · runs {length} for a {PhraseMicrophoneCopy.Seconds(slot)} gap, too {(difference < 0 ? "short" : "long")} to fit. Record again.";
-        var join = row.HasJoinAdvisory ? " · the join may sound uneven, listen before using" : "";
+        var join = row.HasJoinAdvisory ? " · join may sound slightly louder" : "";
         if (row.Fits) return $"Your take · “{words}” · fits {length} ✓{join} · free";
         var verdict = $"{PhraseMicrophoneCopy.Seconds(Math.Abs(difference))} {(difference < 0 ? "shorter" : "longer")}, the video is {(lengthFits ? "cut" : "matched")} to it";
         return $"Your take · “{words}” · {verdict}{join} · free";

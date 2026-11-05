@@ -114,8 +114,9 @@ internal sealed partial class RewritePanel
         actions.Children.Add(play);
         if (generation.SelectedTakeId != row.Id && row.Selectable && carried)
         {
-            var title = row.RequiresJoinAdvisoryAcceptance || !generation.LengthFits(row) ? "Use anyway" : "Use your take";
-            var use = Ui.Button(title, () => _ = row.RequiresJoinAdvisoryAcceptance ? generation.UseTakeAnywayAsync(row.Id) : generation.SelectTakeAsync(row.Id));
+            // Use anyway only where the choice needs the user: the take changes the video's duration (ADR-R39).
+            var title = generation.LengthFits(row) ? "Use your take" : "Use anyway";
+            var use = Ui.Button(title, () => _ = generation.SelectTakeAsync(row.Id));
             AutomationProperties.SetAutomationId(use, "Rewrite.OwnTakeUse" + (row.Index + 1)); SetName(use, title + " for phrase " + (index + 1));
             actions.Children.Add(use);
         }

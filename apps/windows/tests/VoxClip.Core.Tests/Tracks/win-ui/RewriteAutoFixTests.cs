@@ -295,14 +295,20 @@ public sealed class RewriteAutoFixTests
         /// <summary>A run's failure by run: the row's exception and whether the run ends fatally; null makes the scripted take.</summary>
         internal Func<int, VoiceLabTakeInput, (Exception Error, bool Fatal)?>? Fails { get; init; }
         internal TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        /// <summary>How many quotes were prepared; a long run's later part is quoted again just before it runs.</summary>
+        internal int Prepares;
+        /// <summary>Each quoted action's price by prepare; null: $0.01.</summary>
+        internal Func<int, decimal>? Price { get; init; }
         private VoiceLabTakeRunQuote? pending;
         public Task<VoiceLabTakeRunQuote> PrepareAsync(VoiceLabTakeInput input, CancellationToken ct = default)
         {
             Input = input;
+            Prepares++;
+            var price = Price?.Invoke(Prepares) ?? .01m;
             VoiceLabPreparedAction Action(VoiceLabOperation operation) => (VoiceLabPreparedAction)typeof(VoiceLabPreparedAction)
                 .GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic).Single(constructor => constructor.GetParameters().Length == 5)
                 .Invoke([Guid.NewGuid(), "fixture", DateTimeOffset.UtcNow.AddHours(1),
-                    new VoiceLabEstimate("elevenlabs", operation, 1, "fixture", .01m, null, "fixture"),
+                    new VoiceLabEstimate("elevenlabs", operation, 1, "fixture", price, null, "fixture"),
                     new VoiceLabReview(operation, Guid.NewGuid(), "elevenlabs", ElevenLabsRegion.Default, "fixture", input.ModelId,
                         "voice", null, null, input.RecordId, Pace: input.Pace)]);
             pending = new(Guid.NewGuid(), Enumerable.Range(0, 3).Select(index => new VoiceLabTakeQuote(index, (uint)index,

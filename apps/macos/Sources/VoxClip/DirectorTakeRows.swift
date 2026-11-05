@@ -2,11 +2,10 @@ import SwiftUI
 import VoxClipCore
 
 enum TakeFailurePresentation {
+    /// A passing take's join advisory (ADR-R39): a note on its row, never a choice the user must make.
     static func joinAdvisory(_ row: VoiceLabTakeRow, number: Int) -> String? {
-        guard row.hasJoinAdvisory, let audio = row.audio, let seams = row.qa?.joinSeams, !seams.isEmpty else { return nil }
-        let duration = String(format: "%.1f s", locale: Locale(identifier: "en_US_POSIX"), Double(audio.fit.plan.outputFrames) / Double(audio.sampleRate))
-        let side = seams.count > 1 ? "either" : seams[0].side.rawValue
-        return "Take \(number) · \(duration) · The join may sound uneven (\(side) side). Listen before using."
+        guard row.hasJoinAdvisory, row.audio != nil, let seams = row.qa?.joinSeams, !seams.isEmpty else { return nil }
+        return "Take \(number) · join may sound slightly louder"
     }
     static func shortSpeechSummary(_ rows: [VoiceLabTakeRow], selected: UUID?) -> [String] {
         let selectedRow = rows.first { $0.id == selected && $0.selectable && $0.voiceCheck.evidence != nil }
@@ -323,7 +322,7 @@ extension ClipTakePlan.Phrase {
             PhraseWordingSection(session: session, plan: plan, phrase: phrase)
             HStack(spacing: VCTokens.spacingLabelGap) {
                 ForEach(phrase.takes) { take in
-                    if take.row.selectable, !take.row.requiresJoinAdvisoryAcceptance, !session.takesBusy {
+                    if take.row.selectable, !session.takesBusy {
                         Button(String(take.number)) {
                             session.focusedTakePhrase = phrase.id
                             if phrase.selectedID != take.id {
@@ -333,7 +332,8 @@ extension ClipTakePlan.Phrase {
                         .buttonStyle(.plain).frame(width: 24, height: 24)
                         .background(phrase.selectedID == take.id ? DesignValues.color("bg.selectedRow") : .clear, in: .rect(cornerRadius: 4))
                         .accessibilityLabel("Phrase \(phrase.id + 1), take \(take.number), \(take.fits ? "fits" : "timing change required")\(phrase.beforeExpression.contains(take.id) ? ", before expression" : "")")
-                        .help(take.fits ? "Select this checked take. It fits the phrase." : "This take passed checks but changes the video's duration. Choose a video duration below.")
+                        .help(take.fits ? "Select this checked take. It fits the phrase.\(take.row.hasJoinAdvisory ? " Its join may sound slightly louder." : "")"
+                              : "This take passed checks but changes the video's duration. Choose a video duration below.")
                         .accessibilityAddTraits(phrase.selectedID == take.id ? [.isButton, .isSelected] : .isButton)
                     }
                 }
@@ -364,32 +364,26 @@ extension ClipTakePlan.Phrase {
             ForEach(phrase.takes.filter { $0.source == .microphone }) { take in
                 OwnTakeRow(session: session, microphone: session.phraseMicrophone, plan: plan, phrase: phrase, take: take)
             }
-            ForEach(phrase.takes.filter { $0.row.hasJoinAdvisory && $0.source == .clonedVoice }) { take in
+            // A join advisory is a note on the take's row, "join may sound slightly louder · ▶" (ADR-R39): the best take is
+            // chosen with it, and any other is one click on its number.
+            ForEach(phrase.takes.filter { $0.row.selectable && $0.row.hasJoinAdvisory && $0.source == .clonedVoice }) { take in
                 if let copy = TakeFailurePresentation.joinAdvisory(take.row, number: take.number) {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(copy).font(VCType.callout.font()).foregroundStyle(DesignValues.color("status.warning"))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .accessibilityLabel("Phrase \(phrase.id + 1), join advisory. \(copy)")
+                    HStack(alignment: .firstTextBaseline, spacing: VCTokens.spacingLabelGap) {
+                        Text(copy + " ·").font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
+                            .accessibilityLabel("Phrase \(phrase.id + 1), take \(take.number), join may sound slightly louder")
+                            .columnLayoutEvidence("voice.phrase.\(phrase.id).join.\(take.number)", text: copy)
                         if !session.takesBusy {
-                            HStack(spacing: 8) {
-                                let playing = plan.audition.isPlaying && plan.audition.takeId == take.id
-                                Button(playing ? "Pause" : "Play") {
-                                    session.focusedTakePhrase = phrase.id
-                                    Task { await session.playTake(take.id, phrase: phrase.id) }
-                                }.buttonStyle(.plain).frame(minHeight: 22)
-                                    .accessibilityLabel("\(playing ? "Pause" : "Play") phrase \(phrase.id + 1), take \(take.number), join advisory")
-                                // Use anyway acts only where it moves the phrase on: not on the take already used, and not
-                                // on a phrase kept as recorded when no video duration can carry the take.
-                                let used = phrase.selectedID == take.id && !take.row.requiresJoinAdvisoryAcceptance
-                                if !used, !phrase.leftOut || plan.durationAvailable(take: take) {
-                                    Button("Use anyway") {
-                                        session.focusedTakePhrase = phrase.id
-                                        session.mutateLipsync(phrase: phrase.id) { _ = plan.useAnyway(take: take.id, phrase: phrase.id) }
-                                    }.buttonStyle(.plain).frame(minHeight: 22)
-                                        .accessibilityLabel("Use take \(take.number) anyway, phrase \(phrase.id + 1), accept join advisory")
-                                        .modifier(PanelButtonEvidence(id: "useAnyway.\(phrase.id).\(take.number)", title: "Use anyway"))
-                                }
-                            }.font(VCType.callout.font())
+                            let playing = plan.audition.isPlaying && plan.audition.takeId == take.id
+                            Button {
+                                session.focusedTakePhrase = phrase.id
+                                Task { await session.playTake(take.id, phrase: phrase.id) }
+                            } label: {
+                                Image(systemName: playing ? "pause.fill" : "play.fill").frame(width: 20, height: 20)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("\(playing ? "Pause" : "Play") phrase \(phrase.id + 1), take \(take.number), join advisory")
+                            .help("Listen to the join of take \(take.number).")
+                            .modifier(PanelButtonEvidence(id: "joinPlay.\(phrase.id).\(take.number)", title: playing ? "Pause" : "Play"))
                         }
                     }
                 }

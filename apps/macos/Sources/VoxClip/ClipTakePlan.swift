@@ -66,7 +66,7 @@ import VoxClipMedia
     }
     /// The most phrases one run prices and voices. A run of more than `VoiceLabTakeBatch.maximumWindows` phrases is priced
     /// and approved once, then voiced part by part (`PricedPart`).
-    nonisolated static let maximumPhrases = 100
+    nonisolated static let maximumPhrases = VoiceLabTakeBatch.maximumRunPhrases
     /// A later part of a priced run: its phrases and the batch they were priced as. Only the run's first part holds its
     /// quotes until the approval (`ElevenLabsVoiceLab` keeps at most 32 outstanding quotes); each later part is quoted
     /// again just before it runs, and runs under the run's one approval only when that quote equals this one's inputs
@@ -305,7 +305,7 @@ import VoxClipMedia
                 preparedVideoSelection = PreparedVideoSelection(choices: choices, acceptance: output, render: render)
                 problem = ""
             } catch {
-                if turn == videoRevision {
+                        if turn == videoRevision {
                     preparedVideoSelection = nil; videoPreparationFailure = error; report(error)
                 }
             }
@@ -542,7 +542,7 @@ import VoxClipMedia
     func restore(phrase index: Int) {
         guard phrases.indices.contains(index), phrases[index].leftOut else { return }
         phrases[index].leftOut = false
-        phrases[index].selectedID = automaticTake(phrase: index)?.id
+        phrases[index].selectedID = chooseAutomatically(phrase: index)
         onMeasuredTakesChanged?()
     }
     /// A new expression for one phrase (design.md R2 "Expressions"): only this phrase's text tags change, its takes so far
@@ -585,24 +585,40 @@ import VoxClipMedia
             return left.distance != right.distance ? left.distance < right.distance : left.score > right.score
         }.map(\.take)
     }
-    /// The take chosen automatically (ADR-R37): only measured passing takes with no join to listen to, never one made
-    /// before the expression changed. Among usable takes the best score wins, as before; when no duration can carry any
-    /// of them, the one closest to the slot, so the automatic fixes reword from the nearest take.
+    /// The take chosen automatically (ADR-R37, ADR-R39): only measured passing takes, never one made before the expression
+    /// changed. Among usable takes the best score wins, as before; when no duration can carry any of them, the one closest
+    /// to the slot, so the automatic fixes reword from the nearest take. A take whose only issue is a join advisory is
+    /// chosen when it ranks best, after any clean take at the same rank (ADR-R39: Claude makes the best decision, the user
+    /// only listens).
     func automaticTake(phrase index: Int) -> Take? {
         guard phrases.indices.contains(index) else { return nil }
         let phrase = phrases[index]
         let measured = phrase.takes.filter {
-            $0.row.automaticallySelectable && $0.row.qa?.values.speakerScore?.isFinite == true && !phrase.beforeExpression.contains($0.id)
+            $0.row.selectable && $0.row.qa?.values.speakerScore?.isFinite == true && !phrase.beforeExpression.contains($0.id)
+                && (!$0.row.requiresJoinAdvisoryAcceptance || (try? $0.row.acceptingJoinAdvisory(at: Date())) != nil)
         }
-        return ranked(measured, phrase: index).first
+        let order = ranked(measured, phrase: index)
+        let usable = order.filter { durationAvailable(take: $0) }
+        let pool = usable.isEmpty ? order : usable
+        return pool.first { !$0.row.hasJoinAdvisory } ?? pool.first
+    }
+    /// Makes the automatic choice for a phrase: its advisory, if any, is accepted now, as the user's click once did.
+    private func chooseAutomatically(phrase index: Int, at date: Date = Date()) -> UUID? {
+        guard let best = automaticTake(phrase: index) else { return nil }
+        if best.row.requiresJoinAdvisoryAcceptance {
+            guard let slot = phrases[index].takes.firstIndex(where: { $0.id == best.id }),
+                  let accepted = try? best.row.acceptingJoinAdvisory(at: date) else { return nil }
+            phrases[index].takes[slot] = Take(number: best.number, row: accepted, source: best.source)
+        }
+        return best.id
     }
     /// The passing take a phrase with none chosen offers for the user's one click ([Choose Take N] in the footer): a take
     /// the automatic choice may not pick, such as one whose voice couldn't be measured (ADR-R37: it needs the user's
-    /// explicit click). Takes with a join to listen to are offered by their row's Use anyway instead.
+    /// explicit click). Choosing a take with a join advisory accepts it (ADR-R39).
     func offeredTake(phrase index: Int) -> Take? {
         guard phrases.indices.contains(index), !phrases[index].leftOut, phrases[index].selected == nil else { return nil }
         let phrase = phrases[index]
-        let passing = phrase.takes.filter { $0.row.selectable && !$0.row.requiresJoinAdvisoryAcceptance }
+        let passing = phrase.takes.filter { $0.row.selectable }
         let current = passing.filter { !phrase.beforeExpression.contains($0.id) }
         return ranked(current.isEmpty ? passing : current, phrase: index).first
     }
@@ -870,10 +886,16 @@ import VoxClipMedia
         }
     }
 
-    @discardableResult func select(take: UUID, phrase: Int) -> Bool {
+    /// The user's choice of a passing take. Choosing one with a join advisory accepts the advisory (ADR-R39).
+    @discardableResult func select(take: UUID, phrase: Int, at date: Date = Date()) -> Bool {
         if phrases.indices.contains(phrase), phrases[phrase].selectedID != take, lipsync.blocksMutation(phrase) { return false }
         guard !generating, !preparing, !publishing, !preparingVideo, !retired, isCurrent(), phrases.indices.contains(phrase),
-              phrases[phrase].takes.contains(where: { $0.id == take && $0.row.selectable && !$0.row.requiresJoinAdvisoryAcceptance }) else { return false }
+              let index = phrases[phrase].takes.firstIndex(where: { $0.id == take && $0.row.selectable }) else { return false }
+        let chosen = phrases[phrase].takes[index]
+        if chosen.row.requiresJoinAdvisoryAcceptance {
+            guard let row = try? chosen.row.acceptingJoinAdvisory(at: date) else { return false }
+            phrases[phrase].takes[index] = Take(number: chosen.number, row: row, source: chosen.source)
+        }
         stopAudition()
         if phrases[phrase].selectedID != take {
             clearPreparedVideo()
@@ -892,15 +914,6 @@ import VoxClipMedia
         }
         onMeasuredTakesChanged?()
         return true
-    }
-
-    @discardableResult func useAnyway(take: UUID, phrase: Int, at date: Date = Date()) -> Bool {
-        if phrases.indices.contains(phrase), phrases[phrase].selectedID != take, lipsync.blocksMutation(phrase) { return false }
-        guard !generating, !preparing, !publishing, !preparingVideo, !retired, isCurrent(), phrases.indices.contains(phrase),
-              let index = phrases[phrase].takes.firstIndex(where: { $0.id == take }),
-              let row = try? phrases[phrase].takes[index].row.acceptingJoinAdvisory(at: date) else { return false }
-        phrases[phrase].takes[index] = Take(number: phrases[phrase].takes[index].number, row: row, source: phrases[phrase].takes[index].source)
-        return select(take: take, phrase: phrase)
     }
 
     func stopAudition() {
@@ -1021,11 +1034,11 @@ import VoxClipMedia
             if let row = phrases[phrase].selected?.row, row.selectable, !row.requiresJoinAdvisoryAcceptance { return }
             phrases[phrase].explicitlySelected = false
         }
-        let best = automaticTake(phrase: phrase)
-        if best?.id != phrases[phrase].selectedID {
+        let best = chooseAutomatically(phrase: phrase)
+        if best != phrases[phrase].selectedID {
             clearPreparedVideo()
             phrases[phrase].videoChoice = nil
-            phrases[phrase].selectedID = best?.id
+            phrases[phrase].selectedID = best
         }
     }
 
@@ -1078,7 +1091,12 @@ import VoxClipMedia
         try validateContextInputs(inputs)
         guard !generating, !preparing, !publishing, let backend else { throw Failure.stale }
         publishing = true
-        defer { publishing = false }
+        defer {
+            publishing = false
+            // Lip sync's publish can refuse a video preparation that an automatic choice started meanwhile (ADR-R39: no
+            // click follows to start it again); it starts once this one ends, so Use never waits on a preparation nobody runs.
+            if onlyChosen, !preparingVideo, videoPreparation == nil, needsVideoPreparation { Task { await prepareVideoChoices() } }
+        }
         let selected = selectedPhrases.filter { !onlyChosen || $0.videoChoice != nil }
         guard !selected.isEmpty, selected.allSatisfy({ phrase in
             phrase.videoChoice.map { videoAvailability(phrase: phrase.id).allows($0) } == true

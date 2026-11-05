@@ -187,7 +187,7 @@ extension RewriteSession {
             guard takeNeedsWordingRecovery(phrase, plan: plan), let length = selected.length else { return nil }
             return .length(tooLong: length > slot, measured: length, slot: slot, take: selected.id, number: selected.number, selected: true)
         }
-        // A passing take not chosen yet (a join to listen to first) is the user's pick, not a stuck phrase.
+        // A passing take not chosen yet (one whose voice could not be measured) is the user's pick, not a stuck phrase.
         if current.contains(where: { $0.row.selectable }) { return nil }
         if let closest = current.filter({ $0.length != nil }).min(by: { abs($0.length! - slot) < abs($1.length! - slot) }),
            let length = closest.length {

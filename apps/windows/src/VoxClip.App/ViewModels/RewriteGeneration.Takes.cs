@@ -52,13 +52,6 @@ internal sealed partial class RewriteGeneration
     internal bool NeedsShorterWording => Selected is { Fits: false } && !CanRetime && !CanCut && !IsRunning;
     internal bool CanPlayTake(Guid id) => CanPlay && Rows.FirstOrDefault(row => row.Id == id) is { Stopped: false } row &&
         (row.Audio is not null ? ScratchFor(id)?.IsValid == true : row.Generated is not null && takes?.PaidAudio is not null);
-    internal bool CanUseTakeAnyway(Guid id) => !closed && !accepting && !IsRunning && current() &&
-        reviewEnd is VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop &&
-        Rows.FirstOrDefault(row => row.Id == id) is { Selectable: true, HasJoinAdvisory: true } && ScratchFor(id)?.IsValid == true;
-    /// <summary>Use anyway shows only where it can act (Mac smokereal): a passing take whose join still needs listening, not the
-    /// take already used, and only when some video duration can carry it.</summary>
-    internal bool UseAnywayCanAct(VoiceLabTakeRow row) => row.Selectable && row.RequiresJoinAdvisoryAcceptance && row.Id != SelectedTakeId && DurationAvailable(row);
-    internal bool ShowsUseAnyway(Guid id) => CanUseTakeAnyway(id) && Rows.FirstOrDefault(row => row.Id == id) is { } row && UseAnywayCanAct(row);
     internal string KeepSourceCopy => VideoOptions?.UnchangedUnavailableReason ??
         (VideoOptions is { AddedPauseSeconds: > 0 } options
             ? $"Adds {options.AddedPauseSeconds.ToString("F1", CultureInfo.InvariantCulture)} s of natural pauses in your room's sound. Speech keeps its pace."
@@ -177,17 +170,31 @@ internal sealed partial class RewriteGeneration
             Score: row.Score ?? 0))
         .OrderByDescending(item => item.Usable).ThenBy(item => item.Usable ? -item.Score : item.Distance)
         .ThenBy(item => item.Usable ? item.Distance : -item.Score).ThenBy(item => item.Row.Index).Select(item => item.Row).ToArray();
-    /// <summary>The take chosen automatically (Mac <c>ClipTakePlan.automaticTake</c>): passing takes with no join to listen to and a
-    /// measured voice, never a rejected one, ranked by <see cref="Ranked"/>.</summary>
-    internal VoiceLabTakeRow? AutomaticTake() => Ranked(Rows.Where(row => row.AutomaticallySelectable && !rejected.Contains(row.Id) &&
-        !beforeExpression.Contains(row.Id) && row.Qa?.SpeakerScore is { } score && double.IsFinite(score))).FirstOrDefault();
+    /// <summary>The take chosen automatically (Mac <c>ClipTakePlan.automaticTake</c>, ADR-R37 and ADR-R39): passing takes with a
+    /// measured voice, never a rejected one, ranked by <see cref="Ranked"/> among the usable ones (else all). A take whose only
+    /// issue is a join advisory is chosen when it ranks best, after any clean take at that rank; choosing it accepts the
+    /// advisory (<see cref="Select"/>).</summary>
+    internal VoiceLabTakeRow? AutomaticTake()
+    {
+        var order = Ranked(Rows.Where(row => row.Selectable && !rejected.Contains(row.Id) && !beforeExpression.Contains(row.Id) &&
+            row.Qa?.SpeakerScore is { } score && double.IsFinite(score) && AdvisoryCanBeAccepted(row)));
+        var usable = order.Where(DurationAvailable).ToArray();
+        var pool = usable.Length > 0 ? usable : order;
+        return pool.FirstOrDefault(row => !row.HasJoinAdvisory) ?? pool.FirstOrDefault();
+    }
+    private bool AdvisoryCanBeAccepted(VoiceLabTakeRow row)
+    {
+        if (!row.RequiresJoinAdvisoryAcceptance) return true;
+        try { row.AcceptingJoinAdvisory(clock.GetUtcNow()); return true; }
+        catch (VoiceLabProjectException) { return false; }
+    }
     /// <summary>The passing take a phrase with none chosen offers for one click ([Choose Take N], Mac <c>offeredTake</c>): one the
-    /// automatic choice may not pick, such as a take whose voice couldn't be measured (ADR-R37). Takes with a join to listen to
-    /// are offered by their row's Use anyway instead.</summary>
+    /// automatic choice may not pick, such as a take whose voice couldn't be measured (ADR-R37). Choosing a take with a join
+    /// advisory accepts it (ADR-R39).</summary>
     internal VoiceLabTakeRow? OfferedTake()
     {
         if (closed || LeftOut || Selected is not null) return null;
-        var passing = Rows.Where(row => row.Selectable && !row.RequiresJoinAdvisoryAcceptance && !rejected.Contains(row.Id)).ToArray();
+        var passing = Rows.Where(row => row.Selectable && !rejected.Contains(row.Id) && AdvisoryCanBeAccepted(row)).ToArray();
         var current = passing.Where(row => !beforeExpression.Contains(row.Id)).ToArray();
         return Ranked(current.Length > 0 ? current : passing).FirstOrDefault();
     }
@@ -258,26 +265,13 @@ internal sealed partial class RewriteGeneration
     internal async Task<bool> SelectTakeAsync(Guid id)
     {
         if (closed || accepting || IsRunning || !current() || reviewEnd is not (VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop) ||
-            Rows.FirstOrDefault(row => row.Id == id) is not { Selectable: true, RequiresJoinAdvisoryAcceptance: false }) return false;
+            Rows.FirstOrDefault(row => row.Id == id) is not { Selectable: true } chosen || !AdvisoryCanBeAccepted(chosen)) return false;
         if (SelectedTakeId == id) { explicitSelection = id; return true; }
         var version = ++selectionRevision;
         if (takes is not null) await takes.Audition.TakeChangedAsync(id);
         if (closed || version != selectionRevision || !current() || !Rows.Any(row => row.Id == id)) return false;
         explicitSelection = id; LeftOut = false; Select(id); VideoChoice = null; AutoChooseVideo(); Phase = ReviewPhase(); Notify();
         if (pendingInput is { } input && RetryPace(input) != input.Pace) await InputsChangedAsync(preserveReview: true);
-        return true;
-    }
-    internal async Task<bool> UseTakeAnywayAsync(Guid id)
-    {
-        if (!CanUseTakeAnyway(id) || Rows.FirstOrDefault(row => row.Id == id) is not { } row) return false;
-        var version = ++selectionRevision;
-        if (takes is not null) await takes.Audition.TakeChangedAsync(id);
-        if (closed || version != selectionRevision || !current() || !Rows.Contains(row)) return false;
-        if (recordedTakes.ContainsKey(id)) UseRecordedAnyway(id, clock.GetUtcNow());
-        else core.UseTakeAnyway(id, clock.GetUtcNow());
-        explicitSelection = id; LeftOut = false; VideoChoice = null; AutoChooseVideo(); Phase = ReviewPhase();
-        Announcement = TakeRowPresentation.From(row, BestTakeId, PhraseNumber).Copy;
-        Notify();
         return true;
     }
     internal async Task PlayTakeAsync(Guid id)

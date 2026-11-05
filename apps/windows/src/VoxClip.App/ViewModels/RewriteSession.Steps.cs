@@ -323,8 +323,6 @@ internal sealed partial class RewriteSession
                 // the footer never asks for a choice without the control that makes it.
                 if (window.OfferedTake() is { } offered)
                     return new($"Choose a take for phrase {index + 1}.", $"Choose Take {offered.Index + 1}", RewriteFooterAction.ChooseTake);
-                if (window.Rows.Any(row => window.UseAnywayCanAct(row)))
-                    return new($"Listen to phrase {index + 1}'s take, then Use anyway or try another.", null, RewriteFooterAction.None);
                 // Every remaining state names its own control (house rule: no advice without the action that follows it).
                 // Once priced, the same control carries its price: that click is the approval.
                 if (window.Rows.Count == 0)

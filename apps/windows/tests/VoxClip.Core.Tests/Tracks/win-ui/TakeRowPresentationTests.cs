@@ -10,24 +10,21 @@ namespace VoxClip.Core.Tests.Tracks.WinUi;
 public sealed class TakeRowPresentationTests
 {
     [Fact]
-    public void AdvisoryRowOffersListenFirstCopyAndNeverPreselects()
+    public void AdvisoryRowIsANoteBesideItsPlayAndIsPreselectedWhenBest()
     {
         var row = Row(1) with { Qa = new(1, 4, -3, .8, [VoiceLabTakeQaFailure.Loudness]) { JoinSeams = [new("left", 4)] } };
         var content = TakeRowPresentation.From(row, row.Id, 3);
-        Assert.True(content.Selectable);
-        Assert.False(content.BestMatch);
-        Assert.Equal("The join may sound uneven (left side). Listen before using.", content.Note);
-        Assert.Equal("Play phrase 3, take 2, join advisory", content.PlayName);
-        Assert.Equal("Use take 2 anyway, phrase 3, accept join advisory", content.UseAnywayName);
-        Assert.Equal("Take 2 · 1.2 s · The join may sound uneven (left side). Listen before using.", content.Copy);
-        Assert.Equal("Phrase 3, join advisory. " + content.Copy, content.AutomationName);
-        Assert.Null(TakeRowPresentation.Preselect(new([row], VoiceLabTakeRunEnd.Completed)));
-        Assert.Null(TakeRowPresentation.Preselect(new([row.AcceptingJoinAdvisory(DateTimeOffset.UnixEpoch)], VoiceLabTakeRunEnd.Completed)));
-        foreach (var side in new[] { "right", "either" })
-        {
-            var seams = side == "right" ? new VoiceLabJoinAdvisorySeam[] { new("right", 4) } : [new("left", 3), new("right", 4)];
-            Assert.Contains("(" + side + " side)", TakeRowPresentation.From(row with { Qa = row.Qa with { JoinSeams = seams } }, null).Copy);
-        }
+        Assert.True(content.Selectable && content.JoinAdvisory);
+        Assert.True(content.BestMatch);
+        Assert.Equal("Best match · join may sound slightly louder", content.Note);
+        Assert.Equal("Play take 2, join advisory", content.PlayName);
+        Assert.Equal("Take 2 · 1.2 s · Best match · join may sound slightly louder", content.Copy);
+        Assert.Equal("Take 2, 1.2 s, Best match · join may sound slightly louder", content.AutomationName);
+        Assert.Equal("Take 2 · 1.2 s · join may sound slightly louder", TakeRowPresentation.From(row, null, 3).Copy);
+        // ADR-R39: the best take is chosen with its join advisory; a clean take ranks first when there is one.
+        Assert.Equal(row.Id, TakeRowPresentation.Preselect(new([row], VoiceLabTakeRunEnd.Completed)));
+        var clean = Row(0);
+        Assert.Equal(clean.Id, TakeRowPresentation.Preselect(new([row, clean], VoiceLabTakeRunEnd.Completed)));
     }
 
     private static VoiceLabTakeRow Row(int index, double score = .5, bool fits = true)

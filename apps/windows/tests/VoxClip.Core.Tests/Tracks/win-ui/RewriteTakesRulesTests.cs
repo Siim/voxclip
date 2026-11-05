@@ -7,7 +7,7 @@ using static VoxClip.Core.Tests.Tracks.WinUi.RewriteAutoFixTests;
 namespace VoxClip.Core.Tests.Tracks.WinUi;
 
 /// <summary>Takes rules on Windows (Mac smokefix and smokereal): the automatic-take ranking, voiced phrases never held back by a
-/// re-estimate, the paid-only fit footer, Use anyway only where it can act, and ADR-R37: an unmeasured short take is never chosen
+/// re-estimate, the paid-only fit footer, no Use anyway for a join advisory (ADR-R39), and ADR-R37: an unmeasured short take is never chosen
 /// automatically but offered as [Choose Take N], a measured one still is. Stub connectors and runners only.</summary>
 public sealed class RewriteTakesRulesTests
 {
@@ -77,10 +77,12 @@ public sealed class RewriteTakesRulesTests
         Assert.Equal("", session.ReviewFooter);
     }
 
+    /// <summary>ADR-R39: a take whose only issue is its join is chosen automatically when some video duration can carry it;
+    /// one no duration can carry is still chosen as the closest take, so the automatic fixes reword from it.</summary>
     [Theory]
     [InlineData(0.0, true)]
     [InlineData(5.8, false)]
-    public async Task UseAnywayActsOnlyOnAnUnusedAdvisoryTakeSomeDurationCanCarry(double seconds, bool acts)
+    public async Task AnAdvisoryTakeIsChosenAutomaticallyWithNoUseAnyway(double seconds, bool carried)
     {
         var advisory = new VoiceLabTakeQaResult(1, 4, -3, .8, [VoiceLabTakeQaFailure.Loudness]) { JoinSeams = [new("left", 4)] };
         var connector = new Connector(Reply, (_, ordinals) => Rows(ordinals, "x"));
@@ -88,13 +90,16 @@ public sealed class RewriteTakesRulesTests
         using var session = await PricedAsync(connector, runner);
         await SettleAsync(session);
         var window = session.Generation!;
-        var row = Assert.Single(window.Rows);
-        Assert.True(row.RequiresJoinAdvisoryAcceptance);
-        Assert.Null(window.SelectedTakeId);
-        Assert.Null(session.StuckReason(0));
-        Assert.Equal(acts, window.UseAnywayCanAct(row));
-        Assert.False(window.ShowsUseAnyway(row.Id));
-        Assert.False(window.UseAnywayCanAct(row with { AcceptedJoinAdvisory = new([new("left", 4)], DateTimeOffset.UnixEpoch) }));
+        var row = window.Rows[0];
+        Assert.True(row.HasJoinAdvisory);
+        Assert.False(row.RequiresJoinAdvisoryAcceptance);
+        Assert.Equal(carried, window.DurationAvailable(row));
+        // A take some duration carries is used as it is; one none carries is the take the fixes reword from, so they make another.
+        if (carried) Assert.Equal(row.Id, Assert.Single(window.Rows).Id);
+        Assert.True(window.LeftOut || window.SelectedTakeId == window.AutomaticTake()?.Id);
+        Assert.False(window.Selected?.RequiresJoinAdvisoryAcceptance == true);
+        Assert.Null(window.OfferedTake());
+        Assert.DoesNotContain("Use anyway", session.ReviewFooter);
     }
 
     private static VoiceLabShortSpeechEvidence Evidence(VoiceLabShortSpeechMode mode) =>

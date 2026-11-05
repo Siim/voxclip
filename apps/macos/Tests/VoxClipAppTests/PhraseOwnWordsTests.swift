@@ -307,8 +307,8 @@ private struct NoOwnWordsProviderKeys: ProviderKeyStore {
         let session = fixture.session, editor = fixture.editor, plan = try #require(session.takePlan)
         let original = editor.project
         let take = try await recordOwnTake(fixture)
-        // A join to listen to first is used with Use anyway, as for a cloned take.
-        #expect(take.row.requiresJoinAdvisoryAcceptance ? plan.useAnyway(take: take.id, phrase: 0) : plan.select(take: take.id, phrase: 0))
+        // Choosing the take accepts a join advisory, as for a cloned take (ADR-R39).
+        #expect(plan.select(take: take.id, phrase: 0))
         #expect(plan.phrases[0].text == Self.tokens.joined(separator: " ") && plan.phrases[0].takeDetail.hasPrefix("Your take · "),
             Comment(rawValue: plan.phrases[0].takeDetail))
         #expect(take.row.audio?.roomTone != nil, "the fixture's room gives the take its room tone")

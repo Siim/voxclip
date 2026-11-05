@@ -63,7 +63,7 @@ internal sealed partial class RewriteSession
         generationWindows.Clear();
         generatedReview = Review;
         generatedVoiceHunks = desired.ToArray();
-        var count = Math.Max(1, Math.Min(VoiceLabTakeBatch.MaximumWindows, PricedVoiceHunks.Count));
+        var count = Math.Max(1, Math.Min(VoiceLabTakeBatch.MaximumRunPhrases, PricedVoiceHunks.Count));
         for (var index = 0; index < count; index++)
         {
             var reusable = preserve && index < previous.Length &&
@@ -157,7 +157,9 @@ internal sealed partial class RewriteSession
     internal string TakeSendLine => RewriteGeneration.SendLine + string.Concat(generationWindows.Select((window, index) =>
         window.NextPace is { } pace && pace != 1 ? " Phrase " + (index + 1) + " at " + pace.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) + "× pace." : ""));
 
-    internal VoiceLabTakeBatch? PreparedBatch
+    /// <summary>The whole run's one price (Mac <c>ClipTakePlan</c> parts): every phrase's quote, in parts of at most
+    /// <see cref="VoiceLabTakeBatch.MaximumWindows"/>, approved once.</summary>
+    internal VoiceLabTakeRunParts? PreparedBatch
     {
         get
         {
@@ -168,47 +170,79 @@ internal sealed partial class RewriteSession
             catch (VoiceLabException) { return null; }
         }
     }
+    /// <summary>Mac <c>ClipTakePlan.copy(.tooManyPhrases)</c>: the run limit, with what to do.</summary>
+    internal static string TooManyPhrasesCopy(int count) =>
+        $"These changes make {count} phrases to voice. Up to {VoiceLabTakeBatch.MaximumRunPhrases} can be voiced in one run: voice the first changes now and rewrite the rest after.";
+    /// <summary>Mac <c>ClipTakePlan.copy(.priceChanged)</c>.</summary>
+    internal const string PriceChangedCopy =
+        "The price of the next phrases changed while takes were made, so nothing more was sent. Finished takes are kept. Get a fresh price for the rest.";
 
     internal bool CanGenerateAll => GenerationIsCurrent && !IsGeneratingBatch && PreparedBatch is not null && generationWindows.All(window => window.CanExecute);
-    internal void MarkBatchEstimateShown(VoiceLabTakeBatch batch)
+    internal void MarkBatchEstimateShown(VoiceLabTakeRunParts batch)
     {
         if (batch.Windows.Count != generationWindows.Count) return;
         for (var index = 0; index < generationWindows.Count; index++)
             generationWindows[index].MarkEstimateShown(batch.Windows[index].Quote);
     }
 
+    /// <summary>Makes every phrase's takes under one approval. A run of more than <see cref="VoiceLabTakeBatch.MaximumWindows"/>
+    /// phrases runs part by part (Mac <c>ClipTakePlan.continueRun</c>): each later part is quoted again just before it runs and
+    /// runs under the approval only when its inputs and estimate equal the priced ones; otherwise nothing more is sent
+    /// (<see cref="PriceChangedCopy"/>).</summary>
     internal async Task GenerateWindowsAsync(Func<object, string, Func<bool>, CancellationToken, Task<bool>> confirm,
         Func<CancellationToken, Task<VoiceLabMonthlyCap?>> readCap)
     {
-        if (!CanGenerateAll || PreparedBatch is not { } batch) return;
+        if (!CanGenerateAll || PreparedBatch is not { } run) return;
         var identity = ReviewIdentity;
         var windows = generationWindows.ToArray();
+        var quotes = run.Windows.Select(window => window.Quote).ToArray();
         var started = -1;
+        var partEnd = Math.Min(VoiceLabTakeBatch.MaximumWindows, windows.Length);
         VoxClip.Media.VoiceLab.VoiceLabShortTakePool? pool = null;
-        bool Current() => GenerationIsCurrent && identity == ReviewIdentity && generationWindows.SequenceEqual(windows) &&
-            windows.Skip(started + 1).Select((window, offset) =>
-                ReferenceEquals(window.Quote, batch.Windows[started + 1 + offset].Quote)).All(same => same);
+        bool Same() => GenerationIsCurrent && identity == ReviewIdentity && generationWindows.SequenceEqual(windows);
+        // Only the running part's quotes must stay the priced ones; a later part is quoted again before it runs.
+        bool Current() => Same() && Enumerable.Range(started + 1, Math.Max(0, partEnd - started - 1))
+            .All(index => ReferenceEquals(windows[index].Quote, quotes[index]));
         IsGeneratingBatch = true;
         Changed?.Invoke(this, EventArgs.Empty);
         try
         {
             var approvedCap = await readCap(lifetime.Token);
             if (!Current()) return;
-            var decision = batch.Kind(approvedCap);
-            var copy = $"Generate up to {batch.TakeCount} takes across {batch.Windows.Count} passages. " +
+            var decision = run.Kind(approvedCap);
+            var copy = $"Generate up to {run.TakeCount} takes across {run.Windows.Count} passages. " +
                 (decision.Text.Length == 0 ? "No charge." : decision.Text);
-            if (!await confirm(batch, copy, Current, lifetime.Token) || !Current()) return;
+            if (!await confirm(run, copy, Current, lifetime.Token) || !Current()) return;
             // The approved price also covers automatic fixes up to max($0.10, the price) (voice-lab.md §8.2.2).
-            ArmAutoFix(batch);
-            // ADR-R37: the batch is one approved run; its short takes are voice-checked together after its last phrase.
+            ArmAutoFix(run);
+            // ADR-R37: the run is one approval; its short takes are voice-checked together after its last phrase.
             if (windows.Any(window => window.PoolsShortTakes))
             {
                 pool = new(VoiceChecks);
                 foreach (var window in windows) window.UseShortTakePool(pool);
             }
-            var progress = new VoiceLabTakeBatchProgress(batch);
+            var progress = new VoiceLabTakeBatchProgress(run.Parts[0]);
             for (var index = 0; index < windows.Length; index++)
             {
+                if (index > 0 && index % VoiceLabTakeBatch.MaximumWindows == 0)
+                {
+                    partEnd = Math.Min(index + VoiceLabTakeBatch.MaximumWindows, windows.Length);
+                    List<VoiceLabTakeBatch.Window> requoted = [];
+                    for (var later = index; later < partEnd; later++)
+                    {
+                        var window = await windows[later].RequoteAsync();
+                        if (!Same()) return;
+                        if (window is null || !VoiceLabTakeRunParts.SamePrice(run.Windows[later], window))
+                        {
+                            reviewProblem = PriceChangedCopy;
+                            return;
+                        }
+                        quotes[later] = window.Quote;
+                        windows[later].MarkEstimateShown(window.Quote);
+                        requoted.Add(window);
+                    }
+                    progress = new VoiceLabTakeBatchProgress(new VoiceLabTakeBatch(requoted));
+                }
                 if (!Current()) return;
                 started = index;
                 await windows[index].GenerateAsync(async (changedCost, token) =>
@@ -216,12 +250,12 @@ internal sealed partial class RewriteSession
                     var cap = await readCap(token);
                     if (!Current()) return false;
                     if (cap == approvedCap) return true;
-                    if (!await confirm(batch, changedCost, Current, token) || !Current()) return false;
+                    if (!await confirm(run, changedCost, Current, token) || !Current()) return false;
                     approvedCap = cap;
                     return true;
-                }, batch.Windows[index].Quote, autoplay: false);
+                }, quotes[index], autoplay: false);
                 if (!Current() || windows[index].LastRunResult is not { } result) return;
-                progress.Finish(index, result);
+                progress.Finish(index % VoiceLabTakeBatch.MaximumWindows, result);
                 if (result.End is not (VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop)) return;
             }
         }

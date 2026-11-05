@@ -21,7 +21,7 @@ public sealed class PaidTakePlaybackTests
         test.Runner.Advisory = true;
         await test.GenerateAsync();
         var advisory = test.Generation.Rows[0];
-        Assert.True(await test.Generation.UseTakeAnywayAsync(advisory.Id));
+        Assert.True(await test.Generation.SelectTakeAsync(advisory.Id));
         Assert.True(test.Generation.Selected!.Fits);
         Assert.False(test.Generation.Selected.AutomaticallySelectable);
         typeof(RewriteGeneration).GetMethod("FinishTakes", BindingFlags.NonPublic | BindingFlags.Instance)!
@@ -76,10 +76,12 @@ public sealed class PaidTakePlaybackTests
         Assert.Equal(0, test.PublishCalls);
     }
 
+    /// <summary>ADR-R39: a fitting take whose only issue is its join is chosen automatically, its advisory accepted, without
+    /// claiming playback; a changed-duration take gets its first valid video duration, so Use is ready with no click.</summary>
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task UseAnywayDoesNotClaimPlaybackAndPreservesTheDurationGate(bool changedDuration)
+    public async Task AnAdvisoryOnlyTakeIsChosenAutomaticallyWithoutClaimingPlayback(bool changedDuration)
     {
         await using var test = new Harness(false, true, VoiceLabTakeRunEnd.Completed);
         test.Runner.Advisory = true;
@@ -87,19 +89,20 @@ public sealed class PaidTakePlaybackTests
         test.NoOutput = true;
         await test.GenerateAsync();
         var row = Assert.Single(test.Generation.Rows);
+        Assert.True(row.HasJoinAdvisory);
+        Assert.False(row.RequiresJoinAdvisoryAcceptance);
+        Assert.Equal(row.Qa!.JoinSeams, row.AcceptedJoinAdvisory!.Seams);
+        Assert.Equal(row.Id, test.Generation.SelectedTakeId);
         Assert.False(test.Generation.CanPlayTake(row.Id));
-        Assert.True(test.Generation.CanUseTakeAnyway(row.Id));
-        Assert.False(test.Audition.Snapshot.Completed);
-        Assert.True(await test.Generation.UseTakeAnywayAsync(row.Id));
         Assert.False(test.Audition.Snapshot.Completed);
         Assert.Empty(test.OpenedPaths);
-        // A changed-duration take gets its first valid video duration at once (Mac autoChooseVideo), so Use is ready.
         Assert.Equal(RewriteGenerationPhase.ReadyToAccept, test.Generation.Phase);
         Assert.Equal(changedDuration ? test.Generation.ValidVideoChoices[0] : null, test.Generation.VideoChoice);
+        Assert.Contains(TakeRowPresentation.JoinNote, TakeRowPresentation.From(row, test.Generation.BestTakeId).Copy);
     }
 
     [Fact]
-    public async Task UseAllNeverPublishesAnUnacceptedAdvisoryAlternative()
+    public async Task UseAllUsesTheCleanTakeUntilTheUserChoosesTheAdvisoryOne()
     {
         await using var test = new Harness(false, false, VoiceLabTakeRunEnd.Completed);
         test.Runner.Advisory = true;
@@ -110,41 +113,43 @@ public sealed class PaidTakePlaybackTests
         Assert.False(await test.Session.ApplyTakeAsync());
         Assert.Equal(new[] { clean.Id }, test.PublishedIds);
         Assert.Null(test.Generation.Rows[0].AcceptedJoinAdvisory);
-        Assert.True(await test.Generation.UseTakeAnywayAsync(advisory.Id));
+        Assert.True(await test.Generation.SelectTakeAsync(advisory.Id));
         Assert.False(await test.Session.ApplyTakeAsync());
         Assert.Equal(new[] { clean.Id, advisory.Id }, test.PublishedIds);
     }
 
+    /// <summary>Playing an advisory take never selects it; choosing it is one click on its row, which accepts the join.</summary>
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task JoinAdvisoryPlaybackNeverSelectsOrEnablesUse(bool advisoryOnly)
+    public async Task JoinAdvisoryPlaybackNeverSelectsAndChoosingItAcceptsTheJoin(bool advisoryOnly)
     {
         await using var test = new Harness(false, advisoryOnly, VoiceLabTakeRunEnd.Completed);
         test.Runner.Advisory = true;
         await test.GenerateAsync();
         var row = test.Generation.Rows[0];
         Assert.True(row.Selectable);
-        var selected = test.Generation.SelectedTakeId;
-        Assert.NotEqual(row.Id, selected);
-        Assert.False(await test.Generation.SelectTakeAsync(row.Id));
-        await test.Generation.PlayTakeAsync(row.Id);
-        Assert.Equal(row.Id, test.Audition.Snapshot.TakeId);
-        Assert.Equal(selected, test.Generation.SelectedTakeId);
-        Assert.Equal(!advisoryOnly, test.Session.CanAcceptAll);
+        Assert.True(test.Session.CanAcceptAll);
+        if (!advisoryOnly)
+        {
+            var selected = test.Generation.SelectedTakeId;
+            Assert.NotEqual(row.Id, selected);
+            await test.Generation.PlayTakeAsync(row.Id);
+            Assert.Equal(row.Id, test.Audition.Snapshot.TakeId);
+            Assert.Equal(selected, test.Generation.SelectedTakeId);
+            Assert.True(await test.Generation.SelectTakeAsync(row.Id));
+        }
         Assert.Equal(0, test.PublishCalls);
-        Assert.True(await test.Generation.UseTakeAnywayAsync(row.Id));
         var accepted = test.Generation.Selected!;
         Assert.Equal(row.Id, accepted.Id);
         Assert.False(accepted.RequiresJoinAdvisoryAcceptance);
         Assert.True(test.Session.CanAcceptAll);
         Assert.False(test.Editor.CanUndo);
-        Assert.Equal(0, test.PublishCalls);
         Assert.Equal(row.Qa!.JoinSeams, accepted.AcceptedJoinAdvisory!.Seams);
         Assert.True(await test.Generation.SelectTakeAsync(row.Id));
         await test.Generation.PlayTakeAsync(row.Id);
         Assert.Equal(accepted.AcceptedJoinAdvisory, test.Generation.Selected!.AcceptedJoinAdvisory);
-        Assert.Contains("Listen before using.", TakeRowPresentation.From(test.Generation.Selected, test.Generation.BestTakeId).Copy);
+        Assert.Contains(TakeRowPresentation.JoinNote, TakeRowPresentation.From(test.Generation.Selected, test.Generation.BestTakeId).Copy);
         await test.Generation.RejectTakeAsync(row.Id);
         Assert.NotEqual(row.Id, test.Generation.SelectedTakeId);
         Assert.Equal(!advisoryOnly, test.Session.CanAcceptAll);

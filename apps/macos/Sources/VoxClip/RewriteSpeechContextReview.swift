@@ -81,6 +81,10 @@ import VoxClipCore
             "The rewrite or source changed. Review the surrounding sentence again. Nothing was sent."
         case Failure.placementChanged, VoiceLabSpeechContextPlan.Failure.quoteBinding:
             "The complete sentence no longer matches the reviewed text and source range. Nothing was sent. Review it again."
+        case VoiceLabSpeechContextPlan.Failure.tooManyPhrases(let count):
+            "This run has \(count) phrases to voice. Up to \(VoiceLabTakeBatch.maximumRunPhrases) can be voiced in one run, so its whole sentence can't be added. Voice just the changed words or leave this change out. Nothing was sent."
+        case VoiceLabSpeechContextPlan.Failure.budget:
+            "Voicing its whole sentence would re-voice too much of this take: up to \(VoiceLabPatchBudget.maximumVoiceTokens) words, and at most 15% of its words, are voiced in one run with it. Voice just the changed words or leave this change out. Nothing was sent."
         default:
             "Its whole sentence can't fit inside this clip. Other changes and takes are kept. Nothing was sent."
         }

@@ -25,7 +25,6 @@ internal sealed partial class RewritePanel
     private readonly StackPanel takeRecovery = Ui.Stack(6);
     private readonly TextBlock nextPace = Ui.Text("");
     private readonly Dictionary<Guid, (Button Play, Button? Reject)> takeButtons = [];
-    private readonly Dictionary<Guid, Button> advisoryButtons = [];
     private IReadOnlyList<VoiceLabTakeRow> renderedRows = [];
     private Guid? renderedBest;
     private bool applyingTake;
@@ -122,38 +121,13 @@ internal sealed partial class RewritePanel
     {
         if (args.InRecycleQueue || args.Item is not VoiceLabTakeRow row) return;
         var content = TakeRowPresentation.From(row, session.Generation?.BestTakeId, session.Generation?.PhraseNumber ?? 1);
-        if (content.Selectable && !content.JoinAdvisory && session.Generation?.IsBeforeExpression(row.Id) == true)
+        if (content.Selectable && session.Generation?.IsBeforeExpression(row.Id) == true)
             content = content with { Note = "Before expression", BestMatch = false, AutomationName = content.Title + ", " + content.Duration + ", before expression" };
-        args.ItemContainer.Height = content.JoinAdvisory ? double.NaN : 40;
+        args.ItemContainer.Height = 40;
         SetName(args.ItemContainer, content.AutomationName);
         AutomationProperties.SetAutomationId(args.ItemContainer, "Rewrite.Take" + (row.Index + 1));
         var grid = new Grid { Height = 40, ColumnSpacing = 4, Padding = new(0), HorizontalAlignment = HorizontalAlignment.Stretch };
-        if (content.JoinAdvisory)
-        {
-            grid.Height = double.NaN;
-            grid.RowSpacing = 4;
-            grid.Padding = new(0, 4, 0, 4);
-            grid.RowDefinitions.Add(new() { Height = GridLength.Auto });
-            grid.RowDefinitions.Add(new() { Height = GridLength.Auto });
-            var warning = Themed(Ui.Text(content.Copy), TextBlock.ForegroundProperty, "VcStatusWarningBrush");
-            warning.TextWrapping = TextWrapping.Wrap;
-            renderedTakeElements.Add(warning);
-            grid.Children.Add(warning);
-            var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-            var play = new Button { Content = "Play", MinWidth = 32, Height = 32, Padding = new(8, 0, 8, 0), IsTabStop = true };
-            AutomationProperties.SetAutomationId(play, "Rewrite.PlayTake" + (row.Index + 1));
-            play.Click += async (_, _) => { if (session.Generation is { } generation) await generation.PlayTakeAsync(row.Id); };
-            var useAnyway = new Button { Content = "Use anyway", MinHeight = 32, IsTabStop = true };
-            SetName(useAnyway, content.UseAnywayName);
-            ToolTipService.SetToolTip(useAnyway, content.Copy);
-            AutomationProperties.SetAutomationId(useAnyway, "Rewrite.UseTakeAnyway" + (row.Index + 1));
-            useAnyway.Click += async (_, _) => { if (session.Generation is { } generation) await generation.UseTakeAnywayAsync(row.Id); };
-            actions.Children.Add(play); actions.Children.Add(useAnyway);
-            Grid.SetRow(actions, 1); grid.Children.Add(actions);
-            takeButtons[row.Id] = (play, null);
-            advisoryButtons[row.Id] = useAnyway;
-        }
-        else if (!content.Selectable)
+        if (!content.Selectable)
         {
             var failure = Small(content.FailureText!);
             renderedTakeElements.Add(failure);
@@ -215,7 +189,7 @@ internal sealed partial class RewritePanel
         {
             brushes.RemoveAll(binding => renderedTakeElements.Contains(binding.Target));
             renderedTakeElements.Clear();
-            takeButtons.Clear(); advisoryButtons.Clear(); renderedRows = rows; renderedBest = generation.BestTakeId;
+            takeButtons.Clear(); renderedRows = rows; renderedBest = generation.BestTakeId;
             takeList.ItemsSource = rows;
         }
         takeList.SelectedItem = rows.FirstOrDefault(row => row.Id == generation.SelectedTakeId);
@@ -265,9 +239,8 @@ internal sealed partial class RewritePanel
     {
         for (var index = 0; index < renderedRows.Count; index++)
         {
-            var advisory = renderedRows[index].HasJoinAdvisory;
-            if (takeList.ContainerFromIndex(index) is not ListViewItem item || item.ActualHeight <= 0 || !advisory && item.ActualHeight > 40 ||
-                item.Content is not Grid grid || !advisory && grid.ActualHeight > 40 || grid.ActualWidth > item.ActualWidth + 1 ||
+            if (takeList.ContainerFromIndex(index) is not ListViewItem item || item.ActualHeight <= 0 || item.ActualHeight > 40 ||
+                item.Content is not Grid grid || grid.ActualHeight > 40 || grid.ActualWidth > item.ActualWidth + 1 ||
                 AutomationProperties.GetName(item) != TakeRowPresentation.From(renderedRows[index], renderedBest, session.Generation?.PhraseNumber ?? 1).AutomationName)
                 throw new InvalidOperationException("A Rewrite take row exceeds 40 epx, overflows its column, or has a stale accessible name.");
         }
@@ -280,13 +253,11 @@ internal sealed partial class RewritePanel
             if (!takeButtons.TryGetValue(row.Id, out var buttons)) continue;
             var content = TakeRowPresentation.From(row, generation.BestTakeId, generation.PhraseNumber);
             var playing = generation.Audition is { IsPlaying: true } state && state.TakeId == row.Id;
-            buttons.Play.Content = content.JoinAdvisory ? playing ? "Pause" : "Play" : new FontIcon { Glyph = playing ? "\uE769" : "\uE768", FontSize = 12 };
+            buttons.Play.Content = new FontIcon { Glyph = playing ? "\uE769" : "\uE768", FontSize = 12 };
             buttons.Play.IsEnabled = generation.CanPlayTake(row.Id);
             SetName(buttons.Play, playing ? content.PauseName : content.PlayName);
             ToolTipService.SetToolTip(buttons.Play, generation.Audition?.UnavailableReason ?? (content.Selectable && playing ? content.PauseName : content.PlayHelp));
             if (buttons.Reject is { } reject) reject.IsEnabled = !generation.IsRunning;
-            if (advisoryButtons.TryGetValue(row.Id, out var useAnyway))
-                useAnyway.Visibility = generation.ShowsUseAnyway(row.Id) ? Visibility.Visible : Visibility.Collapsed;
         }
     }
 }

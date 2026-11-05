@@ -124,16 +124,20 @@ import VoxClipCore
     /// says "join may sound slightly louder · ▶". True when one was chosen.
     private func acceptJoinOnlyTakes(_ session: RewriteSession) -> Bool {
         guard let plan = session.takePlan, !session.takesBusy else { return false }
+        // Rewrite now chooses such a take itself (ADR-R39); the review still names its join.
+        for phrase in plan.phrases where !phrase.leftOut && phrase.selected?.row.hasJoinAdvisory == true && !joinNotes.contains(phrase.id) {
+            joinNotes.append(phrase.id)
+        }
         for phrase in plan.phrases where !phrase.leftOut {
             if let selected = phrase.selected, selected.row.selectable, !selected.row.requiresJoinAdvisoryAcceptance { continue }
             let candidate = phrase.selected.flatMap { $0.row.selectable && $0.row.requiresJoinAdvisoryAcceptance ? $0 : nil }
                 ?? phrase.takes.first { $0.row.selectable && $0.row.requiresJoinAdvisoryAcceptance }
             guard let take = candidate else { continue }
             var chosen = false
-            session.mutateLipsync(phrase: phrase.id) { chosen = plan.useAnyway(take: take.id, phrase: phrase.id) }
+            session.mutateLipsync(phrase: phrase.id) { chosen = plan.select(take: take.id, phrase: phrase.id) }
             if chosen {
                 pressed = "Make it postable uses phrase \(phrase.id + 1)'s take (join advisory only)"
-                joinNotes.append(phrase.id)
+                if !joinNotes.contains(phrase.id) { joinNotes.append(phrase.id) }
                 session.autoChooseVideo(plan)
                 session.showProposal()
                 return true

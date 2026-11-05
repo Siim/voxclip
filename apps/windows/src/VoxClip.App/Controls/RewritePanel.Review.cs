@@ -173,8 +173,8 @@ internal sealed partial class RewritePanel
             if (session.ReviewFooter.Length > 0) review.Children.Add(Small(session.ReviewFooter));
         }
         if (current.Summary is { } summary) review.Children.Add(Small(summary.Copy));
-        if (current.VoiceHunks.Count > VoiceLabTakeBatch.MaximumWindows)
-            review.Children.Add(Small($"Keep at most {VoiceLabTakeBatch.MaximumWindows} changed passages before generating takes. Your edits are saved."));
+        if (current.VoiceHunks.Count > VoiceLabTakeBatch.MaximumRunPhrases)
+            review.Children.Add(Small(RewriteSession.TooManyPhrasesCopy(current.VoiceHunks.Count)));
         foreach (var child in review.Children) reviewElements.Add(child);
     }
 

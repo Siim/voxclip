@@ -50,6 +50,8 @@ public struct VoiceLabSpeechContextPlan: Sendable, Equatable {
         case placement(VoiceLabGeometryError)
         case staleReview
         case quoteBinding
+        /// The run would have more phrases than one Rewrite run voices (`VoiceLabTakeBatch.maximumRunPhrases`).
+        case tooManyPhrases(count: Int)
     }
 
     public enum Outcome: Sendable, Equatable {
@@ -109,8 +111,10 @@ public struct VoiceLabSpeechContextPlan: Sendable, Equatable {
               selected.count == request.selectedHunkIndices.count, expanding.count == request.expandingHunkIndices.count,
               !expanding.isEmpty, expanding.isSubset(of: selected),
               selected.allSatisfy({ request.reviewHunks.indices.contains($0) }),
-              expanding.allSatisfy({ request.reviewHunks[$0].kind == .voice }),
-              expanding.count + request.reservations.count <= VoiceLabTakeBatch.maximumWindows else { throw Failure.invalidInput }
+              expanding.allSatisfy({ request.reviewHunks[$0].kind == .voice }) else { throw Failure.invalidInput }
+        // A long run is voiced in parts (`VoiceLabTakeBatch.maximumRunPhrases`), so the review is not held to one batch.
+        let count = expanding.count + request.reservations.count
+        guard count <= VoiceLabTakeBatch.maximumRunPhrases else { throw Failure.tooManyPhrases(count: count) }
         let positions = Dictionary(words.enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { first, _ in first })
         guard positions.count == words.count else { throw Failure.invalidInput }
         let originalWords = correctedWords(request.project)
