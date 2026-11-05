@@ -166,7 +166,8 @@ public actor AVExporter: Exporter {
         let source = job.render.sourceURL.standardizedFileURL.resolvingSymlinksInPath()
         guard destination != source else { throw VoxClipError.exportFailed("The export must not overwrite the source") }
         let srtURL = job.writeSRT ? (job.srtURL ?? destination.deletingPathExtension().appendingPathExtension("srt")).standardizedFileURL.resolvingSymlinksInPath() : nil
-        let srtText = srtURL == nil ? nil : (job.render.captionLayout.map { CaptionSubtitles.srt($0) } ?? Self.srt(job.render.captions))
+        let speed = job.render.speed
+        let srtText = srtURL == nil ? nil : (job.render.captionLayout.map { CaptionSubtitles.srt($0, speed: speed) } ?? Self.srt(job.render.captions, speed: speed))
         if let sidecar = srtURL {
             try ExportSafety.validateDestination(sidecar)
             let sidecarPartial = try ExportSafety.partialURL(for: sidecar)
@@ -201,7 +202,7 @@ public actor AVExporter: Exporter {
         let plannedWAVBytes = try plannedEditedAudioURL.map { _ in
             try PCMFile.plannedBytes(frames: job.render.timeline.outputSamples, channels: 2, bits: 32)
         }
-        let estimate = job.render.timeline.duration * (Double(job.render.output.videoBitrate) + 192_000) / 8 * 1.5
+        let estimate = job.render.renderedDuration * (Double(job.render.output.videoBitrate) + 192_000) / 8 * 1.5
         guard estimate.isFinite, estimate > 0, estimate < Double(Int64.max / 4) else {
             throw VoxClipError.diskFull(destination.path)
         }
@@ -244,7 +245,7 @@ public actor AVExporter: Exporter {
         let outputNeeds = preflight.outputNeeds
         progress(ExportProgress(phase: .preparing, fraction: 0))
         let graph = try await builder.build(job.render)
-        defer { withExtendedLifetime((graph.voiceLabLease, graph.contextDemoLease, graph.musicLease)) {} }
+        defer { withExtendedLifetime((graph.voiceLabLease, graph.contextDemoLease, graph.musicLease, graph.clipVoiceLease)) {} }
         guard Self.canUseSourceOnlyVideo(job.render) || graph.videoComposition.customVideoCompositorClass != nil else {
             throw VoxClipError.exportFailed("This export requires the shared frame compositor")
         }
@@ -268,7 +269,8 @@ public actor AVExporter: Exporter {
         let workDirectory = scratch.url.appendingPathComponent("writer", isDirectory: true)
         try FileManager.default.createDirectory(at: workDirectory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         let output = job.render.output
-        let timeRange = CMTimeRange(start: .zero, duration: CMTime(value: job.render.timeline.outputSamples, timescale: Int32(job.render.timeline.sampleRate)))
+        // The rendered length: the edited length divided by the clip's speed (design.md §6.8).
+        let timeRange = CMTimeRange(start: .zero, duration: CMTime(value: job.render.renderedSamples, timescale: Int32(job.render.timeline.sampleRate)))
         guard let videoComposition = graph.composition.copy() as? AVComposition,
               videoComposition.track(withTrackID: graph.videoTrack.trackID) != nil else {
             throw VoxClipError.decodeFailed("Cannot copy export video composition")
@@ -340,13 +342,13 @@ public actor AVExporter: Exporter {
             } else { audioSource = nil }
             let (frames, audioSampleCount) = try await withThrowingTaskGroup(of: (Int, Int64).self) { group in
                 group.addTask {
-                    (0, try await self.pumpVideo(videoSource, duration: job.render.timeline.duration,
-                        frameLimit: Int64((job.render.timeline.duration * output.fps).rounded()),
+                    (0, try await self.pumpVideo(videoSource, duration: job.render.renderedDuration,
+                        frameLimit: Int64((job.render.renderedDuration * output.fps).rounded()),
                         pumps: pumps, started: started, progress: progress))
                 }
                 group.addTask {
                     (1, try await self.pumpAudio(audioSource,
-                        sampleLimit: Int64((job.render.timeline.duration * 48000).rounded()), pumps: pumps))
+                        sampleLimit: Int64((job.render.renderedDuration * 48000).rounded()), pumps: pumps))
                 }
                 var counts: [Int64] = [0, 0]
                 do {
@@ -365,7 +367,7 @@ public actor AVExporter: Exporter {
             activePumps = nil
             progress(ExportProgress(phase: .finalizing, fraction: 1))
             try Task.checkCancellation()
-            writer.endSession(atSourceTime: CMTime(value: job.render.timeline.outputSamples, timescale: Int32(job.render.timeline.sampleRate)))
+            writer.endSession(atSourceTime: CMTime(value: job.render.renderedSamples, timescale: Int32(job.render.timeline.sampleRate)))
             await writer.finishWriting()
             try Task.checkCancellation()
             guard writer.status == .completed else { throw writer.error ?? VoxClipError.exportFailed("Encoder did not finish") }
@@ -409,7 +411,7 @@ public actor AVExporter: Exporter {
             try DiskCapacity.check(rollbackNeeds, provider: capacityProvider)
             try ExportSafety.publishAll(outputs + additionalOutputs, approvals: approvals)
             let elapsed = started.duration(to: .now).components
-            return ExportResult(outputURL: destination, srtURL: srtURL, durationSeconds: job.render.timeline.duration,
+            return ExportResult(outputURL: destination, srtURL: srtURL, durationSeconds: job.render.renderedDuration,
                                 width: output.size.width, height: output.size.height, fps: output.fps, frames: frames,
                                 audioSampleRate: 48000, audioSamples: audioSampleCount,
                                 videoCodec: "h264", encoder: "h264_videotoolbox",
@@ -438,6 +440,7 @@ public actor AVExporter: Exporter {
         request.voiceLab?.prepared.outputPlan.requiresSyntheticRendering != true &&
         request.contextDemo?.placements.isEmpty != false &&
         !request.motionCues.contains(where: { $0.clipID == request.motionClipID && $0.isValid }) &&
+        request.clipControls?.changesPicture != true && request.clipControls?.shape == nil &&
         request.style == nil && request.captionLayout == nil && request.captions.words.isEmpty && request.captions.pages.isEmpty
     }
 
@@ -573,7 +576,7 @@ public actor AVExporter: Exporter {
         }
     }
 
-    static func srt(_ track: CaptionTrack) -> String {
+    static func srt(_ track: CaptionTrack, speed: Double = 1) -> String {
         func timestamp(_ time: Double) -> String {
             let milliseconds = max(0, Int((time * 1000).rounded()))
             return String(format: "%02d:%02d:%02d,%03d", milliseconds / 3600000,
@@ -586,7 +589,7 @@ public actor AVExporter: Exporter {
             let text = !validLines ? page.words.map(\.text).joined(separator: " ") : page.lines.map { line in
                 line.words.map { track.words[$0].text }.joined(separator: " ")
             }.joined(separator: "\n")
-            return "\(index + 1)\n\(timestamp(page.start)) --> \(timestamp(page.end))\n\(text)\n\n"
+            return "\(index + 1)\n\(timestamp(page.start / speed)) --> \(timestamp(page.end / speed))\n\(text)\n\n"
         }.joined()
     }
 
@@ -646,7 +649,8 @@ public actor AVExporter: Exporter {
                                bytes: try VoiceLabAudioRenderer.scratchBytes(input: input)))
         }
         try DiskCapacity.check(needs, provider: capacityProvider)
-        let graph = try await builder.build(request.withoutMusic)
+        // Edited audio is the clip's voice as recorded: 1×, at its own level, without music.
+        let graph = try await builder.build(request.withoutMusic.withoutClipControls)
         defer { withExtendedLifetime((graph.voiceLabLease, graph.contextDemoLease)) {} }
         guard let track = graph.audioTrack else { throw VoxClipError.noAudioTrack }
         let reader = try AVAssetReader(asset: graph.composition)

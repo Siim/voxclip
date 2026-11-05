@@ -66,11 +66,16 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
             guard let source = request.sourceFrame(byTrackID: instruction.sourceTrackID) else {
                 request.finish(with: VoxClipError.decodeFailed("Missing source video frame")); return
             }
-            var image = CIImage(cvPixelBuffer: source).oriented(instruction.orientation)
+            let controls = instruction.request.clipControls
+            // Captions, motion and Voice Lab layers keep edited times; a clip's speed scales the rendered clock.
+            let editedTime = instruction.request.speedTiming.edited(request.compositionTime.seconds)
+            var image = ClipPicture.orient(CIImage(cvPixelBuffer: source).oriented(instruction.orientation), controls: controls)
             var crop = Self.centerCrop(source: image.extent, output: size)
             if instruction.videoZoom > 1 {
+                let anchor = controls?.mapAnchor(x: instruction.videoAnchorX, y: instruction.videoAnchorY)
+                    ?? (x: instruction.videoAnchorX, y: instruction.videoAnchorY)
                 crop = CompositionFrameGeometry.faceCrop(in: image.extent, aspectCrop: crop, scale: instruction.videoZoom,
-                    faceX: instruction.videoAnchorX, faceY: instruction.videoAnchorY)
+                    faceX: anchor.x, faceY: anchor.y)
             }
             image = CompositionFrameGeometry.fill(image, crop: crop, output: size)
             if let correction = instruction.colorCorrection {
@@ -81,7 +86,7 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
                     "inputBiasVector": CIVector(x: correction.bias, y: correction.bias, z: correction.bias, w: 0)])
             }
             for layers in Dictionary(grouping: instruction.lipsyncLayers, by: \.trackID).values {
-                let time = request.compositionTime.seconds
+                let time = editedTime
                 let weighted = layers.map { layer in
                     (layer, LipsyncFrameBlend.weight(time: time, start: layer.output.start.seconds,
                         end: layer.output.end.seconds, fps: instruction.request.output.fps))
@@ -90,7 +95,7 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
                 guard let frame = request.sourceFrame(byTrackID: layer.trackID) else {
                     request.finish(with: LipsyncError.invalidMedia); return
                 }
-                let captured = CIImage(cvPixelBuffer: frame).oriented(layer.orientation)
+                let captured = ClipPicture.orient(CIImage(cvPixelBuffer: frame).oriented(layer.orientation), controls: controls)
                 let replacement = CompositionFrameGeometry.fill(captured,
                     crop: Self.centerCrop(source: captured.extent, output: size), output: size)
                 image = replacement.applyingFilter("CIDissolveTransition", parameters: [
@@ -104,7 +109,7 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
                 image = CompositionFrameGeometry.fill(captured,
                     crop: Self.centerCrop(source: captured.extent, output: size), output: size)
             }
-            let motion = MotionCue.transform(atSourceTime: instruction.request.timeline.sourceTime(request.compositionTime.seconds),
+            let motion = MotionCue.transform(atSourceTime: instruction.request.timeline.sourceTime(editedTime),
                 clipID: instruction.request.motionClipID, cues: instruction.request.motionCues,
                 reduceMotion: instruction.request.forPreview && instruction.request.reduceMotion)
             if motion != .identity {
@@ -112,6 +117,7 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
                     scale: motion.scale, anchorX: motion.anchorX, anchorY: motion.anchorY)
                 image = CompositionFrameGeometry.fill(image, crop: motionCrop, output: size)
             }
+            if let look = controls?.look, look != .original { image = ClipPicture.look(image, look) }
             context.render(image, to: output, bounds: CGRect(origin: .zero, size: size), colorSpace: nil)
             CVBufferSetAttachment(output, kCVImageBufferCGColorSpaceKey, videoColorSpace, .shouldPropagate)
             CVBufferSetAttachment(output, kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_ITU_R_709_2, .shouldPropagate)
@@ -123,7 +129,7 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
 
     private func drawCaptions(_ request: AVAsynchronousVideoCompositionRequest, instruction: RenderInstruction,
                               into output: CVPixelBuffer, generation current: UInt64) {
-        let time = request.compositionTime.seconds
+        let time = instruction.request.speedTiming.edited(request.compositionTime.seconds)
         @Sendable func finishMarked(_ buffer: CVPixelBuffer) {
             guard generation.withLock({ $0 }) == current else { request.finishCancelledRequest(); return }
             do {

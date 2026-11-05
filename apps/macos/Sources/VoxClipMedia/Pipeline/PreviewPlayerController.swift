@@ -48,7 +48,8 @@ final class LeasedPlayerItem: AVPlayerItem {
             observer = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 30), queue: .main) { [weak self] time in
                 MainActor.assumeIsolated {
                     guard let self, let request = self.request, time.isNumeric else { return }
-                    self.editedTime = min(request.timeline.duration, max(0, time.seconds))
+                    // The player runs on the rendered clock; the editor reads 1× edited time (design.md §6.8).
+                    self.editedTime = min(request.timeline.duration, max(0, request.speedTiming.edited(time.seconds)))
                     self.continuation.yield(.time(edited: self.editedTime, source: request.timeline.sourceTime(self.editedTime)))
                     let playing = self.player.rate != 0
                     if self.isPlaying != playing { self.isPlaying = playing; self.continuation.yield(.playing(playing)) }
@@ -81,7 +82,7 @@ final class LeasedPlayerItem: AVPlayerItem {
         }
         try await Task.sleep(for: .milliseconds(150))
         guard current == revision else { return }
-        let sourceTime = old.timeline.sourceTime(player.currentTime().seconds)
+        let sourceTime = old.timeline.sourceTime(old.speedTiming.edited(player.currentTime().seconds))
         let rate = player.rate
         guard try await apply(request, revision: current) else { return }
         try await seek(to: request.timeline.mapTime(sourceTime), exact: true)
@@ -99,7 +100,7 @@ final class LeasedPlayerItem: AVPlayerItem {
         return old.sourceURL == next.sourceURL && old.sourceContentKey == next.sourceContentKey &&
             old.timeline == next.timeline && old.voiceLab == next.voiceLab && old.output == next.output &&
             old.motionCues == next.motionCues && old.motionClipID == next.motionClipID &&
-            old.reduceMotion == next.reduceMotion && old.music == next.music
+            old.reduceMotion == next.reduceMotion && old.music == next.music && old.clipControls == next.clipControls
     }
 
     public func seek(to editedTime: Double, exact: Bool) async throws {
@@ -113,7 +114,7 @@ final class LeasedPlayerItem: AVPlayerItem {
             try Task.checkCancellation()
             let current = revision
             let tolerance = exact ? CMTime.zero : CMTime(seconds: 0.1, preferredTimescale: 600)
-            _ = await player.seek(to: CMTime(seconds: time, preferredTimescale: Int32(request.timeline.sampleRate)), toleranceBefore: tolerance, toleranceAfter: tolerance)
+            _ = await player.seek(to: CMTime(seconds: request.speedTiming.rendered(time), preferredTimescale: Int32(request.timeline.sampleRate)), toleranceBefore: tolerance, toleranceAfter: tolerance)
             guard current == revision else { continue }
             self.editedTime = time
             continuation.yield(.time(edited: time, source: request.timeline.sourceTime(time)))
