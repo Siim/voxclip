@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Mac, ✦ Make it postable now applies the look and speed Claude picks, each with play, Undo and Change chips, and shows the clip's length at that speed; Ask Claude sets a clip's speed when asked for the whole clip and offers "Apply to the whole clip" for part of one; blurs follow a flipped or turned picture, overlays keep their colours under a look, and the bundled sound effects ship with the app.
 - Rewrite prices a phrase the wording fit can't take as written, instead of stopping the whole fit with "invalid input".
 - Rewrite takes work on camera files whose audio runs a few milliseconds past the video, such as DJI recordings.
 - On Mac, ✦ Make it postable on a clip lets Claude decide everything at extra high effort, within the price shown on the button: it cuts fillers and pauses, corrects misheard names, picks captions, zooms and music, suggests a look and a speed, re-voices a few phrases in your voice and writes the post text, then one review lists every decision with play, Undo or Change, the post text with Copy, and Export in the clip style's shapes. One ⌘Z takes it all back. ✦ Make top 3 postable does the best three suggestions, which now rank by score. After a free on-device transcription on drop, Find Clips starts by itself when the AI is free too. Windows follows later.
