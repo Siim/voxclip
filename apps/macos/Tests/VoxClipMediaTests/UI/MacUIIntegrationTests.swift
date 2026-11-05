@@ -57,18 +57,21 @@ extension HeavyMediaTests {
         let own = ["S-own-typed", "S-own-mic", "S-own-mic-misfit"]
         // ✦ Make it postable on one clip and on the top three suggestions (DebugRewriteSmokeMakeIt.swift).
         let makeIt = ["S-make-it", "S-make-top3"]
+        // The use-time voice check blocks a guest's phrase, hears words through road noise, and Make it keeps a blocked
+        // phrase as recorded (DebugRewriteSmokeGuard.swift).
+        let guardScenarios = ["S-guard-blocked", "S-guard-noisy", "S-guard-claude"]
         // The realistic pass only: ✦ Ask Claude on a selection (DebugRewriteSmokeAskClaude.swift) makes no takes, and
         // S-clip-controls exports a clip at 1.25× with the Muted look and checks its length and caption alignment.
         // S-claude-does-it-all drops a video and waits, then Export all (DebugRewriteSmokeClaudeMode.swift); it makes no takes.
         let realisticOnly = lengths == "exact" ? [] : ["S-ask-bleep-blur", "S-ask-overlay", "S-clip-controls", "S-claude-does-it-all"]
-        let names = (1...15).map { "S\($0)" } + own + makeIt + realisticOnly
+        let names = (1...15).map { "S\($0)" } + own + guardScenarios + makeIt + realisticOnly
         let directory = try UIProcessHarness.run(mode: "-rewriteSmoke", name: "rewrite-smoke-\(lengths)",
             arguments: ["-rewriteSmokeLengths", lengths, "-rewriteSmokeOnly", names.joined(separator: ",")],
             acceptNonzeroWithReport: "results.json", deadline: 300)
         defer { UIProcessHarness.cleanTemporary(directory) }
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
         let scenarios = Set(report.compactMap { $0.name.split(separator: " ").first.map(String.init) })
-        let expected: [String] = lengths == "exact" ? ((1...12).map { "S\($0)" } + ["S14", "S15"] + own + makeIt).map { $0 + "-exact" } : names
+        let expected: [String] = lengths == "exact" ? ((1...12).map { "S\($0)" } + ["S14", "S15"] + own + guardScenarios + makeIt).map { $0 + "-exact" } : names
         #expect(scenarios == Set(expected))
         for result in report { #expect(result.passed, Comment(rawValue: result.name)) }
     }
@@ -91,9 +94,9 @@ extension HeavyMediaTests {
         for result in report { #expect(result.passed && result.skipped == nil, Comment(rawValue: result.name)) }
         struct Measurement: Decodable { let width: Double; let minimumWidth: Double; let proposedWidth: Double; let box: CGRect; let header: CGRect; let variant: String; let jobs: [String]; let lipsyncButtons: [String]; let viewOverflow: [String]; let accessibilityOverflow: [String] }
         let measurements = try JSONDecoder().decode([Measurement].self, from: Data(contentsOf: directory.appendingPathComponent("right-column-layout.json")))
-        #expect(measurements.count == 222)
+        #expect(measurements.count == 240)
         let captures = try JSONDecoder().decode([String].self, from: Data(contentsOf: directory.appendingPathComponent("rewrite-captures.json")))
-        #expect(captures.count == 126)
+        #expect(captures.count == 144)
         for name in captures { #expect(FileManager.default.fileExists(atPath: directory.appendingPathComponent(name).path)) }
         #expect(Set(measurements.map(\.width)) == [300, 320, 340, 360, 440, 560])
         for measurement in measurements {
@@ -126,7 +129,7 @@ extension HeavyMediaTests {
             let markers: [String: CGRect]
         }
         let heights = try JSONDecoder().decode([HeightMeasurement].self, from: Data(contentsOf: directory.appendingPathComponent("right-column-heights.json")))
-        #expect(heights.count == 97)
+        #expect(heights.count == 106)
         #expect(Set(heights.map(\.height)) == [322, 422, 522, 622])
         for measurement in heights {
             let viewport = try #require(measurement.scrollFrames.first)

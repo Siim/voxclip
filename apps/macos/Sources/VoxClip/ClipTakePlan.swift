@@ -38,6 +38,10 @@ import VoxClipMedia
         var explicitlySelected = false
         /// Kept as recorded: the phrase's takes stay listed, none is used (automatic fixes' fallback or Keep original words).
         var leftOut = false
+        /// Settled for this Rewrite: the use-time guard refused the phrase's speech (voice-lab §6.9), and no retry can
+        /// change that. Nothing is priced or sent for it again; its row offers Say it myself and Keep as recorded, and Use
+        /// keeps its original words. The value is the stop, said once.
+        var blocked: String?
         /// Takes made before the phrase's expression changed, listed as "Before expression" and never chosen automatically.
         var beforeExpression: Set<UUID> = []
         var videoChoice: VoiceLabVideoMode?
@@ -437,7 +441,7 @@ import VoxClipMedia
 
     #if DEBUG
     func showFixture(_ state: String) {
-        if ["ready", "none-passed", "length-changed", "cancelled", "generating"].contains(state) {
+        if ["ready", "none-passed", "length-changed", "cancelled", "generating", "guard-blocked"].contains(state) {
             let estimate = CostEstimate(provider: "elevenlabs", operation: "textToSpeech", units: Double(phrases.count), unit: "take",
                 usd: Decimal(phrases.count) / 100, basis: "fixture")
             spent = VoiceLabTakeRunQuote.total(of: [estimate], takes: phrases.count)
@@ -462,17 +466,46 @@ import VoxClipMedia
             if state == "cancelled" { phrases[index].status = .stopped("Take 2 stopped.") }
             if state == "none-passed" { phrases[index].status = .failed("These takes didn't sound right. Edit the words or try again.") }
         }
+        // The use-time guard blocked the last phrase, or every phrase: no take was made for it (RewriteSettledPhrases.swift).
+        if state == "guard-blocked" || state == "guard-all-blocked" {
+            let blocked = state == "guard-all-blocked" ? Array(phrases.indices) : Array(phrases.indices.suffix(1))
+            for index in blocked {
+                phrases[index].takes = []
+                block(phrase: index, reason: Self.blockedCopy(.consent(.voiceOwnerMismatch)))
+            }
+        }
+        // A price that failed reading the source (the log's rangeOutsideMedia): nothing was made or sent.
+        if state == "range-outside-media" {
+            for index in phrases.indices { phrases[index].takes = []; phrases[index].selectedID = nil; phrases[index].status = .waiting }
+            report(VoiceLabSourceAudioError.rangeOutsideMedia)
+        }
         if state == "provider-error" { problem = "ElevenLabs rejected the key (401). Your edits are saved." }
         if state == "cost-confirmation" { problem = "VoxClip can't tell what this costs. Check ElevenLabs' pricing." }
     }
     #endif
 
     func prepare() async {
-        await prepareQuote(indices: phrases.map(\.id), decoding: true, candidates: 1)
+        await prepareQuote(indices: voiceableIndices, decoding: true, candidates: 1)
     }
+    /// The phrases a price and a run cover: every phrase not settled as blocked.
+    var voiceableIndices: [Int] { phrases.filter { $0.blocked == nil }.map(\.id) }
+    /// Every phrase is blocked or kept as recorded, with at least one blocked: nothing is left to price.
+    var settledWithBlocks: Bool {
+        phrases.contains { $0.blocked != nil } && phrases.allSatisfy { $0.blocked != nil || $0.leftOut }
+    }
+    /// Settles phrase `index` for this Rewrite (`Phrase.blocked`): its stop is said once and nothing is priced for it again.
+    func block(phrase index: Int, reason: String) {
+        guard phrases.indices.contains(index) else { return }
+        stopAudition()
+        phrases[index].blocked = reason
+        phrases[index].status = .failed(reason)
+        phrases[index].selectedID = nil; phrases[index].videoChoice = nil; phrases[index].explicitlySelected = false
+    }
+    /// Each phrase the guard settles while takes run, for the session to keep it settled in a later plan of this Rewrite.
+    @ObservationIgnored var onBlocked: (@MainActor (Int, String) -> Void)?
 
     func prepareSpeechContext(phrase: Int) async {
-        guard phrases.indices.contains(phrase) else { return }
+        guard phrases.indices.contains(phrase), phrases[phrase].blocked == nil else { return }
         await prepareQuote(indices: [phrase], decoding: true, candidates: 1)
     }
 
@@ -499,7 +532,7 @@ import VoxClipMedia
     func measuredInput(take: UUID) -> VoiceLabTakeInput? { takeInputs[take] }
 
     func prepareAnother(phrase index: Int) async {
-        guard phrases.indices.contains(index), inputs.indices.contains(index) else { return }
+        guard phrases.indices.contains(index), inputs.indices.contains(index), phrases[index].blocked == nil else { return }
         await prepareQuote(indices: [index], decoding: false, candidates: 1)
     }
 
@@ -513,7 +546,7 @@ import VoxClipMedia
     /// Puts a new wording on one phrase and prices a take of it. A wording without the phrase's bridge words can't be
     /// placed or priced: it is refused, and the phrase keeps its words (false).
     @discardableResult func prepareRewording(_ text: String, phrase index: Int) async -> Bool {
-        guard stillCurrent, phrases.indices.contains(index), !generating, !preparing, !publishing, !preparingVideo else { return false }
+        guard stillCurrent, phrases.indices.contains(index), phrases[index].blocked == nil, !generating, !preparing, !publishing, !preparingVideo else { return false }
         if let bridge = bridge(phrase: index), !bridge.keeps(text) { return false }
         phrases[index].audioTags = VoiceLabAudioTags.reanchored(phrases[index].audioTags, from: phrases[index].text, to: text)
         phrases[index].text = text
@@ -687,6 +720,11 @@ import VoxClipMedia
                 }
                 try validate(inputs.map(\.window))
                 try validateContextInputs(inputs)
+                // Every phrase settled as blocked: the inputs serve Say it myself, and there is nothing to price.
+                if indices.isEmpty {
+                    if revision == version { preparing = false; preparationStep = nil }
+                    return
+                }
                 try Self.validateRun(indices.map { inputs[$0] })
                 // A run of more than one batch is priced part by part. The later parts are priced first and release their
                 // quotes, so the first part, which holds its quotes until the approval, is quoted last and freshest.
@@ -777,6 +815,13 @@ import VoxClipMedia
                         try checkCurrent(version)
                         try progress?.finish(window: offset, result: result)
                         if result.end == .cancelled || result.end == .invalidated { throw CancellationError() }
+                        if result.end == .blocked {
+                            // The guard settled this phrase; nothing was sent for it, and the run goes on (voice-lab §6.9).
+                            let reason = Self.blockedCopy(result.failure)
+                            block(phrase: phrase, reason: reason)
+                            onBlocked?(phrase, reason)
+                            continue
+                        }
                         if result.end == .fatal {
                             fatalPhrases.insert(phrase)
                             phrases[phrase].status = .failed(problem.isEmpty ? Self.failureCopy(result) : problem)
@@ -1235,6 +1280,13 @@ import VoxClipMedia
         case .rateLimited, .network, .providerFailure: return "Choose Price a take to send it again."
         default: return nil
         }
+    }
+    /// A blocked phrase's stop, said once on its row (design.md R2 "Not your voice here").
+    static func blockedCopy(_ failure: VoiceLabTakeFailure?) -> String {
+        if case .consent(.speakerMismatch)? = failure {
+            return "There isn't enough speech near this phrase to check that it's your voice. Nothing sent for this phrase."
+        }
+        return (VoiceConsentError.voiceOwnerMismatch.errorDescription ?? "") + " Nothing sent for this phrase."
     }
     private static func failureCopy(_ result: VoiceLabTakeRunResult) -> String {
         switch result.failure ?? result.rows.last?.failure {

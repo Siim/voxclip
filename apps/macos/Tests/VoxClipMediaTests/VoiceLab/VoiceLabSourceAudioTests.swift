@@ -104,9 +104,10 @@ import VoxClipCore
         #expect(result.envelope == VoiceLabTakeProcessing.envelope(whole, sampleRate: rate))
         let tone = try VoiceLabRoomToneSelection.select(items: items, envelope: result.envelope, sourceSampleRate: Double(rate), totalSamples: Int64(frames))
         #expect(tone.sourceStartSample == 400_000)
-        // 6 s around the window, and 1 s around the 0.5 s room-tone run.
+        // 6 s around the window, 1 s around the 0.5 s room-tone run, and the guard's word spans nearest the window
+        // (voice-lab §6.9): 29.5–31.5 s of "a", inside the first region, and 50.7–52.7 s of "b", joined to the second.
         #expect(result.excerpt.totalFrames == frames)
-        #expect(result.excerpt.regions.map { $0.start..<$0.end } == [192_000..<296_000, 392_000..<412_000])
+        #expect(result.excerpt.regions.map { $0.start..<$0.end } == [192_000..<296_000, 392_000..<421_600])
         for region in result.excerpt.regions { #expect(region.samples == Array(whole[region.start..<region.end])) }
         #expect(result.excerpt.regions.reduce(0) { $0 + $1.samples.count } < frames / 3)
         #expect(result.excerpt.samples(0..<rate) == nil && result.excerpt.samples(29 * rate..<32 * rate) != nil)

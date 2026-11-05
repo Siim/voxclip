@@ -129,11 +129,7 @@ public actor VoiceLabTakeRun {
               speaker.threshold == record.speaker.threshold else { throw VoiceConsentError.speakerUnavailable }
         let preflight = try VoiceLabTakeProcessing.preflight(input)
         let resampled = try VoiceLabSourceAudio.resample(input.source, from: Double(input.sourceSampleRate), to: 24_000)
-        let rate = input.sourceSampleRate
-        let center = Int((input.window.startSample + input.window.endSample) / 2)
-        let start = max(0, center - 5 * rate), end = min(input.source.totalFrames, start + 10 * rate)
-        guard let speech = input.source.samples(start..<end) else { throw VoiceLabError.invalidInput }
-        let sourceSpeech = VoiceConsentAudio.resample(Array(speech), rate: rate)
+        let sourceSpeech = try Self.guardSpeech(input)
         let id = UUID()
         var takes: [VoiceLabTakeQuote] = []
         var quotes: [VoiceLabQuote] = []
@@ -159,6 +155,26 @@ public actor VoiceLabTakeRun {
             await client.discardRun(id, quotes: quotes)
             throw error
         }
+    }
+    /// The use-time guard's speech for this patch (voice-lab §6.9), at 16 kHz: the transcript words' own audio nearest the
+    /// patch (`VoiceLabGuardSpeech`), joined, up to 10 s, from the original source. The guard's embedding then runs the same
+    /// VAD and features over it as the enrollment statement's. A transcript with no timed words leaves only the patch's
+    /// own 10 s of source, centred on it.
+    package static func guardSpeech(_ input: VoiceLabTakeInput) throws -> [Float] {
+        let rate = input.sourceSampleRate
+        let selection = VoiceLabGuardSpeech.select(items: input.items, start: input.window.start, end: input.window.end,
+                                                   sampleRate: rate, totalFrames: input.source.totalFrames)
+        let speech: [Float]
+        if selection.ranges.isEmpty {
+            let center = Int((input.window.startSample + input.window.endSample) / 2)
+            let start = max(0, center - 5 * rate), end = min(input.source.totalFrames, start + 10 * rate)
+            guard let raw = input.source.samples(start..<end) else { throw VoiceLabError.invalidInput }
+            speech = Array(raw)
+        } else {
+            guard let joined = selection.samples(from: input.source) else { throw VoiceLabError.invalidInput }
+            speech = joined
+        }
+        return VoiceConsentAudio.resample(speech, rate: rate)
     }
     /// Pins this run's prepared set under a take batch's one approval (voice-lab §8.6 with several hunks, `VoiceLabTakeBatchRun`).
     /// Every quote must still be fresh. The client then holds the set, so it neither expires nor is evicted while the
@@ -401,7 +417,11 @@ public actor VoiceLabTakeRun {
                 catch { return VoiceLabTakeRunResult(rows: rows, end: end(error), failure: failure(error)) }
                 if !short, qa.passed, case .exact = processed.fit { return VoiceLabTakeRunResult(rows: rows, end: .earlyStop) }
             } catch {
-                guard dispatch.started else { return VoiceLabTakeRunResult(rows: rows, end: end(error), failure: failure(error)) }
+                guard dispatch.started else {
+                    // The guard judged this window before anything was sent: no retry changes its verdict, and a batch's
+                    // other windows go on (voice-lab §6.9).
+                    return VoiceLabTakeRunResult(rows: rows, end: Self.guardSettles(error) ? .blocked : end(error), failure: failure(error))
+                }
                 if generated == nil, let decoded = synthesisAccepted.unalignedAudio {
                     // Keep paid PCM even when its timing/segment metadata failed. It is playable, never selectable.
                     generated = decoded
@@ -499,6 +519,12 @@ public actor VoiceLabTakeRun {
         let retired = Array(scratches.values)
         scratches.removeAll(); paidAssets.removeAll()
         for scratch in retired { await scratch.invalidate() }
+    }
+    /// The use-time guard's own refusals, which the same speech always repeats: not the voice owner, or too little of the
+    /// patch speaker's speech to check (`speakerMismatch` from the embedding).
+    static func guardSettles(_ error: any Error) -> Bool {
+        guard let error = error as? VoiceConsentError else { return false }
+        return error == .voiceOwnerMismatch || error == .speakerMismatch
     }
     private func fatal(_ error: any Error) -> Bool {
         if error is VoiceConsentError || error is CancellationError || error is Abort || Task.isCancelled { return true }

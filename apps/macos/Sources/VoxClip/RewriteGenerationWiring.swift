@@ -131,6 +131,12 @@ extension RewriteSession {
                 })
             created = plan
             plan.onFailure = { [weak self] error in self?.logFailure(error, stage: "takes") }
+            // The guard's verdict on a phrase holds for this Rewrite: a later plan never prices it again.
+            applyRememberedBlocks(to: plan)
+            plan.onBlocked = { [weak self, weak plan] phrase, reason in
+                guard let self, let plan else { return }
+                rememberBlocked(phrase: phrase, reason: reason, plan: plan)
+            }
             _ = plan.changeModel(VoiceLabWordingFit.modelID)
             plan.onMeasuredTakesChanged = { [weak self, weak plan] in
                 guard let self, let plan else { return }

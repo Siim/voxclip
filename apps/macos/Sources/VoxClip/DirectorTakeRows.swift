@@ -199,6 +199,7 @@ extension RewriteSession {
     func phraseStatus(_ phrase: ClipTakePlan.Phrase, plan: ClipTakePlan) -> String {
         if autoFix.running, let line = autoFix.lines[phrase.id] { return line }
         if phrase.leftOut { return "Keeps your original words. Its takes stay listed." }
+        if let blocked = blockedStatus(phrase, plan: plan) { return blocked }
         if let reason = stuckReason(phrase, plan: plan) {
             if case .length(_, _, _, _, _, true) = reason { return phrase.takeDetail }
             return Self.stuckSentence(reason, phrase: phrase.id + 1)
@@ -340,7 +341,11 @@ extension ClipTakePlan.Phrase {
                         session.updateAudioTags($0, phrase: phrase)
                     }.frame(maxWidth: .infinity, alignment: .leading)
             }
-            PhraseWordingSection(session: session, plan: plan, phrase: phrase)
+            if phrase.blocked != nil, !phrase.leftOut {
+                BlockedPhraseRow(session: session, plan: plan, phrase: phrase)
+            } else {
+                PhraseWordingSection(session: session, plan: plan, phrase: phrase)
+            }
             HStack(spacing: VCTokens.spacingLabelGap) {
                 ForEach(phrase.takes) { take in
                     if take.row.selectable, !session.takesBusy {
@@ -462,7 +467,7 @@ extension ClipTakePlan.Phrase {
                     }
                 }
             }
-            if phrase.wording == .suggested, !session.takesBusy, session.autoFix.choicesShown,
+            if phrase.wording == .suggested, phrase.blocked == nil, !session.takesBusy, session.autoFix.choicesShown,
                plan.spent.units > 0 || session.acceptedSpeechContext?.targetPhraseID == phrase.id {
                 if let action = session.pricedTakeAction(phrase: phrase.id) {
                     Text(session.takeSendLine).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))

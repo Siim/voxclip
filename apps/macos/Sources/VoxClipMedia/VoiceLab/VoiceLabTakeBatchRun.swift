@@ -49,7 +49,7 @@ public struct VoiceLabTakeBatchRun: Sendable {
     /// one approval. When the window ends the batch (`fatal`, `cancelled` or `invalidated`) or its launch throws, this
     /// window's set and every later window's are discarded before this returns, so nothing more can be sent under the
     /// approval (§8.6: an early end discards the whole unsent remainder; a new run needs a new approval). A window that
-    /// completes or stops early leaves the later windows approved. A batch that is not this run's is `consentRequired`.
+    /// completes, stops early or is blocked by the use-time guard leaves the later windows approved. A batch that is not this run's is `consentRequired`.
     public func execute(_ batch: VoiceLabTakeBatch, window index: Int,
                         progress: @escaping @Sendable ([VoiceLabTakeRow]) async -> Void = { _ in },
                         started: @escaping @Sendable () async throws -> Void = {}) async throws -> VoiceLabTakeRunResult {
@@ -62,7 +62,7 @@ public struct VoiceLabTakeBatchRun: Sendable {
             throw error
         }
         switch result.end {
-        case .completed, .earlyStop: break
+        case .completed, .earlyStop, .blocked: break
         case .cancelled, .invalidated, .fatal: await discard(from: index)
         }
         return result

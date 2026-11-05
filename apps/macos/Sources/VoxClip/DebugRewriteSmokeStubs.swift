@@ -383,12 +383,19 @@ final class RewriteSmokeHTTP: URLProtocol, @unchecked Sendable {
     }
 }
 
-/// The voice check's embedder: every take is the speaker's own voice.
+/// The voice check's embedder. The smoke's speaker talks in a 120 Hz tone, as its takes do; a window that crosses zero
+/// more than 320 times a second is someone else: a guest's 200 Hz words (`Fixture.guestSentence`) or road noise between
+/// the words (`Fixture.roadNoise`). Every other window is the voice owner.
 actor RewriteSmokeSpeaker: SpeakerEmbedder {
     nonisolated let modelID = "fixture-calibrated"
     nonisolated let dimension = 2
     func voicedSamples(_ pcm16k: [Float]) async throws -> [Float] { pcm16k }
-    func embed(_ pcm16k: [Float]) async throws -> [Float] { [1, 0] }
+    func embed(_ pcm16k: [Float]) async throws -> [Float] {
+        var crossings = 0
+        for index in pcm16k.indices.dropFirst() where (pcm16k[index - 1] < 0) != (pcm16k[index] < 0) { crossings += 1 }
+        let seconds: Double = Double(max(1, pcm16k.count)) / 16_000
+        return Double(crossings) / seconds > 320 ? [0, 1] : [1, 0]
+    }
 }
 
 struct RewriteSmokeKeys: KeyProvider {

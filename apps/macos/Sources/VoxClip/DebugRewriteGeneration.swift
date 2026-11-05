@@ -10,7 +10,7 @@ private struct RewriteGenerationFixtureKeys: KeyProvider {
 @MainActor enum DebugRewriteGeneration {
     static let states = ["no-voice", "ready", "generating", "provider-error", "none-passed", "length-changed", "cost-confirmation", "cancelled",
         "lipsync-idle", "lipsync-first-use", "lipsync-running", "lipsync-done", "lipsync-missing-key", "lipsync-failed", "lipsync-cancelled", "lipsync-waiting",
-        "waiting", "all-failed", "fixing", "fixed", "kept-original"]
+        "waiting", "all-failed", "fixing", "fixed", "kept-original", "guard-blocked", "guard-all-blocked", "range-outside-media"]
     /// The automatic-fix states (RewriteAutoFix.swift) and the fixture take state each starts from.
     private static let autoFixBase = ["all-failed": "none-passed", "fixing": "none-passed", "fixed": "ready", "kept-original": "none-passed"]
     static var variants: [String] { states.map { "rewrite-takes-" + $0 } }
@@ -51,6 +51,10 @@ private struct RewriteGenerationFixtureKeys: KeyProvider {
             }
             session.takePlanOrdinals = session.changes.indices.filter { session.changes[$0].hunk.kind != .voice || session.includedVoice.contains($0 + 1) }.map { $0 + 1 }
             session.takePlan = plan
+            for phrase in plan.phrases {
+                guard let reason = phrase.blocked else { continue }
+                for ordinal in session.takePhraseOrdinals(phrase) { session.guardBlocked[ordinal] = reason }
+            }
             if autoFixBase[state] != nil {
                 session.autoFix.armed = true; session.autoFix.plan = plan
                 session.autoFix.allowance = RewriteAutoFixState.minimumAllowance

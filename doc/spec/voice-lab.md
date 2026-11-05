@@ -973,12 +973,19 @@ Mac Make Takes pins the observed creator key and region through discovery, quote
 
 Before generating anything with the clone for a project, run the guard:
 
-- **Patch mode:** embed up to 10 s of the project's speech nearest the patch.
+- **Patch mode:** embed the transcript words' own audio nearest the patch, from the original source:
+  - Only word spans (`kind == word`) count, and each word gives at most its 2 s nearest the patch.
+  - The spans are joined in source order, up to 10 s, with no silence, room tone or noise between them.
+  - The selection widens outward word by word from the patch.
+  - Where the transcript labels speakers, only the patch speaker's words count: first that speaker's turn around the patch, then their other turns by distance. Another speaker's words are never taken.
+  - A transcript with no timed words gives the patch's own 10 s of source, centred on it.
 - **Voice changer:** embed the first 30 s of speech in the range.
 
-The cosine against the record's embedding must be ≥ τ. Otherwise block with "This doesn't sound like the voice owner. Voice Lab is only for your own videos." The default build has no override.
+The embedding runs the same VAD, features and 3 s windows as the enrollment statement's. The cosine against the record's embedding must be ≥ τ. Otherwise block with "This doesn't sound like the voice owner. Voice Lab is only for your own videos." The default build has no override.
 
-The result is cached per (project `contentKey`, `recordId`).
+Too little speech to embed blocks the same way, with "There isn't enough speech near this phrase to check that it's your voice." Either block happens before anything is sent. It settles the phrase for the Rewrite: the run's other phrases go on, and nothing prices that phrase again (design.md R2 "Not your voice here").
+
+The result is cached per (project `contentKey`, the guard's speech, `recordId`). The same phrase is not embedded twice, but a pass on one phrase never covers another, so a guest's phrase in the creator's video stays blocked ([ADR-R40](../adr/R40-guard-hears-the-patch-speech.md)).
 
 ### 6.10 Deletion
 

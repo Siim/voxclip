@@ -264,6 +264,12 @@ import VoxClipCore
         var rewrites: [RewriteSmokeReply]
         var fits: [RewriteSmokeFit] = []
         var voice = RewriteSmokeVoiceScript()
+        /// The sentence (0-based) a guest speaks, in a 200 Hz voice the scripted voice check hears as someone else; the
+        /// transcript then labels every word's speaker.
+        var guestSentence: Int? = nil
+        /// Broadband noise between the words, as a car's road noise, quiet enough that the gaps still read as pauses: the
+        /// voice check hears it as someone else.
+        var roadNoise = false
     }
     nonisolated static let baseScript = "Today I want to show you how cloud tools edit video. First we record a short clip in one take. "
         + "Then we fix the words we got wrong. We keep the pauses that sound natural and remove the ones that drag. "
@@ -276,7 +282,7 @@ import VoxClipCore
         project.id = UUID().uuidString.lowercased()
         project.voiceLab.segments = []; project.voiceLab.assets = []
         project.edits = ProjectEdits()
-        let recording = try await recording(script: fixture.script, root: root)
+        let recording = try await recording(script: fixture.script, root: root, guestSentence: fixture.guestSentence, roadNoise: fixture.roadNoise)
         project.media.source.absolutePath = recording.movie.path
         project.media.source.relativePath = recording.movie.lastPathComponent
         project.media.source.sizeBytes = recording.sizeBytes
@@ -304,15 +310,21 @@ import VoxClipCore
     /// same movie instead of synthesizing, hashing and keying it again.
     private static var recordings: [String: Recording] = [:]
 
-    static func recording(script: String, root: URL) async throws -> Recording {
-        let cacheKey = root.standardizedFileURL.path + "\n" + script
+    static func recording(script: String, root: URL, guestSentence: Int? = nil, roadNoise: Bool = false) async throws -> Recording {
+        let cacheKey = root.standardizedFileURL.path + "\n" + script + "\n\(guestSentence ?? -1)\n\(roadNoise)"
         if let cached = recordings[cacheKey], FileManager.default.fileExists(atPath: cached.movie.path) { return cached }
         var words: [TimedWord] = []
+        var guestWords: Set<String> = []
         var time = 0.6
+        var sentence = 0
         for (index, text) in script.split(separator: " ").enumerated() {
             let length: Double = 0.1 + 0.045 * Double(text.count)
-            words.append(TimedWord(id: "s\(index)", text: String(text), start: time, end: time + length))
+            let guest = guestSentence == sentence
+            let speaker: String? = guestSentence == nil ? nil : guest ? "guest" : "owner"
+            words.append(TimedWord(id: "s\(index)", text: String(text), start: time, end: time + length, speaker: speaker))
+            if guest { guestWords.insert("s\(index)") }
             time += length + (text.hasSuffix(".") ? 0.6 : text.hasSuffix(",") ? 0.25 : 0.07)
+            if text.hasSuffix(".") { sentence += 1 }
         }
         let duration = (time + 1.0).rounded(.up)
         let rate = 24_000
@@ -321,11 +333,19 @@ import VoxClipCore
             let seconds: Double = Double(index) / Double(rate)
             pcm[index] = Float(0.001 * sin(2 * Double.pi * 60 * seconds))
         }
+        if roadNoise {
+            var state: UInt32 = 0x9E37_79B9
+            for index in pcm.indices {
+                state = state &* 1_664_525 &+ 1_013_904_223
+                pcm[index] = Float(Int(state >> 16) % 2_001 - 1_000) / 1_000 * 0.004
+            }
+        }
         for word in words {
             let first = Int(word.start * Double(rate)), last = min(pcm.count, Int(word.end * Double(rate)))
+            let pitch: Double = guestWords.contains(word.id) ? 200 : 120
             for index in first..<last {
                 let seconds: Double = Double(index) / Double(rate)
-                pcm[index] = Float(0.1 * sin(2 * Double.pi * 120 * seconds))
+                pcm[index] = Float(0.1 * sin(2 * Double.pi * pitch * seconds))
             }
         }
         // The source is a movie, as a recording is: Cut and Match video prepare their render offscreen from its frames.
@@ -1253,7 +1273,7 @@ import VoxClipCore
             // A take whose only issue is its join is chosen with it (ADR-R39): no phrase needs its own click.
             try await harness.finish()
         },
-    ] + ownTakeScenarios + makeItScenarios + askClaudeScenarios + clipControlsScenarios + toneScenarios + claudeModeScenarios }
+    ] + ownTakeScenarios + guardScenarios + makeItScenarios + askClaudeScenarios + clipControlsScenarios + toneScenarios + claudeModeScenarios }
 
     /// S16's take: the base script twelve times over, about nine minutes.
     nonisolated static let longTakeScript = Array(repeating: baseScript, count: longTakeRepeats).joined(separator: " ")

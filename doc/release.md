@@ -279,7 +279,7 @@ With no path it builds the DEBUG app first. It needs no unlocked console, no key
 
 The fixture is a small synthetic recording: 160×90 H.264 with 24 kHz LPCM audio, written at run time into the temporary data folder. That lets Cut and Match video prepare offscreen as they do for a real clip. Takes are as long as the fixture's speaker says their words, plus a per-scenario offset. A second pass runs every scenario again with takes that fill their slots exactly (`S4-exact`). `--lengths` picks one pass, and both run by default (about 3 minutes).
 
-It drives the real Rewrite session through fourteen scenarios using only clicks a user could make:
+It drives the real Rewrite session through these scenarios using only clicks a user could make:
 
 - S1: happy path.
 - S2: two nearby changes refused as too close.
@@ -295,6 +295,9 @@ It drives the real Rewrite session through fourteen scenarios using only clicks 
 - S12: Get Price while the estimate holds one change back.
 - S13: the happy path with takes that fill their slots exactly.
 - S14: every Eleven v4 reply has a timing quirk (a trailing newline, another first word): both phrases are timed, one from its own word check, and voiced.
+- S-guard-blocked: a guest speaks phrase 2 of 3. The voice check blocks it once (G1: the footer offers Use or Choose Take, the row offers ● Say it myself and Keep as recorded), phrases 1 and 3 are voiced, and nothing prices phrase 2 again (G2).
+- S-guard-noisy: road noise between every word. The voice check hears the words only, and both phrases are voiced (G3: no block).
+- S-guard-claude: ✦ Make it postable on a sentence a guest speaks. The phrase is kept as recorded with no click, nothing is spent, and the run is ready to export (G4).
 - S16: a nine-minute full take with 36 changes: one price and one approval, every phrase voiced part by part and applied. `MacUIIntegrationTests/rewriteSmokeLongTake` runs it in its own process.
 
 A take whose only issue is a join advisory is chosen automatically (ADR-R39), so no scenario clicks Use anyway: S3-exact, S14, S15 and S16 once did. The Windows twin (`RewriteSmokeTests`) runs S17, its twin of S16: twelve phrases in three parts, one approval, each later part quoted again at the approved price.

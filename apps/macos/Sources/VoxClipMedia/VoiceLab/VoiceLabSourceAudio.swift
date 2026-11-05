@@ -55,6 +55,11 @@ public enum VoiceLabSourceAudio {
         else { envelope = try await rewriteEnvelope(source: source, frames: frames, sampleRate: sampleRate) }
         let total = Int(frames)
         var ranges = [nearWindow(window, incomingSilence: incomingSilence, outgoingSilence: outgoingSilence, total: total, rate: sampleRate)]
+        // The use-time guard's words nearest the patch (voice-lab §6.9), read in a few spans.
+        let guardSpeech = VoiceLabGuardSpeech.select(items: items, start: window.start, end: window.end, sampleRate: sampleRate, totalFrames: total)
+        for cover in guardSpeech.covers(joiningWithin: 5 * sampleRate) {
+            ranges.append(aligned(cover.lowerBound, cover.upperBound, total: total, rate: sampleRate))
+        }
         // A search that finds no run leaves the refusal to the take run's own preflight, which repeats it.
         if let tone = try? VoiceLabRoomToneSelection.select(items: items, envelope: envelope, sourceSampleRate: Double(sampleRate), totalSamples: frames,
             excludeDigitalSilence: VoiceLabRoomToneSelection.excludeDigitalSilence(items: items, envelope: envelope,
@@ -104,7 +109,8 @@ public enum VoiceLabSourceAudio {
     /// lends (§8.9.2), which has no limit of its own, and staging reads the lead, tail and seam handles around the widened
     /// window. So each side reaches past everything its seam can borrow, up to the 290 s a staged take holds, by 6 s more,
     /// which holds the 3 s loudness neighbourhood, the half-second staging lead and tail and the seam handles with room to
-    /// spare for the resampler. The range also holds the 10 s speaker-check span, which starts 5 s before the window's centre.
+    /// spare for the resampler. The range also holds the 10 s span that starts 5 s before the window's centre: the Windows
+    /// guard's span, which the shared region vectors pin, and the Mac guard's fallback for a transcript with no timed words.
     static func nearWindow(_ window: VoiceLabWindow, incomingSilence: Double?, outgoingSilence: Double?, total: Int, rate: Int) -> Range<Int> {
         let start = Int(clamping: window.startSample), end = Int(clamping: window.endSample)
         func lendable(_ seam: VoiceLabSeamPlacement, _ silence: Double?) -> Int {

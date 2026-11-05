@@ -188,7 +188,8 @@ extension RewriteSession {
         }
         if wordingFit.completed || wordingFit.stopped || !wordingFit.problem.isEmpty { cards.insert(.wordingFit, at: 0) }
         // The fit's own result, before any take: once takes are paid the takes footer says what Use waits for.
-        if wordingFit.completed, !hasPaidTakes, blockedVoiceOrdinals.isEmpty, takePlanFailure == nil,
+        if wordingFit.completed, !hasPaidTakes, blockedVoiceOrdinals.isEmpty, takePlanFailure == nil, guardBlocked.isEmpty,
+           takePlan?.phrases.contains(where: { $0.blocked != nil }) != true,
            includedVoice.allSatisfy({ voiceReview($0)?.timing?.fits == true }) {
             footer.footer.note = "\(includedVoice.count) phrases fit · \(wordingFit.kept.count) kept as recorded"
         }
@@ -198,6 +199,8 @@ extension RewriteSession {
         if review != nil, !problem.isEmpty { cards.append(.callout(problem)) }
         if (footer.takes || surroundingSentenceOrdinal != nil), takeRowsShown {
             cards = blockedVoiceOrdinals.isEmpty ? [.takes] : [.changes(set), .takes]
+            // The guard blocked every phrase: the stop once, at the top, with Say it myself and Keep as recorded.
+            if let plan = takePlan, let steps = everyPhraseBlockedSteps(plan) { cards.insert(.nextSteps(steps), at: 0) }
             let fixing = autoFix.running ? autoFix.lines.sorted { $0.key < $1.key }.map(\.value) : []
             if !fixing.isEmpty { cards.append(.nextSteps(NextSteps(id: "autofix", line: fixing.joined(separator: "\n")))) }
             cards += withReaskNotice(stuckSteps()).map(PanelCard.nextSteps)
@@ -344,17 +347,20 @@ extension RewriteSession {
                 let cloned = takePlan.phrases.contains { $0.selected?.row.selectable == true && $0.selected?.source == .clonedVoice }
                 let label = cloned ? "Exports show AI MODIFIED on the video. The post disclosure is optional."
                     : "Your own take is used as recorded: no AI label unless you add lip sync."
-                let note = [waitingTakesLine, all == nil ? label : "Uploads video + new audio to fal.ai (sync-3)."].compactMap { $0 }.joined(separator: "\n")
+                let note = [waitingTakesLine, blockedUseLine(takePlan), all == nil ? label : "Uploads video + new audio to fal.ai (sync-3)."].compactMap { $0 }.joined(separator: "\n")
                 return PanelFooter(note: note, link: all,
                     primary: PanelAction(id: "useTakes", title: title) { [weak self] in self?.useTake() })
             }
             if let blocker = takePlan.acceptanceBlocker { return PanelFooter(note: blocker + " " + takeSpendLine) }
+            // Nothing left to price (every phrase blocked or kept as recorded): the footer finishes the Rewrite.
+            if takePlan.settledWithBlocks, !takePlan.preparing { return settledFooter(takePlan) }
             if takePlan.spent.units > 0 { return takesNextStep(takePlan) }
             if let action = pricedTakeAction() {
                 return PanelFooter(note: [takeSendLine, autoFixAllowanceLine].compactMap { $0 }.joined(separator: "\n"), link: keepAll, primary: action)
             }
+            if let settled = settledSourceFooter(takePlan, keepAll: keepAll) { return settled }
             return PanelFooter(note: takePlan.problem.isEmpty ? "Prepare a fresh price to make takes." : takePlan.problem,
-                link: keepAll, primary: PanelAction(id: "prepareTakes", title: Self.priceTitle(includedVoice.count)) { [weak self] in self?.makeTakes() })
+                link: keepAll, primary: PanelAction(id: "prepareTakes", title: Self.priceTitle(priceableVoiceCount)) { [weak self] in self?.makeTakes() })
         }
         if let parts = replyParts[voice.ordinal], ownProposal?[voice.ordinal]?.parts != parts {
             return PanelFooter(note: "Takes are made from the AI's words. Rewrite again to make takes of an edited change.", link: keepAll)
@@ -365,7 +371,7 @@ extension RewriteSession {
                 let amount = VoiceLabCostPresentation.format(usd)
                 return "\nTakes " + (amount.hasPrefix("<") ? amount : "≈ " + amount) + " on ElevenLabs."
             } ?? ""
-            return PanelFooter(note: unpaid + estimate, link: keepAll, primary: PanelAction(id: "makeTakes", title: Self.priceTitle(includedVoice.count)) { [weak self] in self?.makeTakes() })
+            return PanelFooter(note: unpaid + estimate, link: keepAll, primary: PanelAction(id: "makeTakes", title: Self.priceTitle(priceableVoiceCount)) { [weak self] in self?.makeTakes() })
         }
         if generation.voices.isEmpty {
             let make = PanelAction(id: "makeVoice", title: "Make Your Voice") { [weak self] in
@@ -374,7 +380,7 @@ extension RewriteSession {
             return PanelFooter(note: unpaid + " Next: make your voice from this \(task.words.noun). Once.", link: keepAll, primary: make)
         }
         return PanelFooter(note: unpaid + " " + takeSendLine, link: keepAll,
-            primary: PanelAction(id: "prepareTakes", title: Self.priceTitle(includedVoice.count)) { [weak self] in self?.makeTakes() })
+            primary: PanelAction(id: "prepareTakes", title: Self.priceTitle(priceableVoiceCount)) { [weak self] in self?.makeTakes() })
     }
 
     /// The footer once takes were made and none can be used yet (design.md R2): it always names the next step. A phrase
@@ -391,6 +397,7 @@ extension RewriteSession {
             let verb = line.contains("wording") || line.contains("words") ? "is being reworded…" : "is being fixed…"
             return PanelFooter(note: "Phrase \(phrase + 1) \(verb)\n" + spend)
         }
+        if plan.settledWithBlocks { return settledFooter(plan) }
         if let stuck = plan.phrases.first(where: { !$0.leftOut && stuckReason($0, plan: plan) != nil }) {
             return PanelFooter(note: "Fix phrase \(stuck.id + 1) above.\n" + spend)
         }
@@ -445,14 +452,14 @@ extension RewriteSession {
             return PanelFooter(note: "Checking takes…\n" + spend)
         }
         // Every remaining state names its own control (house rule: no advice without the action that follows it).
-        if let unsent = plan.phrases.first(where: { !$0.leftOut && $0.takes.isEmpty }) {
+        if let unsent = plan.phrases.first(where: { !$0.leftOut && $0.blocked == nil && $0.takes.isEmpty }) {
             let phrase = unsent.id
             return PanelFooter(note: "Phrase \(phrase + 1) has no take yet.\n" + spend,
                 primary: PanelAction(id: "priceTake.\(phrase)", title: "Price a take for phrase \(phrase + 1)") { [weak self] in
                     self?.priceAnotherTake(phrase: phrase)
                 })
         }
-        if let open = plan.phrases.first(where: { !$0.leftOut && $0.selected == nil }) {
+        if let open = plan.phrases.first(where: { !$0.leftOut && $0.blocked == nil && $0.selected == nil }) {
             let phrase = open.id
             return PanelFooter(note: "Phrase \(phrase + 1) has no take to use.\n" + spend,
                 primary: PanelAction(id: "keepOriginal.\(phrase)", title: "Keep original words for phrase \(phrase + 1)") { [weak self] in

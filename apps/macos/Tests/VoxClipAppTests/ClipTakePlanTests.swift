@@ -1165,8 +1165,14 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         ClipTakeHTTP.state.withLock { $0.failOwner = true }
         await fixture.plan.prepare(); await fixture.plan.start(approved: true)
         #expect(ClipTakeHTTP.state.withLock { $0.texts.isEmpty && $0.qa == 0 })
-        #expect(fixture.plan.phrases[0].status == .failed(RewriteSession.refusal(VoiceConsentError.voiceOwnerMismatch)),
+        // The guard's refusal settles the phrase (voice-lab §6.9): said once, nothing priced for it again, no run-level problem.
+        let stop = ClipTakePlan.blockedCopy(.consent(.voiceOwnerMismatch))
+        #expect(stop.hasPrefix(RewriteSession.refusal(VoiceConsentError.voiceOwnerMismatch)) && stop.hasSuffix("Nothing sent for this phrase."))
+        #expect(fixture.plan.phrases[0].status == .failed(stop) && fixture.plan.phrases[0].blocked == stop,
                 "\(fixture.plan.phrases[0].takes.map { String(describing: $0.row.failure) })")
+        #expect(fixture.plan.problem.isEmpty && fixture.plan.voiceableIndices.isEmpty && fixture.plan.settledWithBlocks)
+        await fixture.plan.prepareAnother(phrase: 0)
+        #expect(fixture.plan.approvalID == nil && ClipTakeHTTP.state.withLock { $0.texts.isEmpty && $0.qa == 0 })
     }
 
     @Test func stoppingQuotePreparationDrainsItBeforeTheNextQuote() async throws {
