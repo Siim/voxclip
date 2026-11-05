@@ -144,6 +144,17 @@ public enum VoiceLabSourceAudio {
     /// handed to `body` one chunk at a time. A remainder shorter than 20 ms joins the chunk before it.
     private static func decodeMono(source: URL, range: Range<Int64>, sampleRate: Int,
                                    planningEnvelope: Bool = false, _ body: ([Float]) -> Void) async throws {
+        // Cameras (DJI among them) write an audio track a few ms longer than the container. The project's duration is the
+        // audio track's end, but the reader stops at the container's: read up to it and give the missing tail as silence.
+        let readable = try await readableFrames(source: source, sampleRate: sampleRate)
+        let tail = containerTail(range: range, readableFrames: readable.container, trackFrames: readable.track, sampleRate: sampleRate)
+        if tail.missing > 0 {
+            if !tail.decoded.isEmpty {
+                try await decodeMono(source: source, range: tail.decoded, sampleRate: sampleRate, planningEnvelope: planningEnvelope, body)
+            }
+            body([Float](repeating: 0, count: Int(tail.missing)))
+            return
+        }
         let chunkSamples: Int = decodeChunkFrames(sampleRate: sampleRate)
         let chunkFrames: Int64 = Int64(chunkSamples)
         let trailingSamples: Int = (sampleRate + 49) / 50
@@ -167,6 +178,32 @@ public enum VoiceLabSourceAudio {
             body(chunk)
             start = end
         }
+    }
+
+    /// The container's length and the audio track's end, in frames at `sampleRate`. The reader reads no further than the
+    /// container, even where the audio track claims a few ms more.
+    private static func readableFrames(source: URL, sampleRate: Int) async throws -> (container: Int64, track: Int64) {
+        let asset = AVURLAsset(url: source)
+        let duration = try await asset.load(.duration)
+        guard duration.isNumeric, duration.seconds.isFinite, duration.seconds > 0 else { return (.max, .max) }
+        let container = Int64((duration.seconds * Double(sampleRate)).rounded(.down))
+        guard let track = try await MediaSupport.audioTrack(in: asset) else { return (container, container) }
+        let end = try await track.load(.timeRange).end
+        guard end.isNumeric, end.seconds.isFinite else { return (container, container) }
+        return (container, Int64((end.seconds * Double(sampleRate)).rounded()))
+    }
+
+    /// The part of `range` the reader can decode, and how many frames are given as silence: only frames the audio track
+    /// claims past the container's end (a camera's rounding, e.g. DJI audio 348.224 s in a 348.198 s container), at most
+    /// 100 ms. A range past the audio track's own end is not padded; the reader's range check refuses it.
+    static func containerTail(range: Range<Int64>, readableFrames: Int64, trackFrames: Int64, sampleRate: Int) -> (decoded: Range<Int64>, missing: Int64) {
+        guard range.upperBound > readableFrames, range.upperBound <= trackFrames else { return (range, 0) }
+        let missing = range.upperBound - max(range.lowerBound, readableFrames)
+        guard missing <= Int64(sampleRate / 10) else { return (range, 0) }
+        let decodedEnd = max(range.lowerBound, readableFrames)
+        // The decoded part must still meet the 20 ms chunk minimum; a sliver shorter than that is silence too.
+        if decodedEnd - range.lowerBound < Int64((sampleRate + 49) / 50) { return (range.lowerBound..<range.lowerBound, Int64(range.count)) }
+        return (range.lowerBound..<decodedEnd, missing)
     }
 
     /// 280 s of frames, or fewer where that much PCM16 would reach the 50,000,000-byte limit `conversionChunk` enforces
