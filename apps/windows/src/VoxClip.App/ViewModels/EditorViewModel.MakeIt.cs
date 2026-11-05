@@ -86,7 +86,7 @@ public sealed partial class EditorViewModel
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, ClipAutopilotLimits> makeItLimits = new(StringComparer.Ordinal);
 
     /// <summary>The click's upfront cap (design §6.7): the voice for up to the planner's rewrite limit on this clip's length, first
-    /// takes plus the same again for automatic fixes. Windows generates no music, so the voice is all. Null when nothing can cost
+    /// takes plus the same again for automatic fixes. A generated track is made only from what is left of it (free tracks come first). Null when nothing can cost
     /// anything: rewording is off, or no voice can be made.</summary>
     public decimal? MakeItCap(string clipId)
     {
@@ -349,7 +349,7 @@ public sealed partial class EditorViewModel
     }
 
     /// <summary>Applies a plan: cuts, corrections, captions, look, speed, hook and post text in one change; then each rewrite in the
-    /// creator's voice. Zooms and music are notes: Windows renders neither yet. Every step stops early once the run is cancelled.</summary>
+    /// creator's voice; then the music. Zooms are notes: Windows renders none yet. Every step stops early once the run is cancelled.</summary>
     private async Task ApplyPlanAsync(ClipAutopilotPlan plan, MakeItRun run, MakeItServices services)
     {
         IReadOnlyList<ClipAutopilotOperation> operations;
@@ -379,7 +379,7 @@ public sealed partial class EditorViewModel
         {
             MakeItRow? row;
             MakeItInverse? inverse;
-            try { (inverse, row) = MakeItStep(operation, plan, ref next, style); }
+            try { (inverse, row) = MakeItStep(operation, plan, run.ClipId, ref next, style); }
             catch (Exception exception) when (exception is VoxClipException or VoiceLabException) { continue; }
             if (inverse is not null) run.Inverses[operation.Id] = inverse;
             if (operation.Decision == ClipAutopilotDecision.Hook) hookRow = row;
@@ -404,11 +404,14 @@ public sealed partial class EditorViewModel
                 MakeItNotify();
             }
         }
-        // Windows renders no zoom and no background music yet: the review names Claude's choice and nothing is applied.
-        var zooms = operations.Count(operation => operation.Decision == ClipAutopilotDecision.Zoom);
-        if (zooms > 0) rows.Add(new("zooms", $"Claude suggests {zooms} {(zooms == 1 ? "zoom" : "zooms")}") { Kind = MakeItRowKind.Note, Detail = "Zooms render on the Mac for now." });
-        if (operations.FirstOrDefault(operation => operation.Action is ClipAutopilotAction.Music) is { Action: ClipAutopilotAction.Music music })
-            rows.Add(new("music", $"Claude suggests music “{music.Cue.Picked.Title}”") { Kind = MakeItRowKind.Note, Detail = "Background music renders on the Mac for now." });
+        // "Picking music…": the plan's mood in the Music section, the first free track, or a generated one within the cap (design §6.7 step 4).
+        if (style.Music && !MakeItStopped(run) && operations.FirstOrDefault(operation => operation.Action is ClipAutopilotAction.Music) is { Action: ClipAutopilotAction.Music music })
+        {
+            run.Line("Picking music…");
+            MakeItNotify();
+            rows.Add(await MusicStepAsync(music.Cue, run));
+            MakeItNotify();
+        }
         if (hookRow is not null) rows.Add(hookRow);
         for (var index = 0; index < plan.Questions.Count; index++)
         {
@@ -426,8 +429,8 @@ public sealed partial class EditorViewModel
     }
 
     /// <summary>One pure operation applied to <paramref name="next"/>, with how to take it back and its review row; nothing for the
-    /// operations a later step owns (rewrites) or Windows doesn't render (zooms, music).</summary>
-    private (MakeItInverse? Inverse, MakeItRow? Row) MakeItStep(ClipAutopilotOperation operation, ClipAutopilotPlan plan, ref Project next, MakeItStyle style)
+    /// operations a later step owns (rewrites, music).</summary>
+    private (MakeItInverse? Inverse, MakeItRow? Row) MakeItStep(ClipAutopilotOperation operation, ClipAutopilotPlan plan, string clipId, ref Project next, MakeItStyle style)
     {
         var words = next.Transcript?.Words ?? [];
         double? Start(IEnumerable<string> ids) => ids.Select(id => words.FirstOrDefault(word => word.Id == id)?.Start).OfType<double>().DefaultIfEmpty(double.NaN).Min() is var start && double.IsFinite(start) ? start : null;
@@ -486,15 +489,29 @@ public sealed partial class EditorViewModel
             }
             case ClipAutopilotAction.Captions captions:
             {
-                // Captions Off in the clip style: the project's captions stay as they are.
+                // Captions Off in the clip style: the project's captions stay as they are. Otherwise the look (style and overrides)
+                // is this clip's own pick, so every clip of a series exports in its own style (design §6.6, Mac recordingLook); the
+                // creator's own pick for the clip, or a style fixed to another one, stays.
                 if (!style.Captions) return (null, null);
                 var previous = next.Captions;
-                next = next with { Captions = captions.Settings };
+                var previousPick = next.ClipStyle?.CaptionPicks.GetValueOrDefault(clipId);
+                if (ClipCaptionStyles.RecordingLook(next, clipId, captions.Settings, operation.Reason) is not { } recorded) return (null, null);
+                next = recorded;
                 var name = CaptionStyleName(captions.Settings.StyleId);
                 var casing = plan.CaptionChoice.TextCase switch { ClipAutopilotCaptionCase.Upper => "UPPER", ClipAutopilotCaptionCase.Lower => "lower", _ => "as said" };
                 var font = captions.PendingFont is { } pending ? $" · {pending.Family} {pending.Weight} once bundled" : "";
-                return (new MakeItInverse.Captions(previous), new(operation.Id, $"Claude chose {name} captions, {casing}, {plan.CaptionChoice.WordsPerCaption} per line{font}")
+                return (new MakeItInverse.Captions(previous, clipId, previousPick), new(operation.Id, $"Claude chose {name} captions, {casing}, {plan.CaptionChoice.WordsPerCaption} per line{font}")
                 { Kind = MakeItRowKind.Choice, Undoable = true, Change = MakeItChange.Captions });
+            }
+            case ClipAutopilotAction.Motion motion:
+            {
+                // A zoom (motion cue) on the clip, replacing a cue with its id (Mac MakeItPostable .motion); the row plays from 1 s before.
+                var cue = motion.Cue;
+                var previous = next.MotionCues.FirstOrDefault(item => item.Id == cue.Id);
+                next = ClipAutopilotMapping.WithMotionCues([cue], next);
+                var scale = (cue.Keyframes.Count > 0 ? cue.Keyframes[0].Scale : 1).ToString("0.00", CultureInfo.InvariantCulture);
+                return (new MakeItInverse.Motion(cue.Id, previous),
+                    new(operation.Id, $"Zoom to {scale}×") { Detail = operation.Reason, Play = Math.Max(0, cue.SourceStart - 1), Undoable = true });
             }
             case ClipAutopilotAction.ShareText share:
             {
@@ -539,6 +556,45 @@ public sealed partial class EditorViewModel
             default:
                 return (null, null);
         }
+    }
+
+    /// <summary>The run's music (twin of Mac musicStep): the Music section suggests from the plan's mood on the clip; the first free track
+    /// (library or folder) is used, else a generated one when the run's cap covers its price (Claude mode waits at the cap for Continue),
+    /// set to the plan's level under the voice. The row has ▶, Undo (the previous track comes back) and Change (opens Music).</summary>
+    private async Task<MakeItRow> MusicStepAsync(ClipAutopilotMusicCue cue, MakeItRun run)
+    {
+        var previous = Core.Domain.Music.MusicProject.Entry(run.ClipId, project);
+        var row = new MakeItRow("music", $"Claude chose music “{cue.Picked.Title}”") { Kind = MakeItRowKind.Choice, Detail = cue.Picked.Reason, Change = MakeItChange.Music };
+        var panel = Music;
+        if (panel.Services is null)
+            return row with { Kind = MakeItRowKind.Note, Text = $"Claude suggests music “{cue.Picked.Title}”", Detail = "Music has no sources here. Change opens Music." };
+        if (project.Edits.ActiveClipId != run.ClipId) SetScope(run.ClipId);
+        if (project.Edits.ActiveClipId != run.ClipId) return row with { Kind = MakeItRowKind.Note, Detail = "Open the clip, then choose music." };
+        await panel.SuggestAsync(Core.Domain.Music.MusicBrief.From(cue.Picked));
+        var candidate = panel.Candidates.FirstOrDefault(item => item.Source != Core.Domain.Music.MusicSource.Generated);
+        if (candidate is null && panel.Candidates.FirstOrDefault(item => item.NeedsGeneration) is { Estimate.Usd: { } usd } made && run.Budget is not { PaidAllowed: false })
+        {
+            if (run.Remaining is { } remaining && usd <= remaining) candidate = made;
+            else if (run.Budget is { } budget && !MakeItStopped(run) && await WaitAtCapAsync(run, budget, usd - budget.Remaining) && usd <= budget.Remaining) candidate = made;
+        }
+        if (candidate is null || MakeItStopped(run))
+            return row with { Kind = MakeItRowKind.Note, Text = $"No free track fit “{cue.Picked.Mood}”",
+                Detail = panel.Notes.Count > 0 ? panel.Notes[0] + " Change to pick one." : "A generated track would pass this clip's cap. Change to pick one." };
+        await panel.UseAsync(candidate, -cue.Picked.UnderVoiceDb);
+        if (Core.Domain.Music.MusicProject.Entry(run.ClipId, project) is not { } entry || entry == previous)
+        {
+            var reason = panel.Failure ?? "";
+            panel.DismissFailure();
+            return row with { Kind = MakeItRowKind.Note, Detail = (reason.Length == 0 ? "The track couldn't be added." : reason) + " Change to try another." };
+        }
+        if (candidate.Source == Core.Domain.Music.MusicSource.Generated) run.Charge(candidate.Estimate?.Usd ?? 0);
+        run.Inverses["music"] = new MakeItInverse.Music(run.ClipId, previous);
+        return row with
+        {
+            Text = $"Claude chose music “{entry.Title}”" + (candidate.Source == Core.Domain.Music.MusicSource.Generated ? " (generated)" : ""),
+            Detail = string.Join(" · ", new[] { cue.Picked.Reason, $"{Math.Round(cue.Picked.UnderVoiceDb).ToString(CultureInfo.InvariantCulture)} dB under your voice" }.Where(part => part.Length > 0)),
+            Play = ClipPlay(run.ClipId, project), Undoable = true
+        };
     }
 
     /// <summary>The caption style's display name, from the page's library; the id when it isn't known.</summary>
@@ -676,7 +732,12 @@ public sealed partial class EditorViewModel
             switch (inverse)
             {
                 case MakeItInverse.Edits edits: return ApplyBatch(edits.Operations);
-                case MakeItInverse.Captions captions: return ReplaceProject(project with { Captions = captions.Previous }, "Undo captions");
+                case MakeItInverse.Captions captions:
+                {
+                    var restored = project with { Captions = captions.Previous };
+                    restored = ClipCaptionStyles.Restoring(restored, captions.ClipId, captions.PreviousPick);
+                    return ReplaceProject(restored, "Undo captions");
+                }
                 case MakeItInverse.Share share:
                 {
                     // Post texts sit outside undo history on Windows (SetShareCaption): restore it directly.
@@ -700,6 +761,13 @@ public sealed partial class EditorViewModel
                         : project with { ClipEffects = project.ClipEffects.Where(item => item.GetProperty("id").GetString() != effect.Id).ToArray() };
                     ReplaceProject(next, "Undo hook");
                     return true;
+                }
+                case MakeItInverse.Music music:
+                    return SetMusic(music.Previous, music.ClipId, "Undo music") || true;
+                case MakeItInverse.Motion motion:
+                {
+                    var kept = project.MotionCues.Where(cue => cue.Id != motion.Id).Concat(motion.Previous is { } previous ? [previous] : []).ToArray();
+                    return ReplaceProject(Core.Domain.ContextDemo.ContextDemoProject.SettingMotionCues(kept, project), "Undo zoom") || true;
                 }
                 default: return false;
             }
@@ -805,10 +873,13 @@ public sealed partial class EditorViewModel
         return string.Join("\n\n", (carries ? new[] { run.PostText } : new[] { hook, run.PostText }).Where(part => part.Length > 0));
     }
 
+    /// <summary>The post text with the clip's music credit on its own line (music.md §5): what Copy, Export and Export all carry.</summary>
+    public string MakeItPost(MakeItRun run) => Core.Domain.Music.MusicCredits.PostText(MakeItPostCopy(run), Core.Domain.Music.MusicProject.Entry(run.ClipId, project));
+
     /// <summary>Copy: the post text on the clipboard.</summary>
     public bool CopyMakeItPostText(MakeItRun run)
     {
-        var text = MakeItPostCopy(run);
+        var text = MakeItPost(run);
         if (text.Length == 0 || MakeIt.Services?.Copy is not { } copy) return false;
         copy(text);
         run.Copied = true;
@@ -828,7 +899,7 @@ public sealed partial class EditorViewModel
         try
         {
             var files = await export(run.ClipId, MakeItStyle.Shapes, CancellationToken.None);
-            var post = MakeItPostCopy(run);
+            var post = MakeItPost(run);
             foreach (var file in files)
             {
                 run.Exported.Add(file);

@@ -80,6 +80,13 @@ public sealed class Exporter : IExporter
             throw new VoxClipException(VoxClipErrorCode.EverythingCut, "Keep at least one word before exporting.");
         if (!double.IsFinite(snapshot.Timeline.SampleRate) || snapshot.Timeline.SampleRate <= 0 || snapshot.Media.Video is null)
             throw new VoxClipException(VoxClipErrorCode.ExportFailed, "Export stopped: this export requires a video and a valid edit plan. Your edits are saved.");
+        // The music bed needs an audio stream to ride on and its file; both are checked before anything is written.
+        if (snapshot.Clip?.Music is { } music)
+        {
+            if (snapshot.Media.Audio is null) throw new VoxClipException(VoxClipErrorCode.ExportFailed, MusicBed.NoAudioMessage);
+            if (!File.Exists(music.AssetPath))
+                throw new VoxClipException(VoxClipErrorCode.ExportFailed, $"Export stopped: the music file {Path.GetFileName(music.AssetPath)} is missing. Your edits are saved.");
+        }
         if (snapshot.VoiceLab is { Prepared.OutputPlan.RequiresSyntheticRendering: true } input)
         {
             var requestedClip = job.Target is ExportTarget.Clip clip ? clip.Id : null;
@@ -188,7 +195,8 @@ public sealed class Exporter : IExporter
             using (var nv12Handle = NativeHandle.Own(Native.Frame(AVPixelFormat.AV_PIX_FMT_NV12, size.Width, size.Height), NativeKind.Frame))
             using (var scaling = NativeHandle.Own(ffmpeg.sws_getContext(size.Width, size.Height, AVPixelFormat.AV_PIX_FMT_BGRA,
                 size.Width, size.Height, AVPixelFormat.AV_PIX_FMT_NV12, (int)SwsFlags.SWS_BILINEAR, null, null, null), NativeKind.Scale))
-            using (var editedAudio = audio is null ? null : RenderedAudioReader.Open(snapshot, 48_000, session: voiceSession, ct: ct))
+            using (var editedAudio = audio is null ? null : RenderedAudioReader.Open(snapshot, 48_000, session: voiceSession, ct: ct,
+                music: MusicBed.Stage(snapshot, 48_000, voiceSession, ct)))
             using (var audioFrameHandle = audio is null ? null : CreateAudioFrame(audio))
             {
                 var format = (AVFormatContext*)mux.Pointer;

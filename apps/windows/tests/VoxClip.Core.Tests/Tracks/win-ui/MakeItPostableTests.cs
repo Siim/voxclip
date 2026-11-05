@@ -114,8 +114,8 @@ public sealed class MakeItPostableTests
         Assert.Equal((ClipLook.Warm, 1.1), (ClipControlsProject.Controls("c1", project)!.Look, ClipControlsProject.Controls("c1", project)!.Speed));
         Assert.True(ClipHookTitle.Existing("c1", project) is not null, "the hook is a title card");
         Assert.Equal("Sleep first. #sleep", project.Share.Captions["c1"]);
-        // Windows renders no zoom and no music: neither is applied, and the review says so.
-        Assert.Empty(project.MotionCues);
+        // The zoom applies as the clip's motion cue; this editor has no music sources, so music isn't applied and the review says so.
+        Assert.Equal(["c1"], project.MotionCues.Select(cue => cue.ClipID));
         Assert.Empty(project.Music);
         var texts = run.Rows.Select(row => row.Text).ToArray();
         Assert.Contains("Cut “word12”", texts);
@@ -125,14 +125,15 @@ public sealed class MakeItPostableTests
         Assert.Contains("Claude chose 1.1× speed", texts);
         Assert.Contains(texts, text => text.StartsWith("Claude chose vox-bold captions, UPPER, 3 per line", StringComparison.Ordinal));
         Assert.Contains("“much clearer” needs you", texts);
-        Assert.Contains("Claude suggests 1 zoom", texts);
+        var zoom = run.Rows.Single(row => row.Text.StartsWith("Zoom to ", StringComparison.Ordinal));
+        Assert.Equal((true, Math.Max(0, project.MotionCues[0].SourceStart - 1)), (zoom.Undoable, zoom.Play));
         Assert.Contains("Claude suggests music “Morning”", texts);
         Assert.Equal(MakeItController.HookRowText("Sleep beats coffee", "Claude"), run.Rows[^2].Text);
         Assert.Equal(MakeItRowKind.Question, run.Rows[^1].Kind);
         Assert.Equal("Claude chose “Yes”", run.Rows[^1].Detail);
         Assert.Equal(["No"], run.Rows[^1].Options);
         Assert.All(run.Rows.Where(row => row.Kind == MakeItRowKind.Note), row => Assert.False(row.Undoable));
-        Assert.Equal(["Reading the clip…", "Cutting 1 filler…", "Voicing 1 fix…", "Ready to post."], run.Lines);
+        Assert.Equal(["Reading the clip…", "Cutting 1 filler…", "Voicing 1 fix…", "Picking music…", "Ready to post."], run.Lines);
         Assert.StartsWith("Ready to post · ", editor.MakeItHeadline(run), StringComparison.Ordinal);
         Assert.EndsWith(" · score 8/10", editor.MakeItHeadline(run), StringComparison.Ordinal);
         Assert.Equal("Sleep beats coffee\n\nSleep first. #sleep", EditorViewModel.MakeItPostCopy(run));
@@ -157,6 +158,7 @@ public sealed class MakeItPostableTests
         Assert.Equal(before.Captions.StyleId, editor.Project.Captions.StyleId);
         Assert.Empty(editor.Project.ClipControls);
         Assert.Empty(editor.Project.ClipEffects);
+        Assert.Empty(editor.Project.MotionCues);
         editor.Redo();
         // Undo on one row takes back that decision only, as its own step.
         var cut = run.Rows.First(row => row.Text == "Cut “word12”");
@@ -170,6 +172,13 @@ public sealed class MakeItPostableTests
         Assert.True(editor.MakeItUndo(look.Id, run));
         Assert.Equal(ClipLook.Original, ClipControlsProject.Controls("c1", editor.Project)?.Look ?? ClipLook.Original);
         Assert.Equal(1.1, ClipControlsProject.Controls("c1", editor.Project)!.Speed);
+        var zoom = run.Rows.First(row => row.Text.StartsWith("Zoom to ", StringComparison.Ordinal));
+        Assert.Single(editor.Project.MotionCues);
+        Assert.True(editor.MakeItUndo(zoom.Id, run));
+        Assert.Empty(editor.Project.MotionCues);
+        Assert.Equal(ClipLook.Original, ClipControlsProject.Controls("c1", editor.Project)?.Look ?? ClipLook.Original);
+        editor.Undo();
+        Assert.Single(editor.Project.MotionCues);
         editor.Undo();
         Assert.Equal(ClipLook.Warm, ClipControlsProject.Controls("c1", editor.Project)!.Look);
     }
@@ -188,6 +197,7 @@ public sealed class MakeItPostableTests
         Assert.Equal(before.Captions.StyleId, editor.Project.Captions.StyleId);
         Assert.Empty(editor.Project.ClipEffects);
         Assert.False(editor.Project.Share.Captions.ContainsKey("c1"));
+        Assert.Empty(editor.Project.MotionCues);
         Assert.Null(editor.MakeIt.Run("c1"));
         editor.Undo();
         Assert.Contains("w12", editor.State!.CutWordIds);

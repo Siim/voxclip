@@ -466,9 +466,10 @@ public sealed class ClipAutopilotTests
         Assert.Equal(("w2", "Coffee is great"), (applied.Edits.Clips[0].StartWordId, applied.Edits.Clips[0].Title));
         Assert.Equal("vox-bold", applied.Captions.StyleId);
         Assert.Equal("Coffee is great. Sleep is better.", applied.Share.Captions["c1"]);
-        // Windows renders neither motion cues nor music yet (export refuses a project holding them), so both stay pending.
-        Assert.Equal([ClipAutopilotDecision.Rewrite, ClipAutopilotDecision.Zoom, ClipAutopilotDecision.Music], pending.Select(item => item.Decision));
-        Assert.Empty(applied.MotionCues);
+        // The zoom applies as the clip's motion cue (the project becomes v4, as on the Mac); rewrites and music need a paid voice or a source.
+        Assert.Equal([ClipAutopilotDecision.Rewrite, ClipAutopilotDecision.Music], pending.Select(item => item.Decision));
+        Assert.Equal([cue], applied.MotionCues);
+        Assert.Equal(4, applied.SchemaVersion);
         var card = ClipHookTitle.Existing("c1", applied)!.Value;
         Assert.Equal(("title", plan.Hook, "top", "c1"), (card.GetProperty("kind").GetString(), card.GetProperty("text").GetString(), card.GetProperty("position").GetString(), card.GetProperty("clipId").GetString()));
         ProjectSerialization.Validate(applied);

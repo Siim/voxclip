@@ -42,7 +42,7 @@ public sealed partial class EditorViewModel
     public Task SetClaudeSpendCapAsync(int usd) => ClaudeMode.Services is { } services && ClipsMode.CapsUsd.Contains(usd)
         ? services.Save(ClipsAutopilot with { CapUsd = usd }) : Task.CompletedTask;
 
-    /// <summary>"Top 3 clips · up to $2.00 per video for voice · Opus, extra high". Windows renders no music yet.</summary>
+    /// <summary>"Top 3 clips · up to $2.00 per video for voice · Opus, extra high". Generated music draws on the same cap.</summary>
     public string ClaudeModeMeta
     {
         get
@@ -297,7 +297,7 @@ public sealed partial class EditorViewModel
                 try
                 {
                     var files = await export(run.ClipId, MakeItStyle.Shapes, CancellationToken.None);
-                    var post = MakeItPostCopy(run);
+                    var post = MakeItPost(run);
                     foreach (var file in files)
                     {
                         run.Exported.Add(file);

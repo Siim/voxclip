@@ -168,16 +168,18 @@ public static partial class ClipAutopilotMapping
         return Math.Max(0, seconds);
     }
 
-    /// <summary>Applies what the editor can, in order, to a copy of <paramref name="project"/>: edits, captions, share text, the look and
-    /// speed, the hook as the clip's title card (timed on the clip as the operations before it left it), Ask Claude's effects, a stretch
-    /// over a whole clip as its speed, and ducking music that exists. Stretches over part of a clip, translated captions, rewrites, music and zooms
-    /// come back as pending: Windows renders neither background music nor motion cues yet, and a project holding either refuses to
-    /// export (<c>VoiceLabRenderContract.RequireWindowsVisualSupport</c>), so applying them would make the clip unpostable. Pure: one
-    /// undo step is the caller's choice.</summary>
+    /// <summary>Applies what the editor can, in order, to a copy of <paramref name="project"/>: edits, captions, zooms (motion cues, set
+    /// once at the end with the v4 upgrade, replacing a cue with the same id, as Mac ClipAutopilotOperations.apply), share text, the
+    /// look and speed, the hook as the clip's title card (timed on the clip as the operations before it left it), Ask Claude's effects,
+    /// a stretch over a whole clip as its speed, and ducking music that exists. Stretches over part of a clip, translated captions,
+    /// rewrites and music come back as pending: a clip plays at one speed, translated captions are not rendered yet, a rewrite needs a
+    /// paid voice, and music needs a source to fetch from (the App's Music section picks it). Pure: one undo step is the caller's
+    /// choice.</summary>
     public static (Project Project, IReadOnlyList<ClipAutopilotOperation> Pending) Apply(IReadOnlyList<ClipAutopilotOperation> operations, Project project)
     {
         var result = project;
         var pending = new List<ClipAutopilotOperation>();
+        var cues = new List<MotionCue>();
         foreach (var operation in operations)
         {
             switch (operation.Action)
@@ -187,6 +189,7 @@ public static partial class ClipAutopilotMapping
                     result = EditingEngine.ApplyToProject(result, EditingEngine.Reduce(state, edit.Operation, result.Ai.Results));
                     break;
                 case ClipAutopilotAction.Captions captions: result = result with { Captions = captions.Settings }; break;
+                case ClipAutopilotAction.Motion motion: cues.Add(motion.Cue); break;
                 case ClipAutopilotAction.ShareText share:
                     var texts = new Dictionary<string, string>(result.Share.Captions, StringComparer.Ordinal) { [share.ClipId] = share.Text };
                     result = result with { Share = new(texts) };
@@ -209,6 +212,12 @@ public static partial class ClipAutopilotMapping
                 default: pending.Add(operation); break;
             }
         }
+        if (cues.Count > 0) result = WithMotionCues(cues, result);
         return (result, pending);
     }
+
+    /// <summary><paramref name="project"/> with <paramref name="cues"/> added, each replacing a cue with its id; the v4 upgrade and the
+    /// clip check are <c>ContextDemoProject.SettingMotionCues</c>'s.</summary>
+    public static Project WithMotionCues(IReadOnlyList<MotionCue> cues, Project project) =>
+        ContextDemoProject.SettingMotionCues(project.MotionCues.Where(cue => !cues.Any(added => added.Id == cue.Id)).Concat(cues).ToArray(), project);
 }

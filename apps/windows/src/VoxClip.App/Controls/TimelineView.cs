@@ -771,7 +771,7 @@ public sealed class TimelineView : UserControl
     private void DrawHeaders()
     {
         string[] ids = ["V1", "A1", "CC", "FX"];
-        string[] names = ["Video", model?.Project.Media.Source.Audio is null ? "No audio" : "Voice", model?.Project.Captions.StyleId == "off" ? "Captions off" : "Captions", "Effects"];
+        string[] names = ["Video", model?.Project.Media.Source.Audio is null ? "No audio" : "Voice", model?.CaptionStyleId == "off" ? "Captions off" : "Captions", "Effects"];
         double[] tops = [metrics.VideoTop, metrics.AudioTop, metrics.CaptionTop, metrics.EffectsTop];
         for (var index = 0; index < 4; index++)
         {
@@ -855,7 +855,7 @@ public sealed class TimelineView : UserControl
         var blocks = new List<TimelineMark>(); var cuts = new List<TimelineMark>();
         var indices = TimelineCaptions.Indices(captionCues, new(rendered.Start, rendered.End));
         var labelIndex = 0; var previousPixel = -1;
-        var visible = model?.Project.Captions.StyleId != "off" && !renderingBlocked;
+        var visible = model?.CaptionStyleId != "off" && !renderingBlocked;
         for (var index = indices.Start.Value; visible && index < indices.End.Value; index++)
         {
             var cue = captionCues[index];

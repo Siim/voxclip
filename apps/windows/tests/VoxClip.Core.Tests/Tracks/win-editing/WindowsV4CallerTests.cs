@@ -14,9 +14,8 @@ public sealed class WindowsV4CallerTests
 
     [Theory]
     [InlineData(true, false)]
-    [InlineData(false, true)]
     [InlineData(true, true)]
-    public void ActualVisualsRefusePreparationForEveryScopeWithoutMutation(bool demo, bool motion)
+    public void ContextDemoPlacementsRefusePreparationForEveryScopeWithoutMutation(bool demo, bool motion)
     {
         var original = Visuals();
         var project = original with { ContextDemo = demo ? original.ContextDemo : null, MotionCues = motion ? original.MotionCues : [] };
@@ -25,10 +24,25 @@ public sealed class WindowsV4CallerTests
         {
             var error = Assert.Throws<VoxClipException>(() => VoiceLabRenderContract.Prepare(project, scope, VoiceLabLabelPosition.TopRight));
             Assert.Equal(VoxClipErrorCode.ExportFailed, error.Code);
-            Assert.Contains("Windows cannot render or export", error.Message);
-            Assert.Contains("saved edits are unchanged", error.Message);
+            Assert.Equal("Windows cannot render or export context-demo placements yet. Your media and saved edits are unchanged.", error.Message);
+            Assert.Equal(VoiceLabRenderContract.ContextDemoUnsupportedMessage, error.Message);
         }
         Assert.Equal(before, ProjectSerialization.Serialize(project));
+    }
+
+    [Fact]
+    public void ZoomMotionCuesAloneRenderOnWindows()
+    {
+        // Zooms crop the picture in preview and export (design §6.7); only context-demo placements still refuse.
+        var original = Visuals();
+        var project = original with { ContextDemo = null };
+        Assert.NotEmpty(project.MotionCues);
+        VoiceLabRenderContract.RequireWindowsVisualSupport(project);
+        foreach (var scope in new[] { VoiceLabOutputScope.Full, VoiceLabOutputScope.Clip(project.Edits.Clips[0].Id) })
+            Assert.False(VoiceLabRenderContract.Prepare(project, scope, VoiceLabLabelPosition.TopRight).OutputPlan.RequiresSyntheticRendering);
+        var clipId = project.MotionCues[0].ClipID;
+        Assert.Equal(project.MotionCues.Where(cue => cue.ClipID == clipId), ClipRenderInput.Resolve(project, clipId, "/data", "/shared")!.Motion);
+        Assert.Null(ClipRenderInput.Resolve(project, null, "/data", "/shared"));
     }
 
     [Fact]

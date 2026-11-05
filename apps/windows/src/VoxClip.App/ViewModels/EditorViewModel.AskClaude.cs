@@ -30,6 +30,8 @@ public sealed partial class EditorViewModel
     public event EventHandler? AskClaudeClosed;
     /// <summary>▶ on a row: the page seeks to this source time and plays.</summary>
     public event EventHandler<double>? AskClaudePlayRequested;
+    /// <summary>The music row's click: the page opens Captions' Music section and searches with Claude's mood.</summary>
+    public event EventHandler<ClipAutopilotMusicCue>? AskClaudeMusicRequested;
 
     private void AskClaudeNotify() => AskClaudeChanged?.Invoke(this, EventArgs.Empty);
 
@@ -401,15 +403,14 @@ public sealed partial class EditorViewModel
         ClipAutopilotAction.Stretch => "A clip plays at one speed. Ask on a clip to change its speed. Nothing changed.",
         ClipAutopilotAction.TranslateCaptions => "Translated captions are not rendered yet. Nothing changed.",
         ClipAutopilotAction.MusicDucking => "This clip has no music to duck.",
-        ClipAutopilotAction.Motion => "Zooms are not rendered on Windows yet. Nothing changed.",
-        ClipAutopilotAction.Music => "Music is not mixed on Windows yet. Nothing changed.",
         _ => "Not available yet. Nothing changed."
     };
 
-    /// <summary>"Voice it · about $0.04": the rewrite's text at the text-to-speech rate, which Rewrite confirms exactly. Empty when the
-    /// row has no click on Windows (music, which Windows does not mix yet).</summary>
+    /// <summary>"Voice it · about $0.04": the rewrite's text at the text-to-speech rate, which Rewrite confirms exactly; music's click
+    /// reads "Find music · free library first". Empty when the row has no click.</summary>
     public string AskClaudePrice(ClipAutopilotOperation operation)
     {
+        if (operation.Action is ClipAutopilotAction.Music) return "Find music · free library first";
         if (operation.Action is not ClipAutopilotAction.Rewrite rewrite) return "";
         if (AskClaudeServices?.Prices is not { } prices) return "Voice it · priced next";
         try
@@ -424,6 +425,12 @@ public sealed partial class EditorViewModel
     /// click. Nothing is spent here.</summary>
     public bool RunPaidAskClaudeRow(string id)
     {
+        if (AskClaude.Run?.Rows.FirstOrDefault(row => row.Id == id) is { Status: AskClaudeRowStatus.Paid, Operation.Action: ClipAutopilotAction.Music music })
+        {
+            Announcement?.Invoke(this, "Music: " + music.Cue.Picked.Mood + ". Pick a track in Music.");
+            AskClaudeMusicRequested?.Invoke(this, music.Cue);
+            return true;
+        }
         if (AskClaude.Run?.Rows.FirstOrDefault(row => row.Id == id) is not { Status: AskClaudeRowStatus.Paid, Operation.Action: ClipAutopilotAction.Rewrite rewrite }) return false;
         if (rewrite.Words.Start < 0 || rewrite.Words.End >= Words.Count) return false;
         Announcement?.Invoke(this, "Rewrite opens with Claude's words. Approve the price there to voice them.");

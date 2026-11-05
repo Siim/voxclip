@@ -96,7 +96,7 @@ internal sealed class MakeItPanel : InlineEditorJob
         foreach (var row in run.Rows) body.Children.Add(Row(run, row));
         if (!run.Running && run.Rows.Count > 0)
         {
-            var post = EditorViewModel.MakeItPostCopy(run);
+            var post = Editor.MakeItPost(run);
             if (post.Length > 0)
             {
                 body.Children.Add(Ui.Text("Post text", "BodyStrongTextBlockStyle"));

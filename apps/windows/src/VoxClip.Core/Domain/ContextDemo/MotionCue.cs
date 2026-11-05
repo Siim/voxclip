@@ -91,3 +91,58 @@ public sealed record MotionCue(string Id, [property: JsonPropertyName("clipID")]
         if (!condition) throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, "Invalid canonical motion cue.");
     }
 }
+
+/// <summary>The crop a motion cue applies to the finished picture: <c>1/Scale</c> of the frame, placed by its anchor (0 left or top,
+/// 1 right or bottom). Twin of Mac MotionCropTransform.</summary>
+public sealed record MotionCropTransform(double Scale, double AnchorX, double AnchorY)
+{
+    /// <summary>No motion.</summary>
+    public static MotionCropTransform Identity { get; } = new(1, 0.5, 0.5);
+
+    /// <summary>The crop of a <paramref name="width"/> × <paramref name="height"/> frame, in top-left pixel coordinates.</summary>
+    public RectD Crop(double width, double height)
+    {
+        var cropWidth = width / Scale;
+        var cropHeight = height / Scale;
+        return new((width - cropWidth) * AnchorX, (height - cropHeight) * AnchorY, cropWidth, cropHeight);
+    }
+}
+
+/// <summary>Motion cues at render time (Mac MotionCue.transform): the clip's cue covering a source time, its keyframes eased with a
+/// smoothstep, scale 1–1.35 and anchors 0–1 clamped. Only the rendered clip's cues apply; the full video has none.</summary>
+public static class MotionCueRendering
+{
+    /// <summary>The cue's crop at <paramref name="sourceTime"/>; the identity outside [start, end).</summary>
+    public static MotionCropTransform Transform(MotionCue cue, double sourceTime)
+    {
+        if (cue.Keyframes.Count == 0 || cue.SourceEnd - cue.SourceStart + 1e-9 < 0.1 || !double.IsFinite(sourceTime)
+            || sourceTime < cue.SourceStart || sourceTime >= cue.SourceEnd) return MotionCropTransform.Identity;
+        var progress = (sourceTime - cue.SourceStart) / (cue.SourceEnd - cue.SourceStart);
+        var upper = cue.Keyframes.Count - 1;
+        for (var index = 0; index < cue.Keyframes.Count; index++)
+            if (cue.Keyframes[index].Progress > progress) { upper = index; break; }
+        var first = cue.Keyframes[Math.Max(0, upper - 1)];
+        var last = cue.Keyframes[upper];
+        var fraction = Clamp((progress - first.Progress) / Math.Max(1e-12, last.Progress - first.Progress), 0, 1, 0);
+        var eased = fraction * fraction * (3 - 2 * fraction);
+        return new(Clamp(first.Scale + (last.Scale - first.Scale) * eased, 1, 1.35, 1),
+            Clamp(first.AnchorX + (last.AnchorX - first.AnchorX) * eased, 0, 1, 0.5),
+            Clamp(first.AnchorY + (last.AnchorY - first.AnchorY) * eased, 0, 1, 0.5));
+    }
+
+    /// <summary>The crop at <paramref name="sourceTime"/> from the earliest of <paramref name="cues"/> covering it (ties by id).</summary>
+    public static MotionCropTransform Transform(IReadOnlyList<MotionCue> cues, double sourceTime)
+    {
+        if (!double.IsFinite(sourceTime)) return MotionCropTransform.Identity;
+        var cue = cues.Take(64).Where(item => sourceTime >= item.SourceStart && sourceTime < item.SourceEnd)
+            .OrderBy(item => item.SourceStart).ThenBy(item => item.Id, StringComparer.Ordinal).FirstOrDefault();
+        return cue is null ? MotionCropTransform.Identity : Transform(cue, sourceTime);
+    }
+
+    /// <summary>The cues a render of <paramref name="clipId"/> applies; none for the full video.</summary>
+    public static IReadOnlyList<MotionCue> For(Project project, string? clipId) =>
+        clipId is null ? [] : project.MotionCues.Where(cue => cue.ClipID == clipId).ToArray();
+
+    private static double Clamp(double value, double lower, double upper, double fallback) =>
+        double.IsFinite(value) ? Math.Min(upper, Math.Max(lower, value)) : fallback;
+}

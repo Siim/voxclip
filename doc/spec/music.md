@@ -1,7 +1,7 @@
 # Background music
 
-Status (2026-11-04): built on Mac (Core, Media, App). Windows Core opens, validates and saves projects with music
-unchanged, and refuses to render or export them (§8).
+Status (2026-11-05): built on Mac (Core, Media, App) and on Windows (Core, Media, App): Windows mixes music in preview and
+export, and has the Music section and Make it postable's music step (§8).
 
 User decisions (2026-11-04): music comes from three sources (an open library, as CapCut offers; Eleven Music; your own
 files), and Claude suggests what suits the video. The approved mockup "Fewer moves, music and captions", part C: the
@@ -185,9 +185,18 @@ All audio in tests is synthetic (tones and seeded noise); no test downloads musi
 
 ## 8. Windows and what is owed
 
-- Windows Core reads, validates and saves `music` unchanged, prunes a removed clip's track, and stops rendering or
-  exporting a project with music: "Windows cannot mix background music into exports yet. Export this project on a Mac,
-  or remove its music there. Your music and edits are unchanged." Windows owes the mix, the sources and the UI.
+- Windows (2026-11-05) mixes the scope's track under the voice in preview and export with the Mac's levels (§4): the
+  speech level from the edited voice, the bed at `gainDb` under it, −12 dB ducking (150 ms attack, 400 ms release),
+  the fades and equal-power loops, on the rendered clock through cuts and speed (Core `MusicMix`, Media `MusicBed`).
+  `shared/fixtures/music/music-mix-cases.json` (`voxclip-music-mix-cases/1`, `tools/fixtures/music/generate_music_mix.py`)
+  holds the arithmetic both platforms replay; the Mac replay is owed. An export stops with "Export stopped: the music
+  file {name} is missing. Your edits are saved." or, for a video with no sound, "Export stopped: this video has no sound,
+  so Windows can't add its music yet. Remove the music, or export it on a Mac. Your edits are saved."; preview plays the
+  voice alone in both cases.
+- The Windows Music section sits under the Captions rows: Openverse (the free library), the Music folder
+  (`Music\VoxClip`, plus Add a file…) and Eleven Music, whose "Make · $x" (priced from `voice-lab.json`) is the approval.
+  Make it postable's "Picking music…" step uses the first free track, or a generated one within what the run's cap has
+  left; its review row has ▶, Undo and Change. Not on Windows yet: the Music folder setting and the timeline's M1 lane.
 - The default timeline height (216 pt) ends just above M1; the lane is reached with the timeline's vertical scroll or a
   taller timeline.
 - Openverse previews stream from the track's host when ▶ is pressed; only Use downloads.

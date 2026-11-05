@@ -59,7 +59,7 @@ public sealed class WindowsV4ExportHistoryTests
         var sourceOnly = original with { ContextDemo = null, MotionCues = [] };
         var target = new ExportTarget.FullEdit();
         var baseline = ExportFingerprint.For(sourceOnly, target);
-        foreach (var project in new[] { original, original with { MotionCues = [] }, original with { ContextDemo = null } })
+        foreach (var project in new[] { original, original with { MotionCues = [] } })
         {
             var fingerprint = ExportFingerprint.For(project, target);
             Assert.Equal(64, fingerprint.Length);
@@ -74,9 +74,14 @@ public sealed class WindowsV4ExportHistoryTests
         {
             Placements = document.Placements.SetItem(0, document.Placements[0] with { EditedStartSeconds = 2 })
         } };
-        var changedMotion = original with { MotionCues = [original.MotionCues[0] with { SourceStart = 1.1 }] };
         Assert.NotEqual(ExportFingerprint.For(original, target), ExportFingerprint.For(moved, target));
-        Assert.NotEqual(ExportFingerprint.For(original, target), ExportFingerprint.For(changedMotion, target));
+        // Zoom motion cues render on Windows: they are part of their clip's identity only; the full video has none.
+        var zoomOnly = original with { ContextDemo = null };
+        var clip = new ExportTarget.Clip(zoomOnly.MotionCues[0].ClipID);
+        Assert.Equal(baseline, ExportFingerprint.For(zoomOnly, target));
+        Assert.NotEqual(ExportFingerprint.For(sourceOnly, clip), ExportFingerprint.For(zoomOnly, clip));
+        var changedMotion = zoomOnly with { MotionCues = [zoomOnly.MotionCues[0] with { SourceStart = zoomOnly.MotionCues[0].SourceStart + 0.1 }, .. zoomOnly.MotionCues.Skip(1)] };
+        Assert.NotEqual(ExportFingerprint.For(zoomOnly, clip), ExportFingerprint.For(changedMotion, clip));
         Assert.NotEqual(ExportFingerprint.For(original, target), ExportFingerprint.For(original, new ExportTarget.Clip(original.Edits.Clips[0].Id)));
         Assert.Equal(baseline, ExportFingerprint.For(original with { ContextDemo = original.ContextDemo! with { Placements = [] }, MotionCues = [] }, target));
     }

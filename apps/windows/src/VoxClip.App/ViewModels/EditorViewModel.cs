@@ -596,7 +596,8 @@ public sealed partial class EditorViewModel : ObservableObject
     public void SetCaptionStyle(string id)
     {
         if (isLeaving || IsReadOnly || Busy) return;
-        // A style the user chooses fixes the clip style's captions, so no AI pick overrides it (design §6.6).
+        // While a clip is active the choice is that clip's own; with none it changes the project default and fixes the clip
+        // style's captions, so no AI pick overrides it (design §6.6).
         if (project.ClipStyle is not null) { RecordClipStyle(ClipStyleCard.ChooseCaptionStyle(project, id)); return; }
         RecordCaptions(project.Captions with { StyleId = id });
     }
@@ -609,16 +610,34 @@ public sealed partial class EditorViewModel : ObservableObject
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>The captions the open clip renders with: its own pick's style and overrides where one applies, else the project's
+    /// (design §6.6). Fine tune shows and edits these.</summary>
+    public ProjectCaptions ActiveCaptions => ClipCaptionStyles.Settings(project, project.Edits.ActiveClipId);
+
     public void SetCaptionOverrides(System.Text.Json.JsonElement value)
     {
         if (isLeaving || IsReadOnly || Busy) return;
-        RecordCaptions(project.Captions with { Overrides = value.Clone() });
+        RecordCaptionLook(ActiveCaptions with { Overrides = value.Clone() });
     }
 
     public void SetCaptions(ProjectCaptions value)
     {
         if (isLeaving || IsReadOnly || Busy) return;
-        RecordCaptions(value);
+        RecordCaptionLook(value);
+    }
+
+    /// <summary>A fine-tune (Mac mutateCaptions): while the open clip's pick applies, its style and overrides change and the positions
+    /// stay the project's; otherwise the project's captions change. One undo step; nothing when nothing changes.</summary>
+    private void RecordCaptionLook(ProjectCaptions captions)
+    {
+        if (ClipCaptionStyles.Pick(project, project.Edits.ActiveClipId) is null) { RecordCaptions(captions); return; }
+        CaptionDrag.Cancel();
+        var next = ClipCaptionStyles.Tuning(project, project.Edits.ActiveClipId, captions);
+        if (next.ClipStyle?.SameAs(project.ClipStyle) == true && SameCaptions(next.Captions, project.Captions)) return;
+        PushHistory();
+        project = next with { ModifiedAt = DateTimeOffset.UtcNow };
+        foreach (var name in new[] { nameof(IsDirty), nameof(CanUndo), nameof(CanRedo), nameof(UndoActionName), nameof(RedoActionName) }) OnPropertyChanged(name);
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>A caption style, Fine tune or reset change is its own undo step, as on the Mac ("Change caption style", "Fine tune

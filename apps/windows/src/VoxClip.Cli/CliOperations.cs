@@ -93,7 +93,10 @@ internal static class CliOperations
         if (!File.Exists(path)) throw new FileNotFoundException();
         destination = OutputSafety.Resolve(destination);
         var (openedProject, media) = await (openExport ?? OpenExportInputAsync)(path, ct).ConfigureAwait(false);
-        var style = requestedStyle ?? openedProject?.Captions.StyleId ?? "off";
+        // A project's clip renders in its own caption style (its pick, else the project default; design §6.6). A --range clip is new,
+        // so it follows the default.
+        var exportedClip = arguments.GetValue<string?>("--range") is not null ? null : arguments.GetValue<string?>("--clip") ?? openedProject?.Edits.ActiveClipId;
+        var style = requestedStyle ?? (openedProject is null ? "off" : ClipCaptionStyles.StyleId(openedProject, exportedClip));
         var captionStyle = requestedCaptionStyle ?? (style == "off" ? null : CaptionRendering.LoadStyle(style));
         RequireAudioOutput(media.Audio is not null, arguments.GetValue<string?>("--audio-out"));
         RequireSrtOutput(style, arguments.GetValue<string?>("--srt"));
@@ -149,7 +152,7 @@ internal static class CliOperations
         {
             var words = ClipEffectsRendering.MaskingBleeps(voice?.Prepared.OutputPlan.Captions ?? EditingEngine.CaptionWords(State(project), plan),
                 clip?.Effects?.Effects);
-            captions = await CaptionEngine.BuildAsync(new(captionStyle, project.Captions with { StyleId = captionStyle.Id }, size,
+            captions = await CaptionEngine.BuildAsync(new(captionStyle, ClipCaptionStyles.Settings(project, exportedClip) with { StyleId = captionStyle.Id }, size,
                 words, project.Transcript?.Language,
                 voice?.Prepared.OutputPlan.Duration ?? plan.Duration), ServicesMergeAdapter.GlyphShaper(), null, ct).ConfigureAwait(false);
         }

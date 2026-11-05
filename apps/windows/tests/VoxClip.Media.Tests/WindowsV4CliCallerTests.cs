@@ -16,10 +16,10 @@ public sealed class WindowsV4CliCallerTests
 
     [Theory]
     [InlineData(true, false, "stored")]
-    [InlineData(false, true, "stored")]
     [InlineData(true, true, "full")]
     [InlineData(true, false, "range")]
-    [InlineData(false, true, "clip")]
+    [InlineData(true, true, "clip")]
+    // Zoom motion cues alone render on Windows (MotionCueRenderTests); context-demo placements still refuse.
     public async Task ActualVisualsRefuseBeforeEncoderAudioOrPublication(bool demo, bool motion, string scope)
     {
         var original = Fixture();
@@ -55,7 +55,7 @@ public sealed class WindowsV4CliCallerTests
             using var result = JsonDocument.Parse(output.ToString());
             var error = result.RootElement.GetProperty("error");
             Assert.Equal("exportFailed", error.GetProperty("code").GetString());
-            Assert.Contains("Windows cannot render or export", error.GetProperty("message").GetString());
+            Assert.Equal(VoiceLabRenderContract.ContextDemoUnsupportedMessage, error.GetProperty("message").GetString());
             Assert.Equal("previous export", File.ReadAllText(destination));
             Assert.False(File.Exists(destination + ".partial"));
             Assert.False(File.Exists(destination + ".provenance.json"));

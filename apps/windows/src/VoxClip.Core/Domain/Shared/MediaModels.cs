@@ -2,6 +2,7 @@ using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Effects;
+using VoxClip.Core.Domain.Music;
 using VoxClip.Core.Domain.VoiceLab;
 namespace VoxClip.Core.Domain.Shared;
 
@@ -64,18 +65,28 @@ public sealed record PreviewPosition(double EditedTime, double SourceTime, bool 
 public sealed record EncoderInfo(string Name, bool Available, string? Reason);
 /// <summary>Adapter/driver/build identity for encoder cache invalidation; architecture §6.6.</summary>
 public sealed record EncoderCacheKey(string AdapterLuid, string DriverVersion, string FfmpegVersion);
-/// <summary>What a clip render adds to the edit (design §6.9, ai.md §18.5): the clip's controls (null at the defaults or for
-/// the full video) and the scope's effects (null without any).</summary>
+/// <summary>What a clip render adds to the edit (design §6.9, ai.md §18.5, doc/spec/music.md §4): the clip's controls (null at the
+/// defaults or for the full video), the scope's effects (null without any) and the scope's background music (null without).</summary>
 public sealed record ClipRenderInput(ProjectClipControls? Controls, ClipEffectsRenderInput? Effects)
 {
+    /// <summary>The track mixed under the voice for this scope.</summary>
+    public MusicRenderInput? Music { get; init; }
+    /// <summary>The clip's motion cues (punch-in zooms), applied after censors and before overlays; empty for the full video.</summary>
+    public IReadOnlyList<ContextDemo.MotionCue> Motion { get; init; } = [];
+    /// <summary>Windows "Animation effects" off: a preview shows no motion (export always renders it), as the Mac's Reduce Motion.</summary>
+    public bool ReduceMotionInPreview { get; init; }
+
     /// <summary>The input for a render of <paramref name="clipId"/> (null: the full video), or null when nothing changes it.</summary>
     public static ClipRenderInput? Resolve(Project project, string? clipId, string dataRoot, string sharedRoot)
     {
         var controls = ClipControlsRendering.Controls(project, clipId);
         var effects = ClipEffectsRenderInput.Resolve(project, clipId, dataRoot, sharedRoot);
-        return controls is null && effects is null ? null : new(controls, effects);
+        var music = MusicRenderInput.Resolve(project, clipId, dataRoot);
+        var motion = ContextDemo.MotionCueRendering.For(project, clipId);
+        return controls is null && effects is null && music is null && motion.Count == 0 ? null : new(controls, effects) { Music = music, Motion = motion };
     }
 
-    /// <summary>The same input for the edited WAV: 1× with no controls, bleeps and mutes kept, no sound effects.</summary>
+    /// <summary>The same input for the edited WAV: 1× with no controls, bleeps and mutes kept, no sound effects and no music
+    /// (the edited-audio path reads the voice alone).</summary>
     public ClipRenderInput? ForEditedAudio => Effects?.WithoutSounds is { } kept ? new(null, kept) : null;
 }

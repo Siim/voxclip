@@ -183,6 +183,33 @@ public sealed class AskClaudeAppTests
 
     /// <summary>"Play this clip at 1.25×" on a clip: the stretch covers the whole clip (within 0.25 s at each end), so it applies as the
     /// clip's speed in the answer's one undo step, and its Undo takes the speed back.</summary>
+    /// <summary>With zooms and music rendering on Windows (track/v2-win-render-2): a zoom on a clip applies in the answer's undo step and
+    /// its row undoes alone; the music row offers "Find music · free library first", whose click hands Claude's mood to the Music section
+    /// and sends or spends nothing.</summary>
+    [Fact]
+    public async Task AZoomAppliesAndTheMusicRowOpensMusicWithClaudesMood()
+    {
+        var (editor, fake) = Open(Reply(Op("zoom", ("scale", 1.2)), Op("music", ("text", "warm lo-fi"))));
+        editor.SetScope("c1");
+        Assert.True(editor.OpenAskClaudeOnClip("c1"));
+        await AskAsync(editor, "punch in and add some music");
+        var run = Assert.IsType<AskClaudeRun>(editor.AskClaude.Run);
+        Assert.Equal(["Zoom in", "Music change"], run.Rows.Select(row => row.Title));
+        Assert.Equal(AskClaudeRowStatus.Applied, run.Rows[0].Status);
+        var cue = Assert.Single(editor.Project.MotionCues);
+        Assert.Equal(("c1-ask-1", "c1"), (cue.Id, cue.ClipID));
+        Assert.All(cue.Keyframes, frame => Assert.Equal(1.2, frame.Scale, 6));
+        Assert.Equal((AskClaudeRowStatus.Paid, "Find music · free library first"), (run.Rows[1].Status, run.Rows[1].Price));
+        var moods = new List<string>();
+        editor.AskClaudeMusicRequested += (_, music) => moods.Add(music.Picked.Mood);
+        Assert.True(editor.RunPaidAskClaudeRow(run.Rows[1].Id));
+        Assert.Equal("warm lo-fi", Assert.Single(moods));
+        Assert.Single(fake.Requests);
+        Assert.Empty(editor.Project.Music);
+        Assert.True(editor.UndoAskClaudeRow(run.Rows[0].Id));
+        Assert.Empty(editor.Project.MotionCues);
+    }
+
     [Fact]
     public async Task AStretchOverTheWholeClipSetsTheClipsSpeed()
     {

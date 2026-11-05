@@ -1,7 +1,9 @@
 using System.Runtime.InteropServices;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Clips;
+using VoxClip.Core.Domain.ContextDemo;
 using VoxClip.Core.Domain.Shared;
+using SkiaSharp;
 
 namespace VoxClip.Media.Pipeline;
 
@@ -87,5 +89,26 @@ internal static class ClipPicture
                 line[offset] = (byte)MathF.Round(result[2] * 255, MidpointRounding.AwayFromZero);
             }
         });
+    }
+
+    /// <summary>A motion cue's crop of the finished frame, scaled back to fill it (Mac CompositionFrameGeometry.fill with Lanczos;
+    /// Mitchell cubic here, bilinear in preview). The identity leaves the frame untouched.</summary>
+    internal static void Motion(PixelBuffer frame, MotionCropTransform motion, bool forPreview, CancellationToken ct)
+    {
+        if (motion.Scale <= 1) return;
+        ct.ThrowIfCancellationRequested();
+        var crop = motion.Crop(frame.Width, frame.Height);
+        var info = new SKImageInfo(frame.Width, frame.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
+        using var copy = SKImage.FromPixelCopy(info, frame.Pixels.Span[..(frame.Stride * frame.Height)], frame.Stride)
+            ?? throw new InvalidOperationException("Could not copy the frame for its motion.");
+        using var pin = frame.Pixels.Pin();
+        unsafe
+        {
+            using var surface = SKSurface.Create(info, (IntPtr)pin.Pointer, frame.Stride) ?? throw new InvalidOperationException("Could not wrap the frame for its motion.");
+            var sampling = forPreview ? new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.None) : new SKSamplingOptions(SKCubicResampler.Mitchell);
+            surface.Canvas.DrawImage(copy, new SKRect((float)crop.X, (float)crop.Y, (float)(crop.X + crop.Width), (float)(crop.Y + crop.Height)),
+                new SKRect(0, 0, frame.Width, frame.Height), sampling, null);
+            surface.Canvas.Flush();
+        }
     }
 }

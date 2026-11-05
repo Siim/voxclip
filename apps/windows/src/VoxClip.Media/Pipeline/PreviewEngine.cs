@@ -355,6 +355,26 @@ public sealed class PreviewEngine : IPreviewEngine
         ReportAudio(PreviewAudioStatus.Available);
     }
 
+    private readonly object musicLock = new();
+    private ComposeSnapshot? musicFor;
+    private MusicBed? musicBed;
+
+    /// <summary>The snapshot's music bed, staged once per snapshot (each play reads it from the playhead). A bed that cannot be
+    /// staged (a missing file, a silent video) previews the voice alone; the export names the problem and stops.</summary>
+    private MusicBed? PreviewMusic(ComposeSnapshot snapshot, VoiceLabRenderSession? session, CancellationToken ct)
+    {
+        if (snapshot.Clip?.Music is null) return null;
+        lock (musicLock)
+        {
+            if (ReferenceEquals(musicFor, snapshot)) return musicBed;
+            MusicBed? staged = null;
+            try { staged = MusicBed.Stage(snapshot, 48_000, session, ct); }
+            catch (VoxClipException) { }
+            musicFor = snapshot; musicBed = staged;
+            return staged;
+        }
+    }
+
     private static IPreviewAudioOutput CreateWasapi()
     {
         if (!OperatingSystem.IsWindows()) throw new VoxClipException(VoxClipErrorCode.DecodeFailed, "VoxClip couldn't decode this video: audio preview requires Windows WASAPI. Your edits are saved.");
@@ -374,7 +394,7 @@ public sealed class PreviewEngine : IPreviewEngine
         {
             try
             {
-                using var reader = RenderedAudioReader.Open(localSnapshot, 48_000, edited, localSession, token);
+                using var reader = RenderedAudioReader.Open(localSnapshot, 48_000, edited, localSession, token, PreviewMusic(localSnapshot, localSession, token));
                 var samples = new float[4096 * 2];
                 int count;
                 while ((count = reader.Read(samples, samples.Length / 2, token)) > 0)

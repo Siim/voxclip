@@ -32,6 +32,11 @@ public sealed partial class EditorPage
         ViewModel.AskClaudeShown += (_, _) => ShowAskClaudePanel();
         ViewModel.AskClaudeClosed += (_, _) => askClaudePanel?.RequestClose();
         ViewModel.AskClaudePlayRequested += (_, time) => _ = RunAsync(() => PlayMakeItAsync(time), "Preview");
+        ViewModel.AskClaudeMusicRequested += (_, cue) =>
+        {
+            ShowCaptions();
+            _ = ViewModel.Music.SuggestAsync(VoxClip.Core.Domain.Music.MusicBrief.From(cue.Picked));
+        };
         AskClaudeBox.Attach(ViewModel);
     }
 
