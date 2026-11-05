@@ -504,11 +504,12 @@ extension EditorModel {
         return (id, effect)
     }
 
-    /// A press on an effect in the FX lane opens its Adjust editor, from the run that made it.
+    /// A press on an effect in the FX lane opens its Adjust editor, from the run that made it; a Make it postable hook's
+    /// title card opens its review with the hook's field.
     func adjustAskClaudeEffect(fromTimeline effectID: String) {
         guard let run = askClaude.run, let row = run.rows.first(where: { row in
             if case .effect(let effect) = row.operation.action { effect.id == effectID } else { false }
-        }), row.status == .applied else { return }
+        }), row.status == .applied else { makeItEditHook(effectID: effectID); return }
         askClaude.adjusting = row.id
         askClaude.inView = true
         app.shell.choosePanelJob(.askClaude, for: self)

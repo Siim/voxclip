@@ -797,7 +797,9 @@ extension EditorModel {
     func makeItUndo(_ rowID: String, in run: MakeItRun) {
         if rowID == Self.makeItToneRowID { makeItRemoveTone(run, chose: false); return }
         guard let inverse = run.inverses[rowID], let index = run.rows.firstIndex(where: { $0.id == rowID }), !run.rows[index].undone else { return }
-        let name = "Undo " + run.rows[index].text
+        let name = "Undo " + makeItRowText(run.rows[index], run: run)
+        // The post text keeps the hook the card last showed.
+        if run.rows[index].change == .hook { run.hook = makeItHook(run) }
         guard undoInverse(inverse, name: name) else { return }
         run.rows[index].undone = true
         run.inverses[rowID] = nil
@@ -922,17 +924,45 @@ extension EditorModel {
         guard let next = try? ClipEffects.adding([card], to: project) else { return }
         replace(next, name: "Change hook")
         run.hook = hook
-        run.rows[index].text = Self.makeItHookRowText(hook, chosenBy: "You")
         announce("Hook changed.")
     }
 
     static func makeItHookRowText(_ hook: String, chosenBy who: String) -> String { "\(who) chose the hook “\(hook)”" }
+
+    /// The hook's title card as the project has it now: after the row's Change, Ask Claude's Adjust, the timeline, or an
+    /// undo. Nil once the row's Undo removed it.
+    func makeItHookCard(_ run: MakeItRun) -> ClipEffect? {
+        guard let row = run.rows.first(where: { $0.change == .hook }), !row.undone, case .effect(let id, _)? = run.inverses[row.id] else { return nil }
+        return project.clipEffects.first { $0.id == id }
+    }
+
+    /// The hook as the clip shows it: the card's text, else (the card removed) the last hook, which the post text keeps.
+    func makeItHook(_ run: MakeItRun) -> String { makeItHookCard(run)?.text ?? run.hook }
+
+    /// A row's text as the review shows it. The hook row reads the card, not the run's stored hook: "Claude chose the hook
+    /// “…”" while it says what Claude wrote, else "You chose the hook “…”".
+    func makeItRowText(_ row: MakeItRow, run: MakeItRun) -> String {
+        guard row.change == .hook, !row.undone, let text = makeItHookCard(run)?.text else { return row.text }
+        let claude = run.plan.flatMap { ClipHookTitle.text($0.hook) }
+        return Self.makeItHookRowText(text, chosenBy: text == claude ? "Claude" : "You")
+    }
+
+    /// A press on a hook's title card in the timeline's E1 lane: its review opens with the hook's field, inline. False when
+    /// no finished run made that card.
+    @discardableResult func makeItEditHook(effectID: String) -> Bool {
+        guard let run = makeIt.runs.values.first(where: { !$0.running && makeItHookCard($0)?.id == effectID }),
+              let row = run.rows.first(where: { $0.change == .hook }) else { return false }
+        makeIt.shownClipID = run.clipID
+        run.openChoice = row.id
+        app.shell.choosePanelJob(.makeIt, for: self)
+        return true
+    }
     static let makeItHookDetail = "Title card for the first 2 s · the post text keeps it"
 
-    /// The post text as it is copied and shown: the hook first, unless the post already says it, then the plan's post
-    /// text with its music credit.
+    /// The post text as it is copied and shown: the hook as the card says it now first, unless the post already says it,
+    /// then the plan's post text with its music credit.
     func makeItPostCopy(_ run: MakeItRun) -> String {
-        let hook = run.hook.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hook = makeItHook(run).trimmingCharacters(in: .whitespacesAndNewlines)
         let carries = hook.isEmpty || run.postText.range(of: hook, options: [.caseInsensitive, .diacriticInsensitive]) != nil
         return (carries ? [run.postText] : [hook, run.postText]).filter { !$0.isEmpty }.joined(separator: "\n\n")
     }

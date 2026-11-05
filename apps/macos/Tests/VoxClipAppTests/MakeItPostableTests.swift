@@ -386,6 +386,39 @@ private final class Calls: Sendable {
     /// The hook is a title card (design.md §6.7): the run adds it in its one undo step over the clip's first ~2 s, its row
     /// comes last with ▶ and Undo, Change edits its text inline as one undo step, Undo removes the card, and the post text
     /// still opens with the hook.
+    /// The review reads the hook's card, not the run's stored hook: an edit from the timeline, an undo of the row's
+    /// Change, or any other edit of the card (as Ask Claude's Adjust stores one) updates the row and the post text.
+    @Test func anAdjustedHookUpdatesTheReviewAndThePostText() async throws {
+        let fixture = try fixture(plan: Self.plan(music: false, rewrite: false))
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let editor = fixture.editor
+        let run = try await run(fixture)
+        let card = try #require(ClipHookTitle.existing(clipID: "clip-main", in: editor.project))
+        func row() throws -> String { editor.makeItRowText(try #require(run.rows.first { $0.id == "hook" }), run: run) }
+        #expect(try row() == "Claude chose the hook “We ship today”")
+        // The timeline's E1 lane: a press on the card opens its review with the hook's field.
+        run.openChoice = nil
+        editor.adjustAskClaudeEffect(fromTimeline: card.id)
+        #expect(run.openChoice == "hook" && editor.makeIt.shownClipID == "clip-main")
+        step(fixture.undo) { editor.makeItSetHook("Ship it now", rowID: "hook", run: run) }
+        #expect(try row() == "You chose the hook “Ship it now”" && editor.makeItPostCopy(run).hasPrefix("Ship it now\n\n"))
+        // ⌘Z puts Claude's words back on the card, and the review follows.
+        fixture.undo.undo()
+        #expect(ClipHookTitle.existing(clipID: "clip-main", in: editor.project)?.text == "We ship today")
+        #expect(try row() == "Claude chose the hook “We ship today”" && editor.makeItPostCopy(run).hasPrefix("We ship today\n\n"))
+        // An edit of the card from elsewhere, stored as Ask Claude's Adjust stores one (the same effect, new text).
+        var adjusted = try #require(ClipHookTitle.existing(clipID: "clip-main", in: editor.project))
+        adjusted.text = "Shipping, finally"
+        step(fixture.undo) { editor.replace(try! ClipEffects.adding([adjusted], to: editor.project), name: "Adjust Title") }
+        #expect(try row() == "You chose the hook “Shipping, finally”")
+        #expect(editor.makeItPostCopy(run) == "Shipping, finally\n\nWe ship the clipper today.")
+        // Row Undo still removes the card; the post text keeps the hook it last showed.
+        step(fixture.undo) { editor.makeItUndo("hook", in: run) }
+        #expect(ClipHookTitle.existing(clipID: "clip-main", in: editor.project) == nil)
+        #expect(run.rows.first { $0.id == "hook" }?.undone == true && editor.makeItPostCopy(run).hasPrefix("Shipping, finally\n\n"))
+        #expect(editor.makeItEditHook(effectID: card.id) == false, "no card, nothing to open")
+    }
+
     @Test func theHookIsATitleCardWithInlineChangeAndUndo() async throws {
         let fixture = try fixture(plan: Self.plan(music: false, rewrite: false))
         defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
@@ -417,7 +450,8 @@ private final class Calls: Sendable {
         step(fixture.undo) { editor.makeItSetHook("  Ship it today ", rowID: "hook", run: run) }
         #expect(editor.undoSteps == changed + 1 && fixture.undo.undoActionName == "Change hook" && run.openChoice == nil)
         #expect(ClipHookTitle.existing(clipID: "clip-main", in: editor.project)?.text == "Ship it today")
-        #expect(run.rows.last?.text == "You chose the hook “Ship it today”" && editor.makeItPostCopy(run).hasPrefix("Ship it today\n\n"))
+        #expect(editor.makeItRowText(try #require(run.rows.last), run: run) == "You chose the hook “Ship it today”")
+        #expect(editor.makeItPostCopy(run).hasPrefix("Ship it today\n\n"))
         // The same text again changes nothing.
         editor.makeItSetHook("Ship it today", rowID: "hook", run: run)
         #expect(editor.undoSteps == changed + 1)
