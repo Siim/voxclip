@@ -57,6 +57,8 @@ extension DebugRewriteSmoke.Harness {
     private func makeItPrepare(_ plan: @escaping @MainActor (ClosedRange<Int>, [TimedWord]) -> ClipAutopilotPlan?) throws -> EditorModel {
         guard let editor else { throw DebugRewriteSmoke.Failure.setup("no editor") }
         session?.close(); editor.closeRewrite(returnFocus: false); session = nil
+        // The record is keyed by the harness's identity, which a later harness may reuse: each scenario starts empty.
+        planRequests = []
         let wav = try VoiceTrainingAudio.wav([Float](repeating: 0.05, count: 48_000), rate: 16_000)
         editor.musicPanel.services = MusicPanelServices(suggest: { _, _ in MusicSuggestionResult(candidates: [DebugRewriteSmoke.makeItLibraryTrack]) },
                                                         fetch: { _ in wav }, folder: { nil })
