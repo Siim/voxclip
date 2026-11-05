@@ -1,5 +1,34 @@
 # Windows fixed contracts
 
+### 2026-11-05 — Windows twin: Roboto Black caption set 2, clip style contract, caption pick and the clip style card (track/v2-captions-style)
+
+Twin of the macOS entry of the same date.
+
+- **Core.**
+  - **Clip style.** `Domain/Clips/ClipStyle.cs` defines the `ClipStyle` record (string fields; `CaptionsAuto`, `FixedCaptionStyle` and `SettingsDefault` are `[JsonIgnore]`), `ClipCaptionPick` and `ClipStyleCatalog`. `ClipStyleCard.cs` holds the card's pure decisions: `Shows`, `Showing`, `Choose`, `ChooseCaptionStyle`, `ApplyPick` and `StatusText`.
+  - **Caption pick.** `Services/LLM/CaptionPicker.cs` provides `CaptionPickPrompt` and `CaptionPicker`. `LlmFeature.CaptionPick` has catalog id `captionPick` and its own error messages.
+  - **Persistence and validation.** `Project.ClipStyle` is omitted when null. `ProjectValidation` checks `clipStyle`. `SettingsValidation` knows `clipStyle.default` and rejects picks in it.
+- **App.**
+  - **View model.** `EditorViewModel` is now partial. `EditorViewModel.ClipStyle.cs` adds `ShowsClipStyleCard`, `ChooseClipStyle` and `ApplyCaptionPick` (each one undo step). Undo now covers `ClipStyle`, and `SetCaptionStyle` fixes the clip style's captions.
+  - **Card.** `Controls/ClipStyleCardPanel.cs` is a code-built Grid using the `VcSpacing*` tokens and `ClipStyle.*` automation ids. It sits in the new `ClipStyleHost` above `Nav`, 224 wide.
+  - **Status and settings.** The `ClipStyleStatus` button is named "Clip style" and reopens the card. `MainWindow.ClipStyle.cs` saves `clipStyle.default` without picks.
+  - **Allowlists.** The ReleaseBoundary allowlists were updated with `update`; the new lines are the clip style types only.
+- **Tests.**
+  - **Conformance.** Media `CaptionConformanceTests` gains set 2 checks:
+    - the 21 layouts with native shaping;
+    - coverage of every aspect;
+    - SkiaSharp renders against the Mac goldens (68 samples and 14 tiles).
+  - **Caption pick and view model.** Core `Tracks/win-ai/CaptionPickTests` (8) replays `shared/fixtures/clip-style/caption-pick.json`. win-ui `Tracks/win-ui/ClipStyleViewModelTests` (2) covers show-once, collapse and reopen, and a fixed style never overridden.
+- **Verification** (macOS host, Release, serial, absolute `VOXCLIP_SHARED_DIR`):
+  - Core: 3,071 total, 0 failed, 29 skipped.
+  - Portable Media: 947 total, 0 failed, 5 skipped.
+  - win-ui: 1,243 total, 0 failed, 5 skipped, including `*ReleaseSurrogate*` 1 / 1.
+  - `check-xaml.py`: 0 problems.
+- **Owed.**
+  - **Pick styles.** The Pick styles action and its inline consent on Windows. Core can already pick, record and apply.
+  - **Native checks.** A native WinUI build and a VM look at the card at the 220 epx sidebar minimum.
+  - **Media pipeline.** Native FFmpeg and Media checks.
+
 ### 2026-11-04 — Windows twin: AI decisions at extra high effort; Rewrite and More on the selected suggestion (track/v2-quickwins)
 
 Twin of the macOS entry of the same date; the user asked for fewer clicks and for Claude Code to decide at extra high effort.

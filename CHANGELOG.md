@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Seven new caption styles in Roboto Black (Marker, Punch-in, Sing-along, Heavy shadow, Glow, Emoji pop, Minimal), and a "How should clips be made?" card above the clips: pick Auto and Claude chooses a caption style for each clip and says why, or fix your own style and it is never changed.
 - Rewrite phrase cards, panels, fields and next-step chips have even, roomier spacing, and the timeline's header no longer crowds at the smallest window.
 
 - Find Clips, Rewrite and the other AI decisions now think at extra high effort (Claude Code and Anthropic; others at their highest), and the status bar and Settings say so, for example "Claude Code · Opus (latest) · extra high".

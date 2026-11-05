@@ -216,6 +216,10 @@ import Testing
         editor.app.voiceLabSession.records = [try JSONDecoder().decode(VoiceConsentRecord.self,
             from: Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/consent-record.json")))]
         shell.setExplorerExpanded(.exports, true); shell.setExplorerExpanded(.voices, true); shell.setExplorerExpanded(.outline, true)
+        // The clip style card (design §6.6) shows once above the clip list; this test measures the Outline and the
+        // library, so it starts with the card collapsed to the status bar.
+        editor.collapseClipStyleCard()
+        #expect(!editor.showsClipStyleCard)
         let entries = shell.outlineEntries
         try #require(entries.count >= 2)
         let word = try #require(editor.words[entries[1].words].first { !editor.cutWordIDs.contains($0.id) && $0.kind == .word })
