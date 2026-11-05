@@ -5,7 +5,8 @@ Writes shared/fixtures/clip-render/clip-render-cases.json (format voxclip-clip-r
 a second renderer must reproduce, so Windows' clip controls and Ask Claude effects render as the Mac's do. A new file of
 its own, so neither Core's existing replays change. The look goldens are the Mac's ClipControlsRenderTests pixels (Core
 Image on the synthetic 4 x 2 frame); `recipe` is ClipLookRecipe's arithmetic on the 8-bit swatches. C# replays every
-category (ClipRenderVectorTests in Core and Media). Deterministic; run from anywhere.
+category (ClipRenderVectorTests in Core and Media), and Swift does (ClipRenderVectorReplayTests in Media). Deterministic;
+run from anywhere.
 """
 import json
 from pathlib import Path
