@@ -73,6 +73,8 @@ The DJI project's in-app ratios (median 2.17) were measured against the input te
 ## Consequences
 
 - **First estimates.** A new project's first estimates are about 1.5 to 2 times the old ones. Phrases that used to look like they fit now ask for shorter wording before money is spent.
+- **Other voices.** The prior is fitted on one speaker's voice. The three 3 November takes of another speaker and an older model (`phrase-timing-cases.json`) come out 18–62% under it. Two measured takes of that voice bring the third within 3%, which is why calibration is per voice.
+- **One-word takes.** The 0.4 s onset makes them about 0.7–0.8 s. A one-word swap in a 0.4 s word with hard seams no longer reads as fitting, which matches what such takes do.
 - **Vectors.**
   - `shared/fixtures/voice-lab/tts-estimator-cases.json` (new schema `voxclip-tts-estimator/1`) carries synthetic texts. Its "observed" lengths are bin medians of the measured v4 takes, never a single take.
   - `phrase-timing-cases.json` stays the 1.8 prior's vectors for the Windows twin until it moves. The Mac replays only its recorded measurements.
