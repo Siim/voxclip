@@ -59,7 +59,10 @@ import VoxClipCore
                 await model.start()
                 do {
                     let results: [DebugUISuite.Result]
-                    if CommandLine.arguments.contains("-spacingCaptures") {
+                    if CommandLine.arguments.contains("-makeItCaptures") {
+                        // Offscreen Make it postable states (DebugMakeIt.swift), on the -layoutAudit launch path.
+                        results = try await DebugMakeIt.run(app: model, directory: directory)
+                    } else if CommandLine.arguments.contains("-spacingCaptures") {
                         // Offscreen spacing captures (DebugSpacing.swift), on the -layoutAudit launch path.
                         results = try await DebugSpacing.run(app: model, directory: directory)
                     } else if CommandLine.arguments.contains("-timelinePerformanceAudit") {

@@ -278,6 +278,27 @@ private final class Calls: Sendable {
         #expect(editor.makeItHeadline(run) == "Stopped · what was done is kept")
     }
 
+    /// A series uses the same free track on several clips: each clip keeps its own entry (found by the series capture,
+    /// where the third clip's music failed as a duplicate id).
+    @Test func theSameTrackCanSitUnderTwoClips() async throws {
+        let fixture = try fixture(plan: Self.plan(rewrite: false))
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let editor = fixture.editor
+        _ = try await run(fixture)
+        step(fixture.undo) {
+            editor.apply(.addClip(ClipRange(id: "clip-two", startWordId: "w8", endWordId: "w9", title: "Two", origin: .manual, selected: true)), name: "Make clip")
+        }
+        editor.makeIt.services?.plan = { _, _ in
+            ClipAutopilotSeries(plans: [ClipAutopilotPlan(startWord: 7, endWord: 8, title: "Two", hook: "", captions: Self.plan().captions,
+                music: Self.plan().music, musicPick: 0, postText: "Two.", score: 6, verdict: .casualPost)])
+        }
+        _ = try await run(fixture, clip: "clip-two")
+        let first = try #require(MusicProject.entry(for: "clip-main", in: editor.project))
+        let second = try #require(MusicProject.entry(for: "clip-two", in: editor.project))
+        #expect(first.asset == second.asset && first.id != second.id && second.id == first.id + "-2")
+        #expect(editor.makeIt.run(for: "clip-two")?.rows.first { $0.id == "music" }?.undoable == true)
+    }
+
     @Test func theDriverPressesOnlyPricedStepsWithinItsBudgetAndNeverGivesUpATake() {
         #expect(MakeItRewriteDriver.pricedID("takeQuote-1") && MakeItRewriteDriver.pricedID("approveTakeQuote-1") && MakeItRewriteDriver.pricedID("keepFixing"))
         for id in ["discardChanges", "closeRewrite", "keepOriginal", "askAgain", "tryAgain", "rewriteAgain"] {

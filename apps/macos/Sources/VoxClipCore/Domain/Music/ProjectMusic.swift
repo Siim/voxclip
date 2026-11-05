@@ -239,6 +239,18 @@ public enum MusicProject {
         return result
     }
 
+    /// `entry` with an id no other clip's track has: one file under several clips (a series made postable with the same
+    /// free track) keeps its content-named id on the first and gains "-2", "-3"… on the others.
+    public static func unique(_ entry: ProjectMusic, in project: Project) -> ProjectMusic {
+        let taken = Set(project.music.filter { $0.clipId != entry.clipId }.map(\.id))
+        guard taken.contains(entry.id) else { return entry }
+        var next = entry
+        var suffix = 2
+        while taken.contains(entry.id + "-\(suffix)") { suffix += 1 }
+        next.id = entry.id + "-\(suffix)"
+        return next
+    }
+
     /// The track under a clip, or under the full video for nil.
     public static func entry(for clipId: String?, in project: Project) -> ProjectMusic? {
         project.music.first { $0.clipId == clipId }

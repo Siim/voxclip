@@ -87,8 +87,10 @@ struct EditorRenderSnapshot {
     @ObservationIgnored var onShowPanelJob: ((PanelJob) -> Void)?
     @ObservationIgnored var onRenameClip: ((String) -> Void)?
     #if DEBUG
-    /// The smoke and tests give Make it postable's Rewrite session their scripted voice and speaker check.
-    @ObservationIgnored var makeItGeneration: ((RewriteSession) -> Void)?
+    /// The smoke and tests give Make it postable's Rewrite session their scripted voice and speaker check, and watch each
+    /// step its driver takes.
+    @ObservationIgnored var makeItGeneration: ((RewriteSession) async -> Void)?
+    @ObservationIgnored var makeItStepObserver: ((String) async -> Void)?
     #endif
     /// One undo step over several project changes (Make it postable's run): `replace` registers nothing while a group
     /// owns the edits, and the group registers one step back to where it began.

@@ -550,6 +550,14 @@ import VoxClipCore
             stepStarted = ProcessInfo.processInfo.systemUptime
         }
 
+        /// Make it postable's driver opened `session`: the harness follows it, gives it the scripted voice and draws it.
+        func adopt(_ session: RewriteSession) async {
+            if let previous = self.session, previous !== session { previous.close() }
+            self.session = session
+            makeHost()
+            await ensureGeneration()
+        }
+
         func close() {
             session?.close()
             editor?.close()
@@ -559,7 +567,7 @@ import VoxClipCore
 
         // MARK: Rendering
 
-        private func makeHost() {
+        func makeHost() {
             guard let session, let editor else { return }
             let view = AnyView(DirectorPanel(task: session.task, model: editor).frame(width: 360).sceneAccent())
             let host = NSHostingView(rootView: view)
@@ -608,7 +616,7 @@ import VoxClipCore
         private var stepStarted = ProcessInfo.processInfo.systemUptime
         /// Each run drops the session's takes generation (`RewriteSession.invalidate`); Make Takes would find the voices
         /// again with the live client (`discoverVoices`). The scripted one stands in for it once a proposal shows.
-        private func ensureGeneration() async {
+        func ensureGeneration() async {
             guard let session, session.isOpen, session.ownProposal != nil, !session.isProposing, let store, let prices,
                   session.generationIsCurrent(region: .default) else { return }
             if session.generation == nil {
@@ -1234,6 +1242,6 @@ import VoxClipCore
                 throw Failure.setup("S15's measured round named no bridge words, so no reply dropped them")
             }
         },
-    ] + ownTakeScenarios }
+    ] + ownTakeScenarios + makeItScenarios }
 }
 #endif

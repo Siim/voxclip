@@ -93,7 +93,7 @@ import VoxClipMedia
     }
 
     /// One capture: an offscreen window off every screen, laid out at `size`, drawn with cacheDisplay.
-    private static func draw<Content: View>(_ content: Content, name: String, size: NSSize, dark: Bool, mainWindow: Bool, directory: URL) async throws {
+    static func draw<Content: View>(_ content: Content, name: String, size: NSSize, dark: Bool, mainWindow: Bool, directory: URL) async throws {
         let root = content.background(DesignValues.color("bg.window")).sceneAccent()
             .preferredColorScheme(dark ? .dark : .light).environment(\.controlActiveState, .key)
         let controller = NSHostingController(rootView: root)

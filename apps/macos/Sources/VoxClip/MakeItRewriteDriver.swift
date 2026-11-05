@@ -11,6 +11,8 @@ import VoxClipCore
     let request: MakeItRewriteRequest
     private var session: RewriteSession?
     private var joinNotes: [Int] = []
+    /// The control the last step pressed, for the smoke's observation.
+    private var pressed: String?
 
     init(editor: EditorModel, request: MakeItRewriteRequest) { self.editor = editor; self.request = request }
 
@@ -33,11 +35,18 @@ import VoxClipCore
             return MakeItRewriteOutcome(result: .needsYou("Rewrite couldn't place these words. Change to try it yourself."))
         }
         self.session = session
+        #if DEBUG
+        await editor.makeItGeneration?(session)
+        #endif
         let before = Set(editor.project.voiceLab.segments.map(\.id))
         var spent = Decimal(0)
         for _ in 0..<32 {
             await settle()
             spent = max(spent, session.takePlan?.spent.usd ?? 0)
+            #if DEBUG
+            if let pressed { await editor.makeItStepObserver?(pressed) }
+            #endif
+            pressed = nil
             guard session.isOpen else { break }
             if let blocked = await step(session, spent: spent) {
                 spent = max(spent, session.takePlan?.spent.usd ?? 0)
@@ -70,9 +79,6 @@ import VoxClipCore
         do { try session.receivePassage(request.text) } catch { editor.closeRewrite(returnFocus: false); return nil }
         session.finishRun(seconds: 0)
         guard session.isOpen, session.review != nil else { editor.closeRewrite(returnFocus: false); return nil }
-        #if DEBUG
-        editor.makeItGeneration?(session)
-        #endif
         return session
     }
 
@@ -104,6 +110,7 @@ import VoxClipCore
             guard let budget = request.budget, let price, spent + price <= budget else { return .overCap(nextUSD: price) }
         }
         let pending = session.takesTask
+        pressed = "Make it postable presses [\(action.title)]"
         action.perform()
         // An approved price also lets Rewrite fix stuck phrases on its own; that allowance stays inside the budget.
         if let price, let budget = request.budget, session.autoFix.armed {
@@ -125,6 +132,7 @@ import VoxClipCore
             var chosen = false
             session.mutateLipsync(phrase: phrase.id) { chosen = plan.useAnyway(take: take.id, phrase: phrase.id) }
             if chosen {
+                pressed = "Make it postable uses phrase \(phrase.id + 1)'s take (join advisory only)"
                 joinNotes.append(phrase.id)
                 session.autoChooseVideo(plan)
                 session.showProposal()

@@ -76,7 +76,7 @@ enum MakeItInverse {
 
 /// Where a decision's Change goes.
 enum MakeItChange: Equatable {
-    case captions, music, motion, rename, post
+    case captions, music, motion, rename, post, hook
     case phrase(ClosedRange<Int>)
     case question(Int)
 }
@@ -164,6 +164,8 @@ struct MakeItRow: Identifiable, Equatable {
     func dequeue() -> String? { queue.isEmpty ? nil : queue.removeFirst() }
     func clearQueue() { queue = []; queueTask?.cancel(); queueTask = nil }
     func holdQueue(_ task: Task<Void, Never>) { queueTask = task }
+    /// Waits until the series' queue has run (the smoke and tests).
+    func waitForQueue() async { await queueTask?.value }
 }
 
 extension EditorModel {
@@ -354,7 +356,7 @@ extension EditorModel {
             }
         }
         if let hook = operations.first(where: { $0.decision == .hook }), case .hook(_, let text) = hook.action {
-            rows.append(MakeItRow(id: hook.id, kind: .choice, text: "Claude chose the hook “\(text)”", detail: "Shown in the first 2 s once title cards ship; copy it into your post meanwhile.", change: .post))
+            rows.append(MakeItRow(id: hook.id, kind: .choice, text: "Claude chose the hook “\(text)”", detail: "Shown in the first 2 s once title cards ship; copy it into your post meanwhile.", change: .hook))
         }
         for (index, question) in plan.questions.enumerated() {
             rows.append(MakeItRow(id: "question-\(index)", kind: .question, text: question.question, detail: "Claude chose “\(question.answer)”",
@@ -481,7 +483,9 @@ extension EditorModel {
         panel.use(candidate, model: self)
         await panel.settled()
         guard let entry = MusicProject.entry(for: run.clipID, in: project), entry != previous else {
-            row.kind = .note; row.detail = "The track couldn't be added. Change to try another."; return row
+            let reason: String = if case .failed(let message) = panel.phase { message } else { "" }
+            panel.dismissFailure()
+            row.kind = .note; row.detail = (reason.isEmpty ? "The track couldn't be added." : reason) + " Change to try another."; return row
         }
         if candidate.source == .generated { run.spent += candidate.estimate?.usd ?? 0 }
         panel.setGain(-cue.picked.underVoiceDb, model: self)
@@ -556,6 +560,10 @@ extension EditorModel {
         case .motion: _ = setScope(run.clipID); onShowPanelJob?(.motion)
         case .rename: onRenameClip?(run.clipID)
         case .post: copyMakeItPostText(run)
+        case .hook:
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(run.hook, forType: .string)
+            announce("Hook copied.")
         case .phrase(let range):
             if let rewrite, rewrite.isOpen, rewrite.rewriteScope == .selection(range) { onShowPanelJob?(.rewrite); return }
             _ = setScope(run.clipID)

@@ -202,7 +202,7 @@ import VoxClipCore
                     .accessibilityLabel("Undo \(row.text)")
             }
             if let change = row.change, !row.undone, !run.running {
-                Button(row.kind == .question ? "Change" : change == .post ? "Copy" : "Change") { model.makeItChange(change, run: run) }
+                Button(change == .post || change == .hook ? "Copy" : "Change") { model.makeItChange(change, run: run) }
                     .buttonStyle(.borderless).accessibilityLabel("Change \(row.text)")
             }
         }
