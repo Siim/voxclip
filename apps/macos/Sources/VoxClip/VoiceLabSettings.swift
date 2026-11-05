@@ -75,6 +75,7 @@ enum LipSyncAvailability {
                     Text(record.voiceName).fontWeight(.medium)
                     Text("Created \(Self.createdDate(record.createdAt, shared: app.shared)) · \(record.voiceId)").font(.caption).textSelection(.enabled)
                     if record.status == .verificationRequired { Text("ElevenLabs needs to verify this voice before it can be used. Finish verification on elevenlabs.io, then come back.").font(.caption) }
+                    if record.status == .active { VoiceReferenceRows(session: session, record: record, context: context) }
                     if session.deleting.contains(record.id) { Text(session.busy ? "Deleting…" : "Couldn't finish deleting").font(.caption) }
                     Button(session.deleting.contains(record.id) ? "Retry deletion…" : "Delete voice", role: .destructive) { session.request(.delete(record.id)) }.disabled(session.busy)
                         .accessibilityLabel(Self.actionAccessibilityLabel(session.deleting.contains(record.id) ? "Retry deletion" : "Delete voice", context: context))
@@ -156,6 +157,30 @@ enum LipSyncAvailability {
         }
         guard let context = contexts[key] else { return action.title }
         return actionAccessibilityLabel(action.title, context: context)
+    }
+}
+
+/// A voice's learned references (ADR-R41): how many of the owner's videos taught the guard, and the two inline actions.
+@MainActor struct VoiceReferenceRows: View {
+    @Bindable var session: VoiceLabSession
+    let record: VoiceConsentRecord
+    let context: String
+    var body: some View {
+        let learned = VoiceSpeakerReferences.learnedCount(record.speaker)
+        let learning = session.isLearning
+        Text(VoiceLabSession.learnedLine(record)).font(.caption).accessibilityIdentifier("voice-references-\(record.id)")
+        if let line = session.learningLine[record.id] { Text(line).font(.caption).foregroundStyle(.secondary) }
+        HStack {
+            Button(learning ? "Learning…" : "Learn from my videos") { session.learnFromVideos(recordID: record.id) }
+                .disabled(learning || session.busy)
+                .accessibilityLabel(VoiceLabSettings.actionAccessibilityLabel("Learn from my videos", context: context))
+            if learned > 0 || record.speaker.references != nil {
+                Button("Forget learned references") { Task { await session.forgetLearned(recordID: record.id) } }
+                    .disabled(session.busy)
+                    .accessibilityLabel(VoiceLabSettings.actionAccessibilityLabel("Forget learned references", context: context))
+            }
+        }
+        Text("Checks speech in your projects on this Mac against your consent recording. Free; nothing is sent.").font(.caption).foregroundStyle(.secondary)
     }
 }
 

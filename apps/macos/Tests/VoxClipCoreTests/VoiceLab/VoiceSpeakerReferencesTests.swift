@@ -4,14 +4,15 @@ import Testing
 @_spi(Testing) @testable import VoxClipCore
 @_spi(Testing) @testable import VoxClipMedia
 
-/// A scripted speaker model: speech filled with the value `a` is the unit vector at `a × 100` degrees. The fixture
+/// A scripted speaker model: speech whose mean is `a` is the unit vector at `a × 300` degrees. The fixture
 /// record's owner is [1, 0] with τ 0.8, so up to 36.87° passes against the statement.
 private struct AngleEmbedder: SpeakerEmbedder {
     let modelID = "fixture-calibrated"
     let dimension = 2
     func voicedSamples(_ pcm16k: [Float]) async throws -> [Float] { pcm16k }
     func embed(_ pcm16k: [Float]) async throws -> [Float] {
-        let radians = Double(pcm16k.first ?? 0) * 100 * .pi / 180
+        let mean = pcm16k.reduce(0.0) { $0 + Double($1) } / Double(max(1, pcm16k.count))
+        let radians = mean * 300 * .pi / 180
         return [Float(cos(radians)), Float(sin(radians))]
     }
 }
@@ -24,7 +25,7 @@ struct VoiceSpeakerReferencesTests {
         return [Float(cos(radians)), Float(sin(radians))]
     }
     /// Four seconds of speech the angle embedder reads as `degrees`.
-    private static func speech(_ degrees: Double) -> [Float] { [Float](repeating: Float(degrees / 100), count: 64_000) }
+    private static func speech(_ degrees: Double) -> [Float] { [Float](repeating: Float(degrees / 300), count: 64_000) }
     private static let date = Date(timeIntervalSince1970: 1_793_900_000)
     private var wav: Data { VoiceLabRequestFixtures.wav(rate: 16_000, frames: 80_000, fill: 4_000) }
 
@@ -201,6 +202,64 @@ struct VoiceSpeakerReferencesTests {
         // Too little speech to check is settled too.
         let short = await useGuard.screen(contentKey: "car-video", recordID: record.id, speech: [[Float](repeating: 0.3, count: 8_000)])
         #expect(short == [.blocked(.speakerMismatch)])
+    }
+
+    // MARK: Learn from my videos
+
+    /// A transcribed project whose 20 s of 16 kHz audio the angle embedder reads as `degrees`: nine one-and-a-half-second
+    /// words with half a second between them.
+    static func learningProject(_ root: URL, degrees: Double, name: String) throws -> (url: URL, project: Project, media: URL) {
+        let media = root.appendingPathComponent("\(name).wav")
+        let fill = Int((degrees / 300 * 32_768).rounded())
+        try VoiceLabRequestFixtures.wav(rate: 16_000, frames: 20 * 16_000, fill: fill).write(to: media)
+        var json = try #require(JSONSerialization.jsonObject(with: FixtureLoader.data("fixtures/voice-lab/passage-render-v3.voxclip")) as? [String: Any])
+        var mediaJSON = try #require(json["media"] as? [String: Any]); var source = try #require(mediaJSON["source"] as? [String: Any])
+        source["absolutePath"] = media.path; source["relativePath"] = media.lastPathComponent
+        source["sizeBytes"] = try #require(try media.resourceValues(forKeys: [.fileSizeKey]).fileSize)
+        source["contentKey"] = try JSONProjectStore.contentKey(for: media)
+        source["durationSeconds"] = 20; source["audio"] = ["sampleRate": 16_000, "channels": 1]
+        mediaJSON["source"] = source; json["media"] = mediaJSON
+        var transcript = try #require(json["transcript"] as? [String: Any])
+        var words = try #require(transcript["words"] as? [[String: Any]])
+        for index in words.indices {
+            let start = 0.5 + Double(index) * 2
+            words[index]["start"] = start; words[index]["end"] = start + 1.5
+            words[index]["rawStart"] = start; words[index]["rawEnd"] = start + 1.5
+        }
+        transcript["words"] = words; transcript["durationSeconds"] = 20; json["transcript"] = transcript
+        // No Voice Lab takes: their windows belong to the fixture's own timing.
+        var voiceLab = try #require(json["voiceLab"] as? [String: Any])
+        voiceLab["assets"] = [Any](); voiceLab["segments"] = [Any](); voiceLab["voices"] = [Any](); json["voiceLab"] = voiceLab
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let url = root.appendingPathComponent("\(name).voxclip")
+        try data.write(to: url)
+        return (url, try JSONProjectStore.decode(data), media)
+    }
+
+    @Test func learningFromAVideoKeepsOnlyTheOwnersSpeechOneHop() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let (store, record) = try await store(root)
+        let learner = VoiceReferenceLearner(store: store, check: .init(embedder: AngleEmbedder(), calibratedThreshold: 0.8))
+        let own = try Self.learningProject(root, degrees: 30, name: "own")
+        let guest = try Self.learningProject(root, degrees: 120, name: "guest")
+        let selections = VoiceReferenceLearner.selections(words: own.project.transcript?.words ?? [], sampleRate: 16_000, totalFrames: 20 * 16_000)
+        #expect(!selections.isEmpty && selections.allSatisfy { $0.frames >= 6 * 16_000 && $0.frames <= 10 * 16_000 })
+        // Someone else's video teaches nothing.
+        #expect(await learner.learn(project: guest.project, media: guest.media, recordID: record.id) == .notTheOwner)
+        #expect(try await store.load(record.id).speaker.references == nil)
+        // The owner's video teaches its reference, once.
+        guard case .learned(let score) = await learner.learn(project: own.project, media: own.media, recordID: record.id) else {
+            Issue.record("the owner's video should teach a reference"); return
+        }
+        #expect(abs(score - cos(30 * .pi / 180)) < 0.01)
+        #expect(await learner.learn(project: own.project, media: own.media, recordID: record.id) == .kept)
+        let learned = try await store.load(record.id)
+        #expect(learned.speaker.references?.map(\.contentKey) == [own.project.media.source.contentKey])
+        // A phrase of another video at 60° now passes through it.
+        #expect(try VoiceSpeakerReferences.match(Self.vector(60), speaker: learned.speaker)?.viaReference == true)
+        // A project without a transcript has no speech to learn from.
+        var untranscribed = own.project; untranscribed.transcript = nil
+        #expect(await learner.learn(project: untranscribed, media: own.media, recordID: record.id) == .noSpeech)
     }
 
     @Test func deletingTheVoiceRemovesItsReferences() async throws {

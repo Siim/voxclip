@@ -76,6 +76,24 @@ public enum VoiceLabSourceAudio {
         return (VoiceLabSourceExcerpt(totalFrames: total, regions: regions), envelope)
     }
 
+    /// A guard selection's word spans (voice-lab §6.9) decoded from `source` and joined, at 16 kHz: what the guard embeds,
+    /// read without a Rewrite window, as learning references from a project does (ADR-R41).
+    public static func guardSpeech(source: URL, frames: Int64, sampleRate: Int, selection: VoiceLabGuardSpeech) async throws -> [Float] {
+        guard (8_000...96_000).contains(sampleRate) else { throw VoiceLabSourceAudioError.unsupportedRate }
+        guard frames > 0, !selection.ranges.isEmpty else { throw VoiceLabSourceAudioError.rangeOutsideMedia }
+        let total = Int(frames)
+        var regions: [VoiceLabSourceExcerpt.Region] = []
+        for cover in merged(selection.covers(joiningWithin: 5 * sampleRate).map { aligned($0.lowerBound, $0.upperBound, total: total, rate: sampleRate) })
+        where !cover.isEmpty {
+            var samples: [Float] = []
+            samples.reserveCapacity(cover.count)
+            try await decodeMono(source: source, range: Int64(cover.lowerBound)..<Int64(cover.upperBound), sampleRate: sampleRate) { samples.append(contentsOf: $0) }
+            regions.append(.init(start: cover.lowerBound, samples: samples))
+        }
+        guard let joined = selection.samples(from: VoiceLabSourceExcerpt(totalFrames: total, regions: regions)) else { throw VoiceLabSourceAudioError.rangeOutsideMedia }
+        return VoiceConsentAudio.resample(joined, rate: sampleRate)
+    }
+
     /// The whole take's 10 ms levels as `rewriteSource` measures them, decoded from `source`.
     public static func rewriteEnvelope(source: URL, frames: Int64, sampleRate: Int) async throws -> AudioEnvelope {
         guard (8_000...96_000).contains(sampleRate) else { throw VoiceLabSourceAudioError.unsupportedRate }

@@ -56,6 +56,8 @@ extension InlineTranscription {
             try validate(request)
             let transcript = result.transcript
             model.replaceTranscript(transcript)
+            // A video of the owner teaches their voice's guard, on this Mac and free (ADR-R41).
+            model.app.voiceLabSession.learnFromTranscribed(model.project, media: model.sourceURL)
             // On drop: a free transcription goes straight on to Find Clips when the AI is free too (design.md §6.7); in
             // Claude mode a newly opened video goes on after any transcription, then Claude makes its clips (§6.6).
             if (startedOnImport && request.cost == nil) || model.claudeModeWaitsForTranscript {

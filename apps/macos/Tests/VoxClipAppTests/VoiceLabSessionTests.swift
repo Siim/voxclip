@@ -411,6 +411,39 @@ import Synchronization
         await barrier.finished()
         #expect(barrier.cancelled)
     }
+    /// Settings › Voices (ADR-R41): the voice says how many of the owner's videos taught the guard, and Forget learned
+    /// references removes them inline, with no confirmation and no request.
+    @Test func settingsShowsLearnedVideosAndForgetsThemInline() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let app = AppModel(locations: locations(root))
+        app.settings.values["voiceLab.enabled"] = .bool(true)
+        let store = VoiceConsentStore(locations: locations(root))
+        let shared = try SharedResources.locate()
+        let wav = try VoiceTrainingAudio.wav([Float](repeating: 0.1, count: 5 * 48_000))
+        var json = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/consent-record.json"))) as? [String: Any])
+        var statement = try #require(json["statement"] as? [String: Any])
+        statement["audioSha256"] = VoiceLabFingerprint.bytes(wav); json["statement"] = statement
+        let record = try JSONDecoder().decode(VoiceConsentRecord.self, from: JSONSerialization.data(withJSONObject: json))
+        try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
+        let session = VoiceLabSession(app: app, store: store)
+        await session.load(recover: false)
+        #expect(VoiceLabSession.learnedLine(try #require(session.records.first)).hasPrefix("Not learned from your videos yet"))
+        // Two videos taught the guard (the fixture owner is [1, 0], τ 0.8).
+        try await store.learnReference(recordID: record.id, embedding: [0.95, 0.31], contentKey: "video-a", model: "fixture-calibrated")
+        try await store.learnReference(recordID: record.id, embedding: [0.95, -0.31], contentKey: "video-b", model: "fixture-calibrated")
+        await session.load(recover: false)
+        #expect(VoiceLabSession.learnedLine(try #require(session.records.first)) == "Learned from 2 of your videos")
+        await session.forgetLearned(recordID: record.id)
+        #expect(try await store.load(record.id).speaker.references == nil)
+        #expect(VoiceLabSession.learnedLine(try #require(session.records.first)).hasPrefix("Not learned"))
+        #expect(session.learningLine[record.id]?.hasPrefix("Forgot what VoxClip learned") == true)
+        #expect(session.confirmation == nil && session.message == nil, "inline: no sheet, nothing sent")
+        // With no project to learn from, the line names the next step.
+        session.learnFromVideos(recordID: record.id, projects: [])
+        #expect(session.learningLine[record.id] == "Open or export a video first. VoxClip learns from your projects on this Mac.")
+        #expect(!session.isLearning)
+    }
     private func locations(_ root: URL) -> DataLocations {
         DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path])
     }
