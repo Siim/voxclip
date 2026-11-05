@@ -133,6 +133,20 @@ import Testing
         #expect(ClipEffects.maskingBleeps(segments, effects: []) == segments)
     }
 
+    /// The Voice Lab path draws its own captions (`VoiceLabOutputPlan.captions`): source words keep their transcript ids, so
+    /// a bleeped one is masked there too; a voiced phrase's own words (`<segment>:word:<n>`) are not the bleeped audio.
+    @Test func bleepedWordsAreMaskedInTheVoiceLabCaptions() {
+        let captions = [CaptionWord(id: "w1", text: "keep", start: 0, end: 1), CaptionWord(id: "w2", text: "secret.", start: 1, end: 2),
+                        CaptionWord(id: "seg-1:word:0", text: "secret", start: 2, end: 3)]
+        let mute = ClipEffect(id: "fx-mute-1", clipId: nil, kind: .mute, start: 1, end: 2, wordIds: ["w2"])
+        let title = ClipEffect(id: "fx-title-1", clipId: nil, kind: .title, start: 0, end: 1, text: "w1", position: .top)
+        #expect(ClipEffects.maskingBleeps(captions, effects: [mute, title]).map(\.text) == ["keep", "\u{00D7}\u{00D7}\u{00D7}\u{00D7}\u{00D7}\u{00D7}.", "secret"])
+        let plan = VoiceLabOutputPlan(sampleRate: 100, totalSourceSamples: 300, pieces: [], captions: captions, scope: .full)
+        let masked = ClipEffects.maskingBleeps(plan, effects: [mute])
+        #expect(masked.captions.map(\.text)[1] == "\u{00D7}\u{00D7}\u{00D7}\u{00D7}\u{00D7}\u{00D7}." && masked.pieces == plan.pieces)
+        #expect(ClipEffects.maskingBleeps(plan, effects: [title]) == plan)
+    }
+
     @Test func tracksInterpolateHoldAtTheEndsAndSmooth() throws {
         let a = ClipEffect.Rect(x: 0.1, y: 0.1, width: 0.2, height: 0.2), b = ClipEffect.Rect(x: 0.3, y: 0.1, width: 0.2, height: 0.2)
         let blur = ClipEffect(id: "fx-blur-1", clipId: nil, kind: .blur, start: 1, end: 2, rect: a, tracking: .face,

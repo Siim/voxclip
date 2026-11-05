@@ -335,7 +335,8 @@ enum CLIWorkflow {
                         language: language ?? "und", duration: plan.duration,
                         captions: .init(overrides: project.captions.overrides, position: project.captions.position,
                                         positionByAspect: project.captions.positionByAspect),
-                        words: plan.captions.map { .init(id: $0.id, text: $0.text, start: $0.start, end: $0.end) })
+                        words: ClipEffects.maskingBleeps(plan.captions, effects: request.effects?.effects ?? [])
+                            .map { .init(id: $0.id, text: $0.text, start: $0.start, end: $0.end) })
                     try Task.checkCancellation()
                     let pipeline = try CaptionPipeline(shared: SharedResources.locate())
                     let layout = try await pipeline.layout(input: input, style: style)
@@ -346,7 +347,9 @@ enum CLIWorkflow {
             }
             guard let style = request.style, let state, !state.transcript.words.isEmpty else { return .export(request) }
             try Task.checkCancellation()
-            let words = try captionCopy(buildSegments(state, activeClip: activeClip), plan: request.plan)
+            // Bleeped and muted words read as × marks, as in the app (ai.md §18.5).
+            let segments = ClipEffects.maskingBleeps(try buildSegments(state, activeClip: activeClip), effects: request.effects?.effects ?? [])
+            let words = captionCopy(segments, plan: request.plan)
             let pipeline = try CaptionPipeline(shared: SharedResources.locate())
             let resolution = await pipeline.resolve(style, overrides: overrides, frame: request.output.size)
             try Task.checkCancellation()
