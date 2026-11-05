@@ -39,13 +39,15 @@ internal static class ExportFingerprint
     internal static string TargetId(ExportTarget target) => target is ExportTarget.Clip clip ? clip.Id : "full";
     internal static string For(Project project, ExportTarget target, VoxClip.Core.Domain.VoiceLab.VoiceLabLabelPosition? labelPosition = null)
     {
-        if (project.ContextDemo is { Placements.Length: > 0 } || project.MotionCues.Count > 0 || project.Music.Count > 0 || project.ClipControls.Count > 0)
+        if (project.ContextDemo is { Placements.Length: > 0 } || project.MotionCues.Count > 0 || project.Music.Count > 0)
             return Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(
                 "unsupported-windows-visuals-v1\n" + TargetId(target) + "\n" + ProjectSerialization.Serialize(project))));
         var state = ExportSelection.Scope(EditingEngine.FromProject(project), target);
         var media = ExportRenderInput.Media(project);
         var plan = ExportRenderInput.Plan(media, state);
-        var output = ExportRenderInput.Output(media, project.Export);
+        var clipId = target is ExportTarget.Clip scoped ? scoped.Id : null;
+        var controls = VoxClip.Core.Domain.Clips.ClipControlsRendering.Controls(project, clipId);
+        var output = ExportRenderInput.Output(media, project.Export, controls);
         object? voice = null;
         if (project.SchemaVersion >= 3)
         {
@@ -80,7 +82,15 @@ internal static class ExportFingerprint
         });
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream)) WriteCanonical(writer, input);
-        return Convert.ToHexStringLower(SHA256.HashData(stream.ToArray()));
+        var hash = Convert.ToHexStringLower(SHA256.HashData(stream.ToArray()));
+        // A clip's controls and the scope's effects change the render; without them the fingerprint is unchanged.
+        var effects = project.ClipEffects.Where(effect => VoxClip.Core.Domain.Effects.ClipEffects.IsCensor(effect.GetProperty("kind").GetString()!) ||
+            (effect.GetProperty("clipId").ValueKind == JsonValueKind.String ? effect.GetProperty("clipId").GetString() : null) == clipId).ToArray();
+        if (controls is null && effects.Length == 0) return hash;
+        var clipInput = JsonSerializer.SerializeToElement(new { Controls = controls, Effects = effects });
+        using var clipStream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(clipStream)) WriteCanonical(writer, clipInput);
+        return Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(hash + "\n").Concat(clipStream.ToArray()).ToArray()));
     }
     private static void WriteCanonical(Utf8JsonWriter writer, JsonElement value)
     {

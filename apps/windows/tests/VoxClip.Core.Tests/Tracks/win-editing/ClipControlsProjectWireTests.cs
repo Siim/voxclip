@@ -66,19 +66,20 @@ public sealed class ClipControlsProjectWireTests
     }
 
     [Fact]
-    public void WindowsRefusesToExportClipControlsWithAReasonAndKeepsTheProject()
+    public void WindowsRendersClipControlsForTheirClipOnlyAndKeepsTheProject()
     {
         var project = ProjectSerialization.Deserialize(Fixture().ToJsonString());
         var controls = Assert.Single(project.ClipControls);
         Assert.Equal(new ProjectClipControls("clip-main", 1.25, ClipShape.Portrait, ClipLook.Muted, -3.5, 0.5, 1, false, true, 90), controls);
-        var refusal = Assert.IsType<VoxClipException>(Record.Exception(() => VoiceLabRenderContract.RequireWindowsVisualSupport(project)));
-        Assert.Equal(VoxClipErrorCode.ExportFailed, refusal.Code);
-        Assert.Equal(ClipControlsProject.ExportUnsupportedMessage, refusal.Message);
-        Assert.Throws<VoxClipException>(() => VoiceLabRenderContract.Prepare(project, VoiceLabOutputScope.Clip("clip-main"), VoiceLabLabelPosition.TopRight));
-        // Back at the defaults the entry is removed and export is allowed again.
+        // The refusal is gone: the clip render carries its controls; the full video renders without them (design §6.9).
+        VoiceLabRenderContract.RequireWindowsVisualSupport(project);
+        Assert.Equal(controls, ClipRenderInput.Resolve(project, "clip-main", "/data", "/shared")?.Controls);
+        Assert.Null(ClipControlsRendering.Controls(project, null));
+        Assert.Equal(ProjectSerialization.Serialize(project), ProjectSerialization.Serialize(ProjectSerialization.Deserialize(ProjectSerialization.Serialize(project))));
+        // Back at the defaults the entry is removed and nothing changes the render.
         var reset = ClipControlsProject.Setting(new ProjectClipControls("clip-main", 1, null, ClipLook.Original, 0, 0, 0, false, false, 0), project);
         Assert.Empty(reset.ClipControls);
-        VoiceLabRenderContract.RequireWindowsVisualSupport(reset);
+        Assert.Null(ClipControlsRendering.Controls(reset, "clip-main"));
     }
 
     [Fact]

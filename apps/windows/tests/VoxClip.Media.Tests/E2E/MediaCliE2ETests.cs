@@ -109,6 +109,79 @@ public sealed class MediaCliE2ETests
         finally { Directory.Delete(directory, true); }
     }
 
+    /// <summary>A clip of the tone fixture exported at 1.25× with the Muted look and one bleep (design §6.9, ai.md §18.5): the MP4 is
+    /// the edited length ÷ 1.25, its voice keeps 440 Hz, the bleep's 1 kHz tone replaces the voice over the bleeped words'
+    /// rendered bounds, and the edited WAV stays 1× with the words silent and no tone.</summary>
+    [Fact]
+    public async Task CliExportsAClipAtASpeedWithItsLookAndABleep()
+    {
+        var fixtures = Path.Combine(FixtureLoader.SharedRoot, "fixtures", "media");
+        if (!File.Exists(Path.Combine(fixtures, "index.json")))
+        {
+            const string reason = "Canonical media fixtures are absent; archive track/tooling shared/fixtures/media into this run.";
+            if (Environment.GetEnvironmentVariable("VOXCLIP_REQUIRE_E2E") == "1") Assert.Fail(reason);
+            Assert.Skip(reason);
+        }
+        VerifyFixtureHashes(fixtures);
+        await NativeTest.RequireAsync(windows: true);
+        var ct = TestContext.Current.CancellationToken;
+        var directory = Directory.CreateTempSubdirectory("voxclip-e2e-clip-").FullName;
+        try
+        {
+            var source = Path.Combine(directory, Tone);
+            File.Copy(Path.Combine(fixtures, Tone), source);
+            var media = await new FfmpegMediaProbe().ProbeAsync(source, ct);
+            var transcript = JsonSerializer.Deserialize(File.ReadAllText(Path.Combine(fixtures, ToneTranscript)), CliDataJson.Default.Transcript)!;
+            var project = CliOperations.NewProject(media, transcript, await new ProjectStore().ComputeContentKeyAsync(source, null, ct));
+            // Words are 80 ms with 20 ms gaps; the clip runs w21 (2.01 s) to w80 (7.89 s) and the bleep covers w51–w54 (5.01–5.39 s).
+            project = project with { Edits = project.Edits with { Clips = [new("clip-speed", "w21", "w80", "Speed", ClipOrigin.Manual, null, null, true)] } };
+            project = VoxClip.Core.Domain.Clips.ClipControlsProject.Setting(new("clip-speed", 1.25, null, VoxClip.Core.Domain.Clips.ClipLook.Muted,
+                0, 0, 0, false, false, 0), project);
+            using (var bleep = JsonDocument.Parse("""{"id":"fx-bleep-1","clipId":"clip-speed","kind":"bleep","start":5.01,"end":5.39,"wordIds":["w51","w52","w53","w54"]}"""))
+                project = VoxClip.Core.Domain.Effects.ClipEffects.Adding([bleep.RootElement.Clone()], project);
+            var projectPath = Path.Combine(directory, "clip.voxclip");
+            File.WriteAllText(projectPath, ProjectSerialization.Serialize(project));
+            var output = Path.Combine(directory, "clip.mp4");
+            var wave = Path.Combine(directory, "clip.wav");
+            var (exit, result) = await RunCli(["--open", projectPath, "--clip", "clip-speed", "--export", output, "--audio-out", wave,
+                "--json", "--quiet", "--style", "off"], directory, "e2e-clip-speed", ct);
+            WriteReport("e2e-clip-speed", exit, result);
+            Assert.Equal(0, exit);
+            var plan = CliOperations.BuildPlan(project with { Edits = project.Edits with { ActiveClipId = "clip-speed" } }, true);
+            var rendered = new VoxClip.Core.Domain.Clips.ClipSpeedTiming(1.25);
+            var renderedSeconds = rendered.RenderedSamples(plan.OutputSamples) / plan.SampleRate;
+            Assert.Equal(renderedSeconds, result["durationSeconds"]!.GetValue<double>(), 6);
+            Assert.Equal((long)Math.Floor(renderedSeconds * 48_000 + 0.5), result["audioSamples"]!.GetValue<long>());
+            var exported = await new FfmpegMediaProbe().ProbeAsync(output, ct);
+            Assert.InRange(exported.DurationSeconds, renderedSeconds - 0.05, renderedSeconds + 0.05);
+            var (bleepStart, bleepEnd) = (rendered.Rendered(plan.MapTime(5.01)), rendered.Rendered(plan.MapTime(5.39)));
+            var mixed = await MediaThread.Run("vc-e2e-clip-audio", () =>
+            {
+                using var reader = new AudioDecoder(output, 2);
+                Assert.Equal(48_000, reader.SampleRate);
+                var all = new float[(int)Math.Ceiling(renderedSeconds * 48_000) * 2];
+                reader.Read(all, all.Length / 2, ct);
+                return Enumerable.Range(0, all.Length / 2).Select(index => all[index * 2]).ToArray();
+            }, ct);
+            int At(double seconds) => (int)(seconds * 48_000);
+            var inside = (At(bleepStart + 0.03), At(bleepEnd - 0.03));
+            Assert.True(ClipRenderMediaTests.Amplitude(mixed, inside.Item1, inside.Item2, 440) < 0.03, "the voice is silent under the bleep");
+            Assert.InRange(ClipRenderMediaTests.Amplitude(mixed, inside.Item1, inside.Item2, 1_000), 0.2, 0.3);
+            // Away from the bleep the voice plays at its pitch: a resample would move 440 Hz to 550 Hz.
+            var voice = (At(0.5), At(1.5));
+            Assert.True(ClipRenderMediaTests.Amplitude(mixed, voice.Item1, voice.Item2, 440) > 0.25);
+            Assert.True(ClipRenderMediaTests.Amplitude(mixed, voice.Item1, voice.Item2, 550) < 0.05);
+            // The edited WAV is the clip at 1×, the bleeped words silent and no tone.
+            var edited = Wave(wave, plan);
+            var left = Enumerable.Range(0, edited.Length / 2).Select(index => edited[index * 2]).ToArray();
+            var words = ((int)(plan.MapTime(5.01) * 48_000) + 480, (int)(plan.MapTime(5.39) * 48_000) - 480);
+            Assert.True(ClipRenderMediaTests.Amplitude(left, words.Item1, words.Item2, 440) < 0.001);
+            Assert.True(ClipRenderMediaTests.Amplitude(left, words.Item1, words.Item2, 1_000) < 0.001);
+            Assert.True(ClipRenderMediaTests.Amplitude(left, At(0.5), At(1.5), 440) > 0.3);
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
     public static TheoryData<string> Cases
     {
         get { var cases = new TheoryData<string>(); foreach (var id in CaseIds) cases.Add(id); return cases; }

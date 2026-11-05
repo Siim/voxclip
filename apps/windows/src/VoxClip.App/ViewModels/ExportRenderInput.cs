@@ -1,3 +1,4 @@
+using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 
@@ -24,6 +25,7 @@ internal static class ExportRenderInput
         var samples = checked((long)Math.Floor(media.DurationSeconds * rate + 0.5));
         return new(rate, samples, [], [new(0, samples)], samples, []);
     }
-    internal static OutputSpec Output(MediaInfo media, ProjectExport export)
-        => ExportPresets.Output(media.OrientedSize, media.Video?.FrameRate ?? 30, export.Aspect, export.Quality);
+    /// <summary>The render's encoder settings; a clip's controls give it its own frame (design §6.9).</summary>
+    internal static OutputSpec Output(MediaInfo media, ProjectExport export, ProjectClipControls? controls = null)
+        => ClipControlsRendering.Output(media.OrientedSize, media.Video?.FrameRate ?? 30, export.Aspect, export.Quality, controls);
 }

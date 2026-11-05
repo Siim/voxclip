@@ -207,7 +207,8 @@ public sealed class PreviewEngine : IPreviewEngine
                     {
                         if (nextFrame < clock - 0.1) nextFrame = clock;
                         Present(nextFrame, false, CancellationToken.None);
-                        nextFrame += 1 / snapshot.Output.FrameRate;
+                        // Frames are due on the rendered clock; a clip's speed plays that many edited seconds per frame.
+                        nextFrame += snapshot.Speed.Speed / snapshot.Output.FrameRate;
                     }
                 }
                 catch (Exception exception) { RecoverPlayback(exception); }
@@ -284,7 +285,7 @@ public sealed class PreviewEngine : IPreviewEngine
             }
             prepared = null; preparedPart = -1; currentPart = cursor.Part;
         }
-        var decoded = current!.ReadAsync(source, exact, ct).GetAwaiter().GetResult();
+        var decoded = current!.ReadAsync(local.Clip?.Effects?.PictureTime(source) ?? source, exact, ct).GetAwaiter().GetResult();
         if (useFrameLeases)
         {
             if (framePool is null || framePool.Size != local.Output.Size) framePool = new(local.Output.Size);
@@ -373,7 +374,7 @@ public sealed class PreviewEngine : IPreviewEngine
         {
             try
             {
-                using var reader = new EditedAudioReader(localSnapshot, 48_000, edited, localSession, token);
+                using var reader = RenderedAudioReader.Open(localSnapshot, 48_000, edited, localSession, token);
                 var samples = new float[4096 * 2];
                 int count;
                 while ((count = reader.Read(samples, samples.Length / 2, token)) > 0)
@@ -404,7 +405,8 @@ public sealed class PreviewEngine : IPreviewEngine
         if (audio is { Completion.IsFaulted: true } failed) ReopenAfterLoss(failed, failed.Completion.Exception!.InnerException!);
         if (clockOverride is not null) return clockOverride();
         var elapsed = audio is not null ? audio.FramesPlayed / (double)audio.DeviceRate : videoClock.Elapsed.TotalSeconds;
-        return Math.Min(snapshot!.Timeline.Duration, origin + elapsed);
+        // The clock plays rendered seconds; positions stay on the edited timeline (design §6.9).
+        return Math.Min(snapshot!.Timeline.Duration, origin + snapshot.Speed.Edited(elapsed));
     }
 
     /// <summary>A failed output device first lands the playhead on its last played frame. A lost device then gets exactly one
@@ -412,7 +414,7 @@ public sealed class PreviewEngine : IPreviewEngine
     /// playback continues muted. Any other device error, including one from the reopen, faults playback at that frame.</summary>
     private void ReopenAfterLoss(IPreviewAudioOutput failed, Exception error)
     {
-        var lost = Math.Min(snapshot!.Timeline.Duration, origin + failed.FramesPlayed / (double)failed.DeviceRate);
+        var lost = Math.Min(snapshot!.Timeline.Duration, origin + snapshot.Speed.Edited(failed.FramesPlayed / (double)failed.DeviceRate));
         UpdatePosition(lost);
         if (IPreviewAudioOutput.Unavailable(error) is null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error).Throw();
         StartAudio(lost, CancellationToken.None);

@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Windows, clip speed, shape, looks, volume, fades, mute, flip and rotation, and Ask Claude's bleeps, blurs, overlays, freeze frames and sound effects now play in the preview and export, instead of asking you to export on a Mac.
 - On Mac, ✦ Make it postable now applies the look and speed Claude picks, each with play, Undo and Change chips, and shows the clip's length at that speed; Ask Claude sets a clip's speed when asked for the whole clip and offers "Apply to the whole clip" for part of one; blurs follow a flipped or turned picture, overlays keep their colours under a look, and the bundled sound effects ship with the app.
 - Rewrite prices a phrase the wording fit can't take as written, instead of stopping the whole fit with "invalid input".
 - Rewrite takes work on camera files whose audio runs a few milliseconds past the video, such as DJI recordings.

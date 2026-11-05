@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Text;
 using FFmpeg.AutoGen;
 using VoxClip.Core.Domain.Captions;
+using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Media;
 using VoxClip.Media.Audio;
@@ -82,7 +83,7 @@ public sealed class Exporter : IExporter
         if (snapshot.VoiceLab is { Prepared.OutputPlan.RequiresSyntheticRendering: true } input)
         {
             var requestedClip = job.Target is ExportTarget.Clip clip ? clip.Id : null;
-            var expectedSize = ExportPresets.OutputSize(snapshot.Media.OrientedSize, job.Aspect);
+            var expectedSize = ClipControlsRendering.OutputSize(snapshot.Media.OrientedSize, job.Aspect, snapshot.Clip?.Controls);
             if (input.Prepared.OutputPlan.Scope.ClipId != requestedClip || snapshot.Output.Size != expectedSize ||
                 snapshot.Captions is { } captions && captions.Frame != expectedSize)
                 throw new VoxClip.Core.Domain.VoiceLab.VoiceLabProjectException(
@@ -106,10 +107,11 @@ public sealed class Exporter : IExporter
     {
         var snapshot = job.Snapshot;
         if (snapshot.VoiceLab is not { Prepared.OutputPlan.RequiresSyntheticRendering: true } input) return [];
-        var size = ExportPresets.OutputSize(snapshot.Media.OrientedSize, job.Aspect);
+        var controls = snapshot.Clip?.Controls;
+        var size = ClipControlsRendering.OutputSize(snapshot.Media.OrientedSize, job.Aspect, controls);
         var fps = ExportPresets.OutputFrameRate(snapshot.Output.FrameRate);
-        var bitrate = ExportPresets.VideoBitrate(size, job.Aspect, job.Quality, fps) + 160_000d;
-        var estimate = Math.Ceiling(snapshot.Timeline.Duration * bitrate / 8d * 1.25) + 32d * 1024 * 1024;
+        var bitrate = ClipControlsRendering.VideoBitrate(size, job.Aspect, job.Quality, fps, controls) + 160_000d;
+        var estimate = Math.Ceiling(snapshot.RenderedDuration * bitrate / 8d * 1.25) + 32d * 1024 * 1024;
         if (!double.IsFinite(estimate) || estimate > long.MaxValue / 2d)
             throw new VoxClipException(VoxClipErrorCode.DiskFull, "The marked MP4 is too large for this volume. Your edits are saved.");
         var mp4Bytes = (long)estimate;
@@ -123,7 +125,7 @@ public sealed class Exporter : IExporter
             new(sidecar, sidecarBytes)
         };
         if (srt is not null)
-            allocations.Add(new(srt, System.Text.Encoding.UTF8.GetByteCount(Subtitles(snapshot.Captions))));
+            allocations.Add(new(srt, System.Text.Encoding.UTF8.GetByteCount(Subtitles(snapshot.Captions, snapshot.Speed.Speed))));
         if (publish)
         {
             allocations.Add(VoiceLabCapacity.Rollback(destination));
@@ -139,12 +141,14 @@ public sealed class Exporter : IExporter
         FfmpegLoader.InitializeAsync(ct).GetAwaiter().GetResult();
         var timer = Stopwatch.StartNew();
         var snapshot = job.Snapshot;
-        var output = ExportPresets.Output(snapshot.Media.OrientedSize, snapshot.Output.FrameRate, job.Aspect, job.Quality, snapshot.Output.VideoCodec);
+        var output = ClipControlsRendering.Output(snapshot.Media.OrientedSize, snapshot.Output.FrameRate, job.Aspect, job.Quality,
+            snapshot.Clip?.Controls, snapshot.Output.VideoCodec);
         var size = output.Size;
         var fps = output.FrameRate;
         snapshot = snapshot with { Output = output };
-        var frames = Native.Round(snapshot.Timeline.Duration * fps);
-        var samples = snapshot.Media.Audio is null ? 0 : Native.Round(snapshot.Timeline.Duration * 48_000);
+        // A clip's speed renders edited ÷ speed seconds; each frame looks up its edited time (design §6.9).
+        var freezes = snapshot.Clip?.Effects;
+        var (frames, samples) = RenderedCounts(snapshot, fps);
         var destination = OutputSafety.Resolve(job.OutputPath);
         var partial = destination + ".partial";
         var srtDestination = job.SrtPath is null ? null : OutputSafety.Resolve(job.SrtPath);
@@ -184,7 +188,7 @@ public sealed class Exporter : IExporter
             using (var nv12Handle = NativeHandle.Own(Native.Frame(AVPixelFormat.AV_PIX_FMT_NV12, size.Width, size.Height), NativeKind.Frame))
             using (var scaling = NativeHandle.Own(ffmpeg.sws_getContext(size.Width, size.Height, AVPixelFormat.AV_PIX_FMT_BGRA,
                 size.Width, size.Height, AVPixelFormat.AV_PIX_FMT_NV12, (int)SwsFlags.SWS_BILINEAR, null, null, null), NativeKind.Scale))
-            using (var editedAudio = audio is null ? null : new EditedAudioReader(snapshot, 48_000, session: voiceSession, ct: ct))
+            using (var editedAudio = audio is null ? null : RenderedAudioReader.Open(snapshot, 48_000, session: voiceSession, ct: ct))
             using (var audioFrameHandle = audio is null ? null : CreateAudioFrame(audio))
             {
                 var format = (AVFormatContext*)mux.Pointer;
@@ -197,9 +201,9 @@ public sealed class Exporter : IExporter
                 for (long index = 0; index < frames; index++)
                 {
                     ct.ThrowIfCancellationRequested();
-                    var editedTime = index / fps;
+                    var editedTime = EditedTime(snapshot, index, fps);
                     var sourceTime = cursor.Source(editedTime);
-                    var decoded = decoder.ReadAt(sourceTime, false, ct);
+                    var decoded = decoder.ReadAt(freezes?.PictureTime(sourceTime) ?? sourceTime, false, ct);
                     composer.Compose(decoded, bgra, snapshot, editedTime, false, ct);
                     Native.Check(ffmpeg.av_frame_make_writable(nv12), "Reuse export video frame", VoxClipErrorCode.ExportFailed);
                     using (var memory = bgra.Pixels.Pin())
@@ -246,7 +250,7 @@ public sealed class Exporter : IExporter
                     new(sidecarDestination!, 1_048_576)
                 };
                 if (srtDestination is not null)
-                    remaining.Add(new(srtDestination, System.Text.Encoding.UTF8.GetByteCount(Subtitles(snapshot.Captions))));
+                    remaining.Add(new(srtDestination, System.Text.Encoding.UTF8.GetByteCount(Subtitles(snapshot.Captions, snapshot.Speed.Speed))));
                 if (publish)
                 {
                     remaining.Add(VoiceLabCapacity.Rollback(destination));
@@ -266,7 +270,7 @@ public sealed class Exporter : IExporter
                 remaining.Clear();
                 remaining.Add(new(sidecarDestination!, staged.SidecarData.Length));
                 if (srtDestination is not null)
-                    remaining.Add(new(srtDestination, System.Text.Encoding.UTF8.GetByteCount(Subtitles(snapshot.Captions))));
+                    remaining.Add(new(srtDestination, System.Text.Encoding.UTF8.GetByteCount(Subtitles(snapshot.Captions, snapshot.Speed.Speed))));
                 if (publish)
                 {
                     remaining.Add(VoiceLabCapacity.Rollback(destination));
@@ -287,7 +291,7 @@ public sealed class Exporter : IExporter
             if (srtPartial is not null)
             {
                 using (OutputSafety.CreatePartial(srtPartial)) { hasSrtPartial = true; }
-                File.WriteAllText(srtPartial, Subtitles(snapshot.Captions), new UTF8Encoding(false));
+                File.WriteAllText(srtPartial, Subtitles(snapshot.Captions, snapshot.Speed.Speed), new UTF8Encoding(false));
                 ct.ThrowIfCancellationRequested();
             }
             var destinations = new List<string> { destination };
@@ -295,7 +299,7 @@ public sealed class Exporter : IExporter
             if (sidecarDestination is not null) destinations.Add(sidecarDestination);
             if (publish) OutputSafety.Publish(destinations, ct: ct);
             hasPartial = false; hasSrtPartial = false; hasSidecarPartial = false;
-            return new(destination, srtDestination, snapshot.Timeline.Duration,
+            return new(destination, srtDestination, snapshot.RenderedDuration,
                 size.Width, size.Height, fps, frames, 48_000, samples, "h264", encoderName, timer.Elapsed.TotalSeconds);
         }
         finally
@@ -311,6 +315,13 @@ public sealed class Exporter : IExporter
             }
         }
     }
+
+    /// <summary>The video frames and 48 kHz audio samples an export writes: the rendered length (edited ÷ the clip's speed).</summary>
+    internal static (long Frames, long Samples) RenderedCounts(ComposeSnapshot snapshot, double fps)
+        => (Native.Round(snapshot.RenderedDuration * fps), snapshot.Media.Audio is null ? 0 : Native.Round(snapshot.RenderedDuration * 48_000));
+
+    /// <summary>The edited time export frame <paramref name="index"/> shows: its rendered time × the clip's speed.</summary>
+    internal static double EditedTime(ComposeSnapshot snapshot, long index, double fps) => snapshot.Speed.Edited(index / fps);
 
     private static void DeletePartial(string path)
     {
@@ -367,7 +378,7 @@ public sealed class Exporter : IExporter
         catch { handle.Dispose(); throw; }
     }
 
-    private static unsafe void EncodeAudio(EncoderSession encoder, EditedAudioReader reader, AVFrame* frame, float[] buffer,
+    private static unsafe void EncodeAudio(EncoderSession encoder, RenderedAudioReader reader, AVFrame* frame, float[] buffer,
         long total, ref long offset, PacketSink consume, CancellationToken ct)
     {
         Native.Check(ffmpeg.av_frame_make_writable(frame), "Reuse AAC frame");
@@ -390,8 +401,10 @@ public sealed class Exporter : IExporter
         Native.Check(ffmpeg.av_interleaved_write_frame(format, packet), "Mux MP4 packet", VoxClipErrorCode.ExportFailed);
     }
 
-    internal static string Subtitles(CaptionTrack? captions, Func<string, CaptionText, string>? transform = null)
+    /// <summary>The SRT of <paramref name="captions"/>, cues on the rendered timeline: page times ÷ the clip's speed.</summary>
+    internal static string Subtitles(CaptionTrack? captions, double speed = 1, Func<string, CaptionText, string>? transform = null)
     {
+        var timing = new ClipSpeedTiming(speed);
         if (captions is null) return string.Empty;
         var output = new StringBuilder();
         var index = 0;
@@ -400,7 +413,7 @@ public sealed class Exporter : IExporter
         foreach (var page in captions.Pages)
         {
             if (page.End <= page.Start) continue;
-            output.Append(++index).Append('\n').Append(SrtTime(page.Start)).Append(" --> ").Append(SrtTime(page.End)).Append('\n');
+            output.Append(++index).Append('\n').Append(SrtTime(timing.Rendered(page.Start))).Append(" --> ").Append(SrtTime(timing.Rendered(page.End))).Append('\n');
             foreach (var line in page.Lines)
                 output.AppendJoin(' ', line.Words.Select(word => transform(captions.Words[word].Raw, textOptions))).Append('\n');
             output.Append('\n');

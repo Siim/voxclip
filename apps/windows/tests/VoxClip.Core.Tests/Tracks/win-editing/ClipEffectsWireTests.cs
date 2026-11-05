@@ -67,14 +67,19 @@ public sealed class ClipEffectsWireTests
     }
 
     [Fact]
-    public void WindowsRefusesToExportEffectsWithAReasonAndKeepsTheProject()
+    public void WindowsRendersEffectsInTheirScopeAndKeepsTheProject()
     {
         var project = ProjectSerialization.Deserialize(Fixture().ToJsonString());
-        var refusal = Assert.IsType<VoxClipException>(Record.Exception(() => VoiceLabRenderContract.RequireWindowsVisualSupport(project)));
-        Assert.Equal(VoxClipErrorCode.ExportFailed, refusal.Code);
-        Assert.Equal(ClipEffects.ExportUnsupportedMessage, refusal.Message);
+        VoiceLabRenderContract.RequireWindowsVisualSupport(project);
         Assert.Equal(12, project.ClipEffects.Count);
-        VoiceLabRenderContract.RequireWindowsVisualSupport(project with { ClipEffects = [] });
+        var typed = project.ClipEffects.Select(ClipEffect.Parse).ToArray();
+        Assert.Equal(project.ClipEffects.Select(effect => effect.GetProperty("id").GetString()), typed.Select(effect => effect.Id));
+        // Censor kinds render everywhere; the others only in their own clip, or the full video for a null clip (ai.md §18.5).
+        foreach (var clip in new string?[] { null }.Concat(project.Edits.Clips.Select(clip => clip.Id)))
+        {
+            var expected = typed.Where(effect => effect.IsCensor || effect.ClipId == clip).Select(effect => effect.Id);
+            Assert.Equal(expected, ClipEffects.Rendered(project, clip).Select(effect => effect.Id));
+        }
     }
 
     [Fact]

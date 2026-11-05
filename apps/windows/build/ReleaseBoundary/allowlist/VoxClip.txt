@@ -1575,6 +1575,7 @@ member VoxClip.App.Pages.EditorPage :: field private preview
 member VoxClip.App.Pages.EditorPage :: field private previewChanges
 member VoxClip.App.Pages.EditorPage :: field private previewClipId
 member VoxClip.App.Pages.EditorPage :: field private previewDuration
+member VoxClip.App.Pages.EditorPage :: field private previewSpeed
 member VoxClip.App.Pages.EditorPage :: field private previewStop
 member VoxClip.App.Pages.EditorPage :: field private projectWrites
 member VoxClip.App.Pages.EditorPage :: field private ready
@@ -3146,7 +3147,7 @@ member VoxClip.App.ViewModels.ExportRecord :: method public set_ProjectId(string
 member VoxClip.App.ViewModels.ExportRecord :: method public set_StyleId(string)
 member VoxClip.App.ViewModels.ExportRecord :: method public set_TargetId(string)
 member VoxClip.App.ViewModels.ExportRenderInput :: method internal Media(VoxClip.Core.Domain.Shared.Project)
-member VoxClip.App.ViewModels.ExportRenderInput :: method internal Output(VoxClip.Core.Domain.Shared.MediaInfo,VoxClip.Core.Domain.Shared.ProjectExport)
+member VoxClip.App.ViewModels.ExportRenderInput :: method internal Output(VoxClip.Core.Domain.Shared.MediaInfo,VoxClip.Core.Domain.Shared.ProjectExport,VoxClip.Core.Domain.Clips.ProjectClipControls)
 member VoxClip.App.ViewModels.ExportRenderInput :: method internal Plan(VoxClip.Core.Domain.Shared.MediaInfo,VoxClip.Core.Domain.Editing.EditState)
 member VoxClip.App.ViewModels.ExportRenderInput :: method internal ScopedProject(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.Editing.EditState)
 member VoxClip.App.ViewModels.ExportRowState :: method internal get_Label()

@@ -1,7 +1,10 @@
 using System.Buffers;
+using System.Runtime.CompilerServices;
 using FFmpeg.AutoGen;
 using SkiaSharp;
 using VoxClip.Core.Domain.Captions;
+using VoxClip.Core.Domain.Clips;
+using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.Media;
@@ -16,11 +19,14 @@ namespace VoxClip.Media.Pipeline;
 public sealed class FrameComposer : IFrameComposer
 {
     private readonly ICaptionRasterizer rasterizer;
+    private readonly string? sharedRoot;
     private readonly ThreadLocal<ScaleState> state = new(() => new());
     private readonly Dictionary<ComposeSnapshot, VoiceLabDisclosureOverlay> disclosures = new(ReferenceEqualityComparer.Instance);
+    private readonly ConditionalWeakTable<ClipEffectsRenderInput, EffectFrames> effectFrames = new();
     /// <summary>Use the platform caption rasterizer for every frame.</summary>
-    public FrameComposer() : this(new SkiaCaptionRasterizer(SharedResources.ResolveRoot())) { }
-    internal FrameComposer(ICaptionRasterizer rasterizer) => this.rasterizer = rasterizer;
+    public FrameComposer() : this(SharedResources.ResolveRoot()) { }
+    private FrameComposer(string sharedRoot) : this(new SkiaCaptionRasterizer(sharedRoot), sharedRoot) { }
+    internal FrameComposer(ICaptionRasterizer rasterizer, string? sharedRoot = null) { this.rasterizer = rasterizer; this.sharedRoot = sharedRoot; }
 
     internal void PrepareDisclosure(ComposeSnapshot snapshot)
     {
@@ -69,7 +75,9 @@ public sealed class FrameComposer : IFrameComposer
         ct.ThrowIfCancellationRequested();
         Validate(decoded); Validate(output);
         var rotation = snapshot.Media.Video?.RotationDegrees ?? 0;
+        var controls = snapshot.Clip?.Controls;
         byte[]? oriented = null;
+        byte[]? turned = null;
         try
         {
             if (rotation != 0)
@@ -79,6 +87,14 @@ public sealed class FrameComposer : IFrameComposer
                 oriented = ArrayPool<byte>.Shared.Rent(checked(width * height * 4));
                 Rotate(decoded, oriented, rotation, width, ct);
                 decoded = new(oriented.AsMemory(0, width * height * 4), width, height, width * 4);
+            }
+            // The clip's flip and quarter turns act on the oriented source before the frame's crop, so every shape fills.
+            if (ClipPicture.Orients(controls))
+            {
+                var (width, height) = ClipPicture.OrientedSize(decoded.Width, decoded.Height, controls);
+                turned = ArrayPool<byte>.Shared.Rent(checked(width * height * 4));
+                ClipPicture.Orient(decoded, turned, controls!, ct);
+                decoded = new(turned.AsMemory(0, width * height * 4), width, height, width * 4);
             }
             var crop = ExportPresets.CenterCrop(new(decoded.Width, decoded.Height), new(output.Width, output.Height), snapshot.Output.PreserveSource);
             crop = VideoCrop(snapshot, crop, decoded.Width, decoded.Height, editedTime);
@@ -103,6 +119,7 @@ public sealed class FrameComposer : IFrameComposer
             var target = new byte_ptrArray4(); target[0] = (byte*)outputMemory.Pointer;
             var targetStride = new int_array4(); targetStride[0] = output.Stride;
             Native.Check(ffmpeg.sws_scale((SwsContext*)scaling.Handle!.Pointer, source, sourceStride, 0, heightCrop, target, targetStride), "Crop and scale video");
+            FinishClipFrame(output, snapshot, editedTime, decoded.Width, decoded.Height, new(left, top, widthCrop, heightCrop), ct);
             if (snapshot.Captions is { } captions)
                 rasterizer.Draw(new(captions, editedTime, false, output.Width / (double)captions.Frame.Width), output, ct);
             if (snapshot.VoiceLab is { Prepared.OutputPlan.RequiresSyntheticRendering: true })
@@ -115,7 +132,30 @@ public sealed class FrameComposer : IFrameComposer
                 }
             }
         }
-        finally { if (oriented is not null) ArrayPool<byte>.Shared.Return(oriented); }
+        finally
+        {
+            if (oriented is not null) ArrayPool<byte>.Shared.Return(oriented);
+            if (turned is not null) ArrayPool<byte>.Shared.Return(turned);
+        }
+    }
+
+    /// <summary>The clip's look and Ask Claude's picture effects on the scaled frame, before captions (Mac FrameCompositor order):
+    /// the look grades the picture first, so censors cover graded pixels and pointers, titles and stickers keep their colours;
+    /// then censors and pointers in picture space through <paramref name="crop"/> of the <paramref name="pictureWidth"/> ×
+    /// <paramref name="pictureHeight"/> oriented source, at the freeze-held source time; then titles, lower thirds, stickers
+    /// and the progress bar in the output frame.</summary>
+    internal void FinishClipFrame(PixelBuffer output, ComposeSnapshot snapshot, double editedTime, int pictureWidth, int pictureHeight, RectD crop,
+        CancellationToken ct)
+    {
+        if (snapshot.Clip is not { } clip) return;
+        if (clip.Controls is { Look: not ClipLook.Original } controls) ClipPicture.Look(output, controls.Look, ct);
+        if (clip.Effects is not { } input) return;
+        var frames = effectFrames.GetValue(input, key => new EffectFrames(key, sharedRoot));
+        if (!frames.HasPicture) return;
+        var timeline = snapshot.Timeline;
+        var sourceTime = timeline.SourceTime(editedTime);
+        frames.DrawPicture(output, pictureWidth, pictureHeight, crop, input.PictureTime(sourceTime), clip.Controls, ct);
+        frames.DrawFrame(output, sourceTime, editedTime, timeline.MapTime, ct);
     }
 
     /// <summary>The changed-duration crop for this output time: a zoomed span (Match video's 1.12× crop, a cut's 1.06×
@@ -125,7 +165,10 @@ public sealed class FrameComposer : IFrameComposer
     {
         if (snapshot.VoiceLab is not { Prepared.OutputPlan.RequiresSyntheticRendering: true } input) return crop;
         var span = input.Framing.At(editedTime);
-        return span.Zoom > 1 ? VoiceLabVideoFraming.FaceCrop(new(0, 0, width, height), crop, span.Zoom, span.AnchorX, span.AnchorY) : crop;
+        if (span.Zoom <= 1) return crop;
+        // Anchors are on the source as filmed; a flipped or turned clip moves them with the picture.
+        var anchor = snapshot.Clip?.Controls is { } controls ? controls.MapAnchor(span.AnchorX, span.AnchorY) : (span.AnchorX, span.AnchorY);
+        return VoiceLabVideoFraming.FaceCrop(new(0, 0, width, height), crop, span.Zoom, anchor.Item1, anchor.Item2);
     }
 
     internal void ReleaseThreadResources() { state.Value?.Handle?.Dispose(); state.Value = new(); }
