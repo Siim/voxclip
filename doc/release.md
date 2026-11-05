@@ -297,6 +297,8 @@ It drives the real Rewrite session through fourteen scenarios using only clicks 
 - S14: every Eleven v4 reply has a timing quirk (a trailing newline, another first word): both phrases are timed, one from its own word check, and voiced.
 - S16: a nine-minute full take with 36 changes: one price and one approval, every phrase voiced part by part and applied. `MacUIIntegrationTests/rewriteSmokeLongTake` runs it in its own process.
 
+A take whose only issue is a join advisory is chosen automatically (ADR-R39), so no scenario clicks Use anyway: S3-exact, S14, S15 and S16 once did. The Windows twin (`RewriteSmokeTests`) runs S17, its twin of S16: twelve phrases in three parts, one approval, each later part quoted again at the approved price.
+
 After every step it checks seven invariants, and at the end of S10–S12 two more:
 
 - I1: a control that acts, or the resolver, is visible.
