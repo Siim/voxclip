@@ -3,8 +3,8 @@
 
 Writes shared/fixtures/music/music-mix-cases.json (format voxclip-music-mix-cases/1): the music bed's levels and timing,
 computed here by a straight port of Mac Core MusicMix.swift, so a second implementation can replay them. A new file of its
-own, so neither Core's existing music replays change. Windows replays every category (Core MusicMixVectorTests and Media
-MusicBedTests); the Mac replay is owed. Floats are rounded to 9 decimals, so libm's last-bit differences between platforms
+own, so neither Core's existing music replays change. Both platforms replay every category: Windows Core MusicMixVectorTests
+and Media MusicBedTests, Mac Core MusicMixVectorTests and Media MusicBedVectorTests (the beds through MusicBedPlan). Floats are rounded to 9 decimals, so libm's last-bit differences between platforms
 never change the bytes; replays compare within 1e-9 (1e-6 for float32 bed samples). Deterministic; run from anywhere.
 """
 import json

@@ -13,5 +13,5 @@ and an offset inside the track. The rules are in doc/spec/music.md section 2.
 `music-mix-cases.json` (`voxclip-music-mix-cases/1`) holds the music bed's levels and timing (doc/spec/music.md section 4):
 10 ms levels, speech activity, ducking and its interpolation, bed gain, fades, trims and crossfaded loops, and two whole
 beds. `python3 tools/fixtures/music/generate_music_mix.py` writes it from a port of Mac Core `MusicMix.swift` (check_drift.py
-runs it). Floats are rounded to 9 decimals. C# `MusicMixVectorTests` (Core) and `MusicBedTests` (Media) replay every case;
-a Swift replay is owed.
+runs it). Floats are rounded to 9 decimals. C# `MusicMixVectorTests` (Core) and `MusicBedTests` (Media) replay every case,
+as do Swift `MusicMixVectorTests` (Core) and `MusicBedVectorTests` (Media, the beds through the renderer's `MusicBedPlan`).

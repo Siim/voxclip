@@ -56,60 +56,28 @@ enum MusicBedRenderer {
         guard outputFrames > 0 else { throw VoxClipError.exportFailed("The clip is too short for music") }
         let speech = try await speechLevels(composition: composition, track: voiceTrack, durationSeconds: durationSeconds)
         let entry = input.entry
-        let offsetFrames = Int((entry.startOffsetSeconds * rate).rounded())
         let track = try await decodeStereo(input.assetURL, upToSeconds: entry.startOffsetSeconds + durationSeconds)
-        let trackFrames = track.count / 2
-        let pieces = MusicMix.loopPieces(trackFrames: trackFrames, offsetFrames: min(offsetFrames, max(0, trackFrames - 1)),
-                                         outputFrames: outputFrames, crossfadeFrames: Int(MusicMix.loopCrossfadeSeconds * rate))
-        guard !pieces.isEmpty else { throw VoxClipError.decodeFailed("The music track is too short to use") }
-        // Per-frame power averaged over both channels, so a wide stereo track is not read 3 dB quieter than it plays.
-        var power = [Float](repeating: 0, count: max(0, trackFrames - pieces[0].sourceStart))
-        for index in power.indices {
-            let left = track[2 * (index + pieces[0].sourceStart)], right = track[2 * (index + pieces[0].sourceStart) + 1]
-            power[index] = ((left * left + right * right) / 2).squareRoot()
+        guard let plan = MusicBedPlan(track: track, speech: speech, entry: entry, outputFrames: outputFrames, rate: rate) else {
+            throw VoxClipError.decodeFailed("The music track is too short to use")
         }
-        let musicDb = MusicMix.musicLevelDb(levels: MusicMix.frameLevels(power, sampleRate: rate))
-        let activity = MusicMix.speechActivity(levels: speech)
-        let bedDb = MusicMix.bedGainDb(speechDb: MusicMix.speechLevelDb(levels: speech, activity: activity), musicDb: musicDb, gainDb: entry.gainDb)
-        let ducking = MusicMix.duckingGainsDb(activity: activity, ducking: entry.ducking)
         let directory = scratchRoot.appendingPathComponent("voxclip-music-" + UUID().uuidString.lowercased(), isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         let url = directory.appendingPathComponent("bed.caf")
         let lease = MusicBedLease(url: url, frames: outputFrames)
         let file = try MusicCAFWriter(url: url, channels: 2)
-        try write(track: track, pieces: pieces, outputFrames: outputFrames, bedGain: pow(10, bedDb / 20), ducking: ducking, entry: entry, to: file)
+        try write(track: track, plan: plan, to: file)
         file.close()
         return lease
     }
 
-    /// Mixes pieces, gains, fades and ducking into `wav` in one-second blocks.
-    static func write(track: [Float], pieces: [MusicMix.LoopPiece], outputFrames: Int, bedGain: Double, ducking: [Double],
-                      entry: ProjectMusic, to file: MusicCAFWriter) throws {
-        let duration = Double(outputFrames) / rate
-        let block = Int(rate)
+    /// Mixes the plan's pieces, gains, fades and ducking into `file` in one-second blocks.
+    static func write(track: [Float], plan: MusicBedPlan, to file: MusicCAFWriter) throws {
+        let block = Int(plan.rate)
         var start = 0
-        while start < outputFrames {
+        while start < plan.outputFrames {
             try Task.checkCancellation()
-            let count = min(block, outputFrames - start)
-            var samples = [Float](repeating: 0, count: count * 2)
-            for piece in pieces where piece.outputStart < start + count && piece.outputStart + piece.count > start {
-                let from = max(start, piece.outputStart), to = min(start + count, piece.outputStart + piece.count)
-                for frame in from..<to {
-                    let index = frame - piece.outputStart
-                    let weight = Float(MusicMix.pieceWeight(piece, at: index))
-                    let source = 2 * (piece.sourceStart + index)
-                    samples[2 * (frame - start)] += track[source] * weight
-                    samples[2 * (frame - start) + 1] += track[source + 1] * weight
-                }
-            }
-            for frame in 0..<count {
-                let seconds = Double(start + frame) / rate
-                let fade = MusicMix.fadeFactor(at: seconds, duration: duration, fadeIn: entry.fadeInSeconds, fadeOut: entry.fadeOutSeconds)
-                let gain = Float(bedGain * fade * MusicMix.duckFactor(ducking, at: seconds))
-                samples[2 * frame] *= gain
-                samples[2 * frame + 1] *= gain
-            }
-            try file.append(samples)
+            let count = min(block, plan.outputFrames - start)
+            try file.append(plan.mix(track, from: start, count: count))
             start += count
         }
     }
@@ -177,5 +145,76 @@ enum MusicBedRenderer {
         let seconds = range.end.seconds
         guard seconds.isFinite, seconds > 0 else { throw VoxClipError.decodeFailed("The music file has no length") }
         return seconds
+    }
+}
+
+/// What a bed plays (doc/spec/music.md §4): the trim or loop, the measured music and speech levels, and the gain of each frame.
+/// `MusicBedRenderer.stage` decodes the audio and writes the bed; this decides, at any sample rate, so the shared music-mix
+/// vectors (shared/fixtures/music/music-mix-cases.json, Windows MusicBed.Create and Mix) replay the renderer itself.
+struct MusicBedPlan: Sendable {
+    let pieces: [MusicMix.LoopPiece]
+    let musicDb: Double?
+    let speechDb: Double?
+    let bedGainDb: Double
+    let ducking: [Double]
+    let outputFrames: Int
+    let rate: Double
+    let fadeInSeconds: Double
+    let fadeOutSeconds: Double
+
+    /// The plan for interleaved stereo `track` under a voice of 10 ms `speech` levels; nil when the track is too short to use.
+    init?(track: [Float], speech: [Double], entry: ProjectMusic, outputFrames: Int, rate: Double) {
+        let trackFrames = track.count / 2
+        let offsetFrames = Int((entry.startOffsetSeconds * rate).rounded())
+        let pieces = MusicMix.loopPieces(trackFrames: trackFrames, offsetFrames: min(offsetFrames, max(0, trackFrames - 1)),
+                                         outputFrames: outputFrames, crossfadeFrames: Int(MusicMix.loopCrossfadeSeconds * rate))
+        guard !pieces.isEmpty else { return nil }
+        // Per-frame power averaged over both channels, so a wide stereo track is not read 3 dB quieter than it plays.
+        let first = pieces[0].sourceStart
+        var power = [Float](repeating: 0, count: max(0, trackFrames - first))
+        for index in power.indices {
+            let left = track[2 * (index + first)], right = track[2 * (index + first) + 1]
+            power[index] = ((left * left + right * right) / 2).squareRoot()
+        }
+        let musicDb = MusicMix.musicLevelDb(levels: MusicMix.frameLevels(power, sampleRate: rate))
+        let activity = MusicMix.speechActivity(levels: speech)
+        let speechDb = MusicMix.speechLevelDb(levels: speech, activity: activity)
+        self.pieces = pieces
+        self.musicDb = musicDb
+        self.speechDb = speechDb
+        bedGainDb = MusicMix.bedGainDb(speechDb: speechDb, musicDb: musicDb, gainDb: entry.gainDb)
+        ducking = MusicMix.duckingGainsDb(activity: activity, ducking: entry.ducking)
+        self.outputFrames = outputFrames
+        self.rate = rate
+        fadeInSeconds = entry.fadeInSeconds
+        fadeOutSeconds = entry.fadeOutSeconds
+    }
+
+    /// The bed's gain at output `frame`: the static bed gain, the fades and the ducking.
+    func gain(atFrame frame: Int) -> Double {
+        let seconds = Double(frame) / rate
+        let fade = MusicMix.fadeFactor(at: seconds, duration: Double(outputFrames) / rate, fadeIn: fadeInSeconds, fadeOut: fadeOutSeconds)
+        return pow(10, bedGainDb / 20) * fade * MusicMix.duckFactor(ducking, at: seconds)
+    }
+
+    /// Interleaved stereo bed frames `start..<start + count`: the pieces' weighted samples of `track` times each frame's gain.
+    func mix(_ track: [Float], from start: Int, count: Int) -> [Float] {
+        var samples = [Float](repeating: 0, count: count * 2)
+        for piece in pieces where piece.outputStart < start + count && piece.outputStart + piece.count > start {
+            let from = max(start, piece.outputStart), to = min(start + count, piece.outputStart + piece.count)
+            for frame in from..<to {
+                let index = frame - piece.outputStart
+                let weight = Float(MusicMix.pieceWeight(piece, at: index))
+                let source = 2 * (piece.sourceStart + index)
+                samples[2 * (frame - start)] += track[source] * weight
+                samples[2 * (frame - start) + 1] += track[source + 1] * weight
+            }
+        }
+        for frame in 0..<count {
+            let factor = Float(self.gain(atFrame: start + frame))
+            samples[2 * frame] *= factor
+            samples[2 * frame + 1] *= factor
+        }
+        return samples
     }
 }
