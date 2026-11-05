@@ -154,7 +154,8 @@ extension EditorModel {
     /// flat stage black (`.tile`), so a style's preview background is not drawn; a near-black
     /// plate still gets the card's lighter backdrop, or it would not show.
     func captionTileInput(_ style: CaptionStyle, width: CGFloat) -> CaptionCardInput {
-        let overrides = style.id == project.captions.styleId ? project.captions.overrides : [:]
+        let captions = activeCaptions
+        let overrides = style.id == captions.styleId ? captions.overrides : [:]
         let fit = CardFit.galleryTile(width: width)
         let resolved = (try? style.resolved(overrides: overrides, frame: PixelSize(width: fit.width, height: fit.height))) ?? style
         return CaptionCardInput(text: .gallerySample(resolved), style: style, previewBackground: nil, overrides: overrides, language: "en", fit: fit)
@@ -235,7 +236,7 @@ extension EditorModel {
         .columnLayoutEvidence("captions.style")
     }
     private var captionsSwitch: some View {
-        let enabled = model.project.captions.styleId != "off"
+        let enabled = model.activeCaptions.styleId != "off"
         let state = enabled ? "On" : "Off"
         return Toggle(isOn: Binding(get: { enabled }, set: { model.setCaptionsEnabled($0) })) {
             Text(state).font(VCType.callout.font()).foregroundStyle(DesignValues.color("text.secondary"))
@@ -257,7 +258,7 @@ extension EditorModel {
                     if notification.userInfo?["snapshot"] as? Bool == true {
                         CaptionGalleryAudit.snapshots[galleryID] = .init(paint: galleryTile?.frame,
                             visible: galleryViewport.visible, size: galleryViewport.size, pending: galleryReveal.pending,
-                            selectedStyle: model.project.captions.styleId, paintStyle: galleryTile?.styleID, interrupted: galleryReveal.interrupted,
+                            selectedStyle: model.activeCaptions.styleId, paintStyle: galleryTile?.styleID, interrupted: galleryReveal.interrupted,
                             commands: galleryReveal.commands, consumed: galleryReveal.request == galleryRequest,
                             requestStyle: galleryReveal.request.map { String($0.selection.split(separator: "/").last ?? "") },
                             requestHeight: galleryReveal.request?.size.height, fineTune: fineTune, contentSize: galleryViewport.contentSize,
@@ -350,14 +351,14 @@ extension EditorModel {
         }.pickerStyle(.radioGroup).accessibilityIdentifier("voxclip.captions.gallery")
     }
     private var styleSelection: Binding<String> {
-        Binding(get: { model.project.captions.styleId }, set: { model.setStyle($0) })
+        Binding(get: { model.activeCaptions.styleId }, set: { model.setStyle($0) })
     }
     /// An arrow key from the focused gallery: chooses the neighbouring style, which the gallery
     /// then reveals. At an edge the key is still the gallery's, so it does not beep.
     func moveSelection(_ key: KeyEquivalent) -> Bool {
         let styles = Self.galleryOrder(model.app.styles)
         guard !styles.isEmpty else { return false }
-        let current = styles.firstIndex { $0.id == model.project.captions.styleId }
+        let current = styles.firstIndex { $0.id == model.activeCaptions.styleId }
         keyboardRing = true
         if let next = CaptionGalleryNavigation.target(from: current, count: styles.count, key: key) { model.setStyle(styles[next].id) }
         return true
@@ -367,7 +368,7 @@ extension EditorModel {
     /// and name are text.primary, with a 1 pt text.primary ring outside it (`.tile.on`).
     private func styleTile(_ style: CaptionStyle, width: CGFloat) -> some View {
         let id = style.id
-        let selected = model.project.captions.styleId == id
+        let selected = model.activeCaptions.styleId == id
         return Button { selectTile(id) } label: {
             VStack(alignment: .leading, spacing: Metrics.nameGap) {
                 CaptionTile(input: model.captionTileInput(style, width: width), pipeline: model.app.captions)
@@ -423,14 +424,14 @@ extension EditorModel {
         if phase == .tracking || phase == .interacting { galleryReveal.cancelForUserScroll() }
     }
     private var galleryRequest: CaptionGalleryRequest {
-        CaptionGalleryRequest(selection: "\(model.project.id)/\(model.activeClip?.id ?? "full")/\(model.project.captions.styleId)", size: galleryViewportSize, fineTune: fineTune)
+        CaptionGalleryRequest(selection: "\(model.project.id)/\(model.activeClip?.id ?? "full")/\(model.activeCaptions.styleId)", size: galleryViewportSize, fineTune: fineTune)
     }
     private var galleryViewport: CaptionGalleryViewport { galleryScrollState.viewport }
     private var galleryLayout: CaptionGalleryLayout {
         CaptionGalleryLayout(tile: galleryTile, size: galleryViewportSize)
     }
     private var galleryTile: CaptionGalleryTileGeometry? {
-        let identifier = model.project.captions.styleId
+        let identifier = model.activeCaptions.styleId
         return galleryTiles[identifier].map { CaptionGalleryTileGeometry(styleID: identifier, frame: $0) }
     }
     private func revealSelection(reader: ScrollViewProxy) {
@@ -439,8 +440,8 @@ extension EditorModel {
         reveal.resumeForLayout()
         guard reveal.pending else { return }
         defer { if reveal != galleryReveal { galleryReveal = reveal } }
-        let target = CaptionGalleryTarget.tile(model.project.captions.styleId)
-        if let tile = galleryTile, tile.styleID == model.project.captions.styleId {
+        let target = CaptionGalleryTarget.tile(model.activeCaptions.styleId)
+        if let tile = galleryTile, tile.styleID == model.activeCaptions.styleId {
             // The measured frame reaches the ring reserve on both sides; its width shows the
             // tile has been laid out at the gallery's current width.
             let expectedWidth = Metrics.tileWidth(galleryWidth: galleryWidth) + Metrics.ringReserve * 2
@@ -539,7 +540,7 @@ extension EditorModel {
                 CaptionPropertyRow("Colour", marker: "colour") {
                     HStack(spacing: 0) {
                         ForEach(palette, id: \.hex) { swatch in
-                            let chosen = model.project.captions.overrides["accent"] == .string(swatch.hex)
+                            let chosen = model.activeCaptions.overrides["accent"] == .string(swatch.hex)
                             Button { mutate { $0.overrides["accent"] = .string(swatch.hex) } } label: {
                                 Circle().fill(Color(nsColor: DesignValues.parse(swatch.hex))).frame(width: 14, height: 14)
                                     .overlay { if chosen { Circle().strokeBorder(DesignValues.color("text.primary"), lineWidth: 1.5).padding(-3) } }
@@ -589,15 +590,17 @@ extension EditorModel {
         .accessibilityIdentifier("voxclip.captions.disclosure")
         .columnLayoutEvidence("captions.property.fineTune", text: "Fine tune")
     }
-    private var style: CaptionStyle? { model.app.styles.first { $0.id == model.project.captions.styleId } }
+    private var style: CaptionStyle? { model.app.styles.first { $0.id == model.activeCaptions.styleId } }
     private var storedPosition: CaptionPosition? { model.captionPreset == .source ? model.project.captions.position : model.project.captions.positionByAspect[model.captionPreset.rawValue] }
     private var palette: [(name: String, hex: String)] { [("Yellow", "#FFE14D"), ("Green", "#4BE38A"), ("Cyan", "#5CE1FF"), ("Pink", "#FF6FAE"), ("Paper", "#F3F0E7"), ("White", "#FFFFFF")] }
-    private func mutate(_ change: (inout CaptionSettings) -> Void) { var next = model.project; change(&next.captions); model.replace(next, name: "Fine tune captions") }
-    private func value(_ group: String, _ key: String) -> JSONValue? { if case .object(let object) = model.project.captions.overrides[group] { return object[key] }; return nil }
+    private func mutate(_ change: (inout CaptionSettings) -> Void) { model.mutateCaptions(change) }
+    private func value(_ group: String, _ key: String) -> JSONValue? { if case .object(let object) = model.activeCaptions.overrides[group] { return object[key] }; return nil }
     private func setOverride(_ group: String, _ key: String, _ value: JSONValue) {
-        var next = model.project; var object: [String: JSONValue] = [:]
-        if case .object(let existing) = next.captions.overrides[group] { object = existing }
-        object[key] = value; next.captions.overrides[group] = .object(object); model.replace(next, name: "Fine tune captions")
+        model.mutateCaptions { captions in
+            var object: [String: JSONValue] = [:]
+            if case .object(let existing) = captions.overrides[group] { object = existing }
+            object[key] = value; captions.overrides[group] = .object(object)
+        }
     }
     private func overrideString(_ group: String, _ key: String, fallback: String) -> Binding<String> { Binding(get: { if case .string(let string) = value(group, key) { return string }; return fallback }, set: { setOverride(group, key, .string($0)) }) }
 }

@@ -1388,11 +1388,43 @@ struct EditorRenderSnapshot {
         select(matches[(current + (backward ? -1 : 1) + matches.count) % matches.count].id)
     }
     func cutMatches() { let ids = words.filter { text($0).localizedCaseInsensitiveContains(query) }.map(\.id); apply(.cutSelection(ids: ids), name: "Cut all matches") }
+    /// The captions the open clip renders with (its own pick, else the project's, design.md §6.6); the full take's are the
+    /// project's. The Captions panel, the viewer and the CC lane show and edit these.
+    var activeCaptions: CaptionSettings { project.captionSettings(forClip: activeClip?.id) }
+
+    /// With a clip open, the style becomes that clip's own pick, kept whatever the project default or Claude does later.
+    /// With none, it is the project default every clip without a pick follows, and it fixes the clip style's captions so
+    /// Claude's picks never override it (design.md §6.6).
     func setStyle(_ id: String) {
-        if id == "off", project.captions.styleId != "off" { lastStyleId = project.captions.styleId }
+        let current = activeCaptions
+        if id == "off", current.styleId != "off" { lastStyleId = current.styleId }
         else if id != "off" { lastStyleId = id }
-        // A style the user chooses fixes the clip style's captions, so Claude's picks never override it (design.md §6.6).
-        var next = project; next.captions.styleId = id; next.clipStyle = next.clipStyle?.fixingCaptions(.init(raw: id)); replace(next, name: "Change caption style")
+        var next = project
+        if let clip = activeClip, let style = project.clipStyle ?? cardClipStyle {
+            next.clipStyle = style.choosingCaptionStyle(id, forClip: clip.id, current: current)
+        } else {
+            next.captions.styleId = id; next.clipStyle = next.clipStyle?.fixingCaptions(.init(raw: id))
+        }
+        replace(next, name: "Change caption style")
+    }
+
+    /// A fine-tune of the open clip's captions: its pick's overrides while one applies, else the project's captions. The
+    /// position always stays the project's.
+    func mutateCaptions(name: String = "Fine tune captions", _ change: (inout CaptionSettings) -> Void) {
+        var next = project
+        if let clip = activeClip, var style = project.clipStyle, var pick = style.captionPick(forClip: clip.id) {
+            var settings = activeCaptions
+            change(&settings)
+            pick.styleId = settings.styleId
+            pick.overrides = settings.overrides
+            style.captionPicks[clip.id] = pick
+            next.clipStyle = style
+            next.captions.position = settings.position
+            next.captions.positionByAspect = settings.positionByAspect
+        } else {
+            change(&next.captions)
+        }
+        replace(next, name: name)
     }
     func setCaptionsEnabled(_ enabled: Bool) {
         guard enabled else { setStyle("off"); return }
@@ -1400,11 +1432,12 @@ struct EditorRenderSnapshot {
         setStyle(app.styles.contains { $0.id == previous } ? previous : app.styles.first?.id ?? "off")
     }
     var captionsEdited: Bool {
-        !project.captions.overrides.isEmpty || project.captions.positionByAspect[captionPreset.rawValue] != nil || project.captions.position != nil
+        !activeCaptions.overrides.isEmpty || project.captions.positionByAspect[captionPreset.rawValue] != nil || project.captions.position != nil
     }
     var captionSummary: String {
-        guard let library = app.styles.first(where: { $0.id == project.captions.styleId }) else { return "Off" }
-        let resolved = (try? library.resolved(overrides: project.captions.overrides, frame: outputSpec().size)) ?? library
+        let captions = activeCaptions
+        guard let library = app.styles.first(where: { $0.id == captions.styleId }) else { return "Off" }
+        let resolved = (try? library.resolved(overrides: captions.overrides, frame: outputSpec().size)) ?? library
         var parts: [String] = []
         if let accent = resolved.accent {
             let names = ["#FFE14D": "Yellow", "#4BE38A": "Green", "#5CE1FF": "Cyan", "#FF6FAE": "Pink", "#F3F0E7": "Paper", "#FFFFFF": "White"]
@@ -1467,8 +1500,9 @@ struct EditorRenderSnapshot {
         // Bleeped and muted words read as × marks in the captions (ai.md §18.5), on the Voice Lab path too.
         let effects = ClipEffects.rendered(in: project, clipID: clip?.id)
         let captionSegments = segments.map { ClipEffects.maskingBleeps($0, effects: effects) }
+        // Each clip renders in its own caption look (design.md §6.6): preview, export and the SRT lay out with it.
         let layout = try await buildCaptions(segments: captionSegments, plan: plan, output: output, forPreview: target == nil,
-                                            project: project, voiceLab: voiceLab.map { ClipEffects.maskingBleeps($0.prepared.outputPlan, effects: effects) })
+                                            project: project.resolvingCaptions(forClip: clip?.id), voiceLab: voiceLab.map { ClipEffects.maskingBleeps($0.prepared.outputPlan, effects: effects) })
         try Task.checkCancellation()
         if target == nil, snapshot.project != self.project || isLeaving { throw CancellationError() }
         let request = RenderRequest(sourceURL: URL(fileURLWithPath: project.media.source.absolutePath), plan: plan, captions: layout?.track ?? CaptionTrack(),

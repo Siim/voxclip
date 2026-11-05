@@ -76,7 +76,10 @@ internal static class ProjectValidation
             Choice(clipStyle.GetProperty("rewording"), "off", "fix-only", "tighten");
             Dictionary(clipStyle.GetProperty("captionPicks"), key => Pattern(key, Id), pick =>
             {
-                Object(pick, "styleId reason"); String(pick.GetProperty("styleId"), Slug); Require(pick.GetProperty("styleId").GetString() != "auto");
+                // Optional: the clip's overrides and "by": "user" for the creator's own choice (design §6.6).
+                Object(pick, "styleId reason", "overrides by"); String(pick.GetProperty("styleId"), Slug); Require(pick.GetProperty("styleId").GetString() != "auto");
+                if (pick.TryGetProperty("overrides", out var overrides)) Require(overrides.ValueKind == JsonValueKind.Object);
+                if (pick.TryGetProperty("by", out var by)) Require(by.ValueKind == JsonValueKind.String && by.GetString() == "user");
                 Require(pick.GetProperty("reason").ValueKind == JsonValueKind.String && pick.GetProperty("reason").GetString()!.EnumerateRunes().Count() <= 120);
             });
         }

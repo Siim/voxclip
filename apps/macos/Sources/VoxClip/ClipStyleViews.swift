@@ -228,43 +228,59 @@ import VoxClipCore
     }
 }
 
-/// Under the Captions STYLE row while the clip style's captions are Auto: what Claude picked for this clip and why,
-/// and Pick styles when clips have no pick yet. It runs through the same inline send confirmation as Find Clips.
+/// Under the Captions STYLE row: which captions the open clip renders with ("This clip: Bold Pop · Claude's pick" and
+/// why, or "Project default"), with Use project default while the clip has its own; and, while the clip style's
+/// captions are Auto, Pick styles when clips have no pick yet. It runs through the same inline send confirmation as
+/// Find Clips.
 @MainActor struct ClipStyleCaptionRow: View {
     @Bindable var model: EditorModel
 
     var body: some View {
-        Group {
-            if let style = model.project.clipStyle, case .auto = style.captions {
-                VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) {
-                    if let pick = model.activeCaptionPick, let name = model.app.styles.first(where: { $0.id == pick.styleId })?.name {
-                        (Text("✦ Claude picked ").foregroundStyle(DesignValues.color("text.secondary")) + Text(name).fontWeight(.semibold)
-                         + Text(pick.reason.isEmpty ? "" : " · \(pick.reason)").foregroundStyle(DesignValues.color("text.secondary")))
-                            .font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
-                            .accessibilityIdentifier("voxclip.captions.claudePick")
-                    }
-                    if model.clipStyleState.picking {
-                        HStack(spacing: VCTokens.spacingRowGap) {
-                            ProgressView().controlSize(.small)
-                            Text("Picking caption styles…").font(.system(size: 12))
-                            Spacer(minLength: VCTokens.spacingRowGap)
-                            Button("Cancel") { model.clipStyleState.task?.cancel() }.buttonStyle(.borderless).font(.system(size: 12))
-                        }
-                    } else if model.canPickCaptionStyles, model.unpickedClipCount > 0, !model.clipStyleState.confirmation.isPresented {
-                        let count = model.unpickedClipCount
-                        Button { model.pickCaptionStyles() } label: {
-                            Label(count == 1 ? "Pick a style for 1 clip" : "Pick styles for \(count) clips", systemImage: "sparkles").font(.system(size: 12))
-                        }
-                        .buttonStyle(.borderless)
-                        .accessibilityIdentifier("voxclip.captions.pickStyles")
-                    }
-                    ConnectorConfirmationView(confirmation: model.clipStyleState.confirmation, model: model)
-                    if let error = model.clipStyleState.error { InlineNotice(text: error).fixedSize(horizontal: false, vertical: true) }
+        let auto: Bool = if let style = model.project.clipStyle, case .auto = style.captions { true } else { false }
+        if model.activeCaptionSourceText != nil || auto {
+            VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) {
+                source
+                if auto { picking }
+                ConnectorConfirmationView(confirmation: model.clipStyleState.confirmation, model: model)
+                if let error = model.clipStyleState.error { InlineNotice(text: error).fixedSize(horizontal: false, vertical: true) }
+            }
+            .padding(.top, VCTokens.spacingLabelGap)
+        }
+    }
+
+    @ViewBuilder private var source: some View {
+        if let text = model.activeCaptionSourceText {
+            HStack(alignment: .firstTextBaseline, spacing: VCTokens.spacingRowGap) {
+                let reason: String = if case .clip(_, true, let reason) = model.activeCaptionSource, !reason.isEmpty { " · " + reason } else { "" }
+                (Text(text).foregroundStyle(DesignValues.color("text.secondary")) + Text(reason).foregroundStyle(DesignValues.color("text.tertiary")))
+                    .font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("voxclip.captions.source")
+                Spacer(minLength: VCTokens.spacingRowGap)
+                if case .clip = model.activeCaptionSource, model.capabilities.edit {
+                    Button("Use project default") { model.useProjectCaptions() }
+                        .buttonStyle(.borderless).font(.system(size: 12))
+                        .accessibilityIdentifier("voxclip.captions.useProjectDefault")
                 }
-                .padding(.top, VCTokens.spacingLabelGap)
             }
         }
-        .onChange(of: model.activeClip?.id, initial: true) { _, _ in model.applyCaptionPick() }
+    }
+
+    @ViewBuilder private var picking: some View {
+        if model.clipStyleState.picking {
+            HStack(spacing: VCTokens.spacingRowGap) {
+                ProgressView().controlSize(.small)
+                Text("Picking caption styles…").font(.system(size: 12))
+                Spacer(minLength: VCTokens.spacingRowGap)
+                Button("Cancel") { model.clipStyleState.task?.cancel() }.buttonStyle(.borderless).font(.system(size: 12))
+            }
+        } else if model.canPickCaptionStyles, model.unpickedClipCount > 0, !model.clipStyleState.confirmation.isPresented {
+            let count = model.unpickedClipCount
+            Button { model.pickCaptionStyles() } label: {
+                Label(count == 1 ? "Pick a style for 1 clip" : "Pick styles for \(count) clips", systemImage: "sparkles").font(.system(size: 12))
+            }
+            .buttonStyle(.borderless)
+            .accessibilityIdentifier("voxclip.captions.pickStyles")
+        }
     }
 }
 

@@ -116,35 +116,54 @@ private actor PickFixtureConnector: LLMConnector {
         #expect(picks[clips[1].id] == ClipCaptionPick(styleId: "minimal", reason: "Quiet story."))
         #expect(editor.clipStyleState.error == nil && !editor.clipStyleState.picking && !editor.llmRuns.isBusy)
 
-        // The active clip uses its pick, shown with the reason in the Captions panel.
+        // Each clip renders with its own pick; the project default stays, and the Captions panel names the source.
+        let projectDefault = editor.project.captions.styleId
         shell.selection = .clip(clips[1].id)
-        editor.applyCaptionPick()
-        #expect(editor.activeCaptionPick?.styleId == "minimal" && editor.project.captions.styleId == "minimal")
+        #expect(editor.activeCaptions.styleId == "minimal" && editor.project.captions.styleId == projectDefault)
+        #expect(editor.activeCaptionSourceText == "This clip: Minimal · Claude's pick")
+        shell.selection = .clip(clips[0].id)
+        #expect(editor.activeCaptions.styleId == "punch-in")
+        #expect(editor.project.captionSettings(forClip: nil).styleId == projectDefault)
     }
 
     @Test func aStyleTheUserChoseIsNeverOverridden() async throws {
         let (shell, editor) = try await open()
         defer { editor.close() }
         editor.chooseClipPreset(.auto)
-        let clip = try #require((editor.keptClips + editor.suggestedClips).first)
+        let clips = editor.keptClips + editor.suggestedClips
+        try #require(clips.count >= 2)
+        let clip = clips[0], other = clips[1]
         shell.selection = .clip(clip.id)
-        #expect(editor.activeClip?.id == clip.id)
-        // A gallery tile is a choice: it fixes the clip style's captions.
+        #expect(editor.activeClip?.id == clip.id && editor.activeCaptionSourceText == "Project default")
+        // A gallery tile with a clip open is that clip's own choice: Claude's later picks never replace it.
+        let projectDefault = editor.project.captions.styleId
         editor.setStyle("marker")
-        #expect(editor.project.clipStyle?.captions == .style("marker") && editor.project.clipStyle?.preset == .mine)
-        #expect(!editor.canPickCaptionStyles)
-        // Even a pick recorded for the clip changes nothing while a style is fixed.
+        #expect(editor.project.clipStyle?.captionPicks[clip.id] == ClipCaptionPick(styleId: "marker", reason: "", by: .user))
+        #expect(editor.project.captions.styleId == projectDefault && editor.project.clipStyle?.captions == .auto)
+        #expect(editor.activeCaptions.styleId == "marker" && editor.activeCaptionSourceText == "This clip: Marker · your pick")
         var next = editor.project
-        next.clipStyle = next.clipStyle?.recording([clip.id: ClipCaptionPick(styleId: "glow", reason: "Later.")])
-        #expect(next.clipStyle?.captionPicks[clip.id] == nil)
-        next.clipStyle?.captionPicks[clip.id] = ClipCaptionPick(styleId: "glow", reason: "Injected.")
-        editor.replace(next, name: "Inject")
-        editor.applyCaptionPick()
-        #expect(editor.activeCaptionPick == nil && editor.project.captions.styleId == "marker")
-        // Back to Auto in the card, the pick applies again.
+        next.clipStyle = next.clipStyle?.recording([clip.id: ClipCaptionPick(styleId: "glow", reason: "Later."),
+                                                    other.id: ClipCaptionPick(styleId: "glow", reason: "Glows.")])
+        editor.replace(next, name: "Claude picked")
+        #expect(editor.activeCaptions.styleId == "marker" && editor.project.captionSettings(forClip: other.id).styleId == "glow")
+        // With no clip open the choice is the project default: it fixes the captions, so Claude's pick for the other clip
+        // stops applying, while the creator's own pick stays.
+        shell.selection = .fullTake
+        #expect(editor.activeClip == nil && editor.activeCaptionSourceText == nil)
+        editor.setStyle("minimal")
+        #expect(editor.project.captions.styleId == "minimal" && editor.project.clipStyle?.captions == .style("minimal"))
+        #expect(!editor.canPickCaptionStyles)
+        #expect(editor.project.captionSettings(forClip: other.id).styleId == "minimal")
+        #expect(editor.project.captionSettings(forClip: clip.id).styleId == "marker")
+        // Back to Auto in the card, Claude's pick applies again; Use project default drops the clip's own.
         editor.setClipCaptions(.auto)
-        editor.applyCaptionPick()
-        #expect(editor.project.captions.styleId == "glow")
+        #expect(editor.project.captionSettings(forClip: other.id).styleId == "glow")
+        shell.selection = .clip(clip.id)
+        let undo = UndoManager(); undo.groupsByEvent = false; editor.undoManager = undo
+        undo.beginUndoGrouping(); editor.useProjectCaptions(); undo.endUndoGrouping()
+        #expect(editor.activeCaptions.styleId == "minimal" && editor.activeCaptionSourceText == "Project default")
+        undo.undo()
+        #expect(editor.activeCaptions.styleId == "marker")
     }
 
     /// Offscreen pictures of the card, the pick row and the status bar for review (the gallery, whose tiles render
@@ -166,7 +185,6 @@ private actor PickFixtureConnector: LLMConnector {
             next.edits.activeClipId = clip.id
         }
         editor.replace(next, name: "Capture")
-        editor.applyCaptionPick()
         let row = VStack(alignment: .leading) { ClipStyleCaptionRow(model: editor) }.frame(width: 372).padding(16).background(DesignValues.color("bg.window"))
         try await Self.capture(row, size: CGSize(width: 404, height: 120), appearance: .darkAqua, to: folder.appendingPathComponent("captions-pick-row.png"))
         let bar = StatusBarView(shell: shell)

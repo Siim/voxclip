@@ -27,11 +27,12 @@ extension DebugRewriteSmoke {
     }
 
     static func makeItPlan(span: ClosedRange<Int>, cut: Int?, rewrite: (range: ClosedRange<Int>, text: String)?, zoom: ClosedRange<Int>?,
-                           music: Bool, score: Int, title: String) -> ClipAutopilotPlan {
+                           music: Bool, score: Int, title: String, captionStyle: String = "vox-bold") -> ClipAutopilotPlan {
         ClipAutopilotPlan(startWord: span.lowerBound, endWord: span.upperBound, title: title, hook: "Edit video like a doc",
             cuts: cut.map { [.init(startWord: $0, endWord: $0, kind: .other, reason: "Not needed")] } ?? [],
             rewrites: rewrite.map { [.init(startWord: $0.range.lowerBound, endWord: $0.range.upperBound, text: $0.text, reason: "Plainer words")] } ?? [],
-            captions: .init(styleId: "vox-bold", font: .init(family: "Roboto", weight: 900), textCase: .upper, wordsPerCaption: 3),
+            captions: .init(styleId: captionStyle, font: .init(family: "Roboto", weight: 900), textCase: .upper, wordsPerCaption: 3,
+                            reason: "Matches the clip"),
             look: .init(id: .warm, reason: "Friendly"), speed: .init(rate: 1.1, reason: "A slow start"),
             music: music ? [.init(title: "Calm piano", mood: "calm piano", prompt: "Instrumental calm piano", reason: "Warm under the voice", underVoiceDb: 18)] : [],
             musicPick: music ? 0 : nil,

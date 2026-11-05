@@ -72,6 +72,8 @@ public enum VoiceLabRenderPreflight {
             throw VoiceLabAssetError.invalidSelection("legacy source plan")
         }
         if let layout = request.captionLayout {
+            // The clip's own caption look (design.md §6.6), as the caller laid it out.
+            let captions = input.project.captionSettings(forClip: clip?.id)
             let expected = plan.captions.map {
                 CaptionInputWord(id: $0.id, text: $0.text, start: $0.start, end: $0.end)
             }
@@ -79,11 +81,11 @@ public enum VoiceLabRenderPreflight {
                   abs(layout.input.duration - plan.duration) < 1 / plan.sampleRate,
                   layout.input.frame.width == request.output.size.width,
                   layout.input.frame.height == request.output.size.height,
-                  layout.input.style == input.project.captions.styleId,
+                  layout.input.style == captions.styleId,
                   layout.input.captions == CaptionLayoutInput.Settings(
-                    overrides: input.project.captions.overrides,
-                    position: input.project.captions.position,
-                    positionByAspect: input.project.captions.positionByAspect),
+                    overrides: captions.overrides,
+                    position: captions.position,
+                    positionByAspect: captions.positionByAspect),
                   request.captions == layout.track else {
                 throw VoiceLabAssetError.invalidSelection("caption layout")
             }

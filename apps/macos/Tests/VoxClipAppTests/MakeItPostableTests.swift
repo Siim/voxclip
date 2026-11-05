@@ -119,7 +119,11 @@ private final class Calls: Sendable {
         #expect(project.edits.cutWordIds.contains("w6"), "the filler is cut")
         #expect(!project.edits.cutPauseIds.isEmpty, "the long pause is tightened")
         #expect(project.edits.clips.first { $0.id == "clip-main" }?.title == "Ship day")
-        #expect(project.captions.styleId == "vox-bold" && project.captions.overrides["text"]?.aiObject?["transform"] == .string("uppercase"))
+        // The caption look is the clip's own pick (design.md §6.6); the project default stays.
+        let look = project.captionSettings(forClip: "clip-main")
+        #expect(look.styleId == "vox-bold" && look.overrides["text"]?.aiObject?["transform"] == .string("uppercase"))
+        #expect(project.captions == fixture.original.captions)
+        #expect(project.clipStyle?.captionPicks["clip-main"]?.by == .ai)
         #expect(project.motionCues.map(\.id) == ["clip-main-zoom-0"])
         #expect(project.share.captions["clip-main"] == "We ship the clipper today.")
         let music = try #require(MusicProject.entry(for: "clip-main", in: project))
@@ -148,10 +152,12 @@ private final class Calls: Sendable {
         let cutRow = try #require(run.rows.first { $0.id == "cut-0" })
         #expect(cutRow.undoable && cutRow.play != nil)
         step(fixture.undo) { editor.makeItUndo("cut-0", in: run) }
-        #expect(!editor.project.edits.cutWordIds.contains("w6") && editor.project.motionCues.count == 1 && editor.project.captions.styleId == "vox-bold")
+        #expect(!editor.project.edits.cutWordIds.contains("w6") && editor.project.motionCues.count == 1)
+        #expect(editor.project.captionSettings(forClip: "clip-main").styleId == "vox-bold")
         #expect(run.rows.first { $0.id == "cut-0" }?.undone == true)
         step(fixture.undo) { editor.makeItUndo("captions", in: run) }
-        #expect(editor.project.captions == fixture.original.captions)
+        #expect(editor.project.captionSettings(forClip: "clip-main") == fixture.original.captions)
+        #expect(editor.project.clipStyle?.captionPicks["clip-main"] == nil)
         // ⌘Z takes back the row undos, then the whole run in one step.
         fixture.undo.undo(); fixture.undo.undo()
         #expect(editor.project.edits.cutWordIds.contains("w6"))
@@ -172,6 +178,7 @@ private final class Calls: Sendable {
         editor.makeItUndoAll(run)
         #expect(editor.undoSteps == steps + 1)
         #expect(editor.project.edits.cutWordIds == fixture.original.edits.cutWordIds && editor.project.captions == fixture.original.captions)
+        #expect(editor.project.captionSettings(forClip: "clip-main") == fixture.original.captions)
         #expect(editor.project.motionCues == fixture.original.motionCues && editor.project.music == fixture.original.music)
         #expect(editor.project.share.captions["clip-main"] == fixture.original.share.captions["clip-main"])
         #expect(editor.project.clipEffects == fixture.original.clipEffects, "the hook's card goes too")

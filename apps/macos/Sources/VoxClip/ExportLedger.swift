@@ -49,6 +49,8 @@ struct ExportRecord: Codable, Equatable {
     }
 
     static func key(_ target: ExportTarget, aspect: AspectRatio) -> String { targetID(target) + "|" + aspect.rawValue }
+    /// The clip a target renders; nil for the full take.
+    nonisolated static func clipID(_ target: ExportTarget) -> String? { if case .clip(let id) = target { return id }; return nil }
 }
 
 @MainActor enum ExportFingerprint {
@@ -145,6 +147,8 @@ struct ExportRecord: Codable, Equatable {
     }
 
     static func value(_ project: Project, target: ExportTarget, labelPosition: VoiceLabLabelPosition = .topRight) throws -> String {
+        // A clip renders in its own caption look (design.md §6.6), so its fingerprint carries that look.
+        let project = project.resolvingCaptions(forClip: ExportLedger.clipID(target))
         let clip: ClipRange?
         switch target {
         case .fullEdit: clip = nil

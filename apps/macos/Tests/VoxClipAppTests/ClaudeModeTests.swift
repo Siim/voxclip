@@ -370,6 +370,63 @@ private final class ClaudeCalls: Sendable {
         if failing { #expect(editor.exportFileFailures.first?.contains("9:16") == true && editor.exportError == nil) }
         #expect(editor.claudeModeNextStep.hasPrefix("Next: post them"))
     }
+
+    /// Each clip exports in its own caption look (design.md §6.6): three clips, three picks (two of Claude's, one the
+    /// creator's), one Export all; every file's render and ledger entry carry its clip's style.
+    @Test func exportAllRendersEachClipInItsOwnCaptionStyle() async throws {
+        _ = NSApplication.shared
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-claude-looks-" + UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let app = AppModel(settingsStore: RegressionSettingsStore())
+        #expect(app.set("export.folder", .string(folder.path)))
+        let shell = WorkspaceShell(app: app)
+        let shared = try SharedResources.locate()
+        let base = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
+        var project = try DebugExplorer.fiveQuestions(from: base)
+        project.id = UUID().uuidString.lowercased()
+        project.export.folder = nil
+        project.captions.styleId = "vox-highlight"
+        let lower: [String: JSONValue] = ["text": .object(["transform": .string("lowercase")])]
+        project.clipStyle = ClipStyle(preset: .auto, captions: .auto, music: .auto, maxLengthSec: 60, shapes: [.landscape], rewording: .fixOnly,
+            captionPicks: ["five-1": ClipCaptionPick(styleId: "marker", reason: "Bold claims.", overrides: lower),
+                           "five-2": ClipCaptionPick(styleId: "minimal", reason: "A quiet line."),
+                           "five-3": ClipCaptionPick(styleId: "glow", reason: "", by: .user)])
+        let exporter = RegressionExporter(writesFiles: true)
+        await shell.attachForTesting(VoxClipDocument(project: project), selection: .fullTake, preview: DemoPreviewEngine(), exporter: exporter)
+        let editor = try #require(shell.editor)
+        defer { editor.close() }
+        editor.mediaResolved = true; editor.mediaUnreadable = false; editor.refresh()
+        editor.pasteboardOverride = { _ in }
+        let ids = ["five-1", "five-2", "five-3"]
+        for id in ids {
+            let run = MakeItRun(clipID: id, cap: 2)
+            run.phase = .ready
+            editor.makeIt.insert(run)
+        }
+        editor.claudeMode.clipIDs = ids
+        editor.claudeMode.phase = .done
+        editor.makeIt.style = MakeItStyle(shapes: [.landscape])
+        editor.claudeExportAll()
+        await editor.exportTask?.value
+        let jobs = await exporter.jobs
+        try #require(jobs.count == 3)
+        var styles: [String: String] = [:]
+        for job in jobs {
+            guard case .clip(let id) = job.target else { Issue.record("a full-take job"); continue }
+            styles[id] = job.render.captionLayout?.style.id
+            #expect(app.exportLedger.entry(projectID: editor.project.id, targetID: id, aspect: .landscape)?.styleId == styles[id], "\(id)")
+        }
+        #expect(styles == ["five-1": "marker", "five-2": "minimal", "five-3": "glow"])
+        let marker = try #require(jobs.first { $0.target == .clip("five-1") }?.render.captionLayout)
+        #expect(marker.style.text.transform == .lowercase, "Claude's case for that clip")
+        #expect(editor.project.captions.styleId == "vox-highlight", "the project default is untouched")
+        // The fingerprint follows each clip's look: a new style for one clip marks only that clip's export stale.
+        let before = try ids.map { try ExportFingerprint.value(editor.project, target: .clip($0)) }
+        var next = editor.project
+        next.clipStyle?.captionPicks["five-2"] = ClipCaptionPick(styleId: "punch-in", reason: "", by: .user)
+        let after = try ids.map { try ExportFingerprint.value(next, target: .clip($0)) }
+        #expect(before[0] == after[0] && before[1] != after[1] && before[2] == after[2])
+    }
 }
 
 /// The Make it postable tests' main plan, shared so the two suites plan the same clip.

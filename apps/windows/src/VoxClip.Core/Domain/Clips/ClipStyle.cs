@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using VoxClip.Core.Domain.Captions;
@@ -5,8 +6,29 @@ using VoxClip.Core.Domain.Shared;
 
 namespace VoxClip.Core.Domain.Clips;
 
-/// <summary>The AI's caption style for one clip and its one-line reason; project schema $defs/clipStyle.</summary>
-public sealed record ClipCaptionPick(string StyleId, string Reason);
+/// <summary>One clip's caption look (design §6.6; project schema $defs/clipStyle): the style and its one-line reason, the overrides
+/// that clip renders with (Make it postable's case, words per line and font) and who chose it. Claude's picks omit
+/// <see cref="By"/>; the creator's own choice for the clip is "user".</summary>
+public sealed record ClipCaptionPick(string StyleId, string Reason)
+{
+    /// <summary>A merge patch over the style, as captions.overrides; null keeps the project's overrides while the styles match, else none.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public JsonElement? Overrides { get; init; }
+    /// <summary>"user" for the creator's own choice; null for Claude's pick.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? By { get; init; }
+
+    /// <summary>The creator chose this clip's style.</summary>
+    [JsonIgnore]
+    public bool ByUser => By == "user";
+
+    /// <summary>Field by field, the overrides by JSON value.</summary>
+    public bool Equals(ClipCaptionPick? other) => other is not null && StyleId == other.StyleId && Reason == other.Reason && By == other.By
+        && (Overrides is { } overrides ? other.Overrides is { } theirs && JsonElement.DeepEquals(overrides, theirs) : other.Overrides is null);
+
+    /// <inheritdoc/>
+    public override int GetHashCode() => HashCode.Combine(StyleId, Reason, By);
+}
 
 /// <summary>How clips should be made (design §6.6, project schema $defs/clipStyle). Stored per project once the user
 /// chooses on the clip style card; Settings keeps the default a new project's card starts with. The clip autopilot
@@ -35,20 +57,32 @@ public sealed record ClipStyle(string Preset, string Captions, string Music, int
     [JsonIgnore]
     public string? FixedCaptionStyle => CaptionsAuto ? null : Captions;
 
-    /// <summary>The user's fixed style always wins; with Auto, the AI's pick for the clip, or null (the project's style stays).</summary>
+    /// <summary>The creator's own pick for the clip first, then the style they fixed; with Auto, the AI's pick for the clip, or null
+    /// (the project's style stays).</summary>
     public string? CaptionStyleFor(string? clipId)
     {
+        if (clipId is { Length: > 0 } && CaptionPicks.TryGetValue(clipId, out var own) && own.ByUser) return own.StyleId;
         if (FixedCaptionStyle is { } fixedStyle) return fixedStyle;
         return clipId is { Length: > 0 } && CaptionPicks.TryGetValue(clipId, out var pick) ? pick.StyleId : null;
     }
 
-    /// <summary>Records AI picks. A fixed caption style is never overridden: with anything but Auto this changes nothing.</summary>
+    /// <summary>The pick a render of the clip uses (design §6.6): the creator's own always; Claude's while captions are Auto, or when
+    /// it keeps the fixed style. Null: the project's captions apply.</summary>
+    public ClipCaptionPick? CaptionPickFor(string? clipId)
+    {
+        if (clipId is not { Length: > 0 } || !CaptionPicks.TryGetValue(clipId, out var pick)) return null;
+        if (pick.ByUser || FixedCaptionStyle is null) return pick;
+        return pick.StyleId == FixedCaptionStyle ? pick : null;
+    }
+
+    /// <summary>Records AI picks. A fixed caption style is never overridden: with anything but Auto this changes nothing. The
+    /// creator's own pick for a clip is never replaced.</summary>
     public ClipStyle Recording(IReadOnlyDictionary<string, ClipCaptionPick> picks)
     {
         if (!CaptionsAuto) return this;
         var merged = new SortedDictionary<string, ClipCaptionPick>(StringComparer.Ordinal);
         foreach (var (id, pick) in CaptionPicks) merged[id] = pick;
-        foreach (var (id, pick) in picks) merged[id] = pick;
+        foreach (var (id, pick) in picks) if (!(CaptionPicks.TryGetValue(id, out var own) && own.ByUser)) merged[id] = pick;
         return this with { CaptionPicks = merged };
     }
 
@@ -86,11 +120,27 @@ public sealed record ClipStyle(string Preset, string Captions, string Music, int
         Require(Rewording is "off" or "fix-only" or "tighten", "rewording");
         Require(Tone is null || IsSlug(Tone) && Tone != "auto" && System.Text.Encoding.UTF8.GetByteCount(Tone) <= 64, "tone");
         foreach (var (_, pick) in CaptionPicks)
-            Require(IsSlug(pick.StyleId) && pick.StyleId != "auto" && pick.Reason.EnumerateRunes().Count() <= 120, "captionPicks");
+            Require(IsSlug(pick.StyleId) && pick.StyleId != "auto" && pick.Reason.EnumerateRunes().Count() <= 120
+                && (pick.By is null or "user") && (pick.Overrides is null or { ValueKind: JsonValueKind.Object }), "captionPicks");
     }
 
     internal static bool IsSlug(string? text) =>
         text is { Length: > 0 } && text.Split('-').All(run => run.Length > 0 && run.All(c => c is >= 'a' and <= 'z' or >= '0' and <= '9'));
+}
+
+/// <summary>Each clip's caption look (design §6.6), the twin of the Swift Project.captionSettings(forClip:).</summary>
+public static class ClipCaptionLooks
+{
+    private static readonly JsonElement Empty = JsonDocument.Parse("{}").RootElement.Clone();
+
+    /// <summary>The captions a render of the clip uses: its pick when one applies (<see cref="ClipStyle.CaptionPickFor"/>), else the
+    /// project's captions. The position stays the project's. A pick without overrides keeps the project's while the styles match.</summary>
+    public static ProjectCaptions CaptionsFor(this Project project, string? clipId)
+    {
+        if (project.ClipStyle?.CaptionPickFor(clipId) is not { } pick) return project.Captions;
+        var overrides = pick.Overrides ?? (pick.StyleId == project.Captions.StyleId ? project.Captions.Overrides : Empty);
+        return project.Captions with { StyleId = pick.StyleId, Overrides = overrides };
+    }
 }
 
 /// <summary>shared/data/clip-styles.json: the presets and the labels the card and status bar show.</summary>

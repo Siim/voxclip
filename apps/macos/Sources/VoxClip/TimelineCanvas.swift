@@ -181,7 +181,7 @@ struct TimelineContent: Equatable {
         }
         headers[2].action = { [weak model] in
             guard let model else { return }
-            model.setCaptionsEnabled(model.project.captions.styleId == "off")
+            model.setCaptionsEnabled(model.activeCaptions.styleId == "off")
         }
         headers[3].action = { [weak self] in self?.openMotionCue() }
         headers[4].action = { [weak self] in
@@ -215,7 +215,7 @@ struct TimelineContent: Equatable {
                 _ = self.shell?.layout.trackHeight
                 _ = self.shell?.layout.windowWidth
                 self.headers[1].update(on: !model.previewMuted, enabled: true)
-                self.headers[2].update(on: model.project.captions.styleId != "off", enabled: model.capabilities.writable)
+                self.headers[2].update(on: model.activeCaptions.styleId != "off", enabled: model.capabilities.writable)
                 self.layoutLanes()
             }
         ]

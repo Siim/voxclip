@@ -57,9 +57,15 @@ extension DebugRewriteSmoke {
 
 extension DebugRewriteSmoke.Harness {
     func claudeDoesItAll() async throws {
+        // Claude picks each clip's caption look, as in the hand-edited benchmark: three clips, three styles.
+        let looks = ["marker", "minimal", "punch-in"]
+        var picked: [Int: String] = [:]
         let editor = try makeItPrepare { range, words in
-            DebugRewriteSmoke.makeItPlan(span: range, cut: range.count > 4 ? range.lowerBound + 1 : nil, rewrite: nil, zoom: nil,
-                                         music: true, score: words[range.lowerBound].text.count % 3 + 7, title: "Clip at \(range.lowerBound)")
+            let style = picked[range.lowerBound] ?? looks[picked.count % looks.count]
+            picked[range.lowerBound] = style
+            return DebugRewriteSmoke.makeItPlan(span: range, cut: range.count > 4 ? range.lowerBound + 1 : nil, rewrite: nil, zoom: nil,
+                                                music: true, score: words[range.lowerBound].text.count % 3 + 7, title: "Clip at \(range.lowerBound)",
+                                                captionStyle: style)
         }
         let app = self.app
         let keys = [ClipsMode.key, ClipsMode.countKey, ClipsMode.capKey, "llm.connector", "export.folder"]
@@ -141,7 +147,28 @@ extension DebugRewriteSmoke.Harness {
             DebugRewriteSmoke.Check(invariant: "E2", passed: texts.count == 6 && written == posts && copied.first == runs.first.map { editor.makeItPostCopy($0) },
                 detail: "\(texts.count) post texts beside them; the first copied"),
             DebugRewriteSmoke.Check(invariant: "E3", passed: editor.claudeModeNextStep.hasPrefix("Next: post them"), detail: editor.claudeModeNextStep),
+            claudeModeLooksCheck(editor, runs: runs),
         ])
+    }
+}
+extension DebugRewriteSmoke.Harness {
+    /// E4: each exported clip carries its own caption look (design.md §6.6). The export ledger records the style every
+    /// file rendered in; each clip's equals Claude's pick for it, and the three differ.
+    func claudeModeLooksCheck(_ editor: EditorModel, runs: [MakeItRun]) -> DebugRewriteSmoke.Check {
+        let shapes = editor.makeItStyle.shapes
+        var rendered: [String] = []
+        var matched = true
+        for run in runs {
+            let picked = editor.project.clipStyle?.captionPicks[run.clipID]?.styleId
+            for shape in shapes {
+                let style = app.exportLedger.entry(projectID: editor.project.id, targetID: run.clipID, aspect: shape)?.styleId
+                if style == nil || style != picked { matched = false }
+            }
+            rendered.append("\(run.clipID) \(picked ?? "none")")
+        }
+        let distinct = Set(runs.compactMap { editor.project.clipStyle?.captionPicks[$0.clipID]?.styleId }).count
+        return DebugRewriteSmoke.Check(invariant: "E4", passed: matched && distinct == runs.count && runs.count == 3,
+                                       detail: rendered.joined(separator: "; ") + " · \(distinct) styles")
     }
 }
 #endif

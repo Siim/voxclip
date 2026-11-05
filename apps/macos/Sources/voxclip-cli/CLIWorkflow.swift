@@ -200,7 +200,7 @@ enum CLIWorkflow {
             try Task.checkCancellation()
             probe = try await AVMediaProbe().probe(source)
             try Task.checkCancellation()
-            try validateExportArguments(options, probe: probe, styleID: options.style ?? project.captions.styleId)
+            try validateExportArguments(options, probe: probe, styleID: options.style ?? project.captionSettings(forClip: options.clip).styleId)
             try validateRequestedScope(options, project: project)
         } else {
             source = inputURL
@@ -241,6 +241,10 @@ enum CLIWorkflow {
         if let effectiveState { project.edits = effectiveState.projectEdits }
         let aspect = options.aspect.flatMap(AspectRatio.init(rawValue:)) ?? project.export.aspect
         let quality = options.quality.flatMap(ExportQuality.init(rawValue:)) ?? project.export.quality
+        // A clip renders in its own caption look (design.md §6.6) unless --style names one.
+        if options.style == nil { project = project.resolvingCaptions(forClip: project.edits.activeClipId) }
+        // The render's captions are resolved now; without the picks, --style and the Voice Lab preflight agree.
+        project.clipStyle = nil
         let styleID = options.style ?? project.captions.styleId
         let style = try self.style(styleID)
         project.captions.styleId = styleID

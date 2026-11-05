@@ -147,7 +147,7 @@ enum ViewerTag: Equatable {
         ZStack {
             Rectangle().fill(DesignValues.color("stage"))
             if !standIn, let native = model.nativePreview { PlayerSurface(player: native.player) } else { ViewerStandIn(model: model) }
-            if model.canMoveCaptions, let style = model.app.styles.first(where: { $0.id == model.project.captions.styleId }), style.position.userDraggable {
+            if model.canMoveCaptions, let style = model.app.styles.first(where: { $0.id == model.activeCaptions.styleId }), style.position.userDraggable {
                 CaptionPositionOverlay(model: model, style: style, dragging: $captionDragging)
             }
             if model.askClaude.adjusting != nil {
@@ -391,7 +391,7 @@ enum ViewerTag: Equatable {
         let preset = CaptionStyleResolver.preset(width: size.width, height: size.height)
         if let preset, let stored = model.project.captions.positionByAspect[preset] { return stored }
         if let stored = model.project.captions.position { return stored }
-        let resolved = (try? style.resolved(overrides: model.project.captions.overrides, frame: size)) ?? style
+        let resolved = (try? style.resolved(overrides: model.activeCaptions.overrides, frame: size)) ?? style
         return CaptionPosition(x: resolved.position.x, y: resolved.position.y)
     }
     var body: some View {

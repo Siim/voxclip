@@ -281,7 +281,7 @@ extension EditorModel {
     /// laid the captions out again; a page of AI-voice words keeps the layout's own times.
     /// Pages outside the open clip (a layout from before a tab switch) are left out.
     func timelineCaptionCues(on axis: TimelineAxis, removed: [Range<Double>] = []) -> [TimelineCue] {
-        guard project.captions.styleId != "off" else { return [] }
+        guard activeCaptions.styleId != "off" else { return [] }
         let scope = scopeSourceRange
         var pages: [TimelineCaptions.Page] = []
         pages.reserveCapacity(captionPages.count)

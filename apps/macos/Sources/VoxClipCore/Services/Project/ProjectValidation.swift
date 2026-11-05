@@ -27,7 +27,12 @@ enum ProjectValidation {
         let root = try object(raw, required: "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", optional: "title extensions clipStyle" + (isV4 ? " contextDemo motionCues music clipEffects clipControls" : ""))
         if let clipStyle = root["clipStyle"] {
             let style = try object(clipStyle, required: "preset captions music maxLengthSec shapes rewording captionPicks", optional: "tone")
-            for (_, pick) in try map(style["captionPicks"]) { _ = try object(pick, required: "styleId reason") }
+            for (_, pick) in try map(style["captionPicks"]) {
+                // Optional: the clip's caption overrides and "by": "user" for the creator's own choice (design.md §6.6).
+                let fields = try object(pick, required: "styleId reason", optional: "overrides by")
+                if let overrides = fields["overrides"] { _ = try map(overrides) }
+                if let by = fields["by"], by != .string("user") { try fail("Invalid caption pick") }
+            }
         }
         if let title = root["title"], case .string = title {} else if root["title"] != nil { try fail("Invalid project title") }
         _ = try object(root["savedBy"], required: "app version platform")

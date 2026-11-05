@@ -349,6 +349,9 @@ attribute VoxClip.Core.Domain.Captions.GradientSpace :: field public Line @ Syst
 attribute VoxClip.Core.Domain.Captions.GradientSpace :: field public Page @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("page")
 attribute VoxClip.Core.Domain.Captions.GradientSpace :: field public Word @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("word")
 attribute VoxClip.Core.Domain.Captions.GradientSpace @ System.Text.Json.Serialization.JsonConverterAttribute("System.Text.Json.Serialization.JsonStringEnumConverter`1[VoxClip.Core.Domain.Captions.GradientSpace], System.Text.Json")
+attribute VoxClip.Core.Domain.Clips.ClipCaptionPick :: property By @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.Clips.ClipCaptionPick :: property ByUser @ System.Text.Json.Serialization.JsonIgnoreAttribute()
+attribute VoxClip.Core.Domain.Clips.ClipCaptionPick :: property Overrides @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.Clips.ClipLook :: field public Bw @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("bw")
 attribute VoxClip.Core.Domain.Clips.ClipLook :: field public Muted @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("muted")
 attribute VoxClip.Core.Domain.Clips.ClipLook :: field public Original @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("original")
@@ -3593,6 +3596,9 @@ member VoxClip.Core.Domain.Clips.ClipCandidate :: method public set_Reason(strin
 member VoxClip.Core.Domain.Clips.ClipCandidate :: method public set_Score(int)
 member VoxClip.Core.Domain.Clips.ClipCandidate :: method public set_Start(int)
 member VoxClip.Core.Domain.Clips.ClipCandidate :: method public set_Title(string)
+member VoxClip.Core.Domain.Clips.ClipCaptionLooks :: field private Empty
+member VoxClip.Core.Domain.Clips.ClipCaptionLooks :: method private .cctor()
+member VoxClip.Core.Domain.Clips.ClipCaptionLooks :: method public CaptionsFor(VoxClip.Core.Domain.Shared.Project,string)
 member VoxClip.Core.Domain.Clips.ClipCaptionPick :: method private .ctor(VoxClip.Core.Domain.Clips.ClipCaptionPick)
 member VoxClip.Core.Domain.Clips.ClipCaptionPick :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Clips.ClipCaptionPick :: method private get_EqualityContract()
@@ -3602,10 +3608,15 @@ member VoxClip.Core.Domain.Clips.ClipCaptionPick :: method public Equals(VoxClip
 member VoxClip.Core.Domain.Clips.ClipCaptionPick :: method public Equals(object)
 member VoxClip.Core.Domain.Clips.ClipCaptionPick :: method public GetHashCode()
 member VoxClip.Core.Domain.Clips.ClipCaptionPick :: method public ToString()
+member VoxClip.Core.Domain.Clips.ClipCaptionPick :: method public get_By()
+member VoxClip.Core.Domain.Clips.ClipCaptionPick :: method public get_ByUser()
+member VoxClip.Core.Domain.Clips.ClipCaptionPick :: method public get_Overrides()
 member VoxClip.Core.Domain.Clips.ClipCaptionPick :: method public get_Reason()
 member VoxClip.Core.Domain.Clips.ClipCaptionPick :: method public get_StyleId()
 member VoxClip.Core.Domain.Clips.ClipCaptionPick :: method public op_Equality(VoxClip.Core.Domain.Clips.ClipCaptionPick,VoxClip.Core.Domain.Clips.ClipCaptionPick)
 member VoxClip.Core.Domain.Clips.ClipCaptionPick :: method public op_Inequality(VoxClip.Core.Domain.Clips.ClipCaptionPick,VoxClip.Core.Domain.Clips.ClipCaptionPick)
+member VoxClip.Core.Domain.Clips.ClipCaptionPick :: method public set_By(string)
+member VoxClip.Core.Domain.Clips.ClipCaptionPick :: method public set_Overrides(System.Nullable`1<System.Text.Json.JsonElement>)
 member VoxClip.Core.Domain.Clips.ClipCaptionPick :: method public set_Reason(string)
 member VoxClip.Core.Domain.Clips.ClipCaptionPick :: method public set_StyleId(string)
 member VoxClip.Core.Domain.Clips.ClipControlsProject :: field private Identifier
@@ -3694,6 +3705,7 @@ member VoxClip.Core.Domain.Clips.ClipStyle :: method private .ctor(VoxClip.Core.
 member VoxClip.Core.Domain.Clips.ClipStyle :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Clips.ClipStyle :: method private get_EqualityContract()
 member VoxClip.Core.Domain.Clips.ClipStyle :: method public .ctor(string,string,string,int,System.Collections.Generic.IReadOnlyList`1<string>,string,System.Collections.Generic.IReadOnlyDictionary`2<string,VoxClip.Core.Domain.Clips.ClipCaptionPick>)
+member VoxClip.Core.Domain.Clips.ClipStyle :: method public CaptionPickFor(string)
 member VoxClip.Core.Domain.Clips.ClipStyle :: method public CaptionStyleFor(string)
 member VoxClip.Core.Domain.Clips.ClipStyle :: method public Deconstruct(string&,string&,string&,int&,System.Collections.Generic.IReadOnlyList`1<string>&,string&,System.Collections.Generic.IReadOnlyDictionary`2<string,VoxClip.Core.Domain.Clips.ClipCaptionPick>&)
 member VoxClip.Core.Domain.Clips.ClipStyle :: method public Equals(VoxClip.Core.Domain.Clips.ClipStyle)
@@ -14621,6 +14633,7 @@ type VoxClip.Core.Domain.Clips.AiClip
 type VoxClip.Core.Domain.Clips.AiResult
 type VoxClip.Core.Domain.Clips.ClipAudioMix
 type VoxClip.Core.Domain.Clips.ClipCandidate
+type VoxClip.Core.Domain.Clips.ClipCaptionLooks
 type VoxClip.Core.Domain.Clips.ClipCaptionPick
 type VoxClip.Core.Domain.Clips.ClipControlsProject
 type VoxClip.Core.Domain.Clips.ClipControlsRendering

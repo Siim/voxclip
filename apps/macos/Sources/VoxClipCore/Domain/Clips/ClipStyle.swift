@@ -47,11 +47,43 @@ public enum ClipCaptionChoice: Sendable, Hashable, Codable {
     }
 }
 
-/// The AI's caption style for one clip and its one-line reason.
+/// One clip's caption look (design.md §6.6): the style, the one-line reason, the overrides it renders with, and who chose
+/// it. Claude's picks (Pick styles, Make it postable) and the creator's own choice for that clip share the map.
 public struct ClipCaptionPick: Codable, Sendable, Hashable {
+    /// Who chose the clip's caption style. Omitted on the wire for Claude, so older picks read as Claude's.
+    public enum Chooser: String, Codable, Sendable, Hashable { case ai, user }
+
     public var styleId: String
     public var reason: String
-    public init(styleId: String, reason: String) { self.styleId = styleId; self.reason = reason }
+    /// The caption overrides this clip renders with (a JSON merge patch over the style, as `captions.overrides`): Make it
+    /// postable's case, words per line and font. Nil keeps the project's overrides while the styles match, else none.
+    public var overrides: [String: JSONValue]?
+    public var by: Chooser
+
+    public init(styleId: String, reason: String, overrides: [String: JSONValue]? = nil, by: Chooser = .ai) {
+        self.styleId = styleId; self.reason = reason; self.overrides = overrides; self.by = by
+    }
+
+    private enum CodingKeys: String, CodingKey { case styleId, reason, overrides, by }
+
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        styleId = try values.decode(String.self, forKey: .styleId)
+        reason = try values.decode(String.self, forKey: .reason)
+        overrides = try values.decodeIfPresent([String: JSONValue].self, forKey: .overrides)
+        // Only "user" is ever written; Claude's picks omit the key.
+        let by = try values.decodeIfPresent(String.self, forKey: .by)
+        guard by == nil || by == "user" else { throw VoxClipError.projectUnreadable("clipStyle.captionPicks") }
+        self.by = by == "user" ? .user : .ai
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(styleId, forKey: .styleId)
+        try values.encode(reason, forKey: .reason)
+        if let overrides { try values.encode(overrides, forKey: .overrides) }
+        if by == .user { try values.encode("user", forKey: .by) }
+    }
 }
 
 /// How clips should be made (doc/design.md §6.6, project schema `$defs.clipStyle`). Stored per project once the user
@@ -64,7 +96,8 @@ public struct ClipStyle: Codable, Sendable, Hashable {
     public var maxLengthSec: Int
     public var shapes: [AspectRatio]
     public var rewording: ClipRewording
-    /// The AI's picks by clip id. Only consulted while `captions` is `.auto`.
+    /// Caption picks by clip id: Claude's (consulted while `captions` is `.auto`, or when they keep the fixed style) and the
+    /// creator's own per-clip choices (always). `captionPick(forClip:)` says which applies.
     public var captionPicks: [String: ClipCaptionPick]
     /// The tone Claude writes each clip's words in (design.md §6.6 Tone row; shared/data/rewrite-tones.json). Auto lets
     /// Claude pick per clip; stored only when it is not Auto. Rewording Off overrides it: the words stay as said.
@@ -85,19 +118,54 @@ public struct ClipStyle: Codable, Sendable, Hashable {
         return captions.raw
     }
 
-    /// The caption style for `clipID`: the user's fixed style always wins; with Auto, the AI's pick for that clip, or
-    /// nil when there is none yet (the project's current style then stays).
+    /// The caption style for `clipID`: the creator's own choice for that clip first, then the style they fixed for every
+    /// clip; with Auto, Claude's pick for that clip, or nil when there is none yet (the project's style then applies).
     public func captionStyle(forClip clipID: String?) -> String? {
+        if let clipID, let pick = captionPicks[clipID], pick.by == .user { return pick.styleId }
         if let fixed = fixedCaptionStyle { return fixed }
         guard let clipID else { return nil }
         return captionPicks[clipID]?.styleId
     }
 
-    /// Records AI picks. A fixed caption style is never overridden: with anything but Auto this changes nothing.
+    /// The pick `clipID` renders with (design.md §6.6): the creator's own always; Claude's while captions are Auto, or
+    /// when it keeps the style the creator fixed (Make it postable's case and size for that style). Nil: the project's
+    /// captions apply.
+    public func captionPick(forClip clipID: String?) -> ClipCaptionPick? {
+        guard let clipID, let pick = captionPicks[clipID] else { return nil }
+        if pick.by == .user { return pick }
+        guard let fixed = fixedCaptionStyle else { return pick }
+        return pick.styleId == fixed ? pick : nil
+    }
+
+    /// Records AI picks. A fixed caption style is never overridden: with anything but Auto this changes nothing. The
+    /// creator's own pick for a clip is never replaced.
     public func recording(_ picks: [String: ClipCaptionPick]) -> ClipStyle {
         guard case .auto = captions else { return self }
         var next = self
-        next.captionPicks.merge(picks) { _, new in new }
+        for (clipID, pick) in picks where captionPicks[clipID]?.by != .user { next.captionPicks[clipID] = pick }
+        return next
+    }
+
+    /// Records Make it postable's caption look for one clip: under Auto any style, under a fixed style only that style
+    /// (with Claude's overrides). Nil when it cannot apply: the creator chose this clip's style, or the style is fixed to
+    /// another one or Off.
+    public func recordingLook(_ pick: ClipCaptionPick, forClip clipID: String) -> ClipStyle? {
+        guard captionPicks[clipID]?.by != .user else { return nil }
+        if let fixed = fixedCaptionStyle, fixed != pick.styleId { return nil }
+        var next = self
+        var recorded = pick
+        recorded.by = .ai
+        next.captionPicks[clipID] = recorded
+        return next
+    }
+
+    /// The creator chose `styleId` for one clip (the Captions panel or the card while that clip is open): it stays that
+    /// clip's style whatever the project default or Claude does later. The overrides carry over when the style is the
+    /// same as the clip's current one.
+    public func choosingCaptionStyle(_ styleId: String, forClip clipID: String, current: CaptionSettings) -> ClipStyle {
+        var next = self
+        let overrides = current.styleId == styleId ? current.overrides : nil
+        next.captionPicks[clipID] = ClipCaptionPick(styleId: styleId, reason: "", overrides: overrides, by: .user)
         return next
     }
 
@@ -175,6 +243,26 @@ public struct ClipStyle: Codable, Sendable, Hashable {
     static func isSlug(_ text: String) -> Bool {
         let runs = text.split(separator: "-", omittingEmptySubsequences: false)
         return !runs.isEmpty && runs.allSatisfy { run in !run.isEmpty && run.unicodeScalars.allSatisfy { ("a"..."z").contains($0) || ("0"..."9").contains($0) } }
+    }
+}
+
+extension Project {
+    /// The captions a render of `clipID` uses (design.md §6.6): the clip's caption pick when one applies
+    /// (`ClipStyle.captionPick(forClip:)`), else the project's captions. The position stays the project's. Preview,
+    /// export, Export all, the SRT and the export fingerprint all read this, so a clip renders in its own style.
+    public func captionSettings(forClip clipID: String?) -> CaptionSettings {
+        guard let pick = clipStyle?.captionPick(forClip: clipID) else { return captions }
+        var settings = captions
+        settings.styleId = pick.styleId
+        settings.overrides = pick.overrides ?? (pick.styleId == captions.styleId ? captions.overrides : [:])
+        return settings
+    }
+
+    /// This project with its captions resolved for `clipID`, for a render of that clip.
+    public func resolvingCaptions(forClip clipID: String?) -> Project {
+        var next = self
+        next.captions = captionSettings(forClip: clipID)
+        return next
     }
 }
 
