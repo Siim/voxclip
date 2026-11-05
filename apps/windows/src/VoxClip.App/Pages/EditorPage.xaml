@@ -47,6 +47,14 @@
                         <TextBlock Text="Ask" VerticalAlignment="Center" FontSize="13"/>
                         <TextBox x:Name="ShellAsk" MinWidth="120" MaxWidth="220" PlaceholderText="What should change?" AutomationProperties.Name="Ask about the current scope" KeyDown="ShellAskKeyDown"/>
                         <Button x:Name="AskButton" Content="Rewrite" Click="ShellAskClicked" Style="{ThemeResource SubtleButtonStyle}" AutomationProperties.Name="Open Rewrite with this instruction"/>
+                        <!-- The scope bar's tone row (design §6.3.1): the strip as a menu, the default first; a tone rewrites this scope at once. -->
+                        <DropDownButton x:Name="ToneButton" Content="Tone" Visibility="Collapsed" AutomationProperties.Name="Rewrite as a tone" AutomationProperties.AutomationId="ScopeBar.Tone">
+                            <DropDownButton.Flyout><MenuFlyout x:Name="ToneMenu" Opening="ToneMenuOpening" Placement="Bottom"/></DropDownButton.Flyout>
+                        </DropDownButton>
+                        <StackPanel x:Name="SaveToneHost" Orientation="Horizontal" Spacing="4" Visibility="Collapsed">
+                            <TextBox x:Name="SaveToneName" MinWidth="100" MaxLength="32" PlaceholderText="Tone name" AutomationProperties.Name="Tone name" KeyDown="SaveToneKeyDown"/>
+                            <Button Content="Save" Click="SaveToneClicked" AutomationProperties.Name="Save as my tone"/>
+                        </StackPanel>
                     </StackPanel>
                 </AppBarElementContainer>
                 <AppBarButton x:Name="FindClipsCommand" Label="Find clips" Click="FindClipsClicked" ToolTipService.ToolTip="Find clips (Ctrl+Shift+K)" DynamicOverflowOrder="4">

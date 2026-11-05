@@ -821,7 +821,9 @@ public sealed partial class EditorViewModel : ObservableObject
             static bool Suggested(ClipRange clip) => clip.Origin == ClipOrigin.Ai && !clip.Selected;
             var number = 0;
             foreach (var range in ranges.Where(range => !Suggested(range.Clip)).OrderBy(range => range.First).ThenBy(range => range.Order)
-                .Concat(ranges.Where(range => Suggested(range.Clip)).OrderBy(range => range.First).ThenBy(range => range.Order)))
+                // Suggested ranks by Make it postable's score once the planner has scored a suggestion (design §6.7), then by its start.
+                .Concat(ranges.Where(range => Suggested(range.Clip)).OrderByDescending(range => MakeIt.Score(range.Clip.Id)?.Score ?? -1)
+                    .ThenBy(range => range.First).ThenBy(range => range.Order)))
             {
                 var clip = range.Clip;
                 var suggestion = project.Ai.Results.FirstOrDefault(result => result.Id == clip.AiResultId)?.Clips.ElementAtOrDefault(clip.AiClipIndex ?? -1);

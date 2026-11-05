@@ -1,3 +1,4 @@
+using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Services.Settings;
 using System.Net.Http;
 using System.Runtime.InteropServices;
@@ -252,6 +253,44 @@ public sealed partial class SettingsWindow : Window
         Body.Children.Add(Ui.Text("✦ Claude does it all: after a new video is transcribed and its clips found, Claude (Opus, extra high) makes the top clips " +
             "postable by itself: cuts, rewording in your voice, captions and shape. The spend cap is your approval for ElevenLabs voice; Claude never spends " +
             "past it and asks inline for more. I'll pick: Claude suggests clips and you press ✦ Make it postable on the ones you want.", "HelperText"));
+        YourTones();
+    }
+
+    /// <summary>Settings › Clips › Your tones: the saved tones (rewrite.myTones), renamed inline or deleted. A rename keeps the id, so a
+    /// clip style that chose the tone keeps it; a deleted tone plans as Auto from then on.</summary>
+    private void YourTones()
+    {
+        Body.Children.Add(Ui.Text("Your tones", "BodyStrongTextBlockStyle"));
+        var saved = MainWindow.SavedRewriteTones();
+        if (saved.Count == 0)
+            Body.Children.Add(Ui.Text("No saved tones yet. Type how you want words rewritten in Rewrite's field, then choose “+ Save as my tone”.", "HelperText"));
+        foreach (var tone in saved)
+        {
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            var name = new TextBox { Text = tone.Title, MaxLength = 32, MinWidth = 180 };
+            AutomationProperties.SetName(name, "Tone name");
+            AutomationProperties.SetAutomationId(name, "Settings.Clips.Name." + tone.Id);
+            var rename = Ui.Button("Rename", () =>
+            {
+                try { SaveTones(MyRewriteTones.Renaming(tone.Id, name.Text, MainWindow.SavedRewriteTones())); }
+                catch (VoxClip.Core.Domain.VoiceLab.VoiceLabException) { Ui.Show(notice, "Use a name of 1 to 32 characters."); }
+            });
+            AutomationProperties.SetName(rename, "Rename " + tone.Title);
+            var delete = Ui.Button("Delete", () => _ = DeleteToneAsync(tone.Id));
+            AutomationProperties.SetName(delete, "Delete " + tone.Title);
+            row.Children.Add(name); row.Children.Add(rename); row.Children.Add(delete);
+            Body.Children.Add(row);
+        }
+        Body.Children.Add(Ui.Text("They show after the built-in tones in every Rewrite as menu and in the clip style card's Tone menu.", "HelperText"));
+    }
+
+    private void SaveTones(IReadOnlyList<RewriteTone> tones) => Save(RewriteToneCatalog.SettingsKey, MyRewriteTones.Encode(tones));
+
+    /// <summary>Deletes a saved tone, then lists the rest once the setting is written.</summary>
+    private async Task DeleteToneAsync(string id)
+    {
+        await Ui.RunAsync(notice, () => App.Services.SetAsync(RewriteToneCatalog.SettingsKey, MyRewriteTones.Encode(MyRewriteTones.Deleting(id, MainWindow.SavedRewriteTones())), lifetime.Token), "Save settings");
+        ShowSection("Clips");
     }
 
     private void General()

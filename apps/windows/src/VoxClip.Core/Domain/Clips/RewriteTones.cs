@@ -141,4 +141,47 @@ public static class MyRewriteTones
         }
         return true;
     }
+
+    /// <summary>The settings value for <paramref name="tones"/>: an array of id, title and instruction.</summary>
+    public static JsonElement Encode(IReadOnlyList<RewriteTone> tones)
+    {
+        var array = new JsonArray(tones.Select(tone => (JsonNode)new JsonObject { ["id"] = tone.Id, ["title"] = tone.Title, ["instruction"] = tone.Instruction }).ToArray());
+        using var document = JsonDocument.Parse(array.ToJsonString());
+        return document.RootElement.Clone();
+    }
+
+    /// <summary>"+ Save as my tone": <paramref name="tones"/> with a new tone named <paramref name="title"/>, its id "my-" and a slug of the
+    /// title (made unique with "-2", "-3"…). Throws InvalidInput for a title or instruction the settings schema refuses, or past
+    /// <paramref name="limit"/> tones. Twin of the Mac <c>MyRewriteTones.saving</c>.</summary>
+    public static (IReadOnlyList<RewriteTone> Tones, RewriteTone Tone) Saving(string title, string instruction, IReadOnlyList<RewriteTone> tones, int limit = 20)
+    {
+        var name = title.Trim();
+        var text = instruction.Trim();
+        if (!IsValid(name, text) || tones.Count >= limit) throw new VoxClip.Core.Domain.VoiceLab.VoiceLabException(VoxClip.Core.Domain.VoiceLab.VoiceLabErrorKind.InvalidInput);
+        var folded = new StringBuilder();
+        foreach (var character in name.ToLowerInvariant().Normalize(NormalizationForm.FormD))
+        {
+            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(character) == System.Globalization.UnicodeCategory.NonSpacingMark) continue;
+            folded.Append(character is >= 'a' and <= 'z' or >= '0' and <= '9' ? character : '-');
+        }
+        var slug = string.Join('-', folded.ToString().Split('-', StringSplitOptions.RemoveEmptyEntries));
+        var stem = (slug.Length == 0 ? "tone" : slug);
+        var basis = RewriteToneCatalog.MyTonePrefix + stem[..Math.Min(48, stem.Length)].Trim('-');
+        var id = basis;
+        for (var number = 2; tones.Any(tone => tone.Id == id); number++) id = basis + "-" + number.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var made = new RewriteTone(id, name, "", text);
+        return ([.. tones, made], made);
+    }
+
+    /// <summary><paramref name="tones"/> with <paramref name="id"/> renamed; its id stays, so clip styles that chose it keep it.</summary>
+    public static IReadOnlyList<RewriteTone> Renaming(string id, string title, IReadOnlyList<RewriteTone> tones)
+    {
+        var name = title.Trim();
+        var index = tones.ToList().FindIndex(tone => tone.Id == id);
+        if (index < 0 || !IsValid(name, tones[index].Instruction)) throw new VoxClip.Core.Domain.VoiceLab.VoiceLabException(VoxClip.Core.Domain.VoiceLab.VoiceLabErrorKind.InvalidInput);
+        return tones.Select((tone, at) => at == index ? tone with { Title = name } : tone).ToArray();
+    }
+
+    /// <summary><paramref name="tones"/> without <paramref name="id"/>. A clip style that chose it plans as Auto from then on.</summary>
+    public static IReadOnlyList<RewriteTone> Deleting(string id, IReadOnlyList<RewriteTone> tones) => tones.Where(tone => tone.Id != id).ToArray();
 }

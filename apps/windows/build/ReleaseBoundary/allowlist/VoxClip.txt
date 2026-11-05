@@ -722,10 +722,12 @@ member VoxClip.App.Controls.RewritePanel :: field private wordingFit
 member VoxClip.App.Controls.RewritePanel :: field private words
 member VoxClip.App.Controls.RewritePanel :: method internal .ctor(VoxClip.App.ViewModels.RewriteSession,System.Func`1<bool>,VoxClip.App.MainWindow)
 member VoxClip.App.Controls.RewritePanel :: method internal CloseForHost()
+member VoxClip.App.Controls.RewritePanel :: method internal SendNowAsync()
 member VoxClip.App.Controls.RewritePanel :: method internal add_Closed(System.EventHandler)
 member VoxClip.App.Controls.RewritePanel :: method internal get_FocusTarget()
 member VoxClip.App.Controls.RewritePanel :: method internal get_IsSessionOpen()
 member VoxClip.App.Controls.RewritePanel :: method internal get_ReturnFocusOnClose()
+member VoxClip.App.Controls.RewritePanel :: method internal get_Session()
 member VoxClip.App.Controls.RewritePanel :: method internal remove_Closed(System.EventHandler)
 member VoxClip.App.Controls.RewritePanel :: method private .cctor()
 member VoxClip.App.Controls.RewritePanel :: method private ApplyFooterAsync()
@@ -828,13 +830,19 @@ member VoxClip.App.Controls.SelectionFlyout :: field private pending
 member VoxClip.App.Controls.SelectionFlyout :: field private restore
 member VoxClip.App.Controls.SelectionFlyout :: field private restoreFocus
 member VoxClip.App.Controls.SelectionFlyout :: field private rewrite
+member VoxClip.App.Controls.SelectionFlyout :: field private rewriteAs
 member VoxClip.App.Controls.SelectionFlyout :: field private separator
 member VoxClip.App.Controls.SelectionFlyout :: field private timer
+member VoxClip.App.Controls.SelectionFlyout :: field private tones
 member VoxClip.App.Controls.SelectionFlyout :: method internal .ctor(Microsoft.UI.Xaml.FrameworkElement,System.Action,System.Action,System.Action,System.Action)
 member VoxClip.App.Controls.SelectionFlyout :: method internal Hide(bool)
 member VoxClip.App.Controls.SelectionFlyout :: method internal Schedule(System.Action)
 member VoxClip.App.Controls.SelectionFlyout :: method internal Show(Windows.Foundation.Rect,bool,bool,bool,bool,bool,bool,string)
 member VoxClip.App.Controls.SelectionFlyout :: method internal get_IsOpen()
+member VoxClip.App.Controls.SelectionFlyout :: method internal get_RewriteAs()
+member VoxClip.App.Controls.SelectionFlyout :: method internal get_Tones()
+member VoxClip.App.Controls.SelectionFlyout :: method internal set_RewriteAs(System.Action`1<VoxClip.App.ViewModels.RewriteStripItem>)
+member VoxClip.App.Controls.SelectionFlyout :: method internal set_Tones(System.Func`1<System.Collections.Generic.IReadOnlyList`1<VoxClip.App.ViewModels.RewriteStripItem>>)
 member VoxClip.App.Controls.SelectionFlyout :: method private ApplyEffects()
 member VoxClip.App.Controls.SelectionFlyout :: method private Button(string,Microsoft.UI.Xaml.Controls.Symbol,System.Action,bool)
 member VoxClip.App.Controls.SelectionFlyout :: method private EffectsChanged(object,System.EventArgs)
@@ -1513,6 +1521,7 @@ member VoxClip.App.MainWindow :: method private CancelTakeTranscriptionClicked(o
 member VoxClip.App.MainWindow :: method private CaptionsClipClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.MainWindow :: method private ClaudeModeChangedAsync(System.Func`2<VoxClip.App.ViewModels.EditorViewModel,System.Threading.Tasks.Task>)
 member VoxClip.App.MainWindow :: method private ClipCommand(string,System.Func`2<VoxClip.App.ViewModels.EditorViewModel,bool>)
+member VoxClip.App.MainWindow :: method private ClipMenuOpening(object,object)
 member VoxClip.App.MainWindow :: method private ClipRowPointerEntered(object,Microsoft.UI.Xaml.Input.PointerRoutedEventArgs)
 member VoxClip.App.MainWindow :: method private ClipRowPointerExited(object,Microsoft.UI.Xaml.Input.PointerRoutedEventArgs)
 member VoxClip.App.MainWindow :: method private ClipStyleChosen(VoxClip.Core.Domain.Clips.ClipStyle,bool)
@@ -1638,6 +1647,7 @@ member VoxClip.App.Pages.EditorPage :: field private retiredRewriteWork
 member VoxClip.App.Pages.EditorPage :: field private rewrite
 member VoxClip.App.Pages.EditorPage :: field private rewriteGenerationRegion
 member VoxClip.App.Pages.EditorPage :: field private rewriteOpenRevision
+member VoxClip.App.Pages.EditorPage :: field private rewritePanel
 member VoxClip.App.Pages.EditorPage :: field private rightContent
 member VoxClip.App.Pages.EditorPage :: field private saves
 member VoxClip.App.Pages.EditorPage :: field private scopeInstructions
@@ -1703,6 +1713,7 @@ member VoxClip.App.Pages.EditorPage :: method private EditorSettingsChanged(obje
 member VoxClip.App.Pages.EditorPage :: method private EditorSizeChanged(object,Microsoft.UI.Xaml.SizeChangedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private ExportAsync(string)
 member VoxClip.App.Pages.EditorPage :: method private ExportClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
+member VoxClip.App.Pages.EditorPage :: method private FillToneMenu()
 member VoxClip.App.Pages.EditorPage :: method private FillersClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private FindClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private FindClipsClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
@@ -1713,6 +1724,7 @@ member VoxClip.App.Pages.EditorPage :: method private HookClicked(object,Microso
 member VoxClip.App.Pages.EditorPage :: method private InitializeClaudeMode()
 member VoxClip.App.Pages.EditorPage :: method private InitializeIntegratedEditor()
 member VoxClip.App.Pages.EditorPage :: method private InitializeMakeIt()
+member VoxClip.App.Pages.EditorPage :: method private InitializeRewriteTones()
 member VoxClip.App.Pages.EditorPage :: method private InitializeShell()
 member VoxClip.App.Pages.EditorPage :: method private InstallAccelerators()
 member VoxClip.App.Pages.EditorPage :: method private IntegratedJobAvailable(VoxClip.App.ViewModels.ShellJobRequest)
@@ -1758,13 +1770,18 @@ member VoxClip.App.Pages.EditorPage :: method private RequestWaveform()
 member VoxClip.App.Pages.EditorPage :: method private RestoreClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private RestoreSelectionClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private RetireRewrite()
+member VoxClip.App.Pages.EditorPage :: method private RewriteAsAsync(VoxClip.App.ViewModels.RewriteAsRequest)
 member VoxClip.App.Pages.EditorPage :: method private RewriteClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private RightPaneSizeChanged(object,Microsoft.UI.Xaml.SizeChangedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private RunAsync(System.Func`1<System.Threading.Tasks.Task>,string)
 member VoxClip.App.Pages.EditorPage :: method private SaveAfterDelayAsync(System.Threading.CancellationToken)
 member VoxClip.App.Pages.EditorPage :: method private SaveAsClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private SaveAsync(System.Threading.CancellationToken)
+member VoxClip.App.Pages.EditorPage :: method private SaveFieldAsToneAsync()
 member VoxClip.App.Pages.EditorPage :: method private SaveRequested(object,System.EventArgs)
+member VoxClip.App.Pages.EditorPage :: method private SaveToneClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
+member VoxClip.App.Pages.EditorPage :: method private SaveToneKey(Microsoft.UI.Xaml.Input.KeyRoutedEventArgs)
+member VoxClip.App.Pages.EditorPage :: method private SaveToneKeyDown(object,Microsoft.UI.Xaml.Input.KeyRoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private SearchChanged(object,Microsoft.UI.Xaml.Controls.TextChangedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private SeekSourceAsync(double)
 member VoxClip.App.Pages.EditorPage :: method private SeekSourceCoreAsync(double,System.Threading.CancellationToken)
@@ -1792,6 +1809,7 @@ member VoxClip.App.Pages.EditorPage :: method private TightenScope()
 member VoxClip.App.Pages.EditorPage :: method private TimelineClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private TogglePlaybackAsync()
 member VoxClip.App.Pages.EditorPage :: method private Token(string)
+member VoxClip.App.Pages.EditorPage :: method private ToneMenuOpening(object,object)
 member VoxClip.App.Pages.EditorPage :: method private TranscribeAgainClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private TranscribeClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private TranscriptFits(double)
@@ -1803,6 +1821,7 @@ member VoxClip.App.Pages.EditorPage :: method private UpdateMakeItCommand()
 member VoxClip.App.Pages.EditorPage :: method private UpdatePreviewAsync()
 member VoxClip.App.Pages.EditorPage :: method private UpdateRewriteCommand()
 member VoxClip.App.Pages.EditorPage :: method private UpdateTimelineHeight()
+member VoxClip.App.Pages.EditorPage :: method private UpdateToneButton()
 member VoxClip.App.Pages.EditorPage :: method private ViewerClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private WorkflowStatusChanged(object,System.EventArgs)
 member VoxClip.App.Pages.EditorPage :: method private get_ShellEditable()
@@ -2405,6 +2424,7 @@ member VoxClip.App.SettingsWindow :: method private AddSetting(Microsoft.UI.Xaml
 member VoxClip.App.SettingsWindow :: method private ClearCache(bool)
 member VoxClip.App.SettingsWindow :: method private Clips()
 member VoxClip.App.SettingsWindow :: method private ConfirmDownloadAsync(VoxClip.Core.Services.Models.TranscriptionModel,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Services.Models.TranscriptionModel>,System.Threading.CancellationToken)
+member VoxClip.App.SettingsWindow :: method private DeleteToneAsync(string)
 member VoxClip.App.SettingsWindow :: method private Export()
 member VoxClip.App.SettingsWindow :: method private General()
 member VoxClip.App.SettingsWindow :: method private GetDpiForWindow(nint)
@@ -2416,9 +2436,11 @@ member VoxClip.App.SettingsWindow :: method private ProviderRowAsync(string,stri
 member VoxClip.App.SettingsWindow :: method private ProvidersAsync()
 member VoxClip.App.SettingsWindow :: method private Save(string,object)
 member VoxClip.App.SettingsWindow :: method private SaveTextAsync(string,object)
+member VoxClip.App.SettingsWindow :: method private SaveTones(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.RewriteTone>)
 member VoxClip.App.SettingsWindow :: method private SettingsChanged(object,System.EventArgs)
 member VoxClip.App.SettingsWindow :: method private TranscriptionAsync()
 member VoxClip.App.SettingsWindow :: method private UpdateVoiceLabVisibility()
+member VoxClip.App.SettingsWindow :: method private YourTones()
 member VoxClip.App.SettingsWindow :: method private get_preparing()
 member VoxClip.App.SettingsWindow :: method public .ctor()
 member VoxClip.App.ViewModels.AccessibilityEffects :: method internal get_OpaqueTransientSurfaces()
@@ -3123,6 +3145,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: field private MakeItChangeReque
 member VoxClip.App.ViewModels.EditorViewModel :: field private MakeItChanged
 member VoxClip.App.ViewModels.EditorViewModel :: field private MakeItPlayRequested
 member VoxClip.App.ViewModels.EditorViewModel :: field private MakeItShown
+member VoxClip.App.ViewModels.EditorViewModel :: field private RewriteAsRequested
 member VoxClip.App.ViewModels.EditorViewModel :: field private SaveRequested
 member VoxClip.App.ViewModels.EditorViewModel :: field private SelectionChanged
 member VoxClip.App.ViewModels.EditorViewModel :: field private Transcribed
@@ -3153,6 +3176,10 @@ member VoxClip.App.ViewModels.EditorViewModel :: field private undo
 member VoxClip.App.ViewModels.EditorViewModel :: field private undoGroup
 member VoxClip.App.ViewModels.EditorViewModel :: field private voiceLabEdits
 member VoxClip.App.ViewModels.EditorViewModel :: field private voiceLabLabelPosition
+member VoxClip.App.ViewModels.EditorViewModel :: field public AsSaidId
+member VoxClip.App.ViewModels.EditorViewModel :: field public FixMistakesInstruction
+member VoxClip.App.ViewModels.EditorViewModel :: field public ShorterInstruction
+member VoxClip.App.ViewModels.EditorViewModel :: field public ToneRowId
 member VoxClip.App.ViewModels.EditorViewModel :: method internal BeginLeaving()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal BeginUndoGroup(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ClearSelection()
@@ -3160,6 +3187,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method internal CompleteCaption
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ContainsAiSpeech(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal EndUndoGroup()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ExportStatus(string)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal MakeItPostable(string,bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal MarkSaved(VoxClip.Core.Domain.Shared.Project)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal MoveCaptionAnchor(VoxClip.Core.Domain.Shared.CaptionPosition)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal MoveCaptionPosition(int)
@@ -3175,6 +3203,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method internal ScopedProject(V
 member VoxClip.App.ViewModels.EditorViewModel :: method internal SetExportActivity(VoxClip.Core.Domain.Shared.ExportTarget,VoxClip.App.ViewModels.ClipExportState,System.Nullable`1<double>)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal SetExportRecords(System.Collections.Generic.IReadOnlyList`1<VoxClip.App.ViewModels.ExportRecord>)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal SetVoiceLabLabelPosition(VoxClip.Core.Domain.VoiceLab.VoiceLabLabelPosition)
+member VoxClip.App.ViewModels.EditorViewModel :: method internal TakeBackMakeIt(VoxClip.App.ViewModels.MakeItRun)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal VoiceLabAssetReferences(System.Collections.Generic.IEnumerable`1<VoxClip.Core.Domain.Shared.Project>)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal add_ExportStatesChanged(System.EventHandler)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal get_CaptionDrag()
@@ -3206,6 +3235,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItNotify()
 member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItShownRequest()
 member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItStep(VoxClip.Core.Domain.Autopilot.ClipAutopilotOperation,VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan,VoxClip.Core.Domain.Shared.Project&,VoxClip.App.ViewModels.MakeItStyle)
 member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItStopped(VoxClip.App.ViewModels.MakeItRun)
+member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItToneRow(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan,VoxClip.App.ViewModels.MakeItRun,System.Collections.Generic.IReadOnlyList`1<VoxClip.App.ViewModels.MakeItRow>)
 member VoxClip.App.ViewModels.EditorViewModel :: method private MoveCaptionSettings(VoxClip.Core.Domain.Shared.ProjectCaptions)
 member VoxClip.App.ViewModels.EditorViewModel :: method private MoveHistory(System.Collections.Generic.Stack`1<VoxClip.App.ViewModels.EditorViewModel+History>,System.Collections.Generic.Stack`1<VoxClip.App.ViewModels.EditorViewModel+History>)
 member VoxClip.App.ViewModels.EditorViewModel :: method private Number(string)
@@ -3218,6 +3248,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method private RecordCaptions(V
 member VoxClip.App.ViewModels.EditorViewModel :: method private RecordClipStyle(VoxClip.Core.Domain.Shared.Project)
 member VoxClip.App.ViewModels.EditorViewModel :: method private Refresh()
 member VoxClip.App.ViewModels.EditorViewModel :: method private RefreshExportRows()
+member VoxClip.App.ViewModels.EditorViewModel :: method private Request(VoxClip.App.ViewModels.RewriteStripItem,VoxClip.App.ViewModels.RewriteAsRequest)
 member VoxClip.App.ViewModels.EditorViewModel :: method private SameCaptions(VoxClip.Core.Domain.Shared.ProjectCaptions,VoxClip.Core.Domain.Shared.ProjectCaptions)
 member VoxClip.App.ViewModels.EditorViewModel :: method private ScopeKeepsWords(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method private StartClaudeMode()
@@ -3228,6 +3259,8 @@ member VoxClip.App.ViewModels.EditorViewModel :: method private VoiceStepAsync(V
 member VoxClip.App.ViewModels.EditorViewModel :: method private WaitAtCapAsync(VoxClip.App.ViewModels.MakeItRun,VoxClip.App.ViewModels.MakeItBudget,System.Decimal)
 member VoxClip.App.ViewModels.EditorViewModel :: method private WordStates(int,bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method private get_ClipsAutopilot()
+member VoxClip.App.ViewModels.EditorViewModel :: method private get_SavedTones()
+member VoxClip.App.ViewModels.EditorViewModel :: method private get_ToneCatalog()
 member VoxClip.App.ViewModels.EditorViewModel :: method private set_ClaudeExporting(bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method private set_CorrectionWordId(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method private set_FullTakeDuration(double)
@@ -3251,6 +3284,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public ApplyVoiceLab(Vox
 member VoxClip.App.ViewModels.EditorViewModel :: method public ArmClaudeMode()
 member VoxClip.App.ViewModels.EditorViewModel :: method public BeginCorrection()
 member VoxClip.App.ViewModels.EditorViewModel :: method public CanMakeItPostable(string)
+member VoxClip.App.ViewModels.EditorViewModel :: method public CanSaveAsTone(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public ChooseClipStyle(VoxClip.Core.Domain.Clips.ClipStyle,System.Collections.Generic.IReadOnlySet`1<string>,bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method public ChooseClipsModeAsync(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public ClaudeClipLabel(VoxClip.App.ViewModels.ClaudeClipState)
@@ -3264,6 +3298,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public ContinueClaudeMod
 member VoxClip.App.ViewModels.EditorViewModel :: method public CopyMakeItPostText(VoxClip.App.ViewModels.MakeItRun)
 member VoxClip.App.ViewModels.EditorViewModel :: method public CutSelection(bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method public CycleClip(int)
+member VoxClip.App.ViewModels.EditorViewModel :: method public DeleteToneAsync(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public Dismiss(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public DisplayText(VoxClip.Core.Domain.Shared.TimedWord)
 member VoxClip.App.ViewModels.EditorViewModel :: method public Duration(double)
@@ -3279,6 +3314,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public MakeItAnswer(stri
 member VoxClip.App.ViewModels.EditorViewModel :: method public MakeItCap(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public MakeItChangeRow(string,VoxClip.App.ViewModels.MakeItRun)
 member VoxClip.App.ViewModels.EditorViewModel :: method public MakeItChoose(string,string,VoxClip.App.ViewModels.MakeItRun)
+member VoxClip.App.ViewModels.EditorViewModel :: method public MakeItChooseTone(string,VoxClip.App.ViewModels.MakeItRun)
 member VoxClip.App.ViewModels.EditorViewModel :: method public MakeItExportAsync(VoxClip.App.ViewModels.MakeItRun)
 member VoxClip.App.ViewModels.EditorViewModel :: method public MakeItHeadline(VoxClip.App.ViewModels.MakeItRun)
 member VoxClip.App.ViewModels.EditorViewModel :: method public MakeItLengthNotes(VoxClip.App.ViewModels.MakeItRun)
@@ -3287,10 +3323,12 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public MakeItPlannerTone
 member VoxClip.App.ViewModels.EditorViewModel :: method public MakeItPlay(VoxClip.App.ViewModels.MakeItRow)
 member VoxClip.App.ViewModels.EditorViewModel :: method public MakeItPostCopy(VoxClip.App.ViewModels.MakeItRun)
 member VoxClip.App.ViewModels.EditorViewModel :: method public MakeItPostable(string)
+member VoxClip.App.ViewModels.EditorViewModel :: method public MakeItRemoveTone(VoxClip.App.ViewModels.MakeItRun,bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method public MakeItRenderedSeconds(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public MakeItRequest(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public MakeItSetHook(string,string,VoxClip.App.ViewModels.MakeItRun)
 member VoxClip.App.ViewModels.EditorViewModel :: method public MakeItTitle(string)
+member VoxClip.App.ViewModels.EditorViewModel :: method public MakeItToneText(string,string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public MakeItUndo(string,VoxClip.App.ViewModels.MakeItRun)
 member VoxClip.App.ViewModels.EditorViewModel :: method public MakeItUndoAll(VoxClip.App.ViewModels.MakeItRun)
 member VoxClip.App.ViewModels.EditorViewModel :: method public MakeTopPostable(int,VoxClip.App.ViewModels.MakeItBudget)
@@ -3300,8 +3338,15 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public Redo()
 member VoxClip.App.ViewModels.EditorViewModel :: method public RelinkAsync(VoxClip.Core.Services.Project.IProjectStore,string,System.Func`1<System.Threading.Tasks.Task`1<string>>,System.Func`2<string,System.Threading.Tasks.Task`1<VoxClip.Core.Domain.Shared.MediaInfo>>,System.Func`1<System.Threading.Tasks.Task`1<bool>>,System.Threading.CancellationToken)
 member VoxClip.App.ViewModels.EditorViewModel :: method public Remove(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public Rename(string,string)
+member VoxClip.App.ViewModels.EditorViewModel :: method public RenameToneAsync(string,string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public ReviewClaudeMode()
+member VoxClip.App.ViewModels.EditorViewModel :: method public RewriteClipAs(VoxClip.App.ViewModels.RewriteStripItem,string)
+member VoxClip.App.ViewModels.EditorViewModel :: method public RewriteScopeAs(VoxClip.App.ViewModels.RewriteStripItem)
+member VoxClip.App.ViewModels.EditorViewModel :: method public RewriteSelectionAs(VoxClip.App.ViewModels.RewriteStripItem)
+member VoxClip.App.ViewModels.EditorViewModel :: method public RewriteShortcutItem(string)
+member VoxClip.App.ViewModels.EditorViewModel :: method public RewriteStripMatch(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public SaveCorrection(bool)
+member VoxClip.App.ViewModels.EditorViewModel :: method public SaveToneAsync(string,string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public Select(int,bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method public SelectSentence(int,bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method public SelectionAnnouncement(bool)
@@ -3330,6 +3375,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public add_MakeItChangeR
 member VoxClip.App.ViewModels.EditorViewModel :: method public add_MakeItChanged(System.EventHandler)
 member VoxClip.App.ViewModels.EditorViewModel :: method public add_MakeItPlayRequested(System.EventHandler`1<double>)
 member VoxClip.App.ViewModels.EditorViewModel :: method public add_MakeItShown(System.EventHandler)
+member VoxClip.App.ViewModels.EditorViewModel :: method public add_RewriteAsRequested(System.EventHandler`1<VoxClip.App.ViewModels.RewriteAsRequest>)
 member VoxClip.App.ViewModels.EditorViewModel :: method public add_SaveRequested(System.EventHandler)
 member VoxClip.App.ViewModels.EditorViewModel :: method public add_SelectionChanged(System.EventHandler)
 member VoxClip.App.ViewModels.EditorViewModel :: method public add_Transcribed(System.EventHandler)
@@ -3377,6 +3423,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public get_KeptClips()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_MakeIt()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_MakeItExportTitle()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_MakeItStyle()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_MakeItToneChoices()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_Notice()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_Paragraphs()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_Project()
@@ -3384,6 +3431,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public get_RankedSuggest
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_RedoActionName()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_RewriteEnd()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_RewriteStart()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_RewriteStripItems()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_SelectionCaret()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_SelectionEnd()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_SelectionStart()
@@ -3391,6 +3439,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public get_SelectionText
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_ShowsClaudeModeCard()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_ShowsClipStyleCard()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_ShowsClipsModeCard()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_ShowsToneStrip()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_SourceTime()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_State()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_SuggestedClips()
@@ -3399,6 +3448,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public get_SummaryLine()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_SummaryTooltip()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_TimeLabel()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_Title()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_Tones()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_UndoActionName()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_Words()
 member VoxClip.App.ViewModels.EditorViewModel :: method public remove_Announcement(System.EventHandler`1<string>)
@@ -3408,6 +3458,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public remove_MakeItChan
 member VoxClip.App.ViewModels.EditorViewModel :: method public remove_MakeItChanged(System.EventHandler)
 member VoxClip.App.ViewModels.EditorViewModel :: method public remove_MakeItPlayRequested(System.EventHandler`1<double>)
 member VoxClip.App.ViewModels.EditorViewModel :: method public remove_MakeItShown(System.EventHandler)
+member VoxClip.App.ViewModels.EditorViewModel :: method public remove_RewriteAsRequested(System.EventHandler`1<VoxClip.App.ViewModels.RewriteAsRequest>)
 member VoxClip.App.ViewModels.EditorViewModel :: method public remove_SaveRequested(System.EventHandler)
 member VoxClip.App.ViewModels.EditorViewModel :: method public remove_SelectionChanged(System.EventHandler)
 member VoxClip.App.ViewModels.EditorViewModel :: method public remove_Transcribed(System.EventHandler)
@@ -3417,6 +3468,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public set_ClipStyleReop
 member VoxClip.App.ViewModels.EditorViewModel :: method public set_CorrectionText(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public set_Notice(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public set_SourceTime(double)
+member VoxClip.App.ViewModels.EditorViewModel :: method public set_Tones(VoxClip.App.ViewModels.RewriteToneServices)
 member VoxClip.App.ViewModels.EditorViewModel+History :: method private .ctor(VoxClip.App.ViewModels.EditorViewModel+History)
 member VoxClip.App.ViewModels.EditorViewModel+History :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.App.ViewModels.EditorViewModel+History :: method private get_EqualityContract()
@@ -3736,6 +3788,7 @@ member VoxClip.App.ViewModels.MakeItChange :: field public Phrase
 member VoxClip.App.ViewModels.MakeItChange :: field public Question
 member VoxClip.App.ViewModels.MakeItChange :: field public Rename
 member VoxClip.App.ViewModels.MakeItChange :: field public Speed
+member VoxClip.App.ViewModels.MakeItChange :: field public Tone
 member VoxClip.App.ViewModels.MakeItChange :: field public value__
 member VoxClip.App.ViewModels.MakeItController :: field private runs
 member VoxClip.App.ViewModels.MakeItController :: field private scores
@@ -3767,8 +3820,10 @@ member VoxClip.App.ViewModels.MakeItController :: method public get_Services()
 member VoxClip.App.ViewModels.MakeItController :: method public get_Shown()
 member VoxClip.App.ViewModels.MakeItController :: method public get_ShownClipId()
 member VoxClip.App.ViewModels.MakeItController :: method public get_SpeedPresets()
+member VoxClip.App.ViewModels.MakeItController :: method public get_ToneOverride()
 member VoxClip.App.ViewModels.MakeItController :: method public set_Services(VoxClip.App.ViewModels.MakeItServices)
 member VoxClip.App.ViewModels.MakeItController :: method public set_ShownClipId(string)
+member VoxClip.App.ViewModels.MakeItController :: method public set_ToneOverride(string)
 member VoxClip.App.ViewModels.MakeItInverse :: method private .ctor()
 member VoxClip.App.ViewModels.MakeItInverse :: method protected .ctor(VoxClip.App.ViewModels.MakeItInverse)
 member VoxClip.App.ViewModels.MakeItInverse :: method protected PrintMembers(System.Text.StringBuilder)
@@ -4014,6 +4069,7 @@ member VoxClip.App.ViewModels.MakeItRow :: method public get_Detail()
 member VoxClip.App.ViewModels.MakeItRow :: method public get_Id()
 member VoxClip.App.ViewModels.MakeItRow :: method public get_Kind()
 member VoxClip.App.ViewModels.MakeItRow :: method public get_Options()
+member VoxClip.App.ViewModels.MakeItRow :: method public get_Planned()
 member VoxClip.App.ViewModels.MakeItRow :: method public get_Play()
 member VoxClip.App.ViewModels.MakeItRow :: method public get_Question()
 member VoxClip.App.ViewModels.MakeItRow :: method public get_Text()
@@ -4027,6 +4083,7 @@ member VoxClip.App.ViewModels.MakeItRow :: method public set_Detail(string)
 member VoxClip.App.ViewModels.MakeItRow :: method public set_Id(string)
 member VoxClip.App.ViewModels.MakeItRow :: method public set_Kind(VoxClip.App.ViewModels.MakeItRowKind)
 member VoxClip.App.ViewModels.MakeItRow :: method public set_Options(System.Collections.Generic.IReadOnlyList`1<string>)
+member VoxClip.App.ViewModels.MakeItRow :: method public set_Planned(string)
 member VoxClip.App.ViewModels.MakeItRow :: method public set_Play(System.Nullable`1<double>)
 member VoxClip.App.ViewModels.MakeItRow :: method public set_Question(int)
 member VoxClip.App.ViewModels.MakeItRow :: method public set_Text(string)
@@ -4321,6 +4378,25 @@ member VoxClip.App.ViewModels.RewriteAnnouncements :: field private proposalRevi
 member VoxClip.App.ViewModels.RewriteAnnouncements :: field private proposing
 member VoxClip.App.ViewModels.RewriteAnnouncements :: method internal Next(bool,int,string,string)
 member VoxClip.App.ViewModels.RewriteAnnouncements :: method public .ctor()
+member VoxClip.App.ViewModels.RewriteAsRequest :: method private .ctor(VoxClip.App.ViewModels.RewriteAsRequest)
+member VoxClip.App.ViewModels.RewriteAsRequest :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.ViewModels.RewriteAsRequest :: method private get_EqualityContract()
+member VoxClip.App.ViewModels.RewriteAsRequest :: method public .ctor(string,string,string,System.Nullable`1<System.ValueTuple`2<int,int>>)
+member VoxClip.App.ViewModels.RewriteAsRequest :: method public Deconstruct(string&,string&,string&,System.Nullable`1<System.ValueTuple`2<int,int>>&)
+member VoxClip.App.ViewModels.RewriteAsRequest :: method public Equals(VoxClip.App.ViewModels.RewriteAsRequest)
+member VoxClip.App.ViewModels.RewriteAsRequest :: method public Equals(object)
+member VoxClip.App.ViewModels.RewriteAsRequest :: method public GetHashCode()
+member VoxClip.App.ViewModels.RewriteAsRequest :: method public ToString()
+member VoxClip.App.ViewModels.RewriteAsRequest :: method public get_ClipId()
+member VoxClip.App.ViewModels.RewriteAsRequest :: method public get_Instruction()
+member VoxClip.App.ViewModels.RewriteAsRequest :: method public get_Title()
+member VoxClip.App.ViewModels.RewriteAsRequest :: method public get_Words()
+member VoxClip.App.ViewModels.RewriteAsRequest :: method public op_Equality(VoxClip.App.ViewModels.RewriteAsRequest,VoxClip.App.ViewModels.RewriteAsRequest)
+member VoxClip.App.ViewModels.RewriteAsRequest :: method public op_Inequality(VoxClip.App.ViewModels.RewriteAsRequest,VoxClip.App.ViewModels.RewriteAsRequest)
+member VoxClip.App.ViewModels.RewriteAsRequest :: method public set_ClipId(string)
+member VoxClip.App.ViewModels.RewriteAsRequest :: method public set_Instruction(string)
+member VoxClip.App.ViewModels.RewriteAsRequest :: method public set_Title(string)
+member VoxClip.App.ViewModels.RewriteAsRequest :: method public set_Words(System.Nullable`1<System.ValueTuple`2<int,int>>)
 member VoxClip.App.ViewModels.RewriteAutoFixState :: field internal MaximumRounds
 member VoxClip.App.ViewModels.RewriteAutoFixState :: field internal MinimumAllowance
 member VoxClip.App.ViewModels.RewriteAutoFixState :: method internal Reset()
@@ -5397,6 +5473,36 @@ member VoxClip.App.ViewModels.RewriteSourceRequest :: method public set_Items(Sy
 member VoxClip.App.ViewModels.RewriteSourceRequest :: method public set_OutgoingSilence(System.Nullable`1<double>)
 member VoxClip.App.ViewModels.RewriteSourceRequest :: method public set_SampleRate(int)
 member VoxClip.App.ViewModels.RewriteSourceRequest :: method public set_Window(VoxClip.Core.Domain.VoiceLab.VoiceLabWindow)
+member VoxClip.App.ViewModels.RewriteStripItem :: field public FixMistakesId
+member VoxClip.App.ViewModels.RewriteStripItem :: field public ShorterId
+member VoxClip.App.ViewModels.RewriteStripItem :: method private .ctor(VoxClip.App.ViewModels.RewriteStripItem)
+member VoxClip.App.ViewModels.RewriteStripItem :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.ViewModels.RewriteStripItem :: method private get_EqualityContract()
+member VoxClip.App.ViewModels.RewriteStripItem :: method public .ctor(string,string,string,string,VoxClip.App.ViewModels.RewriteStripKind)
+member VoxClip.App.ViewModels.RewriteStripItem :: method public Deconstruct(string&,string&,string&,string&,VoxClip.App.ViewModels.RewriteStripKind&)
+member VoxClip.App.ViewModels.RewriteStripItem :: method public Equals(VoxClip.App.ViewModels.RewriteStripItem)
+member VoxClip.App.ViewModels.RewriteStripItem :: method public Equals(object)
+member VoxClip.App.ViewModels.RewriteStripItem :: method public GetHashCode()
+member VoxClip.App.ViewModels.RewriteStripItem :: method public ToString()
+member VoxClip.App.ViewModels.RewriteStripItem :: method public get_Detail()
+member VoxClip.App.ViewModels.RewriteStripItem :: method public get_Id()
+member VoxClip.App.ViewModels.RewriteStripItem :: method public get_Instruction()
+member VoxClip.App.ViewModels.RewriteStripItem :: method public get_IsDefault()
+member VoxClip.App.ViewModels.RewriteStripItem :: method public get_Kind()
+member VoxClip.App.ViewModels.RewriteStripItem :: method public get_Label()
+member VoxClip.App.ViewModels.RewriteStripItem :: method public get_Title()
+member VoxClip.App.ViewModels.RewriteStripItem :: method public op_Equality(VoxClip.App.ViewModels.RewriteStripItem,VoxClip.App.ViewModels.RewriteStripItem)
+member VoxClip.App.ViewModels.RewriteStripItem :: method public op_Inequality(VoxClip.App.ViewModels.RewriteStripItem,VoxClip.App.ViewModels.RewriteStripItem)
+member VoxClip.App.ViewModels.RewriteStripItem :: method public set_Detail(string)
+member VoxClip.App.ViewModels.RewriteStripItem :: method public set_Id(string)
+member VoxClip.App.ViewModels.RewriteStripItem :: method public set_Instruction(string)
+member VoxClip.App.ViewModels.RewriteStripItem :: method public set_IsDefault(bool)
+member VoxClip.App.ViewModels.RewriteStripItem :: method public set_Kind(VoxClip.App.ViewModels.RewriteStripKind)
+member VoxClip.App.ViewModels.RewriteStripItem :: method public set_Title(string)
+member VoxClip.App.ViewModels.RewriteStripKind :: field public Fix
+member VoxClip.App.ViewModels.RewriteStripKind :: field public Saved
+member VoxClip.App.ViewModels.RewriteStripKind :: field public Tone
+member VoxClip.App.ViewModels.RewriteStripKind :: field public value__
 member VoxClip.App.ViewModels.RewriteTakeAccess :: method private .ctor(VoxClip.App.ViewModels.RewriteTakeAccess)
 member VoxClip.App.ViewModels.RewriteTakeAccess :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.App.ViewModels.RewriteTakeAccess :: method private get_EqualityContract()
@@ -5418,6 +5524,23 @@ member VoxClip.App.ViewModels.RewriteTakeAccess :: method public set_PaidAudio(S
 member VoxClip.App.ViewModels.RewriteTakeAccess :: method public set_Publish(System.Func`4<System.Guid,System.DateTimeOffset,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<System.ValueTuple`2<VoxClip.Core.Domain.VoiceLab.VoiceLabPublishedTake,VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord>>>)
 member VoxClip.App.ViewModels.RewriteTakeAccess :: method public set_Reject(System.Func`2<System.Guid,System.Threading.Tasks.Task>)
 member VoxClip.App.ViewModels.RewriteTakeAccess :: method public set_Scratch(System.Func`2<System.Guid,VoxClip.Media.VoiceLab.VoiceLabTakeScratch>)
+member VoxClip.App.ViewModels.RewriteToneServices :: method private .ctor(VoxClip.App.ViewModels.RewriteToneServices)
+member VoxClip.App.ViewModels.RewriteToneServices :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.ViewModels.RewriteToneServices :: method private get_EqualityContract()
+member VoxClip.App.ViewModels.RewriteToneServices :: method public .ctor(VoxClip.Core.Domain.Clips.RewriteToneCatalog,System.Func`1<System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.RewriteTone>>,System.Func`2<System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.RewriteTone>,System.Threading.Tasks.Task>)
+member VoxClip.App.ViewModels.RewriteToneServices :: method public Deconstruct(VoxClip.Core.Domain.Clips.RewriteToneCatalog&,System.Func`1<System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.RewriteTone>>&,System.Func`2<System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.RewriteTone>,System.Threading.Tasks.Task>&)
+member VoxClip.App.ViewModels.RewriteToneServices :: method public Equals(VoxClip.App.ViewModels.RewriteToneServices)
+member VoxClip.App.ViewModels.RewriteToneServices :: method public Equals(object)
+member VoxClip.App.ViewModels.RewriteToneServices :: method public GetHashCode()
+member VoxClip.App.ViewModels.RewriteToneServices :: method public ToString()
+member VoxClip.App.ViewModels.RewriteToneServices :: method public get_Catalog()
+member VoxClip.App.ViewModels.RewriteToneServices :: method public get_Saved()
+member VoxClip.App.ViewModels.RewriteToneServices :: method public get_Store()
+member VoxClip.App.ViewModels.RewriteToneServices :: method public op_Equality(VoxClip.App.ViewModels.RewriteToneServices,VoxClip.App.ViewModels.RewriteToneServices)
+member VoxClip.App.ViewModels.RewriteToneServices :: method public op_Inequality(VoxClip.App.ViewModels.RewriteToneServices,VoxClip.App.ViewModels.RewriteToneServices)
+member VoxClip.App.ViewModels.RewriteToneServices :: method public set_Catalog(VoxClip.Core.Domain.Clips.RewriteToneCatalog)
+member VoxClip.App.ViewModels.RewriteToneServices :: method public set_Saved(System.Func`1<System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.RewriteTone>>)
+member VoxClip.App.ViewModels.RewriteToneServices :: method public set_Store(System.Func`2<System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.RewriteTone>,System.Threading.Tasks.Task>)
 member VoxClip.App.ViewModels.RewriteVoice :: method private .ctor(VoxClip.App.ViewModels.RewriteVoice)
 member VoxClip.App.ViewModels.RewriteVoice :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.App.ViewModels.RewriteVoice :: method private get_EqualityContract()
@@ -7150,6 +7273,7 @@ type VoxClip.App.ViewModels.RecentSort
 type VoxClip.App.ViewModels.RecorderMicrophone
 type VoxClip.App.ViewModels.RewriteAcceptance
 type VoxClip.App.ViewModels.RewriteAnnouncements
+type VoxClip.App.ViewModels.RewriteAsRequest
 type VoxClip.App.ViewModels.RewriteAutoFixState
 type VoxClip.App.ViewModels.RewriteChip
 type VoxClip.App.ViewModels.RewriteConnector
@@ -7183,7 +7307,10 @@ type VoxClip.App.ViewModels.RewriteSession
 type VoxClip.App.ViewModels.RewriteSourceDecoder
 type VoxClip.App.ViewModels.RewriteSourceReader
 type VoxClip.App.ViewModels.RewriteSourceRequest
+type VoxClip.App.ViewModels.RewriteStripItem
+type VoxClip.App.ViewModels.RewriteStripKind
 type VoxClip.App.ViewModels.RewriteTakeAccess
+type VoxClip.App.ViewModels.RewriteToneServices
 type VoxClip.App.ViewModels.RewriteVoice
 type VoxClip.App.ViewModels.SelectionBarLayout
 type VoxClip.App.ViewModels.SettingsRestartState

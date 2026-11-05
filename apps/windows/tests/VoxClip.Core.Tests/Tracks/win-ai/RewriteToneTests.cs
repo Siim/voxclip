@@ -106,4 +106,27 @@ public sealed class RewriteToneTests
         using var broken = JsonDocument.Parse("[{\"id\":\"viral\",\"title\":\"V\",\"instruction\":\"x\"}]");
         Assert.Empty(MyRewriteTones.Decode(broken.RootElement));
     }
+
+    /// <summary>"+ Save as my tone", rename and delete (twin of the Mac <c>MyRewriteTones.saving</c>, <c>renaming</c>, <c>deleting</c>): the id
+    /// is "my-" and a folded slug of the title, made unique; a rename keeps the id; the settings value round-trips and validates.</summary>
+    [Fact]
+    public void SavedTonesAreMadeRenamedAndDeletedAsTheMacDoes()
+    {
+        var (one, first) = MyRewriteTones.Saving("  Café Pitch!  ", "  Short, warm, confident. ", []);
+        Assert.Equal(("my-cafe-pitch", "Café Pitch!", "Short, warm, confident."), (first.Id, first.Title, first.Instruction));
+        var (two, second) = MyRewriteTones.Saving("Café pitch", "Another way.", one);
+        Assert.Equal("my-cafe-pitch-2", second.Id);
+        var (_, empty) = MyRewriteTones.Saving("✦✦", "Only symbols.", []);
+        Assert.Equal("my-tone", empty.Id);
+        var renamed = MyRewriteTones.Renaming("my-cafe-pitch", "Pitch voice", two);
+        Assert.Equal(("my-cafe-pitch", "Pitch voice"), (renamed[0].Id, renamed[0].Title));
+        var encoded = MyRewriteTones.Encode(renamed);
+        Assert.True(MyRewriteTones.Validates(encoded));
+        Assert.Equal(renamed, MyRewriteTones.Decode(encoded));
+        Assert.Equal(["my-cafe-pitch-2"], MyRewriteTones.Deleting("my-cafe-pitch", renamed).Select(tone => tone.Id));
+        Assert.ThrowsAny<Exception>(() => MyRewriteTones.Saving("", "text", []));
+        Assert.ThrowsAny<Exception>(() => MyRewriteTones.Saving(new string('a', 33), "text", []));
+        Assert.ThrowsAny<Exception>(() => MyRewriteTones.Saving("Full", "text", two, limit: 2));
+        Assert.ThrowsAny<Exception>(() => MyRewriteTones.Renaming("my-missing", "Name", two));
+    }
 }

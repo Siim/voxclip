@@ -132,12 +132,16 @@ public sealed partial class EditorViewModel
 
     /// <summary>The click: a suggestion is kept first, in the same undo step as everything the run applies. The click approves the
     /// cap shown on the button; the run never spends past it.</summary>
-    public bool MakeItPostable(string clipId)
+    public bool MakeItPostable(string clipId) => MakeItPostable(clipId, beginsGroup: true);
+
+    /// <summary>Starts a run. <paramref name="beginsGroup"/> false continues the undo group the caller opened (the tone row's Change,
+    /// which took the clip's decisions back first), so the whole change is one step.</summary>
+    internal bool MakeItPostable(string clipId, bool beginsGroup)
     {
         if (!CanMakeItPostable(clipId) || MakeIt.Services is not { } services) return false;
         var run = new MakeItRun(clipId, MakeItCap(clipId));
         MakeIt.Insert(run);
-        BeginUndoGroup("Make it postable");
+        if (beginsGroup || undoGroup is null) BeginUndoGroup("Make it postable");
         if (Clips.FirstOrDefault(clip => clip.Id == clipId)?.IsSuggested == true) KeepForRowAction(clipId);
         undoGroup!.OwnsEdits = false;
         SetScope(clipId);
@@ -323,12 +327,14 @@ public sealed partial class EditorViewModel
     /// <summary>The planner's tone (ai.md §16.3): the style's. Auto offers the catalogue tones; a tone this PC does not know plans as Auto.</summary>
     public ClipAutopilotTone? MakeItPlannerTone()
     {
-        if (MakeIt.Services?.Tones is not { } catalog) return null;
-        return MakeItStyle.Tone switch
+        var wanted = MakeIt.ToneOverride ?? MakeItStyle.Tone;
+        MakeIt.ToneOverride = null;
+        if (ToneCatalog is not { } catalog) return null;
+        return wanted switch
         {
             "as-said" => new ClipAutopilotTone.AsSaid(),
             null => new ClipAutopilotTone.Auto(catalog.Tones),
-            var id => catalog.Find(id, MakeIt.Services.SavedTones) is { } tone ? new ClipAutopilotTone.Fixed(tone) : new ClipAutopilotTone.Auto(catalog.Tones)
+            var id => catalog.Find(id, SavedTones) is { } tone ? new ClipAutopilotTone.Fixed(tone) : new ClipAutopilotTone.Auto(catalog.Tones)
         };
     }
 
@@ -413,6 +419,7 @@ public sealed partial class EditorViewModel
                 Options = question.Options.Where(option => option != question.Answer).ToArray()
             });
         }
+        if (MakeItToneRow(plan, run, rows) is { } toneRow) rows.Insert(0, toneRow);
         run.Rows.Clear();
         run.Rows.AddRange(rows);
         run.Seconds = MakeItRenderedSeconds(run.ClipId);
@@ -553,7 +560,7 @@ public sealed partial class EditorViewModel
     {
         var text = rewrite.Text;
         var play = Words.ElementAtOrDefault(rewrite.Words.Start) is { } word ? Math.Max(0, word.Start - 1) : (double?)null;
-        var row = new MakeItRow(operation.Id, $"Rewrote “{text}”") { Detail = operation.Reason, Play = play, Change = MakeItChange.Phrase, Words = (rewrite.Words.Start, rewrite.Words.End) };
+        var row = new MakeItRow(operation.Id, $"Rewrote “{text}”") { Detail = operation.Reason, Play = play, Change = MakeItChange.Phrase, Words = (rewrite.Words.Start, rewrite.Words.End), Planned = text };
         if (!allowed) return row with { Kind = MakeItRowKind.Note, Text = $"Claude suggests “{text}”", Detail = "This clip style keeps your words." };
         if (run.Budget is { PaidAllowed: false })
             return row with { Kind = MakeItRowKind.Note, Text = $"Claude suggests “{text}”", Detail = "Spend is $0 per video, so your words stay. Change voices it in Rewrite." };
@@ -626,6 +633,7 @@ public sealed partial class EditorViewModel
     /// <summary>Undo on one row: takes back that decision only, as its own undo step.</summary>
     public bool MakeItUndo(string rowId, MakeItRun run)
     {
+        if (rowId == ToneRowId) return MakeItRemoveTone(run, chose: false);
         var index = run.Rows.FindIndex(row => row.Id == rowId);
         if (run.Running || index < 0 || run.Rows[index].Undone || !run.Inverses.TryGetValue(rowId, out var inverse)) return false;
         var opened = undoGroup is null;
@@ -646,16 +654,19 @@ public sealed partial class EditorViewModel
     {
         if (run.Running) return;
         BeginUndoGroup("Undo Make it postable");
-        try
-        {
-            foreach (var row in run.Rows.Where(row => !row.Undone && run.Inverses.ContainsKey(row.Id)).Reverse().ToArray()) MakeItUndo(row.Id, run);
-            // Inverses without a row (the post text) go too.
-            foreach (var (id, inverse) in run.Inverses.ToArray()) { UndoInverse(inverse); run.Inverses.Remove(id); }
-        }
+        try { TakeBackMakeIt(run); }
         finally { EndUndoGroup(); }
         MakeIt.Forget(run.ClipId);
         Announcement?.Invoke(this, "Make it postable undone.");
         MakeItNotify();
+    }
+
+    /// <summary>Takes back every decision of <paramref name="run"/> still applied, inside the caller's undo group.</summary>
+    internal void TakeBackMakeIt(MakeItRun run)
+    {
+        foreach (var row in run.Rows.Where(row => !row.Undone && run.Inverses.ContainsKey(row.Id)).Reverse().ToArray()) MakeItUndo(row.Id, run);
+        // Inverses without a row (the post text) go too.
+        foreach (var (id, inverse) in run.Inverses.ToArray()) { UndoInverse(inverse); run.Inverses.Remove(id); }
     }
 
     private bool UndoInverse(MakeItInverse inverse)
@@ -706,7 +717,7 @@ public sealed partial class EditorViewModel
         if (run.Running || run.Rows.FirstOrDefault(row => row.Id == rowId) is not { } row) return;
         switch (row.Change)
         {
-            case MakeItChange.Look or MakeItChange.Speed or MakeItChange.Hook or MakeItChange.Question:
+            case MakeItChange.Look or MakeItChange.Speed or MakeItChange.Hook or MakeItChange.Question or MakeItChange.Tone:
                 run.OpenChoice = run.OpenChoice == row.Id ? null : row.Id;
                 MakeItNotify();
                 break;
@@ -727,6 +738,8 @@ public sealed partial class EditorViewModel
         var row = run.Rows[index];
         switch (row.Change)
         {
+            case MakeItChange.Tone:
+                return MakeItToneChoices.FirstOrDefault(choice => choice.Title == option) is { Id: { } toneId } && MakeItChooseTone(toneId, run);
             case MakeItChange.Look:
             {
                 if (Enum.GetValues<ClipLook>().Where(look => MakeItController.LookName(look) == option).Cast<ClipLook?>().FirstOrDefault() is not { } look) return false;

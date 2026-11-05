@@ -550,6 +550,9 @@ public sealed partial class EditorPage : Page
     }
     private void MakeClipClicked(object sender, RoutedEventArgs args) => MakeClipAndReveal();
     private void MakeItCommandClicked(object sender, RoutedEventArgs args) => OpenMakeItFromClipBar();
+    private void ToneMenuOpening(object sender, object args) => FillToneMenu();
+    private void SaveToneClicked(object sender, RoutedEventArgs args) => _ = SaveFieldAsToneAsync();
+    private void SaveToneKeyDown(object sender, KeyRoutedEventArgs args) => SaveToneKey(args);
     private async void RewriteClicked(object sender, RoutedEventArgs args)
     {
         await RunAsync(() => OpenShellJobAsync(ShellJob.Rewrite, ShellAsk.Text), "Rewrite");
@@ -599,6 +602,7 @@ if (insertion ||
         if (!ReferenceEquals(this.rewrite, rewrite)) { RetireRewrite(); this.rewrite = rewrite; }
         AttachRewriteProposal(rewrite);
         var panel = new RewritePanel(rewrite, () => Transcript.CorrectionOpen, owner);
+        rewritePanel = panel;
         if (instruction is not null && panel.FocusTarget is TextBox field) field.Text = instruction;
         panel.Closed += (_, _) =>
         {
@@ -950,7 +954,12 @@ if (insertion ||
         Add(VirtualKey.Z, VirtualKeyModifiers.Control, ViewModel.Undo);
         Add(VirtualKey.Y, VirtualKeyModifiers.Control, ViewModel.Redo);
         Add(VirtualKey.Z, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, ViewModel.Redo);
-        Add(VirtualKey.R, VirtualKeyModifiers.Control, () => _ = RunAsync(() => OpenShellJobAsync(ShellJob.Rewrite, ShellAsk.Text), "Rewrite"));
+        // Ctrl+R on a word selection with an empty field rewrites it in the default tone at once (design §6.3.1).
+        Add(VirtualKey.R, VirtualKeyModifiers.Control, () =>
+        {
+            if (ViewModel.RewriteShortcutItem(ShellAsk.Text) is { } tone) ViewModel.RewriteSelectionAs(tone);
+            else _ = RunAsync(() => OpenShellJobAsync(ShellJob.Rewrite, ShellAsk.Text), "Rewrite");
+        });
         Add(VirtualKey.U, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => ViewModel.Apply(new EditOperation.CutFillers()));
         Add(VirtualKey.P, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => ViewModel.Apply(new EditOperation.TightenPauses()));
         Add(VirtualKey.R, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => ViewModel.Apply(new EditOperation.RestoreCuts()));

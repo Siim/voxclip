@@ -151,7 +151,7 @@ public abstract record MakeItInverse
 }
 
 /// <summary>Where a decision's Change goes.</summary>
-public enum MakeItChange { None, Captions, Rename, Hook, Phrase, Question, Look, Speed }
+public enum MakeItChange { None, Captions, Rename, Hook, Phrase, Question, Look, Speed, Tone }
 
 /// <summary>What a review row is.</summary>
 public enum MakeItRowKind { Decision, Choice, Question, Note }
@@ -170,6 +170,8 @@ public sealed record MakeItRow(string Id, string Text)
     public IReadOnlyList<string> Options { get; init; } = [];
     /// <summary>The words a phrase row's Change opens Rewrite on.</summary>
     public (int First, int Last)? Words { get; init; }
+    /// <summary>A phrase row's planned words: Change opens Rewrite on <see cref="Words"/> with them filled in.</summary>
+    public string? Planned { get; init; }
     /// <summary>A question row's index in the plan.</summary>
     public int Question { get; init; } = -1;
 }
@@ -279,6 +281,8 @@ public sealed class MakeItController
     /// <summary>The live services; null until the page sets them (no run can start).</summary>
     public MakeItServices? Services { get; set; }
     internal Task? SeriesTask { get; set; }
+    /// <summary>The tone a Change on the review's tone row asks for, used by the next request only.</summary>
+    public string? ToneOverride { get; set; }
 
     public MakeItRun? Shown => ShownClipId is { } id ? runs.GetValueOrDefault(id) : null;
     public MakeItRun? Active => runs.Values.FirstOrDefault(run => run.Running);

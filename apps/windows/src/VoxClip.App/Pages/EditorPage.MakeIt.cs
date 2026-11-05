@@ -42,6 +42,7 @@ public sealed partial class EditorPage
         ViewModel.MakeItChangeRequested += (_, change) => MakeItChange(change.Run, change.Row);
         ViewModel.MakeItChanged += (_, _) => DispatcherQueue.TryEnqueue(UpdateMakeItCommand);
         InitializeClaudeMode();
+        InitializeRewriteTones();
     }
 
     /// <summary>"✦ Claude does it all" (design §6.7): the remembered choice in Settings, Find Clips started by Claude when it needs
@@ -131,7 +132,12 @@ public sealed partial class EditorPage
                 if (makeItSessions.Remove(words, out var kept) && kept.IsOpen) { ShowRewriteSession(kept, null); break; }
                 ViewModel.Select(words.First);
                 ViewModel.Select(words.Last, extend: true);
-                _ = RunAsync(() => OpenShellJobAsync(ShellJob.Rewrite), "Rewrite");
+                // Rewrite opens on the phrase with Claude's planned words as its reply, ready to voice (nothing is sent to the AI).
+                _ = RunAsync(async () =>
+                {
+                    await OpenShellJobAsync(ShellJob.Rewrite);
+                    if (row.Planned is { } planned && rewrite is { IsOpen: true } open) open.Edit(planned);
+                }, "Rewrite");
                 break;
         }
     }

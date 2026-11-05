@@ -648,6 +648,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
             {
                 row.ContextFlyout = null;
                 item.ContextFlyout = menu;
+                if (menu is MenuFlyout flyout) { flyout.Opening -= ClipMenuOpening; flyout.Opening += ClipMenuOpening; }
             }
         }
         DispatcherQueue.TryEnqueue(SyncSelection);
@@ -672,6 +673,21 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         if (sender is not FrameworkElement { Tag: string id } || editor is not { } page || !Shell.Rows.Any(row => row.ClipId == id && row.CanMakeIt)) return;
         page.ViewModel.ClearSelection();
         if (page.MakeItPostable(id)) ShowScope(id);
+    }
+    /// <summary>A clip row's "✦ Rewrite as": the strip's tones, the default first; one keeps a suggestion first and rewrites its clip.</summary>
+    private void ClipMenuOpening(object? sender, object args)
+    {
+        if (sender is not MenuFlyout menu || menu.Items.OfType<MenuFlyoutSubItem>().FirstOrDefault() is not { Tag: string id } tones) return;
+        tones.Items.Clear();
+        if (editor?.ViewModel is not { ShowsToneStrip: true } model || !RowEdits(id)) { tones.IsEnabled = false; return; }
+        tones.IsEnabled = true;
+        foreach (var item in model.RewriteStripItems)
+        {
+            var entry = new MenuFlyoutItem { Text = item.Label };
+            ToolTipService.SetToolTip(entry, item.Detail);
+            entry.Click += (_, _) => { if (model.RewriteClipAs(item, id)) ShowScope(id); };
+            tones.Items.Add(entry);
+        }
     }
     /// <summary>"✦ Make top 3 postable" under Suggested.</summary>
     private void MakeTopPostableClicked(object sender, RoutedEventArgs args)

@@ -17,6 +17,12 @@ internal sealed class SelectionFlyout
     private readonly AppBarButton cut;
     private readonly AppBarButton restore;
     private readonly AppBarButton rewrite;
+    private readonly AppBarButton rewriteAs;
+    private readonly MenuFlyout tones = new() { Placement = FlyoutPlacementMode.Bottom };
+    /// <summary>The "Rewrite as" strip's items, the default first (design §6.3.1); empty hides "✦ Rewrite as ▾".</summary>
+    internal Func<IReadOnlyList<VoxClip.App.ViewModels.RewriteStripItem>>? Tones { get; set; }
+    /// <summary>A chip: rewrites the selected words in that tone at once.</summary>
+    internal Action<VoxClip.App.ViewModels.RewriteStripItem>? RewriteAs { get; set; }
     private readonly AppBarSeparator separator = new();
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromMilliseconds(150) };
     private Action? pending;
@@ -32,6 +38,10 @@ internal sealed class SelectionFlyout
         cut = Button("Cut", Symbol.Cut, cutWords);
         restore = Button("Restore", Symbol.Undo, restoreWords);
         rewrite = Button("Rewrite…", Symbol.Edit, rewriteWords, true);
+        // "✦ Rewrite as ▾": the strip as a menu; "Rewrite…" stays for typing your own (design §6.3.1).
+        rewriteAs = new AppBarButton { Label = "✦ Rewrite as", Icon = new SymbolIcon(Symbol.Edit), Height = 40, MinHeight = 40, Flyout = tones };
+        AutomationProperties.SetName(rewriteAs, "Rewrite as");
+        AutomationProperties.SetAutomationId(rewriteAs, "Selection.RewriteAs");
         ToolTipService.SetToolTip(cut, "Cut (Delete)");
         ToolTipService.SetToolTip(restore, "Restore (Shift+Backspace)");
         ToolTipService.SetToolTip(rewrite, "Rewrite… (Ctrl+R)");
@@ -40,6 +50,7 @@ internal sealed class SelectionFlyout
         flyout.PrimaryCommands.Add(restore);
         flyout.PrimaryCommands.Add(separator);
         flyout.PrimaryCommands.Add(rewrite);
+        flyout.PrimaryCommands.Add(rewriteAs);
         timer.Tick += (_, _) => { timer.Stop(); var action = pending; pending = null; action?.Invoke(); };
         flyout.Opened += (_, _) =>
         {
@@ -70,7 +81,7 @@ internal sealed class SelectionFlyout
         if (!owner.IsLoaded || owner.XamlRoot is null || flyout.IsOpen) return;
         var focused = FocusManager.GetFocusedElement(owner.XamlRoot);
         if (focused is null || ReferenceEquals(focused, owner) || ReferenceEquals(focused, make) || ReferenceEquals(focused, cut) ||
-            ReferenceEquals(focused, restore) || ReferenceEquals(focused, rewrite)) owner.Focus(FocusState.Keyboard);
+            ReferenceEquals(focused, restore) || ReferenceEquals(focused, rewrite) || ReferenceEquals(focused, rewriteAs)) owner.Focus(FocusState.Keyboard);
     }
 
     private void EffectsChanged(object? sender, EventArgs args) => owner.DispatcherQueue.TryEnqueue(ApplyEffects);
@@ -127,6 +138,18 @@ internal sealed class SelectionFlyout
         rewrite.Visibility = separator.Visibility = voiceLab ? Visibility.Visible : Visibility.Collapsed;
         rewrite.IsEnabled = editable && rewriteAvailable;
         if (!rewriteAvailable) ToolTipService.SetToolTip(rewrite, "Rewrite is not available in this build.");
+        var items = Tones?.Invoke() ?? [];
+        tones.Items.Clear();
+        foreach (var item in items)
+        {
+            var entry = new MenuFlyoutItem { Text = item.Label };
+            ToolTipService.SetToolTip(entry, item.Detail);
+            AutomationProperties.SetName(entry, item.Label);
+            entry.Click += (_, _) => { Hide(); RewriteAs?.Invoke(item); };
+            tones.Items.Add(entry);
+        }
+        rewriteAs.Visibility = voiceLab && items.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        rewriteAs.IsEnabled = editable && rewriteAvailable && items.Count > 0;
         flyout.ShowMode = keyboard ? FlyoutShowMode.Standard : FlyoutShowMode.Transient;
         flyout.ShowAt(owner, new FlyoutShowOptions
         {

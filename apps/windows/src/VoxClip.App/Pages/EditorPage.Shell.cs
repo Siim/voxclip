@@ -93,6 +93,7 @@ public sealed partial class EditorPage
         AskButton.IsEnabled = ShellJobAvailable(ShellJob.Rewrite);
         HookCommand.IsEnabled = ShellJobAvailable(ShellJob.Hook);
         UpdateMakeItCommand();
+        UpdateToneButton();
         ToolTipService.SetToolTip(HookCommand, "Find hooks in the full take");
         ShellAsk.IsEnabled = ShellEditable && ViewModel.HasTranscript;
         UpdateFindClips();

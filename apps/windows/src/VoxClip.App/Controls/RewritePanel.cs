@@ -62,6 +62,18 @@ internal sealed partial class RewritePanel : Grid
     internal bool ReturnFocusOnClose { get; private set; }
     internal event EventHandler? Closed;
 
+    /// <summary>The session this panel shows.</summary>
+    internal RewriteSession Session => session;
+
+    /// <summary>A tone chip (design §6.3.1): sends the instruction the field holds at once, through the panel's own inline approval when
+    /// the send asks first.</summary>
+    internal async Task SendNowAsync()
+    {
+        if (session.Prepared is not { } action) return;
+        session.MarkEstimateShown(action);
+        await SendProposalAsync();
+    }
+
     internal RewritePanel(RewriteSession session, Func<bool>? correctionOpen = null, MainWindow? window = null)
     {
         this.session = session;
