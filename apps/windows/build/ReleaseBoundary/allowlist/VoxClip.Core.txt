@@ -748,6 +748,8 @@ literal "eval_count"
 literal "failed_to_download_image"
 literal "feature_not_available"
 literal "finish_reason"
+literal "force_instrumental"
+literal "foreign_landing_url"
 literal "has_more"
 literal "image_content_policy_violation"
 literal "image_file_not_found"
@@ -795,6 +797,9 @@ literal "model_info"
 literal "model_not_found"
 literal "model_rates"
 literal "models_read"
+literal "mp3_44100_128"
+literal "music_length_ms"
+literal "music_v1"
 literal "next_character_count_reset_unix"
 literal "next_page_token"
 literal "next_text"
@@ -5471,6 +5476,71 @@ member VoxClip.Core.Domain.Music.MusicAsset :: method public op_Inequality(VoxCl
 member VoxClip.Core.Domain.Music.MusicAsset :: method public set_DurationSeconds(double)
 member VoxClip.Core.Domain.Music.MusicAsset :: method public set_File(string)
 member VoxClip.Core.Domain.Music.MusicAsset :: method public set_Sha256(string)
+member VoxClip.Core.Domain.Music.MusicBrief :: method private .ctor(VoxClip.Core.Domain.Music.MusicBrief)
+member VoxClip.Core.Domain.Music.MusicBrief :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Music.MusicBrief :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Music.MusicBrief :: method public .ctor(string,string,string,string)
+member VoxClip.Core.Domain.Music.MusicBrief :: method public Deconstruct(string&,string&,string&,string&)
+member VoxClip.Core.Domain.Music.MusicBrief :: method public Equals(VoxClip.Core.Domain.Music.MusicBrief)
+member VoxClip.Core.Domain.Music.MusicBrief :: method public Equals(object)
+member VoxClip.Core.Domain.Music.MusicBrief :: method public From(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Music)
+member VoxClip.Core.Domain.Music.MusicBrief :: method public GetHashCode()
+member VoxClip.Core.Domain.Music.MusicBrief :: method public ToString()
+member VoxClip.Core.Domain.Music.MusicBrief :: method public get_CompositionPrompt()
+member VoxClip.Core.Domain.Music.MusicBrief :: method public get_Keywords()
+member VoxClip.Core.Domain.Music.MusicBrief :: method public get_Mood()
+member VoxClip.Core.Domain.Music.MusicBrief :: method public get_Prompt()
+member VoxClip.Core.Domain.Music.MusicBrief :: method public get_Query()
+member VoxClip.Core.Domain.Music.MusicBrief :: method public get_Reason()
+member VoxClip.Core.Domain.Music.MusicBrief :: method public get_SearchText()
+member VoxClip.Core.Domain.Music.MusicBrief :: method public op_Equality(VoxClip.Core.Domain.Music.MusicBrief,VoxClip.Core.Domain.Music.MusicBrief)
+member VoxClip.Core.Domain.Music.MusicBrief :: method public op_Inequality(VoxClip.Core.Domain.Music.MusicBrief,VoxClip.Core.Domain.Music.MusicBrief)
+member VoxClip.Core.Domain.Music.MusicBrief :: method public set_Mood(string)
+member VoxClip.Core.Domain.Music.MusicBrief :: method public set_Prompt(string)
+member VoxClip.Core.Domain.Music.MusicBrief :: method public set_Query(string)
+member VoxClip.Core.Domain.Music.MusicBrief :: method public set_Reason(string)
+member VoxClip.Core.Domain.Music.MusicCandidate :: method private .ctor(VoxClip.Core.Domain.Music.MusicCandidate)
+member VoxClip.Core.Domain.Music.MusicCandidate :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Music.MusicCandidate :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public .ctor(string,VoxClip.Core.Domain.Music.MusicSource,string,VoxClip.Core.Domain.Music.MusicLicense,string)
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public Deconstruct(string&,VoxClip.Core.Domain.Music.MusicSource&,string&,VoxClip.Core.Domain.Music.MusicLicense&,string&)
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public Equals(VoxClip.Core.Domain.Music.MusicCandidate)
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public Equals(object)
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public GetHashCode()
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public ToString()
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public get_Attribution()
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public get_Audio()
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public get_Creator()
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public get_DurationSeconds()
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public get_Estimate()
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public get_FileExtension()
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public get_Id()
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public get_License()
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public get_NeedsGeneration()
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public get_Prompt()
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public get_Reason()
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public get_Source()
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public get_SourceUrl()
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public get_Tags()
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public get_Title()
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public op_Equality(VoxClip.Core.Domain.Music.MusicCandidate,VoxClip.Core.Domain.Music.MusicCandidate)
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public op_Inequality(VoxClip.Core.Domain.Music.MusicCandidate,VoxClip.Core.Domain.Music.MusicCandidate)
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public set_Attribution(string)
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public set_Audio(string)
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public set_Creator(string)
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public set_DurationSeconds(System.Nullable`1<double>)
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public set_Estimate(VoxClip.Core.Services.LLM.CostEstimate)
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public set_FileExtension(string)
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public set_Id(string)
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public set_License(VoxClip.Core.Domain.Music.MusicLicense)
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public set_Prompt(string)
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public set_Reason(string)
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public set_Source(VoxClip.Core.Domain.Music.MusicSource)
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public set_SourceUrl(string)
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public set_Tags(System.Collections.Generic.IReadOnlyList`1<string>)
+member VoxClip.Core.Domain.Music.MusicCandidate :: method public set_Title(string)
+member VoxClip.Core.Domain.Music.MusicCredits :: method public Line(VoxClip.Core.Domain.Music.ProjectMusic)
+member VoxClip.Core.Domain.Music.MusicCredits :: method public PostText(string,VoxClip.Core.Domain.Music.ProjectMusic)
 member VoxClip.Core.Domain.Music.MusicLicense :: field public By
 member VoxClip.Core.Domain.Music.MusicLicense :: field public Cc0
 member VoxClip.Core.Domain.Music.MusicLicense :: field public Generated
@@ -5530,6 +5600,14 @@ member VoxClip.Core.Domain.Music.MusicMix+LoopPiece :: method public set_FadeIn(
 member VoxClip.Core.Domain.Music.MusicMix+LoopPiece :: method public set_FadeOut(long)
 member VoxClip.Core.Domain.Music.MusicMix+LoopPiece :: method public set_OutputStart(long)
 member VoxClip.Core.Domain.Music.MusicMix+LoopPiece :: method public set_SourceStart(long)
+member VoxClip.Core.Domain.Music.MusicPricing :: field public MaximumSeconds
+member VoxClip.Core.Domain.Music.MusicPricing :: field public MinimumSeconds
+member VoxClip.Core.Domain.Music.MusicPricing :: field public Model
+member VoxClip.Core.Domain.Music.MusicPricing :: field public Operation
+member VoxClip.Core.Domain.Music.MusicPricing :: method private .cctor()
+member VoxClip.Core.Domain.Music.MusicPricing :: method public Estimate(int,VoxClip.Core.Domain.VoiceLab.VoiceLabPriceCatalog)
+member VoxClip.Core.Domain.Music.MusicPricing :: method public Label(VoxClip.Core.Services.LLM.CostEstimate)
+member VoxClip.Core.Domain.Music.MusicPricing :: method public LengthSeconds(double)
 member VoxClip.Core.Domain.Music.MusicProject :: field private File
 member VoxClip.Core.Domain.Music.MusicProject :: field private Identifier
 member VoxClip.Core.Domain.Music.MusicProject :: method internal ValidateWire(System.Text.Json.JsonElement)
@@ -5564,6 +5642,24 @@ member VoxClip.Core.Domain.Music.MusicSource :: field public File
 member VoxClip.Core.Domain.Music.MusicSource :: field public Generated
 member VoxClip.Core.Domain.Music.MusicSource :: field public Library
 member VoxClip.Core.Domain.Music.MusicSource :: field public value__
+member VoxClip.Core.Domain.Music.MusicSuggestionResult :: method private .cctor()
+member VoxClip.Core.Domain.Music.MusicSuggestionResult :: method private .ctor(VoxClip.Core.Domain.Music.MusicSuggestionResult)
+member VoxClip.Core.Domain.Music.MusicSuggestionResult :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Music.MusicSuggestionResult :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Music.MusicSuggestionResult :: method public .ctor(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Music.MusicCandidate>,System.Collections.Generic.IReadOnlyDictionary`2<VoxClip.Core.Domain.Music.MusicSource,string>)
+member VoxClip.Core.Domain.Music.MusicSuggestionResult :: method public Deconstruct(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Music.MusicCandidate>&,System.Collections.Generic.IReadOnlyDictionary`2<VoxClip.Core.Domain.Music.MusicSource,string>&)
+member VoxClip.Core.Domain.Music.MusicSuggestionResult :: method public Equals(VoxClip.Core.Domain.Music.MusicSuggestionResult)
+member VoxClip.Core.Domain.Music.MusicSuggestionResult :: method public Equals(object)
+member VoxClip.Core.Domain.Music.MusicSuggestionResult :: method public GetHashCode()
+member VoxClip.Core.Domain.Music.MusicSuggestionResult :: method public ToString()
+member VoxClip.Core.Domain.Music.MusicSuggestionResult :: method public get_Candidates()
+member VoxClip.Core.Domain.Music.MusicSuggestionResult :: method public get_Empty()
+member VoxClip.Core.Domain.Music.MusicSuggestionResult :: method public get_Notes()
+member VoxClip.Core.Domain.Music.MusicSuggestionResult :: method public op_Equality(VoxClip.Core.Domain.Music.MusicSuggestionResult,VoxClip.Core.Domain.Music.MusicSuggestionResult)
+member VoxClip.Core.Domain.Music.MusicSuggestionResult :: method public op_Inequality(VoxClip.Core.Domain.Music.MusicSuggestionResult,VoxClip.Core.Domain.Music.MusicSuggestionResult)
+member VoxClip.Core.Domain.Music.MusicSuggestionResult :: method public set_Candidates(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Music.MusicCandidate>)
+member VoxClip.Core.Domain.Music.MusicSuggestionResult :: method public set_Notes(System.Collections.Generic.IReadOnlyDictionary`2<VoxClip.Core.Domain.Music.MusicSource,string>)
+member VoxClip.Core.Domain.Music.MusicWords :: method public Split(string)
 member VoxClip.Core.Domain.Music.ProjectMusic :: method private .ctor(VoxClip.Core.Domain.Music.ProjectMusic)
 member VoxClip.Core.Domain.Music.ProjectMusic :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Music.ProjectMusic :: method private get_EqualityContract()
@@ -12988,6 +13084,101 @@ member VoxClip.Core.Services.Models.TranscriptionModel :: method public set_Requ
 member VoxClip.Core.Services.Models.TranscriptionModel :: method public set_Timing(VoxClip.Core.Domain.Transcript.TimingSource)
 member VoxClip.Core.Services.Models.TranscriptionModel :: method public set_TotalBytes(long)
 member VoxClip.Core.Services.Models.TranscriptionModel :: method public set_Verbatim(bool)
+member VoxClip.Core.Services.Music.ElevenMusicClient :: field private gate
+member VoxClip.Core.Services.Music.ElevenMusicClient :: field private now
+member VoxClip.Core.Services.Music.ElevenMusicClient :: field private quotes
+member VoxClip.Core.Services.Music.ElevenMusicClient :: field public KeyAccount
+member VoxClip.Core.Services.Music.ElevenMusicClient :: field public OutputFormat
+member VoxClip.Core.Services.Music.ElevenMusicClient :: field public PathName
+member VoxClip.Core.Services.Music.ElevenMusicClient :: field public QuoteLifetime
+member VoxClip.Core.Services.Music.ElevenMusicClient :: method private .cctor()
+member VoxClip.Core.Services.Music.ElevenMusicClient :: method private Detail(byte[])
+member VoxClip.Core.Services.Music.ElevenMusicClient :: method private LooksLikeMp3(byte[])
+member VoxClip.Core.Services.Music.ElevenMusicClient :: method public .ctor(VoxClip.Core.Services.LLM.IKeyProvider,VoxClip.Core.Domain.VoiceLab.VoiceLabPriceCatalog,VoxClip.Core.Services.VoiceLab.VoiceLabSpendLedger,VoxClip.Core.Services.Speech.ElevenLabsRegion,VoxClip.Core.Services.Music.IMusicHttp,System.Func`1<System.DateTimeOffset>)
+member VoxClip.Core.Services.Music.ElevenMusicClient :: method public ComposeAsync(VoxClip.Core.Services.Music.MusicQuote,System.Threading.CancellationToken)
+member VoxClip.Core.Services.Music.ElevenMusicClient :: method public Quote(string,double)
+member VoxClip.Core.Services.Music.ElevenMusicClient :: method public Request(VoxClip.Core.Services.Music.MusicQuote,string)
+member VoxClip.Core.Services.Music.HttpClientMusicHttp :: field private client
+member VoxClip.Core.Services.Music.HttpClientMusicHttp :: method public .ctor(System.TimeSpan,long)
+member VoxClip.Core.Services.Music.HttpClientMusicHttp :: method public SendAsync(System.Net.Http.HttpRequestMessage,System.Threading.CancellationToken)
+member VoxClip.Core.Services.Music.IMusicHttp :: method public SendAsync(System.Net.Http.HttpRequestMessage,System.Threading.CancellationToken)
+member VoxClip.Core.Services.Music.MusicAssetStore :: method public Entry(VoxClip.Core.Domain.Music.MusicCandidate,System.ValueTuple`3<string,string,string>,double,string)
+member VoxClip.Core.Services.Music.MusicAssetStore :: method public Slug(string)
+member VoxClip.Core.Services.Music.MusicAssetStore :: method public Store(byte[],string,string,string,string)
+member VoxClip.Core.Services.Music.MusicHttpReply :: method private .ctor(VoxClip.Core.Services.Music.MusicHttpReply)
+member VoxClip.Core.Services.Music.MusicHttpReply :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Services.Music.MusicHttpReply :: method private get_EqualityContract()
+member VoxClip.Core.Services.Music.MusicHttpReply :: method public .ctor(int,byte[],string,System.Nullable`1<System.TimeSpan>)
+member VoxClip.Core.Services.Music.MusicHttpReply :: method public Deconstruct(int&,byte[]&,string&,System.Nullable`1<System.TimeSpan>&)
+member VoxClip.Core.Services.Music.MusicHttpReply :: method public Equals(VoxClip.Core.Services.Music.MusicHttpReply)
+member VoxClip.Core.Services.Music.MusicHttpReply :: method public Equals(object)
+member VoxClip.Core.Services.Music.MusicHttpReply :: method public GetHashCode()
+member VoxClip.Core.Services.Music.MusicHttpReply :: method public ToString()
+member VoxClip.Core.Services.Music.MusicHttpReply :: method public get_Body()
+member VoxClip.Core.Services.Music.MusicHttpReply :: method public get_ContentType()
+member VoxClip.Core.Services.Music.MusicHttpReply :: method public get_RetryAfter()
+member VoxClip.Core.Services.Music.MusicHttpReply :: method public get_Status()
+member VoxClip.Core.Services.Music.MusicHttpReply :: method public op_Equality(VoxClip.Core.Services.Music.MusicHttpReply,VoxClip.Core.Services.Music.MusicHttpReply)
+member VoxClip.Core.Services.Music.MusicHttpReply :: method public op_Inequality(VoxClip.Core.Services.Music.MusicHttpReply,VoxClip.Core.Services.Music.MusicHttpReply)
+member VoxClip.Core.Services.Music.MusicHttpReply :: method public set_Body(byte[])
+member VoxClip.Core.Services.Music.MusicHttpReply :: method public set_ContentType(string)
+member VoxClip.Core.Services.Music.MusicHttpReply :: method public set_RetryAfter(System.Nullable`1<System.TimeSpan>)
+member VoxClip.Core.Services.Music.MusicHttpReply :: method public set_Status(int)
+member VoxClip.Core.Services.Music.MusicLibraryFolder :: field public Extensions
+member VoxClip.Core.Services.Music.MusicLibraryFolder :: method private .cctor()
+member VoxClip.Core.Services.Music.MusicLibraryFolder :: method public Best(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Music.MusicCandidate>,System.Collections.Generic.IReadOnlySet`1<string>)
+member VoxClip.Core.Services.Music.MusicLibraryFolder :: method public Candidate(string)
+member VoxClip.Core.Services.Music.MusicLibraryFolder :: method public DefaultFolder(string)
+member VoxClip.Core.Services.Music.MusicLibraryFolder :: method public Files(string)
+member VoxClip.Core.Services.Music.MusicQuote :: method private .ctor(VoxClip.Core.Services.Music.MusicQuote)
+member VoxClip.Core.Services.Music.MusicQuote :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Services.Music.MusicQuote :: method private get_EqualityContract()
+member VoxClip.Core.Services.Music.MusicQuote :: method public .ctor(System.Guid,string,int,VoxClip.Core.Services.LLM.CostEstimate,System.DateTimeOffset)
+member VoxClip.Core.Services.Music.MusicQuote :: method public Deconstruct(System.Guid&,string&,int&,VoxClip.Core.Services.LLM.CostEstimate&,System.DateTimeOffset&)
+member VoxClip.Core.Services.Music.MusicQuote :: method public Equals(VoxClip.Core.Services.Music.MusicQuote)
+member VoxClip.Core.Services.Music.MusicQuote :: method public Equals(object)
+member VoxClip.Core.Services.Music.MusicQuote :: method public GetHashCode()
+member VoxClip.Core.Services.Music.MusicQuote :: method public ToString()
+member VoxClip.Core.Services.Music.MusicQuote :: method public get_CreatedAt()
+member VoxClip.Core.Services.Music.MusicQuote :: method public get_Estimate()
+member VoxClip.Core.Services.Music.MusicQuote :: method public get_Id()
+member VoxClip.Core.Services.Music.MusicQuote :: method public get_LengthSeconds()
+member VoxClip.Core.Services.Music.MusicQuote :: method public get_Prompt()
+member VoxClip.Core.Services.Music.MusicQuote :: method public op_Equality(VoxClip.Core.Services.Music.MusicQuote,VoxClip.Core.Services.Music.MusicQuote)
+member VoxClip.Core.Services.Music.MusicQuote :: method public op_Inequality(VoxClip.Core.Services.Music.MusicQuote,VoxClip.Core.Services.Music.MusicQuote)
+member VoxClip.Core.Services.Music.MusicQuote :: method public set_CreatedAt(System.DateTimeOffset)
+member VoxClip.Core.Services.Music.MusicQuote :: method public set_Estimate(VoxClip.Core.Services.LLM.CostEstimate)
+member VoxClip.Core.Services.Music.MusicQuote :: method public set_Id(System.Guid)
+member VoxClip.Core.Services.Music.MusicQuote :: method public set_LengthSeconds(int)
+member VoxClip.Core.Services.Music.MusicQuote :: method public set_Prompt(string)
+member VoxClip.Core.Services.Music.MusicSuggestionService :: field private gate
+member VoxClip.Core.Services.Music.MusicSuggestionService :: field private quotes
+member VoxClip.Core.Services.Music.MusicSuggestionService :: method private Note(VoxClip.Core.Domain.Shared.VoxClipException)
+member VoxClip.Core.Services.Music.MusicSuggestionService :: method public .ctor(VoxClip.Core.Services.Music.OpenverseMusicClient,VoxClip.Core.Services.Music.ElevenMusicClient,System.Func`2<System.Threading.CancellationToken,System.Threading.Tasks.Task`1<bool>>,System.Func`1<string>)
+member VoxClip.Core.Services.Music.MusicSuggestionService :: method public CandidatesAsync(VoxClip.Core.Domain.Music.MusicBrief,double,System.Threading.CancellationToken)
+member VoxClip.Core.Services.Music.MusicSuggestionService :: method public Quote(VoxClip.Core.Domain.Music.MusicCandidate)
+member VoxClip.Core.Services.Music.OpenverseMusicClient :: field private Allowed
+member VoxClip.Core.Services.Music.OpenverseMusicClient :: field private MaximumBackoff
+member VoxClip.Core.Services.Music.OpenverseMusicClient :: field private MinimumBackoff
+member VoxClip.Core.Services.Music.OpenverseMusicClient :: field private WaitMessage
+member VoxClip.Core.Services.Music.OpenverseMusicClient :: field private backoff
+member VoxClip.Core.Services.Music.OpenverseMusicClient :: field private blockedUntil
+member VoxClip.Core.Services.Music.OpenverseMusicClient :: field private cache
+member VoxClip.Core.Services.Music.OpenverseMusicClient :: field private gate
+member VoxClip.Core.Services.Music.OpenverseMusicClient :: field private now
+member VoxClip.Core.Services.Music.OpenverseMusicClient :: field public Endpoint
+member VoxClip.Core.Services.Music.OpenverseMusicClient :: field public MaximumDownloadBytes
+member VoxClip.Core.Services.Music.OpenverseMusicClient :: method private .cctor()
+member VoxClip.Core.Services.Music.OpenverseMusicClient :: method private Candidate(System.Text.Json.Nodes.JsonObject)
+member VoxClip.Core.Services.Music.OpenverseMusicClient :: method private Clipped(string,int)
+member VoxClip.Core.Services.Music.OpenverseMusicClient :: method private Extension(string,System.Uri)
+member VoxClip.Core.Services.Music.OpenverseMusicClient :: method private Text(System.Text.Json.Nodes.JsonNode)
+member VoxClip.Core.Services.Music.OpenverseMusicClient :: method public .ctor(VoxClip.Core.Services.Music.IMusicHttp,System.Func`1<System.DateTimeOffset>)
+member VoxClip.Core.Services.Music.OpenverseMusicClient :: method public DownloadAsync(VoxClip.Core.Domain.Music.MusicCandidate,System.Threading.CancellationToken)
+member VoxClip.Core.Services.Music.OpenverseMusicClient :: method public Parse(byte[])
+member VoxClip.Core.Services.Music.OpenverseMusicClient :: method public Ranked(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Music.MusicCandidate>,System.Collections.Generic.IReadOnlySet`1<string>,double)
+member VoxClip.Core.Services.Music.OpenverseMusicClient :: method public SearchAsync(string,System.Collections.Generic.IReadOnlySet`1<string>,double,System.Threading.CancellationToken)
+member VoxClip.Core.Services.Music.OpenverseMusicClient :: method public SearchUri(string,int)
 member VoxClip.Core.Services.Process.CliProcessTimeoutException :: method internal get_StandardError()
 member VoxClip.Core.Services.Process.CliProcessTimeoutException :: method internal get_StandardOutput()
 member VoxClip.Core.Services.Process.CliProcessTimeoutException :: method public .ctor(string,string)
@@ -14834,13 +15025,19 @@ type VoxClip.Core.Domain.Effects.ClipEffectsRenderInput
 type VoxClip.Core.Domain.Effects.ClipEffectsRendering
 type VoxClip.Core.Domain.Effects.ClipHookTitle
 type VoxClip.Core.Domain.Music.MusicAsset
+type VoxClip.Core.Domain.Music.MusicBrief
+type VoxClip.Core.Domain.Music.MusicCandidate
+type VoxClip.Core.Domain.Music.MusicCredits
 type VoxClip.Core.Domain.Music.MusicLicense
 type VoxClip.Core.Domain.Music.MusicMix
 type VoxClip.Core.Domain.Music.MusicMix+LevelAccumulator
 type VoxClip.Core.Domain.Music.MusicMix+LoopPiece
+type VoxClip.Core.Domain.Music.MusicPricing
 type VoxClip.Core.Domain.Music.MusicProject
 type VoxClip.Core.Domain.Music.MusicRenderInput
 type VoxClip.Core.Domain.Music.MusicSource
+type VoxClip.Core.Domain.Music.MusicSuggestionResult
+type VoxClip.Core.Domain.Music.MusicWords
 type VoxClip.Core.Domain.Music.ProjectMusic
 type VoxClip.Core.Domain.Share.ShareDestination
 type VoxClip.Core.Domain.Share.ShareDisclosure
@@ -15341,6 +15538,15 @@ type VoxClip.Core.Services.Models.ModelPaths
 type VoxClip.Core.Services.Models.ModelStore
 type VoxClip.Core.Services.Models.ModelsJsonContext
 type VoxClip.Core.Services.Models.TranscriptionModel
+type VoxClip.Core.Services.Music.ElevenMusicClient
+type VoxClip.Core.Services.Music.HttpClientMusicHttp
+type VoxClip.Core.Services.Music.IMusicHttp
+type VoxClip.Core.Services.Music.MusicAssetStore
+type VoxClip.Core.Services.Music.MusicHttpReply
+type VoxClip.Core.Services.Music.MusicLibraryFolder
+type VoxClip.Core.Services.Music.MusicQuote
+type VoxClip.Core.Services.Music.MusicSuggestionService
+type VoxClip.Core.Services.Music.OpenverseMusicClient
 type VoxClip.Core.Services.Process.CliProcessTimeoutException
 type VoxClip.Core.Services.Process.IAppServerRunner
 type VoxClip.Core.Services.Process.IProcessRunner

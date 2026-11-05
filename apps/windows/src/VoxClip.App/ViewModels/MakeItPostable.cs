@@ -31,6 +31,9 @@ public sealed record MakeItStyle
     /// <summary>The tone Claude writes the words in: null is Auto, "as-said", or a tone id (as-said whenever rewording is off).</summary>
     public string? Tone { get; init; }
 
+    /// <summary>Background music: Auto picks a free track first and may make one within the cap; Off adds no music (design §6.7).</summary>
+    public bool Music { get; init; } = true;
+
     /// <summary>The defaults: Claude picks the captions, fix-only rewording, 16:9 and 9:16, Auto tone.</summary>
     public static MakeItStyle Auto { get; } = new();
 
@@ -47,7 +50,8 @@ public sealed record MakeItStyle
             MaxSeconds = style.MaxLengthSec,
             Rewording = style.Rewording,
             Shapes = shapes.Length == 0 ? Auto.Shapes : shapes,
-            Tone = style.EffectiveTone
+            Tone = style.EffectiveTone,
+            Music = style.Music != "off"
         };
     }
 
@@ -148,10 +152,12 @@ public abstract record MakeItInverse
     public sealed record Speed(string ClipId, double Previous) : MakeItInverse;
     /// <summary>An effect the run added (the hook's title card): removed, or put back as it was when the run replaced one.</summary>
     public sealed record Effect(string Id, System.Text.Json.JsonElement? Previous) : MakeItInverse;
+    /// <summary>The clip's track before the run (null: none).</summary>
+    public sealed record Music(string ClipId, Core.Domain.Music.ProjectMusic? Previous) : MakeItInverse;
 }
 
 /// <summary>Where a decision's Change goes.</summary>
-public enum MakeItChange { None, Captions, Rename, Hook, Phrase, Question, Look, Speed, Tone }
+public enum MakeItChange { None, Captions, Rename, Hook, Phrase, Question, Look, Speed, Tone, Music }
 
 /// <summary>What a review row is.</summary>
 public enum MakeItRowKind { Decision, Choice, Question, Note }

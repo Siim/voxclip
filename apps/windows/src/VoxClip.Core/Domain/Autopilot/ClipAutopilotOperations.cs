@@ -165,9 +165,9 @@ public static partial class ClipAutopilotMapping
 
     /// <summary>Applies what the editor can, in order, to a copy of <paramref name="project"/>: edits, captions, share text, the look and
     /// speed, and the hook as the clip's title card (timed on the clip as the operations before it left it). Rewrites, music and zooms
-    /// come back as pending: Windows renders neither background music nor motion cues yet, and a project holding either refuses to
-    /// export (<c>VoiceLabRenderContract.RequireWindowsVisualSupport</c>), so applying them would make the clip unpostable. Pure: one
-    /// undo step is the caller's choice.</summary>
+    /// come back as pending: a rewrite needs a paid voice, music needs a source to fetch from (the App's Music section picks it), and
+    /// Windows renders no motion cues yet (a project holding one refuses to export, <c>VoiceLabRenderContract.RequireWindowsVisualSupport</c>).
+    /// Pure: one undo step is the caller's choice.</summary>
     public static (Project Project, IReadOnlyList<ClipAutopilotOperation> Pending) Apply(IReadOnlyList<ClipAutopilotOperation> operations, Project project)
     {
         var result = project;

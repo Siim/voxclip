@@ -43,6 +43,7 @@ public sealed partial class EditorPage
         ViewModel.MakeItChanged += (_, _) => DispatcherQueue.TryEnqueue(UpdateMakeItCommand);
         InitializeClaudeMode();
         InitializeRewriteTones();
+        InitializeMusic();
     }
 
     /// <summary>"✦ Claude does it all" (design §6.7): the remembered choice in Settings, Find Clips started by Claude when it needs
@@ -126,6 +127,11 @@ public sealed partial class EditorPage
         switch (row.Change)
         {
             case ViewModels.MakeItChange.Captions: makeItPanel?.RequestClose(); ShowCaptions(); break;
+            // Music sits under Captions; Change searches again with the plan's mood.
+            case ViewModels.MakeItChange.Music:
+                makeItPanel?.RequestClose(); ShowCaptions();
+                if (run.Plan?.PickedMusic is { } picked) _ = ViewModel.Music.SuggestAsync(VoxClip.Core.Domain.Music.MusicBrief.From(picked));
+                break;
             case ViewModels.MakeItChange.Rename: _ = owner.RenameClipFromPageAsync(run.ClipId); break;
             case ViewModels.MakeItChange.Phrase when row.Words is { } words:
                 makeItPanel?.RequestClose();

@@ -222,6 +222,7 @@ member VoxClip.Media.Audio.MusicBed :: method internal get_BedGainDb()
 member VoxClip.Media.Audio.MusicBed :: method internal get_OutputFrames()
 member VoxClip.Media.Audio.MusicBed :: method internal get_SpeechDb()
 member VoxClip.Media.Audio.MusicBed :: method private .ctor(float[],System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Music.MusicMix+LoopPiece>,double[],VoxClip.Core.Domain.Music.ProjectMusic,int,long,double,System.Nullable`1<double>)
+member VoxClip.Media.Audio.MusicFiles :: method public DurationSecondsAsync(string,System.Threading.CancellationToken)
 member VoxClip.Media.Audio.PhraseCueOutput :: method public DefaultOutputIsHeadphones()
 member VoxClip.Media.Audio.PhraseCueOutput :: method public HasMicrophone()
 member VoxClip.Media.Audio.PhraseCueOutput :: method public PlayAsync(float[],int,System.Threading.CancellationToken)
@@ -2450,6 +2451,7 @@ type VoxClip.Media.Audio.MicrophoneSampleKind
 type VoxClip.Media.Audio.MicrophoneSnapshot
 type VoxClip.Media.Audio.MicrophoneTake
 type VoxClip.Media.Audio.MusicBed
+type VoxClip.Media.Audio.MusicFiles
 type VoxClip.Media.Audio.PhraseCueOutput
 type VoxClip.Media.Audio.RenderedAudioReader
 type VoxClip.Media.Audio.SharedWasapiOutput

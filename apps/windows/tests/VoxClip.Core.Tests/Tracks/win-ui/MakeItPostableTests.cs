@@ -114,7 +114,7 @@ public sealed class MakeItPostableTests
         Assert.Equal((ClipLook.Warm, 1.1), (ClipControlsProject.Controls("c1", project)!.Look, ClipControlsProject.Controls("c1", project)!.Speed));
         Assert.True(ClipHookTitle.Existing("c1", project) is not null, "the hook is a title card");
         Assert.Equal("Sleep first. #sleep", project.Share.Captions["c1"]);
-        // Windows renders no zoom and no music: neither is applied, and the review says so.
+        // Windows renders no zoom, and this editor has no music sources: neither is applied, and the review says so.
         Assert.Empty(project.MotionCues);
         Assert.Empty(project.Music);
         var texts = run.Rows.Select(row => row.Text).ToArray();
@@ -132,7 +132,7 @@ public sealed class MakeItPostableTests
         Assert.Equal("Claude chose “Yes”", run.Rows[^1].Detail);
         Assert.Equal(["No"], run.Rows[^1].Options);
         Assert.All(run.Rows.Where(row => row.Kind == MakeItRowKind.Note), row => Assert.False(row.Undoable));
-        Assert.Equal(["Reading the clip…", "Cutting 1 filler…", "Voicing 1 fix…", "Ready to post."], run.Lines);
+        Assert.Equal(["Reading the clip…", "Cutting 1 filler…", "Voicing 1 fix…", "Picking music…", "Ready to post."], run.Lines);
         Assert.StartsWith("Ready to post · ", editor.MakeItHeadline(run), StringComparison.Ordinal);
         Assert.EndsWith(" · score 8/10", editor.MakeItHeadline(run), StringComparison.Ordinal);
         Assert.Equal("Sleep beats coffee\n\nSleep first. #sleep", EditorViewModel.MakeItPostCopy(run));

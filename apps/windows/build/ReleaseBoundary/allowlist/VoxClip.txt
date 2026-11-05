@@ -54,6 +54,7 @@ member VoxClip.App.Controls.CaptionsPanel :: field private FitChanged
 member VoxClip.App.Controls.CaptionsPanel :: field private body
 member VoxClip.App.Controls.CaptionsPanel :: field private chip
 member VoxClip.App.Controls.CaptionsPanel :: field private ct
+member VoxClip.App.Controls.CaptionsPanel :: field private details
 member VoxClip.App.Controls.CaptionsPanel :: field private enabled
 member VoxClip.App.Controls.CaptionsPanel :: field private fineTune
 member VoxClip.App.Controls.CaptionsPanel :: field private fineTuneKey
@@ -88,6 +89,7 @@ member VoxClip.App.Controls.CaptionsPanel :: field private tileWidth
 member VoxClip.App.Controls.CaptionsPanel :: field private tiles
 member VoxClip.App.Controls.CaptionsPanel :: field private visible
 member VoxClip.App.Controls.CaptionsPanel :: method internal .ctor(VoxClip.App.ViewModels.EditorViewModel,System.Func`1<string>,System.Threading.CancellationToken)
+member VoxClip.App.Controls.CaptionsPanel :: method internal AddMusic(Microsoft.UI.Xaml.UIElement)
 member VoxClip.App.Controls.CaptionsPanel :: method internal ConstrainHeight(double)
 member VoxClip.App.Controls.CaptionsPanel :: method internal Detach()
 member VoxClip.App.Controls.CaptionsPanel :: method internal InitializeAsync()
@@ -588,6 +590,21 @@ member VoxClip.App.Controls.MediaThumbnail :: method public get_Surface()
 member VoxClip.App.Controls.MediaThumbnail :: method public set_Duration(string)
 member VoxClip.App.Controls.MediaThumbnail :: method public set_Media(VoxClip.App.ViewModels.MediaTile)
 member VoxClip.App.Controls.MediaThumbnail :: method public set_Surface(VoxClip.Core.Domain.Captions.CaptionCardSurface)
+member VoxClip.App.Controls.MusicSection :: field private editor
+member VoxClip.App.Controls.MusicSection :: field private failure
+member VoxClip.App.Controls.MusicSection :: field private footer
+member VoxClip.App.Controls.MusicSection :: field private model
+member VoxClip.App.Controls.MusicSection :: field private notes
+member VoxClip.App.Controls.MusicSection :: field private remove
+member VoxClip.App.Controls.MusicSection :: field private rows
+member VoxClip.App.Controls.MusicSection :: field private search
+member VoxClip.App.Controls.MusicSection :: field private syncing
+member VoxClip.App.Controls.MusicSection :: field private volume
+member VoxClip.App.Controls.MusicSection :: field private window
+member VoxClip.App.Controls.MusicSection :: method internal .ctor(VoxClip.App.ViewModels.EditorViewModel,System.Func`1<nint>)
+member VoxClip.App.Controls.MusicSection :: method private AddFileAsync()
+member VoxClip.App.Controls.MusicSection :: method private Render()
+member VoxClip.App.Controls.MusicSection :: method private Row(VoxClip.Core.Domain.Music.MusicCandidate,VoxClip.Core.Domain.Music.ProjectMusic)
 member VoxClip.App.Controls.OnboardingDialog :: field private body
 member VoxClip.App.Controls.OnboardingDialog :: field private catalogue
 member VoxClip.App.Controls.OnboardingDialog :: field private catalogueRoot
@@ -1622,12 +1639,15 @@ member VoxClip.App.Pages.EditorPage :: field private cacheLease
 member VoxClip.App.Pages.EditorPage :: field private captions
 member VoxClip.App.Pages.EditorPage :: field private demo
 member VoxClip.App.Pages.EditorPage :: field private disposed
+member VoxClip.App.Pages.EditorPage :: field private elevenMusic
 member VoxClip.App.Pages.EditorPage :: field private leave
 member VoxClip.App.Pages.EditorPage :: field private lifetime
 member VoxClip.App.Pages.EditorPage :: field private makeItPanel
 member VoxClip.App.Pages.EditorPage :: field private makeItSessions
 member VoxClip.App.Pages.EditorPage :: field private media
 member VoxClip.App.Pages.EditorPage :: field private mediaState
+member VoxClip.App.Pages.EditorPage :: field private musicSuggestions
+member VoxClip.App.Pages.EditorPage :: field private openverse
 member VoxClip.App.Pages.EditorPage :: field private owner
 member VoxClip.App.Pages.EditorPage :: field private pauseBreath
 member VoxClip.App.Pages.EditorPage :: field private pendingSave
@@ -1714,6 +1734,7 @@ member VoxClip.App.Pages.EditorPage :: method private EditorSettingsChanged(obje
 member VoxClip.App.Pages.EditorPage :: method private EditorSizeChanged(object,Microsoft.UI.Xaml.SizeChangedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private ExportAsync(string)
 member VoxClip.App.Pages.EditorPage :: method private ExportClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
+member VoxClip.App.Pages.EditorPage :: method private FetchMusicAsync(VoxClip.Core.Domain.Music.MusicCandidate,System.Threading.CancellationToken)
 member VoxClip.App.Pages.EditorPage :: method private FillToneMenu()
 member VoxClip.App.Pages.EditorPage :: method private FillersClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private FindClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
@@ -1725,6 +1746,7 @@ member VoxClip.App.Pages.EditorPage :: method private HookClicked(object,Microso
 member VoxClip.App.Pages.EditorPage :: method private InitializeClaudeMode()
 member VoxClip.App.Pages.EditorPage :: method private InitializeIntegratedEditor()
 member VoxClip.App.Pages.EditorPage :: method private InitializeMakeIt()
+member VoxClip.App.Pages.EditorPage :: method private InitializeMusic()
 member VoxClip.App.Pages.EditorPage :: method private InitializeRewriteTones()
 member VoxClip.App.Pages.EditorPage :: method private InitializeShell()
 member VoxClip.App.Pages.EditorPage :: method private InstallAccelerators()
@@ -1838,6 +1860,10 @@ member VoxClip.App.Pages.EditorPage :: method public RefreshShellPresentation()
 member VoxClip.App.Pages.EditorPage :: method public get_ViewModel()
 member VoxClip.App.Pages.EditorPage+CueSpeaker :: method public .ctor()
 member VoxClip.App.Pages.EditorPage+CueSpeaker :: method public PlayAsync(float[],int,System.Threading.CancellationToken)
+member VoxClip.App.Pages.EditorPage+MusicAudition :: field private player
+member VoxClip.App.Pages.EditorPage+MusicAudition :: method public .ctor(VoxClip.App.Pages.EditorPage)
+member VoxClip.App.Pages.EditorPage+MusicAudition :: method public Play(string)
+member VoxClip.App.Pages.EditorPage+MusicAudition :: method public Stop()
 member VoxClip.App.Pages.HomePage :: field private aiCheck
 member VoxClip.App.Pages.HomePage :: field private aiCheckedAt
 member VoxClip.App.Pages.HomePage :: field private aiSettings
@@ -3158,6 +3184,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: field private exportRecords
 member VoxClip.App.ViewModels.EditorViewModel :: field private isLeaving
 member VoxClip.App.ViewModels.EditorViewModel :: field private makeItLimits
 member VoxClip.App.ViewModels.EditorViewModel :: field private makeItNote
+member VoxClip.App.ViewModels.EditorViewModel :: field private music
 member VoxClip.App.ViewModels.EditorViewModel :: field private notice
 member VoxClip.App.ViewModels.EditorViewModel :: field private now
 member VoxClip.App.ViewModels.EditorViewModel :: field private project
@@ -3239,6 +3266,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItStopped(Vo
 member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItToneRow(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan,VoxClip.App.ViewModels.MakeItRun,System.Collections.Generic.IReadOnlyList`1<VoxClip.App.ViewModels.MakeItRow>)
 member VoxClip.App.ViewModels.EditorViewModel :: method private MoveCaptionSettings(VoxClip.Core.Domain.Shared.ProjectCaptions)
 member VoxClip.App.ViewModels.EditorViewModel :: method private MoveHistory(System.Collections.Generic.Stack`1<VoxClip.App.ViewModels.EditorViewModel+History>,System.Collections.Generic.Stack`1<VoxClip.App.ViewModels.EditorViewModel+History>)
+member VoxClip.App.ViewModels.EditorViewModel :: method private MusicStepAsync(VoxClip.Core.Domain.Autopilot.ClipAutopilotMusicCue,VoxClip.App.ViewModels.MakeItRun)
 member VoxClip.App.ViewModels.EditorViewModel :: method private Number(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method private PerformAsync(VoxClip.App.ViewModels.MakeItRun,VoxClip.App.ViewModels.MakeItServices)
 member VoxClip.App.ViewModels.EditorViewModel :: method private PerformSeriesAsync(VoxClip.App.ViewModels.MakeItRun[],VoxClip.Core.Domain.Autopilot.WordSpan[],VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest,VoxClip.App.ViewModels.MakeItServices)
@@ -3255,6 +3283,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method private ScopeKeepsWords(
 member VoxClip.App.ViewModels.EditorViewModel :: method private StartClaudeMode()
 member VoxClip.App.ViewModels.EditorViewModel :: method private SyncProject()
 member VoxClip.App.ViewModels.EditorViewModel :: method private UndoInverse(VoxClip.App.ViewModels.MakeItInverse)
+member VoxClip.App.ViewModels.EditorViewModel :: method private Unique(VoxClip.Core.Domain.Music.ProjectMusic)
 member VoxClip.App.ViewModels.EditorViewModel :: method private UpdateSummaryLine(double)
 member VoxClip.App.ViewModels.EditorViewModel :: method private VoiceStepAsync(VoxClip.Core.Domain.Autopilot.ClipAutopilotOperation,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Rewrite,VoxClip.App.ViewModels.MakeItRun,VoxClip.App.ViewModels.MakeItServices,bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method private WaitAtCapAsync(VoxClip.App.ViewModels.MakeItRun,VoxClip.App.ViewModels.MakeItBudget,System.Decimal)
@@ -3322,6 +3351,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public MakeItLengthNotes
 member VoxClip.App.ViewModels.EditorViewModel :: method public MakeItNextStep(VoxClip.App.ViewModels.MakeItRun)
 member VoxClip.App.ViewModels.EditorViewModel :: method public MakeItPlannerTone()
 member VoxClip.App.ViewModels.EditorViewModel :: method public MakeItPlay(VoxClip.App.ViewModels.MakeItRow)
+member VoxClip.App.ViewModels.EditorViewModel :: method public MakeItPost(VoxClip.App.ViewModels.MakeItRun)
 member VoxClip.App.ViewModels.EditorViewModel :: method public MakeItPostCopy(VoxClip.App.ViewModels.MakeItRun)
 member VoxClip.App.ViewModels.EditorViewModel :: method public MakeItPostable(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public MakeItRemoveTone(VoxClip.App.ViewModels.MakeItRun,bool)
@@ -3359,6 +3389,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public SetClaudeSpendCap
 member VoxClip.App.ViewModels.EditorViewModel :: method public SetClipEdgeAtCaret(bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method public SetExport(VoxClip.Core.Domain.Shared.ProjectExport)
 member VoxClip.App.ViewModels.EditorViewModel :: method public SetMediaUnavailable(bool)
+member VoxClip.App.ViewModels.EditorViewModel :: method public SetMusic(VoxClip.Core.Domain.Music.ProjectMusic,string,string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public SetRewriteRange(int,int)
 member VoxClip.App.ViewModels.EditorViewModel :: method public SetScope(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public SetShareCaption(string,string)
@@ -3426,6 +3457,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public get_MakeIt()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_MakeItExportTitle()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_MakeItStyle()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_MakeItToneChoices()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_Music()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_Notice()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_Paragraphs()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_Project()
@@ -3610,6 +3642,8 @@ member VoxClip.App.ViewModels.HomeViewModel :: method public get_Sort()
 member VoxClip.App.ViewModels.HomeViewModel :: method public get_SortLabel()
 member VoxClip.App.ViewModels.HomeViewModel :: method public set_Query(string)
 member VoxClip.App.ViewModels.HomeViewModel :: method public set_Sort(VoxClip.App.ViewModels.RecentSort)
+member VoxClip.App.ViewModels.IMusicAudition :: method public Play(string)
+member VoxClip.App.ViewModels.IMusicAudition :: method public Stop()
 member VoxClip.App.ViewModels.IPhraseCuePlayer :: method public PlayAsync(float[],int,System.Threading.CancellationToken)
 member VoxClip.App.ViewModels.IPhraseMicrophone :: method public Discard()
 member VoxClip.App.ViewModels.IPhraseMicrophone :: method public Snapshot()
@@ -3785,6 +3819,7 @@ member VoxClip.App.ViewModels.MakeItBudget :: method public remove_Changed(Syste
 member VoxClip.App.ViewModels.MakeItChange :: field public Captions
 member VoxClip.App.ViewModels.MakeItChange :: field public Hook
 member VoxClip.App.ViewModels.MakeItChange :: field public Look
+member VoxClip.App.ViewModels.MakeItChange :: field public Music
 member VoxClip.App.ViewModels.MakeItChange :: field public None
 member VoxClip.App.ViewModels.MakeItChange :: field public Phrase
 member VoxClip.App.ViewModels.MakeItChange :: field public Question
@@ -3900,6 +3935,22 @@ member VoxClip.App.ViewModels.MakeItInverse+Look :: method public op_Equality(Vo
 member VoxClip.App.ViewModels.MakeItInverse+Look :: method public op_Inequality(VoxClip.App.ViewModels.MakeItInverse+Look,VoxClip.App.ViewModels.MakeItInverse+Look)
 member VoxClip.App.ViewModels.MakeItInverse+Look :: method public set_ClipId(string)
 member VoxClip.App.ViewModels.MakeItInverse+Look :: method public set_Previous(VoxClip.Core.Domain.Clips.ClipLook)
+member VoxClip.App.ViewModels.MakeItInverse+Music :: method private .ctor(VoxClip.App.ViewModels.MakeItInverse+Music)
+member VoxClip.App.ViewModels.MakeItInverse+Music :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.ViewModels.MakeItInverse+Music :: method protected get_EqualityContract()
+member VoxClip.App.ViewModels.MakeItInverse+Music :: method public .ctor(string,VoxClip.Core.Domain.Music.ProjectMusic)
+member VoxClip.App.ViewModels.MakeItInverse+Music :: method public Deconstruct(string&,VoxClip.Core.Domain.Music.ProjectMusic&)
+member VoxClip.App.ViewModels.MakeItInverse+Music :: method public Equals(VoxClip.App.ViewModels.MakeItInverse)
+member VoxClip.App.ViewModels.MakeItInverse+Music :: method public Equals(VoxClip.App.ViewModels.MakeItInverse+Music)
+member VoxClip.App.ViewModels.MakeItInverse+Music :: method public Equals(object)
+member VoxClip.App.ViewModels.MakeItInverse+Music :: method public GetHashCode()
+member VoxClip.App.ViewModels.MakeItInverse+Music :: method public ToString()
+member VoxClip.App.ViewModels.MakeItInverse+Music :: method public get_ClipId()
+member VoxClip.App.ViewModels.MakeItInverse+Music :: method public get_Previous()
+member VoxClip.App.ViewModels.MakeItInverse+Music :: method public op_Equality(VoxClip.App.ViewModels.MakeItInverse+Music,VoxClip.App.ViewModels.MakeItInverse+Music)
+member VoxClip.App.ViewModels.MakeItInverse+Music :: method public op_Inequality(VoxClip.App.ViewModels.MakeItInverse+Music,VoxClip.App.ViewModels.MakeItInverse+Music)
+member VoxClip.App.ViewModels.MakeItInverse+Music :: method public set_ClipId(string)
+member VoxClip.App.ViewModels.MakeItInverse+Music :: method public set_Previous(VoxClip.Core.Domain.Music.ProjectMusic)
 member VoxClip.App.ViewModels.MakeItInverse+Share :: method private .ctor(VoxClip.App.ViewModels.MakeItInverse+Share)
 member VoxClip.App.ViewModels.MakeItInverse+Share :: method protected PrintMembers(System.Text.StringBuilder)
 member VoxClip.App.ViewModels.MakeItInverse+Share :: method protected get_EqualityContract()
@@ -4184,6 +4235,7 @@ member VoxClip.App.ViewModels.MakeItStyle :: method public get_Auto()
 member VoxClip.App.ViewModels.MakeItStyle :: method public get_CaptionPreference()
 member VoxClip.App.ViewModels.MakeItStyle :: method public get_Captions()
 member VoxClip.App.ViewModels.MakeItStyle :: method public get_MaxSeconds()
+member VoxClip.App.ViewModels.MakeItStyle :: method public get_Music()
 member VoxClip.App.ViewModels.MakeItStyle :: method public get_PlannerNote()
 member VoxClip.App.ViewModels.MakeItStyle :: method public get_Rewording()
 member VoxClip.App.ViewModels.MakeItStyle :: method public get_Rewrites()
@@ -4194,6 +4246,7 @@ member VoxClip.App.ViewModels.MakeItStyle :: method public op_Inequality(VoxClip
 member VoxClip.App.ViewModels.MakeItStyle :: method public set_CaptionPreference(VoxClip.Core.Domain.Autopilot.ClipAutopilotCaptionPreference)
 member VoxClip.App.ViewModels.MakeItStyle :: method public set_Captions(bool)
 member VoxClip.App.ViewModels.MakeItStyle :: method public set_MaxSeconds(System.Nullable`1<int>)
+member VoxClip.App.ViewModels.MakeItStyle :: method public set_Music(bool)
 member VoxClip.App.ViewModels.MakeItStyle :: method public set_Rewording(string)
 member VoxClip.App.ViewModels.MakeItStyle :: method public set_Shapes(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.ExportAspect>)
 member VoxClip.App.ViewModels.MakeItStyle :: method public set_Tone(string)
@@ -4222,6 +4275,85 @@ member VoxClip.App.ViewModels.MediaTile :: method public set_Card(VoxClip.App.Se
 member VoxClip.App.ViewModels.MediaTile :: method public set_FramePath(string)
 member VoxClip.App.ViewModels.MediaTile :: method public set_Id(string)
 member VoxClip.App.ViewModels.MediaTile :: method public set_Status(VoxClip.Core.Domain.Captions.MediaStatus)
+member VoxClip.App.ViewModels.MusicPanelModel :: field private Changed
+member VoxClip.App.ViewModels.MusicPanelModel :: field private current
+member VoxClip.App.ViewModels.MusicPanelModel :: field private loadedFolder
+member VoxClip.App.ViewModels.MusicPanelModel :: field private work
+member VoxClip.App.ViewModels.MusicPanelModel :: method private Notify()
+member VoxClip.App.ViewModels.MusicPanelModel :: method private Restart()
+member VoxClip.App.ViewModels.MusicPanelModel :: method private Run(System.Func`1<System.Threading.Tasks.Task>)
+member VoxClip.App.ViewModels.MusicPanelModel :: method private set_Brief(VoxClip.Core.Domain.Music.MusicBrief)
+member VoxClip.App.ViewModels.MusicPanelModel :: method private set_Candidates(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Music.MusicCandidate>)
+member VoxClip.App.ViewModels.MusicPanelModel :: method private set_Failure(string)
+member VoxClip.App.ViewModels.MusicPanelModel :: method private set_FolderFiles(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Music.MusicCandidate>)
+member VoxClip.App.ViewModels.MusicPanelModel :: method private set_Notes(System.Collections.Generic.IReadOnlyList`1<string>)
+member VoxClip.App.ViewModels.MusicPanelModel :: method private set_Phase(VoxClip.App.ViewModels.MusicPanelPhase)
+member VoxClip.App.ViewModels.MusicPanelModel :: method private set_Playing(string)
+member VoxClip.App.ViewModels.MusicPanelModel :: method private set_UsingId(string)
+member VoxClip.App.ViewModels.MusicPanelModel :: method public .ctor(VoxClip.App.ViewModels.EditorViewModel)
+member VoxClip.App.ViewModels.MusicPanelModel :: method public AuditionSource(VoxClip.Core.Domain.Music.MusicCandidate)
+member VoxClip.App.ViewModels.MusicPanelModel :: method public Badge(VoxClip.Core.Domain.Music.MusicCandidate)
+member VoxClip.App.ViewModels.MusicPanelModel :: method public Detail(VoxClip.Core.Domain.Music.MusicCandidate)
+member VoxClip.App.ViewModels.MusicPanelModel :: method public DismissFailure()
+member VoxClip.App.ViewModels.MusicPanelModel :: method public LoadFolder()
+member VoxClip.App.ViewModels.MusicPanelModel :: method public MakeLabel(VoxClip.Core.Domain.Music.MusicCandidate)
+member VoxClip.App.ViewModels.MusicPanelModel :: method public Remove()
+member VoxClip.App.ViewModels.MusicPanelModel :: method public SearchAsync()
+member VoxClip.App.ViewModels.MusicPanelModel :: method public SendsLine(VoxClip.Core.Domain.Music.MusicCandidate)
+member VoxClip.App.ViewModels.MusicPanelModel :: method public SetGain(double)
+member VoxClip.App.ViewModels.MusicPanelModel :: method public SettledAsync()
+member VoxClip.App.ViewModels.MusicPanelModel :: method public StopAudition()
+member VoxClip.App.ViewModels.MusicPanelModel :: method public SuggestAsync(VoxClip.Core.Domain.Music.MusicBrief)
+member VoxClip.App.ViewModels.MusicPanelModel :: method public ToggleAudition(VoxClip.Core.Domain.Music.MusicCandidate)
+member VoxClip.App.ViewModels.MusicPanelModel :: method public UseAsync(VoxClip.Core.Domain.Music.MusicCandidate,System.Nullable`1<double>)
+member VoxClip.App.ViewModels.MusicPanelModel :: method public UsingRowId(VoxClip.Core.Domain.Music.ProjectMusic)
+member VoxClip.App.ViewModels.MusicPanelModel :: method public add_Changed(System.EventHandler)
+member VoxClip.App.ViewModels.MusicPanelModel :: method public get_Audition()
+member VoxClip.App.ViewModels.MusicPanelModel :: method public get_Brief()
+member VoxClip.App.ViewModels.MusicPanelModel :: method public get_Candidates()
+member VoxClip.App.ViewModels.MusicPanelModel :: method public get_Current()
+member VoxClip.App.ViewModels.MusicPanelModel :: method public get_EmptyText()
+member VoxClip.App.ViewModels.MusicPanelModel :: method public get_Failure()
+member VoxClip.App.ViewModels.MusicPanelModel :: method public get_FolderFiles()
+member VoxClip.App.ViewModels.MusicPanelModel :: method public get_Footer()
+member VoxClip.App.ViewModels.MusicPanelModel :: method public get_Notes()
+member VoxClip.App.ViewModels.MusicPanelModel :: method public get_Phase()
+member VoxClip.App.ViewModels.MusicPanelModel :: method public get_Playing()
+member VoxClip.App.ViewModels.MusicPanelModel :: method public get_Query()
+member VoxClip.App.ViewModels.MusicPanelModel :: method public get_Rows()
+member VoxClip.App.ViewModels.MusicPanelModel :: method public get_ScopeSeconds()
+member VoxClip.App.ViewModels.MusicPanelModel :: method public get_Services()
+member VoxClip.App.ViewModels.MusicPanelModel :: method public get_UsingId()
+member VoxClip.App.ViewModels.MusicPanelModel :: method public remove_Changed(System.EventHandler)
+member VoxClip.App.ViewModels.MusicPanelModel :: method public set_Audition(VoxClip.App.ViewModels.IMusicAudition)
+member VoxClip.App.ViewModels.MusicPanelModel :: method public set_Query(string)
+member VoxClip.App.ViewModels.MusicPanelModel :: method public set_Services(VoxClip.App.ViewModels.MusicPanelServices)
+member VoxClip.App.ViewModels.MusicPanelPhase :: field public Failed
+member VoxClip.App.ViewModels.MusicPanelPhase :: field public Idle
+member VoxClip.App.ViewModels.MusicPanelPhase :: field public Searching
+member VoxClip.App.ViewModels.MusicPanelPhase :: field public Using
+member VoxClip.App.ViewModels.MusicPanelPhase :: field public value__
+member VoxClip.App.ViewModels.MusicPanelServices :: method private .ctor(VoxClip.App.ViewModels.MusicPanelServices)
+member VoxClip.App.ViewModels.MusicPanelServices :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.ViewModels.MusicPanelServices :: method private get_EqualityContract()
+member VoxClip.App.ViewModels.MusicPanelServices :: method public .ctor(System.Func`4<VoxClip.Core.Domain.Music.MusicBrief,double,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<VoxClip.Core.Domain.Music.MusicSuggestionResult>>,System.Func`3<VoxClip.Core.Domain.Music.MusicCandidate,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<byte[]>>,System.Func`1<string>,System.Func`3<string,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<double>>,string)
+member VoxClip.App.ViewModels.MusicPanelServices :: method public Deconstruct(System.Func`4<VoxClip.Core.Domain.Music.MusicBrief,double,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<VoxClip.Core.Domain.Music.MusicSuggestionResult>>&,System.Func`3<VoxClip.Core.Domain.Music.MusicCandidate,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<byte[]>>&,System.Func`1<string>&,System.Func`3<string,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<double>>&,string&)
+member VoxClip.App.ViewModels.MusicPanelServices :: method public Equals(VoxClip.App.ViewModels.MusicPanelServices)
+member VoxClip.App.ViewModels.MusicPanelServices :: method public Equals(object)
+member VoxClip.App.ViewModels.MusicPanelServices :: method public GetHashCode()
+member VoxClip.App.ViewModels.MusicPanelServices :: method public ToString()
+member VoxClip.App.ViewModels.MusicPanelServices :: method public get_DataRoot()
+member VoxClip.App.ViewModels.MusicPanelServices :: method public get_Duration()
+member VoxClip.App.ViewModels.MusicPanelServices :: method public get_Fetch()
+member VoxClip.App.ViewModels.MusicPanelServices :: method public get_Folder()
+member VoxClip.App.ViewModels.MusicPanelServices :: method public get_Suggest()
+member VoxClip.App.ViewModels.MusicPanelServices :: method public op_Equality(VoxClip.App.ViewModels.MusicPanelServices,VoxClip.App.ViewModels.MusicPanelServices)
+member VoxClip.App.ViewModels.MusicPanelServices :: method public op_Inequality(VoxClip.App.ViewModels.MusicPanelServices,VoxClip.App.ViewModels.MusicPanelServices)
+member VoxClip.App.ViewModels.MusicPanelServices :: method public set_DataRoot(string)
+member VoxClip.App.ViewModels.MusicPanelServices :: method public set_Duration(System.Func`3<string,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<double>>)
+member VoxClip.App.ViewModels.MusicPanelServices :: method public set_Fetch(System.Func`3<VoxClip.Core.Domain.Music.MusicCandidate,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<byte[]>>)
+member VoxClip.App.ViewModels.MusicPanelServices :: method public set_Folder(System.Func`1<string>)
+member VoxClip.App.ViewModels.MusicPanelServices :: method public set_Suggest(System.Func`4<VoxClip.Core.Domain.Music.MusicBrief,double,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<VoxClip.Core.Domain.Music.MusicSuggestionResult>>)
 member VoxClip.App.ViewModels.OpenProjectCacheLease :: field private lease
 member VoxClip.App.ViewModels.OpenProjectCacheLease :: field private sync
 member VoxClip.App.ViewModels.OpenProjectCacheLease :: field private touches
@@ -7083,6 +7215,7 @@ type VoxClip.App.Controls.MakeItPanel
 type VoxClip.App.Controls.MeasuredRow
 type VoxClip.App.Controls.MediaRelinkBanner
 type VoxClip.App.Controls.MediaThumbnail
+type VoxClip.App.Controls.MusicSection
 type VoxClip.App.Controls.OnboardingDialog
 type VoxClip.App.Controls.PreviewPane
 type VoxClip.App.Controls.RewriteDiffLine
@@ -7108,6 +7241,7 @@ type VoxClip.App.Controls.WindowsRuntimeTermsDialog
 type VoxClip.App.MainWindow
 type VoxClip.App.Pages.EditorPage
 type VoxClip.App.Pages.EditorPage+CueSpeaker
+type VoxClip.App.Pages.EditorPage+MusicAudition
 type VoxClip.App.Pages.HomePage
 type VoxClip.App.Program
 type VoxClip.App.Services.AppServices
@@ -7217,6 +7351,7 @@ type VoxClip.App.ViewModels.ExportSelection
 type VoxClip.App.ViewModels.FocusCycle
 type VoxClip.App.ViewModels.FrameTimeSummary
 type VoxClip.App.ViewModels.HomeViewModel
+type VoxClip.App.ViewModels.IMusicAudition
 type VoxClip.App.ViewModels.IPhraseCuePlayer
 type VoxClip.App.ViewModels.IPhraseMicrophone
 type VoxClip.App.ViewModels.IVoiceCreationBackend
@@ -7243,6 +7378,7 @@ type VoxClip.App.ViewModels.MakeItInverse+Captions
 type VoxClip.App.ViewModels.MakeItInverse+Edits
 type VoxClip.App.ViewModels.MakeItInverse+Effect
 type VoxClip.App.ViewModels.MakeItInverse+Look
+type VoxClip.App.ViewModels.MakeItInverse+Music
 type VoxClip.App.ViewModels.MakeItInverse+Share
 type VoxClip.App.ViewModels.MakeItInverse+Speed
 type VoxClip.App.ViewModels.MakeItInverse+Voice
@@ -7261,6 +7397,9 @@ type VoxClip.App.ViewModels.MakeItRun
 type VoxClip.App.ViewModels.MakeItServices
 type VoxClip.App.ViewModels.MakeItStyle
 type VoxClip.App.ViewModels.MediaTile
+type VoxClip.App.ViewModels.MusicPanelModel
+type VoxClip.App.ViewModels.MusicPanelPhase
+type VoxClip.App.ViewModels.MusicPanelServices
 type VoxClip.App.ViewModels.OpenProjectCacheLease
 type VoxClip.App.ViewModels.PendingProjectSave
 type VoxClip.App.ViewModels.PhraseMicrophoneAccess

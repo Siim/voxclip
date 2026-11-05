@@ -141,6 +141,7 @@ public sealed partial class EditorPage : Page
         Bindings.Update();
         await EditorInitialSelection.ApplyAsync(project.Export.Aspect, aspectLoaded.Task, index => Aspect.SelectedIndex = index, ct);
         captions = new(ViewModel, () => MediaPath, lifetime.Token);
+        if (!demo) captions.AddMusic(new MusicSection(ViewModel, () => WinRT.Interop.WindowNative.GetWindowHandle(owner)));
         captions.FitChanged += (_, _) => SizeStage();
         rightContent = new(captions);
         CaptionsHost.Children.Add(rightContent);

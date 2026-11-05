@@ -37,6 +37,8 @@ internal sealed class CaptionsPanel : UserControl
     private readonly ScrollViewer fineTuneViewport = new() { HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     private readonly TextBlock styleName = new() { TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock summary = new() { FontSize = 12, TextWrapping = TextWrapping.Wrap };
+    /// <summary>The scrolling rows under the header: the notice, Fine tune, then the Music section.</summary>
+    private readonly StackPanel details = Ui.Stack(8);
     /// <summary>Which style applies while a clip is active: "This clip: Bold Pop · Claude's pick" or "Project default" (design §6.6).</summary>
     private readonly TextBlock styleSource = new() { FontSize = 12, TextWrapping = TextWrapping.Wrap };
     private readonly Image chip = new() { Width = 64, Height = 36, Stretch = Stretch.Fill };
@@ -67,6 +69,9 @@ internal sealed class CaptionsPanel : UserControl
         UpdateViewportBounds();
     }
     internal event EventHandler? FitChanged;
+
+    /// <summary>Adds the Music section under the panel's rows (doc/spec/music.md §6).</summary>
+    internal void AddMusic(UIElement section) => details.Children.Add(section);
     internal Control FocusTarget
     {
         get
@@ -117,7 +122,6 @@ internal sealed class CaptionsPanel : UserControl
         body.RowDefinitions.Add(new() { Height = GridLength.Auto });
         body.RowDefinitions.Add(new() { Height = GridLength.Auto });
         body.RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
-        var details = Ui.Stack(8);
         details.Children.Add(notice); details.Children.Add(fineTune);
         fineTuneViewport.Content = details;
         fineTuneViewport.MinHeight = headerViewport;

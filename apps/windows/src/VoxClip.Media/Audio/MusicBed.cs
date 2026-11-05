@@ -153,3 +153,21 @@ internal sealed class MusicBed
         return sourceRate == rate ? stereo : EffectAudio.Resample(stereo, sourceRate, rate);
     }
 }
+
+/// <summary>Music files the Music section stores: their length, for the project's asset record.</summary>
+public static class MusicFiles
+{
+    /// <summary>The decoded length in seconds of <paramref name="path"/>: WAV read directly, other types through FFmpeg's probe.</summary>
+    public static async Task<double> DurationSecondsAsync(string path, CancellationToken ct)
+    {
+        double seconds;
+        if (Path.GetExtension(path).Equals(".wav", StringComparison.OrdinalIgnoreCase))
+        {
+            var wave = VoiceLabWavePcm.Parse(await File.ReadAllBytesAsync(path, ct).ConfigureAwait(false));
+            seconds = wave.Frames / (double)wave.Rate;
+        }
+        else seconds = (await new Pipeline.FfmpegMediaProbe().ProbeAsync(path, ct).ConfigureAwait(false)).DurationSeconds;
+        if (!double.IsFinite(seconds) || seconds <= 0) throw new VoxClipException(VoxClipErrorCode.DecodeFailed, "The music file has no length.");
+        return seconds;
+    }
+}
