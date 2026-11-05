@@ -6,7 +6,8 @@ import VoxClipMedia
 
 /// `-layoutAudit <dir> -makeItCaptures`: ✦ Make it postable's states drawn offscreen (DebugSpacing.draw: a window parked
 /// off every screen, cacheDisplay), on the five-questions fixture. The planner, voice and music are stubs; nothing is sent.
-/// Writes make-it-button, make-it-progress, make-it-review (dark and light) and make-it-series.
+/// Writes make-it-button, make-it-progress, make-it-review (dark and light, and with the speed row's choices open),
+/// ask-claude-stretch (a partial stretch's whole-clip offer, then applied) and make-it-series.
 @MainActor enum DebugMakeIt {
     static func run(app: AppModel, directory: URL) async throws -> [DebugUISuite.Result] {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -65,6 +66,13 @@ import VoxClipMedia
         await capture("make-it-review", size: NSSize(width: 404, height: 860), MakeItPanel(model: editor, run: run))
         await capture("make-it-review-light", size: NSSize(width: 404, height: 860), dark: false, MakeItPanel(model: editor, run: run))
         await capture("make-it-review-window", size: NSSize(width: 1280, height: 800), mainWindow: true, WorkspaceView(shell: shell))
+        // Change on the speed row: the other speeds as chips in the row.
+        editor.makeItChange(.speed, run: run)
+        await capture("make-it-review-change", size: NSSize(width: 404, height: 860), MakeItPanel(model: editor, run: run))
+        editor.makeItChange(.speed, run: run)
+        try await askClaudeStretch(editor, clip: clip, shell: shell) { name, size, dark, main, view in
+            await capture(name, size: size, dark: dark, mainWindow: main, view)
+        }
 
         // ✦ Make top 3 postable.
         editor.makeTopPostable(3)
@@ -77,6 +85,36 @@ import VoxClipMedia
         results.append(.init(name: "make-it series ran \(ready) of \(editor.makeIt.series.count)", passed: ready == editor.makeIt.series.count && ready > 0))
         try JSONEncoder().encode(results.map(\.name)).write(to: directory.appendingPathComponent("make-it-captures.json"), options: .atomic)
         return results
+    }
+
+    /// Ask Claude's "Slow this bit down" on words inside the clip, with a title: the title applies, and the speed row
+    /// offers "Apply 0.75× to the whole clip" (ask-claude-stretch); its click applies it (ask-claude-stretch-applied).
+    private static func askClaudeStretch(_ editor: EditorModel, clip: ClipRange, shell: WorkspaceShell,
+                                         capture: (String, NSSize, Bool, Bool, AskClaudePanel) async -> Void) async throws {
+        guard let shared = editor.app.shared, let first = editor.index(clip.startWordId) else { throw VoxClipError.sharedResourcesMissing }
+        let selection = AskClaudeSelection(scope: .words((first + 2)...(first + 6)), clipID: clip.id)
+        let scope = try AskClaudeScope.resolve(selection, in: editor.project)
+        func op(_ kind: String, _ fields: [String: JSONValue]) -> JSONValue {
+            var value: [String: JSONValue] = ["kind": .string(kind), "startWord": .number(-1), "endWord": .number(-1), "start": .number(-1), "end": .number(-1),
+                                              "reason": .string("As asked")]
+            for (key, field) in fields { value[key] = field }
+            return .object(value)
+        }
+        let reply = JSONValue.object(["summary": .string("Slowed the bit down and added a title."), "ops": .array([
+            op("speed", ["rate": .number(0.75)]), op("title", ["text": .string("Day 1"), "position": .string("top")])])])
+        let answer = AskClaudeValidator(prompt: try AskClaudePrompt.load(shared: shared), scope: scope, project: editor.project, detections: []).answer(reply)
+        editor.askClaude.label = editor.askClaudeLabel(scope)
+        editor.applyAskClaude(answer, instruction: "slow this bit down and add a title Day 1", selection: selection)
+        editor.askClaude.inView = true
+        shell.choosePanelJob(.askClaude, for: editor)
+        await capture("ask-claude-stretch", NSSize(width: 404, height: 560), true, false, AskClaudePanel(model: editor))
+        if let row = editor.askClaude.run?.rows.first(where: { if case .wholeClip = $0.status { true } else { false } }) {
+            editor.applyAskClaudeStretchToClip(row.id)
+        }
+        await capture("ask-claude-stretch-applied", NSSize(width: 404, height: 560), true, false, AskClaudePanel(model: editor))
+        editor.undoAllAskClaude()
+        editor.closeAskClaude()
+        shell.choosePanelJob(.makeIt, for: editor)
     }
 
     /// Three suggestions with Find Clips' scores, so Suggested ranks them and ✦ Make top 3 postable shows.

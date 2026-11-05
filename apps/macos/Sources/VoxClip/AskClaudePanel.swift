@@ -133,6 +133,11 @@ import VoxClipCore
                 PanelButton(action: PanelAction(id: "askClaude.paid.\(row.id)", title: price, priced: true) { model.runPaidAskClaudeRow(row.id) }, kind: .bordered)
                 note("Nothing is spent until you approve the exact price in the next step.")
             case .later(let reason): note(reason)
+            case .wholeClip:
+                PanelButton(action: PanelAction(id: "askClaude.wholeClip.\(row.id)", title: EditorModel.wholeClipTitle(row.operation)) {
+                    model.applyAskClaudeStretchToClip(row.id)
+                }, kind: .bordered)
+                note("A clip plays at one speed. Nothing changed yet.")
             case .undone: note("Undone. Use Edit \u{203A} Redo to bring it back.")
             case .applied: if state.adjusting == row.id { adjuster(row) }
             }
