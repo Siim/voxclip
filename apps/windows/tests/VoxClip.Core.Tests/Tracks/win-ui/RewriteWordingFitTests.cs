@@ -36,8 +36,8 @@ public sealed class RewriteWordingFitTests
         Assert.Equal("1 phrases fit · 0 kept as recorded", session.ReviewFooter);
         var line = connector.FitRequests[0].CachedBlock!;
         Assert.Contains("Phrase 1\nOriginal words: word10\nCurrent proposal: clearer\n", line);
-        Assert.Contains("Use longer wording, about 1 more words", line);
-        Assert.Contains("Target: 2 to 6 words.", line);
+        Assert.Contains("say the same point more fully, about 1 more words of real content", line);
+        Assert.Contains("Word budget: 2 to 6 words; never more than 6", line);
         Assert.False(session.Editor.LlmRuns.IsBusy);
         Assert.False(session.Editor.CanUndo);
     }
