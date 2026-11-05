@@ -88,6 +88,9 @@ extension RewriteSession {
         guard isOpen else { return }
         leaveOutUnavailableVoices()
         followIncludedVoice()
+        // A selected passing take always has its duration chosen before the footer is drawn, so the footer never asks
+        // for the duration the phrase card already reads as "Video: keep source video duration" (design.md R2).
+        if let plan = takePlan, !takesBusy { autoChooseVideo(plan) }
         proposalObservation += 1
         let observation = proposalObservation
         let content = withObservationTracking { proposalContent() } onChange: { [weak self] in

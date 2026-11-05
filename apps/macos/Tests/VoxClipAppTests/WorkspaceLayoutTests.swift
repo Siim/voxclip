@@ -36,7 +36,7 @@ private actor LaunchSettings: SettingsStore {
     @Test func aFreshWindowHasTheNotesSizes() {
         let shell = WorkspaceShell(app: AppModel())
         shell.windowWidth = 1280
-        #expect(shell.layout.explorerWidth == 224 && shell.rightWidth == 404 && shell.layout.timelineHeight == 216)
+        #expect(shell.layout.explorerWidth == 224 && shell.rightWidth == 404 && shell.layout.timelineHeight == 242)
         #expect(shell.layout.explorerVisible && shell.layout.rightVisible && shell.layout.timelineVisible)
     }
 
@@ -226,13 +226,16 @@ private actor LaunchSettings: SettingsStore {
         #expect(!shell.layout.explorerVisible && !shell.sidebarOverlay)
     }
 
-    /// impl-plan §3.5: the timeline starts at 216, or 40% of a short work area; a dragged
-    /// height is the user's and is not clamped to it.
-    @Test func theTimelineStartsAt216OrFortyPercentOfTheWorkArea() {
+    /// impl-plan §3.5: the timeline starts at 242 (every track at M, M1 included) where a 16:9 viewer and the panel's
+    /// minimum body still fit above it, else down to 216, or 40% of a short work area; a dragged height is the user's
+    /// and is not clamped to it.
+    @Test func theTimelineStartsAt242OrFortyPercentOfTheWorkArea() {
         let app = AppModel()
         let layout = WorkspaceLayout(app: app)
         layout.workHeight = 776
-        #expect(layout.timelineHeight == 216)
+        #expect(layout.timelineHeight == 242)
+        #expect(WorkspaceLayout.defaultTimelineHeight(workHeight: 676, rightWidth: 404) == 221)
+        #expect(WorkspaceLayout.defaultTimelineHeight(workHeight: 576, rightWidth: 324) == 216)
         layout.workHeight = 456
         #expect(layout.timelineHeight == 182)
         layout.rememberTimelineHeight(260)
@@ -244,12 +247,12 @@ private actor LaunchSettings: SettingsStore {
         let at1280 = Dictionary(uniqueKeysWithValues: ShellRegion.allCases.map { ($0, $0.reference) })
         #expect(at1280[.explorer] == CGRect(x: 0, y: 0, width: 224, height: 776))
         #expect(at1280[.tabBar] == CGRect(x: 224, y: 0, width: 652, height: 38))
-        #expect(at1280[.transcript] == CGRect(x: 224, y: 72, width: 652, height: 488))
+        #expect(at1280[.transcript] == CGRect(x: 224, y: 72, width: 652, height: 462))
         #expect(at1280[.rightTitle] == CGRect(x: 876, y: 0, width: 404, height: 38))
         #expect(at1280[.viewer] == CGRect(x: 876, y: 38, width: 404, height: 227))
         #expect(at1280[.panelHeader] == CGRect(x: 876, y: 265, width: 404, height: 30))
-        #expect(at1280[.panelBody] == CGRect(x: 876, y: 295, width: 404, height: 265))
-        #expect(at1280[.timeline] == CGRect(x: 224, y: 560, width: 1056, height: 216))
+        #expect(at1280[.panelBody] == CGRect(x: 876, y: 295, width: 404, height: 239))
+        #expect(at1280[.timeline] == CGRect(x: 224, y: 534, width: 1056, height: 242))
         #expect(at1280[.statusBar] == CGRect(x: 0, y: 776, width: 1280, height: 24))
         #expect(ShellRegion.rightTitle.reference(in: CGSize(width: 1440, height: 900)) == CGRect(x: 996, y: 0, width: 444, height: 38))
         #expect(ShellRegion.tabBar.reference(in: CGSize(width: 1128, height: 800)) == CGRect(x: 224, y: 0, width: 604, height: 38))
@@ -262,7 +265,7 @@ private actor LaunchSettings: SettingsStore {
         #expect(ShellRegion.viewer.reference(in: CGSize(width: 1440, height: 900)) == CGRect(x: 996, y: 38, width: 444, height: 250))
         #expect(ShellRegion.viewer.reference(in: CGSize(width: 800, height: 600)) == nil)
         #expect(ShellRegion.rightTitle.reference(in: CGSize(width: 800, height: 600)) == nil)
-        #expect(ShellRegion.transcript.reference(in: CGSize(width: 800, height: 600)) == CGRect(x: 0, y: 72, width: 800, height: 288))
-        #expect(ShellRegion.timeline.reference(in: CGSize(width: 800, height: 600)) == CGRect(x: 0, y: 360, width: 800, height: 216))
+        #expect(ShellRegion.transcript.reference(in: CGSize(width: 800, height: 600)) == CGRect(x: 0, y: 72, width: 800, height: 274))
+        #expect(ShellRegion.timeline.reference(in: CGSize(width: 800, height: 600)) == CGRect(x: 0, y: 346, width: 800, height: 230))
     }
 }

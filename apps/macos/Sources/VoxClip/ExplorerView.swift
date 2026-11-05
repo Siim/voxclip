@@ -167,6 +167,7 @@ import VoxClipCore
                     if let note = editor.fallbackNote, !suggestions.isEmpty { FallbackNote(note: note).selectionDisabled() }
                     if editor.finding { FindingRow(editor: editor).selectionDisabled() }
                     if editor.clipError == EditorModel.noClipsMatched { NoMatchRow(editor: editor).selectionDisabled() }
+                    if suggestions.count > 1, editor.capabilities.ai { MakeTopRow(editor: editor, count: min(3, suggestions.count)).selectionDisabled() }
                     ForEach(suggestions, id: \.id) { clip in
                         ClipRow(shell: shell, editor: editor, clip: clip, suggested: true, focused: listFocused && editor.focusedSuggestion == clip.id,
                                 selectedFocused: shell.selection == .clip(clip.id) && listFocused)
@@ -313,14 +314,8 @@ import VoxClipCore
             if editor.containsAISpeech(clipID: clip.id) { ExplorerVoiceGlyph() }
             if showsActions {
                 HStack(spacing: 2) {
-                    if shell.canRewriteExplorerClip(clip.id) {
-                        Button { shell.rewriteExplorerClip(clip.id) } label: {
-                            Text("✦").font(.system(size: 12)).frame(width: 22, height: 20).contentShape(Rectangle())
-                        }
-                        .buttonStyle(.borderless).focusable(false)
-                        .help("Rewrite Clip \(number) (⇧⌘R)")
-                        .accessibilityLabel("Rewrite Clip \(number)")
-                        .columnLayoutEvidence("explorer.clipRewrite", text: "Rewrite Clip \(number)")
+                    if editor.canMakeItPostable(clip.id) {
+                        MakeItRowButton(model: editor, clipID: clip.id) { editor.makeItPostable(clip.id) }
                     }
                     Menu {
                         ExplorerClipMenu(shell: shell, editor: editor, clip: clip, suggested: suggested)
@@ -334,6 +329,11 @@ import VoxClipCore
                 .fixedSize().foregroundStyle(SidebarStyle.meta(emphasized))
                 .columnLayoutEvidence("explorer.clipActions")
             } else {
+                if suggested, let score = editor.suggestionScore(clip) {
+                    Text("\(score)").font(DesignValues.mono(10)).foregroundStyle(DesignValues.color("ai.tint")).fixedSize()
+                        .help("Score \(score)/10").accessibilityHidden(true)
+                        .columnLayoutEvidence("explorer.clipScore", text: "\(score)")
+                }
                 Text(durationLabel(duration)).font(DesignValues.mono(11)).foregroundStyle(SidebarStyle.meta(emphasized)).fixedSize()
                     .columnLayoutEvidence("explorer.clipDuration", text: durationLabel(duration))
             }
@@ -357,6 +357,9 @@ import VoxClipCore
         .accessibilityLabel((suggested ? "Suggested clip \(number), \(title), \(SidebarStyle.spokenDuration(duration))" : "Clip \(number), \(title), \(SidebarStyle.spokenDuration(duration))") + (editor.containsAISpeech(clipID: clip.id) ? ", AI modified" : ""))
         .accessibilityHint((suggested ? reason : exportStatus.label) + (editor.containsAISpeech(clipID: clip.id) ? ", AI modified" : ""))
         .accessibilityActions {
+            if editor.canMakeItPostable(clip.id) {
+                Button("Make It Postable") { editor.makeItPostable(clip.id) }
+            }
             if shell.canRewriteExplorerClip(clip.id) {
                 Button("Rewrite Clip \(number)") { shell.rewriteExplorerClip(clip.id) }
             }
@@ -378,12 +381,12 @@ import VoxClipCore
 
     var showsActions: Bool { shell.selection == .clip(clip.id) || hovering || focused || selectedFocused }
 
-    /// A suggestion's reason and score, "8/10 · Strong hook, one idea".
+    /// A suggestion's reason and score, "8/10 · Strong hook, one idea"; the planner's score once Make it postable ran.
     private var reason: String {
         guard let resultID = clip.aiResultId, let index = clip.aiClipIndex,
               let result = editor.project.ai.results.first(where: { $0.id == resultID }), index < result.clips.count else { return "" }
         let found = result.clips[index]
-        return "\(found.score)/10 · \(found.reason)"
+        return "\(editor.suggestionScore(clip) ?? found.score)/10 · \(found.reason)"
     }
 
 }
@@ -395,6 +398,9 @@ import VoxClipCore
     let clip: ClipRange
     let suggested: Bool
     var body: some View {
+        if editor.canMakeItPostable(clip.id) {
+            Button(editor.makeItTitle(clipID: clip.id)) { editor.makeItPostable(clip.id) }
+        }
         if shell.canRewriteExplorerClip(clip.id) {
             Button("Rewrite Clip \(editor.clipNumber(clip.id) ?? 0)") { shell.rewriteExplorerClip(clip.id) }
         }
@@ -443,6 +449,27 @@ private struct ExplorerVoiceGlyph: View {
                     .disabled(!editor.capabilities.edit)
             }
         }.selectionDisabled()
+    }
+}
+
+/// "✦ Make top 3 postable" under Suggested: the best three by score, made postable one after another.
+@MainActor private struct MakeTopRow: View {
+    let editor: EditorModel
+    let count: Int
+    var body: some View {
+        Button { editor.makeTopPostable(count) } label: {
+            HStack(spacing: VCTokens.spacingLabelGap) {
+                Text("✦").font(.system(size: 12)).foregroundStyle(DesignValues.color("ai.tint"))
+                Text("Make top \(count) postable").font(.system(size: 12, weight: .medium))
+                Spacer(minLength: 0)
+            }
+            .modifier(SidebarActionTarget())
+        }
+        .buttonStyle(.borderless)
+        .disabled(!editor.canMakeTopPostable)
+        .help("Claude makes the \(count) best suggestions postable, one after another. Each keeps its own spend cap.")
+        .accessibilityLabel("Make top \(count) postable")
+        .columnLayoutEvidence("explorer.makeTop", text: "Make top \(count) postable")
     }
 }
 

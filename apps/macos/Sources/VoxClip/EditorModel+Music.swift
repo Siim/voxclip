@@ -159,7 +159,7 @@ struct MusicPanelServices: Sendable {
     }
 
     private func apply(_ entry: ProjectMusic?, clipId: String?, model: EditorModel, name: String) throws {
-        let next = try MusicProject.setting(entry, clipId: clipId, in: model.project)
+        let next = try MusicProject.setting(entry.map { MusicProject.unique($0, in: model.project) }, clipId: clipId, in: model.project)
         model.replace(next, name: name)
     }
 

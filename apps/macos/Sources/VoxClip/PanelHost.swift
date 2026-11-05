@@ -7,7 +7,7 @@ import VoxClipCore
 
 /// A job of the right column's one panel (notes.md §7).
 enum PanelJob: String, CaseIterable, Sendable {
-    case captions, rewrite, voice, takes, director, demo, motion, export
+    case captions, rewrite, voice, takes, director, demo, motion, export, makeIt
 
     var title: String {
         switch self {
@@ -19,6 +19,7 @@ enum PanelJob: String, CaseIterable, Sendable {
         case .director: "Director"
         case .demo: "Context demo"
         case .motion: "Motion"
+        case .makeIt: "Make it postable"
         }
     }
     /// The switcher's glyph, in the mockup's order: captions, pencil, waveform, chat.
@@ -32,6 +33,7 @@ enum PanelJob: String, CaseIterable, Sendable {
         case .director: "bubble.left"
         case .demo: "record.circle"
         case .motion: "viewfinder"
+        case .makeIt: "sparkles"
         }
     }
 
@@ -46,6 +48,7 @@ enum PanelJob: String, CaseIterable, Sendable {
         if model.exportJob.isOpen { jobs.append(.export) }
         if model.capabilities.writable || model.contextDemoDocument != nil || model.contextDemoSession != nil { jobs.append(.demo) }
         if model.motionCueEditing != nil { jobs.append(.motion) }
+        if model.makeIt.shown != nil { jobs.append(.makeIt) }
         return jobs
     }
 }
@@ -105,6 +108,8 @@ extension WorkspaceShell {
         let jobs = PanelJob.available(in: model)
         let task = model.openRewrite?.task
         if let asking = model.panelTask, asking.confirm != nil { return asking.job }
+        // Make it postable drives Rewrite's session itself while it runs: its progress stays in view.
+        if model.makeIt.active != nil, jobs.contains(.makeIt), !model.sendConfirmation.isPresented { return .makeIt }
         let flow = model.app.voiceLabSession.flow
         let awaitingSend = model.openRewrite.map { $0.task.state == .running && !$0.sendApproved } == true
         if let choice = panelChoice, task == nil || choice.task === task && (choice.turn == (task?.turn ?? 0) || awaitingSend),
@@ -175,6 +180,7 @@ extension WorkspaceShell {
                 else if job == .export { ExportJobView(model: model).modifier(EditorPaneFocus(model: model, pane: .panel)) }
                 else if job == .demo, let session = model.contextDemoSession { ContextDemoPanel(session: session, model: model) }
                 else if job == .motion, let editing = model.motionCueEditing { MotionCuePanel(model: model, editing: editing, shell: shell) }
+                else if job == .makeIt, let run = model.makeIt.shown { MakeItPanel(model: model, run: run).modifier(EditorPaneFocus(model: model, pane: .panel)) }
                 else { CaptionsSection(model: model, fineTune: fineTune, width: width).modifier(EditorPaneFocus(model: model, pane: .panel)) }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

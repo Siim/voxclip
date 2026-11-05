@@ -1900,12 +1900,12 @@ Planner v2 evaluation (Claude Code 2.1.318, Opus, plan sign-in, three prompt rou
 
 ### 16.10 Owed
 
-- **UI package (track/v2-make-it):** the ✦ action and its price, the review with Undo or Change per operation (including correction, look and speed rows and the flags), applying as one undo step, the questions, and the progress lines from `ClipAutopilotProgress`. A series must pass two extra connector lanes to get three parallel plans; "✦ Make top 3 postable" is the `clips` mode.
+- **UI (Mac, built in track/v2-make-it; design.md §6.7):** the ✦ action and its cap, the run with progress lines from `ClipAutopilotProgress`, the review with Undo or Change per operation (correction, look and speed rows and the flags included), one undo step, and the questions. The Windows twin is owed.
 - **Look renderer:** `original`, `muted`, `warm` and `bw` as colour transforms in preview and export, on both platforms; until then the look operation stays pending.
 - **Clip controls package:** rendering `speed` (video and audio together, pitch kept), and then music covering `finalSeconds`.
-- **Music package:** generation, ducking under the voice at `underVoiceDb`, and verifying the music price.
-- **Rewrites:** voicing through the existing Rewrite flow, where window placement adds the audio bridges.
-- **Roboto Black:** the font must be bundled (OFL, with notices) before it renders; track/v2-captions-style bundles it.
+- **Music:** the Mac UI applies the pick through `MusicPanel` and sets `underVoiceDb` as the bed's level. Verifying the music price is still owed.
+- **Rewrites (Mac, built):** each is voiced through the existing Rewrite flow (`MakeItRewriteDriver`), where window placement adds the audio bridges.
+- **Roboto Black:** bundled by track/v2-captions-style; the captions operation applies it.
 - **Hook:** a title card for the hook text.
 - **Prompt:** `lengthReason` comes back as a length estimate even when the clip fits, so `longWithoutReason` rarely fires; the next round should ask for it to be empty within the target. Looks came back the same for a whole series.
 - **Windows:** the twin, replaying both fixtures.

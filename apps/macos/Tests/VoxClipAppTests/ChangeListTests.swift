@@ -259,7 +259,10 @@ import Testing
         #expect(session.task.footer.primary?.title == "Get Price · 1 phrase" && session.task.footer.link?.title == "Keep All")
     }
 
-    @Test func aMissingDurationChoiceIsNamedInsteadOfLeftOut() async throws {
+    /// Lead fix (2026-11-05): in the takes-ready state the footer said "Choose the video duration for phrase 1" while the
+    /// phrase card read "Video: keep source video duration". The proposal now chooses the duration the card shows before
+    /// its footer is drawn, so the two agree and Use Takes is the one step left.
+    @Test func theFooterAndTheDurationCardAgreeOnceATakeIsReady() async throws {
         let (editor, session, _, scenes) = try scene("r2-several-voices", verifiablePhrases: true)
         defer { scenes.forEach { $0.editor?.close() } }
         editor.app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(true)
@@ -267,13 +270,11 @@ import Testing
         try DebugRewriteGeneration.install("ready", in: session)
         session.showProposal()
         let plan = try #require(session.takePlan)
-        #expect(plan.stillCurrent && !plan.canAccept && session.usableTakeCount == 0)
-        let note = try #require(session.task.footer.note)
-        #expect(note.hasPrefix("Choose the video duration for phrase 1. ") && session.task.footer.primary == nil)
-        #expect(!note.contains("Left out until a take fits."))
-        #expect(plan.chooseVideo(.source, phrase: 0))
-        session.showProposal()
+        let shown = VideoDurationChoiceView(availability: plan.videoAvailability(phrase: 0), selection: plan.phrases[0].videoChoice,
+                                            busy: false, choose: { _ in })
+        #expect(plan.phrases[0].videoChoice != nil && plan.phrases[0].videoChoice == shown.valid.first)
         #expect(plan.acceptanceBlocker == nil && session.task.footer.primary?.title == "Use Takes")
+        #expect(session.task.footer.note.map { !$0.contains("Choose the video duration") } ?? true)
         #expect(ClipTakePlan.phraseList([2]) == "phrase 2" && ClipTakePlan.phraseList([2, 4]) == "phrases 2 and 4")
         #expect(ClipTakePlan.phraseList([1, 2, 4]) == "phrases 1, 2 and 4")
     }

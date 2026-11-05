@@ -51,7 +51,7 @@ import Testing
             #expect(actions.minX >= 0 && actions.maxX <= width)
             let title = try #require(markers["explorer.clipTitle"])
             #expect(title.width > 0 && title.maxX <= actions.minX)
-            #expect(markers["explorer.clipRewrite"]?.size == CGSize(width: 22, height: 20))
+            #expect(markers["explorer.clipMakeIt"]?.size == CGSize(width: 22, height: 20))
             #expect(markers["explorer.clipMore"]?.size == CGSize(width: 22, height: 20))
         }
     }
@@ -72,7 +72,7 @@ import Testing
         host.frame = NSRect(x: 0, y: 0, width: 196, height: 28)
         host.layoutSubtreeIfNeeded()
         let markers = DebugRightColumn.markers(in: host)
-        #expect(markers["explorer.clipRewrite"]?.size == CGSize(width: 22, height: 20))
+        #expect(markers["explorer.clipMakeIt"]?.size == CGSize(width: 22, height: 20))
         #expect(markers["explorer.clipMore"]?.size == CGSize(width: 22, height: 20))
         #expect(host.fittingSize.height == 28)
     }
@@ -147,7 +147,7 @@ import Testing
         host.frame = NSRect(x: 0, y: 0, width: 196, height: 28)
         host.layoutSubtreeIfNeeded()
         let markers = DebugRightColumn.markers(in: host)
-        #expect(markers["explorer.clipRewrite"] == nil && markers["explorer.clipDuration"] == nil)
+        #expect(markers["explorer.clipMakeIt"] == nil && markers["explorer.clipDuration"] == nil)
         #expect(markers["explorer.clipMore"]?.size == CGSize(width: 22, height: 20))
     }
 
@@ -158,7 +158,8 @@ import Testing
         #expect(row.contains(".onHover"))
         #expect(row.contains("shell.canRewriteExplorerClip(clip.id)"))
         #expect(row.contains("shell.rewriteExplorerClip(clip.id)"))
-        #expect(row.contains("Rewrite Clip \\(number) (⇧⌘R)"))
+        // ✦ is Make it postable (design.md §6.7); Rewrite stays in ⋯, the context menu and the accessibility actions.
+        #expect(row.contains("MakeItRowButton(model: editor, clipID: clip.id) { editor.makeItPostable(clip.id) }"))
         #expect(row.components(separatedBy: "ExplorerClipMenu(shell:").count == 3)
         #expect(row.contains(".focusable(false)"))
         let actions = try #require(row.components(separatedBy: ".accessibilityActions {").last)

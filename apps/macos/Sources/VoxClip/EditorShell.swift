@@ -45,7 +45,7 @@ enum ShellRegion: String, CaseIterable, Codable, Sendable {
         let workHeight = height - statusBar
         let explorer = width >= Double(VCTokens.sizeSidebarIdeal) + WorkspaceShell.rightCollapseWidth ? Double(VCTokens.sizeSidebarIdeal) : 0
         let right = width >= WorkspaceShell.rightCollapseWidth ? WorkspaceLayout.rightColumnWidth(windowWidth: width, explorer: explorer) : 0
-        let timeline = min(WorkspaceLayout.timelineDefault, (workHeight * WorkspaceLayout.timelineShare).rounded(.down))
+        let timeline = WorkspaceLayout.defaultTimelineHeight(workHeight: workHeight, rightWidth: right)
         let top = workHeight - timeline
         let editor = width - explorer - right
         // The viewer is 16:9 of the right column's width, then the panel header and its body (impl-plan V4).

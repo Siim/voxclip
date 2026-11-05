@@ -297,7 +297,9 @@ extension EditorModel {
         let first = sentence.joined(separator: " ") + (!ended && !sentence.isEmpty ? "…" : "")
         return [clip?.title, first].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n\n")
     }
-    func beginExport(targets: [ExportTarget], folder: URL) {
+    /// Renders `targets` into `folder`, each in the project's aspect, or in each of `aspects` (Make it postable's one
+    /// click exports the clip style's shapes).
+    func beginExport(targets: [ExportTarget], folder: URL, aspects: [AspectRatio]? = nil) {
         guard !exporting, !targets.isEmpty, canExport, mediaExportable else { return }
         // A new render has a new disclosure snapshot. Keep an edited caption, then
         // lazily load fresh drafts (and the off-default opt-in) from its result.
@@ -312,7 +314,10 @@ extension EditorModel {
         let openFolderAfter = app.bool("export.openFolderAfter", fallback: false)
         exportError = nil; exports = []; exportDisclosureLines = [:]; exporting = true; exportStartedAt = Date(); exportIndex = 1
         exportClipIDs = targets.compactMap { if case .clip(let id) = $0 { id } else { nil } }
-        activeExportKey = targets.first.map { ExportLedger.key($0, aspect: snapshot.export.aspect) }
+        let shapes = aspects.map { $0.isEmpty ? [snapshot.export.aspect] : $0 } ?? [snapshot.export.aspect]
+        let jobs = targets.flatMap { target in shapes.map { (target, $0) } }
+        exportTotal = jobs.count
+        activeExportKey = jobs.first.map { ExportLedger.key($0.0, aspect: $0.1) }
         var targetNames: [String: String] = [:]
         for target in targets {
             switch target {
@@ -320,7 +325,7 @@ extension EditorModel {
             case .clip(let id): targetNames[id] = scopeName(id)
             }
         }
-        let total = targets.count
+        let total = jobs.count
         announce(total == 1 ? "Exporting 1 video" : "Exporting \(total) videos")
         exportTask = Task { [weak self] in
             guard let self else { return }
@@ -329,30 +334,34 @@ extension EditorModel {
             var attempt: ExportRecord?
             do {
                 if document.demo { throw VoxClipError.notImplemented("synthetic-preview-only") }
-                for (position, target) in targets.enumerated() {
+                for (position, (target, aspectRatio)) in jobs.enumerated() {
                     try Task.checkCancellation()
+                    var shaped = snapshot
+                    shaped.export.aspect = aspectRatio
+                    let shapedRender = EditorRenderSnapshot(project: shaped, state: renderSnapshot.state, plan: renderSnapshot.plan,
+                                                            reduceMotion: renderSnapshot.reduceMotion)
                     exportIndex = position + 1
-                    let key = ExportLedger.key(target, aspect: snapshot.export.aspect)
+                    let key = ExportLedger.key(target, aspect: shaped.export.aspect)
                     activeExportKey = key
                     failedExports[key] = nil
                     exportProgress = nil
                     let targetName = targetNames[ExportLedger.targetID(target)] ?? "Full Take"
-                    attempt = app.exportLedger.entry(projectID: snapshot.id, targetID: ExportLedger.targetID(target), aspect: snapshot.export.aspect)
-                        ?? ExportRecord(projectID: snapshot.id, targetID: ExportLedger.targetID(target), exportedAt: Date(),
-                            planFingerprint: "", styleId: snapshot.captions.styleId, aspect: snapshot.export.aspect, outputPath: "", targetName: targetName)
+                    attempt = app.exportLedger.entry(projectID: shaped.id, targetID: ExportLedger.targetID(target), aspect: shaped.export.aspect)
+                        ?? ExportRecord(projectID: shaped.id, targetID: ExportLedger.targetID(target), exportedAt: Date(),
+                            planFingerprint: "", styleId: shaped.captions.styleId, aspect: shaped.export.aspect, outputPath: "", targetName: targetName)
                     attempt?.failed = true
                     attempt?.retryFolder = folder.path
                     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-                    let render = try await renderRequest(target: target, snapshot: renderSnapshot, labelPosition: labelPosition)
-                    let fingerprint = try ExportFingerprint.value(snapshot, target: target, labelPosition: labelPosition)
+                    let render = try await renderRequest(target: target, snapshot: shapedRender, labelPosition: labelPosition)
+                    let fingerprint = try ExportFingerprint.value(shaped, target: target, labelPosition: labelPosition)
                     let name: String
-                    switch target { case .fullEdit: name = "full"; case .clip(let id): name = snapshot.edits.clips.first { $0.id == id }?.title ?? "clip" }
-                    let aspect = snapshot.export.aspect.rawValue.replacingOccurrences(of: ":", with: "x")
-                    let base = ExportSelection.baseName(pattern.replacingOccurrences(of: "{project}", with: snapshot.title ?? "Untitled").replacingOccurrences(of: "{clip}", with: name).replacingOccurrences(of: "{aspect}", with: aspect).replacingOccurrences(of: ".mp4", with: ""))
-                    let url = ExportSelection.destination(base: base, folder: folder, writeSRT: snapshot.export.srt)
+                    switch target { case .fullEdit: name = "full"; case .clip(let id): name = shaped.edits.clips.first { $0.id == id }?.title ?? "clip" }
+                    let aspect = shaped.export.aspect.rawValue.replacingOccurrences(of: ":", with: "x")
+                    let base = ExportSelection.baseName(pattern.replacingOccurrences(of: "{project}", with: shaped.title ?? "Untitled").replacingOccurrences(of: "{clip}", with: name).replacingOccurrences(of: "{aspect}", with: aspect).replacingOccurrences(of: ".mp4", with: ""))
+                    let url = ExportSelection.destination(base: base, folder: folder, writeSRT: shaped.export.srt)
                     guard url.deletingLastPathComponent().standardizedFileURL.path == folder.standardizedFileURL.path else { throw VoxClipError.exportFailed("invalid destination") }
-                    let srt = snapshot.export.srt ? url.deletingPathExtension().appendingPathExtension("srt") : nil
-                    let job = ExportJob(target: target, render: render, aspect: snapshot.export.aspect, quality: snapshot.export.quality, outputURL: url, writeSRT: snapshot.export.srt, srtURL: srt)
+                    let srt = shaped.export.srt ? url.deletingPathExtension().appendingPathExtension("srt") : nil
+                    let job = ExportJob(target: target, render: render, aspect: shaped.export.aspect, quality: shaped.export.quality, outputURL: url, writeSRT: shaped.export.srt, srtURL: srt)
                     let result = try await exporter.export(job) { [weak self] value in Task { @MainActor in
                         guard let self, self.activeExportKey == key else { return }
                         let previousFraction: Double = self.exportProgress?.fraction ?? 0
@@ -365,8 +374,8 @@ extension EditorModel {
                     } }
                     exports.append(result)
                     recordShareDisclosure(target, disclosure: render.voiceLab?.prepared.disclosure)
-                    try app.exportLedger.record(ExportRecord(projectID: snapshot.id, targetID: ExportLedger.targetID(target), exportedAt: Date(),
-                        planFingerprint: fingerprint, styleId: snapshot.captions.styleId, aspect: snapshot.export.aspect, outputPath: result.outputURL.path,
+                    try app.exportLedger.record(ExportRecord(projectID: shaped.id, targetID: ExportLedger.targetID(target), exportedAt: Date(),
+                        planFingerprint: fingerprint, styleId: shaped.captions.styleId, aspect: shaped.export.aspect, outputPath: result.outputURL.path,
                         targetName: targetName, durationSeconds: result.durationSeconds, width: result.width, height: result.height,
                         byteSize: (try? result.outputURL.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init)))
                     attempt = nil
@@ -401,7 +410,7 @@ extension EditorModel {
         }
     }
     func exportStatus(at now: Date) -> String {
-        let total = max(1, exportClipIDs.count)
+        let total = max(1, exportTotal ?? exportClipIDs.count)
         guard let fraction = exportProgress?.fraction, fraction > 0, let started = exportStartedAt else { return "Rendering \(exportIndex) of \(total) · preparing…" }
         let completed = (Double(max(0, exportIndex - 1)) + min(1, fraction)) / Double(total)
         let remaining = max(0, now.timeIntervalSince(started) * (1 - completed) / completed)

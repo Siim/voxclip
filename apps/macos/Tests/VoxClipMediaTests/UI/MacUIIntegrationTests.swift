@@ -54,14 +54,16 @@ extension HeavyMediaTests {
     func rewriteSmoke(lengths: String) throws {
         // The own-words scenarios (My words, Say it myself, Record again) run in both passes.
         let own = ["S-own-typed", "S-own-mic", "S-own-mic-misfit"]
-        let names = (1...15).map { "S\($0)" } + own
+        // ✦ Make it postable on one clip and on the top three suggestions (DebugRewriteSmokeMakeIt.swift).
+        let makeIt = ["S-make-it", "S-make-top3"]
+        let names = (1...15).map { "S\($0)" } + own + makeIt
         let directory = try UIProcessHarness.run(mode: "-rewriteSmoke", name: "rewrite-smoke-\(lengths)",
             arguments: ["-rewriteSmokeLengths", lengths, "-rewriteSmokeOnly", names.joined(separator: ",")],
             acceptNonzeroWithReport: "results.json", deadline: 300)
         defer { UIProcessHarness.cleanTemporary(directory) }
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
         let scenarios = Set(report.compactMap { $0.name.split(separator: " ").first.map(String.init) })
-        let expected: [String] = lengths == "exact" ? ((1...12).map { "S\($0)" } + ["S14", "S15"] + own).map { $0 + "-exact" } : names
+        let expected: [String] = lengths == "exact" ? ((1...12).map { "S\($0)" } + ["S14", "S15"] + own + makeIt).map { $0 + "-exact" } : names
         #expect(scenarios == Set(expected))
         for result in report { #expect(result.passed, Comment(rawValue: result.name)) }
     }

@@ -80,6 +80,23 @@ struct EditorRenderSnapshot {
     var motionCueEditing: MotionCueEditing?
     /// The Music section's suggestions, search and audition (EditorModel+Music.swift).
     let musicPanel = MusicPanel()
+    /// ✦ Make it postable's runs, queue and scores (MakeItPostable.swift).
+    let makeIt = MakeItController()
+    /// The next plan's note to Claude (a question's other answer), sent once.
+    @ObservationIgnored var makeItNote: String?
+    /// The window shows the Make it postable job, a panel job, or a clip's inline rename.
+    @ObservationIgnored var onShowMakeIt: (() -> Void)?
+    @ObservationIgnored var onShowPanelJob: ((PanelJob) -> Void)?
+    @ObservationIgnored var onRenameClip: ((String) -> Void)?
+    #if DEBUG
+    /// The smoke and tests give Make it postable's Rewrite session their scripted voice and speaker check, and watch each
+    /// step its driver takes.
+    @ObservationIgnored var makeItGeneration: ((RewriteSession) async -> Void)?
+    @ObservationIgnored var makeItStepObserver: ((String) async -> Void)?
+    #endif
+    /// One undo step over several project changes (Make it postable's run): `replace` registers nothing while a group
+    /// owns the edits, and the group registers one step back to where it began.
+    @ObservationIgnored var undoGroup: EditorUndoGroup?
     var voiceChange: VoiceChangeSession?
     var correctionID: String?
     var correctionText = ""
@@ -291,7 +308,7 @@ struct EditorRenderSnapshot {
     }
     /// The session's own `current` (its connector, its project apart from the tab, open)
     /// decides, so an edit outside its scope or another tab leaves the consent valid (impl-plan §3.3).
-    private func rewriteConsent(provider: ProviderChoice) async -> Bool {
+    func rewriteConsent(provider: ProviderChoice) async -> Bool {
         guard let session = openRewrite, session.current, let connector = session.connector?.connector else { return false }
         let expected = session.revision
         do {
@@ -370,6 +387,8 @@ struct EditorRenderSnapshot {
         onFinishExport?()
     }
     var exportIndex = 0
+    /// Renders in the export under way: targets × aspects (nil before the first).
+    var exportTotal: Int?
     var exportStartedAt: Date?
     var sourceURL: URL { URL(fileURLWithPath: project.media.source.absolutePath) }
     var mediaResolved = false { didSet { document.setMediaResolved(mediaResolved); if !mediaResolved { transcription.close(); sendConfirmation.cancel(); closeRewrite(returnFocus: false) }; followWaveformKey() } }
@@ -825,11 +844,20 @@ struct EditorRenderSnapshot {
         preview.pause(); isPlaying = false
         let previous = project
         let mediaChanged = previous.media.source != newProject.media.source
-        undoManager?.registerUndo(withTarget: self) { model in model.replace(previous, name: name, restoringSnapshot: true) }
-        undoManager?.setActionName(name)
-        #if DEBUG
-        undoSteps += 1
-        #endif
+        if restoringSnapshot, let group = undoGroup {
+            // ⌘Z or ⌘⇧Z while a group is open: what it changed so far is in the restored snapshot's redo; the run stops.
+            group.interrupted = true; group.base = nil
+        }
+        if !restoringSnapshot, let group = undoGroup, group.ownsEdits {
+            if group.base == nil { group.base = previous }
+        } else {
+            if !restoringSnapshot, let group = undoGroup { flush(group) }
+            undoManager?.registerUndo(withTarget: self) { model in model.replace(previous, name: name, restoringSnapshot: true) }
+            undoManager?.setActionName(name)
+            #if DEBUG
+            undoSteps += 1
+            #endif
+        }
         var changed = newProject
         if !restoringSnapshot {
         #if DEBUG
@@ -1135,7 +1163,22 @@ struct EditorRenderSnapshot {
     // Clips in the sidebar (design §3.4 and §6.2): kept clips number 1…n in transcript
     // order and suggestions continue after them.
     var keptClips: [ClipRange] { sortedClips.filter { $0.origin == .manual || $0.selected } }
-    var suggestedClips: [ClipRange] { sortedClips.filter { $0.origin == .ai && !$0.selected } }
+    /// Suggestions ranked by score, best first (design.md §6.7): the planner's once Make it postable scored the clip,
+    /// else Find Clips' own. Equal scores keep transcript order.
+    var suggestedClips: [ClipRange] {
+        let found = sortedClips.filter { $0.origin == .ai && !$0.selected }
+        return found.enumerated().sorted { first, second in
+            let a = suggestionScore(first.element) ?? 0, b = suggestionScore(second.element) ?? 0
+            return a == b ? first.offset < second.offset : a > b
+        }.map(\.element)
+    }
+    /// A suggestion's score, 1–10: the planner's, else Find Clips'; nil without either.
+    func suggestionScore(_ clip: ClipRange) -> Int? {
+        if let planned = makeIt.scores[clip.id]?.score { return planned }
+        guard let resultID = clip.aiResultId, let index = clip.aiClipIndex,
+              let result = project.ai.results.first(where: { $0.id == resultID }), result.clips.indices.contains(index) else { return nil }
+        return result.clips[index].score
+    }
     func clipNumber(_ id: String) -> Int? {
         let kept = keptClips
         if let position = kept.firstIndex(where: { $0.id == id }) { return position + 1 }

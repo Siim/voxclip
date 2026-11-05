@@ -59,7 +59,10 @@ import VoxClipCore
                 await model.start()
                 do {
                     let results: [DebugUISuite.Result]
-                    if CommandLine.arguments.contains("-spacingCaptures") {
+                    if CommandLine.arguments.contains("-makeItCaptures") {
+                        // Offscreen Make it postable states (DebugMakeIt.swift), on the -layoutAudit launch path.
+                        results = try await DebugMakeIt.run(app: model, directory: directory)
+                    } else if CommandLine.arguments.contains("-spacingCaptures") {
                         // Offscreen spacing captures (DebugSpacing.swift), on the -layoutAudit launch path.
                         results = try await DebugSpacing.run(app: model, directory: directory)
                     } else if CommandLine.arguments.contains("-timelinePerformanceAudit") {
@@ -329,6 +332,7 @@ import VoxClipCore
         case 43: if let id = selectedClipID { shell.beginRename(id) }
         case 44: if let id = selectedClipID { editor.removeClip(id) }
         case 45: if let id = selectedClipID { editor.presentExport(clipIDs: [id]) }
+        case 62: if let id = makeItClipID(editor) { editor.makeItPostable(id) }
         case 46: editor.seek(source: max(0, editor.sourceTime - 3))
         case 47: editor.seek(source: min(editor.sourceDuration, editor.sourceTime + 3))
         case 48: editor.copySelection()
@@ -340,6 +344,8 @@ import VoxClipCore
     /// View › Frame (impl-plan V4: the Frame picker left the viewer), in the design's order
     /// 9:16 · 1:1 · 16:9 · Original, tags 52–55.
     static let frameAspects: [AspectRatio] = [.portrait, .square, .landscape, .source]
+    /// Clip › Make It Postable acts on the selected row's clip, else the open tab's clip.
+    private func makeItClipID(_ editor: EditorModel) -> String? { selectedClipID ?? editor.activeClip?.id }
     private var selectedClipID: String? {
         switch model.shell.selection {
         case .clip(let id): return id
@@ -454,6 +460,10 @@ import VoxClipCore
             case 49: return editor.finding
             case 43, 44: return selectedClipID.map { !editor.isSuggestion($0) } == true && editor.capabilities.edit
             case 45: return selectedClipID.map { !editor.isSuggestion($0) } == true && editor.canExport && editor.mediaExportable
+            case 62:
+                guard let id = makeItClipID(editor) else { return false }
+                item.title = editor.makeItTitle(clipID: id).replacingOccurrences(of: "✦ Make it postable", with: "Make It Postable")
+                return editor.canMakeItPostable(id)
             case 46: return editor.mediaResolved && Self.backStepEnabled(item, event: commandEvent, responder: NSApp.keyWindow?.firstResponder)
             case 47: return editor.mediaResolved
             case 7: return editor.capabilities.edit && editor.summary.canCutFillers
@@ -593,6 +603,7 @@ import VoxClipCore
         let clip = menu("Clip")
         command(clip, "Make Clip from Selection", 29, "k", [.command, .option])
         command(clip, "Find Clips…", 34, "k", [.command, .shift])
+        command(clip, "Make It Postable", 62)
         command(clip, "Cancel Finding Clips", 49, ".")
         command(clip, "Keep Suggestion", 40, String(UnicodeScalar(NSCarriageReturnCharacter)!), [])
         // The clip bar's Keep ⇧⌘↩ on a suggestion's tab (impl-plan §3.2, V3b), a hidden alternate.
