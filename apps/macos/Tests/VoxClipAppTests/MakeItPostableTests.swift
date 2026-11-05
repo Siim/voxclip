@@ -535,6 +535,10 @@ private final class Calls: Sendable {
         for id in ["discardChanges", "closeRewrite", "keepOriginal", "askAgain", "tryAgain", "rewriteAgain"] {
             #expect(!MakeItRewriteDriver.order.contains { id.hasPrefix($0) }, "\(id) is never pressed")
         }
+        // ai.md §12.9, MVP32 Clip 7: the steps that settle what can't fit the video never wait on the creator.
+        for id in ["keepMyWords", "keepOriginalAudio", "useTakes", "freshPrice"] {
+            #expect(MakeItRewriteDriver.order.contains(id), "\(id) is pressed with no click")
+        }
     }
 
     // MARK: Tones (design.md §6.6 Tone row, §6.7 review row)

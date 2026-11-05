@@ -131,6 +131,10 @@ extension RewriteSession {
                 })
             created = plan
             plan.onFailure = { [weak self] error in self?.logFailure(error, stage: "takes") }
+            #if DEBUG
+            plan.publishOverride = publishOverride
+            #endif
+            plan.onUnusable = { [weak self] phrases in self?.noteUnusable(phrases) }
             // The guard's verdict on a phrase holds for this Rewrite: a later plan never prices it again.
             applyRememberedBlocks(to: plan)
             plan.onBlocked = { [weak self, weak plan] phrase, reason in

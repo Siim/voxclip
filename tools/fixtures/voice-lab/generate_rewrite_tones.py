@@ -31,17 +31,20 @@ MY_PREFIX = 'my-'
 # Every instruction ends with these, so a tone never changes what the speaker said and the cloned voice can say every line.
 KEEP = ('Keep my facts, names, numbers and meaning, and keep my voice. Every line must be speakable as is: '
         'no emoji, hashtags, links or stage directions.')
-FIT = 'Keep each rewritten phrase about as long as the words it replaces, so the new take fits its place.'
-FIT_SHORTER = ('Shorten by cutting rather than adding, and keep each rewritten phrase close to the length of the words it '
-               'replaces, so the new take fits its place.')
+# The video keeps running under the new words (ai.md §12.9), so no tone may make a phrase longer than what it replaces.
+FIT = ('Each rewritten phrase must take no longer to say than the words it replaces, because the video keeps running '
+       'under it. Shorter is fine; never pad with filler words or connectors.')
+FIT_SHORTER = ('Make it tighter by cutting rather than adding: each rewritten phrase is as long as the words it replaces '
+               'or shorter, never longer, because the video keeps running under it. Never pad with filler words or '
+               'connectors.')
 
 # (id, title, descriptor, shortens, featured, body). The body is written as an editor and copywriter would brief it.
 TONES = [
     ('viral-youtuber', 'Viral YouTuber', 'hook, punchy, payoff', True, True,
-     'Rewrite it the way a top YouTuber would say it. Open with a hook in the first sentence that makes a stranger stop '
-     'scrolling. Then short, punchy sentences, one thought each. Add a pattern interrupt where attention would dip, such '
-     'as a sharp question or a quick turn. Build to one clear payoff and land it. Energetic but natural, like me on my '
-     'best take, never hype for its own sake.'),
+     'Rewrite it the way a top YouTuber would say it. Put a hook in the first sentence that makes a stranger stop '
+     'scrolling, by rewording my opening rather than adding a line before it. Then short, punchy sentences, one thought '
+     'each. Where attention would dip, make a pattern interrupt by turning a line into a sharp question or a quick turn. '
+     'Build to one clear payoff and land it. Energetic but natural, like me on my best take, never hype for its own sake.'),
     ('punchy-reel', 'Punchy Reel', '≤ 30 s, fast cuts', True, False,
      'Make it a fast Reel that runs under 30 seconds. Start on the most surprising line, cut every word that does not earn '
      'its place, and keep one idea per sentence. Short, rhythmic lines that build to a quick, memorable ending.'),
@@ -56,8 +59,8 @@ TONES = [
      'Make it sound like a credible professional on LinkedIn. Open with the insight, back it with what I actually did or '
      'saw, and end with a takeaway people can use. Calm, confident and specific. No buzzwords, humblebrag or clickbait.'),
     ('funny', 'Funny', 'light, one joke', False, False,
-     'Make it light and funny. Keep my point, and add one well-placed joke or witty turn of phrase that grows out of what '
-     'I said, ideally near the end. Playful and warm, never mean, sarcastic or forced.'),
+     'Make it light and funny. Keep my point, and turn one line into a well-placed joke or witty turn of phrase that '
+     'grows out of what I said, ideally near the end. Playful and warm, never mean, sarcastic or forced.'),
     ('hype-launch', 'Hype launch', 'big news, clear ask', False, False,
      'Make it a launch announcement. Lead with the news, say who it is for and why it matters now, and end with one clear '
      'call to action. Excited and confident, with real energy, but every claim stays exactly as true as what I said.'),

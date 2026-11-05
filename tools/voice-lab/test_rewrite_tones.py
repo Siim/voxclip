@@ -30,7 +30,7 @@ class RewriteToneCatalogTests(unittest.TestCase):
         viral = self.committed['tones'][0]
         self.assertTrue(viral['featured'])
         for phrase in ('hook in the first sentence', 'short, punchy sentences', 'pattern interrupt', 'one clear payoff',
-                       'Energetic but natural'):
+                       'Energetic but natural', 'rather than adding a line before it'):
             self.assertIn(phrase, viral['instruction'])
 
     def test_every_instruction_keeps_facts_and_stays_speakable(self):

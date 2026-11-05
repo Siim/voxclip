@@ -327,7 +327,7 @@ for (const [id, scope, language, sourceWords, instruction, targetSeconds, minCha
   add('voice-rewrite-requests', id, 'voice-rewrite-request', input, { request, estimate: voiceLabEstimate(request), preflight }, 'doc/spec/voice-lab.md §8.9.1')
 }
 const renderedRewrites = datasets.get('voice-rewrite-requests')
-equal(renderedRewrites[0].expected.request.instruction, 'USER EDIT REQUEST:\nSay it was two weeks ago.\n\nReturn rewritten spoken words for the entire selected source.\nLength: the new words should take about 2.4 seconds to say, which is 27 to 30 letters and digits. Spaces and punctuation are not counted. Write natural wording that stays inside this range. Keep each change about as long, when spoken, as the words it replaces; prefer the same number of syllables.', 'rewrite length instruction')
+equal(renderedRewrites[0].expected.request.instruction, 'USER EDIT REQUEST:\nSay it was two weeks ago.\n\nReturn rewritten spoken words for the entire selected source.\nLength: the selected words take about 2.4 seconds in the video, and the new words get no more time than that: at most 30 letters and digits (spaces and punctuation are not counted). Fewer is fine; about 27 keeps the same length. Never pad to reach a length.', 'rewrite length instruction')
 equal(renderedRewrites[0].expected.request.cachedBlock, 'SOURCE TRANSCRIPT (passage, en):\nSo we basically shipped the new editor last week, and it is faster.', 'rewrite source block')
 equal(renderedRewrites.map(test => test.expected.request.instruction.match(/about (\S+) seconds/)[1]), ['2.4', '12.3', '4.1', '4.1', '0.9', '600.0', '3.0'], 'rewrite targetSeconds uses toFixed1')
 equal(renderedRewrites[2].expected.request.instruction.startsWith('Return rewritten'), true, 'a whitespace-only request is left out')
@@ -379,7 +379,7 @@ for (const [id, entries, fixed, instruction, language] of patchCases) {
 }
 const renderedPatches = datasets.get('patch-rewrite-requests')
 equal(renderedPatches[0].expected.request.cachedBlock, '<transcript>\n[40-48] 0:00 So last year, in 2024, we moved to Tartu.\n[49-53] 0:03 The new studio is bigger.\n(pause 1.9s)\n[54-57] 0:06 Come and visit us.\n</transcript>', 'patch transcript block')
-equal(renderedPatches[0].expected.request.instruction, "Keep each change about as long, when spoken, as the words it replaces; prefer the same number of syllables.\nLetters and digits allowed in the new text of each line, not counting spaces and punctuation:\n[40-48] 27 to 31\n[49-53] 17 to 21\n[54-57] 12 to 15\n\nInstruction: I said 2024; it's 2025.", 'patch request instruction')
+equal(renderedPatches[0].expected.request.instruction, "Never make a change take longer to say than the words it replaces; shorter is fine.\nLetters and digits allowed in the new text of each line, not counting spaces and punctuation (the second number is the most; fewer is fine):\n[40-48] 27 to 31\n[49-53] 17 to 21\n[54-57] 12 to 15\n\nInstruction: I said 2024; it's 2025.", 'patch request instruction')
 equal(renderedPatches[1].expected.request.instruction.endsWith("[54-57] 14 to 14\n\nInstruction: I said 2024; it's 2025."), true, 'patch instruction is trimmed')
 equal(renderedPatches[2].expected.request.cachedBlock, clipFinder.transcriptBlock.prefix + f1Rendered + clipFinder.transcriptBlock.suffix, 'patch block is the clip finder block')
 

@@ -471,6 +471,40 @@ struct VoiceLabTakeRunTests {
         #expect(FileManager.default.fileExists(atPath: paid.path))
         await fixture.run.invalidate()
     }
+    /// The MVP32 Clip 7 case (2026-11-05): every take's dialogue segments ended past its audio, so its timing was recovered
+    /// from its word check. Use must accept such a take and render it, as it does a take with provider timing.
+    @Test(arguments: [("Hello", 4.11), ("or put differently", 4.11), ("or put differently", 4.6)])
+    func aRecoveredTakeIsAcceptedAndRenders(text: String, duration: Double) async throws {
+        let fixture = try await fixture({ $0.wrongDialogueVoice = true; $0.duration = duration }, text: text, modelID: "eleven_v4")
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let quote = try await fixture.run.prepare(fixture.input, candidates: 1)
+        let result = try await fixture.run.execute(quote, approved: true)
+        let row = try #require(result.rows.first)
+        #expect(row.failure == nil && row.selectable, "\(String(describing: row.failure))")
+        let (published, record) = try await fixture.run.publishForAcceptance(row, input: fixture.input, at: fixture.clock.now())
+        let take = try #require(row.audio)
+        let options = VoiceLabVideoDurationOptions(row: row, sourceSampleRate: fixture.input.sourceSampleRate)
+        let choice = try #require([VoiceLabVideoMode.source, .cut, .retimed].first(where: options.allows), "\(options)")
+        let candidate = try VoiceLabRecipeBuilder.candidate(row: row, input: fixture.input, published: published,
+            record: record, createdAt: fixture.clock.now(), videoChoice: choice)
+        let segment = try VoiceLabRecipeBuilder.segment(id: "recovered-take", candidates: [candidate], selected: 0,
+            input: fixture.input, plan: take.fit.plan)
+        var project = try JSONProjectStore.decode(FixtureLoader.data("fixtures/voice-lab/passage-render-v3.voxclip"))
+        let publishedAsset = try #require(published.assets.first)
+        project.id = String(try #require(publishedAsset.file.split(separator: "/").first))
+        project.media.source.durationSeconds = 8
+        project.media.source.audio = MediaAudio(sampleRate: 24_000, channels: 1)
+        project.transcript!.words = fixture.input.items
+        project.transcript!.durationSeconds = 8
+        project.edits = ProjectEdits()
+        project.voiceLab = ProjectVoiceLab(assets: [], cleanAudio: .init(mode: .off), voices: [], videoAssets: [])
+        project = try VoiceLabProject.addVoiceReference(.init(id: record.id, provider: record.provider, voiceId: record.voiceId,
+            consentRecordId: record.id, displayName: record.voiceName, status: .active), to: project)
+        let accepted = try VoiceLabProject.accept(segment, assets: published.assets, into: project)
+        let prepared = try VoiceLabRenderContract.prepare(accepted, scope: .full, labelPosition: .topRight)
+        #expect(prepared.selectedSegmentRecipes.count == 1)
+        await fixture.run.invalidate()
+    }
     @Test(arguments: ["clock", "inputs", "model", "embedder", "consent", "record", "validation", "approval", "launch"])
     func cancellationAtEveryExecuteSuspension(point: String) async throws {
         let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }

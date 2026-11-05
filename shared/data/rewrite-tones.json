@@ -28,7 +28,7 @@
    "descriptor": "hook, punchy, payoff",
    "shortens": true,
    "featured": true,
-   "instruction": "Rewrite it the way a top YouTuber would say it. Open with a hook in the first sentence that makes a stranger stop scrolling. Then short, punchy sentences, one thought each. Add a pattern interrupt where attention would dip, such as a sharp question or a quick turn. Build to one clear payoff and land it. Energetic but natural, like me on my best take, never hype for its own sake. Shorten by cutting rather than adding, and keep each rewritten phrase close to the length of the words it replaces, so the new take fits its place. Keep my facts, names, numbers and meaning, and keep my voice. Every line must be speakable as is: no emoji, hashtags, links or stage directions."
+   "instruction": "Rewrite it the way a top YouTuber would say it. Put a hook in the first sentence that makes a stranger stop scrolling, by rewording my opening rather than adding a line before it. Then short, punchy sentences, one thought each. Where attention would dip, make a pattern interrupt by turning a line into a sharp question or a quick turn. Build to one clear payoff and land it. Energetic but natural, like me on my best take, never hype for its own sake. Make it tighter by cutting rather than adding: each rewritten phrase is as long as the words it replaces or shorter, never longer, because the video keeps running under it. Never pad with filler words or connectors. Keep my facts, names, numbers and meaning, and keep my voice. Every line must be speakable as is: no emoji, hashtags, links or stage directions."
   },
   {
    "id": "punchy-reel",
@@ -36,7 +36,7 @@
    "descriptor": "≤ 30 s, fast cuts",
    "shortens": true,
    "featured": false,
-   "instruction": "Make it a fast Reel that runs under 30 seconds. Start on the most surprising line, cut every word that does not earn its place, and keep one idea per sentence. Short, rhythmic lines that build to a quick, memorable ending. Shorten by cutting rather than adding, and keep each rewritten phrase close to the length of the words it replaces, so the new take fits its place. Keep my facts, names, numbers and meaning, and keep my voice. Every line must be speakable as is: no emoji, hashtags, links or stage directions."
+   "instruction": "Make it a fast Reel that runs under 30 seconds. Start on the most surprising line, cut every word that does not earn its place, and keep one idea per sentence. Short, rhythmic lines that build to a quick, memorable ending. Make it tighter by cutting rather than adding: each rewritten phrase is as long as the words it replaces or shorter, never longer, because the video keeps running under it. Never pad with filler words or connectors. Keep my facts, names, numbers and meaning, and keep my voice. Every line must be speakable as is: no emoji, hashtags, links or stage directions."
   },
   {
    "id": "storyteller",
@@ -44,7 +44,7 @@
    "descriptor": "setup, tension, payoff",
    "shortens": false,
    "featured": false,
-   "instruction": "Tell it as a story. A quick setup that puts the listener in the moment, then the problem or tension, then the turn and the payoff. Use the concrete details I already gave, in plain spoken words. Warm and vivid, never dramatic for its own sake. Keep each rewritten phrase about as long as the words it replaces, so the new take fits its place. Keep my facts, names, numbers and meaning, and keep my voice. Every line must be speakable as is: no emoji, hashtags, links or stage directions."
+   "instruction": "Tell it as a story. A quick setup that puts the listener in the moment, then the problem or tension, then the turn and the payoff. Use the concrete details I already gave, in plain spoken words. Warm and vivid, never dramatic for its own sake. Each rewritten phrase must take no longer to say than the words it replaces, because the video keeps running under it. Shorter is fine; never pad with filler words or connectors. Keep my facts, names, numbers and meaning, and keep my voice. Every line must be speakable as is: no emoji, hashtags, links or stage directions."
   },
   {
    "id": "clear-explainer",
@@ -52,7 +52,7 @@
    "descriptor": "step by step",
    "shortens": false,
    "featured": false,
-   "instruction": "Make it easy to follow. Say the point first, then explain it step by step in plain words, one idea per sentence. Swap jargon for everyday words unless the term matters, and end with what it means for the listener. Keep each rewritten phrase about as long as the words it replaces, so the new take fits its place. Keep my facts, names, numbers and meaning, and keep my voice. Every line must be speakable as is: no emoji, hashtags, links or stage directions."
+   "instruction": "Make it easy to follow. Say the point first, then explain it step by step in plain words, one idea per sentence. Swap jargon for everyday words unless the term matters, and end with what it means for the listener. Each rewritten phrase must take no longer to say than the words it replaces, because the video keeps running under it. Shorter is fine; never pad with filler words or connectors. Keep my facts, names, numbers and meaning, and keep my voice. Every line must be speakable as is: no emoji, hashtags, links or stage directions."
   },
   {
    "id": "linkedin-pro",
@@ -60,7 +60,7 @@
    "descriptor": "calm, credible",
    "shortens": false,
    "featured": false,
-   "instruction": "Make it sound like a credible professional on LinkedIn. Open with the insight, back it with what I actually did or saw, and end with a takeaway people can use. Calm, confident and specific. No buzzwords, humblebrag or clickbait. Keep each rewritten phrase about as long as the words it replaces, so the new take fits its place. Keep my facts, names, numbers and meaning, and keep my voice. Every line must be speakable as is: no emoji, hashtags, links or stage directions."
+   "instruction": "Make it sound like a credible professional on LinkedIn. Open with the insight, back it with what I actually did or saw, and end with a takeaway people can use. Calm, confident and specific. No buzzwords, humblebrag or clickbait. Each rewritten phrase must take no longer to say than the words it replaces, because the video keeps running under it. Shorter is fine; never pad with filler words or connectors. Keep my facts, names, numbers and meaning, and keep my voice. Every line must be speakable as is: no emoji, hashtags, links or stage directions."
   },
   {
    "id": "funny",
@@ -68,7 +68,7 @@
    "descriptor": "light, one joke",
    "shortens": false,
    "featured": false,
-   "instruction": "Make it light and funny. Keep my point, and add one well-placed joke or witty turn of phrase that grows out of what I said, ideally near the end. Playful and warm, never mean, sarcastic or forced. Keep each rewritten phrase about as long as the words it replaces, so the new take fits its place. Keep my facts, names, numbers and meaning, and keep my voice. Every line must be speakable as is: no emoji, hashtags, links or stage directions."
+   "instruction": "Make it light and funny. Keep my point, and turn one line into a well-placed joke or witty turn of phrase that grows out of what I said, ideally near the end. Playful and warm, never mean, sarcastic or forced. Each rewritten phrase must take no longer to say than the words it replaces, because the video keeps running under it. Shorter is fine; never pad with filler words or connectors. Keep my facts, names, numbers and meaning, and keep my voice. Every line must be speakable as is: no emoji, hashtags, links or stage directions."
   },
   {
    "id": "hype-launch",
@@ -76,7 +76,7 @@
    "descriptor": "big news, clear ask",
    "shortens": false,
    "featured": false,
-   "instruction": "Make it a launch announcement. Lead with the news, say who it is for and why it matters now, and end with one clear call to action. Excited and confident, with real energy, but every claim stays exactly as true as what I said. Keep each rewritten phrase about as long as the words it replaces, so the new take fits its place. Keep my facts, names, numbers and meaning, and keep my voice. Every line must be speakable as is: no emoji, hashtags, links or stage directions."
+   "instruction": "Make it a launch announcement. Lead with the news, say who it is for and why it matters now, and end with one clear call to action. Excited and confident, with real energy, but every claim stays exactly as true as what I said. Each rewritten phrase must take no longer to say than the words it replaces, because the video keeps running under it. Shorter is fine; never pad with filler words or connectors. Keep my facts, names, numbers and meaning, and keep my voice. Every line must be speakable as is: no emoji, hashtags, links or stage directions."
   },
   {
    "id": "calm-sincere",
@@ -84,7 +84,7 @@
    "descriptor": "honest, unhurried",
    "shortens": true,
    "featured": false,
-   "instruction": "Make it calm and sincere. Unhurried sentences, honest and personal, as if I were speaking to one person I respect. Remove hype, filler and exaggeration, and let the point land quietly. Shorten by cutting rather than adding, and keep each rewritten phrase close to the length of the words it replaces, so the new take fits its place. Keep my facts, names, numbers and meaning, and keep my voice. Every line must be speakable as is: no emoji, hashtags, links or stage directions."
+   "instruction": "Make it calm and sincere. Unhurried sentences, honest and personal, as if I were speaking to one person I respect. Remove hype, filler and exaggeration, and let the point land quietly. Make it tighter by cutting rather than adding: each rewritten phrase is as long as the words it replaces or shorter, never longer, because the video keeps running under it. Never pad with filler words or connectors. Keep my facts, names, numbers and meaning, and keep my voice. Every line must be speakable as is: no emoji, hashtags, links or stage directions."
   }
  ]
 }

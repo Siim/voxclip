@@ -22,6 +22,8 @@ enum RewriteSmokeReply: Sendable {
 struct RewriteSmokeRequestRecord: Encodable, Sendable {
     let tag: String
     let feedback: Bool
+    /// The request listed each span's time in the video and word budget, and said why (ai.md §12.9).
+    var slots = false
 }
 
 actor RewriteSmokeConnector: LLMConnector {
@@ -44,7 +46,8 @@ actor RewriteSmokeConnector: LLMConnector {
     func send(_ request: LLMRequest, model: String) async throws -> RawCompletion {
         let feedback = request.instruction.contains("FEEDBACK") || (request.cachedBlock ?? "").contains("FEEDBACK")
             || request.instruction.contains("blocked") || request.instruction.contains("Merge")
-        records.append(RewriteSmokeRequestRecord(tag: request.tag, feedback: feedback))
+        records.append(RewriteSmokeRequestRecord(tag: request.tag, feedback: feedback,
+            slots: request.instruction.contains("TIME IN THE VIDEO") && request.system.contains("picture keeps running")))
         switch request.tag {
         case "voice-rewrite":
             guard !rewrites.isEmpty else { throw LLMError.invalidOutput(reason: "The smoke script has no reply.") }

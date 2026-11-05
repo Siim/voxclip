@@ -202,7 +202,7 @@ private final class WorkThreads: Sendable {
         return try #require(String(data: data, encoding: .utf8))
     }
 
-    @Test(arguments: [1, 2]) func automaticWordingFitsAndStopsEarly(round: Int) async throws {
+    @Test(arguments: [1]) func automaticWordingFitsAndStopsEarly(round: Int) async throws {
         let (session, stub, editor) = try await fitFixture()
         defer { editor.close() }
         let fitted = try fittingText(session)
@@ -218,18 +218,22 @@ private final class WorkThreads: Sendable {
         #expect(session.takePlan == nil)
     }
 
-    /// Three rounds that never fit price the change as written (design.md R2): Get Price includes it and the automatic
-    /// fixes reword it from its measured take, instead of holding it outside the paid plan.
-    @Test func automaticWordingPricesTheChangeAsWrittenAfterThreeRounds() async throws {
+    /// A reply line over its budget gets one free repair round (ai.md §12.9); still long, it keeps the speaker's words,
+    /// since no take of it could fit the running video, and the footer goes on (MVP32 Clip 7: "Changes 3, 5 and 6 need a
+    /// shorter wording before takes" with no button that did it).
+    @Test func anOverBudgetLineIsRepairedOnceThenKeptAsRecorded() async throws {
         let (session, stub, editor) = try await fitFixture()
         defer { editor.close() }
+        #expect(session.blockedVoiceOrdinals == [1] && session.voiceReview(1)?.timing?.tooLong == true)
         await stub.configureFit([try fitReply(session.changes[0].hunk.newTokens.joined(separator: " "))])
         await session.beginAutomaticWordingFit()
-        #expect(session.wordingFit.round == 3)
-        #expect(await stub.fitRequests.count == 3)
-        #expect(session.blockedVoiceOrdinals.isEmpty && session.includedVoice.contains(1))
-        #expect(session.autoFix.notes.contains { $0.hasPrefix("Change 1 is priced as written") })
+        #expect(session.wordingFit.round == 1)
+        #expect(await stub.fitRequests.count == 1)
+        #expect(session.blockedVoiceOrdinals.isEmpty && !session.includedVoice.contains(1))
+        #expect(session.ownProposal?[1]?.state == .excluded && session.wordingFit.kept == [1])
+        #expect(session.autoFix.notes.contains { $0.hasPrefix("Change 1 keeps your original words") })
         #expect(session.task.footer.note != session.timingBlockedNote)
+        #expect(session.task.footer.primary != nil, "\(session.task.footer)")
         #expect(!session.task.wordingLocked)
     }
 
@@ -251,17 +255,17 @@ private final class WorkThreads: Sendable {
     }
 
     /// The user's log (2026-11-05): `stage=wordingFit type=VoiceLabError case=invalidInput` as the fit was prepared. A fit
-    /// that can't start ends with the held change priced as written and Get Price as the next step, never a control that
-    /// sends the same fit again.
-    @Test func aWordingFitThatCannotStartLeavesGetPriceAsTheNextStep() async throws {
+    /// that can't start ends with the held change kept as recorded and a step forward, never a control that sends the
+    /// same fit again.
+    @Test func aWordingFitThatCannotStartKeepsTheWordsAndGoesOn() async throws {
         let (session, _, editor) = try await fitFixture()
         defer { editor.close() }
         let held = session.blockedVoiceOrdinals
         #expect(!held.isEmpty && held.allSatisfy { session.voiceReview($0)?.timing?.tooLong == true })
         session.wordingFitFailed(VoiceLabError.invalidInput)
         #expect(!session.wordingFit.problem.isEmpty && session.wordingFit.completed && !session.wordingIsLocked)
-        #expect(held.allSatisfy(session.pricedAnyway.contains) && session.blockedVoiceOrdinals.isEmpty)
-        #expect(session.task.footer.primary?.title.hasPrefix("Get Price") == true, "\(session.task.footer.primary?.title ?? "none")")
+        #expect(held.allSatisfy(session.wordingFit.kept.contains) && session.blockedVoiceOrdinals.isEmpty)
+        #expect(session.task.footer.primary != nil, "\(session.task.footer)")
         #expect(session.task.footer.primary?.id != "fitWording" && !session.task.cards.contains { card in
             if case .nextSteps(let steps) = card { return steps.chips.contains { $0.action.id.hasPrefix("fit") } } else { return false }
         })
@@ -310,13 +314,13 @@ private final class WorkThreads: Sendable {
         #expect(await stub.fitRequests.isEmpty)
         if approve {
             await session.fitWording(approved: true)
-            #expect(await stub.fitRequests.count == 3)
+            #expect(await stub.fitRequests.count == 1)
             #expect(!session.wordingFit.awaitingApproval)
-            // The unfitted change is now priced as written, so another automatic fit has nothing to ask about and
-            // sends nothing: the approval covered that reply only.
+            // The unfitted change now keeps its words, so another automatic fit has nothing to ask about and sends
+            // nothing: the approval covered that reply only.
             await session.beginAutomaticWordingFit()
             #expect(!session.wordingFit.awaitingApproval && session.blockedVoiceOrdinals.isEmpty)
-            #expect(await stub.fitRequests.count == 3)
+            #expect(await stub.fitRequests.count == 1)
         } else {
             session.stopWordingFit()
             #expect(await stub.fitRequests.isEmpty)
@@ -362,7 +366,8 @@ private final class WorkThreads: Sendable {
         session.finishRun(seconds: 0.1)
         #expect(session.includedVoice.isEmpty)
         #expect(session.task.footer.note == "Change \(try #require(session.blockedVoiceOrdinals.first)) needs a shorter wording before takes.")
-        #expect(session.task.footer.primary == nil)
+        // Never a dead end (design.md R2): the held change can keep the speaker's words.
+        #expect(session.task.footer.primary?.id == "keepMyWords")
     }
 
     @Test func priceOverrideAndOriginalWordsDoNotSendAnything() async throws {
@@ -404,7 +409,7 @@ private final class WorkThreads: Sendable {
         let timing = try #require(session.voiceReview(ordinal)?.timing)
         #expect(!timing.fits && !timing.tooLong)
         #expect(session.task.footer.note == "Change \(ordinal) needs wording that fits before takes.")
-        #expect(session.task.footer.primary == nil)
+        #expect(session.task.footer.primary?.id == "keepMyWords")
         let recovery = PhraseTimingRecovery(tooLong: false, priceAnyway: true, action: { _ in })
         #expect(recovery.retryTitle == "Ask for longer")
         app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(false)
@@ -1199,7 +1204,7 @@ extension RewriteScopeTests {
         #expect(plan.chips.map(\.action.id) == ["keepOriginal", "mergePhrases", "suggestion.0"] && plan.chips[1].suggested)
         #expect(plan.chips.map(\.action.title) == ["Keep original words for phrase 2", "Merge with phrase 1", "Say it in 6 words"])
         #expect(session.task.nextSteps.compactMap(\.ask).count == 1)
-        #expect(session.task.footer.note == "Phrase 2 needs a fix above." && session.task.footer.primary == nil)
+        #expect(session.task.footer.note == "Phrase 2 needs a fix above." && session.task.footer.primary?.title == "Keep Original Words for Phrase 2")
         let expected = try RewriteNextActionFeedback.merge(first: 1, second: 2, shared: try SharedResources.locate())
         await stub.configureRewrites([try reply("One merged and much shorter sentence")])
         plan.chips[1].action.perform()
@@ -1246,7 +1251,10 @@ extension RewriteScopeTests {
         session.showProposal()
         let plan = try #require(steps(session, "plan"))
         #expect(!plan.chips.isEmpty && plan.line == ClipTakePlan.copy(failure))
-        #expect(session.task.footer.primary == nil && session.task.footer.note == session.takePlanBlocker)
+        // The footer names the blocker and carries its step forward (MVP32 Clip 7: "Fix the problem above" with no button).
+        let forward: [String: String] = ["stale": "freshPrice", "noSelection": "reviewTakes", "spendingCap": "freshPrice",
+                                         "unknownSpend": "freshPrice", "geometry": "keepOriginal"]
+        #expect(session.task.footer.primary?.id == forward[name] && session.task.footer.note == session.takePlanBlocker, "\(session.task.footer)")
         if name == "geometry" { #expect(plan.chips.first?.action.title == "Keep original words for phrase 1" && session.task.nextSteps.compactMap(\.ask).count == 1) }
         if name == "stale" { #expect(plan.chips.contains { $0.action.id == "freshPrice" }) }
     }

@@ -228,6 +228,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         /// Thrown by the next quotes, after the plan was priced.
         var quoteFailure: (any Error)?
         var beforePublish: ((Int) async -> Void)?
+        /// What publishing returns for a phrase, changed: a take whose render recipe can't be made (MVP32 Clip 7).
+        var transformPublished: ((Int, VoiceLabPublishedTake) -> VoiceLabPublishedTake)?
         var beforeDispatch: (() -> Void)?
         var beforeProgress: (@MainActor @Sendable () async -> Void)?
         var beforeScratch: (() async -> Void)?
@@ -386,7 +388,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         backend.publish = { [weak made] phrase, row, input, date in
             made?.publishedIDs.append(row.id)
             await made?.beforePublish?(phrase)
-            return try await real.publish(phrase, row, input, date)
+            let (published, record) = try await real.publish(phrase, row, input, date)
+            return (made?.transformPublished?(phrase, published) ?? published, record)
         }
         backend.scratch = { [weak made] phrase, take in
             await made?.beforeScratch?()
@@ -1579,10 +1582,10 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
     }
 
-    /// The automatic wording fit ended with a change still too long (the Rewrite smoke's S12): Get Price includes it as
-    /// written instead of pricing only the fitting changes, where no automatic fix could add it to the paid plan later.
-    /// Stop is the user's choice and changes nothing.
-    @Test func heldBackChangeIsPricedOnceTheAutomaticFitEnds() async throws {
+    /// The automatic wording fit ended with a change still too long (ai.md §12.9, the Rewrite smoke's S12): it keeps the
+    /// speaker's words, since no take of it could fit the running video, and Get Price prices the rest. Stop is the
+    /// user's choice and changes nothing until the footer's Keep My Words.
+    @Test func heldBackChangeKeepsItsWordsOnceTheAutomaticFitEnds() async throws {
         let fixture = try await fixture(indices: [10, 17]); defer { try? FileManager.default.removeItem(at: fixture.root) }
         let (editor, session) = try await productionSession(fixture)
         defer { editor.close() }
@@ -1595,14 +1598,15 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(session.blockedVoiceOrdinals == [1] && session.includedVoice == [2])
         #expect(session.voiceReview(1)?.timing?.tooLong == true)
         session.wordingFit.stopped = true
-        session.priceHeldBackChanges()
+        session.keepLongChangesAsRecorded()
         #expect(session.blockedVoiceOrdinals == [1] && session.includedVoice == [2] && session.autoFix.notes.isEmpty)
         session.wordingFit.stopped = false
-        session.priceHeldBackChanges()
-        #expect(session.blockedVoiceOrdinals.isEmpty && session.includedVoice == [1, 2])
-        #expect(session.autoFix.notes == ["Change 1 is priced as written; once its take is measured, Rewrite rewords it to fit."])
+        session.keepLongChangesAsRecorded()
+        #expect(session.blockedVoiceOrdinals.isEmpty && session.includedVoice == [2])
+        #expect(session.ownProposal?[1]?.state == .excluded && session.wordingFit.kept == [1])
+        #expect(session.autoFix.notes == ["Change 1 keeps your original words: still longer than its time in the video after a fit."])
         session.showProposal()
-        #expect(session.task.footer.primary?.title == "Get Price · 2 phrases", "\(session.task.footer)")
+        #expect(session.task.footer.primary?.title == "Get Price · 1 phrase", "\(session.task.footer)")
     }
 
     @Test func productionQuoteLeavesOutBlockedPhrasesUntilExplicitOverride() async throws {
@@ -1847,14 +1851,15 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
             checkedGenerating = true
             #expect(plan.generating && session.hasPaidTakes)
             #expect(session.voiceReview(2)?.timing?.pace == 1)
-            #expect(session.blockedVoiceOrdinals == [2])
+            // Once takes are paid the estimate holds nothing back (MVP32 Clip 7); change 2 is outside the plan.
+            #expect(session.blockedVoiceOrdinals.isEmpty)
             #expect(session.voiceReview(ordinal)?.timing?.pace == 1)
             #expect(session.includedVoice == included)
         }
         await plan.start(approved: true)
         #expect(checkedGenerating && !plan.phrases[0].takes.isEmpty, "\(plan.problem)")
         #expect(session.voiceReview(ordinal)?.timing?.pace == 1)
-        #expect(session.blockedVoiceOrdinals == [2])
+        #expect(session.blockedVoiceOrdinals.isEmpty && !session.includedVoice.contains(2))
         let proposal = session.ownProposal?.changes
         for action in [PhraseTimingAction.priceAnyway, .original] {
             session.phraseTimingAction(action, ordinal: 2)
@@ -2411,6 +2416,67 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
     }
 
+    /// MVP32 Clip 7: a take whose render recipe can't be made stopped Use on a Review card whose only button, Use 1 Take,
+    /// repeated the failure. Now that phrase keeps the speaker's audio with one line of why, and the others are used.
+    @Test func aTakeThatCannotRenderKeepsItsPhraseAsRecordedAndUseGoesOn() async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = session(fixture); defer { editor.close() }
+        installReview(session, fixture: fixture, withFreeChanges: false)
+        fixture.transformPublished = { phrase, published in
+            guard phrase == 1 else { return published }
+            return VoiceLabPublishedTake(assets: published.assets, audio: published.audio, outDuration: published.outDuration,
+                                         words: [], chunks: published.chunks)
+        }
+        await fixture.plan.prepare(); await fixture.plan.start(approved: true)
+        try chooseSourceDuration(fixture.plan)
+        #expect(await session.acceptTakes(), "\(session.problem)")
+        #expect(fixture.plan.phrases[1].leftOut && !fixture.plan.phrases[0].leftOut && !fixture.plan.phrases[2].leftOut)
+        #expect(editor.project.voiceLab.segments.count == 2)
+        #expect(editor.announcements.contains("Phrase 2 couldn't be made part of the video, so it keeps your original audio."), "\(editor.announcements)")
+        #expect(editor.openRewrite == nil)
+    }
+
+    /// Every take refused: each phrase keeps its audio and the footer ends the Rewrite (never a Review card that repeats Use).
+    @Test func whenNoTakeCanRenderTheFooterEndsTheRewrite() async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = session(fixture); defer { editor.close() }
+        installReview(session, fixture: fixture, withFreeChanges: false)
+        fixture.transformPublished = { _, published in
+            VoiceLabPublishedTake(assets: published.assets, audio: published.audio, outDuration: published.outDuration,
+                                  words: [], chunks: published.chunks)
+        }
+        await fixture.plan.prepare(); await fixture.plan.start(approved: true)
+        try chooseSourceDuration(fixture.plan)
+        #expect(await session.acceptTakes() == false)
+        #expect(fixture.plan.phrases.allSatisfy(\.leftOut) && session.takePlanFailure == nil)
+        session.showProposal()
+        let primary = try #require(session.task.footer.primary, "\(session.task.footer)")
+        #expect(["closeRewrite", "apply"].contains(primary.id))
+        #expect(!session.task.cards.contains { card in
+            if case .nextSteps(let steps) = card { return steps.chips.contains { $0.action.id == "useTakes" } } else { return false }
+        })
+    }
+
+    /// No Rewrite footer that waits on nothing lacks a step forward (design.md R2): a plan failure Use could not settle
+    /// still offers Keep My Original Audio with paid takes, and a fresh price without.
+    @Test func aPlanFailureFooterAlwaysHasAStepForward() async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = session(fixture); defer { editor.close() }
+        installReview(session, fixture: fixture, withFreeChanges: false)
+        session.takePlanFailure = VoiceLabProjectError.invalidSegment
+        session.showProposal()
+        #expect(session.task.footer.primary?.id == "freshPrice", "\(session.task.footer)")
+        await fixture.plan.prepare(); await fixture.plan.start(approved: true)
+        #expect(session.hasPaidTakes)
+        session.takePlanFailure = VoiceLabProjectError.qaRejected
+        session.showProposal()
+        let forward = try #require(session.task.footer.primary, "\(session.task.footer)")
+        #expect(forward.id == "keepOriginalAudio" && session.task.footer.note == "Fix the problem above to go on.")
+        forward.perform()
+        #expect(fixture.plan.phrases.allSatisfy(\.leftOut) && session.takePlanFailure == nil)
+        #expect(["closeRewrite", "apply"].contains(session.task.footer.primary?.id ?? ""), "\(session.task.footer)")
+    }
+
     @Test func nonfittingReviewRefusesUseWithoutSuccessFeedbackOrUndo() async throws {
         let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
         let (editor, session) = session(fixture); defer { editor.close() }
@@ -2550,9 +2616,12 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(session.blockedVoiceOrdinals.isEmpty)
         #expect(session.task.footer.primary?.id == "useTakes", "\(session.task.footer)")
         #expect(session.task.footer.note?.contains("before takes") != true, "\(session.task.footer)")
-        // Kept as recorded, the phrase isn't voiced any more: the new estimate holds its change back.
+        // Kept as recorded, the phrase isn't voiced any more, and with takes paid the estimate still holds nothing back:
+        // the footer goes on (MVP32 Clip 7's "need a shorter wording before takes" with no step forward).
         plan.leaveOut(phrase: 0)
-        #expect(session.voicedOrdinals.isEmpty && session.blockedVoiceOrdinals == [ordinal])
+        session.showProposal()
+        #expect(session.voicedOrdinals.isEmpty && session.blockedVoiceOrdinals.isEmpty)
+        #expect(session.task.footer.primary != nil, "\(session.task.footer)")
     }
 
     /// A failed word check gets one automatic Try another; its passing take is chosen with no click.

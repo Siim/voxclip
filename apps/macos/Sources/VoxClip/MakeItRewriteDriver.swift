@@ -21,14 +21,18 @@ import VoxClipCore
     init(editor: EditorModel, request: MakeItRewriteRequest) { self.editor = editor; self.request = request }
 
     /// The footer, link and chip controls the driver may press, in the order a creator reaches for them. Discard, Done,
-    /// Keep original words, Ask again and Try again are never pressed: each gives up a take or sends again.
+    /// Keep original words, Ask again and Try again are never pressed: each gives up a take or sends again. Keep My Words
+    /// (changes too long for the video, nothing paid) and Keep My Original Audio (offered only when Use found no take it
+    /// can put in the video) give up nothing usable, so a run never waits on the creator for them (ai.md §12.9).
     static let order = ["approveTakeQuote", "useTakes", "chooseTake", "takeQuote-", "prepareTakes", "makeTakes", "keepFixing",
-                        "withinSentence", "revoiceAll", "mergePhrases", "freshPrice", "reviewTakes", "showTakes", "keepAll", "useTake"]
+                        "withinSentence", "revoiceAll", "mergePhrases", "freshPrice", "reviewTakes", "showTakes", "keepMyWords",
+                        "keepOriginalAudio", "keepAll", "useTake"]
     /// Controls whose click costs money; they run only within the budget.
     static func pricedID(_ id: String) -> Bool { id.hasPrefix("takeQuote-") || id.hasPrefix("approveTakeQuote") || id.hasPrefix("keepFixing") }
 
     func run() async -> MakeItRewriteOutcome {
-        guard editor.app.voiceLabRewriteEnabled else {
+        let voiceLabOn: Bool = editor.app.voiceLabRewriteEnabled
+        guard voiceLabOn else {
             return MakeItRewriteOutcome(result: .unavailable("Turn on Voice Lab and make your voice to voice rewrites. Nothing was sent."))
         }
         if let open = editor.openRewrite, open.isOpen {
@@ -42,6 +46,8 @@ import VoxClipCore
         #if DEBUG
         await editor.makeItGeneration?(session)
         #endif
+        // The same free fit round a Rewrite reply gets (ai.md §12.9); a line still too long then keeps its words.
+        if !session.blockedVoiceOrdinals.isEmpty { await session.beginAutomaticWordingFit() }
         let before = Set(editor.project.voiceLab.segments.map(\.id))
         var spent = Decimal(0)
         for _ in 0..<32 {
@@ -171,11 +177,17 @@ import VoxClipCore
     /// Nothing is left to voice (every phrase kept as recorded, or a source that can't be read): the Rewrite's text fixes
     /// are applied as free edits when it has any, and the Rewrite ends. Nil while there is something to voice.
     private func finishAsRecorded(_ session: RewriteSession, spent: Decimal) async -> MakeItRewriteOutcome.Result? {
-        guard let plan = session.takePlan, !session.takesBusy,
-              plan.settledWithBlocks || RewriteSession.settlesPlan(plan.failure),
+        guard !session.takesBusy, !session.wordingIsLocked,
               let primary = session.task.footer.primary, primary.id == "apply" || primary.id == "closeRewrite" else { return nil }
-        let reason = keptBlocked.isEmpty ? (plan.problem.isEmpty ? "Your words stay as recorded." : plan.problem)
-            : "It doesn't sound like your voice here, so nothing was sent."
+        // Settled: the guard blocked every phrase, the source can't be read, every phrase keeps its audio (its take could
+        // not go into the video, or its rounds ended), or no change is left to voice (each too long for its slot).
+        let plan = session.takePlan
+        let settled = plan.map { $0.settledWithBlocks || RewriteSession.settlesPlan($0.failure) || $0.phrases.allSatisfy(\.leftOut) }
+            ?? session.includedVoice.isEmpty
+        guard settled else { return nil }
+        let problem = plan?.problem ?? ""
+        let reason = !keptBlocked.isEmpty ? "It doesn't sound like your voice here, so nothing was sent."
+            : !problem.isEmpty ? problem : session.autoFix.notes.last ?? "Your words stay as recorded."
         pressed = "Make it postable presses [\(primary.title)]"
         primary.perform()
         if session.isOpen, !session.hasPaidTakes { editor.closeRewrite(returnFocus: false) }

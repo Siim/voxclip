@@ -9,7 +9,7 @@ import VoxClipCore
 // (doc/release.md). Each scenario opens the real `RewriteSession` on a small fixture with scripted stand-ins
 // (DebugRewriteSmokeStubs.swift), clicks only what a user could click, and after every step reads the panel as it is
 // drawn: its task model and, offscreen in a window that is never shown, its view and accessibility tree. The invariants
-// I1–I7 are checked at every step (I8–I9 at the end of S10–S12 and S14–S15) and written to rewrite-smoke.json and summary.txt.
+// I1–I7 and I10 are checked at every step (I8–I9 at the end of S10–S12 and S14–S15) and written to rewrite-smoke.json and summary.txt.
 
 @MainActor enum DebugRewriteSmoke {
     // MARK: Report
@@ -1022,6 +1022,7 @@ import VoxClipCore
                 checks.append(Check(invariant: "I3", passed: snapshot.textFields <= 1,
                     detail: "\(snapshot.textFields) free-text field\(snapshot.textFields == 1 ? "" : "s")"))
                 checks.append(footerCheck(snapshot))
+                checks.append(forwardCheck(snapshot))
             }
             let lost = paidBefore.subtracting(current)
             let confirmed = clicked == "discardChanges" || (!open && completedByUse)
@@ -1068,6 +1069,22 @@ import VoxClipCore
                 if !elsewhere { return Check(invariant: "I4", passed: false, detail: "footer '\(note)' names a phrase the panel doesn't show") }
             }
             return Check(invariant: "I4", passed: true, detail: note.isEmpty ? "no footer note" : "footer '\(note)'")
+        }
+
+        /// I10: whenever Rewrite waits on nothing, its footer has a primary that moves forward (design.md R2; MVP32 Clip 7
+        /// showed "Changes 3, 5 and 6 need a shorter wording before takes. Fix the problem above to go on." with only Keep
+        /// All beside it, which I1 passed because chips above still acted).
+        private func forwardCheck(_ snapshot: Snapshot) -> Check {
+            guard let session, session.isOpen, case .proposal = session.task.state else { return Check(invariant: "I10", passed: true, detail: "not a proposal") }
+            let plan = session.takePlan
+            let waiting = plan?.phrases.contains { $0.takes.contains { $0.row.voiceCheck == .waiting } } == true
+            let flags: [(String, Bool)] = [("takes", session.takesBusy), ("wording fit", session.wordingIsLocked), ("re-ask", session.isReasking),
+                ("reply", session.isProposing), ("automatic fixes", session.autoFix.work != nil || snapshot.resolverRunning),
+                ("video", plan?.preparingVideo == true), ("lip sync", plan?.lipsync.usingTakes == true), ("voice check", waiting)]
+            if let running = flags.first(where: \.1) { return Check(invariant: "I10", passed: true, detail: "waiting on \(running.0)") }
+            let primary = session.task.footer.primary
+            return Check(invariant: "I10", passed: primary != nil,
+                detail: primary.map { "footer [\($0.title)]" } ?? "no step forward: '\(snapshot.footer ?? "")'")
         }
 
         private func savePNG(step: Int) -> String? {
@@ -1249,7 +1266,8 @@ import VoxClipCore
             try await harness.start()
             try await harness.finish()
         },
-        Definition(id: "S12", title: "Get Price while one change is held back by its estimate", voiced: 2,
+        // ai.md §12.9: a change still long after its one free fit keeps the speaker's words; Get Price prices the other.
+        Definition(id: "S12", title: "Get Price after one change too long for its slot keeps your words", voiced: 1,
             fixture: Fixture(rewrites: [.passage(replace([twoChanges[0], ("captions follow the words as they change",
                 "subtitles carefully and patiently track every single spoken line, every little word and every tiny pause while all of them shift around")]))],
                 fits: [.sameWords, .sameWords, .sameWords, .halfWords, .halfWords, .halfWords])) { harness in
@@ -1289,7 +1307,7 @@ import VoxClipCore
             // A take whose only issue is its join is chosen with it (ADR-R39): no phrase needs its own click.
             try await harness.finish()
         },
-    ] + ownTakeScenarios + guardScenarios + makeItScenarios + askClaudeScenarios + clipControlsScenarios + toneScenarios + claudeModeScenarios }
+    ] + ownTakeScenarios + guardScenarios + fitScenarios + makeItScenarios + askClaudeScenarios + clipControlsScenarios + toneScenarios + claudeModeScenarios }
 
     /// S16's take: the base script twelve times over, about nine minutes.
     nonisolated static let longTakeScript = Array(repeating: baseScript, count: longTakeRepeats).joined(separator: " ")

@@ -2,8 +2,8 @@
   "schema": "voxclip-voice-lab-next-actions-cases/1",
   "sources": {
     "shared/prompts/rewrite-next-actions.json": "0f36b46f2fd154e382c2566cca76455037e4b5b2e0ad6177df08009c21a96c36",
-    "shared/prompts/voice-rewrite.json": "68b7d97c0a46512c468f2c807e8bbce6d19e0a436b50f16c99dc67d2c5db4b94",
-    "shared/prompts/patch-rewrite.json": "8cd5a4730870ce1eb64f9254b93f58273fd4d5b2ece163cb286928232854dbf0"
+    "shared/prompts/voice-rewrite.json": "7364e82dc7090b01ca0853b4f905b6175d17a2d6099498159a9c3b69df8f5b9c",
+    "shared/prompts/patch-rewrite.json": "237b94efad0e698c1f8bf830bd94ee2520de9a9e273f13dcfe0f06ea404621a4"
   },
   "parsing": [
     {

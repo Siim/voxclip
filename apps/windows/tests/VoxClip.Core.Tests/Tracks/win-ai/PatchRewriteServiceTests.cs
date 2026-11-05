@@ -175,7 +175,7 @@ public sealed class PatchRewriteServiceTests
                 // Optional AI-suggested next steps (voice-lab.md §8.2.1); the Windows behaviour is owed.
                 ["nextActions"] = JsonNode.Parse("""{"type":"array","items":{"type":"object","additionalProperties":false,"required":["label","instruction"],"properties":{"label":{"type":"string"},"instruction":{"type":"string"},"ordinals":{"type":"array","items":{"type":"integer"}}}}}""") }
         };
-        Assert.Equal(3, prompt["promptVersion"]!.GetValue<int>());
+        Assert.Equal(4, prompt["promptVersion"]!.GetValue<int>());
         Assert.Equal("patch_edits", prompt["schemaName"]!.GetValue<string>());
         EqualJson(schema, prompt["schema"]);
         Assert.Equal("Check this: it adds something you didn't say.", prompt["messages"]!["checkThis"]!.GetValue<string>());
