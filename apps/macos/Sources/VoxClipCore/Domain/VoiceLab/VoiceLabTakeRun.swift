@@ -372,7 +372,9 @@ extension VoiceLabTakeRow {
     }
 }
 
-public enum VoiceLabTakeRunEnd: String, Sendable, Equatable { case completed, earlyStop, cancelled, invalidated, fatal }
+/// How a take run's window ended. `blocked`: the use-time guard (voice-lab §6.9) refused the window's speech before
+/// anything was sent. That settles the window for the run; a batch's later windows go on.
+public enum VoiceLabTakeRunEnd: String, Sendable, Equatable { case completed, earlyStop, cancelled, invalidated, fatal, blocked }
 public struct VoiceLabTakeRunResult: Sendable, Equatable {
     public let rows: [VoiceLabTakeRow]
     public let end: VoiceLabTakeRunEnd

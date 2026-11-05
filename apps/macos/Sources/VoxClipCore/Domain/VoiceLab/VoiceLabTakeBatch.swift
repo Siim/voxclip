@@ -106,7 +106,7 @@ public struct VoiceLabTakeBatchProgress: Sendable, Equatable {
         sent.formUnion(requestIDs)
         discarded.formUnion(Set(own.requestIDs).subtracting(requestIDs))
         switch end {
-        case .completed, .earlyStop:
+        case .completed, .earlyStop, .blocked:
             window = index + 1 < batch.windows.count ? index + 1 : nil
         case .cancelled, .invalidated, .fatal:
             for later in batch.windows[(index + 1)...] { discarded.formUnion(later.requestIDs) }

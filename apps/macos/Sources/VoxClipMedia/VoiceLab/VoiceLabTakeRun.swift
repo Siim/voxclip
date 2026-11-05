@@ -417,7 +417,11 @@ public actor VoiceLabTakeRun {
                 catch { return VoiceLabTakeRunResult(rows: rows, end: end(error), failure: failure(error)) }
                 if !short, qa.passed, case .exact = processed.fit { return VoiceLabTakeRunResult(rows: rows, end: .earlyStop) }
             } catch {
-                guard dispatch.started else { return VoiceLabTakeRunResult(rows: rows, end: end(error), failure: failure(error)) }
+                guard dispatch.started else {
+                    // The guard judged this window before anything was sent: no retry changes its verdict, and a batch's
+                    // other windows go on (voice-lab §6.9).
+                    return VoiceLabTakeRunResult(rows: rows, end: Self.guardSettles(error) ? .blocked : end(error), failure: failure(error))
+                }
                 if generated == nil, let decoded = synthesisAccepted.unalignedAudio {
                     // Keep paid PCM even when its timing/segment metadata failed. It is playable, never selectable.
                     generated = decoded
@@ -515,6 +519,12 @@ public actor VoiceLabTakeRun {
         let retired = Array(scratches.values)
         scratches.removeAll(); paidAssets.removeAll()
         for scratch in retired { await scratch.invalidate() }
+    }
+    /// The use-time guard's own refusals, which the same speech always repeats: not the voice owner, or too little of the
+    /// patch speaker's speech to check (`speakerMismatch` from the embedding).
+    static func guardSettles(_ error: any Error) -> Bool {
+        guard let error = error as? VoiceConsentError else { return false }
+        return error == .voiceOwnerMismatch || error == .speakerMismatch
     }
     private func fatal(_ error: any Error) -> Bool {
         if error is VoiceConsentError || error is CancellationError || error is Abort || Task.isCancelled { return true }

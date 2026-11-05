@@ -83,6 +83,8 @@ struct RewriteChange: Equatable, Sendable {
     /// The take as the user reads it: corrections applied to words.
     private(set) var transcript: [TimedWord]
     var pricedAnyway: Set<Int> = []
+    /// Voice changes the use-time guard settled in this Rewrite, by ordinal, with the stop (RewriteSettledPhrases.swift).
+    var guardBlocked: [Int: String] = [:]
     var shorterFeedback: String?
     let wordingFit = RewriteWordingFitState()
     /// A next step's re-ask in flight, its AI suggestions and the advisory voice budget (RewriteNextSteps.swift).
@@ -605,6 +607,7 @@ struct RewriteChange: Equatable, Sendable {
         wordingFit.initialEstimates = [:]; wordingFit.frozen = []; wordingFit.kept = []; wordingFit.problem = ""
         wordingFit.measured = nil
         pricedAnyway = []
+        guardBlocked = [:]
         takePlanFailure = nil
         reasking.reset()
         autoFix.reset()
@@ -770,6 +773,7 @@ struct RewriteChange: Equatable, Sendable {
             func moved(_ ordinals: Set<Int>) -> Set<Int> { Set(ordinals.compactMap { renumber[$0] }) }
             replyParts = Dictionary(replyParts.compactMap { key, value in renumber[key].map { ($0, value) } }, uniquingKeysWith: { first, _ in first })
             pricedAnyway = moved(pricedAnyway); leftOutUnavailable = moved(leftOutUnavailable)
+            guardBlocked = Dictionary(guardBlocked.compactMap { key, value in renumber[key].map { ($0, value) } }, uniquingKeysWith: { first, _ in first })
             wordingFit.kept = moved(wordingFit.kept); wordingFit.frozen = moved(wordingFit.frozen)
             wordingFit.initialEstimates = Dictionary(wordingFit.initialEstimates.compactMap { key, value in renumber[key].map { ($0, value) } },
                                                      uniquingKeysWith: { first, _ in first })
