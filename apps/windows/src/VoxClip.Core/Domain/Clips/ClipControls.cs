@@ -103,6 +103,32 @@ public static class ClipControlsProject
         return result;
     }
 
+    /// <summary>The clip's controls, its defaults when none are stored; null for no clip.</summary>
+    public static ProjectClipControls? Controls(string? clipId, Project project) => clipId is null ? null
+        : project.ClipControls.FirstOrDefault(entry => entry.ClipId == clipId) ?? new(clipId, 1, null, ClipLook.Original, 0, 0, 0, false, false, 0);
+
+    /// <summary>A speed clamped to 0.5–2 and rounded to hundredths (Mac <c>normalizedSpeed</c>); 1 when not finite.</summary>
+    public static double NormalizedSpeed(double rate) =>
+        double.IsFinite(rate) ? Math.Round(Math.Clamp(rate, 0.5, 2) * 100, MidpointRounding.AwayFromZero) / 100 : 1;
+
+    /// <summary>The project with one clip's speed set (normalised) and its other controls kept.</summary>
+    public static Project SettingSpeed(double rate, string clipId, Project project) =>
+        Setting(Controls(clipId, project)! with { Speed = NormalizedSpeed(rate) }, project);
+
+    /// <summary>The project with one clip's look set and its other controls kept.</summary>
+    public static Project SettingLook(ClipLook look, string clipId, Project project) =>
+        Setting(Controls(clipId, project)! with { Look = look }, project);
+
+    /// <summary>A clip's span in source seconds, its first word's start to its last word's end; null for an unknown clip.</summary>
+    public static (double Start, double End)? SourceSpan(string clipId, Project project)
+    {
+        var clip = project.Edits.Clips.FirstOrDefault(item => item.Id == clipId);
+        var words = project.Transcript?.Words;
+        var first = words?.FirstOrDefault(word => word.Id == clip?.StartWordId);
+        var last = words?.FirstOrDefault(word => word.Id == clip?.EndWordId);
+        return first is not null && last is not null && last.End > first.Start ? (first.Start, last.End) : null;
+    }
+
     /// <summary>Keeps entries whose clip still exists.</summary>
     public static IReadOnlyList<ProjectClipControls> Pruned(IReadOnlyList<ProjectClipControls> controls, IEnumerable<string> clipIds)
     {
