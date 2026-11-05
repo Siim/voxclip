@@ -1243,7 +1243,7 @@ import VoxClipCore
             // A take whose join is uneven needs its own [Use anyway] (ADR-R37), so a long take may take a click per phrase.
             try await harness.finish(maximumSteps: 48)
         },
-    ] + ownTakeScenarios }
+    ] + ownTakeScenarios + askClaudeScenarios }
 
     /// S16's take: the base script twelve times over, about nine minutes.
     nonisolated static let longTakeScript = Array(repeating: baseScript, count: longTakeRepeats).joined(separator: " ")

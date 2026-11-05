@@ -68,7 +68,7 @@
       "kind": "mute",
       "group": "Censor",
       "fields": "startWord, endWord",
-      "use": "Silence over those words, no tone; captions show blocks."
+      "use": "Silence over those words, no tone; captions show × marks."
     },
     {
       "kind": "blur",

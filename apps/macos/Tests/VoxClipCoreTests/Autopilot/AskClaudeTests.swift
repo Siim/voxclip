@@ -137,7 +137,7 @@ import Testing
         let censored = try ClipAutopilotMapping.apply(free.operations, to: project).project
         let segments = project.transcript!.words.map { EditSegment(id: $0.id, kind: .word, text: $0.text, start: $0.start, end: $0.end, cut: false) }
         let masked = ClipEffects.maskingBleeps(segments, effects: censored.clipEffects).map(\.text)
-        #expect(masked[10...14].allSatisfy { $0.unicodeScalars.allSatisfy { $0 == "\u{2588}" || $0 == "," } } && masked[9] == "is")
+        #expect(masked[10...14].allSatisfy { $0.unicodeScalars.allSatisfy { $0 == "\u{00D7}" || $0 == "," } } && masked[9] == "is")
     }
 
     @Test("A time-range selection resolves its words; a zoom on the full video finds its clip; ducking needs music")

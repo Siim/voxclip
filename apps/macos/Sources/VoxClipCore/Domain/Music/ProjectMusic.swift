@@ -272,7 +272,8 @@ public struct MusicRenderInput: Sendable, Equatable {
 }
 
 extension RenderRequest {
-    /// The same render without its music bed and sound effects: edited-audio checks and probes read the voice alone.
+    /// The same render without its music bed and sound effects: edited-audio checks and probes read the voice alone, still
+    /// bleeped and muted where the project censors it.
     public var withoutMusic: RenderRequest {
         var result = self
         result.music = nil

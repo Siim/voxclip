@@ -117,6 +117,7 @@ extension ProviderChoice {
         let words: String
         if action == .test { words = "a short test request" }
         else if action == .pickCaptions { words = "the words of these clips (\(wordCount) words)" }
+        else if action == .askClaude { words = "your request, these \(wordCount) words and what is detected on screen" }
         else if action == .findClips && verb != "Hook" { words = "this project's transcript (\(wordCount) words)" }
         else { words = scope.words }
         let target = cliName.map { "\($0), billed to the API key it is signed in with" }

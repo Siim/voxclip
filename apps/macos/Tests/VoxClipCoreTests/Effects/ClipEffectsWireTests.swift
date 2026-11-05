@@ -123,13 +123,13 @@ import Testing
     }
 
     @Test func bleepedWordsAreMaskedInCaptionsAndPunctuationStays() {
-        #expect(ClipEffects.masked("damn,") == "\u{2588}\u{2588}\u{2588}\u{2588},")
-        #expect(ClipEffects.masked("$4,200") == "$\u{2588},\u{2588}\u{2588}\u{2588}")
+        #expect(ClipEffects.masked("damn,") == "\u{00D7}\u{00D7}\u{00D7}\u{00D7},")
+        #expect(ClipEffects.masked("$4,200") == "$\u{00D7},\u{00D7}\u{00D7}\u{00D7}")
         let segments = [EditSegment(id: "w1", kind: .word, text: "keep", start: 0, end: 1, cut: false),
                         EditSegment(id: "w2", kind: .word, text: "secret.", start: 1, end: 2, cut: false)]
         let bleep = ClipEffect(id: "fx-bleep-1", clipId: nil, kind: .bleep, start: 1, end: 2, wordIds: ["w2"])
         let masked = ClipEffects.maskingBleeps(segments, effects: [bleep])
-        #expect(masked.map(\.text) == ["keep", "\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}\u{2588}."])
+        #expect(masked.map(\.text) == ["keep", "\u{00D7}\u{00D7}\u{00D7}\u{00D7}\u{00D7}\u{00D7}."])
         #expect(ClipEffects.maskingBleeps(segments, effects: []) == segments)
     }
 

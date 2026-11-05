@@ -37,9 +37,10 @@ public struct ClipEffectsRenderInput: Sendable, Equatable {
     public var audio: [ClipEffect] { effects.filter { [.bleep, .mute, .sound].contains($0.kind) } }
     public var freezes: [ClipEffect] { effects.filter { $0.kind == .freeze } }
 
-    /// The same input without its audio effects, for checks that read the voice alone.
+    /// The same input without its sound effects, for renders that read the voice alone (the edited-audio export, duration
+    /// probes). Bleeps and mutes stay: they silence the voice itself, so the edited audio is censored like the video.
     public var withoutAudio: ClipEffectsRenderInput? {
-        let kept = picture
+        let kept = effects.filter { $0.kind != .sound }
         return kept.isEmpty ? nil : ClipEffectsRenderInput(effects: kept, soundURLs: [:])
     }
 

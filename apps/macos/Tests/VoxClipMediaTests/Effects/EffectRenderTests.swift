@@ -243,6 +243,34 @@ import VoxClipCore
         #expect(abs(voiceAt(24_000 - ramp / 2) - 0.5) < 0.01)
     }
 
+    /// The edited-audio export reads the voice alone (`withoutMusic`): the sound effect goes, the bleep's silence stays.
+    @Test(.timeLimit(.minutes(2))) func theEditedAudioExportStaysCensored() async throws {
+        let source = try await NativeMediaFixtures.shared.file()
+        let shared = try SharedResources.locate()
+        let bleep = ClipEffect(id: "fx-bleep-1", clipId: nil, kind: .bleep, start: 0.5, end: 1.0, wordIds: ["w1"])
+        let pop = ClipEffect(id: "fx-sound-1", clipId: nil, kind: .sound, start: 1.2, end: 1.32, sound: .init(source: .bundled, id: "pop", durationSeconds: 0.12, title: "Pop", license: "cc0"), gainDb: 0)
+        let request = Self.request(source, effects: [bleep, pop], soundURLs: ["fx-sound-1": ClipEffectsRenderInput.bundledSoundURL("pop", shared: shared)]).withoutMusic
+        #expect(request.effects?.effects.map(\.kind) == [.bleep] && request.effects?.soundURLs.isEmpty == true)
+        let graph = try await CompositionBuilder().build(request)
+        let voice = try #require(graph.audioTrack)
+        // The edited-audio export's own read: the voice track through the graph's audio mix.
+        let reader = try AVAssetReader(asset: graph.composition)
+        let output = AVAssetReaderAudioMixOutput(audioTracks: [voice], audioSettings: MediaSupport.pcm(rate: 48_000, channels: 2))
+        output.audioMix = graph.audioMix
+        reader.add(output)
+        #expect(reader.startReading())
+        var interleaved: [Float] = []
+        while let buffer = output.copyNextSampleBuffer(), let block = CMSampleBufferGetDataBuffer(buffer) {
+            var chunk = [Float](repeating: 0, count: CMBlockBufferGetDataLength(block) / 4)
+            _ = chunk.withUnsafeMutableBytes { CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: $0.count, destination: $0.baseAddress!) }
+            interleaved += chunk
+        }
+        let samples = stride(from: 0, to: interleaved.count, by: 2).map { interleaved[$0] }
+        try #require(samples.count >= 96_000)
+        #expect(Self.amplitude(samples, 24_000..<48_000, 441) < 0.001, "the bleeped words stay silent")
+        #expect(Self.amplitude(samples, 60_000..<90_000, 441) > 0.3, "the rest of the voice plays")
+    }
+
     @Test(.timeLimit(.minutes(2))) func muteSilencesTheWordsWithNoTone() async throws {
         let source = try await NativeMediaFixtures.shared.file()
         let mute = ClipEffect(id: "fx-mute-1", clipId: nil, kind: .mute, start: 0.5, end: 1.0, wordIds: ["w1"])

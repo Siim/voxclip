@@ -61,6 +61,10 @@ public struct ClipAutopilotOperation: Sendable, Equatable, Identifiable {
     public let decision: Decision
     public let action: Action
     public let reason: String
+
+    public init(id: String, decision: Decision, action: Action, reason: String) {
+        self.id = id; self.decision = decision; self.action = action; self.reason = reason
+    }
 }
 
 public enum ClipAutopilotMapping {

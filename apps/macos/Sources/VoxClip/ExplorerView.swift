@@ -398,6 +398,11 @@ import VoxClipCore
         if shell.canRewriteExplorerClip(clip.id) {
             Button("Rewrite Clip \(editor.clipNumber(clip.id) ?? 0)") { shell.rewriteExplorerClip(clip.id) }
         }
+        // ✦ Ask Claude on the whole clip (design.md §6.8): the clip opens and the right panel takes the request.
+        // Offered only when it can act: an editable project with an AI, on a kept clip.
+        if editor.canAskClaude, editor.project.edits.clips.contains(where: { $0.id == clip.id }) {
+            Button("Ask Claude\u{2026}") { shell.choose(.clip(clip.id), byClick: false); editor.openAskClaude(clip: clip.id) }
+        }
         Button("Captions") { shell.captionExplorerClip(clip.id) }
         Button("Find More Clips") { shell.findMoreClips() }.disabled(!shell.canFindMoreClips)
         Button("Export Clip…") { shell.exportExplorerClip(clip.id) }.disabled(!shell.canExportExplorerClip(clip.id))

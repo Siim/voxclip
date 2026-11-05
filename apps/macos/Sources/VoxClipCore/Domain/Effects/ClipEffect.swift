@@ -450,9 +450,11 @@ public enum ClipEffects {
         return "fx-\(kind.rawValue)-\(index)"
     }
 
-    /// A bleeped word as captions show it: each letter and digit becomes █, punctuation stays.
+    /// A bleeped word as captions show it: each letter and digit becomes × (U+00D7), punctuation stays. Every bundled
+    /// caption font has it and it is a symbol, so styles that strip punctuation keep it; a block glyph (U+2588) is in none
+    /// of them and an asterisk is punctuation, so either would drop the word from the captions.
     public static func masked(_ text: String) -> String {
-        String(String.UnicodeScalarView(text.unicodeScalars.map { CharacterSet.alphanumerics.contains($0) ? "\u{2588}" : $0 }))
+        String(String.UnicodeScalarView(text.unicodeScalars.map { CharacterSet.alphanumerics.contains($0) ? "\u{00D7}" : $0 }))
     }
 
     /// `segments` with every word a bleep or mute covers masked (`masked`), for the captions of a render.

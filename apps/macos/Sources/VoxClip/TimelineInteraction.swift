@@ -54,6 +54,7 @@ import VoxClipCore
         } else {
             drag = .range(anchor: time(point), point: point, moved: false)
             model.selectedWordIDs = []; model.selectedPauseIDs = []
+            model.askClaude.timeRange = nil
             model.seekTimeline(time(point), on: model.timelineAxis)
         }
         canvas.apply()
@@ -85,7 +86,14 @@ import VoxClipCore
         // Take the final position too, even if AppKit coalesced the last drag event.
         if active { mouseDragged(event) }
         let ended = drag
+        let dragged = selection
         cancel()
+        // A dragged range is what the toolbar's ✦ Ask Claude asks about (design.md §6.8), in source seconds.
+        if case .range(_, _, true)? = ended, let dragged {
+            let axis = model.timelineAxis
+            let lower = model.timelineSourceTime(dragged.lowerBound, on: axis), upper = model.timelineSourceTime(dragged.upperBound, on: axis)
+            model.askClaude.timeRange = upper - lower >= 0.1 ? lower...upper : nil
+        }
         if case .trim(let clip, let start, _, let index?, _)? = ended {
             model.trimClip(clip, start: start, index: index)
             canvas.renderContent(keepingZoom: true)
