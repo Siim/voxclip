@@ -42,7 +42,7 @@ import Testing
                     return .init(input: input, quote: .init(id: UUID(), takes: takes, preparedAt: Date()))
                 })
             }
-            backend.approve = { [self] batch, _ in approvals.append(batch.id) }
+            backend.approve = { [self] batch, _, _ in approvals.append(batch.id) }
             backend.execute = { [self] batch, offset, phrase, progress in
                 executed.append(phrase)
                 let window = batch.windows[offset]

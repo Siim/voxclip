@@ -44,7 +44,7 @@ enum ClipBarMetrics {
 @MainActor final class ClipBarView: NSView, NSTextFieldDelegate, NSPopoverDelegate {
     let model: EditorModel
     let shell: WorkspaceShell
-    /// ✦ Make it postable on the tab's clip, kept or suggested (design.md §6.6): Claude decides, one review follows.
+    /// ✦ Make it postable on the tab's clip, kept or suggested (design.md §6.7): Claude decides, one review follows.
     let makeIt = ClipBarButton(style: .verb, symbol: "wand.and.stars", label: "Make it postable", identifier: "voxclip.clipBar.makeIt")
     let rewrite = ClipBarButton(style: .verb, symbol: "sparkles", label: "Rewrite", identifier: "voxclip.clipBar.rewrite")
     let tighten = ClipBarButton(style: .verb, symbol: "arrow.right.and.line.vertical.and.arrow.left", label: "Tighten", identifier: "voxclip.clipBar.tighten")

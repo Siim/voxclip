@@ -472,6 +472,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         if (Shell.Callout is null || ShowingHome) CalloutTip.IsOpen = false;
         SyncSelection();
         UpdateShellChrome();
+        RefreshClipStyle();
     }
     /// <summary>Keep the selected row equal to the shown page and the editor's activeClipId, without re-entering selection.</summary>
     private void SyncSelection()
@@ -501,6 +502,8 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         next.ViewModel.PropertyChanged += EditorPropertyChanged;
     }
     private void EditorChanged(object? sender, EventArgs args) => UpdateShell();
+    /// <summary>The status bar's "Style: …" item reopens the clip style card (MainWindow.ClipStyle.cs).</summary>
+    private void ClipStyleStatusClicked(object sender, RoutedEventArgs args) => ReopenClipStyleCard();
     private async void RetryExportClicked(object sender, RoutedEventArgs args)
     {
         if (editor is not { } current || !ReferenceEquals(ContentFrame.Content, current)) return;

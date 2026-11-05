@@ -13,11 +13,14 @@ public struct ClipAutopilotMusicCue: Sendable, Equatable {
 /// One reviewable decision as an editor operation (ai.md §16.6). The review lists one row per operation with Undo or
 /// Change; `id` is stable for a plan, so a row survives a re-render.
 public struct ClipAutopilotOperation: Sendable, Equatable, Identifiable {
-    public enum Decision: String, Sendable, CaseIterable { case clip, title, cut, pauseCut, rewrite, captions, zoom, music, hook, postText }
+    public enum Decision: String, Sendable, CaseIterable {
+        case clip, title, correction, cut, pauseCut, rewrite, captions, look, speed, zoom, music, hook, postText
+    }
 
     public enum Action: Sendable, Equatable {
-        /// An `EditCommand` the editor's reducer applies as it is: cuts and pause cuts (`cutSelection` of ids none of which
-        /// is cut yet, so it always cuts), the clip range (`addClip` or `updateClip`) and its title (`renameClip`).
+        /// An `EditCommand` the editor's reducer applies as it is: corrections (`correct`), cuts and pause cuts
+        /// (`cutSelection` of ids none of which is cut yet, so it always cuts), the clip range (`addClip` or `updateClip`)
+        /// and its title (`renameClip`).
         case edit(EditCommand)
         /// A Rewrite proposal for the selection: the creator's voice re-records `text` over `scope` (`RewriteScope.selection`).
         /// It needs a voice, a quote and a paid click, so `apply` leaves it pending.
@@ -25,6 +28,11 @@ public struct ClipAutopilotOperation: Sendable, Equatable, Identifiable {
         /// The project's caption settings. `pendingFont` names the plan's font when it is not bundled yet (Roboto Black): the
         /// style's own font renders until it is.
         case captions(CaptionSettings, pendingFont: ClipAutopilotPlan.Font?)
+        /// The clip's colour look. Nothing renders a look yet (the next package owes it), so `apply` leaves it pending;
+        /// `original` needs no rendering.
+        case look(clipID: String, look: ClipAutopilotPlan.Look)
+        /// The whole clip played at `speed.rate`. The Clip controls package owes the rendering, so `apply` leaves it pending.
+        case speed(clipID: String, speed: ClipAutopilotPlan.Speed)
         /// A punch-in cue for the clip.
         case motion(MotionCue)
         /// The music package's input; `apply` leaves it pending.
@@ -42,8 +50,8 @@ public struct ClipAutopilotOperation: Sendable, Equatable, Identifiable {
 }
 
 public enum ClipAutopilotMapping {
-    /// The operations for one plan, in review order: the clip, its title, cuts, pause cuts, rewrites, captions, zooms, music,
-    /// hook and post text. `clipID` names the clip: an existing clip is updated, a new id (a series clip) is added as an AI
+    /// The operations for one plan, in review order: the clip, its title, corrections, cuts, pause cuts, rewrites, captions,
+    /// look, speed, zooms, music, hook and post text. `clipID` names the clip: an existing clip is updated, a new id (a series clip) is added as an AI
     /// clip. `fonts` is the bundled font table (`ClipAutopilotFonts`).
     public static func operations(for plan: ClipAutopilotPlan, clipID: String, project: Project,
                                   fonts: [ClipAutopilotPlan.Font: String]) throws -> [ClipAutopilotOperation] {
@@ -68,6 +76,9 @@ public enum ClipAutopilotMapping {
         } else {
             add("clip", .clip, .edit(.addClip(ClipRange(id: clipID, startWordId: words[plan.startWord].id, endWordId: words[plan.endWord].id,
                                                         title: title, origin: .ai, selected: true))))
+        }
+        for (index, correction) in plan.corrections.enumerated() where words[correction.word].kind == .word {
+            add("correction-\(index)", .correction, .edit(.correct(id: words[correction.word].id, text: correction.text)), correction.reason)
         }
         for (index, cut) in plan.cuts.enumerated() {
             let ids = (cut.startWord...cut.endWord).map { words[$0].id }.filter { !state.cutWordIds.contains($0) }
@@ -96,7 +107,9 @@ public enum ClipAutopilotMapping {
             merge("font", ["file": .string(file), "family": .string(plan.captions.font.family), "weight": .number(Double(plan.captions.font.weight))])
         }
         settings.overrides = overrides
-        add("captions", .captions, .captions(settings, pendingFont: file == nil ? plan.captions.font : nil))
+        add("captions", .captions, .captions(settings, pendingFont: file == nil ? plan.captions.font : nil), plan.captions.reason)
+        add("look", .look, .look(clipID: clipID, look: plan.look), plan.look.reason)
+        if let speed = plan.speed { add("speed", .speed, .speed(clipID: clipID, speed: speed), speed.reason) }
         for (index, zoom) in plan.zooms.enumerated() {
             let frame = MotionKeyframe(progress: 0, scale: zoom.scale)
             let cue = MotionCue(id: "\(clipID)-zoom-\(index)", clipID: clipID, sourceStart: words[zoom.word].start, sourceEnd: words[zoom.untilWord].end,
@@ -112,24 +125,37 @@ public enum ClipAutopilotMapping {
         return operations
     }
 
-    /// The clip's length once the plan's cuts and pause cuts apply: the span, less each cut item and each tightened pause
-    /// beyond the project's kept length. Rewrites are counted at the original words' length.
+    /// The clip's length once the plan's cuts and pause cuts apply, at its own speed: the span, less each cut item and each
+    /// tightened pause beyond the project's kept length. Rewrites are counted at the original words' length. The music cue
+    /// uses this length, so a track still covers the clip while speed is not rendered.
     public static func editedSeconds(_ plan: ClipAutopilotPlan, state: EditState) -> Double {
         let words = state.transcript.words
         guard plan.startWord >= 0, plan.endWord < words.count, plan.startWord <= plan.endWord else { return 0 }
-        var seconds = words[plan.endWord].end - words[plan.startWord].start
         let cut = Set(plan.cuts.flatMap { ($0.startWord...$0.endWord).map { words[$0].id } }).union(state.cutWordIds)
-        for index in plan.startWord...plan.endWord where cut.contains(words[index].id) { seconds -= words[index].end - words[index].start }
-        let tightened = Set(plan.pauseCuts.map(\.afterWord))
-        for pause in state.pauses where (plan.startWord..<plan.endWord).contains(pause.afterIndex)
-            && (tightened.contains(pause.afterIndex) || state.cutPauseIds.contains(pause.id)) {
-            seconds -= max(0, pause.end - pause.start - state.pauseKeepSeconds)
+        return editedSeconds(span: plan.startWord...plan.endWord, words: words, cut: cut, pauses: state.pauses,
+                             tightened: Set(plan.pauseCuts.map(\.afterWord)), cutPauseIDs: Set(state.cutPauseIds), keepSeconds: state.pauseKeepSeconds)
+    }
+
+    /// The finished clip's length: `editedSeconds` at the plan's speed. The validator stores it as `plan.seconds`.
+    public static func finalSeconds(_ plan: ClipAutopilotPlan, state: EditState) -> Double {
+        editedSeconds(plan, state: state) / (plan.speed?.rate ?? 1)
+    }
+
+    /// `span`'s length less each item in `cut` and each pause after a word in `tightened`, or already in `cutPauseIDs`,
+    /// beyond `keepSeconds`.
+    static func editedSeconds(span: ClosedRange<Int>, words: [TimedWord], cut: Set<String>, pauses: [Pause], tightened: Set<Int>,
+                              cutPauseIDs: Set<String>, keepSeconds: Double) -> Double {
+        var seconds = words[span.upperBound].end - words[span.lowerBound].start
+        for index in span where cut.contains(words[index].id) { seconds -= words[index].end - words[index].start }
+        for pause in pauses where (span.lowerBound..<span.upperBound).contains(pause.afterIndex)
+            && (tightened.contains(pause.afterIndex) || cutPauseIDs.contains(pause.id)) {
+            seconds -= max(0, pause.end - pause.start - keepSeconds)
         }
         return max(0, seconds)
     }
 
-    /// Applies what the editor can apply today, in order, to a copy of `project`: edits, captions, motion cues and share
-    /// text. Rewrites, music and the hook come back as `pending`. Pure: one undo step is the caller's choice.
+    /// Applies what the editor can apply today, in order, to a copy of `project`: edits (corrections included), captions,
+    /// motion cues and share text. Rewrites, the look, speed, music and the hook come back as `pending`. Pure: one undo step is the caller's choice.
     public static func apply(_ operations: [ClipAutopilotOperation], to project: Project) throws -> (project: Project, pending: [ClipAutopilotOperation]) {
         var result = project
         var pending: [ClipAutopilotOperation] = []
@@ -140,7 +166,7 @@ public enum ClipAutopilotMapping {
             case .captions(let settings, _): result.captions = settings
             case .motion(let cue): cues.append(cue)
             case .shareText(let clipID, let text): result.share.captions[clipID] = text
-            case .rewrite, .music, .hook: pending.append(operation)
+            case .rewrite, .look, .speed, .music, .hook: pending.append(operation)
             }
         }
         if !cues.isEmpty {

@@ -116,6 +116,7 @@ extension ProviderChoice {
         let scope = rewrite ?? DirectorScope(kind: .selection(inClip: false), wordCount: wordCount)
         let words: String
         if action == .test { words = "a short test request" }
+        else if action == .pickCaptions { words = "the words of these clips (\(wordCount) words)" }
         else if action == .findClips && verb != "Hook" { words = "this project's transcript (\(wordCount) words)" }
         else { words = scope.words }
         let target = cliName.map { "\($0), billed to the API key it is signed in with" }

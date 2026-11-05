@@ -71,7 +71,7 @@ struct CaptionGalleryTileTests {
         let shared = try CaptionMediaFixtures.shared()
         let pipeline = try CaptionPipeline(shared: shared), rasterizer = CoreTextCaptionRasterizer(shared: shared)
         let styles = try CaptionStyleLibrary(shared: shared).styles
-        #expect(styles.count == 19)
+        #expect(styles.count == 26)
         var replaced = try Self.interview()
         replaced.edits.cutWordIds = []; replaced.edits.cutPauseIds = []; replaced.edits.corrections = ["w1": "corrected"]
         let samples = [Self.tileWords(try Self.corrected()), Self.tileWords(replaced)]

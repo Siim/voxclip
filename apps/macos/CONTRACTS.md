@@ -2,7 +2,7 @@
 
 ### 2026-11-05 — ✦ Make it postable: one click, one capped run, one review (track/v2-make-it)
 
-User (2026-11-04): "still too hard. too many click to actually use it. claude code should make the best decisions. in extra high effort level." Approved mockups "One-click postable clips" 1–3 and 5 and "Fewer moves, music and captions" A. Spec: doc/design.md §6.6; planner ai.md §16.
+User (2026-11-04): "still too hard. too many click to actually use it. claude code should make the best decisions. in extra high effort level." Approved mockups "One-click postable clips" 1–3 and 5 and "Fewer moves, music and captions" A. Spec: doc/design.md §6.7; planner ai.md §16.
 
 - **Built (App).**
   - `MakeItPostable.swift`: `MakeItController` (`EditorModel.makeIt`), `MakeItRun`, `MakeItRow`, `MakeItInverse`, `MakeItServices` (plan, voice, voiceAvailable; `.live`) and `MakeItStyle`, the ClipStyle seam with Auto defaults. `makeItCap` and `makeItTitle` give the upfront cap: TTS at Eleven v4 for min(maxRewrites × maxRewriteTextWords, the clip's words) × (mean word length + 1) characters, × 2 for automatic fixes, plus Eleven Music for the edited length when the style allows generation; nil when neither can cost.
@@ -14,12 +14,139 @@ User (2026-11-04): "still too hard. too many click to actually use it. claude co
   - `suggestedClips` ranks by `suggestionScore` (planner, else Find Clips; ties in transcript order); idle suggestion rows show the score.
   - `findClipsIfFree()` after a free transcription that started on import (`InlineTranscription.startedOnImport`), only when `llmSendKind` is inline and free.
   - `beginExport(targets:folder:aspects:)`: targets × aspects; `exportTotal` for the status.
+- **After merging lead 38027e40 (captions set 2, ClipStyle, planner v2).**
+  - `MakeItServices.plan` takes a progress callback, and the run's lines follow `ClipAutopilotProgress`. The live planner passes two more `app.connector(.claudeCode)` lanes for Claude Code.
+  - `makeTopPostable` sends one `.clips(spans)` request. It matches plans back to clips by span, then applies each as its own run (`performSeries`; its own group, keep and cap). Stop cancels every running run.
+  - New review rows: `correction-N` (inverse: `correct` back to the previous text), and `look` and `speed` (pending `.choice` rows, `MakeItChange.pending`, choices via `makeItTogglePending` and `makeItChoosePending`, kept in the review only). `makeItLengthNotes` shows `plan.seconds`, `plan.flags` and the style's Length.
+  - `MakeItStyle(ClipStyle)`: fixed style → `captionPreference.styleId`, Auto → nil, Off → `captions = false` (no captions op); music; `maxLengthSec` and `rewording` → `plannerNote` (the request's `note`, before a question's answer); Rewording Off → no voicing; `shapes` → Export. `makeItStyle` = `makeIt.style ?? cardClipStyle.map(MakeItStyle.init) ?? .auto`.
+  - Roboto Black is bundled, so the captions operation applies its font.
+  - The smoke's top-3 check T5 asserts the single `.clips` request.
+  - design.md §6.7 (captions-style owns §6.6).
 - **Fixes.** Timeline default 242 (`WorkspaceLayout.defaultTimelineHeight`: 242 where title row + 16:9 viewer + panel header + `PanelHost.bodyMinimum` fit, else down to 216, within 40%; `TimelineMetrics.height` 214), so M1 shows at M. `RewriteSession.showProposal` runs `autoChooseVideo` before drawing, so the takes-ready footer and the duration card agree. `MusicProject.unique` (Core): one file under several clips gets "-2", "-3"… ids. The series capture found that a second clip's music failed as `duplicateIdentity`.
 - **Deleted.** The row's ✦ Rewrite glyph (Rewrite stays in ⋯, context menu, accessibility actions, clip bar, ⇧⌘R). `ChangeListTests.aMissingDurationChoiceIsNamedInsteadOfLeftOut` pinned the reported mismatch and is replaced by `theFooterAndTheDurationCardAgreeOnceATakeIsReady`.
-- **Tests.** App `MakeItPostableTests` (13): every op kind, one undo step plus undo one, undo all, the cap (a generated track above it is never fetched; the voice gets the whole cap first), a voice step past the cap, no amount when nothing costs, a question's pre-picked answer and its re-plan, a suggestion kept in the same step, ranking, Stop, the driver's press rules, the menu, and one track under two clips. Updated Explorer, ClipBar, PanelHost, WorkspaceLayout and ChangeList tests. Smoke `S-make-it` (real driver and scripted ElevenLabs, I1–I7 after every driver step, then M1 Export ready, M2 one undo step, M3 spend ≤ cap, M4 voiced rewrite and music, plus I5 and I9) and `S-make-top3` (T1 ranking, T2 all ready, T3 kept, T4 one step each), both passes. Red: reverting the footer fix, the cap check or `unique` fails three tests (8 issues). Without the group, the run's registration outside any undo group raises under `groupsByEvent = false`.
+- **Tests.** App `MakeItPostableTests` (16; after the merge also corrections, look and speed pending, flags and length, the ClipStyle mapping, top 3 as one `.clips` request): every op kind, one undo step plus undo one, undo all, the cap (a generated track above it is never fetched; the voice gets the whole cap first), a voice step past the cap, no amount when nothing costs, a question's pre-picked answer and its re-plan, a suggestion kept in the same step, ranking, Stop, the driver's press rules, the menu, and one track under two clips. Updated Explorer, ClipBar, PanelHost, WorkspaceLayout and ChangeList tests. Smoke `S-make-it` (real driver and scripted ElevenLabs, I1–I7 after every driver step, then M1 Export ready, M2 one undo step, M3 spend ≤ cap, M4 voiced rewrite and music, plus I5 and I9) and `S-make-top3` (T1 ranking, T2 all ready, T3 kept, T4 one step each), both passes. Red: reverting the footer fix, the cap check or `unique` fails three tests (8 issues). Without the group, the run's registration outside any undo group raises under `groupsByEvent = false`.
 - **Captures.** `-layoutAudit <dir> -makeItCaptures` (DebugMakeIt.swift, offscreen via `DebugSpacing.draw`, now internal): /tmp/voxclip-make-it/make-it-{button,progress,review,review-light,review-window,series}.png.
-- **Owed.** Windows twin of all of the above, including `MusicProject.unique`. Real-window gates. A live run at xhigh. A title card for the hook. The hook row copies its text meanwhile. Export from the review on a real (non-demo) project, checked by hand: demo documents can't export, so the captures show Export disabled.
-- **Next package must know.** ClipStyle merge: fill `EditorModel.makeItStyle` from `project.clipStyle` (captions → `captionPreference`, music auto/off → `music`/`generatedMusic`, shapes, rewording off → `rewrites`). planner-v2's new op kinds slot into `makeItStep` (pure ops: return an inverse and a row) or a later async step like `voiceStep`/`musicStep`. Rows key on the mapping's stable operation ids. `MakeItServices` is the test seam; the smoke uses `makeItGeneration` and `makeItStepObserver` (DEBUG).
+- **Owed.** Windows twin of all of the above, including `MusicProject.unique`. Real-window gates. A live run at xhigh (three lanes included). Rendering the look and speed. A title card for the hook. The hook row copies its text meanwhile. Export from the review on a real (non-demo) project, checked by hand: demo documents can't export, so the captures show Export disabled.
+- **Next package must know.** The look renderer and clip speed: drop their `.pending` rows for real decisions with an inverse in `makeItStep`; `makeItChoosePending` keeps the creator's pick in the review only, so wire it to the rendered setting then. New op kinds slot into `makeItStep` (pure ops: return an inverse and a row) or a later async step like `voiceStep`/`musicStep`. Rows key on the mapping's stable operation ids. `MakeItServices` is the test seam; the smoke uses `makeItGeneration` and `makeItStepObserver` (DEBUG).
+### 2026-11-05 — Caption types in Roboto Black, Claude's caption pick, and the clip style card (track/v2-captions-style)
+
+User request (2026-11-04): new caption types with Roboto Black; Claude picks the caption type per clip while the style is Auto; a "How should clips be made?" card. Spec: doc/design.md §6.1 and §6.6, doc/spec/ai.md §17, doc/spec/captions.md §16.1 and §17.
+
+- **Built.**
+  - **Fonts.** `shared/fonts/roboto/Roboto-Black.ttf` with its `LICENSE.txt` (Apache-2.0, google/fonts at ff11ed91, v3.005). `build_font_manifest.py` accepts exactly one licence file per folder, `OFL.txt` or `LICENSE.txt`. `fonts.json` only gained entries. There is a Roboto entry in THIRD_PARTY_NOTICES.md.
+  - **Styles.** Seven styles at order 200–260: `marker`, `punch-in`, `sing-along`, `heavy-shadow`, `glow`, `emoji-pop` and `minimal`. With Bounce they make the eight types the user asked for. Five of those names already existed, so the new styles have distinct names. Emoji pop declares `emoji.source: "llm"` and uses the keyword rule for now. Punch-in has no active-word scale.
+  - **Fixture set 2.** `tools/captions/style-sets.json` puts every style in exactly one set (checked by `check_styles`).
+    - Set 1 keeps all its fixture files byte-identical (`check_drift`).
+    - Set 2 writes `shared/fixtures/captions/styles-2/`: 21 layouts, the tiles, an index (`voxclip-caption-style-set/1`), and Mac goldens (68 samples and 14 tiles from `voxclip-cli render-caption`).
+  - **Contract.** The clip style contract lives in `shared/data/clip-styles.json` (presets and options), the optional project `clipStyle`, and the Settings key `clipStyle.default` (no picks).
+    - Core: `ClipStyle`, `ClipStyleCatalog` and `ClipCaptionChoice`, a raw string `auto`, `off` or a style id.
+    - `recording(_:)` is a no-op unless captions are Auto. `fixingCaptions(_:)` turns Auto into `mine`. `pruned`, `summary` and `settingsDefault` are also on `ClipStyle`.
+  - **Caption pick.**
+    - The prompt is `shared/prompts/caption-pick.json` (v1).
+    - `CaptionPickPrompt` covers labels C1…, whole seconds, the instruction and the request (`.captionPick`, effort `.decision`). It validates replies: unknown or duplicate labels, non-candidates and `auto` are dropped, and a reason keeps its first 120 scalars.
+    - `CaptionPicker.pick` sends nothing unless captions are Auto.
+    - Refusal and truncation have their own messages.
+  - **App.**
+    - `ClipStyleViews.swift`: the card, inline at the top of the Clips section, with chips in a flow layout and the Captions, Music, Length, Shape and Rewording rows. It uses the VCTokens spacing.
+    - `ClipStyleCaptionRow` sits under the Captions style row: "✦ Claude picked X · reason", Pick styles with the inline `ConnectorConfirmationView` (`ConnectorConsentAction.pickCaptions`), Cancel, and an inline error.
+    - `EditorModel+ClipStyle.swift` holds the state and the actions, each one undo step.
+    - The StatusBarView has a `.clipStyle` trailing item ("Style: Auto · ≤60 s · 16:9+9:16"), in the drop order, that reopens the card.
+    - Choosing a gallery tile fixes the clip style's captions. Settings saves the choice without picks, and a new project starts from it.
+- **Tests.**
+  - Mac `CaptionStyleSet2Tests` (3): index, 21 layouts, 68 goldens and 14 tiles.
+  - Core `CaptionPickTests` (6): fixture freshness by prompt and catalogue sha, requests, replies, the contract, a stub Auto pick with a fixed style that sends nothing, and persistence.
+  - App `ClipStyleTests` (4, plus an opt-in capture under `VOXCLIP_CLIP_STYLE_CAPTURES`): show once, collapse and reopen through the status bar press, the saved default for a new project, an Auto pick from a stub connector, and a fixed style that is never overridden.
+  - Style counts 19 → 26 in the caption, gallery, Captions panel and contract tests.
+  - The shared vectors `shared/fixtures/clip-style/caption-pick.json` (4 requests, 4 replies, 14 contract cases) come from the independent `tools/fixtures/clip-style/gen_caption_pick.py`. Two runs gave identical bytes.
+  - Negative checks:
+    - With the Auto guard in `recording(_:)` removed, Mac `CaptionPickTests` fails 2 of 6 and `ClipStyleTests.aStyleTheUserChoseIsNeverOverridden` fails.
+    - On Windows, removing the guard fails 2 of 8.
+    - Changing Marker's `sizeSh` fails the 3 Marker layouts and the set 2 golden test on Windows.
+- **Verification** (`VOXCLIP_NO_KEYCHAIN=1`, canonical absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`):
+  - Core: 1,201 / 115 suites.
+  - Media: 505 / 59.
+  - App: 890 / 63 with one failure. `ExplorerLibraryTests.outlineDotsAndTheLibraryShareTheExplorer` failed because the card, shown once, pushed the Outline below the 560-high explorer. The test now starts with the card collapsed, and its suites pass again: 21 / 2, run together with `ClipStyleTests`.
+  - `rewrite-smoke.sh`: passed, 35 scenarios.
+  - The caption tools (`check_styles`, `gen_fixtures`, `gen_cards`, `gen_gallery`, `gen_card_colors`, `gen_box_text_colors`, `check_drift`) leave no diff.
+  - Spacing captures 35 / 35.
+  - The offscreen captures of the card and gallery are in /tmp/voxclip-captions-style/.
+- **Owed.**
+  - Per-clip caption styles at export. Today the active clip's pick is applied to `captions.styleId`.
+  - Claude-sourced emoji for Emoji pop.
+  - The consumers of Music, Length, Shape and Rewording: the planner and music packages.
+  - `cards.json`, `gallery-samples.json` and `box-text-colors.json` vectors for set 2.
+  - The real-window `-sceneAudit` and `-uiSelfTest` gates were not run.
+- **Next package must know.**
+  - The planner reads `ClipStyle` through `project.clipStyle ?? catalog.initial(saved:)`. A caption style id there is the user's fixed choice. Never override it or send it for a pick.
+  - New caption styles go in a new style set folder, never into set 1's files.
+  - `clipStyle.default` must not carry `captionPicks` (`SettingsValidation` rejects them).
+### 2026-11-05 — Make it postable planner v2: best moments only, 20–45 s, corrections, caption variety, a look, speed, two-stage planning
+
+Brief: answer the first evaluation's 6.5/10 (clips too long, a series tiling the video, no misheard-word fix, one caption style, no colour look, 4–6 minutes per series). Spec: doc/spec/ai.md §16 (rewritten). Core only; no UI.
+
+- **Built.**
+  - `ClipAutopilotPlan` **version 2** (reads 1 and 2; a v1 plan upgrades in memory to no corrections, `original` look, no speed, empty reasons, `seconds` 0, no flags). New fields:
+    - `corrections: [{word, heard, text, reason}]`: a misheard word spelled right; maps to `EditCommand.correct(id:text:)`.
+    - `look: {id, reason}`, `id` ∈ `original | muted | warm | bw` (`ClipAutopilotPlan.LookID`).
+    - `speed: {rate, reason}?`, 0.75–1.5, never 1.
+    - `captions.reason`, `lengthReason`, `seconds` (finished length after cuts, pause cuts and speed) and `flags: [{kind, detail}]`, where `kind` ∈ `overLength` (> 60 s) | `longWithoutReason` (> 45 s, empty `lengthReason`).
+  - `ClipAutopilotMoment` (stage 1 pick) and `ClipAutopilotSeries.moments`; the series is version 2 too.
+  - Prompt **v5** (file format 2): sectioned system prompts for the clip plan and for the moments stage, the four looks, the moments schema `clip_autopilot_moments` (replaces the full-plan series schema), strongest moments only (score 5+), 20–45 s after cuts with up to 60 s only with a reason, harder cuts, per-clip caption styles with a reason, corrections, look and speed rules.
+  - Requests: the caption preference line names only the fixed fields (v1 filled the rest with defaults, so a font-only preference fixed vox-bold on every clip); the clip instruction carries the length after fillers and pauses and how much more to cut; it lists names written elsewhere in the recording, so a near-spelling inside the clip can be corrected; stage 2 gets a moment brief (rank, title, idea, the caption style picked for it and the others').
+  - `ClipAutopilotService`:
+    - `series` runs two stages: moments at `high` (`momentsEffort`), then each moment's plan at `xhigh` with its own words only, at most 3 at once (`maxParallelPlans`).
+    - New `clips([span])` mode: chosen spans planned the same way without stage 1.
+    - `plan(_:connector:model:lanes:progress:)`: `lanes` are extra connectors of the same id. Each lane gets its own `LLMRunner` from the given runner's keys, catalog and log, because `LLMRunner` refuses a second concurrent run and `CLIConnector` runs one process at a time.
+    - `ClipAutopilotProgress`: `pickingMoments`, `picked`, `planning`, `planned`, `failed`.
+    - A failed clip plan is left out (`plans[N]` repair); the run fails only when every plan fails, or on cancellation.
+  - Validator: corrections are checked first (the heard word must match, or the nearest match within 3 words; one per word; 1–3 words; punctuation kept; dropped when the plan cuts that word), so rewrites' bridge words read corrected text. A fixed caption style, font or case always wins (a repair when the reply differs). Look aliases ("B&W") are read; speed is clamped. Moments are checked like series spans; only the best `postFirst` keeps it, in the moments and in the ranked series.
+  - Mapping: ops `correction-N` (`.edit(.correct)`), `look` (`.look(clipID:look:)`, always present), `speed` (`.speed(clipID:speed:)`, when set); `apply` returns look and speed as **pending**. `finalSeconds` = `editedSeconds` / speed; the music cue keeps `editedSeconds` so a track covers the clip while speed is unrendered.
+- **Deleted / replaced.** The single-send full-plan series (`seriesSchema`, `ClipAutopilotValidator.series(_:context:)` over plans, `isSeries` plan validation) is replaced by the moments stage plus clip plans. `ClipAutopilotRequestBuilder.render` and `pace` became internal (`spokenTime` replaces `pace`). `seriesOutputTokens` (64k) is replaced by `momentsOutputTokens` (8k).
+- **Shared vectors.** A new file, `shared/fixtures/autopilot/plan-v2-cases.json` (`voxclip-autopilot-v2/1`), holds a synthetic 150-word transcript and 14 hand-derived cases (corrections, speed, look, a v3-style reply, length flags, fixed captions, moments). `plan-validation-cases.json` keeps its keys and case count; only its `sources` hash changed, and its `series` case now replays as moments.
+- **Tests.** `ClipAutopilotTests` (17) and `ClipAutopilotV2Tests` (10 functions, 22 cases). Among them:
+  - a gate that holds stage-2 sends until three are in flight (so three run at once; a deadlock would hit the 1-minute limit) and checks the fourth lane is never used;
+  - the moment brief text, progress order, a failed plan left out, every plan failing, an empty moments reply, `clips` mode, lanes of another connector refused;
+  - v1 decode and upgrade; ranking with a single `postFirst`; corrections through `correct`, with look and speed pending.
+
+  No live calls. Before the fix, the correction-cut vector caught a real bug: the drop was logged under the accepted index, not the reply's.
+- **Live evaluation** (local, 3 rounds, nothing committed; Claude Code 2.1.318 Opus, `oauth_token` plan sign-in, clean environment):
+  - **v5 (kept):** a 6-minute series in 103 s, 4 clips at 21–34 s finished, both misheard product names in the picks corrected (each citing the names line), 4 different caption styles, one look for the series (warm), speed 1.1 on slow delivery. A single clip took 39 s for a 42 s span and 78 s for an 83 s span.
+  - **v6 (reverted):** "never pad to 20 s" made stage 1 pick wider spans (36–50 s).
+  - Rating about 8/10 against the September benchmark. Details in /tmp/voxclip-autopilot-eval/v2/SUMMARY.md.
+- **Next package must know.**
+  - **UI (track/v2-make-it):**
+    - Pass two extra connector lanes (for Claude Code, two more `CLIConnector(id: .claudeCode, …)`) to get three parallel plans; without lanes a series plans its clips one after another.
+    - Use `.clips([...])` for "✦ Make top 3 postable", and drive progress lines from `ClipAutopilotProgress`.
+    - Show `plan.seconds` and `plan.flags` in the review header, and correction rows ("Tvilio → Twilio") applied through the existing correct command.
+    - Show the look and speed as "Claude chose … · Change" rows that stay pending.
+    - Map `ClipStyle`: a fixed caption style → `captionPreference.styleId`; Auto → nil; Roboto Black → `font`.
+    - Switch on `ClipAutopilotOperation.Action` with the new `.look` and `.speed` cases.
+  - **Look renderer (next package):** colour transforms for `muted`, `warm` and `bw` in preview and export on both platforms.
+  - **Clip controls package:** rendering `speed` for video and audio with pitch kept, then music over `finalSeconds`.
+  - **Prompt:** `lengthReason` comes back as an estimate even within target, so `longWithoutReason` rarely fires; ask for it empty within 45 s next round. Looks repeat across a series.
+  - **Windows:** the twin is owed; replay both fixtures.
+### 2026-11-05 — A long full-take Rewrite is priced, voiced and lands; no generic take failures; tests keep out of the user's log (track/v2-long-rewrite)
+
+User, MVP23 (2026-11-05 ~01:55): a Full Take Rewrite of the 5:48 test clip (Claude Code, Opus, 162.1 s) showed "34 phrases in your voice", then "The operation could not finish. Your video and edits are still here." with [Get a fresh price], and ~/Library/Logs/VoxClip/voxclip.log had nothing for it; its last lines were test output.
+
+- **Root cause.** `ClipTakePlan.preparePlan` refused more than `VoiceLabTakeBatch.maximumWindows` (5) phrases with `VoiceLabError.invalidInput`. `ClipTakePlan.copy` → `RewriteSession.refusal` → `UserMessages.message` had no case for it, so it showed the generic line. Nothing logged it. Reproduced with a synthetic 348 s take and 34 changes.
+- **Built.**
+  - `ClipTakePlan` prices and voices up to `maximumPhrases` (100) phrases as consecutive parts of at most five (`parts`, `PricedPart`). Later parts are priced first and release their quotes (`Backend.release`). The first part is quoted last and holds its quotes, so the client's 32-quote bound and the five-minute freshness hold. `estimate` and `cost` are the sum. One approval runs the parts in order: `continueRun` quotes each later part again and runs it under that approval (`Backend.approve(_, _, continuing: true)`, which keeps the short-take pool) only when the inputs and estimate equal the priced ones. Otherwise it stops with `Failure.priceChanged`, marking the later phrases "Stopped: … Nothing sent for this phrase.". Cap checks add the unsent later parts. `validateRun` checks the batch rules pairwise across the parts' seams. `runIndices` replaces `batchIndices` where a lookup means the whole held run.
+  - Stated limits: `Failure.tooManyPhrases(count:)` ("…Up to 100 can be voiced in one run…") with a suggested [Voice the first 100 changes] chip (`RewriteSession.voiceFirstChanges`), and `Failure.nothingToVoice`. Neither offers [Get a fresh price].
+  - Progress: `ClipTakePlan.preparationStep` ("Reading phrase 12 of 36…", "Pricing phrases 6–10 of 36…") replaces "Preparing price…" in the phrase list while a price is prepared.
+  - Speed: each phrase's input decoded the whole source movie again (`VoiceLabSourceAudio.rewriteSource`) and re-measured the take's timing transcript and pause profile. `rewriteSource(envelope:)` now takes `rewriteEnvelope(source:frames:sampleRate:)`, decoded once per plan (`RewriteSourceLevels`, RewriteGenerationWiring.swift). The take-wide inputs are measured once. S16 prices 36 phrases in about 15 s, where 30 phrases took 66 s before.
+  - Errors: `RewriteSession.refusal` maps every `VoiceLabError` case (`voiceLabCopy`), `VoiceLabAudioMathError`, `VoiceLabWordDiffError.invalidInput`, `MicrophoneTakeError`, `ClipTakePlan.Failure` and both speech-context failures to their own line and next step. Any other `LocalizedError` shows its description, and anything else shows "Voice Lab couldn't finish this step. Get a fresh price or ask again." It never returns `UserMessages.generic`. `ClipTakePlan.copy` and `RewriteSpeechContextReview.copy` are nonisolated.
+  - Release logging: `RewriteSession.reported(_:stage:)` returns the copy and logs, and `logFailure` writes one `warn` line in category `rewrite`, `rewrite failure stage=<plan|takes|generation|voices|review|reask|proposal|ownWords|wordingFit> type=<Type> case=<case[.inner]>`. `failureKind` keeps only identifiers: case labels, never payloads; an NSError gives its domain and code. Hooks: `ClipTakePlan.onFailure` and `RewriteGenerationSession.onFailure`.
+  - Test logs: `TestProcess` (Core, DEBUG) is the one test-process check (swiftpm-testing-helper, xctest, XCTest environment, .xctest arguments or bundles). `SecretStore.keychainDisabled` uses it, and so do `DataLocations.logs` (a test process without `VOXCLIP_DATA_DIR` logs to `$TMPDIR/VoxClipTests-<pid>/Logs`) and `ElevenLabsVoiceLab.defaultValidationDiagnosticDirectory`. `DataLocations(environment:home:testing:)`.
+  - Smoke S16: a nine-minute full take (base script ×12) with 36 changes: one price, one approval, 36 phrases voiced in 8 parts and applied (I1–I9). Smoke source movies are keyed by raw samples (a training WAV refuses a take that long).
+- **Deleted.** The duplicated test-process detection in `SecretStore` and `ElevenLabsVoiceLab`; the `(1...maximumWindows)` plan guard.
+- **Tests.** App `LongTakePlanningTests` (34 changes over 348 s plan into 7 parts; 101 phrases is `tooManyPhrases`), `ClipTakePlanTests.aLongRunPricesOnceAndVoicesEveryPartUnderOneApproval` (7 phrases, 2 parts: 2 quote preparations, 1 re-quote, 2 approvals, 7 TTS and 7 QA, ledger equals spent) and `aLaterPartThatCannotBeQuotedAgainStopsWithNothingMoreSent`, and `RewriteFailureCopyTests` (every case of the error types above plus project, geometry, length, source-audio, consent, LLM and VoxClipError samples: never generic, never empty; log lines carry no payload). Core `aTestProcessNeverLogsIntoTheUsersLogFolder`.
+- **Owed.**
+  - The Windows test suites run on this Mac write ~/Library/Logs/VoxClip too: about 21,800 of the user's 22,350 log lines were .NET-formatted test output ("elevenlabs key test", "request test-request", voicelab stubs). `apps/windows/src/VoxClip.Core/Services/Project/SharedResources.cs` resolves macOS logs to ~/Library/Logs/VoxClip when `VOXCLIP_DATA_DIR` is unset. Windows code was out of scope. Fix it there, or have the verify script export `VOXCLIP_DATA_DIR` for `dotnet test`.
+  - Speech-context review of a long take: `VoiceLabSpeechContextPlan` still refuses more than five windows (expanding + reservations), which shows its own copy.
+  - Windows twin: Windows still refuses more than five changed passages, with its own stated message.
+  - A long run still sends each phrase's TTS, then its QA, one phrase after another; in S16 the 36 phrases were generated in about 27 s against the stubs. A take whose join is uneven needs its own [Use anyway] click.
+- **Next package must know.** Report a Rewrite failure through `reported(_:stage:)` (or a session's `onFailure`), never raw `Self.refusal`, so it is logged. A long plan's `approvalID` is its first part's batch ID. `Backend.approve` takes a third argument.
 
 ### 2026-11-05 — One spacing scale: phrase cards, Rewrite panel, fields and chips
 

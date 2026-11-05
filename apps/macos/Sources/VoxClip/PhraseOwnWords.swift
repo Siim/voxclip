@@ -166,7 +166,7 @@ extension RewriteSession {
             ownWordsEditing = index
         } catch {
             guard current else { return }
-            ownWordsAdvice.problem = Self.refusal(error)
+            ownWordsAdvice.problem = reported(error, stage: "ownWords")
         }
     }
 }

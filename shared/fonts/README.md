@@ -13,6 +13,7 @@ Fonts and emoji images bundled with both apps for burned-in captions. They are l
 | `paytone-one/` | PaytoneOne-Regular | OFL-1.1 (Reserved Font Names "Paytone", "Paytone One") | google/fonts |
 | `poppins/` | Poppins-Bold, -ExtraBold, -Black | OFL-1.1 | google/fonts |
 | `righteous/` | Righteous-Regular | OFL-1.1 (Reserved Font Name "Righteous") | google/fonts |
+| `roboto/` | Roboto-Black (Latin, Latin Extended, Greek, Cyrillic) | Apache-2.0 | google/fonts `apache/roboto/static` |
 | `sora/` | Sora-ExtraBold | OFL-1.1 | sora-xor/sora-font |
 | `vt323/` | VT323-Regular | OFL-1.1 | google/fonts |
 | `noto-emoji/png128/` | 50 emoji images, 128×128 | Apache-2.0 | googlefonts/noto-emoji at 41e31b11 |
@@ -22,8 +23,8 @@ Fonts and emoji images bundled with both apps for burned-in captions. They are l
 ## Rules
 
 - Static TTF instances only. No variable fonts (`fvar`), no `trak` tables; the manifest builder rejects them.
-- Never modify, subset, rename or convert a font. Several carry Reserved Font Names, which forbid distributing modified versions under the same name. Ship each family's `OFL.txt` next to it in the app bundle and list it in About → Licences.
-- Only SIL OFL fonts and Apache-2.0 images. No Arial Black or any other proprietary or system font.
+- Never modify, subset, rename or convert a font. Several carry Reserved Font Names, which forbid distributing modified versions under the same name. Ship each family's licence file (`OFL.txt`, or `LICENSE.txt` for an Apache-2.0 family) next to it in the app bundle and list it in About → Licences.
+- Only SIL OFL or Apache-2.0 fonts (Roboto is the one Apache-2.0 family; its folder holds `LICENSE.txt`, and the manifest builder requires exactly one licence file per folder) and Apache-2.0 images. No Arial Black or any other proprietary or system font.
 - Noto Emoji: the images are taken from the last commit before the repository's root licence changed from Apache-2.0 to OFL-1.1 (2024-07-29); at that commit the README states that the image resources are Apache-2.0. See `tools/captions/font-sources.json`.
 
 ## Adding or updating a font

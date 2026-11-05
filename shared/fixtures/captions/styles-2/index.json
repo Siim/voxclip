@@ -1,0 +1,137 @@
+{
+ "fixture": "voxclip-caption-style-set/1",
+ "set": 2,
+ "styles": ["emoji-pop", "glow", "heavy-shadow", "marker", "minimal", "punch-in", "sing-along"],
+ "layout": [
+  {
+   "file": "layout/emoji-pop-portrait-en.json",
+   "style": "emoji-pop",
+   "frame": [1080, 1920],
+   "pages": 5,
+   "samples": 38
+  },
+  {
+   "file": "layout/emoji-pop-square-en.json",
+   "style": "emoji-pop",
+   "frame": [1080, 1080],
+   "pages": 5,
+   "samples": 38
+  },
+  {
+   "file": "layout/emoji-pop-landscape-en.json",
+   "style": "emoji-pop",
+   "frame": [1920, 1080],
+   "pages": 5,
+   "samples": 38
+  },
+  {"file": "layout/glow-portrait-en.json", "style": "glow", "frame": [1080, 1920], "pages": 5, "samples": 38},
+  {"file": "layout/glow-square-en.json", "style": "glow", "frame": [1080, 1080], "pages": 5, "samples": 38},
+  {"file": "layout/glow-landscape-en.json", "style": "glow", "frame": [1920, 1080], "pages": 5, "samples": 38},
+  {
+   "file": "layout/heavy-shadow-portrait-en.json",
+   "style": "heavy-shadow",
+   "frame": [1080, 1920],
+   "pages": 7,
+   "samples": 50
+  },
+  {
+   "file": "layout/heavy-shadow-square-en.json",
+   "style": "heavy-shadow",
+   "frame": [1080, 1080],
+   "pages": 7,
+   "samples": 50
+  },
+  {
+   "file": "layout/heavy-shadow-landscape-en.json",
+   "style": "heavy-shadow",
+   "frame": [1920, 1080],
+   "pages": 7,
+   "samples": 50
+  },
+  {
+   "file": "layout/marker-portrait-en.json",
+   "style": "marker",
+   "frame": [1080, 1920],
+   "pages": 7,
+   "samples": 43
+  },
+  {
+   "file": "layout/marker-square-en.json",
+   "style": "marker",
+   "frame": [1080, 1080],
+   "pages": 7,
+   "samples": 43
+  },
+  {
+   "file": "layout/marker-landscape-en.json",
+   "style": "marker",
+   "frame": [1920, 1080],
+   "pages": 7,
+   "samples": 43
+  },
+  {
+   "file": "layout/minimal-portrait-en.json",
+   "style": "minimal",
+   "frame": [1080, 1920],
+   "pages": 3,
+   "samples": 21
+  },
+  {
+   "file": "layout/minimal-square-en.json",
+   "style": "minimal",
+   "frame": [1080, 1080],
+   "pages": 3,
+   "samples": 21
+  },
+  {
+   "file": "layout/minimal-landscape-en.json",
+   "style": "minimal",
+   "frame": [1920, 1080],
+   "pages": 3,
+   "samples": 21
+  },
+  {
+   "file": "layout/punch-in-portrait-en.json",
+   "style": "punch-in",
+   "frame": [1080, 1920],
+   "pages": 7,
+   "samples": 43
+  },
+  {
+   "file": "layout/punch-in-square-en.json",
+   "style": "punch-in",
+   "frame": [1080, 1080],
+   "pages": 7,
+   "samples": 43
+  },
+  {
+   "file": "layout/punch-in-landscape-en.json",
+   "style": "punch-in",
+   "frame": [1920, 1080],
+   "pages": 7,
+   "samples": 43
+  },
+  {
+   "file": "layout/sing-along-portrait-en.json",
+   "style": "sing-along",
+   "frame": [1080, 1920],
+   "pages": 3,
+   "samples": 24
+  },
+  {
+   "file": "layout/sing-along-square-en.json",
+   "style": "sing-along",
+   "frame": [1080, 1080],
+   "pages": 3,
+   "samples": 24
+  },
+  {
+   "file": "layout/sing-along-landscape-en.json",
+   "style": "sing-along",
+   "frame": [1920, 1080],
+   "pages": 3,
+   "samples": 24
+  }
+ ],
+ "files": ["preview-tiles.json"]
+}

@@ -3,17 +3,23 @@ import Foundation
 import Observation
 import VoxClipCore
 
-// ✦ Make it postable (doc/design.md §6.6): one click on a clip lets Claude decide everything at extra high effort (the
+// ✦ Make it postable (doc/design.md §6.7): one click on a clip lets Claude decide everything at extra high effort (the
 // planner, ai.md §16), applies every decision as one undo step within an upfront spend cap, and shows one review with ▶,
 // Undo or Change per decision, the post text with Copy, and Export. Questions never block: the plan already follows
 // Claude's answer, and the review says "Claude chose X · Change".
 
-/// How clips should be made, as far as Make it postable needs it. **Seam:** track/v2-captions-style adds `ClipStyle`
-/// (`project.clipStyle`); when it merges, `EditorModel.makeItStyle` reads it here (captions → `captionPreference`,
-/// `music` → `generatedMusic`, `shapes`, `rewording` → `rewrites`). Until then the Auto preset's defaults apply.
+/// How clips should be made, as far as Make it postable needs it: the project's `ClipStyle` (the "How should clips be
+/// made?" card, design.md §6.6), else the one a new project starts with (`EditorModel.makeItStyle`).
 struct MakeItStyle: Equatable {
-    /// The creator's caption preference; nil fields leave the choice to Claude.
+    /// The creator's caption preference: a caption style they fixed; nil leaves the choice to Claude (Auto).
     var captionPreference: ClipAutopilotCaptionPreference?
+    /// Captions at all (ClipStyle captions `off` keeps the project's captions as they are).
+    var captions = true
+    /// The clip style's longest finished length, seconds; Claude is asked to keep within it and the review flags a clip
+    /// that does not.
+    var maxSeconds: Int?
+    /// How freely Claude may change the words.
+    var rewording = ClipRewording.fixOnly
     /// Eleven Music may generate a track when no free one fits (ClipStyle `music: auto`).
     var generatedMusic = true
     /// Music at all (ClipStyle `music: off` turns it off).
@@ -24,12 +30,42 @@ struct MakeItStyle: Equatable {
     var shapes: [AspectRatio] = [.landscape, .portrait]
 
     static let auto = MakeItStyle()
+
+    init(captionPreference: ClipAutopilotCaptionPreference? = nil, captions: Bool = true, maxSeconds: Int? = nil,
+         rewording: ClipRewording = .fixOnly, generatedMusic: Bool = true, music: Bool = true, rewrites: Bool = true,
+         shapes: [AspectRatio] = [.landscape, .portrait]) {
+        self.captionPreference = captionPreference; self.captions = captions; self.maxSeconds = maxSeconds; self.rewording = rewording
+        self.generatedMusic = generatedMusic; self.music = music; self.rewrites = rewrites; self.shapes = shapes
+    }
+
+    /// A fixed caption style becomes the planner's `styleId`; Auto leaves it to Claude; Off keeps captions as they are.
+    /// Music Auto allows a generated track when no free one fits; Off adds none. Rewording Off keeps the words.
+    init(_ style: ClipStyle) {
+        let fixed = style.fixedCaptionStyle
+        self.init(captionPreference: fixed.flatMap { $0 == "off" ? nil : ClipAutopilotCaptionPreference(styleId: $0) },
+                  captions: fixed != "off", maxSeconds: style.maxLengthSec, rewording: style.rewording,
+                  generatedMusic: style.music == .auto, music: style.music != .off, rewrites: style.rewording != .off,
+                  shapes: style.shapes.isEmpty ? [.landscape, .portrait] : style.shapes)
+    }
+
+    /// What the planner is told about the style that its request has no field for: the length and the rewording.
+    var plannerNote: String? {
+        var parts: [String] = []
+        if let maxSeconds { parts.append("Keep the finished clip at most \(maxSeconds) s.") }
+        switch rewording {
+        case .off: parts.append("Never reword the speaker: no rewrites.")
+        case .fixOnly: parts.append("Reword only what sounds wrong.")
+        case .tighten: parts.append("Reword freely to tighten.")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " ")
+    }
 }
 
 /// The outside world a run talks to. The app builds the real one (`MakeItServices.live`); tests and the smoke pass stubs.
 struct MakeItServices {
     /// The checked plan for a request (a clip, or a series), at extra high effort through the chosen AI.
-    var plan: @MainActor (_ request: ClipAutopilotRequest, _ editor: EditorModel) async throws -> ClipAutopilotSeries
+    var plan: @MainActor (_ request: ClipAutopilotRequest, _ editor: EditorModel,
+                          _ progress: @escaping @Sendable (ClipAutopilotProgress) -> Void) async throws -> ClipAutopilotSeries
     /// Voices one rewrite within `budget` (USD); returns what happened. The live one drives Rewrite's own session.
     var voice: @MainActor (_ rewrite: MakeItRewriteRequest, _ editor: EditorModel) async -> MakeItRewriteOutcome
     /// Whether a voice can be made at all now: Voice Lab on with an ElevenLabs key (no money is involved in the check).
@@ -79,6 +115,8 @@ enum MakeItChange: Equatable {
     case captions, music, motion, rename, post, hook
     case phrase(ClosedRange<Int>)
     case question(Int)
+    /// A decision VoxClip can't render yet (the look, the speed): Change shows the other choices in the row.
+    case pending
 }
 
 /// One line of the review.
@@ -119,6 +157,8 @@ struct MakeItRow: Identifiable, Equatable {
     var exported: [URL] = []
     /// A question row whose options show.
     var openQuestion: Int?
+    /// A pending row (look, speed) whose other choices show.
+    var openPending: String?
     @ObservationIgnored var task: Task<Void, Never>?
     @ObservationIgnored var inverses: [String: MakeItInverse] = [:]
     @ObservationIgnored var cancelled = false
@@ -150,6 +190,7 @@ struct MakeItRow: Identifiable, Equatable {
 
     var shown: MakeItRun? { shownClipID.flatMap { runs[$0] } }
     var active: MakeItRun? { runs.values.first { $0.running } }
+    var running: [MakeItRun] { runs.values.filter(\.running) }
     func run(for clipID: String) -> MakeItRun? { runs[clipID] }
 
     func refreshVoiceReady(_ editor: EditorModel) async {
@@ -161,7 +202,6 @@ struct MakeItRow: Identifiable, Equatable {
     func forget(_ clipID: String) { runs[clipID] = nil; scores[clipID] = nil; if shownClipID == clipID { shownClipID = nil } }
     func insert(_ run: MakeItRun) { runs[run.clipID] = run; shownClipID = run.clipID }
     func setSeries(_ ids: [String]) { series = ids; queue = ids }
-    func dequeue() -> String? { queue.isEmpty ? nil : queue.removeFirst() }
     func clearQueue() { queue = []; queueTask?.cancel(); queueTask = nil }
     func holdQueue(_ task: Task<Void, Never>) { queueTask = task }
     /// Waits until the series' queue has run (the smoke and tests).
@@ -170,11 +210,11 @@ struct MakeItRow: Identifiable, Equatable {
 
 extension EditorModel {
     /// The clip style Make it postable follows (the seam above).
-    var makeItStyle: MakeItStyle { makeIt.style ?? .auto }
+    var makeItStyle: MakeItStyle { makeIt.style ?? cardClipStyle.map(MakeItStyle.init) ?? .auto }
 
     // MARK: Price
 
-    /// The click's upfront cap (design.md §6.6): the voice for up to the planner's rewrite limit on this clip's length
+    /// The click's upfront cap (design.md §6.7): the voice for up to the planner's rewrite limit on this clip's length
     /// (first takes plus the same again for automatic fixes, which Rewrite's own allowance spends), plus a generated track
     /// for the clip's length when the style allows one. Nil when nothing can cost anything: no voice can be made and no
     /// track may be generated.
@@ -244,29 +284,86 @@ extension EditorModel {
         run.task = Task { [weak self] in await self?.perform(run) }
     }
 
-    /// "✦ Make top 3 postable": the best three suggestions by score, one after another, each its own run.
+    /// "✦ Make top 3 postable": the best three suggestions by score. One request plans all three at once (`.clips`, on
+    /// three lanes), then each is applied as its own run: its own cap, its own undo step, kept first.
     func makeTopPostable(_ count: Int = 3) {
-        let ranked = suggestedClips.prefix(count).map(\.id)
-        guard !ranked.isEmpty, makeIt.active == nil, capabilities.ai, capabilities.edit else { return }
-        makeIt.setSeries(Array(ranked))
-        let task = Task { [weak self] in
-            guard let self else { return }
-            while let next = makeIt.dequeue() {
-                guard !Task.isCancelled, canMakeItPostable(next) else { continue }
-                makeItPostable(next)
-                await makeIt.run(for: next)?.task?.value
-                if makeIt.run(for: next)?.phase == .stopped { makeIt.clearQueue(); break }
+        let ranked = suggestedClips.prefix(count).compactMap { clip -> (id: String, span: ClosedRange<Int>)? in
+            guard let lower = index(clip.startWordId), let upper = index(clip.endWordId), lower <= upper else { return nil }
+            return (clip.id, lower...upper)
+        }
+        guard !ranked.isEmpty, makeIt.active == nil, capabilities.ai, capabilities.edit, let transcript = project.transcript else { return }
+        makeIt.setSeries(ranked.map(\.id))
+        let runs = ranked.map { MakeItRun(clipID: $0.id, cap: makeItCap(clipID: $0.id)) }
+        for run in runs.reversed() { makeIt.insert(run); run.line("Waiting for Claude…") }
+        onShowMakeIt?()
+        let request = ClipAutopilotRequest(transcript: transcript, edits: project.edits, mode: .clips(ranked.map(\.span)),
+                                           captionPreference: makeItStyle.captionPreference, note: makeItNoteText())
+        let task = Task { [weak self] () -> Void in await self?.performSeries(runs, spans: ranked.map(\.span), request: request) }
+        for run in runs { run.task = task }
+        makeIt.holdQueue(task)
+    }
+
+    private func performSeries(_ runs: [MakeItRun], spans: [ClosedRange<Int>], request: ClipAutopilotRequest) async {
+        let services = makeIt.services ?? .live
+        defer { makeIt.clearQueue(); for run in runs where run.running { run.phase = .stopped } }
+        let series: ClipAutopilotSeries
+        do {
+            series = try await services.plan(request, self, progress(runs))
+        } catch is CancellationError { for run in runs { run.phase = .stopped }; return }
+        catch LLMError.cancelled { for run in runs { run.phase = .stopped }; return }
+        catch {
+            let message = await app.safeError(error, context: "ai:make-it")
+            for run in runs { run.phase = .failed(message.isEmpty ? "Claude couldn't plan these clips. Nothing was changed." : message) }
+            return
+        }
+        for (index, run) in runs.enumerated() {
+            guard !run.cancelled else { run.phase = .stopped; continue }
+            // A plan may tighten its span; it stays inside the span it was asked for.
+            guard let plan = series.plans.first(where: { spans[index].contains($0.startWord) && spans[index].contains($0.endWord) }) else {
+                run.phase = .failed("Claude couldn't plan this clip. Nothing was changed."); continue
+            }
+            guard canEditForMakeIt(run.clipID) else { run.phase = .failed("This clip changed. Nothing was changed."); continue }
+            makeIt.shownClipID = run.clipID
+            beginUndoGroup("Make it postable")
+            if isSuggestion(run.clipID) { _ = keepForRowAction(run.clipID) }
+            _ = setScope(run.clipID)
+            await finish(run, plan: plan, services: services)
+            endUndoGroup()
+            if run.phase == .stopped { for later in runs where later.running { later.phase = .stopped } ; break }
+        }
+    }
+
+    private func canEditForMakeIt(_ clipID: String) -> Bool {
+        capabilities.edit && project.edits.clips.contains { $0.id == clipID }
+    }
+
+    /// Progress lines from the planner (`ClipAutopilotProgress`), on each clip's run.
+    private func progress(_ runs: [MakeItRun]) -> @Sendable (ClipAutopilotProgress) -> Void {
+        { event in
+            Task { @MainActor in
+                switch event {
+                case .pickingMoments: runs.first?.line("Finding the best moments…")
+                case .picked(let moments): runs.first?.line("Picked \(moments.count) \(moments.count == 1 ? "moment" : "moments")…")
+                case .planning(let clip, let total):
+                    guard runs.indices.contains(clip) else { return }
+                    runs[clip].line(total > 1 ? "Reading clip \(clip + 1) of \(total)…" : "Reading the clip…")
+                case .planned(let clip, let total):
+                    guard runs.indices.contains(clip) else { return }
+                    runs[clip].line(total > 1 ? "Planned clip \(clip + 1) of \(total)." : "Planned.")
+                case .failed(let clip, let total):
+                    guard runs.indices.contains(clip) else { return }
+                    runs[clip].line(total > 1 ? "Clip \(clip + 1) of \(total) couldn't be planned." : "The clip couldn't be planned.")
+                }
             }
         }
-        makeIt.holdQueue(task)
     }
 
     /// Stop: the run ends at its next safe point and keeps what it applied.
     func stopMakeIt() {
-        guard let run = makeIt.active else { return }
-        run.cancelled = true
+        let running = makeIt.running
+        guard !running.isEmpty else { return }
+        for run in running { run.cancelled = true; run.line("Stopping after this step…") }
         makeIt.clearQueue()
-        run.line("Stopping after this step…")
     }
 
     var canMakeTopPostable: Bool { !suggestedClips.isEmpty && makeIt.active == nil && capabilities.ai && capabilities.edit }
@@ -279,7 +376,7 @@ extension EditorModel {
         run.line("Reading the clip…")
         guard let request = makeItRequest(run.clipID) else { run.phase = .failed("This clip has no words to plan."); return }
         let series: ClipAutopilotSeries
-        do { series = try await services.plan(request, self) }
+        do { series = try await services.plan(request, self, progress([run])) }
         catch is CancellationError { run.phase = .stopped; return }
         catch LLMError.cancelled { run.phase = .stopped; return }
         catch {
@@ -288,6 +385,11 @@ extension EditorModel {
             return
         }
         guard let plan = series.plans.first else { run.phase = .failed("Claude found nothing to keep in this clip. Nothing was changed."); return }
+        await finish(run, plan: plan, services: services)
+    }
+
+    /// Applies a checked plan as the run's step, inside the undo group the caller opened.
+    private func finish(_ run: MakeItRun, plan: ClipAutopilotPlan, services: MakeItServices) async {
         run.plan = plan
         makeIt.record(score: plan.score, verdict: plan.verdict, for: run.clipID)
         guard !makeItStopped(run) else { run.phase = .stopped; return }
@@ -311,7 +413,14 @@ extension EditorModel {
         guard let transcript = project.transcript, let clip = project.edits.clips.first(where: { $0.id == clipID }),
               let lower = index(clip.startWordId), let upper = index(clip.endWordId), lower <= upper else { return nil }
         return ClipAutopilotRequest(transcript: transcript, edits: project.edits, mode: .clip(lower...upper),
-                                    captionPreference: makeItStyle.captionPreference)
+                                    captionPreference: makeItStyle.captionPreference, note: makeItNoteText())
+    }
+
+    /// The note to Claude: the style's length and rewording, then a question's other answer (sent once).
+    private func makeItNoteText() -> String? {
+        let parts = [makeItStyle.plannerNote, makeItNote].compactMap { $0 }
+        makeItNote = nil
+        return parts.isEmpty ? nil : String(parts.joined(separator: " ").prefix(600))
     }
 
     /// Applies a plan: cuts, captions, zooms and post text in one change; then each rewrite in the creator's voice; then
@@ -377,6 +486,11 @@ extension EditorModel {
             let before = project
             guard (try? project.applyEditing(command)) != nil, project != before else { return (nil, nil) }
             switch command {
+            case .correct(let id, let text):
+                let original = words.first { $0.id == id }
+                let previous = before.edits.corrections[id] ?? original?.text ?? ""
+                return (.edits([.correct(id: id, text: previous)]), MakeItRow(id: operation.id, text: "Corrected “\(previous)” → “\(text)”",
+                    detail: operation.reason, play: original.map { max(0, $0.start - 1) }, undoable: true))
             case .cutSelection(let ids):
                 let text = ids.compactMap { id in words.first { $0.id == id }.map { project.edits.corrections[$0.id] ?? $0.text } }.joined(separator: " ")
                 let isPause = operation.decision == .pauseCut
@@ -397,6 +511,8 @@ extension EditorModel {
                 return (nil, nil)
             }
         case .captions(let settings, let pendingFont):
+            // Captions Off in the clip style: the project's captions stay as they are.
+            guard makeItStyle.captions else { return (nil, nil) }
             let previous = project.captions
             project.captions = settings
             let styles = app.shared.flatMap { try? CaptionStyleLibrary(shared: $0).styles } ?? []
@@ -416,6 +532,18 @@ extension EditorModel {
             let previous = project.share.captions[clipID]
             project.share.captions[clipID] = text
             return (.share(clipID: clipID, previous: previous), nil)
+        case .look(_, let look):
+            // Pending: the look renderer owes muted, warm and black and white (ai.md §16.10).
+            guard look.id != .original else { return (nil, nil) }
+            return (nil, MakeItRow(id: operation.id, kind: .choice, text: "Claude chose the \(Self.lookName(look.id)) look",
+                detail: [look.reason, "Shows once looks render."].filter { !$0.isEmpty }.joined(separator: " · "), change: .pending,
+                options: ClipAutopilotPlan.LookID.allCases.filter { $0 != look.id }.map { Self.lookName($0) }))
+        case .speed(_, let speed):
+            // Pending: the clip controls package owes speed (ai.md §16.10).
+            let rate = String(format: "%.2g", speed.rate)
+            return (nil, MakeItRow(id: operation.id, kind: .choice, text: "Claude chose \(rate)× speed",
+                detail: [speed.reason, "Plays once clip speed renders."].filter { !$0.isEmpty }.joined(separator: " · "), change: .pending,
+                options: ["1×", "1.1×", "1.25×"].filter { $0 != rate + "×" }))
         case .rewrite, .music, .hook:
             return nil
         }
@@ -569,7 +697,40 @@ extension EditorModel {
             _ = setScope(run.clipID)
             runRewrite(scope: .selection(range))
         case .question(let index): run.openQuestion = run.openQuestion == index ? nil : index
+        case .pending: break
         }
+    }
+
+    /// Change on a pending row (look, speed) shows or hides its other choices.
+    func makeItTogglePending(_ rowID: String, run: MakeItRun) { run.openPending = run.openPending == rowID ? nil : rowID }
+
+    /// The creator's choice for a decision VoxClip can't render yet: kept with the review until it can.
+    func makeItChoosePending(_ option: String, rowID: String, run: MakeItRun) {
+        guard let index = run.rows.firstIndex(where: { $0.id == rowID }) else { return }
+        let current = run.rows[index].text.replacingOccurrences(of: "Claude chose ", with: "").replacingOccurrences(of: "You chose ", with: "")
+        run.rows[index].text = rowID == "look" ? "You chose the \(option) look" : "You chose \(option) speed"
+        let shown = current.replacingOccurrences(of: "the ", with: "").replacingOccurrences(of: " look", with: "").replacingOccurrences(of: " speed", with: "")
+        run.rows[index].options = (run.rows[index].options.filter { $0 != option } + [shown])
+        run.openPending = nil
+    }
+
+    static func lookName(_ id: ClipAutopilotPlan.LookID) -> String {
+        switch id { case .original: "original"; case .muted: "muted"; case .warm: "warm"; case .bw: "black and white" }
+    }
+
+    /// Under the headline: Claude's finished length and anything the plan flags, or a clip longer than the style allows.
+    func makeItLengthNotes(_ run: MakeItRun) -> [String] {
+        guard let plan = run.plan, !run.running else { return [] }
+        var notes: [String] = []
+        if plan.seconds > 0 {
+            let speed = plan.speed.map { " at \(String(format: "%.2g", $0.rate))× (speed not rendered yet)" } ?? ""
+            notes.append("Claude's cut: \(durationLabel(plan.seconds)) finished" + speed)
+        }
+        notes += plan.flags.map { "⚠ " + $0.detail }
+        if let limit = makeItStyle.maxSeconds, run.editedSeconds > Double(limit) + 0.5 {
+            notes.append("⚠ Longer than this clip style's \(limit) s")
+        }
+        return notes
     }
 
     /// A question's other answer: this clip's decisions are taken back and Claude plans it again with that answer.
@@ -675,7 +836,7 @@ extension MakeItServices {
     /// voice through Rewrite's session with automatic takes.
     @MainActor static var live: MakeItServices {
         MakeItServices(
-            plan: { request, editor in try await editor.makeItPlanLive(request) },
+            plan: { request, editor, progress in try await editor.makeItPlanLive(request, progress: progress) },
             voice: { rewrite, editor in await MakeItRewriteDriver(editor: editor, request: rewrite).run() },
             voiceAvailable: { editor in
                 guard editor.app.voiceLabRewriteEnabled else { return false }
@@ -686,7 +847,7 @@ extension MakeItServices {
 
 extension EditorModel {
     /// The planner through the chosen AI, holding the project's AI lease while it runs.
-    func makeItPlanLive(_ request: ClipAutopilotRequest) async throws -> ClipAutopilotSeries {
+    func makeItPlanLive(_ request: ClipAutopilotRequest, progress: @escaping @Sendable (ClipAutopilotProgress) -> Void) async throws -> ClipAutopilotSeries {
         guard let shared = app.shared, let provider = app.providers.first(where: { $0.id == app.string("llm.connector") }) else {
             throw LLMError.noConnector
         }
@@ -699,8 +860,8 @@ extension EditorModel {
                                                       confirmation: sendConfirmation, verb: "Make it postable") else { throw CancellationError() }
         let catalog = LLMCatalog(document: try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: shared.root.appendingPathComponent("catalog/llm-providers.json"))))
         let service = ClipAutopilotService(runner: LLMRunner(keys: app.secrets, catalog: catalog, log: app.log), shared: shared)
-        var input = request
-        if let note = makeItNote { input.note = note; makeItNote = nil }
-        return try await service.plan(input, connector: connector, model: model).series
+        // Claude Code runs one process per connector: two more lanes plan a series' clips three at once.
+        let lanes: [any LLMConnector] = provider.id == ConnectorID.claudeCode.rawValue ? [app.connector(provider.id), app.connector(provider.id)] : []
+        return try await service.plan(request, connector: connector, model: model, lanes: lanes, progress: progress).series
     }
 }

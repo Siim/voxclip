@@ -28,6 +28,7 @@ WEIGHT_NAMES = [
 
 LICENCES = {
     "OFL.txt": "OFL-1.1",
+    "LICENSE.txt": "Apache-2.0",  # Roboto, the only Apache-2.0 font family
     "LICENSE": "Apache-2.0",  # only noto-emoji ships a LICENSE file
 }
 
@@ -107,9 +108,10 @@ def describe_font(folder, file_name, sources):
     src = sources["files"].get(rel)
     if src is None:
         raise SystemExit("no provenance for " + rel)
-    lic_file = "OFL.txt"
-    if not os.path.exists(os.path.join(FONTS, folder, lic_file)):
-        raise SystemExit("missing licence file for " + rel)
+    present = [n for n in ("OFL.txt", "LICENSE.txt") if os.path.exists(os.path.join(FONTS, folder, n))]
+    if len(present) != 1:
+        raise SystemExit("a font folder needs exactly one licence file (OFL.txt or LICENSE.txt): " + rel)
+    lic_file = present[0]
     italic = bool(os2.fsSelection & 1) or bool(head.macStyle & 2)
     return {
         "file": file_name,

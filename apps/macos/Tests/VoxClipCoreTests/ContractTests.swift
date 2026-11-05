@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import VoxClipCore
+import VoxClipMedia
 
 @Test func sharedFixturesResolveFromSource() throws {
     let root = try FixtureLoader.sharedRoot(environment: [:])
@@ -26,7 +27,7 @@ func portableProjectRoundTrip(name: String) throws {
     let root = try FixtureLoader.sharedRoot()
     let directory = root.appendingPathComponent("caption-styles/styles", isDirectory: true)
     let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil).filter { $0.pathExtension == "json" }
-    #expect(files.count == 19)
+    #expect(files.count == 26)
     for url in files {
         let data = try Data(contentsOf: url)
         let style = try JSONDecoder().decode(CaptionStyle.self, from: data)
@@ -163,6 +164,22 @@ func portableProjectRoundTrip(name: String) throws {
     let locations = DataLocations(environment: ["VOXCLIP_DATA_DIR": "/tmp/voxclip-contract-test"], home: URL(fileURLWithPath: "/Users/example"))
     #expect(locations.logs.path == "/tmp/voxclip-contract-test/Logs")
     #expect(locations.settings.path == "/tmp/voxclip-contract-test/settings.json")
+}
+
+/// MVP23: test processes wrote ~/Library/Logs/VoxClip/voxclip.log, so the user's log held test lines and not the failure.
+@Test func aTestProcessNeverLogsIntoTheUsersLogFolder() throws {
+    let home = FileManager.default.homeDirectoryForCurrentUser
+    let userLogs = home.appendingPathComponent("Library/Logs").standardizedFileURL.path
+    #expect(TestProcess.isRunning)
+    for locations in [DataLocations(), DataLocations(environment: [:]), DataLocations(environment: ["VOXCLIP_DATA_DIR": ""])] {
+        #expect(!locations.logs.standardizedFileURL.path.hasPrefix(userLogs), "\(locations.logs.path)")
+    }
+    #expect(DataLocations(environment: [:]).logs == TestProcess.logs)
+    #expect(DataLocations(environment: [:], home: URL(fileURLWithPath: "/Users/example"), testing: false).logs.path == "/Users/example/Library/Logs/VoxClip")
+    #expect(!ElevenLabsVoiceLab.defaultValidationDiagnosticDirectory().standardizedFileURL.path.hasPrefix(userLogs))
+    #expect(TestProcess.detect(environment: [:], processName: "swiftpm-testing-helper", arguments: []))
+    #expect(TestProcess.detect(environment: [:], processName: "xctest", arguments: []))
+    #expect(!TestProcess.detect(environment: [:], processName: "VoxClip", arguments: ["/Applications/VoxClip.app/Contents/MacOS/VoxClip"]))
 }
 
 @Test func projectStoreRejectsMissingInput() async {

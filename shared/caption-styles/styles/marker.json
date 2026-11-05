@@ -1,0 +1,79 @@
+{
+ "$schema": "../schema.json",
+ "schemaVersion": 1,
+ "id": "marker",
+ "name": "Marker",
+ "order": 200,
+ "description": "Roboto Black caps; a square yellow marker box jumps to the word being spoken, with dark text on it.",
+ "tags": [
+  "phrase",
+  "active-word",
+  "box"
+ ],
+ "accent": "#FFE14D",
+ "font": {
+  "file": "Roboto-Black.ttf",
+  "family": "Roboto",
+  "weight": 900,
+  "sizeSh": 0.066,
+  "lineHeightEm": 1.18,
+  "wordSpacingEm": 0.34
+ },
+ "text": {
+  "transform": "uppercase",
+  "punctuation": "strip-keep-numeric"
+ },
+ "layout": {
+  "maxWords": 3,
+  "maxLines": 2,
+  "maxLineWidthW": 0.82,
+  "maxPageSec": 2.5
+ },
+ "position": {
+  "x": 0.5,
+  "y": 0.7
+ },
+ "aspects": {
+  "landscape": {
+   "y": 0.8
+  }
+ },
+ "fill": {
+  "type": "solid",
+  "color": "#FFFFFF"
+ },
+ "shadows": [
+  {
+   "dxEm": 0,
+   "dyEm": 0.05,
+   "sigmaEm": 0.08,
+   "color": "#000000A6"
+  }
+ ],
+ "words": {
+  "active": {
+   "fill": {
+    "type": "solid",
+    "color": "#111111"
+   },
+   "box": {
+    "color": "$accent",
+    "paddingXEm": 0.12,
+    "paddingYEm": 0.03,
+    "radiusEm": 0.05
+   }
+  }
+ },
+ "animation": {
+  "activeIn": {
+   "type": "pop",
+   "durationSec": 0.08,
+   "easing": "easeOutCubic",
+   "fromScale": 0.94
+  }
+ },
+ "preview": {
+  "text": "Watch this part",
+  "activeWord": 1
+ }
+}

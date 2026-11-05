@@ -24,7 +24,7 @@ from captionref import card as cd  # noqa: E402
 from captionref import text as tx  # noqa: E402
 from captionref.style import load_style, with_defaults  # noqa: E402
 from captionref.takes import build_projects, caption_copies, validate  # noqa: E402
-from captionref.util import FIXTURES, STYLES, load_json, write_json  # noqa: E402
+from captionref.util import FIXTURES, STYLES, load_json, set_styles, write_json  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -119,7 +119,7 @@ def main():
     copies = caption_copies(projects)
     coverage = WholeWords()
     stopwords = {k: set(v) for k, v in load_json(os.path.join(STYLES, "stopwords.json"))["languages"].items()}
-    styles = sorted(f[:-5] for f in os.listdir(os.path.join(STYLES, "styles")) if f.endswith(".json"))
+    styles = set_styles(1)  # set 1 only: later sets keep their vectors in their own folders (style-sets.json)
     cases = list(doc["cases"])
     matrix = doc["matrix"]
     cases += [{"id": "%s-%s-%s" % (matrix["prefix"], sid, name), "project": matrix["project"], "style": sid, "playhead": playhead}

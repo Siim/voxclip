@@ -1,0 +1,113 @@
+{
+ "description": "Clip style presets (doc/design.md section 6.6). A preset maps to concrete defaults; 'auto' in captions or music leaves that choice to the AI per clip. Both apps read this file; the clip autopilot planner consumes the same values. Caption ids name shared/caption-styles/styles files, or 'off'.",
+ "schemaVersion": 1,
+ "defaultPreset": "auto",
+ "lengthChoicesSec": [
+  30,
+  45,
+  60,
+  90,
+  120
+ ],
+ "shapes": [
+  "16:9",
+  "9:16",
+  "1:1"
+ ],
+ "rewording": [
+  {
+   "id": "off",
+   "label": "Never reword"
+  },
+  {
+   "id": "fix-only",
+   "label": "Fix only what sounds wrong"
+  },
+  {
+   "id": "tighten",
+   "label": "Tighten freely"
+  }
+ ],
+ "music": [
+  {
+   "id": "auto",
+   "label": "Auto",
+   "detail": "Free library first, generated if nothing fits, then your folder"
+  },
+  {
+   "id": "off",
+   "label": "No music"
+  }
+ ],
+ "presets": [
+  {
+   "id": "auto",
+   "label": "Auto",
+   "detail": "Claude decides",
+   "captions": "auto",
+   "music": "auto",
+   "maxLengthSec": 60,
+   "shapes": [
+    "16:9",
+    "9:16"
+   ],
+   "rewording": "fix-only",
+   "excludeCaptionTags": []
+  },
+  {
+   "id": "punchy",
+   "label": "Punchy talking head",
+   "captions": "punch-in",
+   "music": "auto",
+   "maxLengthSec": 45,
+   "shapes": [
+    "9:16"
+   ],
+   "rewording": "fix-only",
+   "excludeCaptionTags": []
+  },
+  {
+   "id": "calm",
+   "label": "Calm story",
+   "captions": "minimal",
+   "music": "auto",
+   "maxLengthSec": 90,
+   "shapes": [
+    "16:9",
+    "9:16"
+   ],
+   "rewording": "fix-only",
+   "excludeCaptionTags": [
+    "emoji"
+   ]
+  },
+  {
+   "id": "demo",
+   "label": "Demo / tutorial",
+   "captions": "clean-subtitle",
+   "music": "off",
+   "maxLengthSec": 120,
+   "shapes": [
+    "16:9"
+   ],
+   "rewording": "off",
+   "excludeCaptionTags": [
+    "emoji"
+   ]
+  },
+  {
+   "id": "mine",
+   "label": "My style",
+   "detail": "Your saved choices",
+   "captions": "auto",
+   "music": "auto",
+   "maxLengthSec": 60,
+   "shapes": [
+    "16:9",
+    "9:16"
+   ],
+   "rewording": "fix-only",
+   "excludeCaptionTags": []
+  }
+ ]
+}

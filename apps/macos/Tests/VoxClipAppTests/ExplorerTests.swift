@@ -158,7 +158,7 @@ import Testing
         #expect(row.contains(".onHover"))
         #expect(row.contains("shell.canRewriteExplorerClip(clip.id)"))
         #expect(row.contains("shell.rewriteExplorerClip(clip.id)"))
-        // ✦ is Make it postable (design.md §6.6); Rewrite stays in ⋯, the context menu and the accessibility actions.
+        // ✦ is Make it postable (design.md §6.7); Rewrite stays in ⋯, the context menu and the accessibility actions.
         #expect(row.contains("MakeItRowButton(model: editor, clipID: clip.id) { editor.makeItPostable(clip.id) }"))
         #expect(row.components(separatedBy: "ExplorerClipMenu(shell:").count == 3)
         #expect(row.contains(".focusable(false)"))

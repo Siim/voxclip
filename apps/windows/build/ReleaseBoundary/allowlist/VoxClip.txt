@@ -150,6 +150,16 @@ member VoxClip.App.Controls.CaptionsPanel+Tile :: method public remove_PropertyC
 member VoxClip.App.Controls.CaptionsPanel+Tile :: method public set_Bitmap(Microsoft.UI.Xaml.Media.ImageSource)
 member VoxClip.App.Controls.CaptionsPanel+Tile :: method public set_Selected(Microsoft.UI.Xaml.Visibility)
 member VoxClip.App.Controls.ClipBar :: method public .ctor()
+member VoxClip.App.Controls.ClipStyleCardPanel :: field private Chosen
+member VoxClip.App.Controls.ClipStyleCardPanel :: method internal .ctor()
+member VoxClip.App.Controls.ClipStyleCardPanel :: method internal FontName(VoxClip.Core.Domain.Captions.CaptionStyle)
+member VoxClip.App.Controls.ClipStyleCardPanel :: method internal Show(VoxClip.Core.Domain.Clips.ClipStyle,VoxClip.Core.Domain.Clips.ClipStyleCatalog,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Captions.CaptionStyle>,VoxClip.Core.Domain.Clips.ClipStyle)
+member VoxClip.App.Controls.ClipStyleCardPanel :: method internal add_Chosen(System.Action`2<VoxClip.Core.Domain.Clips.ClipStyle,bool>)
+member VoxClip.App.Controls.ClipStyleCardPanel :: method internal remove_Chosen(System.Action`2<VoxClip.Core.Domain.Clips.ClipStyle,bool>)
+member VoxClip.App.Controls.ClipStyleCardPanel :: method private Labeled(string,Microsoft.UI.Xaml.FrameworkElement)
+member VoxClip.App.Controls.ClipStyleCardPanel :: method private Mine(VoxClip.Core.Domain.Clips.ClipStyle)
+member VoxClip.App.Controls.ClipStyleCardPanel :: method private Row(string,System.Collections.Generic.IReadOnlyList`1<string>,int,System.Action`1<int>)
+member VoxClip.App.Controls.ClipStyleCardPanel :: method private Token(string)
 member VoxClip.App.Controls.CommandPalette :: field private CommandInvoking
 member VoxClip.App.Controls.CommandPalette :: field private Dismissed
 member VoxClip.App.Controls.CommandPalette :: field private commands
@@ -1398,6 +1408,9 @@ member VoxClip.App.Controls.VoiceLabSettingsPane :: method private SessionChange
 member VoxClip.App.Controls.WindowsRuntimeTermsDialog :: method internal ShowAsync(VoxClip.Core.Services.Project.WindowsRuntimeAgreement)
 member VoxClip.App.Controls.WindowsRuntimeTermsDialog :: method private GetDpiForWindow(nint)
 member VoxClip.App.Controls.WindowsRuntimeTermsDialog :: method private ShowDialogAsync(Microsoft.UI.Xaml.Controls.ContentDialog)
+member VoxClip.App.MainWindow :: field private clipStyleCard
+member VoxClip.App.MainWindow :: field private clipStyleLibrary
+member VoxClip.App.MainWindow :: field private clipStyles
 member VoxClip.App.MainWindow :: field private clipTiles
 member VoxClip.App.MainWindow :: field private closingApproved
 member VoxClip.App.MainWindow :: field private closingInProgress
@@ -1455,6 +1468,8 @@ member VoxClip.App.MainWindow :: method private CaptionsClipClicked(object,Micro
 member VoxClip.App.MainWindow :: method private ClipCommand(string,System.Func`2<VoxClip.App.ViewModels.EditorViewModel,bool>)
 member VoxClip.App.MainWindow :: method private ClipRowPointerEntered(object,Microsoft.UI.Xaml.Input.PointerRoutedEventArgs)
 member VoxClip.App.MainWindow :: method private ClipRowPointerExited(object,Microsoft.UI.Xaml.Input.PointerRoutedEventArgs)
+member VoxClip.App.MainWindow :: method private ClipStyleChosen(VoxClip.Core.Domain.Clips.ClipStyle,bool)
+member VoxClip.App.MainWindow :: method private ClipStyleStatusClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.MainWindow :: method private CloseCommandPalette(bool)
 member VoxClip.App.MainWindow :: method private CloseShellTab()
 member VoxClip.App.MainWindow :: method private CommandPaletteClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
@@ -1484,6 +1499,7 @@ member VoxClip.App.MainWindow :: method private InvokeRowAsync(VoxClip.App.ViewM
 member VoxClip.App.MainWindow :: method private KeepAllClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.MainWindow :: method private KeepClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.MainWindow :: method private KeepSuggestionInvoked(Microsoft.UI.Xaml.Input.KeyboardAccelerator,Microsoft.UI.Xaml.Input.KeyboardAcceleratorInvokedEventArgs)
+member VoxClip.App.MainWindow :: method private LoadClipStyles()
 member VoxClip.App.MainWindow :: method private MoreClipClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.MainWindow :: method private NavItemInvoked(object,Microsoft.UI.Xaml.Controls.ItemClickEventArgs)
 member VoxClip.App.MainWindow :: method private NavSelectionChanged(object,Microsoft.UI.Xaml.Controls.SelectionChangedEventArgs)
@@ -1491,6 +1507,7 @@ member VoxClip.App.MainWindow :: method private OpenCommandPalette()
 member VoxClip.App.MainWindow :: method private PaneAccelerator(string)
 member VoxClip.App.MainWindow :: method private PaneRowKeyDown(object,Microsoft.UI.Xaml.Input.KeyRoutedEventArgs)
 member VoxClip.App.MainWindow :: method private PaneToggleRequested(Microsoft.UI.Xaml.Controls.TitleBar,object)
+member VoxClip.App.MainWindow :: method private RefreshClipStyle()
 member VoxClip.App.MainWindow :: method private RefreshShellStatus()
 member VoxClip.App.MainWindow :: method private RefreshTakeAsync()
 member VoxClip.App.MainWindow :: method private RegionKeyDown(object,Microsoft.UI.Xaml.Input.KeyRoutedEventArgs)
@@ -1502,6 +1519,7 @@ member VoxClip.App.MainWindow :: method private RenameClipClicked(object,Microso
 member VoxClip.App.MainWindow :: method private RenameClipInvoked(Microsoft.UI.Xaml.Input.KeyboardAccelerator,Microsoft.UI.Xaml.Input.KeyboardAcceleratorInvokedEventArgs)
 member VoxClip.App.MainWindow :: method private RenameKeyDown(object,Microsoft.UI.Xaml.Input.KeyRoutedEventArgs)
 member VoxClip.App.MainWindow :: method private RenameSaveClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
+member VoxClip.App.MainWindow :: method private ReopenClipStyleCard()
 member VoxClip.App.MainWindow :: method private RequestCloseAsync(VoxClip.App.ViewModels.ShellPath)
 member VoxClip.App.MainWindow :: method private RetryExportClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.MainWindow :: method private RewriteClipClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
@@ -1511,6 +1529,7 @@ member VoxClip.App.MainWindow :: method private RowCommand(Microsoft.UI.Xaml.Inp
 member VoxClip.App.MainWindow :: method private RowEdits(VoxClip.App.ViewModels.SidebarKind)
 member VoxClip.App.MainWindow :: method private RowEdits(string)
 member VoxClip.App.MainWindow :: method private SaveRightColumnWidthAsync(double)
+member VoxClip.App.MainWindow :: method private SavedClipStyle()
 member VoxClip.App.MainWindow :: method private ScopeRowKeys(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.MainWindow :: method private SettingsChanged(object,System.EventArgs)
 member VoxClip.App.MainWindow :: method private SettingsClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
@@ -2884,6 +2903,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: field private SaveRequested
 member VoxClip.App.ViewModels.EditorViewModel :: field private SelectionChanged
 member VoxClip.App.ViewModels.EditorViewModel :: field private applyingVoiceLab
 member VoxClip.App.ViewModels.EditorViewModel :: field private busy
+member VoxClip.App.ViewModels.EditorViewModel :: field private clipStyleReopened
 member VoxClip.App.ViewModels.EditorViewModel :: field private exportActivity
 member VoxClip.App.ViewModels.EditorViewModel :: field private exportRecords
 member VoxClip.App.ViewModels.EditorViewModel :: field private isLeaving
@@ -2943,6 +2963,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method private MoveHistory(Syst
 member VoxClip.App.ViewModels.EditorViewModel :: method private Number(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method private Plural(int,string)
 member VoxClip.App.ViewModels.EditorViewModel :: method private RecordCaptions(VoxClip.Core.Domain.Shared.ProjectCaptions)
+member VoxClip.App.ViewModels.EditorViewModel :: method private RecordClipStyle(VoxClip.Core.Domain.Shared.Project)
 member VoxClip.App.ViewModels.EditorViewModel :: method private Refresh()
 member VoxClip.App.ViewModels.EditorViewModel :: method private RefreshExportRows()
 member VoxClip.App.ViewModels.EditorViewModel :: method private SameCaptions(VoxClip.Core.Domain.Shared.ProjectCaptions,VoxClip.Core.Domain.Shared.ProjectCaptions)
@@ -2966,9 +2987,11 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public AccessibleWord(in
 member VoxClip.App.ViewModels.EditorViewModel :: method public AddAiResult(VoxClip.Core.Domain.Clips.AiResult)
 member VoxClip.App.ViewModels.EditorViewModel :: method public Apply(VoxClip.Core.Domain.Editing.EditOperation)
 member VoxClip.App.ViewModels.EditorViewModel :: method public ApplyBatch(System.Collections.Generic.IEnumerable`1<VoxClip.Core.Domain.Editing.EditOperation>)
+member VoxClip.App.ViewModels.EditorViewModel :: method public ApplyCaptionPick(System.Collections.Generic.IReadOnlySet`1<string>)
 member VoxClip.App.ViewModels.EditorViewModel :: method public ApplyVoiceLab(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabSegment>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabAsset>,VoxClip.Core.Domain.VoiceLab.VoiceLabVoiceReference,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope,string,VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.EditOperation>,System.Collections.Generic.IReadOnlyDictionary`2<string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabRateSample>>)
 member VoxClip.App.ViewModels.EditorViewModel :: method public ApplyVoiceLab(VoxClip.Core.Domain.VoiceLab.VoiceLabEditCommand,VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.EditOperation>)
 member VoxClip.App.ViewModels.EditorViewModel :: method public BeginCorrection()
+member VoxClip.App.ViewModels.EditorViewModel :: method public ChooseClipStyle(VoxClip.Core.Domain.Clips.ClipStyle,System.Collections.Generic.IReadOnlySet`1<string>,bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method public ClipTitleProblem(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public CutSelection(bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method public CycleClip(int)
@@ -3016,6 +3039,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public get_CanFindClips(
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_CanPreviewCut()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_CanRedo()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_CanUndo()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_ClipStyleReopened()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_Clips()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_CorrectionText()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_CorrectionWordId()
@@ -3038,6 +3062,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public get_SelectionCare
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_SelectionEnd()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_SelectionStart()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_SelectionText()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_ShowsClipStyleCard()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_SourceTime()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_State()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_SuggestedClips()
@@ -3054,6 +3079,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public remove_Correction
 member VoxClip.App.ViewModels.EditorViewModel :: method public remove_SaveRequested(System.EventHandler)
 member VoxClip.App.ViewModels.EditorViewModel :: method public remove_SelectionChanged(System.EventHandler)
 member VoxClip.App.ViewModels.EditorViewModel :: method public set_Busy(bool)
+member VoxClip.App.ViewModels.EditorViewModel :: method public set_ClipStyleReopened(bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method public set_CorrectionText(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public set_Notice(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public set_SourceTime(double)
@@ -6135,6 +6161,7 @@ type VoxClip.App.Controls.CaptionsPanel
 type VoxClip.App.Controls.CaptionsPanel+Group
 type VoxClip.App.Controls.CaptionsPanel+Tile
 type VoxClip.App.Controls.ClipBar
+type VoxClip.App.Controls.ClipStyleCardPanel
 type VoxClip.App.Controls.CommandPalette
 type VoxClip.App.Controls.CreateVoicePage
 type VoxClip.App.Controls.DirectorPanel

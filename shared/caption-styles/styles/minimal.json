@@ -1,0 +1,60 @@
+{
+ "$schema": "../schema.json",
+ "schemaVersion": 1,
+ "id": "minimal",
+ "name": "Minimal",
+ "order": 260,
+ "description": "Small sentence-case Roboto Black in soft white with a faint shadow, low in the frame. No colour, no motion, no emoji.",
+ "tags": [
+  "sentence",
+  "minimal",
+  "clean"
+ ],
+ "font": {
+  "file": "Roboto-Black.ttf",
+  "family": "Roboto",
+  "weight": 900,
+  "sizeSh": 0.04,
+  "lineHeightEm": 1.24,
+  "wordSpacingEm": 0.26
+ },
+ "text": {
+  "transform": "none",
+  "punctuation": "keep"
+ },
+ "layout": {
+  "maxWords": 8,
+  "maxLines": 2,
+  "maxLineWidthW": 0.78,
+  "balance": "balanced",
+  "holdGapSec": 0.6,
+  "maxPageSec": 4.5
+ },
+ "position": {
+  "x": 0.5,
+  "y": 0.86,
+  "anchorY": "bottom"
+ },
+ "aspects": {
+  "landscape": {
+   "y": 0.9,
+   "maxLineWidthW": 0.66
+  }
+ },
+ "fill": {
+  "type": "solid",
+  "color": "#FFFFFFF2"
+ },
+ "shadows": [
+  {
+   "dxEm": 0,
+   "dyEm": 0.04,
+   "sigmaEm": 0.1,
+   "color": "#00000099"
+  }
+ ],
+ "preview": {
+  "text": "Here is what changed this week.",
+  "activeWord": 0
+ }
+}

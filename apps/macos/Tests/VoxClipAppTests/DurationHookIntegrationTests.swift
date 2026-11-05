@@ -104,7 +104,7 @@ private struct NoProviderKeys: ProviderKeyStore {
                     .init(input: input, quote: .init(id: UUID(), takes: [self.quote(seed: input.seed, modelID: input.modelID)], preparedAt: Date()))
                 })
             }
-            backend.approve = { _, _ in }
+            backend.approve = { _, _, _ in }
             backend.execute = { batch, index, phrase, _ in
                 self.executions += 1
                 let window = batch.windows[index]

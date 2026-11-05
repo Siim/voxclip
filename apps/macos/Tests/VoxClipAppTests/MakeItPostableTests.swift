@@ -13,7 +13,7 @@ private final class Calls: Sendable {
     func record(_ call: String) { value.withLock { $0.append(call) } }
 }
 
-/// ✦ Make it postable (doc/design.md §6.6) on a demo editor with its own data folder: the planner, the voice and the
+/// ✦ Make it postable (doc/design.md §6.7) on a demo editor with its own data folder: the planner, the voice and the
 /// music sources are stubs, so nothing is sent, paid or read from the keychain.
 @Suite("Make it postable", .serialized, .offlineFixtures)
 @MainActor struct MakeItPostableTests {
@@ -85,7 +85,7 @@ private final class Calls: Sendable {
         editor.musicPanel.services = MusicPanelServices(suggest: { _, _ in MusicSuggestionResult(candidates: candidates) },
             fetch: { candidate in calls.record("fetch \(candidate.id)"); return bytes }, folder: { nil })
         editor.makeIt.services = MakeItServices(
-            plan: { request, _ in
+            plan: { request, _, _ in
                 calls.record("plan \(request.mode)")
                 return ClipAutopilotSeries(plans: [plan])
             },
@@ -288,7 +288,7 @@ private final class Calls: Sendable {
         step(fixture.undo) {
             editor.apply(.addClip(ClipRange(id: "clip-two", startWordId: "w8", endWordId: "w9", title: "Two", origin: .manual, selected: true)), name: "Make clip")
         }
-        editor.makeIt.services?.plan = { _, _ in
+        editor.makeIt.services?.plan = { _, _, _ in
             ClipAutopilotSeries(plans: [ClipAutopilotPlan(startWord: 7, endWord: 8, title: "Two", hook: "", captions: Self.plan().captions,
                 music: Self.plan().music, musicPick: 0, postText: "Two.", score: 6, verdict: .casualPost)])
         }
@@ -297,6 +297,104 @@ private final class Calls: Sendable {
         let second = try #require(MusicProject.entry(for: "clip-two", in: editor.project))
         #expect(first.asset == second.asset && first.id != second.id && second.id == first.id + "-2")
         #expect(editor.makeIt.run(for: "clip-two")?.rows.first { $0.id == "music" }?.undoable == true)
+    }
+
+    /// Planner v2: a misheard word is corrected through `correct` and undoes on its own; the look and the speed are
+    /// pending "Claude chose … · Change" rows whose Change shows the other choices; the review shows Claude's finished
+    /// length and the plan's flags.
+    @Test func correctionsApplyAndLookAndSpeedStayPending() async throws {
+        var plan = Self.plan(music: false, rewrite: false)
+        plan.corrections = [.init(word: 7, heard: "clipper.", text: "Clipper.", reason: "The product's name")]
+        plan.look = .init(id: .warm, reason: "Friendly")
+        plan.speed = .init(rate: 1.1, reason: "A slow start")
+        plan.seconds = 62
+        plan.flags = [.init(kind: .overLength, detail: "62 s is over 60 s.")]
+        let fixture = try fixture(plan: plan)
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let editor = fixture.editor
+        let run = try await run(fixture)
+        #expect(editor.project.edits.corrections["w8"] == "Clipper.")
+        let correction = try #require(run.rows.first { $0.id == "correction-0" })
+        #expect(correction.text == "Corrected “clipper.” → “Clipper.”" && correction.undoable && correction.play != nil)
+        let look = try #require(run.rows.first { $0.id == "look" })
+        #expect(look.kind == .choice && look.text == "Claude chose the warm look" && look.change == .pending && !look.undoable)
+        #expect(look.options == ["original", "muted", "black and white"])
+        let speed = try #require(run.rows.first { $0.id == "speed" })
+        #expect(speed.text == "Claude chose 1.1× speed" && speed.change == .pending)
+        #expect(editor.project.motionCues.count == 1, "pending rows change nothing in the project")
+        editor.makeItTogglePending("look", run: run)
+        #expect(run.openPending == "look")
+        editor.makeItChoosePending("muted", rowID: "look", run: run)
+        #expect(run.rows.first { $0.id == "look" }?.text == "You chose the muted look" && run.openPending == nil)
+        let notes = editor.makeItLengthNotes(run)
+        #expect(notes.first == "Claude's cut: \(durationLabel(62)) finished at 1.1× (speed not rendered yet)")
+        #expect(notes.contains("⚠ 62 s is over 60 s."))
+        step(fixture.undo) { editor.makeItUndo("correction-0", in: run) }
+        #expect(editor.project.edits.corrections["w8"] == nil)
+    }
+
+    /// ClipStyle (design.md §6.6): a fixed caption style is the planner's preference, Auto leaves it to Claude, Off keeps
+    /// the captions; music Off adds none; Rewording Off keeps the words; Length and Rewording go in the note; Shape is
+    /// Export's shapes.
+    @Test func theClipStyleDecidesWhatThePlannerMayChange() async throws {
+        let fixture = try fixture()
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let editor = fixture.editor
+        var notes: [String?] = [], preferences: [String?] = []
+        editor.makeIt.services?.plan = { request, _, _ in
+            notes.append(request.note); preferences.append(request.captionPreference?.styleId)
+            return ClipAutopilotSeries(plans: [Self.plan()])
+        }
+        let auto = try #require(editor.cardClipStyle)
+        #expect(editor.makeItStyle == MakeItStyle(auto))
+        #expect(editor.makeItStyle.captionPreference == nil && editor.makeItStyle.shapes == auto.shapes)
+        var fixed = auto
+        fixed.captions = .style("marker"); fixed.music = .off; fixed.rewording = .off; fixed.maxLengthSec = 30; fixed.shapes = [.portrait]
+        var project = editor.project
+        project.clipStyle = fixed
+        step(fixture.undo) { editor.replace(project, name: "Choose clip style") }
+        let run = try await run(fixture)
+        #expect(preferences == ["marker"])
+        #expect(notes.first??.contains("at most 30 s") == true && notes.first??.contains("Never reword") == true)
+        #expect(run.rows.first { $0.id == "rewrite-0" }?.kind == .note, "Rewording Off: the words stay")
+        #expect(!fixture.calls.all.contains { $0.hasPrefix("voice") })
+        #expect(MusicProject.entry(for: "clip-main", in: editor.project) == nil && run.rows.first { $0.id == "music" } == nil)
+        #expect(editor.makeItStyle.shapes == [.portrait])
+        var off = fixed
+        off.captions = .off
+        #expect(MakeItStyle(off).captions == false && MakeItStyle(off).captionPreference == nil)
+    }
+
+    /// ✦ Make top 3 postable sends one `.clips` request (planned three at once on the lanes), then applies each clip as its
+    /// own run and undo step, kept first, best first.
+    @Test func makeTopThreeIsOneClipsRequestAndOneStepPerClip() async throws {
+        let fixture = try fixture(suggestion: true)
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let editor = fixture.editor
+        var project = editor.project
+        project.ai.results[0].clips.append(ProjectAIClip(title: "Early", reason: "Best", score: 9, startWordId: "w1", endWordId: "w2"))
+        project.edits.clips.append(ClipRange(id: "clip-early", startWordId: "w1", endWordId: "w2", title: "Early", origin: .ai,
+                                             aiResultId: "result-1", aiClipIndex: 1, selected: false))
+        step(fixture.undo) { editor.replace(project, name: "Find clips") }
+        var modes: [ClipAutopilotRequest.Mode] = []
+        editor.makeIt.services?.plan = { request, _, progress in
+            modes.append(request.mode)
+            progress(.planning(clip: 0, of: 2)); progress(.planning(clip: 1, of: 2))
+            // Ranked by score, as the service returns them.
+            return ClipAutopilotSeries(plans: [
+                ClipAutopilotPlan(startWord: 0, endWord: 1, title: "Early", hook: "", captions: Self.plan().captions, postText: "Early.", score: 9, verdict: .postFirst),
+                Self.plan(music: false, rewrite: false)])
+        }
+        await editor.makeIt.refreshVoiceReady(editor)
+        let steps = editor.undoSteps
+        editor.makeTopPostable(3)
+        #expect(editor.makeIt.series == ["clip-early", "clip-main"])
+        await editor.makeIt.waitForQueue()
+        #expect(modes == [.clips([0...1, 2...7])])
+        #expect(editor.makeIt.run(for: "clip-early")?.phase == .ready && editor.makeIt.run(for: "clip-main")?.phase == .ready)
+        #expect(editor.makeIt.run(for: "clip-early")?.lines.first == "Waiting for Claude…")
+        #expect(editor.makeIt.run(for: "clip-early")?.lines.contains("Reading clip 1 of 2…") == true)
+        #expect(editor.keptClips.map(\.id).sorted() == ["clip-early", "clip-main"] && editor.undoSteps == steps + 2)
     }
 
     @Test func theDriverPressesOnlyPricedStepsWithinItsBudgetAndNeverGivesUpATake() {

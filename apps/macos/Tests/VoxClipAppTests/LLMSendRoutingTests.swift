@@ -82,6 +82,8 @@ import Testing
         case .test:
             let provider = try #require(app.providers.first { $0.id == app.string("llm.connector") })
             _ = await testProvider(provider, app: app)
+        case .pickCaptions:
+            Issue.record("Pick styles needs clips; ClipStyleTests routes it")
         }
     }
 

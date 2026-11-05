@@ -57,6 +57,23 @@ import VoxClipMedia
     enum Failure: Error, Equatable {
         /// `index` is the refused hunk's index in the plan's hunks.
         case placement(VoiceLabWindowRefusal, index: Int), spendingCap, unknownSpend, stale, noSelection
+        /// The reviewed changes place no phrase to voice.
+        case nothingToVoice
+        /// More phrases than one run voices (`maximumPhrases`); `count` is how many the changes placed.
+        case tooManyPhrases(count: Int)
+        /// A later part of an approved run was quoted again just before it ran and no longer matched what was priced.
+        case priceChanged
+    }
+    /// The most phrases one run prices and voices. A run of more than `VoiceLabTakeBatch.maximumWindows` phrases is priced
+    /// and approved once, then voiced part by part (`PricedPart`).
+    nonisolated static let maximumPhrases = 100
+    /// A later part of a priced run: its phrases and the batch they were priced as. Only the run's first part holds its
+    /// quotes until the approval (`ElevenLabsVoiceLab` keeps at most 32 outstanding quotes); each later part is quoted
+    /// again just before it runs, and runs under the run's one approval only when that quote equals this one's inputs
+    /// and estimate.
+    private struct PricedPart {
+        let indices: [Int]
+        let priced: VoiceLabTakeBatch
     }
     struct Acceptance {
         let segments: [VoiceLabSegment]
@@ -72,10 +89,13 @@ import VoxClipMedia
     }
     struct Backend {
         var prepare: @MainActor ([VoiceLabTakeInput], [Int], Int) async throws -> VoiceLabTakeBatch
-        var approve: @MainActor (VoiceLabTakeBatch, [Int]) async throws -> Void
+        /// The Bool is true for a later part of an approved run: the run's short-take pool carries on.
+        var approve: @MainActor (VoiceLabTakeBatch, [Int], Bool) async throws -> Void
         var execute: @MainActor (VoiceLabTakeBatch, Int, Int, @escaping @Sendable ([VoiceLabTakeRow]) async -> Void) async throws -> VoiceLabTakeRunResult
         var finishVoice: @MainActor () async -> [UUID: VoiceLabTakeRow]
         var discard: @MainActor () async -> Void
+        /// Drops the unsent quotes of these phrases' runs and keeps their takes: a priced later part of a run.
+        var release: @MainActor ([Int]) async -> Void
         var invalidate: @MainActor () async -> Void
         var publish: @MainActor (Int, VoiceLabTakeRow, VoiceLabTakeInput, Date) async throws -> (VoiceLabPublishedTake, VoiceConsentRecord)
         var scratch: @MainActor (Int, UUID) async -> VoiceLabTakeScratch?
@@ -88,8 +108,10 @@ import VoxClipMedia
             prepare = { inputs, indices, candidates in
                 try await VoiceLabTakeBatchRun(runs: indices.map { runs[$0] }).prepare(inputs, candidates: candidates)
             }
-            approve = { batch, indices in
-                pool.value = VoiceLabShortTakePool(session: pool.session, retryPhrase: indices.count == 1 ? indices.first : nil)
+            approve = { batch, indices, continuing in
+                if !continuing {
+                    pool.value = VoiceLabShortTakePool(session: pool.session, retryPhrase: indices.count == 1 ? indices.first : nil)
+                }
                 try await VoiceLabTakeBatchRun(runs: indices.map { runs[$0] }).approve(batch)
             }
             execute = { batch, index, phrase, progress in
@@ -97,6 +119,7 @@ import VoxClipMedia
             }
             finishVoice = { await pool.value.finish() }
             discard = { for run in runs { await run.cancel(keepingTakes: true) } }
+            release = { indices in for index in indices { await runs[index].cancel(keepingTakes: true) } }
             invalidate = {
                 for run in runs { await run.invalidate() }
                 await pool.session.reset()
@@ -115,7 +138,12 @@ import VoxClipMedia
     /// The take panel's problem line; `failure` is the error behind it, for its next steps (RewriteNextSteps.swift).
     private(set) var problem = "" { didSet { if problem.isEmpty { failure = nil } } }
     private(set) var failure: (any Error)?
-    private func report(_ error: any Error) { problem = Self.copy(error); failure = error }
+    private func report(_ error: any Error) {
+        problem = Self.copy(error); failure = error
+        if !problem.isEmpty { onFailure?(error) }
+    }
+    /// Each failure the plan reports, for the Rewrite's release log line (`RewriteSession.logFailure`).
+    @ObservationIgnored var onFailure: (@MainActor (any Error) -> Void)?
     private(set) var estimate: CostEstimate?
     private(set) var cost: VoiceLabCostPresentation.Kind?
     private(set) var spent = VoiceLabTakeRunQuote.total(of: [], takes: 0)
@@ -148,8 +176,17 @@ import VoxClipMedia
     @ObservationIgnored var microphoneStorage: VoiceLabTakeStorage?
     @ObservationIgnored var onMeasuredTakesChanged: (@MainActor () -> Void)?
     @ObservationIgnored private var nextSeeds: [UInt32] = []
-    @ObservationIgnored private var batch: VoiceLabTakeBatch?
+    /// The held quote: a run's first part until the approval, then the part that runs. Dropping it drops the later parts.
+    @ObservationIgnored private var batch: VoiceLabTakeBatch? { didSet { if batch == nil { laterParts = [] } } }
     @ObservationIgnored private var batchIndices: [Int] = []
+    /// The priced parts of the held run after `batch`, in source order (`PricedPart`).
+    @ObservationIgnored private var laterParts: [PricedPart] = []
+    /// Every phrase the held run prices: `batch`'s and its later parts'.
+    private var runIndices: [Int] { batchIndices + laterParts.flatMap(\.indices) }
+    /// What the later parts of the held run add to `batch`'s estimate.
+    private var laterEstimates: [CostEstimate] { laterParts.map(\.priced.estimate) }
+    /// "Pricing phrase 12 of 34…" while a price is prepared, nil otherwise.
+    private(set) var preparationStep: String?
     @ObservationIgnored private var progress: VoiceLabTakeBatchProgress?
     @ObservationIgnored private var sent: Set<UUID> = []
     @ObservationIgnored private var madeRequests: Set<UUID> = []
@@ -308,7 +345,8 @@ import VoxClipMedia
                     audioTags: VoiceLabAudioTags.shifted(hunk.audioTags, by: window.leftBridgeWordIds.compactMap { texts[$0] }.flatMap { EditingPrimitives.splitWords($0) }.count), window: window))
             }
         }
-        guard (1...VoiceLabTakeBatch.maximumWindows).contains(phrases.count) else { throw VoiceLabError.invalidInput }
+        guard !phrases.isEmpty else { throw Failure.nothingToVoice }
+        guard phrases.count <= maximumPhrases else { throw Failure.tooManyPhrases(count: phrases.count) }
         var final = project
         final.edits.cutWordIds += hunks.filter { $0.kind == .cut }.flatMap(\.sourceWordIds)
         try VoiceLabRenderContract.validatePlacement(final, scope: scope, windows: phrases.map(\.window))
@@ -591,7 +629,7 @@ import VoxClipMedia
 
     func phrasePace(_ index: Int) -> Double? {
         guard inputs.indices.contains(index) else { return nil }
-        if batch != nil, batchIndices.contains(index) { return inputs[index].pace }
+        if batch != nil, runIndices.contains(index) { return inputs[index].pace }
         return try? retryPace(phrase: index)
     }
 
@@ -610,6 +648,7 @@ import VoxClipMedia
                 if decoding {
                     var decoded: [VoiceLabTakeInput] = []
                     for phrase in phrases {
+                        if phrases.count > 1 { preparationStep = "Reading phrase \(phrase.id + 1) of \(phrases.count)…" }
                         let input = try await makeInput(phrase)
                         decoded.append(modelID.map { input.replacingModel($0) } ?? input); try checkCurrent(version)
                     }
@@ -632,27 +671,59 @@ import VoxClipMedia
                 }
                 try validate(inputs.map(\.window))
                 try validateContextInputs(inputs)
-                let requested = indices.map { inputs[$0] }
-                try VoiceLabTakeBatch.validate(requested)
-                let quoted = try await backend.prepare(requested, indices, candidates)
+                try Self.validateRun(indices.map { inputs[$0] })
+                // A run of more than one batch is priced part by part. The later parts are priced first and release their
+                // quotes, so the first part, which holds its quotes until the approval, is quoted last and freshest.
+                let parts = Self.parts(indices)
+                var later: [PricedPart] = []
+                for part in parts.dropFirst() {
+                    preparationStep = "Pricing phrases \(part[0] + 1)–\(part[part.count - 1] + 1) of \(phrases.count)…"
+                    let priced = try await backend.prepare(part.map { inputs[$0] }, part, candidates)
+                    await backend.release(part)
+                    try checkCurrent(version)
+                    later.append(PricedPart(indices: part, priced: priced))
+                }
+                if parts.count > 1 { preparationStep = "Pricing phrases \(parts[0][0] + 1)–\(parts[0][parts[0].count - 1] + 1) of \(phrases.count)…" }
+                let quoted = try await backend.prepare(parts[0].map { inputs[$0] }, parts[0], candidates)
                 try checkCurrent(version)
-                try await hold(quoted, indices: indices, version: version)
+                try await hold(quoted, indices: parts[0], later: later, version: version)
             } catch {
                 await backend.discard()
                 if revision == version { report(error) }
             }
-            if revision == version { preparing = false }
+            if revision == version { preparing = false; preparationStep = nil }
         }
         await operation?.value
         if revision == version { operation = nil }
         onMeasuredTakesChanged?()
     }
 
-    private func hold(_ quoted: VoiceLabTakeBatch, indices: [Int], version: Int) async throws {
+    private func hold(_ quoted: VoiceLabTakeBatch, indices: [Int], later: [PricedPart], version: Int) async throws {
         let cap = try await readCap()
         try checkCurrent(version)
         batch = quoted; batchIndices = indices; progress = VoiceLabTakeBatchProgress(batch: quoted)
-        estimate = quoted.estimate; cost = quoted.kind(cap: cap)
+        laterParts = later
+        let total = Self.sum([quoted.estimate] + laterEstimates)
+        estimate = total
+        cost = VoiceLabCostPresentation.kind(total, isLipSync: false, providerName: VoiceLabTakeBatch.providerName, cap: cap)
+    }
+
+    /// Consecutive parts of at most `VoiceLabTakeBatch.maximumWindows` phrases, in source order.
+    static func parts(_ indices: [Int]) -> [[Int]] {
+        stride(from: 0, to: indices.count, by: VoiceLabTakeBatch.maximumWindows).map {
+            Array(indices[$0..<min($0 + VoiceLabTakeBatch.maximumWindows, indices.count)])
+        }
+    }
+    /// `VoiceLabTakeBatch.validate(_:)` over a whole run: one voice record, language, model and source, in source order with
+    /// a gap between neighbours. Each neighbouring pair is a batch of two, so the rules hold across the parts' seams too.
+    static func validateRun(_ inputs: [VoiceLabTakeInput]) throws {
+        guard !inputs.isEmpty, inputs.count <= maximumPhrases else { throw VoiceLabError.invalidInput }
+        try VoiceLabTakeBatch.validate([inputs[0]])
+        for index in inputs.indices.dropFirst() { try VoiceLabTakeBatch.validate([inputs[index - 1], inputs[index]]) }
+    }
+    /// The summed take-run estimate: unknown when any part's is.
+    static func sum(_ estimates: [CostEstimate]) -> CostEstimate {
+        VoiceLabTakeRunQuote.total(of: estimates, takes: Int(estimates.reduce(0) { $0 + $1.units }))
     }
 
     func start(approved: Bool) async {
@@ -670,41 +741,45 @@ import VoxClipMedia
             do {
                 try checkCurrent(version)
                 try validate(phrases.map(\.window))
-                try await checkCap(batch.estimate, version: version)
+                try await checkCap(Self.sum([batch.estimate] + laterEstimates), version: version)
                 try validateContextInputs(inputs)
-                try await backend.approve(batch, batchIndices)
-                for (offset, phrase) in batchIndices.enumerated() {
-                    try checkCurrent(version)
-                    runningPhrase = phrase
-                    fatalPhrases.remove(phrase)
-                    phrases[phrase].status = .generating("Phrase \(phrase + 1) of \(phrases.count)…")
-                    let remaining = progress?.remainingEstimate ?? batch.estimate
-                    try await checkCap(remaining, version: version)
-                    let result = try await backend.execute(batch, offset, phrase) { [weak self] rows in
-                        await self?.receive(rows, phrase: phrase, batch: batch, version: version)
-                    }
-                    await receive(result.rows, phrase: phrase, batch: batch, version: version)
-                    try checkCurrent(version)
-                    try progress?.finish(window: offset, result: result)
-                    if result.end == .cancelled || result.end == .invalidated { throw CancellationError() }
-                    if result.end == .fatal {
-                        fatalPhrases.insert(phrase)
-                        phrases[phrase].status = .failed(problem.isEmpty ? Self.failureCopy(result) : problem)
-                        // Only an account, key, consent or stop failure ends a run; timing never does (voice-lab §8.5).
-                        let failure = result.failure ?? result.rows.last?.failure
-                        let reason = problem.isEmpty ? Self.failureCopy(result) : problem
-                        let next = failure.flatMap(Self.nextStep).map { " " + $0 } ?? ""
-                        for later in batchIndices.dropFirst(offset + 1) {
-                            let unsent = phrases[later].takes.isEmpty ? "Nothing sent for this phrase." : "No new take sent for this phrase."
-                            phrases[later].status = .stopped("Stopped: \(reason) \(unsent)\(next)")
+                try await backend.approve(batch, batchIndices, false)
+                var part = batch
+                run: while true {
+                    for (offset, phrase) in batchIndices.enumerated() {
+                        try checkCurrent(version)
+                        runningPhrase = phrase
+                        fatalPhrases.remove(phrase)
+                        phrases[phrase].status = .generating("Phrase \(phrase + 1) of \(phrases.count)…")
+                        let remaining = progress?.remainingEstimate ?? part.estimate
+                        try await checkCap(Self.sum([remaining] + laterEstimates), version: version)
+                        let running = part
+                        let result = try await backend.execute(running, offset, phrase) { [weak self] rows in
+                            await self?.receive(rows, phrase: phrase, batch: running, version: version)
                         }
-                        break
+                        await receive(result.rows, phrase: phrase, batch: running, version: version)
+                        try checkCurrent(version)
+                        try progress?.finish(window: offset, result: result)
+                        if result.end == .cancelled || result.end == .invalidated { throw CancellationError() }
+                        if result.end == .fatal {
+                            fatalPhrases.insert(phrase)
+                            phrases[phrase].status = .failed(problem.isEmpty ? Self.failureCopy(result) : problem)
+                            // Only an account, key, consent or stop failure ends a run; timing never does (voice-lab §8.5).
+                            let failure = result.failure ?? result.rows.last?.failure
+                            let reason = problem.isEmpty ? Self.failureCopy(result) : problem
+                            let next = failure.flatMap(Self.nextStep).map { " " + $0 } ?? ""
+                            stopLater(after: offset, reason: "\(reason)", next: next)
+                            break run
+                        }
+                        if phrases[phrase].takes.contains(where: { $0.row.voiceCheck == .waiting }) {
+                            phrases[phrase].status = .generating("waiting for the voice check")
+                        } else {
+                            phrases[phrase].status = phrases[phrase].selected != nil ? .ready : .failed(problem.isEmpty ? Self.failureCopy(result) : problem)
+                        }
                     }
-                    if phrases[phrase].takes.contains(where: { $0.row.voiceCheck == .waiting }) {
-                        phrases[phrase].status = .generating("waiting for the voice check")
-                    } else {
-                        phrases[phrase].status = phrases[phrase].selected != nil ? .ready : .failed(problem.isEmpty ? Self.failureCopy(result) : problem)
-                    }
+                    runningPhrase = nil
+                    guard !laterParts.isEmpty else { break run }
+                    part = try await continueRun(version: version)
                 }
             } catch {
                 if revision == version {
@@ -715,13 +790,44 @@ import VoxClipMedia
                     }
                 }
             }
-            await finishVoiceChecks(batch: batch, version: version)
+            await finishVoiceChecks(batch: self.batch ?? batch, version: version)
             await backend.discard()
             if revision == version { generating = false; runningPhrase = nil; self.batch = nil; cost = nil }
         }
         await operation?.value
         if revision == version { operation = nil }
         onMeasuredTakesChanged?()
+    }
+
+    /// Quotes the run's next part again and runs it under the run's one approval: only when the new quote has exactly the
+    /// inputs and estimate the user approved; otherwise nothing more is sent (`Failure.priceChanged`).
+    private func continueRun(version: Int) async throws -> VoiceLabTakeBatch {
+        guard let backend, let next = laterParts.first else { throw Failure.stale }
+        let candidates = next.priced.windows.first?.quote.takes.count ?? 1
+        let quoted: VoiceLabTakeBatch
+        do {
+            try validateContextInputs(inputs)
+            quoted = try await backend.prepare(next.indices.map { inputs[$0] }, next.indices, candidates)
+            try checkCurrent(version)
+            guard quoted.windows.map(\.input) == next.priced.windows.map(\.input), quoted.estimate == next.priced.estimate else {
+                await backend.release(next.indices)
+                throw Failure.priceChanged
+            }
+        } catch {
+            if revision == version { stopLater(after: batchIndices.count - 1, reason: Self.copy(error), next: "") }
+            throw error
+        }
+        laterParts.removeFirst()
+        batch = quoted; batchIndices = next.indices; progress = VoiceLabTakeBatchProgress(batch: quoted)
+        try await backend.approve(quoted, next.indices, true)
+        return quoted
+    }
+    /// Marks the phrases after `offset` of the running part, and every later part's, as stopped with nothing more sent.
+    private func stopLater(after offset: Int, reason: String, next: String) {
+        for later in Array(batchIndices.dropFirst(offset + 1)) + laterParts.flatMap(\.indices) {
+            let unsent = phrases[later].takes.isEmpty ? "Nothing sent for this phrase." : "No new take sent for this phrase."
+            phrases[later].status = .stopped("Stopped: \(reason) \(unsent)\(next)")
+        }
     }
 
     func tryAnother(phrase: Int, approved: Bool) async {
@@ -744,7 +850,7 @@ import VoxClipMedia
         }
         await backend?.discard()
         await operation?.value
-        operation = nil; generating = false; preparing = false; runningPhrase = nil; batch = nil; cost = nil
+        operation = nil; generating = false; preparing = false; preparationStep = nil; runningPhrase = nil; batch = nil; cost = nil
         stopping = false
     }
 
@@ -760,7 +866,7 @@ import VoxClipMedia
             await backend?.invalidate()
             await operation?.value
             guard let self else { return }
-            generating = false; preparing = false; runningPhrase = nil; self.operation = nil
+            generating = false; preparing = false; preparationStep = nil; runningPhrase = nil; self.operation = nil
         }
     }
 
@@ -849,7 +955,7 @@ import VoxClipMedia
         try checkCurrent(version)
         try validateContextInputs(inputs)
         guard generating, let remaining = progress?.remainingEstimate(from: request) else { throw Failure.stale }
-        do { try await checkCap(remaining, version: version) }
+        do { try await checkCap(Self.sum([remaining] + laterEstimates), version: version) }
         catch {
             if revision == version { report(error) }
             throw VoiceLabError.consentRequired
@@ -1032,7 +1138,7 @@ import VoxClipMedia
     func editOwnWords(_ text: String, phrase index: Int) {
         guard phrases.indices.contains(index), phrases[index].ownWords != text else { return }
         phrases[index].ownWords = text
-        guard batch != nil, batchIndices.contains(index), !generating, !preparing, operation == nil else { return }
+        guard batch != nil, runIndices.contains(index), !generating, !preparing, operation == nil else { return }
         revision += 1; batch = nil; batchIndices = []; progress = nil; cost = nil; estimate = nil
     }
     /// The words of the held quote when it is for `phrase` alone: what [Make take · ≈ $x] would voice.
@@ -1042,7 +1148,7 @@ import VoxClipMedia
     }
     /// Whether the held quote already voices `text` for this phrase, alone or with the others.
     func quotes(_ text: String, phrase index: Int) -> Bool {
-        batch != nil && batchIndices.contains(index) && inputs.indices.contains(index) && inputs[index].text == text
+        batch != nil && runIndices.contains(index) && inputs.indices.contains(index) && inputs[index].text == text
     }
     func microphoneTake(_ id: UUID) -> MicrophoneTake? { microphoneTakes[id] }
     /// Lists the user's own take beside the phrase's other takes; Record again replaces `replacing` when it is not used.
@@ -1082,12 +1188,17 @@ import VoxClipMedia
         guard let usd = estimate.usd else { throw Failure.unknownSpend }
         guard cap.spent + usd <= cap.limit else { throw Failure.spendingCap }
     }
-    static func copy(_ error: any Error) -> String {
+    nonisolated static func copy(_ error: any Error) -> String {
         switch error {
         case Failure.spendingCap: "Your ElevenLabs spending limit was reached. Finished takes are kept."
         case Failure.unknownSpend: "VoxClip can't check your ElevenLabs spending limit. Nothing more was sent."
         case Failure.stale: "The rewrite changed. Make a fresh takes plan before sending anything."
         case Failure.noSelection: "Choose a valid video duration for every selected passage before using takes."
+        case Failure.nothingToVoice: "None of these changes needs a new take. Apply the text changes, or rewrite a part with spoken changes."
+        case Failure.tooManyPhrases(let count):
+            "These changes make \(count) phrases to voice. Up to \(maximumPhrases) can be voiced in one run: voice the first changes now and rewrite the rest after."
+        case Failure.priceChanged:
+            "The price of the next phrases changed while takes were made, so nothing more was sent. Finished takes are kept. Get a fresh price for the rest."
         case is RewriteSpeechContextReview.Failure, is VoiceLabSpeechContextPlan.Failure:
             RewriteSpeechContextReview.copy(error)
         case Failure.placement(.geometry(let error), _): RewriteSession.refusal(error)

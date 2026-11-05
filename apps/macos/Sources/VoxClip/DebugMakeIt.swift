@@ -36,7 +36,10 @@ import VoxClipMedia
         let wav = try VoiceTrainingAudio.wav([Float](repeating: 0.05, count: 48_000), rate: 16_000)
         editor.musicPanel.services = MusicPanelServices(suggest: { _, _ in MusicSuggestionResult(candidates: [DebugRewriteSmoke.makeItLibraryTrack]) },
                                                         fetch: { _ in wav }, folder: { nil })
-        editor.makeIt.services = MakeItServices(plan: { request, _ in ClipAutopilotSeries(plans: [plan(request)].compactMap { $0 }) },
+        editor.makeIt.services = MakeItServices(plan: { request, _, _ in
+                let spans: [ClosedRange<Int>] = switch request.mode { case .clip(let span): [span]; case .clips(let chosen): chosen; case .series: [] }
+                return ClipAutopilotSeries(plans: spans.compactMap { plan($0, words: request.transcript.words) })
+            },
             voice: { _, _ in MakeItRewriteOutcome(result: .voiced(segments: []), spent: Decimal(string: "0.02")!, joinNotes: [0]) },
             voiceAvailable: { _ in true })
         await editor.makeIt.refreshVoiceReady(editor)
@@ -97,9 +100,7 @@ import VoxClipMedia
 
     /// A plan like Claude's for any clip: a filler or two cut, a phrase reworded, Vox Bold captions, a zoom, music, a
     /// question it answered itself, the hook and the post text.
-    private static func plan(_ request: ClipAutopilotRequest) -> ClipAutopilotPlan? {
-        guard case .clip(let span) = request.mode else { return nil }
-        let words = request.transcript.words
+    private static func plan(_ span: ClosedRange<Int>, words: [TimedWord]) -> ClipAutopilotPlan? {
         let rewriteStart = span.lowerBound + 2
         let cuts = span.filter { ($0 < rewriteStart || $0 > rewriteStart + 3) && ["um", "uh", "like"].contains(words[$0].text.lowercased().filter(\.isLetter)) }.prefix(6)
             .map { ClipAutopilotPlan.Cut(startWord: $0, endWord: $0, kind: .filler, reason: "Filler") }
@@ -108,13 +109,16 @@ import VoxClipMedia
                 text: ([words[rewriteStart].text, "really"] + words[(rewriteStart + 1)...(rewriteStart + 3)].map(\.text)).joined(separator: " "),
                 reason: "Lands the point")] : []
         return ClipAutopilotPlan(startWord: span.lowerBound, endWord: span.upperBound, title: ["Film once, post all week", "One idea per clip", "Answer out loud"][span.lowerBound % 3],
-            hook: "One take, eight clips", cuts: Array(cuts), rewrites: rewrite,
-            captions: .init(styleId: "vox-bold", font: .init(family: "Roboto", weight: 900), textCase: .upper, wordsPerCaption: 3),
+            hook: "One take, eight clips", cuts: Array(cuts),
+            corrections: [.init(word: span.upperBound, heard: words[span.upperBound].text, text: words[span.upperBound].text.capitalized, reason: "A name, spelled as said elsewhere")],
+            rewrites: rewrite,
+            captions: .init(styleId: "marker", font: .init(family: "Roboto", weight: 900), textCase: .upper, wordsPerCaption: 3, reason: "Bold for a tip"),
+            look: .init(id: .warm, reason: "Warm suits a friendly tip"), speed: .init(rate: 1.1, reason: "A slow start"),
             music: [.init(title: "Calm piano", mood: "calm piano", prompt: "Instrumental calm piano", reason: "Warm under a talking voice", underVoiceDb: 18)],
             musicPick: 0,
             zooms: [.init(word: span.lowerBound, untilWord: min(span.upperBound, span.lowerBound + 4), scale: 1.15, reason: "Opens on the face")],
             postText: "I film once a week and post every day. The trick: think in sentences, not videos.", score: 8, verdict: .post,
-            scoreReason: "One clear idea with a payoff",
+            scoreReason: "One clear idea with a payoff", seconds: 41,
             questions: [.init(question: "Keep “um” in the first line?", answer: "Cut it", options: ["Cut it", "Keep it"])])
     }
 }

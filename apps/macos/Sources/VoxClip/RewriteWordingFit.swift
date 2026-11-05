@@ -97,7 +97,7 @@ extension RewriteSession {
             } else { await fitWording(approved: true) }
         } catch {
             guard current, token == wordingFit.token else { return }
-            wordingFit.problem = Self.refusal(error)
+            wordingFit.problem = reported(error, stage: "wordingFit")
             showProposal()
         }
     }
@@ -143,7 +143,7 @@ extension RewriteSession {
                 }
             } catch {
                 guard current, wordingFit.token == token, !Task.isCancelled else { return }
-                wordingFit.problem = Self.refusal(error)
+                wordingFit.problem = reported(error, stage: "wordingFit")
             }
         }
         wordingFit.work = work
@@ -223,7 +223,7 @@ extension RewriteSession {
                 await rewordMeasuredTake(plan, approved: !sendAsksFirst)
                 if wordingFit.token == token { wordingFit.measuredWork = nil }
             }
-        } catch { wordingFit.problem = Self.refusal(error) }
+        } catch { wordingFit.problem = reported(error, stage: "wordingFit") }
     }
 
     func rewordMeasuredTake(_ plan: ClipTakePlan, approved: Bool, automatic: Bool = false) async {
@@ -354,7 +354,7 @@ extension RewriteSession {
         } catch {
             guard current, wordingFit.token == token, !Task.isCancelled else { return }
             wordingFit.measured?.preparing = false
-            wordingFit.measured?.problem = Self.refusal(error)
+            wordingFit.measured?.problem = reported(error, stage: "wordingFit")
             showProposal()
         }
     }

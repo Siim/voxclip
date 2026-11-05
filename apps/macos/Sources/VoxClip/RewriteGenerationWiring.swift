@@ -84,7 +84,13 @@ extension RewriteSession {
             let outputScope = scope, sourceURL = editor.sourceURL
             let timingInputs = RewriteReview.Inputs(transcript: Self.corrected(final), project: final,
                 scope: scope, envelope: envelope, prices: nil, synthesisModel: modelID)
-            let speakingRate = try VoiceLabPhraseTiming.speakingRate(transcript: RewriteReview.timingTranscript(timingInputs))
+            // What every phrase's input shares is measured once per plan; the source's own levels are decoded once, by the
+            // first phrase, so a long take's price doesn't decode the whole movie once per phrase.
+            let timingItems = RewriteReview.timingTranscript(timingInputs)
+            let correctedItems = Self.corrected(final)
+            let speakingRate = try VoiceLabPhraseTiming.speakingRate(transcript: timingItems)
+            let pauseProfile = VoiceLabPauseProfile.measure(items: timingItems, envelope: envelope, start: 0, end: .greatestFiniteMagnitude)
+            let sourceLevels = RewriteSourceLevels()
             // The plan's own model once the user changes it with paid takes kept (`ClipTakePlan.changeModel`).
             weak var created: ClipTakePlan?
             let plan = try ClipTakePlan(project: final, scope: scope, envelope: envelope, hunks: hunks,
@@ -95,18 +101,19 @@ extension RewriteSession {
                         incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
                         sourceSampleRate: audio.sampleRate, supportsPace: modelID != "eleven_v4", hardJoinSmoothing: true,
                         audioTags: phrase.audioTags, modelID: modelID,
-                        sourceItems: RewriteReview.timingTranscript(timingInputs), sourceEnvelope: envelope,
+                        sourceItems: timingItems, sourceEnvelope: envelope,
                         rateMultiplier: VoiceLabWordingFit.multiplier(self?.project.voiceLab.speakingRateSamples?[modelID] ?? []))
+                    let levels = try await sourceLevels.levels(source: sourceURL, frames: frames, sampleRate: audio.sampleRate)
                     let source = try await VoiceLabSourceAudio.rewriteSource(source: sourceURL, frames: frames, sampleRate: audio.sampleRate,
-                        window: phrase.window, incomingSilence: silence.incoming, outgoingSilence: silence.outgoing, items: Self.corrected(final))
+                        window: phrase.window, incomingSilence: silence.incoming, outgoingSilence: silence.outgoing, items: correctedItems,
+                        envelope: levels)
                     var input = VoiceLabTakeInput(text: phrase.text, modelID: modelID, recordID: recordID,
                         language: final.transcript?.language ?? "en", seed: UInt32.random(in: 0...UInt32.max),
                         contentKey: final.media.source.contentKey, source: source.excerpt, sourceEnvelope: source.envelope,
-                        sourceSampleRate: audio.sampleRate, items: Self.corrected(final), cutWordIDs: Set(final.edits.cutWordIds),
+                        sourceSampleRate: audio.sampleRate, items: correctedItems, cutWordIDs: Set(final.edits.cutWordIds),
                         window: phrase.window, incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
                         providerConsent: true, pace: timing.pace, audioTags: phrase.audioTags)
-                    input.pauseProfile = VoiceLabPauseProfile.measure(items: RewriteReview.timingTranscript(timingInputs),
-                        envelope: envelope, start: 0, end: .greatestFiniteMagnitude)
+                    input.pauseProfile = pauseProfile
                     return input
                 }, readCap: { [weak self] in
                     guard let self else { throw CancellationError() }
@@ -123,6 +130,7 @@ extension RewriteSession {
                     await app?.refreshMonthlySpend()
                 })
             created = plan
+            plan.onFailure = { [weak self] error in self?.logFailure(error, stage: "takes") }
             _ = plan.changeModel(VoiceLabWordingFit.modelID)
             plan.onMeasuredTakesChanged = { [weak self, weak plan] in
                 guard let self, let plan else { return }
@@ -148,6 +156,7 @@ extension RewriteSession {
         } catch {
             // The next-steps card shows it with its chips (RewriteNextSteps.swift); the footer names the blocker.
             takePlanFailure = error
+            logFailure(error, stage: "plan")
             generation.fail("")
             showProposal()
             // A collision goes to the AI once as one sentence, with no click (RewriteAutoFix.swift).
@@ -161,6 +170,18 @@ extension RewriteSession {
         return VoiceLabMonthlyCap(limit: limit, spent: total.usd)
     }
     private func generationProblem(_ error: any Error) {
-        if let generation { generation.fail(Self.refusal(error)) } else { reportGenerationProblem(error) }
+        if let generation { generation.fail(reported(error, stage: "voices")) } else { reportGenerationProblem(error) }
+    }
+}
+
+/// A take plan's source levels (`VoiceLabSourceAudio.rewriteEnvelope`), decoded by the first phrase that needs them and
+/// shared by the rest.
+@MainActor final class RewriteSourceLevels {
+    private var decoded: Task<AudioEnvelope, any Error>?
+    func levels(source: URL, frames: Int64, sampleRate: Int) async throws -> AudioEnvelope {
+        if let decoded { return try await decoded.value }
+        let task = Task { try await VoiceLabSourceAudio.rewriteEnvelope(source: source, frames: frames, sampleRate: sampleRate) }
+        decoded = task
+        do { return try await task.value } catch { decoded = nil; throw error }
     }
 }

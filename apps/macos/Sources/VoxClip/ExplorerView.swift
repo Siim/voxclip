@@ -139,6 +139,7 @@ import VoxClipCore
             .accessibilityElement(children: .contain).accessibilityLabel(ExplorerSection.take.accessibilityLabel(count: 1, title: shell.projectTitle))
             Section {
                 if shell.explorerExpanded(.clips) {
+                    if editor.showsClipStyleCard { ClipStyleCard(editor: editor).selectionDisabled() }
                     if editor.keptClips.isEmpty && !editor.words.isEmpty {
                         Text("No clips yet. Select words and press ⌥⌘K.")
                             .font(.system(size: 11)).foregroundStyle(DesignValues.color("text.tertiary")).selectionDisabled()

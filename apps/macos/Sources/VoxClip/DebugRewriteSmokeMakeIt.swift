@@ -32,6 +32,7 @@ extension DebugRewriteSmoke {
             cuts: cut.map { [.init(startWord: $0, endWord: $0, kind: .other, reason: "Not needed")] } ?? [],
             rewrites: rewrite.map { [.init(startWord: $0.range.lowerBound, endWord: $0.range.upperBound, text: $0.text, reason: "Plainer words")] } ?? [],
             captions: .init(styleId: "vox-bold", font: .init(family: "Roboto", weight: 900), textCase: .upper, wordsPerCaption: 3),
+            look: .init(id: .warm, reason: "Friendly"), speed: .init(rate: 1.1, reason: "A slow start"),
             music: music ? [.init(title: "Calm piano", mood: "calm piano", prompt: "Instrumental calm piano", reason: "Warm under the voice", underVoiceDb: 18)] : [],
             musicPick: music ? 0 : nil,
             zooms: zoom.map { [.init(word: $0.lowerBound, untilWord: $0.upperBound, scale: 1.15, reason: "Land the point")] } ?? [],
@@ -44,17 +45,35 @@ extension DebugRewriteSmoke {
 }
 
 extension DebugRewriteSmoke.Harness {
+    /// The planner requests a scenario's stub received.
+    private static var requests: [ObjectIdentifier: [ClipAutopilotRequest.Mode]] = [:]
+    var planRequests: [ClipAutopilotRequest.Mode] {
+        get { Self.requests[ObjectIdentifier(self)] ?? [] }
+        set { Self.requests[ObjectIdentifier(self)] = newValue }
+    }
+
     /// Leaves the Rewrite the harness opened by itself: Make it postable opens its own.
-    private func makeItPrepare(_ plan: @escaping @MainActor (ClipAutopilotRequest) -> ClipAutopilotPlan?) throws -> EditorModel {
+    /// `plan` answers one span of a request; a `.clips` request (Make top 3) gets one plan per span, as the service does.
+    private func makeItPrepare(_ plan: @escaping @MainActor (ClosedRange<Int>, [TimedWord]) -> ClipAutopilotPlan?) throws -> EditorModel {
         guard let editor else { throw DebugRewriteSmoke.Failure.setup("no editor") }
         session?.close(); editor.closeRewrite(returnFocus: false); session = nil
         let wav = try VoiceTrainingAudio.wav([Float](repeating: 0.05, count: 48_000), rate: 16_000)
         editor.musicPanel.services = MusicPanelServices(suggest: { _, _ in MusicSuggestionResult(candidates: [DebugRewriteSmoke.makeItLibraryTrack]) },
                                                         fetch: { _ in wav }, folder: { nil })
         editor.makeIt.services = MakeItServices(
-            plan: { request, _ in
-                guard let found = plan(request) else { throw LLMError.invalidOutput(reason: "no smoke plan") }
-                return ClipAutopilotSeries(plans: [found])
+            plan: { [weak self] request, _, progress in
+                let spans: [ClosedRange<Int>]
+                switch request.mode {
+                case .clip(let span): spans = [span]
+                case .clips(let chosen): spans = chosen
+                case .series: spans = []
+                }
+                self?.planRequests.append(request.mode)
+                for index in spans.indices { progress(.planning(clip: index, of: spans.count)) }
+                let plans = spans.compactMap { plan($0, request.transcript.words) }
+                guard !plans.isEmpty else { throw LLMError.invalidOutput(reason: "no smoke plan") }
+                for index in spans.indices { progress(.planned(clip: index, of: spans.count)) }
+                return ClipAutopilotSeries(plans: plans)
             },
             voice: MakeItServices.live.voice,
             voiceAvailable: { _ in true })
@@ -77,10 +96,8 @@ extension DebugRewriteSmoke.Harness {
 
     func makeItOneClip() async throws {
         var span: ClosedRange<Int> = 0...0
-        let editor = try makeItPrepare { request in
-            guard case .clip(let range) = request.mode else { return nil }
+        let editor = try makeItPrepare { range, words in
             span = range
-            let words = request.transcript.words
             guard let first = DebugRewriteSmoke.wordIndex("we", in: words, from: range.lowerBound),
                   let last = DebugRewriteSmoke.wordIndex("take", in: words, from: first),
                   let cut = DebugRewriteSmoke.wordIndex("then", in: words, from: last),
@@ -118,9 +135,8 @@ extension DebugRewriteSmoke.Harness {
     }
 
     func makeItTopThree() async throws {
-        let editor = try makeItPrepare { request in
-            guard case .clip(let range) = request.mode else { return nil }
-            let score = request.transcript.words[range.lowerBound].text.count % 3 + 7
+        let editor = try makeItPrepare { range, words in
+            let score = words[range.lowerBound].text.count % 3 + 7
             return DebugRewriteSmoke.makeItPlan(span: range, cut: range.count > 4 ? range.lowerBound + 1 : nil, rewrite: nil, zoom: nil,
                                                 music: false, score: score, title: "Clip at \(range.lowerBound)")
         }
@@ -155,6 +171,8 @@ extension DebugRewriteSmoke.Harness {
             DebugRewriteSmoke.Check(invariant: "T3", passed: ranked.allSatisfy { !editor.isSuggestion($0) } && editor.isSuggestion("smoke-3"),
                 detail: "kept: " + editor.keptClips.map(\.id).joined(separator: ", ")),
             DebugRewriteSmoke.Check(invariant: "T4", passed: editor.undoSteps == steps + 3, detail: "\(editor.undoSteps - steps) undo steps for 3 runs"),
+            DebugRewriteSmoke.Check(invariant: "T5", passed: planRequests.count == 1 && { if case .clips(let spans) = planRequests[0] { spans.count == 3 } else { false } }(),
+                detail: "\(planRequests.count) planner request(s): " + planRequests.map { "\($0)" }.joined(separator: "; ")),
         ])
     }
 }

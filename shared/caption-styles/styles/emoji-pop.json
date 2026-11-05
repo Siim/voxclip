@@ -1,0 +1,78 @@
+{
+ "$schema": "../schema.json",
+ "schemaVersion": 1,
+ "id": "emoji-pop",
+ "name": "Emoji pop",
+ "order": 250,
+ "description": "Roboto Black caps with a yellow spoken word and at most one emoji per caption, popping in above it on a keyword.",
+ "tags": [
+  "phrase",
+  "emoji",
+  "active-word",
+  "outline"
+ ],
+ "accent": "#FFE14D",
+ "font": {
+  "file": "Roboto-Black.ttf",
+  "family": "Roboto",
+  "weight": 900,
+  "sizeSh": 0.064,
+  "lineHeightEm": 1.12,
+  "wordSpacingEm": 0.3
+ },
+ "text": {
+  "transform": "uppercase",
+  "punctuation": "strip-keep-numeric"
+ },
+ "layout": {
+  "maxWords": 4,
+  "maxLines": 2,
+  "maxLineWidthW": 0.8,
+  "maxPageSec": 3.0
+ },
+ "position": {
+  "x": 0.5,
+  "y": 0.7
+ },
+ "aspects": {
+  "landscape": {
+   "y": 0.8
+  }
+ },
+ "fill": {
+  "type": "solid",
+  "color": "#FFFFFF"
+ },
+ "stroke": {
+  "widthEm": 0.1,
+  "color": "#000000"
+ },
+ "words": {
+  "active": {
+   "fill": {
+    "type": "solid",
+    "color": "$accent"
+   }
+  }
+ },
+ "animation": {
+  "pageIn": {
+   "type": "pop",
+   "durationSec": 0.16,
+   "easing": "easeOutBack",
+   "fromScale": 0.8
+  }
+ },
+ "emoji": {
+  "enabled": true,
+  "source": "llm",
+  "placement": "above-page",
+  "sizeEm": 1.15,
+  "gapEm": 0.15,
+  "maxPerPage": 1
+ },
+ "preview": {
+  "text": "This idea is fire",
+  "activeWord": 3
+ }
+}

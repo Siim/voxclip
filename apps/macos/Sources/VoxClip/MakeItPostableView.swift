@@ -1,7 +1,7 @@
 import SwiftUI
 import VoxClipCore
 
-// ✦ Make it postable in the right column (doc/design.md §6.6): while Claude works, its progress lines with Stop; then
+// ✦ Make it postable in the right column (doc/design.md §6.7): while Claude works, its progress lines with Stop; then
 // one review, "Ready to post · 0:46 · score 8/10", one line per decision with ▶ · Undo or Change, "Claude chose X ·
 // Change" lines, the post text with Copy, and Export. Nothing pops up; the footer always names the next step.
 
@@ -46,6 +46,10 @@ import VoxClipCore
             }
             if case .failed(let message) = run.phase {
                 Text(message).font(VCType.callout.font()).foregroundStyle(DesignValues.color("text.secondary"))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            ForEach(model.makeItLengthNotes(run), id: \.self) { note in
+                Text(note).font(VCType.small.font()).foregroundStyle(DesignValues.color(note.hasPrefix("⚠") ? "text.primary" : "text.secondary"))
                     .fixedSize(horizontal: false, vertical: true)
             }
             if let cap = run.cap, run.spent > 0 || run.running {
@@ -174,6 +178,14 @@ import VoxClipCore
                 Spacer(minLength: VCTokens.spacingRowGap)
                 actions
             }
+            if row.change == .pending, run.openPending == row.id, !row.options.isEmpty {
+                HStack(spacing: VCTokens.spacingChipGap) {
+                    ForEach(row.options, id: \.self) { option in
+                        Button(option) { model.makeItChoosePending(option, rowID: row.id, run: run) }.buttonStyle(.bordered).controlSize(.small)
+                    }
+                }
+                .padding(.leading, 22)
+            }
             if row.kind == .question, case .question(let index) = row.change, run.openQuestion == index, !row.options.isEmpty {
                 HStack(spacing: VCTokens.spacingChipGap) {
                     ForEach(row.options, id: \.self) { option in
@@ -202,7 +214,9 @@ import VoxClipCore
                     .accessibilityLabel("Undo \(row.text)")
             }
             if let change = row.change, !row.undone, !run.running {
-                Button(change == .post || change == .hook ? "Copy" : "Change") { model.makeItChange(change, run: run) }
+                Button(change == .post || change == .hook ? "Copy" : "Change") {
+                    if change == .pending { model.makeItTogglePending(row.id, run: run) } else { model.makeItChange(change, run: run) }
+                }
                     .buttonStyle(.borderless).accessibilityLabel("Change \(row.text)")
             }
         }

@@ -102,6 +102,9 @@
     "captions": {
       "$ref": "#/$defs/captions"
     },
+    "clipStyle": {
+      "$ref": "#/$defs/clipStyle"
+    },
     "export": {
       "$ref": "#/$defs/export"
     },
@@ -1161,6 +1164,88 @@
           },
           "additionalProperties": {
             "$ref": "#/$defs/position"
+          }
+        }
+      }
+    },
+    "clipStyle": {
+      "description": "How clips should be made (doc/design.md section 6.6): the chosen preset and its fields. Absent until the user chooses on the clip style card. 'auto' in captions or music leaves that choice to the AI per clip; a caption style id here is the user's fixed choice and is never overridden.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "preset",
+        "captions",
+        "music",
+        "maxLengthSec",
+        "shapes",
+        "rewording",
+        "captionPicks"
+      ],
+      "properties": {
+        "preset": {
+          "enum": [
+            "auto",
+            "punchy",
+            "calm",
+            "demo",
+            "mine"
+          ]
+        },
+        "captions": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "description": "\"auto\", \"off\" or a CaptionStyle id from shared/caption-styles."
+        },
+        "music": {
+          "enum": [
+            "auto",
+            "off"
+          ]
+        },
+        "maxLengthSec": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 600
+        },
+        "shapes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "16:9",
+              "9:16",
+              "1:1"
+            ]
+          }
+        },
+        "rewording": {
+          "enum": [
+            "off",
+            "fix-only",
+            "tighten"
+          ]
+        },
+        "captionPicks": {
+          "description": "The AI's caption style per clip id while captions are auto, with its one-line reason. Picks for clips that no longer exist are ignored and dropped the next time picks are recorded.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "styleId",
+              "reason"
+            ],
+            "properties": {
+              "styleId": {
+                "type": "string",
+                "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+              },
+              "reason": {
+                "type": "string",
+                "maxLength": 120
+              }
+            }
           }
         }
       }

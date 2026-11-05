@@ -278,7 +278,7 @@ extension ClipTakePlan.Phrase {
                         .accessibilityLabel("Lip Sync All approval. " + disclosure)
                 }
                 Text(AudioTagPhrase.explanation).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
-                if plan.preparing { ProgressView("Preparing price…").controlSize(.small) }
+                if plan.preparing { ProgressView(plan.preparationStep ?? "Preparing price…").controlSize(.small) }
                 if !plan.problem.isEmpty { Text(plan.problem).foregroundStyle(DesignValues.color("status.warning")) }
                 Text(session.takeSpendLine).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
             }

@@ -3,6 +3,8 @@ import VoxClipCore
 import VoxClipMedia
 
 enum UserMessages {
+    /// The line for an error nothing more specific describes. The Rewrite never shows it (`RewriteSession.refusal`).
+    static let generic = "The operation could not finish. Your video and edits are still here."
     static func message(_ error: any Error, context: String = "", model: String = "the selected model", installHint: String? = nil, signInHint: String? = nil, connectorID: String? = nil) -> String {
         if error is CancellationError || error as? VoxClipError == .cancelled || error as? LLMError == .cancelled { return "" }
         if error as? VoiceLabProjectError == .unsupportedRendering {
@@ -51,7 +53,7 @@ enum UserMessages {
         }
         guard let error = error as? VoxClipError else {
             if let secret = error as? SecretError { return (secret.errorDescription ?? "Keychain access failed.") + " Your video and edits are still here." }
-            return "The operation could not finish. Your video and edits are still here."
+            return generic
         }
         switch error {
         case .unsupportedContainer(let detail): return "VoxClip can't open \(clean(detail).uppercased()) files on Mac yet. Export the video as MP4 or MOV and try again."

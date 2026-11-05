@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from captionref.contrast import SWATCHES, ratio
 from captionref.layout import resolve_paint
 from captionref.style import color, load_style, merge_patch, with_defaults
+from captionref.util import set_styles
 
 
 def main():
@@ -34,8 +35,8 @@ def main():
                           contrasts=[ratio(color(style, token), background) for token in tokens] if box else [],
                           expected=normalized(chosen, style), source=source, replaced=chosen != paint))
 
-    for path in sorted((root / "shared/caption-styles/styles").glob("*.json")):
-        style = json.loads(path.read_text())
+    for style_id in set_styles(1):  # version 2 pins set 1; later sets are not added here (style-sets.json)
+        style = json.loads((root / "shared/caption-styles/styles" / (style_id + ".json")).read_text())
         if not style.get("box") and not style.get("words", {}).get("active", {}).get("box"):
             continue
         append(style["id"] + "-default", style["id"], {})

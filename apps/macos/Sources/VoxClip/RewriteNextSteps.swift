@@ -59,7 +59,7 @@ extension RewriteSession {
         reasking.retry = nil
         let feedback: String
         do { feedback = try reaskFeedback(request, shared: shared) } catch {
-            showNotice(Self.refusal(error), warns: true)
+            showNotice(reported(error, stage: "reask"), warns: true)
             return
         }
         guard let lease = editor.llmRuns.acquire() else {
@@ -99,7 +99,7 @@ extension RewriteSession {
                 try land(checked.changes, request: request, nextActions: nextActions)
             } catch {
                 guard reasking.token == token, !Task.isCancelled else { return }
-                let reason = (error as? LLMError).map { Self.proposalError($0, provider: aiName, model: connector.model) } ?? Self.refusal(error)
+                let reason = (error as? LLMError).map { Self.proposalError($0, provider: aiName, model: connector.model) } ?? reported(error, stage: "reask")
                 reasking.notice = "Couldn't ask \(aiName). " + (reason.isEmpty ? "Nothing changed." : reason)
                 reasking.noticeWarns = true
                 reasking.retry = request
@@ -386,6 +386,13 @@ extension RewriteSession {
         } else { review(ordinal, .undo) }
     }
 
+    /// [Voice the first N changes]: leaves out the reviewed voice changes after the first `ClipTakePlan.maximumPhrases`, so
+    /// the plan has at most that many phrases (each phrase holds one change or more), and prices the rest again.
+    func voiceFirstChanges() {
+        for ordinal in includedVoice.dropFirst(ClipTakePlan.maximumPhrases) { leaveOutChange(ordinal) }
+        makeTakes()
+    }
+
     // MARK: Takes plan failures
 
     /// The proposal ordinal of hunk `index` of the last takes plan.
@@ -447,12 +454,24 @@ extension RewriteSession {
                 })
             case ClipTakePlan.Failure.spendingCap, ClipTakePlan.Failure.unknownSpend:
                 chips.append(chip("voiceLabSettings", "Spending limit…") { openVoxClipSettings(pane: "voiceLab") })
+            case ClipTakePlan.Failure.tooManyPhrases:
+                chips.append(NextStepChip(action: PanelAction(id: "voiceFirst", title: "Voice the first \(ClipTakePlan.maximumPhrases) changes") { [weak self] in
+                    self?.voiceFirstChanges()
+                }, suggested: true))
+            case ClipTakePlan.Failure.nothingToVoice:
+                if freeChanges > 0 { chips.append(chip("keepTextFixes", "Keep text fixes only") { [weak self] in self?.applyFreeChanges() }) }
             default: break
             }
             if usableTakeCount > 0, takePlan?.stillCurrent == true {
                 chips.append(chip("useTakes", usableTakeCount == 1 ? "Use 1 Take" : "Use \(usableTakeCount) Takes") { [weak self] in self?.useTake() })
             }
-            if !hasPaidTakes, !includedVoice.isEmpty {
+            // The same changes price the same way, so a fresh price can't help a plan that has too many or no phrases.
+            let priceCanHelp: Bool
+            switch failure {
+            case ClipTakePlan.Failure.tooManyPhrases, ClipTakePlan.Failure.nothingToVoice: priceCanHelp = false
+            default: priceCanHelp = true
+            }
+            if !hasPaidTakes, !includedVoice.isEmpty, priceCanHelp {
                 chips.append(chip("freshPrice", "Get a fresh price") { [weak self] in self?.makeTakes() })
             }
             if chips.isEmpty {

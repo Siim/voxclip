@@ -972,7 +972,7 @@ The inspector and its Captions, Clips and AI tabs are gone. The commands ⌘1–
 - **Captions** live in the right column (§6.1).
 - **Rewrite**, and the Voice Lab steps inside it, open in context: the scope bar above the transcript and the Rewrite panel in the right column (§6.3).
 - **M2 AI commands** live in the toolbar and the menus (§6.4).
-- **✦ Make it postable** is one click on a clip: Claude decides everything, then one review lists it (§6.6).
+- **✦ Make it postable** is one click on a clip: Claude decides everything, then one review lists it (§6.7).
 
 ### 6.1 Captions (right column)
 
@@ -1029,8 +1029,8 @@ The gallery scrolls inside the column and clips at its own viewport, which alway
   | Group | Tag | Styles |
   |---|---|---|
   | Word by word | `one-word` | Bold, Highlight, Bold+, One word |
-  | Phrase | `phrase` | Karaoke, Pop, Box highlight, Bounce, Two-tone, Outline, Pill, Gradient, Neon, Emoji, VHS |
-  | Sentence | `sentence` | Subtitle, Lower third, Typewriter, Editorial |
+  | Phrase | `phrase` | Karaoke, Pop, Box highlight, Bounce, Two-tone, Outline, Pill, Gradient, Neon, Emoji, VHS, Marker, Punch-in, Heavy shadow, Glow, Emoji pop |
+  | Sentence | `sentence` | Subtitle, Lower third, Typewriter, Editorial, Sing-along, Minimal |
 
   A style with none of these tags goes into an "Other" group at the end. A test asserts that the bundled styles produce no "Other" group.
 - **Tile content.** Each tile renders the real style with the export renderer: the current phrase at the playhead, with that style's word count and casing (captions spec §15.3; fallback: the style's `preview.text`). It is drawn over the band of the current frame behind the style's caption position, dimmed 35%. With no frame, samples sit on the card backdrop (§5.4.3), not dimmed. A tile that cannot render draws exactly the backdrop it would have had: the band of the current frame dimmed 35%, or the card backdrop (design.md section 5.4.3) when there is no frame, and stage black in the loading states (design.md section 5.4.4). It never draws text. In clip scope the playhead is inside the clip. The selected tile is drawn with the active overrides.
@@ -1039,6 +1039,9 @@ The gallery scrolls inside the column and clips at its own viewport, which alway
 - **Accessibility.** Options are named "{name}: {description}" ("Box highlight: a box behind the spoken word, a few words at a time").
 - **Motion.** Under Reduce Motion, tiles are static; animated styles show their resting frame.
 - Captions follow edited time, and phrase grouping does not break at cut seams (captions spec D9). Under Reduce Motion the preview shows animated styles without animation; export keeps them.
+- **Roboto Black styles.** Marker, Punch-in, Sing-along, Heavy shadow, Glow, Emoji pop and Minimal (captions spec §17, style set 2) all use Roboto Black, bundled under Apache-2.0. With Bounce they are the caption types the clip style card offers (§6.6).
+
+**Claude's pick.** While the clip style's captions are Auto (§6.6), a line under the style row reads "✦ Claude picked {style} · {reason}" for the active clip, 12 `text.secondary` with the name in 600, wrapping. When clips have no pick yet, a borderless "✦ Pick styles for {n} clips" button follows. It sends through the inline connector confirmation (§6.3), with the verb "Pick styles", and never opens a sheet. While it runs, the line reads "Picking caption styles…" with Cancel. A failure shows as an inline notice in the same place. Choosing a tile in the gallery fixes the clip style's captions to that style, so the line and the button disappear.
 
 ### 6.2 Clips (sidebar)
 
@@ -1055,7 +1058,7 @@ The sidebar list is the clip range layer (editing §2.5 and §10.6), presented a
 **Row actions.**
 
 - **Kept clip context menu** (macOS `.contextMenu`, Windows `ContextFlyout`):
-  - Make it postable · up to $x (§6.6), Rewrite Clip {n} (⇧⌘R; §6.3), then a separator;
+  - Make it postable · up to $x (§6.7), Rewrite Clip {n} (⇧⌘R; §6.3), then a separator;
   - Export Clip…;
   - Rename… (macOS: Return on the focused row edits the title inline; Windows: F2);
   - Copy Text;
@@ -1731,7 +1734,58 @@ The Director will run an AI session that proposes cuts, clips, rewrites and capt
 
   Phase 1 feeds session events into the same model. Phase 0 adds no Rewrite-only view model.
 
-### 6.6 Make it postable
+### 6.6 Clip style ("How should clips be made?")
+
+One small card decides how clips are made: caption type, music, length, shapes and rewording. Claude fills in what is left on Auto. The choices are data in `shared/data/clip-styles.json`, a project stores them as `clipStyle` (project schema), and Settings keeps the last choice as `clipStyle.default`. Both Cores expose `ClipStyle` and `ClipStyleCatalog`, so the clip autopilot planner reads the same values the card writes.
+
+**Where it shows.**
+
+- **When.** Inline at the top of the Clips section of the sidebar (§6.2), above the clip list. It appears the first time an editable project has clips and no `clipStyle` yet, and it is never shown as a sheet or a dialog. A read-only project never shows it.
+- **Collapse.** Choosing a chip, or Done, stores the style and collapses the card. Changing a row stores the style and keeps the card open.
+- **Reopen.** Once the project has a clip style, the status bar shows a trailing item, "Style: {preset} · ≤{length} s · {shapes}" (for example "Style: Auto · ≤60 s · 16:9+9:16"), named "Clip style". Pressing it reopens the card (opening the sidebar first on Windows). The item is in the status bar's drop order, so it drops before the essentials when the bar is narrow.
+
+**Layout.** The card uses the `bg.surface` fill, a 1 px `line.default` border and the pane radius. Its padding is `spacing.cardPadding`, with `spacing.labelGap` above and below. Inside it, groups are `spacing.groupGap` apart and rows `spacing.labelGap` apart.
+
+- **Header.** "How should clips be made?" (13/600, heading), then a borderless "Done" on the trailing side.
+- **Chips.** These wrap in a flow layout and are 24 high. The selected chip is 600.
+
+  | Chip | Detail | Preset |
+  |---|---|---|
+  | ✦ Auto | Claude decides | `auto` |
+  | Punchy talking head | | `punchy` |
+  | Calm story | | `calm` |
+  | Demo / tutorial | | `demo` |
+  | My style | Your saved choices | `mine` |
+
+- **Rows.** Each row has a 68-wide label (11 `text.tertiary`) and a menu showing its value (12, up to 3 lines):
+  - **Captions.** "Auto · Claude picks per clip", "Off", or a library style shown as "{name} · {font}" (for example "Marker · Roboto Black"), in gallery order.
+  - **Music.** "Auto" (tooltip: "Free library first, generated if nothing fits, then your folder") or "No music".
+  - **Length.** "Up to {30, 45, 60, 90, 120} s".
+  - **Shape.** Toggles for 16:9, 9:16 and 1:1. At least one shape stays on.
+  - **Rewording.** "Never reword", "Fix only what sounds wrong" or "Tighten freely".
+
+  Changing any row makes the style the user's own, `mine`. On Windows the card is a code-built panel, 224 wide, in the explorer column. It uses `ComboBox` rows and `ToggleButton` chips, with automation ids `ClipStyle.*`.
+
+**Presets** (`shared/data/clip-styles.json`):
+
+| Preset | Captions | Music | Length | Shapes | Rewording | Excluded from the AI's choices |
+|---|---|---|---|---|---|---|
+| Auto | Auto | Auto | ≤60 s | 16:9 + 9:16 | Fix only | none |
+| Punchy talking head | Punch-in | Auto | ≤45 s | 9:16 | Fix only | none |
+| Calm story | Minimal | Auto | ≤90 s | 16:9 + 9:16 | Fix only | emoji styles |
+| Demo / tutorial | Subtitle | No music | ≤120 s | 16:9 | Never reword | emoji styles |
+| My style | the Settings default, else as Auto | | | | | none |
+
+A new project's card starts from the Settings default, or from Auto when there is none.
+
+**Rules.**
+
+- **Fixed captions.** A caption style chosen on the card, on a gallery tile, or in Export is the user's fixed choice. It is applied to `captions.styleId`, and no AI pick ever overrides it: `recording(picks)` is a no-op unless captions are Auto, and the pick request is never sent. Choosing a gallery tile while the preset is Auto makes the style `mine`.
+- **Auto.** With Auto captions, Pick styles (§6.1) sends one request for all clips, at most 24. The request uses the versioned prompt `shared/prompts/caption-pick.json` (AI spec §17) at decision (extra high) effort and goes through the inline connector confirmation. The reply gives `captionPicks[clipId] = {styleId, reason}`. The active clip's pick is applied to `captions.styleId` as one undo step, "Use Claude's caption style". If the user fixes a style while the request is running, the reply is dropped.
+- **Persistence.** Each choice is one undo step. Settings saves `clipStyle.default` without `captionPicks`. Picks for deleted clips are pruned at the next pick.
+- **Still owed.** Per-clip caption styles at export (today only the active clip's pick is applied to the project's style). Claude-sourced emoji for Emoji pop (it uses the keyword rule for now). The Windows Pick styles action and its consent (Windows records and applies picks, but has no button yet). Music, Length, Shape and Rewording are stored for the planner and music packages, which consume them.
+
+### 6.7 Make it postable
 
 User, 2026-11-04: "still too hard. too many click to actually use it. claude code should make the best decisions. in extra high effort level." The approved mockups "One-click postable clips" (parts 1–3 and 5) and "Fewer moves, music and captions" (part A) set the target: **four moves from drop to post** (drop, click a clip, ✦ Make it postable, Export). Questions never block; the review says "Claude chose X · Change". The planner is ai.md §16.
 
@@ -1745,7 +1799,7 @@ User, 2026-11-04: "still too hard. too many click to actually use it. claude cod
 - the selected (or hovered, or focused) clip row's **✦**, kept or suggested. It is 22 × 20 like ⋯, so a 176 pt row keeps its title. Its tooltip and spoken name carry the price: "Make it postable · up to $0.06". Rewrite Clip {n} moves to ⋯, the context menu and the row's accessibility actions;
 - the clip bar's first verb, **Make it postable** (wand icon), on a kept clip's tab and after Keep and Dismiss on a suggestion's;
 - **Clip › Make It Postable** (so the command palette), titled with its price, on the selected row's clip, else the open tab's;
-- **✦ Make top 3 postable**, a row at the top of Suggested when there are two or more suggestions. It runs the best three (two when there are two) one after another, each with its own cap.
+- **✦ Make top 3 postable**, a row at the top of Suggested when there are two or more suggestions. One planner request (`.clips`) plans the best three (two when there are two) at once. With Claude Code, two more connectors run as lanes, so three plans run in parallel. Each clip is then applied in turn as its own run, with its own cap, its own undo step and kept first.
 
 A suggestion is kept first, in the same undo step as everything the run applies.
 
@@ -1753,8 +1807,8 @@ A suggestion is kept first, in the same undo step as everything the run applies.
 
 **The run** (the right column's **Make it postable** job, which stays in view while the run drives Rewrite):
 
-1. "Reading the clip…": the planner at extra high effort (ai.md §16), holding the project's AI lease. An API key's send asks inline first, as every send does.
-2. "Cutting 6 fillers…" (or "Making N cuts…"): the cuts, pause cuts, clip span, title, captions, zooms and post text apply as one change.
+1. "Reading the clip…" (for a series, "Waiting for Claude…", "Reading clip 2 of 3…", "Planned clip 2 of 3."), driven by `ClipAutopilotProgress`: the planner at extra high effort (ai.md §16), holding the project's AI lease. An API key's send asks inline first, as every send does. The request carries the clip style's fixed caption style, if any, and a note with its Length ("Keep the finished clip at most 60 s.") and Rewording.
+2. "Cutting 6 fillers…" (or "Making N cuts…"): the corrections (`EditCommand.correct`), cuts, pause cuts, clip span, title, captions (Roboto Black applies; it is bundled), zooms and post text apply as one change. The look and the speed stay pending: nothing renders them yet.
 3. "Voicing 2 fixes…": each rewrite opens Rewrite's own session on its words, with the planner's text as the reply. The driver then presses what a creator would, in Rewrite's own controls: Get Price or Make Takes, Choose Take, Use Takes, a priced Make Takes within the cap, and Keep fixing within it. It never presses Discard, Done, Keep original words, Ask again or Try again. A take whose only problem is the join's loudness is used (lead decision), and its row says "Join may sound slightly louder · ▶". A missing voice, a consent, or a step past the cap stops that rewrite: its row says why, and Rewrite stays open on it.
 4. "Picking music…": `MusicPanel.suggest` with the plan's mood, then the first free track (library or folder), or a generated one within the cap when the style allows. Then `use`, `settled()` and the level `underVoiceDb` under the voice.
 
@@ -1764,11 +1818,13 @@ A suggestion is kept first, in the same undo step as everything the run applies.
 
 **The review** (one panel, no pop-ups):
 
-- **Headline:** "Ready to post · 0:46 · score 8/10". Under it are the verdict and Claude's reason ("Worth posting · One clear idea with a payoff"), and "Spent $0.02 of up to $0.06".
+- **Headline:** "Ready to post · 0:46 · score 8/10" (the edited length the export renders). Under it are the verdict and Claude's reason ("Worth posting · One clear idea with a payoff"); "Claude's cut: 0:42 finished at 1.1× (speed not rendered yet)" from `plan.seconds`; each of `plan.flags` as "⚠ {detail}"; "⚠ Longer than this clip style's 45 s" when the clip is; and "Spent $0.02 of up to $0.06".
 - **One line per decision,** with its reason, then ▶ (jump 1–1.5 s before it and play), Undo, and Change where they act:
   - "Cut “uh”"; "Tightened a pause"; "Tightened the clip to 0:46";
   - "Claude chose the title “…” · Change" (inline rename);
-  - "Claude chose Vox Bold captions, UPPER, 3 per line · Change" (Captions). An unbundled font reads "· Roboto 900 once bundled";
+  - "Corrected “Tvilio” → “Twilio”", with ▶ and Undo;
+  - "Claude chose Vox Bold captions, UPPER, 3 per line · Change" (Captions). A font that is not bundled reads "· {family} {weight} once bundled";
+  - "Claude chose the warm look · Change" and "Claude chose 1.1× speed · Change": pending, "Shows once looks render." / "Plays once clip speed renders." Change shows the other choices as chips, and a pick reads "You chose …". There is no Undo: nothing changed. The original look adds no row;
   - "Zoom to 1.15× · Change" (Motion);
   - "Voiced “…” in your voice · Change" (the phrase card, opening Rewrite on those words);
   - "Claude chose music “…” · Change" (Captions, whose Music section is below its rows);
@@ -1780,7 +1836,7 @@ A suggestion is kept first, in the same undo step as everything the run applies.
 
 **Export** is one click. The clip renders once per shape of the clip style (`beginExport(targets:folder:aspects:)`) into the export folder. The post text, including the music credit, is copied as the export starts.
 
-**Clip style seam.** Until `ClipStyle` (track/v2-captions-style) merges, `EditorModel.makeItStyle` uses the Auto preset: Claude picks captions, music Auto (free first, generated when nothing fits), rewording allowed, shapes 16:9 and 9:16. `MakeItStyle` documents the field each one will read.
+**Clip style** (§6.6). The run reads `project.clipStyle`, else the style a new project starts with (`catalog.initial(saved:)`). A fixed caption style is the planner's `captionPreference.styleId`, and Auto leaves it to Claude. Off keeps the project's captions and adds no captions decision. Music Auto allows a generated track when no free one fits; Off adds no music. Length and Rewording go to Claude in the request's note, and the review flags a clip longer than Length. Rewording Off keeps the speaker's words: rewrites show as "Claude suggests …" and nothing is voiced. Shape is Export's shapes.
 
 **Timeline.** The default timeline is 242 pt where the title row, a 16:9 viewer, the panel header and the panel's 160 pt minimum body fit above it. It shows V1, A1, CC, FX and M1 at track height M. A shorter window falls back towards 216, within 40% of the work area.
 

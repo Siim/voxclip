@@ -1,7 +1,7 @@
 import Foundation
 import VoxClipCore
 
-/// Voices one planned rewrite with Rewrite's own session and take plan (doc/design.md §6.6): the planner's words are the
+/// Voices one planned rewrite with Rewrite's own session and take plan (doc/design.md §6.7): the planner's words are the
 /// session's proposal, and the driver takes the steps a creator would, in the panel's own controls, within the run's
 /// budget. Each priced step is checked against the budget before it runs; the click on ✦ Make it postable is its
 /// approval, so the existing quote, approval and spend ledger paths authorize it. It never discards a paid take, never

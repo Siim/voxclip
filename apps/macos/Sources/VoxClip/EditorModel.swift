@@ -72,6 +72,8 @@ struct EditorRenderSnapshot {
         return .transcribing(fraction: progressStage == .transcribing ? progressFraction : nil, stage: progressStage)
     }
     let sendConfirmation = ConnectorConfirmation()
+    /// The clip style card and Claude's caption pick (design.md §6.6; EditorModel+ClipStyle.swift).
+    let clipStyleState = ClipStyleState()
     var connectorSendVerb = "Rewrite"
     @ObservationIgnored lazy var transcription = InlineTranscription(model: self)
     var contextDemoSession: ContextDemoSession?
@@ -1161,7 +1163,7 @@ struct EditorRenderSnapshot {
     // Clips in the sidebar (design §3.4 and §6.2): kept clips number 1…n in transcript
     // order and suggestions continue after them.
     var keptClips: [ClipRange] { sortedClips.filter { $0.origin == .manual || $0.selected } }
-    /// Suggestions ranked by score, best first (design.md §6.6): the planner's once Make it postable scored the clip,
+    /// Suggestions ranked by score, best first (design.md §6.7): the planner's once Make it postable scored the clip,
     /// else Find Clips' own. Equal scores keep transcript order.
     var suggestedClips: [ClipRange] {
         let found = sortedClips.filter { $0.origin == .ai && !$0.selected }
@@ -1366,7 +1368,8 @@ struct EditorRenderSnapshot {
     func setStyle(_ id: String) {
         if id == "off", project.captions.styleId != "off" { lastStyleId = project.captions.styleId }
         else if id != "off" { lastStyleId = id }
-        var next = project; next.captions.styleId = id; replace(next, name: "Change caption style")
+        // A style the user chooses fixes the clip style's captions, so Claude's picks never override it (design.md §6.6).
+        var next = project; next.captions.styleId = id; next.clipStyle = next.clipStyle?.fixingCaptions(.init(raw: id)); replace(next, name: "Change caption style")
     }
     func setCaptionsEnabled(_ enabled: Bool) {
         guard enabled else { setStyle("off"); return }
