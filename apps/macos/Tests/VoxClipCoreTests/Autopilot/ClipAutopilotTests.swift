@@ -287,8 +287,11 @@ import Testing
         #expect(operations[5].action == .rewrite(scope: .selection(17...23), text: "You still need to feed the plants"))
         guard case .captions(let settings, let pending) = operations[6].action else { Issue.record("no captions"); return }
         #expect(settings.styleId == "vox-bold")
-        #expect(settings.overrides == ["text": .object(["transform": .string("uppercase")]), "layout": .object(["maxWords": .number(3)])])
-        #expect(pending == .init(family: "Roboto", weight: 900))
+        // Roboto Black ships in shared/fonts/roboto (captions set 2), so the plan's font is applied, not left pending.
+        let robotoFile = try #require(fonts[.init(family: "Roboto", weight: 900)])
+        #expect(settings.overrides == ["text": .object(["transform": .string("uppercase")]), "layout": .object(["maxWords": .number(3)]),
+                                       "font": .object(["file": .string(robotoFile), "family": .string("Roboto"), "weight": .number(900)])])
+        #expect(pending == nil)
         guard case .motion(let cue) = operations[7].action else { Issue.record("no zoom"); return }
         #expect(cue.clipID == "c1" && cue.sourceStart == 4.9 && cue.sourceEnd == 5.9)
         #expect(cue.transform(atSourceTime: 5.0).scale == 1.2)
