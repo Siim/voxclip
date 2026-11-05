@@ -110,7 +110,7 @@ import VoxClipCore
     private func rowView(_ row: AskClaudeRow) -> some View {
         VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) {
             HStack(alignment: .firstTextBaseline, spacing: VCTokens.spacingRowGap) {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) {
                     Text(row.title).strikethrough(row.status == .undone)
                         .foregroundStyle(DesignValues.color(row.status == .undone ? "text.tertiary" : "text.primary"))
                     Text(row.detail).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary")).lineLimit(2)
@@ -145,7 +145,7 @@ import VoxClipCore
 
     @ViewBuilder private func rowActions(_ row: AskClaudeRow) -> some View {
         if row.status == .applied {
-            HStack(spacing: 4) {
+            HStack(spacing: VCTokens.spacingLabelGap) {
                 if EditorModel.sourceRange(row.operation, words: model.words) != nil {
                     Button { model.playAskClaudeRow(row.id) } label: { Image(systemName: "play.fill") }
                         .buttonStyle(.borderless).help("Play this change")
