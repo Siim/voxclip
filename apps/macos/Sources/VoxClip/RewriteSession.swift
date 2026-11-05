@@ -961,7 +961,11 @@ struct RewriteChange: Equatable, Sendable {
                 editor.closeRewrite()
                 if let first { editor.select(first) }
                 return true
-            } catch { problem = ClipTakePlan.copy(error); takePlanFailure = error; return false }
+            } catch {
+                // MVP32 Clip 7: this failure wrote nothing to the log, so its case could not be read afterwards.
+                logFailure(error, stage: "use")
+                problem = ClipTakePlan.copy(error); takePlanFailure = error; return false
+            }
         }
         return false
     }
