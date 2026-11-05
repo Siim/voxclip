@@ -345,7 +345,8 @@ import VoxClipCore
     /// interleaved with the fixture's PCM as 24 kHz LPCM. Written at run time into `root` (the smoke's temporary data
     /// folder), once per audio; nothing is read from or kept in the source tree.
     static func sourceMovie(_ pcm: [Float], rate: Int, seconds: Int, root: URL) async throws -> URL {
-        let key = VoiceLabFingerprint.bytes(try VoiceTrainingAudio.wav(pcm, rate: rate)).prefix(16)
+        // Keyed by the raw samples: a training WAV refuses a take as long as S16's.
+        let key = VoiceLabFingerprint.bytes(pcm.withUnsafeBufferPointer { Data(buffer: $0) } + Data("\(rate)".utf8)).prefix(16)
         let destination = root.appendingPathComponent("smoke-source-\(key).mov")
         if FileManager.default.fileExists(atPath: destination.path) { return destination }
         let (width, height) = sourceVideoSize
@@ -1234,6 +1235,25 @@ import VoxClipCore
                 throw Failure.setup("S15's measured round named no bridge words, so no reply dropped them")
             }
         },
+        // MVP23: a 5:48 full take whose Rewrite changed 34 phrases showed "The operation could not finish." and could
+        // not be priced. A long take is priced and approved once and voiced part by part; every phrase lands.
+        Definition(id: "S16", title: "a long full take with 36 changes prices once, voices every phrase and lands", voiced: longTakeChanges,
+            fixture: Fixture(script: longTakeScript, rewrites: [.passage(longTakeRewrite)], voice: RewriteSmokeVoiceScript(exactFit: true))) { harness in
+            try await harness.start()
+            // A take whose join is uneven needs its own [Use anyway] (ADR-R37), so a long take may take a click per phrase.
+            try await harness.finish(maximumSteps: 48)
+        },
     ] + ownTakeScenarios }
+
+    /// S16's take: the base script twelve times over, about nine minutes.
+    nonisolated static let longTakeScript = Array(repeating: baseScript, count: longTakeRepeats).joined(separator: " ")
+    nonisolated static let longTakeRepeats = 12
+    /// One change in each of three sentences of the base script that are not next to each other, each about as long as the
+    /// words it replaces, so no two changes are one hunk or one phrase.
+    nonisolated static let longTakePairs = [twoChanges[0], twoChanges[1], ("share it with our friends", "send it to our people")]
+    nonisolated static var longTakeRewrite: String {
+        longTakePairs.reduce(longTakeScript) { text, pair in text.replacingOccurrences(of: pair.0, with: pair.1) }
+    }
+    nonisolated static var longTakeChanges: Int { longTakePairs.count * longTakeRepeats }
 }
 #endif
