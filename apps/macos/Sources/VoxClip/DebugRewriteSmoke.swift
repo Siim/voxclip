@@ -597,15 +597,23 @@ import VoxClipCore
             var calm = 0
             var last = start
             var settled = false
-            while ProcessInfo.processInfo.systemUptime - start < timeout {
+            // Generating takes is progress, not a hang: under load a long run's second round outlasted 90 s and S16 stopped
+            // with its takes still coming (lead verify cb7a7495). Generation may run to 300 s; anything else keeps `timeout`.
+            // The other phases (preparing the video, publishing) get `timeout` of their own after generation ends.
+            let generatingLimit = max(timeout, 300)
+            var phaseStart = start
+            while true {
                 try? await Task.sleep(for: .milliseconds(15))
                 let reason = await busyReason()
                 let now = ProcessInfo.processInfo.systemUptime
                 waits[reason ?? "settling", default: 0] += now - last
                 last = now
                 if reason != nil { calm = 0 } else { calm += 1; if calm >= 5 { settled = true; break } }
+                let generating = reason?.contains("generating") == true
+                if generating { phaseStart = now }
+                if now - start >= generatingLimit + timeout || (!generating && now - phaseStart >= timeout) { break }
             }
-            if !settled { DebugRewriteSmoke.progress("\(scenario) stopped settling after \(DebugRewriteSmoke.seconds(timeout)), still busy") }
+            if !settled { DebugRewriteSmoke.progress("\(scenario) stopped settling after \(DebugRewriteSmoke.seconds(ProcessInfo.processInfo.systemUptime - start)), still busy") }
             let discovering = ProcessInfo.processInfo.systemUptime
             await ensureGeneration()
             waits["voices", default: 0] += ProcessInfo.processInfo.systemUptime - discovering
