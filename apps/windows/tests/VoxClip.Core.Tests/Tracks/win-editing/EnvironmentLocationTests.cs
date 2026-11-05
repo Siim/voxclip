@@ -64,6 +64,47 @@ public sealed class EnvironmentLocationTests
     }
 
     [Fact]
+    public void ATestProcessNeverLogsIntoTheUsersLogFolder()
+    {
+        // About 21,800 lines of a user's ~/Library/Logs/VoxClip/voxclip.log came from these suites run on a Mac without
+        // VOXCLIP_DATA_DIR. This process is a test process, so its logs go to its own temporary folder.
+        Assert.True(TestProcess.IsRunning);
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var logs = DataLocations.Resolve(null, home, TestProcess.IsRunning).Logs;
+        Assert.Equal(TestProcess.Logs, logs);
+        Assert.False(Inside(logs, Path.Combine(home, "Library", "Logs")));
+        Assert.False(Inside(logs, Path.Combine(home, "Library", "Application Support", "VoxClip")));
+        Assert.False(Inside(logs, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VoxConvo")));
+        Assert.True(Inside(logs, Path.GetTempPath()));
+        // The app itself keeps its log folder, and an explicit data folder still wins for tests.
+        var app = DataLocations.Resolve(null, home, testing: false).Logs;
+        Assert.Equal(OperatingSystem.IsMacOS() ? Path.Combine(home, "Library", "Logs", "VoxClip")
+            : Path.Combine(DataLocations.Resolve(null, home, testing: false).Root, "Logs"), app);
+        var isolated = Path.Combine(Path.GetTempPath(), "voxclip-isolated-data");
+        Assert.Equal(Path.Combine(isolated, "Logs"), DataLocations.Resolve(isolated, home, testing: true).Logs);
+    }
+
+    [Fact]
+    public void TheTestProcessCheckKnowsTestHostsAndNeverTheApp()
+    {
+        string[] app = ["VoxClip", "VoxClip.Core", "VoxClip.Media", "System.Runtime"];
+        Assert.False(TestProcess.Detect(["PATH", "HOME", "VOXCLIP_DATA_DIR"], "VoxClip", ["/Applications/VoxClip"], app, "VoxClip"));
+        Assert.False(TestProcess.Detect([], "voxclip-cli", ["voxclip-cli", "test"], app, "voxclip-cli"));
+        Assert.True(TestProcess.Detect([], "testhost", ["testhost.dll"], app, "testhost"));
+        Assert.True(TestProcess.Detect([], "dotnet", ["dotnet", "test", "--project", "tests/VoxClip.Core.Tests"], app, null));
+        Assert.True(TestProcess.Detect([], "VoxClip.Media.Tests", [], app, "VoxClip.Media.Tests"));
+        Assert.True(TestProcess.Detect([], "dotnet", ["dotnet", "exec", "runner.dll"], [.. app, "xunit.v3.core"], "runner"));
+        Assert.True(TestProcess.Detect(["TESTINGPLATFORM_EXECUTIONID"], "runner", [], app, "runner"));
+        Assert.True(TestProcess.Detect(["VSTEST_HOST_DEBUG"], "runner", [], app, "runner"));
+    }
+
+    private static bool Inside(string path, string folder)
+    {
+        var relative = Path.GetRelativePath(Path.GetFullPath(folder), Path.GetFullPath(path));
+        return relative == "." || (!relative.StartsWith("..", StringComparison.Ordinal) && !Path.IsPathRooted(relative));
+    }
+
+    [Fact]
     public void SharedOverrideWinsAndInvalidOverridesFailRatherThanSilentlyFallingBack()
     {
         using var storage = new TestStorage();
