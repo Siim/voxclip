@@ -58,7 +58,8 @@ extension HeavyMediaTests {
         let scenarios = Set(report.compactMap { $0.name.split(separator: " ").first.map(String.init) })
         // The own-words scenarios (My words, Say it myself, Record again) run in both passes.
         let own = ["S-own-typed", "S-own-mic", "S-own-mic-misfit"]
-        let expected: [String] = lengths == "exact" ? ((1...12).map { "S\($0)" } + ["S14", "S15"] + own).map { $0 + "-exact" } : (1...15).map { "S\($0)" } + own
+        let makeIt = ["S-make-it", "S-make-top3"]
+        let expected: [String] = lengths == "exact" ? ((1...12).map { "S\($0)" } + ["S14", "S15"] + own + makeIt).map { $0 + "-exact" } : (1...15).map { "S\($0)" } + own + makeIt
         #expect(scenarios == Set(expected))
         for result in report { #expect(result.passed, Comment(rawValue: result.name)) }
     }
