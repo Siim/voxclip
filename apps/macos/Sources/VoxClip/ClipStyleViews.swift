@@ -17,12 +17,35 @@ import VoxClipCore
                     Button("Done") { editor.collapseClipStyleCard() }.buttonStyle(.borderless).font(.system(size: 12))
                         .accessibilityIdentifier("voxclip.clipStyle.done")
                 }
-                ClipStyleFlowLayout(spacing: VCTokens.spacingLabelGap) {
-                    ForEach(catalog.presets) { preset in
-                        chip(preset, selected: style.preset == preset.id)
+                modeControl
+                if !editor.claudeModeOn {
+                    ClipStyleFlowLayout(spacing: VCTokens.spacingLabelGap) {
+                        ForEach(catalog.presets) { preset in
+                            chip(preset, selected: style.preset == preset.id)
+                        }
                     }
                 }
+                // One vertical stack of rows: Claude mode's own (Clips, Spend), then the style's.
                 VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) {
+                    if editor.claudeModeOn {
+                        let settings = editor.clipsAutopilot
+                        optionRow("Clips", value: "Top \(settings.count) per video", options: ClipsMode.counts.map { ("\($0)", "Top \($0) per video") },
+                                  selected: "\(settings.count)") { id in editor.setClaudeClipCount(Int(id) ?? settings.count) }
+                        optionRow("Spend", value: Self.spendLabel(settings.capUSD), options: ClipsMode.capsUSD.map { ("\($0)", Self.spendLabel($0)) },
+                                  selected: "\(settings.capUSD)") { id in editor.setClaudeSpendCap(Int(id) ?? settings.capUSD) }
+                    }
+                    if editor.claudeModeOn {
+                        optionRow("Rewording", value: catalog.rewording.first { $0.id == style.rewording.rawValue }?.label ?? style.rewording.rawValue,
+                                  options: catalog.rewording.map { ($0.id, $0.label) }, selected: style.rewording.rawValue) { id in
+                            editor.updateClipStyle { $0.rewording = ClipRewording(rawValue: id) ?? $0.rewording }
+                        }
+                        let preset = catalog.preset(style.preset)
+                        optionRow("Style", value: Self.presetTitle(preset), options: catalog.presets.map { ($0.id.rawValue, Self.presetTitle($0)) },
+                                  selected: style.preset.rawValue) { id in
+                            if let chosen = ClipStylePresetID(rawValue: id) { editor.chooseClipPreset(chosen, collapse: false) }
+                        }
+                    }
+                    if !editor.claudeModeOn {
                     captionsRow(style)
                     optionRow("Music", value: catalog.music.first { $0.id == style.music.rawValue }?.label ?? style.music.rawValue,
                               help: catalog.music.first { $0.id == style.music.rawValue }?.detail, options: catalog.music.map { ($0.id, [$0.label, $0.detail].compactMap { $0 }.joined(separator: " · ")) }, selected: style.music.rawValue) { id in
@@ -31,12 +54,19 @@ import VoxClipCore
                     optionRow("Length", value: "Up to \(style.maxLengthSec) s", options: catalog.lengthChoicesSec.map { ("\($0)", "Up to \($0) s") }, selected: "\(style.maxLengthSec)") { id in
                         editor.updateClipStyle { $0.maxLengthSec = Int(id) ?? $0.maxLengthSec }
                     }
+                    }
                     shapeRow(style, shapes: catalog.shapes)
-                    optionRow("Rewording", value: catalog.rewording.first { $0.id == style.rewording.rawValue }?.label ?? style.rewording.rawValue,
-                              options: catalog.rewording.map { ($0.id, $0.label) }, selected: style.rewording.rawValue) { id in
-                        editor.updateClipStyle { $0.rewording = ClipRewording(rawValue: id) ?? $0.rewording }
+                    if !editor.claudeModeOn {
+                        optionRow("Rewording", value: catalog.rewording.first { $0.id == style.rewording.rawValue }?.label ?? style.rewording.rawValue,
+                                  options: catalog.rewording.map { ($0.id, $0.label) }, selected: style.rewording.rawValue) { id in
+                            editor.updateClipStyle { $0.rewording = ClipRewording(rawValue: id) ?? $0.rewording }
+                        }
                     }
                 }
+                Text(editor.claudeModeOn
+                     ? "Free on your Claude plan; the cap covers ElevenLabs voice and generated music. Claude never spends past it. Next: Done, then drop a video."
+                     : "Claude suggests clips; ✦ Make it postable on a clip uses this style. Next: Done.")
+                    .font(.system(size: 11)).foregroundStyle(DesignValues.color("text.tertiary")).fixedSize(horizontal: false, vertical: true)
             }
             .padding(VCTokens.spacingCardPadding)
             .background(DesignValues.color("bg.surface"), in: .rect(cornerRadius: VCTokens.radiusPane))
@@ -46,6 +76,42 @@ import VoxClipCore
             .accessibilityLabel("How should clips be made?")
             .accessibilityIdentifier("voxclip.clipStyle.card")
         }
+    }
+
+    /// "✦ Claude does it all | I'll pick": the remembered mode, on top of the card.
+    private var modeControl: some View {
+        let mode = editor.clipsAutopilot.mode
+        return HStack(spacing: VCTokens.spacing1) {
+            segment("✦ Claude does it all", on: mode == .claude, ai: true) { editor.chooseClipsMode(.claude) }
+                .accessibilityIdentifier("voxclip.clipStyle.mode.claude")
+            segment("I'll pick", on: mode == .pick, ai: false) { editor.chooseClipsMode(.pick) }
+                .accessibilityIdentifier("voxclip.clipStyle.mode.pick")
+        }
+        .padding(VCTokens.spacing1)
+        .background(DesignValues.color("bg.muted"), in: .rect(cornerRadius: VCTokens.radiusControl + 1))
+        .overlay(RoundedRectangle(cornerRadius: VCTokens.radiusControl + 1).strokeBorder(DesignValues.color("line.default")))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Who makes the clips")
+    }
+
+    private func segment(_ title: String, on: Bool, ai: Bool, choose: @escaping () -> Void) -> some View {
+        Button(action: choose) {
+            Text(title).font(.system(size: 12, weight: on ? .semibold : .regular))
+                .foregroundStyle(DesignValues.color(on ? (ai ? "ai.tint" : "text.primary") : "text.secondary"))
+                .lineLimit(1).minimumScaleFactor(0.85)
+                .frame(maxWidth: .infinity).padding(.vertical, VCTokens.spacing2 + 1)
+                .background(on ? DesignValues.color("bg.selectedRow") : Color.clear, in: .rect(cornerRadius: VCTokens.radiusControl - 1))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? .isSelected : [])
+        .modifier(PanelButtonEvidence(id: "clipStyle.mode.\(ai ? "claude" : "pick")", title: title))
+    }
+
+    static func spendLabel(_ usd: Int) -> String { usd == 0 ? "No paid voice or music ($0)" : "Up to \(EditorModel.makeItDollars(Decimal(usd))) per video" }
+
+    static func presetTitle(_ preset: ClipStyleCatalog.Preset) -> String {
+        preset.id == .auto ? "✦ \(preset.label)" + (preset.detail.map { " · \($0)" } ?? "") : preset.label
     }
 
     private func chip(_ preset: ClipStyleCatalog.Preset, selected: Bool) -> some View {

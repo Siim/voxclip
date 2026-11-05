@@ -30,6 +30,8 @@ private actor PickFixtureConnector: LLMConnector {
     private func open(app: AppModel = AppModel(settingsStore: RegressionSettingsStore())) async throws -> (WorkspaceShell, EditorModel) {
         _ = NSApplication.shared
         app.loadCatalogue()
+        // "I'll pick" (design §6.6): the clip style card shows once, as before Claude mode; card A has been answered.
+        #expect(app.set(ClipsMode.key, .string(ClipsMode.pick.rawValue)))
         let shared = try SharedResources.locate()
         let base = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
         var project = try DebugExplorer.fiveQuestions(from: base)

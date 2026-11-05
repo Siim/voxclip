@@ -50,14 +50,16 @@ extension EditorModel {
 
     /// The card shows once above the clip list, the first time the project has clips, until the user chooses; the
     /// status bar item reopens it. A read-only project never shows it: every control on it changes the project.
+    /// Until the creator chooses who makes the clips, card A asks that instead; in Claude mode the card shows only when
+    /// reopened, since Claude decides the rest.
     var showsClipStyleCard: Bool {
-        guard capabilities.edit, clipStyles != nil else { return false }
-        return clipStyleState.reopened || (project.clipStyle == nil && !project.edits.clips.isEmpty)
+        guard capabilities.edit, clipStyles != nil, !showsClipsModeCard else { return false }
+        return clipStyleState.reopened || (!claudeModeOn && project.clipStyle == nil && !project.edits.clips.isEmpty)
     }
 
-    func chooseClipPreset(_ id: ClipStylePresetID) {
+    func chooseClipPreset(_ id: ClipStylePresetID, collapse: Bool = true) {
         guard let clipStyles else { return }
-        commitClipStyle(clipStyles.style(for: id, mine: savedClipStyle), name: "Choose clip style", collapse: true)
+        commitClipStyle(clipStyles.style(for: id, mine: savedClipStyle), name: "Choose clip style", collapse: collapse)
     }
 
     /// A row on the card changed: the style becomes the user's own ("My style").
@@ -188,7 +190,9 @@ extension EditorModel {
     // MARK: Status bar
 
     /// "Style: Auto · ≤60 s · 16:9+9:16" once the project has a clip style.
+    /// In Claude mode, or until the creator chooses, the item names the mode instead (ClaudeMode.swift).
     var statusClipStyle: StatusItem? {
+        if let mode = statusClaudeMode { return mode }
         guard let style = project.clipStyle, let clipStyles else { return nil }
         let text = style.summary(presetLabel: clipStyles.preset(style.preset).label)
         return StatusItem(kind: .clipStyle, parts: [StatusText(string: text)], dim: true,

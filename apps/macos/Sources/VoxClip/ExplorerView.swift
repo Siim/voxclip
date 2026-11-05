@@ -139,6 +139,8 @@ import VoxClipCore
             .accessibilityElement(children: .contain).accessibilityLabel(ExplorerSection.take.accessibilityLabel(count: 1, title: shell.projectTitle))
             Section {
                 if shell.explorerExpanded(.clips) {
+                    if editor.showsClipsModeCard { ClipsModeCard(editor: editor).selectionDisabled() }
+                    if editor.claudeModeOn, editor.claudeMode.phase != .idle { ClaudeModeCard(editor: editor).selectionDisabled() }
                     if editor.showsClipStyleCard { ClipStyleCard(editor: editor).selectionDisabled() }
                     if editor.keptClips.isEmpty && !editor.words.isEmpty {
                         Text("No clips yet. Select words and press ⌥⌘K.")
@@ -311,6 +313,7 @@ import VoxClipCore
                     .columnLayoutEvidence("explorer.clipTitle", text: title)
             }
             Spacer(minLength: 0)
+            if let state = editor.claudeClipState(clip.id) { ClaudeClipPill(state: state) }
             if editor.containsAISpeech(clipID: clip.id) { ExplorerVoiceGlyph() }
             if showsActions {
                 HStack(spacing: 2) {

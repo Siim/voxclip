@@ -219,7 +219,9 @@ import Testing
         // The clip style card (design §6.6) shows once above the clip list; this test measures the Outline and the
         // library, so it starts with the card collapsed to the status bar.
         editor.collapseClipStyleCard()
-        #expect(!editor.showsClipStyleCard)
+        // Card A ("Who makes the clips?") is answered too.
+        editor.chooseClipsMode(.pick)
+        #expect(!editor.showsClipStyleCard && !editor.showsClipsModeCard)
         let entries = shell.outlineEntries
         try #require(entries.count >= 2)
         let word = try #require(editor.words[entries[1].words].first { !editor.cutWordIDs.contains($0.id) && $0.kind == .word })

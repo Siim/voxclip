@@ -9,7 +9,13 @@ actor RegressionExporter: Exporter {
     var pauseFirst = false
     private var resumeFirst: CheckedContinuation<Void, Never>?
     private(set) var jobs: [ExportJob] = []
-    init(failure: VoxClipError? = nil) { self.failure = failure }
+    /// Jobs (1-based, in order) that fail on their own; the others succeed.
+    let failingJobs: Set<Int>
+    /// Writes a small file at each output, so a test can count what landed in the folder.
+    let writesFiles: Bool
+    init(failure: VoxClipError? = nil, failingJobs: Set<Int> = [], writesFiles: Bool = false) {
+        self.failure = failure; self.failingJobs = failingJobs; self.writesFiles = writesFiles
+    }
     private var resumeHold: CheckedContinuation<Void, Error>?
     func setHold(_ value: Bool) {
         hold = value
@@ -38,6 +44,8 @@ actor RegressionExporter: Exporter {
             try await withTaskCancellationHandler { try await waitForRelease() } onCancel: { Task { await self.cancelHold() } }
         }
         if let failure { throw failure }
+        if failingJobs.contains(jobs.count) { throw VoxClipError.exportFailed("fixture failure") }
+        if writesFiles { try Data("fixture".utf8).write(to: job.outputURL, options: .atomic) }
         return ExportResult(outputURL: job.outputURL, srtURL: job.srtURL, durationSeconds: job.render.plan.duration, width: job.render.output.size.width, height: job.render.output.size.height, fps: job.render.output.fps, frames: 1, audioSampleRate: 48_000, audioSamples: 1, videoCodec: "h264", encoder: "fixture", elapsedSeconds: 0)
     }
 }

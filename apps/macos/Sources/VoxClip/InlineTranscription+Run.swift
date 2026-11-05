@@ -56,8 +56,12 @@ extension InlineTranscription {
             try validate(request)
             let transcript = result.transcript
             model.replaceTranscript(transcript)
-            // On drop: a free transcription goes straight on to Find Clips when the AI is free too (design.md §6.7).
-            if startedOnImport, request.cost == nil { startedOnImport = false; model.findClipsIfFree() }
+            // On drop: a free transcription goes straight on to Find Clips when the AI is free too (design.md §6.7); in
+            // Claude mode a newly opened video goes on after any transcription, then Claude makes its clips (§6.6).
+            if (startedOnImport && request.cost == nil) || model.claudeModeWaitsForTranscript {
+                startedOnImport = false
+                model.claudeModeTranscribed(started: model.findClipsIfFree())
+            }
             completedAt = Date()
             completion = "Transcribed \(request.cost == nil ? "on this Mac" : "with ElevenLabs") · \(transcript.words.count) words"
             if result.fromCache && request.cost != nil { completion = "Using the earlier ElevenLabs transcript of this file (no charge)." }
@@ -173,12 +177,14 @@ extension InlineTranscription {
 extension EditorModel {
     /// Find Clips with no click, after a free transcription on drop, when the chosen AI costs nothing extra: a CLI on its
     /// plan, a local server or Apple on-device. An API key's send still asks first, inline, when Find Clips is pressed.
-    func findClipsIfFree() {
+    /// Returns whether Find Clips started.
+    @discardableResult func findClipsIfFree() -> Bool {
         guard capabilities.ai, project.ai.results.isEmpty, suggestedClips.isEmpty, !finding,
               let connector = ConnectorID(rawValue: app.string("llm.connector")),
               app.providers.contains(where: { $0.id == connector.rawValue }),
-              case .inline(let amount) = app.llmSendKind(connector), amount.isEmpty else { return }
+              case .inline(let amount) = app.llmSendKind(connector), amount.isEmpty else { return false }
         findClips()
+        return true
     }
     func replaceTranscript(_ transcript: Transcript) {
         findTask?.cancel(); sendConfirmation.cancel(); closeRewrite(returnFocus: false)
