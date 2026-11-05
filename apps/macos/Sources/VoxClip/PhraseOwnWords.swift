@@ -77,7 +77,7 @@ extension RewriteSession {
         do {
             let spoken = RewriteReview.timingTranscript(reviewInputs)
             let rate = try VoiceLabPhraseTiming.speakingRate(transcript: spoken)
-            let calibrated = VoiceLabWordingFit.multiplier(project.voiceLab.speakingRateSamples?[VoiceLabWordingFit.modelID] ?? [])
+            let calibrated = VoiceLabWordingFit.multiplier(rateSamples(VoiceLabWordingFit.modelID))
             let silence = try VoiceLabWindowPlanner.lendableSilence(project: project, scope: scope, window: phrase.window)
             let tags = VoiceLabAudioTags.validated(phrase.audioTags, text: text)
             let timing = try VoiceLabPaceMatching.measure(text: text, rate: rate, window: phrase.window,
@@ -137,9 +137,9 @@ extension RewriteSession {
             let rate = try VoiceLabPhraseTiming.speakingRate(transcript: RewriteReview.timingTranscript(reviewInputs))
             let characters = spoken.reduce(0) { $0 + VoiceLabTextLength.length($1.text) }
             let wordsPerSecond = rate * Double(spoken.count) / Double(max(1, characters))
-            let calibrated = VoiceLabWordingFit.multiplier(project.voiceLab.speakingRateSamples?[VoiceLabWordingFit.modelID] ?? [])
+            let calibrated = VoiceLabWordingFit.multiplier(rateSamples(VoiceLabWordingFit.modelID))
             let target = try VoiceLabWordingFit.wordTarget(wordsPerSecond: wordsPerSecond, multiplier: calibrated,
-                minimumSeconds: fit.lower, maximumSeconds: fit.upper, overheadSeconds: 0)
+                minimumSeconds: fit.lower, maximumSeconds: fit.upper, overheadSeconds: 0, spread: rateSpread(VoiceLabWordingFit.modelID))
             let ordinal = takePhraseOrdinals(phrase).first ?? phrase.id + 1
             let readings = editor.changeReadings.filter { takePhraseOrdinals(phrase).contains($0.change.ordinal) }
             let request = VoiceLabFitPhrase(ordinal: ordinal, original: readings.flatMap(\.removed).joined(separator: " "),

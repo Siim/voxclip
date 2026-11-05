@@ -21,6 +21,12 @@ struct RewriteReview: Sendable {
         let envelope: AudioEnvelope?
         let prices: VoiceLabPriceCatalog?
         let synthesisModel: String?
+        /// The chosen voice's calibration across projects (ADR-R41), if it has one.
+        var voiceCalibration: VoiceLabVoiceCalibration? = nil
+        /// The ratios an estimate's multiplier reads: the voice's calibration, then this project's own samples.
+        var rateSamples: [VoiceLabRateSample] {
+            VoiceLabRateCalibration.samples(project: project, model: synthesisModel ?? "", voice: voiceCalibration)
+        }
     }
     let hunks: [VoiceLabDiffHunk]
     let budget: VoiceLabPatchBudgetResult
@@ -61,7 +67,7 @@ struct RewriteReview: Sendable {
                     supportsPace: inputs.synthesisModel != "eleven_v4", hardJoinSmoothing: true,
                     audioTags: VoiceLabAudioTags.shifted(hunk.audioTags, by: window.leftBridgeWordIds.compactMap { texts[$0] }.flatMap { EditingPrimitives.splitWords($0) }.count),
                     modelID: inputs.synthesisModel ?? "", sourceItems: spoken, sourceEnvelope: inputs.envelope,
-                    rateMultiplier: VoiceLabWordingFit.multiplier(inputs.project.voiceLab.speakingRateSamples?[inputs.synthesisModel ?? ""] ?? []))
+                    rateMultiplier: VoiceLabWordingFit.multiplier(inputs.rateSamples))
                 reviews.append(RewriteHunkReview(hunk: hunk, window: window, patchText: patch, meter: meter, refusal: nil, timing: timing))
                 requestTexts.append(VoiceLabAudioTags.requestText(words: patch, tags: annotations, modelID: inputs.synthesisModel ?? ""))
             } catch {

@@ -599,7 +599,8 @@ struct RewriteChange: Equatable, Sendable {
     }
     /// What the review reads now.
     var reviewInputs: RewriteReview.Inputs {
-        RewriteReview.Inputs(transcript: transcript, project: project, scope: scope, envelope: envelope, prices: prices, synthesisModel: synthesisModel)
+        RewriteReview.Inputs(transcript: transcript, project: project, scope: scope, envelope: envelope, prices: prices, synthesisModel: synthesisModel,
+            voiceCalibration: voiceCalibration)
     }
     private func receive(_ checked: Checked) {
         stopWordingFit(refresh: false)
@@ -651,10 +652,23 @@ struct RewriteChange: Equatable, Sendable {
         editor.proposal = proposal
         showProposal()
     }
-    func recordSpeakingRate(model: String, take: UUID, measured: Double, baseline: Double) {
+    /// The voice whose calibration a phrase's estimate starts from (ADR-R41): the chosen voice, else the only calibrated one.
+    var voiceCalibration: VoiceLabVoiceCalibration? { editor.app.rateCalibration(recordID: generation?.selectedVoiceID) }
+    /// The ratios a phrase's multiplier reads for `model`: its voice's calibration, then this project's own samples.
+    func rateSamples(_ model: String) -> [VoiceLabRateSample] {
+        VoiceLabRateCalibration.samples(project: project, model: model, voice: voiceCalibration)
+    }
+    /// How far above the median four takes in five may run, for word budgets (`VoiceLabWordingFit.wordTarget`).
+    func rateSpread(_ model: String) -> Double {
+        VoiceLabRateCalibration.spread(project: project, model: model, voice: voiceCalibration)
+    }
+    /// One measured take: a sample for this project (under the current prior's key) and for its voice across projects.
+    func recordSpeakingRate(model: String, recordID: String, take: UUID, measured: Double, baseline: Double) {
         guard !calibratedTakeIDs.contains(take) else { return }
+        editor.app.recordRateCalibration(recordID: recordID, model: model, take: take.uuidString, measured: measured, estimated: baseline)
+        let key = VoiceLabRateCalibration.projectKey(model)
         var next = editor.project
-        let previous = next.voiceLab.speakingRateSamples?[model] ?? []
+        let previous = next.voiceLab.speakingRateSamples?[key] ?? []
         if previous.contains(where: { $0.id == take.uuidString }) {
             calibratedTakeIDs.insert(take)
             return
@@ -663,7 +677,7 @@ struct RewriteChange: Equatable, Sendable {
         guard samples != previous else { return }
         calibratedTakeIDs.insert(take)
         if next.voiceLab.speakingRateSamples == nil { next.voiceLab.speakingRateSamples = [:] }
-        next.voiceLab.speakingRateSamples?[model] = samples
+        next.voiceLab.speakingRateSamples?[key] = samples
         editor.document.replaceProject(next)
         if !editor.document.demo { editor.document.updateChangeCount(.changeDone) }
         project.voiceLab.speakingRateSamples = next.voiceLab.speakingRateSamples

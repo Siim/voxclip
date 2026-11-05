@@ -220,6 +220,11 @@ extension ProviderChoice {
     private var settingsTask: Task<Void, Never>?
     private var startupTask: Task<Void, Never>?
     private var voiceRecoveryTask: Task<Void, Never>?
+    private var rateCalibrationTask: Task<Void, Never>?
+    /// Each voice's speaking-rate calibration across projects (ADR-R41), by consent record ID, as loaded at launch and
+    /// kept current as takes are measured.
+    private(set) var rateCalibrations: [String: VoiceLabVoiceCalibration] = [:]
+    @ObservationIgnored lazy var rateCalibrationStore = VoiceLabRateCalibrationStore(locations: locations)
     #if DEBUG
     var voiceRecoveryForTests: (@MainActor () async -> Void)?
     #endif
@@ -319,6 +324,7 @@ extension ProviderChoice {
         }
         restoreCachedUpdate()
         startVoiceRecovery()
+        startRateCalibration()
         #if DEBUG
         if Self.isTestSession || DebugProbes.requested { return }
         #endif
@@ -424,6 +430,72 @@ extension ProviderChoice {
             if let voiceRecoveryForTests { await voiceRecoveryForTests(); return }
             #endif
             await voiceLabSession.reconcileStartup()
+        }
+    }
+    /// Loads the voices' calibrations; outside harness sessions, seeds the one active voice's once from the takes the
+    /// app already has, in the background. Only counts reach the log.
+    private func startRateCalibration() {
+        guard persistsRateCalibration else { return }
+        let store = rateCalibrationStore
+        let locations = locations
+        let log = log
+        let seeds = !Self.isTestSession
+        rateCalibrationTask = Task { [weak self] in
+            let loaded = await store.all()
+            self?.mergeRateCalibrations(loaded)
+            #if DEBUG
+            if DebugProbes.requested { return }
+            #endif
+            guard seeds else { return }
+            let paidRoot = locations.root.appendingPathComponent("VoiceLab", isDirectory: true)
+            let scratch = locations.root.appendingPathComponent("VoiceLabScratch/calibration-timing", isDirectory: true)
+            let seeder = VoiceLabRateCalibrationSeeder(paidRoot: paidRoot, consent: VoiceConsentStore(locations: locations), store: store,
+                timing: VoiceLabLocalTimingSource.onDevice(locations: locations, scratch: scratch))
+            let outcome = await Task.detached(priority: .background) { await seeder.run() }.value
+            guard outcome.reason != "seeded", outcome.reason != "voices" else { return }
+            await log.write(LogEntry(level: .info, category: "voice-lab",
+                message: "rate calibration seed=\(outcome.reason) measured=\(outcome.measured) skipped=\(outcome.skipped) background=true"))
+            self?.mergeRateCalibrations(await store.all())
+        }
+    }
+    private func mergeRateCalibrations(_ loaded: [String: VoiceLabVoiceCalibration]) {
+        for (id, stored) in loaded {
+            var merged = stored
+            // A take measured while the store was being read is kept.
+            for (model, samples) in rateCalibrations[id]?.models ?? [:] {
+                for sample in samples where !merged.samples(model).contains(where: { $0.id == sample.id }) {
+                    merged.models[model] = Array((merged.samples(model) + [sample]).suffix(VoiceLabRateCalibration.voiceSampleLimit))
+                }
+            }
+            rateCalibrations[id] = merged
+        }
+    }
+    /// A harness session on the user's own data folder keeps calibration in memory only: it never reads or writes it.
+    private var persistsRateCalibration: Bool {
+        !Self.isTestSession || locations.root.standardizedFileURL != DataLocations(environment: [:], testing: false).root.standardizedFileURL
+    }
+    /// The calibration a phrase's estimate starts from: the chosen voice's, else the only stored one's.
+    func rateCalibration(recordID: String?) -> VoiceLabVoiceCalibration? {
+        if let recordID, !recordID.isEmpty { return rateCalibrations[recordID] }
+        return rateCalibrations.count == 1 ? rateCalibrations.values.first : nil
+    }
+    #if DEBUG
+    /// The Rewrite smoke's scenarios each start from an uncalibrated voice. In memory only: estimates read the cache, and
+    /// the smoke's data folder is temporary.
+    func forgetRateCalibrationsForSmoke() { rateCalibrations = [:] }
+    #endif
+    /// One measured take for its voice and model, kept in memory now and on disk in the background.
+    func recordRateCalibration(recordID: String, model: String, take: String, measured: Double, estimated: Double) {
+        guard VoiceLabRateCalibrationStore.isValid(recordId: recordID) else { return }
+        let current = rateCalibrations[recordID] ?? VoiceLabVoiceCalibration(recordId: recordID)
+        let next = current.recording(model, id: take, measured: measured, estimated: estimated)
+        guard next != current else { return }
+        rateCalibrations[recordID] = next
+        guard persistsRateCalibration else { return }
+        let store = rateCalibrationStore, log = log
+        Task.detached(priority: .utility) {
+            do { try await store.record(recordID, model: model, take: take, measured: measured, estimated: estimated) }
+            catch { await log.write(LogEntry(level: .warn, category: "voice-lab", message: "rate calibration write failed")) }
         }
     }
     func stopVoiceRecovery() {

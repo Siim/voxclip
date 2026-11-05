@@ -51,8 +51,9 @@ extension RewriteSession {
         let rate = try VoiceLabPhraseTiming.speakingRate(transcript: spoken)
         guard characters > 0 else { throw VoiceLabLengthBudgetError.rateUnavailable }
         let wordsPerSecond = rate * Double(words.count) / Double(characters)
-        let samples = project.voiceLab.speakingRateSamples?[VoiceLabWordingFit.modelID] ?? []
+        let samples = rateSamples(VoiceLabWordingFit.modelID)
         let multiplier = VoiceLabWordingFit.multiplier(samples)
+        let spread = rateSpread(VoiceLabWordingFit.modelID)
         let readings = Dictionary(uniqueKeysWithValues: editor.changeReadings.map { ($0.change.ordinal, $0) })
         let built: [VoiceLabFitPhrase] = try ordinals.compactMap { ordinal in
             guard let reading = readings[ordinal], let review = voiceReview(ordinal), let timing = review.timing,
@@ -71,7 +72,7 @@ extension RewriteSession {
             let target = try VoiceLabWordingFit.wordTarget(wordsPerSecond: wordsPerSecond,
                 multiplier: multiplier * adjustment, minimumSeconds: lower, maximumSeconds: upper,
                 overheadSeconds: overhead * adjustment,
-                bridgeWords: window.leftBridgeWordIds.count + window.rightBridgeWordIds.count)
+                bridgeWords: window.leftBridgeWordIds.count + window.rightBridgeWordIds.count, spread: spread)
             return VoiceLabFitPhrase(ordinal: ordinal, original: reading.removed.joined(separator: " "), proposed: reading.text,
                 estimateSeconds: timing.estimateSeconds, slotSeconds: timing.slotSeconds,
                 direction: length > (timing.maximumSeconds ?? timing.slotSeconds) ? "shorter" : "longer",
@@ -235,7 +236,7 @@ extension RewriteSession {
                     guard take.source == .clonedVoice, let audio = take.row.audio, let input = plan.measuredInput(take: take.id) else { continue }
                     let estimate = try VoiceLabPhraseTiming.estimate(text: input.text, rate: rate)
                         + VoiceLabAudioTags.allowance(input.audioTags, text: input.text, modelID: input.modelID)
-                    recordSpeakingRate(model: input.modelID, take: take.id,
+                    recordSpeakingRate(model: input.modelID, recordID: input.recordID, take: take.id,
                         measured: Double(audio.trimmed.count) / Double(audio.sampleRate) * (input.pace ?? 1), baseline: estimate)
                 }
             }
@@ -271,7 +272,7 @@ extension RewriteSession {
             let ordinals = takePhraseOrdinals(phrase)
             guard let ordinal = ordinals.first else { return }
             let rate = try VoiceLabPhraseTiming.speakingRate(transcript: RewriteReview.timingTranscript(reviewInputs))
-            let calibrated = VoiceLabWordingFit.multiplier(project.voiceLab.speakingRateSamples?[VoiceLabWordingFit.modelID] ?? [])
+            let calibrated = VoiceLabWordingFit.multiplier(rateSamples(VoiceLabWordingFit.modelID))
             let base = try VoiceLabPhraseTiming.estimate(text: phrase.text, rate: rate)
             let seconds = base * calibrated + VoiceLabAudioTags.allowance(phrase.audioTags, text: phrase.text, modelID: VoiceLabWordingFit.modelID)
             let spoken = RewriteReview.timingTranscript(reviewInputs).filter { $0.kind == .word }
@@ -288,7 +289,7 @@ extension RewriteSession {
             let lower = timing.minimumSeconds ?? timing.slotSeconds
             let target = try VoiceLabWordingFit.wordTarget(wordsPerSecond: wordsPerSecond, multiplier: ratio,
                 minimumSeconds: lower, maximumSeconds: max(lower, timing.maximumSeconds ?? timing.slotSeconds),
-                overheadSeconds: max(0, base - speech) * ratio)
+                overheadSeconds: max(0, base - speech) * ratio, spread: rateSpread(VoiceLabWordingFit.modelID))
             let readings = editor.changeReadings.filter { ordinals.contains($0.change.ordinal) }
             // The loop's memory (voice-lab §8.2.2): every wording this phrase had, with its measured result. The whole
             // phrase is reworded, so the words joining it to the recording are named as required.

@@ -15,28 +15,34 @@ public enum VoiceLabWordingFit {
     public static let modelID = "eleven_v4"
     public static let maximumRounds = 3
 
+    /// A project keeps its last ten samples per model (`voiceLab.speakingRateSamples`).
+    public static let projectSampleLimit = 10
+
+    /// The median of the last ten valid ratios, outliers trimmed (`VoiceLabRateCalibration.robustRatios`); 1 below two.
+    /// Callers pass `VoiceLabRateCalibration.samples(project:voice:)`, so a new project starts from its voice.
     public static func multiplier(_ samples: [VoiceLabRateSample]) -> Double {
-        let ratios = samples.filter { $0.ratio.isFinite && $0.ratio > 0 }.suffix(10).map(\.ratio).sorted()
-        guard ratios.count >= 2 else { return 1 }
-        let middle = ratios.count / 2
-        return ratios.count.isMultiple(of: 2) ? ratios[middle - 1] / 2 + ratios[middle] / 2 : ratios[middle]
+        VoiceLabRateCalibration.multiplier(samples, limit: projectSampleLimit)
     }
 
     public static func recording(_ samples: [VoiceLabRateSample], id: String, measured: Double,
                                  estimated: Double) -> [VoiceLabRateSample] {
         guard measured.isFinite, estimated.isFinite, measured > 0, estimated > 0,
-              (measured / estimated).isFinite, measured / estimated > 0, !samples.contains(where: { $0.id == id }) else { return samples }
-        return Array((samples + [.init(id: id, ratio: measured / estimated)]).suffix(10))
+              (measured / estimated).isFinite, VoiceLabRateCalibration.ratioBounds.contains(measured / estimated),
+              !samples.contains(where: { $0.id == id }) else { return samples }
+        return Array((samples + [.init(id: id, ratio: measured / estimated)]).suffix(projectSampleLimit))
     }
 
+    /// The word range for a phrase's slot. The upper bound aims at the p80 duration (`spread` × the median, from the
+    /// calibration's spread), so four takes in five fit the first time; the lower bound aims at the median.
     public static func wordTarget(wordsPerSecond: Double, multiplier: Double, minimumSeconds: Double,
-                                  maximumSeconds: Double, overheadSeconds: Double, bridgeWords: Int = 0) throws -> VoiceLabWordTarget {
-        guard [wordsPerSecond, multiplier, minimumSeconds, maximumSeconds, overheadSeconds].allSatisfy(\.isFinite),
+                                  maximumSeconds: Double, overheadSeconds: Double, bridgeWords: Int = 0,
+                                  spread: Double = VoiceLabRateCalibration.priorSpread) throws -> VoiceLabWordTarget {
+        guard [wordsPerSecond, multiplier, minimumSeconds, maximumSeconds, overheadSeconds, spread].allSatisfy(\.isFinite),
               wordsPerSecond > 0, multiplier > 0, minimumSeconds >= 0, maximumSeconds >= minimumSeconds,
-              overheadSeconds >= 0, bridgeWords >= 0 else { throw VoiceLabLengthBudgetError.invalidInput }
+              overheadSeconds >= 0, bridgeWords >= 0, spread >= 1 else { throw VoiceLabLengthBudgetError.invalidInput }
         let rate = wordsPerSecond * VoiceLabPhraseTiming.providerSpeechRateMultiplier / multiplier
         let lower = max(0, minimumSeconds - overheadSeconds) * rate - Double(bridgeWords)
-        let upper = max(0, maximumSeconds - overheadSeconds) * rate - Double(bridgeWords)
+        let upper = max(0, maximumSeconds / spread - overheadSeconds) * rate - Double(bridgeWords)
         guard lower.isFinite, upper.isFinite else { throw VoiceLabLengthBudgetError.invalidInput }
         let minimum = max(1, Int(max(0, min(2_000, ceil(lower)))))
         let maximum = max(minimum, min(2_000, Int(max(0, min(2_000, floor(upper))))))

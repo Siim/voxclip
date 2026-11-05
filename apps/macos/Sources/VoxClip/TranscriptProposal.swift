@@ -603,7 +603,7 @@ extension EditorModel {
             let silence = try VoiceLabWindowPlanner.lendableSilence(project: project, scope: scope, window: window)
             let patch = (window.leftBridgeWordIds.map(reader.text) + [trimmed] + window.rightBridgeWordIds.map(reader.text)).joined(separator: " ")
             let inputs = RewriteReview.Inputs(transcript: transcript, project: project, scope: scope, envelope: envelope,
-                prices: nil, synthesisModel: rewrite?.currentSynthesisModel)
+                prices: nil, synthesisModel: rewrite?.currentSynthesisModel, voiceCalibration: rewrite?.voiceCalibration)
             let rate = try VoiceLabPhraseTiming.speakingRate(transcript: RewriteReview.timingTranscript(inputs))
             let hunk = rewrite?.changes.indices.contains(ordinal - 1) == true ? rewrite?.changes[ordinal - 1].hunk : nil
             let annotations = VoiceLabAudioTags.reanchored(hunk?.audioTags ?? [],
@@ -613,7 +613,7 @@ extension EditorModel {
                 outgoingSilence: silence.outgoing, sourceSampleRate: project.media.source.audio?.sampleRate ?? 48_000,
                 supportsPace: inputs.synthesisModel != "eleven_v4", hardJoinSmoothing: true, audioTags: shifted, modelID: inputs.synthesisModel ?? "",
                 sourceItems: RewriteReview.timingTranscript(inputs), sourceEnvelope: envelope,
-                rateMultiplier: VoiceLabWordingFit.multiplier(project.voiceLab.speakingRateSamples?[inputs.synthesisModel ?? ""] ?? [])).copy
+                rateMultiplier: VoiceLabWordingFit.multiplier(inputs.rateSamples)).copy
         } catch { return nil }
     }
     private func confirmPaidProposalChange(_ perform: @escaping @MainActor () -> Void) -> Bool {
