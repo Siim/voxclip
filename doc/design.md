@@ -194,7 +194,7 @@ Main window (macOS: exactly one. Windows: one per process window; Ctrl+N opens a
 │     ├─ Toolbar (macOS) / command row (Windows): title + edit summary · Cut Fillers ·
 │     │     Tighten Pauses · Restore Cuts · Find Clips · Export Video… / Export Clip… · viewer toggle
 │     ├─ Scope bar (above the transcript): scope label · instruction field · Rewrite · AI picker  (§6.3.1)
-│     ├─ Transcript page (centre) + selection bar: Make Clip · Cut · Restore · Rewrite
+│     ├─ Transcript page (centre) + selection bar: ✦ Rewrite as · ✦ Ask Claude · Make Clip · Cut · Restore
 │     ├─ Right column: Viewer over Captions, Rewrite (§6.3.4), or the Mac Export job (§8)
 │     └─ Timeline strip (bottom, under the centre and right columns)
 ├─ Transient: Find Clips popover/flyout · Import sheet (§7.1) · Windows Export dialog (§8) ·
@@ -595,9 +595,9 @@ When the user selects one or more whole words with the pointer or the keyboard a
 | | macOS | Windows |
 |---|---|---|
 | Control | custom glass bar: an overlay in the `NSScrollView` document view's coordinates with `.glassEffect(.regular, in: .rect(cornerRadius: 10))`, 36 high | `CommandBarFlyout` on Acrylic, radius 10, 40 high |
-| Items | **Make Clip** ⌥⌘K (default, highlighted with the neutral fill of an unfocused sidebar selection) · **Cut** ⌫ · **Restore** ⇧⌫ · divider · **Rewrite** ⇧⌘R. Labels 13 with SF Mono 11 key hints in `text.secondary` | **Make clip** (labelled) · **Cut** and **Restore** (icon only, tooltips "Cut (Delete)" and "Restore (Shift+Backspace)") · separator · **Rewrite** (labelled, Ctrl+R). The flyout is restyled so the two primary commands keep their labels |
+| Items | **✦ Rewrite as ▾** ⇧⌘R · **✦ Ask Claude** · divider · **Make Clip** ⌥⌘K (default, highlighted with the neutral fill of an unfocused sidebar selection) · **Cut** ⌫ · **Restore** ⇧⌫. Labels 13 with SF Mono 11 key hints in `text.secondary` | **Rewrite as** (labelled, Ctrl+R) · **Ask Claude** · separator · **Make clip** (labelled) · **Cut** and **Restore** (icon only, tooltips "Cut (Delete)" and "Restore (Shift+Backspace)"). The flyout is restyled so the primary commands keep their labels |
 
-Rewrite shows whenever the editor allows AI actions (`capabilities.ai`, the same gate as Find Clips), with Voice Lab on or off; it rewrites the selection (§6.3). Restore is disabled when nothing in the selection is cut. When the selection already equals a clip, Make Clip's tooltip reads "Clip 2 already covers these words", and choosing it selects that clip (§6.2).
+**✦ Rewrite as ▾** (user, 2026-11-05: "it should be immediately understandable all the places where the area of rewrite can happen") shows whenever the editor allows AI actions (`capabilities.ai`, the same gate as Find Clips), with Voice Lab on or off. It is the bar's only Rewrite verb. One click opens the "Rewrite as" strip (§6.3.1) right under the bar (above it when the bar is near the bottom), on `bg.elevated` with a `line.strong` edge, 460 wide: "Rewrite these words as", the hint "runs at once · voice it after: one priced click", the chips with the default first and marked "· your default", and "Type your own…", which opens an inline field whose Return rewrites the words with its text. A chip rewrites the selected words at once (§6.3). ⇧⌘R asks the default tone directly when no Rewrite is open on those words and the field is empty or a chip's text; otherwise it sends the field again. The strip hides with the bar, and Esc closes both. Restore is disabled when nothing in the selection is cut. When the selection already equals a clip, Make Clip's tooltip reads "Clip 2 already covers these words", and choosing it selects that clip (§6.2).
 
 **Placement.**
 
@@ -1147,7 +1147,7 @@ A row pinned above the transcript. It replaces nothing: the toolbar keeps its co
 | Part | Content |
 |---|---|
 | Label | Kept clip: its badge (§3.4), "Clip {n}" and its edited length `{m:ss}`. Suggested clip: its badge and "Suggested clip {n}". Full take: "Full take" and `{m:ss}`. Selection: "Selection" and "{w} words" |
-| Field | Placeholders: a clip "What should change in clip {n}?" (a suggested clip the same); Full take "What should change in this video?"; a selection "What should change in these words?". Return runs Rewrite. A trailing chevron opens the suggestions |
+| Field | Placeholders: a clip "What should change in clip {n}? Or pick a tone ↓" (a suggested clip the same); Full take "What should change in this video? Or pick a tone ↓"; a selection "What should change in these words? Or pick a tone ↓". The pointer names the strip under the bar and is left out while the strip is hidden; the field's accessible name is the question alone. Return runs Rewrite; an empty field asks the default tone. A trailing chevron opens the suggestions |
 | Verb | **Rewrite** (⇧⌘R / Ctrl+R). With an API-key connector, or a CLI signed in with an API key, it reads **Rewrite…**, because that send asks first (voice-lab.md §3.1) |
 | AI picker | A status dot, the AI's short name ("Claude Code", "Codex", "Ollama", "LM Studio", "Apple on-device", "Anthropic", "OpenAI"…) and a chevron. The dot has three states: ready; asks before each send; unavailable (signed out or not running). The accessible name carries the state in words (§15). With no connector set, it reads "Choose AI" |
 
@@ -1162,6 +1162,22 @@ A row pinned above the transcript. It replaces nothing: the toolbar keeps its co
 | Recent: "{text}" | The project's last three distinct instructions, most recent first. They are app-local state, never written to the project file |
 
 The instruction is bound into the quote like any instruction (`PatchRewriteRequest.instruction`, at most 1,000 UTF-8 bytes; voice-lab.md §8.1).
+
+**Rewrite as (tones).** User, 2026-11-05: "we should have preset rewrite options available like rewrite in A+++ youtuber viral style". Approved mockups `ux/tones/mockup.png` and `ux/tones/everywhere.png`. One strip, with the same chips in the same order and the same default, shows in every place words can be rewritten:
+
+1. **The scope bar** (Full take or the open clip, kept or suggested): always visible under the clip bar while Rewrite can run, `spacing.chipGap` between chips, wrapping. "Tone", then the chips. The chip whose instruction the field shows is selected (600, `bg.selectedRow`). "+ Save as my tone" (dashed) shows while the field holds text that is not a chip: it turns into a small "Name this tone" field with Save, inline, and keeps the field's text in Settings. Under 440 wide the strip collapses to "Tone: {chip} ⌄", a menu of the same items. While a Rewrite runs the strip is disabled.
+2. **The transcript selection bar**: its first verb, ✦ Rewrite as ▾ (§4.3).
+3. **✦ Ask Claude**: "Reword these words" (§6.8).
+4. **A clip row** (kept or suggested) **and the clip bar**: the row's 22 × 20 "Rewrite as" menu beside ✦ and ⋯, and ⋯ › Rewrite As, list the strip as a menu, the default first and marked; the clip bar's scope is the scope bar's strip. A suggestion is kept first, as the row's Rewrite does.
+5. **The Make it postable review**: the tone row's Change (§6.7).
+
+**The chips**, in order: the default, marked "· your default" ("· default" in the scope bar) with the AI tint outline; then **Fix mistakes** and **Shorter** (the fix presets' instructions); then the catalogue tones of `shared/data/rewrite-tones.json` — **✦ Viral YouTuber** (hook, punchy, payoff), **Punchy Reel** (≤ 30 s, fast cuts), **Storyteller** (setup, tension, payoff), **Clear explainer** (step by step), **LinkedIn pro** (calm, credible), **Funny** (light, one joke), **Hype launch** (big news, clear ask), **Calm & sincere** (honest, unhurried); then the user's saved tones. The default is the clip style card's Tone (§6.6: the project's `clipStyle.tone`, else Settings `clipStyle.default.tone`); Auto, As I said it, or a tone this Mac does not know make Fix mistakes the default. Changing the Tone on the card re-marks every strip.
+
+**A chip rewrites at once.** It is one click: it runs Rewrite on that place's scope with the tone's exact instruction, and the AI step is free on a plan (an API key still asks inline first). Voicing the result stays a priced click, or the Claude-mode cap. The field then shows the tone's whole instruction, so the creator can tweak it and press Rewrite again; R1 quotes the tone by its title and descriptor. Tone instructions are never recorded as Recent. The fix presets and Recent stay in the field's menu.
+
+**The catalogue.** Each tone has an `id`, a `title`, a short `descriptor` and the exact `instruction`, written as an editor and copywriter would brief it. Every instruction keeps the speaker's facts, names, numbers and meaning and stays speakable by the cloned voice (it ends "Keep my facts, names, numbers and meaning, and keep my voice. Every line must be speakable as is: no emoji, hashtags, links or stage directions."); every one asks for rewritten phrases about as long as the words they replace, and the shortening tones (Viral YouTuber, Punchy Reel, Calm & sincere) say to shorten by cutting and stay near each phrase's slot. `tools/fixtures/voice-lab/generate_rewrite_tones.py` is the source of truth: it writes the file and checks every rule; `check_drift.py` keeps the file byte-exact.
+
+**Saved tones.** "+ Save as my tone" stores `{id, title, instruction}` in settings `rewrite.myTones` (at most 20; ids "my-" and the title's slug, made unique). They show after the catalogue tones in every strip and in the card's Tone menu ("saved"). **Settings › Clips** lists them with Rename (inline field, the id stays, so clip styles keep it) and Delete (a clip style that chose it plans as Auto).
 
 **States.**
 
@@ -1335,8 +1351,9 @@ another take implicitly.
 
 | Trigger | Result |
 |---|---|
-| **Rewrite** in the scope bar, Return in its field, ⇧⌘R / Ctrl+R, the sidebar row's **Rewrite**, or "Rewrite Clip {n}" in a menu | Runs Rewrite on the current scope with the field's text, or Fix mistakes when it is empty. The panel opens in R1 |
-| The selection bar's **Rewrite** (⇧⌘R / Ctrl+R) or the transcript context menu's Rewrite | The same, with the selection as the scope |
+| **Rewrite** in the scope bar, Return in its field, ⇧⌘R / Ctrl+R, the sidebar row's **Rewrite**, or "Rewrite Clip {n}" in a menu | Runs Rewrite on the current scope with the field's text, or the default tone (§6.3.1 "Rewrite as") when it is empty. The panel opens in R1 |
+| A "Rewrite as" chip: the scope bar's strip, the selection bar's strip, ✦ Ask Claude's "Reword these words", a clip row's Rewrite as ▾ or ⋯ › Rewrite As | Runs Rewrite at once on that place's scope with the tone's instruction, which the field then shows. A suggestion is kept first |
+| ⇧⌘R / Ctrl+R on a word selection, or the transcript context menu's Rewrite | The default tone on the selection (see §4.3), else the field's text |
 | **Type New Words…** (transcript context menu, a selection) | Opens the edit popover over the selection with its words. No AI. Saving opens the panel in R2 with one change |
 | **Insert Words…** (a caret between words, Voice Lab on) | The same as Type New Words, with an empty field anchored at the caret. Hidden until Core can place an insertion (§13) |
 
@@ -1763,8 +1780,9 @@ One small card decides how clips are made: caption type, music, length, shapes a
   - **Length.** "Up to {30, 45, 60, 90, 120} s".
   - **Shape.** Toggles for 16:9, 9:16 and 1:1. At least one shape stays on.
   - **Rewording.** "Never reword", "Fix only what sounds wrong" or "Tighten freely".
+  - **Tone.** "✦ Auto · Claude picks per clip", "As I said it" (no tone change), the catalogue tones ("✦ Viral YouTuber", …, each with its descriptor) and the saved tones ("saved"). It is the tone Make it postable and "Claude does it all" write each clip's words in, and every "Rewrite as" strip's default (§6.3.1). It is stored as `clipStyle.tone` (omitted at Auto) and with `clipStyle.default`. "Never reword" disables the row, whose tooltip says "Rewording is “Never reword”, so Claude keeps your words as said. Change Rewording to use a tone."; the planner then gets As I said it.
 
-  Changing any row makes the style the user's own, `mine`. On Windows the card is a code-built panel, 224 wide, in the explorer column. It uses `ComboBox` rows and `ToggleButton` chips, with automation ids `ClipStyle.*`.
+  Changing any row makes the style the user's own, `mine`. A preset chip keeps the card's Tone (presets have none). On Windows the card is a code-built panel, 224 wide, in the explorer column. It uses `ComboBox` rows and `ToggleButton` chips, with automation ids `ClipStyle.*`.
 
 **Presets** (`shared/data/clip-styles.json`):
 
@@ -1783,7 +1801,8 @@ A new project's card starts from the Settings default, or from Auto when there i
 - **Fixed captions.** A caption style chosen on the card, on a gallery tile, or in Export is the user's fixed choice. It is applied to `captions.styleId`, and no AI pick ever overrides it: `recording(picks)` is a no-op unless captions are Auto, and the pick request is never sent. Choosing a gallery tile while the preset is Auto makes the style `mine`.
 - **Auto.** With Auto captions, Pick styles (§6.1) sends one request for all clips, at most 24. The request uses the versioned prompt `shared/prompts/caption-pick.json` (AI spec §17) at decision (extra high) effort and goes through the inline connector confirmation. The reply gives `captionPicks[clipId] = {styleId, reason}`. The active clip's pick is applied to `captions.styleId` as one undo step, "Use Claude's caption style". If the user fixes a style while the request is running, the reply is dropped.
 - **Persistence.** Each choice is one undo step. Settings saves `clipStyle.default` without `captionPicks`. Picks for deleted clips are pruned at the next pick.
-- **Still owed.** Per-clip caption styles at export (today only the active clip's pick is applied to the project's style). Claude-sourced emoji for Emoji pop (it uses the keyword rule for now). The Windows Pick styles action and its consent (Windows records and applies picks, but has no button yet). Music, Length, Shape and Rewording are stored for the planner and music packages, which consume them.
+- **Tone storage.** `clipStyle.tone` is optional in every project schema version and needs no bump: 0.1.0 is unreleased, the field is omitted at Auto, and it is never written as "auto" (`tools/schemas/generate_clip_style_tone_schema.py`). Readers check its shape only, since a saved tone lives in the settings of the Mac that chose it; an id a reader does not know plans as Auto.
+- **Still owed.** The Windows Tone row and strips (Windows Core reads, validates and saves the tone). Per-clip caption styles at export (today only the active clip's pick is applied to the project's style). Claude-sourced emoji for Emoji pop (it uses the keyword rule for now). The Windows Pick styles action and its consent (Windows records and applies picks, but has no button yet). Music, Length, Shape and Rewording are stored for the planner and music packages, which consume them.
 
 ### 6.7 Make it postable
 
@@ -1828,6 +1847,7 @@ A suggestion is kept first, in the same undo step as everything the run applies.
   - "Zoom to 1.15× · Change" (Motion);
   - "Voiced “…” in your voice · Change" (the phrase card, opening Rewrite on those words);
   - "Claude chose music “…” · Change" (Captions, whose Music section is below its rows);
+  - "✦ Claude wrote it as {tone} · ▶ · Undo · Change" when the plan was written in a tone (the clip style's Tone, or Claude's pick under Auto; ai.md §16.5), first in the list, with "{what the tone changed} · voiced {n} phrases, {spent}" such as "Hook first, two lines tightened · voiced 2 phrases, $0.18". ▶ plays from half a second before the clip. Undo takes the tone's rewording back (every voiced rewrite of the run turned off, paid takes kept) as one step. Change shows the tones as chips in the row (the catalogue's, the saved ones, then As I said it; not Rewrite's fixes). A tone takes this clip's decisions back and plans it again in that tone, all as one undo step ("Change tone"); voicing its lines follows the run's price and cap rules. As I said it takes the tone's rewording back as one step ("As I said it") and the row reads "You chose As I said it";
   - "Claude chose the hook “…” · Change", with "Title card for the first 2 s · the post text keeps it", ▶ and Undo. The hook is an Ask Claude title (§6.8, `ClipEffect` kind `title`, position top, Roboto Black, the caption family of the clip styles) over the clip's first ~2 s as it renders: from one overlay fade (0.12 s) before the clip's first frame, so the first frame and the thumbnail show it whole, to the source time two rendered seconds later, cuts skipped and at the clip's speed (`ClipHookTitle`); a clip shorter than that shows it to its end. Change opens a text field in the row (at most 80 characters); Return applies it to the card as one undo step ("Change hook") and the row reads "You chose the hook “…”"; Escape closes it. Undo removes the card. A second run on the same clip replaces its card. The card shows on the timeline's E1 lane as "Title".
 - **A question** shows "Claude chose “X”" with Change. Change shows the other answers as chips in the row. Picking one takes this clip's decisions back and plans it again with that answer as the note.
 - **Post text** (with the music's credit line) shows in a read-only field with **Copy**. It opens with the hook on its own line unless the post already says it, and keeps it after the card's Undo.
@@ -1846,14 +1866,18 @@ The user points at part of the video and says what they want in plain words ("bl
 
 **Where it opens.** Every entry opens the same inline field in the right panel (a panel job, "Ask Claude", sparkles). It is never a sheet, an alert or a pop-over, and it is offered only when the project can change and an AI is chosen.
 
-- **Selection bar.** "✦ Ask Claude" is the first item of the word selection bar, before Cut and the rest, with a divider after it.
+- **Selection bar.** "✦ Ask Claude" is the second item of the word selection bar, after ✦ Rewrite as (§4.3) and before Make Clip and the rest, with a divider after it.
 - **Timeline range.** Dragging across empty timeline time marks a range; the timeline toolbar then shows "✦ Ask Claude" for "0:12–0:15". A click anywhere clears the range.
 - **Clip row.** The clip row's ⋯ menu has "Ask Claude…", which asks about the whole clip ("Clip 2").
 
 **The field.** The heading reads "✦ Ask Claude about {label}": the first eight selected words in quotes (with "…" past eight), "Clip {n}", or the time range. Below it:
 
-- **Field.** A multi-line text field (1 to 4 lines, field chrome), placeholder "blur the invoice on screen and bleep the amount". Return sends; nothing is sent before Return or the Ask Claude button.
-- **Chips.** Bleep it · Blur the screen · Add a title "Day 1" · Arrow at the button · Emoji reaction · Slow-mo this bit · Zoom in. A chip only fills the field with its words. They wrap in a flow layout `spacing.chipGap` apart and step aside while Claude works.
+- **Field.** A multi-line text field (1 to 4 lines, field chrome), placeholder "Say what to change: reword it, bleep it, blur, add a title…". It takes both kinds of request and Claude decides: a reply that asks for rewording returns a rewrite, which hands the words to Rewrite. Return sends; nothing is sent before Return or the Ask Claude button.
+- **Chips,** in two labelled groups (11, `text.tertiary` labels), so it is plain what each does:
+  - **"Reword these words"**: the default tone (§6.3.1), Fix mistakes, Shorter and Punchy Reel in the strip's order, then "More…", which shows every chip of the strip in place. A chip runs Rewrite at once on the asked words (or the asked clip) with that tone; it is the strip's chip, not a fill. A time range has no words, so the group is left out.
+  - **"Edit the video here"**: Bleep it · Blur the screen · Add a title "Day 1" · Arrow at the button · Emoji reaction · Slow-mo this bit · Zoom in. Each only fills the field with its words. Tones never join this group.
+
+  Both wrap in a flow layout `spacing.chipGap` apart and step aside while Claude works.
 - **Consent.** The inline connector confirmation (consent action `askClaude`, verb "Ask Claude") shows in place when the provider needs it.
 - **Progress.** "Looking at the picture" (Vision finds faces and text), "Claude is working on it", then "Following what moves" while tracked blurs are traced.
 - **Footer.** "↵ Ask Claude · {cost}" with Cancel, and Ask Claude once the field has text. The cost reads "Free on your Claude plan" on Claude Code, "Free on your ChatGPT plan" on Codex, "Billed to your {provider} key" on an API key and "Free on this Mac" for a local model. While Claude works the footer reads "Claude is working · Stop keeps the project as it is" with Stop.

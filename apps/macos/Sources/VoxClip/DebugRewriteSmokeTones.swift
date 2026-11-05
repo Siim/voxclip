@@ -23,7 +23,9 @@ extension DebugRewriteSmoke.Harness {
         }
         // The chip opens its own Rewrite, through the chosen AI: the scripted one as a local server that never asks, with
         // the model it lists.
-        session?.close(); editor.rewrite = nil; session = nil
+        session?.close()
+        editor.rewrite = nil
+        session = nil
         let before = app.settings.values["llm.connector"]
         app.connectorOverride = { _ in connector }
         app.connectorConsentOverride = { _, _, _ in true }

@@ -1,5 +1,15 @@
 # Windows fixed contracts
 
+### 2026-11-05 — Rewrite tones: the catalogue, clipStyle.tone and rewrite.myTones in Windows Core (track/v2-rewrite-tones)
+
+Twin of the Mac entry of the same date. Spec: doc/design.md §6.3.1 "Rewrite as", §6.6 Tone; doc/spec/ai.md §16.
+
+- **Core.** `Domain/Clips/RewriteTones.cs`: `RewriteTone`, `RewriteToneCatalog` (`Load`/`Parse` of shared/data/rewrite-tones.json with the Mac's refusals, `Find`, `Resolve`), `MyRewriteTones` (`IsId`, `IsValid`, `Decode`, `Validates`). `ClipStyle.Tone` (`[JsonIgnore(WhenWritingNull)]`, null is Auto, never "auto") and `EffectiveTone` ("as-said" under rewording off); `SameAs` and `Validate` include it. `ProjectValidation` accepts the optional `tone`; `SettingsValidation` accepts `clipStyle.default.tone` and validates `rewrite.myTones` (a known key).
+- **Tests.** `RewriteToneTests` (4: the catalogue and resolving, a broken catalogue, a project's tone round-trip and omission at Auto with refusals and `EffectiveTone`, settings for the default's tone and saved tones). `CaptionPickTests`' unknown clipStyle key is now "mood" (tone is valid).
+- **Allowlists.** `ReleaseBoundary update` on `VoxClip.Core.txt` only: +67, the new types and the `ClipStyle.Tone`/`EffectiveTone` members; no literals. App, Media and CLI unchanged.
+- **Verification.** Core Release 3,101 total, 0 failed; `*ReleaseSurrogate*` ok; the Release CLI starts as a plain process (`env -i … --runtime-terms --json`) with tone settings.
+- **Owed (Windows UI).** The "Rewrite as" strips (scope bar, selection flyout, Ask Claude groups, clip rows), the clip style card's Tone row, Make it postable's tone (no Windows planner yet; plan v3 `tone`), Settings › Clips. Twin: replay plan-tone-cases.json with the planner.
+
 ### 2026-11-05 — Windows renders clip controls and Ask Claude's effects in preview and export, instead of refusing (track/v2-win-render-1)
 
 Twin of the Mac entries track/v2-clip-controls, track/v2-ask-claude and track/v2-wire-1. Spec: doc/design.md §6.8 and §6.9, doc/spec/ai.md §18.5.
