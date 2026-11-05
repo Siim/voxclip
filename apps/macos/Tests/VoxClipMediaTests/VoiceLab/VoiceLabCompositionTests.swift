@@ -193,7 +193,8 @@ struct VoiceLabCompositionTests {
                          minimalHandles: Bool = false, multipleMarkers: Bool = false,
                          rightOnly: Bool = false, amplitude: Double = 1,
                          customMarkers: [Int]? = nil,
-                         scope: VoiceLabOutputScope = .full, constantSample: Int16? = nil) throws -> (Project, VoiceLabRenderInput) {
+                         scope: VoiceLabOutputScope = .full, constantSample: Int16? = nil,
+                         firstHz: Double = 880, tiltDbPerOctave: Double? = nil) throws -> (Project, VoiceLabRenderInput) {
         var project = try JSONProjectStore.decode(FixtureLoader.data("fixtures/voice-lab/\(fixtureName).voxclip"))
         project.media.source.audio!.sampleRate = 48_000
         project.media.source.absolutePath = source.path
@@ -203,7 +204,7 @@ struct VoiceLabCompositionTests {
         project.media.source.video = MediaVideo(width: 640, height: 360, frameRate: 30, rotationDegrees: 0)
         let directory = root.appendingPathComponent(project.id)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let first = wave(frames: compressing ? 28_800 : Int(project.voiceLab.assets![0].durationSeconds * 24_000), rate: 24_000, hz: 880,
+        let first = wave(frames: compressing ? 28_800 : Int(project.voiceLab.assets![0].durationSeconds * 24_000), rate: 24_000, hz: firstHz,
                          markerFrame: nonunity && !multipleMarkers ? 9_600 : nil,
                          markerFrames: customMarkers ?? (multipleMarkers ? [3_800, 9_600, compressing ? 19_000 : 16_600] : []),
                          rightOnly: rightOnly, amplitude: amplitude, constantSample: constantSample)
@@ -245,6 +246,10 @@ struct VoiceLabCompositionTests {
             selected.seams.out.assetHandleFrames = minimalHandles ? minimum : 2_400
             project.voiceLab.segments[0].candidates[0].recipe = selected
             project.voiceLab.segments[0].audio = selected.audio
+        }
+        if let tiltDbPerOctave {
+            project.voiceLab.segments[0].audio.tiltDbPerOctave = tiltDbPerOctave
+            project.voiceLab.segments[0].candidates[0].recipe?.audio.tiltDbPerOctave = tiltDbPerOctave
         }
         let prepared = try VoiceLabRenderContract.prepare(project, scope: scope, labelPosition: .topRight)
         let input = try VoiceLabRenderInput(project: project, scope: scope, labelPosition: .topRight,
@@ -467,6 +472,45 @@ struct VoiceLabCompositionTests {
         let wave = try AVAudioFile(forReading: output)
         #expect(wave.length == input.prepared.outputPlan.outputSamples)
         #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent(input.project.id).appendingPathComponent("asset-one.wav").path))
+    }
+
+    /// The tone match (voice-lab §8.7 item 2b): a take with `audio.tiltDbPerOctave` is tilted before its gain, from the
+    /// asset's first frame; without one the render is unchanged. Preview and export share the staged stream.
+    @Test(.timeLimit(.minutes(3))) func toneMatchTiltsTheStagedTakeOnlyWhenTheSegmentSaysSo() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-tone-match-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let media = try await source(in: root)
+        func staged(_ tilt: Double?) async throws -> (fit: [Float], mixed: [Float], edited: [Float], piece: VoiceLabOutputPiece) {
+            let directory = root.appendingPathComponent(tilt.map { "tilt-\($0)" } ?? "plain")
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+            let (project, input) = try fixture(source: media, root: directory, firstHz: 4_000, tiltDbPerOctave: tilt)
+            let request = RenderRequest(sourceURL: media, plan: try legacyPlan(project), output: OutputSpec(size: PixelSize(width: 640, height: 360),
+                                        fps: 30, videoBitrate: 2_000_000), voiceLab: input)
+            let graph = try await CompositionBuilder().build(request)
+            let mixed = try #require(graph.voiceLabLease?.mixedAudioURL)
+            let piece = try #require(input.prepared.outputPlan.pieces.first { $0.kind == .synth })
+            let fit = mixed.deletingLastPathComponent().appendingPathComponent("fit-\(piece.segmentId!).caf")
+            let fitFile = try AVAudioFile(forReading: fit)
+            let count = Int(piece.outputEndSample - piece.outputStartSample)
+            let edited = directory.appendingPathComponent("edited.wav")
+            try await AVExporter().writeEditedAudio(request, to: edited)
+            return (try samples(fit, at: 0, count: Int(fitFile.length)), try samples(mixed, at: piece.outputStartSample, count: count),
+                    try samples(edited, at: piece.outputStartSample, count: count), piece)
+        }
+        let plain = try await staged(nil), tilted = try await staged(2)
+        #expect(plain.fit.count == tilted.fit.count && plain.piece.outputStartSample == tilted.piece.outputStartSample
+                && plain.piece.outputEndSample == tilted.piece.outputEndSample, "the tilt changes no timing")
+        #expect(tilted.piece.audio?.tiltDbPerOctave == 2 && plain.piece.audio?.tiltDbPerOctave == nil)
+        // Away from the filter's first frames, the 4 kHz take is louder by the cascade's response there (≈ +3.8 dB).
+        let middle = plain.fit.count / 2, span = 4_800
+        let expected = VoiceLabTilt.magnitude(VoiceLabTilt.sections(tiltDbPerOctave: 2, sampleRate: 24_000), hertz: 4_000, sampleRate: 24_000)
+        let ratio = magnitude(Array(tilted.fit[middle..<(middle + span)]), hz: 4_000, rate: 48_000)
+            / magnitude(Array(plain.fit[middle..<(middle + span)]), hz: 4_000, rate: 48_000)
+        #expect(expected > 1.5 && abs(ratio - expected) < 0.01 * expected, "ratio \(ratio), cascade \(expected)")
+        // The edited WAV (export) is the preview's stream, sample for sample, with and without the tilt.
+        #expect(tilted.edited == tilted.mixed && plain.edited == plain.mixed)
+        #expect(tilted.mixed != plain.mixed)
     }
 
     @Test func ordinarySourceFadeMatchesLegacyAtScopeEdgesAndShortRuns() {

@@ -89,7 +89,7 @@ public actor VoiceLabTakeRun {
               let receipt = row.receipt, receipt.voiceID == record.voiceId else { throw VoiceLabError.consentRequired }
         let publication = try scratch.fitted.publish(projectId: storage.projectId,
             assetId: UUID().uuidString.lowercased(), paidRoot: storage.paidRoot, createdAt: date,
-            requestId: receipt.requestID.uuidString, seed: row.seed, gainDb: scratch.audio.gainDb)
+            requestId: receipt.requestID.uuidString, seed: row.seed, gainDb: scratch.audio.gainDb, tiltDbPerOctave: scratch.audio.tiltDbPerOctave)
         return (VoiceLabPublishedTake(assets: publication.assets, audio: publication.audio, outDuration: publication.outDuration,
             words: publication.words, chunks: publication.chunks), record)
     }
@@ -346,7 +346,7 @@ public actor VoiceLabTakeRun {
                 let analysis: VoiceLabTakeAnalysis
                 do {
                     guard result.alignment != nil else { throw VoiceLabError.invalidAlignment }
-                    analysis = try VoiceLabTakeProcessing.process(result, input: value.input, preflight: value.preflight)
+                    analysis = try VoiceLabTakeProcessing.process(result, input: value.input, preflight: value.preflight, matchTone: true)
                 } catch where Self.isTimingFailure(error) {
                     let samples = try Self.samples(result)
                     let recognized = try await wordCheck(samples, value: value, take: take, revision: expected, dispatch: dispatch,
@@ -356,7 +356,7 @@ public actor VoiceLabTakeRun {
                     let timing = try await recoverTiming(recognized.words, samples: samples, input: value.input)
                     result = VoiceLabAudioResult(pcm: result.pcm, sampleRate: result.sampleRate, alignment: timing, receipt: result.receipt)
                     generated = result
-                    analysis = try VoiceLabTakeProcessing.process(result, input: value.input, preflight: value.preflight)
+                    analysis = try VoiceLabTakeProcessing.process(result, input: value.input, preflight: value.preflight, matchTone: true)
                 }
                 let snapshot = try VoiceLabAssets.preparePaid(asset: paid, projectId: storage.projectId, paidRoot: storage.paidRoot, scratchRoot: storage.scratchRoot)
                 let fitted = try VoiceLabSilenceFit.prepare(snapshot: snapshot, paidAsset: paid, fit: analysis.fit,

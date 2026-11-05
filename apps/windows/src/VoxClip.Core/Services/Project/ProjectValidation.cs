@@ -123,7 +123,7 @@ internal static class ProjectValidation
                 Object(segment, "id kind enabled replace outDuration audio text words provenance qa candidates selectedCandidateIndex" + (projectVersion >= 3 ? " scope" : ""), projectVersion >= 3 ? "groupId" : "");
                 if (projectVersion >= 3) { Choice(segment.GetProperty("scope"), "passage", "fullTake"); Choice(segment.GetProperty("kind"), "tts", "voiceChanger", "recorded"); }
                 Object(segment.GetProperty("replace"), "start end firstWordId lastWordId");
-                Object(segment.GetProperty("audio"), "assetId trimStart trimEnd stretch gainDb");
+                Object(segment.GetProperty("audio"), "assetId trimStart trimEnd stretch gainDb", "tiltDbPerOctave");
                 Nullable(segment.GetProperty("text"), text =>
                 {
                     Object(text, "original new", "audioTags");
@@ -171,7 +171,7 @@ internal static class ProjectValidation
     private static void RenderRecipe(JsonElement recipe)
     {
         Object(recipe, "audio words outDuration seed chunks roomTone seams video qa provenance cost voiceSource voiceRefId consentVerifiedAt", "edgeGain");
-        Object(recipe.GetProperty("audio"), "assetId trimStart trimEnd stretch gainDb");
+        Object(recipe.GetProperty("audio"), "assetId trimStart trimEnd stretch gainDb", "tiltDbPerOctave");
         Nullable(recipe.GetProperty("words"), words => Array(words, word => Object(word, "text start end synthetic")));
         Array(recipe.GetProperty("chunks"), item => Object(item, "sourceStartSample sourceEndSample requestId seed assetId assetSha256 assembledStartFrame assembledEndFrame"));
         Nullable(recipe.GetProperty("roomTone"), item => Object(item, "sourceStartSample sourceEndSample gainDb", "endGainDb"));

@@ -33,7 +33,7 @@ public struct VoiceLabFittedAudio: Sendable {
         return window
     }
     public func publish(projectId: String, assetId: String, paidRoot: URL, createdAt: Date,
-                        requestId: String, seed: UInt32, gainDb: Double) throws -> VoiceLabFittedPublication {
+                        requestId: String, seed: UInt32, gainDb: Double, tiltDbPerOctave: Double? = nil) throws -> VoiceLabFittedPublication {
         guard !requestId.isEmpty, gainDb.isFinite, outDuration.isFinite, outDuration > 0,
               try VoiceLabAssetNaming.file(projectId: projectId, assetId: paidAsset.id, extension: "wav") == paidAsset.file else { throw VoiceLabError.invalidInput }
         let asset: VoiceLabAsset
@@ -42,7 +42,7 @@ public struct VoiceLabFittedAudio: Sendable {
                 bits: wave.bits, floating: wave.floating, projectId: projectId, assetId: assetId, paidRoot: paidRoot, createdAt: createdAt)
         } else { asset = paidAsset }
         let audio = VoiceLabAudio(assetId: asset.id, trimStart: Double(trimStartFrame) / Double(wave.rate),
-            trimEnd: Double(trimEndFrame) / Double(wave.rate), stretch: 1, gainDb: gainDb)
+            trimEnd: Double(trimEndFrame) / Double(wave.rate), stretch: 1, gainDb: gainDb, tiltDbPerOctave: tiltDbPerOctave)
         guard Int64(EditingPrimitives.jsRound(audio.trimEnd * Double(wave.rate))) -
                 Int64(EditingPrimitives.jsRound(audio.trimStart * Double(wave.rate))) == fit.plan.outputFrames else { throw VoiceLabError.invalidAudio }
         let chunk = VoiceLabChunk(sourceStartSample: fit.plan.windowStartSample, sourceEndSample: fit.plan.windowEndSample,

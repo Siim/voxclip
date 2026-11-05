@@ -32,8 +32,16 @@ public struct VoiceLabAudio: Codable, Sendable, Equatable {
     public var trimEnd: Double
     public var stretch: Double
     public var gainDb: Double
-    public init(assetId: String, trimStart: Double, trimEnd: Double, stretch: Double = 1, gainDb: Double = 0) {
+    /// The tone match (voice-lab §8.7 item 2b): the take's tilt towards the speech beside it, in dB per octave, applied
+    /// before `gainDb` (`VoiceLabTilt`). Omitted when nil, so a take without one keeps its encoding and fingerprint.
+    public var tiltDbPerOctave: Double?
+    public init(assetId: String, trimStart: Double, trimEnd: Double, stretch: Double = 1, gainDb: Double = 0, tiltDbPerOctave: Double? = nil) {
         self.assetId = assetId; self.trimStart = trimStart; self.trimEnd = trimEnd; self.stretch = stretch; self.gainDb = gainDb
+        self.tiltDbPerOctave = tiltDbPerOctave
+    }
+    /// A stored tilt is finite, not 0 and within ±`VoiceLabTilt.maximumDbPerOctave`.
+    public var tiltIsValid: Bool {
+        tiltDbPerOctave.map { $0.isFinite && $0 != 0 && abs($0) <= VoiceLabTilt.maximumDbPerOctave } ?? true
     }
 }
 public struct VoiceLabText: Codable, Sendable, Equatable {
@@ -243,7 +251,7 @@ public enum VoiceLabProject {
                   !words.contains(where: { $0.start < range.start && $0.end > range.start || $0.start < range.end && $0.end > range.end }) else { throw VoiceLabProjectError.invalidRange }
             guard let asset = assets.first(where: { $0.id == segment.audio.assetId }) else { throw VoiceLabProjectError.danglingAsset }
             let audio = segment.audio
-            guard audio.trimStart.isFinite, audio.trimEnd.isFinite, audio.stretch.isFinite, audio.gainDb.isFinite,
+            guard audio.trimStart.isFinite, audio.trimEnd.isFinite, audio.stretch.isFinite, audio.gainDb.isFinite, audio.tiltIsValid,
                   audio.trimStart >= 0, audio.trimEnd > audio.trimStart, audio.trimEnd <= asset.durationSeconds,
                   audio.stretch > 0, VoiceLabRenderValidation.contentMatchesDuration(audio, outDuration: segment.outDuration,
                                                                                   assetSampleRate: asset.sampleRate) else { throw VoiceLabProjectError.invalidSegment }
