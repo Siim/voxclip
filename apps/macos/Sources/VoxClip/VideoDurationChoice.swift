@@ -65,7 +65,7 @@ struct VideoDurationChoiceAvailability: Equatable {
             debugPreparations.seconds += ProcessInfo.processInfo.systemUptime - started
         }
         #endif
-        let graph = try await CompositionBuilder().build(request.withoutMusic)
+        let graph = try await CompositionBuilder().build(request.withoutMusic.withoutClipControls)
         guard graph.voiceLabLease != nil else { throw VoiceLabProjectError.unsupportedRendering }
         return PreparedVideoDurationRender(request: request, input: input, graph: graph)
     }

@@ -39,7 +39,7 @@ internal static class ExportFingerprint
     internal static string TargetId(ExportTarget target) => target is ExportTarget.Clip clip ? clip.Id : "full";
     internal static string For(Project project, ExportTarget target, VoxClip.Core.Domain.VoiceLab.VoiceLabLabelPosition? labelPosition = null)
     {
-        if (project.ContextDemo is { Placements.Length: > 0 } || project.MotionCues.Count > 0 || project.Music.Count > 0)
+        if (project.ContextDemo is { Placements.Length: > 0 } || project.MotionCues.Count > 0 || project.Music.Count > 0 || project.ClipControls.Count > 0)
             return Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(
                 "unsupported-windows-visuals-v1\n" + TargetId(target) + "\n" + ProjectSerialization.Serialize(project))));
         var state = ExportSelection.Scope(EditingEngine.FromProject(project), target);

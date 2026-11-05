@@ -63,16 +63,19 @@ enum EffectAudio {
     static func stage(_ request: RenderRequest, durationSeconds: Double, scratchRoot: URL,
                       isolation: isolated (any Actor)? = #isolation) async throws -> EffectAudioLease? {
         guard let input = request.effects, durationSeconds > 0 else { return nil }
-        let timeline = request.timeline
+        let timeline = request.timeline, speed = request.speedTiming
+        // `durationSeconds` is the rendered length: a clip's speed (design.md §6.9) moves a tone's bounds and a sound's
+        // start with the voice, and neither is resampled, so both keep their pitch.
+        func mapTime(_ source: Double) -> Double { speed.rendered(timeline.mapTime(source)) }
         let outputFrames = Int((durationSeconds * rate).rounded())
         let tones = input.audio.filter { $0.kind == .bleep }.compactMap { effect -> ClosedRange<Double>? in
-            let start = timeline.mapTime(effect.start), end = timeline.mapTime(effect.end)
+            let start = mapTime(effect.start), end = mapTime(effect.end)
             return end > start ? start...end : nil
         }
         var sounds: [(start: Int, samples: [Float], gain: Float)] = []
         for effect in input.audio where effect.kind == .sound {
             guard let url = input.soundURLs[effect.id] else { throw VoxClipError.sharedResourcesMissing }
-            let start = Int((timeline.mapTime(effect.start) * rate).rounded())
+            let start = Int((mapTime(effect.start) * rate).rounded())
             guard start < outputFrames else { continue }
             let samples = try await MusicBedRenderer.decodeStereo(url, upToSeconds: effect.sound?.durationSeconds ?? ClipEffect.maximumSoundSeconds)
             sounds.append((start, samples, Float(pow(10, (effect.gainDb ?? 0) / 20))))

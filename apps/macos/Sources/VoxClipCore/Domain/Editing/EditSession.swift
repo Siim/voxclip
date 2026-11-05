@@ -126,6 +126,7 @@ extension Project {
             motionCues.removeAll { $0.clipID == id }
             music.removeAll { $0.clipId == id }
             clipEffects.removeAll { $0.clipId == id }
+            clipControls.removeAll { $0.clipId == id }
         }
     }
 
@@ -138,6 +139,7 @@ extension Project {
         motionCues = []
         music.removeAll { $0.clipId != nil } // Clips are gone; a full-video track stays.
         clipEffects = [] // Effects name the old words and times.
+        clipControls = []
         contextDemo = nil // This explicit transcript replacement resets narration placement; Undo retains the prior Project.
     }
 }

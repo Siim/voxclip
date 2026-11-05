@@ -1,13 +1,16 @@
 import Foundation
 
 public enum CaptionSubtitles {
-    public static func srt(_ track: CaptionLayoutResult) -> String {
+    public static func srt(_ track: CaptionLayoutResult) -> String { srt(track, speed: 1) }
+
+    /// Cues on the rendered timeline: page times divided by the clip's speed (design.md §6.9); 1 keeps them as laid out.
+    public static func srt(_ track: CaptionLayoutResult, speed: Double) -> String {
         var cues: [String] = []
         for layout in track.pages where layout.page.end > layout.page.start {
             let text = layout.page.lines.map { line in
                 line.words.map { CaptionTextRules.raw(track.words[$0].input.text) }.joined(separator: " ")
             }.joined(separator: "\n")
-            cues.append("\(cues.count + 1)\n\(timestamp(layout.page.start)) --> \(timestamp(layout.page.end))\n\(text)\n")
+            cues.append("\(cues.count + 1)\n\(timestamp(layout.page.start / speed)) --> \(timestamp(layout.page.end / speed))\n\(text)\n")
         }
         return cues.isEmpty ? "" : cues.joined(separator: "\n") + "\n"
     }

@@ -59,7 +59,7 @@ public sealed class ProjectStore : IProjectStore
         => project with { Transcript = transcript, Edits = new(transcript.Refined ? 0.8 : 1.0, project.Edits.PauseKeepSeconds, [], [],
             new Dictionary<string, string>(StringComparer.Ordinal), [], null), Ai = new([]), Share = new(new Dictionary<string, string>(StringComparer.Ordinal)),
             VoiceLab = project.VoiceLab with { Segments = [] }, ContextDemo = null, MotionCues = [],
-            Music = project.Music.Where(entry => entry.ClipId is null).ToArray(), ClipEffects = [] };
+            Music = project.Music.Where(entry => entry.ClipId is null).ToArray(), ClipEffects = [], ClipControls = [] };
 
     /// <inheritdoc />
     public async Task<ProjectOpenResult> LoadAsync(string path, CancellationToken ct)

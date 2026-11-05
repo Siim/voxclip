@@ -58,13 +58,15 @@ public struct RenderGraph {
     /// The music bed under the voice (doc/spec/music.md §4), a second audio track; nil without music.
     public let musicTrack: AVMutableCompositionTrack?
     public let musicLease: MusicBedLease?
-    /// Bleep tones and sound effects (ai.md §18.5), a third audio track; nil without them.
+    /// Bleep tones and sound effects (ai.md §18.5), a third audio track on the rendered timeline; nil without them.
     public let effectsTrack: AVMutableCompositionTrack?
     public let effectsLease: EffectAudioLease?
+    /// The clip's voice staged with its speed, volume, fades and mute (design.md §6.9); nil at the defaults.
+    public let clipVoiceLease: ClipVoiceLease?
     /// The tracks a reader mixes: the voice, then the music bed and the effects when there are any.
     public var mixedAudioTracks: [AVMutableCompositionTrack] { [audioTrack, musicTrack, effectsTrack].compactMap { $0 } }
-    public init(composition: AVMutableComposition, videoTrack: AVMutableCompositionTrack, audioTrack: AVMutableCompositionTrack?, videoComposition: AVVideoComposition, audioMix: AVAudioMix?, renderSize: CGSize, frameDuration: CMTime, voiceLabLease: VoiceLabRenderLease? = nil, contextDemoLease: ContextDemoCompositionLease? = nil, musicTrack: AVMutableCompositionTrack? = nil, musicLease: MusicBedLease? = nil, effectsTrack: AVMutableCompositionTrack? = nil, effectsLease: EffectAudioLease? = nil) {
-        self.musicTrack = musicTrack; self.musicLease = musicLease
+    public init(composition: AVMutableComposition, videoTrack: AVMutableCompositionTrack, audioTrack: AVMutableCompositionTrack?, videoComposition: AVVideoComposition, audioMix: AVAudioMix?, renderSize: CGSize, frameDuration: CMTime, voiceLabLease: VoiceLabRenderLease? = nil, contextDemoLease: ContextDemoCompositionLease? = nil, musicTrack: AVMutableCompositionTrack? = nil, musicLease: MusicBedLease? = nil, effectsTrack: AVMutableCompositionTrack? = nil, effectsLease: EffectAudioLease? = nil, clipVoiceLease: ClipVoiceLease? = nil) {
+        self.musicTrack = musicTrack; self.musicLease = musicLease; self.clipVoiceLease = clipVoiceLease
         self.effectsTrack = effectsTrack; self.effectsLease = effectsLease
         self.composition = composition; self.videoTrack = videoTrack; self.audioTrack = audioTrack; self.videoComposition = videoComposition; self.audioMix = audioMix; self.renderSize = renderSize; self.frameDuration = frameDuration
         self.voiceLabLease = voiceLabLease
@@ -161,43 +163,9 @@ public struct CompositionBuilder: Sendable {
             try audio.insertTimeRange(CMTimeRange(start: .zero, duration: CMTime(value: voicePlan.outputSamples, timescale: rate)),
                                       of: mixedTrack, at: .zero)
         }
-        let videoComposition = try makeVideoComposition(request, trackID: video.trackID, duration: duration,
-            orientation: MediaSupport.orientation(transform), videoSpans: videoSpans,
-            demoLayers: demos.layers, contextDemoLease: demos.lease, lipsyncLayers: lipsync,
-            includeDisclosure: includeDisclosure, colorCorrection: colorCorrection)
-        let size = videoComposition.renderSize
-        let frameDuration = videoComposition.frameDuration
-        var musicTrack: AVMutableCompositionTrack?
-        var musicLease: MusicBedLease?
-        if let music = request.music {
-            let bed = try await MusicBedRenderer.stage(music, composition: composition, voiceTrack: audio,
-                                                       durationSeconds: duration.seconds, scratchRoot: scratchRoot)
-            let bedAsset = AVURLAsset(url: bed.url) // Held while its track is inserted.
-            guard let bedTrack = try await MediaSupport.audioTrack(in: bedAsset),
-                  let track = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else {
-                throw VoxClipError.decodeFailed("Cannot add the music track")
-            }
-            let bedRange = try await bedTrack.load(.timeRange)
-            try withExtendedLifetime(bedAsset) {
-                try track.insertTimeRange(CMTimeRange(start: .zero, duration: min(bedRange.duration, duration)), of: bedTrack, at: .zero)
-            }
-            musicTrack = track; musicLease = bed
-        }
-        var effectsTrack: AVMutableCompositionTrack?
-        let effectsLease = try await EffectAudio.stage(request, durationSeconds: duration.seconds, scratchRoot: scratchRoot)
-        if let effectsLease {
-            let effectsAsset = AVURLAsset(url: effectsLease.url) // Held while its track is inserted.
-            guard let effectTrack = try await MediaSupport.audioTrack(in: effectsAsset),
-                  let track = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else {
-                throw VoxClipError.decodeFailed("Cannot add the effects track")
-            }
-            let effectRange = try await effectTrack.load(.timeRange)
-            try withExtendedLifetime(effectsAsset) {
-                try track.insertTimeRange(CMTimeRange(start: .zero, duration: min(effectRange.duration, duration)), of: effectTrack, at: .zero)
-            }
-            effectsTrack = track
-        }
         var mix: AVAudioMix?
+        // Bleeps and mutes silence the edited voice (ai.md §18.5) before clip controls stage it, so a sped-up clip
+        // keeps its censoring.
         let silenced = EffectAudio.silencedRanges(request)
         if let audio, !synthetic || !silenced.isEmpty {
             let parameters = AVMutableAudioMixInputParameters(track: audio)
@@ -209,10 +177,72 @@ public struct CompositionBuilder: Sendable {
             audioMix.inputParameters = [parameters]
             mix = audioMix
         }
-        return RenderGraph(composition: composition, videoTrack: video, audioTrack: audio, videoComposition: videoComposition,
+        // Clip controls (design.md §6.9): the voice is staged with its speed, level, fades and mute, then the whole
+        // composition is time-scaled; captions, motion and Voice Lab layers keep edited times the compositor maps back.
+        let rendered = CMTime(value: request.renderedSamples, timescale: rate)
+        var voiceTrack = audio
+        var voiceLease: ClipVoiceLease?
+        if let controls = request.clipControls, controls.changesAudio, let audio {
+            voiceLease = try await ClipVoiceRenderer.stage(composition: composition, voice: audio, audioMix: mix, editedDuration: duration,
+                                                           renderedDuration: rendered, controls: controls, scratchRoot: scratchRoot)
+            composition.removeTrack(audio)
+            voiceTrack = nil; mix = nil
+        }
+        if request.speed != 1 { composition.scaleTimeRange(CMTimeRange(start: .zero, duration: duration), toDuration: rendered) }
+        if let voiceLease {
+            let staged = AVURLAsset(url: voiceLease.url) // Held while its track is inserted.
+            guard let stagedTrack = try await MediaSupport.audioTrack(in: staged),
+                  let track = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else {
+                throw VoxClipError.decodeFailed("Cannot add the clip voice")
+            }
+            let stagedRange = try await stagedTrack.load(.timeRange)
+            try withExtendedLifetime(staged) {
+                try track.insertTimeRange(CMTimeRange(start: .zero, duration: min(stagedRange.duration, rendered)), of: stagedTrack, at: .zero)
+            }
+            voiceTrack = track
+        }
+        let videoComposition = try makeVideoComposition(request, trackID: video.trackID, duration: duration,
+            orientation: MediaSupport.orientation(transform), videoSpans: videoSpans,
+            demoLayers: demos.layers, contextDemoLease: demos.lease, lipsyncLayers: lipsync,
+            includeDisclosure: includeDisclosure, colorCorrection: colorCorrection)
+        let size = videoComposition.renderSize
+        let frameDuration = videoComposition.frameDuration
+        var musicTrack: AVMutableCompositionTrack?
+        var musicLease: MusicBedLease?
+        if let music = request.music {
+            // The bed is fitted to the rendered length, never sped up, and ducks under the voice as it plays.
+            let bed = try await MusicBedRenderer.stage(music, composition: composition, voiceTrack: voiceTrack,
+                                                       durationSeconds: rendered.seconds, scratchRoot: scratchRoot)
+            let bedAsset = AVURLAsset(url: bed.url) // Held while its track is inserted.
+            guard let bedTrack = try await MediaSupport.audioTrack(in: bedAsset),
+                  let track = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else {
+                throw VoxClipError.decodeFailed("Cannot add the music track")
+            }
+            let bedRange = try await bedTrack.load(.timeRange)
+            try withExtendedLifetime(bedAsset) {
+                try track.insertTimeRange(CMTimeRange(start: .zero, duration: min(bedRange.duration, rendered)), of: bedTrack, at: .zero)
+            }
+            musicTrack = track; musicLease = bed
+        }
+        var effectsTrack: AVMutableCompositionTrack?
+        // Bleep tones and sounds are placed on the rendered timeline (a clip's speed moves them, never their pitch).
+        let effectsLease = try await EffectAudio.stage(request, durationSeconds: rendered.seconds, scratchRoot: scratchRoot)
+        if let effectsLease {
+            let effectsAsset = AVURLAsset(url: effectsLease.url) // Held while its track is inserted.
+            guard let effectTrack = try await MediaSupport.audioTrack(in: effectsAsset),
+                  let track = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else {
+                throw VoxClipError.decodeFailed("Cannot add the effects track")
+            }
+            let effectRange = try await effectTrack.load(.timeRange)
+            try withExtendedLifetime(effectsAsset) {
+                try track.insertTimeRange(CMTimeRange(start: .zero, duration: min(effectRange.duration, rendered)), of: effectTrack, at: .zero)
+            }
+            effectsTrack = track
+        }
+        return RenderGraph(composition: composition, videoTrack: video, audioTrack: voiceTrack, videoComposition: videoComposition,
                            audioMix: mix, renderSize: size, frameDuration: frameDuration, voiceLabLease: lease,
                            contextDemoLease: demos.lease, musicTrack: musicTrack, musicLease: musicLease,
-                           effectsTrack: effectsTrack, effectsLease: effectsLease)
+                           effectsTrack: effectsTrack, effectsLease: effectsLease, clipVoiceLease: voiceLease)
     }
 
     func makeVideoComposition(_ request: RenderRequest, trackID: CMPersistentTrackID, duration: CMTime,
@@ -250,12 +280,23 @@ public struct CompositionBuilder: Sendable {
                 if result.last != time { result.append(time) }
             }
         var spanIndex = 0, layerIndex = 0
-        let instructions = zip(boundaries, boundaries.dropFirst()).map { start, end in
+        // Edited boundaries onto the rendered timeline: identical at 1×, divided by the clip's speed otherwise.
+        let speed = request.speed
+        let samples = request.renderedSamples
+        let timescale = Int32(request.timeline.sampleRate)
+        func rendered(_ time: CMTime) -> CMTime {
+            guard speed != 1 else { return time }
+            if time == duration { return CMTime(value: samples, timescale: timescale) }
+            return CMTime(value: min(samples, Int64((time.seconds * request.timeline.sampleRate / speed).rounded())), timescale: timescale)
+        }
+        let instructions = zip(boundaries, boundaries.dropFirst()).compactMap { start, end -> RenderInstruction? in
             while spanIndex < framingSpans.count && framingSpans[spanIndex].output.end <= start { spanIndex += 1 }
             while layerIndex < demoLayers.count && demoLayers[layerIndex].output.end <= start { layerIndex += 1 }
             let span = spanIndex < framingSpans.count && framingSpans[spanIndex].output.start <= start ? framingSpans[spanIndex] : nil
             let layer = layerIndex < demoLayers.count && demoLayers[layerIndex].output.start <= start ? demoLayers[layerIndex] : nil
-            return RenderInstruction(timeRange: CMTimeRange(start: start, end: end), sourceTrackID: trackID,
+            let range = CMTimeRange(start: rendered(start), end: rendered(end))
+            guard !range.isEmpty else { return nil }
+            return RenderInstruction(timeRange: range, sourceTrackID: trackID,
                 request: request, orientation: orientation, rasterizer: captionRasterizer,
                 legacyRasterizer: rasterizer, disclosure: disclosure, demoLayer: layer,
                 contextDemoLease: contextDemoLease, videoZoom: span?.zoom ?? 1,

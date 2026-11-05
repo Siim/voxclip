@@ -343,15 +343,26 @@ attribute VoxClip.Core.Domain.Captions.GradientSpace :: field public Line @ Syst
 attribute VoxClip.Core.Domain.Captions.GradientSpace :: field public Page @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("page")
 attribute VoxClip.Core.Domain.Captions.GradientSpace :: field public Word @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("word")
 attribute VoxClip.Core.Domain.Captions.GradientSpace @ System.Text.Json.Serialization.JsonConverterAttribute("System.Text.Json.Serialization.JsonStringEnumConverter`1[VoxClip.Core.Domain.Captions.GradientSpace], System.Text.Json")
+attribute VoxClip.Core.Domain.Clips.ClipLook :: field public Bw @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("bw")
+attribute VoxClip.Core.Domain.Clips.ClipLook :: field public Muted @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("muted")
+attribute VoxClip.Core.Domain.Clips.ClipLook :: field public Original @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("original")
+attribute VoxClip.Core.Domain.Clips.ClipLook :: field public Warm @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("warm")
+attribute VoxClip.Core.Domain.Clips.ClipLook @ System.Text.Json.Serialization.JsonConverterAttribute("System.Text.Json.Serialization.JsonStringEnumConverter`1[VoxClip.Core.Domain.Clips.ClipLook], System.Text.Json")
 attribute VoxClip.Core.Domain.Clips.ClipPreset :: field public Best @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("best")
 attribute VoxClip.Core.Domain.Clips.ClipPreset :: field public Custom @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("custom")
 attribute VoxClip.Core.Domain.Clips.ClipPreset :: field public Hooks @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("hooks")
 attribute VoxClip.Core.Domain.Clips.ClipPreset :: field public Quotes @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("quotes")
 attribute VoxClip.Core.Domain.Clips.ClipPreset :: field public Topics @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("topics")
 attribute VoxClip.Core.Domain.Clips.ClipPreset @ System.Text.Json.Serialization.JsonConverterAttribute("System.Text.Json.Serialization.JsonStringEnumConverter`1[VoxClip.Core.Domain.Clips.ClipPreset], System.Text.Json")
+attribute VoxClip.Core.Domain.Clips.ClipShape :: field public Landscape @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("16:9")
+attribute VoxClip.Core.Domain.Clips.ClipShape :: field public Portrait @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("9:16")
+attribute VoxClip.Core.Domain.Clips.ClipShape :: field public PortraitFourFive @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("4:5")
+attribute VoxClip.Core.Domain.Clips.ClipShape :: field public Square @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("1:1")
+attribute VoxClip.Core.Domain.Clips.ClipShape @ System.Text.Json.Serialization.JsonConverterAttribute("System.Text.Json.Serialization.JsonStringEnumConverter`1[VoxClip.Core.Domain.Clips.ClipShape], System.Text.Json")
 attribute VoxClip.Core.Domain.Clips.ClipStyle :: property CaptionsAuto @ System.Text.Json.Serialization.JsonIgnoreAttribute()
 attribute VoxClip.Core.Domain.Clips.ClipStyle :: property FixedCaptionStyle @ System.Text.Json.Serialization.JsonIgnoreAttribute()
 attribute VoxClip.Core.Domain.Clips.ClipStyle :: property SettingsDefault @ System.Text.Json.Serialization.JsonIgnoreAttribute()
+attribute VoxClip.Core.Domain.Clips.ProjectClipControls :: property IsDefault @ System.Text.Json.Serialization.JsonIgnoreAttribute()
 attribute VoxClip.Core.Domain.Clips.RawClip :: property EndWord @ System.Text.Json.Serialization.JsonPropertyNameAttribute("end_word")
 attribute VoxClip.Core.Domain.Clips.RawClip :: property StartWord @ System.Text.Json.Serialization.JsonPropertyNameAttribute("start_word")
 attribute VoxClip.Core.Domain.ContextDemo.ContextDemoJsonContext @ System.Text.Json.Serialization.JsonSerializableAttribute("VoxClip.Core.Domain.ContextDemo.ContextDemoCaptureRequest")
@@ -391,11 +402,14 @@ attribute VoxClip.Core.Domain.Shared.ExportQuality :: field public High @ System
 attribute VoxClip.Core.Domain.Shared.ExportQuality :: field public Standard @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("standard")
 attribute VoxClip.Core.Domain.Shared.ExportQuality @ System.Text.Json.Serialization.JsonConverterAttribute("System.Text.Json.Serialization.JsonStringEnumConverter`1[VoxClip.Core.Domain.Shared.ExportQuality], System.Text.Json")
 attribute VoxClip.Core.Domain.Shared.FrameRate @ System.Text.Json.Serialization.JsonConverterAttribute("VoxClip.Core.Domain.Shared.FrameRateJsonConverter")
+attribute VoxClip.Core.Domain.Shared.Project :: property ClipControls @ System.Text.Json.Serialization.JsonIgnoreAttribute()
 attribute VoxClip.Core.Domain.Shared.Project :: property ClipStyle @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.Shared.Project :: property ContextDemo @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.Shared.Project :: property Extensions @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.Shared.Project :: property MotionCues @ System.Text.Json.Serialization.JsonIgnoreAttribute()
 attribute VoxClip.Core.Domain.Shared.Project :: property Music @ System.Text.Json.Serialization.JsonIgnoreAttribute()
+attribute VoxClip.Core.Domain.Shared.Project :: property PersistedClipControls @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.Shared.Project :: property PersistedClipControls @ System.Text.Json.Serialization.JsonPropertyNameAttribute("clipControls")
 attribute VoxClip.Core.Domain.Shared.Project :: property PersistedMotionCues @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.Shared.Project :: property PersistedMotionCues @ System.Text.Json.Serialization.JsonPropertyNameAttribute("motionCues")
 attribute VoxClip.Core.Domain.Shared.Project :: property PersistedMusic @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
@@ -2570,6 +2584,19 @@ member VoxClip.Core.Domain.Clips.ClipCaptionPick :: method public op_Equality(Vo
 member VoxClip.Core.Domain.Clips.ClipCaptionPick :: method public op_Inequality(VoxClip.Core.Domain.Clips.ClipCaptionPick,VoxClip.Core.Domain.Clips.ClipCaptionPick)
 member VoxClip.Core.Domain.Clips.ClipCaptionPick :: method public set_Reason(string)
 member VoxClip.Core.Domain.Clips.ClipCaptionPick :: method public set_StyleId(string)
+member VoxClip.Core.Domain.Clips.ClipControlsProject :: field private Identifier
+member VoxClip.Core.Domain.Clips.ClipControlsProject :: field public ExportUnsupportedMessage
+member VoxClip.Core.Domain.Clips.ClipControlsProject :: method internal ValidateWire(System.Text.Json.JsonElement)
+member VoxClip.Core.Domain.Clips.ClipControlsProject :: method private Number(System.Text.Json.JsonElement)
+member VoxClip.Core.Domain.Clips.ClipControlsProject :: method private Require(bool)
+member VoxClip.Core.Domain.Clips.ClipControlsProject :: method public Pruned(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.ProjectClipControls>,System.Collections.Generic.IEnumerable`1<string>)
+member VoxClip.Core.Domain.Clips.ClipControlsProject :: method public Setting(VoxClip.Core.Domain.Clips.ProjectClipControls,VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Domain.Clips.ClipControlsProject :: method public Validate(VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Domain.Clips.ClipLook :: field public Bw
+member VoxClip.Core.Domain.Clips.ClipLook :: field public Muted
+member VoxClip.Core.Domain.Clips.ClipLook :: field public Original
+member VoxClip.Core.Domain.Clips.ClipLook :: field public Warm
+member VoxClip.Core.Domain.Clips.ClipLook :: field public value__
 member VoxClip.Core.Domain.Clips.ClipPreset :: field public Best
 member VoxClip.Core.Domain.Clips.ClipPreset :: field public Custom
 member VoxClip.Core.Domain.Clips.ClipPreset :: field public Hooks
@@ -2595,6 +2622,11 @@ member VoxClip.Core.Domain.Clips.ClipPresetRules :: method public set_MaxClips(i
 member VoxClip.Core.Domain.Clips.ClipPresetRules :: method public set_MaxSeconds(double)
 member VoxClip.Core.Domain.Clips.ClipPresetRules :: method public set_MinSeconds(double)
 member VoxClip.Core.Domain.Clips.ClipPresetRules :: method public set_NoOverlap(bool)
+member VoxClip.Core.Domain.Clips.ClipShape :: field public Landscape
+member VoxClip.Core.Domain.Clips.ClipShape :: field public Portrait
+member VoxClip.Core.Domain.Clips.ClipShape :: field public PortraitFourFive
+member VoxClip.Core.Domain.Clips.ClipShape :: field public Square
+member VoxClip.Core.Domain.Clips.ClipShape :: field public value__
 member VoxClip.Core.Domain.Clips.ClipStyle :: field public Presets
 member VoxClip.Core.Domain.Clips.ClipStyle :: method internal IsSlug(string)
 member VoxClip.Core.Domain.Clips.ClipStyle :: method private .cctor()
@@ -2834,6 +2866,38 @@ member VoxClip.Core.Domain.Clips.NumberedLine :: method public set_FirstPosition
 member VoxClip.Core.Domain.Clips.NumberedLine :: method public set_LastPosition(int)
 member VoxClip.Core.Domain.Clips.NumberedLine :: method public set_Line(VoxClip.Core.Domain.Clips.TranscriptLine)
 member VoxClip.Core.Domain.Clips.NumberedLine :: method public set_PauseAfter(string)
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method private .ctor(VoxClip.Core.Domain.Clips.ProjectClipControls)
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method public .ctor(string,double,System.Nullable`1<VoxClip.Core.Domain.Clips.ClipShape>,VoxClip.Core.Domain.Clips.ClipLook,double,double,double,bool,bool,int)
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method public Deconstruct(string&,double&,System.Nullable`1<VoxClip.Core.Domain.Clips.ClipShape>&,VoxClip.Core.Domain.Clips.ClipLook&,double&,double&,double&,bool&,bool&,int&)
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method public Equals(VoxClip.Core.Domain.Clips.ProjectClipControls)
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method public Equals(object)
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method public GetHashCode()
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method public ToString()
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method public get_ClipId()
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method public get_FadeInSeconds()
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method public get_FadeOutSeconds()
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method public get_FlipHorizontal()
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method public get_GainDb()
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method public get_IsDefault()
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method public get_Look()
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method public get_MuteSource()
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method public get_RotationDegrees()
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method public get_Shape()
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method public get_Speed()
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method public op_Equality(VoxClip.Core.Domain.Clips.ProjectClipControls,VoxClip.Core.Domain.Clips.ProjectClipControls)
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method public op_Inequality(VoxClip.Core.Domain.Clips.ProjectClipControls,VoxClip.Core.Domain.Clips.ProjectClipControls)
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method public set_ClipId(string)
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method public set_FadeInSeconds(double)
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method public set_FadeOutSeconds(double)
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method public set_FlipHorizontal(bool)
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method public set_GainDb(double)
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method public set_Look(VoxClip.Core.Domain.Clips.ClipLook)
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method public set_MuteSource(bool)
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method public set_RotationDegrees(int)
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method public set_Shape(System.Nullable`1<VoxClip.Core.Domain.Clips.ClipShape>)
+member VoxClip.Core.Domain.Clips.ProjectClipControls :: method public set_Speed(double)
 member VoxClip.Core.Domain.Clips.RawClip :: method private .ctor(VoxClip.Core.Domain.Clips.RawClip)
 member VoxClip.Core.Domain.Clips.RawClip :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Clips.RawClip :: method private get_EqualityContract()
@@ -4673,6 +4737,7 @@ member VoxClip.Core.Domain.Shared.PreviewPosition :: method public op_Inequality
 member VoxClip.Core.Domain.Shared.PreviewPosition :: method public set_EditedTime(double)
 member VoxClip.Core.Domain.Shared.PreviewPosition :: method public set_IsPlaying(bool)
 member VoxClip.Core.Domain.Shared.PreviewPosition :: method public set_SourceTime(double)
+member VoxClip.Core.Domain.Shared.Project :: field private clipControls
 member VoxClip.Core.Domain.Shared.Project :: field private motionCues
 member VoxClip.Core.Domain.Shared.Project :: field private music
 member VoxClip.Core.Domain.Shared.Project :: method private .ctor(VoxClip.Core.Domain.Shared.Project)
@@ -4686,6 +4751,7 @@ member VoxClip.Core.Domain.Shared.Project :: method public GetHashCode()
 member VoxClip.Core.Domain.Shared.Project :: method public ToString()
 member VoxClip.Core.Domain.Shared.Project :: method public get_Ai()
 member VoxClip.Core.Domain.Shared.Project :: method public get_Captions()
+member VoxClip.Core.Domain.Shared.Project :: method public get_ClipControls()
 member VoxClip.Core.Domain.Shared.Project :: method public get_ClipStyle()
 member VoxClip.Core.Domain.Shared.Project :: method public get_ContextDemo()
 member VoxClip.Core.Domain.Shared.Project :: method public get_CreatedAt()
@@ -4698,6 +4764,7 @@ member VoxClip.Core.Domain.Shared.Project :: method public get_Media()
 member VoxClip.Core.Domain.Shared.Project :: method public get_ModifiedAt()
 member VoxClip.Core.Domain.Shared.Project :: method public get_MotionCues()
 member VoxClip.Core.Domain.Shared.Project :: method public get_Music()
+member VoxClip.Core.Domain.Shared.Project :: method public get_PersistedClipControls()
 member VoxClip.Core.Domain.Shared.Project :: method public get_PersistedMotionCues()
 member VoxClip.Core.Domain.Shared.Project :: method public get_PersistedMusic()
 member VoxClip.Core.Domain.Shared.Project :: method public get_SavedBy()
@@ -4710,6 +4777,7 @@ member VoxClip.Core.Domain.Shared.Project :: method public op_Equality(VoxClip.C
 member VoxClip.Core.Domain.Shared.Project :: method public op_Inequality(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Domain.Shared.Project :: method public set_Ai(VoxClip.Core.Domain.Shared.ProjectAi)
 member VoxClip.Core.Domain.Shared.Project :: method public set_Captions(VoxClip.Core.Domain.Shared.ProjectCaptions)
+member VoxClip.Core.Domain.Shared.Project :: method public set_ClipControls(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.ProjectClipControls>)
 member VoxClip.Core.Domain.Shared.Project :: method public set_ClipStyle(VoxClip.Core.Domain.Clips.ClipStyle)
 member VoxClip.Core.Domain.Shared.Project :: method public set_ContextDemo(VoxClip.Core.Domain.ContextDemo.ContextDemoDocument)
 member VoxClip.Core.Domain.Shared.Project :: method public set_CreatedAt(System.DateTimeOffset)
@@ -4722,6 +4790,7 @@ member VoxClip.Core.Domain.Shared.Project :: method public set_Media(VoxClip.Cor
 member VoxClip.Core.Domain.Shared.Project :: method public set_ModifiedAt(System.DateTimeOffset)
 member VoxClip.Core.Domain.Shared.Project :: method public set_MotionCues(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ContextDemo.MotionCue>)
 member VoxClip.Core.Domain.Shared.Project :: method public set_Music(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Music.ProjectMusic>)
+member VoxClip.Core.Domain.Shared.Project :: method public set_PersistedClipControls(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.ProjectClipControls>)
 member VoxClip.Core.Domain.Shared.Project :: method public set_PersistedMotionCues(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ContextDemo.MotionCue>)
 member VoxClip.Core.Domain.Shared.Project :: method public set_PersistedMusic(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Music.ProjectMusic>)
 member VoxClip.Core.Domain.Shared.Project :: method public set_SavedBy(VoxClip.Core.Domain.Shared.SavedBy)
@@ -13008,8 +13077,11 @@ type VoxClip.Core.Domain.Clips.AiClip
 type VoxClip.Core.Domain.Clips.AiResult
 type VoxClip.Core.Domain.Clips.ClipCandidate
 type VoxClip.Core.Domain.Clips.ClipCaptionPick
+type VoxClip.Core.Domain.Clips.ClipControlsProject
+type VoxClip.Core.Domain.Clips.ClipLook
 type VoxClip.Core.Domain.Clips.ClipPreset
 type VoxClip.Core.Domain.Clips.ClipPresetRules
+type VoxClip.Core.Domain.Clips.ClipShape
 type VoxClip.Core.Domain.Clips.ClipStyle
 type VoxClip.Core.Domain.Clips.ClipStyleCard
 type VoxClip.Core.Domain.Clips.ClipStyleCatalog
@@ -13024,6 +13096,7 @@ type VoxClip.Core.Domain.Clips.ClipWord
 type VoxClip.Core.Domain.Clips.FinalizeClipsRequest
 type VoxClip.Core.Domain.Clips.FinalizeClipsResult
 type VoxClip.Core.Domain.Clips.NumberedLine
+type VoxClip.Core.Domain.Clips.ProjectClipControls
 type VoxClip.Core.Domain.Clips.RawClip
 type VoxClip.Core.Domain.Clips.TightenEdit
 type VoxClip.Core.Domain.Clips.TightenProposal

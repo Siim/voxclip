@@ -76,11 +76,15 @@ enum ViewerTag: Equatable {
         if box.width / box.height > aspect { return CGSize(width: min(box.width, (box.height * aspect).rounded()), height: box.height) }
         return CGSize(width: box.width, height: min(box.height, (box.width / aspect).rounded()))
     }
-    /// The frame's width ÷ height for `aspect`; Original is the oriented source.
+    /// The frame's width ÷ height for `aspect`; Original is the oriented source. The open clip's own shape or quarter turn
+    /// (design.md §6.9) wins, as the render does.
     static func ratio(_ project: Project) -> Double {
+        let controls = ClipControlsProject.controls(for: project.edits.activeClipId, in: project)
+        if let shape = controls?.shape { return Double(shape.size.width) / Double(shape.size.height) }
         switch project.export.aspect {
         case .source:
-            let size = project.media.source.video.map(OutputSizing.orientedSize) ?? PixelSize(width: 16, height: 9)
+            let oriented = project.media.source.video.map(OutputSizing.orientedSize) ?? PixelSize(width: 16, height: 9)
+            let size = controls?.isQuarterTurn == true ? PixelSize(width: oriented.height, height: oriented.width) : oriented
             return Double(size.width) / Double(max(1, size.height))
         case .landscape: return 16 / 9
         case .portrait: return 9 / 16

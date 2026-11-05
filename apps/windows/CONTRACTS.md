@@ -25,6 +25,17 @@ Twin of the macOS entry of the same date. Spec: doc/spec/ai.md §18.2 and §18.7
 - **Tests.** `Tracks/win-editing/ClipEffectsWireTests.cs` (with the music wire tests, 10 of 10 pass locally): every wire case, the effects fixture round trip, pruning and the export refusal.
 - **Owed.** The Ask Claude request and validator twin (`shared/prompts/ask-claude.json`, `shared/fixtures/ask-claude/ask-claude-cases.json`), the field and change list, the E1 lane, and the effect renderers (censors, overlays, freeze, bleep and sound audio), then lifting the export refusal. Native checks wait for the VM.
 
+### 2026-11-05 — Windows Core: projects with clip controls open, validate and save unchanged; export refuses (track/v2-clip-controls)
+
+Twin of the Mac clip-controls contract (doc/design.md §6.9).
+
+- **Built.** `Domain/Clips/ClipControls.cs`: `ClipLook`, `ClipShape`, `ProjectClipControls` (every key written, `IsDefault`) and `ClipControlsProject` (`Validate`, `ValidateWire`, `Setting`, `Pruned`, `ExportUnsupportedMessage`). `Project.ClipControls` (omitted when empty via `PersistedClipControls`), the v4-only `clipControls` key in `ProjectValidation`, and `ClipControlsProject.Validate` in `ProjectSerialization.Validate`. Editing `Clean`, `ReplaceTranscript` (both in `EditingProject` and `IProjectStore`) and the view model's `SyncProject` prune entries for removed clips; undo/redo carries them.
+- **Refusal.** `VoiceLabRenderContract.RequireWindowsVisualSupport` (and so `Prepare`, the CLI and the App export paths) stops a project with clip controls: "Windows cannot play clip speed, looks, volume, fades, flip or rotation yet. Export this project on a Mac, or reset its clip controls there. Your clip controls and edits are unchanged." `ExportFingerprint` treats clip controls like the other unsupported visuals.
+- **Tests.** `Tracks/win-editing/ClipControlsProjectWireTests` (5) replays `shared/fixtures/clip-controls/clip-controls-wire-cases.json` (new file, `voxclip-clip-controls-wire-cases/1`): 13 valid round-trips byte-equal, 38 invalid rejected, the refusal and its reset, pruning and v4 promotion. Red: without the wire and identity checks `InvalidCorpusIsRejected` fails.
+- **Allowlists.** `ReleaseBoundary update` on all four; only `VoxClip.Core.txt` changes (+73 lines, the clip-control types and `Project.clipControls`).
+- **Verification (macOS host, serial, absolute `VOXCLIP_SHARED_DIR`, `-c Release -m:1 -nodeReuse:false -p:UseSharedCompilation=false`).** Cross-platform solution 0 warnings, 0 errors. Release Core 3,081 total, 0 failed, 29 skipped; portable Media 947 total, 0 failed, 5 skipped; win-ui 1,243 total, 0 failed, 5 skipped, including `*ReleaseSurrogate*` 1 / 1 (a first run had one failure in `InlineCorrectionTests.OpeningShowsTheWordsTextAndAnnouncesTheChange`, unrelated, which passed 3 / 3 alone and in the full rerun).
+- **Owed.** Rendering clip controls on Windows (the look recipes are plain numbers in `ClipLookRecipe`, Mac Core); a Windows Clip section; a native WinUI build and VM check.
+
 ### 2026-11-05 — Windows twin: Roboto Black caption set 2, clip style contract, caption pick and the clip style card (track/v2-captions-style)
 
 Twin of the macOS entry of the same date.

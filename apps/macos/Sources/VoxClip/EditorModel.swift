@@ -480,6 +480,7 @@ struct EditorRenderSnapshot {
     @ObservationIgnored private var renderedContextDemo: ContextDemoDocument?
     @ObservationIgnored private var renderedMotionCues: [MotionCue] = []
     @ObservationIgnored private var renderedMusic: [ProjectMusic] = []
+    @ObservationIgnored private var renderedClipControls: [ProjectClipControls] = []
     @ObservationIgnored private(set) var fillerCandidateIDs: Set<String> = []
     @ObservationIgnored private var planningSegments: [EditSegment]?
     @ObservationIgnored private var planningWordIndex: [String: Int] = [:]
@@ -731,7 +732,7 @@ struct EditorRenderSnapshot {
         let edits = project.edits
         let transcriptChanged = renderedTranscript != project.transcript
         let editChanged = renderedEdits != edits
-        guard transcriptChanged || editChanged || renderedMedia != project.media || renderedVoiceLab != project.voiceLab || renderedContextDemo != project.contextDemo || renderedMotionCues != project.motionCues || renderedMusic != project.music || renderedEdits == nil else { return }
+        guard transcriptChanged || editChanged || renderedMedia != project.media || renderedVoiceLab != project.voiceLab || renderedContextDemo != project.contextDemo || renderedMotionCues != project.motionCues || renderedMusic != project.music || renderedClipControls != project.clipControls || renderedEdits == nil else { return }
         let clipsChanged = renderedEdits?.clips != edits.clips
         if transcribed != (project.transcript != nil) { transcribed = project.transcript != nil }
         projectRevision += 1
@@ -800,7 +801,7 @@ struct EditorRenderSnapshot {
         }
         renderedTranscript = project.transcript; renderedEdits = edits; renderedMedia = project.media
         renderedVoiceLab = project.voiceLab
-        renderedContextDemo = project.contextDemo; renderedMotionCues = project.motionCues; renderedMusic = project.music
+        renderedContextDemo = project.contextDemo; renderedMotionCues = project.motionCues; renderedMusic = project.music; renderedClipControls = project.clipControls
         transcriptRevision += 1
         followWaveformKey()
         if edits.activeClipId != renderedActiveClipID {
@@ -1027,7 +1028,7 @@ struct EditorRenderSnapshot {
         guard let changed = history?.state else { return }
         guard changed != state || next != project else { return }
         next.edits = changed.projectEdits
-        if case .removeClip(let id) = command { next.motionCues.removeAll { $0.clipID == id }; next.music.removeAll { $0.clipId == id } }
+        if case .removeClip(let id) = command { next.motionCues.removeAll { $0.clipID == id }; next.music.removeAll { $0.clipId == id }; next.clipControls.removeAll { $0.clipId == id } }
         let clipIDs = Set(changed.clips.map(\.id))
         next.share.captions = next.share.captions.filter { $0.key == "full" || clipIDs.contains($0.key) }
         // Only the scope changed: a tab switch, not an edit (impl-plan item 16).
@@ -1054,6 +1055,7 @@ struct EditorRenderSnapshot {
         })
         next.motionCues.removeAll { removedClips.contains($0.clipID) }
         next.music.removeAll { $0.clipId.map(removedClips.contains) ?? false }
+        next.clipControls.removeAll { removedClips.contains($0.clipId) }
         let clipIDs = Set(changed.clips.map(\.id))
         next.share.captions = next.share.captions.filter { $0.key == "full" || clipIDs.contains($0.key) }
         if onlyScopeDiffers(next) { return setScope(next.edits.activeClipId) }
@@ -1442,7 +1444,7 @@ struct EditorRenderSnapshot {
         }
         guard let plan else { throw VoxClipError.exportFailed("Could not build the edit plan") }
         guard (voiceLab?.prepared.outputPlan.outputSamples ?? plan.outputSamples) > 0 else { throw VoxClipError.everythingCut }
-        let output = ExportFingerprint.output(project)
+        let output = ExportFingerprint.output(project, clipID: clip?.id)
         // Bleeped and muted words read as × marks in the captions (ai.md §18.5).
         let captionSegments = segments.map { ClipEffects.maskingBleeps($0, effects: ClipEffects.rendered(in: project, clipID: clip?.id)) }
         let layout = try await buildCaptions(segments: captionSegments, plan: plan, output: output, forPreview: target == nil,
@@ -1470,7 +1472,7 @@ struct EditorRenderSnapshot {
         }
     }
     func outputSpec() -> OutputSpec {
-        ExportFingerprint.output(project)
+        ExportFingerprint.output(project, clipID: renderedActiveClipID)
     }
     func updatePreview(load: Bool) async {
         guard mediaResolved else { return }

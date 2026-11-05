@@ -1774,8 +1774,8 @@ Version 2 of the plan (planner v2, 2026-11-05) answers the first live evaluation
 - `pauseCuts`: `{afterWord, reason}`, a detected pause (editing §2.4) to tighten to the project's kept length.
 - `rewrites`: `{startWord, endWord, text, reason}`. `text` is the whole new phrase as spoken. Its first and last words are the range's own first and last words: the bridge words of voice-lab.md §8.4.
 - `captions`: `{styleId, font {family, weight}, case, wordsPerCaption, reason}`. `case` is `upper`, `lower` or `asSaid`; it maps to `text.transform` `uppercase`, `lowercase` or `none`. The default font is Roboto 900 (Roboto Black). `reason` (v2) says why the style suits the clip.
-- `look` (v2): `{id, reason}`, where `id` is `original`, `muted`, `warm` or `bw`. **Nothing renders a look yet** (§16.10).
-- `speed` (v2): `{rate, reason}` or absent; `rate` is 0.75–1.5 and never 1. **Nothing renders speed yet** (§16.10).
+- `look` (v2): `{id, reason}`, where `id` is `original`, `muted`, `warm` or `bw`. It renders through the clip controls (design.md §6.9).
+- `speed` (v2): `{rate, reason}` or absent; `rate` is 0.75–1.5 and never 1. It renders through the clip controls, pitch kept (design.md §6.9).
 - `music`: up to three `{title, mood, prompt, reason, underVoiceDb}`, an instrumental Eleven Music prompt and how many dB the track sits under the voice; `musicPick` indexes the one to use, or is null.
 - `zooms`: `{word, untilWord, scale, reason}`, a punch-in from the start of `word` to the end of `untilWord`.
 - `score` 1–10, `verdict` `postFirst`, `post`, `casualPost` or `holdBack`, and `scoreReason`.
@@ -1868,7 +1868,7 @@ Every send checks the model's context as Voice Lab sends do (§12.8): `est()` of
 - the look (v2): `.look(clipID:look:)`, always present, so the review can show "Claude chose Warm · Change". `original` needs no rendering;
 - the speed (v2): `.speed(clipID:speed:)`, only when the plan has one;
 - each zoom: a constant-scale `MotionCue` (`<clipID>-zoom-N`) over the words' source time;
-- the music cue: the picked track, the alternatives and `editedSeconds`, the length at the clip's own speed, so a generated track still covers the clip while speed is not rendered;
+- the music cue: the picked track, the alternatives and `editedSeconds`, the length at the clip's own speed. A bed is staged for the rendered length (design.md §6.9), so a track of `editedSeconds` always covers the clip;
 - the hook text, and the share text (`project.share.captions[clipID]`).
 
 `ClipAutopilotMapping.apply` applies edits (corrections included), captions, motion cues (through `ContextDemoProject.settingMotionCues`, which upgrades the project to version 4) and share text to a copy, in order. It returns rewrites, the look, the speed, music and the hook as pending. One undo step is the caller's choice. `finalSeconds` is `editedSeconds` divided by the speed.
@@ -1901,8 +1901,7 @@ Planner v2 evaluation (Claude Code 2.1.318, Opus, plan sign-in, three prompt rou
 ### 16.10 Owed
 
 - **UI (Mac, built in track/v2-make-it; design.md §6.7):** the ✦ action and its cap, the run with progress lines from `ClipAutopilotProgress`, the review with Undo or Change per operation (correction, look and speed rows and the flags included), one undo step, and the questions. The Windows twin is owed.
-- **Look renderer:** `original`, `muted`, `warm` and `bw` as colour transforms in preview and export, on both platforms; until then the look operation stays pending.
-- **Clip controls package:** rendering `speed` (video and audio together, pitch kept), and then music covering `finalSeconds`.
+- **Look and speed (done on Mac, design.md §6.9):** the UI applies a pending look or speed with `EditorModel.apply(look:clipID:)` and `apply(speed:clipID:)`, one undo step each. Windows rendering is owed; Windows refuses to export clip controls.
 - **Music:** the Mac UI applies the pick through `MusicPanel` and sets `underVoiceDb` as the bed's level. Verifying the music price is still owed.
 - **Rewrites (Mac, built):** each is voiced through the existing Rewrite flow (`MakeItRewriteDriver`), where window placement adds the audio bridges.
 - **Roboto Black:** bundled by track/v2-captions-style; the captions operation applies it.
