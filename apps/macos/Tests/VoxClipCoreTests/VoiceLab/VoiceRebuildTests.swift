@@ -32,22 +32,24 @@ struct VoiceRebuildTests {
     }
 
     @Test func everyVideoOnceBeforeAnyRepeatsThenTheMostDifferent() {
-        // Video a has three clean pieces in one room; b and c one each in other rooms.
+        // Video a has three clean pieces in one room; b and c one each in other rooms; d one in a's room.
         let candidates = [
             piece("a", start: 0, snr: 40, score: 0.95, degrees: 0),
             piece("a", start: 30, snr: 39, score: 0.95, degrees: 1),
             piece("a", start: 60, snr: 38, score: 0.95, degrees: 25),
             piece("b", start: 0, snr: 25, score: 0.70, degrees: 30),
             piece("c", start: 0, snr: 22, score: 0.60, degrees: -30),
+            piece("d", start: 0, snr: 21, score: 0.55, degrees: 2),
         ]
         let plan = VoiceRebuild.pick(candidates, threshold: 0.45)
-        // Round 1: each video's cleanest piece, the best-scoring video first.
-        #expect(plan.pieces.prefix(3).map(\.video) == ["a", "b", "c"])
+        // Round 1: each video's cleanest piece, the best-scoring video first. Video d sounds like a's room, and is
+        // still used before any video repeats.
+        #expect(plan.pieces.prefix(4).map(\.video) == ["a", "b", "c", "d"])
         #expect(plan.pieces[0].startMs == 0)
         // Round 2: video a's piece at 25° is further from everything chosen than its piece at 1°.
-        #expect(plan.pieces[3].startMs == 60_000 && plan.pieces[4].startMs == 30_000)
-        #expect(plan.videoCount == 3 && plan.totalMs == 100_000)
-        #expect(VoiceRebuild.summary(plan) == "1 min 40 s from 3 videos")
+        #expect(plan.pieces[4].startMs == 60_000 && plan.pieces[5].startMs == 30_000)
+        #expect(plan.videoCount == 4 && plan.totalMs == 120_000)
+        #expect(VoiceRebuild.summary(plan) == "2 min from 4 videos")
     }
 
     @Test func theSetStaysWithinTheClientsLimits() {

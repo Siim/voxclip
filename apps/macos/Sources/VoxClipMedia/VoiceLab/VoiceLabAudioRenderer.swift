@@ -442,6 +442,27 @@ enum VoiceLabAudioRenderer {
         }
     }
 
+    /// The tone match (§8.7 item 2b) runs from the asset's first frame, as the take's own mix ran it: the frames before
+    /// `start` only set each channel's filter state. Nil when the asset has no tilt.
+    static func warmedToneFilters(_ source: AVAudioFile, start: Int64, tiltDbPerOctave: Double?, sampleRate: Int) throws -> [VoiceLabTilt.Filter]? {
+        let sections = VoiceLabTilt.sections(tiltDbPerOctave: tiltDbPerOctave ?? 0, sampleRate: sampleRate)
+        guard !sections.isEmpty else { return nil }
+        var warming = Array(repeating: VoiceLabTilt.Filter(sections), count: Int(source.processingFormat.channelCount))
+        guard let warm = AVAudioPCMBuffer(pcmFormat: source.processingFormat, frameCapacity: AVAudioFrameCount(block)) else {
+            throw VoiceLabProjectError.invalidFadeHandles
+        }
+        source.framePosition = 0
+        var left = start
+        while left > 0 {
+            try Task.checkCancellation()
+            try source.read(into: warm, frameCount: AVAudioFrameCount(min(Int64(block), left)))
+            guard warm.frameLength > 0, let planes = warm.floatChannelData else { throw VoiceLabProjectError.invalidFadeHandles }
+            for channel in warming.indices { for index in 0..<Int(warm.frameLength) { _ = warming[channel].process(planes[channel][index]) } }
+            left -= Int64(warm.frameLength)
+        }
+        return warming
+    }
+
     private static func conform(asset: PreparedVoiceLabAsset, start: Int64, frames: Int64,
                                 rate: Double, to url: URL) throws {
         let source = try AVAudioFile(forReading: asset.url, commonFormat: .pcmFormatFloat32, interleaved: false)
@@ -451,26 +472,7 @@ enum VoiceLabAudioRenderer {
               let buffer = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: AVAudioFrameCount(block)) else {
             throw VoiceLabProjectError.invalidFadeHandles
         }
-        // The tone match (§8.7 item 2b) runs from the asset's first frame, as the take's own mix ran it: the frames before
-        // the read only set the filter's state.
-        let sections = VoiceLabTilt.sections(tiltDbPerOctave: asset.tiltDbPerOctave ?? 0, sampleRate: asset.sampleRate)
-        var filters: [VoiceLabTilt.Filter]?
-        if !sections.isEmpty {
-            var warming = Array(repeating: VoiceLabTilt.Filter(sections), count: Int(source.processingFormat.channelCount))
-            guard let warm = AVAudioPCMBuffer(pcmFormat: source.processingFormat, frameCapacity: AVAudioFrameCount(block)) else {
-                throw VoiceLabProjectError.invalidFadeHandles
-            }
-            source.framePosition = 0
-            var left = start
-            while left > 0 {
-                try Task.checkCancellation()
-                try source.read(into: warm, frameCount: AVAudioFrameCount(min(Int64(block), left)))
-                guard warm.frameLength > 0, let planes = warm.floatChannelData else { throw VoiceLabProjectError.invalidFadeHandles }
-                for channel in warming.indices { for index in 0..<Int(warm.frameLength) { _ = warming[channel].process(planes[channel][index]) } }
-                left -= Int64(warm.frameLength)
-            }
-            filters = warming
-        }
+        let filters = try warmedToneFilters(source, start: start, tiltDbPerOctave: asset.tiltDbPerOctave, sampleRate: asset.sampleRate)
         source.framePosition = start
         let input = VoiceLabConversionInput(file: source, remaining: frames, filters: filters)
         let output = try AVAudioFile(forWriting: url, settings: target.settings,

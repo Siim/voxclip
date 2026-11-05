@@ -513,6 +513,27 @@ struct VoiceLabCompositionTests {
         #expect(tilted.mixed != plain.mixed)
     }
 
+    /// A render that starts mid-asset hears the cascade as the take mix did: run from the asset's first frame, so the
+    /// first sample read is filtered with the state of every frame before it (voice-lab §8.7 item 2b).
+    @Test func toneMatchRunsFromTheAssetsFirstFrameWhenTheReadStartsLater() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-tone-warm-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("asset.wav")
+        try wave(frames: 24_000, rate: 24_000, hz: 4_000).write(to: url)
+        let file = try AVAudioFile(forReading: url, commonFormat: .pcmFormatFloat32, interleaved: false)
+        let start: Int64 = 6_001, count = 2_000
+        #expect(try VoiceLabAudioRenderer.warmedToneFilters(file, start: start, tiltDbPerOctave: nil, sampleRate: 24_000) == nil)
+        var filters = try #require(try VoiceLabAudioRenderer.warmedToneFilters(file, start: start, tiltDbPerOctave: -1.5, sampleRate: 24_000))
+        let reader = try AVAudioFile(forReading: url, commonFormat: .pcmFormatFloat32, interleaved: false)
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: reader.processingFormat, frameCapacity: 24_000))
+        try reader.read(into: buffer)
+        let whole = Array(UnsafeBufferPointer(start: try #require(buffer.floatChannelData)[0], count: Int(buffer.frameLength)))
+        let expected = VoiceLabTilt.apply(whole, sections: VoiceLabTilt.sections(tiltDbPerOctave: -1.5, sampleRate: 24_000))
+        let read = whole[Int(start)..<(Int(start) + count)].map { filters[0].process($0) }
+        #expect(read == Array(expected[Int(start)..<(Int(start) + count)]))
+    }
+
     @Test func ordinarySourceFadeMatchesLegacyAtScopeEdgesAndShortRuns() {
         let rate = 48_000.0
         for length: Int64 in [1, 3, 21, 240, 1_000] {
