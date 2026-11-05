@@ -3825,6 +3825,7 @@ member VoxClip.App.ViewModels.ExportRecord :: method public set_PlanFingerprint(
 member VoxClip.App.ViewModels.ExportRecord :: method public set_ProjectId(string)
 member VoxClip.App.ViewModels.ExportRecord :: method public set_StyleId(string)
 member VoxClip.App.ViewModels.ExportRecord :: method public set_TargetId(string)
+member VoxClip.App.ViewModels.ExportRenderInput :: method internal CaptionWords(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.Editing.EditState,VoxClip.Core.Domain.Editing.EditPlan,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Effects.ClipEffect>)
 member VoxClip.App.ViewModels.ExportRenderInput :: method internal Media(VoxClip.Core.Domain.Shared.Project)
 member VoxClip.App.ViewModels.ExportRenderInput :: method internal Output(VoxClip.Core.Domain.Shared.MediaInfo,VoxClip.Core.Domain.Shared.ProjectExport,VoxClip.Core.Domain.Clips.ProjectClipControls)
 member VoxClip.App.ViewModels.ExportRenderInput :: method internal Plan(VoxClip.Core.Domain.Shared.MediaInfo,VoxClip.Core.Domain.Editing.EditState)

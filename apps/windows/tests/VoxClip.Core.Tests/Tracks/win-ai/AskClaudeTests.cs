@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using VoxClip.Core.Domain.Autopilot;
+using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Effects;
@@ -166,10 +167,14 @@ public sealed class AskClaudeTests
         Assert.Equal(["freeze", "sound"], applied.ClipEffects.Select(effect => effect.GetProperty("kind").GetString()));
         Assert.Equal(new Dictionary<string, string> { ["w19"] = "darn" }, applied.Edits.Corrections);
         Assert.Equal(["w18"], applied.Edits.CutWordIds);
-        // Windows renders zooms (track/v2-win-render-2), so the zoom applies as the clip's motion cue; a stretch over part of a clip, the
-        // paid rewrite and the translation stay pending.
+        // Windows renders zooms (track/v2-win-render-2) and translated captions (track/v2-win-render-3): the zoom applies as the clip's
+        // motion cue and the translation as the words' captions; a stretch over part of a clip and the paid rewrite stay pending.
         Assert.Equal(["clip-main-ask-1"], applied.MotionCues.Select(cue => cue.Id));
-        Assert.Equal([ClipAutopilotDecision.Stretch, ClipAutopilotDecision.Rewrite, ClipAutopilotDecision.Translate], pending.Select(operation => operation.Decision));
+        var translate = (ClipAutopilotAction.TranslateCaptions)answer.Operations.Single(operation => operation.Decision == ClipAutopilotDecision.Translate).Action;
+        var translation = Assert.Single(applied.CaptionTranslations);
+        Assert.Equal(new CaptionTranslation("tr-1", translate.ClipId, project.Transcript!.Words[translate.StartWord].Id, project.Transcript.Words[translate.EndWord].Id,
+            translate.Language, translate.Text), translation);
+        Assert.Equal([ClipAutopilotDecision.Stretch, ClipAutopilotDecision.Rewrite], pending.Select(operation => operation.Decision));
         var encoded = ProjectSerialization.Serialize(applied);
         Assert.Equal(encoded, ProjectSerialization.Serialize(ProjectSerialization.Deserialize(encoded)));
         // One row off: the same answer without that operation leaves the others in place.

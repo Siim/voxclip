@@ -401,7 +401,6 @@ public sealed partial class EditorViewModel
     public static string AskClaudeLaterReason(ClipAutopilotOperation operation) => operation.Action switch
     {
         ClipAutopilotAction.Stretch => "A clip plays at one speed. Ask on a clip to change its speed. Nothing changed.",
-        ClipAutopilotAction.TranslateCaptions => "Translated captions are not rendered yet. Nothing changed.",
         ClipAutopilotAction.MusicDucking => "This clip has no music to duck.",
         _ => "Not available yet. Nothing changed."
     };
@@ -534,8 +533,8 @@ public sealed partial class EditorViewModel
         return true;
     }
 
-    /// <summary><paramref name="snapshot"/> with <paramref name="operations"/> taken out: their effects removed, corrections, cuts, ducking
-    /// and a clip's speed back to <paramref name="before"/>.</summary>
+    /// <summary><paramref name="snapshot"/> with <paramref name="operations"/> taken out: their effects removed, corrections, cuts, ducking,
+    /// translated captions and a clip's speed back to <paramref name="before"/>.</summary>
     public static Project AskClaudeUndone(IReadOnlyList<ClipAutopilotOperation> operations, Project? before, Project snapshot)
     {
         var next = snapshot;
@@ -563,6 +562,10 @@ public sealed partial class EditorViewModel
                 case ClipAutopilotAction.MusicDucking ducking:
                     if (next.Music.FirstOrDefault(entry => entry.ClipId == ducking.ClipId) is { } entry && before?.Music.FirstOrDefault(item => item.ClipId == ducking.ClipId) is { } original)
                         next = MusicProject.Setting(entry with { Ducking = original.Ducking }, ducking.ClipId, next);
+                    break;
+                case ClipAutopilotAction.TranslateCaptions translate:
+                    // The words' captions go back to what they showed before the answer.
+                    next = VoxClip.Core.Domain.Captions.CaptionTranslations.Untranslating(translate.StartWord, translate.EndWord, translate.ClipId, before, next);
                     break;
                 case ClipAutopilotAction.Stretch:
                     if (StretchClip(operation, next) is { } clip)

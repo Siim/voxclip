@@ -181,6 +181,52 @@ public sealed class AskClaudeAppTests
         Assert.Equal(["bleep", "sound"], Kinds(editor));
     }
 
+    private static string[] ShownWords(EditorViewModel editor)
+    {
+        var project = editor.ScopedProject(editor.State);
+        var plan = ExportRenderInput.Plan(ExportRenderInput.Media(project), editor.State);
+        return ExportRenderInput.CaptionWords(project, editor.State!, plan, null, ClipEffects.Rendered(project, project.Edits.ActiveClipId)).Select(word => word.Text).ToArray();
+    }
+
+    /// <summary>"Translate these captions to Spanish" (Mac <c>translatedCaptionsApplyRenderAndUndo</c>): the row applies in the answer's one
+    /// undo step, the render's caption words show the translation over those words, the export is new, and the row's Undo takes it
+    /// back as its own step.</summary>
+    [Fact]
+    public async Task TranslatedCaptionsApplyRenderAndUndo()
+    {
+        var (editor, _) = Open(Reply(Op("translate", ("startWord", 2), ("endWord", 5), ("language", "es"), ("text", "esto es lo nuevo ahora"))));
+        Assert.True(editor.ReplaceProject(editor.Project with { Captions = editor.Project.Captions with { StyleId = "vox-highlight" } }, "Captions on"));
+        var plain = ShownWords(editor);
+        var plainFingerprint = ExportFingerprint.For(editor.Project, new ExportTarget.FullEdit());
+        Select(editor, 2, 5);
+        editor.OpenAskClaudeOnSelection();
+        await AskAsync(editor, "translate these captions to Spanish");
+        var run = Assert.IsType<AskClaudeRun>(editor.AskClaude.Run);
+        Assert.Null(editor.AskClaude.Error);
+        var row = Assert.Single(run.Rows);
+        Assert.Equal((AskClaudeRowStatus.Applied, "Captions in Spanish", "“esto es lo nuevo ahora”", ""), (row.Status, row.Title, row.Detail, row.Reason));
+        Assert.Equal("Ask Claude", editor.UndoActionName);
+        var stored = Assert.Single(editor.Project.CaptionTranslations);
+        Assert.Equal(("es", (string?)null, "w2", "w5"), (stored.Language, stored.ClipId, stored.StartWordId, stored.EndWordId));
+        Assert.Equal(4, editor.Project.SchemaVersion);
+        // Preview and export show the translation over those words; the rest stay.
+        var first = Array.IndexOf(plain, "word2");
+        Assert.Equal(plain[..first].Concat(["esto", "es", "lo", "nuevo", "ahora"]).Concat(plain[(first + 4)..]), ShownWords(editor));
+        Assert.NotEqual(plainFingerprint, ExportFingerprint.For(editor.Project, new ExportTarget.FullEdit()));
+        // One undo step for the answer; the row's Undo; Undo all.
+        editor.Undo();
+        Assert.Empty(editor.Project.CaptionTranslations);
+        editor.Redo();
+        Assert.Single(editor.Project.CaptionTranslations);
+        Assert.True(editor.UndoAskClaudeRow(row.Id));
+        Assert.Empty(editor.Project.CaptionTranslations);
+        Assert.Equal(AskClaudeRowStatus.Undone, row.Status);
+        Assert.Equal("Undo Captions in Spanish", editor.UndoActionName);
+        Assert.Equal(plain, ShownWords(editor));
+        editor.Undo();
+        Assert.Single(editor.Project.CaptionTranslations);
+    }
+
     /// <summary>"Play this clip at 1.25×" on a clip: the stretch covers the whole clip (within 0.25 s at each end), so it applies as the
     /// clip's speed in the answer's one undo step, and its Undo takes the speed back.</summary>
     /// <summary>With zooms and music rendering on Windows (track/v2-win-render-2): a zoom on a clip applies in the answer's undo step and

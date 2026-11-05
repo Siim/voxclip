@@ -64,8 +64,6 @@ public static class VoiceLabRenderContract
     {
         if (project.ContextDemo is { Placements.Length: > 0 })
             throw new VoxClipException(VoxClipErrorCode.ExportFailed, ContextDemoUnsupportedMessage);
-        if (project.CaptionTranslations.Count > 0)
-            throw new VoxClipException(VoxClipErrorCode.ExportFailed, VoxClip.Core.Domain.Captions.CaptionTranslations.ExportUnsupportedMessage);
     }
 
     public static VoiceLabPreparedRender Prepare(Project project, VoiceLabOutputScope scope, VoiceLabLabelPosition labelPosition)

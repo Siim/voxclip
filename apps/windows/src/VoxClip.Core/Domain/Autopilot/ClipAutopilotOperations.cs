@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.ContextDemo;
 using VoxClip.Core.Domain.Editing;
@@ -51,7 +52,8 @@ public abstract record ClipAutopilotAction
     /// <summary>A stretch played at <c>Rate</c> (source seconds). Over a whole clip it sets that clip's speed; over part of one it stays
     /// pending and the editor offers the speed for the whole clip.</summary>
     public sealed record Stretch(string? ClipId, double Start, double End, double Rate) : ClipAutopilotAction;
-    /// <summary>Translated captions for the words; pending, no platform renders them yet.</summary>
+    /// <summary>Translated captions for the words (ai.md §18.2): applied as the project's <c>captionTranslations</c>; the voice and
+    /// transcript stay.</summary>
     public sealed record TranslateCaptions(string? ClipId, int StartWord, int EndWord, string Language, string Text) : ClipAutopilotAction;
     /// <summary>Duck the clip's music under the voice.</summary>
     public sealed record MusicDucking(string? ClipId, bool On) : ClipAutopilotAction;
@@ -171,10 +173,9 @@ public static partial class ClipAutopilotMapping
     /// <summary>Applies what the editor can, in order, to a copy of <paramref name="project"/>: edits, captions, zooms (motion cues, set
     /// once at the end with the v4 upgrade, replacing a cue with the same id, as Mac ClipAutopilotOperations.apply), share text, the
     /// look and speed, the hook as the clip's title card (timed on the clip as the operations before it left it), Ask Claude's effects,
-    /// a stretch over a whole clip as its speed, and ducking music that exists. Stretches over part of a clip, translated captions,
-    /// rewrites and music come back as pending: a clip plays at one speed, translated captions are not rendered yet, a rewrite needs a
-    /// paid voice, and music needs a source to fetch from (the App's Music section picks it). Pure: one undo step is the caller's
-    /// choice.</summary>
+    /// a stretch over a whole clip as its speed, translated captions, and ducking music that exists. Stretches over part of a clip,
+    /// rewrites and music come back as pending: a clip plays at one speed, a rewrite needs a paid voice, and music needs a source to
+    /// fetch from (the App's Music section picks it). Pure: one undo step is the caller's choice.</summary>
     public static (Project Project, IReadOnlyList<ClipAutopilotOperation> Pending) Apply(IReadOnlyList<ClipAutopilotOperation> operations, Project project)
     {
         var result = project;
@@ -204,6 +205,9 @@ public static partial class ClipAutopilotMapping
                 case ClipAutopilotAction.Stretch stretch:
                     if (ClipControlsProject.WholeClip(stretch.ClipId, stretch.Start, stretch.End, result) is { } whole) result = ClipControlsProject.SettingSpeed(stretch.Rate, whole, result);
                     else pending.Add(operation);
+                    break;
+                case ClipAutopilotAction.TranslateCaptions translate:
+                    result = CaptionTranslations.Translating(translate.StartWord, translate.EndWord, translate.ClipId, translate.Language, translate.Text, result);
                     break;
                 case ClipAutopilotAction.MusicDucking ducking:
                     if (result.Music.FirstOrDefault(entry => entry.ClipId == ducking.ClipId) is { } music) result = MusicProject.Setting(music with { Ducking = ducking.On }, ducking.ClipId, result);

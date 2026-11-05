@@ -70,12 +70,15 @@ internal static class ExportFingerprint
         // export builds no caption track, so caption-only inputs cannot change the render.
         project = VoxClip.Core.Domain.Clips.ClipCaptionStyles.Rendered(project, clipId);
         var captionsOn = project.Captions.StyleId != "off";
+        // Translated captions replace their words' text (ai.md §18.2); without any the words, and so the hash, are unchanged.
+        var captionWords = state is null || !captionsOn ? null : VoxClip.Core.Domain.Captions.CaptionTranslations.Applying(EditingEngine.CaptionWords(state, plan),
+            project, clipId, VoxClip.Core.Domain.Effects.ClipEffects.Rendered(project, clipId));
         var input = JsonSerializer.SerializeToElement(new
         {
             Version = 2, project.Media.Source.ContentKey,
             Source = new { media.DurationSeconds, media.OrientedSize, media.Video?.RotationDegrees,
                 FrameRate = media.Video?.FrameRate, SampleRate = media.Audio?.SampleRate, Channels = media.Audio?.Channels },
-            Plan = plan, CaptionWords = state is null || !captionsOn ? null : EditingEngine.CaptionWords(state, plan),
+            Plan = plan, CaptionWords = captionWords,
             Language = captionsOn ? state?.Transcript.Language : null,
             Captions = captionsOn ? (object)new { project.Captions.StyleId,
                 Overrides = project.Captions.Overrides.ValueKind == JsonValueKind.Undefined ? JsonSerializer.SerializeToElement(new { }) : project.Captions.Overrides,

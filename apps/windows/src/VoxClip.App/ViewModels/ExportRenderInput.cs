@@ -1,6 +1,9 @@
+using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
+using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Domain.VoiceLab;
 
 namespace VoxClip.App.ViewModels;
 
@@ -28,4 +31,8 @@ internal static class ExportRenderInput
     /// <summary>The render's encoder settings; a clip's controls give it its own frame (design §6.9).</summary>
     internal static OutputSpec Output(MediaInfo media, ProjectExport export, ProjectClipControls? controls = null)
         => ClipControlsRendering.Output(media.OrientedSize, media.Video?.FrameRate ?? 30, export.Aspect, export.Quality, controls);
+    /// <summary>The caption words a preview or export of the scoped <paramref name="project"/> shows: the Voice Lab plan's or the edit
+    /// plan's, bleeped words masked, then the scope's translated captions (ai.md §18.2).</summary>
+    internal static IReadOnlyList<CaptionWord> CaptionWords(Project project, EditState state, EditPlan plan, VoiceLabOutputPlan? voice, IReadOnlyList<ClipEffect>? effects)
+        => CaptionTranslations.Shown(voice?.Captions ?? EditingEngine.CaptionWords(state, plan), project, project.Edits.ActiveClipId, effects);
 }

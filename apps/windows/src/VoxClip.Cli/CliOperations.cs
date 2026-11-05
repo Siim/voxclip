@@ -9,7 +9,6 @@ using System.Text.Json.Serialization.Metadata;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
-using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.Transcript;
@@ -150,8 +149,9 @@ internal static class CliOperations
         CaptionTrack? captions = null;
         if (captionStyle is not null)
         {
-            var words = ClipEffectsRendering.MaskingBleeps(voice?.Prepared.OutputPlan.Captions ?? EditingEngine.CaptionWords(State(project), plan),
-                clip?.Effects?.Effects);
+            // Bleeped words masked, then the scope's translated captions (ai.md §18.2).
+            var words = CaptionTranslations.Shown(voice?.Prepared.OutputPlan.Captions ?? EditingEngine.CaptionWords(State(project), plan),
+                project, project.Edits.ActiveClipId, clip?.Effects?.Effects);
             captions = await CaptionEngine.BuildAsync(new(captionStyle, ClipCaptionStyles.Settings(project, exportedClip) with { StyleId = captionStyle.Id }, size,
                 words, project.Transcript?.Language,
                 voice?.Prepared.OutputPlan.Duration ?? plan.Duration), ServicesMergeAdapter.GlyphShaper(), null, ct).ConfigureAwait(false);
