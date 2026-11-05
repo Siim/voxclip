@@ -332,7 +332,8 @@ import VoxClipCore
 }
 
 /// While a blur, pixelate, arrow or circle is being adjusted, its box draws on the viewer and drags to move (one undo step
-/// on release). The box maps through the same crop as the export.
+/// on release). The box maps through the open clip's flip and quarter turns (`ProjectClipControls.mapRect`) and the same
+/// crop as the export, so it sits on the rendered effect; a drag maps back to the rect as filmed, which is what is stored.
 @MainActor struct AskClaudeRectOverlay: View {
     let model: EditorModel
     let stage: CGSize
@@ -350,12 +351,10 @@ import VoxClipCore
                     .onChanged { offset = $0.translation }
                     .onEnded { value in
                         offset = .zero
-                        let scale = Self.pictureScale(project: model.project, stage: stage)
+                        let project = model.project, stage = stage
                         model.adjustAskClaudeEffect(id, name: "Move \(EditorModel.rowTitle(ClipAutopilotOperation(id: id, decision: .blur, action: .effect(effect), reason: "")))") { effect in
-                            guard var moved = effect.rect else { return }
-                            moved.x += value.translation.width / scale.width
-                            moved.y += value.translation.height / scale.height
-                            effect.rect = moved.clamped
+                            guard let filmed = effect.rect else { return }
+                            effect.rect = Self.dragged(filmed, by: value.translation, project: project, stage: stage)
                         }
                     })
                 .accessibilityLabel("Effect box; drag to move it")
@@ -363,9 +362,16 @@ import VoxClipCore
         }
     }
 
-    /// Stage points per unit of picture space: the export crop of the oriented source, scaled to the stage.
+    /// The open clip's controls, which flip and turn the picture the viewer shows; nil on Full Take.
+    static func controls(_ project: Project) -> ProjectClipControls? {
+        project.edits.activeClipId.flatMap { ClipControlsProject.controls(for: $0, in: project) }
+    }
+
+    /// Stage points per unit of picture space: the export crop of the oriented source, turned as the clip turns it, scaled
+    /// to the stage.
     static func pictureScale(project: Project, stage: CGSize) -> CGSize {
-        let source = project.media.source.video.map(OutputSizing.orientedSize) ?? PixelSize(width: 1920, height: 1080)
+        let oriented = project.media.source.video.map(OutputSizing.orientedSize) ?? PixelSize(width: 1920, height: 1080)
+        let source = controls(project)?.isQuarterTurn == true ? PixelSize(width: oriented.height, height: oriented.width) : oriented
         let ratio = ViewerSection.ratio(project)
         let sourceWidth = Double(source.width), sourceHeight = Double(source.height)
         let cropWidth = sourceWidth / sourceHeight > ratio ? sourceHeight * ratio : sourceWidth
@@ -373,13 +379,27 @@ import VoxClipCore
         return CGSize(width: stage.width * sourceWidth / cropWidth, height: stage.height * sourceHeight / cropHeight)
     }
 
-    /// The rect on the stage, top-left origin; nil when it falls outside the shown crop.
-    static func frame(_ rect: ClipEffect.Rect, project: Project, stage: CGSize) -> CGRect? {
+    /// A rect of the source as filmed on the stage, top-left origin, where the render draws it; nil when it falls outside
+    /// the shown crop.
+    static func frame(_ filmed: ClipEffect.Rect, project: Project, stage: CGSize) -> CGRect? {
         guard stage.width > 0, stage.height > 0 else { return nil }
+        let rect = controls(project)?.mapRect(filmed) ?? filmed
         let scale = pictureScale(project: project, stage: stage)
         // The crop is centred, so picture 0.5 sits at the stage's centre.
         let x = stage.width / 2 + (rect.x - 0.5) * scale.width, y = stage.height / 2 + (rect.y - 0.5) * scale.height
         let frame = CGRect(x: x, y: y, width: rect.width * scale.width, height: rect.height * scale.height)
         return frame.intersects(CGRect(origin: .zero, size: stage)) ? frame : nil
+    }
+
+    /// The rect as filmed after its box is dragged by `translation` stage points on the flipped and turned picture,
+    /// kept inside the frame.
+    static func dragged(_ filmed: ClipEffect.Rect, by translation: CGSize, project: Project, stage: CGSize) -> ClipEffect.Rect {
+        let controls = controls(project)
+        let scale = pictureScale(project: project, stage: stage)
+        guard scale.width > 0, scale.height > 0 else { return filmed }
+        var shown = controls?.mapRect(filmed) ?? filmed
+        shown.x += translation.width / scale.width
+        shown.y += translation.height / scale.height
+        return (controls?.unmapRect(shown.clamped) ?? shown.clamped).clamped
     }
 }

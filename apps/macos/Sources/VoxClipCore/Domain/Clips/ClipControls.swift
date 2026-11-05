@@ -388,6 +388,28 @@ extension ProjectClipControls {
         let x = min(first.x, second.x), y = min(first.y, second.y)
         return ClipEffect.Rect(x: x, y: y, width: max(first.x, second.x) - x, height: max(first.y, second.y) - y)
     }
+
+    /// The inverse of `mapAnchor`: the point of the source as filmed that lands at `(x, y)` of the flipped and turned
+    /// picture.
+    public func unmapAnchor(x: Double, y: Double) -> (x: Double, y: Double) {
+        var point = (x: x, y: y)
+        switch rotationDegrees {
+        case 90: point = (x: point.y, y: 1 - point.x)
+        case 180: point = (x: 1 - point.x, y: 1 - point.y)
+        case 270: point = (x: 1 - point.y, y: point.x)
+        default: break
+        }
+        return (x: flipHorizontal ? 1 - point.x : point.x, y: point.y)
+    }
+
+    /// The inverse of `mapRect`: the region of the source as filmed under a region of the flipped and turned picture, so
+    /// a box dragged on the viewer is stored as filmed (design.md §6.8 Adjust).
+    public func unmapRect(_ rect: ClipEffect.Rect) -> ClipEffect.Rect {
+        guard flipHorizontal || rotationDegrees != 0 else { return rect }
+        let first = unmapAnchor(x: rect.x, y: rect.y), second = unmapAnchor(x: rect.x + rect.width, y: rect.y + rect.height)
+        let x = min(first.x, second.x), y = min(first.y, second.y)
+        return ClipEffect.Rect(x: x, y: y, width: max(first.x, second.x) - x, height: max(first.y, second.y) - y)
+    }
 }
 
 /// A look's numbers (design.md §6.9): a 3 × 3 colour matrix with a bias, then an optional cubic per channel

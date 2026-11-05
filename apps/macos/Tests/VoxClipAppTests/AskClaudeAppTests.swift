@@ -3,7 +3,9 @@ import AppKit
 import Foundation
 import SwiftUI
 import Testing
+import CoreImage
 @testable import VoxClipCore
+@testable import VoxClipMedia
 @testable import VoxClip
 
 /// A Claude Code fake on a plan that answers Ask Claude with `reply`.
@@ -248,6 +250,92 @@ private actor AskFixtureConnector: LLMConnector {
         #expect(!editor.canAskClaude)
         editor.openAskClaudeOnSelection()
         #expect(editor.askClaude.selection == nil)
+    }
+
+    /// Adjust on a flipped or turned clip (design.md §6.8, §6.9): the viewer's box maps through the clip's flip and quarter
+    /// turns, so it sits where the render draws the blur, and a drag maps back to the rect as filmed, which is what is
+    /// stored. Dragging the box by a distance moves the drawn box by exactly that distance.
+    @Test(arguments: [(true, 0), (true, 90), (false, 270)])
+    func theAdjustBoxFollowsAFlippedOrTurnedClipBothWays(flip: Bool, degrees: Int) throws {
+        let shared = try SharedResources.locate()
+        var project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
+        project.export.aspect = .landscape
+        project = try ClipControlsProject.setting(ProjectClipControls(clipId: "clip-main", flipHorizontal: flip, rotationDegrees: degrees), in: project)
+        #expect(project.edits.activeClipId == "clip-main")
+        let stage = CGSize(width: 320, height: 180)
+        let filmed = ClipEffect.Rect(x: 0.3, y: 0.35, width: 0.1, height: 0.1)
+        let controls = try #require(ClipControlsProject.controls(for: "clip-main", in: project))
+        let shown = controls.mapRect(filmed)
+        let scale = AskClaudeRectOverlay.pictureScale(project: project, stage: stage)
+        let frame = try #require(AskClaudeRectOverlay.frame(filmed, project: project, stage: stage))
+        // Where the render draws it: the flipped and turned rect through the centred crop.
+        #expect(abs(frame.midX - (stage.width / 2 + (shown.midX - 0.5) * scale.width)) < 1e-6)
+        #expect(abs(frame.midY - (stage.height / 2 + (shown.midY - 0.5) * scale.height)) < 1e-6)
+        if flip, degrees == 0 { #expect(abs(frame.midX - (160 + 0.15 * 320)) < 1e-6, "mirrored to the right of the centre") }
+        // A drag on the stage moves the drawn box by the drag and stores the rect as filmed.
+        let drag = CGSize(width: 12, height: -8)
+        let moved = AskClaudeRectOverlay.dragged(filmed, by: drag, project: project, stage: stage)
+        let after = try #require(AskClaudeRectOverlay.frame(moved, project: project, stage: stage))
+        #expect(abs(after.midX - (frame.midX + drag.width)) < 1e-6 && abs(after.midY - (frame.midY + drag.height)) < 1e-6, "\(after) vs \(frame)")
+        #expect(abs(moved.width - filmed.width) < 1e-9 && abs(moved.height - filmed.height) < 1e-9)
+        // Unflipped, the same drag would have moved the stored rect the other way (or across) on the source.
+        let naive = ClipEffect.Rect(x: filmed.x + drag.width / scale.width, y: filmed.y + drag.height / scale.height, width: filmed.width, height: filmed.height)
+        #expect(abs(naive.x - moved.x) > 1e-3 || abs(naive.y - moved.y) > 1e-3)
+    }
+
+    /// The box Adjust draws on the viewer sits on the blur the render draws (the compositor's own steps: orient, crop,
+    /// `EffectFrames.picture`), on a flipped clip and a flipped and turned one.
+    @Test(arguments: [(true, 0), (true, 90)])
+    func theAdjustBoxSitsOnTheRenderedBlur(flip: Bool, degrees: Int) throws {
+        let shared = try SharedResources.locate()
+        var project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
+        project.export.aspect = .landscape
+        let controls = ProjectClipControls(clipId: "clip-main", flipHorizontal: flip, rotationDegrees: degrees)
+        project = try ClipControlsProject.setting(controls, in: project)
+        let video = try #require(project.media.source.video)
+        let output = CGSize(width: 640, height: 360)
+        // A fine checkerboard the size of the source as filmed, so the blur changes every pixel it covers.
+        let source = CIFilter(name: "CICheckerboardGenerator", parameters: ["inputColor0": CIColor(red: 0.9, green: 0.8, blue: 0.2),
+            "inputColor1": CIColor(red: 0.1, green: 0.2, blue: 0.5), "inputWidth": 12, "inputCenter": CIVector(x: 0, y: 0), "inputSharpness": 1])!
+            .outputImage!.cropped(to: CGRect(x: 0, y: 0, width: video.width, height: video.height))
+        let oriented = ClipPicture.orient(source, controls: controls)
+        let crop = FrameCompositor.centerCrop(source: oriented.extent, output: output)
+        let plain = CompositionFrameGeometry.fill(oriented, crop: crop, output: output)
+        let filmed = ClipEffect.Rect(x: 0.45, y: 0.3, width: 0.1, height: 0.1)
+        let blur = ClipEffect(id: "fx-blur-1", clipId: "clip-main", kind: .blur, start: 0, end: 4, rect: filmed,
+                              tracking: ClipEffect.Tracking.none, track: [])
+        let frames = EffectFrames(input: ClipEffectsRenderInput(effects: [blur], soundURLs: [:]))
+        let blurred = frames.picture(plain, source: oriented.extent, crop: crop, output: output, time: 1, controls: controls)
+        let context = CIContext(options: [.workingColorSpace: NSNull()])
+        let width = Int(output.width), height = Int(output.height)
+        func pixels(_ image: CIImage) -> [UInt8] {
+            var rgba = [UInt8](repeating: 0, count: width * height * 4)
+            context.render(image, toBitmap: &rgba, rowBytes: width * 4, bounds: CGRect(origin: .zero, size: output), format: .RGBA8,
+                           colorSpace: CGColorSpace(name: CGColorSpace.sRGB))
+            return rgba
+        }
+        let before = pixels(plain), after = pixels(blurred)
+        // The changed pixels' bounds, top-left origin like the viewer's stage.
+        var changed = CGRect.null
+        for row in 0..<height { for column in 0..<width {
+            let index = (row * width + column) * 4
+            if (0..<3).contains(where: { abs(Int(before[index + $0]) - Int(after[index + $0])) > 8 }) {
+                changed = changed.union(CGRect(x: column, y: row, width: 1, height: 1))
+            }
+        } }
+        let box = try #require(AskClaudeRectOverlay.frame(filmed, project: project, stage: output))
+        #expect(!changed.isNull)
+        #expect(abs(changed.minX - box.minX) <= 2 && abs(changed.maxX - box.maxX) <= 2 && abs(changed.minY - box.minY) <= 2
+                && abs(changed.maxY - box.maxY) <= 2, "blur \(changed) vs box \(box)")
+        // The picture with the viewer's box on it, for the review.
+        let space = CGColorSpace(name: CGColorSpace.sRGB)!
+        let graphics = try #require(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: space,
+                                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        graphics.draw(try #require(context.createCGImage(blurred, from: CGRect(origin: .zero, size: output), format: .RGBA8, colorSpace: space)),
+                      in: CGRect(origin: .zero, size: output))
+        graphics.setStrokeColor(CGColor(srgbRed: 1, green: 0.82, blue: 0.04, alpha: 1)); graphics.setLineWidth(2); graphics.setLineDash(phase: 0, lengths: [6, 3])
+        graphics.stroke(CGRect(x: box.minX, y: output.height - box.maxY, width: box.width, height: box.height).insetBy(dx: 1, dy: 1))
+        try ReviewCaptures.write(try #require(graphics.makeImage()), name: degrees == 0 ? "adjust-box-flipped" : "adjust-box-flipped-turned-\(degrees)")
     }
 }
 #endif

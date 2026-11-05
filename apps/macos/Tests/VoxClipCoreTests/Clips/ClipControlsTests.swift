@@ -252,6 +252,19 @@ import Testing
         #expect(map(false, 270) == [0.2, 0.6, 0.4, 0.3])
     }
 
+    /// Adjust drags a box on the flipped and turned picture and stores it as filmed: `unmapRect` undoes `mapRect` for
+    /// every flip and quarter turn.
+    @Test(arguments: [false, true], [0, 90, 180, 270])
+    func boxesMapBackToTheSourceAsFilmed(flip: Bool, degrees: Int) {
+        let controls = ProjectClipControls(clipId: "a", flipHorizontal: flip, rotationDegrees: degrees)
+        let box = ClipEffect.Rect(x: 0.1, y: 0.2, width: 0.3, height: 0.4)
+        let back = controls.unmapRect(controls.mapRect(box))
+        #expect(abs(back.x - box.x) < 1e-12 && abs(back.y - box.y) < 1e-12 && abs(back.width - box.width) < 1e-12 && abs(back.height - box.height) < 1e-12)
+        let point = controls.unmapAnchor(x: 0.7, y: 0.25)
+        let there = controls.mapAnchor(x: point.x, y: point.y)
+        #expect(abs(there.x - 0.7) < 1e-12 && abs(there.y - 0.25) < 1e-12)
+    }
+
     /// The pure steps Make it postable and Ask Claude use: a look or a speed changes only that control, normalised, and a
     /// stretch counts as the whole clip within 0.25 s of each end.
     @Test func lookAndSpeedStepsKeepTheOtherControlsAndAStretchFindsItsWholeClip() throws {
