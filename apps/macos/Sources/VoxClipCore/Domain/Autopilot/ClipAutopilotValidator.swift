@@ -99,8 +99,12 @@ public enum ClipAutopilotValidator {
         for (index, plan) in plans.enumerated() where plan == nil {
             repairs.append(.init(field: "plans[\(index)]", action: .dropped, detail: failures[index] ?? "the plan has no words of the clip"))
         }
-        var ranked = plans.enumerated().compactMap { index, plan in plan.map { (index, $0) } }
-            .sorted { $0.1.score != $1.1.score ? $0.1.score > $1.1.score : $0.0 < $1.0 }.map(\.1)
+        var checked: [(order: Int, plan: ClipAutopilotPlan)] = []
+        for (order, plan) in plans.enumerated() { if let plan { checked.append((order, plan)) } }
+        checked.sort { left, right in
+            left.plan.score == right.plan.score ? left.order < right.order : left.plan.score > right.plan.score
+        }
+        var ranked: [ClipAutopilotPlan] = checked.map(\.plan)
         var first = false
         for index in ranked.indices where ranked[index].verdict == .postFirst {
             if first {
