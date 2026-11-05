@@ -31,7 +31,8 @@ import VoxClipCore
     static func pricedID(_ id: String) -> Bool { id.hasPrefix("takeQuote-") || id.hasPrefix("approveTakeQuote") || id.hasPrefix("keepFixing") }
 
     func run() async -> MakeItRewriteOutcome {
-        guard editor.app.voiceLabRewriteEnabled else {
+        let voiceLabOn: Bool = editor.app.voiceLabRewriteEnabled
+        guard voiceLabOn else {
             return MakeItRewriteOutcome(result: .unavailable("Turn on Voice Lab and make your voice to voice rewrites. Nothing was sent."))
         }
         if let open = editor.openRewrite, open.isOpen {
