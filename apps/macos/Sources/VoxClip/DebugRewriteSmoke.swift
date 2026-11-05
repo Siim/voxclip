@@ -1289,7 +1289,7 @@ import VoxClipCore
             // A take whose only issue is its join is chosen with it (ADR-R39): no phrase needs its own click.
             try await harness.finish()
         },
-    ] + ownTakeScenarios + guardScenarios + makeItScenarios + askClaudeScenarios + clipControlsScenarios + toneScenarios + claudeModeScenarios }
+    ] + ownTakeScenarios + guardScenarios + rebuildScenarios + makeItScenarios + askClaudeScenarios + clipControlsScenarios + toneScenarios + claudeModeScenarios }
 
     /// S16's take: the base script twelve times over, about nine minutes.
     nonisolated static let longTakeScript = Array(repeating: baseScript, count: longTakeRepeats).joined(separator: " ")

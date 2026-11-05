@@ -238,6 +238,20 @@ private struct RebuildKeys: KeyProvider {
         #expect(state.line == "Removed the old voice. Rewrite uses your rebuilt voice. Existing takes stay playable and labelled.")
     }
 
+    @Test func rewriteStartsWithTheVoiceSettingsChose() throws {
+        let json = try Data(contentsOf: SharedResources.locate().root.appendingPathComponent("fixtures/voice-lab/consent-record.json"))
+        let base = try JSONDecoder().decode(VoiceConsentRecord.self, from: json)
+        func voice(_ id: String) throws -> VoiceConsentRecord {
+            var object = try #require(JSONSerialization.jsonObject(with: json) as? [String: Any]); object["recordId"] = id
+            return try JSONDecoder().decode(VoiceConsentRecord.self, from: JSONSerialization.data(withJSONObject: object))
+        }
+        let newer = try voice("22222222-2222-4222-8222-222222222222"), older = base
+        #expect(RewriteGenerationSession.initialVoice([newer, older], preferred: nil) == newer.id)
+        #expect(RewriteGenerationSession.initialVoice([newer, older], preferred: older.id) == older.id)
+        #expect(RewriteGenerationSession.initialVoice([newer, older], preferred: "33333333-3333-4333-8333-333333333333") == newer.id, "a removed voice falls back")
+        #expect(RewriteGenerationSession.initialVoice([], preferred: older.id) == nil)
+    }
+
     @Test func tooLittleVerifiedSpeechNamesTheNextStep() async throws {
         RebuildHTTP.calls.withLock { $0 = [] }
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("rebuild-\(UUID())")
