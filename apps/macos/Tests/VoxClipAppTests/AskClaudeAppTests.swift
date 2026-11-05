@@ -301,7 +301,8 @@ private actor AskFixtureConnector: LLMConnector {
         let oriented = ClipPicture.orient(source, controls: controls)
         let crop = FrameCompositor.centerCrop(source: oriented.extent, output: output)
         let plain = CompositionFrameGeometry.fill(oriented, crop: crop, output: output)
-        let filmed = ClipEffect.Rect(x: 0.45, y: 0.3, width: 0.1, height: 0.1)
+        // Off the centre line, so a box drawn unflipped would miss the blur.
+        let filmed = ClipEffect.Rect(x: 0.38, y: 0.3, width: 0.1, height: 0.1)
         let blur = ClipEffect(id: "fx-blur-1", clipId: "clip-main", kind: .blur, start: 0, end: 4, rect: filmed,
                               tracking: ClipEffect.Tracking.none, track: [])
         let frames = EffectFrames(input: ClipEffectsRenderInput(effects: [blur], soundURLs: [:]))
