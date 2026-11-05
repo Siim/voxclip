@@ -1,5 +1,38 @@
 # Windows fixed contracts
 
+### 2026-11-05 — Windows: per-clip caption looks, background music, zooms (track/v2-win-render-2)
+
+Twin of the Mac entries music, clip-finish step 1 (each clip's caption look) and the compositor's motion cues. Spec: doc/design.md §6.6, §6.7; doc/spec/music.md §4, §6, §8.
+
+- **Each clip's caption look** (Core `Domain/Clips/ClipCaptionStyles.cs` on the Mac package's twin `ClipStyle.CaptionPickFor`, `ClipCaptionLooks.CaptionsFor`):
+  - Preview (`EditorPage.SnapshotAsync`), export, Export all, the SRT, `ExportLedger`, `ExportFingerprint` and the CLI (`--clip`, else the active clip) resolve the scope's captions through `ClipCaptionStyles.Settings`/`Rendered`: the clip's pick (style and overrides) where it applies, else the project's captions. A pick whose style the library lacks falls back to the project's.
+  - A style chosen with a clip open is that clip's own pick (`by: "user"`); with none open it is the project default and fixes the clip style's captions. Choosing the style a clip already shows changes nothing. Make it postable records its look as the clip's pick (`RecordingLook`, Mac `recordingLook`). Fine tune edits the open clip's own pick (`Tuning`, Mac `mutateCaptions`); positions stay the project's.
+  - Taken verbatim from track/v2-mac-clip-finish 6dce8aa9: `ClipStyle.cs`, `ProjectValidation.cs`, `CaptionLookVectorTests`, `caption-look-cases.json`, `project.schema.json`, the two generators and the schema test.
+  - Deleted: `ClipStyleCard.ApplyPick`, `EditorViewModel.ApplyCaptionPick` (a pick is no longer copied into `captions.styleId`).
+- **Background music renders** (Core `Domain/Music/MusicMix.cs`; Media `Audio/MusicBed.cs`, `ClipAudio.cs`, `Exporter.cs`, `PreviewEngine.cs`):
+  - The scope's track mixes under the edited voice on the rendered clock with the Mac's levels, ducking, fades and loops. `shared/fixtures/music/music-mix-cases.json` (`voxclip-music-mix-cases/1`, 35 cases) comes from `tools/fixtures/music/generate_music_mix.py`, run by `check_drift.py`.
+  - Deleted: `MusicProject.ExportUnsupportedMessage`, the music refusal in `RequireWindowsVisualSupport` and its test. New stops: a missing file ("Export stopped: the music file {name} is missing. Your edits are saved.") and a video with no sound ("Export stopped: this video has no sound, so Windows can't add its music yet. Remove the music, or export it on a Mac. Your edits are saved."). Preview plays the voice alone in both cases.
+- **App: music** (`Controls/MusicSection.cs`, `ViewModels/MusicPanelModel.cs`, `EditorViewModel.Music.cs`, `Pages/EditorPage.Music.cs`; Core `Domain/Music/MusicSuggestion.cs`, `Services/Music/MusicSources.cs`):
+  - The Music section under Captions: Claude's best three across Openverse, the Music folder and Eleven Music, each with ▶, a badge and Use or "Make · $x" (priced from `voice-lab.json`, `elevenlabs/musicCompose/second`; the click is the approval, recorded in the spend ledger), search, Add a file…, Volume, Remove and a footer naming the next step.
+  - Make it postable's "Picking music…" step: the plan's mood, the first free track, else a generated one within what the run's cap has left; the review row has ▶, Undo and Change. The post text carries the credit line.
+- **Zooms render** (Core `MotionCueRendering`, `MotionCropTransform`; Media `ClipPicture.Motion`, `FrameComposer.FinishClipFrame`):
+  - The clip's motion cues crop the finished picture by their smoothstep-eased keyframes after orientation, look and censors and before overlays (Mac order), in output coordinates. Export samples with Mitchell, preview bilinear; a preview holds still when Windows' animation effects are off (`ClipRenderInput.ReduceMotionInPreview`).
+  - `ClipAutopilotMapping.Apply` and Make it postable apply zooms (`WithMotionCues`, v4 upgrade); the review row is "Zoom to 1.20×" with ▶ (1 s before) and Undo (`MakeItInverse.Motion`). The fingerprint hashes the clip's cues.
+  - Refusal narrowed: only context-demo placements stop a render or export, with `VoiceLabRenderContract.ContextDemoUnsupportedMessage`: "Windows cannot render or export context-demo placements yet. Your media and saved edits are unchanged."
+- **Tests:**
+  - Core `ClipCaptionStyleTests` (3), `CaptionLookVectorTests` (from the Mac package), `MusicMixVectorTests` (3), `MusicSourcesTests` (6), `MotionCueRenderingTests` (3); Media `ClipCaptionStyleCliTests` (2), `MusicBedTests` (6), `MotionCueRenderTests` (2); win-ui `MusicPanelTests` (6). Native E2E `CliExportsAClipWithItsMusicUnderTheVoice` (no parity report).
+  - Updated: `CaptionPickTests`, `ClipStyleViewModelTests`, `MakeItPostableTests`, `ClipAutopilotTests`, `MusicProjectWireTests`, `WindowsV4CallerTests`, `WindowsV4CliCallerTests`, `WindowsV4ExportHistoryTests`.
+  - **Red checks.** Ignoring picks fails 2 Media tests; no ducking fails 2 of 6 bed tests; no music step fails 3 tests; no motion crop fails both pixel tests.
+- **Allowlists.** `ReleaseBoundary update` on VoxClip, Core, Media; declarations plus five reviewed wire literals (`force_instrumental`, `foreign_landing_url`, `mp3_44100_128`, `music_length_ms`, `music_v1`). The CLI is unchanged.
+- **Deviations:** no Music folder setting (default `Music\VoxClip` plus Add a file…) and no timeline M1 lane; Make it without a chosen clip style writes the look to the project's captions; the Make it cap prices the voice and a generated track uses what is left.
+- **Owed:** context-demo placements (screen-recording layers upright, placement and timing; the refusal stays exact and tested); the Mac replay of `music-mix-cases.json`.
+- **Verification** (macOS host, Release, serial, `VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`):
+  - App type-check 0 warnings, 0 errors; `check-xaml.py` 0 problems.
+  - Core 3,185 total, 0 failed, 29 skipped. Portable Media 982, 0 failed, 5 skipped. win-ui 1,297, 0 failed, 5 skipped, `*ReleaseSurrogate*` included.
+  - `check_drift.py` exit 0 (music-mix and caption-look vectors identical); schema tests 28 OK and the schema generators leave no diff; `tools/voice-lab` OK.
+  - `env -i … voxclip-cli.dll --runtime-terms --json` exits 0. No E2E parity report added (CI still validates ten).
+- **Native, left to hosted Windows CI:** `CliExportsAClipWithItsMusicUnderTheVoice`; FFmpeg decode of MP3/M4A music and `MusicFiles` probing; the zoom through the real decoder (`NativePipelineTests`); WinUI rendering of the Music section, the `MediaPlayer` audition and the file picker; the Captions panel's source line and Fine tune on a clip's pick; the review's zoom and music rows.
+
 ### 2026-11-05 — Windows: Claude does it all, the Rewrite-as strip and the review's tone row (track/v2-win-make-it)
 
 Twin of the Mac entries claude-mode and rewrite-tones (the strip, saved tones and the review's tone row). Spec: doc/design.md §6.3.1, §6.6, §6.7.
