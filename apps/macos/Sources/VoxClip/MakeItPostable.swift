@@ -108,6 +108,10 @@ enum MakeItInverse {
     case share(clipID: String, previous: String?)
     case music(clipID: String?, previous: ProjectMusic?)
     case voice(segments: [String])
+    /// The clip's look before Claude's (or the creator's) choice; the speed and the other controls stay.
+    case look(clipID: String, previous: ClipLook)
+    /// The clip's speed before the choice; the look and the other controls stay.
+    case speed(clipID: String, previous: Double)
 }
 
 /// Where a decision's Change goes.
@@ -115,8 +119,8 @@ enum MakeItChange: Equatable {
     case captions, music, motion, rename, post, hook
     case phrase(ClosedRange<Int>)
     case question(Int)
-    /// A decision VoxClip can't render yet (the look, the speed): Change shows the other choices in the row.
-    case pending
+    /// The clip's look or speed: Change shows the other choices as chips in the row, and a chip applies at once.
+    case look, speed
 }
 
 /// One line of the review.
@@ -150,15 +154,16 @@ struct MakeItRow: Identifiable, Equatable {
     var plan: ClipAutopilotPlan?
     var rows: [MakeItRow] = []
     var spent: Decimal = 0
-    var editedSeconds = 0.0
+    /// The clip's rendered length: its edited length divided by its speed (design.md §6.9), as the export renders it.
+    var seconds = 0.0
     var postText = ""
     var hook = ""
     var copied = false
     var exported: [URL] = []
     /// A question row whose options show.
     var openQuestion: Int?
-    /// A pending row (look, speed) whose other choices show.
-    var openPending: String?
+    /// The look or speed row whose other choices show.
+    var openChoice: String?
     @ObservationIgnored var task: Task<Void, Never>?
     @ObservationIgnored var inverses: [String: MakeItInverse] = [:]
     @ObservationIgnored var cancelled = false
@@ -445,7 +450,7 @@ extension EditorModel {
             if let row { rows.append(row) }
         }
         replace(next, name: "Make it postable")
-        run.editedSeconds = editedDuration(project.edits.clips.first { $0.id == run.clipID })
+        run.seconds = makeItRenderedSeconds(run.clipID)
         run.postText = project.share.captions[run.clipID] ?? ""
         run.hook = plan.hook
         // Rewrites, in the creator's voice, each through Rewrite's own takes.
@@ -472,7 +477,7 @@ extension EditorModel {
                                   change: .question(index), options: question.options.filter { $0 != question.answer }))
         }
         run.rows = rows
-        run.editedSeconds = editedDuration(project.edits.clips.first { $0.id == run.clipID })
+        run.seconds = makeItRenderedSeconds(run.clipID)
         run.postText = MusicCredits.postText(project.share.captions[run.clipID] ?? run.postText, music: MusicProject.entry(for: run.clipID, in: project))
     }
 
@@ -532,24 +537,46 @@ extension EditorModel {
             let previous = project.share.captions[clipID]
             project.share.captions[clipID] = text
             return (.share(clipID: clipID, previous: previous), nil)
-        case .look(_, let look):
-            // Pending: the look renderer owes muted, warm and black and white (ai.md §16.10).
-            guard look.id != .original else { return (nil, nil) }
-            return (nil, MakeItRow(id: operation.id, kind: .choice, text: "Claude chose the \(Self.lookName(look.id)) look",
-                detail: [look.reason, "Shows once looks render."].filter { !$0.isEmpty }.joined(separator: " · "), change: .pending,
-                options: ClipAutopilotPlan.LookID.allCases.filter { $0 != look.id }.map { Self.lookName($0) }))
-        case .speed(_, let speed):
-            // Pending: the clip controls package owes speed (ai.md §16.10).
-            let rate = String(format: "%.2g", speed.rate)
-            return (nil, MakeItRow(id: operation.id, kind: .choice, text: "Claude chose \(rate)× speed",
-                detail: [speed.reason, "Plays once clip speed renders."].filter { !$0.isEmpty }.joined(separator: " · "), change: .pending,
-                options: ["1×", "1.1×", "1.25×"].filter { $0 != rate + "×" }))
+        case .look(let clipID, let look):
+            // The clip's look (design.md §6.9), set by the clip controls' own rule in this same step.
+            guard let previous = ClipControlsProject.controls(for: clipID, in: project)?.look,
+                  look.id != .original || previous != .original,
+                  let changed = try? ClipControlsProject.settingLook(look.id, clipId: clipID, in: project) else { return (nil, nil) }
+            project = changed
+            let applied = previous != look.id
+            return (applied ? .look(clipID: clipID, previous: previous) : nil,
+                    MakeItRow(id: operation.id, kind: .choice, text: "Claude chose the \(Self.lookName(look.id)) look", detail: look.reason,
+                              play: clipPlay(clipID, in: project), undoable: applied, change: .look, options: Self.makeItLookOptions(except: look.id)))
+        case .speed(let clipID, let speed):
+            // The whole clip's speed, pitch kept (design.md §6.9), normalised as the Clip section's slider is.
+            guard let previous = ClipControlsProject.controls(for: clipID, in: project)?.speed,
+                  let changed = try? ClipControlsProject.settingSpeed(speed.rate, clipId: clipID, in: project),
+                  let rate = ClipControlsProject.controls(for: clipID, in: changed)?.speed, rate != 1 || previous != 1 else { return (nil, nil) }
+            project = changed
+            let applied = previous != rate
+            return (applied ? .speed(clipID: clipID, previous: previous) : nil,
+                    MakeItRow(id: operation.id, kind: .choice, text: "Claude chose \(ProjectClipControls.speedLabel(rate)) speed", detail: speed.reason,
+                              play: clipPlay(clipID, in: project), undoable: applied, change: .speed, options: Self.makeItSpeedOptions(except: rate)))
         case .rewrite, .music, .hook:
             return nil
         case .effect, .stretch, .translateCaptions, .musicDucking:
             // Ask Claude's toolbox (ai.md §18): the planner doesn't plan these, so a run applies nothing for them.
             return (nil, nil)
         }
+    }
+
+    /// ▶ on a clip-wide decision: just before the clip starts.
+    private func clipPlay(_ clipID: String, in project: Project) -> Double? {
+        ClipControlsProject.sourceSpan(of: clipID, in: project).map { max(0, $0.lowerBound - 0.5) }
+    }
+
+    /// The clip's rendered length: the edited length divided by its speed, as the export renders it (design.md §6.9).
+    /// The open clip's edited length is its render timeline's, which counts voiced rewrites at their takes' length.
+    func makeItRenderedSeconds(_ clipID: String) -> Double {
+        guard let clip = project.edits.clips.first(where: { $0.id == clipID }) else { return 0 }
+        let speed = ClipControlsProject.controls(for: clipID, in: project)?.speed ?? 1
+        let edited = renderedActiveClipID == clipID ? renderTimeline?.duration ?? editedDuration(clip) : editedDuration(clip)
+        return ClipSpeedTiming(speed: speed).rendered(edited)
     }
 
     private func pausePlay(_ id: String?, in project: Project) -> Double? {
@@ -643,7 +670,7 @@ extension EditorModel {
         guard undoInverse(inverse, name: name) else { return }
         run.rows[index].undone = true
         run.inverses[rowID] = nil
-        run.editedSeconds = editedDuration(project.edits.clips.first { $0.id == run.clipID })
+        run.seconds = makeItRenderedSeconds(run.clipID)
         announce("Undone.")
     }
 
@@ -681,6 +708,14 @@ extension EditorModel {
             for id in segments { next = (try? VoiceLabEditCommand.setEnabled(segmentID: id, enabled: false).applying(to: next, outputScope: output)) ?? next }
             guard next != project else { return false }
             replace(next, name: name); return true
+        case .look(let clipID, let previous):
+            guard let next = try? ClipControlsProject.settingLook(previous, clipId: clipID, in: project) else { return false }
+            if next != project { replace(next, name: name) }
+            return true
+        case .speed(let clipID, let previous):
+            guard let next = try? ClipControlsProject.settingSpeed(previous, clipId: clipID, in: project) else { return false }
+            if next != project { replace(next, name: name) }
+            return true
         }
     }
 
@@ -700,24 +735,46 @@ extension EditorModel {
             _ = setScope(run.clipID)
             runRewrite(scope: .selection(range))
         case .question(let index): run.openQuestion = run.openQuestion == index ? nil : index
-        case .pending: break
+        case .look, .speed:
+            guard let row = run.rows.first(where: { $0.change == change }) else { return }
+            run.openChoice = run.openChoice == row.id ? nil : row.id
         }
     }
 
-    /// Change on a pending row (look, speed) shows or hides its other choices.
-    func makeItTogglePending(_ rowID: String, run: MakeItRun) { run.openPending = run.openPending == rowID ? nil : rowID }
-
-    /// The creator's choice for a decision VoxClip can't render yet: kept with the review until it can.
-    func makeItChoosePending(_ option: String, rowID: String, run: MakeItRun) {
-        guard let index = run.rows.firstIndex(where: { $0.id == rowID }) else { return }
-        let current = run.rows[index].text.replacingOccurrences(of: "Claude chose ", with: "").replacingOccurrences(of: "You chose ", with: "")
-        run.rows[index].text = rowID == "look" ? "You chose the \(option) look" : "You chose \(option) speed"
-        let shown = current.replacingOccurrences(of: "the ", with: "").replacingOccurrences(of: " look", with: "").replacingOccurrences(of: " speed", with: "")
-        run.rows[index].options = (run.rows[index].options.filter { $0 != option } + [shown])
-        run.openPending = nil
+    /// A chip on the look or speed row: applies that look or speed to the clip at once, as one undo step (`setLook`,
+    /// `setSpeed`), and the row names the creator's choice. The row's Undo still goes back to the clip before the run.
+    func makeItChoose(_ option: String, rowID: String, run: MakeItRun) {
+        guard !run.running, let index = run.rows.firstIndex(where: { $0.id == rowID }), !run.rows[index].undone,
+              let controls = ClipControlsProject.controls(for: run.clipID, in: project) else { return }
+        switch run.rows[index].change {
+        case .look:
+            guard let look = ClipLook.allCases.first(where: { Self.lookName($0) == option }), setLook(look, clipID: run.clipID) else { return }
+            if run.inverses[rowID] == nil { run.inverses[rowID] = .look(clipID: run.clipID, previous: controls.look) }
+            run.rows[index].text = "You chose the \(option) look"
+            run.rows[index].options = Self.makeItLookOptions(except: look)
+        case .speed:
+            guard let rate = ProjectClipControls.speedPresets.first(where: { ProjectClipControls.speedLabel($0) == option }),
+                  setSpeed(rate, clipID: run.clipID) else { return }
+            if run.inverses[rowID] == nil { run.inverses[rowID] = .speed(clipID: run.clipID, previous: controls.speed) }
+            run.rows[index].text = "You chose \(option) speed"
+            run.rows[index].options = Self.makeItSpeedOptions(except: rate)
+            run.seconds = makeItRenderedSeconds(run.clipID)
+        default: return
+        }
+        run.rows[index].undoable = true
+        run.rows[index].detail = ""
+        run.openChoice = nil
     }
 
-    static func lookName(_ id: ClipAutopilotPlan.LookID) -> String {
+    /// The look row's other choices.
+    static func makeItLookOptions(except look: ClipLook) -> [String] { ClipLook.allCases.filter { $0 != look }.map(lookName) }
+
+    /// The speed row's other choices: the Clip section's presets.
+    static func makeItSpeedOptions(except rate: Double) -> [String] {
+        ProjectClipControls.speedPresets.filter { $0 != rate }.map(ProjectClipControls.speedLabel)
+    }
+
+    static func lookName(_ id: ClipLook) -> String {
         switch id { case .original: "original"; case .muted: "muted"; case .warm: "warm"; case .bw: "black and white" }
     }
 
@@ -726,11 +783,11 @@ extension EditorModel {
         guard let plan = run.plan, !run.running else { return [] }
         var notes: [String] = []
         if plan.seconds > 0 {
-            let speed = plan.speed.map { " at \(String(format: "%.2g", $0.rate))× (speed not rendered yet)" } ?? ""
+            let speed = plan.speed.map { " at " + ProjectClipControls.speedLabel(ProjectClipControls.normalizedSpeed($0.rate)) } ?? ""
             notes.append("Claude's cut: \(durationLabel(plan.seconds)) finished" + speed)
         }
         notes += plan.flags.map { "⚠ " + $0.detail }
-        if let limit = makeItStyle.maxSeconds, run.editedSeconds > Double(limit) + 0.5 {
+        if let limit = makeItStyle.maxSeconds, run.seconds > Double(limit) + 0.5 {
             notes.append("⚠ Longer than this clip style's \(limit) s")
         }
         return notes
@@ -771,7 +828,7 @@ extension EditorModel {
         case .failed: return "Nothing was changed"
         case .ready:
             let score = run.plan.map { " · score \($0.score)/10" } ?? ""
-            return "Ready to post · \(durationLabel(run.editedSeconds))" + score
+            return "Ready to post · \(durationLabel(run.seconds))" + score
         }
     }
 

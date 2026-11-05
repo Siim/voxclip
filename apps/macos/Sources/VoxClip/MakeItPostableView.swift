@@ -178,10 +178,13 @@ import VoxClipCore
                 Spacer(minLength: VCTokens.spacingRowGap)
                 actions
             }
-            if row.change == .pending, run.openPending == row.id, !row.options.isEmpty {
+            if row.change == .look || row.change == .speed, run.openChoice == row.id, !row.options.isEmpty, !row.undone {
+                // The other looks or speeds; a chip applies at once, as one undo step.
                 HStack(spacing: VCTokens.spacingChipGap) {
                     ForEach(row.options, id: \.self) { option in
-                        Button(option) { model.makeItChoosePending(option, rowID: row.id, run: run) }.buttonStyle(.bordered).controlSize(.small)
+                        Button(option) { model.makeItChoose(option, rowID: row.id, run: run) }.buttonStyle(.bordered).controlSize(.small)
+                            .accessibilityLabel(row.change == .look ? "Use the \(option) look" : "Play at \(option)")
+                            .columnLayoutEvidence("makeIt.choice.\(row.id).\(option)", text: option)
                     }
                 }
                 .padding(.leading, 22)
@@ -214,9 +217,7 @@ import VoxClipCore
                     .accessibilityLabel("Undo \(row.text)")
             }
             if let change = row.change, !row.undone, !run.running {
-                Button(change == .post || change == .hook ? "Copy" : "Change") {
-                    if change == .pending { model.makeItTogglePending(row.id, run: run) } else { model.makeItChange(change, run: run) }
-                }
+                Button(change == .post || change == .hook ? "Copy" : "Change") { model.makeItChange(change, run: run) }
                     .buttonStyle(.borderless).accessibilityLabel("Change \(row.text)")
             }
         }

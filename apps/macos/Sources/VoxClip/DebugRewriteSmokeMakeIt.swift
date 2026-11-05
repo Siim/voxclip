@@ -125,6 +125,7 @@ extension DebugRewriteSmoke.Harness {
         guard let run = editor.makeIt.run(for: "smoke-clip") else { throw DebugRewriteSmoke.Failure.setup("no run") }
         let rewrite = run.rows.first { $0.id == "rewrite-0" }
         let next = editor.makeItNextStep(run)
+        let renderChecks = await makeItRenderChecks(editor, run: run)
         makeItAppend([
             DebugRewriteSmoke.Check(invariant: "M1", passed: run.phase == .ready && next.hasPrefix("Next: Export") && span.lowerBound == start,
                 detail: "\(editor.makeItHeadline(run)) · \(next)"),
@@ -133,7 +134,32 @@ extension DebugRewriteSmoke.Harness {
                 detail: "spent \(EditorModel.makeItDollars(run.spent)) of up to \(cap.map(EditorModel.makeItDollars) ?? "nothing")"),
             DebugRewriteSmoke.Check(invariant: "M4", passed: rewrite?.undoable == true && MusicProject.entry(for: "smoke-clip", in: editor.project) != nil,
                 detail: (rewrite.map { "\($0.text) · \($0.detail)" } ?? "no rewrite row") + " · music " + (MusicProject.entry(for: "smoke-clip", in: editor.project)?.title ?? "none")),
-        ])
+        ] + renderChecks)
+    }
+
+    /// M5: the plan's look and speed are on the clip, each with an Undo row. M6: the export is the rendered length the
+    /// review's headline shows (edited ÷ speed), through the real exporter.
+    private func makeItRenderChecks(_ editor: EditorModel, run: MakeItRun) async -> [DebugRewriteSmoke.Check] {
+        let controls = ClipControlsProject.controls(for: run.clipID, in: editor.project)
+        let look = run.rows.first { $0.id == "look" }, speed = run.rows.first { $0.id == "speed" }
+        var checks = [DebugRewriteSmoke.Check(invariant: "M5",
+            passed: controls?.look == .warm && controls?.speed == 1.1 && look?.undoable == true && speed?.undoable == true,
+            detail: "clip \(controls.map { "\($0.speed)× \($0.look.rawValue)" } ?? "none") · \(look?.text ?? "no look row") · \(speed?.text ?? "no speed row")")]
+        do {
+            let request = try await editor.renderRequest(target: .clip(run.clipID))
+            let folder = directory.appendingPathComponent("S-make-it", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let video = folder.appendingPathComponent("clip.mp4")
+            defer { try? FileManager.default.removeItem(at: video) }
+            let result = try await AVExporter().export(ExportJob(target: .clip(run.clipID), render: request, outputURL: video)) { _ in }
+            let frame = 1 / request.output.fps
+            checks.append(DebugRewriteSmoke.Check(invariant: "M6",
+                passed: request.clipControls?.speed == 1.1 && abs(result.durationSeconds - run.seconds) <= frame && abs(request.renderedDuration - run.seconds) < 0.001,
+                detail: String(format: "export %.3f s, review %.3f s, edited %.3f s at 1.1×", result.durationSeconds, run.seconds, request.timeline.duration)))
+        } catch {
+            checks.append(DebugRewriteSmoke.Check(invariant: "M6", passed: false, detail: "export failed: \(error)"))
+        }
+        return checks
     }
 
     func makeItTopThree() async throws {
