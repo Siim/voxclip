@@ -421,7 +421,7 @@ extension RewriteSession {
         return takesWaitingStep(plan, spend: spend)
     }
     /// Past every stuck or unchosen phrase, what Use still waits for, never "Making takes…" while nothing runs: a
-    /// priced take to approve, the matched video (prepared again after a failure), a join to listen to, or a check.
+    /// priced take to approve, the matched video (prepared again after a failure), or a check.
     private func takesWaitingStep(_ plan: ClipTakePlan, spend: String) -> PanelFooter {
         if let action = pricedTakeAction(phrase: takeQuotePhrase) {
             return PanelFooter(note: takeSendLine + "\n" + spend, primary: action)
@@ -437,12 +437,6 @@ extension RewriteSession {
                     self?.showProposal()
                 }
             })
-        }
-        if let listen = plan.phrases.first(where: { phrase in
-            !phrase.leftOut && (phrase.selected?.row.requiresJoinAdvisoryAcceptance == true
-                || (phrase.selected == nil && phrase.takes.contains { $0.row.selectable && $0.row.requiresJoinAdvisoryAcceptance }))
-        }) {
-            return PanelFooter(note: "Listen to phrase \(listen.id + 1)'s take, then Use anyway or try another.\n" + spend)
         }
         if plan.phrases.contains(where: { $0.takes.contains { $0.row.voiceCheck == .waiting } }) {
             return PanelFooter(note: "Checking takes…\n" + spend)

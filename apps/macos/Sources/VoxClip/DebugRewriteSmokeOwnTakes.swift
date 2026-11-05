@@ -134,15 +134,13 @@ extension DebugRewriteSmoke {
         if !session.phraseMicrophone.problem.isEmpty { throw Failure.setup("the take could not be checked: " + session.phraseMicrophone.problem) }
     }
 
-    /// [Use your take], or [Use anyway] for a join to listen to first.
+    /// [Use your take], or [Use anyway] for a take that changes the video's duration (ADR-R39).
     @MainActor private static func useOwnTake(_ harness: Harness) async throws {
         guard let session = harness.session, let plan = session.takePlan,
               let take = plan.phrases.first?.takes.last(where: { $0.source == .microphone }) else { throw Failure.setup("no own take") }
-        let anyway = take.row.requiresJoinAdvisoryAcceptance || !plan.lengthFits(take: take)
+        let anyway = !plan.lengthFits(take: take)
         try await harness.act("click [\(anyway ? "Use anyway" : "Use your take")] on phrase 1", clicked: "microphone.use") {
-            session.mutateLipsync(phrase: 0) {
-                _ = take.row.requiresJoinAdvisoryAcceptance ? plan.useAnyway(take: take.id, phrase: 0) : plan.select(take: take.id, phrase: 0)
-            }
+            session.mutateLipsync(phrase: 0) { _ = plan.select(take: take.id, phrase: 0) }
         }
     }
 }

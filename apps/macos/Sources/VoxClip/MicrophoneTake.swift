@@ -319,7 +319,7 @@ enum PhraseMicrophoneCopy {
         if !carried {
             return "Your take · “\(words)” · runs \(length) for a \(PhraseMicrophoneCopy.seconds(slot)) gap, too \(difference < 0 ? "short" : "long") to fit. Record again."
         }
-        let join = take.row.hasJoinAdvisory ? " · the join may sound uneven, listen before using" : ""
+        let join = take.row.hasJoinAdvisory ? " · join may sound slightly louder" : ""
         if take.fits { return "Your take · “\(words)” · fits \(length) ✓\(join) · free" }
         let verdict = fits ? "\(PhraseMicrophoneCopy.seconds(abs(difference))) \(difference < 0 ? "shorter" : "longer"), the video is cut to it"
             : "\(PhraseMicrophoneCopy.seconds(abs(difference))) \(difference < 0 ? "shorter" : "longer"), the video is matched to it"
@@ -353,13 +353,11 @@ enum PhraseMicrophoneCopy {
                     Button(playing ? "Pause" : "Play") { Task { await session.playTake(take.id, phrase: phrase.id) } }
                         .buttonStyle(.plain).modifier(PanelButtonEvidence(id: "microphone.play.\(phrase.id).\(take.number)", title: playing ? "Pause" : "Play"))
                     if !used, take.row.selectable, plan.durationAvailable(take: take) {
-                        let title = take.row.requiresJoinAdvisoryAcceptance || !plan.lengthFits(take: take) ? "Use anyway" : "Use your take"
+                        // Use anyway only where the choice needs the user: the take changes the video's duration (ADR-R39).
+                        let title = plan.lengthFits(take: take) ? "Use your take" : "Use anyway"
                         Button(title) {
                             session.focusedTakePhrase = phrase.id
-                            session.mutateLipsync(phrase: phrase.id) {
-                                if take.row.requiresJoinAdvisoryAcceptance { _ = plan.useAnyway(take: take.id, phrase: phrase.id) }
-                                else { _ = plan.select(take: take.id, phrase: phrase.id) }
-                            }
+                            session.mutateLipsync(phrase: phrase.id) { _ = plan.select(take: take.id, phrase: phrase.id) }
                         }
                         .buttonStyle(.plain).modifier(PanelButtonEvidence(id: "microphone.use.\(phrase.id).\(take.number)", title: title))
                     }

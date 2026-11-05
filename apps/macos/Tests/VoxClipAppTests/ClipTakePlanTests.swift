@@ -419,29 +419,30 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
             quote: row.quote, accepted: row.acceptedRequestIDs, voiceCheck: row.voiceCheck)
     }
 
-    @Test func joinAdvisoryNeedsUseAnywayThenNormalDurationAndUseFlow() async throws {
+    /// ADR-R39: a fitting take whose only issue is its join is chosen automatically, its advisory accepted, and the
+    /// normal duration and Use flow follows with no Use anyway click.
+    @Test func aTakeWithOnlyAJoinAdvisoryIsChosenAutomatically() async throws {
         let fixture = try await fixture(indices: [3])
         defer { try? FileManager.default.removeItem(at: fixture.root) }
         fixture.transformRow = { Self.advisoryRow($0) }
         let plan = fixture.plan
+        let before = Date(timeIntervalSince1970: floor(Date().timeIntervalSince1970))
         await plan.prepare()
         await plan.start(approved: true)
         let row = try #require(plan.phrases[0].takes.first?.row)
         let selectable = row.selectable
         try #require(selectable && row.qa?.verdict == .passedWithAdvisory)
-        #expect(plan.phrases[0].selectedID == nil)
-        let genericSelection = plan.select(take: row.id, phrase: 0)
-        #expect(!plan.canAccept && !genericSelection)
+        #expect(plan.phrases[0].selectedID == row.id && plan.automaticTake(phrase: 0)?.id == row.id)
+        let acceptance = try #require(row.acceptedJoinAdvisory)
+        #expect(!row.requiresJoinAdvisoryAcceptance && acceptance.acceptedAt >= before && !plan.phrases[0].explicitlySelected)
+        #expect(TakeFailurePresentation.joinAdvisory(row, number: 1) == "Take 1 · join may sound slightly louder")
+        #expect(plan.offeredTake(phrase: 0) == nil)
         await plan.play(take: row.id, phrase: 0)
-        #expect(plan.audition.isPlaying && plan.phrases[0].selectedID == nil)
-        let date = Date(timeIntervalSince1970: floor(Date().timeIntervalSince1970))
-        let used = plan.useAnyway(take: row.id, phrase: 0, at: date)
-        try #require(used)
-        #expect(plan.phrases[0].selectedID == row.id && !plan.canAccept)
+        #expect(plan.audition.isPlaying && plan.phrases[0].selectedID == row.id)
         try chooseSourceDuration(plan)
         #expect(plan.canAccept)
-        let accepted = try await plan.acceptance(at: date.addingTimeInterval(1))
-        #expect(accepted.segments[0].candidates[0].recipe?.qa.joinAdvisory?.acceptedAt == date)
+        let accepted = try await plan.acceptance(at: Date().addingTimeInterval(1))
+        #expect(accepted.segments[0].candidates[0].recipe?.qa.joinAdvisory == acceptance)
         let command = try VoiceLabEditCommand.acceptAll(segments: accepted.segments, assets: accepted.assets, voice: accepted.voice)
         let project = try command.applying(to: fixture.source, outputScope: .full)
         _ = try VoiceLabRenderContract.prepare(project, scope: .full, labelPosition: .topRight)
@@ -463,10 +464,9 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         try #require(advisory.qa?.verdict == .passedWithAdvisory)
         #expect(advisory.score! >= plan.phrases[0].selected!.row.score!)
         #expect(plan.phrases[0].selectedID == clean && plan.automaticTake(phrase: 0)?.id == clean)
-        let genericSelection = plan.select(take: advisory.id, phrase: 0)
-        #expect(!genericSelection)
-        let used = plan.useAnyway(take: advisory.id, phrase: 0)
-        try #require(used)
+        // The clean take ranks first; the user's click on the advisory take's number chooses it and accepts its join.
+        let used = plan.select(take: advisory.id, phrase: 0)
+        try #require(used && plan.phrases[0].selected?.row.acceptedJoinAdvisory != nil)
         let acceptance = plan.phrases[0].selected?.row.acceptedJoinAdvisory
         await plan.prepareAnother(phrase: 0)
         await plan.tryAnother(phrase: 0, approved: true)
@@ -484,7 +484,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(plan.phrases[0].takes.first(where: { $0.id == advisory.id })?.row.acceptedJoinAdvisory == nil)
     }
 
-    @Test func useAllLeavesAnUnacceptedAdvisoryOutOfTheSelection() async throws {
+    @Test func useAllUsesAnAutomaticallyChosenAdvisoryWithItsAcceptance() async throws {
         let fixture = try await fixture(indices: [3, 10])
         defer { try? FileManager.default.removeItem(at: fixture.root) }
         fixture.transformRow = { row in
@@ -493,11 +493,11 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         let plan = fixture.plan
         await plan.prepare()
         await plan.start(approved: true)
-        #expect(plan.phrases[0].selectedID == nil && plan.phrases[1].selectedID != nil)
+        #expect(plan.phrases[0].selectedID != nil && plan.phrases[1].selectedID != nil)
         let accepted = try await sourceAcceptance(plan)
-        #expect(accepted.segments.count == 1)
-        #expect(accepted.segments[0].candidates[0].recipe?.qa.joinAdvisory == nil)
-        #expect(fixture.publishedIDs == [plan.phrases[1].selectedID!])
+        #expect(accepted.segments.count == 2)
+        #expect(accepted.segments.compactMap { $0.candidates[0].recipe?.qa.joinAdvisory }.count == 1)
+        #expect(Set(fixture.publishedIDs) == Set([plan.phrases[0].selectedID!, plan.phrases[1].selectedID!]))
     }
 
     @Test func reviewerUnmeasuredNeedsExplicitSelection() async throws {

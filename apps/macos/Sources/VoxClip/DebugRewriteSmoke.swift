@@ -712,7 +712,6 @@ import VoxClipCore
         func finish(maximumSteps: Int = 12) async throws {
             for _ in 0..<maximumSteps {
                 guard let session, session.isOpen else { completed = applied; ended = true; return }
-                if await useAnywayIfOffered() { continue }
                 if await chooseDurationIfNeeded() { continue }
                 var order = ["approveTakeQuote", "discardChanges", "useTakes", "chooseTake", "takeQuote-", "prepareTakes", "makeTakes", "rewriteAgain",
                              "keepFixing", "withinSentence", "revoiceAll", "keepOriginal", "mergePhrases", "suggestion.", "tryAnother", "freshPrice",
@@ -746,24 +745,6 @@ import VoxClipCore
 
         /// The evidence controls the panel drew last.
         private var drawn: [Control] { steps.last?.snapshot.controls.filter { $0.source == "evidence" && $0.enabled } ?? [] }
-        /// A passing take with a join advisory waits for its row's [Use anyway] (DirectorTakeRows), which the user clicks.
-        private func useAnywayIfOffered() async -> Bool {
-            guard let session, let plan = session.takePlan, !session.takesBusy else { return false }
-            // The first offered take whose phrase has no usable take yet.
-            let offers = drawn.filter { $0.id.hasPrefix("useAnyway.") }.compactMap { control -> ([Int], ClipTakePlan.Take)? in
-                let parts = control.id.split(separator: ".").compactMap { Int($0) }
-                guard parts.count == 2, plan.phrases.indices.contains(parts[0]),
-                      plan.phrases[parts[0]].selected.map({ !$0.row.selectable || $0.row.requiresJoinAdvisoryAcceptance }) ?? true,
-                      let take = plan.phrases[parts[0]].takes.first(where: { $0.number == parts[1] }) else { return nil }
-                return (parts, take)
-            }
-            guard let (parts, take) = offers.first else { return false }
-            try? await act("click [Use anyway] for phrase \(parts[0] + 1) take \(parts[1])", clicked: "useAnyway") {
-                session.focusedTakePhrase = parts[0]
-                session.mutateLipsync(phrase: parts[0]) { _ = plan.useAnyway(take: take.id, phrase: parts[0]) }
-            }
-            return true
-        }
         /// A row's own control when no footer or chip offers a way on, as a user reaches for it: a phrase row's priced
         /// [Try another · $] or [Try another…] (DirectorTakeRows), then a row's [Keep original words] (PhraseTimingRecovery).
         private func rowActionIfOffered() async -> Bool {
@@ -1240,8 +1221,8 @@ import VoxClipCore
         Definition(id: "S16", title: "a long full take with 36 changes prices once, voices every phrase and lands", voiced: longTakeChanges,
             fixture: Fixture(script: longTakeScript, rewrites: [.passage(longTakeRewrite)], voice: RewriteSmokeVoiceScript(exactFit: true))) { harness in
             try await harness.start()
-            // A take whose join is uneven needs its own [Use anyway] (ADR-R37), so a long take may take a click per phrase.
-            try await harness.finish(maximumSteps: 48)
+            // A take whose only issue is its join is chosen with it (ADR-R39): no phrase needs its own click.
+            try await harness.finish()
         },
     ] + ownTakeScenarios }
 
