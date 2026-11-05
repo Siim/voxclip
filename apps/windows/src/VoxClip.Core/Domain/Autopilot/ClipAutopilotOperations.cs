@@ -5,6 +5,7 @@ using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.ContextDemo;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Effects;
+using VoxClip.Core.Domain.Music;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
 
@@ -13,11 +14,14 @@ namespace VoxClip.Core.Domain.Autopilot;
 /// <summary>The background track a plan picked (ai.md §16.6). Windows does not mix music yet, so it stays pending.</summary>
 public sealed record ClipAutopilotMusicCue(string ClipId, ClipAutopilotPlan.Music Picked, IReadOnlyList<ClipAutopilotPlan.Music> Alternatives, double Seconds);
 
-/// <summary>What kind of decision an operation is, for the review's row.</summary>
+/// <summary>What kind of decision an operation is, for the review's row. Ask Claude's toolbox (ai.md §18.2) adds Bleep (a bleep or
+/// mute), Blur (blur or pixelate), Overlay (title, lower third, sticker, arrow, circle, progress bar), Freeze, Sound, Stretch,
+/// Translate and Duck; the planner's decisions keep their meaning.</summary>
 public enum ClipAutopilotDecision
 {
 #pragma warning disable CS1591
-    Clip, Title, Correction, Cut, PauseCut, Rewrite, Captions, Look, Speed, Zoom, Music, Hook, PostText
+    Clip, Title, Correction, Cut, PauseCut, Rewrite, Captions, Look, Speed, Zoom, Music, Hook, PostText,
+    Bleep, Blur, Overlay, Freeze, Sound, Stretch, Translate, Duck
 #pragma warning restore CS1591
 }
 
@@ -42,6 +46,15 @@ public abstract record ClipAutopilotAction
     public sealed record Hook(string ClipId, string Text) : ClipAutopilotAction;
     /// <summary>The clip's share text.</summary>
     public sealed record ShareText(string ClipId, string Text) : ClipAutopilotAction;
+    /// <summary>An Ask Claude effect (ai.md §18.2), the stored <c>clipEffects</c> entry, already valid.</summary>
+    public sealed record Effect(JsonElement Value) : ClipAutopilotAction;
+    /// <summary>A stretch played at <c>Rate</c> (source seconds). Over a whole clip it sets that clip's speed; over part of one it stays
+    /// pending and the editor offers the speed for the whole clip.</summary>
+    public sealed record Stretch(string? ClipId, double Start, double End, double Rate) : ClipAutopilotAction;
+    /// <summary>Translated captions for the words; pending, no platform renders them yet.</summary>
+    public sealed record TranslateCaptions(string? ClipId, int StartWord, int EndWord, string Language, string Text) : ClipAutopilotAction;
+    /// <summary>Duck the clip's music under the voice.</summary>
+    public sealed record MusicDucking(string? ClipId, bool On) : ClipAutopilotAction;
 }
 
 /// <summary>One reviewable decision as an editor operation (ai.md §16.6); <c>Id</c> is stable for a plan.</summary>
@@ -156,7 +169,8 @@ public static partial class ClipAutopilotMapping
     }
 
     /// <summary>Applies what the editor can, in order, to a copy of <paramref name="project"/>: edits, captions, share text, the look and
-    /// speed, and the hook as the clip's title card (timed on the clip as the operations before it left it). Rewrites, music and zooms
+    /// speed, the hook as the clip's title card (timed on the clip as the operations before it left it), Ask Claude's effects, a stretch
+    /// over a whole clip as its speed, and ducking music that exists. Stretches over part of a clip, translated captions, rewrites, music and zooms
     /// come back as pending: Windows renders neither background music nor motion cues yet, and a project holding either refuses to
     /// export (<c>VoiceLabRenderContract.RequireWindowsVisualSupport</c>), so applying them would make the clip unpostable. Pure: one
     /// undo step is the caller's choice.</summary>
@@ -181,6 +195,15 @@ public static partial class ClipAutopilotMapping
                 case ClipAutopilotAction.Speed speed: result = ClipControlsProject.SettingSpeed(speed.Choice.Rate, speed.ClipId, result); break;
                 case ClipAutopilotAction.Hook hook:
                     if (ClipHookTitle.Effect(hook.Text, hook.ClipId, result) is { } card) result = ClipEffects.Adding([card], result);
+                    else pending.Add(operation);
+                    break;
+                case ClipAutopilotAction.Effect effect: result = ClipEffects.Adding([effect.Value], result); break;
+                case ClipAutopilotAction.Stretch stretch:
+                    if (ClipControlsProject.WholeClip(stretch.ClipId, stretch.Start, stretch.End, result) is { } whole) result = ClipControlsProject.SettingSpeed(stretch.Rate, whole, result);
+                    else pending.Add(operation);
+                    break;
+                case ClipAutopilotAction.MusicDucking ducking:
+                    if (result.Music.FirstOrDefault(entry => entry.ClipId == ducking.ClipId) is { } music) result = MusicProject.Setting(music with { Ducking = ducking.On }, ducking.ClipId, result);
                     else pending.Add(operation);
                     break;
                 default: pending.Add(operation); break;

@@ -41,7 +41,9 @@ public enum LlmFeature
     /// <summary>A caption style per clip while the clip style's captions are Auto; AI §17, design §6.6.</summary>
     CaptionPick,
     /// <summary>Make it postable: every decision a postable clip needs, at extra high effort; AI §16.</summary>
-    ClipAutopilot
+    ClipAutopilot,
+    /// <summary>Ask Claude on a selection, clip or time range: toolbox operations at extra high effort; AI §18.</summary>
+    AskClaude
 }
 /// <summary>Portable effort selection, lowest first; AI §3.2.</summary>
 public enum Effort

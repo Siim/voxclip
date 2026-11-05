@@ -129,6 +129,21 @@ public static class ClipControlsProject
         return first is not null && last is not null && last.End > first.Start ? (first.Start, last.End) : null;
     }
 
+    /// <summary>How far a stretch may miss a clip's first word start or last word end and still count as the whole clip.</summary>
+    public const double WholeClipToleranceSeconds = 0.25;
+
+    /// <summary>The clip a stretch from <paramref name="start"/> to <paramref name="end"/> covers whole, within
+    /// <see cref="WholeClipToleranceSeconds"/> at each end: <paramref name="clipId"/> when given, else the one clip that matches (none when
+    /// two do). Twin of the Mac <c>wholeClip</c>.</summary>
+    public static string? WholeClip(string? clipId, double start, double end, Project project)
+    {
+        const double tolerance = WholeClipToleranceSeconds + 1e-9;
+        bool Covers(string id) => SourceSpan(id, project) is { } span && Math.Abs(span.Start - start) <= tolerance && Math.Abs(span.End - end) <= tolerance;
+        if (clipId is not null) return Covers(clipId) ? clipId : null;
+        var matching = project.Edits.Clips.Select(clip => clip.Id).Where(Covers).ToArray();
+        return matching.Length == 1 ? matching[0] : null;
+    }
+
     /// <summary>Keeps entries whose clip still exists.</summary>
     public static IReadOnlyList<ProjectClipControls> Pruned(IReadOnlyList<ProjectClipControls> controls, IEnumerable<string> clipIds)
     {

@@ -182,6 +182,23 @@ public static class ClipEffects
         }
     }
 
+    /// <summary>Whether one entry passes the wire shape and its kind's rules (ids, ranges, rects, text, sounds) for
+    /// <paramref name="projectId"/>; the project-level checks (clip and words exist, unique ids) are <see cref="Validate(Project)"/>'s.</summary>
+    public static bool IsValidEntry(JsonElement entry, string projectId)
+    {
+        try { ValidateWireEntry(entry); Validate(entry, projectId); return true; }
+        catch (Exception exception) when (exception is VoxClipException or InvalidOperationException or KeyNotFoundException or FormatException) { return false; }
+    }
+
+    /// <summary>The first free id <c>fx-{kind}-{n}</c>, n from 1. Twin of the Mac <c>nextID</c>.</summary>
+    public static string NextId(string kind, IReadOnlySet<string> existing)
+    {
+        var index = 1;
+        while (existing.Contains(Id(kind, index))) index++;
+        return Id(kind, index);
+        static string Id(string kind, int index) => string.Concat("fx-", kind, "-", index.ToString(CultureInfo.InvariantCulture));
+    }
+
     /// <summary>The project with these effects added (an existing id replaced in place), promoted to v4 on its first effect.</summary>
     public static Project Adding(IReadOnlyList<JsonElement> effects, Project project)
     {
