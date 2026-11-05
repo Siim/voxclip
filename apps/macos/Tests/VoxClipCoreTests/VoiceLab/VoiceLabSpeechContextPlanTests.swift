@@ -166,6 +166,26 @@ struct VoiceLabSpeechContextPlanTests {
                                                 envelope: envelope(project)) == .mergeRequired(hunkIndices: [0, 1]))
     }
 
+    /// A long run is voiced in parts, so the surrounding sentence is reviewed beside more phrases than one batch holds
+    /// (`VoiceLabTakeBatch.maximumWindows`); only the run limit refuses, with its own failure.
+    @Test func aLongRunReviewsTheSurroundingSentencePastOneBatch() throws {
+        let project = try fixture()
+        let others = [24, 34, 44, 54, 64, 74]
+        let reservations = try others.enumerated().map { offset, word in
+            VoiceLabSpeechContextPlan.Reservation(hunkIndices: [offset + 1], text: "different", window: try VoiceLabWindowPlanner.place(
+                project: project, scope: .full, envelope: envelope(project), firstWordId: "w\(word)", lastWordId: "w\(word)"))
+        }
+        try #require(reservations.count + 1 > VoiceLabTakeBatch.maximumWindows)
+        let hunks = [hunk(4)] + others.map { hunk($0, text: "different") }
+        let plan = try proposal(request(project, hunks: hunks, selected: Array(hunks.indices), reservations: reservations))
+        #expect(plan.phrases.count == 1 && plan.request.reservations.count == others.count)
+        #expect(plan.totalVoiceTokenCount == 10 + others.count)
+        let many = (0...VoiceLabTakeBatch.maximumRunPhrases).map { hunk($0) }
+        let filler = (1..<many.count).map { VoiceLabSpeechContextPlan.Reservation(hunkIndices: [$0], text: "better", window: reservations[0].window) }
+        #expect(VoiceLabSpeechContextPlan.propose(request(project, hunks: many, selected: Array(many.indices), reservations: filler),
+                                                envelope: envelope(project)) == .refused(.tooManyPhrases(count: many.count)))
+    }
+
     @Test func requestCapAndExpandedTotalBudgetRemainHardLimits() throws {
         let project = try fixture()
         #expect(VoiceLabSpeechContextPlan.propose(request(project, cap: 20), envelope: envelope(project))

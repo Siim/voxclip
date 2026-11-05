@@ -43,6 +43,7 @@ struct RewriteFailureCopyTests {
         VoiceLabSpeechContextPlan.Failure.invalidInput, VoiceLabSpeechContextPlan.Failure.insufficientSpeech(hunkIndex: 0),
         VoiceLabSpeechContextPlan.Failure.budget, VoiceLabSpeechContextPlan.Failure.placement(.reversedWords),
         VoiceLabSpeechContextPlan.Failure.staleReview, VoiceLabSpeechContextPlan.Failure.quoteBinding,
+        VoiceLabSpeechContextPlan.Failure.tooManyPhrases(count: 101),
     ]
     static var everyCase: [any Error] {
         voiceLab as [any Error] + project as [any Error] + geometry as [any Error] + plan as [any Error] + context + [

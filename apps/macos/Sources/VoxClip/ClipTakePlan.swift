@@ -66,7 +66,7 @@ import VoxClipMedia
     }
     /// The most phrases one run prices and voices. A run of more than `VoiceLabTakeBatch.maximumWindows` phrases is priced
     /// and approved once, then voiced part by part (`PricedPart`).
-    nonisolated static let maximumPhrases = 100
+    nonisolated static let maximumPhrases = VoiceLabTakeBatch.maximumRunPhrases
     /// A later part of a priced run: its phrases and the batch they were priced as. Only the run's first part holds its
     /// quotes until the approval (`ElevenLabsVoiceLab` keeps at most 32 outstanding quotes); each later part is quoted
     /// again just before it runs, and runs under the run's one approval only when that quote equals this one's inputs

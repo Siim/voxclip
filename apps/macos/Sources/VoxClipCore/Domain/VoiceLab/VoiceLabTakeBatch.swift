@@ -20,6 +20,9 @@ public struct VoiceLabTakeBatch: Sendable, Equatable, Identifiable {
     /// `ElevenLabsVoiceLab` holds at most 32 outstanding quotes (§2.6) and a window holds a TTS and a QA quote for each of
     /// `CANDIDATES` takes, so preparing a sixth window would evict the first window's quotes before the approval.
     public static let maximumWindows = 32 / (2 * VoiceLabPricing.maximumCandidates)
+    /// The most phrases one Rewrite run prices and voices: a longer run than `maximumWindows` is priced and approved once,
+    /// then voiced as consecutive batches (the App's `ClipTakePlan` parts). The speech-context review allows the same run.
+    public static let maximumRunPhrases = 100
 
     public let id: UUID
     /// In source order.
