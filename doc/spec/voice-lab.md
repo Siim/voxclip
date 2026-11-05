@@ -1387,6 +1387,8 @@ Windows keeps its bounded multi-candidate runner; missing or malformed timestamp
 
 With several hunks, all per-take quotes for all hunks are prepared before the run. One affirmative approval covers the union of the bounded sets and their summed TTS plus Scribe QA cap. The run takes one hunk at a time, in source order, with early stop per hunk. Try Another on one phrase is a new approval for that phrase's set.
 
+**Long runs (Mac).** A take batch holds at most `maximumWindows` (5) windows, because the client keeps at most 32 outstanding quotes (§2.6). A Mac Rewrite of up to 100 phrases (a full take) is priced and approved once as consecutive parts of at most five phrases in source order. The later parts are priced first and release their quotes, so only the first part holds quotes until the approval, and it is quoted last. The one price and approval cover the sum of every part's estimate. Each later part is quoted again just before it runs and runs under that approval only when the new quote has exactly the inputs and estimate that were priced; otherwise nothing more is sent, finished takes are kept and the panel asks for a fresh price. The cap checks weigh the unsent rest of the whole run. More than 100 phrases is refused with that limit and a step that voices the first 100 changes. Windows still refuses more than five changed passages.
+
 The Mac clip takes engine (V18a, UI integration in V18) places the entire included review with
 `placeAll` before decoding source audio or preparing any take quote. It preflights all pending
 windows together against the final review cuts, using the same output-piece and seam checks as

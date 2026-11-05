@@ -49,18 +49,32 @@ extension HeavyMediaTests {
     /// scenario but S13 with takes that fill their slots exactly ("S4-exact"). S-own-typed, S-own-mic and S-own-mic-misfit
     /// drive My words and Say it myself with a scripted microphone. Hosted runners take about 110 s and 70 s
     /// (locally about 57 s and 33 s); the app's progress lines are relayed to stderr, also when a pass hits its deadline.
+    /// S16, the long full take, runs in its own process and deadline below.
     @Test("The Rewrite smoke completes every stuck scenario without a dead end", arguments: ["realistic", "exact"])
     func rewriteSmoke(lengths: String) throws {
+        // The own-words scenarios (My words, Say it myself, Record again) run in both passes.
+        let own = ["S-own-typed", "S-own-mic", "S-own-mic-misfit"]
+        let names = (1...15).map { "S\($0)" } + own
         let directory = try UIProcessHarness.run(mode: "-rewriteSmoke", name: "rewrite-smoke-\(lengths)",
-            arguments: ["-rewriteSmokeLengths", lengths], acceptNonzeroWithReport: "results.json", deadline: 300)
+            arguments: ["-rewriteSmokeLengths", lengths, "-rewriteSmokeOnly", names.joined(separator: ",")],
+            acceptNonzeroWithReport: "results.json", deadline: 300)
         defer { UIProcessHarness.cleanTemporary(directory) }
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
         let scenarios = Set(report.compactMap { $0.name.split(separator: " ").first.map(String.init) })
-        // The own-words scenarios (My words, Say it myself, Record again) run in both passes.
-        let own = ["S-own-typed", "S-own-mic", "S-own-mic-misfit"]
-        let expected: [String] = lengths == "exact" ? ((1...12).map { "S\($0)" } + ["S14", "S15"] + own).map { $0 + "-exact" } : (1...15).map { "S\($0)" } + own
+        let expected: [String] = lengths == "exact" ? ((1...12).map { "S\($0)" } + ["S14", "S15"] + own).map { $0 + "-exact" } : names
         #expect(scenarios == Set(expected))
         for result in report { #expect(result.passed, Comment(rawValue: result.name)) }
+    }
+    /// MVP23: S16 voices a nine-minute full take's 36 changes under one price and approval (about 160 s locally).
+    @Test("The Rewrite smoke voices a long full take of 36 phrases and lands it")
+    func rewriteSmokeLongTake() throws {
+        let directory = try UIProcessHarness.run(mode: "-rewriteSmoke", name: "rewrite-smoke-long",
+            arguments: ["-rewriteSmokeLengths", "realistic", "-rewriteSmokeOnly", "S16"], acceptNonzeroWithReport: "results.json", deadline: 900)
+        defer { UIProcessHarness.cleanTemporary(directory) }
+        let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
+        #expect(Set(report.compactMap { $0.name.split(separator: " ").first.map(String.init) }) == ["S16"])
+        for result in report { #expect(result.passed, Comment(rawValue: result.name)) }
+        #expect(report.contains { $0.name.contains("I9") && $0.name.contains("36 of 36") })
     }
     @Test("Right-column content fits without opening a window") func rightColumnLayout() throws {
         let directory = try UIProcessHarness.run(mode: "-layoutAudit", name: "layout")
