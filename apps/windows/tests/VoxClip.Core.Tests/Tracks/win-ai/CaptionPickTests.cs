@@ -212,7 +212,7 @@ public sealed class CaptionPickTests
         // The user's choice with clip-b active is clip-b's pick; nothing else changes.
         var chosen = ClipStyleCard.ChooseCaptionStyle(picked, "marker");
         Assert.Equal(("marker", "box-highlight", "auto"), (ClipCaptionStyles.StyleId(chosen, "clip-b"), chosen.Captions.StyleId, chosen.ClipStyle!.Captions));
-        Assert.Equal(new ClipCaptionPick("marker", ClipCaptionStyles.YourChoice), chosen.ClipStyle.CaptionPicks["clip-b"]);
+        Assert.Equal(new ClipCaptionPick("marker", "") { By = "user" }, chosen.ClipStyle.CaptionPicks["clip-b"]);
         // Claude never replaces the user's own choice.
         Assert.Equal("marker", chosen.ClipStyle.Recording(new Dictionary<string, ClipCaptionPick> { ["clip-b"] = new("glow", "Later.") }).CaptionPicks["clip-b"].StyleId);
         // With no clip active the choice is the project default: it fixes the clip style's captions and keeps the user's pick.

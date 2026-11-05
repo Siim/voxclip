@@ -454,7 +454,7 @@ internal sealed class CaptionsPanel : UserControl
     {
         var controls = Ui.Stack(12);
         controls.Margin = new Thickness(0, 8, 0, 0);
-        var initial = CaptionFineTune.Values(style, model.Project);
+        var initial = CaptionFineTune.Values(style, VoxClip.Core.Domain.Clips.ClipCaptionStyles.Rendered(model.Project, model.Project.Edits.ActiveClipId));
         var syncs = new List<Action<CaptionFineTune.FineTuneValues>>();
         void Options(string label, string[] choices, Func<CaptionFineTune.FineTuneValues, int> selected, Action<int> choose, bool available = true)
         {
@@ -468,7 +468,7 @@ internal sealed class CaptionsPanel : UserControl
             syncs.Add(now => segment.SelectedIndex = selected(now));
             section.Children.Add(segment); controls.Children.Add(section);
         }
-        void Change(string section, params (string Key, JsonNode? Value)[] values) => model.SetCaptionOverrides(CaptionFineTune.Change(model.Project.Captions, section, values));
+        void Change(string section, params (string Key, JsonNode? Value)[] values) => model.SetCaptionOverrides(CaptionFineTune.Change(model.ActiveCaptions, section, values));
         Options("Size", ["S", "M", "L", "XL"], now => now.Size,
             index => Change("font", ("sizeScale", index == 1 ? null : JsonValue.Create(new[] { 0.8, 1, 1.2, 1.45 }[index]))));
         Options("Case", ["As said", "ALL CAPS"], now => now.Case, index => Change("text", ("transform", JsonValue.Create(index == 0 ? "none" : "uppercase"))), style.Text.UserOverridable);
@@ -508,12 +508,12 @@ internal sealed class CaptionsPanel : UserControl
         controls.Children.Add(Ui.Text("Drag captions on the video to move them.", "HelperText"));
         var reset = new HyperlinkButton { IsEnabled = !model.IsReadOnly, Content = "Reset to Style", HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(0) };
         AutomationProperties.SetAutomationId(reset, "FineTune.Reset");
-        reset.Click += (_, _) => model.SetCaptions(CaptionFineTune.Reset(model.Project.Captions));
+        reset.Click += (_, _) => model.SetCaptions(CaptionFineTune.Reset(model.ActiveCaptions));
         controls.Children.Add(reset);
         void Describe(CaptionFineTune.FineTuneValues now) => ToolTipService.SetToolTip(fineTune,
             $"Size {now.Scale:0.##}× · {CaptionFineTune.Summary(style, model.Project)} · Position {(now.Stored is { } stored ? $"{stored.X:0.##}, {stored.Y:0.##}" : "Bottom")}");
         Describe(initial); syncs.Add(Describe);
-        syncFineTune = () => { var now = CaptionFineTune.Values(style, model.Project); foreach (var sync in syncs) sync(now); };
+        syncFineTune = () => { var now = CaptionFineTune.Values(style, VoxClip.Core.Domain.Clips.ClipCaptionStyles.Rendered(model.Project, model.Project.Edits.ActiveClipId)); foreach (var sync in syncs) sync(now); };
         controls.Visibility = fineTune.IsExpanded ? Visibility.Visible : Visibility.Collapsed;
         fineTune.Content = controls;
         UpdateFineTuneSpace();
@@ -580,7 +580,7 @@ internal sealed class CaptionsPanel : UserControl
 
     internal async Task DebugFitStatesAsync(Func<string, Task> inspect)
     {
-        var original = model.Project.Captions;
+        var original = model.ActiveCaptions;
         var expanded = fineTune.IsExpanded;
         var message = notice.Message;
         var failures = new List<Exception>();
@@ -608,7 +608,7 @@ internal sealed class CaptionsPanel : UserControl
             await Inspect("fine-tune");
             fineTune.IsExpanded = false;
             model.SetCaptionStyle("box-highlight");
-            model.SetCaptionOverrides(CaptionFineTune.Change(model.Project.Captions, "font", ("sizeScale", System.Text.Json.Nodes.JsonValue.Create(1.2))));
+            model.SetCaptionOverrides(CaptionFineTune.Change(model.ActiveCaptions, "font", ("sizeScale", System.Text.Json.Nodes.JsonValue.Create(1.2))));
             await Inspect("long-header");
             model.SetCaptionStyle("off");
             await Inspect("captions-off");

@@ -48,6 +48,7 @@ EXACT = ['shared/fixtures/voice-lab/pace-cases.json', 'shared/fixtures/voice-lab
          'shared/fixtures/clip-controls/clip-controls-project.voxclip', 'shared/fixtures/clip-controls/clip-controls-wire-cases.json',
          'shared/fixtures/clip-render/clip-render-cases.json',
          'shared/fixtures/clips-mode/clips-mode-settings-cases.json',
+         'shared/fixtures/clip-style/caption-look-cases.json',
          'shared/data/rewrite-tones.json',
          'shared/schemas/project.schema.json']
 REL_TOL = 1e-10
@@ -91,6 +92,9 @@ def main():
     # The clip style's tone (doc/design.md section 6.6) and the Rewrite tone catalog (section 6.3.1).
     subprocess.run([sys.executable, str(root / "tools/schemas/generate_clip_style_tone_schema.py")], check=True)
     subprocess.run([sys.executable, str(root / "tools/fixtures/voice-lab/generate_rewrite_tones.py")], check=True)
+    # Each clip's caption look (doc/design.md section 6.6): the pick's optional keys and the resolution vectors.
+    subprocess.run([sys.executable, str(root / "tools/schemas/generate_caption_pick_schema.py")], check=True)
+    subprocess.run([sys.executable, str(root / "tools/fixtures/clip-style/generate_caption_looks.py")], check=True)
     # The renderer decisions both platforms reproduce for clip controls and effects (design.md sections 6.8, 6.9).
     subprocess.run([sys.executable, str(root / "tools/fixtures/clip-render/generate_clip_render.py")], check=True)
     # Claude mode's settings vectors (doc/design.md section 6.6), replayed by both Cores.

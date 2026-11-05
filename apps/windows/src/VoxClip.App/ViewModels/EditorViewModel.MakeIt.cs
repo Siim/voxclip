@@ -379,7 +379,7 @@ public sealed partial class EditorViewModel
         {
             MakeItRow? row;
             MakeItInverse? inverse;
-            try { (inverse, row) = MakeItStep(operation, plan, ref next, style); }
+            try { (inverse, row) = MakeItStep(operation, plan, run.ClipId, ref next, style); }
             catch (Exception exception) when (exception is VoxClipException or VoiceLabException) { continue; }
             if (inverse is not null) run.Inverses[operation.Id] = inverse;
             if (operation.Decision == ClipAutopilotDecision.Hook) hookRow = row;
@@ -430,7 +430,7 @@ public sealed partial class EditorViewModel
 
     /// <summary>One pure operation applied to <paramref name="next"/>, with how to take it back and its review row; nothing for the
     /// operations a later step owns (rewrites, music).</summary>
-    private (MakeItInverse? Inverse, MakeItRow? Row) MakeItStep(ClipAutopilotOperation operation, ClipAutopilotPlan plan, ref Project next, MakeItStyle style)
+    private (MakeItInverse? Inverse, MakeItRow? Row) MakeItStep(ClipAutopilotOperation operation, ClipAutopilotPlan plan, string clipId, ref Project next, MakeItStyle style)
     {
         var words = next.Transcript?.Words ?? [];
         double? Start(IEnumerable<string> ids) => ids.Select(id => words.FirstOrDefault(word => word.Id == id)?.Start).OfType<double>().DefaultIfEmpty(double.NaN).Min() is var start && double.IsFinite(start) ? start : null;
@@ -489,16 +489,18 @@ public sealed partial class EditorViewModel
             }
             case ClipAutopilotAction.Captions captions:
             {
-                // Captions Off in the clip style: the project's captions stay as they are.
+                // Captions Off in the clip style: the project's captions stay as they are. Otherwise the look (style and overrides)
+                // is this clip's own pick, so every clip of a series exports in its own style (design §6.6, Mac recordingLook); the
+                // creator's own pick for the clip, or a style fixed to another one, stays.
                 if (!style.Captions) return (null, null);
                 var previous = next.Captions;
-                var previousPick = ClipCaptionStyles.Pick(next, captions.ClipId);
-                // The style is this clip's own pick, so each clip keeps its style in Export all (design §6.6).
-                next = captions.Applying(next, operation.Reason);
+                var previousPick = next.ClipStyle?.CaptionPicks.GetValueOrDefault(clipId);
+                if (ClipCaptionStyles.RecordingLook(next, clipId, captions.Settings, operation.Reason) is not { } recorded) return (null, null);
+                next = recorded;
                 var name = CaptionStyleName(captions.Settings.StyleId);
                 var casing = plan.CaptionChoice.TextCase switch { ClipAutopilotCaptionCase.Upper => "UPPER", ClipAutopilotCaptionCase.Lower => "lower", _ => "as said" };
                 var font = captions.PendingFont is { } pending ? $" · {pending.Family} {pending.Weight} once bundled" : "";
-                return (new MakeItInverse.Captions(previous, captions.ClipId, previousPick), new(operation.Id, $"Claude chose {name} captions, {casing}, {plan.CaptionChoice.WordsPerCaption} per line{font}")
+                return (new MakeItInverse.Captions(previous, clipId, previousPick), new(operation.Id, $"Claude chose {name} captions, {casing}, {plan.CaptionChoice.WordsPerCaption} per line{font}")
                 { Kind = MakeItRowKind.Choice, Undoable = true, Change = MakeItChange.Captions });
             }
             case ClipAutopilotAction.Motion motion:

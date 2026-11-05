@@ -21,7 +21,7 @@ public sealed class ClipCaptionStyleCliTests
         var picks = new SortedDictionary<string, ClipCaptionPick>(StringComparer.Ordinal)
         {
             ["clip-a"] = new("punch-in", "Fast hook."),
-            ["clip-b"] = new("minimal", ClipCaptionStyles.YourChoice),
+            ["clip-b"] = new("minimal", "") { By = "user" },
         };
         var style = new ClipStyle("auto", "auto", "auto", 60, ["16:9", "9:16"], "fix-only", picks);
         return project with { ClipStyle = style, ClipControls = [], Captions = project.Captions with { StyleId = "vox-bold" },

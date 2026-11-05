@@ -65,7 +65,7 @@ public sealed class ClipStyleViewModelTests
         // The user's choice with clip-b active is clip-b's own, one undo step; clip-a and the default are unchanged.
         model.SetCaptionStyle("marker");
         Assert.Equal(("marker", "box-highlight", "auto"), (model.CaptionStyleId, model.Project.Captions.StyleId, model.Project.ClipStyle!.Captions));
-        Assert.Equal("This clip: marker · your choice", model.CaptionStyleSource(id => id));
+        Assert.Equal("This clip: marker · your pick", model.CaptionStyleSource(id => id));
         Assert.Equal("box-highlight", ClipCaptionStyles.StyleId(model.Project, "clip-a"));
         Assert.True(model.SetScope("clip-a"));
         Assert.Equal(("box-highlight", "Project default"), (model.CaptionStyleId, model.CaptionStyleSource(id => id)));
