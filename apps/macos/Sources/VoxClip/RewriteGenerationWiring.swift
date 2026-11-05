@@ -102,7 +102,7 @@ extension RewriteSession {
                         sourceSampleRate: audio.sampleRate, supportsPace: modelID != "eleven_v4", hardJoinSmoothing: true,
                         audioTags: phrase.audioTags, modelID: modelID,
                         sourceItems: timingItems, sourceEnvelope: envelope,
-                        rateMultiplier: VoiceLabWordingFit.multiplier(self?.project.voiceLab.speakingRateSamples?[modelID] ?? []))
+                        rateMultiplier: VoiceLabWordingFit.multiplier(self?.rateSamples(modelID) ?? []))
                     let levels = try await sourceLevels.levels(source: sourceURL, frames: frames, sampleRate: audio.sampleRate)
                     let source = try await VoiceLabSourceAudio.rewriteSource(source: sourceURL, frames: frames, sampleRate: audio.sampleRate,
                         window: phrase.window, incomingSilence: silence.incoming, outgoingSilence: silence.outgoing, items: correctedItems,

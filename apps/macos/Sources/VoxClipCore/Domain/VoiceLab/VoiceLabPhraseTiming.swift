@@ -16,7 +16,17 @@ public struct VoiceLabPhraseTiming: Sendable, Equatable {
     }
     public static let warning = "Too long for its slot. A take won't fit the video."
     public static let shortWarning = "Too short for its slot. A take won't fit the video."
-    public static let providerSpeechRateMultiplier = 1.8
+    /// The calibrated prior (ADR-R43): how many times the speaker's letters per voiced second a cloned take speaks.
+    /// Observed on 78 real Eleven v4 takes: the provider speaks at about the speaker's own letter rate, plus a fixed onset.
+    public static let providerSpeechRateMultiplier = 1.2
+    /// Fixed per-take speech overhead beyond the trim allowance: the onset and decay a take always has.
+    public static let onsetSeconds = 0.4
+    /// A sentence-ending group followed by more speech; a final group adds nothing, the trim cuts after the last word.
+    public static let sentencePauseSeconds = 0.5
+    /// A comma, semicolon, colon or dash group followed by more speech.
+    public static let clausePauseSeconds = 0.1
+    /// The prior's generation. Ratios measured against an older prior are not comparable and are not read.
+    public static let priorVersion = 2
 
     public static func speakingRate(transcript: [TimedWord]) throws -> Double {
         _ = try VoiceLabLengthBudget.rate(transcript: transcript)
@@ -34,27 +44,33 @@ public struct VoiceLabPhraseTiming: Sendable, Equatable {
 
     public static func estimate(text: String, rate: Double) throws -> Double {
         guard rate.isFinite, rate > 0 else { throw VoiceLabLengthBudgetError.invalidInput }
-        var punctuationSeconds = 0.0
-        var punctuationGroup = 0.0
-        for character in text {
-            let pause: Double
-            if ".!?…。！？".contains(character) { pause = 0.22 }
-            else if ",;:—–-，；：".contains(character) { pause = 0.12 }
-            else { pause = 0 }
-            if pause > 0 { punctuationGroup = max(punctuationGroup, pause) }
-            else {
-                punctuationSeconds += punctuationGroup
-                punctuationGroup = 0
-            }
-        }
-        punctuationSeconds += punctuationGroup
         let speech = Double(VoiceLabTextLength.length(text)) / (rate * providerSpeechRateMultiplier)
-        let lead = speech + VoiceLabPatchConstants.TTS_TRIM_LEAD
-        let trimmed = lead + VoiceLabPatchConstants.TTS_TRIM_TAIL
-        let estimate = trimmed + punctuationSeconds
+        let fixed = VoiceLabPatchConstants.TTS_TRIM_LEAD + VoiceLabPatchConstants.TTS_TRIM_TAIL + onsetSeconds
+        let estimate = speech + fixed + pauseSeconds(text)
         guard estimate.isFinite, estimate > 0 else { throw VoiceLabLengthBudgetError.invalidInput }
         return estimate
     }
+
+    /// The pauses inside `text`: each punctuation group counts once, at its largest pause, and only when more speech
+    /// follows it. A hyphen between two letters or digits joins a word ("A-10") and is no pause.
+    public static func pauseSeconds(_ text: String) -> Double {
+        let characters = Array(EditingPrimitives.nfc(text))
+        var total = 0.0, pending = 0.0
+        for (index, character) in characters.enumerated() {
+            if ".!?…。！？".contains(character) { pending = max(pending, sentencePauseSeconds) }
+            else if ",;:—–，；：".contains(character) { pending = max(pending, clausePauseSeconds) }
+            else if character == "-" {
+                let joined = index > 0 && index + 1 < characters.count && counts(characters[index - 1]) && counts(characters[index + 1])
+                if !joined { pending = max(pending, clausePauseSeconds) }
+            } else if counts(character) {
+                total += pending
+                pending = 0
+            }
+        }
+        return total
+    }
+
+    private static func counts(_ character: Character) -> Bool { VoiceLabTextLength.length(String(character)) > 0 }
 
     public static func preview(seconds: Double, window: VoiceLabWindow, incomingSilence: Double?,
                                outgoingSilence: Double?, sourceSampleRate: Int, hardJoinSmoothing: Bool,
@@ -72,8 +88,8 @@ public struct VoiceLabPhraseTiming: Sendable, Equatable {
         let tokens = generatedText?.split(whereSeparator: \.isWhitespace).map(String.init) ?? []
         if tokens.count > 1, pauseProfile != nil {
             let gaps = tokens.dropLast().map { token -> Double in
-                VoiceLabNaturalPacing.endsSentence(token) ? 0.22 :
-                    VoiceLabNaturalPacing.clauseBoundary(after: token, before: "") ? 0.12 : 0.06
+                VoiceLabNaturalPacing.endsSentence(token) ? sentencePauseSeconds :
+                    VoiceLabNaturalPacing.clauseBoundary(after: token, before: "") ? clausePauseSeconds : 0.06
             }
             let gapTotal = gaps.reduce(0, +)
             let speech = wordEnd - gapTotal

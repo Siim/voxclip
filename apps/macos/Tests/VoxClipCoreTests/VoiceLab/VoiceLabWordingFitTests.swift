@@ -57,18 +57,11 @@ import Testing
         }
     }
 
-    @Test func sharedWordTargetsCalibrationAndRoundSelection() throws {
+    /// `autofit-cases.json` `targets` and `calibration` are the Windows twin's 1.8-prior vectors until it moves (ADR-R43);
+    /// the Mac replays its word targets and calibration from `tts-estimator-cases.json` (VoiceLabTTSEstimatorTests).
+    @Test func sharedRoundSelection() throws {
         let vectors = try JSONDecoder().decode(Vectors.self, from: FixtureLoader.data("fixtures/voice-lab/autofit-cases.json"))
-        for row in vectors.targets {
-            let input = row.input
-            #expect(try VoiceLabWordingFit.wordTarget(wordsPerSecond: input.wordsPerSecond, multiplier: input.multiplier,
-                minimumSeconds: input.minimumSeconds, maximumSeconds: input.maximumSeconds, overheadSeconds: input.overheadSeconds,
-                bridgeWords: input.bridgeWords) == row.expected, "\(row.id)")
-        }
-        for row in vectors.calibration {
-            let samples = row.ratios.enumerated().map { VoiceLabRateSample(id: String($0.offset), ratio: $0.element) }
-            #expect(VoiceLabWordingFit.multiplier(samples) == row.expected)
-        }
+        #expect(!vectors.targets.isEmpty && !vectors.calibration.isEmpty)
         for row in vectors.rounds {
             #expect(VoiceLabWordingFit.nextOrdinals(roundsCompleted: row.roundsCompleted, candidates: row.candidates,
                 fitting: Set(row.fitting), kept: Set(row.kept), stopped: row.stopped) == row.expected)
@@ -78,14 +71,17 @@ import Testing
     @Test func calibrationKeepsTenDistinctMeasuredTakesAndIgnoresBadMeasurements() throws {
         var samples: [VoiceLabRateSample] = []
         for index in 0..<12 {
-            samples = VoiceLabWordingFit.recording(samples, id: String(index), measured: Double(index + 1), estimated: 1)
+            samples = VoiceLabWordingFit.recording(samples, id: String(index), measured: 1 + Double(index) / 4, estimated: 1)
         }
         #expect(samples.count == 10)
         #expect(samples.first?.id == "2")
-        #expect(VoiceLabWordingFit.multiplier(samples) == 7.5)
+        #expect(VoiceLabWordingFit.multiplier(samples) == 2.625)
         #expect(VoiceLabWordingFit.recording(samples, id: "11", measured: 1, estimated: 1) == samples)
         #expect(VoiceLabWordingFit.recording(samples, id: "bad", measured: .nan, estimated: 1) == samples)
         #expect(VoiceLabWordingFit.recording(samples, id: "bad", measured: 1, estimated: 0) == samples)
+        // A ratio outside 0.25–4 is a failed measurement, never a pace.
+        #expect(VoiceLabWordingFit.recording(samples, id: "far", measured: 9, estimated: 1) == samples)
+        #expect(VoiceLabWordingFit.recording(samples, id: "near", measured: 0.2, estimated: 1) == samples)
         #expect(VoiceLabWordingFit.multiplier([.init(id: "bad", ratio: .infinity)]) == 1)
         #expect(throws: VoiceLabLengthBudgetError.self) {
             try VoiceLabWordingFit.wordTarget(wordsPerSecond: .nan, multiplier: 1, minimumSeconds: 1, maximumSeconds: 2, overheadSeconds: 0)

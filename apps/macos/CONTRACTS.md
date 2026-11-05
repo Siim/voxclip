@@ -52,6 +52,62 @@ User (2026-11-05 22:50, MVP32, Suggested clip 7, ✦ Viral YouTuber + Fix mistak
     - step 4: `MakeItRewriteDriver.cs` running the fit, pressing keepMyWords/keepOriginalAudio, finishing as recorded.
   - Real-window `-sceneAudit`/`-uiSelfTest` (the Mac was in use). A live check on the user's DJI project with Claude Code: whether v4 prompts make Viral YouTuber lines fit (no live call was made). The exact `VoiceLabProjectError` case of the MVP32 card, from the next `stage=use` log line. Budgets stay generous until track/v2-tts-estimator lands (they use 1.8 until a project has two measured samples).
 - **Next package must know.** Never price a change that can't fit its slot; keep it as recorded. A new Rewrite footer must have a primary unless something runs (I10 checks every step). A new failure at Use or video preparation that belongs to one phrase should be `ClipTakePlan.Failure.unusable([phrase])` so Use settles it. Budgets come only from `VoiceLabPhraseTiming.estimate`, `VoiceLabWordingFit.wordTarget` and `multiplier`.
+### 2026-11-06 — The text-to-voice length estimator is calibrated on real takes and learns per voice across projects (track/v2-tts-estimator)
+
+User (2026-11-05): "so our estimator is not good yet e.g. txt to voice length estimator often fails? can we improve it now based on our real world fails?" Spec: doc/spec/voice-lab.md §8.2.2 and "Pre-pay phrase fit"; [ADR-R43](../../doc/adr/R43-tts-length-estimator-calibration.md).
+
+- **Measured.** `tools/voice-lab/measure_tts_takes.py` ran locally and read only, with on-device whisper and the voiced span. It reads 152 paid takes and keeps 144: 78 Eleven v4 and 66 pre-v4.
+  - The v4 takes ran 1.46× the old estimate (median; IQR 1.37–1.66). The provider speaks at 0.98× the speaker's letter rate, not 1.8×, plus about 0.4 s of onset.
+  - Error on v4: MAE 0.89 s → 0.35 s, MAPE 33% → 14%, within ±15% 5% → 63%.
+  - Error on all 144: MAE 0.93 s → 0.40 s, within ±15% 8% → 56%.
+  - Syllables scored worse than letters (MAE 0.43 s).
+  - Nothing per take was committed. Scratch transcripts were deleted.
+- **Built.**
+  - **Core prior.** `VoiceLabPhraseTiming.estimate` is letters ÷ (rate × `providerSpeechRateMultiplier` 1.2) + trim + `onsetSeconds` 0.4 + `pauseSeconds(_:)`.
+    - `pauseSeconds` adds 0.5 s per internal sentence group and 0.1 s per internal clause group. A final group adds nothing, and a hyphen inside a word is no pause.
+    - `priorVersion` is 2. `preview`'s synthetic gaps use the same pauses.
+  - **Core calibration.** `VoiceLabRateCalibration` (new): `projectKey(model)` = `"<model>@prior2"`, `robustRatios` (bounds 0.25–4, last N, 3 scaled-MAD trim at ≥5), `multiplier`, `spread` (p80/p50 within 1.05–1.6, else `priorSpread` 1.15), `samples(project:voice:)` (the voice median as 3 samples, then the project's), `p80(seconds:spread:)`.
+  - **Core voice record.** `VoiceLabVoiceCalibration` (`voxclip-voice-rate-calibration/1`: `schema recordId prior models seeded`, last 30 per model). A wrong record or schema throws; another prior reads as empty; out-of-bounds ratios are dropped. `VoiceLabRateCalibrationStore` (actor, `VoiceLab/calibration/<recordId>.json`, record IDs `[A-Za-z0-9_-]{1,128}`).
+  - **Core wording fit.**
+    - `VoiceLabWordingFit.multiplier(_:)` and `recording` keep their signatures and use the robust median and the bounds; `projectSampleLimit` is 10.
+    - `wordTarget(...)` gains a defaulted `spread:` (prior 1.15). Its upper bound is `maximumSeconds ÷ spread`: the p80. Its lower bound is unchanged: the median.
+  - **Media.** `VoiceLabRateCalibrationSeeder` seeds the voice once, and only when there is exactly one active voice. It reads up to 30 of the newest takes written after the voice was created, gets their words from `VoiceLabLocalTiming` and the speaker rate from the voice's reference recording, and files the seed under `VoiceLabWordingFit.modelID`. A failure leaves the voice unseeded, so the next launch retries.
+  - **App.**
+    - `AppModel` holds `rateCalibrations` and the `rateCalibrationStore`. `startRateCalibration` runs at launch: it loads the store, then seeds in the background outside harness sessions and DEBUG probes, and logs counts only (`rate calibration seed=…`).
+    - `AppModel.rateCalibration(recordID:)` returns the chosen voice's calibration, else the only stored one. `recordRateCalibration` updates the cache now and writes in the background.
+    - A test session on the user's own data folder never reads or writes the store (`persistsRateCalibration`).
+    - `RewriteSession.voiceCalibration`, `rateSamples(_:)` and `rateSpread(_:)` feed every multiplier and word budget: the review, the plan inputs, the transcript copy, the wording fit, measured rewording and own words. `RewriteReview.Inputs` gains `voiceCalibration` and `rateSamples`.
+    - `recordSpeakingRate(model:recordID:take:measured:baseline:)` writes the project's samples under `projectKey` and also records the take for its voice.
+  - **Vectors.** `shared/fixtures/voice-lab/tts-estimator-cases.json` (new schema `voxclip-tts-estimator/1`, 31 cases: `estimates`, `real` bin medians, `calibration`, `wordTargets`), written by `tools/fixtures/voice-lab/generate_tts_estimator.py`, byte-exact in `check_drift.py`.
+- **Deleted.**
+  - `VoiceLabPhraseTimingTests.sharedRealPhraseCalibration`, whose expected values were the 1.8 prior's.
+  - The Mac replay of `autofit-cases.json` `targets`/`calibration`. Those are the Windows twin's 1.8-prior vectors, and their 7 and 100 ratios are now out of bounds.
+  - The 1.8, 0.22 and 0.12 constants.
+- **Changed fixtures.**
+  - `DebugRewrite.proposalScenes` draws words 20, 30 and 40 out to 0.9 s. A one-word take carries the onset, so a 0.4 s word is no slot for it.
+  - `ClipTakePlanTests`' slow speaker says "older" instead of "old", which keeps its one-word estimates where its slots were drawn (Hello 3.65 s against 3.6 s before).
+  - **Rewrite smoke.**
+    - Each scenario starts from an uncalibrated voice (`AppModel.forgetRateCalibrationsForSmoke`, DEBUG). Every scenario uses the same fixture voice, so one scenario's deliberately long or short takes taught the next one's estimates: 22 failures in Media's smoke run before this reset.
+    - S5's fragment is now a far-too-long wording, and the harness offers the surrounding sentence on any change whose estimate doesn't fit. The one-word "bits." reads as fitting with a video cut once the onset is counted. Its 0.41 s scripted take then fit no duration and the footer asked for a choice no control offers. That dead end remains, for any take far shorter than its estimate.
+- **Tests.**
+  - Core `VoiceLabTTSEstimatorTests` (9): the shared constants, the estimates and pauses, the old prior missing the real bins by more than 40% while the new one is within 15%, robust calibration and the voice-then-project merge, the p80 word targets, another voice corrected by its own two takes, the voice wire and its bounds and models, the store, and a new project's estimate starting from the stored voice.
+  - Media `VoiceLabRateCalibrationSeederTests` (3): one voice seeded once from its takes with the expected ratios and never again; no voice or no reference leaves nothing seeded and a later launch seeds; only the newest takes of project folders are read.
+  - Updated: `VoiceLabWordingFitTests` (bounds, robust median), `VoiceLabPhraseTimingTests` (copy "≈ 2.4 s", internal commas 0.2 s), `VoiceLabNaturalPacingTests` (the onset floor), and `ClipTakePlanTests` (the `@prior2` key, the voice keeping 12 takes, a 3.9× ratio in place of 6×).
+- **Owed.**
+  - **Windows twin.** It needs:
+    - the prior and the pause rule;
+    - the `@prior2` key, writing there and reading only that;
+    - `VoiceLabRateCalibration`, `VoiceLabVoiceCalibration` and the store, with the same file and schema;
+    - the seed;
+    - `wordTarget`'s `spread`;
+    - a replay of `tts-estimator-cases.json`;
+    - its own `phrase-timing-cases.json` and `autofit-cases.json` `targets`/`calibration` expectations moved to the new prior, which leaves those files to regenerate or retire.
+  - **Real-window scene audits.** They are owed: the r2 scenes' timings changed.
+  - **Model ID for the seed.** The seed can't tell a take's model and files every take under Eleven v4.
+- **Next package must know.**
+  - Read the multiplier through `RewriteSession.rateSamples(_:)` (or `RewriteReview.Inputs.rateSamples`), never `speakingRateSamples[model]`.
+  - Pass `rateSpread(_:)` to `wordTarget`.
+  - Re-run `tools/voice-lab/measure_tts_takes.py` before changing a prior constant, and bump `priorVersion` when one changes.
 
 ### 2026-11-05 — The Mac replays the shared music-mix vectors; the bed's plan and mix are one pure type (track/v2-win-render-3)
 

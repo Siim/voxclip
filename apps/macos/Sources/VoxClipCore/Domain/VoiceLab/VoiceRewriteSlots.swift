@@ -29,9 +29,11 @@ public enum VoiceRewriteSlots {
     }
 
     /// `sourceWords` in spans, each closed after a word ending in punctuation or before a pause of `pauseSeconds`, with
-    /// its budget from `VoiceLabWordingFit.wordTarget` at `multiplier` (the project's measured takes), capped at the
-    /// span's word count. Nil when the words make no span or more than `maximumSlots`.
-    public static func make(sourceWords: [TimedWord], wordsPerSecond: Double, multiplier: Double) throws -> [VoiceRewriteSlot]? {
+    /// its budget from `VoiceLabWordingFit.wordTarget` at `multiplier` (the voice's and project's measured takes) and `spread`
+    /// (four takes in five fit), after each take's fixed start (`VoiceLabPhraseTiming.onsetSeconds`), capped at the span's word
+    /// count. Nil when the words make no span or more than `maximumSlots`.
+    public static func make(sourceWords: [TimedWord], wordsPerSecond: Double, multiplier: Double,
+                            spread: Double = VoiceLabRateCalibration.priorSpread) throws -> [VoiceRewriteSlot]? {
         let words = sourceWords.filter { $0.kind == .word && $0.start.isFinite && $0.end.isFinite && $0.end >= $0.start }
         var spans: [[TimedWord]] = []
         var current: [TimedWord] = []
@@ -49,7 +51,7 @@ public enum VoiceRewriteSlots {
             let seconds = last.end - first.start
             guard seconds > 0 else { return nil }
             let target = try VoiceLabWordingFit.wordTarget(wordsPerSecond: wordsPerSecond, multiplier: multiplier,
-                minimumSeconds: 0, maximumSeconds: seconds, overheadSeconds: 0)
+                minimumSeconds: 0, maximumSeconds: seconds, overheadSeconds: min(VoiceLabPhraseTiming.onsetSeconds, seconds), spread: spread)
             return VoiceRewriteSlot(text: span.map(\.text).joined(separator: " "), seconds: seconds,
                                     maxWords: max(1, min(target.maximum, span.count)))
         }

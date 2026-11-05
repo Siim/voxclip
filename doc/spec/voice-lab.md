@@ -95,20 +95,48 @@ word-boundary mapping as manual edits. No fit request synthesizes audio.
 The pure word-target function is `VoiceLabWordingFit.wordTarget`. Let `w` be the
 speaker's words per voiced second, `c` the model's measured/default duration
 ratio, `l...u` the planner's estimated fit range, `h` fixed timing/tag overhead,
-and `b` the bridge word count. Set `r = w × 1.8 / c`; the inclusive target is
+and `b` the bridge word count, and `s` the calibration's spread (p80 ÷ p50, below). Set
+`r = w × 1.2 / c` (the prior's provider multiplier); the inclusive target is
 `max(1, ceil(max(0, l − h) × r − b))` through
-`max(minimum, floor(max(0, u − h) × r − b))`, clamped to 2,000 words. The final
-planner review, not the word count, decides fit. Measured recovery uses the
-same function with the measured/estimated duration adjustment.
+`max(minimum, floor(max(0, u ÷ s − h) × r − b))`, clamped to 2,000 words. The upper bound
+aims at the p80 duration so four takes in five fit the first time; the lower bound aims at
+the median. The final planner review, not the word count, decides fit. Measured recovery
+uses the same function with the measured/estimated duration adjustment.
 
-Optional `voiceLab.speakingRateSamples` stores a per-model ordered array of at
-most ten `{id, ratio}` samples. A sample is the measured trimmed speech length
-at pace 1.00 divided by the uncalibrated estimate, including applicable tags.
-Each measured take contributes once. The model multiplier is the median of its
-last ten valid ratios; zero or one sample uses 1.0, retaining the existing 1.8
-provider speed default. Estimates, fit checks and word targets use the same
-multiplier. Old projects omit the field and decode unchanged. Calibration is
-project data, not a reason to stale a proposal or its paid take ownership.
+Optional `voiceLab.speakingRateSamples` stores, per key, an ordered array of at most ten
+`{id, ratio}` samples. A sample is the measured trimmed speech length at pace 1.00 divided
+by the uncalibrated estimate, including applicable tags. Samples against the current prior
+(ADR-R43) sit under `"<model>@prior2"`. Samples under the bare model ID were measured against
+the retired 1.8 prior and are not read; the Windows twin still writes them until it moves.
+Each measured take contributes once. A ratio outside 0.25–4 is a failed measurement and is
+not stored. Old projects omit the field and decode unchanged. Calibration is project data,
+not a reason to stale a proposal or its paid take ownership.
+
+Each voice also keeps a calibration across projects, in the app's data folder beside the
+consent records: `VoiceLab/calibration/<recordId>.json`, schema
+`voxclip-voice-rate-calibration/1`, holding `{schema, recordId, prior, models, seeded}` with,
+per model, its last 30 ratios against the current prior. A file with another `prior` reads as
+empty. Every take a Rewrite measures updates both the project and its voice.
+
+- **Multiplier.** An estimate's multiplier is the median of the last ten ratios of the
+  voice's median (counted as three samples) followed by the project's own samples. Once there
+  are five or more, ratios more than three scaled median absolute deviations (× 1.4826) from
+  the median are trimmed first. With fewer than two ratios, the multiplier is 1.0. A new
+  project therefore starts from its voice, and its own takes outweigh the voice from the
+  fourth on.
+- **Spread.** The spread is p80 ÷ p50 of the project's robust ratios once it has five, else
+  the voice's, kept within 1.05–1.6. Below five it is the prior's 1.15.
+- **What uses them.** Estimates, fit checks and word targets use the same multiplier. The
+  displayed "≈ x s" stays the median.
+- **Seeding.** On the first launch of a build with this store, outside harness sessions, a
+  background task seeds the one active voice once from up to 30 of the newest takes written
+  after it was created:
+  - words from the on-device word check;
+  - length from the take's first to last voiced frame, widened by the trim lead and tail;
+  - speaker rate from the voice's reference recording;
+  - model: the Rewrite model.
+
+  The log gets counts only. With no active voice, or several, nothing is seeded.
 
 No-extra-cost connectors run automatically. If `sendAsksFirst` applies, one
 inline Fit/Skip row shows the existing send estimate (or explicitly unknown
@@ -1515,11 +1543,20 @@ character budget does not permit any single changed phrase to grow unchecked.
 The estimator counts Unicode letters and digits in the complete synthesized patch (including
 bridge words). Measure the clip's corrected transcript letters and digits per voiced second
 using the union of its word spans (no inter-word pauses), excluding cut words. Multiply
-this user rate by the calibrated provider cadence multiplier **1.8**, not a 20 characters/s
-floor: slower users still get slower estimates. Add 0.12 s for each comma,
-semicolon, colon or dash pause and 0.22 s for each sentence-ending punctuation group.
-Trimmed provider lead/tail allowance is `TTS_TRIM_LEAD + TTS_TRIM_TAIL`.
-Punctuation runs count once. Estimates are advisory, never speech-check evidence.
+this user rate by the calibrated provider cadence multiplier **1.2**, not a 20 characters/s
+floor: slower users still get slower estimates. Add the trim allowance
+`TTS_TRIM_LEAD + TTS_TRIM_TAIL` and a fixed take onset of 0.4 s. Add 0.1 s for each comma,
+semicolon, colon or dash group and 0.5 s for each sentence-ending group, each only when more
+speech follows it: a final group adds nothing, because the trim cuts after the last word. A
+hyphen between two letters or digits ("A-10") is part of a word, not a pause. Punctuation
+runs count once, at their largest pause. Estimates are advisory, never speech-check evidence.
+
+The 1.2, the 0.4 s onset and the pauses were measured on 78 of the user's real Eleven v4
+takes (ADR-R43, `tools/voice-lab/measure_tts_takes.py`). Against them, the mean absolute
+error fell from 0.89 s (33%; 5% within ±15%) under the 1.8 prior to 0.35 s (14%; 63% within
+±15%). Vectors: `shared/fixtures/voice-lab/tts-estimator-cases.json`
+(`voxclip-tts-estimator/1`). The 3 November calibration below fixed the retired 1.8 prior
+and is kept as that prior's record and the Windows twin's vectors.
 `ClipTakePlan.validateSpeechAvailability` retains its conservative generated-speech rule;
 the fit estimate must not enable a short-phrase speaker check.
 

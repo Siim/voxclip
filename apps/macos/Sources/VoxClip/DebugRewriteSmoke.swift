@@ -552,6 +552,9 @@ import VoxClipCore
         func open(_ fixture: Fixture) async throws {
             guard let shared = app.shared else { throw Failure.setup("shared resources missing") }
             RewriteSmokeHTTP.script.withLock { $0 = fixture.voice }
+            // Every scenario is a new project with the same fixture voice: it starts with that voice uncalibrated, so
+            // one scenario's deliberately long or short takes don't teach the next one's estimates (ADR-R43).
+            app.forgetRateCalibrationsForSmoke()
             let root = app.locations.root
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
             let (project, envelope) = try await DebugRewriteSmoke.project(fixture, root: root, shared: shared)
@@ -1176,12 +1179,18 @@ import VoxClipCore
             try await harness.start()
             try await harness.finish()
         },
+        // The fragment's wording is far too long for its slot, so its estimate holds it back. With a take's onset counted
+        // (ADR-R43) a short wording such as "bits." fits by a video cut, and nothing would offer the surrounding sentence.
         Definition(id: "S5", title: "surrounding sentence refused: a fragment at the clip start",
-            fixture: Fixture(firstWord: 23, rewrites: [.passage(replace([("words we got wrong.", "bits."), twoChanges[1]])
+            fixture: Fixture(firstWord: 23, rewrites: [.passage(replace([("words we got wrong.",
+                "every single one of the many little words that we somehow managed to get wrong."), twoChanges[1]])
                 .split(separator: " ").dropFirst(23).joined(separator: " "))], fits: [.sameWords, .sameWords, .sameWords],
                 voice: RewriteSmokeVoiceScript(offset: -0.1))) { harness in
             try await harness.start()
-            if let session = harness.session, let ordinal = session.blockedVoiceOrdinals.first {
+            // Once the automatic fit ends, a phrase still too long is priced as written rather than held back; its
+            // estimate still doesn't fit, so the surrounding sentence is still offered for it.
+            if let session = harness.session, let ordinal = session.blockedVoiceOrdinals.first
+                ?? session.changes.indices.map({ $0 + 1 }).first(where: { session.voiceReview($0)?.timing.map { !$0.fits } == true }) {
                 try await harness.act("click [Use surrounding sentence] on change \(ordinal)", clicked: "surrounding") {
                     session.task.phraseTimingAction?(ordinal, .surrounding)
                 }

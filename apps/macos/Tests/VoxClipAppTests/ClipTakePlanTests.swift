@@ -256,9 +256,11 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         project.media.source.durationSeconds = 121
         project.media.source.audio?.sampleRate = 24_000
         let wordCount = contextWords ? 32 : 24
+        // A slow speaker: five letters a 3.8 s word, so the calibrated prior (ADR-R43) gives a one-word take about the
+        // length the plan's slots were drawn for.
         project.transcript?.words = (0..<wordCount).map { index in
             let start = 0.2 + Double(index) * (contextWords ? 3.5 : 5)
-            let text = contextWords ? String(repeating: "context", count: 10) + (index % 4 == 3 ? "." : "") : "old"
+            let text = contextWords ? String(repeating: "context", count: 10) + (index % 4 == 3 ? "." : "") : "older"
             return TimedWord(id: "w\(index)", text: text, start: start, end: start + (contextWords ? 3 : 3.8))
         }
         project.transcript?.durationSeconds = 121
@@ -1514,7 +1516,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(requests.count == 1 && requests[0].cachedBlock?.contains("Measured") == true)
         #expect(requests[0].cachedBlock?.contains(tooLong ? "fewer words" : "more words") == true)
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
-        #expect(editor.project.voiceLab.speakingRateSamples?["eleven_v4"]?.count == 1)
+        #expect(editor.project.voiceLab.speakingRateSamples?[VoiceLabRateCalibration.projectKey("eleven_v4")]?.count == 1)
         let staleAction = try #require(session.pricedTakeAction(phrase: 0))
         #expect(staleAction.title.hasPrefix("Make Take"))
         session.keepMeasuredTake()
@@ -1530,12 +1532,16 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         let (editor, session) = self.session(fixture); defer { editor.close() }
         let ids = (0..<12).map { _ in UUID() }
         for (index, id) in ids.enumerated() {
-            session.recordSpeakingRate(model: "eleven_v4", take: id, measured: Double(index + 1), baseline: 1)
+            session.recordSpeakingRate(model: "eleven_v4", recordID: "fixture-voice", take: id, measured: 1 + Double(index) / 10, baseline: 1)
         }
-        let samples = editor.project.voiceLab.speakingRateSamples?["eleven_v4"]
+        let key = VoiceLabRateCalibration.projectKey("eleven_v4")
+        let samples = editor.project.voiceLab.speakingRateSamples?[key]
         #expect(samples?.map(\.id) == ids.suffix(10).map(\.uuidString))
-        for id in ids { session.recordSpeakingRate(model: "eleven_v4", take: id, measured: 99, baseline: 1) }
-        #expect(editor.project.voiceLab.speakingRateSamples?["eleven_v4"] == samples)
+        #expect(editor.project.voiceLab.speakingRateSamples?["eleven_v4"] == nil)
+        for id in ids { session.recordSpeakingRate(model: "eleven_v4", recordID: "fixture-voice", take: id, measured: 3, baseline: 1) }
+        #expect(editor.project.voiceLab.speakingRateSamples?[key] == samples)
+        // The voice keeps all twelve across projects (its last 30).
+        #expect(editor.app.rateCalibration(recordID: "fixture-voice")?.samples("eleven_v4").map(\.id) == ids.map(\.uuidString))
     }
 
     @Test func measuredRecoveryOffersWordingEvenWhenRetimeIsAvailable() async throws {
@@ -2609,8 +2615,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         let model = try #require(plan.measuredInput(take: take.id)?.modelID)
         session.pricedAnyway = []
         #expect(session.voicedOrdinals == [ordinal] && session.blockedVoiceOrdinals.isEmpty)
-        // Measured takes read as speech six times slower than estimated.
-        for _ in 0..<10 { session.recordSpeakingRate(model: model, take: UUID(), measured: 6, baseline: 1) }
+        // Measured takes read as speech nearly four times slower than estimated (the most a sample may say).
+        for _ in 0..<10 { session.recordSpeakingRate(model: model, recordID: "fixture-voice", take: UUID(), measured: 3.9, baseline: 1) }
         #expect(session.voiceReview(ordinal)?.timing?.fits == false)
         session.showProposal()
         #expect(session.blockedVoiceOrdinals.isEmpty)
