@@ -94,6 +94,8 @@ public struct AskClaudePrompt: Sendable {
     public var maxReasonChars: Int { limit("maxReasonChars", 120) }
     public var maxChoiceChars: Int { limit("maxChoiceChars", 120) }
     public var maxDetectionTextChars: Int { limit("maxDetectionTextChars", 60) }
+    /// The stickers the prompt offers: the bundled emoji (`shared/fonts/noto-emoji/png128`), without variation selectors.
+    public var stickers: Set<String> { Set(document[ai: "stickers"].aiArray.compactMap(\.aiString)) }
     /// The toolbox kinds the prompt offers, in its order.
     public var kinds: [String] { document[ai: "toolbox"].aiArray.compactMap { $0[ai: "kind"].aiString } }
 
@@ -286,8 +288,8 @@ public struct AskClaudeValidator: Sendable {
                 guard let value = effect(kind == "title" ? .title : .lowerThird, { $0.text = text; $0.position = position }) else { drop("no time in the selection"); continue }
                 add(.overlay, .effect(value))
             case "sticker":
-                let text = AIText.trim(item[ai: "text"].aiString ?? "")
-                guard Self.isEmoji(text), text.unicodeScalars.count <= ClipEffect.maximumStickerScalars else { drop("not an emoji"); continue }
+                let text = Self.withoutVariationSelectors(AIText.trim(item[ai: "text"].aiString ?? ""))
+                guard prompt.stickers.contains(text) else { drop("not one of the bundled emoji"); continue }
                 let position = positionValue(item, allowed: [.topLeft, .topRight, .bottomLeft, .bottomRight, .center], fallback: .topRight)
                 let scale = Self.clamp(item[ai: "scale"].aiDouble, ClipEffect.scaleRange, fallback: Self.stickerScale)
                 guard let value = effect(.sticker, { $0.text = text; $0.position = position; $0.scale = scale }) else { drop("no time in the selection"); continue }
@@ -387,9 +389,8 @@ public struct AskClaudeValidator: Sendable {
         guard let value, value.isFinite, value != 0 else { return fallback }
         return min(range.upperBound, max(range.lowerBound, value))
     }
-    static func isEmoji(_ text: String) -> Bool {
-        !text.isEmpty && text.unicodeScalars.contains { $0.properties.isEmojiPresentation || ($0.properties.isEmoji && $0.value > 0x238C) }
-            && !text.unicodeScalars.contains { CharacterSet.alphanumerics.contains($0) && !$0.properties.isEmoji }
+    static func withoutVariationSelectors(_ text: String) -> String {
+        String(String.UnicodeScalarView(text.unicodeScalars.filter { $0.value != 0xFE0F && $0.value != 0xFE0E }))
     }
 
     /// The reply's word range clamped to the selection; the whole selection when the reply gives none or an empty one.

@@ -32,6 +32,12 @@ import Testing
         #expect(try Self.fixture()[ai: "promptSha256"].aiString == sha)
         #expect(try Self.fixture()[ai: "format"].aiString == "voxclip-ask-claude/1")
         #expect(try Self.prompt().kinds.count == 20)
+        // Stickers are exactly the bundled emoji images, so every sticker renders from the app's own files.
+        let folder = try Self.shared().root.appendingPathComponent("fonts/noto-emoji/png128")
+        let bundled = try FileManager.default.contentsOfDirectory(atPath: folder.path).filter { $0.hasPrefix("emoji_u") }.map { name in
+            String(String.UnicodeScalarView(name.dropFirst(7).dropLast(4).split(separator: "_").compactMap { UInt32($0, radix: 16).flatMap(Unicode.Scalar.init) }))
+        }
+        #expect(try Self.prompt().stickers == Set(bundled) && bundled.count == 50)
     }
 
     @Test("The request carries the instruction, the indexed words, context, the clip, detections and the toolbox, at extra high effort")

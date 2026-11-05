@@ -136,9 +136,11 @@ public final class FadeContext: @unchecked Sendable {
     private let capturedCount = Atomic<Int>(0)
     private let capturedRate = Atomic<UInt64>(0)
     var capturedSampleRate: Double { Double(bitPattern: capturedRate.load(ordering: .acquiring)) }
+    /// Output seconds a bleep or mute silences (ai.md §18.5); empty keeps the voice as the plan leaves it.
+    let silenced: [ClosedRange<Double>]
     public convenience init(plan: EditPlan) { self.init(plan: plan, captureCapacity: 0) }
-    init(plan: EditPlan, captureCapacity: Int) {
-        self.plan = plan; rate = plan.sampleRate; joins = ContiguousArray(plan.joins)
+    init(plan: EditPlan, captureCapacity: Int, silenced: [ClosedRange<Double>] = []) {
+        self.plan = plan; rate = plan.sampleRate; joins = ContiguousArray(plan.joins); self.silenced = silenced
         self.captureCapacity = max(0, captureCapacity)
         capturePositions = captureCapacity > 0 ? .allocate(capacity: captureCapacity) : nil
         captureValues = captureCapacity > 0 ? .allocate(capacity: captureCapacity) : nil
@@ -197,7 +199,8 @@ public final class FadeContext: @unchecked Sendable {
             let channels = Int(buffer.mNumberChannels)
             for frame in 0..<frames {
                 let position = first + Int64((Double(frame) * stride).rounded())
-                let gain = processingGain(position)
+                var gain = processingGain(position)
+                if !silenced.isEmpty { gain *= Float(EffectAudio.voiceGain(at: Double(position) / rate, ranges: silenced)) }
                 for channel in 0..<channels { values[frame * channels + channel] *= gain }
                 if bufferIndex == 0, let capturePositions, let captureValues {
                     let index = capturedCount.load(ordering: .relaxed)
@@ -219,9 +222,9 @@ public struct FadeTap: Sendable {
         return FadeContext(plan: plan)
     }
 
-    static func make(plan: EditPlan) throws -> MTAudioProcessingTap {
-        let context = try FadeTap().prepare(plan: plan)
-        return try make(context: context)
+    static func make(plan: EditPlan, silenced: [ClosedRange<Double>] = []) throws -> MTAudioProcessingTap {
+        guard plan.sampleRate.isFinite, plan.sampleRate > 0 else { throw VoxClipError.exportFailed("Invalid audio sample rate") }
+        return try make(context: FadeContext(plan: plan, captureCapacity: 0, silenced: silenced))
     }
 
     static func make(context: FadeContext) throws -> MTAudioProcessingTap {

@@ -51,6 +51,7 @@ public enum RenderCallerInputs {
         result.motionClipID = clipID
         result.motionCues = clipID.map { selected in project.motionCues.filter { $0.clipID == selected } } ?? []
         result.music = MusicRenderInput.resolve(project: project, clipId: clipID, dataRoot: dataRoot)
+        result.effects = ClipEffectsRenderInput.resolve(project: project, clipID: clipID, dataRoot: dataRoot, shared: try? SharedResources.locate())
         result.reduceMotion = request.forPreview && reduceMotion
         result.contextDemo = nil
         result.contextDemoRoot = nil
