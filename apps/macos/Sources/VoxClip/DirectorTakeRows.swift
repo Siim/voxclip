@@ -112,6 +112,27 @@ extension RewriteSession {
     }
     var takesBusy: Bool { takePlan.map { $0.preparing || $0.generating || $0.publishing || $0.preparingVideo } ?? false }
     var usableTakeCount: Int { takePlan.map { $0.canAccept ? $0.phrases.filter { $0.selected?.row.selectable == true }.count : 0 } ?? 0 }
+    /// Phrases whose passing take waits for the user's click (ADR-R37: its voice couldn't be measured) while Use is offered.
+    var waitingTakePhrases: [Int] {
+        guard let takePlan else { return [] }
+        return takePlan.phrases.map(\.id).filter { takePlan.offeredTake(phrase: $0) != nil }
+    }
+    /// The Use button names what it applies: "Use Takes", "Use 3 Takes" with phrases kept as recorded, and "Use 11 of 12"
+    /// while another phrase's voiced take waits for its click, so Use never applies fewer voiced phrases unannounced.
+    var useTakesTitle: String {
+        let usable = usableTakeCount, waiting = waitingTakePhrases.count
+        if waiting > 0 { return "Use \(usable) of \(usable + waiting)" }
+        if usable == takePlan?.phrases.count { return "Use Takes" }
+        return "Use \(usable) \(usable == 1 ? "Take" : "Takes")"
+    }
+    /// Beside "Use 11 of 12": which phrases wait and what Use does with them.
+    var waitingTakesLine: String? {
+        let waiting = waitingTakePhrases.map { "\($0 + 1)" }
+        guard !waiting.isEmpty else { return nil }
+        let list = waiting.count == 1 ? waiting[0] : waiting.dropLast().joined(separator: ", ") + " and " + waiting[waiting.count - 1]
+        return waiting.count == 1 ? "Phrase \(list)'s take waits for your pick; Use keeps its original words."
+            : "Phrases \(list) wait for your pick; Use keeps their original words."
+    }
     var takeSendLine: String {
         let indices = takeQuotePhrase.map { [$0] } ?? takePlan?.phrases.map(\.id) ?? []
         let paces = indices.compactMap { index -> String? in

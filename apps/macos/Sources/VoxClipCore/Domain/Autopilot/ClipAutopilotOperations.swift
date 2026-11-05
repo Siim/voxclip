@@ -40,7 +40,7 @@ public struct ClipAutopilotOperation: Sendable, Equatable, Identifiable {
         case motion(MotionCue)
         /// The music package's input; `apply` leaves it pending.
         case music(ClipAutopilotMusicCue)
-        /// The first-2-seconds on-screen text. The editor has no title card yet, so `apply` leaves it pending.
+        /// The first-2-seconds on-screen text: `apply` adds it as the clip's title card (`ClipHookTitle`, design.md §6.7).
         case hook(clipID: String, text: String)
         /// The clip's share text (`project.share.captions[clipID]`).
         case shareText(clipID: String, text: String)
@@ -173,9 +173,9 @@ public enum ClipAutopilotMapping {
 
     /// Applies what the editor can apply today, in order, to a copy of `project`: edits (corrections included), captions,
     /// motion cues, share text, effects, music ducking, the clip's look and speed (clip controls, design.md §6.9), and a
-    /// stretch that covers a whole clip (`ClipControlsProject.wholeClip`) as that clip's speed. Rewrites, music, the hook,
-    /// a stretch over part of a clip and translated captions come back as `pending`. Pure: one undo step is the caller's
-    /// choice.
+    /// stretch that covers a whole clip (`ClipControlsProject.wholeClip`) as that clip's speed, and the hook as the clip's
+    /// title card (`ClipHookTitle`, timed on the clip as the operations before it left it). Rewrites, music, a stretch over
+    /// part of a clip and translated captions come back as `pending`. Pure: one undo step is the caller's choice.
     public static func apply(_ operations: [ClipAutopilotOperation], to project: Project) throws -> (project: Project, pending: [ClipAutopilotOperation]) {
         var result = project
         var pending: [ClipAutopilotOperation] = []
@@ -197,7 +197,10 @@ public enum ClipAutopilotMapping {
             case .stretch(let clipID, let start, let end, let rate):
                 guard let whole = ClipControlsProject.wholeClip(clipID, start: start, end: end, in: result) else { pending.append(operation); continue }
                 result = try ClipControlsProject.settingSpeed(rate, clipId: whole, in: result)
-            case .rewrite, .music, .hook, .translateCaptions: pending.append(operation)
+            case .hook(let clipID, let text):
+                guard let card = ClipHookTitle.effect(hook: text, clipID: clipID, in: result) else { pending.append(operation); continue }
+                effects.append(card)
+            case .rewrite, .music, .translateCaptions: pending.append(operation)
             }
         }
         result = try ClipEffects.adding(effects, to: result)

@@ -129,7 +129,7 @@ import Testing
         let (applied, pending) = try ClipAutopilotMapping.apply(operations, to: project)
         #expect(applied.edits.corrections == ["w13": "Sleep"])
         // The look and the speed are clip controls (design.md §6.9): both apply in the same pure step.
-        #expect(pending.map(\.decision) == [.rewrite, .music, .hook])
+        #expect(pending.map(\.decision) == [.rewrite, .music])
         #expect(applied.clipControls == [ProjectClipControls(clipId: "c1", speed: 1.2, look: .warm)])
         try ProjectValidation.validateModel(applied)
         // 9.75 s edited (ClipAutopilotTests.editedLengthTakesOffCutsAndTightenedPauses) at 1.2.

@@ -85,7 +85,11 @@ def main():
     subprocess.run([sys.executable, str(root / "tools/fixtures/clip-controls/generate_clip_controls.py")], check=True)
     # The renderer decisions both platforms reproduce for clip controls and effects (design.md sections 6.8, 6.9).
     subprocess.run([sys.executable, str(root / "tools/fixtures/clip-render/generate_clip_render.py")], check=True)
-    failed = False
+    # The bundled sound effects (doc/spec/ai.md section 18.5): the committed WAVs must be the generator's bytes.
+    sounds = subprocess.run([sys.executable, str(root / "tools/media/sfx/gen_sfx.py"), "--check"])
+    failed = sounds.returncode != 0
+    if failed:
+        print('::error::shared/data/sfx differs from tools/media/sfx/gen_sfx.py; run it and commit the files')
     for path in EXACT:
         committed_bytes = subprocess.run(['git', 'show', f'HEAD:{path}'], check=True, capture_output=True).stdout
         with open(path, 'rb') as file:

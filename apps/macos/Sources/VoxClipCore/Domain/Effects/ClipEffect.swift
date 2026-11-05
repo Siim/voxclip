@@ -469,6 +469,28 @@ public enum ClipEffects {
         }
     }
 
+    /// Caption words with every word a bleep or mute covers masked: the Voice Lab path's own captions
+    /// (`VoiceLabOutputPlan.captions`, whose source words keep their transcript ids) and any render's caption copy.
+    public static func maskingBleeps(_ captions: [CaptionWord], effects: [ClipEffect]) -> [CaptionWord] {
+        let bleeped = Set(effects.filter(\.kind.usesWords).flatMap { $0.wordIds ?? [] })
+        guard !bleeped.isEmpty else { return captions }
+        return captions.map { word in
+            guard bleeped.contains(word.id) else { return word }
+            var copy = word
+            copy.text = masked(word.text)
+            return copy
+        }
+    }
+
+    /// `plan` with its captions masked (`maskingBleeps`), for a render that draws the Voice Lab path's captions.
+    public static func maskingBleeps(_ plan: VoiceLabOutputPlan, effects: [ClipEffect]) -> VoiceLabOutputPlan {
+        let captions = maskingBleeps(plan.captions, effects: effects)
+        guard captions != plan.captions else { return plan }
+        var copy = plan
+        copy.captions = captions
+        return copy
+    }
+
     /// Smooths a raw track: a centred 3-sample moving average of each edge, the ends kept, every rect clamped.
     public static func smoothed(_ samples: [ClipEffect.TrackSample]) -> [ClipEffect.TrackSample] {
         guard samples.count > 2 else { return samples.map { .init(t: $0.t, rect: $0.rect.clamped) } }

@@ -1445,10 +1445,11 @@ struct EditorRenderSnapshot {
         guard let plan else { throw VoxClipError.exportFailed("Could not build the edit plan") }
         guard (voiceLab?.prepared.outputPlan.outputSamples ?? plan.outputSamples) > 0 else { throw VoxClipError.everythingCut }
         let output = ExportFingerprint.output(project, clipID: clip?.id)
-        // Bleeped and muted words read as × marks in the captions (ai.md §18.5).
-        let captionSegments = segments.map { ClipEffects.maskingBleeps($0, effects: ClipEffects.rendered(in: project, clipID: clip?.id)) }
+        // Bleeped and muted words read as × marks in the captions (ai.md §18.5), on the Voice Lab path too.
+        let effects = ClipEffects.rendered(in: project, clipID: clip?.id)
+        let captionSegments = segments.map { ClipEffects.maskingBleeps($0, effects: effects) }
         let layout = try await buildCaptions(segments: captionSegments, plan: plan, output: output, forPreview: target == nil,
-                                            project: project, voiceLab: voiceLab?.prepared.outputPlan)
+                                            project: project, voiceLab: voiceLab.map { ClipEffects.maskingBleeps($0.prepared.outputPlan, effects: effects) })
         try Task.checkCancellation()
         if target == nil, snapshot.project != self.project || isLeaving { throw CancellationError() }
         let request = RenderRequest(sourceURL: URL(fileURLWithPath: project.media.source.absolutePath), plan: plan, captions: layout?.track ?? CaptionTrack(),

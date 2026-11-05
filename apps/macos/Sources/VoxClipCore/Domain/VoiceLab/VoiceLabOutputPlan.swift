@@ -17,7 +17,8 @@ public struct VoiceLabOutputPlan: Sendable, Equatable {
     public let sampleRate: Double
     public let totalSourceSamples: Int64
     public let pieces: [VoiceLabOutputPiece]
-    public let captions: [CaptionWord]
+    /// The edited timeline's words; `ClipEffects.maskingBleeps` masks bleeped ones for a render.
+    public internal(set) var captions: [CaptionWord]
     public let scope: VoiceLabOutputScope
     public var videoCuts: [String: [VoiceLabVideoCut]] = [:]
     public var outputSamples: Int64 { pieces.last?.outputEndSample ?? 0 }

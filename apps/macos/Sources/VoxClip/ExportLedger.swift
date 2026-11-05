@@ -175,7 +175,7 @@ struct ExportRecord: Codable, Equatable {
         var voice: VoiceInput?
         if project.schemaVersion >= 3 {
             let prepared = try VoiceLabRenderContract.prepare(project, scope: clip.map { .clip($0.id) } ?? .full, labelPosition: labelPosition)
-            words = prepared.outputPlan.captions
+            words = ClipEffects.maskingBleeps(prepared.outputPlan.captions, effects: effects)
             let pieces = prepared.outputPlan.pieces.map(VoicePiece.init)
             let recipes = prepared.selectedSegmentRecipes.map { (selected: VoiceLabSelectedRecipe) -> VoiceRecipe in
                 let recipe = selected.recipe
@@ -188,7 +188,7 @@ struct ExportRecord: Codable, Equatable {
             }
             let result = prepared.outputPlan
             let voicePlan = VoicePlan(sampleRate: result.sampleRate, totalSourceSamples: result.totalSourceSamples,
-                pieces: pieces, captions: captionsOn ? result.captions : nil, scope: clip?.id ?? "full")
+                pieces: pieces, captions: captionsOn ? words : nil, scope: clip?.id ?? "full")
             let label = prepared.disclosure
             let intervals: [JSONValue] = label.intervals.map { .object(["start": .number($0.start), "end": .number($0.end)]) }
             let disclosure: JSONValue = .object(["required": .bool(label.required), "kinds": .array(label.kinds.map(JSONValue.string)),

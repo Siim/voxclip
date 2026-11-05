@@ -245,6 +245,30 @@ struct ContextDemoCompositionNativeTests {
         #expect(try await AVURLAsset(url: destination).loadTracks(withMediaType: .audio).count == 1)
     }
 
+    /// Design §6.9: a clip's flip and quarter turns correct the camera's picture; a context demo (a screen recording)
+    /// keeps its own orientation, so its frames are the same with the clip flipped, while the source around it flips.
+    @Test @MainActor func aFlippedOrTurnedClipLeavesTheScreenRecordingUpright() async throws {
+        let root = try compositionTestDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = try await NativeMediaFixtures.shared.file()
+        let record = try await capturedVideo(root: root)
+        let plan = compositionPlan()
+        let input = try compositionInput(record: record, source: source, plan: plan)
+        let upright = try request(source: source, plan: plan, input: input, root: root)
+        let plain = try await CompositionBuilder(scratchRoot: root).build(upright)
+        for controls in [ProjectClipControls(clipId: "c", flipHorizontal: true), ProjectClipControls(clipId: "c", rotationDegrees: 180)] {
+            var turned = upright
+            turned.clipControls = controls
+            let graph = try await CompositionBuilder(scratchRoot: root).build(turned)
+            let demo = try await frame(asset: graph.composition, composition: graph.videoComposition, at: 0.5)
+            let demoUpright = try await frame(asset: plain.composition, composition: plain.videoComposition, at: 0.5)
+            #expect(demo == demoUpright, "the screen recording keeps its orientation under \(controls)")
+            let camera = try await frame(asset: graph.composition, composition: graph.videoComposition, at: 0.1)
+            let cameraUpright = try await frame(asset: plain.composition, composition: plain.videoComposition, at: 0.1)
+            #expect(camera != cameraUpright, "the source picture turns under \(controls)")
+        }
+    }
+
     @Test @MainActor func previewUpdatesRetainFullDemoInstructionsAndLeases() async throws {
         let root = try compositionTestDirectory()
         defer { try? FileManager.default.removeItem(at: root) }

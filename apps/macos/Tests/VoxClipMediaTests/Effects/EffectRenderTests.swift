@@ -121,6 +121,63 @@ import VoxClipCore
                                                                    Self.effect(.progress, position: .bottom)], time: 2))
     }
 
+    /// The hook's title card (design.md §6.7): an eight-word hook in Roboto Black stays whole and readable in 9:16 and 16:9.
+    /// It wraps into balanced lines (at most three, never smaller than 5 % of the short side) inside 92 % of the width, the
+    /// white text never reaches the box's clip, the box sits inside the frame at the top, and nothing outside it changes.
+    @Test(arguments: [CGSize(width: 1080, height: 1920), CGSize(width: 1920, height: 1080)])
+    func aHookTitleWrapsWholeInsideTheFrame(output: CGSize) throws {
+        let hook = "Most founders price their product completely wrong"
+        let frames = EffectFrames(input: ClipEffectsRenderInput(effects: [], soundURLs: [:]))
+        let layout = frames.titleLayout(hook, position: .top, output: output)
+        let short = min(output.width, output.height)
+        let expectedLines = output.width < output.height ? 2...3 : 1...2
+        #expect(expectedLines.contains(layout.lines.count), "\(layout.lines.count) lines at \(output)")
+        #expect(layout.size >= (short * 0.05).rounded() && layout.size <= (short * 0.075).rounded())
+        #expect(layout.texts.joined(separator: " ") == hook, "every word, in order: \(layout.texts)")
+        let widths = layout.lines.map { CTLineGetBoundsWithOptions($0, .useOpticalBounds).width }
+        #expect((widths.min() ?? 0) > (widths.max() ?? 0) * 0.5, "balanced lines: \(widths)")
+        #expect(layout.textWidth + layout.padX * 2 <= layout.box.width + 1 && layout.box.width <= output.width * 0.92 + 1)
+        #expect(layout.box.minX >= 0 && layout.box.maxX <= output.width && layout.box.minY >= 0 && layout.box.maxY <= output.height)
+        #expect(layout.box.midY > output.height * 0.6, "at the top")
+
+        let card = ClipEffect(id: "fx-hook-1", clipId: nil, kind: .title, start: 0, end: 4, text: hook, position: .top)
+        let shown = try Self.render([card], output: output), plain = try Self.render([], output: output)
+        // Every white text pixel lies inside the box, clear of its clip edge (padX / 2): no word is cut off.
+        var text = CGRect.null
+        var outside = 0
+        let box = layout.box
+        for row in 0..<shown.height {
+            for column in 0..<shown.width {
+                let index = (row * shown.width + column) * 4
+                // Bitmap rows run top-down; the layout is bottom-up.
+                let point = CGPoint(x: Double(column) + 0.5, y: Double(shown.height - row) - 0.5)
+                if shown.rgba[index] > 235, shown.rgba[index + 1] > 235, shown.rgba[index + 2] > 235 {
+                    text = text.union(CGRect(origin: point, size: CGSize(width: 0.01, height: 0.01)))
+                }
+                // Compositing anything re-renders the frame, so channels may move by a rounding step; a drawn pixel moves far.
+                let changed = abs(Int(shown.rgba[index]) - Int(plain.rgba[index])) > 2 || abs(Int(shown.rgba[index + 1]) - Int(plain.rgba[index + 1])) > 2
+                    || abs(Int(shown.rgba[index + 2]) - Int(plain.rgba[index + 2])) > 2
+                if changed, !box.insetBy(dx: -1, dy: -1).contains(point) { outside += 1 }
+            }
+        }
+        #expect(outside == 0, "\(outside) pixels changed outside the box")
+        #expect(!text.isNull && box.insetBy(dx: layout.padX * 0.5, dy: 0).contains(text), "text \(text) in box \(box)")
+        #expect(text.height > layout.size * CGFloat(layout.lines.count - 1), "every line is drawn")
+        try FileManager.default.createDirectory(at: Self.polishCaptures, withIntermediateDirectories: true)
+        let name = output.width < output.height ? "hook-card-9x16" : "hook-card-16x9"
+        try Self.png(shown).write(to: Self.polishCaptures.appendingPathComponent("\(name).png"))
+    }
+
+    /// The hook card's look at a small size, kept as goldens beside the title's.
+    @Test func hookTitleGoldens() throws {
+        let hook = "Most founders price their product completely wrong"
+        let card = ClipEffect(id: "fx-hook-1", clipId: nil, kind: .title, start: 0, end: 4, text: hook, position: .top)
+        try Self.expectGolden("hook-portrait", try Self.render([card], output: CGSize(width: 360, height: 640)))
+        try Self.expectGolden("hook-landscape", try Self.render([card], output: CGSize(width: 640, height: 360)))
+    }
+
+    static let polishCaptures = URL(fileURLWithPath: "/tmp/voxclip-mac-polish-2", isDirectory: true)
+
     @Test func overlaysAreOffOutsideTheirRangeAndNoEffectsIsANoOp() throws {
         let plain = try Self.render([])
         #expect(try Self.render([Self.effect(.title, text: "Day 1", position: .top)], time: 4.5).rgba == plain.rgba)

@@ -175,22 +175,107 @@ public final class EffectFrames: Sendable {
         return CTFontCreateWithName("Helvetica-Bold" as CFString, size, nil)
     }
 
-    /// Big centred text on a dark rounded box: top, centre or bottom of the frame.
-    func title(_ text: String, position: ClipEffect.Position, output: CGSize) -> CIImage? {
+    /// How a title sets: its lines at one size and the box around them, in output pixels (bottom-left origin).
+    struct TitleLayout {
+        let texts: [String]
+        let lines: [CTLine]
+        let font: CTFont
+        let size: CGFloat
+        let padX: CGFloat
+        let padY: CGFloat
+        let lineHeight: CGFloat
+        let box: CGRect
+        /// The widest line's optical width.
+        var textWidth: CGFloat { lines.map { CTLineGetBoundsWithOptions($0, .useOpticalBounds).width }.max() ?? 0 }
+    }
+
+    static let titleFontPath = "fonts/roboto/Roboto-Black.ttf"
+    static let titleMaxLines = 3
+
+    /// A title in Roboto Black (the caption family of the clip styles): one line at 7.5 % of the frame's short side when it
+    /// fits 92 % of the frame's width; a longer one (a hook, design.md §6.7) wraps into balanced lines, at most three,
+    /// shrinking to 5 % of the short side before it would need a fourth, so every word stays in the frame in 9:16 and 16:9.
+    /// The box keeps the single line's edge nearest the frame's edge (its top at the top, its bottom at the bottom) and
+    /// grows inwards.
+    func titleLayout(_ text: String, position: ClipEffect.Position, output: CGSize) -> TitleLayout {
         let short = min(output.width, output.height)
-        let size = (short * 0.075).rounded()
-        let line = Self.line(text, font: font("fonts/roboto/Roboto-Black.ttf", size: size), color: CGColor(gray: 1, alpha: 1))
-        let bounds = CTLineGetBoundsWithOptions(line, .useOpticalBounds)
-        let padX = size * 0.45, padY = size * 0.28
-        let width = min(output.width * 0.92, bounds.width + padX * 2), height = size * 1.25 + padY * 2
-        let centreY: CGFloat = switch position { case .center: output.height / 2; case .bottom: output.height * 0.24; default: output.height * 0.86 }
-        let box = CGRect(x: (output.width - width) / 2, y: centreY - height / 2, width: width, height: height).integral
+        let largest = (short * 0.075).rounded(), smallest = max(1, (short * 0.05).rounded())
+        let white = CGColor(gray: 1, alpha: 1)
+        func set(_ size: CGFloat) -> (face: CTFont, padX: CGFloat, limit: CGFloat) {
+            let padX = size * 0.45
+            return (font(Self.titleFontPath, size: size), padX, output.width * 0.92 - padX * 2)
+        }
+        var size = largest
+        var (face, padX, limit) = set(size)
+        var texts = [text]
+        var lines = [Self.line(text, font: face, color: white)]
+        if CTLineGetBoundsWithOptions(lines[0], .useOpticalBounds).width > limit {
+            let words = text.split(separator: " ").map(String.init)
+            func width(_ words: ArraySlice<String>) -> CGFloat {
+                CTLineGetBoundsWithOptions(Self.line(words.joined(separator: " "), font: face, color: white), .useOpticalBounds).width
+            }
+            // Greedy lines no wider than `limit`; a single word wider than it gets a line of its own and doesn't fit.
+            func wrap(_ limit: CGFloat) -> (lines: [String], fits: Bool) {
+                var result: [String] = [], start = 0, fits = true
+                while start < words.count {
+                    var end = start + 1
+                    while end < words.count, width(words[start...end]) <= limit { end += 1 }
+                    if width(words[start..<end]) > limit { fits = false }
+                    result.append(words[start..<end].joined(separator: " ")); start = end
+                }
+                return (result, fits)
+            }
+            var wrapped = wrap(limit)
+            while !(wrapped.fits && wrapped.lines.count <= Self.titleMaxLines), size > smallest {
+                size = max(smallest, (size * 0.94).rounded())
+                (face, padX, limit) = set(size)
+                wrapped = wrap(limit)
+            }
+            // Balanced: the narrowest width that still sets the same number of lines.
+            var low = limit / CGFloat(wrapped.lines.count), high = limit
+            for _ in 0..<12 {
+                let middle = (low + high) / 2
+                let trial = wrap(middle)
+                if trial.fits && trial.lines.count <= wrapped.lines.count { high = middle } else { low = middle }
+            }
+            texts = wrap(high).lines
+            lines = texts.map { Self.line($0, font: face, color: white) }
+        }
+        let padY = size * 0.28, lineHeight = size * 1.25
+        let width = min(output.width * 0.92, (lines.map { CTLineGetBoundsWithOptions($0, .useOpticalBounds).width }.max() ?? 0) + padX * 2)
+        let single = lineHeight + padY * 2, height = lineHeight * CGFloat(lines.count) + padY * 2
+        let minY: CGFloat = switch position {
+        case .center: output.height / 2 - height / 2
+        case .bottom: output.height * 0.24 - single / 2
+        default: output.height * 0.86 + single / 2 - height
+        }
+        let box = CGRect(x: (output.width - width) / 2, y: minY, width: width, height: height).integral
+        return TitleLayout(texts: texts, lines: lines, font: face, size: size, padX: padX, padY: padY, lineHeight: lineHeight, box: box)
+    }
+
+    /// Big centred text on a dark rounded box: top, centre or bottom of the frame (`titleLayout`).
+    func title(_ text: String, position: ClipEffect.Position, output: CGSize) -> CIImage? {
+        let layout = titleLayout(text, position: position, output: output)
+        let box = layout.box
+        let radius = (layout.lineHeight + layout.padY * 2) * 0.22
         return Self.raster(bounds: box, output: output, flipped: false) { context in
             context.setFillColor(CGColor(gray: 0, alpha: 0.62))
-            context.addPath(CGPath(roundedRect: box, cornerWidth: height * 0.22, cornerHeight: height * 0.22, transform: nil)); context.fillPath()
-            context.saveGState(); context.clip(to: box.insetBy(dx: padX * 0.5, dy: 0))
-            context.textPosition = CGPoint(x: box.midX - bounds.width / 2 - bounds.minX, y: box.midY - (bounds.height / 2 + bounds.minY))
-            CTLineDraw(line, context)
+            context.addPath(CGPath(roundedRect: box, cornerWidth: radius, cornerHeight: radius, transform: nil)); context.fillPath()
+            context.saveGState(); context.clip(to: box.insetBy(dx: layout.padX * 0.5, dy: 0))
+            if layout.lines.count == 1, let line = layout.lines.first {
+                let bounds = CTLineGetBoundsWithOptions(line, .useOpticalBounds)
+                context.textPosition = CGPoint(x: box.midX - bounds.width / 2 - bounds.minX, y: box.midY - (bounds.height / 2 + bounds.minY))
+                CTLineDraw(line, context)
+            } else {
+                // Lines share the font's cap height, so a line with descenders sits on the same rhythm as one without.
+                let capHeight = CTFontGetCapHeight(layout.font)
+                for (index, line) in layout.lines.enumerated() {
+                    let bounds = CTLineGetBoundsWithOptions(line, .useOpticalBounds)
+                    let centre = box.maxY - layout.padY - layout.lineHeight * (CGFloat(index) + 0.5)
+                    context.textPosition = CGPoint(x: box.midX - bounds.width / 2 - bounds.minX, y: centre - capHeight / 2)
+                    CTLineDraw(line, context)
+                }
+            }
             context.restoreGState()
         }
     }

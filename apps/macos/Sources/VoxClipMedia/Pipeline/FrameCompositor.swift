@@ -103,6 +103,9 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
                     kCIInputTargetImageKey: image, kCIInputTimeKey: 1 - weight])
             }
             if let layer = instruction.demoLayer {
+                // A context demo (a screen recording) keeps its own orientation: the clip's flip and quarter turns correct
+                // the camera's picture, and a mirrored or sideways screen would be unreadable (design.md §6.9). It fills the
+                // clip's frame, turned or not, like any other shape.
                 guard let demo = request.sourceFrame(byTrackID: layer.trackID) else {
                     request.finish(with: VoxClipError.decodeFailed("Missing context-demo video frame")); return
                 }

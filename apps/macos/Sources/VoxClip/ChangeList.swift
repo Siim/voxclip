@@ -338,13 +338,13 @@ extension RewriteSession {
             if takePlan.lipsync.usingTakes { return PanelFooter(note: "Waiting for lip syncs. You can cancel them in the phrase rows.") }
             guard !takesBusy else { return PanelFooter(note: takeSpendLine) }
             if usableTakeCount > 0, takePlan.stillCurrent {
-                let title = usableTakeCount == takePlan.phrases.count ? "Use Takes" : "Use \(usableTakeCount) \(usableTakeCount == 1 ? "Take" : "Takes")"
+                let title = useTakesTitle
                 let all = lipSyncAllAction()
                 // The user's own microphone takes are real speech: only cloned takes (or lip sync) carry the label.
                 let cloned = takePlan.phrases.contains { $0.selected?.row.selectable == true && $0.selected?.source == .clonedVoice }
                 let label = cloned ? "Exports show AI MODIFIED on the video. The post disclosure is optional."
                     : "Your own take is used as recorded: no AI label unless you add lip sync."
-                let note = all == nil ? label : "Uploads video + new audio to fal.ai (sync-3)."
+                let note = [waitingTakesLine, all == nil ? label : "Uploads video + new audio to fal.ai (sync-3)."].compactMap { $0 }.joined(separator: "\n")
                 return PanelFooter(note: note, link: all,
                     primary: PanelAction(id: "useTakes", title: title) { [weak self] in self?.useTake() })
             }
