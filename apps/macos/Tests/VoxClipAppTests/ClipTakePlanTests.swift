@@ -1804,14 +1804,15 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
             checkedGenerating = true
             #expect(plan.generating && session.hasPaidTakes)
             #expect(session.voiceReview(2)?.timing?.pace == 1)
-            #expect(session.blockedVoiceOrdinals == [2])
+            // Once takes are paid the estimate holds nothing back (MVP32 Clip 7); change 2 is outside the plan.
+            #expect(session.blockedVoiceOrdinals.isEmpty)
             #expect(session.voiceReview(ordinal)?.timing?.pace == 1)
             #expect(session.includedVoice == included)
         }
         await plan.start(approved: true)
         #expect(checkedGenerating && !plan.phrases[0].takes.isEmpty, "\(plan.problem)")
         #expect(session.voiceReview(ordinal)?.timing?.pace == 1)
-        #expect(session.blockedVoiceOrdinals == [2])
+        #expect(session.blockedVoiceOrdinals.isEmpty && !session.includedVoice.contains(2))
         let proposal = session.ownProposal?.changes
         for action in [PhraseTimingAction.priceAnyway, .original] {
             session.phraseTimingAction(action, ordinal: 2)
@@ -2568,9 +2569,12 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(session.blockedVoiceOrdinals.isEmpty)
         #expect(session.task.footer.primary?.id == "useTakes", "\(session.task.footer)")
         #expect(session.task.footer.note?.contains("before takes") != true, "\(session.task.footer)")
-        // Kept as recorded, the phrase isn't voiced any more: the new estimate holds its change back.
+        // Kept as recorded, the phrase isn't voiced any more, and with takes paid the estimate still holds nothing back:
+        // the footer goes on (MVP32 Clip 7's "need a shorter wording before takes" with no step forward).
         plan.leaveOut(phrase: 0)
-        #expect(session.voicedOrdinals.isEmpty && session.blockedVoiceOrdinals == [ordinal])
+        session.showProposal()
+        #expect(session.voicedOrdinals.isEmpty && session.blockedVoiceOrdinals.isEmpty)
+        #expect(session.task.footer.primary != nil, "\(session.task.footer)")
     }
 
     /// A failed word check gets one automatic Try another; its passing take is chosen with no click.

@@ -366,7 +366,8 @@ private final class WorkThreads: Sendable {
         session.finishRun(seconds: 0.1)
         #expect(session.includedVoice.isEmpty)
         #expect(session.task.footer.note == "Change \(try #require(session.blockedVoiceOrdinals.first)) needs a shorter wording before takes.")
-        #expect(session.task.footer.primary == nil)
+        // Never a dead end (design.md R2): the held change can keep the speaker's words.
+        #expect(session.task.footer.primary?.id == "keepMyWords")
     }
 
     @Test func priceOverrideAndOriginalWordsDoNotSendAnything() async throws {
@@ -408,7 +409,7 @@ private final class WorkThreads: Sendable {
         let timing = try #require(session.voiceReview(ordinal)?.timing)
         #expect(!timing.fits && !timing.tooLong)
         #expect(session.task.footer.note == "Change \(ordinal) needs wording that fits before takes.")
-        #expect(session.task.footer.primary == nil)
+        #expect(session.task.footer.primary?.id == "keepMyWords")
         let recovery = PhraseTimingRecovery(tooLong: false, priceAnyway: true, action: { _ in })
         #expect(recovery.retryTitle == "Ask for longer")
         app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(false)
@@ -1203,7 +1204,7 @@ extension RewriteScopeTests {
         #expect(plan.chips.map(\.action.id) == ["keepOriginal", "mergePhrases", "suggestion.0"] && plan.chips[1].suggested)
         #expect(plan.chips.map(\.action.title) == ["Keep original words for phrase 2", "Merge with phrase 1", "Say it in 6 words"])
         #expect(session.task.nextSteps.compactMap(\.ask).count == 1)
-        #expect(session.task.footer.note == "Phrase 2 needs a fix above." && session.task.footer.primary == nil)
+        #expect(session.task.footer.note == "Phrase 2 needs a fix above." && session.task.footer.primary?.title == "Keep Original Words for Phrase 2")
         let expected = try RewriteNextActionFeedback.merge(first: 1, second: 2, shared: try SharedResources.locate())
         await stub.configureRewrites([try reply("One merged and much shorter sentence")])
         plan.chips[1].action.perform()
@@ -1250,7 +1251,10 @@ extension RewriteScopeTests {
         session.showProposal()
         let plan = try #require(steps(session, "plan"))
         #expect(!plan.chips.isEmpty && plan.line == ClipTakePlan.copy(failure))
-        #expect(session.task.footer.primary == nil && session.task.footer.note == session.takePlanBlocker)
+        // The footer names the blocker and carries its step forward (MVP32 Clip 7: "Fix the problem above" with no button).
+        let forward: [String: String] = ["stale": "freshPrice", "noSelection": "reviewTakes", "spendingCap": "freshPrice",
+                                         "unknownSpend": "freshPrice", "geometry": "keepOriginal"]
+        #expect(session.task.footer.primary?.id == forward[name] && session.task.footer.note == session.takePlanBlocker, "\(session.task.footer)")
         if name == "geometry" { #expect(plan.chips.first?.action.title == "Keep original words for phrase 1" && session.task.nextSteps.compactMap(\.ask).count == 1) }
         if name == "stale" { #expect(plan.chips.contains { $0.action.id == "freshPrice" }) }
     }
