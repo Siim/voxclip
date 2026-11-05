@@ -12,6 +12,12 @@ import VoxClipMedia
 // - S-guard-claude: ✦ Make it postable (the driver ✦ Claude does it all runs too) on a sentence a guest speaks: the phrase is
 //   kept as recorded with no click, nothing is spent, and the run finishes ready to export (G4). Its sentence is too short
 //   for the guest's voice to be checked at all, the guard's other settled stop.
+// - S-guard-learns (ADR-R41): the creator recorded sentences 1–4 in a car (150 Hz, below τ against the statement) and the
+//   rest on a closer mic (135 Hz, passing). Get Price checks every phrase first: phrase 3 passes and teaches this video's
+//   reference, phrase 1 passes through it, and all three are voiced (G5). Forget learned references makes phrase 1 blocked
+//   again (G6).
+// - S-guard-guest: the same recording with a guest speaking phrase 2: references are learned, and the guest's phrase is
+//   still settled as blocked before any price (G7), and never priced again (G1, G2).
 
 extension DebugRewriteSmoke {
     /// Three voice changes: the second is in sentence 4, which S-guard-blocked gives a guest, the third in sentence 5.
@@ -35,7 +41,27 @@ extension DebugRewriteSmoke {
             requiresCompletion: false, fixture: Fixture(rewrites: [], voice: RewriteSmokeVoiceScript(offset: -0.2), guestSentence: 1)) { harness in
             try await harness.makeItGuardBlocked()
         },
+        Definition(id: "S-guard-learns", title: "phrase 1 in a car, below τ: phrase 3 teaches this video's reference, all three are voiced; Forget blocks phrase 1 again",
+            voiced: 3, fixture: Fixture(rewrites: [.passage(replace(threeChanges))], voice: RewriteSmokeVoiceScript(offset: -0.2),
+                                        ownerPitches: learningPitches)) { harness in
+            try await harness.start()
+            try await harness.finish()
+            harness.guardNeverBlocked()
+            try await harness.guardLearnedAndForgets(phrase: 0)
+        },
+        Definition(id: "S-guard-guest", title: "a guest speaks phrase 2 of a video that teaches references: still blocked before any price, never priced again",
+            voiced: 2, fixture: Fixture(rewrites: [.passage(replace(threeChanges))], voice: RewriteSmokeVoiceScript(offset: -0.2), guestSentence: 4,
+                                        ownerPitches: learningPitches)) { harness in
+            try await harness.start()
+            let blockedAt = try await harness.runUntilBlocked(phrase: 1)
+            try await harness.guardBlockedBeforePricing(phrase: 1)
+            try await harness.finish()
+            harness.guardNeverRepriced(phrase: 1, from: blockedAt)
+        },
     ] }
+
+    /// Sentences 0–3 in a car (150 Hz), 4–7 on a closer mic (135 Hz): `Fixture.ownerPitches`.
+    nonisolated static let learningPitches: [Int: Double] = [0: 150, 1: 150, 2: 150, 3: 150, 4: 135, 5: 135, 6: 135, 7: 135]
 
     /// Controls that price, or take a priced step for, phrase `phrase` (0-based) or every phrase.
     static func repricing(_ id: String, phrase: Int) -> Bool {
@@ -50,7 +76,10 @@ extension DebugRewriteSmoke.Harness {
     /// says the stop with its two actions.
     func runUntilBlocked(phrase: Int) async throws -> Int {
         for _ in 0..<6 {
-            if let session, let plan = session.takePlan, !session.takesBusy, plan.phrases.indices.contains(phrase), plan.phrases[phrase].blocked != nil {
+            // The guard settles the phrase at Get Price now (ADR-R41), before the others are voiced: judge once nothing is
+            // left to price or make for them.
+            let pricing = session?.task.footer.primary.map { ["approveTakeQuote", "takeQuote-", "prepareTakes", "makeTakes"].contains(where: $0.id.hasPrefix) } ?? false
+            if let session, let plan = session.takePlan, !session.takesBusy, !pricing, plan.phrases.indices.contains(phrase), plan.phrases[phrase].blocked != nil {
                 let footer = session.task.footer
                 let others = plan.phrases.filter { $0.id != phrase }
                 let drawn = steps.last?.snapshot.controls.filter { $0.source == "evidence" }.map(\.id) ?? []
@@ -77,6 +106,38 @@ extension DebugRewriteSmoke.Harness {
         makeItAppend([DebugRewriteSmoke.Check(invariant: "G2", passed: offered.isEmpty && completed,
             detail: offered.isEmpty ? "no priced control for phrase \(phrase + 1) after the block; Rewrite \(completed ? "applied" : "not applied")"
                 : "offered again: " + offered.prefix(4).joined(separator: ", "))])
+    }
+
+    /// G5: the video taught its reference, and phrase `phrase`, below τ on its own, was voiced through it. G6: Forget
+    /// learned references, then the same check blocks that phrase again.
+    func guardLearnedAndForgets(phrase: Int) async throws {
+        guard let store, let record = try await store.activeVoices().first, lastPlanInputs.indices.contains(phrase),
+              lastPlanVoiced.indices.contains(phrase) else { throw DebugRewriteSmoke.Failure.setup("no voice or plan") }
+        let contentKey = lastPlanInputs[phrase].contentKey
+        let learned = record.speaker.references?.map(\.contentKey) ?? []
+        let check = VoiceSpeakerCheck.rewriteSmoke
+        let speech = try VoiceLabTakeRun.guardSpeech(lastPlanInputs[phrase])
+        let alone = try VoiceSpeakerCheck.cosine(VoiceConsentRecord.decodeEmbedding(record.speaker.embedding) ?? [], await check.embedding(speech))
+        let voiced = lastPlanVoiced[phrase]
+        makeItAppend([DebugRewriteSmoke.Check(invariant: "G5", passed: learned == [contentKey] && alone < record.speaker.threshold && voiced && completed,
+            detail: "references \(learned.count) (this video: \(learned.contains(contentKey))) · phrase \(phrase + 1) alone \(String(format: "%.2f", alone)) < τ "
+                + "\(record.speaker.threshold) · \(voiced ? "voiced" : "not voiced")")])
+        let forgotten = try await store.forgetReferences(recordID: record.id)
+        let verdicts = await VoiceUseGuard(store: store, check: check).screen(contentKey: contentKey, recordID: record.id, speech: [speech])
+        makeItAppend([DebugRewriteSmoke.Check(invariant: "G6", passed: forgotten.speaker.references == nil && verdicts == [.blocked(.voiceOwnerMismatch)],
+            detail: "after Forget: \(verdicts.map { String(describing: $0) }.joined())")])
+    }
+
+    /// G7: references were learned from this video, and the guest's phrase was settled before anything was priced for it.
+    func guardBlockedBeforePricing(phrase: Int) async throws {
+        guard let store, let record = try await store.activeVoices().first, let plan = session?.takePlan else {
+            throw DebugRewriteSmoke.Failure.setup("no voice or plan")
+        }
+        let learned = record.speaker.references?.count ?? 0
+        let priced = plan.phrases[phrase].takes.contains { $0.row.quote != nil || $0.row.receipt != nil }
+        makeItAppend([DebugRewriteSmoke.Check(invariant: "G7", passed: learned > 0 && plan.phrases[phrase].blocked != nil && !priced,
+            detail: "\(learned) reference(s) learned · phrase \(phrase + 1) \(plan.phrases[phrase].blocked != nil ? "blocked" : "not blocked")"
+                + (priced ? " · priced" : " · never priced"))])
     }
 
     /// G3: no step said the voice check stopped a phrase.

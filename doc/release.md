@@ -298,6 +298,8 @@ It drives the real Rewrite session through these scenarios using only clicks a u
 - S-guard-blocked: a guest speaks phrase 2 of 3. The voice check blocks it once (G1: the footer offers Use or Choose Take, the row offers ● Say it myself and Keep as recorded), phrases 1 and 3 are voiced, and nothing prices phrase 2 again (G2).
 - S-guard-noisy: road noise between every word. The voice check hears the words only, and both phrases are voiced (G3: no block).
 - S-guard-claude: ✦ Make it postable on a sentence a guest speaks. The phrase is kept as recorded with no click, nothing is spent, and the run is ready to export (G4).
+- S-guard-learns: the creator's first four sentences are in a car (below τ against the statement), the rest on a closer mic. Get Price checks every phrase first: phrase 3 teaches this video's reference, phrase 1 passes through it and all three are voiced (G5); after Forget learned references, phrase 1 is blocked again (G6). ADR-R41.
+- S-guard-guest: the same recording with a guest speaking phrase 2. References are learned, and the guest's phrase is still settled before any price (G7), and never priced again (G1, G2).
 - S16: a nine-minute full take with 36 changes: one price and one approval, every phrase voiced part by part and applied. `MacUIIntegrationTests/rewriteSmokeLongTake` runs it in its own process.
 
 A take whose only issue is a join advisory is chosen automatically (ADR-R39), so no scenario clicks Use anyway: S3-exact, S14, S15 and S16 once did. The Windows twin (`RewriteSmokeTests`) runs S17, its twin of S16: twelve phrases in three parts, one approval, each later part quoted again at the approved price.

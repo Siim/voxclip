@@ -981,11 +981,25 @@ Before generating anything with the clone for a project, run the guard:
   - A transcript with no timed words gives the patch's own 10 s of source, centred on it.
 - **Voice changer:** embed the first 30 s of speech in the range.
 
-The embedding runs the same VAD, features and 3 s windows as the enrollment statement's. The cosine against the record's embedding must be ≥ τ. Otherwise block with "This doesn't sound like the voice owner. Voice Lab is only for your own videos." The default build has no override.
+The embedding runs the same VAD, features and 3 s windows as the enrollment statement's. The speech passes when its cosine is ≥ τ against the record's own embedding, or against one of the record's usable learned references (below), at the same τ. Otherwise block with "This doesn't sound like the voice owner. Voice Lab is only for your own videos." The default build has no override.
+
+**Learned references ("let a video teach your voice", [ADR-R41](../adr/R41-voice-references-from-your-videos.md), Mac since 2026-11-05).** The statement is often recorded on another microphone than the videos, so the creator's own car or street speech can fall below τ against it.
+- **What is stored.** The consent record's `speaker.references` (additive, absent until the first): each has the guard embedding (base64 Float32, as `speaker.embedding`), the source project's media `contentKey`, `addedAt`, its cosine against the record's own embedding (`statementScore`) and the speaker `model`. No audio, no path, no transcript text.
+- **One hop.** A reference is learned only from speech that passes against the record's own embedding at τ, and it is never checked against another reference. At use, a reference counts only when its model is the record's model and its own cosine against the record's embedding, recomputed from the two stored embeddings, is still ≥ τ. A stored score alone is never trusted.
+- **Bound.** One reference per project `contentKey`, the better-scoring kept. At most 16 per voice; over that, the reference closest to another one (highest cosine to any other) goes first, then the lower score, so the set stays diverse. Learning with another speaker model drops every reference of the old model.
+- **When Rewrite prices.** Get Price (and the same step inside ✦ Make it postable and ✦ Claude does it all) runs the guard first, on this Mac and free, for every phrase, before any quote:
+  1. the phrases that pass against the record's own embedding teach this project's reference (the best-scoring one);
+  2. the remaining phrases are checked against the record's embedding and every usable reference;
+  3. what still fails is settled as blocked (design.md R2 "Not your voice here"), so no quote, price or approval ever covers it.
+
+  A check that can't run there (no model, another language) leaves the decision to the run's own guard at dispatch, as before.
+- **Learn from my videos.** Settings › Voices, and automatically after a project is transcribed: each recent project and each `.voxclip` at the top of the export folder is read on this Mac; up to six stretches of its transcribed speech (each the words nearest an evenly spaced word, in that word's speaker's turns only, 6–10 s) are embedded; the best one that passes against the record's embedding becomes that project's reference. Media labelled AI modified never teaches. Nothing is sent anywhere.
+- **Speaker turns.** ADR-R40 still applies: each phrase is judged on its own speaker's words. A guest's phrase needs its own match, and a reference learned from the creator never makes it pass.
+- **Forget learned references** (Settings › Voices) removes them all; the guard then judges against the record's own embedding only. A record's `withoutReferences` is what an approved run is bound to, so learning or forgetting never invalidates a priced run; the guard reads the references when it judges a phrase, and its cache keys include them.
 
 Too little speech to embed blocks the same way, with "There isn't enough speech near this phrase to check that it's your voice." Either block happens before anything is sent. It settles the phrase for the Rewrite: the run's other phrases go on, and nothing prices that phrase again (design.md R2 "Not your voice here").
 
-The result is cached per (project `contentKey`, the guard's speech, `recordId`). The same phrase is not embedded twice, but a pass on one phrase never covers another, so a guest's phrase in the creator's video stays blocked ([ADR-R40](../adr/R40-guard-hears-the-patch-speech.md)).
+The result is cached per (project `contentKey`, the guard's speech, `recordId`, the learned references). The same phrase is not embedded twice, but a pass on one phrase never covers another, so a guest's phrase in the creator's video stays blocked ([ADR-R40](../adr/R40-guard-hears-the-patch-speech.md)).
 
 ### 6.10 Deletion
 
@@ -993,7 +1007,7 @@ The result is cached per (project `contentKey`, the guard's speech, `recordId`).
 
 1. Verify the current key fingerprint and region against the creator binding, then `DELETE {base}/v1/voices/{voice_id}` → `{"status":"ok"}`. A 404 counts as deleted only after that match.
 2. Delete the local statement audio.
-3. Set `status: "deleted"` and `deletedAt`, keeping the record and its hashes as the audit trail.
+3. Set `status: "deleted"` and `deletedAt`, keeping the record and its hashes as the audit trail. The learned `speaker.references` are removed with it: a deleted record holds none, and withdrawal and Remove from VoxClip only end the same way (ADR-R41).
 
 The same operation journal records `intent` → `remoteDeleted` → `audioRemoved` → `tombstoned`, then is removed. The reconciler enumerates `voice-ops/` independently of consent records, so a missing `record.json` cannot strand deletion or its local audio. Each boundary is independently resumable; repeating a DELETE after an uncertain response is safe because a creator-matched 404 is success. Withdrawal of a creation uses its existing journal, not a second deletion journal. Existing rendered assets are never deleted by this recovery.
 

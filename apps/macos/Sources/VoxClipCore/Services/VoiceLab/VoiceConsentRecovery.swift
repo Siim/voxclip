@@ -418,6 +418,8 @@ extension VoiceConsentStore {
         try record.validate()
         guard record.id == value.recordID else { throw VoiceConsentError.invalidRecord }
         if let voiceID = value.remoteVoiceID { record = record.assigningVoice(voiceID, requiresVerification: false) }
+        // The learned references go with the voice (ADR-R41); the tombstone keeps the record's hashes as the audit trail.
+        record = record.replacingSpeaker(record.speaker.replacingReferences([]))
         record.status = .deleted; record.deletedAt = VoiceConsentRecord.timestamp(value.updatedAt)
         try checkpoint(.tombstoneRecord)
         try save(record)
@@ -464,7 +466,10 @@ extension VoiceConsentStore {
     package func releaseOperation(_ id: UUID) { claimedOperations.remove(id) }
     package func validateUse(_ snapshot: VoiceConsentRecord) throws {
         try migrateLegacyOperations()
-        guard snapshot.status == .active, !(try hasOperation(snapshot.id)), try load(snapshot.id) == snapshot else { throw VoiceConsentError.inactive }
+        // Learning or forgetting a reference (ADR-R41) doesn't change what a run was approved for; the guard reads the
+        // references when it judges a phrase.
+        guard snapshot.status == .active, !(try hasOperation(snapshot.id)),
+              try load(snapshot.id).withoutReferences == snapshot.withoutReferences else { throw VoiceConsentError.inactive }
     }
     package func dispatchCreation(recordID: String, requestID: UUID, statementHash: String) throws {
         let value = try operation(requestID)

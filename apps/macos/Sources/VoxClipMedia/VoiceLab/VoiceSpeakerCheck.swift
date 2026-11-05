@@ -52,9 +52,10 @@ public final class VoiceSpeakerCheck: Sendable {
         let record = try await store.load(recordID)
         try await store.validateUse(record)
         guard supports(language: record.language), embedder?.modelID == record.speaker.model,
-              threshold == record.speaker.threshold, let owner = VoiceConsentRecord.decodeEmbedding(record.speaker.embedding) else { throw VoiceConsentError.speakerUnavailable }
+              threshold == record.speaker.threshold, VoiceConsentRecord.decodeEmbedding(record.speaker.embedding) != nil else { throw VoiceConsentError.speakerUnavailable }
         let candidate = try await embedding(speech16k)
-        guard try Self.cosine(owner, candidate) >= record.speaker.threshold else { throw VoiceConsentError.voiceOwnerMismatch }
+        // The record's own embedding, or a reference learned from the owner's own videos (ADR-R41), at the same τ.
+        guard try VoiceSpeakerReferences.match(candidate, speaker: record.speaker) != nil else { throw VoiceConsentError.voiceOwnerMismatch }
         try await store.validateUse(record)
         guard let embedder else { throw VoiceConsentError.speakerUnavailable }
         return VoiceSpeakerMatch(recordID: record.id, cloneVoiceID: record.voiceId, store: store, record: record, statementHash: record.referenceAudioSHA256, embedder: embedder)
@@ -172,14 +173,15 @@ public actor VoiceUseGuard {
         let record = try await store.load(recordID)
         try await store.validateUse(record)
         guard check.supports(language: record.language), check.embedder?.modelID == record.speaker.model, check.threshold == record.speaker.threshold,
-              let owner = VoiceConsentRecord.decodeEmbedding(record.speaker.embedding) else { throw VoiceConsentError.speakerUnavailable }
+              VoiceConsentRecord.decodeEmbedding(record.speaker.embedding) != nil else { throw VoiceConsentError.speakerUnavailable }
         let audioHash = speech16k.withUnsafeBytes { VoiceLabFingerprint.bytes(Data($0)) }
-        let key = VoiceLabFingerprint.fields([contentKey, audioHash, String(voiceChanger), recordID, record.speaker.embedding, record.referenceAudioSHA256])
+        let key = VoiceLabFingerprint.fields([contentKey, audioHash, String(voiceChanger), recordID, record.speaker.embedding, record.referenceAudioSHA256,
+                                              Self.referencesKey(record)])
         try await check.embedder?.validateAvailability()
         if !cache.contains(key) {
             let maximum = voiceChanger ? 480_000 : 160_000
             let candidate = try await check.embedding(Array(speech16k.prefix(maximum)))
-            guard try VoiceSpeakerCheck.cosine(owner, candidate) >= record.speaker.threshold else {
+            guard try VoiceSpeakerReferences.match(candidate, speaker: record.speaker) != nil else {
                 throw VoiceConsentError.voiceOwnerMismatch
             }
             try await store.validateUse(record)
@@ -205,7 +207,8 @@ public actor VoiceUseGuard {
         try await store.validateUse(record)
         try await check.embedder?.validateAvailability()
         let audioHash = speech16k.withUnsafeBytes { VoiceLabFingerprint.bytes(Data($0)) }
-        let key = VoiceLabFingerprint.fields([contentKey, audioHash, recordID, record.speaker.embedding, record.referenceAudioSHA256, record.voiceId, record.speaker.model, String(record.speaker.threshold)])
+        let key = VoiceLabFingerprint.fields([contentKey, audioHash, recordID, record.speaker.embedding, record.referenceAudioSHA256, record.voiceId, record.speaker.model, String(record.speaker.threshold),
+                                              Self.referencesKey(record)])
         let proof: VoiceSpeakerMatch
         if let cached = proofs[key] { proof = cached }
         else {
@@ -218,4 +221,62 @@ public actor VoiceUseGuard {
                                     statementVerified: record.consentMethod == .recordedStatement, speakerMatched: true, consentMethod: record.consentMethod)
         return try policy.authorized(for: quote, proof: proof)
     }
+    /// The learned references a cached verdict depended on: forgetting or learning one judges the phrase afresh.
+    private static func referencesKey(_ record: VoiceConsentRecord) -> String {
+        VoiceLabFingerprint.fields((record.speaker.references ?? []).map { $0.contentKey + ":" + $0.embedding })
+    }
+
+    /// The guard's verdict on every phrase of a Rewrite before anything is priced (voice-lab §6.9, ADR-R41), on this
+    /// Mac and free:
+    /// 1. each phrase's speech is embedded; those that pass against the record's own embedding teach this project's
+    ///    reference (the best-scoring one, one hop);
+    /// 2. the rest are checked against the record's own embedding and the usable references;
+    /// 3. what still fails is `.blocked`, for the plan to settle before pricing.
+    /// A check that can't run is `.unchecked`: the run's own guard decides at dispatch, as before.
+    public func screen(contentKey: String, recordID: String, speech: [[Float]]) async -> [VoiceGuardVerdict] {
+        guard !contentKey.isEmpty, let record = try? await store.load(recordID), (try? await store.validateUse(record)) != nil,
+              check.supports(language: record.language), let model = check.embedder?.modelID, model == record.speaker.model,
+              check.threshold == record.speaker.threshold, VoiceConsentRecord.decodeEmbedding(record.speaker.embedding) != nil,
+              (try? await check.embedder?.validateAvailability()) != nil else { return speech.map { _ in .unchecked } }
+        var embedded: [Result<[Float], any Error>] = []
+        for pcm in speech {
+            // No speech could be read for this phrase: the run's own guard decides.
+            if pcm.isEmpty { embedded.append(.failure(VoiceLabError.invalidInput)); continue }
+            do { embedded.append(.success(try await check.embedding(Array(pcm.prefix(160_000))))) }
+            catch { embedded.append(.failure(error)) }
+        }
+        // 1. The best phrase that passes on its own teaches this project's reference.
+        var current = record
+        let passing = embedded.compactMap { result -> (Double, [Float])? in
+            guard case .success(let vector) = result, case .statement(let score)? = try? VoiceSpeakerReferences.match(vector, speaker: record.speaker) else { return nil }
+            return (score, vector)
+        }.max { $0.0 < $1.0 }
+        if let passing, let learned = try? await store.learnReference(recordID: recordID, embedding: passing.1, contentKey: contentKey, model: model) {
+            current = learned
+        }
+        // 2–3. Every phrase against the statement and the references; too little speech settles as blocked.
+        return embedded.map { result in
+            switch result {
+            case .success(let vector):
+                guard let match = try? VoiceSpeakerReferences.match(vector, speaker: current.speaker) else { return .blocked(.voiceOwnerMismatch) }
+                return .passes(match)
+            case .failure(let error):
+                if let error = error as? VoiceConsentError, error == .speakerMismatch { return .blocked(.speakerMismatch) }
+                return .unchecked
+            }
+        }
+    }
+    #if DEBUG
+    /// The cached verdicts, dropped so a test can see a forgotten reference judged afresh.
+    package func resetCache() { cache.removeAll(); proofs.removeAll() }
+    #endif
+}
+
+/// The guard's free local verdict on one phrase before pricing (`VoiceUseGuard.screen`).
+public enum VoiceGuardVerdict: Sendable, Equatable {
+    case passes(VoiceSpeakerReferences.Match)
+    /// Not the voice owner, or too little speech to check: settled for the Rewrite, never priced.
+    case blocked(VoiceConsentError)
+    /// The check couldn't run here; the run's own guard decides before anything is sent.
+    case unchecked
 }

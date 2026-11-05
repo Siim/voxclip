@@ -99,7 +99,11 @@ import VoxClipMedia
     let recorder = VoiceMicrophoneRecorder()
     private(set) var recordID = UUID().uuidString.lowercased()
     @ObservationIgnored unowned let app: AppModel
-    @ObservationIgnored private let store: VoiceConsentStore
+    @ObservationIgnored let store: VoiceConsentStore
+    /// Settings › Voices' inline line per voice while and after learning from the owner's videos (ADR-R41).
+    var learningLine: [String: String] = [:]
+    var isLearning = false
+    @ObservationIgnored var learningTask: Task<Void, Never>? { didSet { isLearning = learningTask != nil } }
     @ObservationIgnored private var client: ElevenLabsVoiceLab?
     @ObservationIgnored private var enrollment: VoiceEnrollment?
     @ObservationIgnored private let reconciler: VoiceOperationReconciler
@@ -138,6 +142,13 @@ import VoxClipMedia
         training = samples; trainingReady = true; trainingSource = .readAloud
     }
     #endif
+    /// The speaker check for learning references in a voice's own language.
+    func referenceSpeakerCheck(language: String) async throws -> VoiceSpeakerCheck {
+        #if DEBUG
+        if let speakerCheckForTests { return speakerCheckForTests }
+        #endif
+        return try await app.speakerModelLibrary.check(language: language)
+    }
     private func currentSpeakerCheck() async throws -> VoiceSpeakerCheck {
         #if DEBUG
         if let speakerCheckForTests { return speakerCheckForTests }

@@ -169,9 +169,30 @@ public actor VoiceConsentStore {
             }
         }
     }
+    /// Learns a reference for an active voice from the project `contentKey` (voice-lab §6.9, ADR-R41): the speech's
+    /// embedding must pass against the record's own embedding (one hop). Returns the record as saved, or the refusal.
+    @discardableResult
+    public func learnReference(recordID: String, embedding: [Float], contentKey: String, model: String, at date: Date = Date()) throws -> VoiceConsentRecord {
+        let record = try load(recordID)
+        guard record.status == .active, !(try hasOperation(recordID)) else { throw VoiceConsentError.inactive }
+        let speaker = try VoiceSpeakerReferences.learning(embedding, contentKey: contentKey, model: model, at: date, into: record.speaker)
+        let learned = record.replacingSpeaker(speaker)
+        try save(learned)
+        return learned
+    }
+    /// Forgets every learned reference of a voice. The guard then judges phrases against the record's own embedding only.
+    @discardableResult
+    public func forgetReferences(recordID: String) throws -> VoiceConsentRecord {
+        let record = try load(recordID)
+        guard record.speaker.references != nil else { return record }
+        let forgotten = record.replacingSpeaker(record.speaker.replacingReferences([]))
+        try save(forgotten)
+        return forgotten
+    }
     #if DEBUG
     @_spi(Testing) public func markDeleted(_ id: String, at date: Date) throws {
         var record = try load(id)
+        record = record.replacingSpeaker(record.speaker.replacingReferences([]))
         try discardStatement(recordID: id)
         record.status = .deleted; record.deletedAt = VoiceConsentRecord.timestamp(date)
         try save(record)
