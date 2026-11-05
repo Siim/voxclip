@@ -39,6 +39,8 @@ AppPackages/
 !shared/fixtures/**/*.wav
 !shared/fixtures/**/*.mp4
 !shared/fixtures/**/*.mov
+# The bundled CC0 sound effects (tools/media/sfx/gen_sfx.py, doc/spec/ai.md section 18.5).
+!shared/data/sfx/*.wav
 node_modules/
 
 # Python and release outputs
