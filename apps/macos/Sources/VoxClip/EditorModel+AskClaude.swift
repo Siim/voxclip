@@ -309,7 +309,6 @@ extension EditorModel {
     static func laterReason(_ operation: ClipAutopilotOperation) -> String {
         switch operation.action {
         case .stretch: return "A clip plays at one speed. Ask on a clip to change its speed. Nothing changed."
-        case .translateCaptions: return "Translated captions are not rendered yet. Nothing changed."
         case .musicDucking: return "This clip has no music to duck."
         default: return "Not available yet. Nothing changed."
         }
@@ -440,6 +439,9 @@ extension EditorModel {
                     entry.ducking = original.ducking
                     next = try MusicProject.setting(entry, clipId: clip, in: next)
                 }
+            case .translateCaptions(let clip, let start, let end, _, _):
+                // The words' captions go back to what they showed before the answer.
+                next = try CaptionTranslations.untranslating(start...end, clipID: clip, base: base, from: next)
             case .stretch:
                 // The clip's speed goes back to what it was before the answer; its other controls stay.
                 guard let clip = Self.stretchClip(operation, in: next) else { break }
@@ -504,11 +506,12 @@ extension EditorModel {
         return (id, effect)
     }
 
-    /// A press on an effect in the FX lane opens its Adjust editor, from the run that made it.
+    /// A press on an effect in the FX lane opens its Adjust editor, from the run that made it; a Make it postable hook's
+    /// title card opens its review with the hook's field.
     func adjustAskClaudeEffect(fromTimeline effectID: String) {
         guard let run = askClaude.run, let row = run.rows.first(where: { row in
             if case .effect(let effect) = row.operation.action { effect.id == effectID } else { false }
-        }), row.status == .applied else { return }
+        }), row.status == .applied else { makeItEditHook(effectID: effectID); return }
         askClaude.adjusting = row.id
         askClaude.inView = true
         app.shell.choosePanelJob(.askClaude, for: self)

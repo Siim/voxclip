@@ -30,7 +30,8 @@ internal static class EditingProject
             ContextDemo = replaced ? null : project.ContextDemo,
             MotionCues = replaced ? [] : project.MotionCues,
             Music = replaced ? project.Music.Where(entry => entry.ClipId is null).ToArray() : project.Music,
-            ClipEffects = replaced ? [] : project.ClipEffects, ClipControls = replaced ? [] : project.ClipControls }, []);
+            ClipEffects = replaced ? [] : project.ClipEffects, ClipControls = replaced ? [] : project.ClipControls,
+            CaptionTranslations = replaced ? [] : project.CaptionTranslations }, []);
     }
 
     internal static ProjectModel Clean(ProjectModel project, List<string> warnings)
@@ -80,6 +81,7 @@ internal static class EditingProject
             MotionCues = project.MotionCues.Where(cue => clipIds.Contains(cue.ClipID)).ToArray(),
             Music = VoxClip.Core.Domain.Music.MusicProject.Pruned(project.Music, clipIds),
             ClipEffects = VoxClip.Core.Domain.Effects.ClipEffects.Pruned(project.ClipEffects, clipIds, words.Select(word => word.Id)),
-            ClipControls = VoxClip.Core.Domain.Clips.ClipControlsProject.Pruned(project.ClipControls, clipIds) };
+            ClipControls = VoxClip.Core.Domain.Clips.ClipControlsProject.Pruned(project.ClipControls, clipIds),
+            CaptionTranslations = VoxClip.Core.Domain.Captions.CaptionTranslations.Pruned(project.CaptionTranslations, clipIds, words.Select(word => word.Id)) };
     }
 }

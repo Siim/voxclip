@@ -870,8 +870,12 @@ public struct Project: Codable, Sendable, Equatable {
     /// Per-clip speed, frame, look, volume, fades, mute, flip and rotation; schema v4 only, omitted when empty (design.md §6.9).
     public var clipControls: [ProjectClipControls]
 
+    /// Captions shown in another language over runs of words (Ask Claude's translate); schema v4 only, omitted when
+    /// empty (ai.md §18.2).
+    public var captionTranslations: [CaptionTranslation]
+
     /// Creates an explicit value without I/O or generated identifiers.
-    public init(format: String = "voxclip-project", schemaVersion: Int = 1, id: String, title: String? = nil, createdAt: Date, modifiedAt: Date, savedBy: ProjectWriter, media: ProjectMedia, transcript: Transcript? = nil, edits: ProjectEdits = ProjectEdits(), captions: CaptionSettings = CaptionSettings(), export: ProjectExport = ProjectExport(), share: ProjectShare = ProjectShare(), ai: ProjectAI = ProjectAI(), voiceLab: ProjectVoiceLab = ProjectVoiceLab(), extensions: [String: JSONValue]? = nil, contextDemo: ContextDemoDocument? = nil, motionCues: [MotionCue] = [], music: [ProjectMusic] = [], clipEffects: [ClipEffect] = [], clipControls: [ProjectClipControls] = []) {
+    public init(format: String = "voxclip-project", schemaVersion: Int = 1, id: String, title: String? = nil, createdAt: Date, modifiedAt: Date, savedBy: ProjectWriter, media: ProjectMedia, transcript: Transcript? = nil, edits: ProjectEdits = ProjectEdits(), captions: CaptionSettings = CaptionSettings(), export: ProjectExport = ProjectExport(), share: ProjectShare = ProjectShare(), ai: ProjectAI = ProjectAI(), voiceLab: ProjectVoiceLab = ProjectVoiceLab(), extensions: [String: JSONValue]? = nil, contextDemo: ContextDemoDocument? = nil, motionCues: [MotionCue] = [], music: [ProjectMusic] = [], clipEffects: [ClipEffect] = [], clipControls: [ProjectClipControls] = [], captionTranslations: [CaptionTranslation] = []) {
         self.format = format
         self.schemaVersion = schemaVersion
         self.id = id
@@ -893,6 +897,7 @@ public struct Project: Codable, Sendable, Equatable {
         self.music = music
         self.clipEffects = clipEffects
         self.clipControls = clipControls
+        self.captionTranslations = captionTranslations
         self.clipStyle = nil
     }
 
@@ -919,6 +924,7 @@ public struct Project: Codable, Sendable, Equatable {
         case music
         case clipEffects
         case clipControls
+        case captionTranslations
     }
 
     public init(from decoder: any Decoder) throws {
@@ -945,16 +951,19 @@ public struct Project: Codable, Sendable, Equatable {
         self.music = try values.decodeIfPresent([ProjectMusic].self, forKey: .music) ?? []
         self.clipEffects = try values.decodeIfPresent([ClipEffect].self, forKey: .clipEffects) ?? []
         self.clipControls = try values.decodeIfPresent([ProjectClipControls].self, forKey: .clipControls) ?? []
+        self.captionTranslations = try values.decodeIfPresent([CaptionTranslation].self, forKey: .captionTranslations) ?? []
         guard schemaVersion == 4 || (!values.contains(.contextDemo) && !values.contains(.motionCues)) else {
             throw ContextDemoError.unsupportedVersion
         }
         guard schemaVersion == 4 || !values.contains(.music) else { throw MusicProjectError.unsupportedVersion }
         guard schemaVersion == 4 || !values.contains(.clipEffects) else { throw ClipEffectError.unsupportedVersion }
         guard schemaVersion == 4 || !values.contains(.clipControls) else { throw ClipControlsProjectError.unsupportedVersion }
+        guard schemaVersion == 4 || !values.contains(.captionTranslations) else { throw CaptionTranslationError.unsupportedVersion }
         try ContextDemoProject.validate(self)
         try MusicProject.validate(self)
         try ClipEffects.validate(self)
         try ClipControlsProject.validate(self)
+        try CaptionTranslations.validate(self)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -962,6 +971,7 @@ public struct Project: Codable, Sendable, Equatable {
         try MusicProject.validate(self)
         try ClipEffects.validate(self)
         try ClipControlsProject.validate(self)
+        try CaptionTranslations.validate(self)
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(self.format, forKey: .format)
         try values.encode(self.schemaVersion, forKey: .schemaVersion)
@@ -985,6 +995,7 @@ public struct Project: Codable, Sendable, Equatable {
         if !self.music.isEmpty { try values.encode(self.music, forKey: .music) }
         if !self.clipEffects.isEmpty { try values.encode(self.clipEffects, forKey: .clipEffects) }
         if !self.clipControls.isEmpty { try values.encode(self.clipControls, forKey: .clipControls) }
+        if !self.captionTranslations.isEmpty { try values.encode(self.captionTranslations, forKey: .captionTranslations) }
     }
 
 }

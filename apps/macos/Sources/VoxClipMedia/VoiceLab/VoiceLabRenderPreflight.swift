@@ -72,18 +72,24 @@ public enum VoiceLabRenderPreflight {
             throw VoiceLabAssetError.invalidSelection("legacy source plan")
         }
         if let layout = request.captionLayout {
-            let expected = plan.captions.map {
+            // The clip's own caption look (design.md §6.6), as the caller laid it out.
+            let captions = input.project.captionSettings(forClip: clip?.id)
+            // The words as the caller laid them out: bleeps masked, then translated captions (ai.md §18.2, §18.5).
+            let effects = request.effects?.effects ?? []
+            let shown = CaptionTranslations.applying(ClipEffects.maskingBleeps(plan.captions, effects: effects), project: input.project,
+                                                     clipID: clip?.id, effects: effects)
+            let expected = shown.map {
                 CaptionInputWord(id: $0.id, text: $0.text, start: $0.start, end: $0.end)
             }
             guard layout.input.words == expected,
                   abs(layout.input.duration - plan.duration) < 1 / plan.sampleRate,
                   layout.input.frame.width == request.output.size.width,
                   layout.input.frame.height == request.output.size.height,
-                  layout.input.style == input.project.captions.styleId,
+                  layout.input.style == captions.styleId,
                   layout.input.captions == CaptionLayoutInput.Settings(
-                    overrides: input.project.captions.overrides,
-                    position: input.project.captions.position,
-                    positionByAspect: input.project.captions.positionByAspect),
+                    overrides: captions.overrides,
+                    position: captions.position,
+                    positionByAspect: captions.positionByAspect),
                   request.captions == layout.track else {
                 throw VoiceLabAssetError.invalidSelection("caption layout")
             }

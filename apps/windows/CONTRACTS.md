@@ -1,5 +1,15 @@
 # Windows fixed contracts
 
+### 2026-11-05 — Windows Core reads each clip's caption look and translated captions (track/v2-mac-clip-finish, Core twin only)
+
+Twin of the Mac entry "Each clip exports in its own caption look … translated captions". Spec: doc/design.md §6.6, doc/spec/ai.md §18.2.
+
+- **Built (Core, Domain only).** `ClipCaptionPick` gains `Overrides` (`JsonElement?`) and `By` ("user" or null), both omitted when null, compared by JSON value; `ProjectValidation` allows them; `ClipStyle.CaptionPickFor`, `CaptionStyleFor` (the creator's pick first), `Recording` (never replaces the creator's pick) and `ClipCaptionLooks.CaptionsFor(project, clipId)`. New `Domain/Captions/CaptionTranslations.cs`: `CaptionTranslation` record, `ValidateWire`, `Validate` (v4, ids, word order, clip, language, trimmed text, no overlap per scope), `Pruned`; `Project.CaptionTranslations` (v4 root `captionTranslations`, omitted when empty), pruned with removed clips and words and cleared by a transcript replacement. `VoiceLabRenderContract.RequireWindowsVisualSupport` refuses a project with a translation: "Windows cannot show translated captions yet. Export this project on a Mac, or undo the translation there. Your captions and edits are unchanged."
+- **Tests.** `CaptionLookVectorTests` (5: `shared/fixtures/clip-style/caption-look-cases.json` wire and resolution), `CaptionTranslationVectorTests` (4: the wire cases of `shared/fixtures/caption-translations/caption-translation-cases.json` and the refusal).
+- **Allowlist.** `ReleaseBoundary update` on `VoxClip.Core.txt` only: the new types and members above, declarations only.
+- **Verification (macOS).** Core Release 3,174 tests, 0 failed, 29 skipped (live or Windows-only); Ui tests 1,290, 0 failed; `*ReleaseSurrogate*` passed. No native VM run.
+- **Owed.** Rendering translated captions on Windows (then drop the refusal). Each clip's look renders since the lead merged track/v2-win-render-2, which carried this Core twin's first commit.
+
 ### 2026-11-05 — Windows: per-clip caption looks, background music, zooms (track/v2-win-render-2)
 
 Twin of the Mac entries music, clip-finish step 1 (each clip's caption look) and the compositor's motion cues. Spec: doc/design.md §6.6, §6.7; doc/spec/music.md §4, §6, §8.

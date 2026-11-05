@@ -77,7 +77,7 @@ extension EditorModel {
         guard let style = cardClipStyle else { return }
         var next = style.fixingCaptions(choice)
         next.preset = .mine
-        commitClipStyle(next, name: "Change clip style", collapse: false)
+        commitClipStyle(next, name: "Change clip style", collapse: false, pinsOpenClip: true)
     }
 
     /// Done: keeps what the card shows, storing it if the user had not chosen yet.
@@ -92,13 +92,17 @@ extension EditorModel {
         onNeedsSidebar?()
     }
 
-    private func commitClipStyle(_ style: ClipStyle, name: String, collapse: Bool) {
+    private func commitClipStyle(_ style: ClipStyle, name: String, collapse: Bool, pinsOpenClip: Bool = false) {
         guard capabilities.edit, (try? style.validate()) != nil else { return }
         var next = project
         next.clipStyle = style
         if let fixed = style.fixedCaptionStyle, fixed == "off" || app.styles.contains(where: { $0.id == fixed }) {
             if fixed != "off", next.captions.styleId != "off" { lastStyleId = fixed }
             next.captions.styleId = fixed
+            // The card's Captions row while a clip is open: the style is also that clip's own (design.md §6.6).
+            if pinsOpenClip, let clip = activeClip {
+                next.clipStyle = style.choosingCaptionStyle(fixed, forClip: clip.id, current: project.captionSettings(forClip: clip.id))
+            }
         }
         if next != project { replace(next, name: name) }
         // Settings keeps the style without its picks (settings schema `clipStyle.default`).
@@ -107,27 +111,46 @@ extension EditorModel {
             app.set("clipStyle.default", .object(value))
         }
         if collapse { clipStyleState.reopened = false }
-        applyCaptionPick()
+    }
+
+    // MARK: Each clip's caption look
+
+    /// Where the open clip's captions come from, for the Captions panel's line (design.md §6.6).
+    enum CaptionSource: Equatable {
+        /// The clip's own pick: "This clip: Bold Pop · Claude's pick" or "· your pick".
+        case clip(styleId: String, byClaude: Bool, reason: String)
+        /// The project's captions, which every clip without a pick follows.
+        case projectDefault
+    }
+
+    /// Nil on the full take, which always renders with the project's captions.
+    var activeCaptionSource: CaptionSource? {
+        guard let id = activeClip?.id else { return nil }
+        guard let pick = project.clipStyle?.captionPick(forClip: id) else { return .projectDefault }
+        return .clip(styleId: pick.styleId, byClaude: pick.by == .ai, reason: pick.reason)
+    }
+
+    /// "This clip: Bold Pop · Claude's pick", "This clip: Off · your pick" or "Project default".
+    var activeCaptionSourceText: String? {
+        switch activeCaptionSource {
+        case nil: return nil
+        case .projectDefault: return "Project default"
+        case .clip(let styleId, let byClaude, _):
+            let name = styleId == "off" ? "Off" : app.styles.first { $0.id == styleId }?.name ?? styleId
+            return "This clip: \(name) · " + (byClaude ? "Claude's pick" : "your pick")
+        }
+    }
+
+    /// Follow the project default again: drops the open clip's own pick, as one undo step.
+    func useProjectCaptions() {
+        guard capabilities.edit, let id = activeClip?.id, var style = project.clipStyle, style.captionPicks[id] != nil else { return }
+        style.captionPicks[id] = nil
+        var next = project
+        next.clipStyle = style
+        replace(next, name: "Use project captions")
     }
 
     // MARK: Claude picks the caption style
-
-    /// The AI's pick for the active clip while the clip style's captions are Auto.
-    var activeCaptionPick: ClipCaptionPick? {
-        guard let style = project.clipStyle, case .auto = style.captions, let id = activeClip?.id else { return nil }
-        return style.captionPicks[id]
-    }
-
-    /// With Auto, the active clip uses the AI's pick for it, as one undo step. A style the user chose (a gallery tile,
-    /// the Export picker, the card's Captions row) fixes the clip style's captions, so this never overrides it.
-    func applyCaptionPick() {
-        guard capabilities.edit, let pick = activeCaptionPick, project.captions.styleId != pick.styleId,
-              app.styles.contains(where: { $0.id == pick.styleId }) else { return }
-        var next = project
-        next.captions.styleId = pick.styleId
-        lastStyleId = pick.styleId
-        replace(next, name: "Use Claude's caption style")
-    }
 
     /// Every clip, kept and suggested, with its edited words, for the pick request.
     var captionPickClips: [CaptionPickClip] {
@@ -182,7 +205,6 @@ extension EditorModel {
                 replace(next, name: "Claude picked caption styles")
                 let count = result.style.captionPicks.count
                 announce(count == 1 ? "Picked a caption style for 1 clip" : "Picked caption styles for \(count) clips")
-                applyCaptionPick()
             } catch is CancellationError {} catch LLMError.cancelled {} catch {
                 let message = await app.safeError(error, context: "ai:\(provider.label)")
                 if !message.isEmpty { state.error = message }

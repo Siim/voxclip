@@ -290,6 +290,56 @@ private final class ClaudeCalls: Sendable {
         #expect(editor.claudeMode.phase == .done)
     }
 
+    /// The Make it panel's footer carries the sidebar card's priced Continue (design.md §6.7 item 4): one action, the same
+    /// title, exactly the shortfall. VOXCLIP_CLIP_FINISH_CAPTURES=<dir> writes the footer's picture.
+    @Test func theMakeItPanelsFooterCarriesTheSameContinue() async throws {
+        let fixture = try fixture(cap: 1) { _, call in
+            call == 1 ? MakeItRewriteOutcome(result: .overCap(nextUSD: Decimal(string: "1.40")), spent: Decimal(string: "0.10")!)
+                      : MakeItRewriteOutcome(result: .voiced(segments: []), spent: Decimal(string: "1.40")!)
+        }
+        defer { close(fixture) }
+        let editor = fixture.editor
+        await editor.makeIt.refreshVoiceReady(editor)
+        editor.armClaudeMode()
+        editor.claudeModeFindEnded(); await editor.claudeMode.afterFind?.value
+        try await waitAtCap(editor)
+        let run = try #require(editor.makeIt.run(for: "clip-main"))
+        #expect(run.running && editor.makeItNextStep(run) == "Next: Continue, or Stop to keep what's done.")
+        let card = try #require(editor.capContinueAction(id: "claudeMode.continue"))
+        let footer = try #require(editor.capContinueAction(id: "makeIt.continue"))
+        #expect(footer.title == "Continue · $0.50" && footer.priced && footer.title == card.title && card.priced)
+
+        func markers(_ view: some View, height: CGFloat) -> (host: NSHostingView<AnyView>, frames: [String: CGRect]) {
+            let host = NSHostingView(rootView: AnyView(view.environment(editor.app)))
+            host.appearance = NSAppearance(named: .darkAqua)
+            host.frame = CGRect(x: 0, y: 0, width: 404, height: height)
+            host.layoutSubtreeIfNeeded()
+            return (host, DebugRightColumn.markers(in: host))
+        }
+        let panel = markers(MakeItPanel(model: editor, run: run).frame(width: 404, height: 520).background(DesignValues.color("bg.window")), height: 520)
+        let button = try #require(panel.frames["director.button.makeIt.continue"], "the footer shows Continue")
+        let next = try #require(panel.frames["makeIt.next"])
+        #expect(panel.frames["makeIt.needsMore"] != nil && panel.frames["makeIt.stop"] != nil)
+        #expect(button.minY > 520 / 2 && abs(button.midY - next.midY) < 80, "in the footer, by the next step")
+        let sidebar = markers(ClaudeModeCard(editor: editor).frame(width: 224), height: 400)
+        #expect(sidebar.frames["director.button.claudeMode.continue"] != nil, "the sidebar card shows the same Continue")
+        if let folder = ProcessInfo.processInfo.environment["VOXCLIP_CLIP_FINISH_CAPTURES"] {
+            try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+            let rep = try #require(panel.host.bitmapImageRepForCachingDisplay(in: panel.host.bounds))
+            panel.host.cacheDisplay(in: panel.host.bounds, to: rep)
+            try #require(rep.representation(using: .png, properties: [:])).write(to: URL(fileURLWithPath: folder).appendingPathComponent("footer-continue.png"))
+        }
+
+        // The footer's button is the one action: it approves exactly the shortfall and the step goes on.
+        footer.perform()
+        await editor.claudeMode.task?.value
+        let budget = try #require(editor.claudeMode.budget)
+        #expect(budget.approved == Decimal(string: "1.50") && budget.spent == budget.approved && budget.needed == nil)
+        #expect(fixture.calls.all.contains("voice we finally ship budget 1.4"))
+        #expect(editor.capContinueAction(id: "makeIt.continue") == nil)
+        #expect(markers(MakeItPanel(model: editor, run: run).frame(width: 404, height: 520), height: 520).frames["director.button.makeIt.continue"] == nil)
+    }
+
     @Test func aZeroCapNeverVoicesOrAsks() async throws {
         let fixture = try fixture(cap: 0)
         defer { close(fixture) }
@@ -369,6 +419,63 @@ private final class ClaudeCalls: Sendable {
         #expect(editor.exportFileFailures.count == (failing ? 1 : 0))
         if failing { #expect(editor.exportFileFailures.first?.contains("9:16") == true && editor.exportError == nil) }
         #expect(editor.claudeModeNextStep.hasPrefix("Next: post them"))
+    }
+
+    /// Each clip exports in its own caption look (design.md §6.6): three clips, three picks (two of Claude's, one the
+    /// creator's), one Export all; every file's render and ledger entry carry its clip's style.
+    @Test func exportAllRendersEachClipInItsOwnCaptionStyle() async throws {
+        _ = NSApplication.shared
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-claude-looks-" + UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let app = AppModel(settingsStore: RegressionSettingsStore())
+        #expect(app.set("export.folder", .string(folder.path)))
+        let shell = WorkspaceShell(app: app)
+        let shared = try SharedResources.locate()
+        let base = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
+        var project = try DebugExplorer.fiveQuestions(from: base)
+        project.id = UUID().uuidString.lowercased()
+        project.export.folder = nil
+        project.captions.styleId = "vox-highlight"
+        let lower: [String: JSONValue] = ["text": .object(["transform": .string("lowercase")])]
+        project.clipStyle = ClipStyle(preset: .auto, captions: .auto, music: .auto, maxLengthSec: 60, shapes: [.landscape], rewording: .fixOnly,
+            captionPicks: ["five-1": ClipCaptionPick(styleId: "marker", reason: "Bold claims.", overrides: lower),
+                           "five-2": ClipCaptionPick(styleId: "minimal", reason: "A quiet line."),
+                           "five-3": ClipCaptionPick(styleId: "glow", reason: "", by: .user)])
+        let exporter = RegressionExporter(writesFiles: true)
+        await shell.attachForTesting(VoxClipDocument(project: project), selection: .fullTake, preview: DemoPreviewEngine(), exporter: exporter)
+        let editor = try #require(shell.editor)
+        defer { editor.close() }
+        editor.mediaResolved = true; editor.mediaUnreadable = false; editor.refresh()
+        editor.pasteboardOverride = { _ in }
+        let ids = ["five-1", "five-2", "five-3"]
+        for id in ids {
+            let run = MakeItRun(clipID: id, cap: 2)
+            run.phase = .ready
+            editor.makeIt.insert(run)
+        }
+        editor.claudeMode.clipIDs = ids
+        editor.claudeMode.phase = .done
+        editor.makeIt.style = MakeItStyle(shapes: [.landscape])
+        editor.claudeExportAll()
+        await editor.exportTask?.value
+        let jobs = await exporter.jobs
+        try #require(jobs.count == 3)
+        var styles: [String: String] = [:]
+        for job in jobs {
+            guard case .clip(let id) = job.target else { Issue.record("a full-take job"); continue }
+            styles[id] = job.render.captionLayout?.style.id
+            #expect(app.exportLedger.entry(projectID: editor.project.id, targetID: id, aspect: .landscape)?.styleId == styles[id], "\(id)")
+        }
+        #expect(styles == ["five-1": "marker", "five-2": "minimal", "five-3": "glow"])
+        let marker = try #require(jobs.first { $0.target == .clip("five-1") }?.render.captionLayout)
+        #expect(marker.style.text.transform == .lowercase, "Claude's case for that clip")
+        #expect(editor.project.captions.styleId == "vox-highlight", "the project default is untouched")
+        // The fingerprint follows each clip's look: a new style for one clip marks only that clip's export stale.
+        let before = try ids.map { try ExportFingerprint.value(editor.project, target: .clip($0)) }
+        var next = editor.project
+        next.clipStyle?.captionPicks["five-2"] = ClipCaptionPick(styleId: "punch-in", reason: "", by: .user)
+        let after = try ids.map { try ExportFingerprint.value(next, target: .clip($0)) }
+        #expect(before[0] == after[0] && before[1] != after[1] && before[2] == after[2])
     }
 }
 

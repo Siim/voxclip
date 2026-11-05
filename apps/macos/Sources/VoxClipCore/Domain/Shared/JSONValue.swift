@@ -1,7 +1,7 @@
 import Foundation
 
 /// A lossless JSON shape for merge patches and canonical replies; AI §2.1–2.3.
-public indirect enum JSONValue: Codable, Sendable, Equatable {
+public indirect enum JSONValue: Codable, Sendable, Hashable {
     case object([String: JSONValue])
     case array([JSONValue])
     case string(String)

@@ -1984,7 +1984,8 @@ The toolbox extends the planner's operations (`ClipAutopilotOperation`, §16) ad
 `musicDucking(clipID:on:)`. `ClipAutopilotMapping.apply` adds effects through `ClipEffects.adding`. A clip plays at one
 speed (design.md §6.9): a stretch that covers a whole clip, within `ClipControlsProject.wholeClipToleranceSeconds`
 (0.25 s) at each end, sets that clip's speed (`ClipControlsProject.wholeClip`, `settingSpeed`); a stretch over part of
-a clip is returned as pending, and the editor's row offers "Apply 1.25× to the whole clip". Translate stays pending.
+a clip is returned as pending, and the editor's row offers "Apply 1.25× to the whole clip". Translate applies as the
+words' translated captions (`CaptionTranslations.translating`, below).
 
 | Kind | Group | Fields | Becomes |
 |---|---|---|---|
@@ -2000,7 +2001,7 @@ a clip is returned as pending, and the editor's row offers "Apply 1.25× to the 
 | `zoom` | Timing | start, end, scale | `motion` cue |
 | `correction` | Words | startWord, text | `edit(.correct)` |
 | `rewrite` | Words | startWord, endWord, text | `rewrite` (paid) |
-| `translate` | Words | startWord, endWord, language, text | `translateCaptions` (pending) |
+| `translate` | Words | startWord, endWord, language, text | `translateCaptions`: a `captionTranslations` entry |
 | `music` | Sound | text (the mood) | `music` cue (a row that opens Music) |
 | `duck` | Sound | start, end | `musicDucking` |
 | `sound` | Sound | start, sound | `ClipEffect` with a bundled `sound` |
@@ -2020,6 +2021,23 @@ At most 500 entries, unique ids. The JSON Schema `$defs` (`clipEffect`, `clipEff
 `clipEffectBundledSound`, `clipEffectLibrarySound`) come from `tools/schemas/generate_clip_effects_schema.py`.
 Removing a clip removes its effects; replacing the transcript clears them. Censor kinds render in every clip and the
 full edit; other kinds only in their `clipId` (or the full edit when it is nil).
+
+**Translated captions.** `translateCaptions` stores the root `captionTranslations` array (schema v4 only, omitted when
+empty; storing the first promotes the project to v4): `{id ("tr-N"), clipId (null on the Full Take), startWordId,
+endWordId, language (a lower-case BCP 47 tag), text (trimmed, at most 1,000 scalars)}`, every key written. A new
+translation replaces any in the same scope over any of its words; the row's Undo puts back what was there
+(`CaptionTranslations.untranslating`). A render of a clip shows that clip's own translations, then the Full Take's
+where their words are free; the full edit shows the Full Take's. `CaptionTranslations.applying` replaces the shown
+caption words of the range, after the bleep masks, on every caption path (the app's layout, the export fingerprint,
+the CLI and the Voice Lab preflight): with as many or more translated words (m) than shown words (n), shown word i
+carries words [i·m/n, (i+1)·m/n) and shares its time evenly; with fewer, translated word k spans shown words
+[k·n/m, (k+1)·n/m − 1]. Times never leave the original words' bounds, so cuts, speed and pages work as before; a
+translated word over a bleeped word is masked. The voice and the transcript stay. Removing a clip removes its
+translations; replacing the transcript clears them. The schema (`$defs.captionTranslation`) comes from
+`tools/schemas/generate_caption_translations_schema.py`; the vectors `shared/fixtures/caption-translations/
+caption-translation-cases.json` (`voxclip-caption-translation-cases/1`, wire and spread cases) from
+`tools/fixtures/caption-translations/generate_caption_translations.py`. Windows Core reads, validates and saves the
+field and refuses to render or export a project with a translation ("Windows cannot show translated captions yet…").
 
 ### 18.3 Prompt
 

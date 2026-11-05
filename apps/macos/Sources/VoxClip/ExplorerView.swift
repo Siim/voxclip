@@ -689,7 +689,8 @@ private struct ExplorerVoiceGlyph: View {
         let app = editor.app
         let size = ExplorerMetrics.thumbnailSize
         let scope: CaptionCardScope = clip.map { .clip($0.id) } ?? .fullTake
-        let project = editor.project
+        // Each clip's row shows its own caption look (design.md §6.6).
+        let project = editor.project.resolvingCaptions(forClip: clip?.id)
         let key = Key(text: editor.cardText(scope, wordsVisible: app.bool("general.showPlaceholderWords", fallback: true)), styleId: app.cardStyle(for: project)?.id ?? "",
                       overrides: (try? String(decoding: JSONEncoder().encode(project.captions.overrides), as: UTF8.self)) ?? "",
                       frameTime: editor.firstKeptTime(clip), source: editor.sourceURL.path,
@@ -710,7 +711,7 @@ private struct ExplorerVoiceGlyph: View {
     }
 
     private func load(_ key: Key, size: CGSize) async {
-        let app = editor.app, project = editor.project
+        let app = editor.app, project = editor.project.resolvingCaptions(forClip: clip?.id)
         var image: CGImage?
         if let style = app.styles.first(where: { $0.id == key.styleId }) {
             image = await app.captions.card(CaptionCardInput(text: key.text, style: style, previewBackground: app.previewBackgrounds[style.id], overrides: project.captions.overrides,

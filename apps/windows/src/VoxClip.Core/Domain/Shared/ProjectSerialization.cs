@@ -120,5 +120,6 @@ public static class ProjectSerialization
         VoxClip.Core.Domain.Music.MusicProject.Validate(project);
         VoxClip.Core.Domain.Effects.ClipEffects.Validate(project);
         VoxClip.Core.Domain.Clips.ClipControlsProject.Validate(project);
+        VoxClip.Core.Domain.Captions.CaptionTranslations.Validate(project);
     }
 }

@@ -140,6 +140,56 @@ private actor AskFixtureConnector: LLMConnector {
 
     private func priced(_ row: AskClaudeRow) -> String { if case .paid(let price) = row.status { price } else { "" } }
 
+    /// "Translate these captions to Spanish" (ai.md §18.2): the row applies, as part of the answer's one undo step, the
+    /// captions show the translation over those words in preview, export and the SRT, and Undo takes it back.
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR; only stub connectors are called."))
+    func translatedCaptionsApplyRenderAndUndo() async throws {
+        let ops = [Self.op("translate", ["startWord": 2, "endWord": 5, "language": "es", "text": "esto es lo nuevo ahora"])]
+        let (_, editor, _, undo) = try await open(reply: try Self.reply(ops))
+        defer { editor.close() }
+        var styled = editor.project
+        styled.captions.styleId = "vox-highlight"
+        undo.beginUndoGrouping(); editor.replace(styled, name: "Captions on"); undo.endUndoGrouping()
+        let original = editor.words[2...5].map { editor.text($0) }
+        let plainRequest = try await editor.renderRequest(target: .fullEdit)
+        let plainFingerprint = try ExportFingerprint.value(editor.project, target: .fullEdit)
+        select(editor, 2...5)
+        editor.openAskClaudeOnSelection()
+        editor.askClaude.text = "translate these captions to Spanish"
+        undo.beginUndoGrouping(); editor.sendAskClaude(); await editor.askClaude.task?.value; undo.endUndoGrouping()
+        let run = try #require(editor.askClaude.run, "\(editor.askClaude.error ?? "no error")")
+        let row = try #require(run.rows.first)
+        #expect(row.status == .applied && row.title == "Captions in Spanish" && row.detail == "\u{201C}esto es lo nuevo ahora\u{201D}")
+        #expect(undo.undoActionName == "Ask Claude")
+        let stored = try #require(editor.project.captionTranslations.first)
+        #expect(stored.language == "es" && stored.clipId == nil && stored.startWordId == editor.words[2].id && stored.endWordId == editor.words[5].id)
+        #expect(editor.project.schemaVersion == 4)
+        // Preview, export and SRT show the translation over those words; the rest stay.
+        let plain: [String] = plainRequest.captions.words.map(\.text)
+        let first = try #require(plainRequest.captions.words.firstIndex { $0.id == editor.words[2].id })
+        let tokens: [String] = ["esto", "es", "lo", "nuevo", "ahora"]
+        let expected: [String] = Array(plain[..<first]) + tokens + Array(plain[(first + original.count)...])
+        for target in [nil, ExportTarget.fullEdit] {
+            let request = try await editor.renderRequest(target: target)
+            // The style sets the case: compare the words as written.
+            let shown: [String] = request.captions.words.map { $0.text.uppercased() }
+            #expect(shown == expected.map { $0.uppercased() }, "\(shown)")
+            let srt = AVExporter.srt(request.captions).uppercased()
+            #expect(srt.contains("ESTO") && srt.contains("NUEVO") && srt.contains("AHORA"), "\(srt.prefix(200))")
+        }
+        #expect(try ExportFingerprint.value(editor.project, target: .fullEdit) != plainFingerprint, "the export is new")
+        // One undo step for the answer; the row's Undo; Undo all.
+        undo.undo()
+        #expect(editor.project.captionTranslations.isEmpty)
+        undo.redo()
+        #expect(editor.project.captionTranslations.count == 1)
+        undo.beginUndoGrouping(); editor.undoAskClaudeRow(row.id); undo.endUndoGrouping()
+        #expect(editor.project.captionTranslations.isEmpty && run.rows[0].status == .undone)
+        #expect(try await editor.renderRequest(target: .fullEdit).captions.words.map(\.text) == plainRequest.captions.words.map(\.text))
+        undo.undo()
+        #expect(editor.project.captionTranslations.count == 1)
+    }
+
     /// "Play this clip at 1.25×" on a clip: the stretch covers the whole clip (within 0.25 s at each end), so it applies
     /// as the clip's speed in the answer's one undo step, and its Undo takes the speed back.
     @Test(.enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR; only stub connectors are called."))

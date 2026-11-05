@@ -105,6 +105,10 @@ import Testing
                 case .translateCaptions(_, let start, let end, let language, let text):
                     let span = want[ai: "wordRange"].aiArray.compactMap(\.aiInt)
                     #expect([start, end] == span && language == want[ai: "language"].aiString && text == want[ai: "text"].aiString, "\(label)")
+                    // Applied, it is the clip's translated captions.
+                    let stored = try ClipAutopilotMapping.apply([operation], to: project).project.captionTranslations
+                    let expected = try JSONDecoder().decode(CaptionTranslation.self, from: want[ai: "translation"].aiEncoded())
+                    #expect(stored == [expected], "\(label): \(stored)")
                 default: Issue.record("Unexpected action in \(label): \(operation.action)")
                 }
             }
@@ -112,7 +116,7 @@ import Testing
         }
     }
 
-    @Test("Applying an answer adds every free change in one project step, keeps paid and unrendered ones pending, and each comes off alone")
+    @Test("Applying an answer adds every free change in one project step, translations included, keeps paid and partial-speed ones pending, and each comes off alone")
     func applyIsOneGroupAndEachRowUndoesAlone() throws {
         let prompt = try Self.prompt(), project = try Self.project()
         let item = try #require(Self.fixture()[ai: "replies"].aiArray.first { $0[ai: "id"].aiString == "timing-sound-and-words" })
@@ -123,7 +127,8 @@ import Testing
         #expect(applied.project.clipEffects.map(\.kind) == [.freeze, .sound])
         #expect(applied.project.motionCues.count == 1)
         #expect(applied.project.edits.corrections == ["w19": "darn"] && applied.project.edits.cutWordIds == ["w18"])
-        #expect(applied.pending.map(\.decision) == [.stretch, .rewrite, .translate])
+        #expect(applied.pending.map(\.decision) == [.stretch, .rewrite])
+        #expect(applied.project.captionTranslations.map(\.language) == ["es"] && applied.project.captionTranslations.first?.clipId == "clip-main")
         #expect(try ProjectJSON.decode(ProjectJSON.encode(applied.project)) == applied.project)
         // One row off: the same answer without that operation leaves the others in place.
         let withoutFreeze = answer.operations.filter { $0.decision != .freeze }

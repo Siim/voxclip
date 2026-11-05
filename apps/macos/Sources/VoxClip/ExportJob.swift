@@ -136,10 +136,10 @@ import VoxClipCore
             Picker("Aspect", selection: binding(\.aspect)) { Text("9:16").tag(AspectRatio.portrait); Text("1:1").tag(AspectRatio.square); Text("16:9").tag(AspectRatio.landscape); Text("Original").tag(AspectRatio.source) }.pickerStyle(.segmented)
             Divider()
             CaptionPropertyRow("Captions", marker: "export.captions") {
-                Toggle("Burn in captions", isOn: Binding(get: { model.project.captions.styleId != "off" }, set: { model.setCaptionsEnabled($0) })).toggleStyle(.switch)
+                Toggle("Burn in captions", isOn: Binding(get: { model.activeCaptions.styleId != "off" }, set: { model.setCaptionsEnabled($0) })).toggleStyle(.switch)
             }
             CaptionPropertyRow("Style", marker: "export.style") {
-                Picker("Caption style", selection: Binding(get: { model.project.captions.styleId }, set: { model.setStyle($0) })) { Text("Off").tag("off"); ForEach(model.app.styles, id: \.id) { Text($0.name).tag($0.id) } }.labelsHidden().accessibilityLabel("Caption style")
+                Picker("Caption style", selection: Binding(get: { model.activeCaptions.styleId }, set: { model.setStyle($0) })) { Text("Off").tag("off"); ForEach(model.app.styles, id: \.id) { Text($0.name).tag($0.id) } }.labelsHidden().accessibilityLabel("Caption style")
             }
             Toggle("Also save .srt", isOn: binding(\.srt))
             CaptionPropertyRow("Quality", marker: "export.quality") {
@@ -351,7 +351,7 @@ extension EditorModel {
                         let targetName = targetNames[ExportLedger.targetID(target)] ?? "Full Take"
                         attempt = app.exportLedger.entry(projectID: shaped.id, targetID: ExportLedger.targetID(target), aspect: shaped.export.aspect)
                             ?? ExportRecord(projectID: shaped.id, targetID: ExportLedger.targetID(target), exportedAt: Date(),
-                                planFingerprint: "", styleId: shaped.captions.styleId, aspect: shaped.export.aspect, outputPath: "", targetName: targetName)
+                                planFingerprint: "", styleId: shaped.captionSettings(forClip: ExportLedger.clipID(target)).styleId, aspect: shaped.export.aspect, outputPath: "", targetName: targetName)
                         attempt?.failed = true
                         attempt?.retryFolder = folder.path
                         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -383,7 +383,7 @@ extension EditorModel {
                         }
                         recordShareDisclosure(target, disclosure: render.voiceLab?.prepared.disclosure)
                         try app.exportLedger.record(ExportRecord(projectID: shaped.id, targetID: ExportLedger.targetID(target), exportedAt: Date(),
-                            planFingerprint: fingerprint, styleId: shaped.captions.styleId, aspect: shaped.export.aspect, outputPath: result.outputURL.path,
+                            planFingerprint: fingerprint, styleId: shaped.captionSettings(forClip: ExportLedger.clipID(target)).styleId, aspect: shaped.export.aspect, outputPath: result.outputURL.path,
                             targetName: targetName, durationSeconds: result.durationSeconds, width: result.width, height: result.height,
                             byteSize: (try? result.outputURL.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init)))
                         attempt = nil

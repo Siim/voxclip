@@ -121,6 +121,8 @@ import VoxClipCore
             Text(model.makeItNextStep(run)).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
                 .fixedSize(horizontal: false, vertical: true)
                 .columnLayoutEvidence("makeIt.next", text: model.makeItNextStep(run))
+            // At the video's cap the run waits: the same priced Continue as the sidebar card.
+            if run.running, run.budget?.needed != nil { CapContinueBlock(editor: model, id: "makeIt.continue") }
             HStack(spacing: VCTokens.spacingRowGap) {
                 if run.running {
                     Button("Stop") { model.stopMakeIt() }.disabled(run.cancelled)
@@ -167,7 +169,7 @@ import VoxClipCore
                     .foregroundStyle(DesignValues.color(row.kind == .note ? "text.tertiary" : "ai.tint"))
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: VCTokens.spacing1) {
-                    Text(row.text).font(VCType.callout.font()).strikethrough(row.undone)
+                    Text(model.makeItRowText(row, run: run)).font(VCType.callout.font()).strikethrough(row.undone)
                         .foregroundStyle(DesignValues.color(row.undone ? "text.tertiary" : "text.primary"))
                         .fixedSize(horizontal: false, vertical: true)
                     if !row.detail.isEmpty {
@@ -204,7 +206,7 @@ import VoxClipCore
             }
             if row.change == .hook, run.openChoice == row.id, !row.undone {
                 // The hook's text, edited in place; Return applies it to the title card as one undo step.
-                MakeItHookField(text: run.hook, commit: { model.makeItSetHook($0, rowID: row.id, run: run) }, cancel: { run.openChoice = nil })
+                MakeItHookField(text: model.makeItHook(run), commit: { model.makeItSetHook($0, rowID: row.id, run: run) }, cancel: { run.openChoice = nil })
                     .padding(.leading, 22)
             }
             if row.kind == .question, case .question(let index) = row.change, run.openQuestion == index, !row.options.isEmpty {
@@ -220,23 +222,23 @@ import VoxClipCore
         }
         .padding(.vertical, VCTokens.spacingRowPaddingY)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(row.text)
-        .columnLayoutEvidence("makeIt.row.\(row.id)", text: row.text)
+        .accessibilityLabel(model.makeItRowText(row, run: run))
+        .columnLayoutEvidence("makeIt.row.\(row.id)", text: model.makeItRowText(row, run: run))
     }
 
     @ViewBuilder private var actions: some View {
         HStack(spacing: VCTokens.spacing2) {
             if row.play != nil, !row.undone {
                 Button { model.makeItPlay(row) } label: { Image(systemName: "play.fill").font(.system(size: 10)) }
-                    .buttonStyle(.borderless).help("Play from here").accessibilityLabel("Play \(row.text)")
+                    .buttonStyle(.borderless).help("Play from here").accessibilityLabel("Play \(model.makeItRowText(row, run: run))")
             }
             if row.undoable, !row.undone, !run.running {
                 Button("Undo") { model.makeItUndo(row.id, in: run) }.buttonStyle(.borderless)
-                    .accessibilityLabel("Undo \(row.text)")
+                    .accessibilityLabel("Undo \(model.makeItRowText(row, run: run))")
             }
             if let change = row.change, !row.undone, !run.running {
                 Button(change == .post ? "Copy" : "Change") { model.makeItChange(change, run: run) }
-                    .buttonStyle(.borderless).accessibilityLabel("Change \(row.text)")
+                    .buttonStyle(.borderless).accessibilityLabel("Change \(model.makeItRowText(row, run: run))")
             }
         }
         .font(VCType.small.font())

@@ -166,9 +166,10 @@ public sealed class AskClaudeTests
         Assert.Equal(["freeze", "sound"], applied.ClipEffects.Select(effect => effect.GetProperty("kind").GetString()));
         Assert.Equal(new Dictionary<string, string> { ["w19"] = "darn" }, applied.Edits.Corrections);
         Assert.Equal(["w18"], applied.Edits.CutWordIds);
-        // Windows renders no motion cues yet (the planner's zooms stay notes too), so a zoom stays pending with the paid and unrendered rows.
-        Assert.Empty(applied.MotionCues);
-        Assert.Equal([ClipAutopilotDecision.Stretch, ClipAutopilotDecision.Zoom, ClipAutopilotDecision.Rewrite, ClipAutopilotDecision.Translate], pending.Select(operation => operation.Decision));
+        // Windows renders zooms (track/v2-win-render-2), so the zoom applies as the clip's motion cue; a stretch over part of a clip, the
+        // paid rewrite and the translation stay pending.
+        Assert.Equal(["clip-main-ask-1"], applied.MotionCues.Select(cue => cue.Id));
+        Assert.Equal([ClipAutopilotDecision.Stretch, ClipAutopilotDecision.Rewrite, ClipAutopilotDecision.Translate], pending.Select(operation => operation.Decision));
         var encoded = ProjectSerialization.Serialize(applied);
         Assert.Equal(encoded, ProjectSerialization.Serialize(ProjectSerialization.Deserialize(encoded)));
         // One row off: the same answer without that operation leaves the others in place.

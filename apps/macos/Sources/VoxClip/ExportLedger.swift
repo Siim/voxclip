@@ -49,6 +49,8 @@ struct ExportRecord: Codable, Equatable {
     }
 
     static func key(_ target: ExportTarget, aspect: AspectRatio) -> String { targetID(target) + "|" + aspect.rawValue }
+    /// The clip a target renders; nil for the full take.
+    nonisolated static func clipID(_ target: ExportTarget) -> String? { if case .clip(let id) = target { return id }; return nil }
 }
 
 @MainActor enum ExportFingerprint {
@@ -145,6 +147,8 @@ struct ExportRecord: Codable, Equatable {
     }
 
     static func value(_ project: Project, target: ExportTarget, labelPosition: VoiceLabLabelPosition = .topRight) throws -> String {
+        // A clip renders in its own caption look (design.md §6.6), so its fingerprint carries that look.
+        let project = project.resolvingCaptions(forClip: ExportLedger.clipID(target))
         let clip: ClipRange?
         switch target {
         case .fullEdit: clip = nil
@@ -171,11 +175,14 @@ struct ExportRecord: Codable, Equatable {
         let captionsOn = project.captions.styleId != "off"
         let captions = Captions(styleId: project.captions.styleId, overrides: captionsOn ? project.captions.overrides : nil, position: captionsOn ? position : nil)
         let effects = ClipEffects.rendered(in: project, clipID: clip?.id)
-        var words = captionCopy(ClipEffects.maskingBleeps(segments, effects: effects), plan: plan)
+        // Translated captions (ai.md §18.2) are part of what the file shows.
+        var words = CaptionTranslations.applying(captionCopy(ClipEffects.maskingBleeps(segments, effects: effects), plan: plan),
+                                                 project: project, clipID: clip?.id, effects: effects)
         var voice: VoiceInput?
         if project.schemaVersion >= 3 {
             let prepared = try VoiceLabRenderContract.prepare(project, scope: clip.map { .clip($0.id) } ?? .full, labelPosition: labelPosition)
             words = ClipEffects.maskingBleeps(prepared.outputPlan.captions, effects: effects)
+            words = CaptionTranslations.applying(words, project: project, clipID: clip?.id, effects: effects)
             let pieces = prepared.outputPlan.pieces.map(VoicePiece.init)
             let recipes = prepared.selectedSegmentRecipes.map { (selected: VoiceLabSelectedRecipe) -> VoiceRecipe in
                 let recipe = selected.recipe

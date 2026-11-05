@@ -8,5 +8,5 @@ through `mapRect`, clip frames and bitrates, rendered lengths at a speed, the bl
 1.25×, SRT cues on the rendered clock, and × masking.
 
 Regenerate with `python3 tools/fixtures/clip-render/generate_clip_render.py` (check_drift.py runs it). Do not hand-edit.
-C# `ClipRenderVectorTests` (Core) and `ClipRenderMediaTests` (Media) replay every category. The Mac's own tests hold the
-same numbers; a Swift replay of this file is owed.
+C# `ClipRenderVectorTests` (Core) and `ClipRenderMediaTests` (Media) replay every category, and so does the Mac's
+`ClipRenderVectorReplayTests` (Media). Every case passes on both as generated; a case that fails is fixed in the generator.

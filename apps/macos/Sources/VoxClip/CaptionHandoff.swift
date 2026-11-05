@@ -10,6 +10,8 @@ struct AppCaptionLayoutInput: Sendable {
     let language: String?
     let style: CaptionStyle?
     var voiceLab: VoiceLabOutputPlan? = nil
+    /// The project and clip whose translated captions replace their words (ai.md §18.2), with the effects that mask.
+    var translations: (project: Project, clipID: String?, effects: [ClipEffect])? = nil
 }
 
 @MainActor final class CaptionHandoff {
@@ -37,7 +39,10 @@ struct AppCaptionLayoutInput: Sendable {
         guard let style = input.style else { throw VoxClipError.sharedResourcesMissing }
         let (pipeline, _) = try services()
         let resolution = await pipeline.resolve(style, overrides: input.settings.overrides, frame: input.output.size)
-        let words = input.voiceLab?.captions ?? captionCopy(input.segments, plan: input.plan)
+        var words = input.voiceLab?.captions ?? captionCopy(input.segments, plan: input.plan)
+        if let translations = input.translations {
+            words = CaptionTranslations.applying(words, project: translations.project, clipID: translations.clipID, effects: translations.effects)
+        }
         if let voiceLab = input.voiceLab {
             let layoutInput = CaptionLayoutInput(style: style.id,
                 frame: .init(width: input.output.size.width, height: input.output.size.height),

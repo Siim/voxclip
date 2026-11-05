@@ -70,6 +70,17 @@ public sealed record Project(string Format, int SchemaVersion, string Id, DateTi
         get => clipControls.Count == 0 ? null : clipControls;
         init => clipControls = value ?? [];
     }
+    private IReadOnlyList<VoxClip.Core.Domain.Captions.CaptionTranslation> captionTranslations = [];
+    /// <summary>Default-empty schema-v4 translated captions (ai.md §18.2). Windows saves them unchanged and does not render them yet.</summary>
+    [JsonIgnore]
+    public IReadOnlyList<VoxClip.Core.Domain.Captions.CaptionTranslation> CaptionTranslations { get => captionTranslations; init => captionTranslations = value; }
+    /// <summary>Serialization projection preserving the absent field shape of projects without translations.</summary>
+    [JsonPropertyName("captionTranslations"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<VoxClip.Core.Domain.Captions.CaptionTranslation>? PersistedCaptionTranslations
+    {
+        get => captionTranslations.Count == 0 ? null : captionTranslations;
+        init => captionTranslations = value ?? [];
+    }
 }
 
 /// <summary>Writer identity; runtime release version or schema-valid 0.0.0 fallback. Editing §10.2.</summary>

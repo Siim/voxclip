@@ -105,7 +105,8 @@ struct MakeItRewriteOutcome: Equatable {
 /// How a decision is taken back on its own (the review's Undo).
 enum MakeItInverse {
     case edits([EditCommand])
-    case captions(CaptionSettings)
+    /// The clip's caption look before the run's (design.md §6.6): put back, or removed when it had none.
+    case captionPick(clipID: String, previous: ClipCaptionPick?)
     case motion(id: String, previous: MotionCue?)
     case share(clipID: String, previous: String?)
     case music(clipID: String?, previous: ProjectMusic?)
@@ -530,7 +531,7 @@ extension EditorModel {
         var next = project
         var hookRow: MakeItRow?
         for operation in operations {
-            guard let (inverse, row) = makeItStep(operation, plan: plan, in: &next) else { continue }
+            guard let (inverse, row) = makeItStep(operation, plan: plan, clipID: run.clipID, in: &next) else { continue }
             if let inverse { run.inverses[operation.id] = inverse }
             if operation.decision == .hook { hookRow = row } else if let row { rows.append(row) }
         }
@@ -567,7 +568,7 @@ extension EditorModel {
 
     /// One pure operation applied to `project`, with how to take it back and its review row; nil for the operations a
     /// later step owns (rewrites, music).
-    private func makeItStep(_ operation: ClipAutopilotOperation, plan: ClipAutopilotPlan, in project: inout Project) -> (MakeItInverse?, MakeItRow?)? {
+    private func makeItStep(_ operation: ClipAutopilotOperation, plan: ClipAutopilotPlan, clipID runClipID: String, in project: inout Project) -> (MakeItInverse?, MakeItRow?)? {
         let words = project.transcript?.words ?? []
         func start(_ ids: [String]) -> Double? { ids.compactMap { id in words.first { $0.id == id }?.start }.min() }
         switch operation.action {
@@ -600,15 +601,19 @@ extension EditorModel {
                 return (nil, nil)
             }
         case .captions(let settings, let pendingFont):
-            // Captions Off in the clip style: the project's captions stay as they are.
-            guard makeItStyle.captions else { return (nil, nil) }
-            let previous = project.captions
-            project.captions = settings
+            // Captions Off in the clip style: the project's captions stay as they are. Otherwise the look is this clip's
+            // own pick (design.md §6.6), so every clip of a series exports in its own style; the creator's own pick for
+            // the clip stays.
+            guard makeItStyle.captions, let style = project.clipStyle ?? cardClipStyle else { return (nil, nil) }
+            let previous = style.captionPicks[runClipID]
+            let look = ClipCaptionPick(styleId: settings.styleId, reason: String(plan.captions.reason.unicodeScalars.prefix(120)), overrides: settings.overrides)
+            guard let recorded = style.recordingLook(look, forClip: runClipID) else { return (nil, nil) }
+            project.clipStyle = recorded
             let styles = app.shared.flatMap { try? CaptionStyleLibrary(shared: $0).styles } ?? []
             let name = styles.first { $0.id == settings.styleId }?.name ?? settings.styleId
             let font = pendingFont.map { " · \($0.family) \($0.weight) once bundled" } ?? ""
             let casing: String = switch plan.captions.textCase { case .upper: "UPPER"; case .lower: "lower"; case .asSaid: "as said" }
-            return (.captions(previous), MakeItRow(id: operation.id, kind: .choice,
+            return (.captionPick(clipID: runClipID, previous: previous), MakeItRow(id: operation.id, kind: .choice,
                 text: "Claude chose \(name) captions, \(casing), \(plan.captions.wordsPerCaption) per line\(font)", undoable: true, change: .captions))
         case .motion(let cue):
             let previous = project.motionCues.first { $0.id == cue.id }
@@ -792,7 +797,9 @@ extension EditorModel {
     func makeItUndo(_ rowID: String, in run: MakeItRun) {
         if rowID == Self.makeItToneRowID { makeItRemoveTone(run, chose: false); return }
         guard let inverse = run.inverses[rowID], let index = run.rows.firstIndex(where: { $0.id == rowID }), !run.rows[index].undone else { return }
-        let name = "Undo " + run.rows[index].text
+        let name = "Undo " + makeItRowText(run.rows[index], run: run)
+        // The post text keeps the hook the card last showed.
+        if run.rows[index].change == .hook { run.hook = makeItHook(run) }
         guard undoInverse(inverse, name: name) else { return }
         run.rows[index].undone = true
         run.inverses[rowID] = nil
@@ -823,8 +830,10 @@ extension EditorModel {
     private func undoInverse(_ inverse: MakeItInverse, name: String) -> Bool {
         switch inverse {
         case .edits(let commands): return apply(commands, name: name)
-        case .captions(let settings):
-            var next = project; next.captions = settings; replace(next, name: name); return true
+        case .captionPick(let clipID, let previous):
+            guard var style = project.clipStyle else { return false }
+            style.captionPicks[clipID] = previous
+            var next = project; next.clipStyle = style; replace(next, name: name); return true
         case .motion(let id, let previous):
             let kept = project.motionCues.filter { $0.id != id } + (previous.map { [$0] } ?? [])
             guard let next = try? ContextDemoProject.settingMotionCues(kept, in: project) else { return false }
@@ -915,17 +924,45 @@ extension EditorModel {
         guard let next = try? ClipEffects.adding([card], to: project) else { return }
         replace(next, name: "Change hook")
         run.hook = hook
-        run.rows[index].text = Self.makeItHookRowText(hook, chosenBy: "You")
         announce("Hook changed.")
     }
 
     static func makeItHookRowText(_ hook: String, chosenBy who: String) -> String { "\(who) chose the hook “\(hook)”" }
+
+    /// The hook's title card as the project has it now: after the row's Change, Ask Claude's Adjust, the timeline, or an
+    /// undo. Nil once the row's Undo removed it.
+    func makeItHookCard(_ run: MakeItRun) -> ClipEffect? {
+        guard let row = run.rows.first(where: { $0.change == .hook }), !row.undone, case .effect(let id, _)? = run.inverses[row.id] else { return nil }
+        return project.clipEffects.first { $0.id == id }
+    }
+
+    /// The hook as the clip shows it: the card's text, else (the card removed) the last hook, which the post text keeps.
+    func makeItHook(_ run: MakeItRun) -> String { makeItHookCard(run)?.text ?? run.hook }
+
+    /// A row's text as the review shows it. The hook row reads the card, not the run's stored hook: "Claude chose the hook
+    /// “…”" while it says what Claude wrote, else "You chose the hook “…”".
+    func makeItRowText(_ row: MakeItRow, run: MakeItRun) -> String {
+        guard row.change == .hook, !row.undone, let text = makeItHookCard(run)?.text else { return row.text }
+        let claude = run.plan.flatMap { ClipHookTitle.text($0.hook) }
+        return Self.makeItHookRowText(text, chosenBy: text == claude ? "Claude" : "You")
+    }
+
+    /// A press on a hook's title card in the timeline's E1 lane: its review opens with the hook's field, inline. False when
+    /// no finished run made that card.
+    @discardableResult func makeItEditHook(effectID: String) -> Bool {
+        guard let run = makeIt.runs.values.first(where: { !$0.running && makeItHookCard($0)?.id == effectID }),
+              let row = run.rows.first(where: { $0.change == .hook }) else { return false }
+        makeIt.shownClipID = run.clipID
+        run.openChoice = row.id
+        app.shell.choosePanelJob(.makeIt, for: self)
+        return true
+    }
     static let makeItHookDetail = "Title card for the first 2 s · the post text keeps it"
 
-    /// The post text as it is copied and shown: the hook first, unless the post already says it, then the plan's post
-    /// text with its music credit.
+    /// The post text as it is copied and shown: the hook as the card says it now first, unless the post already says it,
+    /// then the plan's post text with its music credit.
     func makeItPostCopy(_ run: MakeItRun) -> String {
-        let hook = run.hook.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hook = makeItHook(run).trimmingCharacters(in: .whitespacesAndNewlines)
         let carries = hook.isEmpty || run.postText.range(of: hook, options: [.caseInsensitive, .diacriticInsensitive]) != nil
         return (carries ? [run.postText] : [hook, run.postText]).filter { !$0.isEmpty }.joined(separator: "\n\n")
     }
@@ -1002,7 +1039,9 @@ extension EditorModel {
     /// The footer's next step.
     func makeItNextStep(_ run: MakeItRun) -> String {
         switch run.phase {
-        case .planning, .applying: return "Next: wait, or Stop to keep what's done."
+        case .planning, .applying:
+            if run.budget?.needed != nil { return "Next: Continue, or Stop to keep what's done." }
+            return "Next: wait, or Stop to keep what's done."
         case .failed: return "Next: try again, or edit the clip yourself."
         case .stopped, .ready:
             if exporting { return "Next: wait for the export." }

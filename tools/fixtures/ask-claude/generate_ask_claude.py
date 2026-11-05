@@ -138,7 +138,10 @@ def generated():
                     {'decision': 'correction', 'kind': 'correction', 'wordIds': ['w19'], 'text': 'darn'},
                     {'decision': 'cut', 'kind': 'jumpCut', 'wordIds': ['w18']},
                     {'decision': 'rewrite', 'kind': 'rewrite', 'wordRange': [17, 20], 'text': 'that number really scared me.', 'paid': True},
-                    {'decision': 'translate', 'kind': 'translate', 'wordRange': [9, 13], 'language': 'es', 'text': 'cuatro mil doscientos dólares,'}],
+                    {'decision': 'translate', 'kind': 'translate', 'wordRange': [9, 13], 'language': 'es', 'text': 'cuatro mil doscientos dólares,',
+                     # Applied as the clip's translated captions (project captionTranslations, ai.md section 18.2).
+                     'translation': {'id': 'tr-1', 'clipId': 'clip-main', 'startWordId': 'w10', 'endWordId': 'w14', 'language': 'es',
+                                     'text': 'cuatro mil doscientos dólares,'}}],
          'repairs': 3},
         # Word ranges reaching past the selection are clamped to it; one wholly outside it is left out.
         {'id': 'censor-words-clamped-to-the-selection', 'selection': {'words': [3, 17]}, 'clipID': 'clip-main', 'detections': [],
