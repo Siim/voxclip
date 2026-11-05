@@ -64,6 +64,7 @@ extension StatusItem.Kind {
         case .task: "In progress"
         case .summary: "Edit summary"
         case .frame: "Frame"
+        case .clipStyle: "Clip style"
         case .export: "Export"
         }
     }

@@ -1,0 +1,80 @@
+{
+ "$schema": "../schema.json",
+ "schemaVersion": 1,
+ "id": "glow",
+ "name": "Glow",
+ "order": 240,
+ "description": "White Roboto Black caps with a soft cyan neon glow; words not yet spoken are dimmed.",
+ "tags": [
+  "phrase",
+  "glow"
+ ],
+ "accent": "#38E8FF",
+ "font": {
+  "file": "Roboto-Black.ttf",
+  "family": "Roboto",
+  "weight": 900,
+  "sizeSh": 0.064,
+  "lineHeightEm": 1.14,
+  "wordSpacingEm": 0.3
+ },
+ "text": {
+  "transform": "uppercase",
+  "punctuation": "strip-keep-numeric"
+ },
+ "layout": {
+  "maxWords": 4,
+  "maxLines": 2,
+  "maxLineWidthW": 0.8,
+  "maxPageSec": 3.0
+ },
+ "position": {
+  "x": 0.5,
+  "y": 0.7
+ },
+ "aspects": {
+  "landscape": {
+   "y": 0.8
+  }
+ },
+ "fill": {
+  "type": "solid",
+  "color": "#FFFFFF"
+ },
+ "shadows": [
+  {
+   "dxEm": 0,
+   "dyEm": 0,
+   "sigmaEm": 0.05,
+   "color": "$accent"
+  },
+  {
+   "dxEm": 0,
+   "dyEm": 0,
+   "sigmaEm": 0.18,
+   "color": "$accent/CC"
+  },
+  {
+   "dxEm": 0,
+   "dyEm": 0,
+   "sigmaEm": 0.42,
+   "color": "$accent/80"
+  }
+ ],
+ "words": {
+  "future": {
+   "opacity": 0.45
+  }
+ },
+ "animation": {
+  "pageIn": {
+   "type": "fade",
+   "durationSec": 0.12
+  }
+ },
+ "preview": {
+  "text": "Lights on tonight",
+  "activeWord": 1,
+  "background": "#14161C"
+ }
+}

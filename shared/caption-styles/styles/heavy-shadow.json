@@ -1,0 +1,69 @@
+{
+ "$schema": "../schema.json",
+ "schemaVersion": 1,
+ "id": "heavy-shadow",
+ "name": "Heavy shadow",
+ "order": 230,
+ "description": "Big white Roboto Black caps with no outline and a deep hard drop shadow that reads on any background.",
+ "tags": [
+  "phrase",
+  "shadow"
+ ],
+ "font": {
+  "file": "Roboto-Black.ttf",
+  "family": "Roboto",
+  "weight": 900,
+  "sizeSh": 0.074,
+  "lineHeightEm": 1.06,
+  "wordSpacingEm": 0.3
+ },
+ "text": {
+  "transform": "uppercase",
+  "punctuation": "strip-keep-numeric"
+ },
+ "layout": {
+  "maxWords": 3,
+  "maxLines": 2,
+  "maxLineWidthW": 0.82,
+  "maxPageSec": 2.5
+ },
+ "position": {
+  "x": 0.5,
+  "y": 0.68
+ },
+ "aspects": {
+  "landscape": {
+   "y": 0.8
+  }
+ },
+ "fill": {
+  "type": "solid",
+  "color": "#FFFFFF"
+ },
+ "shadows": [
+  {
+   "dxEm": 0.05,
+   "dyEm": 0.08,
+   "sigmaEm": 0,
+   "color": "#000000E6"
+  },
+  {
+   "dxEm": 0,
+   "dyEm": 0.04,
+   "sigmaEm": 0.16,
+   "color": "#00000080"
+  }
+ ],
+ "animation": {
+  "pageIn": {
+   "type": "slide-up",
+   "durationSec": 0.12,
+   "easing": "easeOutCubic",
+   "fromOffsetEm": 0.25
+  }
+ },
+ "preview": {
+  "text": "Nobody tells you this",
+  "activeWord": 2
+ }
+}

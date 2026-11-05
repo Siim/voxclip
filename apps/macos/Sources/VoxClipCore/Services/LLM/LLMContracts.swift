@@ -30,6 +30,8 @@ public enum LLMFeature: String, Codable, Sendable, Hashable, CaseIterable {
     case voiceRewrite
     /// The "Make it postable" planner (ai.md §16): one plan for a clip, or a ranked series for a whole video.
     case clipAutopilot
+    /// A caption style per clip while the clip style's captions are Auto (AI §17, design.md §6.6).
+    case captionPick
     case test
 }
 

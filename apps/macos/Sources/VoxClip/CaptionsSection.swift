@@ -210,6 +210,7 @@ extension EditorModel {
             styleRow
                 .padding(.top, Metrics.styleRowTop)
                 .padding(.horizontal, Metrics.inset)
+            ClipStyleCaptionRow(model: model).padding(.horizontal, Metrics.inset)
             if let error = model.captionError {
                 // The notice's own 12 pt padding sets its text on the panel's 16 pt edge.
                 InlineNotice(text: error).fixedSize(horizontal: false, vertical: true)

@@ -11,7 +11,7 @@ using VoxClip.Core.Services.Project;
 
 namespace VoxClip.App.ViewModels;
 
-public sealed class EditorViewModel : ObservableObject
+public sealed partial class EditorViewModel : ObservableObject
 {
     private readonly Func<EditState, EditOperation, EditState> reduce;
     private readonly Func<EditState, EditSummary> summarize;
@@ -588,7 +588,7 @@ public sealed class EditorViewModel : ObservableObject
         state = next.State;
         var sameSource = next.Project.Media.Source.ContentKey == project.Media.Source.ContentKey &&
             next.Project.Media.Source.SizeBytes == project.Media.Source.SizeBytes;
-        project = project with { Edits = next.Project.Edits, Captions = next.Project.Captions, VoiceLab = next.Project.VoiceLab,
+        project = project with { Edits = next.Project.Edits, Captions = next.Project.Captions, ClipStyle = next.Project.ClipStyle, VoiceLab = next.Project.VoiceLab,
             ContextDemo = sameSource ? next.Project.ContextDemo : null, MotionCues = sameSource ? next.Project.MotionCues : [],
             Music = next.Project.Music, SchemaVersion = next.Project.SchemaVersion, ModifiedAt = next.Project.ModifiedAt };
         Refresh();
@@ -597,6 +597,8 @@ public sealed class EditorViewModel : ObservableObject
     public void SetCaptionStyle(string id)
     {
         if (isLeaving || IsReadOnly || Busy) return;
+        // A style the user chooses fixes the clip style's captions, so no AI pick overrides it (design §6.6).
+        if (project.ClipStyle is not null) { RecordClipStyle(ClipStyleCard.ChooseCaptionStyle(project, id)); return; }
         RecordCaptions(project.Captions with { StyleId = id });
     }
 

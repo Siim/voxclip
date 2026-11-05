@@ -13,9 +13,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from jsonschema import Draft202012Validator  # noqa: E402
 
-from captionref.util import FONTS, STYLES, load_json  # noqa: E402
+from captionref.util import FONTS, STYLES, load_json, style_sets  # noqa: E402
 
-MIN_STYLES = 17
+MIN_STYLES = 26
 
 
 def walk_colors(node, path=""):
@@ -111,6 +111,18 @@ def main():
         for e in errs:
             print("%s: %s" % (name, e))
         failures += len(errs)
+    membership = {}
+    for style_set in style_sets():
+        for sid in style_set["styles"]:
+            membership.setdefault(sid, []).append(style_set["id"])
+    for sid in sorted(ids | set(membership)):
+        sets = membership.get(sid, [])
+        if sid not in ids:
+            print("style-sets.json: %s has no style file" % sid)
+            failures += 1
+        elif len(sets) != 1:
+            print("%s.json: in %d fixture sets of style-sets.json; it needs exactly one" % (sid, len(sets)))
+            failures += 1
     if len(files) < MIN_STYLES:
         print("only %d styles; at least %d are required" % (len(files), MIN_STYLES))
         failures += 1

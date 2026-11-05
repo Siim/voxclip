@@ -1,5 +1,58 @@
 # macOS implementation contracts
 
+### 2026-11-05 — Caption types in Roboto Black, Claude's caption pick, and the clip style card (track/v2-captions-style)
+
+User request (2026-11-04): new caption types with Roboto Black; Claude picks the caption type per clip while the style is Auto; a "How should clips be made?" card. Spec: doc/design.md §6.1 and §6.6, doc/spec/ai.md §17, doc/spec/captions.md §16.1 and §17.
+
+- **Built.**
+  - **Fonts.** `shared/fonts/roboto/Roboto-Black.ttf` with its `LICENSE.txt` (Apache-2.0, google/fonts at ff11ed91, v3.005). `build_font_manifest.py` accepts exactly one licence file per folder, `OFL.txt` or `LICENSE.txt`. `fonts.json` only gained entries. There is a Roboto entry in THIRD_PARTY_NOTICES.md.
+  - **Styles.** Seven styles at order 200–260: `marker`, `punch-in`, `sing-along`, `heavy-shadow`, `glow`, `emoji-pop` and `minimal`. With Bounce they make the eight types the user asked for. Five of those names already existed, so the new styles have distinct names. Emoji pop declares `emoji.source: "llm"` and uses the keyword rule for now. Punch-in has no active-word scale.
+  - **Fixture set 2.** `tools/captions/style-sets.json` puts every style in exactly one set (checked by `check_styles`).
+    - Set 1 keeps all its fixture files byte-identical (`check_drift`).
+    - Set 2 writes `shared/fixtures/captions/styles-2/`: 21 layouts, the tiles, an index (`voxclip-caption-style-set/1`), and Mac goldens (68 samples and 14 tiles from `voxclip-cli render-caption`).
+  - **Contract.** The clip style contract lives in `shared/data/clip-styles.json` (presets and options), the optional project `clipStyle`, and the Settings key `clipStyle.default` (no picks).
+    - Core: `ClipStyle`, `ClipStyleCatalog` and `ClipCaptionChoice`, a raw string `auto`, `off` or a style id.
+    - `recording(_:)` is a no-op unless captions are Auto. `fixingCaptions(_:)` turns Auto into `mine`. `pruned`, `summary` and `settingsDefault` are also on `ClipStyle`.
+  - **Caption pick.**
+    - The prompt is `shared/prompts/caption-pick.json` (v1).
+    - `CaptionPickPrompt` covers labels C1…, whole seconds, the instruction and the request (`.captionPick`, effort `.decision`). It validates replies: unknown or duplicate labels, non-candidates and `auto` are dropped, and a reason keeps its first 120 scalars.
+    - `CaptionPicker.pick` sends nothing unless captions are Auto.
+    - Refusal and truncation have their own messages.
+  - **App.**
+    - `ClipStyleViews.swift`: the card, inline at the top of the Clips section, with chips in a flow layout and the Captions, Music, Length, Shape and Rewording rows. It uses the VCTokens spacing.
+    - `ClipStyleCaptionRow` sits under the Captions style row: "✦ Claude picked X · reason", Pick styles with the inline `ConnectorConfirmationView` (`ConnectorConsentAction.pickCaptions`), Cancel, and an inline error.
+    - `EditorModel+ClipStyle.swift` holds the state and the actions, each one undo step.
+    - The StatusBarView has a `.clipStyle` trailing item ("Style: Auto · ≤60 s · 16:9+9:16"), in the drop order, that reopens the card.
+    - Choosing a gallery tile fixes the clip style's captions. Settings saves the choice without picks, and a new project starts from it.
+- **Tests.**
+  - Mac `CaptionStyleSet2Tests` (3): index, 21 layouts, 68 goldens and 14 tiles.
+  - Core `CaptionPickTests` (6): fixture freshness by prompt and catalogue sha, requests, replies, the contract, a stub Auto pick with a fixed style that sends nothing, and persistence.
+  - App `ClipStyleTests` (4, plus an opt-in capture under `VOXCLIP_CLIP_STYLE_CAPTURES`): show once, collapse and reopen through the status bar press, the saved default for a new project, an Auto pick from a stub connector, and a fixed style that is never overridden.
+  - Style counts 19 → 26 in the caption, gallery, Captions panel and contract tests.
+  - The shared vectors `shared/fixtures/clip-style/caption-pick.json` (4 requests, 4 replies, 14 contract cases) come from the independent `tools/fixtures/clip-style/gen_caption_pick.py`. Two runs gave identical bytes.
+  - Negative checks:
+    - With the Auto guard in `recording(_:)` removed, Mac `CaptionPickTests` fails 2 of 6 and `ClipStyleTests.aStyleTheUserChoseIsNeverOverridden` fails.
+    - On Windows, removing the guard fails 2 of 8.
+    - Changing Marker's `sizeSh` fails the 3 Marker layouts and the set 2 golden test on Windows.
+- **Verification** (`VOXCLIP_NO_KEYCHAIN=1`, canonical absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`):
+  - Core: 1,201 / 115 suites.
+  - Media: 505 / 59.
+  - App: 890 / 63 with one failure. `ExplorerLibraryTests.outlineDotsAndTheLibraryShareTheExplorer` failed because the card, shown once, pushed the Outline below the 560-high explorer. The test now starts with the card collapsed, and its suites pass again: 21 / 2, run together with `ClipStyleTests`.
+  - `rewrite-smoke.sh`: passed, 35 scenarios.
+  - The caption tools (`check_styles`, `gen_fixtures`, `gen_cards`, `gen_gallery`, `gen_card_colors`, `gen_box_text_colors`, `check_drift`) leave no diff.
+  - Spacing captures 35 / 35.
+  - The offscreen captures of the card and gallery are in /tmp/voxclip-captions-style/.
+- **Owed.**
+  - Per-clip caption styles at export. Today the active clip's pick is applied to `captions.styleId`.
+  - Claude-sourced emoji for Emoji pop.
+  - The consumers of Music, Length, Shape and Rewording: the planner and music packages.
+  - `cards.json`, `gallery-samples.json` and `box-text-colors.json` vectors for set 2.
+  - The real-window `-sceneAudit` and `-uiSelfTest` gates were not run.
+- **Next package must know.**
+  - The planner reads `ClipStyle` through `project.clipStyle ?? catalog.initial(saved:)`. A caption style id there is the user's fixed choice. Never override it or send it for a pick.
+  - New caption styles go in a new style set folder, never into set 1's files.
+  - `clipStyle.default` must not carry `captionPicks` (`SettingsValidation` rejects them).
+
 ### 2026-11-05 — One spacing scale: phrase cards, Rewrite panel, fields and chips
 
 User request (2026-11-04): "some of the paddings, especially between inputs and some lines, are too close together". The look is kept; the rhythm is fixed. Spec: doc/design.md §16.1.

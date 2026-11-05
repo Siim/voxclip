@@ -249,8 +249,14 @@
         <ContentControl x:Name="WorkspaceGate" Grid.Row="1" IsTabStop="False" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
         <Grid x:Name="Workspace" Background="{ThemeResource VcBgWindowBrush}">
             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-            <controls:ExplorerPane x:Name="Nav" Width="224" ItemsSource="{x:Bind Shell.Rows}" ItemTemplateSelector="{StaticResource SidebarTemplates}"
-                SelectionChanged="NavSelectionChanged" ItemClick="NavItemInvoked" AutomationProperties.Name="Explorer" BorderThickness="0,0,1,0" BorderBrush="{ThemeResource VcLineDefaultBrush}"/>
+            <!-- The clip style card sits above the clip list (design §6.6; MainWindow.ClipStyle.cs). -->
+            <Grid x:Name="ExplorerColumn">
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                <ContentControl x:Name="ClipStyleHost" Width="224" IsTabStop="False" HorizontalContentAlignment="Stretch" Visibility="Collapsed"
+                    BorderThickness="0,0,1,0" BorderBrush="{ThemeResource VcLineDefaultBrush}"/>
+                <controls:ExplorerPane x:Name="Nav" Grid.Row="1" Width="224" ItemsSource="{x:Bind Shell.Rows}" ItemTemplateSelector="{StaticResource SidebarTemplates}"
+                    SelectionChanged="NavSelectionChanged" ItemClick="NavItemInvoked" AutomationProperties.Name="Explorer" BorderThickness="0,0,1,0" BorderBrush="{ThemeResource VcLineDefaultBrush}"/>
+            </Grid>
             <Grid x:Name="ContentLayer" Grid.Column="1" Background="{ThemeResource VcBgSurfaceBrush}">
                 <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
                 <InfoBar x:Name="WindowNotice" IsOpen="False" Closed="WindowNoticeClosed"/>
@@ -277,10 +283,12 @@
         </ContentControl>
         <ContentControl x:Name="StatusGate" Grid.Row="2" IsTabStop="False" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
         <Grid x:Name="ShellStatusBar" Background="{ThemeResource VcBgStatusBarBrush}" MinHeight="24" Padding="8,0" ColumnSpacing="8">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <Button x:Name="ClipStyleStatus" Grid.Column="2" Click="ClipStyleStatusClicked" Style="{ThemeResource SubtleButtonStyle}" Padding="4,0" MinHeight="24" Visibility="Collapsed"
+                FontSize="12" ToolTipService.ToolTip="Change how clips are made." AutomationProperties.Name="Clip style" AutomationProperties.AutomationId="Shell.ClipStyle"/>
             <Button Content="Explorer" Click="ExplorerClicked" Style="{ThemeResource SubtleButtonStyle}" Padding="4,0" MinHeight="24" AutomationProperties.Name="Toggle Explorer (Ctrl+B)"/>
             <TextBlock x:Name="ShellStatus" Grid.Column="1" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Foreground="{ThemeResource VcTextSecondaryBrush}"/>
-            <Button Grid.Column="2" Content="Commands" Click="CommandPaletteClicked" Style="{ThemeResource SubtleButtonStyle}" Padding="4,0" MinHeight="24" AutomationProperties.Name="Commands (Ctrl+K)"/>
+            <Button Grid.Column="3" Content="Commands" Click="CommandPaletteClicked" Style="{ThemeResource SubtleButtonStyle}" Padding="4,0" MinHeight="24" AutomationProperties.Name="Commands (Ctrl+K)"/>
         </Grid>
         </ContentControl>
         <controls:CommandPalette x:Name="Palette" Grid.Row="1" Visibility="Collapsed" Margin="16" Canvas.ZIndex="10"/>

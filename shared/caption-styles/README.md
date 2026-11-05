@@ -33,6 +33,15 @@ Caption styles are data. Both apps load these files at run time and render them 
 | 170 | `neon` | Neon | Righteous | Pink tube outline with a layered glow |
 | 180 | `emoji-accent` | Emoji | Montserrat ExtraBold | An emoji above the phrase on keywords |
 | 190 | `vhs` | VHS | VT323 | Pixel caps with red/cyan fringes and jitter |
+| 200 | `marker` | Marker | Roboto Black | A square yellow marker box on the spoken word |
+| 210 | `punch-in` | Punch-in | Roboto Black | Words punch in one at a time, large to normal |
+| 220 | `sing-along` | Sing-along | Roboto Black | Sentence-case lyric lines; spoken words fill with cyan |
+| 230 | `heavy-shadow` | Heavy shadow | Roboto Black | Big white caps with a deep hard drop shadow |
+| 240 | `glow` | Glow | Roboto Black | White caps with a soft cyan neon glow |
+| 250 | `emoji-pop` | Emoji pop | Roboto Black | Yellow spoken word, at most one emoji per caption |
+| 260 | `minimal` | Minimal | Roboto Black | Small sentence case, low in the frame, no colour or motion |
+
+Styles 200–260 are style set 2 (`tools/captions/style-sets.json`): their fixtures and goldens live in `shared/fixtures/captions/styles-2/`, so adding them changed no existing fixture. A new style joins a new set rather than an existing one.
 
 `off` is reserved for "captions off" and is not a style file.
 

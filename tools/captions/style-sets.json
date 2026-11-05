@@ -1,0 +1,44 @@
+{
+ "description": "Which built-in caption styles each fixture set covers. Set 1 is the original catalogue; its fixture files in shared/fixtures/captions stay byte-identical when styles are added, because both apps' suites pin their keys and counts. Every later style joins a new set whose vectors live in that set's own folder (layout cases, preview tiles, goldens and index). check_styles.py requires every style file to be in exactly one set.",
+ "sets": [
+  {
+   "id": 1,
+   "fixtures": "shared/fixtures/captions",
+   "styles": [
+    "active-pop",
+    "bounce",
+    "box-highlight",
+    "clean-subtitle",
+    "editorial",
+    "emoji-accent",
+    "gradient",
+    "karaoke",
+    "lower-third",
+    "neon",
+    "one-word",
+    "outline",
+    "pill",
+    "two-tone",
+    "typewriter",
+    "vhs",
+    "vox-bold",
+    "vox-bold-plus",
+    "vox-highlight"
+   ]
+  },
+  {
+   "id": 2,
+   "fixtures": "shared/fixtures/captions/styles-2",
+   "note": "The Roboto Black set (2026-11-05): Marker, Punch-in, Sing-along, Heavy shadow, Glow, Emoji pop and Minimal.",
+   "styles": [
+    "emoji-pop",
+    "glow",
+    "heavy-shadow",
+    "marker",
+    "minimal",
+    "punch-in",
+    "sing-along"
+   ]
+  }
+ ]
+}

@@ -8,6 +8,7 @@ SHARED = os.path.join(REPO, "shared")
 FONTS = os.path.join(SHARED, "fonts")
 STYLES = os.path.join(SHARED, "caption-styles")
 FIXTURES = os.path.join(SHARED, "fixtures", "captions")
+STYLE_SETS = os.path.join(REPO, "tools", "captions", "style-sets.json")
 
 
 def round_half_up(x):
@@ -44,6 +45,18 @@ def dumps(value, indent=0, width=110):
         return "{\n" + ",\n".join(items) + "\n" + " " * indent + "}"
     items = [pad + dumps(v, indent + 1, width) for v in value]
     return "[\n" + ",\n".join(items) + "\n" + " " * indent + "]"
+
+
+def style_sets():
+    """The fixture sets of tools/captions/style-sets.json, in order: [{id, fixtures (absolute), styles}]."""
+    with open(STYLE_SETS, encoding="utf-8") as f:
+        sets = json.load(f)["sets"]
+    return [dict(s, fixtures=os.path.join(REPO, s["fixtures"])) for s in sets]
+
+
+def set_styles(set_id):
+    """The sorted style ids of one fixture set."""
+    return sorted(next(s for s in style_sets() if s["id"] == set_id)["styles"])
 
 
 def write_json(path, doc):

@@ -287,8 +287,8 @@ The AI decision features ask for `xhigh` effort (below), which thinks longer tha
 
 ### 4.4.1 Effort
 
-Find Clips, AI Tighten, Rewrite, Fix with AI, wording fit and the Rewrite next actions (which send through Rewrite and
-Fix with AI) ask for `xhigh`: the user asked that Claude Code "make the best decisions … in extra high effort level".
+Find Clips, AI Tighten, Rewrite, Fix with AI, wording fit, the caption pick (§16) and the Rewrite next actions (which
+send through Rewrite and Fix with AI) ask for `xhigh`: the user asked that Claude Code "make the best decisions … in extra high effort level".
 The connection test stays `low`. A connector sends the highest level it supports at or below the request, and omits
 effort when it supports none of those. "Supports" means:
 
@@ -1869,3 +1869,36 @@ The track/v2-quickwins package owns the rest of the effort work: every other AI 
 - **Roboto Black:** the font must be bundled (OFL, with notices) before it renders.
 - **Hook:** a title card for the hook text.
 - **Windows:** the twin.
+
+---
+
+## 17. Caption pick (`captionPick`)
+
+When the clip style's captions are Auto (design.md §6.6), one request asks the connector to choose a caption style
+for each clip, with a one-line reason. A caption style the user fixed is never sent and never overridden.
+
+- **Prompt.** The prompt is `shared/prompts/caption-pick.json` (`promptVersion` 1). Both Cores render it with
+  `CaptionPickPrompt`, and the system text is sent unchanged.
+- **Instruction.** The instruction fills `{preset}` with the preset label and `{styles}` with one `styleLine`
+  ("- {id}: {name}. {description}") per candidate. It fills `{clips}` with one `clipLine` ("{clip} ({seconds} s)
+  {title}: {text}") per clip:
+  - Clips are labelled C1, C2… in clip order, at most `limits.maxClips` (24).
+  - The seconds are whole seconds, with halves rounded up; a negative or non-finite length is 0.
+  - A blank title is "Untitled".
+  - The text is trimmed and cut to `limits.maxClipChars` (600) by the shared clip-text rule.
+- **Candidates.** The candidates are every library caption style except those tagged with one of the preset's
+  `excludeCaptionTags` (Calm story and Demo / tutorial exclude `emoji`), in gallery order (`order`, then `id`).
+- **Request.** The request uses feature `captionPick`, output `caption_picks` (`{picks: [{clip, style, reason}]}`,
+  strict), `maxOutputTokens` 2000 and effort `xhigh` (decision, §4.4.1). Its activity tag is "caption-pick {n} clips".
+  It is sent only after the inline connector confirmation, with the verb "Pick styles" and consent action
+  `pickCaptions`.
+- **Reply.** Labels and styles are trimmed. A pick is dropped when its label is unknown or repeated, when its style is
+  not a candidate, or when its style is `auto`. The reason keeps its first `limits.maxReasonChars` (120) Unicode
+  scalars. The surviving picks are recorded as `clipStyle.captionPicks[clipId]`, after picks for clips that no longer
+  exist are pruned. Recording is a no-op unless captions are still Auto when the reply arrives.
+- **Errors.** Refusal and truncation have their own `captionPick` messages in both LLM error tables. Every other
+  failure uses the shared connector errors, shown inline under the Captions style row.
+- **Vectors.** `shared/fixtures/clip-style/caption-pick.json` comes from `tools/fixtures/clip-style/gen_caption_pick.py`,
+  an independent standard-library producer. It holds 4 request vectors (instruction text), 4 reply vectors (picks and
+  dropped counts) and 14 clip style contract cases (validation, fixing, pruning and the summary). It also records the
+  sha256 of the prompt and of `shared/data/clip-styles.json`, so a stale fixture fails both Cores.
