@@ -1,5 +1,52 @@
 # Windows fixed contracts
 
+### 2026-11-05 — Windows: Claude does it all, the Rewrite-as strip and the review's tone row (track/v2-win-make-it)
+
+Twin of the Mac entries claude-mode and rewrite-tones (the strip, saved tones and the review's tone row). Spec: doc/design.md §6.3.1, §6.6, §6.7.
+
+- **App: Claude does it all** (`ViewModels/ClaudeMode.cs`, `EditorViewModel.ClaudeMode.cs`, `Controls/ClaudeModeCard.cs`, `Controls/ClipStyleCardPanel.cs`, `MainWindow.ClipStyle.cs`, `Pages/EditorPage.MakeIt.cs`):
+  - **The choice.** One remembered `clips.mode` with clips per video and a per-video cap. The clip style card gains the Mode, Clips and Spend rows. Settings gains a Clips page. The status bar's clip item names the mode, with what has been spent while a run goes.
+  - **The run.** A newly imported video is armed before transcription. When the transcript arrives, `ClaudeModeContinueAsync` starts Find Clips through `FindClipsJob.FindIfFreeAsync` when no approval is needed. Otherwise it shows the blocked card with its one action: Set Up Claude…, Find Clips (which asks inline in its own panel) or Find Clips Again.
+  - **After the find.** The run is hooked after the find task ends (`ClaudeModeFindStarted` → `AfterFind`). It then starts only through `MakeTopPostable(count, MakeItBudget(cap))`, with the budget's `Changed` subscribed first, so a synchronous run still reports what it spent.
+  - **The cards.** Card A is the choice, then the blocked card. Card C has a step per line: the transcript, Find Clips and each clip, with its pill. Card D has the summary, Review and "Export all": every clip in its shapes with its post text beside it, carrying on past a failed clip, with the first post text copied. Stop and Continue keep the run's own budget.
+  - **Not stored.** The run is not stored in the project, so a reopened project never starts it again.
+- **App: the Rewrite-as strip** (`EditorViewModel.RewriteTones.cs`, `Pages/EditorPage.RewriteTones.cs`, `Controls/SelectionFlyout.cs`, `RewritePanel.cs`, `MainWindow.xaml`, `SettingsWindow.xaml.cs`):
+  - **One order.** `RewriteStripItems` lists the clip style's tone first, marked "· your default" (Fix mistakes when there is none or it is As I said it). Then come Fix mistakes, Shorter, the catalogue tones and the saved tones.
+  - **Where it shows.** The selection flyout's "✦ Rewrite as" (`Selection.RewriteAs`), Ctrl+R (`RewriteShortcutItem`), the clip and suggestion rows' "✦ Rewrite as" submenu (`Clip.RewriteAs`, which keeps a suggestion first) and the scope bar's Tone menu (`ToneButton`).
+  - **What a chip does.** Each raises `RewriteAsRequested`, and the page opens Rewrite on those words with the instruction in the field and sends at once. A send that needs approval asks inline in the panel.
+  - **Saved tones.** "+ Save as my tone" names the Ask field's text inline (`SaveToneHost`). Settings › Clips › Your tones renames inline and deletes. Core `MyRewriteTones` gains `Saving`, `Renaming`, `Deleting` and `Encode`, matching the Mac's ids (`my-` + folded slug, `-2` when taken).
+- **App: the review's tone row and the two gaps:**
+  - **The tone row.** Make it postable's review leads with "Claude wrote it as …" and the planner's reason. Change offers the other tones and As I said it. Choosing one takes the run back and re-plans with `MakeItController.ToneOverride` as one "Change tone" undo step. The override is used once, so the next request uses the clip style's tone again.
+  - **Suggested** ranks by the planner's score.
+  - **Change on a phrase row** opens Rewrite with the planner's words (`MakeItRow.Planned`) filled in.
+- **Tests:**
+  - win-ui `ClaudeModeTests` (12): the choice and Settings, arming, each blocker and its fix, the find hooked before the run, the cap and Continue, Stop, the cards' lines, Export all and the status text.
+  - win-ui `RewriteToneEntryTests` (9), the twin of the Mac's: the order and default, the scope bar, the selection and Ctrl+R, a clip row keeping a suggestion, saved tones, the review's tone row with its undo step and As I said it, the planned phrase, Suggested's score order, and the XAML/code wiring.
+  - `MakeItSmokeTests` gains S-claude-does-it-all. Core `RewriteToneTests` gains the saved-tone vectors.
+  - Updated: `ConnectorPreflightTests` (Find Clips' free start and its retry through `Start`).
+  - **Red checks.** Not awaiting the find fails 2 tests. Breaking the strip's default or Suggested's score order fails 2 tests.
+- **Allowlists.** `ReleaseBoundary update`:
+  - `VoxClip.txt` +233 / −1 (Claude mode) and +127 (the strip), declarations only.
+  - `VoxClip.Core.txt` +4 (`MyRewriteTones`).
+  - Media and the CLI are unchanged.
+- **Deviations:**
+  - Windows still asks how to transcribe a new video; Claude mode takes over when the transcript arrives.
+  - Claude starts Find Clips by itself once per video, since Windows keeps no empty AI result.
+  - The cap prices the voice only, because Windows does not generate music.
+- **Owed.** Ask Claude's two "Rewrite as" groups, since Windows has no Ask Claude panel yet (§6.8).
+- **Verification** (macOS host, Release, serial, `VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`):
+  - App type-check 0 warnings, 0 errors; `check-xaml.py` 0 problems.
+  - Core 3,165 total, 0 failed, 29 skipped.
+  - Portable Media 973, 0 failed, 5 skipped.
+  - win-ui 1,290, 0 failed, 5 skipped, `*ReleaseSurrogate*` included.
+  - Both `check_drift.py` and the schema generators (no diff) pass; schema tests 24 OK; `tools/voice-lab` 60 OK.
+  - `env -i … voxclip-cli.dll --runtime-terms --json` exits 0.
+- **Native, left to hosted Windows CI:**
+  - WinUI rendering of the Claude mode cards, the card's new rows, Settings › Clips and the status item.
+  - The flyout's and clip menus' "Rewrite as", the Tone menu and the inline save field.
+  - A live import through transcription, Find Clips and the run.
+  - Export all through the real exporter.
+
 ### 2026-11-05 — Windows: the Make it postable planner twin, the one-click run and its review (track/v2-win-make-it)
 
 Twin of the Mac entries v2-autopilot-planner, planner v2, make-it, wire-1 and mac-polish-2 (the planner and Make it postable). Spec: doc/design.md §6.7; doc/spec/ai.md §16.
