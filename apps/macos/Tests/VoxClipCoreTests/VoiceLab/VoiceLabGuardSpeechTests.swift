@@ -35,11 +35,16 @@ struct VoiceLabGuardSpeechTests {
 
     @Test func readsOnlyWordSpansNearestThePatchUpToTenSeconds() {
         // Twenty one-second words, each followed by a second of silence, over 40 s; the patch is word 10 (18–19 s).
-        let words = (0..<20).map { word("w\($0)", Double($0 * 2), Double($0 * 2 + 1)) }
+        let words: [TimedWord] = (0..<20).map { (index: Int) -> TimedWord in
+            let start = Double(index * 2)
+            return word("w\(index)", start, start + 1)
+        }
         let selection = VoiceLabGuardSpeech.select(items: words, start: 18, end: 19, sampleRate: Self.rate, totalFrames: 40 * Self.rate)
         #expect(selection.frames == 10 * Self.rate, "ten seconds of words, no silence")
         // The patch's word (9) and the nine nearest, the earlier of two equally near words first: words 4 to 13.
-        #expect(seconds(selection.ranges).map(\.[0]) == (4...13).map { Double($0 * 2) })
+        let starts: [Double] = seconds(selection.ranges).map { (range: [Double]) -> Double in range[0] }
+        let expected: [Double] = (4...13).map { (index: Int) -> Double in Double(index * 2) }
+        #expect(starts == expected)
         #expect(selection.ranges.allSatisfy { $0.count == Self.rate })
         #expect(selection.speaker == nil)
     }
@@ -54,7 +59,10 @@ struct VoiceLabGuardSpeechTests {
     }
 
     @Test func stopsAtTenSecondsInsideTheLastWord() {
-        let words = (0..<6).map { word("w\($0)", Double($0 * 3), Double($0 * 3 + 2)) }
+        let words: [TimedWord] = (0..<6).map { (index: Int) -> TimedWord in
+            let start = Double(index * 3)
+            return word("w\(index)", start, start + 2)
+        }
         let selection = VoiceLabGuardSpeech.select(items: words, start: 0, end: 2, sampleRate: Self.rate, totalFrames: 20 * Self.rate)
         #expect(selection.frames == 10 * Self.rate)
         #expect(seconds(selection.ranges) == [[0, 2], [3, 5], [6, 8], [9, 11], [12, 14]])

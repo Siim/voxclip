@@ -85,7 +85,8 @@ extension RewriteSession {
 
     /// Keeps `keeping` as recorded, then applies the text fixes, or ends the Rewrite with the words as recorded.
     private func finishingFooter(note: String, keeping: [Int], plan: ClipTakePlan) -> PanelFooter {
-        let fixes = editor.changeReadings.filter { $0.change.isFree && $0.change.state == .pending && !$0.applied }.count
+        var fixes = 0
+        for reading in editor.changeReadings where reading.change.isFree && reading.change.state == .pending && !reading.applied { fixes += 1 }
         let line = note + (plan.spent.units > 0 ? "\n" + takeSpendLine : "")
         let finish: @MainActor () -> Void = { [weak plan] in
             guard let plan else { return }
