@@ -214,6 +214,13 @@ extension WorkspaceShell {
                 .lineLimit(1).truncationMode(.tail)
                 .accessibilityIdentifier("voxclip.panel.context")
                 .columnLayoutEvidence("panel.context", text: context)
+            if job != .export, let speed = model.clipSpeedBadge {
+                // The open clip plays at another speed (design.md §6.8).
+                Text(speed).font(VCType.small.font(.semibold)).monospacedDigit().foregroundStyle(DesignValues.color("text.secondary"))
+                    .fixedSize()
+                    .accessibilityLabel("Speed \(speed)")
+                    .accessibilityIdentifier("voxclip.panel.speed")
+            }
             Spacer(minLength: 4)
             HStack(spacing: 1) {
                 ForEach(PanelJob.available(in: model), id: \.self) { candidate in

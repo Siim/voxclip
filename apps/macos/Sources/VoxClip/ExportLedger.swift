@@ -127,14 +127,18 @@ struct ExportRecord: Codable, Equatable {
         let voiceLab: VoiceInput?
         let contextDemo: ContextDemoDocument?
         let motionCues: [MotionCue]?
+        /// Absent at the defaults, so a fingerprint without clip controls is unchanged.
+        let clipControls: ProjectClipControls?
     }
 
-    static func output(_ project: Project) -> OutputSpec {
+    /// The frame a render of `clipID` (nil: the full take) uses: the clip's own shape and turn (design.md §6.8), else the project frame.
+    static func output(_ project: Project, clipID: String? = nil) -> OutputSpec {
         let video = project.media.source.video
+        let controls = ClipControlsProject.controls(for: clipID, in: project)
         let oriented = video.map(OutputSizing.orientedSize) ?? PixelSize(width: 1920, height: 1080)
-        let size = (try? OutputSizing.outputSize(source: oriented, aspect: project.export.aspect)) ?? PixelSize(width: 1920, height: 1080)
+        let size = (try? OutputSizing.outputSize(source: oriented, aspect: project.export.aspect, controls: controls)) ?? PixelSize(width: 1920, height: 1080)
         let fps = (try? OutputSizing.outputFrameRate(nominal: video?.frameRate ?? 30)) ?? 30
-        let bitrate = OutputSizing.videoBitrate(size: size, aspect: project.export.aspect, quality: project.export.quality, fps: fps)
+        let bitrate = OutputSizing.videoBitrate(size: size, aspect: project.export.aspect, quality: project.export.quality, fps: fps, controls: controls)
         return OutputSpec(size: size, fps: fps, videoBitrate: bitrate, quality: project.export.quality)
     }
 
@@ -159,7 +163,7 @@ struct ExportRecord: Codable, Equatable {
             let rate: Double = Double(project.media.source.audio?.sampleRate ?? 48_000)
             plan = try buildEditPlan(segments, duration: duration, sampleRate: rate, pauseKeepSeconds: edits.pauseKeepSeconds)
         }
-        let output = output(project)
+        let output = output(project, clipID: clip?.id)
         let preset = CaptionStyleResolver.preset(width: output.size.width, height: output.size.height)
         let position = preset.flatMap { project.captions.positionByAspect[$0] } ?? project.captions.position
         let captionsOn = project.captions.styleId != "off"
@@ -198,7 +202,7 @@ struct ExportRecord: Codable, Equatable {
             contextDemo: project.contextDemo, motionCues: clip.flatMap { selected in
                 let cues = project.motionCues.filter { $0.clipID == selected.id }
                 return cues.isEmpty ? nil : cues
-            })
+            }, clipControls: ClipControlsProject.controls(for: clip?.id, in: project).flatMap { $0.isDefault ? nil : $0 })
         let encoder = ProjectJSON.encoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let data = try encoder.encode(input)
