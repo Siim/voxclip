@@ -46,14 +46,10 @@ public sealed record ProjectClipControls(string ClipId, double Speed, ClipShape?
         FadeOutSeconds == 0 && !MuteSource && !FlipHorizontal && RotationDegrees == 0;
 }
 
-/// <summary>Validation, pruning and the export refusal for the v4 clipControls field. Windows opens, validates and saves
-/// clip controls unchanged; rendering them is Mac-only for now, so Windows export refuses with a reason.</summary>
+/// <summary>Validation and pruning for the v4 clipControls field. Windows opens, validates and saves clip controls unchanged,
+/// and renders them in preview and export (<see cref="ClipControlsRendering"/>).</summary>
 public static class ClipControlsProject
 {
-    /// <summary>The reason a Windows render or export of a project with clip controls stops.</summary>
-    public const string ExportUnsupportedMessage =
-        "Windows cannot play clip speed, looks, volume, fades, flip or rotation yet. Export this project on a Mac, or reset its clip controls there. Your clip controls and edits are unchanged.";
-
     private const string Identifier = "[A-Za-z0-9][A-Za-z0-9._:-]{0,63}";
 
     /// <summary>The typed rules: v4 only, the clip exists, one entry per clip, ranges, no stored defaults.</summary>

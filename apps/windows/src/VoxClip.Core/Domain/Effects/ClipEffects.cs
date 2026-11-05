@@ -9,14 +9,15 @@ using VoxClip.Core.Domain.Shared;
 namespace VoxClip.Core.Domain.Effects;
 
 /// <summary>The schema-v4 <c>clipEffects</c> field (doc/spec/ai.md §18.2): Ask Claude's censoring, overlays, freeze frames
-/// and sound effects. Windows opens, validates and saves each entry unchanged as its JSON; rendering them is Mac-only for
-/// now, so a Windows render or export of a project with effects refuses with <see cref="ExportUnsupportedMessage"/>.
-/// The rules match the Mac Core's ClipEffects (Swift) and the shared vectors in shared/fixtures/clip-effects.</summary>
+/// and sound effects. Windows opens, validates and saves each entry unchanged as its JSON, and renders them in preview and
+/// export through <see cref="ClipEffect"/> (ai.md §18.5). The rules match the Mac Core's ClipEffects (Swift) and the shared
+/// vectors in shared/fixtures/clip-effects.</summary>
 public static class ClipEffects
 {
-    /// <summary>The reason a Windows render or export of a project with effects stops.</summary>
-    public const string ExportUnsupportedMessage =
-        "Windows cannot render Ask Claude effects (bleeps, blurs, overlays, freeze frames or sound effects) into exports yet. Export this project on a Mac, or remove its effects there. Your effects and edits are unchanged.";
+    /// <summary>The effects a render of <paramref name="clipId"/> (null: the full video) draws: every censor effect, and the
+    /// others of that clip.</summary>
+    public static IReadOnlyList<ClipEffect> Rendered(Project project, string? clipId)
+        => project.ClipEffects.Select(ClipEffect.Parse).Where(effect => effect.IsCensor || effect.ClipId == clipId).ToArray();
 
     private const string Identifier = "[A-Za-z0-9][A-Za-z0-9._:-]{0,63}";
     private const string SoundFile = "[0-9a-f-]{36}/sfx-[a-z0-9][a-z0-9_-]{0,57}\\.(mp3|m4a|wav|aif|aiff|flac|ogg)";
