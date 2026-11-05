@@ -1489,9 +1489,12 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         let length = plan.phrases[0].originalLength
         ClipTakeHTTP.state.withLock { $0.duration = length + 1.5; $0.speechMargin = 0.15 }
         await plan.start(approved: true, quoteID: plan.approvalID)
-        await session.wordingFit.measuredWork?.value
-        // The reworded phrase's fresh quote is prepared after the measured work; slow hosted runners finish it later.
-        for _ in 0..<500 where plan.approvalID == nil { try await Task.sleep(for: .milliseconds(10)) }
+        // The measured round starts after the take lands and the reworded phrase's fresh quote after that; slow hosted
+        // runners reach both later (CI 41967010628 read the wording before its round had started), so wait for both.
+        for _ in 0..<3000 where session.wordingFit.measured?.text == nil || plan.approvalID == nil {
+            if let work = session.wordingFit.measuredWork { await work.value }
+            try await Task.sleep(for: .milliseconds(10))
+        }
         let availability = plan.videoAvailability(phrase: 0)
         #expect(!availability.allows(.source) && !availability.allows(.cut) && availability.allows(.retimed))
         #expect(session.wordingFit.measured?.text != nil && plan.approvalID != nil)
