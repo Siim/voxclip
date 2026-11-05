@@ -8,39 +8,47 @@ import VoxClipCore
 
     var body: some View {
         if let catalog = editor.clipStyles, let style = editor.cardClipStyle {
-            VStack(alignment: .leading, spacing: VCTokens.spacingGroupGap) {
-                HStack(alignment: .firstTextBaseline, spacing: VCTokens.spacingRowGap) {
-                    Text("How should clips be made?").font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(DesignValues.color("text.primary")).fixedSize(horizontal: false, vertical: true)
-                        .accessibilityAddTraits(.isHeader)
-                    Spacer(minLength: VCTokens.spacingRowGap)
-                    Button("Done") { editor.collapseClipStyleCard() }.buttonStyle(.borderless).font(.system(size: 12))
-                        .accessibilityIdentifier("voxclip.clipStyle.done")
-                }
-                modeControl
-                if !editor.claudeModeOn {
-                    ClipStyleFlowLayout(spacing: VCTokens.spacingLabelGap) {
-                        ForEach(catalog.presets) { preset in
-                            chip(preset, selected: style.preset == preset.id)
-                        }
+            card(catalog: catalog, style: style)
+                .padding(VCTokens.spacingCardPadding)
+                .background(DesignValues.color("bg.surface"), in: .rect(cornerRadius: VCTokens.radiusPane))
+                .overlay(RoundedRectangle(cornerRadius: VCTokens.radiusPane).strokeBorder(DesignValues.color("line.default")))
+                .padding(.vertical, VCTokens.spacingLabelGap)
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("How should clips be made?")
+                .accessibilityIdentifier("voxclip.clipStyle.card")
+        }
+    }
+
+    private func card(catalog: ClipStyleCatalog, style: ClipStyle) -> some View {
+        VStack(alignment: .leading, spacing: VCTokens.spacingGroupGap) {
+            header
+            modeControl
+            if !editor.claudeModeOn {
+                ClipStyleFlowLayout(spacing: VCTokens.spacingLabelGap) {
+                    ForEach(catalog.presets) { preset in
+                        chip(preset, selected: style.preset == preset.id)
                     }
                 }
-                // One vertical stack of rows: Claude mode's own (Clips, Spend), then the style's.
-                VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) {
-                    if editor.claudeModeOn { claudeRows(style, catalog: catalog) }
-                    if !editor.claudeModeOn { pickRows(style, catalog: catalog) }
-                    shapeRow(style, shapes: catalog.shapes)
-                    if !editor.claudeModeOn { rewordingRow(style, catalog: catalog) }
-                }
-                footer
             }
-            .padding(VCTokens.spacingCardPadding)
-            .background(DesignValues.color("bg.surface"), in: .rect(cornerRadius: VCTokens.radiusPane))
-            .overlay(RoundedRectangle(cornerRadius: VCTokens.radiusPane).strokeBorder(DesignValues.color("line.default")))
-            .padding(.vertical, VCTokens.spacingLabelGap)
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("How should clips be made?")
-            .accessibilityIdentifier("voxclip.clipStyle.card")
+            // One vertical stack of rows: Claude mode's own (Clips, Spend), then the style's.
+            VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) {
+                if editor.claudeModeOn { claudeRows(style, catalog: catalog) }
+                if !editor.claudeModeOn { pickRows(style, catalog: catalog) }
+                shapeRow(style, shapes: catalog.shapes)
+                if !editor.claudeModeOn { rewordingRow(style, catalog: catalog) }
+            }
+            footer
+        }
+    }
+
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline, spacing: VCTokens.spacingRowGap) {
+            Text("How should clips be made?").font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(DesignValues.color("text.primary")).fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+            Spacer(minLength: VCTokens.spacingRowGap)
+            Button("Done") { editor.collapseClipStyleCard() }.buttonStyle(.borderless).font(.system(size: 12))
+                .accessibilityIdentifier("voxclip.clipStyle.done")
         }
     }
 

@@ -1,5 +1,13 @@
 # Windows fixed contracts
 
+### 2026-11-05 — Claude mode's settings twin: clips.mode, clips.autopilot.count, clips.autopilot.capUSD (track/v2-autopilot-mode)
+
+Twin of the Mac entry track/v2-autopilot-mode (Core settings only). Spec: doc/design.md §6.6 ("Who makes the clips"), §6.7 ("Claude does it all").
+
+- **Built.** `Services/Settings/ClipsMode.cs`: `ClipsMode` (keys, `claude`/`pick`, counts 1/3/5, caps $0/$1/$2/$5, defaults 3 and $2), `ClipsAutopilotSettings(Mode, Count, CapUsd)` with `Summary` ("✦ Claude does it all · top 3 · ≤$2"), and `AppSettings.GetClipsAutopilot()` / `WithClipsAutopilot(...)` (throws `ProjectUnreadable` for a value the schema refuses; a null mode removes the key). `AppSettings.DefaultJson` gains `clips.autopilot.count` 3 and `clips.autopilot.capUSD` 2 (schema defaults); `SettingsValidation` knows `clips.mode` (no default, missing = not chosen) and validates all three.
+- **Tests.** `Tracks/win-editing/ClipsModeSettingsTests` (3): replays `shared/fixtures/clips-mode/clips-mode-settings-cases.json` (6 valid cases load, read back, save and reload unchanged through `SettingsStore`; 9 invalid cases refused), known keys, the setter's refusals. `AppSettingsTests.HandCodedDefaultsExactlyMatchEverySchemaDefault` covers the two new defaults. Release: 3 / 3, and the settings suites (AppSettings, SettingsStore, ClipsMode) 78 / 78.
+- **Owed (Windows).** Everything outside Core: card A ("Who makes the clips?"), the clip style card's mode control and Clips/Spend rows, Settings › Clips, the status bar item, the automatic run after Find Clips with the shared per-video budget and the cap stop with Continue, the run card (C/D), Export all with post texts beside the videos, and their tests and smoke.
+
 ### 2026-11-05 — Windows renders clip controls and Ask Claude's effects in preview and export, instead of refusing (track/v2-win-render-1)
 
 Twin of the Mac entries track/v2-clip-controls, track/v2-ask-claude and track/v2-wire-1. Spec: doc/design.md §6.8 and §6.9, doc/spec/ai.md §18.5.

@@ -12162,6 +12162,37 @@ member VoxClip.Core.Services.Settings.CaptionStyleLibrary :: method private .cto
 member VoxClip.Core.Services.Settings.CaptionStyleLibrary :: method public Find(string)
 member VoxClip.Core.Services.Settings.CaptionStyleLibrary :: method public Load(string)
 member VoxClip.Core.Services.Settings.CaptionStyleLibrary :: method public get_Styles()
+member VoxClip.Core.Services.Settings.ClipsAutopilotSettings :: method private .ctor(VoxClip.Core.Services.Settings.ClipsAutopilotSettings)
+member VoxClip.Core.Services.Settings.ClipsAutopilotSettings :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Services.Settings.ClipsAutopilotSettings :: method private get_EqualityContract()
+member VoxClip.Core.Services.Settings.ClipsAutopilotSettings :: method public .ctor(string,int,int)
+member VoxClip.Core.Services.Settings.ClipsAutopilotSettings :: method public Deconstruct(string&,int&,int&)
+member VoxClip.Core.Services.Settings.ClipsAutopilotSettings :: method public Equals(VoxClip.Core.Services.Settings.ClipsAutopilotSettings)
+member VoxClip.Core.Services.Settings.ClipsAutopilotSettings :: method public Equals(object)
+member VoxClip.Core.Services.Settings.ClipsAutopilotSettings :: method public GetHashCode()
+member VoxClip.Core.Services.Settings.ClipsAutopilotSettings :: method public ToString()
+member VoxClip.Core.Services.Settings.ClipsAutopilotSettings :: method public get_CapUsd()
+member VoxClip.Core.Services.Settings.ClipsAutopilotSettings :: method public get_Count()
+member VoxClip.Core.Services.Settings.ClipsAutopilotSettings :: method public get_Mode()
+member VoxClip.Core.Services.Settings.ClipsAutopilotSettings :: method public get_Summary()
+member VoxClip.Core.Services.Settings.ClipsAutopilotSettings :: method public op_Equality(VoxClip.Core.Services.Settings.ClipsAutopilotSettings,VoxClip.Core.Services.Settings.ClipsAutopilotSettings)
+member VoxClip.Core.Services.Settings.ClipsAutopilotSettings :: method public op_Inequality(VoxClip.Core.Services.Settings.ClipsAutopilotSettings,VoxClip.Core.Services.Settings.ClipsAutopilotSettings)
+member VoxClip.Core.Services.Settings.ClipsAutopilotSettings :: method public set_CapUsd(int)
+member VoxClip.Core.Services.Settings.ClipsAutopilotSettings :: method public set_Count(int)
+member VoxClip.Core.Services.Settings.ClipsAutopilotSettings :: method public set_Mode(string)
+member VoxClip.Core.Services.Settings.ClipsMode :: field public CapKey
+member VoxClip.Core.Services.Settings.ClipsMode :: field public Claude
+member VoxClip.Core.Services.Settings.ClipsMode :: field public CountKey
+member VoxClip.Core.Services.Settings.ClipsMode :: field public DefaultCapUsd
+member VoxClip.Core.Services.Settings.ClipsMode :: field public DefaultCount
+member VoxClip.Core.Services.Settings.ClipsMode :: field public Key
+member VoxClip.Core.Services.Settings.ClipsMode :: field public Pick
+member VoxClip.Core.Services.Settings.ClipsMode :: method private .cctor()
+member VoxClip.Core.Services.Settings.ClipsMode :: method public get_CapsUsd()
+member VoxClip.Core.Services.Settings.ClipsMode :: method public get_Counts()
+member VoxClip.Core.Services.Settings.ClipsModeSettings :: method private Element(string)
+member VoxClip.Core.Services.Settings.ClipsModeSettings :: method public GetClipsAutopilot(VoxClip.Core.Services.Settings.AppSettings)
+member VoxClip.Core.Services.Settings.ClipsModeSettings :: method public WithClipsAutopilot(VoxClip.Core.Services.Settings.AppSettings,VoxClip.Core.Services.Settings.ClipsAutopilotSettings)
 member VoxClip.Core.Services.Settings.ISettingsStore :: method public FlushAsync(System.Threading.CancellationToken)
 member VoxClip.Core.Services.Settings.ISettingsStore :: method public LoadAsync(System.Threading.CancellationToken)
 member VoxClip.Core.Services.Settings.ISettingsStore :: method public SaveAsync(VoxClip.Core.Services.Settings.AppSettings,System.Threading.CancellationToken)
@@ -13946,6 +13977,9 @@ type VoxClip.Core.Services.Project.WindowsRuntimeTerms
 type VoxClip.Core.Services.ServiceStub
 type VoxClip.Core.Services.Settings.AppSettings
 type VoxClip.Core.Services.Settings.CaptionStyleLibrary
+type VoxClip.Core.Services.Settings.ClipsAutopilotSettings
+type VoxClip.Core.Services.Settings.ClipsMode
+type VoxClip.Core.Services.Settings.ClipsModeSettings
 type VoxClip.Core.Services.Settings.ISettingsStore
 type VoxClip.Core.Services.Settings.SettingsJsonContext
 type VoxClip.Core.Services.Settings.SettingsStore
