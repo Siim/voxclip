@@ -32,6 +32,8 @@ public enum LLMFeature: String, Codable, Sendable, Hashable, CaseIterable {
     case clipAutopilot
     /// A caption style per clip while the clip style's captions are Auto (AI §17, design.md §6.6).
     case captionPick
+    /// Ask Claude on a selection, clip or time range (AI §18, design.md §6.8): toolbox operations for one instruction.
+    case askClaude
     case test
 }
 

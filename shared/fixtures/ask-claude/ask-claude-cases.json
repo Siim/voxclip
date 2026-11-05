@@ -1,0 +1,1093 @@
+{
+  "format": "voxclip-ask-claude/1",
+  "promptSha256": "8c59b2a38199bc8d4ade91d9179b6eb4cd28dda53397054348aa07d21463f91e",
+  "project": {
+    "format": "voxclip-project",
+    "schemaVersion": 4,
+    "id": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11",
+    "title": "Synthetic Ask Claude fixture",
+    "createdAt": "2026-10-25T09:12:03Z",
+    "modifiedAt": "2026-10-25T09:31:47Z",
+    "savedBy": {
+      "app": "VoxClip",
+      "version": "0.1.0",
+      "platform": "macos"
+    },
+    "media": {
+      "source": {
+        "absolutePath": "/Users/alex/Movies/VoxClip/interview-take-3.mov",
+        "relativePath": "interview-take-3.mov",
+        "sizeBytes": 9437184,
+        "durationSeconds": 13.09,
+        "contentKey": "a12b2e004311fcd7687a1e7dce95e15790e043ee2af00b39fed7b06fd5c88393",
+        "video": {
+          "width": 1920,
+          "height": 1080,
+          "frameRate": 30,
+          "rotationDegrees": 0
+        },
+        "audio": {
+          "sampleRate": 48000,
+          "channels": 1
+        }
+      }
+    },
+    "transcript": {
+      "schemaVersion": 1,
+      "words": [
+        {
+          "id": "w1",
+          "text": "So",
+          "kind": "word",
+          "start": 0.5,
+          "end": 0.76,
+          "rawStart": 0.5,
+          "rawEnd": 0.76,
+          "conf": 0.95,
+          "speaker": null,
+          "timing": "native"
+        },
+        {
+          "id": "w2",
+          "text": "here",
+          "kind": "word",
+          "start": 0.86,
+          "end": 1.18,
+          "rawStart": 0.86,
+          "rawEnd": 1.18,
+          "conf": 0.95,
+          "speaker": null,
+          "timing": "native"
+        },
+        {
+          "id": "w3",
+          "text": "is",
+          "kind": "word",
+          "start": 1.28,
+          "end": 1.54,
+          "rawStart": 1.28,
+          "rawEnd": 1.54,
+          "conf": 0.95,
+          "speaker": null,
+          "timing": "native"
+        },
+        {
+          "id": "w4",
+          "text": "the",
+          "kind": "word",
+          "start": 1.64,
+          "end": 1.93,
+          "rawStart": 1.64,
+          "rawEnd": 1.93,
+          "conf": 0.95,
+          "speaker": null,
+          "timing": "native"
+        },
+        {
+          "id": "w5",
+          "text": "invoice",
+          "kind": "word",
+          "start": 2.03,
+          "end": 2.44,
+          "rawStart": 2.03,
+          "rawEnd": 2.44,
+          "conf": 0.95,
+          "speaker": null,
+          "timing": "native"
+        },
+        {
+          "id": "w6",
+          "text": "for",
+          "kind": "word",
+          "start": 2.54,
+          "end": 2.83,
+          "rawStart": 2.54,
+          "rawEnd": 2.83,
+          "conf": 0.95,
+          "speaker": null,
+          "timing": "native"
+        },
+        {
+          "id": "w7",
+          "text": "March.",
+          "kind": "word",
+          "start": 2.93,
+          "end": 3.31,
+          "rawStart": 2.93,
+          "rawEnd": 3.31,
+          "conf": 0.95,
+          "speaker": null,
+          "timing": "native"
+        },
+        {
+          "id": "w8",
+          "text": "The",
+          "kind": "word",
+          "start": 3.81,
+          "end": 4.1,
+          "rawStart": 3.81,
+          "rawEnd": 4.1,
+          "conf": 0.95,
+          "speaker": null,
+          "timing": "native"
+        },
+        {
+          "id": "w9",
+          "text": "total",
+          "kind": "word",
+          "start": 4.2,
+          "end": 4.55,
+          "rawStart": 4.2,
+          "rawEnd": 4.55,
+          "conf": 0.95,
+          "speaker": null,
+          "timing": "native"
+        },
+        {
+          "id": "w10",
+          "text": "is",
+          "kind": "word",
+          "start": 4.65,
+          "end": 4.91,
+          "rawStart": 4.65,
+          "rawEnd": 4.91,
+          "conf": 0.95,
+          "speaker": null,
+          "timing": "native"
+        },
+        {
+          "id": "w11",
+          "text": "four",
+          "kind": "word",
+          "start": 5.01,
+          "end": 5.33,
+          "rawStart": 5.01,
+          "rawEnd": 5.33,
+          "conf": 0.95,
+          "speaker": null,
+          "timing": "native"
+        },
+        {
+          "id": "w12",
+          "text": "thousand",
+          "kind": "word",
+          "start": 5.43,
+          "end": 5.87,
+          "rawStart": 5.43,
+          "rawEnd": 5.87,
+          "conf": 0.95,
+          "speaker": null,
+          "timing": "native"
+        },
+        {
+          "id": "w13",
+          "text": "two",
+          "kind": "word",
+          "start": 5.97,
+          "end": 6.26,
+          "rawStart": 5.97,
+          "rawEnd": 6.26,
+          "conf": 0.95,
+          "speaker": null,
+          "timing": "native"
+        },
+        {
+          "id": "w14",
+          "text": "hundred",
+          "kind": "word",
+          "start": 6.36,
+          "end": 6.77,
+          "rawStart": 6.36,
+          "rawEnd": 6.77,
+          "conf": 0.95,
+          "speaker": null,
+          "timing": "native"
+        },
+        {
+          "id": "w15",
+          "text": "dollars,",
+          "kind": "word",
+          "start": 6.87,
+          "end": 7.31,
+          "rawStart": 6.87,
+          "rawEnd": 7.31,
+          "conf": 0.95,
+          "speaker": null,
+          "timing": "native"
+        },
+        {
+          "id": "w16",
+          "text": "and",
+          "kind": "word",
+          "start": 7.41,
+          "end": 7.7,
+          "rawStart": 7.41,
+          "rawEnd": 7.7,
+          "conf": 0.95,
+          "speaker": null,
+          "timing": "native"
+        },
+        {
+          "id": "w17",
+          "text": "honestly",
+          "kind": "word",
+          "start": 7.8,
+          "end": 8.24,
+          "rawStart": 7.8,
+          "rawEnd": 8.24,
+          "conf": 0.95,
+          "speaker": null,
+          "timing": "native"
+        },
+        {
+          "id": "w18",
+          "text": "that",
+          "kind": "word",
+          "start": 8.34,
+          "end": 8.66,
+          "rawStart": 8.34,
+          "rawEnd": 8.66,
+          "conf": 0.95,
+          "speaker": null,
+          "timing": "native"
+        },
+        {
+          "id": "w19",
+          "text": "damn",
+          "kind": "word",
+          "start": 8.76,
+          "end": 9.08,
+          "rawStart": 8.76,
+          "rawEnd": 9.08,
+          "conf": 0.95,
+          "speaker": null,
+          "timing": "native"
+        },
+        {
+          "id": "w20",
+          "text": "number",
+          "kind": "word",
+          "start": 9.18,
+          "end": 9.56,
+          "rawStart": 9.18,
+          "rawEnd": 9.56,
+          "conf": 0.95,
+          "speaker": null,
+          "timing": "native"
+        },
+        {
+          "id": "w21",
+          "text": "scared",
+          "kind": "word",
+          "start": 9.66,
+          "end": 10.04,
+          "rawStart": 9.66,
+          "rawEnd": 10.04,
+          "conf": 0.95,
+          "speaker": null,
+          "timing": "native"
+        },
+        {
+          "id": "w22",
+          "text": "me.",
+          "kind": "word",
+          "start": 10.14,
+          "end": 10.43,
+          "rawStart": 10.14,
+          "rawEnd": 10.43,
+          "conf": 0.95,
+          "speaker": null,
+          "timing": "native"
+        },
+        {
+          "id": "w23",
+          "text": "We",
+          "kind": "word",
+          "start": 10.93,
+          "end": 11.19,
+          "rawStart": 10.93,
+          "rawEnd": 11.19,
+          "conf": 0.95,
+          "speaker": null,
+          "timing": "native"
+        },
+        {
+          "id": "w24",
+          "text": "ship",
+          "kind": "word",
+          "start": 11.29,
+          "end": 11.61,
+          "rawStart": 11.29,
+          "rawEnd": 11.61,
+          "conf": 0.95,
+          "speaker": null,
+          "timing": "native"
+        },
+        {
+          "id": "w25",
+          "text": "today.",
+          "kind": "word",
+          "start": 11.71,
+          "end": 12.09,
+          "rawStart": 11.71,
+          "rawEnd": 12.09,
+          "conf": 0.95,
+          "speaker": null,
+          "timing": "native"
+        }
+      ],
+      "language": "en",
+      "languageProbability": 0.99,
+      "durationSeconds": 13.09,
+      "engine": {
+        "id": "elevenlabs",
+        "modelId": "scribe_v2",
+        "modelSha256": null,
+        "engineVersion": "scribe_v2",
+        "locale": null
+      },
+      "verbatim": true,
+      "refined": true,
+      "pipelineVersion": 1,
+      "rawKey": "1c030c022ede1c5e2e0277f1c50750593503573d674b82084a060e9c67351d4d",
+      "createdAt": "2026-10-25T09:12:41Z"
+    },
+    "edits": {
+      "pauseThresholdSeconds": 0.8,
+      "pauseKeepSeconds": 0.15,
+      "cutWordIds": [],
+      "cutPauseIds": [],
+      "corrections": {},
+      "clips": [
+        {
+          "id": "clip-main",
+          "startWordId": "w1",
+          "endWordId": "w25",
+          "title": "Invoice day",
+          "origin": "manual",
+          "aiResultId": null,
+          "aiClipIndex": null,
+          "selected": true
+        }
+      ],
+      "activeClipId": "clip-main"
+    },
+    "captions": {
+      "styleId": "vox-bold",
+      "overrides": {},
+      "position": null,
+      "positionByAspect": {}
+    },
+    "export": {
+      "aspect": "9:16",
+      "quality": "standard",
+      "srt": false,
+      "folder": null
+    },
+    "share": {
+      "captions": {
+        "full": "Today we shipped the clipper. Thanks"
+      }
+    },
+    "ai": {
+      "results": []
+    },
+    "voiceLab": {
+      "segments": [],
+      "assets": [],
+      "cleanAudio": {
+        "mode": "off",
+        "assetId": null,
+        "mix": null
+      },
+      "voices": [],
+      "videoAssets": []
+    },
+    "extensions": {}
+  },
+  "requests": [
+    {
+      "id": "mockup-request",
+      "instruction": "blur the invoice on screen and bleep the amount",
+      "selection": {
+        "words": [
+          3,
+          17
+        ]
+      },
+      "clipID": "clip-main",
+      "aspect": "9:16",
+      "detections": [
+        {
+          "label": "D1",
+          "kind": "text",
+          "start": 1.64,
+          "end": 8.66,
+          "x": 0.55,
+          "y": 0.3,
+          "width": 0.3,
+          "height": 0.2,
+          "text": "INVOICE #1042 $4,200"
+        },
+        {
+          "label": "D2",
+          "kind": "face",
+          "start": 0.5,
+          "end": 12.09,
+          "x": 0.12,
+          "y": 0.18,
+          "width": 0.18,
+          "height": 0.3
+        }
+      ],
+      "expectedInstruction": "Instruction: blur the invoice on screen and bleep the amount\n\nSelection: words 3 to 17, 1.64 to 8.66 s\n[3] 1.64-1.93 the\n[4] 2.03-2.44 invoice\n[5] 2.54-2.83 for\n[6] 2.93-3.31 March.\n[7] 3.81-4.10 The\n[8] 4.20-4.55 total\n[9] 4.65-4.91 is\n[10] 5.01-5.33 four\n[11] 5.43-5.87 thousand\n[12] 5.97-6.26 two\n[13] 6.36-6.77 hundred\n[14] 6.87-7.31 dollars,\n[15] 7.41-7.70 and\n[16] 7.80-8.24 honestly\n[17] 8.34-8.66 that\n\nBefore the selection: So here is\nAfter the selection: damn number scared me. We ship today.\n\nClip: Invoice day, 0.50 to 12.09 s\nFrame: 1920x1080 recorded, exported 9:16\n\nAlready on this stretch:\n(nothing)\n\nOn screen (detected):\nD1 text 1.64-8.66 s at x 0.55 y 0.30 width 0.30 height 0.20, reads \"INVOICE #1042 $4,200\"\nD2 face 0.50-12.09 s at x 0.12 y 0.18 width 0.18 height 0.30\n\nToolbox:\n- bleep (Censor): A 1 kHz bleep over those words; the voice is silent there and captions show each letter as a block. Fields: startWord, endWord.\n- mute (Censor): Silence over those words, no tone; captions show blocks. Fields: startWord, endWord.\n- blur (Censor): Blurs a region of the picture. target is a detection label (D1…), \"face\" or \"screen\"; tracking is \"face\" to follow a face, \"saliency\" to follow the main moving subject, or \"none\" to hold the rect. Fields: start, end, target or x/y/width/height, tracking.\n- pixelate (Censor): Like blur, with large square pixels. Fields: start, end, target or x/y/width/height, tracking.\n- title (Overlays): Big on-screen text such as \"Day 1\". position: top, center or bottom. Fields: start, end, text, position.\n- lowerThird (Overlays): A name or label strip near the bottom. position: bottomLeft or bottomRight. Fields: start, end, text, position.\n- sticker (Overlays): One emoji (text is the emoji itself) in a corner. position: topLeft, topRight, bottomLeft, bottomRight or center; scale 0.5 to 3. Fields: start, end, text, position, scale.\n- arrow (Overlays): An arrow pointing at the region, such as a button. Fields: start, end, target or x/y/width/height.\n- circle (Overlays): A ring around the region. Fields: start, end, target or x/y/width/height.\n- progress (Overlays): A thin bar that fills from start to end. position: top or bottom. Fields: start, end, position.\n- speed (Timing): Plays that stretch faster or slower: rate 0.5 to 2, never 1. The voice keeps its pitch. Fields: start, end, rate.\n- freeze (Timing): Holds the picture at start until end (at most 5 s) while the voice goes on. Fields: start, end.\n- jumpCut (Timing): Cuts those words out. Fields: startWord, endWord.\n- zoom (Timing): A punch-in for that stretch: scale 1.05 to 1.35. Fields: start, end, scale.\n- correction (Words): Fixes one misheard word: text is the right spelling. Fields: startWord, text.\n- rewrite (Words): Re-records those words in the creator's own voice saying text. This one is paid; the creator approves it with one click. Fields: startWord, endWord, text.\n- translate (Words): Shows the captions of those words in another language: language is a code such as es or de, text the translation. Fields: startWord, endWord, language, text.\n- music (Sound): Changes the clip's background music: text describes the mood. Generated music is paid; the creator approves it with one click. Fields: text.\n- duck (Sound): Lowers the background music under the voice. Fields: start, end.\n- sound (Sound): A short sound effect at start: sound is whoosh, pop or ding. Fields: start, sound.\n\nReturn the operations."
+    }
+  ],
+  "replies": [
+    {
+      "id": "mockup-blur-and-bleep",
+      "selection": {
+        "words": [
+          3,
+          17
+        ]
+      },
+      "clipID": "clip-main",
+      "detections": [
+        {
+          "label": "D1",
+          "kind": "text",
+          "start": 1.64,
+          "end": 8.66,
+          "x": 0.55,
+          "y": 0.3,
+          "width": 0.3,
+          "height": 0.2,
+          "text": "INVOICE #1042 $4,200"
+        },
+        {
+          "label": "D2",
+          "kind": "face",
+          "start": 0.5,
+          "end": 12.09,
+          "x": 0.12,
+          "y": 0.18,
+          "width": 0.18,
+          "height": 0.3
+        }
+      ],
+      "reply": {
+        "summary": "Blurred the invoice and bleeped the amount.",
+        "ops": [
+          {
+            "kind": "blur",
+            "startWord": -1,
+            "endWord": -1,
+            "start": 1.64,
+            "end": 8.66,
+            "text": "",
+            "target": "D1",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "tracking": "none",
+            "position": "",
+            "rate": 0,
+            "scale": 0,
+            "sound": "",
+            "language": "",
+            "choice": "",
+            "reason": "blur reason"
+          },
+          {
+            "kind": "bleep",
+            "startWord": 10,
+            "endWord": 14,
+            "start": -1,
+            "end": -1,
+            "text": "",
+            "target": "",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "tracking": "",
+            "position": "",
+            "rate": 0,
+            "scale": 0,
+            "sound": "",
+            "language": "",
+            "choice": "",
+            "reason": "bleep reason"
+          }
+        ]
+      },
+      "expect": [
+        {
+          "decision": "blur",
+          "kind": "blur",
+          "start": 1.64,
+          "end": 8.66,
+          "rect": [
+            0.55,
+            0.3,
+            0.3,
+            0.2
+          ],
+          "tracking": "none"
+        },
+        {
+          "decision": "bleep",
+          "kind": "bleep",
+          "start": 5.01,
+          "end": 7.31,
+          "wordIds": [
+            "w11",
+            "w12",
+            "w13",
+            "w14",
+            "w15"
+          ]
+        }
+      ],
+      "repairs": 0
+    },
+    {
+      "id": "ambiguous-face-is-pre-picked",
+      "selection": {
+        "words": [
+          0,
+          8
+        ]
+      },
+      "clipID": "clip-main",
+      "detections": [
+        {
+          "label": "D2",
+          "kind": "face",
+          "start": 0.5,
+          "end": 12.09,
+          "x": 0.12,
+          "y": 0.18,
+          "width": 0.18,
+          "height": 0.3
+        },
+        {
+          "label": "D3",
+          "kind": "face",
+          "start": 0.5,
+          "end": 12.09,
+          "x": 0.7,
+          "y": 0.2,
+          "width": 0.1,
+          "height": 0.16
+        }
+      ],
+      "reply": {
+        "summary": "Blurred a face.",
+        "ops": [
+          {
+            "kind": "blur",
+            "startWord": -1,
+            "endWord": -1,
+            "start": -1,
+            "end": -1,
+            "text": "",
+            "target": "",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "tracking": "",
+            "position": "",
+            "rate": 0,
+            "scale": 0,
+            "sound": "",
+            "language": "",
+            "choice": "",
+            "reason": "blur reason"
+          }
+        ]
+      },
+      "expect": [
+        {
+          "decision": "blur",
+          "kind": "blur",
+          "start": 0.5,
+          "end": 4.55,
+          "rect": [
+            0.12,
+            0.18,
+            0.18,
+            0.3
+          ],
+          "tracking": "face",
+          "choice": "the face at the left"
+        }
+      ],
+      "repairs": 0
+    },
+    {
+      "id": "overlays-clamped-to-the-selection",
+      "selection": {
+        "words": [
+          0,
+          8
+        ]
+      },
+      "clipID": "clip-main",
+      "detections": [],
+      "reply": {
+        "summary": "Added a title, an emoji and a progress bar.",
+        "ops": [
+          {
+            "kind": "title",
+            "startWord": -1,
+            "endWord": -1,
+            "start": 0,
+            "end": 99,
+            "text": "  Day 1 ",
+            "target": "",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "tracking": "",
+            "position": "middle",
+            "rate": 0,
+            "scale": 0,
+            "sound": "",
+            "language": "",
+            "choice": "",
+            "reason": "title reason"
+          },
+          {
+            "kind": "sticker",
+            "startWord": -1,
+            "endWord": -1,
+            "start": -1,
+            "end": -1,
+            "text": "🔥",
+            "target": "",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "tracking": "",
+            "position": "topLeft",
+            "rate": 0,
+            "scale": 9,
+            "sound": "",
+            "language": "",
+            "choice": "",
+            "reason": "sticker reason"
+          },
+          {
+            "kind": "sticker",
+            "startWord": -1,
+            "endWord": -1,
+            "start": -1,
+            "end": -1,
+            "text": "fire",
+            "target": "",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "tracking": "",
+            "position": "",
+            "rate": 0,
+            "scale": 0,
+            "sound": "",
+            "language": "",
+            "choice": "",
+            "reason": "sticker reason"
+          },
+          {
+            "kind": "progress",
+            "startWord": -1,
+            "endWord": -1,
+            "start": -1,
+            "end": -1,
+            "text": "",
+            "target": "",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "tracking": "",
+            "position": "center",
+            "rate": 0,
+            "scale": 0,
+            "sound": "",
+            "language": "",
+            "choice": "",
+            "reason": "progress reason"
+          },
+          {
+            "kind": "lowerThird",
+            "startWord": -1,
+            "endWord": -1,
+            "start": -1,
+            "end": -1,
+            "text": "",
+            "target": "",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "tracking": "",
+            "position": "",
+            "rate": 0,
+            "scale": 0,
+            "sound": "",
+            "language": "",
+            "choice": "",
+            "reason": "lowerThird reason"
+          }
+        ]
+      },
+      "expect": [
+        {
+          "decision": "overlay",
+          "kind": "title",
+          "start": 0.5,
+          "end": 4.55,
+          "text": "Day 1",
+          "position": "top"
+        },
+        {
+          "decision": "overlay",
+          "kind": "sticker",
+          "start": 0.5,
+          "end": 4.55,
+          "text": "🔥",
+          "position": "topLeft",
+          "scale": 3
+        },
+        {
+          "decision": "overlay",
+          "kind": "progress",
+          "start": 0.5,
+          "end": 4.55,
+          "position": "bottom"
+        }
+      ],
+      "repairs": 2
+    },
+    {
+      "id": "timing-sound-and-words",
+      "selection": {
+        "words": [
+          9,
+          20
+        ]
+      },
+      "clipID": "clip-main",
+      "detections": [],
+      "reply": {
+        "summary": "Slowed the number, froze, zoomed, added a pop, fixed a word and cut one.",
+        "ops": [
+          {
+            "kind": "speed",
+            "startWord": 9,
+            "endWord": 13,
+            "start": -1,
+            "end": -1,
+            "text": "",
+            "target": "",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "tracking": "",
+            "position": "",
+            "rate": 0.5,
+            "scale": 0,
+            "sound": "",
+            "language": "",
+            "choice": "",
+            "reason": "speed reason"
+          },
+          {
+            "kind": "speed",
+            "startWord": -1,
+            "endWord": -1,
+            "start": -1,
+            "end": -1,
+            "text": "",
+            "target": "",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "tracking": "",
+            "position": "",
+            "rate": 1,
+            "scale": 0,
+            "sound": "",
+            "language": "",
+            "choice": "",
+            "reason": "speed reason"
+          },
+          {
+            "kind": "freeze",
+            "startWord": -1,
+            "endWord": -1,
+            "start": 6.87,
+            "end": -1,
+            "text": "",
+            "target": "",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "tracking": "",
+            "position": "",
+            "rate": 0,
+            "scale": 0,
+            "sound": "",
+            "language": "",
+            "choice": "",
+            "reason": "freeze reason"
+          },
+          {
+            "kind": "zoom",
+            "startWord": 17,
+            "endWord": 20,
+            "start": -1,
+            "end": -1,
+            "text": "",
+            "target": "",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "tracking": "",
+            "position": "",
+            "rate": 0,
+            "scale": 5,
+            "sound": "",
+            "language": "",
+            "choice": "",
+            "reason": "zoom reason"
+          },
+          {
+            "kind": "sound",
+            "startWord": -1,
+            "endWord": -1,
+            "start": 4.65,
+            "end": -1,
+            "text": "",
+            "target": "",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "tracking": "",
+            "position": "",
+            "rate": 0,
+            "scale": 0,
+            "sound": "click",
+            "language": "",
+            "choice": "",
+            "reason": "sound reason"
+          },
+          {
+            "kind": "correction",
+            "startWord": 18,
+            "endWord": -1,
+            "start": -1,
+            "end": -1,
+            "text": "darn",
+            "target": "",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "tracking": "",
+            "position": "",
+            "rate": 0,
+            "scale": 0,
+            "sound": "",
+            "language": "",
+            "choice": "",
+            "reason": "correction reason"
+          },
+          {
+            "kind": "jumpCut",
+            "startWord": 17,
+            "endWord": 17,
+            "start": -1,
+            "end": -1,
+            "text": "",
+            "target": "",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "tracking": "",
+            "position": "",
+            "rate": 0,
+            "scale": 0,
+            "sound": "",
+            "language": "",
+            "choice": "",
+            "reason": "jumpCut reason"
+          },
+          {
+            "kind": "rewrite",
+            "startWord": 17,
+            "endWord": 20,
+            "start": -1,
+            "end": -1,
+            "text": "that number really scared me.",
+            "target": "",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "tracking": "",
+            "position": "",
+            "rate": 0,
+            "scale": 0,
+            "sound": "",
+            "language": "",
+            "choice": "",
+            "reason": "rewrite reason"
+          },
+          {
+            "kind": "translate",
+            "startWord": 9,
+            "endWord": 13,
+            "start": -1,
+            "end": -1,
+            "text": "cuatro mil doscientos dólares,",
+            "target": "",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "tracking": "",
+            "position": "",
+            "rate": 0,
+            "scale": 0,
+            "sound": "",
+            "language": "ES",
+            "choice": "",
+            "reason": "translate reason"
+          },
+          {
+            "kind": "duck",
+            "startWord": -1,
+            "endWord": -1,
+            "start": -1,
+            "end": -1,
+            "text": "",
+            "target": "",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "tracking": "",
+            "position": "",
+            "rate": 0,
+            "scale": 0,
+            "sound": "",
+            "language": "",
+            "choice": "",
+            "reason": "duck reason"
+          },
+          {
+            "kind": "explode",
+            "startWord": -1,
+            "endWord": -1,
+            "start": -1,
+            "end": -1,
+            "text": "",
+            "target": "",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "tracking": "",
+            "position": "",
+            "rate": 0,
+            "scale": 0,
+            "sound": "",
+            "language": "",
+            "choice": "",
+            "reason": "explode reason"
+          }
+        ]
+      },
+      "expect": [
+        {
+          "decision": "stretch",
+          "kind": "stretch",
+          "start": 4.65,
+          "end": 6.77,
+          "rate": 0.5
+        },
+        {
+          "decision": "freeze",
+          "kind": "freeze",
+          "start": 6.87,
+          "end": 7.87
+        },
+        {
+          "decision": "zoom",
+          "kind": "zoom",
+          "start": 8.34,
+          "end": 10.04,
+          "scale": 1.35
+        },
+        {
+          "decision": "sound",
+          "kind": "sound",
+          "start": 4.65,
+          "end": 4.77,
+          "sound": "pop",
+          "choice": "a pop"
+        },
+        {
+          "decision": "correction",
+          "kind": "correction",
+          "wordIds": [
+            "w19"
+          ],
+          "text": "darn"
+        },
+        {
+          "decision": "cut",
+          "kind": "jumpCut",
+          "wordIds": [
+            "w18"
+          ]
+        },
+        {
+          "decision": "rewrite",
+          "kind": "rewrite",
+          "wordRange": [
+            17,
+            20
+          ],
+          "text": "that number really scared me.",
+          "paid": true
+        },
+        {
+          "decision": "translate",
+          "kind": "translate",
+          "wordRange": [
+            9,
+            13
+          ],
+          "language": "es",
+          "text": "cuatro mil doscientos dólares,"
+        }
+      ],
+      "repairs": 3
+    }
+  ]
+}
