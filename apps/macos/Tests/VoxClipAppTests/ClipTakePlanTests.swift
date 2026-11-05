@@ -224,6 +224,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         var fatalResult: VoiceLabTakeFailure?
         var beforePhrase: ((Int) async throws -> Void)?
         var beforeQuote: (() async -> Void)?
+        /// Thrown by the next quotes, after the plan was priced.
+        var quoteFailure: (any Error)?
         var beforePublish: ((Int) async -> Void)?
         var beforeDispatch: (() -> Void)?
         var beforeProgress: (@MainActor @Sendable () async -> Void)?
@@ -329,6 +331,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         backend.prepare = { [weak made] inputs, indices, candidates in
             made?.preparations += 1
             await made?.beforeQuote?()
+            if let failure = made?.quoteFailure { throw failure }
             do {
                 let batch = try await real.prepare(inputs, indices, candidates)
                 made?.lastBatch = batch
@@ -337,7 +340,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
             catch is CancellationError { throw CancellationError() }
             catch { Issue.record("Unexpected quote refusal: \(String(reflecting: error))"); throw error }
         }
-        backend.approve = { [weak made] batch, indices in made?.approved += 1; try await real.approve(batch, indices) }
+        backend.approve = { [weak made] batch, indices, continuing in made?.approved += 1; try await real.approve(batch, indices, continuing) }
         backend.execute = { [weak made, weak plan] batch, index, phrase, progress in
             if let qa = made?.lostResponseStage {
                 guard let plan else { throw CancellationError() }
@@ -712,6 +715,48 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         let selected = try #require(plan.phrases.first?.selectedID)
         let scratch = await plan.scratch(take: selected, phrase: 0)
         #expect(scratch?.isValid == true)
+    }
+
+    /// MVP23: a full take's Rewrite of more phrases than one batch holds is priced once, approved once, and voiced part by
+    /// part, each later part quoted again just before it runs.
+    @Test func aLongRunPricesOnceAndVoicesEveryPartUnderOneApproval() async throws {
+        let fixture = try await fixture(indices: Array(stride(from: 4, to: 24, by: 3)))
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let plan = fixture.plan
+        #expect(plan.phrases.count == 7 && ClipTakePlan.parts(plan.phrases.map(\.id)).map(\.count) == [5, 2])
+        await plan.prepare()
+        #expect(plan.problem.isEmpty, "\(plan.problem)")
+        #expect(fixture.preparations == 2 && fixture.decoded == 7 && plan.estimate?.units == 7 && plan.cost != nil)
+        #expect(plan.preparationStep == nil && !plan.preparing)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.isEmpty && $0.qa == 0 })
+        await plan.start(approved: true)
+        #expect(plan.problem.isEmpty, "\(plan.problem), \(plan.phrases.map(\.status))")
+        #expect(fixture.preparations == 3 && fixture.approved == 2)
+        #expect(plan.phrases.allSatisfy { $0.status == .ready && $0.takes.count == 1 && $0.selected?.fits == true },
+                "\(plan.phrases.map(\.status))")
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 7 && $0.qa == 7 })
+        let spent = await fixture.ledger.total(provider: "elevenlabs", at: Date())
+        #expect(plan.spent.usd == spent?.usd && plan.spent.units == 7)
+        let acceptance = try await sourceAcceptance(plan)
+        #expect(acceptance.segments.count == 7)
+    }
+
+    @Test func aLaterPartThatCannotBeQuotedAgainStopsWithNothingMoreSent() async throws {
+        let fixture = try await fixture(indices: Array(stride(from: 4, to: 24, by: 3)))
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let plan = fixture.plan
+        await plan.prepare()
+        fixture.quoteFailure = VoiceLabError.consentRequired
+        await plan.start(approved: true)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 5 })
+        #expect(plan.phrases.prefix(5).allSatisfy { $0.selected != nil })
+        let stopped = plan.phrases.dropFirst(5).allSatisfy { phrase in
+            if case .stopped(let reason) = phrase.status { return reason.contains("Nothing sent for this phrase.") }
+            return false
+        }
+        #expect(stopped, "\(plan.phrases.map(\.status))")
+        #expect(plan.problem == ClipTakePlan.copy(VoiceLabError.consentRequired) && plan.problem != UserMessages.generic)
+        #expect(!plan.generating && plan.approvalID == nil)
     }
 
     @Test func unplaceableSetDoesNotDecodeOrQuote() async throws {

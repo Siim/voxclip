@@ -136,3 +136,49 @@ import Testing
         #expect(try #require(phrases[0].estimatedVoicedSeconds) < 1)
     }
 }
+
+/// MVP23: a 5:48 full take whose Rewrite changed 34 phrases showed "The operation could not finish." `preparePlan` refused
+/// more than `VoiceLabTakeBatch.maximumWindows` (5) phrases with `VoiceLabError.invalidInput`.
+@Suite("Long full-take planning", .offlineFixtures)
+@MainActor struct LongTakePlanningTests {
+    private func fullTake(words: Int, duration: Double) throws -> (Project, AudioEnvelope) {
+        let shared = try SharedResources.locate()
+        var project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
+        project.voiceLab.segments = []; project.voiceLab.assets = []
+        project.edits = ProjectEdits()
+        project.media.source.durationSeconds = duration
+        project.media.source.audio?.sampleRate = 24_000
+        project.transcript?.durationSeconds = duration
+        project.transcript?.words = (0..<words).map { index in
+            let start = 0.2 + Double(index) * 0.5
+            return TimedWord(id: "w\(index)", text: "source", start: start, end: start + 0.3)
+        }
+        return (project, AudioEnvelope(sampleRate: 24_000, levels: [Float](repeating: 0.01, count: Int(duration * 100))))
+    }
+    private func changes(_ count: Int, every stride: Int) -> [VoiceLabDiffHunk] {
+        (0..<count).map { n in
+            let first = 10 + n * stride
+            return VoiceLabDiffHunk(kind: .voice, sourceWordIds: (first...(first + 3)).map { "w\($0)" },
+                newTokens: EditingPrimitives.splitWords("this is the brand new viral line"), correctedTexts: [], absorbedItemIds: [],
+                bridgeWordIds: [], sourceStartIndex: first, sourceEndIndex: first + 4, anchorSeconds: nil)
+        }
+    }
+
+    @Test func aSixMinuteTakeWithThirtyFourChangesIsPlannedInParts() throws {
+        let (project, envelope) = try fullTake(words: 680, duration: 348)
+        let phrases = try ClipTakePlan.preparePlan(project: project, scope: .full, envelope: envelope, hunks: changes(34, every: 19))
+        #expect(phrases.count == 34)
+        let parts = ClipTakePlan.parts(phrases.map(\.id))
+        #expect(parts.count == 7 && parts.allSatisfy { $0.count <= VoiceLabTakeBatch.maximumWindows } && parts.flatMap { $0 } == phrases.map(\.id))
+    }
+
+    @Test func moreThanOneRunHoldsIsAStatedLimitWithANextStep() throws {
+        let count = ClipTakePlan.maximumPhrases + 1
+        let (project, envelope) = try fullTake(words: 20 * count + 20, duration: 0.5 * Double(20 * count + 20) + 1)
+        #expect(throws: ClipTakePlan.Failure.tooManyPhrases(count: count)) {
+            try ClipTakePlan.preparePlan(project: project, scope: .full, envelope: envelope, hunks: changes(count, every: 20))
+        }
+        let copy = ClipTakePlan.copy(ClipTakePlan.Failure.tooManyPhrases(count: count))
+        #expect(copy.contains("\(count) phrases") && copy.contains("Up to \(ClipTakePlan.maximumPhrases)") && copy != UserMessages.generic)
+    }
+}

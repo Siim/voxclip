@@ -44,6 +44,13 @@ import xlocale
         let render: PreparedVideoDurationRender
     }
     private(set) var problem = ""
+    /// Each failure this session reports, for the Rewrite's release log line (`RewriteSession.logFailure`).
+    @ObservationIgnored var onFailure: (@MainActor (any Error) -> Void)?
+    private func reported(_ error: any Error) -> String {
+        let copy = RewriteSession.refusal(error)
+        if !copy.isEmpty { onFailure?(error) }
+        return copy
+    }
     private(set) var announcement = ""
     let audition = VoiceLabAudition()
     @ObservationIgnored private var autoplayed: Set<UUID> = []
@@ -173,7 +180,7 @@ import xlocale
         do {
             guard let scratch = await run.scratch(for: row.id), selectedID == row.id, inputsAreCurrent() else { return }
             try audition.play(scratch, takeId: row.id, selectionId: row.id.uuidString)
-        } catch { problem = RewriteSession.refusal(error) }
+        } catch { problem = reported(error) }
     }
     func autoplayBest() async {
         guard let best = takeToAutoplay() else { return }
@@ -224,7 +231,7 @@ import xlocale
             }
             return true
         } catch is CancellationError {
-        } catch { if version == revision { problem = RewriteSession.refusal(error) } }
+        } catch { if version == revision { problem = reported(error) } }
         return false
     }
 
@@ -278,7 +285,7 @@ import xlocale
             preparedVideoAcceptance = PreparedVideoAcceptance(takeID: selectedID, acceptance: output, render: render)
             problem = ""
         } catch {
-            if turn == videoRevision { preparedVideoAcceptance = nil; problem = RewriteSession.refusal(error) }
+            if turn == videoRevision { preparedVideoAcceptance = nil; problem = reported(error) }
         }
     }
     var selected: VoiceLabTakeRow? { rows.first { $0.id == selectedID } }
@@ -301,7 +308,7 @@ import xlocale
                 if selectedModelID == nil { problem = "Eleven v4 is not available on this account. New Rewrite takes require Eleven v4." }
             }
             else if selectedModelID == nil { chooseModel(VoiceLabModel.patchDefault(models)?.id) }
-        } catch { problem = RewriteSession.refusal(error) }
+        } catch { problem = reported(error) }
     }
     func chooseVoice(_ id: String?) {
         guard id == nil || voices.contains(where: { $0.id == id }) else { return }
@@ -384,7 +391,7 @@ import xlocale
             if rows.isEmpty { self.input = input; phase = .awaitingApproval }
         } catch {
             guard version == revision else { return }
-            fail(RewriteSession.refusal(error))
+            fail(reported(error))
         }
     }
     func approve(_ approved: Bool, confirmation: (@MainActor (String) async -> Bool)? = nil) {
@@ -431,7 +438,7 @@ import xlocale
                 if let failure = error as? VoiceLabError { self.runFailure = .provider(failure) }
                 else if let failure = error as? VoiceConsentError { self.runFailure = .consent(failure) }
                 else { self.runFailure = nil }
-                self.problem = Task.isCancelled ? "" : self.runFailure.map { TakeFailurePresentation.reason(for: $0) } ?? RewriteSession.refusal(error)
+                self.problem = Task.isCancelled ? "" : self.runFailure.map { TakeFailurePresentation.reason(for: $0) } ?? self.reported(error)
                 self.announcement = Task.isCancelled ? "Take generation stopped." : "Take generation stopped. No take can be used from this review. " + self.problem
             }
         }

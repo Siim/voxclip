@@ -123,6 +123,7 @@ extension RewriteSession {
                     await app?.refreshMonthlySpend()
                 })
             created = plan
+            plan.onFailure = { [weak self] error in self?.logFailure(error, stage: "takes") }
             _ = plan.changeModel(VoiceLabWordingFit.modelID)
             plan.onMeasuredTakesChanged = { [weak self, weak plan] in
                 guard let self, let plan else { return }
@@ -148,6 +149,7 @@ extension RewriteSession {
         } catch {
             // The next-steps card shows it with its chips (RewriteNextSteps.swift); the footer names the blocker.
             takePlanFailure = error
+            logFailure(error, stage: "plan")
             generation.fail("")
             showProposal()
             // A collision goes to the AI once as one sentence, with no click (RewriteAutoFix.swift).
@@ -161,6 +163,6 @@ extension RewriteSession {
         return VoiceLabMonthlyCap(limit: limit, spent: total.usd)
     }
     private func generationProblem(_ error: any Error) {
-        if let generation { generation.fail(Self.refusal(error)) } else { reportGenerationProblem(error) }
+        if let generation { generation.fail(reported(error, stage: "voices")) } else { reportGenerationProblem(error) }
     }
 }

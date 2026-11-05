@@ -180,6 +180,7 @@ struct RewriteChange: Equatable, Sendable {
         }
         generation = RewriteGenerationSession(run: run) { [weak self] in self?.generationIsCurrent(region: region) ?? false }
         generation?.fixedModelID = VoiceLabWordingFit.modelID
+        generation?.onFailure = { [weak self] error in self?.logFailure(error, stage: "generation") }
         generation?.prepareDurationRender = durationRenderPreparer()
         takeBackend = { [weak self] count, dispatch in
             let runs = (0..<count).map { _ in
@@ -203,7 +204,7 @@ struct RewriteChange: Equatable, Sendable {
         }
     }
     /// Why finding the voices failed before a generation exists, R2's callout; nil clears it as Make Takes tries again.
-    func reportGenerationProblem(_ error: (any Error)?) { problem = error.map(Self.refusal) ?? "" }
+    func reportGenerationProblem(_ error: (any Error)?) { problem = error.map { reported($0, stage: "voices") } ?? "" }
     /// Takes need Voice Lab's Rewrite on, its ElevenLabs consent and region, and a session that is current.
     func generationIsCurrent(region: ElevenLabsRegion) -> Bool {
         current && !isProposing && !wordingIsLocked && !isReasking && editor.app.voiceLabRewriteEnabled && editor.app.bool("voiceLab.providerConsent.elevenlabs") &&
@@ -610,7 +611,7 @@ struct RewriteChange: Equatable, Sendable {
         changes = checked.changes
         switch checked.review {
         case .success(let built): review = built
-        case .failure(let error): review = nil; problem = Self.refusal(error)
+        case .failure(let error): review = nil; problem = reported(error, stage: "review")
         }
     }
     /// The reply's changes and their review, on the main actor: how the DEBUG scenes and tests show a proposal.
@@ -870,7 +871,7 @@ struct RewriteChange: Equatable, Sendable {
             changes[index].hunk.audioTags = VoiceLabAudioTags.validated(tags, text: changes[index].hunk.newTokens.joined(separator: " "))
         }
         do { review = try RewriteReview.build(changes.map(\.hunk), reviewInputs); problem = "" }
-        catch { review = nil; problem = Self.refusal(error) }
+        catch { review = nil; problem = reported(error, stage: "review") }
         generation?.inputsChanged(prepareNewQuote: false)
         showProposal()
         if requote { makeTakes() }
@@ -1047,7 +1048,7 @@ struct RewriteChange: Equatable, Sendable {
                 review = fresh; problem = ""
                 if requote || previous.map({ !fresh.makesTheSameTakes(as: $0) }) ?? true { generation?.inputsChanged() }
             case .failure(let error):
-                review = nil; problem = Self.refusal(error)
+                review = nil; problem = reported(error, stage: "review")
                 generation?.inputsChanged()
             }
         }
@@ -1098,11 +1099,51 @@ struct RewriteChange: Equatable, Sendable {
         editor.announce(headline + ".")
     }
 
+    /// A failure the panel reports: its copy (`refusal`), and one release log line with its type and case, never its text.
+    func reported(_ error: any Error, stage: String) -> String {
+        let copy = Self.refusal(error)
+        if !copy.isEmpty { logFailure(error, stage: stage) }
+        return copy
+    }
+    /// "rewrite failure stage=takes type=ClipTakePlan.Failure case=tooManyPhrases" through the app logger.
+    func logFailure(_ error: any Error, stage: String) {
+        guard !(error is CancellationError) else { return }
+        let entry = LogEntry(level: .warn, category: "rewrite", message: "rewrite failure stage=\(stage) " + Self.failureKind(error))
+        let log = editor.app.log
+        Task { await log.write(entry) }
+    }
+    /// An error's type and case, with no associated text: "type=VoiceLabError case=permissionMissing",
+    /// "type=ClipTakePlan.Failure case=placement.geometry.windowTooShort", or an NSError's domain and code.
+    nonisolated static func failureKind(_ error: any Error) -> String {
+        // The module and any "(unknown context at $…)" of a private type are dropped.
+        let type = String(reflecting: Swift.type(of: error)).split(separator: ".").dropFirst()
+            .filter { $0.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" } }.joined(separator: ".")
+        let mirror = Mirror(reflecting: error)
+        guard mirror.displayStyle == .enum else {
+            let ns = error as NSError
+            let domain = ns.domain.filter { $0.isLetter || $0.isNumber || $0 == "." || $0 == "_" }
+            return "type=\(type.isEmpty ? "unknown" : type) domain=\(domain) code=\(ns.code)"
+        }
+        return "type=\(type) case=\(caseName(error, depth: 0))"
+    }
+    private nonisolated static func caseName(_ value: Any, depth: Int) -> String {
+        let mirror = Mirror(reflecting: value)
+        guard let child = mirror.children.first else {
+            let name = String(describing: value)
+            return name.range(of: #"\A[A-Za-z_][A-Za-z0-9_]*\z"#, options: .regularExpression) != nil ? name : "unnamed"
+        }
+        let label = child.label ?? "unnamed"
+        guard depth < 3 else { return label }
+        // A case's payload is its value, or a tuple when the case has several; the first enum in it names the inner case.
+        let payload = Mirror(reflecting: child.value)
+        let first: Any? = payload.displayStyle == .tuple ? payload.children.first?.value : child.value
+        guard let inner = first, Mirror(reflecting: inner).displayStyle == .enum else { return label }
+        return label + "." + caseName(inner, depth: depth + 1)
+    }
+
     nonisolated static func refusal(_ error: any Error) -> String {
         if let error = error as? VoiceConsentError { return error.localizedDescription }
         if let error = error as? VoiceLabSourceAudioError, let reason = error.errorDescription { return reason + " Your edits are saved." }
-        if let error = error as? VoiceLabError, error == .unauthorized { return "ElevenLabs rejected the key (401). Your edits are saved." }
-        if let message = (error as? VoiceLabError)?.accessMessage { return message }
         if let geometry = error as? VoiceLabGeometryError, let isStart = geometry.takeEdgeIsStart {
             return "This change is too close to the \(isStart ? "start" : "end") of the take to blend in. Re-record this sentence instead."
         }
@@ -1117,7 +1158,52 @@ struct RewriteChange: Equatable, Sendable {
         case is VoiceLabGeometryError: return "This change can't be placed in this take. Your edits are saved."
         case is VoiceLabLengthBudgetError: return "There isn't enough timed speech to estimate this change. Your edits are saved."
         case VoiceLabWordDiffError.tokenLimit: return VoiceLabPatchBudget.disabledCopy
-        default: return UserMessages.message(error)
+        case VoiceLabWordDiffError.invalidInput:
+            return "The AI's words couldn't be matched to the transcript. Ask again or edit the words. Your edits are saved."
+        case is ClipTakePlan.Failure: return ClipTakePlan.copy(error)
+        case is RewriteSpeechContextReview.Failure, is VoiceLabSpeechContextPlan.Failure: return RewriteSpeechContextReview.copy(error)
+        case let error as VoiceLabError: return voiceLabCopy(error)
+        case let error as VoiceLabAudioMathError:
+            switch error {
+            case .noVoicedAudio: return "This take has no speech to match to the recording's level. Try another take or record it yourself."
+            case .insufficientContext: return "This change is too close to the edge of the recording to blend in. Re-record this sentence instead."
+            case .invalidInput: return "VoxClip couldn't measure this take's audio. Try another take. Your edits are saved."
+            }
+        case let error as MicrophoneTakeError:
+            switch error {
+            case .noSpeech: return "We didn't hear any words in your take. Record it again."
+            case .transcriptionUnavailable: return "This Mac can't check your take's words in this language yet. Use a voiced take instead."
+            }
+        default:
+            let message = UserMessages.message(error)
+            guard message == UserMessages.generic else { return message }
+            if let described = (error as? LocalizedError)?.errorDescription, !described.isEmpty { return described + " Your edits are saved." }
+            return "Voice Lab couldn't finish this step. Get a fresh price or ask again. Your edits are saved."
+        }
+    }
+    /// Every `VoiceLabError` the Rewrite can meet, with what to do next (the access cases keep their shared copy).
+    nonisolated static func voiceLabCopy(_ error: VoiceLabError) -> String {
+        if let message = error.accessMessage { return message }
+        switch error {
+        case .invalidInput:
+            return "ElevenLabs can't take this request as it stands. Get a fresh price; if it fails again, shorten or leave out the longest phrase. Your edits are saved."
+        case .consentRequired: return "This price expired or no longer matches the changes. Get a fresh price. Nothing was sent."
+        case .speakerMismatch: return "This take doesn't sound like your voice. Try another take or record it yourself."
+        case .planUnavailable: return "Your ElevenLabs plan can't make voice takes. Check your plan on elevenlabs.io."
+        case .noVoiceSlots: return "Your ElevenLabs account has no free voice slots. Free one on elevenlabs.io, then try again."
+        case .missingKey: return "Add your ElevenLabs key in Settings to make takes."
+        case .permissionMissing(let permission): return "Allow the \(permission) permission for this ElevenLabs key on elevenlabs.io, then get a fresh price."
+        case .unauthorized: return "ElevenLabs rejected the key (401). Your edits are saved."
+        case .quotaExceeded: return "Your ElevenLabs credits are used up. Add credit, then get a fresh price."
+        case .rateLimited: return "ElevenLabs is busy. Wait a minute, then get a fresh price."
+        case .unsupportedModel, .unsupportedEndpoint, .unsupportedFormat:
+            return "ElevenLabs doesn't offer this speech model for your voice and language. Choose another model."
+        case .malformedResponse, .invalidAudio, .invalidAlignment, .responseTooLarge:
+            return "ElevenLabs sent a reply VoxClip couldn't use. Try another take. Your edits are saved."
+        case .providerFailure(let status): return "ElevenLabs had a server error (\(status)). Try again in a minute."
+        case .network: return "Couldn't reach ElevenLabs. Check your internet connection, then try again."
+        case .cancelled: return ""
+        case .subscriptionRequired, .featureUnavailable, .voiceAccessDenied, .modelAccessDenied: return error.accessMessage ?? ""
         }
     }
     static func proposalError(_ error: LLMError, provider: String, model: String) -> String {
