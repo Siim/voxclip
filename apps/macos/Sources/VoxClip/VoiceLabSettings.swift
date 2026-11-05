@@ -75,7 +75,10 @@ enum LipSyncAvailability {
                     Text(record.voiceName).fontWeight(.medium)
                     Text("Created \(Self.createdDate(record.createdAt, shared: app.shared)) · \(record.voiceId)").font(.caption).textSelection(.enabled)
                     if record.status == .verificationRequired { Text("ElevenLabs needs to verify this voice before it can be used. Finish verification on elevenlabs.io, then come back.").font(.caption) }
-                    if record.status == .active { VoiceReferenceRows(session: session, record: record, context: context) }
+                    if record.status == .active {
+                        VoiceReferenceRows(session: session, record: record, context: context)
+                        VoiceRebuildRows(session: session, state: session.rebuilds[record.id], record: record, context: context)
+                    }
                     if session.deleting.contains(record.id) { Text(session.busy ? "Deleting…" : "Couldn't finish deleting").font(.caption) }
                     Button(session.deleting.contains(record.id) ? "Retry deletion…" : "Delete voice", role: .destructive) { session.request(.delete(record.id)) }.disabled(session.busy)
                         .accessibilityLabel(Self.actionAccessibilityLabel(session.deleting.contains(record.id) ? "Retry deletion" : "Delete voice", context: context))
@@ -181,6 +184,88 @@ enum LipSyncAvailability {
             }
         }
         Text("Checks speech in your projects on this Mac against your consent recording. Free; nothing is sent.").font(.caption).foregroundStyle(.secondary)
+    }
+}
+
+/// "Rebuild from my videos" (voice-lab §6.12, ADR-R42): what it will use before any click, the three attestations
+/// inline, Rebuild · price, then Use the new voice for Rewrite and Remove the old voice, all in the voice's own row.
+@MainActor struct VoiceRebuildRows: View {
+    @Bindable var session: VoiceLabSession
+    /// Nil until the first Rebuild from my videos click; the row is then the idle one.
+    let state: VoiceRebuildState?
+    let record: VoiceConsentRecord
+    let context: String
+    var body: some View {
+        if let state { VoiceRebuildStateRows(session: session, state: state, record: record, context: context) }
+        else {
+            Button("Rebuild from my videos") { session.findRebuild(recordID: record.id) }
+                .disabled(session.busy || session.isLearning)
+                .accessibilityLabel(VoiceLabSettings.actionAccessibilityLabel("Rebuild from my videos", context: context))
+            Text(VoiceLabSession.rebuildIntro).font(.caption).foregroundStyle(.secondary)
+        }
+    }
+}
+
+@MainActor private struct VoiceRebuildStateRows: View {
+    @Bindable var session: VoiceLabSession
+    @Bindable var state: VoiceRebuildState
+    let record: VoiceConsentRecord
+    let context: String
+    var body: some View {
+        VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) {
+            switch state.phase {
+            case .idle, .failed, .finding:
+                Button(state.phase == .finding ? "Finding your speech…" : "Rebuild from my videos") { session.findRebuild(recordID: record.id) }
+                    .disabled(state.phase == .finding || session.busy || session.isLearning)
+                    .accessibilityLabel(VoiceLabSettings.actionAccessibilityLabel("Rebuild from my videos", context: context))
+                if state.phase == .idle { Text(VoiceLabSession.rebuildIntro).font(.caption).foregroundStyle(.secondary) }
+            case .found, .preparing, .ready, .creating:
+                found
+            case .created:
+                created
+            }
+            if !state.line.isEmpty { Text(state.line).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("voice-rebuild-line-\(record.id)") }
+        }
+    }
+    private var found: some View {
+        VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) {
+            Text("Rebuild with \(state.summary)").font(.caption).fontWeight(.medium).accessibilityIdentifier("voice-rebuild-summary-\(record.id)")
+            HStack {
+                ForEach(Array((state.found?.samples ?? []).prefix(3).enumerated()), id: \.offset) { index, sample in
+                    Button("▶ \(Int(sample.seconds)) s") { session.playRebuildPiece(state, index: index) }
+                        .accessibilityLabel("Play piece \(index + 1), \(Int(sample.seconds)) seconds")
+                }
+            }
+            let locked = state.phase == .creating || session.busy
+            Toggle(VoiceConsentRecord.ProjectConsent.text, isOn: $state.ownVoice).disabled(locked)
+            Toggle("I am 18 or older.", isOn: $state.adult).disabled(locked)
+            Toggle("I will use it only on videos of myself.", isOn: $state.ownVideosOnly).disabled(locked)
+            if state.phase == .ready || state.phase == .creating {
+                Button(state.phase == .creating ? "Rebuilding…" : session.rebuildTitle(state)) { Task { await session.approveRebuild(state) } }
+                    .disabled(state.phase != .ready || session.busy)
+                    .accessibilityLabel(VoiceLabSettings.actionAccessibilityLabel(session.rebuildTitle(state), context: context))
+            }
+        }
+    }
+    private var created: some View {
+        VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) {
+            HStack {
+                if !state.usedForRewrite {
+                    Button("Use the new voice for Rewrite") { session.useRebuiltVoice(state) }.disabled(session.busy)
+                }
+                if !state.removed && !state.confirmingRemoval {
+                    Button("Remove the old voice", role: .destructive) { state.confirmingRemoval = true }.disabled(session.busy)
+                        .accessibilityLabel(VoiceLabSettings.actionAccessibilityLabel("Remove the old voice", context: context))
+                }
+            }
+            if state.confirmingRemoval {
+                Text("Deletes \(record.voiceName), made \(VoiceLabSettings.createdDate(record.createdAt, shared: session.app.shared)), from your ElevenLabs account and VoxClip. Free. Existing takes stay playable and labelled.").font(.caption)
+                HStack {
+                    Button("Keep it") { state.confirmingRemoval = false }
+                    Button("Remove old voice", role: .destructive) { Task { await session.removeOldVoice(state) } }.disabled(session.busy)
+                }
+            }
+        }
     }
 }
 

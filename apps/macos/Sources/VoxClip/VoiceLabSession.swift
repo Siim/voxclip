@@ -104,6 +104,9 @@ import VoxClipMedia
     var learningLine: [String: String] = [:]
     var isLearning = false
     @ObservationIgnored var learningTask: Task<Void, Never>? { didSet { isLearning = learningTask != nil } }
+    /// Settings › Voices' "Rebuild from my videos" rows, per voice (voice-lab §6.12).
+    var rebuilds: [String: VoiceRebuildState] = [:]
+    @ObservationIgnored var rebuildPlayer: AVAudioPlayer?
     @ObservationIgnored private var client: ElevenLabsVoiceLab?
     @ObservationIgnored private var enrollment: VoiceEnrollment?
     @ObservationIgnored private let reconciler: VoiceOperationReconciler
@@ -368,7 +371,7 @@ import VoxClipMedia
         } catch { message = "The local voice records could not be read. No audio was sent." }
     }
     func stopRecovery() { recoveryTask?.cancel(); recoveryTask = nil }
-    private func services() throws -> (ElevenLabsVoiceLab, VoiceEnrollment) {
+    func services() throws -> (ElevenLabsVoiceLab, VoiceEnrollment) {
         let selected = ElevenLabsRegion(rawValue: app.string("transcription.elevenlabs.region", fallback: "default")) ?? .default
         if let client, let enrollment, region == selected { return (client, enrollment) }
         let client = ElevenLabsVoiceLab(keys: app.secrets, region: selected, logger: app.log, spend: VoiceLabSpendLedger(locations: app.locations))
@@ -759,7 +762,7 @@ import VoxClipMedia
             message = saved ? "Consent record saved. No create request was repeated." : "Voice removed. No create request was repeated."
         } else { message = "The consent record still could not be saved. Retry saving or Remove This Voice. Do not create it again." }
     }
-    private func errorMessage(_ error: any Error) async -> String {
+    func errorMessage(_ error: any Error) async -> String {
         if let error = error as? VoiceConsentError { return error.localizedDescription }
         if let error = error as? MicrophoneError { return error.localizedDescription }
         if let error = error as? VoiceLabError {

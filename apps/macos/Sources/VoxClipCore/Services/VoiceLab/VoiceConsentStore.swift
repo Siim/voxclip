@@ -180,6 +180,23 @@ public actor VoiceConsentStore {
         try save(learned)
         return learned
     }
+    /// After "Rebuild from my videos" (voice-lab §6.12, ADR-R42): learns each of the old voice's references into the new
+    /// voice, each re-checked against the new record's own embedding (one hop), never against another reference or the
+    /// old record. References of another speaker model, or that no longer pass, are dropped. Returns how many were kept.
+    @discardableResult
+    public func carryReferences(from oldID: String, to newID: String, at date: Date = Date()) throws -> Int {
+        let old = try load(oldID), new = try load(newID)
+        guard new.status == .active || new.status == .verificationRequired, !(try hasOperation(newID)) else { throw VoiceConsentError.inactive }
+        var speaker = new.speaker
+        for reference in old.speaker.references ?? [] {
+            guard let embedding = VoiceConsentRecord.decodeEmbedding(reference.embedding) else { continue }
+            do { speaker = try VoiceSpeakerReferences.learning(embedding, contentKey: reference.contentKey, model: reference.model, at: date, into: speaker) }
+            catch is VoiceSpeakerReferences.Refusal { continue }
+        }
+        guard speaker != new.speaker else { return VoiceSpeakerReferences.learnedCount(new.speaker) }
+        try save(new.replacingSpeaker(speaker))
+        return VoiceSpeakerReferences.learnedCount(speaker)
+    }
     /// Forgets every learned reference of a voice. The guard then judges phrases against the record's own embedding only.
     @discardableResult
     public func forgetReferences(recordID: String) throws -> VoiceConsentRecord {
