@@ -263,8 +263,15 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
 
     /// <summary>Open a video or project in place (design §2): a window that already holds it comes forward instead, and the
     /// open project is saved through the leave boundary first. <paramref name="via"/> names the path for ShellNavigation.</summary>
+#if DEBUG
+    /// <summary>Launch-smoke diagnostics: each step of opening a project, so a hung open shows where it stopped.</summary>
+    private static void OpenStage(string stage) => App.Services.Log.Write(Core.Services.Logging.LogLevel.Info, "startup", "open stage=" + stage);
+#endif
     internal async Task OpenPathAsync(string path, ShellPath via, bool demo = false)
     {
+#if DEBUG
+        OpenStage("begin");
+#endif
 #if DEBUG
         DebugOpenError = null;
 #endif
@@ -274,6 +281,9 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         var existing = App.Windows.FirstOrDefault(window => string.Equals(window.ProjectPath, fullPath, StringComparison.OrdinalIgnoreCase));
         if (ShellNavigation.Route(via, existing is not null, editor is not null, fullPath) == ShellRoute.ShowHoldingWindow) { existing!.Activate(); existing.ShowOpenProject(); return; }
         await navigation.WaitAsync();
+#if DEBUG
+        OpenStage("navigation");
+#endif
         if (App.Restart.IsPreparing) { navigation.Release(); return; }
         var previous = editor;
         var previousPath = ProjectPath;
@@ -294,6 +304,9 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
             if (demo)
             {
                 project = ProjectSerialization.Deserialize(await File.ReadAllTextAsync(fullPath, lifetime.Token));
+#if DEBUG
+        OpenStage("demo-read");
+#endif
                 mediaPath = null;
             }
             else
@@ -324,9 +337,15 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
             }
             if (renaming is not null) FinishInlineRename(false, restoreFocus: false);
             incoming = new EditorPage();
+#if DEBUG
+        OpenStage("page");
+#endif
             ProjectPath = fullPath;
             ContentFrame.Content = incoming;
             await incoming.OpenAsync(this, project, mediaPath, demo, lifetime.Token);
+#if DEBUG
+        OpenStage("opened");
+#endif
             Watch(previous, incoming);
             editor = incoming;
             installed = true;

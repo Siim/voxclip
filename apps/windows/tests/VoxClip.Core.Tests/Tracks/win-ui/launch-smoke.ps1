@@ -128,7 +128,20 @@ try {
     $observed.reason = $_.Exception.Message
     throw
 } finally {
-    if ($app -and -not $app.HasExited) { Stop-Process -Id $app.Id -Force; [void]$app.WaitForExit(5000) }
+    if ($app -and -not $app.HasExited) {
+        if ($observed.status -ne 'ok') {
+            # A hung launch: record every managed thread's stack before stopping it (diagnostics only; the failure stands).
+            try {
+                $stackTools = Join-Path ([IO.Path]::GetTempPath()) 'voxclip-dotnet-stack'
+                & dotnet tool install dotnet-stack --tool-path $stackTools 2>&1 | Out-Null
+                $stacks = & (Join-Path $stackTools 'dotnet-stack.exe') report -p $app.Id 2>&1 | Out-String
+                Set-Content -LiteralPath (Join-Path $evidence 'hung-stacks.txt') -Value $stacks
+                Write-Host '--- managed stacks of the hung app ---'
+                Write-Host $stacks
+            } catch { Write-Host "Could not collect the hung app's stacks: $($_.Exception.Message)" }
+        }
+        Stop-Process -Id $app.Id -Force; [void]$app.WaitForExit(5000)
+    }
     if ($desktop -ne [IntPtr]::Zero) { [void][SmokeDesktop]::CloseDesktop($desktop) }
     $observed.opens = $opens
     $observed | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $report

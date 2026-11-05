@@ -138,7 +138,13 @@ public sealed partial class EditorPage : Page
         Untranscribed.Visibility = ViewModel.HasTranscript ? Visibility.Collapsed : Visibility.Visible;
         UpdateFindClips();
         Bindings.Update();
+#if DEBUG
+        App.Services.Log.Write(VoxClip.Core.Services.Logging.LogLevel.Info, "startup", "open stage=aspect-wait");
+#endif
         await EditorInitialSelection.ApplyAsync(project.Export.Aspect, aspectLoaded.Task, index => Aspect.SelectedIndex = index, ct);
+#if DEBUG
+        App.Services.Log.Write(VoxClip.Core.Services.Logging.LogLevel.Info, "startup", "open stage=aspect-ready");
+#endif
         captions = new(ViewModel, () => MediaPath, lifetime.Token);
         if (!demo) captions.AddMusic(new MusicSection(ViewModel, () => WinRT.Interop.WindowNative.GetWindowHandle(owner)));
         captions.FitChanged += (_, _) => SizeStage();
@@ -148,7 +154,13 @@ public sealed partial class EditorPage : Page
         InitializeMakeIt();
         SelectionChanged(this, EventArgs.Empty);
         await captions.InitializeAsync();
+#if DEBUG
+        App.Services.Log.Write(VoxClip.Core.Services.Logging.LogLevel.Info, "startup", "open stage=captions-ready");
+#endif
         await RefreshAiStatusAsync();
+#if DEBUG
+        App.Services.Log.Write(VoxClip.Core.Services.Logging.LogLevel.Info, "startup", "open stage=ai-status-ready");
+#endif
         InstallAccelerators();
         if (demo) media = MediaFromProject(project);
         else if (mediaPath is not null)
