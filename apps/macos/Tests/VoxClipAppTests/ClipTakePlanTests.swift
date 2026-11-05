@@ -233,6 +233,9 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         var beforeScratch: (() async -> Void)?
         var publishedIDs: [UUID] = []
         var lastBatch: VoiceLabTakeBatch?
+        /// The guard's verdicts before pricing, in place of the real free screen.
+        var screenVerdicts: [VoiceGuardVerdict]?
+        var screens = 0
         var lostResponseStage: Bool?
         var simulatedRequests: [UUID] = []
         var current = true
@@ -342,6 +345,11 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
             catch { Issue.record("Unexpected quote refusal: \(String(reflecting: error))"); throw error }
         }
         backend.approve = { [weak made] batch, indices, continuing in made?.approved += 1; try await real.approve(batch, indices, continuing) }
+        backend.screen = { [weak made] inputs in
+            made?.screens += 1
+            if let verdicts = made?.screenVerdicts { return verdicts }
+            return await real.screen(inputs)
+        }
         backend.execute = { [weak made, weak plan] batch, index, phrase, progress in
             if let qa = made?.lostResponseStage {
                 guard let plan else { throw CancellationError() }
@@ -1173,6 +1181,45 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(fixture.plan.problem.isEmpty && fixture.plan.voiceableIndices.isEmpty && fixture.plan.settledWithBlocks)
         await fixture.plan.prepareAnother(phrase: 0)
         #expect(fixture.plan.approvalID == nil && ClipTakeHTTP.state.withLock { $0.texts.isEmpty && $0.qa == 0 })
+    }
+
+    @Test func getPriceNeverPricesAPhraseTheGuardBlocks() async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        // The free local screen (ADR-R41) blocks phrase 2 before any quote.
+        fixture.screenVerdicts = [.passes(.statement(score: 0.9)), .blocked(.voiceOwnerMismatch), .passes(.reference(score: 0.8, contentKey: "x"))]
+        var blocked: [Int] = []
+        fixture.plan.onBlocked = { phrase, _ in blocked.append(phrase) }
+        await fixture.plan.prepare()
+        #expect(fixture.screens == 1)
+        #expect(blocked == [1])
+        #expect(fixture.plan.phrases[1].blocked == ClipTakePlan.blockedCopy(.consent(.voiceOwnerMismatch)))
+        #expect(fixture.plan.voiceableIndices == [0, 2])
+        // The quote and its approval cover phrases 1 and 3 only; nothing was sent.
+        let batch = try #require(fixture.lastBatch)
+        #expect(batch.windows.count == 2)
+        #expect(fixture.plan.approvalID != nil && fixture.plan.cost != nil)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.isEmpty && $0.qa == 0 })
+        #expect(!fixture.plan.learnedFromThisVideo, "phrase 3 matched another video's reference")
+        // A later price of the same plan still leaves phrase 2 out.
+        fixture.screenVerdicts = [.passes(.statement(score: 0.9)), .passes(.statement(score: 0.9)), .passes(.statement(score: 0.9))]
+        await fixture.plan.prepareAnother(phrase: 1)
+        #expect(fixture.plan.phrases[1].blocked != nil && fixture.preparations == 1)
+    }
+
+    @Test func everyPhraseBlockedBeforePricingAsksForNoPrice() async throws {
+        let fixture = try await fixture(indices: [3, 10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        fixture.screenVerdicts = [.blocked(.voiceOwnerMismatch), .blocked(.speakerMismatch)]
+        await fixture.plan.prepare()
+        #expect(fixture.preparations == 0 && fixture.plan.approvalID == nil && fixture.plan.cost == nil)
+        #expect(fixture.plan.settledWithBlocks)
+        #expect(fixture.plan.phrases[1].blocked == ClipTakePlan.blockedCopy(.consent(.speakerMismatch)))
+    }
+
+    @Test func aPhraseMatchedThroughThisVideosReferenceSaysSo() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        fixture.screenVerdicts = [.passes(.reference(score: 0.8, contentKey: fixture.source.media.source.contentKey))]
+        await fixture.plan.prepare()
+        #expect(fixture.plan.learnedFromThisVideo && fixture.plan.voiceableIndices == [0] && fixture.preparations == 1)
     }
 
     @Test func stoppingQuotePreparationDrainsItBeforeTheNextQuote() async throws {

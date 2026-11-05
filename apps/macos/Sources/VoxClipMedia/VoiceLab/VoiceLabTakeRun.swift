@@ -156,6 +156,17 @@ public actor VoiceLabTakeRun {
             throw error
         }
     }
+    /// The guard's free verdict on each of these phrases before any price (voice-lab §6.9, ADR-R41), on the same speech
+    /// the run's own guard reads at dispatch. Phrases that pass against the record's own embedding teach this project's
+    /// reference first. Nothing is sent anywhere.
+    public func screenGuard(_ inputs: [VoiceLabTakeInput]) async -> [VoiceGuardVerdict] {
+        guard let first = inputs.first, inputs.allSatisfy({ $0.recordID == first.recordID && $0.contentKey == first.contentKey }) else {
+            return inputs.map { _ in .unchecked }
+        }
+        var speech: [[Float]] = []
+        for input in inputs { speech.append((try? Self.guardSpeech(input)) ?? []) }
+        return await useGuard.screen(contentKey: first.contentKey, recordID: first.recordID, speech: speech)
+    }
     /// The use-time guard's speech for this patch (voice-lab §6.9), at 16 kHz: the transcript words' own audio nearest the
     /// patch (`VoiceLabGuardSpeech`), joined, up to 10 s, from the original source. The guard's embedding then runs the same
     /// VAD and features over it as the enrollment statement's. A transcript with no timed words leaves only the patch's

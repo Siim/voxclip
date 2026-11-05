@@ -106,9 +106,15 @@ import VoxClipMedia
         /// The stored paid audio of a take with no checked mix (it failed before the checks).
         var paidAudio: @MainActor (Int, UUID) async -> URL?
         var retire: @MainActor (Int, UUID) async -> Void
+        /// The guard's free local verdict on every phrase before any price (voice-lab §6.9, ADR-R41).
+        var screen: @MainActor ([VoiceLabTakeInput]) async -> [VoiceGuardVerdict]
 
         init(runs: [VoiceLabTakeRun]) {
             let pool = ClipTakeVoicePool()
+            screen = { inputs in
+                guard let run = runs.first else { return inputs.map { _ in .unchecked } }
+                return await run.screenGuard(inputs)
+            }
             prepare = { inputs, indices, candidates in
                 try await VoiceLabTakeBatchRun(runs: indices.map { runs[$0] }).prepare(inputs, candidates: candidates)
             }
@@ -503,6 +509,8 @@ import VoxClipMedia
     }
     /// Each phrase the guard settles while takes run, for the session to keep it settled in a later plan of this Rewrite.
     @ObservationIgnored var onBlocked: (@MainActor (Int, String) -> Void)?
+    /// A phrase passed the guard through a reference learned from the owner's videos (ADR-R41), for the first-pass note.
+    private(set) var learnedFromThisVideo = false
 
     func prepareSpeechContext(phrase: Int) async {
         guard phrases.indices.contains(phrase), phrases[phrase].blocked == nil else { return }
@@ -720,6 +728,27 @@ import VoxClipMedia
                 }
                 try validate(inputs.map(\.window))
                 try validateContextInputs(inputs)
+                var indices = indices
+                if decoding {
+                    // The guard runs first, free and on this Mac: a phrase it blocks is settled before any price, so Get
+                    // Price never prices, and never asks approval for, a phrase that would be blocked (ADR-R41).
+                    preparationStep = "Checking it's your voice…"
+                    let verdicts = await backend.screen(inputs)
+                    try checkCurrent(version)
+                    learnedFromThisVideo = false
+                    for (index, verdict) in verdicts.enumerated() where phrases.indices.contains(index) {
+                        switch verdict {
+                        case .blocked(let error) where phrases[index].blocked == nil:
+                            let reason = Self.blockedCopy(.consent(error))
+                            block(phrase: index, reason: reason)
+                            onBlocked?(index, reason)
+                        case .passes(.reference(_, let key)) where key == inputs[index].contentKey: learnedFromThisVideo = true
+                        default: break
+                        }
+                    }
+                    indices = indices.filter { phrases[$0].blocked == nil }
+                    preparationStep = nil
+                }
                 // Every phrase settled as blocked: the inputs serve Say it myself, and there is nothing to price.
                 if indices.isEmpty {
                     if revision == version { preparing = false; preparationStep = nil }

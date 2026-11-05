@@ -146,7 +146,8 @@ extension RewriteSession {
     var takeSpendLine: String {
         guard let takePlan else { return "Nothing paid yet." }
         let count = Int(takePlan.spent.units)
-        guard count > 0 else { return "Nothing paid yet." }
+        // A phrase the statement alone didn't pass went through the reference this video taught (ADR-R41).
+        guard count > 0 else { return takePlan.learnedFromThisVideo ? "Nothing paid yet. Matched your voice from this video." : "Nothing paid yet." }
         let cost = takePlan.spent.usd.map { " · " + VoiceLabCostPresentation.format($0) } ?? " · cost unavailable"
         return "Made \(count) \(count == 1 ? "take" : "takes")\(cost) on your ElevenLabs account."
     }
