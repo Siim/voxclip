@@ -463,7 +463,8 @@ extension RewriteSession {
             default: break
             }
             if usableTakeCount > 0, takePlan?.stillCurrent == true {
-                chips.append(chip("useTakes", usableTakeCount == 1 ? "Use 1 Take" : "Use \(usableTakeCount) Takes") { [weak self] in self?.useTake() })
+                let title = waitingTakePhrases.isEmpty ? (usableTakeCount == 1 ? "Use 1 Take" : "Use \(usableTakeCount) Takes") : useTakesTitle
+                chips.append(chip("useTakes", title) { [weak self] in self?.useTake() })
             }
             // The same changes price the same way, so a fresh price can't help a plan that has too many or no phrases.
             let priceCanHelp: Bool

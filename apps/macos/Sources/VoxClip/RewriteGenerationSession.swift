@@ -192,7 +192,7 @@ import xlocale
     }
     func reject(_ row: VoiceLabTakeRow) async {
         audition.stop(); rows.removeAll { $0.id == row.id }
-        let next = VoiceLabTakeRunResult(rows: rows, end: .completed).bestAutomatic
+        let next = chooseAutomatically(rows)
         bestID = next?.id
         if selectedID == row.id {
             clearVideoChoice()
@@ -496,14 +496,31 @@ import xlocale
                 announcement = Self.completionAnnouncement(rows: [row], fittedTake: nil)
             }
         }
-        self.rows = rows
+        // A take whose join this session already accepted keeps its acceptance as the run reports it again.
+        self.rows = rows.map { row in
+            guard row.requiresJoinAdvisoryAcceptance, let accepted = self.rows.first(where: { $0.id == row.id })?.acceptedJoinAdvisory,
+                  let kept = try? row.acceptingJoinAdvisory(at: accepted.acceptedAt) else { return row }
+            return kept
+        }
+    }
+    /// The take chosen automatically (ADR-R39, as `ClipTakePlan`): the best clean take, else the best passing take whose
+    /// only issue is the join, whose advisory is accepted at that moment, as the user's click once did.
+    private func chooseAutomatically(_ rows: [VoiceLabTakeRow], at date: Date = Date()) -> VoiceLabTakeRow? {
+        let result = VoiceLabTakeRunResult(rows: rows, end: .completed)
+        if let clean = result.bestAutomatic { return clean }
+        guard let best = result.best, best.hasJoinAdvisory else { return nil }
+        guard best.requiresJoinAdvisoryAcceptance else { return best }
+        guard let accepted = try? best.acceptingJoinAdvisory(at: date), let slot = self.rows.firstIndex(where: { $0.id == best.id }) else { return nil }
+        self.rows[slot] = accepted
+        return accepted
     }
     func review(_ result: VoiceLabTakeRunResult, input: VoiceLabTakeInput? = nil) {
         clearVideoChoice()
         launchStarted = false
         if let input { self.input = input }
         reviewedInputsCurrent = true
-        rows = result.rows; bestID = result.bestAutomatic?.id; selectedID = nil; videoChoice = nil
+        rows = result.rows; selectedID = nil; videoChoice = nil
+        bestID = chooseAutomatically(rows)?.id
         runFailure = result.failure
         problem = result.failure.map { TakeFailurePresentation.reason(for: $0) } ?? ""
         guard result.end == .completed || result.end == .earlyStop else {
@@ -512,7 +529,7 @@ import xlocale
             announcement = status + " No take can be used from this review." + (problem.isEmpty ? "" : " " + problem)
             return
         }
-        guard let best = result.bestAutomatic else {
+        guard let best = rows.first(where: { $0.id == bestID }) else {
             phase = .nonePassed
             announcement = Self.completionAnnouncement(rows: rows, fittedTake: nil)
             if !problem.isEmpty, !announcement.contains(problem) { announcement += " " + problem }
@@ -522,9 +539,11 @@ import xlocale
         phase = best.fits ? .readyToAccept : .lengthChanged
         announcement = Self.completionAnnouncement(rows: rows, fittedTake: best.fits ? best.index + 1 : nil)
     }
+    /// What a finished review says: the chosen take that fits, or how many passed; a take whose only issue is the join is
+    /// usable and named with its note ("Take 2 · join may sound slightly louder.", ADR-R39); then the takes left out.
     static func completionAnnouncement(rows: [VoiceLabTakeRow], fittedTake: Int?) -> String {
-        let checked = rows.filter(\.automaticallySelectable)
-        let advisories = rows.filter { $0.selectable && $0.hasJoinAdvisory }
+        let checked = rows.filter(\.selectable)
+        let advisories = checked.filter(\.hasJoinAdvisory)
         let fitting = checked.filter(\.fits)
         var parts: [String] = []
         if let fittedTake, fitting.contains(where: { $0.index + 1 == fittedTake }) {
@@ -533,11 +552,13 @@ import xlocale
             parts.append("\(countWord(fitting.count)) \(fitting.count == 1 ? "take fits" : "takes fit").")
         } else if !checked.isEmpty {
             parts.append("No take fits yet. \(countWord(checked.count)) \(checked.count == 1 ? "take passed" : "takes passed") checks but \(checked.count == 1 ? "needs" : "need") a timing change.")
-        } else if advisories.isEmpty {
+        } else {
             parts.append("No usable takes.")
         }
         if !advisories.isEmpty {
-            parts.append("\(countWord(advisories.count)) \(advisories.count == 1 ? "take has a join advisory" : "takes have join advisories"). Listen before using.")
+            let numbers = advisories.map { "\($0.index + 1)" }
+            let list = numbers.count == 1 ? numbers[0] : numbers.dropLast().joined(separator: ", ") + " and " + numbers[numbers.count - 1]
+            parts.append(advisories.count == 1 ? "Take \(list) · join may sound slightly louder." : "Takes \(list) · joins may sound slightly louder.")
         }
         let excluded = rows.filter { !$0.selectable }
         if !excluded.isEmpty { parts.append("\(countWord(excluded.count)) \(excluded.count == 1 ? "take" : "takes") left out.") }
@@ -549,7 +570,13 @@ import xlocale
     }
     @discardableResult func select(_ id: UUID) -> Bool {
         guard !accepting, !preparingVideo, reviewedInputsCurrent, inputsAreCurrent(), [.lengthChanged, .readyToAccept, .nonePassed].contains(phase),
-              let row = rows.first(where: { $0.id == id }), row.selectable, !row.requiresJoinAdvisoryAcceptance else { return false }
+              let slot = rows.firstIndex(where: { $0.id == id }), rows[slot].selectable else { return false }
+        // Choosing a take whose only issue is the join accepts it (ADR-R39).
+        if rows[slot].requiresJoinAdvisoryAcceptance {
+            guard let accepted = try? rows[slot].acceptingJoinAdvisory(at: Date()) else { return false }
+            rows[slot] = accepted
+        }
+        let row = rows[slot]
         if selectedID == id { return true }
         audition.selectionChanged(to: id.uuidString)
         clearVideoChoice()

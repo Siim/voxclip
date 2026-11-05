@@ -2,6 +2,7 @@
 import AppKit
 import Foundation
 import Synchronization
+import SwiftUI
 import Testing
 @_spi(Testing) @testable import VoxClipCore
 @_spi(Testing) @testable import VoxClipMedia
@@ -2218,6 +2219,44 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         for ordinal in session.blockedVoiceOrdinals { session.pricedAnyway.insert(ordinal) }
         session.showProposal()
         session.takePlan = fixture.plan
+    }
+
+    /// ADR-R37 beside Use: while phrase 3's take waits for its click (its voice couldn't be measured), the footer never
+    /// offers Use for fewer phrases than were voiced without saying so. The button names what it applies ("Use 2 of 3")
+    /// and the note names the waiting phrase; one click on its take number makes it "Use Takes".
+    @Test func useNamesWhatItAppliesWhileAnotherPhrasesTakeWaitsForItsClick() async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = session(fixture); defer { editor.close() }
+        installReview(session, fixture: fixture, withFreeChanges: false)
+        let plan = fixture.plan
+        let starts = plan.phrases.map(\.window.start)
+        let evidence = VoiceLabShortSpeechEvidence(mode: .unmeasured, recordId: fixture.record.id,
+            consentMethod: fixture.record.consentMethod, voicedFrames: 16_000, takeCount: 1)
+        fixture.transformRow = { row in
+            let start = row.audio?.fit.plan.windowStart ?? 0
+            guard row.audio != nil, starts.indices.min(by: { abs(starts[$0] - start) < abs(starts[$1] - start) }) == 2 else { return row }
+            let unmeasured = row.checkingVoice(.shortSpeech(evidence))
+            return VoiceLabTakeRow(id: row.id, index: row.index, seed: row.seed, receipt: row.receipt,
+                audio: row.audio, qa: unmeasured.qa, score: row.score, failure: row.failure,
+                qaReceipt: row.qaReceipt, generated: row.generated, quote: row.quote,
+                accepted: row.acceptedRequestIDs, voiceCheck: unmeasured.voiceCheck)
+        }
+        await plan.prepare(); await plan.start(approved: true)
+        try chooseSourceDuration(plan)
+        session.showProposal()
+        #expect(plan.phrases[0].selectedID != nil && plan.phrases[1].selectedID != nil && plan.phrases[2].selectedID == nil)
+        let offered = try #require(plan.offeredTake(phrase: 2))
+        let footer = session.task.footer
+        #expect(footer.primary?.id == "useTakes" && footer.primary?.title == "Use 2 of 3", "\(footer)")
+        #expect(footer.note?.hasPrefix("Phrase 3's take waits for your pick; Use keeps its original words.") == true, "\(footer)")
+        #expect(session.useTakesTitle == "Use 2 of 3" && session.waitingTakePhrases == [2])
+        try await ReviewCaptures.capture(DirectorPanel(task: session.task, model: editor).environment(editor.app),
+                                         name: "rewrite-footer-use-2-of-3", size: CGSize(width: 360, height: 900))
+        // One click on its take number, and Use applies every voiced phrase.
+        #expect(plan.select(take: offered.id, phrase: 2))
+        try chooseSourceDuration(plan)
+        session.showProposal()
+        #expect(session.task.footer.primary?.title == "Use Takes" && session.waitingTakesLine == nil, "\(session.task.footer)")
     }
 
     @Test func useTakesCommitsThreePhrasesAndReviewChangesAsOneUndoWithFeedback() async throws {
