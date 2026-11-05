@@ -36,6 +36,29 @@ class CreatorSchemaTests(unittest.TestCase):
         self.assertFalse(validator.is_valid(invalid))
 
 
+    def test_learned_references_are_additive_and_bounded(self):
+        """ADR-R41: speaker.references is optional; each entry is an embedding with its project, time, score and model."""
+        schema = json.loads((ROOT / "shared/schemas/consent.schema.json").read_text())
+        validator = Draft202012Validator(schema)
+        record = json.loads((ROOT / "shared/fixtures/voice-lab/consent-record.json").read_text())
+        self.assertNotIn("references", record["speaker"])
+        reference = {"embedding": record["speaker"]["embedding"], "contentKey": "a" * 64,
+                     "addedAt": "2026-11-05T12:00:00Z", "statementScore": 0.91, "model": record["speaker"]["model"]}
+        learned = copy.deepcopy(record)
+        learned["speaker"]["references"] = [reference]
+        self.assertTrue(validator.is_valid(learned))
+        learned["speaker"]["references"] = [dict(reference, contentKey=f"project-{index}") for index in range(16)]
+        self.assertTrue(validator.is_valid(learned))
+        for mutation in ["seventeen", "empty", "extra", "missing", "path", "score"]:
+            invalid = copy.deepcopy(record)
+            if mutation == "seventeen": invalid["speaker"]["references"] = [dict(reference, contentKey=f"p{index}") for index in range(17)]
+            elif mutation == "empty": invalid["speaker"]["references"] = []
+            elif mutation == "extra": invalid["speaker"]["references"] = [dict(reference, audioFile="clip.wav")]
+            elif mutation == "missing": invalid["speaker"]["references"] = [{k: v for k, v in reference.items() if k != "model"}]
+            elif mutation == "path": invalid["speaker"]["references"] = [dict(reference, contentKey="../Desktop/video.mp4")]
+            else: invalid["speaker"]["references"] = [dict(reference, statementScore=1.5)]
+            self.assertFalse(validator.is_valid(invalid), mutation)
+
     def test_project_attestation_is_distinct_from_recorded_consent(self):
         schema = json.loads((ROOT / "shared/schemas/consent.schema.json").read_text())
         validator = Draft202012Validator(schema)

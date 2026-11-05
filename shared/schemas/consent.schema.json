@@ -240,6 +240,46 @@
           "type": "string",
           "minLength": 4,
           "contentEncoding": "base64"
+        },
+        "references": {
+          "description": "Owner speech learned from the creator's own videos (voice-lab §6.9, ADR-R41): each passed against `embedding` (one hop). Absent until the first; a deleted record holds none.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "embedding",
+              "contentKey",
+              "addedAt",
+              "statementScore",
+              "model"
+            ],
+            "properties": {
+              "embedding": {
+                "type": "string",
+                "minLength": 4,
+                "contentEncoding": "base64"
+              },
+              "contentKey": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,128}$"
+              },
+              "addedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "statementScore": {
+                "type": "number",
+                "maximum": 1.00001
+              },
+              "model": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
         }
       }
     },
