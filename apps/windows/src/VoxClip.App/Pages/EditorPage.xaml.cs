@@ -8,6 +8,7 @@ using VoxClip.App.Services;
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Editing;
+using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.Speech;
@@ -58,6 +59,8 @@ public sealed partial class EditorPage : Page
     private readonly SemaphoreSlim saves = new(1, 1);
     private string pauseBreath = "natural";
     private double previewDuration;
+    /// <summary>The previewed clip's speed: the transport shows rendered time, positions stay edited (design §6.9).</summary>
+    private Core.Domain.Clips.ClipSpeedTiming previewSpeed = new(1);
     private double? previewStop;
     /// <summary>Play/Pause reads the playing state from before an open correction is saved (design §4.2).</summary>
     private readonly PlaybackToggle playback = new();
@@ -169,6 +172,7 @@ public sealed partial class EditorPage : Page
                 var snapshot = await SnapshotAsync(ct);
                 if (!ReferenceEquals(capturedProject, ViewModel.Project)) return;
                 previewDuration = snapshot.Timeline.Duration;
+                previewSpeed = snapshot.Speed;
                 await preview.LoadAsync(snapshot, null, ct);
                 CaptionDrag.Update(snapshot.Captions, 0);
                 Timeline.SetCaptionTrack(snapshot.Captions, snapshot.Timeline, capturedProject);
@@ -242,14 +246,16 @@ public sealed partial class EditorPage : Page
         }
         else VoiceLabProject.RequireLegacyRendering(project, scope);
         var plan = ExportRenderInput.Plan(source, state);
-        var output = ExportRenderInput.Output(source, project.Export);
+        // A clip's controls and the scope's effects render in preview and export alike (design §6.9, ai.md §18.5).
+        var clip = ClipRenderInput.Resolve(project, project.Edits.ActiveClipId, App.Services.Data.Root, Core.Services.Project.SharedResources.ResolveRoot());
+        var output = ExportRenderInput.Output(source, project.Export, clip?.Controls);
         var outputSize = output.Size;
         CaptionTrack? captions = null;
         if (!demo && state is not null && project.Captions.StyleId != "off" && this.captions?.Styles.FirstOrDefault(style => style.Id == project.Captions.StyleId) is { } style)
             captions = await CaptionEngine.BuildAsync(new(style, project.Captions, outputSize,
-                voice?.Prepared.OutputPlan.Captions ?? EditingEngine.CaptionWords(state, plan), state.Transcript.Language,
-                voice?.Prepared.OutputPlan.Duration ?? plan.Duration), new HarfBuzzGlyphShaper(), null, ct);
-        var snapshot = new ComposeSnapshot(source, plan, captions, output) { VoiceLab = voice };
+                ClipEffectsRendering.MaskingBleeps(voice?.Prepared.OutputPlan.Captions ?? EditingEngine.CaptionWords(state, plan), clip?.Effects?.Effects),
+                state.Transcript.Language, voice?.Prepared.OutputPlan.Duration ?? plan.Duration), new HarfBuzzGlyphShaper(), null, ct);
+        var snapshot = new ComposeSnapshot(source, plan, captions, output) { VoiceLab = voice, Clip = clip };
         return voice?.CaptureSnapshot(snapshot) ?? snapshot;
     }
     private void PositionChanged(PreviewPosition position)
@@ -262,7 +268,7 @@ public sealed partial class EditorPage : Page
             sourceTime = endWord.End;
         var changed = Math.Abs(ViewModel.SourceTime - sourceTime) > 0.02;
         ViewModel.SourceTime = sourceTime;
-        var (elapsed, total) = PreviewClockLabel.Parts(position.EditedTime, previewDuration);
+        var (elapsed, total) = PreviewClockLabel.Parts(previewSpeed.Rendered(position.EditedTime), previewSpeed.Rendered(previewDuration));
         TransportElapsed.Text = elapsed;
         TransportTotal.Text = " / " + total;
         PlayGlyph.Symbol = position.IsPlaying ? Symbol.Pause : Symbol.Play;
@@ -476,6 +482,7 @@ public sealed partial class EditorPage : Page
             var clipChanged = previewClipId != state?.ActiveClipId;
             previewClipId = state?.ActiveClipId;
             previewDuration = snapshot.Timeline.Duration;
+            previewSpeed = snapshot.Speed;
             if (preview is null)
             {
                 preview = new PreviewEngine();

@@ -9,6 +9,7 @@ using System.Text.Json.Serialization.Metadata;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
+using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.Transcript;
@@ -137,18 +138,22 @@ internal static class CliOperations
             Console.Error.WriteLine("This video is HDR. Colours are converted to standard range and may look flatter.");
         var aspect = arguments.GetValue<string?>("--aspect") is { } aspectText ? Aspect(aspectText) : project.Export.Aspect;
         var quality = arguments.GetValue<string?>("--quality") is { } qualityText ? qualityText == "high" ? ExportQuality.High : ExportQuality.Standard : project.Export.Quality;
-        var size = ExportPresets.OutputSize(media.OrientedSize, aspect);
+        // A clip render carries its controls (speed, frame, look, levels, flip, turn) and the scope's effects (design §6.9, ai.md §18.5).
+        var clip = ClipRenderInput.Resolve(project, project.Edits.ActiveClipId, DataLocations.Resolve().Root, SharedResources.ResolveRoot());
+        var size = ClipControlsRendering.OutputSize(media.OrientedSize, aspect, clip?.Controls);
         var fps = ExportPresets.OutputFrameRate(arguments.GetValue<string?>("--fps") is { } fpsText
             ? double.Parse(fpsText, NumberStyles.Float, CultureInfo.InvariantCulture) : media.Video?.FrameRate ?? 30);
-        var output = new OutputSpec(size, fps, ExportPresets.VideoBitrate(size, aspect, quality, fps));
+        var output = new OutputSpec(size, fps, ClipControlsRendering.VideoBitrate(size, aspect, quality, fps, clip?.Controls));
         CaptionTrack? captions = null;
         if (captionStyle is not null)
         {
+            var words = ClipEffectsRendering.MaskingBleeps(voice?.Prepared.OutputPlan.Captions ?? EditingEngine.CaptionWords(State(project), plan),
+                clip?.Effects?.Effects);
             captions = await CaptionEngine.BuildAsync(new(captionStyle, project.Captions with { StyleId = captionStyle.Id }, size,
-                voice?.Prepared.OutputPlan.Captions ?? EditingEngine.CaptionWords(State(project), plan), project.Transcript?.Language,
+                words, project.Transcript?.Language,
                 voice?.Prepared.OutputPlan.Duration ?? plan.Duration), ServicesMergeAdapter.GlyphShaper(), null, ct).ConfigureAwait(false);
         }
-        var snapshot = new ComposeSnapshot(media, plan, style == "off" ? null : captions, output) { VoiceLab = voice };
+        var snapshot = new ComposeSnapshot(media, plan, style == "off" ? null : captions, output) { VoiceLab = voice, Clip = clip };
         snapshot = snapshot.VoiceLab?.CaptureSnapshot(snapshot) ?? snapshot;
         var target = project.Edits.ActiveClipId is { } selectedClip ? (ExportTarget)new ExportTarget.Clip(selectedClip) : new ExportTarget.FullEdit();
         var audioPath = arguments.GetValue<string?>("--audio-out") is { } audioDestination ? OutputSafety.Resolve(audioDestination) : null;
@@ -186,7 +191,7 @@ internal static class CliOperations
                 using var stream = OutputSafety.CreatePartial(srtPath + ".partial");
                 ownedPartials.Add(srtPath);
                 await using var writer = new StreamWriter(stream, new UTF8Encoding(false));
-                await writer.WriteAsync(Exporter.Subtitles(captions).AsMemory(), ct).ConfigureAwait(false);
+                await writer.WriteAsync(Exporter.Subtitles(captions, snapshot.Speed.Speed).AsMemory(), ct).ConfigureAwait(false);
             }
             var prepare = prepareExport ?? new Exporter().PrepareAsync;
             result = await prepare(new(snapshot, target, aspect, quality, destination, null),
