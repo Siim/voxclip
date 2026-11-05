@@ -193,7 +193,7 @@ public sealed class OutputSafetyTests
         var track = new CaptionTrack(CaptionRendering.LoadStyle("vox-bold"), new(640, 360), words,
             [Page(0, 0, 0), Page(1, 0.0005, 1.2345), Page(2, 2, 1)], 3);
         var calls = 0;
-        var subtitles = Exporter.Subtitles(track, (text, options) =>
+        var subtitles = Exporter.Subtitles(track, transform: (text, options) =>
         {
             Assert.Equal(CaptionTextTransformValue.None, options.Transform);
             Assert.Equal(CaptionTextPunctuationValue.Keep, options.Punctuation);

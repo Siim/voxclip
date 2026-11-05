@@ -42,7 +42,7 @@ internal static class EditedWaveWriter
                 using (var stage = OutputSafety.CreatePartial(partial))
                 {
                     owned = true;
-                    using var audio = new EditedAudioReader(snapshot, rate, session: session, ct: ct);
+                    using var audio = RenderedAudioReader.OpenEditedVoice(snapshot, rate, session, ct);
                     using var output = new WaveWriter(stage, rate, 2, true);
                     var samples = new float[8192];
                     int count;
