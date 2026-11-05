@@ -82,7 +82,9 @@ extension HeavyMediaTests {
             arguments: ["-rewriteSmokeLengths", "realistic", "-rewriteSmokeOnly", "S16"], acceptNonzeroWithReport: "results.json", deadline: 900)
         defer { UIProcessHarness.cleanTemporary(directory) }
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
-        #expect(Set(report.compactMap { $0.name.split(separator: " ").first.map(String.init) }) == ["S16"])
+        var scenarios = Set<String>()
+        for result in report { if let first = result.name.split(separator: " ").first { scenarios.insert(String(first)) } }
+        #expect(scenarios == ["S16"])
         for result in report { #expect(result.passed, Comment(rawValue: result.name)) }
         #expect(report.contains { $0.name.contains("I9") && $0.name.contains("36 of 36") })
     }
