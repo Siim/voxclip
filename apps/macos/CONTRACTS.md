@@ -30,7 +30,7 @@ Brief: answer the first evaluation's 6.5/10 (clips too long, a series tiling the
 
   No live calls. Before the fix, the correction-cut vector caught a real bug: the drop was logged under the accepted index, not the reply's.
 - **Live evaluation** (local, 3 rounds, nothing committed; Claude Code 2.1.318 Opus, `oauth_token` plan sign-in, clean environment):
-  - **v5 (kept):** a 6-minute series in 103 s, 4 clips at 21–34 s finished, corrections Tvilio → Twilio and superscribes → Superscribe's, 4 different caption styles, one look for the series (warm), speed 1.1 on slow delivery. A single clip took 39 s for a 42 s span and 78 s for an 83 s span.
+  - **v5 (kept):** a 6-minute series in 103 s, 4 clips at 21–34 s finished, both misheard product names in the picks corrected (each citing the names line), 4 different caption styles, one look for the series (warm), speed 1.1 on slow delivery. A single clip took 39 s for a 42 s span and 78 s for an 83 s span.
   - **v6 (reverted):** "never pad to 20 s" made stage 1 pick wider spans (36–50 s).
   - Rating about 8/10 against the September benchmark. Details in /tmp/voxclip-autopilot-eval/v2/SUMMARY.md.
 - **Next package must know.**
