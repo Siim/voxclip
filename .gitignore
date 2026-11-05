@@ -37,6 +37,7 @@ AppPackages/
 *.mov
 *.wav
 !shared/fixtures/**/*.wav
+!shared/data/sfx/*.wav
 !shared/fixtures/**/*.mp4
 !shared/fixtures/**/*.mov
 node_modules/
