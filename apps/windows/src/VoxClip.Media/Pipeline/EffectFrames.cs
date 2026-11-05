@@ -18,7 +18,7 @@ internal sealed class EffectFrames : IDisposable
     internal static readonly SKColor Accent = new(255, 209, 10);
     private readonly string? sharedRoot;
     private readonly ConcurrentDictionary<string, Overlay?> overlays = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, SKTypeface?> typefaces = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, EffectTextFont?> fonts = new(StringComparer.Ordinal);
 
     internal EffectFrames(ClipEffectsRenderInput input, string? sharedRoot)
     {
@@ -233,12 +233,13 @@ internal sealed class EffectFrames : IDisposable
         });
     }
 
-    private SKTypeface Typeface(string relative)
-    {
-        var face = typefaces.GetOrAdd(relative, path => sharedRoot is null ? null
-            : SKTypeface.FromFile(Path.Combine(sharedRoot, path.Replace('/', Path.DirectorySeparatorChar))));
-        return face ?? SKTypeface.Default;
-    }
+    internal const string TitleFontPath = "fonts/roboto/Roboto-Black.ttf";
+    internal const string LowerThirdFontPath = "fonts/dm-sans/DMSans-Bold.ttf";
+
+    /// <summary>A bundled font for overlay text, measured from its own tables (<see cref="EffectTextFont"/>); null without the
+    /// shared folder or the file.</summary>
+    internal EffectTextFont? TextFont(string relative) => fonts.GetOrAdd(relative, path => sharedRoot is null ? null
+        : EffectTextFont.Load(Path.Combine(sharedRoot, path.Replace('/', Path.DirectorySeparatorChar))));
 
     private static SKRectI Integral(double x, double y, double width, double height)
         => new((int)Math.Floor(x), (int)Math.Floor(y), (int)Math.Ceiling(x + width), (int)Math.Ceiling(y + height));
@@ -256,36 +257,41 @@ internal sealed class EffectFrames : IDisposable
         return new(surface.Snapshot(), clipped);
     }
 
-    /// <summary>The baseline that centres a line vertically on <paramref name="middle"/>. Core Text's optical line bounds (Mac
-    /// EffectFrames) span the ink horizontally but the font's ascent and descent vertically, so the line centres on those.</summary>
-    private static float Baseline(SKFont font, float middle)
-    {
-        var metrics = font.Metrics;
-        return middle - (metrics.Ascent + metrics.Descent) / 2;
-    }
+    /// <summary>How <paramref name="text"/> sets as a title (Mac titleLayout); null without the bundled font.</summary>
+    internal EffectTitleLayout? TitleLayout(string text, string position, int width, int height)
+        => TextFont(TitleFontPath) is { } font ? EffectTitleLayout.Make(font, text, position, width, height) : null;
 
-    /// <summary>Big centred text on a dark rounded box: top, centre or bottom of the frame.</summary>
+    /// <summary>Big centred text on a dark rounded box: top, centre or bottom of the frame, a long one in up to three balanced
+    /// lines (<see cref="EffectTitleLayout"/>).</summary>
     internal Overlay? Title(string text, string position, int width, int height)
     {
-        var shortSide = Math.Min(width, height);
-        var size = (float)Math.Round(shortSide * 0.075, MidpointRounding.AwayFromZero);
-        using var font = new SKFont(Typeface("fonts/roboto/Roboto-Black.ttf"), size) { Edging = SKFontEdging.Antialias, Subpixel = true };
-        font.MeasureText(text, out var bounds);
-        var padX = size * 0.45f;
-        var padY = size * 0.28f;
-        var boxWidth = Math.Min(width * 0.92, bounds.Width + padX * 2);
-        var boxHeight = size * 1.25 + padY * 2;
-        var centreY = position switch { "center" => height / 2.0, "bottom" => height * 0.76, _ => height * 0.14 };
-        var box = Integral((width - boxWidth) / 2, centreY - boxHeight / 2, boxWidth, boxHeight);
+        if (TextFont(TitleFontPath) is not { } font) return null;
+        var layout = EffectTitleLayout.Make(font, text, position, width, height);
+        var box = layout.Box;
+        var radius = (layout.LineHeight + layout.PadY * 2) * 0.22f;
         return Raster(box, width, height, canvas =>
         {
             using var fill = new SKPaint { IsAntialias = true, Color = new SKColor(0, 0, 0, 158) };
-            var radius = (float)(boxHeight * 0.22);
             canvas.DrawRoundRect(new SKRect(box.Left, box.Top, box.Right, box.Bottom), radius, radius, fill);
             canvas.Save();
-            canvas.ClipRect(new SKRect(box.Left + padX * 0.5f, box.Top, box.Right - padX * 0.5f, box.Bottom));
+            canvas.ClipRect(new SKRect(box.Left + layout.PadX * 0.5f, box.Top, box.Right - layout.PadX * 0.5f, box.Bottom));
             using var ink = new SKPaint { IsAntialias = true, Color = SKColors.White };
-            canvas.DrawText(text, box.MidX - bounds.Width / 2 - bounds.Left, Baseline(font, box.MidY), SKTextAlign.Left, font, ink);
+            if (layout.Lines.Count == 1)
+            {
+                var line = layout.Lines[0];
+                font.Draw(canvas, line, layout.Size, box.MidX - line.Width / 2, font.Baseline(box.MidY, layout.Size), ink);
+            }
+            else
+            {
+                // Lines share the font's cap height, so a line with descenders sits on the same rhythm as one without.
+                var capHeight = font.CapHeightAt(layout.Size);
+                for (var index = 0; index < layout.Lines.Count; index++)
+                {
+                    var line = layout.Lines[index];
+                    var centre = box.Top + layout.PadY + layout.LineHeight * (index + 0.5f);
+                    font.Draw(canvas, line, layout.Size, box.MidX - line.Width / 2, centre + capHeight / 2, ink);
+                }
+            }
             canvas.Restore();
         });
     }
@@ -293,13 +299,13 @@ internal sealed class EffectFrames : IDisposable
     /// <summary>A name strip near the bottom: an accent bar and white text on a dark box, left or right.</summary>
     internal Overlay? LowerThird(string text, string position, int width, int height)
     {
+        if (TextFont(LowerThirdFontPath) is not { } font) return null;
         var shortSide = Math.Min(width, height);
         var size = (float)Math.Round(shortSide * 0.045, MidpointRounding.AwayFromZero);
-        using var font = new SKFont(Typeface("fonts/dm-sans/DMSans-Bold.ttf"), size) { Edging = SKFontEdging.Antialias, Subpixel = true };
-        font.MeasureText(text, out var bounds);
+        var line = font.Shape(text, size);
         var bar = Math.Max(4, size * 0.18f);
         var pad = size * 0.5f;
-        var boxWidth = Math.Min(width * 0.86, bounds.Width + pad * 2 + bar);
+        var boxWidth = Math.Min(width * 0.86, line.Width + pad * 2 + bar);
         var boxHeight = size * 1.2 + pad * 1.2;
         var margin = shortSide * 0.05;
         var x = position == "bottomRight" ? width - margin - boxWidth : margin;
@@ -313,7 +319,7 @@ internal sealed class EffectFrames : IDisposable
             canvas.Save();
             canvas.ClipRect(new SKRect(box.Left + bar, box.Top, box.Right - bar, box.Bottom));
             using var ink = new SKPaint { IsAntialias = true, Color = SKColors.White };
-            canvas.DrawText(text, box.Left + bar + pad - bounds.Left, Baseline(font, box.MidY), SKTextAlign.Left, font, ink);
+            font.Draw(canvas, line, size, box.Left + bar + pad, font.Baseline(box.MidY, size), ink);
             canvas.Restore();
         });
     }
@@ -342,7 +348,7 @@ internal sealed class EffectFrames : IDisposable
     {
         foreach (var overlay in overlays.Values) overlay?.Image.Dispose();
         overlays.Clear();
-        foreach (var face in typefaces.Values) face?.Dispose();
-        typefaces.Clear();
+        foreach (var font in fonts.Values) font?.Dispose();
+        fonts.Clear();
     }
 }

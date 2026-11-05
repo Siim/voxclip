@@ -1046,9 +1046,11 @@ member VoxClip.Media.Pipeline.ClipPicture :: method internal Orient(VoxClip.Core
 member VoxClip.Media.Pipeline.ClipPicture :: method internal OrientedSize(int,int,VoxClip.Core.Domain.Clips.ProjectClipControls)
 member VoxClip.Media.Pipeline.ClipPicture :: method internal Orients(VoxClip.Core.Domain.Clips.ProjectClipControls)
 member VoxClip.Media.Pipeline.EffectFrames :: field internal Accent
+member VoxClip.Media.Pipeline.EffectFrames :: field internal LowerThirdFontPath
+member VoxClip.Media.Pipeline.EffectFrames :: field internal TitleFontPath
+member VoxClip.Media.Pipeline.EffectFrames :: field private fonts
 member VoxClip.Media.Pipeline.EffectFrames :: field private overlays
 member VoxClip.Media.Pipeline.EffectFrames :: field private sharedRoot
-member VoxClip.Media.Pipeline.EffectFrames :: field private typefaces
 member VoxClip.Media.Pipeline.EffectFrames :: method internal .ctor(VoxClip.Core.Domain.Effects.ClipEffectsRenderInput,string)
 member VoxClip.Media.Pipeline.EffectFrames :: method internal Censor(VoxClip.Core.Domain.Captions.PixelBuffer,SkiaSharp.SKRectI,bool)
 member VoxClip.Media.Pipeline.EffectFrames :: method internal DrawFrame(VoxClip.Core.Domain.Captions.PixelBuffer,double,double,System.Func`2<double,double>,System.Threading.CancellationToken)
@@ -1057,15 +1059,15 @@ member VoxClip.Media.Pipeline.EffectFrames :: method internal DrawPointer(SkiaSh
 member VoxClip.Media.Pipeline.EffectFrames :: method internal DrawProgress(SkiaSharp.SKCanvas,double,string,int,int)
 member VoxClip.Media.Pipeline.EffectFrames :: method internal LowerThird(string,string,int,int)
 member VoxClip.Media.Pipeline.EffectFrames :: method internal Sticker(string,string,double,int,int)
+member VoxClip.Media.Pipeline.EffectFrames :: method internal TextFont(string)
 member VoxClip.Media.Pipeline.EffectFrames :: method internal Title(string,string,int,int)
+member VoxClip.Media.Pipeline.EffectFrames :: method internal TitleLayout(string,string,int,int)
 member VoxClip.Media.Pipeline.EffectFrames :: method internal get_HasPicture()
 member VoxClip.Media.Pipeline.EffectFrames :: method internal get_Input()
 member VoxClip.Media.Pipeline.EffectFrames :: method private .cctor()
-member VoxClip.Media.Pipeline.EffectFrames :: method private Baseline(SkiaSharp.SKFont,float)
 member VoxClip.Media.Pipeline.EffectFrames :: method private Integral(double,double,double,double)
 member VoxClip.Media.Pipeline.EffectFrames :: method private OverlayFor(VoxClip.Core.Domain.Effects.ClipEffect,int,int)
 member VoxClip.Media.Pipeline.EffectFrames :: method private Raster(SkiaSharp.SKRectI,int,int,System.Action`1<SkiaSharp.SKCanvas>)
-member VoxClip.Media.Pipeline.EffectFrames :: method private Typeface(string)
 member VoxClip.Media.Pipeline.EffectFrames :: method private WithOpacity(SkiaSharp.SKCanvas,double,System.Action`1<SkiaSharp.SKCanvas>)
 member VoxClip.Media.Pipeline.EffectFrames :: method private get_Picture()
 member VoxClip.Media.Pipeline.EffectFrames :: method public Dispose()
@@ -1084,6 +1086,70 @@ member VoxClip.Media.Pipeline.EffectFrames+Overlay :: method public op_Equality(
 member VoxClip.Media.Pipeline.EffectFrames+Overlay :: method public op_Inequality(VoxClip.Media.Pipeline.EffectFrames+Overlay,VoxClip.Media.Pipeline.EffectFrames+Overlay)
 member VoxClip.Media.Pipeline.EffectFrames+Overlay :: method public set_Box(SkiaSharp.SKRectI)
 member VoxClip.Media.Pipeline.EffectFrames+Overlay :: method public set_Image(SkiaSharp.SKImage)
+member VoxClip.Media.Pipeline.EffectTextFont :: field private blob
+member VoxClip.Media.Pipeline.EffectTextFont :: field private face
+member VoxClip.Media.Pipeline.EffectTextFont :: field private font
+member VoxClip.Media.Pipeline.EffectTextFont :: field private gate
+member VoxClip.Media.Pipeline.EffectTextFont :: method internal Baseline(float,float)
+member VoxClip.Media.Pipeline.EffectTextFont :: method internal CapHeightAt(float)
+member VoxClip.Media.Pipeline.EffectTextFont :: method internal Draw(SkiaSharp.SKCanvas,VoxClip.Media.Pipeline.EffectTextLine,float,float,float,SkiaSharp.SKPaint)
+member VoxClip.Media.Pipeline.EffectTextFont :: method internal Load(string)
+member VoxClip.Media.Pipeline.EffectTextFont :: method internal Shape(string,float)
+member VoxClip.Media.Pipeline.EffectTextFont :: method internal Width(string,float)
+member VoxClip.Media.Pipeline.EffectTextFont :: method internal get_Ascender()
+member VoxClip.Media.Pipeline.EffectTextFont :: method internal get_CapHeight()
+member VoxClip.Media.Pipeline.EffectTextFont :: method internal get_Descender()
+member VoxClip.Media.Pipeline.EffectTextFont :: method internal get_Typeface()
+member VoxClip.Media.Pipeline.EffectTextFont :: method internal get_UnitsPerEm()
+member VoxClip.Media.Pipeline.EffectTextFont :: method private .ctor(string,SkiaSharp.SKTypeface)
+member VoxClip.Media.Pipeline.EffectTextFont :: method public Dispose()
+member VoxClip.Media.Pipeline.EffectTextLine :: method private .ctor(VoxClip.Media.Pipeline.EffectTextLine)
+member VoxClip.Media.Pipeline.EffectTextLine :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Media.Pipeline.EffectTextLine :: method private get_EqualityContract()
+member VoxClip.Media.Pipeline.EffectTextLine :: method public .ctor(string,ushort[],SkiaSharp.SKPoint[],float)
+member VoxClip.Media.Pipeline.EffectTextLine :: method public Deconstruct(string&,ushort[]&,SkiaSharp.SKPoint[]&,float&)
+member VoxClip.Media.Pipeline.EffectTextLine :: method public Equals(VoxClip.Media.Pipeline.EffectTextLine)
+member VoxClip.Media.Pipeline.EffectTextLine :: method public Equals(object)
+member VoxClip.Media.Pipeline.EffectTextLine :: method public GetHashCode()
+member VoxClip.Media.Pipeline.EffectTextLine :: method public ToString()
+member VoxClip.Media.Pipeline.EffectTextLine :: method public get_Glyphs()
+member VoxClip.Media.Pipeline.EffectTextLine :: method public get_Positions()
+member VoxClip.Media.Pipeline.EffectTextLine :: method public get_Text()
+member VoxClip.Media.Pipeline.EffectTextLine :: method public get_Width()
+member VoxClip.Media.Pipeline.EffectTextLine :: method public op_Equality(VoxClip.Media.Pipeline.EffectTextLine,VoxClip.Media.Pipeline.EffectTextLine)
+member VoxClip.Media.Pipeline.EffectTextLine :: method public op_Inequality(VoxClip.Media.Pipeline.EffectTextLine,VoxClip.Media.Pipeline.EffectTextLine)
+member VoxClip.Media.Pipeline.EffectTextLine :: method public set_Glyphs(ushort[])
+member VoxClip.Media.Pipeline.EffectTextLine :: method public set_Positions(SkiaSharp.SKPoint[])
+member VoxClip.Media.Pipeline.EffectTextLine :: method public set_Text(string)
+member VoxClip.Media.Pipeline.EffectTextLine :: method public set_Width(float)
+member VoxClip.Media.Pipeline.EffectTitleLayout :: field internal MaximumLines
+member VoxClip.Media.Pipeline.EffectTitleLayout :: method internal Make(VoxClip.Media.Pipeline.EffectTextFont,string,string,int,int)
+member VoxClip.Media.Pipeline.EffectTitleLayout :: method internal get_TextWidth()
+member VoxClip.Media.Pipeline.EffectTitleLayout :: method internal get_Texts()
+member VoxClip.Media.Pipeline.EffectTitleLayout :: method private .ctor(VoxClip.Media.Pipeline.EffectTitleLayout)
+member VoxClip.Media.Pipeline.EffectTitleLayout :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Media.Pipeline.EffectTitleLayout :: method private Rounded(double)
+member VoxClip.Media.Pipeline.EffectTitleLayout :: method private get_EqualityContract()
+member VoxClip.Media.Pipeline.EffectTitleLayout :: method public .ctor(System.Collections.Generic.IReadOnlyList`1<VoxClip.Media.Pipeline.EffectTextLine>,float,float,float,float,SkiaSharp.SKRectI)
+member VoxClip.Media.Pipeline.EffectTitleLayout :: method public Deconstruct(System.Collections.Generic.IReadOnlyList`1<VoxClip.Media.Pipeline.EffectTextLine>&,float&,float&,float&,float&,SkiaSharp.SKRectI&)
+member VoxClip.Media.Pipeline.EffectTitleLayout :: method public Equals(VoxClip.Media.Pipeline.EffectTitleLayout)
+member VoxClip.Media.Pipeline.EffectTitleLayout :: method public Equals(object)
+member VoxClip.Media.Pipeline.EffectTitleLayout :: method public GetHashCode()
+member VoxClip.Media.Pipeline.EffectTitleLayout :: method public ToString()
+member VoxClip.Media.Pipeline.EffectTitleLayout :: method public get_Box()
+member VoxClip.Media.Pipeline.EffectTitleLayout :: method public get_LineHeight()
+member VoxClip.Media.Pipeline.EffectTitleLayout :: method public get_Lines()
+member VoxClip.Media.Pipeline.EffectTitleLayout :: method public get_PadX()
+member VoxClip.Media.Pipeline.EffectTitleLayout :: method public get_PadY()
+member VoxClip.Media.Pipeline.EffectTitleLayout :: method public get_Size()
+member VoxClip.Media.Pipeline.EffectTitleLayout :: method public op_Equality(VoxClip.Media.Pipeline.EffectTitleLayout,VoxClip.Media.Pipeline.EffectTitleLayout)
+member VoxClip.Media.Pipeline.EffectTitleLayout :: method public op_Inequality(VoxClip.Media.Pipeline.EffectTitleLayout,VoxClip.Media.Pipeline.EffectTitleLayout)
+member VoxClip.Media.Pipeline.EffectTitleLayout :: method public set_Box(SkiaSharp.SKRectI)
+member VoxClip.Media.Pipeline.EffectTitleLayout :: method public set_LineHeight(float)
+member VoxClip.Media.Pipeline.EffectTitleLayout :: method public set_Lines(System.Collections.Generic.IReadOnlyList`1<VoxClip.Media.Pipeline.EffectTextLine>)
+member VoxClip.Media.Pipeline.EffectTitleLayout :: method public set_PadX(float)
+member VoxClip.Media.Pipeline.EffectTitleLayout :: method public set_PadY(float)
+member VoxClip.Media.Pipeline.EffectTitleLayout :: method public set_Size(float)
 member VoxClip.Media.Pipeline.EncoderCacheDocument :: method private .ctor(VoxClip.Media.Pipeline.EncoderCacheDocument)
 member VoxClip.Media.Pipeline.EncoderCacheDocument :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Media.Pipeline.EncoderCacheDocument :: method private get_EqualityContract()
@@ -2412,6 +2478,9 @@ type VoxClip.Media.Pipeline.AudioCacheMetadata
 type VoxClip.Media.Pipeline.ClipPicture
 type VoxClip.Media.Pipeline.EffectFrames
 type VoxClip.Media.Pipeline.EffectFrames+Overlay
+type VoxClip.Media.Pipeline.EffectTextFont
+type VoxClip.Media.Pipeline.EffectTextLine
+type VoxClip.Media.Pipeline.EffectTitleLayout
 type VoxClip.Media.Pipeline.EncoderCacheDocument
 type VoxClip.Media.Pipeline.EncoderCacheJson
 type VoxClip.Media.Pipeline.EncoderProbe
