@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Mac, Settings › Voices can rebuild your voice from your clearest speech across your videos, checked against your consent recording, with one priced click and a separate step to switch Rewrite to it and remove the old voice; and generated takes are gently tilted to match the tone of your speech beside them.
 - On Mac, your videos teach Rewrite's voice check your voice: speech that already matches your consent recording is remembered per video, so your other phrases in the same car or room pass too; Get Price checks every phrase first, free, and never prices one it would block; Settings › Voices shows how many videos it learned from, with Learn from my videos and Forget learned references
 - On Windows, Ask Claude's translated captions now show in preview, export and the SRT, in each clip's own caption look, with the row's Undo; and screen recordings placed on a Mac render upright over their part of the video
 - On Mac, Rewrite's voice check listens only to the words spoken near a phrase, not to the road noise and pauses around them, so your own noisy videos pass more often; a phrase it still blocks is settled once with ● Say it myself and Keep as recorded instead of looping between Get Price and Make Takes, the other phrases are voiced, and ✦ Make it postable and ✦ Claude does it all keep such a phrase as recorded on their own
