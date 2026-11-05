@@ -176,7 +176,7 @@ extension RewriteSession {
     /// as the note. The consent and the cost sheet ask over it; `sendRun` announces it once they pass.
     func beginRun() {
         sendApproved = false; sendFailure = nil
-        let suggestion = RewriteSuggestions.suggestion(for: instruction)
+        let suggestion = RewriteSuggestions.suggestion(for: instruction, tones: editor.app.allRewriteTones)
         let asked: PanelCard = suggestion.asked.map { .asked(preset: suggestion.title, text: $0) } ?? .asked(preset: nil, text: "“\(suggestion.title)”")
         let stop = PanelAction(id: "stop", title: "Stop") { [weak editor] in editor?.closeRewrite() }
         task.show(.running, headline: PanelHeadline(text: "Rewriting \(task.words.name)…", runningSince: Date(), stop: stop),

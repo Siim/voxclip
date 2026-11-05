@@ -8,6 +8,8 @@ import VoxClipCore
     let model: EditorModel
     @Bindable var state: AskClaudeState
     @FocusState private var fieldFocused: Bool
+    /// "More…" in "Reword these words" shows every tone.
+    @State private var allTones = false
 
     init(model: EditorModel) {
         self.model = model
@@ -45,7 +47,7 @@ import VoxClipCore
             Text("\u{2726} Ask Claude about \(state.label)").font(VCType.title3.font(.semibold))
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("voxclip.askClaude.title")
-            TextField("blur the invoice on screen and bleep the amount", text: $state.text, axis: .vertical)
+            TextField(AskClaudeState.placeholder, text: $state.text, axis: .vertical)
                 .lineLimit(1...4)
                 .textFieldStyle(.plain)
                 .vcFieldChrome(multiline: true)
@@ -54,8 +56,22 @@ import VoxClipCore
                 .onSubmit { model.sendAskClaude() }
                 .accessibilityLabel("What should Claude do?")
                 .accessibilityIdentifier("voxclip.askClaude.field")
-            // The chips only fill the field; while Claude works they step aside rather than show disabled.
+            // Two labelled groups (design.md §6.8): rewording runs Rewrite on these words at once; the video edits only fill
+            // the field. Tones never join the effect group. While Claude works both step aside rather than show disabled.
+            if !state.asking, let scope = model.askClaudeRewriteScope {
+                groupLabel("Reword these words")
+                RewriteToneChips(items: allTones ? model.rewriteStripItems : model.askClaudeQuickTones, place: "askClaude",
+                                 choose: { model.rewriteAs($0, scope: scope) }) {
+                    if !allTones {
+                        RewriteToneGhostChip(title: "More…", identifier: "voxclip.askClaude.moreTones") { allTones = true }
+                    }
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Reword these words")
+                .accessibilityIdentifier("voxclip.askClaude.rewordGroup")
+            }
             if !state.asking {
+                groupLabel("Edit the video here")
                 ExpressionFlow(spacing: VCTokens.spacingChipGap) {
                     ForEach(AskClaudeState.chips, id: \.label) { chip in
                         Button(chip.label) { state.text = chip.text; fieldFocused = true }
@@ -82,6 +98,10 @@ import VoxClipCore
                     .accessibilityIdentifier("voxclip.askClaude.error")
             }
         }
+    }
+
+    private func groupLabel(_ text: String) -> some View {
+        Text(text).font(.system(size: 11)).foregroundStyle(DesignValues.color("text.tertiary")).accessibilityAddTraits(.isHeader)
     }
 
     // MARK: The change list

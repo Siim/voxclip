@@ -317,6 +317,12 @@ import VoxClipCore
                     if editor.canMakeItPostable(clip.id) {
                         MakeItRowButton(model: editor, clipID: clip.id) { editor.makeItPostable(clip.id) }
                     }
+                    if shell.canRewriteExplorerClip(clip.id) {
+                        RewriteAsMenu(model: editor, label: "Rewrite clip \(number) as", place: "explorer.\(clip.id)",
+                                      choose: { shell.rewriteExplorerClip(clip.id, as: $0) }, compact: true)
+                            .focusable(false)
+                            .columnLayoutEvidence("explorer.clipRewriteAs", text: "Rewrite as")
+                    }
                     Menu {
                         ExplorerClipMenu(shell: shell, editor: editor, clip: clip, suggested: suggested)
                     } label: {
@@ -403,6 +409,9 @@ import VoxClipCore
         }
         if shell.canRewriteExplorerClip(clip.id) {
             Button("Rewrite Clip \(editor.clipNumber(clip.id) ?? 0)") { shell.rewriteExplorerClip(clip.id) }
+            Menu("Rewrite As") {
+                RewriteAsMenuItems(model: editor, place: "explorerMenu.\(clip.id)") { shell.rewriteExplorerClip(clip.id, as: $0) }
+            }
         }
         // ✦ Ask Claude on the whole clip (design.md §6.8): the clip opens and the right panel takes the request.
         // Offered only when it can act: an editable project with an AI, on a kept clip.

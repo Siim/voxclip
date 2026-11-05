@@ -10,6 +10,7 @@ import VoxClipCore
             TranscriptionSettings(app: app).tabItem { Label("Transcription", systemImage: "waveform") }.tag("transcription")
             ProviderSettings(app: app).tabItem { Label("AI", systemImage: "key") }.tag("ai")
             ExportSettings(app: app).tabItem { Label("Export", systemImage: "square.and.arrow.up") }.tag("export")
+            ClipsSettings(app: app).tabItem { Label("Clips", systemImage: "film.stack") }.tag("clips")
             if app.voiceLabSettingsVisible {
                 VoiceLabSettings(app: app, session: app.voiceLabSession).tabItem { Label("Voice Lab", systemImage: "waveform.badge.mic") }.tag("voiceLab")
             }

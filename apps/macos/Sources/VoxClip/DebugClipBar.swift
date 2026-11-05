@@ -67,8 +67,8 @@ import VoxClipCore
         // DebugShell checks the bar's region, 224, 38, 652 × 34 (notes.md §1), at every size; here it is the bar's own layout.
         settle()
         let end = bar.bounds.width
-        check("with no selection the bar shows Rewrite (\"Rewrite full take\"), Tighten, Hook and \"Ask about Full Take…\", the picker 13 from its end",
-              !bar.rewrite.isHidden && bar.rewrite.accessibilityLabel() == "Rewrite full take" && !bar.ask.isHidden && bar.ask.placeholder == "Ask about Full Take…"
+        check("with no selection the bar shows Rewrite (\"Rewrite full take\"), Tighten, Hook and \"What should change in this video? Or pick a tone ↓\", the picker 13 from its end",
+              !bar.rewrite.isHidden && bar.rewrite.accessibilityLabel() == "Rewrite full take" && !bar.ask.isHidden && bar.ask.placeholder == "What should change in this video? Or pick a tone ↓"
                   && !bar.tighten.isHidden && !bar.hook.isHidden && !bar.picker.isHidden && near(bar.picker.frame.maxX, end - 13))
         check("VoiceOver reads the bar as the group \"Full Take tools\" with the picker \"AI: Apple on-device, On-device model\" (\(bar.picker.accessibilityLabel() ?? ""))",
               bar.accessibilityRole() == .group && bar.accessibilityLabel() == "Full Take tools" && bar.picker.accessibilityLabel() == "AI: Apple on-device, On-device model")

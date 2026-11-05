@@ -496,6 +496,83 @@ private final class Calls: Sendable {
         }
     }
 
+    // MARK: Tones (design.md §6.6 Tone row, §6.7 review row)
+
+    @Test func theCardsToneReachesThePlannerAndNeverRewordDisablesIt() async throws {
+        let fixture = try fixture()
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let editor = fixture.editor
+        // No clip style yet: Auto offers the catalogue's tones.
+        guard case .auto(let offered)? = editor.makeItRequest("clip-main")?.tone else { Issue.record("not auto"); return }
+        #expect(offered.map(\.id).first == "viral-youtuber" && offered.count == 8)
+        // The card's Tone row stores the tone with the clip style and the Settings default.
+        step(fixture.undo) { editor.updateClipStyle { $0.tone = .tone("viral-youtuber") } }
+        #expect(editor.project.clipStyle?.tone == .tone("viral-youtuber") && editor.savedClipStyle?.tone == .tone("viral-youtuber"))
+        guard case .fixed(let tone)? = editor.makeItRequest("clip-main")?.tone else { Issue.record("not fixed"); return }
+        #expect(tone.id == "viral-youtuber" && tone.title == "Viral YouTuber")
+        #expect(editor.makeItStyle.plannerNote?.contains("or what the tone needs") == true)
+        // A tone this Mac does not know plans as Auto.
+        step(fixture.undo) { editor.updateClipStyle { $0.tone = .tone("my-gone") } }
+        if case .auto? = editor.makeItRequest("clip-main")?.tone {} else { Issue.record("an unknown tone should plan as Auto") }
+        // Rewording "Never reword" keeps the words: the planner gets As I said it whatever the tone.
+        step(fixture.undo) { editor.updateClipStyle { $0.tone = .tone("funny"); $0.rewording = .off } }
+        #expect(editor.makeItRequest("clip-main")?.tone == .asSaid && editor.project.clipStyle?.tone == .tone("funny"))
+        let row = ClipStyleToneRow(editor: editor, style: try #require(editor.project.clipStyle))
+        let host = NSHostingView(rootView: row)
+        host.layoutSubtreeIfNeeded()
+        #expect(host.fittingSize.height > 0)
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(contentsOf: root.appendingPathComponent("Sources/VoxClip/ClipStyleToneRow.swift"), encoding: .utf8)
+        #expect(source.contains(".disabled(never || catalog == nil)") && source.contains("Rewording is “Never reword”"))
+        // A preset chip keeps the card's Tone.
+        step(fixture.undo) { editor.chooseClipPreset(.punchy) }
+        #expect(editor.project.clipStyle?.tone == .tone("funny") && editor.project.clipStyle?.preset == .punchy)
+    }
+
+    @Test func theReviewNamesTheToneAndChangeReplansInOneUndoStep() async throws {
+        var plan = Self.plan(music: false)
+        plan.tone = .init(id: "viral-youtuber", title: "Viral YouTuber", summary: "Hook first, two lines tightened")
+        let fixture = try fixture(plan: plan, voice: MakeItRewriteOutcome(result: .voiced(segments: []), spent: Decimal(string: "0.18")!))
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let editor = fixture.editor
+        let tones = Calls()
+        let services = try #require(editor.makeIt.services)
+        editor.makeIt.services = MakeItServices(plan: { request, editor, progress in
+            tones.record(request.tone.map { tone -> String in
+                switch tone { case .auto: "auto"; case .asSaid: "as-said"; case .fixed(let tone): tone.id }
+            } ?? "none")
+            return try await services.plan(request, editor, progress)
+        }, voice: services.voice, voiceAvailable: services.voiceAvailable)
+        var first = try await run(fixture)
+        #expect(first.phase == .ready)
+        let row = try #require(first.rows.first)
+        #expect(row.id == "tone" && row.text == "✦ Claude wrote it as Viral YouTuber")
+        #expect(row.detail == "Hook first, two lines tightened · voiced 1 phrase, $0.18")
+        #expect(row.change == .tone && row.undoable && row.play != nil)
+        // Change shows the tones as chips (the catalogue, then As I said it), not Rewrite's fixes.
+        editor.makeItChange(.tone, run: first)
+        #expect(first.openChoice == "tone")
+        #expect(editor.makeItToneChoices.map(\.id) == ["viral-youtuber", "punchy-reel", "storyteller", "clear-explainer", "linkedin-pro",
+                                                       "funny", "hype-launch", "calm-sincere", "as-said"])
+        // Picking Punchy Reel takes this clip's decisions back and plans it again in that tone: one undo step.
+        let afterFirst = editor.project, steps = editor.undoSteps
+        editor.makeItChooseTone("punchy-reel", run: first)
+        first = try #require(editor.makeIt.run(for: "clip-main"))
+        await first.task?.value
+        #expect(first.phase == .ready)
+        #expect(tones.all == ["auto", "punchy-reel"])
+        #expect(editor.undoSteps == steps + 1 && fixture.undo.undoActionName == "Change tone")
+        // The second plan's request also kept the run's cap rules: voicing went through the stub within a budget.
+        #expect(fixture.calls.all.filter { $0.hasPrefix("voice we finally ship budget ") }.count == 2)
+        fixture.undo.undo()
+        #expect(editor.project == afterFirst)
+        fixture.undo.redo()
+        // As I said it takes the tone's rewording back and names the creator's choice.
+        let ready = try #require(editor.makeIt.run(for: "clip-main"))
+        editor.makeItChooseTone("as-said", run: ready)
+        #expect(ready.rows.first?.text == "You chose As I said it" && ready.rows.first?.change == nil)
+    }
+
     @Test func clipMenuAndPaletteOfferMakeItPostable() throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let app = try String(contentsOf: root.appendingPathComponent("Sources/VoxClip/VoxClipApp.swift"), encoding: .utf8)
