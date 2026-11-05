@@ -48,6 +48,7 @@ EXACT = ['shared/fixtures/voice-lab/pace-cases.json', 'shared/fixtures/voice-lab
          'shared/fixtures/clip-render/clip-render-cases.json',
          'shared/fixtures/clips-mode/clips-mode-settings-cases.json',
          'shared/fixtures/clip-style/caption-look-cases.json',
+         'shared/fixtures/caption-translations/caption-translation-cases.json',
          'shared/data/rewrite-tones.json',
          'shared/schemas/project.schema.json']
 REL_TOL = 1e-10
@@ -92,6 +93,9 @@ def main():
     # Each clip's caption look (doc/design.md section 6.6): the pick's optional keys and the resolution vectors.
     subprocess.run([sys.executable, str(root / "tools/schemas/generate_caption_pick_schema.py")], check=True)
     subprocess.run([sys.executable, str(root / "tools/fixtures/clip-style/generate_caption_looks.py")], check=True)
+    # Ask Claude's translated captions (doc/spec/ai.md section 18.2): the schema field and its vectors.
+    subprocess.run([sys.executable, str(root / "tools/schemas/generate_caption_translations_schema.py")], check=True)
+    subprocess.run([sys.executable, str(root / "tools/fixtures/caption-translations/generate_caption_translations.py")], check=True)
     # The renderer decisions both platforms reproduce for clip controls and effects (design.md sections 6.8, 6.9).
     subprocess.run([sys.executable, str(root / "tools/fixtures/clip-render/generate_clip_render.py")], check=True)
     # Claude mode's settings vectors (doc/design.md section 6.6), replayed by both Cores.

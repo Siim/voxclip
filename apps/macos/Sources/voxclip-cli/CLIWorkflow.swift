@@ -264,7 +264,7 @@ enum CLIWorkflow {
             output: output, voiceLab: voiceLab, dataRoot: DataLocations().root)
         let render: RenderRequest
         switch try await captions(.export(request,
-            state: effectiveState, activeClip: activeClip, overrides: project.captions.overrides, language: project.transcript?.language)) {
+            state: effectiveState, activeClip: activeClip, overrides: project.captions.overrides, language: project.transcript?.language, project: project)) {
         case .export(let prepared): render = prepared
         case .render: throw VoxClipError.exportFailed("Invalid caption operation")
         }
@@ -319,7 +319,7 @@ enum CLIWorkflow {
     }
 
     private enum CaptionOperation {
-        case export(RenderRequest, state: EditState?, activeClip: ClipRange?, overrides: [String: JSONValue], language: String?)
+        case export(RenderRequest, state: EditState?, activeClip: ClipRange?, overrides: [String: JSONValue], language: String?, project: Project)
         case render(RenderCaption)
     }
 
@@ -330,7 +330,12 @@ enum CLIWorkflow {
 
     private static func captions(_ operation: CaptionOperation) async throws -> CaptionResult {
         switch operation {
-        case .export(var request, let state, let activeClip, let overrides, let language):
+        case .export(var request, let state, let activeClip, let overrides, let language, let edited):
+            // Translated captions (ai.md §18.2) after the × masks, as in the app.
+            let effects = request.effects?.effects ?? []
+            func translated(_ words: [CaptionWord]) -> [CaptionWord] {
+                CaptionTranslations.applying(words, project: edited, clipID: edited.edits.activeClipId, effects: effects)
+            }
             if let voiceLab = request.voiceLab {
                 if let style = request.style {
                     let project = voiceLab.project, plan = voiceLab.prepared.outputPlan
@@ -339,7 +344,7 @@ enum CLIWorkflow {
                         language: language ?? "und", duration: plan.duration,
                         captions: .init(overrides: project.captions.overrides, position: project.captions.position,
                                         positionByAspect: project.captions.positionByAspect),
-                        words: ClipEffects.maskingBleeps(plan.captions, effects: request.effects?.effects ?? [])
+                        words: translated(ClipEffects.maskingBleeps(plan.captions, effects: effects))
                             .map { .init(id: $0.id, text: $0.text, start: $0.start, end: $0.end) })
                     try Task.checkCancellation()
                     let pipeline = try CaptionPipeline(shared: SharedResources.locate())
@@ -353,7 +358,7 @@ enum CLIWorkflow {
             try Task.checkCancellation()
             // Bleeped and muted words read as × marks, as in the app (ai.md §18.5).
             let segments = ClipEffects.maskingBleeps(try buildSegments(state, activeClip: activeClip), effects: request.effects?.effects ?? [])
-            let words = captionCopy(segments, plan: request.plan)
+            let words = translated(captionCopy(segments, plan: request.plan))
             let pipeline = try CaptionPipeline(shared: SharedResources.locate())
             let resolution = await pipeline.resolve(style, overrides: overrides, frame: request.output.size)
             try Task.checkCancellation()

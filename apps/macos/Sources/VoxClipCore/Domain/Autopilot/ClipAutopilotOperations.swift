@@ -175,7 +175,7 @@ public enum ClipAutopilotMapping {
     /// motion cues, share text, effects, music ducking, the clip's look and speed (clip controls, design.md §6.9), and a
     /// stretch that covers a whole clip (`ClipControlsProject.wholeClip`) as that clip's speed, and the hook as the clip's
     /// title card (`ClipHookTitle`, timed on the clip as the operations before it left it). Rewrites, music, a stretch over
-    /// part of a clip and translated captions come back as `pending`. Pure: one undo step is the caller's choice.
+    /// part of a clip come back as `pending`; translated captions are stored as `captionTranslations`. Pure: one undo step is the caller's choice.
     public static func apply(_ operations: [ClipAutopilotOperation], to project: Project) throws -> (project: Project, pending: [ClipAutopilotOperation]) {
         var result = project
         var pending: [ClipAutopilotOperation] = []
@@ -200,7 +200,10 @@ public enum ClipAutopilotMapping {
             case .hook(let clipID, let text):
                 guard let card = ClipHookTitle.effect(hook: text, clipID: clipID, in: result) else { pending.append(operation); continue }
                 effects.append(card)
-            case .rewrite, .music, .translateCaptions: pending.append(operation)
+            case .translateCaptions(let clipID, let start, let end, let language, let text):
+                // The captions of those words in another language (ai.md §18.2); the voice and transcript stay.
+                result = try CaptionTranslations.translating(start...end, clipID: clipID, language: language, text: text, in: result)
+            case .rewrite, .music: pending.append(operation)
             }
         }
         result = try ClipEffects.adding(effects, to: result)

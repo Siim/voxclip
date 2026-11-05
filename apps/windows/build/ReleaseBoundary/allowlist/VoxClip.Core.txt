@@ -413,6 +413,7 @@ attribute VoxClip.Core.Domain.Shared.ExportQuality :: field public High @ System
 attribute VoxClip.Core.Domain.Shared.ExportQuality :: field public Standard @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("standard")
 attribute VoxClip.Core.Domain.Shared.ExportQuality @ System.Text.Json.Serialization.JsonConverterAttribute("System.Text.Json.Serialization.JsonStringEnumConverter`1[VoxClip.Core.Domain.Shared.ExportQuality], System.Text.Json")
 attribute VoxClip.Core.Domain.Shared.FrameRate @ System.Text.Json.Serialization.JsonConverterAttribute("VoxClip.Core.Domain.Shared.FrameRateJsonConverter")
+attribute VoxClip.Core.Domain.Shared.Project :: property CaptionTranslations @ System.Text.Json.Serialization.JsonIgnoreAttribute()
 attribute VoxClip.Core.Domain.Shared.Project :: property ClipControls @ System.Text.Json.Serialization.JsonIgnoreAttribute()
 attribute VoxClip.Core.Domain.Shared.Project :: property ClipEffects @ System.Text.Json.Serialization.JsonIgnoreAttribute()
 attribute VoxClip.Core.Domain.Shared.Project :: property ClipStyle @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
@@ -420,6 +421,8 @@ attribute VoxClip.Core.Domain.Shared.Project :: property ContextDemo @ System.Te
 attribute VoxClip.Core.Domain.Shared.Project :: property Extensions @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.Shared.Project :: property MotionCues @ System.Text.Json.Serialization.JsonIgnoreAttribute()
 attribute VoxClip.Core.Domain.Shared.Project :: property Music @ System.Text.Json.Serialization.JsonIgnoreAttribute()
+attribute VoxClip.Core.Domain.Shared.Project :: property PersistedCaptionTranslations @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.Shared.Project :: property PersistedCaptionTranslations @ System.Text.Json.Serialization.JsonPropertyNameAttribute("captionTranslations")
 attribute VoxClip.Core.Domain.Shared.Project :: property PersistedClipControls @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.Shared.Project :: property PersistedClipControls @ System.Text.Json.Serialization.JsonPropertyNameAttribute("clipControls")
 attribute VoxClip.Core.Domain.Shared.Project :: property PersistedClipEffects @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
@@ -3055,6 +3058,39 @@ member VoxClip.Core.Domain.Captions.CaptionTransform :: method public op_Inequal
 member VoxClip.Core.Domain.Captions.CaptionTransform :: method public set_Alpha(double)
 member VoxClip.Core.Domain.Captions.CaptionTransform :: method public set_Dy(double)
 member VoxClip.Core.Domain.Captions.CaptionTransform :: method public set_Scale(double)
+member VoxClip.Core.Domain.Captions.CaptionTranslation :: method private .ctor(VoxClip.Core.Domain.Captions.CaptionTranslation)
+member VoxClip.Core.Domain.Captions.CaptionTranslation :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Captions.CaptionTranslation :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Captions.CaptionTranslation :: method public .ctor(string,string,string,string,string,string)
+member VoxClip.Core.Domain.Captions.CaptionTranslation :: method public Deconstruct(string&,string&,string&,string&,string&,string&)
+member VoxClip.Core.Domain.Captions.CaptionTranslation :: method public Equals(VoxClip.Core.Domain.Captions.CaptionTranslation)
+member VoxClip.Core.Domain.Captions.CaptionTranslation :: method public Equals(object)
+member VoxClip.Core.Domain.Captions.CaptionTranslation :: method public GetHashCode()
+member VoxClip.Core.Domain.Captions.CaptionTranslation :: method public ToString()
+member VoxClip.Core.Domain.Captions.CaptionTranslation :: method public get_ClipId()
+member VoxClip.Core.Domain.Captions.CaptionTranslation :: method public get_EndWordId()
+member VoxClip.Core.Domain.Captions.CaptionTranslation :: method public get_Id()
+member VoxClip.Core.Domain.Captions.CaptionTranslation :: method public get_Language()
+member VoxClip.Core.Domain.Captions.CaptionTranslation :: method public get_StartWordId()
+member VoxClip.Core.Domain.Captions.CaptionTranslation :: method public get_Text()
+member VoxClip.Core.Domain.Captions.CaptionTranslation :: method public op_Equality(VoxClip.Core.Domain.Captions.CaptionTranslation,VoxClip.Core.Domain.Captions.CaptionTranslation)
+member VoxClip.Core.Domain.Captions.CaptionTranslation :: method public op_Inequality(VoxClip.Core.Domain.Captions.CaptionTranslation,VoxClip.Core.Domain.Captions.CaptionTranslation)
+member VoxClip.Core.Domain.Captions.CaptionTranslation :: method public set_ClipId(string)
+member VoxClip.Core.Domain.Captions.CaptionTranslation :: method public set_EndWordId(string)
+member VoxClip.Core.Domain.Captions.CaptionTranslation :: method public set_Id(string)
+member VoxClip.Core.Domain.Captions.CaptionTranslation :: method public set_Language(string)
+member VoxClip.Core.Domain.Captions.CaptionTranslation :: method public set_StartWordId(string)
+member VoxClip.Core.Domain.Captions.CaptionTranslation :: method public set_Text(string)
+member VoxClip.Core.Domain.Captions.CaptionTranslations :: field private Keys
+member VoxClip.Core.Domain.Captions.CaptionTranslations :: field private MaximumEntries
+member VoxClip.Core.Domain.Captions.CaptionTranslations :: field private MaximumTextScalars
+member VoxClip.Core.Domain.Captions.CaptionTranslations :: field public ExportUnsupportedMessage
+member VoxClip.Core.Domain.Captions.CaptionTranslations :: method private .cctor()
+member VoxClip.Core.Domain.Captions.CaptionTranslations :: method private Matches(string,string)
+member VoxClip.Core.Domain.Captions.CaptionTranslations :: method private Require(bool)
+member VoxClip.Core.Domain.Captions.CaptionTranslations :: method public Pruned(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Captions.CaptionTranslation>,System.Collections.Generic.IReadOnlySet`1<string>,System.Collections.Generic.IEnumerable`1<string>)
+member VoxClip.Core.Domain.Captions.CaptionTranslations :: method public Validate(VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Domain.Captions.CaptionTranslations :: method public ValidateWire(System.Text.Json.JsonElement)
 member VoxClip.Core.Domain.Captions.CaptionWordBox :: method private .ctor(VoxClip.Core.Domain.Captions.CaptionWordBox)
 member VoxClip.Core.Domain.Captions.CaptionWordBox :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Captions.CaptionWordBox :: method private get_EqualityContract()
@@ -6054,6 +6090,7 @@ member VoxClip.Core.Domain.Shared.PreviewPosition :: method public op_Inequality
 member VoxClip.Core.Domain.Shared.PreviewPosition :: method public set_EditedTime(double)
 member VoxClip.Core.Domain.Shared.PreviewPosition :: method public set_IsPlaying(bool)
 member VoxClip.Core.Domain.Shared.PreviewPosition :: method public set_SourceTime(double)
+member VoxClip.Core.Domain.Shared.Project :: field private captionTranslations
 member VoxClip.Core.Domain.Shared.Project :: field private clipControls
 member VoxClip.Core.Domain.Shared.Project :: field private clipEffects
 member VoxClip.Core.Domain.Shared.Project :: field private motionCues
@@ -6068,6 +6105,7 @@ member VoxClip.Core.Domain.Shared.Project :: method public Equals(object)
 member VoxClip.Core.Domain.Shared.Project :: method public GetHashCode()
 member VoxClip.Core.Domain.Shared.Project :: method public ToString()
 member VoxClip.Core.Domain.Shared.Project :: method public get_Ai()
+member VoxClip.Core.Domain.Shared.Project :: method public get_CaptionTranslations()
 member VoxClip.Core.Domain.Shared.Project :: method public get_Captions()
 member VoxClip.Core.Domain.Shared.Project :: method public get_ClipControls()
 member VoxClip.Core.Domain.Shared.Project :: method public get_ClipEffects()
@@ -6083,6 +6121,7 @@ member VoxClip.Core.Domain.Shared.Project :: method public get_Media()
 member VoxClip.Core.Domain.Shared.Project :: method public get_ModifiedAt()
 member VoxClip.Core.Domain.Shared.Project :: method public get_MotionCues()
 member VoxClip.Core.Domain.Shared.Project :: method public get_Music()
+member VoxClip.Core.Domain.Shared.Project :: method public get_PersistedCaptionTranslations()
 member VoxClip.Core.Domain.Shared.Project :: method public get_PersistedClipControls()
 member VoxClip.Core.Domain.Shared.Project :: method public get_PersistedClipEffects()
 member VoxClip.Core.Domain.Shared.Project :: method public get_PersistedMotionCues()
@@ -6096,6 +6135,7 @@ member VoxClip.Core.Domain.Shared.Project :: method public get_VoiceLab()
 member VoxClip.Core.Domain.Shared.Project :: method public op_Equality(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Domain.Shared.Project :: method public op_Inequality(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Domain.Shared.Project :: method public set_Ai(VoxClip.Core.Domain.Shared.ProjectAi)
+member VoxClip.Core.Domain.Shared.Project :: method public set_CaptionTranslations(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Captions.CaptionTranslation>)
 member VoxClip.Core.Domain.Shared.Project :: method public set_Captions(VoxClip.Core.Domain.Shared.ProjectCaptions)
 member VoxClip.Core.Domain.Shared.Project :: method public set_ClipControls(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.ProjectClipControls>)
 member VoxClip.Core.Domain.Shared.Project :: method public set_ClipEffects(System.Collections.Generic.IReadOnlyList`1<System.Text.Json.JsonElement>)
@@ -6111,6 +6151,7 @@ member VoxClip.Core.Domain.Shared.Project :: method public set_Media(VoxClip.Cor
 member VoxClip.Core.Domain.Shared.Project :: method public set_ModifiedAt(System.DateTimeOffset)
 member VoxClip.Core.Domain.Shared.Project :: method public set_MotionCues(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ContextDemo.MotionCue>)
 member VoxClip.Core.Domain.Shared.Project :: method public set_Music(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Music.ProjectMusic>)
+member VoxClip.Core.Domain.Shared.Project :: method public set_PersistedCaptionTranslations(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Captions.CaptionTranslation>)
 member VoxClip.Core.Domain.Shared.Project :: method public set_PersistedClipControls(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.ProjectClipControls>)
 member VoxClip.Core.Domain.Shared.Project :: method public set_PersistedClipEffects(System.Collections.Generic.IReadOnlyList`1<System.Text.Json.JsonElement>)
 member VoxClip.Core.Domain.Shared.Project :: method public set_PersistedMotionCues(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ContextDemo.MotionCue>)
@@ -14597,6 +14638,8 @@ type VoxClip.Core.Domain.Captions.CaptionTextTransformValue
 type VoxClip.Core.Domain.Captions.CaptionTimeline
 type VoxClip.Core.Domain.Captions.CaptionTrack
 type VoxClip.Core.Domain.Captions.CaptionTransform
+type VoxClip.Core.Domain.Captions.CaptionTranslation
+type VoxClip.Core.Domain.Captions.CaptionTranslations
 type VoxClip.Core.Domain.Captions.CaptionWordBox
 type VoxClip.Core.Domain.Captions.CaptionWordFrame
 type VoxClip.Core.Domain.Captions.CaptionWordHints

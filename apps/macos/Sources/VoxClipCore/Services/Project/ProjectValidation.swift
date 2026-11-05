@@ -24,7 +24,7 @@ enum ProjectValidation {
     static func validate(_ raw: JSONValue) throws {
         try ProjectMigrations.checkVersion(raw)
         let isV4 = try map(raw)["schemaVersion"] == .number(4)
-        let root = try object(raw, required: "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", optional: "title extensions clipStyle" + (isV4 ? " contextDemo motionCues music clipEffects clipControls" : ""))
+        let root = try object(raw, required: "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", optional: "title extensions clipStyle" + (isV4 ? " contextDemo motionCues music clipEffects clipControls captionTranslations" : ""))
         if let clipStyle = root["clipStyle"] {
             let style = try object(clipStyle, required: "preset captions music maxLengthSec shapes rewording captionPicks", optional: "tone")
             for (_, pick) in try map(style["captionPicks"]) {
@@ -112,6 +112,7 @@ enum ProjectValidation {
         if let music = root["music"] { try MusicProject.validateWire(music) }
         if let effects = root["clipEffects"] { try ClipEffects.validateWire(effects) }
         if let controls = root["clipControls"] { try ClipControlsProject.validateWire(controls) }
+        if let translations = root["captionTranslations"] { try CaptionTranslations.validateWire(translations) }
         try validateDates(raw)
     }
 

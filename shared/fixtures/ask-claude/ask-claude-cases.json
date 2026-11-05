@@ -1084,7 +1084,15 @@
             13
           ],
           "language": "es",
-          "text": "cuatro mil doscientos dólares,"
+          "text": "cuatro mil doscientos dólares,",
+          "translation": {
+            "id": "tr-1",
+            "clipId": "clip-main",
+            "startWordId": "w10",
+            "endWordId": "w14",
+            "language": "es",
+            "text": "cuatro mil doscientos dólares,"
+          }
         }
       ],
       "repairs": 3

@@ -175,11 +175,14 @@ struct ExportRecord: Codable, Equatable {
         let captionsOn = project.captions.styleId != "off"
         let captions = Captions(styleId: project.captions.styleId, overrides: captionsOn ? project.captions.overrides : nil, position: captionsOn ? position : nil)
         let effects = ClipEffects.rendered(in: project, clipID: clip?.id)
-        var words = captionCopy(ClipEffects.maskingBleeps(segments, effects: effects), plan: plan)
+        // Translated captions (ai.md §18.2) are part of what the file shows.
+        var words = CaptionTranslations.applying(captionCopy(ClipEffects.maskingBleeps(segments, effects: effects), plan: plan),
+                                                 project: project, clipID: clip?.id, effects: effects)
         var voice: VoiceInput?
         if project.schemaVersion >= 3 {
             let prepared = try VoiceLabRenderContract.prepare(project, scope: clip.map { .clip($0.id) } ?? .full, labelPosition: labelPosition)
             words = ClipEffects.maskingBleeps(prepared.outputPlan.captions, effects: effects)
+            words = CaptionTranslations.applying(words, project: project, clipID: clip?.id, effects: effects)
             let pieces = prepared.outputPlan.pieces.map(VoicePiece.init)
             let recipes = prepared.selectedSegmentRecipes.map { (selected: VoiceLabSelectedRecipe) -> VoiceRecipe in
                 let recipe = selected.recipe

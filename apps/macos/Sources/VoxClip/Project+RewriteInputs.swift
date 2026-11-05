@@ -45,6 +45,7 @@ extension Project {
         project.music = []
         project.clipEffects = []
         project.clipControls = []
+        project.captionTranslations = []
         project.contextDemo = nil
         project.edits.activeClipId = nil
         project.edits.clips = clip.map { [ClipRange(id: $0.id, startWordId: $0.startWordId, endWordId: $0.endWordId)] } ?? []

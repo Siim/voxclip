@@ -309,7 +309,6 @@ extension EditorModel {
     static func laterReason(_ operation: ClipAutopilotOperation) -> String {
         switch operation.action {
         case .stretch: return "A clip plays at one speed. Ask on a clip to change its speed. Nothing changed."
-        case .translateCaptions: return "Translated captions are not rendered yet. Nothing changed."
         case .musicDucking: return "This clip has no music to duck."
         default: return "Not available yet. Nothing changed."
         }
@@ -440,6 +439,9 @@ extension EditorModel {
                     entry.ducking = original.ducking
                     next = try MusicProject.setting(entry, clipId: clip, in: next)
                 }
+            case .translateCaptions(let clip, let start, let end, _, _):
+                // The words' captions go back to what they showed before the answer.
+                next = try CaptionTranslations.untranslating(start...end, clipID: clip, base: base, from: next)
             case .stretch:
                 // The clip's speed goes back to what it was before the answer; its other controls stay.
                 guard let clip = Self.stretchClip(operation, in: next) else { break }

@@ -1047,7 +1047,7 @@ struct EditorRenderSnapshot {
         guard let changed = history?.state else { return }
         guard changed != state || next != project else { return }
         next.edits = changed.projectEdits
-        if case .removeClip(let id) = command { next.motionCues.removeAll { $0.clipID == id }; next.music.removeAll { $0.clipId == id }; next.clipControls.removeAll { $0.clipId == id } }
+        if case .removeClip(let id) = command { next.motionCues.removeAll { $0.clipID == id }; next.music.removeAll { $0.clipId == id }; next.clipControls.removeAll { $0.clipId == id }; next.captionTranslations.removeAll { $0.clipId == id } }
         let clipIDs = Set(changed.clips.map(\.id))
         next.share.captions = next.share.captions.filter { $0.key == "full" || clipIDs.contains($0.key) }
         // Only the scope changed: a tab switch, not an edit (impl-plan item 16).
@@ -1075,6 +1075,7 @@ struct EditorRenderSnapshot {
         next.motionCues.removeAll { removedClips.contains($0.clipID) }
         next.music.removeAll { $0.clipId.map(removedClips.contains) ?? false }
         next.clipControls.removeAll { removedClips.contains($0.clipId) }
+        next.captionTranslations.removeAll { $0.clipId.map(removedClips.contains) ?? false }
         let clipIDs = Set(changed.clips.map(\.id))
         next.share.captions = next.share.captions.filter { $0.key == "full" || clipIDs.contains($0.key) }
         if onlyScopeDiffers(next) { return setScope(next.edits.activeClipId) }
@@ -1502,7 +1503,8 @@ struct EditorRenderSnapshot {
         let captionSegments = segments.map { ClipEffects.maskingBleeps($0, effects: effects) }
         // Each clip renders in its own caption look (design.md §6.6): preview, export and the SRT lay out with it.
         let layout = try await buildCaptions(segments: captionSegments, plan: plan, output: output, forPreview: target == nil,
-                                            project: project.resolvingCaptions(forClip: clip?.id), voiceLab: voiceLab.map { ClipEffects.maskingBleeps($0.prepared.outputPlan, effects: effects) })
+                                            project: project.resolvingCaptions(forClip: clip?.id), voiceLab: voiceLab.map { ClipEffects.maskingBleeps($0.prepared.outputPlan, effects: effects) },
+                                            translations: (project, clip?.id, effects))
         try Task.checkCancellation()
         if target == nil, snapshot.project != self.project || isLeaving { throw CancellationError() }
         let request = RenderRequest(sourceURL: URL(fileURLWithPath: project.media.source.absolutePath), plan: plan, captions: layout?.track ?? CaptionTrack(),
@@ -1511,11 +1513,12 @@ struct EditorRenderSnapshot {
             reduceMotion: snapshot.reduceMotion, isCancelled: { Task.isCancelled })
     }
     func buildCaptions(segments: [EditSegment]?, plan: EditPlan, output: OutputSpec, forPreview: Bool,
-                       project: Project, voiceLab: VoiceLabOutputPlan?) async throws -> CaptionLayoutResult? {
+                       project: Project, voiceLab: VoiceLabOutputPlan?,
+                       translations: (project: Project, clipID: String?, effects: [ClipEffect])? = nil) async throws -> CaptionLayoutResult? {
         guard let segments else { return nil }
         let style = app.styles.first { $0.id == project.captions.styleId }
         do {
-            let layout = try await app.captions.layout(AppCaptionLayoutInput(segments: segments, settings: project.captions, plan: plan, output: output, language: project.transcript?.language, style: style, voiceLab: voiceLab))
+            let layout = try await app.captions.layout(AppCaptionLayoutInput(segments: segments, settings: project.captions, plan: plan, output: output, language: project.transcript?.language, style: style, voiceLab: voiceLab, translations: translations))
             captionError = app.captions.rejectedOverrides ? "These caption settings could not be applied." : nil
             return layout
         } catch is CancellationError { throw CancellationError() }
