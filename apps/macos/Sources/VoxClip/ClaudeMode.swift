@@ -49,7 +49,10 @@ enum ClaudeModeBlocker: Equatable {
     /// How many moments Find Clips offered.
     var found = 0
     var budget: MakeItBudget?
+    /// The run's queue, from the start to the last clip.
     @ObservationIgnored var task: Task<Void, Never>?
+    /// Going on once Find Clips' task has ended.
+    @ObservationIgnored var afterFind: Task<Void, Never>?
 
     var running: Bool { phase == .running }
 }
@@ -110,10 +113,15 @@ extension EditorModel {
         claudeModeContinue()
     }
 
-    /// Find Clips ended (found, nothing, failed or cancelled).
+    /// Find Clips ended (found, nothing, failed or cancelled). It is called from inside the find task, which still holds
+    /// `finding` and the project's AI lease, so Claude goes on once that task has ended.
     func claudeModeFindEnded() {
         guard claudeMode.armed, claudeModeOn else { return }
-        claudeModeContinue()
+        let find = findTask
+        claudeMode.afterFind = Task { [weak self] in
+            await find?.value
+            self?.claudeModeContinue()
+        }
     }
 
     /// Goes as far as it can: starts the run when there are suggestions, starts Find Clips when it is free, else says

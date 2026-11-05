@@ -34,6 +34,27 @@ extension DebugRewriteSmoke {
     ] }
 }
 
+extension DebugRewriteSmoke {
+    /// Find Clips' reply for `words`: up to four clips the Quotes preset keeps (5–15 s), each from a word on to a sentence's
+    /// end 6–14 s later, one after another, scored 6, 9, 7, 5.
+    static func claudeModeFindReply(words: [TimedWord]) throws -> String {
+        var clips: [[String: Any]] = []
+        var first = 0
+        let scores: [Int] = [6, 9, 7, 5]
+        while clips.count < 4, first < words.count {
+            var last = first
+            while last + 1 < words.count, words[last].end - words[first].start < 6 { last += 1 }
+            while last + 1 < words.count, !words[last].text.hasSuffix("."), words[last + 1].end - words[first].start <= 14 { last += 1 }
+            guard words[last].end - words[first].start >= 5 else { break }
+            let clip: [String: Any] = ["title": "Moment \(clips.count + 1)", "start_word": first, "end_word": last, "reason": "Smoke", "score": scores[clips.count]]
+            clips.append(clip)
+            first = last + 1
+        }
+        guard clips.count >= 3 else { throw Failure.setup("the script is too short for three clips") }
+        return (try? JSONSerialization.data(withJSONObject: ["clips": clips])).map { String(decoding: $0, as: UTF8.self) } ?? ""
+    }
+}
+
 extension DebugRewriteSmoke.Harness {
     func claudeDoesItAll() async throws {
         let editor = try makeItPrepare { range, words in
@@ -44,13 +65,7 @@ extension DebugRewriteSmoke.Harness {
         let keys = [ClipsMode.key, ClipsMode.countKey, ClipsMode.capKey, "llm.connector", "export.folder"]
         let before = keys.map { app.settings.values[$0] }
         let words = editor.project.transcript?.words ?? []
-        let starts = ["first", "then", "the", "finally"].compactMap { DebugRewriteSmoke.wordIndex($0, in: words) }
-        guard starts.count == 4 else { throw DebugRewriteSmoke.Failure.setup("the script lost a sentence") }
-        let scores = [6, 9, 7, 5]
-        let clips: [[String: Any]] = starts.enumerated().map { offset, start in
-            ["title": "Moment \(offset + 1)", "start_word": start, "end_word": min(words.count - 1, start + 5), "reason": "Smoke", "score": scores[offset]]
-        }
-        let reply = (try? JSONSerialization.data(withJSONObject: ["clips": clips])).map { String(decoding: $0, as: UTF8.self) } ?? ""
+        let reply = try DebugRewriteSmoke.claudeModeFindReply(words: words)
         let fake = ClaudeModeSmokeConnector(reply: reply)
         let consents = ConsentLog()
         var copied: [String] = []
@@ -69,6 +84,10 @@ extension DebugRewriteSmoke.Harness {
         app.set(ClipsMode.key, .string(ClipsMode.claude.rawValue))
         app.set(ClipsMode.countKey, .number(3))
         app.set(ClipsMode.capKey, .number(2))
+        // The script's sentences are 4–8 s: Quotes (5–15 s) keeps them, where Best wants 20 s or more.
+        let presetBefore = editor.preset
+        editor.preset = .quotes
+        defer { editor.preset = presetBefore }
         // Detection, as the harness picker runs it: Claude Code on a plan, so Find Clips sends with no click.
         if let provider = app.providers.first(where: { $0.id == ConnectorID.claudeCode.rawValue }) { _ = await app.connectorStatus(provider, using: fake) }
         // The newly dropped video: its transcript, and no clips yet.
@@ -85,6 +104,7 @@ extension DebugRewriteSmoke.Harness {
             editor.armClaudeMode()
             editor.claudeModeTranscribed(started: editor.findClipsIfFree())
             await editor.findTask?.value
+            await editor.claudeMode.afterFind?.value
             await editor.claudeMode.task?.value
         }
         let runs = editor.claudeModeRuns
@@ -95,7 +115,8 @@ extension DebugRewriteSmoke.Harness {
                 detail: "\(requests.count) Find Clips request(s), consent asked \(consents.actions.count)×"),
             DebugRewriteSmoke.Check(invariant: "C2", passed: editor.claudeMode.phase == .done && runs.count == 3 && runs.allSatisfy { $0.phase == .ready }
                     && planRequests.count == 1 && editor.makeIt.series == editor.claudeMode.clipIDs,
-                detail: runs.map { "\($0.clipID) \(editor.makeItHeadline($0))" }.joined(separator: "; ") + " · \(planRequests.count) plan request(s)"),
+                detail: runs.map { "\($0.clipID) \(editor.makeItHeadline($0))" }.joined(separator: "; ") + " · \(planRequests.count) plan request(s)"
+                    + " · \(editor.claudeMode.phase) · \(editor.suggestedClips.count) suggestions" + (editor.clipError.map { " · " + $0 } ?? "")),
             DebugRewriteSmoke.Check(invariant: "C3", passed: budget.map { $0.cap == 2 && $0.spent <= $0.approved && $0.approved == 2 } ?? false,
                 detail: editor.claudeModeSpent),
             DebugRewriteSmoke.Check(invariant: "C4", passed: editor.undoSteps - steps == 4,

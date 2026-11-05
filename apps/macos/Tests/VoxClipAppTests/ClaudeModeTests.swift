@@ -146,6 +146,56 @@ private final class ClaudeCalls: Sendable {
         #expect(editor.statusClipStyle?.text == "✦ Claude does it all · top 3 · ≤$2")
     }
 
+    /// Through the real Find Clips on a newly opened video: a scripted Claude Code on its plan answers, Find Clips sends with
+    /// no click, and once its task has ended (and released the AI lease) the run starts by itself.
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR; only stub connectors are called."))
+    func aRealFindClipsOnANewVideoStartsTheRunWithNoClick() async throws {
+        _ = NSApplication.shared
+        let app = AppModel(settingsStore: RegressionSettingsStore())
+        app.loadCatalogue()
+        #expect(app.set(ClipsMode.key, .string(ClipsMode.claude.rawValue)))
+        let shared = try SharedResources.locate()
+        let base = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
+        var project = try DebugExplorer.fiveQuestions(from: base)
+        project.edits.clips = []; project.ai.results = []
+        let words = project.transcript?.words ?? []
+        let fake = ClaudeModeSmokeConnector(reply: try DebugRewriteSmoke.claudeModeFindReply(words: words))
+        app.connectorOverride = { _ in fake }
+        app.connectorConsentOverride = { _, _, _ in true }
+        #expect(app.set("llm.connector", .string("claude-code")))
+        let provider = try #require(app.providers.first { $0.id == "claude-code" })
+        _ = await app.connectorStatus(provider, using: fake)
+        let editor = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
+        defer { editor.close() }
+        editor.mediaResolved = true; editor.refresh()
+        // Find Clips registers its step from its task, as in the app; undo is covered by the tests above.
+        editor.undoManager = nil
+        editor.preset = .quotes
+        editor.musicPanel.services = MusicPanelServices(suggest: { _, _ in MusicSuggestionResult(candidates: []) }, fetch: { _ in Data() }, folder: { nil })
+        var planned: [ClipAutopilotRequest.Mode] = []
+        editor.makeIt.services = MakeItServices(
+            plan: { request, _, _ in
+                planned.append(request.mode)
+                guard case .clips(let spans) = request.mode else { return ClipAutopilotSeries(plans: []) }
+                return ClipAutopilotSeries(plans: spans.map {
+                    ClipAutopilotPlan(startWord: $0.lowerBound, endWord: $0.upperBound, title: "Clip \($0.lowerBound)", hook: "",
+                                      captions: MakeItPostableTestsPlan.captions, postText: "Post.", score: 8, verdict: .post)
+                })
+            },
+            voice: { _, _ in MakeItRewriteOutcome(result: .voiced(segments: []), spent: 0) },
+            voiceAvailable: { _ in false })
+        editor.armClaudeMode()
+        editor.claudeModeTranscribed(started: editor.findClipsIfFree())
+        #expect(editor.claudeMode.phase == .waiting)
+        await editor.findTask?.value
+        await editor.claudeMode.afterFind?.value
+        await editor.claudeMode.task?.value
+        #expect(await fake.requests.count == 1 && editor.suggestedClips.count + editor.keptClips.count >= 3)
+        #expect(planned.count == 1, "one .clips request: \(planned)")
+        #expect(editor.claudeMode.phase == .done && editor.claudeModeReady.count == 3, "\(editor.claudeMode.phase) \(editor.clipError ?? "")")
+        #expect(!editor.llmRuns.isBusy && !editor.finding)
+    }
+
     @Test func aReopenedOrReadOnlyProjectNeverStarts() async throws {
         let fixture = try fixture()
         defer { close(fixture) }
@@ -153,21 +203,21 @@ private final class ClaudeCalls: Sendable {
         // Not a newly opened video (it already has its transcript and clips): Find Clips ending starts nothing.
         await editor.transcription.openOnImport()
         #expect(!editor.claudeMode.armed)
-        editor.claudeModeFindEnded()
+        editor.claudeModeFindEnded(); await editor.claudeMode.afterFind?.value
         editor.claudeModeTranscribed(started: false)
         #expect(editor.claudeMode.phase == .idle && editor.makeIt.series.isEmpty)
         // Read-only (the video is missing): armed, but nothing starts.
         editor.armClaudeMode()
         editor.mediaResolved = false; editor.refresh()
-        editor.claudeModeFindEnded()
+        editor.claudeModeFindEnded(); await editor.claudeMode.afterFind?.value
         #expect(editor.makeIt.series.isEmpty)
         // Once a run happened, the video is no longer new: a later Find Clips starts nothing more.
         editor.mediaResolved = true; editor.refresh()
-        editor.claudeModeFindEnded()
+        editor.claudeModeFindEnded(); await editor.claudeMode.afterFind?.value
         await editor.claudeMode.task?.value
         #expect(editor.claudeMode.phase == .done)
         let plans = fixture.calls.all.filter { $0.hasPrefix("plan") }.count
-        editor.claudeModeFindEnded()
+        editor.claudeModeFindEnded(); await editor.claudeMode.afterFind?.value
         #expect(fixture.calls.all.filter { $0.hasPrefix("plan") }.count == plans && !editor.claudeMode.armed)
     }
 
@@ -198,7 +248,7 @@ private final class ClaudeCalls: Sendable {
         let editor = fixture.editor
         await editor.makeIt.refreshVoiceReady(editor)
         editor.armClaudeMode()
-        editor.claudeModeFindEnded()
+        editor.claudeModeFindEnded(); await editor.claudeMode.afterFind?.value
         try await waitAtCap(editor)
         let budget = try #require(editor.claudeMode.budget)
         #expect(budget.needed == Decimal(string: "0.50") && budget.spent == Decimal(string: "0.10"))
@@ -218,7 +268,7 @@ private final class ClaudeCalls: Sendable {
         let editor = fixture.editor
         await editor.makeIt.refreshVoiceReady(editor)
         editor.armClaudeMode()
-        editor.claudeModeFindEnded()
+        editor.claudeModeFindEnded(); await editor.claudeMode.afterFind?.value
         await editor.claudeMode.task?.value
         #expect(!fixture.calls.all.contains { $0.hasPrefix("voice") }, "no paid voice at $0")
         let row = try #require(editor.makeIt.run(for: "clip-main")?.rows.first { $0.id == "rewrite-0" })
@@ -232,7 +282,7 @@ private final class ClaudeCalls: Sendable {
         let editor = fixture.editor
         await editor.makeIt.refreshVoiceReady(editor)
         editor.armClaudeMode()
-        editor.claudeModeFindEnded()
+        editor.claudeModeFindEnded(); await editor.claudeMode.afterFind?.value
         try await waitAtCap(editor)
         editor.stopClaudeMode()
         await editor.claudeMode.task?.value
