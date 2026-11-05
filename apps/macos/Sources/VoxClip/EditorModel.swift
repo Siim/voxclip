@@ -97,7 +97,8 @@ struct EditorRenderSnapshot {
     /// step its driver takes.
     @ObservationIgnored var makeItGeneration: ((RewriteSession) async -> Void)?
     @ObservationIgnored var makeItStepObserver: ((String) async -> Void)?
-    /// S-claude-does-it-all renders the smoke's synthetic (demo) recording through the real exporter.
+    /// S-claude-does-it-all renders the smoke's synthetic (demo) recording through the real exporter; the Claude mode
+    /// captures draw Export all as a real video shows it.
     @ObservationIgnored var smokeExportsDemo = false
     /// Tests read the copied post text here instead of the user's pasteboard.
     @ObservationIgnored var pasteboardOverride: ((String) -> Void)?

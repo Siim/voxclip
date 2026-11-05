@@ -313,7 +313,6 @@ import VoxClipCore
                     .columnLayoutEvidence("explorer.clipTitle", text: title)
             }
             Spacer(minLength: 0)
-            if let state = editor.claudeClipState(clip.id) { ClaudeClipPill(state: state) }
             if editor.containsAISpeech(clipID: clip.id) { ExplorerVoiceGlyph() }
             if showsActions {
                 HStack(spacing: 2) {
@@ -331,6 +330,9 @@ import VoxClipCore
                 }
                 .fixedSize().foregroundStyle(SidebarStyle.meta(emphasized))
                 .columnLayoutEvidence("explorer.clipActions")
+            } else if let state = editor.claudeClipState(clip.id) {
+                // Claude mode's pill stands in for the score and length while Claude makes this clip, and after.
+                ClaudeClipPill(state: state)
             } else {
                 if suggested, let score = editor.suggestionScore(clip) {
                     Text("\(score)").font(DesignValues.mono(10)).foregroundStyle(DesignValues.color("ai.tint")).fixedSize()

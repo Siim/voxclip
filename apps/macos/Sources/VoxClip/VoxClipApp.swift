@@ -59,7 +59,10 @@ import VoxClipCore
                 await model.start()
                 do {
                     let results: [DebugUISuite.Result]
-                    if CommandLine.arguments.contains("-makeItCaptures") {
+                    if CommandLine.arguments.contains("-claudeModeCaptures") {
+                        // Offscreen "Claude does it all" frames A–D (DebugClaudeMode.swift), on the -layoutAudit launch path.
+                        results = try await DebugClaudeMode.run(app: model, directory: directory)
+                    } else if CommandLine.arguments.contains("-makeItCaptures") {
                         // Offscreen Make it postable states (DebugMakeIt.swift), on the -layoutAudit launch path.
                         results = try await DebugMakeIt.run(app: model, directory: directory)
                     } else if CommandLine.arguments.contains("-spacingCaptures") {

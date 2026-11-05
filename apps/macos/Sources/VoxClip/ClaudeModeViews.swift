@@ -19,9 +19,19 @@ import VoxClipCore
                 choice(title: "I'll pick", primary: false,
                        detail: "Claude suggests clips; you press ✦ Make it postable on the ones you want.", meta: nil, mode: .pick)
             }
-            HStack(spacing: VCTokens.spacingRowGap) {
-                PanelButton(action: PanelAction(id: "clipsMode.claude", title: editor.claudeModeButtonTitle) { editor.chooseClipsMode(.claude) }, kind: .primary)
-                PanelButton(action: PanelAction(id: "clipsMode.pick", title: "I'll pick") { editor.chooseClipsMode(.pick) }, kind: .ghost)
+            // Side by side when they fit the column, else stacked.
+            // Side by side when they fit the column, else stacked; in the narrowest column the cap moves under the button.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: VCTokens.spacingRowGap) { buttons }
+                VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) { buttons }
+                VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) {
+                    PanelButton(action: PanelAction(id: "clipsMode.claude", title: "✦ Claude does it all") { editor.chooseClipsMode(.claude) }, kind: .primary)
+                    if editor.clipsAutopilot.capUSD > 0 {
+                        Text("Up to \(EditorModel.makeItDollars(Decimal(editor.clipsAutopilot.capUSD))) per video for voice and music")
+                            .font(.system(size: 11)).foregroundStyle(DesignValues.color("text.secondary")).fixedSize(horizontal: false, vertical: true)
+                    }
+                    PanelButton(action: PanelAction(id: "clipsMode.pick", title: "I'll pick") { editor.chooseClipsMode(.pick) }, kind: .ghost)
+                }
             }
             Text("Next: choose one. Change it any time: the status bar's mode item, or Settings › Clips.")
                 .font(.system(size: 11)).foregroundStyle(DesignValues.color("text.tertiary")).fixedSize(horizontal: false, vertical: true)
@@ -30,6 +40,11 @@ import VoxClipCore
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Who makes the clips?")
         .accessibilityIdentifier("voxclip.clipsMode.card")
+    }
+
+    @ViewBuilder private var buttons: some View {
+        PanelButton(action: PanelAction(id: "clipsMode.claude", title: editor.claudeModeButtonTitle) { editor.chooseClipsMode(.claude) }, kind: .primary)
+        PanelButton(action: PanelAction(id: "clipsMode.pick", title: "I'll pick") { editor.chooseClipsMode(.pick) }, kind: .ghost)
     }
 
     /// The whole choice is a button too: it chooses at once.
@@ -98,23 +113,41 @@ import VoxClipCore
             }
             ForEach(editor.claudeModeSteps) { step in stepRow(step) }
             if editor.claudeMode.running {
-                ProgressView(value: progress).progressViewStyle(.linear).tint(DesignValues.color("ai.tint")).controlSize(.small)
+                GeometryReader { proxy in
+                    Capsule().fill(DesignValues.color("bg.muted"))
+                        .overlay(alignment: .leading) { Capsule().fill(DesignValues.color("ai.tint")).frame(width: proxy.size.width * progress) }
+                }
+                .frame(height: 4)
+                .accessibilityElement().accessibilityLabel("Progress").accessibilityValue("\(Int(progress * 100)) percent")
             }
             if let needed = editor.claudeMode.budget?.needed {
-                HStack(alignment: .firstTextBaseline, spacing: VCTokens.spacingRowGap) {
-                    Text("Needs about \(EditorModel.makeItDollars(needed)) more").font(.system(size: 12, weight: .medium))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .columnLayoutEvidence("claudeMode.needsMore", text: "Needs about \(EditorModel.makeItDollars(needed)) more")
-                    Spacer(minLength: VCTokens.spacingRowGap)
-                    PanelButton(action: PanelAction(id: "claudeMode.continue", title: "Continue · \(EditorModel.makeItDollars(needed))", priced: true) {
-                        editor.continueClaudeMode()
-                    }, kind: .primary)
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .firstTextBaseline, spacing: VCTokens.spacingRowGap) {
+                        needsMore(needed).fixedSize()
+                        Spacer(minLength: VCTokens.spacingRowGap)
+                        continueButton(needed)
+                    }
+                    VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) {
+                        needsMore(needed).fixedSize(horizontal: false, vertical: true)
+                        continueButton(needed)
+                    }
                 }
                 Text("Continue approves exactly \(EditorModel.makeItDollars(needed)) more for voice or music on this video.")
                     .font(.system(size: 11)).foregroundStyle(DesignValues.color("text.tertiary")).fixedSize(horizontal: false, vertical: true)
             }
             footer(editor.claudeMode.running ? editor.claudeModeFooter : "Next: wait. Claude starts once the clips are found.")
         }
+    }
+
+    private func needsMore(_ needed: Decimal) -> some View {
+        Text("Needs about \(EditorModel.makeItDollars(needed)) more").font(.system(size: 12, weight: .medium))
+            .columnLayoutEvidence("claudeMode.needsMore", text: "Needs about \(EditorModel.makeItDollars(needed)) more")
+    }
+
+    private func continueButton(_ needed: Decimal) -> some View {
+        PanelButton(action: PanelAction(id: "claudeMode.continue", title: "Continue · \(EditorModel.makeItDollars(needed))", priced: true) {
+            editor.continueClaudeMode()
+        }, kind: .primary)
     }
 
     private var progress: Double {
@@ -148,13 +181,10 @@ import VoxClipCore
             if editor.claudeMode.phase == .stopped {
                 ForEach(editor.claudeModeSteps.filter { $0.state == .note }) { step in stepRow(step) }
             }
-            HStack(spacing: VCTokens.spacingRowGap) {
-                if ready > 0, editor.canClaudeExportAll {
-                    PanelButton(action: PanelAction(id: "claudeMode.exportAll", title: editor.claudeExportAllTitle) { editor.claudeExportAll() }, kind: .primary)
-                }
-                if !editor.claudeModeRuns.isEmpty {
-                    PanelButton(action: PanelAction(id: "claudeMode.review", title: "Review") { editor.reviewClaudeMode() }, kind: .ghost)
-                }
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: VCTokens.spacingRowGap) { finishedButtons(ready: ready) }
+                VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) { finishedButtons(ready: ready) }
+                VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) { finishedButtons(ready: ready, narrow: true) }
             }
             if editor.exporting, editor.claudeModeExportRunning {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -177,18 +207,30 @@ import VoxClipCore
         }
     }
 
+    /// `narrow`: the shapes go under the button ("Export all 3", then "16:9 + 9:16").
+    @ViewBuilder private func finishedButtons(ready: Int, narrow: Bool = false) -> some View {
+        if ready > 0, editor.canClaudeExportAll {
+            PanelButton(action: PanelAction(id: "claudeMode.exportAll", title: narrow ? "Export all \(ready)" : editor.claudeExportAllTitle) { editor.claudeExportAll() }, kind: .primary)
+            if narrow {
+                Text(editor.claudeModeShapes.map(\.rawValue).joined(separator: " + ")).font(.system(size: 11)).foregroundStyle(DesignValues.color("text.secondary"))
+            }
+        }
+        if !editor.claudeModeRuns.isEmpty {
+            PanelButton(action: PanelAction(id: "claudeMode.review", title: "Review") { editor.reviewClaudeMode() }, kind: .ghost)
+        }
+    }
+
     private func stepRow(_ step: EditorModel.ClaudeStep) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: VCTokens.spacingRowGap) {
             Text(Self.glyph(step.state)).font(.system(size: 12))
                 .foregroundStyle(DesignValues.color(step.state == .done ? "status.success" : step.state == .now ? "ai.tint" : "text.tertiary"))
                 .frame(width: 14, alignment: .leading).accessibilityHidden(true)
-            Text(step.text).font(.system(size: 12))
-                .foregroundStyle(DesignValues.color(step.state == .todo ? "text.tertiary" : "text.primary"))
+            // The detail ("4 · top 3 kept", "0:41", "$0.18") flows after the text, so a narrow column wraps whole words.
+            (Text(step.text).foregroundStyle(DesignValues.color(step.state == .todo ? "text.tertiary" : "text.primary"))
+             + Text(step.detail.isEmpty ? "" : "  " + step.detail).font(.system(size: 11)).foregroundStyle(DesignValues.color("text.tertiary")))
+                .font(.system(size: 12)).monospacedDigit()
                 .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: VCTokens.spacing2)
-            if !step.detail.isEmpty {
-                Text(step.detail).font(.system(size: 11)).foregroundStyle(DesignValues.color("text.tertiary")).monospacedDigit().fixedSize()
-            }
+            Spacer(minLength: 0)
         }
         .accessibilityElement(children: .combine)
         .columnLayoutEvidence("claudeMode.step.\(step.id)", text: step.text)
