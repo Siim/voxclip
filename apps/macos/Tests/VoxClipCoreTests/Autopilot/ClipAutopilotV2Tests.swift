@@ -160,6 +160,15 @@ import Testing
             + "with its fillers and pauses cut, about 75.0 s. Land it at 20–45 s after all your cuts, so cut about 30 s more: tangents"))
         #expect(request.cachedBlock?.contains("\nCaption preference: font Roboto weight 900. The creator fixed these, so use them exactly and choose the rest per clip.\n") == true)
         #expect(request.effort == .xhigh && request.schemaName == "clip_autopilot_plan" && request.tag == "clip-autopilot")
+        #expect(!request.instruction.contains("Names written elsewhere"))
+        // Capitalised words outside the clip that do not start a sentence: "Tvilio," (word 2) and "Friday." (word 62).
+        let middle = try await service.request(ClipAutopilotRequest(transcript: try Self.transcript(), edits: ProjectEdits(pauseThresholdSeconds: 1),
+                                                                    mode: .clip(30...44)), connector: .claudeCode)
+        #expect(middle.instruction.hasSuffix(" inside this range.\nNames written elsewhere in the recording: Tvilio, Friday. "
+            + "The transcript may mishear them inside this clip."))
+        let corrected = ProjectEdits(pauseThresholdSeconds: 1, corrections: ["w2": "Twilio,"])
+        #expect(try await service.request(ClipAutopilotRequest(transcript: try Self.transcript(), edits: corrected, mode: .clip(30...44)),
+                                          connector: .claudeCode).instruction.contains("recording: Twilio, Friday."))
     }
 
     // MARK: Two-stage service

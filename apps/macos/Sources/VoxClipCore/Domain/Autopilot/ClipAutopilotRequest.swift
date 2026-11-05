@@ -189,6 +189,8 @@ public enum ClipAutopilotRequestBuilder {
             instruction = try prompt.request("clipInstruction", ["startWord": String(listed.first!), "endWord": String(listed.last!),
                 "seconds": toFixed1(max(0, last.end - first.start)), "estimate": toFixed1(estimate),
                 "minTargetSeconds": values["minTargetSeconds"]!, "maxTargetSeconds": values["maxTargetSeconds"]!, "lengthHint": lengthHint])
+            let elsewhere = names(words: words, outside: scope, corrections: request.edits.corrections)
+            if !elsewhere.isEmpty { instruction += try prompt.request("names", ["names": elsewhere.joined(separator: ", ")]) }
             if let moment {
                 let fixed = request.captionPreference?.styleId != nil
                 let caption = fixed ? "" : try prompt.request("momentCaption", ["style": moment.moment.captionStyle,
@@ -205,6 +207,27 @@ public enum ClipAutopilotRequestBuilder {
         }
         return Rendered(cachedBlock: block, instruction: instruction, scope: scope, listedWords: listed.count)
     }
+
+    /// Names written elsewhere in the recording, for a clip's corrections (ai.md §16.3): each word outside `scope` that
+    /// starts with a capital letter but not a sentence, of at least 3 characters once its punctuation is trimmed, other
+    /// than "I" contractions, corrections applied, in transcript order without repeats, at most `maxNames`.
+    static func names(words: [TimedWord], outside scope: ClosedRange<Int>, corrections: [String: String]) -> [String] {
+        var names: [String] = []
+        var sentenceStart = true
+        for (index, word) in words.enumerated() where word.kind == .word {
+            let shown = corrections[word.id] ?? word.text
+            defer { sentenceStart = [".", "!", "?", "…"].contains(where: { shown.hasSuffix($0) }) }
+            guard !scope.contains(index), !sentenceStart else { continue }
+            let core = String(shown.drop { !$0.isLetter && !$0.isNumber }.reversed().drop { !$0.isLetter && !$0.isNumber }.reversed())
+            guard let first = core.first, first.isUppercase, core.count >= 3, !core.hasPrefix("I'"), !core.hasPrefix("I’"),
+                  !names.contains(core) else { continue }
+            names.append(AIText.prefix(core, utf16: 40))
+            if names.count == maxNames { break }
+        }
+        return names
+    }
+
+    static let maxNames = 20
 
     /// The caption preference line: only the fields the creator fixed, or `noCaptionPreference`.
     static func preferenceLine(_ preference: ClipAutopilotCaptionPreference?, prompt: ClipAutopilotPrompt) throws -> String {
