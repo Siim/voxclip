@@ -94,12 +94,17 @@ struct MakeItRewriteOutcome: Equatable {
         case needsYou(String)
         /// No voice can be made here (Voice Lab off, no key): nothing was sent.
         case unavailable(String)
+        /// Every phrase was kept as recorded on its own (the use-time guard blocked it, or the source can't be read):
+        /// nothing was voiced; the line says why and whether the rewrite's text fixes were applied.
+        case keptAsRecorded(String)
     }
     var result: Result
     /// USD this rewrite spent.
     var spent: Decimal = 0
     /// Phrases whose chosen take only has a join-loudness advisory (autopilot accepts it; the row says so).
     var joinNotes: [Int] = []
+    /// Phrases kept as recorded on their own because the use-time guard blocked them.
+    var keptAsRecorded = 0
 }
 
 /// How a decision is taken back on its own (the review's Undo).
@@ -713,6 +718,10 @@ extension EditorModel {
             row.undoable = true
             row.text = "Voiced “\(text)” in your voice"
             if !outcome.joinNotes.isEmpty { row.detail = "Join may sound slightly louder · ▶" }
+            if outcome.keptAsRecorded > 0 {
+                let kept = outcome.keptAsRecorded == 1 ? "1 phrase kept as recorded" : "\(outcome.keptAsRecorded) phrases kept as recorded"
+                row.detail = kept + ": it doesn't sound like your voice there."
+            }
         case .overCap(let next):
             row.kind = .note
             row.text = "Kept your words for “\(text)”"
@@ -726,6 +735,10 @@ extension EditorModel {
         case .unavailable(let reason):
             row.kind = .note
             row.text = "Claude suggests “\(text)”"
+            row.detail = reason
+        case .keptAsRecorded(let reason):
+            row.kind = .note
+            row.text = "Kept your words for “\(text)”"
             row.detail = reason
         }
         return row

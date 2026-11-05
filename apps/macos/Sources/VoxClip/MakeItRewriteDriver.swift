@@ -13,6 +13,10 @@ import VoxClipCore
     private var joinNotes: [Int] = []
     /// The control the last step pressed, for the smoke's observation.
     private var pressed: String?
+    /// Phrases kept as recorded because the use-time guard blocked them (voice-lab §6.9): no click of the creator's.
+    private var keptBlocked: [Int] = []
+    /// Set once the driver finished the Rewrite with every phrase as recorded.
+    private var finishedAsRecorded: MakeItRewriteOutcome.Result?
 
     init(editor: EditorModel, request: MakeItRewriteRequest) { self.editor = editor; self.request = request }
 
@@ -50,12 +54,14 @@ import VoxClipCore
             guard session.isOpen else { break }
             if let blocked = await step(session, spent: spent) {
                 spent = max(spent, session.takePlan?.spent.usd ?? 0)
-                return MakeItRewriteOutcome(result: blocked, spent: spent, joinNotes: joinNotes)
+                return MakeItRewriteOutcome(result: blocked, spent: spent, joinNotes: joinNotes, keptAsRecorded: keptBlocked.count)
             }
         }
         spent = max(spent, session.takePlan?.spent.usd ?? 0)
         let added = editor.project.voiceLab.segments.map(\.id).filter { !before.contains($0) }
-        if !added.isEmpty, !session.isOpen { return MakeItRewriteOutcome(result: .voiced(segments: added), spent: spent, joinNotes: joinNotes) }
+        if !added.isEmpty, !session.isOpen {
+            return MakeItRewriteOutcome(result: .voiced(segments: added), spent: spent, joinNotes: joinNotes, keptAsRecorded: keptBlocked.count)
+        }
         let note = (session.task.footer.note ?? "").split(separator: "\n").first.map(String.init) ?? ""
         return MakeItRewriteOutcome(result: .needsYou(note.isEmpty ? "Rewrite is waiting for you. Change to finish it." : note), spent: spent, joinNotes: joinNotes)
     }
@@ -94,6 +100,8 @@ import VoxClipCore
             return await press(confirm.confirm, session: session, spent: spent)
         }
         if acceptJoinOnlyTakes(session) { return nil }
+        if keepBlockedPhrases(session) { return nil }
+        if let finished = await finishAsRecorded(session, spent: spent) { return finished }
         var actions = [task.footer.primary, task.footer.link].compactMap { $0 }
         for card in task.cards { if case .nextSteps(let steps) = card { actions += steps.chips.map(\.action) } }
         for id in Self.order {
@@ -144,6 +152,34 @@ import VoxClipCore
             }
         }
         return false
+    }
+
+    /// A phrase the use-time guard blocked is kept as recorded with no click (lead decision for Make it postable and
+    /// ✦ Claude does it all); the other phrases go on. True when one was kept.
+    private func keepBlockedPhrases(_ session: RewriteSession) -> Bool {
+        guard let plan = session.takePlan, !session.takesBusy else { return false }
+        let waiting = plan.phrases.filter(RewriteSession.waitsOnBlock)
+        guard !waiting.isEmpty else { return false }
+        for phrase in waiting {
+            session.keepOriginal(phrase: phrase.id)
+            if !keptBlocked.contains(phrase.id) { keptBlocked.append(phrase.id) }
+        }
+        pressed = "Make it postable keeps \(ClipTakePlan.phraseList(waiting.map { $0.id + 1 })) as recorded (not the voice owner)"
+        return true
+    }
+
+    /// Nothing is left to voice (every phrase kept as recorded, or a source that can't be read): the Rewrite's text fixes
+    /// are applied as free edits when it has any, and the Rewrite ends. Nil while there is something to voice.
+    private func finishAsRecorded(_ session: RewriteSession, spent: Decimal) async -> MakeItRewriteOutcome.Result? {
+        guard let plan = session.takePlan, !session.takesBusy,
+              plan.settledWithBlocks || RewriteSession.settlesPlan(plan.failure),
+              let primary = session.task.footer.primary, primary.id == "apply" || primary.id == "closeRewrite" else { return nil }
+        let reason = keptBlocked.isEmpty ? (plan.problem.isEmpty ? "Your words stay as recorded." : plan.problem)
+            : "It doesn't sound like your voice here, so nothing was sent."
+        pressed = "Make it postable presses [\(primary.title)]"
+        primary.perform()
+        if session.isOpen, !session.hasPaidTakes { editor.closeRewrite(returnFocus: false) }
+        return .keptAsRecorded(primary.id == "apply" ? reason + " Its text fixes are applied." : reason)
     }
 
     /// Waits until the session has nothing in flight. The limit only stops a session that never settles.
