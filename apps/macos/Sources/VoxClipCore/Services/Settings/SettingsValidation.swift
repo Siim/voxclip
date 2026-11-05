@@ -133,7 +133,7 @@ extension SettingsDocument {
                 if key == "export.fileNamePattern" { try ProjectValidation.text(text, min: 1, max: 200) }
                 if key.hasPrefix("llm.baseUrl.") { try ProjectValidation.require(text.hasPrefix("http://") || text.hasPrefix("https://"), "Invalid model server URL") }
             case "clipStyle.default":
-                // A project clipStyle without captionPicks (design.md §6.9).
+                // A project clipStyle without captionPicks (design.md §6.6).
                 guard case .object(let object) = value, object["captionPicks"] == nil else { throw VoxClipError.projectUnreadable("Invalid clip style") }
                 _ = try ProjectValidation.object(value, required: "preset captions music maxLengthSec shapes rewording")
                 do { _ = try JSONDecoder().decode(ClipStyle.self, from: JSONEncoder().encode(value)) }

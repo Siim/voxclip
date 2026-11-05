@@ -7,7 +7,7 @@ using VoxClip.Core.Services.Settings;
 
 namespace VoxClip.App;
 
-/// <summary>The clip style card above the clip list and the status bar's "Style: …" item that reopens it (design §6.9).</summary>
+/// <summary>The clip style card above the clip list and the status bar's "Style: …" item that reopens it (design §6.6).</summary>
 public sealed partial class MainWindow
 {
     private ClipStyleCatalog? clipStyles;

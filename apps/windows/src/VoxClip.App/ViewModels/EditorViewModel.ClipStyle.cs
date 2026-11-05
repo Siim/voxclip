@@ -3,7 +3,7 @@ using VoxClip.Core.Domain.Shared;
 
 namespace VoxClip.App.ViewModels;
 
-/// <summary>The clip style card (design §6.9); the decisions are VoxClip.Core's <see cref="ClipStyleCard"/>.</summary>
+/// <summary>The clip style card (design §6.6); the decisions are VoxClip.Core's <see cref="ClipStyleCard"/>.</summary>
 public sealed partial class EditorViewModel
 {
     private bool clipStyleReopened;

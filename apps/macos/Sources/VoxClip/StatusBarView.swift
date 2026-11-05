@@ -492,7 +492,7 @@ enum StatusBarMetrics {
         show(StatusBarContent.make(app: shell.app, editor: editor, now: now()))
         itemView(.task)?.onPress = editor?.statusRewriteFailure != nil && content[.task] == editor?.statusRewriteFailure
             ? { [weak self] in self?.shell.showRewriteFailure() } : nil
-        // "Style: Auto · ≤60 s · 16:9+9:16" reopens the clip style card above the clip list (design.md §6.9).
+        // "Style: Auto · ≤60 s · 16:9+9:16" reopens the clip style card above the clip list (design.md §6.6).
         itemView(.clipStyle)?.onPress = editor?.capabilities.edit == true && content[.clipStyle] != nil
             ? { [weak self] in self?.editor?.reopenClipStyleCard() } : nil
         frameButton.show(content[.frame] ?? StatusItem(kind: .frame, parts: [], spoken: ""), aspect: editor?.project.export.aspect ?? .source,

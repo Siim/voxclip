@@ -597,7 +597,7 @@ public sealed partial class EditorViewModel : ObservableObject
     public void SetCaptionStyle(string id)
     {
         if (isLeaving || IsReadOnly || Busy) return;
-        // A style the user chooses fixes the clip style's captions, so no AI pick overrides it (design §6.9).
+        // A style the user chooses fixes the clip style's captions, so no AI pick overrides it (design §6.6).
         if (project.ClipStyle is not null) { RecordClipStyle(ClipStyleCard.ChooseCaptionStyle(project, id)); return; }
         RecordCaptions(project.Captions with { StyleId = id });
     }

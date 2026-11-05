@@ -26,7 +26,7 @@ func portableProjectRoundTrip(name: String) throws {
     let root = try FixtureLoader.sharedRoot()
     let directory = root.appendingPathComponent("caption-styles/styles", isDirectory: true)
     let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil).filter { $0.pathExtension == "json" }
-    #expect(files.count == 19)
+    #expect(files.count == 26)
     for url in files {
         let data = try Data(contentsOf: url)
         let style = try JSONDecoder().decode(CaptionStyle.self, from: data)

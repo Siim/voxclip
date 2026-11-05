@@ -1,6 +1,6 @@
 import Foundation
 
-/// The clip style card's chips (doc/design.md §6.9; shared/data/clip-styles.json).
+/// The clip style card's chips (doc/design.md §6.6; shared/data/clip-styles.json).
 public enum ClipStylePresetID: String, Codable, Sendable, Hashable, CaseIterable {
     case auto, punchy, calm, demo, mine
 }
@@ -54,7 +54,7 @@ public struct ClipCaptionPick: Codable, Sendable, Hashable {
     public init(styleId: String, reason: String) { self.styleId = styleId; self.reason = reason }
 }
 
-/// How clips should be made (doc/design.md §6.9, project schema `$defs.clipStyle`). Stored per project once the user
+/// How clips should be made (doc/design.md §6.6, project schema `$defs.clipStyle`). Stored per project once the user
 /// chooses on the clip style card; Settings keeps the default a new project's card starts with. The clip autopilot
 /// planner reads the same value.
 public struct ClipStyle: Codable, Sendable, Hashable {

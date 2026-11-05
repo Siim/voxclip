@@ -1,5 +1,5 @@
 {
- "description": "Clip style presets (doc/design.md section 6.9). A preset maps to concrete defaults; 'auto' in captions or music leaves that choice to the AI per clip. Both apps read this file; the clip autopilot planner consumes the same values. Caption ids name shared/caption-styles/styles files, or 'off'.",
+ "description": "Clip style presets (doc/design.md section 6.6). A preset maps to concrete defaults; 'auto' in captions or music leaves that choice to the AI per clip. Both apps read this file; the clip autopilot planner consumes the same values. Caption ids name shared/caption-styles/styles files, or 'off'.",
  "schemaVersion": 1,
  "defaultPreset": "auto",
  "lengthChoicesSec": [

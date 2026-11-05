@@ -1028,8 +1028,8 @@ The gallery scrolls inside the column and clips at its own viewport, which alway
   | Group | Tag | Styles |
   |---|---|---|
   | Word by word | `one-word` | Bold, Highlight, Bold+, One word |
-  | Phrase | `phrase` | Karaoke, Pop, Box highlight, Bounce, Two-tone, Outline, Pill, Gradient, Neon, Emoji, VHS |
-  | Sentence | `sentence` | Subtitle, Lower third, Typewriter, Editorial |
+  | Phrase | `phrase` | Karaoke, Pop, Box highlight, Bounce, Two-tone, Outline, Pill, Gradient, Neon, Emoji, VHS, Marker, Punch-in, Heavy shadow, Glow, Emoji pop |
+  | Sentence | `sentence` | Subtitle, Lower third, Typewriter, Editorial, Sing-along, Minimal |
 
   A style with none of these tags goes into an "Other" group at the end. A test asserts that the bundled styles produce no "Other" group.
 - **Tile content.** Each tile renders the real style with the export renderer: the current phrase at the playhead, with that style's word count and casing (captions spec §15.3; fallback: the style's `preview.text`). It is drawn over the band of the current frame behind the style's caption position, dimmed 35%. With no frame, samples sit on the card backdrop (§5.4.3), not dimmed. A tile that cannot render draws exactly the backdrop it would have had: the band of the current frame dimmed 35%, or the card backdrop (design.md section 5.4.3) when there is no frame, and stage black in the loading states (design.md section 5.4.4). It never draws text. In clip scope the playhead is inside the clip. The selected tile is drawn with the active overrides.
@@ -1038,6 +1038,9 @@ The gallery scrolls inside the column and clips at its own viewport, which alway
 - **Accessibility.** Options are named "{name}: {description}" ("Box highlight: a box behind the spoken word, a few words at a time").
 - **Motion.** Under Reduce Motion, tiles are static; animated styles show their resting frame.
 - Captions follow edited time, and phrase grouping does not break at cut seams (captions spec D9). Under Reduce Motion the preview shows animated styles without animation; export keeps them.
+- **Roboto Black styles.** Marker, Punch-in, Sing-along, Heavy shadow, Glow, Emoji pop and Minimal (captions spec §17, style set 2) all use Roboto Black, bundled under Apache-2.0. With Bounce they are the caption types the clip style card offers (§6.6).
+
+**Claude's pick.** While the clip style's captions are Auto (§6.6), a line under the style row reads "✦ Claude picked {style} · {reason}" for the active clip, 12 `text.secondary` with the name in 600, wrapping. When clips have no pick yet, a borderless "✦ Pick styles for {n} clips" button follows. It sends through the inline connector confirmation (§6.3), with the verb "Pick styles", and never opens a sheet. While it runs, the line reads "Picking caption styles…" with Cancel. A failure shows as an inline notice in the same place. Choosing a tile in the gallery fixes the clip style's captions to that style, so the line and the button disappear.
 
 ### 6.2 Clips (sidebar)
 
@@ -1729,6 +1732,57 @@ The Director will run an AI session that proposes cuts, clips, rewrites and capt
   - a step that needs the user is a `PanelCard`.
 
   Phase 1 feeds session events into the same model. Phase 0 adds no Rewrite-only view model.
+
+### 6.6 Clip style ("How should clips be made?")
+
+One small card decides how clips are made: caption type, music, length, shapes and rewording. Claude fills in what is left on Auto. The choices are data in `shared/data/clip-styles.json`, a project stores them as `clipStyle` (project schema), and Settings keeps the last choice as `clipStyle.default`. Both Cores expose `ClipStyle` and `ClipStyleCatalog`, so the clip autopilot planner reads the same values the card writes.
+
+**Where it shows.**
+
+- **When.** Inline at the top of the Clips section of the sidebar (§6.2), above the clip list. It appears the first time an editable project has clips and no `clipStyle` yet, and it is never shown as a sheet or a dialog. A read-only project never shows it.
+- **Collapse.** Choosing a chip, or Done, stores the style and collapses the card. Changing a row stores the style and keeps the card open.
+- **Reopen.** Once the project has a clip style, the status bar shows a trailing item, "Style: {preset} · ≤{length} s · {shapes}" (for example "Style: Auto · ≤60 s · 16:9+9:16"), named "Clip style". Pressing it reopens the card (opening the sidebar first on Windows). The item is in the status bar's drop order, so it drops before the essentials when the bar is narrow.
+
+**Layout.** The card uses the `bg.surface` fill, a 1 px `line.default` border and the pane radius. Its padding is `spacing.cardPadding`, with `spacing.labelGap` above and below. Inside it, groups are `spacing.groupGap` apart and rows `spacing.labelGap` apart.
+
+- **Header.** "How should clips be made?" (13/600, heading), then a borderless "Done" on the trailing side.
+- **Chips.** These wrap in a flow layout and are 24 high. The selected chip is 600.
+
+  | Chip | Detail | Preset |
+  |---|---|---|
+  | ✦ Auto | Claude decides | `auto` |
+  | Punchy talking head | | `punchy` |
+  | Calm story | | `calm` |
+  | Demo / tutorial | | `demo` |
+  | My style | Your saved choices | `mine` |
+
+- **Rows.** Each row has a 68-wide label (11 `text.tertiary`) and a menu showing its value (12, up to 3 lines):
+  - **Captions.** "Auto · Claude picks per clip", "Off", or a library style shown as "{name} · {font}" (for example "Marker · Roboto Black"), in gallery order.
+  - **Music.** "Auto" (tooltip: "Free library first, generated if nothing fits, then your folder") or "No music".
+  - **Length.** "Up to {30, 45, 60, 90, 120} s".
+  - **Shape.** Toggles for 16:9, 9:16 and 1:1. At least one shape stays on.
+  - **Rewording.** "Never reword", "Fix only what sounds wrong" or "Tighten freely".
+
+  Changing any row makes the style the user's own, `mine`. On Windows the card is a code-built panel, 224 wide, in the explorer column. It uses `ComboBox` rows and `ToggleButton` chips, with automation ids `ClipStyle.*`.
+
+**Presets** (`shared/data/clip-styles.json`):
+
+| Preset | Captions | Music | Length | Shapes | Rewording | Excluded from the AI's choices |
+|---|---|---|---|---|---|---|
+| Auto | Auto | Auto | ≤60 s | 16:9 + 9:16 | Fix only | none |
+| Punchy talking head | Punch-in | Auto | ≤45 s | 9:16 | Fix only | none |
+| Calm story | Minimal | Auto | ≤90 s | 16:9 + 9:16 | Fix only | emoji styles |
+| Demo / tutorial | Subtitle | No music | ≤120 s | 16:9 | Never reword | emoji styles |
+| My style | the Settings default, else as Auto | | | | | none |
+
+A new project's card starts from the Settings default, or from Auto when there is none.
+
+**Rules.**
+
+- **Fixed captions.** A caption style chosen on the card, on a gallery tile, or in Export is the user's fixed choice. It is applied to `captions.styleId`, and no AI pick ever overrides it: `recording(picks)` is a no-op unless captions are Auto, and the pick request is never sent. Choosing a gallery tile while the preset is Auto makes the style `mine`.
+- **Auto.** With Auto captions, Pick styles (§6.1) sends one request for all clips, at most 24. The request uses the versioned prompt `shared/prompts/caption-pick.json` (AI spec §16) at decision (extra high) effort and goes through the inline connector confirmation. The reply gives `captionPicks[clipId] = {styleId, reason}`. The active clip's pick is applied to `captions.styleId` as one undo step, "Use Claude's caption style". If the user fixes a style while the request is running, the reply is dropped.
+- **Persistence.** Each choice is one undo step. Settings saves `clipStyle.default` without `captionPicks`. Picks for deleted clips are pruned at the next pick.
+- **Still owed.** Per-clip caption styles at export (today only the active clip's pick is applied to the project's style). Claude-sourced emoji for Emoji pop (it uses the keyword rule for now). The Windows Pick styles action and its consent (Windows records and applies picks, but has no button yet). Music, Length, Shape and Rewording are stored for the planner and music packages, which consume them.
 
 ---
 

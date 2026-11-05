@@ -7,7 +7,7 @@ using VoxClip.Core.Domain.Clips;
 
 namespace VoxClip.App.Controls;
 
-/// <summary>"How should clips be made?" (design §6.9): shown once above the clip list, inline, never a dialog. A chip
+/// <summary>"How should clips be made?" (design §6.6): shown once above the clip list, inline, never a dialog. A chip
 /// chooses and folds the card into the status bar's "Style: …" item, which reopens it. Rows change one field and make
 /// the style the user's own.</summary>
 internal sealed class ClipStyleCardPanel : Grid

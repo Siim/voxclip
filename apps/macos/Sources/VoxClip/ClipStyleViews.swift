@@ -1,7 +1,7 @@
 import SwiftUI
 import VoxClipCore
 
-/// "How should clips be made?" (design.md §6.9): shown once above the clip list, inline, never a sheet. A chip
+/// "How should clips be made?" (design.md §6.6): shown once above the clip list, inline, never a sheet. A chip
 /// chooses and collapses the card to the status bar's "Style: …" item, which reopens it here.
 @MainActor struct ClipStyleCard: View {
     let editor: EditorModel

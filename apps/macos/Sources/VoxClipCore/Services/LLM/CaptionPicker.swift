@@ -1,6 +1,6 @@
 import Foundation
 
-/// One clip as the caption pick request shows it: `C1`, `C2`… in clip order (AI §15).
+/// One clip as the caption pick request shows it: `C1`, `C2`… in clip order (AI §16).
 public struct CaptionPickClip: Sendable, Equatable {
     public var id: String
     public var title: String?
@@ -9,7 +9,7 @@ public struct CaptionPickClip: Sendable, Equatable {
     public init(id: String, title: String?, seconds: Double, text: String) { self.id = id; self.title = title; self.seconds = seconds; self.text = text }
 }
 
-/// shared/prompts/caption-pick.json rendered into one request (AI §15). Pure: the same inputs give the same strings
+/// shared/prompts/caption-pick.json rendered into one request (AI §16). Pure: the same inputs give the same strings
 /// on both platforms (shared/fixtures/clip-style/caption-pick.json).
 public struct CaptionPickPrompt: Sendable {
     public let document: JSONValue
@@ -81,7 +81,7 @@ public struct CaptionPickPrompt: Sendable {
     }
 }
 
-/// Asks the chosen connector for a caption style per clip while the clip style's captions are Auto (design.md §6.9).
+/// Asks the chosen connector for a caption style per clip while the clip style's captions are Auto (design.md §6.6).
 /// A style the user fixed is never sent and never overridden.
 public struct CaptionPicker: Sendable {
     public let runner: LLMRunner

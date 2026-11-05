@@ -249,7 +249,7 @@
         <ContentControl x:Name="WorkspaceGate" Grid.Row="1" IsTabStop="False" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
         <Grid x:Name="Workspace" Background="{ThemeResource VcBgWindowBrush}">
             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-            <!-- The clip style card sits above the clip list (design §6.9; MainWindow.ClipStyle.cs). -->
+            <!-- The clip style card sits above the clip list (design §6.6; MainWindow.ClipStyle.cs). -->
             <Grid x:Name="ExplorerColumn">
                 <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
                 <ContentControl x:Name="ClipStyleHost" Width="224" IsTabStop="False" HorizontalContentAlignment="Stretch" Visibility="Collapsed"

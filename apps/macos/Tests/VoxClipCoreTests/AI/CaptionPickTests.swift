@@ -3,7 +3,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-/// shared/fixtures/clip-style/caption-pick.json: the clip style contract (design.md §6.9) and the caption pick request (AI §15).
+/// shared/fixtures/clip-style/caption-pick.json: the clip style contract (design.md §6.6) and the caption pick request (AI §16).
 @Suite struct CaptionPickTests {
     private struct Clip: Decodable { var id: String; var title: String?; var seconds: Double; var text: String }
 

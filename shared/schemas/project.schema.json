@@ -1155,7 +1155,7 @@
       }
     },
     "clipStyle": {
-      "description": "How clips should be made (doc/design.md section 6.9): the chosen preset and its fields. Absent until the user chooses on the clip style card. 'auto' in captions or music leaves that choice to the AI per clip; a caption style id here is the user's fixed choice and is never overridden.",
+      "description": "How clips should be made (doc/design.md section 6.6): the chosen preset and its fields. Absent until the user chooses on the clip style card. 'auto' in captions or music leaves that choice to the AI per clip; a caption style id here is the user's fixed choice and is never overridden.",
       "type": "object",
       "additionalProperties": false,
       "required": [

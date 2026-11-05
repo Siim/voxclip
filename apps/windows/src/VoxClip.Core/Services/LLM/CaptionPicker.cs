@@ -6,10 +6,10 @@ using VoxClip.Core.Domain.Shared;
 
 namespace VoxClip.Core.Services.LLM;
 
-/// <summary>One clip as the caption pick request shows it: C1, C2… in clip order; AI §15.</summary>
+/// <summary>One clip as the caption pick request shows it: C1, C2… in clip order; AI §16.</summary>
 public sealed record CaptionPickClip(string Id, string? Title, double Seconds, string Text);
 
-/// <summary>shared/prompts/caption-pick.json rendered into one request; AI §15. Pure: the same inputs give the same
+/// <summary>shared/prompts/caption-pick.json rendered into one request; AI §16. Pure: the same inputs give the same
 /// strings on both platforms (shared/fixtures/clip-style/caption-pick.json).</summary>
 public sealed class CaptionPickPrompt
 {
@@ -86,7 +86,7 @@ public sealed class CaptionPickPrompt
 }
 
 /// <summary>Asks the chosen connector for a caption style per clip while the clip style's captions are Auto
-/// (design §6.9). A style the user fixed is never sent and never overridden.</summary>
+/// (design §6.6). A style the user fixed is never sent and never overridden.</summary>
 public sealed class CaptionPicker(LlmRunner runner, CaptionPickPrompt prompt, LlmCatalog catalog)
 {
     /// <summary><paramref name="style"/> with the AI's picks recorded, or unchanged when its captions are not Auto (no

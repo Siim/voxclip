@@ -103,7 +103,7 @@ internal static class SettingsValidation
     private static void Boolean(JsonElement value) => Require(value.ValueKind is JsonValueKind.True or JsonValueKind.False);
     private static void Choice(JsonElement value, params string[] choices) => Require(value.ValueKind == JsonValueKind.String && choices.Contains(value.GetString(), StringComparer.Ordinal));
     private static void Require(bool condition) { if (!condition) throw new JsonException("Invalid settings value."); }
-    /// <summary>A project clipStyle without captionPicks; settings schema clipStyle.default, design §6.9.</summary>
+    /// <summary>A project clipStyle without captionPicks; settings schema clipStyle.default, design §6.6.</summary>
     private static void ClipStyleDefault(JsonElement value)
     {
         Require(value.ValueKind == JsonValueKind.Object);

@@ -93,10 +93,13 @@ The test hook `VOXCLIP_GOLDEN_OUT=/tmp/voxclip-reviewed-goldens swift test --fil
 
 1. Add `shared/caption-styles/styles/<id>.json` (copy a similar style; the gallery position comes from `order`).
 2. If it needs a font that is not bundled, add the font first (`shared/fonts/README.md`).
-3. Run `check_styles.py`, then `gen_fixtures.py`. The style × aspect matrix adds three layout cases automatically; add a targeted case to `cases.json` when the style uses a feature no case covers yet.
-4. Update the catalogue table in doc/spec/captions.md section 17 in the same change.
+3. Add the id to a style set in `style-sets.json`: a new set (with its own `fixtures` folder, for example `shared/fixtures/captions/styles-3`) for new styles, so no existing fixture file changes. `check_styles.py` requires every style to be in exactly one set. Set 1 is the original 19 styles; its files, `cards.json`, `gallery-samples.json` and `box-text-colors.json` stay set-1 only.
+4. Run `check_styles.py`, then `gen_fixtures.py`. The style × aspect matrix adds three layout cases per style into the set's folder, with `preview-tiles.json` and an `index.json` (`voxclip-caption-style-set/1`); add a targeted case to `cases.json` when the style uses a feature no case covers yet. Run `check_drift.py` to confirm earlier sets are byte-identical.
+5. Render the set's goldens with `voxclip-cli render-caption --case …/styles-N/layout/<case>.json` and `--tiles …/styles-N/preview-tiles.json` into a fresh folder, review them, and copy them into `styles-N/golden/`. Both platforms' set tests (`CaptionStyleSet2Tests` on macOS, `CaptionConformanceTests` set two on Windows) compare against them.
+6. Update the catalogue table in doc/spec/captions.md section 17 in the same change.
 
 ## Files
 
 - `cases.json`: fixture inputs (word sets, cases, the style × aspect matrix).
+- `style-sets.json`: which fixture set each style belongs to, and that set's folder.
 - `font-sources.json`: where every file in `shared/fonts` came from, pinned to a commit.

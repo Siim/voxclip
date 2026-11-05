@@ -2,7 +2,7 @@ using VoxClip.Core.Domain.Shared;
 
 namespace VoxClip.Core.Domain.Clips;
 
-/// <summary>The clip style card's decisions (design §6.9), shared by the Windows view model and its tests; the twin of
+/// <summary>The clip style card's decisions (design §6.6), shared by the Windows view model and its tests; the twin of
 /// EditorModel+ClipStyle.swift. Pure: each returns the next project, or the same instance when nothing changes.</summary>
 public static class ClipStyleCard
 {

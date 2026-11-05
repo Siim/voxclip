@@ -22,7 +22,7 @@ private actor PickFixtureConnector: LLMConnector {
     }
 }
 
-/// The clip style card and Claude's caption pick (design.md §6.9): shown once above the clip list, collapsed to the
+/// The clip style card and Claude's caption pick (design.md §6.6): shown once above the clip list, collapsed to the
 /// status bar's "Style: …" item that reopens it, the Auto pick from a stub reply, and a fixed style no pick replaces.
 /// Stub connectors only, settings in memory, nothing shown on screen.
 @Suite("Clip style", .serialized, .offlineFixtures)

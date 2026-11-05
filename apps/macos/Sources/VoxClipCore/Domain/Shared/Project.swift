@@ -848,7 +848,7 @@ public struct Project: Codable, Sendable, Equatable {
     public var edits: ProjectEdits
     /// captions; doc/architecture.md §3; shared/schemas/project.schema.json
     public var captions: CaptionSettings
-    /// How clips should be made (design.md §6.9); nil until the user chooses on the clip style card.
+    /// How clips should be made (design.md §6.6); nil until the user chooses on the clip style card.
     public var clipStyle: ClipStyle?
     /// export; doc/architecture.md §3; shared/schemas/project.schema.json
     public var export: ProjectExport

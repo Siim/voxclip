@@ -520,6 +520,17 @@ Caption fonts and emoji images in `shared/fonts/`, bundled unmodified with both 
   (astigma@astigmatic.com), with Reserved Font Names "Righteous"
   ```
 
+### Roboto
+
+- Files: `roboto/Roboto-Black.ttf` (version 3.005, unmodified)
+- Licence: Apache License 2.0 (`shared/fonts/roboto/LICENSE.txt`)
+- Source: https://github.com/google/fonts/tree/ff11ed915971ee26c88f442f37308142d4217979/apache/roboto/static
+- Notice:
+
+  ```text
+  Copyright 2011 Google Inc. All Rights Reserved.
+  ```
+
 ### Sora
 
 - Files: `sora/Sora-ExtraBold.ttf`
@@ -653,7 +664,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 ### Apache License 2.0
 
-The following licence applies to the Noto Emoji images and to swift-argument-parser (macOS).
+The following licence applies to the Roboto font, the Noto Emoji images and swift-argument-parser (macOS).
 
 ```text
                                  Apache License

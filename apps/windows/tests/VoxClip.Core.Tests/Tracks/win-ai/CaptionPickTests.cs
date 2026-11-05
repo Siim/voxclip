@@ -11,7 +11,7 @@ using Xunit;
 
 namespace VoxClip.Core.Tests.Tracks.WinAi;
 
-/// <summary>shared/fixtures/clip-style/caption-pick.json: the clip style contract (design §6.9) and the caption pick request (AI §15),
+/// <summary>shared/fixtures/clip-style/caption-pick.json: the clip style contract (design §6.6) and the caption pick request (AI §16),
 /// the twin of the Swift CaptionPickTests.</summary>
 public sealed class CaptionPickTests
 {

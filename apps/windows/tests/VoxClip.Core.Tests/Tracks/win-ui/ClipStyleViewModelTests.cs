@@ -8,7 +8,7 @@ using Xunit;
 
 namespace VoxClip.Ui.Tests;
 
-/// <summary>The clip style card on Windows (design §6.9): shown once when the project has clips, folded by a choice and
+/// <summary>The clip style card on Windows (design §6.6): shown once when the project has clips, folded by a choice and
 /// reopened from the status bar item; a choice is one undo step; a caption style the user picks fixes the clip style's
 /// captions so no AI pick replaces it.</summary>
 public sealed class ClipStyleViewModelTests

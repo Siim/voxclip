@@ -8,7 +8,7 @@ namespace VoxClip.Core.Domain.Clips;
 /// <summary>The AI's caption style for one clip and its one-line reason; project schema $defs/clipStyle.</summary>
 public sealed record ClipCaptionPick(string StyleId, string Reason);
 
-/// <summary>How clips should be made (design §6.9, project schema $defs/clipStyle). Stored per project once the user
+/// <summary>How clips should be made (design §6.6, project schema $defs/clipStyle). Stored per project once the user
 /// chooses on the clip style card; Settings keeps the default a new project's card starts with. The clip autopilot
 /// planner reads the same value. Wire values: preset auto|punchy|calm|demo|mine, captions "auto", "off" or a style id,
 /// music auto|off, shapes "16:9"|"9:16"|"1:1", rewording off|fix-only|tighten.</summary>

@@ -64,7 +64,7 @@ internal static class ProjectValidation
         Dictionary(captions.GetProperty("positionByAspect"), key => Require(key is "16:9" or "9:16" or "1:1"), Position);
         if (root.TryGetProperty("clipStyle", out var clipStyle))
         {
-            // Project schema $defs/clipStyle (design §6.9).
+            // Project schema $defs/clipStyle (design §6.6).
             Object(clipStyle, "preset captions music maxLengthSec shapes rewording captionPicks");
             Choice(clipStyle.GetProperty("preset"), "auto", "punchy", "calm", "demo", "mine"); String(clipStyle.GetProperty("captions"), Slug);
             Choice(clipStyle.GetProperty("music"), "auto", "off"); Number(clipStyle.GetProperty("maxLengthSec"), 5, 600, true);

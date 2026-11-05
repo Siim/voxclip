@@ -1,7 +1,7 @@
 import Foundation
 import VoxClipCore
 
-/// The editor's clip style card and caption pick state (design.md §6.9).
+/// The editor's clip style card and caption pick state (design.md §6.6).
 @MainActor @Observable final class ClipStyleState {
     /// The card was reopened from the status bar after a choice.
     var reopened = false
