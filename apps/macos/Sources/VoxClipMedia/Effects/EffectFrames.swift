@@ -24,13 +24,17 @@ public final class EffectFrames: Sendable {
     // MARK: Picture space
 
     /// Blurs, pixelates and points at regions of `image`, the output-sized frame filled from `crop` of the source picture
-    /// `source` (the oriented source extent), at source time `time` (a freeze's start while it holds).
-    public func picture(_ image: CIImage, source: CGRect, crop: CGRect, output: CGSize, time: Double) -> CIImage {
+    /// `source` (the oriented source extent), at source time `time` (a freeze's start while it holds). Regions are given on
+    /// the source as filmed; `controls` flips and turns them with the picture (`ClipPicture.orient`), so a blur stays on
+    /// the face it covers.
+    public func picture(_ image: CIImage, source: CGRect, crop: CGRect, output: CGSize, time: Double,
+                        controls: ProjectClipControls? = nil) -> CIImage {
         var result = image
         let active = input.picture.filter { $0.kind.usesRect && time >= $0.start && time < $0.end }
         guard !active.isEmpty, crop.width > 0, crop.height > 0 else { return image }
         let scaleX = output.width / crop.width, scaleY = output.height / crop.height
-        func mapped(_ rect: ClipEffect.Rect) -> CGRect {
+        func mapped(_ filmed: ClipEffect.Rect) -> CGRect {
+            let rect = controls?.mapRect(filmed) ?? filmed
             // Picture space is top-left normalized; Core Image is bottom-left in pixels.
             let picture = CGRect(x: source.minX + rect.x * source.width, y: source.minY + (1 - rect.y - rect.height) * source.height,
                                  width: rect.width * source.width, height: rect.height * source.height)
