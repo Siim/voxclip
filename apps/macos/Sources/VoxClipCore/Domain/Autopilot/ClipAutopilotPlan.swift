@@ -5,10 +5,11 @@ import Foundation
 /// positions, as the clip finder's are (ai.md §11.2); every range is inclusive. Building, mapping and pricing a plan sends
 /// nothing and changes no project.
 public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
-    /// `version` of this contract. A reader accepts `readableVersions` and upgrades a version 1 plan to this one: no
-    /// corrections, the original look, no speed change, no stated reasons, no length and no flags.
-    public static let currentVersion = 2
-    public static let readableVersions: ClosedRange<Int> = 1...2
+    /// `version` of this contract. A reader accepts `readableVersions` and upgrades an older plan to this one: version 1
+    /// has no corrections, the original look, no speed change, no stated reasons, no length and no flags; versions 1 and 2
+    /// have no tone.
+    public static let currentVersion = 3
+    public static let readableVersions: ClosedRange<Int> = 1...3
 
     public enum CutKind: String, Codable, Sendable, CaseIterable { case filler, stumble, `repeat`, falseStart, tangent, other }
 
@@ -156,6 +157,16 @@ public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
         public init(field: String, action: Action, detail: String) { self.field = field; self.action = action; self.detail = detail }
     }
 
+    /// The tone the plan's words were written in (version 3; design.md §6.7 "✦ Claude wrote it as {title}"): a catalogue
+    /// or saved tone the creator fixed, or the one Claude chose under Auto. Nil when the creator's own tone was kept.
+    public struct Tone: Codable, Sendable, Equatable {
+        public var id: String
+        public var title: String
+        /// What the tone changed, in a few words: "Hook first, two lines tightened".
+        public var summary: String
+        public init(id: String, title: String, summary: String = "") { self.id = id; self.title = title; self.summary = summary }
+    }
+
     /// Something the review should show next to the plan; the plan itself is kept as it is (ai.md §16.5).
     public struct Flag: Codable, Sendable, Equatable {
         public enum Kind: String, Codable, Sendable, CaseIterable {
@@ -202,17 +213,19 @@ public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
     public var questions: [Question]
     public var repairs: [Repair]
     public var flags: [Flag]
+    /// The tone its words were written in; nil keeps the creator's own (version 3).
+    public var tone: Tone?
 
     public init(version: Int = ClipAutopilotPlan.currentVersion, startWord: Int, endWord: Int, title: String, hook: String,
                 cuts: [Cut] = [], pauseCuts: [PauseCut] = [], corrections: [Correction] = [], rewrites: [Rewrite] = [], captions: Captions,
                 look: Look = .original, speed: Speed? = nil, music: [Music] = [], musicPick: Int? = nil, zooms: [Zoom] = [], postText: String,
                 score: Int, verdict: Verdict, scoreReason: String = "", lengthReason: String = "", seconds: Double = 0,
-                questions: [Question] = [], repairs: [Repair] = [], flags: [Flag] = []) {
+                questions: [Question] = [], repairs: [Repair] = [], flags: [Flag] = [], tone: Tone? = nil) {
         self.version = version; self.startWord = startWord; self.endWord = endWord; self.title = title; self.hook = hook
         self.cuts = cuts; self.pauseCuts = pauseCuts; self.corrections = corrections; self.rewrites = rewrites; self.captions = captions
         self.look = look; self.speed = speed; self.music = music; self.musicPick = musicPick; self.zooms = zooms; self.postText = postText
         self.score = score; self.verdict = verdict; self.scoreReason = scoreReason; self.lengthReason = lengthReason; self.seconds = seconds
-        self.questions = questions; self.repairs = repairs; self.flags = flags
+        self.questions = questions; self.repairs = repairs; self.flags = flags; self.tone = tone
     }
 
     public init(from decoder: any Decoder) throws {
@@ -236,12 +249,13 @@ public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
                   seconds: try values.decodeIfPresent(Double.self, forKey: .seconds) ?? 0,
                   questions: try values.decode([Question].self, forKey: .questions),
                   repairs: try values.decodeIfPresent([Repair].self, forKey: .repairs) ?? [],
-                  flags: try values.decodeIfPresent([Flag].self, forKey: .flags) ?? [])
+                  flags: try values.decodeIfPresent([Flag].self, forKey: .flags) ?? [],
+                  tone: try values.decodeIfPresent(Tone.self, forKey: .tone))
     }
 
     private enum CodingKeys: String, CodingKey {
         case version, startWord, endWord, title, hook, cuts, pauseCuts, corrections, rewrites, captions, look, speed, music, musicPick, zooms,
-             postText, score, verdict, scoreReason, lengthReason, seconds, questions, repairs, flags
+             postText, score, verdict, scoreReason, lengthReason, seconds, questions, repairs, flags, tone
     }
 
     /// The picked music, when there is one.

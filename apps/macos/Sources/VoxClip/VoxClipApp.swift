@@ -325,7 +325,7 @@ import VoxClipCore
         case 33: editor.moveClip(1)
         case 34: editor.requestFindClips(from: .clipBar)
         case 37: openRetranscription()
-        case 38: editor.runRewrite()
+        case 38: editor.rewriteShortcut()
         case 40: if let id = selectedClipID { editor.keep(id) }
         case 41: if let id = selectedClipID { editor.dismiss(id) }
         case 42: editor.keepAll()

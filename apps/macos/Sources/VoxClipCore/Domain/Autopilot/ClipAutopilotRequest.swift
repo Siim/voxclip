@@ -12,6 +12,17 @@ public struct ClipAutopilotCaptionPreference: Sendable, Equatable {
     var isEmpty: Bool { styleId == nil && font == nil && textCase == nil }
 }
 
+/// The tone the planner writes a clip's words in (ai.md §16.3; design.md §6.6 Tone row). Nil on a request sends no tone
+/// line, as before prompt version 6.
+public enum ClipAutopilotTone: Sendable, Equatable {
+    /// Claude picks one of `offered` per clip (the catalogue tones), or none.
+    case auto(offered: [RewriteTone])
+    /// The creator's own tone: no tone change (As I said it, and every style that never rewords).
+    case asSaid
+    /// The tone the creator fixed: a catalogue tone or a saved one.
+    case fixed(RewriteTone)
+}
+
 /// What to plan (ai.md §16.3): one clip span, several clip spans, or a whole video (or a range of it) as a series.
 public struct ClipAutopilotRequest: Sendable, Equatable {
     public enum Mode: Sendable, Equatable {
@@ -34,11 +45,14 @@ public struct ClipAutopilotRequest: Sendable, Equatable {
     public var language: String?
     /// An optional note from the creator, sent as data.
     public var note: String?
+    /// The tone of each clip's words; nil sends no tone line. A series' moments stage never gets one.
+    public var tone: ClipAutopilotTone?
 
     public init(transcript: Transcript, edits: ProjectEdits = ProjectEdits(), mode: Mode,
-                captionPreference: ClipAutopilotCaptionPreference? = nil, language: String? = nil, note: String? = nil) {
+                captionPreference: ClipAutopilotCaptionPreference? = nil, language: String? = nil, note: String? = nil,
+                tone: ClipAutopilotTone? = nil) {
         self.transcript = transcript; self.edits = edits; self.mode = mode; self.captionPreference = captionPreference
-        self.language = language; self.note = note
+        self.language = language; self.note = note; self.tone = tone
     }
 
     public var isSeries: Bool { if case .series = mode { true } else { false } }
@@ -77,13 +91,16 @@ public struct ClipAutopilotContext: Sendable {
     public let fonts: [ClipAutopilotPlan.Font: String]
     public let preference: ClipAutopilotCaptionPreference?
     public let prompt: ClipAutopilotPrompt
+    /// The request's tone: what the plan's `tone` may be.
+    public let tone: ClipAutopilotTone?
 
     public init(words: [TimedWord], corrections: [String: String] = [:], cutWordIDs: Set<String> = [], pauses: [Pause] = [],
                 cutPauseIDs: Set<String> = [], pauseKeepSeconds: Double = 0.15, scope: ClosedRange<Int>, styleIDs: Set<String>,
-                fonts: [ClipAutopilotPlan.Font: String], preference: ClipAutopilotCaptionPreference? = nil, prompt: ClipAutopilotPrompt) {
+                fonts: [ClipAutopilotPlan.Font: String], preference: ClipAutopilotCaptionPreference? = nil, prompt: ClipAutopilotPrompt,
+                tone: ClipAutopilotTone? = nil) {
         self.words = words; self.corrections = corrections; self.cutWordIDs = cutWordIDs; self.pauses = pauses
         self.cutPauseIDs = cutPauseIDs; self.pauseKeepSeconds = pauseKeepSeconds; self.scope = scope; self.styleIDs = styleIDs
-        self.fonts = fonts; self.preference = preference; self.prompt = prompt
+        self.fonts = fonts; self.preference = preference; self.prompt = prompt; self.tone = tone
     }
 
     /// The word as shown, corrections applied.
@@ -104,7 +121,7 @@ public struct ClipAutopilotContext: Sendable {
         for correction in plan { merged[words[correction.word].id] = correction.text }
         return ClipAutopilotContext(words: words, corrections: merged, cutWordIDs: cutWordIDs, pauses: pauses, cutPauseIDs: cutPauseIDs,
                                     pauseKeepSeconds: pauseKeepSeconds, scope: scope, styleIDs: styleIDs, fonts: fonts,
-                                    preference: preference, prompt: prompt)
+                                    preference: preference, prompt: prompt, tone: tone)
     }
 }
 
@@ -191,6 +208,7 @@ public enum ClipAutopilotRequestBuilder {
                 "minTargetSeconds": values["minTargetSeconds"]!, "maxTargetSeconds": values["maxTargetSeconds"]!, "lengthHint": lengthHint])
             let elsewhere = names(words: words, outside: scope, corrections: request.edits.corrections)
             if !elsewhere.isEmpty { instruction += try prompt.request("names", ["names": elsewhere.joined(separator: ", ")]) }
+            if let tone = request.tone { instruction += try toneLine(tone, prompt: prompt) }
             if let moment {
                 let fixed = request.captionPreference?.styleId != nil
                 let caption = fixed ? "" : try prompt.request("momentCaption", ["style": moment.moment.captionStyle,
@@ -228,6 +246,23 @@ public enum ClipAutopilotRequestBuilder {
     }
 
     static let maxNames = 20
+
+    /// The clip instruction's tone line (prompt version 6): the creator's fixed tone with its instruction, the tones to
+    /// choose from under Auto, or the creator's own tone.
+    static func toneLine(_ tone: ClipAutopilotTone, prompt: ClipAutopilotPrompt) throws -> String {
+        switch tone {
+        case .fixed(let tone):
+            return try prompt.request("toneFixed", ["title": tone.title, "id": tone.id, "instruction": tone.instruction])
+        case .asSaid:
+            return try prompt.request("toneAsSaid", [:])
+        case .auto(let offered):
+            guard !offered.isEmpty else { return try prompt.request("toneAsSaid", [:]) }
+            let lines = try offered.map {
+                try prompt.request("toneLine", ["id": $0.id, "title": $0.title, "descriptor": $0.detail, "instruction": $0.instruction])
+            }
+            return try prompt.request("toneAuto", ["tones": lines.joined(separator: "\n")])
+        }
+    }
 
     /// The caption preference line: only the fields the creator fixed, or `noCaptionPreference`.
     static func preferenceLine(_ preference: ClipAutopilotCaptionPreference?, prompt: ClipAutopilotPrompt) throws -> String {

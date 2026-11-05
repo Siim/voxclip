@@ -170,7 +170,9 @@ struct EditorRenderSnapshot {
         let previousFind = sendConfirmation.isPresented ? findTask : nil
         if sendConfirmation.isPresented { sendConfirmation.cancel(); findTask?.cancel(); closeRewrite(returnFocus: false) }
         connectorSendVerb = verb
-        let instruction = instruction ?? rewriteInstruction
+        // An empty field asks the default tone (the clip style's Tone, else Fix mistakes; design.md §6.3.1).
+        let typed = instruction ?? rewriteInstruction
+        let instruction = typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? (defaultRewriteItem?.instruction ?? typed) : typed
         if let session = rewrite, session.isOpen, session.rewriteScope == scope {
             sendRewriteAgain(session, instruction: instruction)
             return

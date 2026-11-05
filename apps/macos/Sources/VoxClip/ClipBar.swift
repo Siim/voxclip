@@ -89,7 +89,7 @@ enum ClipBarMetrics {
         keep.toolTip = "Keep this clip (⇧⌘↩)"
         ask.delegate = self
         ask.onFocus = { [weak self] in self?.askTookFocus() }
-        ask.setAccessibilityHelp("Return opens Rewrite with what you type. Empty asks to fix mistakes.")
+        ask.setAccessibilityHelp("Return opens Rewrite with what you type. Empty asks your default tone; the tones are in the strip below.")
         render()
     }
     required init?(coder: NSCoder) { nil }
@@ -97,15 +97,17 @@ enum ClipBarMetrics {
     override var mouseDownCanMoveWindow: Bool { false }
 
     /// What Rewrite and Ask act on now, named for the verb's VoiceOver name and tooltip and the field's placeholder:
-    /// "Rewrite selection" and "Ask about these words…", "Rewrite clip 1" and "Ask about Clip 1…", or "Rewrite full
-    /// take" and "Ask about Full Take…" (V13's `rewriteScopeNow`; design.md §1 item 1).
+    /// "Rewrite selection" and "What should change in these words?", "Rewrite clip 1" and "What should change in clip
+    /// 1?", or "Rewrite full take" and "What should change in this video?" (V13's `rewriteScopeNow`; design.md §1 item 1
+    /// and §6.3.1). The placeholder adds "Or pick a tone ↓", pointing at the strip under the bar.
     var rewriteNames: (verb: String, ask: String) {
         switch model.rewriteScopeNow {
-        case .selection: ("Rewrite selection", "Ask about these words…")
-        case .clip(let id): ("Rewrite clip \(model.clipNumber(id) ?? 1)", "Ask about \(model.scopeName(id))…")
-        case .fullTake, nil: ("Rewrite full take", "Ask about Full Take…")
+        case .selection: ("Rewrite selection", "What should change in these words?")
+        case .clip(let id): ("Rewrite clip \(model.clipNumber(id) ?? 1)", "What should change in clip \(model.clipNumber(id) ?? 1)?")
+        case .fullTake, nil: ("Rewrite full take", "What should change in this video?")
         }
     }
+    static let tonePointer = " Or pick a tone \u{2193}"
 
     func tearDown() {
         toastEnd?.cancel()
@@ -174,8 +176,9 @@ enum ClipBarMetrics {
         let names = rewriteNames
         rewrite.setAccessibilityLabel(failure.map { "\(names.verb). \($0). Try Again" } ?? names.verb)
         rewrite.toolTip = note ?? failure.map { "\($0). Try Again (⇧⌘R)" } ?? "\(names.verb) (⇧⌘R)"
-        let askName = names.ask.replacingOccurrences(of: "…", with: "")
-        if ask.placeholder != names.ask { ask.placeholder = names.ask }
+        let askName = names.ask
+        let placeholder = names.ask + (model.showsScopeToneStrip ? Self.tonePointer : "")
+        if ask.placeholder != placeholder { ask.placeholder = placeholder }
         ask.setAccessibilityLabel(askName)
         askButton.setAccessibilityLabel(askName)
         rewriting.isHidden = !running

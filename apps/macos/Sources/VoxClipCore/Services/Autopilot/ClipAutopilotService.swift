@@ -259,7 +259,7 @@ public actor ClipAutopilotService {
         let context = ClipAutopilotContext(words: input.transcript.words, corrections: input.edits.corrections,
             cutWordIDs: Set(input.edits.cutWordIds), pauses: state.pauses, cutPauseIDs: Set(input.edits.cutPauseIds),
             pauseKeepSeconds: input.edits.pauseKeepSeconds, scope: rendered.scope, styleIDs: Set(resources.styles.map(\.id)),
-            fonts: resources.fonts, preference: input.captionPreference, prompt: prompt)
+            fonts: resources.fonts, preference: input.captionPreference, prompt: prompt, tone: moments ? nil : input.tone)
         return Prepared(request: request, context: context)
     }
 }

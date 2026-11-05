@@ -28,14 +28,16 @@ struct MakeItStyle: Equatable {
     var rewrites = true
     /// The shapes Export renders in one click.
     var shapes: [AspectRatio] = [.landscape, .portrait]
+    /// The tone Claude writes the words in (the card's Tone row; As I said it whenever Rewording is Never reword).
+    var tone = ClipTone.auto
 
     static let auto = MakeItStyle()
 
     init(captionPreference: ClipAutopilotCaptionPreference? = nil, captions: Bool = true, maxSeconds: Int? = nil,
          rewording: ClipRewording = .fixOnly, generatedMusic: Bool = true, music: Bool = true, rewrites: Bool = true,
-         shapes: [AspectRatio] = [.landscape, .portrait]) {
+         shapes: [AspectRatio] = [.landscape, .portrait], tone: ClipTone = .auto) {
         self.captionPreference = captionPreference; self.captions = captions; self.maxSeconds = maxSeconds; self.rewording = rewording
-        self.generatedMusic = generatedMusic; self.music = music; self.rewrites = rewrites; self.shapes = shapes
+        self.generatedMusic = generatedMusic; self.music = music; self.rewrites = rewrites; self.shapes = shapes; self.tone = tone
     }
 
     /// A fixed caption style becomes the planner's `styleId`; Auto leaves it to Claude; Off keeps captions as they are.
@@ -45,7 +47,7 @@ struct MakeItStyle: Equatable {
         self.init(captionPreference: fixed.flatMap { $0 == "off" ? nil : ClipAutopilotCaptionPreference(styleId: $0) },
                   captions: fixed != "off", maxSeconds: style.maxLengthSec, rewording: style.rewording,
                   generatedMusic: style.music == .auto, music: style.music != .off, rewrites: style.rewording != .off,
-                  shapes: style.shapes.isEmpty ? [.landscape, .portrait] : style.shapes)
+                  shapes: style.shapes.isEmpty ? [.landscape, .portrait] : style.shapes, tone: style.effectiveTone)
     }
 
     /// What the planner is told about the style that its request has no field for: the length and the rewording.
@@ -54,7 +56,7 @@ struct MakeItStyle: Equatable {
         if let maxSeconds { parts.append("Keep the finished clip at most \(maxSeconds) s.") }
         switch rewording {
         case .off: parts.append("Never reword the speaker: no rewrites.")
-        case .fixOnly: parts.append("Reword only what sounds wrong.")
+        case .fixOnly: parts.append(tone == .asSaid ? "Reword only what sounds wrong." : "Reword only what sounds wrong or what the tone needs.")
         case .tighten: parts.append("Reword freely to tighten.")
         }
         return parts.isEmpty ? nil : parts.joined(separator: " ")
@@ -125,6 +127,8 @@ enum MakeItChange: Equatable {
     case question(Int)
     /// The clip's look or speed: Change shows the other choices as chips in the row, and a chip applies at once.
     case look, speed
+    /// The tone its words were written in: Change shows the tones as chips; one re-plans the clip in that tone.
+    case tone
 }
 
 /// One line of the review.
@@ -158,6 +162,8 @@ struct MakeItRow: Identifiable, Equatable {
     var plan: ClipAutopilotPlan?
     var rows: [MakeItRow] = []
     var spent: Decimal = 0
+    /// What voicing the rewrites spent, for the tone row's "voiced 2 phrases, $0.18".
+    var voiceSpent: Decimal = 0
     /// The clip's rendered length: its edited length divided by its speed (design.md §6.9), as the export renders it.
     var seconds = 0.0
     var postText = ""
@@ -195,6 +201,8 @@ struct MakeItRow: Identifiable, Equatable {
     private(set) var voiceReady = false
     @ObservationIgnored var services: MakeItServices?
     @ObservationIgnored var style: MakeItStyle?
+    /// The tone a Change on the review's tone row asks for, used by the next request only.
+    @ObservationIgnored var toneOverride: ClipTone?
     @ObservationIgnored private var queueTask: Task<Void, Never>?
 
     var shown: MakeItRun? { shownClipID.flatMap { runs[$0] } }
@@ -280,12 +288,16 @@ extension EditorModel {
 
     /// The click: a suggestion is kept first, in the same undo step as everything the run applies. The click approves
     /// the cap shown on the button; the run never spends past it.
-    func makeItPostable(_ clipID: String) {
-        guard canMakeItPostable(clipID) else { return }
+    func makeItPostable(_ clipID: String) { launchMakeIt(clipID, beginsGroup: true) }
+
+    /// Starts a run. `beginsGroup` false continues the undo group the caller opened (the tone row's "Change tone", which
+    /// took the clip's decisions back first), so the whole change is one step.
+    func launchMakeIt(_ clipID: String, beginsGroup: Bool) {
+        guard canMakeItPostable(clipID) else { if !beginsGroup { endUndoGroup() }; return }
         let cap = makeItCap(clipID: clipID)
         let run = MakeItRun(clipID: clipID, cap: cap)
         makeIt.insert(run)
-        beginUndoGroup("Make it postable")
+        if beginsGroup { beginUndoGroup("Make it postable") }
         if isSuggestion(clipID) { _ = keepForRowAction(clipID) }
         undoGroup?.ownsEdits = false
         _ = setScope(clipID)
@@ -306,7 +318,7 @@ extension EditorModel {
         for run in runs.reversed() { makeIt.insert(run); run.line("Waiting for Claude…") }
         onShowMakeIt?()
         let request = ClipAutopilotRequest(transcript: transcript, edits: project.edits, mode: .clips(ranked.map(\.span)),
-                                           captionPreference: makeItStyle.captionPreference, note: makeItNoteText())
+                                           captionPreference: makeItStyle.captionPreference, note: makeItNoteText(), tone: makeItPlannerTone())
         let task = Task { [weak self] () -> Void in await self?.performSeries(runs, spans: ranked.map(\.span), request: request) }
         for run in runs { run.task = task }
         makeIt.holdQueue(task)
@@ -422,7 +434,20 @@ extension EditorModel {
         guard let transcript = project.transcript, let clip = project.edits.clips.first(where: { $0.id == clipID }),
               let lower = index(clip.startWordId), let upper = index(clip.endWordId), lower <= upper else { return nil }
         return ClipAutopilotRequest(transcript: transcript, edits: project.edits, mode: .clip(lower...upper),
-                                    captionPreference: makeItStyle.captionPreference, note: makeItNoteText())
+                                    captionPreference: makeItStyle.captionPreference, note: makeItNoteText(), tone: makeItPlannerTone())
+    }
+
+    /// The planner's tone (ai.md §16.3): a Change's tone once, else the style's. Auto offers the catalogue tones; a tone
+    /// this Mac does not know (a saved tone deleted, or one from another Mac) plans as Auto.
+    func makeItPlannerTone() -> ClipAutopilotTone? {
+        let tone = makeIt.toneOverride ?? makeItStyle.tone
+        makeIt.toneOverride = nil
+        guard let catalog = app.rewriteToneCatalog else { return nil }
+        switch tone {
+        case .asSaid: return .asSaid
+        case .auto: return .auto(offered: catalog.tones)
+        case .tone(let id): return catalog.tone(id, saved: app.myRewriteTones).map { .fixed($0) } ?? .auto(offered: catalog.tones)
+        }
     }
 
     /// The note to Claude: the style's length and rewording, then a question's other answer (sent once).
@@ -480,6 +505,7 @@ extension EditorModel {
             rows.append(MakeItRow(id: "question-\(index)", kind: .question, text: question.question, detail: "Claude chose “\(question.answer)”",
                                   change: .question(index), options: question.options.filter { $0 != question.answer }))
         }
+        if let toneRow = makeItToneRow(plan, run: run, rows: rows) { rows.insert(toneRow, at: 0) }
         run.rows = rows
         run.seconds = makeItRenderedSeconds(run.clipID)
         run.postText = MusicCredits.postText(project.share.captions[run.clipID] ?? run.postText, music: MusicProject.entry(for: run.clipID, in: project))
@@ -608,6 +634,7 @@ extension EditorModel {
         guard allowed else { row.kind = .note; row.text = "Claude suggests “\(text)”"; row.detail = "This clip style keeps your words."; return row }
         let outcome = await services.voice(MakeItRewriteRequest(range: range, text: text, clipID: run.clipID, budget: run.remaining), self)
         run.spent += outcome.spent
+        run.voiceSpent += outcome.spent
         switch outcome.result {
         case .voiced(let segments):
             run.inverses[operation.id] = .voice(segments: segments)
@@ -678,6 +705,7 @@ extension EditorModel {
 
     /// Undo on one row: takes back that decision only, as its own undo step.
     func makeItUndo(_ rowID: String, in run: MakeItRun) {
+        if rowID == Self.makeItToneRowID { makeItRemoveTone(run, chose: false); return }
         guard let inverse = run.inverses[rowID], let index = run.rows.firstIndex(where: { $0.id == rowID }), !run.rows[index].undone else { return }
         let name = "Undo " + run.rows[index].text
         guard undoInverse(inverse, name: name) else { return }
@@ -693,12 +721,18 @@ extension EditorModel {
         let ids = run.rows.filter { !$0.undone && run.inverses[$0.id] != nil }.map(\.id)
         beginUndoGroup("Undo Make it postable")
         undoGroup?.ownsEdits = true
-        for id in ids.reversed() { makeItUndo(id, in: run) }
-        // Inverses without a row (the post text) go too.
-        for (id, inverse) in run.inverses { _ = undoInverse(inverse, name: "Undo Make it postable"); run.inverses[id] = nil }
+        takeBackMakeIt(run, rows: ids)
         endUndoGroup()
         makeIt.forget(run.clipID)
         announce("Make it postable undone.")
+    }
+
+    /// Takes back every decision of `run` still applied, inside the caller's undo group.
+    func takeBackMakeIt(_ run: MakeItRun, rows: [String]? = nil) {
+        let ids = rows ?? run.rows.filter { !$0.undone && run.inverses[$0.id] != nil }.map(\.id)
+        for id in ids.reversed() { makeItUndo(id, in: run) }
+        // Inverses without a row (the post text) go too.
+        for (id, inverse) in run.inverses { _ = undoInverse(inverse, name: "Undo Make it postable"); run.inverses[id] = nil }
     }
 
     private func undoInverse(_ inverse: MakeItInverse, name: String) -> Bool {
@@ -752,7 +786,7 @@ extension EditorModel {
             _ = setScope(run.clipID)
             runRewrite(scope: .selection(range))
         case .question(let index): run.openQuestion = run.openQuestion == index ? nil : index
-        case .look, .speed:
+        case .look, .speed, .tone:
             guard let row = run.rows.first(where: { $0.change == change }) else { return }
             run.openChoice = run.openChoice == row.id ? nil : row.id
         }

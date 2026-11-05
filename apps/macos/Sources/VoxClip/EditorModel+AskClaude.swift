@@ -60,6 +60,9 @@ struct AskClaudeRow: Identifiable, Equatable {
     @ObservationIgnored var task: Task<Void, Never>?
     var isOpen: Bool { selection != nil || run != nil }
 
+    /// The field's placeholder: it takes both kinds of request, and Claude decides.
+    static let placeholder = "Say what to change: reword it, bleep it, blur, add a title\u{2026}"
+
     /// The example chips under the field: each only fills the field.
     static let chips: [(label: String, text: String)] = [
         ("Bleep it", "Bleep these words"), ("Blur the screen", "Blur the screen"), ("Add a title \u{201C}Day 1\u{201D}", "Add a title \u{201C}Day 1\u{201D}"),
@@ -92,6 +95,21 @@ extension EditorModel {
         focusedPane = .panel
         paneFocusRequest += 1
         announce("Ask Claude about \(askClaude.label). Type what you want, then press Return.")
+    }
+
+    /// What "Reword these words" rewrites: the asked words, or the asked clip. A time range has no words to reword.
+    var askClaudeRewriteScope: RewriteScope? {
+        guard capabilities.ai, capabilities.edit, let selection = askClaude.selection,
+              let scope = try? AskClaudeScope.resolve(selection, in: project) else { return nil }
+        if scope.isClip, let id = scope.clipID { return .clip(id) }
+        if !scope.isTime, let range = scope.words { return .selection(range) }
+        return nil
+    }
+
+    /// "Reword these words" before More…: the default, Fix mistakes, Punchy Reel and Shorter, in the strip's order.
+    var askClaudeQuickTones: [RewriteStripItem] {
+        let quick: Set<String> = [RewriteStripItem.fixMistakesID, "punchy-reel", RewriteStripItem.shorterID]
+        return rewriteStripItems.filter { $0.isDefault || quick.contains($0.id) }
     }
 
     func openAskClaudeOnSelection() { if let selection = askClaudeWordSelection { openAskClaude(selection) } }

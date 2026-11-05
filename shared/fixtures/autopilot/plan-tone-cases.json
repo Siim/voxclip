@@ -1,0 +1,1348 @@
+{
+ "schema": "voxclip-autopilot-tone/1",
+ "id": "autopilot-plan-tone",
+ "origin": "voxclip",
+ "sources": {
+  "shared/prompts/clip-autopilot.json": "cccb137002aedde5b5cf3fffc473b0ea55cf32643dc0333b96f70e6054131bb5",
+  "shared/data/rewrite-tones.json": "e8fd3bc9d14c2b54926290e4c8d944a4ed420cf71adb7df93ef61eb3c7063d89"
+ },
+ "description": "Hand-derived vectors for the Make it postable planner's tone (prompt version 6, plan version 3; doc/spec/ai.md sections 16.3 and 16.5). The transcript is plan-validation-cases.json's (30 items); each reply is its valid-clip reply with the version 2 fields neutral and tone/toneSummary set. 'tone' is the request's tone: null (no tone line), {mode: auto} offering every catalogue tone in order, {mode: as-said}, or {mode: fixed, id} naming a catalogue tone or 'savedTones'. 'expect.tone' is [id, title, summary] or null; 'repairs' lists [field, action] pairs sorted. 'instructions' pins the tone line a clip instruction for [0, 29] ends with. Edit by hand and replay it in every Core suite that implements the planner.",
+ "savedTones": [
+  {
+   "id": "my-pitch-voice",
+   "title": "My pitch voice",
+   "instruction": "Sound like my investor pitch: confident, specific, one number per line. Keep my facts."
+  }
+ ],
+ "cases": [
+  {
+   "id": "fixed-viral",
+   "scope": [
+    0,
+    29
+   ],
+   "tone": {
+    "mode": "fixed",
+    "id": "viral-youtuber"
+   },
+   "reply": {
+    "startWord": 0,
+    "endWord": 29,
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
+    "cuts": [
+     {
+      "startWord": 1,
+      "endWord": 1,
+      "kind": "filler",
+      "reason": "um"
+     },
+     {
+      "startWord": 9,
+      "endWord": 9,
+      "kind": "repeat",
+      "reason": "doubled is"
+     },
+     {
+      "startWord": 11,
+      "endWord": 11,
+      "kind": "filler",
+      "reason": "uh"
+     }
+    ],
+    "pauseCuts": [
+     {
+      "afterWord": 6,
+      "reason": "dead air"
+     }
+    ],
+    "rewrites": [
+     {
+      "startWord": 17,
+      "endWord": 23,
+      "text": "You still need to feed the plants",
+      "reason": "feed is the verb"
+     }
+    ],
+    "captionStyle": "vox-bold",
+    "captionFont": "Roboto",
+    "captionWeight": 900,
+    "captionCase": "upper",
+    "wordsPerCaption": 3,
+    "music": [
+     {
+      "title": "Pulse",
+      "mood": "driven",
+      "prompt": "Instrumental minimal techno, 120 BPM, warm bass",
+      "reason": "matches the pace",
+      "underVoiceDb": 18
+     },
+     {
+      "title": "Glass",
+      "mood": "calm",
+      "prompt": "Soft piano and pads, instrumental, 80 BPM",
+      "reason": "reflective",
+      "underVoiceDb": 20
+     },
+     {
+      "title": "Grit",
+      "mood": "gritty",
+      "prompt": "Lo-fi hip hop beat, 90 BPM, instrumental",
+      "reason": "casual",
+      "underVoiceDb": 16
+     }
+    ],
+    "musicPick": 0,
+    "zooms": [
+     {
+      "word": 13,
+      "untilWord": 15,
+      "scale": 1.2,
+      "reason": "the contrast"
+     }
+    ],
+    "postText": "Coffee is great. Sleep is better.",
+    "score": 8,
+    "verdict": "post",
+    "scoreReason": "A clear contrast with a payoff.",
+    "questions": [
+     {
+      "question": "Is it plants?",
+      "answer": "Yes",
+      "options": [
+       "Yes",
+       "No"
+      ]
+     }
+    ],
+    "corrections": [],
+    "lengthReason": "",
+    "captionReason": "",
+    "look": "original",
+    "lookReason": "",
+    "speed": 1,
+    "speedReason": "",
+    "tone": "viral-youtuber",
+    "toneSummary": "Hook first, two lines tightened"
+   },
+   "expect": {
+    "tone": [
+     "viral-youtuber",
+     "Viral YouTuber",
+     "Hook first, two lines tightened"
+    ],
+    "repairs": []
+   }
+  },
+  {
+   "id": "fixed-other-reply",
+   "scope": [
+    0,
+    29
+   ],
+   "tone": {
+    "mode": "fixed",
+    "id": "punchy-reel"
+   },
+   "reply": {
+    "startWord": 0,
+    "endWord": 29,
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
+    "cuts": [
+     {
+      "startWord": 1,
+      "endWord": 1,
+      "kind": "filler",
+      "reason": "um"
+     },
+     {
+      "startWord": 9,
+      "endWord": 9,
+      "kind": "repeat",
+      "reason": "doubled is"
+     },
+     {
+      "startWord": 11,
+      "endWord": 11,
+      "kind": "filler",
+      "reason": "uh"
+     }
+    ],
+    "pauseCuts": [
+     {
+      "afterWord": 6,
+      "reason": "dead air"
+     }
+    ],
+    "rewrites": [
+     {
+      "startWord": 17,
+      "endWord": 23,
+      "text": "You still need to feed the plants",
+      "reason": "feed is the verb"
+     }
+    ],
+    "captionStyle": "vox-bold",
+    "captionFont": "Roboto",
+    "captionWeight": 900,
+    "captionCase": "upper",
+    "wordsPerCaption": 3,
+    "music": [
+     {
+      "title": "Pulse",
+      "mood": "driven",
+      "prompt": "Instrumental minimal techno, 120 BPM, warm bass",
+      "reason": "matches the pace",
+      "underVoiceDb": 18
+     },
+     {
+      "title": "Glass",
+      "mood": "calm",
+      "prompt": "Soft piano and pads, instrumental, 80 BPM",
+      "reason": "reflective",
+      "underVoiceDb": 20
+     },
+     {
+      "title": "Grit",
+      "mood": "gritty",
+      "prompt": "Lo-fi hip hop beat, 90 BPM, instrumental",
+      "reason": "casual",
+      "underVoiceDb": 16
+     }
+    ],
+    "musicPick": 0,
+    "zooms": [
+     {
+      "word": 13,
+      "untilWord": 15,
+      "scale": 1.2,
+      "reason": "the contrast"
+     }
+    ],
+    "postText": "Coffee is great. Sleep is better.",
+    "score": 8,
+    "verdict": "post",
+    "scoreReason": "A clear contrast with a payoff.",
+    "questions": [
+     {
+      "question": "Is it plants?",
+      "answer": "Yes",
+      "options": [
+       "Yes",
+       "No"
+      ]
+     }
+    ],
+    "corrections": [],
+    "lengthReason": "",
+    "captionReason": "",
+    "look": "original",
+    "lookReason": "",
+    "speed": 1,
+    "speedReason": "",
+    "tone": "storyteller",
+    "toneSummary": "Shorter lines"
+   },
+   "expect": {
+    "tone": [
+     "punchy-reel",
+     "Punchy Reel",
+     "Shorter lines"
+    ],
+    "repairs": [
+     [
+      "tone",
+      "repaired"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "fixed-saved",
+   "scope": [
+    0,
+    29
+   ],
+   "tone": {
+    "mode": "fixed",
+    "id": "my-pitch-voice"
+   },
+   "reply": {
+    "startWord": 0,
+    "endWord": 29,
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
+    "cuts": [
+     {
+      "startWord": 1,
+      "endWord": 1,
+      "kind": "filler",
+      "reason": "um"
+     },
+     {
+      "startWord": 9,
+      "endWord": 9,
+      "kind": "repeat",
+      "reason": "doubled is"
+     },
+     {
+      "startWord": 11,
+      "endWord": 11,
+      "kind": "filler",
+      "reason": "uh"
+     }
+    ],
+    "pauseCuts": [
+     {
+      "afterWord": 6,
+      "reason": "dead air"
+     }
+    ],
+    "rewrites": [
+     {
+      "startWord": 17,
+      "endWord": 23,
+      "text": "You still need to feed the plants",
+      "reason": "feed is the verb"
+     }
+    ],
+    "captionStyle": "vox-bold",
+    "captionFont": "Roboto",
+    "captionWeight": 900,
+    "captionCase": "upper",
+    "wordsPerCaption": 3,
+    "music": [
+     {
+      "title": "Pulse",
+      "mood": "driven",
+      "prompt": "Instrumental minimal techno, 120 BPM, warm bass",
+      "reason": "matches the pace",
+      "underVoiceDb": 18
+     },
+     {
+      "title": "Glass",
+      "mood": "calm",
+      "prompt": "Soft piano and pads, instrumental, 80 BPM",
+      "reason": "reflective",
+      "underVoiceDb": 20
+     },
+     {
+      "title": "Grit",
+      "mood": "gritty",
+      "prompt": "Lo-fi hip hop beat, 90 BPM, instrumental",
+      "reason": "casual",
+      "underVoiceDb": 16
+     }
+    ],
+    "musicPick": 0,
+    "zooms": [
+     {
+      "word": 13,
+      "untilWord": 15,
+      "scale": 1.2,
+      "reason": "the contrast"
+     }
+    ],
+    "postText": "Coffee is great. Sleep is better.",
+    "score": 8,
+    "verdict": "post",
+    "scoreReason": "A clear contrast with a payoff.",
+    "questions": [
+     {
+      "question": "Is it plants?",
+      "answer": "Yes",
+      "options": [
+       "Yes",
+       "No"
+      ]
+     }
+    ],
+    "corrections": [],
+    "lengthReason": "",
+    "captionReason": "",
+    "look": "original",
+    "lookReason": "",
+    "speed": 1,
+    "speedReason": "",
+    "tone": "my-pitch-voice",
+    "toneSummary": "One number per line"
+   },
+   "expect": {
+    "tone": [
+     "my-pitch-voice",
+     "My pitch voice",
+     "One number per line"
+    ],
+    "repairs": []
+   }
+  },
+  {
+   "id": "fixed-long-summary",
+   "scope": [
+    0,
+    29
+   ],
+   "tone": {
+    "mode": "fixed",
+    "id": "funny"
+   },
+   "reply": {
+    "startWord": 0,
+    "endWord": 29,
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
+    "cuts": [
+     {
+      "startWord": 1,
+      "endWord": 1,
+      "kind": "filler",
+      "reason": "um"
+     },
+     {
+      "startWord": 9,
+      "endWord": 9,
+      "kind": "repeat",
+      "reason": "doubled is"
+     },
+     {
+      "startWord": 11,
+      "endWord": 11,
+      "kind": "filler",
+      "reason": "uh"
+     }
+    ],
+    "pauseCuts": [
+     {
+      "afterWord": 6,
+      "reason": "dead air"
+     }
+    ],
+    "rewrites": [
+     {
+      "startWord": 17,
+      "endWord": 23,
+      "text": "You still need to feed the plants",
+      "reason": "feed is the verb"
+     }
+    ],
+    "captionStyle": "vox-bold",
+    "captionFont": "Roboto",
+    "captionWeight": 900,
+    "captionCase": "upper",
+    "wordsPerCaption": 3,
+    "music": [
+     {
+      "title": "Pulse",
+      "mood": "driven",
+      "prompt": "Instrumental minimal techno, 120 BPM, warm bass",
+      "reason": "matches the pace",
+      "underVoiceDb": 18
+     },
+     {
+      "title": "Glass",
+      "mood": "calm",
+      "prompt": "Soft piano and pads, instrumental, 80 BPM",
+      "reason": "reflective",
+      "underVoiceDb": 20
+     },
+     {
+      "title": "Grit",
+      "mood": "gritty",
+      "prompt": "Lo-fi hip hop beat, 90 BPM, instrumental",
+      "reason": "casual",
+      "underVoiceDb": 16
+     }
+    ],
+    "musicPick": 0,
+    "zooms": [
+     {
+      "word": 13,
+      "untilWord": 15,
+      "scale": 1.2,
+      "reason": "the contrast"
+     }
+    ],
+    "postText": "Coffee is great. Sleep is better.",
+    "score": 8,
+    "verdict": "post",
+    "scoreReason": "A clear contrast with a payoff.",
+    "questions": [
+     {
+      "question": "Is it plants?",
+      "answer": "Yes",
+      "options": [
+       "Yes",
+       "No"
+      ]
+     }
+    ],
+    "corrections": [],
+    "lengthReason": "",
+    "captionReason": "",
+    "look": "original",
+    "lookReason": "",
+    "speed": 1,
+    "speedReason": "",
+    "tone": "funny",
+    "toneSummary": "Hook first, tightened tightened tightened tightened tightened tightened tightened tightened tightened tightened tightened tightened tightened tightened tightened "
+   },
+   "expect": {
+    "tone": [
+     "funny",
+     "Funny",
+     "Hook first, tightened tightened tightened tightened tightened tightened tightened tightened tightened tightened tightene"
+    ],
+    "repairs": [
+     [
+      "toneSummary",
+      "repaired"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "auto-picks",
+   "scope": [
+    0,
+    29
+   ],
+   "tone": {
+    "mode": "auto"
+   },
+   "reply": {
+    "startWord": 0,
+    "endWord": 29,
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
+    "cuts": [
+     {
+      "startWord": 1,
+      "endWord": 1,
+      "kind": "filler",
+      "reason": "um"
+     },
+     {
+      "startWord": 9,
+      "endWord": 9,
+      "kind": "repeat",
+      "reason": "doubled is"
+     },
+     {
+      "startWord": 11,
+      "endWord": 11,
+      "kind": "filler",
+      "reason": "uh"
+     }
+    ],
+    "pauseCuts": [
+     {
+      "afterWord": 6,
+      "reason": "dead air"
+     }
+    ],
+    "rewrites": [
+     {
+      "startWord": 17,
+      "endWord": 23,
+      "text": "You still need to feed the plants",
+      "reason": "feed is the verb"
+     }
+    ],
+    "captionStyle": "vox-bold",
+    "captionFont": "Roboto",
+    "captionWeight": 900,
+    "captionCase": "upper",
+    "wordsPerCaption": 3,
+    "music": [
+     {
+      "title": "Pulse",
+      "mood": "driven",
+      "prompt": "Instrumental minimal techno, 120 BPM, warm bass",
+      "reason": "matches the pace",
+      "underVoiceDb": 18
+     },
+     {
+      "title": "Glass",
+      "mood": "calm",
+      "prompt": "Soft piano and pads, instrumental, 80 BPM",
+      "reason": "reflective",
+      "underVoiceDb": 20
+     },
+     {
+      "title": "Grit",
+      "mood": "gritty",
+      "prompt": "Lo-fi hip hop beat, 90 BPM, instrumental",
+      "reason": "casual",
+      "underVoiceDb": 16
+     }
+    ],
+    "musicPick": 0,
+    "zooms": [
+     {
+      "word": 13,
+      "untilWord": 15,
+      "scale": 1.2,
+      "reason": "the contrast"
+     }
+    ],
+    "postText": "Coffee is great. Sleep is better.",
+    "score": 8,
+    "verdict": "post",
+    "scoreReason": "A clear contrast with a payoff.",
+    "questions": [
+     {
+      "question": "Is it plants?",
+      "answer": "Yes",
+      "options": [
+       "Yes",
+       "No"
+      ]
+     }
+    ],
+    "corrections": [],
+    "lengthReason": "",
+    "captionReason": "",
+    "look": "original",
+    "lookReason": "",
+    "speed": 1,
+    "speedReason": "",
+    "tone": "Clear Explainer",
+    "toneSummary": "Point first, then the steps"
+   },
+   "expect": {
+    "tone": [
+     "clear-explainer",
+     "Clear explainer",
+     "Point first, then the steps"
+    ],
+    "repairs": []
+   }
+  },
+  {
+   "id": "auto-none",
+   "scope": [
+    0,
+    29
+   ],
+   "tone": {
+    "mode": "auto"
+   },
+   "reply": {
+    "startWord": 0,
+    "endWord": 29,
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
+    "cuts": [
+     {
+      "startWord": 1,
+      "endWord": 1,
+      "kind": "filler",
+      "reason": "um"
+     },
+     {
+      "startWord": 9,
+      "endWord": 9,
+      "kind": "repeat",
+      "reason": "doubled is"
+     },
+     {
+      "startWord": 11,
+      "endWord": 11,
+      "kind": "filler",
+      "reason": "uh"
+     }
+    ],
+    "pauseCuts": [
+     {
+      "afterWord": 6,
+      "reason": "dead air"
+     }
+    ],
+    "rewrites": [
+     {
+      "startWord": 17,
+      "endWord": 23,
+      "text": "You still need to feed the plants",
+      "reason": "feed is the verb"
+     }
+    ],
+    "captionStyle": "vox-bold",
+    "captionFont": "Roboto",
+    "captionWeight": 900,
+    "captionCase": "upper",
+    "wordsPerCaption": 3,
+    "music": [
+     {
+      "title": "Pulse",
+      "mood": "driven",
+      "prompt": "Instrumental minimal techno, 120 BPM, warm bass",
+      "reason": "matches the pace",
+      "underVoiceDb": 18
+     },
+     {
+      "title": "Glass",
+      "mood": "calm",
+      "prompt": "Soft piano and pads, instrumental, 80 BPM",
+      "reason": "reflective",
+      "underVoiceDb": 20
+     },
+     {
+      "title": "Grit",
+      "mood": "gritty",
+      "prompt": "Lo-fi hip hop beat, 90 BPM, instrumental",
+      "reason": "casual",
+      "underVoiceDb": 16
+     }
+    ],
+    "musicPick": 0,
+    "zooms": [
+     {
+      "word": 13,
+      "untilWord": 15,
+      "scale": 1.2,
+      "reason": "the contrast"
+     }
+    ],
+    "postText": "Coffee is great. Sleep is better.",
+    "score": 8,
+    "verdict": "post",
+    "scoreReason": "A clear contrast with a payoff.",
+    "questions": [
+     {
+      "question": "Is it plants?",
+      "answer": "Yes",
+      "options": [
+       "Yes",
+       "No"
+      ]
+     }
+    ],
+    "corrections": [],
+    "lengthReason": "",
+    "captionReason": "",
+    "look": "original",
+    "lookReason": "",
+    "speed": 1,
+    "speedReason": "",
+    "tone": "none",
+    "toneSummary": ""
+   },
+   "expect": {
+    "tone": null,
+    "repairs": []
+   }
+  },
+  {
+   "id": "auto-unknown",
+   "scope": [
+    0,
+    29
+   ],
+   "tone": {
+    "mode": "auto"
+   },
+   "reply": {
+    "startWord": 0,
+    "endWord": 29,
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
+    "cuts": [
+     {
+      "startWord": 1,
+      "endWord": 1,
+      "kind": "filler",
+      "reason": "um"
+     },
+     {
+      "startWord": 9,
+      "endWord": 9,
+      "kind": "repeat",
+      "reason": "doubled is"
+     },
+     {
+      "startWord": 11,
+      "endWord": 11,
+      "kind": "filler",
+      "reason": "uh"
+     }
+    ],
+    "pauseCuts": [
+     {
+      "afterWord": 6,
+      "reason": "dead air"
+     }
+    ],
+    "rewrites": [
+     {
+      "startWord": 17,
+      "endWord": 23,
+      "text": "You still need to feed the plants",
+      "reason": "feed is the verb"
+     }
+    ],
+    "captionStyle": "vox-bold",
+    "captionFont": "Roboto",
+    "captionWeight": 900,
+    "captionCase": "upper",
+    "wordsPerCaption": 3,
+    "music": [
+     {
+      "title": "Pulse",
+      "mood": "driven",
+      "prompt": "Instrumental minimal techno, 120 BPM, warm bass",
+      "reason": "matches the pace",
+      "underVoiceDb": 18
+     },
+     {
+      "title": "Glass",
+      "mood": "calm",
+      "prompt": "Soft piano and pads, instrumental, 80 BPM",
+      "reason": "reflective",
+      "underVoiceDb": 20
+     },
+     {
+      "title": "Grit",
+      "mood": "gritty",
+      "prompt": "Lo-fi hip hop beat, 90 BPM, instrumental",
+      "reason": "casual",
+      "underVoiceDb": 16
+     }
+    ],
+    "musicPick": 0,
+    "zooms": [
+     {
+      "word": 13,
+      "untilWord": 15,
+      "scale": 1.2,
+      "reason": "the contrast"
+     }
+    ],
+    "postText": "Coffee is great. Sleep is better.",
+    "score": 8,
+    "verdict": "post",
+    "scoreReason": "A clear contrast with a payoff.",
+    "questions": [
+     {
+      "question": "Is it plants?",
+      "answer": "Yes",
+      "options": [
+       "Yes",
+       "No"
+      ]
+     }
+    ],
+    "corrections": [],
+    "lengthReason": "",
+    "captionReason": "",
+    "look": "original",
+    "lookReason": "",
+    "speed": 1,
+    "speedReason": "",
+    "tone": "pirate",
+    "toneSummary": "Arr"
+   },
+   "expect": {
+    "tone": null,
+    "repairs": [
+     [
+      "tone",
+      "repaired"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "auto-saved-not-offered",
+   "scope": [
+    0,
+    29
+   ],
+   "tone": {
+    "mode": "auto"
+   },
+   "reply": {
+    "startWord": 0,
+    "endWord": 29,
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
+    "cuts": [
+     {
+      "startWord": 1,
+      "endWord": 1,
+      "kind": "filler",
+      "reason": "um"
+     },
+     {
+      "startWord": 9,
+      "endWord": 9,
+      "kind": "repeat",
+      "reason": "doubled is"
+     },
+     {
+      "startWord": 11,
+      "endWord": 11,
+      "kind": "filler",
+      "reason": "uh"
+     }
+    ],
+    "pauseCuts": [
+     {
+      "afterWord": 6,
+      "reason": "dead air"
+     }
+    ],
+    "rewrites": [
+     {
+      "startWord": 17,
+      "endWord": 23,
+      "text": "You still need to feed the plants",
+      "reason": "feed is the verb"
+     }
+    ],
+    "captionStyle": "vox-bold",
+    "captionFont": "Roboto",
+    "captionWeight": 900,
+    "captionCase": "upper",
+    "wordsPerCaption": 3,
+    "music": [
+     {
+      "title": "Pulse",
+      "mood": "driven",
+      "prompt": "Instrumental minimal techno, 120 BPM, warm bass",
+      "reason": "matches the pace",
+      "underVoiceDb": 18
+     },
+     {
+      "title": "Glass",
+      "mood": "calm",
+      "prompt": "Soft piano and pads, instrumental, 80 BPM",
+      "reason": "reflective",
+      "underVoiceDb": 20
+     },
+     {
+      "title": "Grit",
+      "mood": "gritty",
+      "prompt": "Lo-fi hip hop beat, 90 BPM, instrumental",
+      "reason": "casual",
+      "underVoiceDb": 16
+     }
+    ],
+    "musicPick": 0,
+    "zooms": [
+     {
+      "word": 13,
+      "untilWord": 15,
+      "scale": 1.2,
+      "reason": "the contrast"
+     }
+    ],
+    "postText": "Coffee is great. Sleep is better.",
+    "score": 8,
+    "verdict": "post",
+    "scoreReason": "A clear contrast with a payoff.",
+    "questions": [
+     {
+      "question": "Is it plants?",
+      "answer": "Yes",
+      "options": [
+       "Yes",
+       "No"
+      ]
+     }
+    ],
+    "corrections": [],
+    "lengthReason": "",
+    "captionReason": "",
+    "look": "original",
+    "lookReason": "",
+    "speed": 1,
+    "speedReason": "",
+    "tone": "my-pitch-voice",
+    "toneSummary": "Pitch"
+   },
+   "expect": {
+    "tone": null,
+    "repairs": [
+     [
+      "tone",
+      "repaired"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "as-said",
+   "scope": [
+    0,
+    29
+   ],
+   "tone": {
+    "mode": "as-said"
+   },
+   "reply": {
+    "startWord": 0,
+    "endWord": 29,
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
+    "cuts": [
+     {
+      "startWord": 1,
+      "endWord": 1,
+      "kind": "filler",
+      "reason": "um"
+     },
+     {
+      "startWord": 9,
+      "endWord": 9,
+      "kind": "repeat",
+      "reason": "doubled is"
+     },
+     {
+      "startWord": 11,
+      "endWord": 11,
+      "kind": "filler",
+      "reason": "uh"
+     }
+    ],
+    "pauseCuts": [
+     {
+      "afterWord": 6,
+      "reason": "dead air"
+     }
+    ],
+    "rewrites": [
+     {
+      "startWord": 17,
+      "endWord": 23,
+      "text": "You still need to feed the plants",
+      "reason": "feed is the verb"
+     }
+    ],
+    "captionStyle": "vox-bold",
+    "captionFont": "Roboto",
+    "captionWeight": 900,
+    "captionCase": "upper",
+    "wordsPerCaption": 3,
+    "music": [
+     {
+      "title": "Pulse",
+      "mood": "driven",
+      "prompt": "Instrumental minimal techno, 120 BPM, warm bass",
+      "reason": "matches the pace",
+      "underVoiceDb": 18
+     },
+     {
+      "title": "Glass",
+      "mood": "calm",
+      "prompt": "Soft piano and pads, instrumental, 80 BPM",
+      "reason": "reflective",
+      "underVoiceDb": 20
+     },
+     {
+      "title": "Grit",
+      "mood": "gritty",
+      "prompt": "Lo-fi hip hop beat, 90 BPM, instrumental",
+      "reason": "casual",
+      "underVoiceDb": 16
+     }
+    ],
+    "musicPick": 0,
+    "zooms": [
+     {
+      "word": 13,
+      "untilWord": 15,
+      "scale": 1.2,
+      "reason": "the contrast"
+     }
+    ],
+    "postText": "Coffee is great. Sleep is better.",
+    "score": 8,
+    "verdict": "post",
+    "scoreReason": "A clear contrast with a payoff.",
+    "questions": [
+     {
+      "question": "Is it plants?",
+      "answer": "Yes",
+      "options": [
+       "Yes",
+       "No"
+      ]
+     }
+    ],
+    "corrections": [],
+    "lengthReason": "",
+    "captionReason": "",
+    "look": "original",
+    "lookReason": "",
+    "speed": 1,
+    "speedReason": "",
+    "tone": "funny",
+    "toneSummary": "A joke"
+   },
+   "expect": {
+    "tone": null,
+    "repairs": [
+     [
+      "tone",
+      "repaired"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "as-said-none",
+   "scope": [
+    0,
+    29
+   ],
+   "tone": {
+    "mode": "as-said"
+   },
+   "reply": {
+    "startWord": 0,
+    "endWord": 29,
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
+    "cuts": [
+     {
+      "startWord": 1,
+      "endWord": 1,
+      "kind": "filler",
+      "reason": "um"
+     },
+     {
+      "startWord": 9,
+      "endWord": 9,
+      "kind": "repeat",
+      "reason": "doubled is"
+     },
+     {
+      "startWord": 11,
+      "endWord": 11,
+      "kind": "filler",
+      "reason": "uh"
+     }
+    ],
+    "pauseCuts": [
+     {
+      "afterWord": 6,
+      "reason": "dead air"
+     }
+    ],
+    "rewrites": [
+     {
+      "startWord": 17,
+      "endWord": 23,
+      "text": "You still need to feed the plants",
+      "reason": "feed is the verb"
+     }
+    ],
+    "captionStyle": "vox-bold",
+    "captionFont": "Roboto",
+    "captionWeight": 900,
+    "captionCase": "upper",
+    "wordsPerCaption": 3,
+    "music": [
+     {
+      "title": "Pulse",
+      "mood": "driven",
+      "prompt": "Instrumental minimal techno, 120 BPM, warm bass",
+      "reason": "matches the pace",
+      "underVoiceDb": 18
+     },
+     {
+      "title": "Glass",
+      "mood": "calm",
+      "prompt": "Soft piano and pads, instrumental, 80 BPM",
+      "reason": "reflective",
+      "underVoiceDb": 20
+     },
+     {
+      "title": "Grit",
+      "mood": "gritty",
+      "prompt": "Lo-fi hip hop beat, 90 BPM, instrumental",
+      "reason": "casual",
+      "underVoiceDb": 16
+     }
+    ],
+    "musicPick": 0,
+    "zooms": [
+     {
+      "word": 13,
+      "untilWord": 15,
+      "scale": 1.2,
+      "reason": "the contrast"
+     }
+    ],
+    "postText": "Coffee is great. Sleep is better.",
+    "score": 8,
+    "verdict": "post",
+    "scoreReason": "A clear contrast with a payoff.",
+    "questions": [
+     {
+      "question": "Is it plants?",
+      "answer": "Yes",
+      "options": [
+       "Yes",
+       "No"
+      ]
+     }
+    ],
+    "corrections": [],
+    "lengthReason": "",
+    "captionReason": "",
+    "look": "original",
+    "lookReason": "",
+    "speed": 1,
+    "speedReason": "",
+    "tone": "none",
+    "toneSummary": ""
+   },
+   "expect": {
+    "tone": null,
+    "repairs": []
+   }
+  },
+  {
+   "id": "no-tone",
+   "scope": [
+    0,
+    29
+   ],
+   "tone": null,
+   "reply": {
+    "startWord": 0,
+    "endWord": 29,
+    "title": "Coffee is great",
+    "hook": "Coffee is great. Sleep is better.",
+    "cuts": [
+     {
+      "startWord": 1,
+      "endWord": 1,
+      "kind": "filler",
+      "reason": "um"
+     },
+     {
+      "startWord": 9,
+      "endWord": 9,
+      "kind": "repeat",
+      "reason": "doubled is"
+     },
+     {
+      "startWord": 11,
+      "endWord": 11,
+      "kind": "filler",
+      "reason": "uh"
+     }
+    ],
+    "pauseCuts": [
+     {
+      "afterWord": 6,
+      "reason": "dead air"
+     }
+    ],
+    "rewrites": [
+     {
+      "startWord": 17,
+      "endWord": 23,
+      "text": "You still need to feed the plants",
+      "reason": "feed is the verb"
+     }
+    ],
+    "captionStyle": "vox-bold",
+    "captionFont": "Roboto",
+    "captionWeight": 900,
+    "captionCase": "upper",
+    "wordsPerCaption": 3,
+    "music": [
+     {
+      "title": "Pulse",
+      "mood": "driven",
+      "prompt": "Instrumental minimal techno, 120 BPM, warm bass",
+      "reason": "matches the pace",
+      "underVoiceDb": 18
+     },
+     {
+      "title": "Glass",
+      "mood": "calm",
+      "prompt": "Soft piano and pads, instrumental, 80 BPM",
+      "reason": "reflective",
+      "underVoiceDb": 20
+     },
+     {
+      "title": "Grit",
+      "mood": "gritty",
+      "prompt": "Lo-fi hip hop beat, 90 BPM, instrumental",
+      "reason": "casual",
+      "underVoiceDb": 16
+     }
+    ],
+    "musicPick": 0,
+    "zooms": [
+     {
+      "word": 13,
+      "untilWord": 15,
+      "scale": 1.2,
+      "reason": "the contrast"
+     }
+    ],
+    "postText": "Coffee is great. Sleep is better.",
+    "score": 8,
+    "verdict": "post",
+    "scoreReason": "A clear contrast with a payoff.",
+    "questions": [
+     {
+      "question": "Is it plants?",
+      "answer": "Yes",
+      "options": [
+       "Yes",
+       "No"
+      ]
+     }
+    ],
+    "corrections": [],
+    "lengthReason": "",
+    "captionReason": "",
+    "look": "original",
+    "lookReason": "",
+    "speed": 1,
+    "speedReason": "",
+    "tone": "funny",
+    "toneSummary": "A joke"
+   },
+   "expect": {
+    "tone": null,
+    "repairs": []
+   }
+  }
+ ],
+ "instructions": [
+  {
+   "tone": {
+    "mode": "fixed",
+    "id": "viral-youtuber"
+   },
+   "endsWith": "\nTone: Viral YouTuber. The creator chose it for this clip: write its rewrites, title, hook and post text in it, and set tone to \"viral-youtuber\". In their words: Rewrite it the way a top YouTuber would say it. Open with a hook in the first sentence that makes a stranger stop scrolling. Then short, punchy sentences, one thought each. Add a pattern interrupt where attention would dip, such as a sharp question or a quick turn. Build to one clear payoff and land it. Energetic but natural, like me on my best take, never hype for its own sake. Shorten by cutting rather than adding, and keep each rewritten phrase close to the length of the words it replaces, so the new take fits its place. Keep my facts, names, numbers and meaning, and keep my voice. Every line must be speakable as is: no emoji, hashtags, links or stage directions."
+  },
+  {
+   "tone": {
+    "mode": "fixed",
+    "id": "my-pitch-voice"
+   },
+   "endsWith": "\nTone: My pitch voice. The creator chose it for this clip: write its rewrites, title, hook and post text in it, and set tone to \"my-pitch-voice\". In their words: Sound like my investor pitch: confident, specific, one number per line. Keep my facts."
+  },
+  {
+   "tone": {
+    "mode": "as-said"
+   },
+   "endsWith": "\nTone: as the creator said it. Keep their own tone and set tone to \"none\"."
+  },
+  {
+   "tone": {
+    "mode": "auto"
+   },
+   "endsWith": "\nTone: choose the one that suits this clip best, or none, and set tone to its id or \"none\". The tones:\n- viral-youtuber: Viral YouTuber (hook, punchy, payoff). Rewrite it the way a top YouTuber would say it. Open with a hook in the first sentence that makes a stranger stop scrolling. Then short, punchy sentences, one thought each. Add a pattern interrupt where attention would dip, such as a sharp question or a quick turn. Build to one clear payoff and land it. Energetic but natural, like me on my best take, never hype for its own sake. Shorten by cutting rather than adding, and keep each rewritten phrase close to the length of the words it replaces, so the new take fits its place. Keep my facts, names, numbers and meaning, and keep my voice. Every line must be speakable as is: no emoji, hashtags, links or stage directions.\n- punchy-reel: Punchy Reel (≤ 30 s, fast cuts). Make it a fast Reel that runs under 30 seconds. Start on the most surprising line, cut every word that does not earn its place, and keep one idea per sentence. Short, rhythmic lines that build to a quick, memorable ending. Shorten by cutting rather than adding, and keep each rewritten phrase close to the length of the words it replaces, so the new take fits its place. Keep my facts, names, numbers and meaning, and keep my voice. Every line must be speakable as is: no emoji, hashtags, links or stage directions.\n- storyteller: Storyteller (setup, tension, payoff). Tell it as a story. A quick setup that puts the listener in the moment, then the problem or tension, then the turn and the payoff. Use the concrete details I already gave, in plain spoken words. Warm and vivid, never dramatic for its own sake. Keep each rewritten phrase about as long as the words it replaces, so the new take fits its place. Keep my facts, names, numbers and meaning, and keep my voice. Every line must be speakable as is: no emoji, hashtags, links or stage directions.\n- clear-explainer: Clear explainer (step by step). Make it easy to follow. Say the point first, then explain it step by step in plain words, one idea per sentence. Swap jargon for everyday words unless the term matters, and end with what it means for the listener. Keep each rewritten phrase about as long as the words it replaces, so the new take fits its place. Keep my facts, names, numbers and meaning, and keep my voice. Every line must be speakable as is: no emoji, hashtags, links or stage directions.\n- linkedin-pro: LinkedIn pro (calm, credible). Make it sound like a credible professional on LinkedIn. Open with the insight, back it with what I actually did or saw, and end with a takeaway people can use. Calm, confident and specific. No buzzwords, humblebrag or clickbait. Keep each rewritten phrase about as long as the words it replaces, so the new take fits its place. Keep my facts, names, numbers and meaning, and keep my voice. Every line must be speakable as is: no emoji, hashtags, links or stage directions.\n- funny: Funny (light, one joke). Make it light and funny. Keep my point, and add one well-placed joke or witty turn of phrase that grows out of what I said, ideally near the end. Playful and warm, never mean, sarcastic or forced. Keep each rewritten phrase about as long as the words it replaces, so the new take fits its place. Keep my facts, names, numbers and meaning, and keep my voice. Every line must be speakable as is: no emoji, hashtags, links or stage directions.\n- hype-launch: Hype launch (big news, clear ask). Make it a launch announcement. Lead with the news, say who it is for and why it matters now, and end with one clear call to action. Excited and confident, with real energy, but every claim stays exactly as true as what I said. Keep each rewritten phrase about as long as the words it replaces, so the new take fits its place. Keep my facts, names, numbers and meaning, and keep my voice. Every line must be speakable as is: no emoji, hashtags, links or stage directions.\n- calm-sincere: Calm & sincere (honest, unhurried). Make it calm and sincere. Unhurried sentences, honest and personal, as if I were speaking to one person I respect. Remove hype, filler and exaggeration, and let the point land quietly. Shorten by cutting rather than adding, and keep each rewritten phrase close to the length of the words it replaces, so the new take fits its place. Keep my facts, names, numbers and meaning, and keep my voice. Every line must be speakable as is: no emoji, hashtags, links or stage directions."
+  }
+ ]
+}

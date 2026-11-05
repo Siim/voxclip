@@ -137,6 +137,8 @@ import VoxClipCore
     @FocusState private var findFocused: Bool
     var body: some View {
         VStack(spacing: 0) {
+            // The scope bar's "Rewrite as" strip (design.md §6.3.1), always under the clip bar's field while Rewrite can run.
+            if model.showsScopeToneStrip { ScopeToneStrip(model: model) }
             ConnectorConfirmationView(confirmation: model.sendConfirmation, model: model)
             if model.document.demo {
                 Label { Text("Demo project with no video. ").fontWeight(.semibold) + Text("Changes aren't saved to the fixture.") } icon: { Image(systemName: "info.circle") }

@@ -75,14 +75,15 @@ extension WorkspaceShell {
     /// with an open Rewrite is pinned), lets go of the word selection, so the scope now is the clip as the clip bar and
     /// Edit › Rewrite read it, and runs V13's Rewrite on the clip with the clip bar's field text.
     /// A suggestion is kept first, in one undo step with no prompt, then opens exactly as a kept clip does.
-    func rewriteExplorerClip(_ id: String) {
+    func rewriteExplorerClip(_ id: String, as tone: RewriteStripItem? = nil) {
         guard canRewriteExplorerClip(id), let editor else { return }
         if editor.isSuggestion(id), !editor.keepForRowAction(id) { return }
         choose(.clip(id))
         tabs.keepOpen(tabs.active)
         editor.selectedWordIDs = []
         editor.selectedPauseIDs = []
-        editor.runRewrite(scope: .clip(id))
+        // "Rewrite as ▾" (design.md §6.3.1): the chosen tone, at once; the field shows its instruction.
+        if let tone { editor.rewriteAs(tone, scope: .clip(id)) } else { editor.runRewrite(scope: .clip(id)) }
     }
 
     /// "Export Clip…" on a row. A suggestion can export once it can be kept.

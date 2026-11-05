@@ -892,6 +892,9 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
     private var correction: NSTextField?
     private var correctionWordID: String?
     private var selectionBar: NSHostingView<SelectionBar>?
+    /// The "Rewrite these words as" strip under the selection bar, open after "✦ Rewrite as ▾" (design.md §6.3.1).
+    private var selectionStrip: NSHostingView<SelectionRewriteStrip>?
+    private(set) var selectionStripOpen = false
     private var selectionTask: Task<Void, Never>?
     private var scrollingTokens: [NSObjectProtocol] = []
     private var selecting = false
@@ -947,6 +950,8 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
     func hideSelectionBar(dismissed: Bool = false) {
         selectionTask?.cancel(); selectionTask = nil
         selectionBar?.isHidden = true
+        selectionStrip?.isHidden = true
+        selectionStripOpen = false
         if dismissed { selectionDismissed = true }
     }
     func scheduleSelectionBar() {
@@ -987,11 +992,13 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
     }
     #if DEBUG
     var selectionBarAuditView: NSView? { selectionBarVisible ? selectionBar : nil }
+    var selectionStripView: NSView? { selectionStrip?.isHidden == false ? selectionStrip : nil }
     #endif
     func showSelectionBar(focus: Bool = false) {
         guard let model, !selecting, !liveScrolling, model.correctionID == nil, !model.findVisible else { return }
         if focus { barFocusRequest += 1; selectionDismissed = false }
-        let view = SelectionBar(model: model, focusRequest: barFocusRequest) { [weak self] in
+        let view = SelectionBar(model: model, focusRequest: barFocusRequest, rewriteAs: { [weak self] in self?.toggleSelectionStrip() },
+                                stripOpen: selectionStripOpen) { [weak self] in
             self?.hideSelectionBar(dismissed: true); self?.window?.makeFirstResponder(self)
         }
         let host: NSHostingView<SelectionBar>
@@ -1002,6 +1009,7 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
         let frame = selectionBarFrame(lineRects: selectedLineRects(), visibleRect: visibleRect, barSize: size, toolbarInset: visibleRect.minY)
         guard !frame.isEmpty else { host.isHidden = true; return }
         host.frame = frame
+        placeSelectionStrip(under: frame)
         let wasHidden = host.isHidden
         host.isHidden = false
         let fade = EditorAccessibilityPolicy.system.crossfadeDuration
@@ -1011,7 +1019,30 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
         } else { host.alphaValue = 1 }
     }
     @objc func accessibleMakeClip() -> Bool { guard model?.capabilities.edit == true, model?.selectedIDs.isEmpty == false else { return false }; model?.makeClip(); return true }
-    @objc func accessibleRewrite() -> Bool { guard model?.capabilities.ai == true, model?.selectedIDs.isEmpty == false else { return false }; model?.runRewrite(); return true }
+    /// "✦ Rewrite as ▾": shows or hides the tone strip under the bar.
+    func toggleSelectionStrip() {
+        selectionStripOpen.toggle()
+        showSelectionBar()
+        if selectionStripOpen { model?.announce("Rewrite these words as. Your default is first.") }
+    }
+    /// The strip sits right under the bar, or above it when the bar is near the bottom; it hides with the bar.
+    private func placeSelectionStrip(under bar: CGRect) {
+        guard selectionStripOpen, let model else { selectionStrip?.isHidden = true; return }
+        let view = SelectionRewriteStrip(model: model) { [weak self] in
+            self?.hideSelectionBar(dismissed: true)
+        }
+        let host: NSHostingView<SelectionRewriteStrip>
+        if let selectionStrip { host = selectionStrip; host.rootView = view } else {
+            host = NSHostingView(rootView: view); selectionStrip = host; addSubview(host)
+        }
+        let size = host.fittingSize
+        let x = min(max(bar.minX, visibleRect.minX + 4), max(visibleRect.minX + 4, visibleRect.maxX - size.width - 4))
+        var frame = CGRect(x: x, y: bar.maxY + 6, width: size.width, height: size.height)
+        if frame.maxY > visibleRect.maxY { frame.origin.y = bar.minY - 6 - size.height }
+        host.frame = frame
+        host.isHidden = false
+    }
+    @objc func accessibleRewrite() -> Bool { guard model?.capabilities.ai == true, model?.selectedIDs.isEmpty == false else { return false }; model?.rewriteShortcut(); return true }
     @objc func accessibleCut() -> Bool { guard let model, model.capabilities.edit, !model.selectedIDs.isEmpty || !model.selectedPauseIDs.isEmpty else { return false }; model.cutSelection(); return true }
     @objc func accessibleRestore() -> Bool { guard let model, model.capabilities.edit else { return false }; model.cutSelection(restore: true); return true }
     @objc func accessibleCorrect() -> Bool { guard let model, model.capabilities.edit, !model.selectedIDs.isEmpty else { return false }; model.beginCorrection(); updateCorrection(); return true }
@@ -1174,7 +1205,7 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
                 else { super.keyDown(with: event) }
                 return
             }
-            if shift, event.charactersIgnoringModifiers?.lowercased() == "r" { model.runRewrite(); return }
+            if shift, event.charactersIgnoringModifiers?.lowercased() == "r" { hideSelectionBar(dismissed: true); model.rewriteShortcut(); return }
             if event.keyCode == 126, let first = model.words.first { model.select(first.id); return }
             if event.keyCode == 125, let last = model.words.last { model.select(last.id); return }
             super.keyDown(with: event); return

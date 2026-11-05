@@ -62,7 +62,8 @@ import Testing
     static func sendable(_ reply: JSONValue) throws -> JSONValue {
         guard case .object(var object) = reply else { throw VoiceLabError.invalidInput }
         let neutral: [String: JSONValue] = ["corrections": .array([]), "lengthReason": .string(""), "captionReason": .string(""),
-                                            "look": .string("original"), "lookReason": .string(""), "speed": .number(1), "speedReason": .string("")]
+                                            "look": .string("original"), "lookReason": .string(""), "speed": .number(1), "speedReason": .string(""),
+                                            "tone": .string("none"), "toneSummary": .string("")]
         for (key, value) in neutral where object[key] == nil { object[key] = value }
         return .object(object)
     }
@@ -71,7 +72,7 @@ import Testing
 
     @Test func promptFileFillsItsLimitsAndKeepsBothStagesInStep() throws {
         let prompt = try ClipAutopilotPrompt(shared: Self.shared())
-        #expect(prompt.promptVersion == 5)
+        #expect(prompt.promptVersion == 6)
         for system in [prompt.system, prompt.momentsSystem] {
             #expect(!system.contains("{") && !system.contains("}"))
             #expect(system.contains("Length: 20 to 45 seconds after cuts. Up to 60 s only when the idea cannot land in less"))
@@ -242,7 +243,7 @@ import Testing
         let plan = try #require(ClipAutopilotValidator.plan(clip, context: context))
         let data = try JSONEncoder().encode(plan)
         #expect(try JSONDecoder().decode(ClipAutopilotPlan.self, from: data) == plan)
-        let text = String(decoding: data, as: UTF8.self).replacingOccurrences(of: "\"version\":2", with: "\"version\":3")
+        let text = String(decoding: data, as: UTF8.self).replacingOccurrences(of: "\"version\":3", with: "\"version\":4")
         #expect(throws: DecodingError.self) { try JSONDecoder().decode(ClipAutopilotPlan.self, from: Data(text.utf8)) }
         #expect(String(decoding: data, as: UTF8.self).contains("\"case\":\"upper\""))
     }
@@ -269,7 +270,7 @@ import Testing
                                                                  mode: .clip(0...29)), connector: stub, model: "fixture")
         let plan = try #require(result.plan)
         #expect(plan.rewrites.count == 1 && plan.cuts.count == 2)
-        #expect(result.promptVersion == 5 && result.promptSHA256.count == 64)
+        #expect(result.promptVersion == 6 && result.promptSHA256.count == 64)
         let sent = await stub.requests
         #expect(sent.count == 2)
         #expect(sent.allSatisfy { $0.effort == .xhigh && $0.feature == .clipAutopilot })

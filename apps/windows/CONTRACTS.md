@@ -13,6 +13,16 @@ Fixes the two native failures of hosted Windows CI run 41982814463 on lead 61fc2
 - **Verification** (macOS host, Release, serial, `-m:1 -nodeReuse:false -p:UseSharedCompilation=false`, `VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`): cross-platform solution and App type-check 0 warnings, 0 errors; Core 3,097 total, 0 failed, 29 skipped; portable Media 973, 0 failed, 5 skipped; win-ui 1,246, 0 failed, 5 skipped; `*ReleaseSurrogate*` 1 / 1; both `check_drift.py` and the changelog test pass; the built CLI under `env -i` (`--runtime-terms --json`) exit 0 and `TheCliStartsOutsideATestHost` 1 / 1. A CLI-made project and the E2E's v4 project validate with `tools/schemas/validate.py`.
 - **Only hosted Windows CI can confirm.** `CliExportsAClipAtASpeedWithItsLookAndABleep` end to end through FFmpeg; `OverlayAndPointerGoldensMatchTheMacsWithinTextAntialiasing` and the hook tests under DirectWrite (HarfBuzz layout is backend-independent, so the boxes should match; glyph rasterisation still differs within the antialiasing tolerance); the other native suites.
 
+### 2026-11-05 — Rewrite tones: the catalogue, clipStyle.tone and rewrite.myTones in Windows Core (track/v2-rewrite-tones)
+
+Twin of the Mac entry of the same date. Spec: doc/design.md §6.3.1 "Rewrite as", §6.6 Tone; doc/spec/ai.md §16.
+
+- **Core.** `Domain/Clips/RewriteTones.cs`: `RewriteTone`, `RewriteToneCatalog` (`Load`/`Parse` of shared/data/rewrite-tones.json with the Mac's refusals, `Find`, `Resolve`), `MyRewriteTones` (`IsId`, `IsValid`, `Decode`, `Validates`). `ClipStyle.Tone` (`[JsonIgnore(WhenWritingNull)]`, null is Auto, never "auto") and `EffectiveTone` ("as-said" under rewording off); `SameAs` and `Validate` include it. `ProjectValidation` accepts the optional `tone`; `SettingsValidation` accepts `clipStyle.default.tone` and validates `rewrite.myTones` (a known key).
+- **Tests.** `RewriteToneTests` (4: the catalogue and resolving, a broken catalogue, a project's tone round-trip and omission at Auto with refusals and `EffectiveTone`, settings for the default's tone and saved tones). `CaptionPickTests`' unknown clipStyle key is now "mood" (tone is valid).
+- **Allowlists.** `ReleaseBoundary update` on `VoxClip.Core.txt` only: +67, the new types and the `ClipStyle.Tone`/`EffectiveTone` members; no literals. App, Media and CLI unchanged.
+- **Verification.** Core Release 3,101 total, 0 failed; `*ReleaseSurrogate*` ok; the Release CLI starts as a plain process (`env -i … --runtime-terms --json`) with tone settings.
+- **Owed (Windows UI).** The "Rewrite as" strips (scope bar, selection flyout, Ask Claude groups, clip rows), the clip style card's Tone row, Make it postable's tone (no Windows planner yet; plan v3 `tone`), Settings › Clips. Twin: replay plan-tone-cases.json with the planner.
+
 ### 2026-11-05 — Windows renders clip controls and Ask Claude's effects in preview and export, instead of refusing (track/v2-win-render-1)
 
 Twin of the Mac entries track/v2-clip-controls, track/v2-ask-claude and track/v2-wire-1. Spec: doc/design.md §6.8 and §6.9, doc/spec/ai.md §18.5.

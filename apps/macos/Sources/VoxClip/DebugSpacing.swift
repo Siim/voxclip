@@ -73,7 +73,7 @@ import VoxClipMedia
                               PanelHost(model: model, shell: panelShell, width: CGFloat(width), height: 1100))
             }
         }
-        for pane in ["general", "transcription", "ai", "export", "voiceLab", "about"] {
+        for pane in ["general", "transcription", "ai", "export", "clips", "voiceLab", "about"] {
             app.settingsPane = pane
             await capture("settings-\(pane)", size: NSSize(width: 600, height: 560), SettingsView())
         }

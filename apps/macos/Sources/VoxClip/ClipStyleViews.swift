@@ -36,6 +36,7 @@ import VoxClipCore
                               options: catalog.rewording.map { ($0.id, $0.label) }, selected: style.rewording.rawValue) { id in
                         editor.updateClipStyle { $0.rewording = ClipRewording(rawValue: id) ?? $0.rewording }
                     }
+                    ClipStyleToneRow(editor: editor, style: style)
                 }
             }
             .padding(VCTokens.spacingCardPadding)
