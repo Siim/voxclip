@@ -23,7 +23,7 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     private bool isSelected;
     private bool isPointerOver;
     private bool canRewrite;
-    private bool canMakeIt, showsMakeTop;
+    private bool canMakeIt, showsMakeTop, canAskClaude;
     private string makeItName = "✦ Make it postable", makeTopName = "";
     private bool isEnabled = true;
     private bool isLlmBusy;
@@ -92,6 +92,8 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     /// <summary>✦ Make it postable on the row: "✦ Make it postable · up to $0.42" (design §6.7); the row ✦ and the first menu item.</summary>
     public string MakeItName { get => makeItName; set => SetProperty(ref makeItName, value); }
     public bool CanMakeIt { get => canMakeIt; set => SetProperty(ref canMakeIt, value); }
+    /// <summary>A kept clip row's ⋯ "Ask Claude…" (design §6.8): asks about the whole clip.</summary>
+    public bool CanAskClaude { get => canAskClaude; set => SetProperty(ref canAskClaude, value); }
     /// <summary>The Suggested header's "✦ Make top 3 postable".</summary>
     public string MakeTopName { get => makeTopName; set => SetProperty(ref makeTopName, value); }
     public bool ShowsMakeTop { get => showsMakeTop; set => SetProperty(ref showsMakeTop, value); }
@@ -246,6 +248,7 @@ public sealed class ShellViewModel
                     && editor.Words.Skip(first).Take(last - first + 1).Any(word => editor.State?.CutWordIds.Contains(word.Id) != true);
                 row.CanMakeIt = row.Edits && editor.CanMakeItPostable(clip.Id);
                 if (row.CanMakeIt) row.MakeItName = editor.MakeItTitle(clip.Id);
+                row.CanAskClaude = row.Edits && !suggestion && editor.CanAskClaude;
                 if (suggestion && number == kept.Length + 1) next.Add(SuggestedHeader(suggested.Length, showingHome, editor));
                 next.Add(row);
             }

@@ -176,6 +176,7 @@
                                 <TextBlock x:Name="PreviewFile" TextWrapping="Wrap" TextAlignment="Center" FontFamily="{StaticResource VcMonoFontFamily}" FontSize="12" Opacity="{ThemeResource StageMessageFileOpacity}" Foreground="{ThemeResource VcChipMediaForegroundBrush}"/>
                             </StackPanel>
                             <controls:CaptionPositionOverlay x:Name="CaptionDrag"/>
+                            <controls:AskClaudeBoxOverlay x:Name="AskClaudeBox"/>
                         </Grid>
                     </Border>
                     <!-- Viewer bar (delta §5.1): Back 3 seconds, Play, Forward 3 seconds lead; the AI modified tag, then the time, trail.

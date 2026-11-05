@@ -135,6 +135,31 @@ public static class ClipControlsRendering
         return new(x, y, Math.Max(first.X, second.X) - x, Math.Max(first.Y, second.Y) - y);
     }
 
+    /// <summary>The inverse of <see cref="MapAnchor"/>: the point of the source as filmed that lands at (x, y) of the flipped and turned picture.</summary>
+    public static (double X, double Y) UnmapAnchor(this ProjectClipControls controls, double x, double y)
+    {
+        var point = controls.RotationDegrees switch
+        {
+            90 => (X: y, Y: 1 - x),
+            180 => (X: 1 - x, Y: 1 - y),
+            270 => (X: 1 - y, Y: x),
+            _ => (X: x, Y: y)
+        };
+        return controls.FlipHorizontal ? (1 - point.X, point.Y) : point;
+    }
+
+    /// <summary>The inverse of <see cref="MapRect"/>: the region of the source as filmed that is shown at <paramref name="rect"/>
+    /// (Mac <c>unmapRect</c>), so a box dragged on the viewer is stored as filmed.</summary>
+    public static ClipEffectRect UnmapRect(this ProjectClipControls? controls, ClipEffectRect rect)
+    {
+        if (controls is null || (!controls.FlipHorizontal && controls.RotationDegrees == 0)) return rect;
+        var first = controls.UnmapAnchor(rect.X, rect.Y);
+        var second = controls.UnmapAnchor(rect.X + rect.Width, rect.Y + rect.Height);
+        var x = Math.Min(first.X, second.X);
+        var y = Math.Min(first.Y, second.Y);
+        return new(x, y, Math.Max(first.X, second.X) - x, Math.Max(first.Y, second.Y) - y);
+    }
+
     /// <summary>The rendered size of a shape: the export presets' 1080-line frames, 1080 × 1350 for 4:5.</summary>
     public static PixelSize Size(this ClipShape shape) => shape switch
     {

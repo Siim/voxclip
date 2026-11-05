@@ -521,7 +521,7 @@ public sealed partial class AskClaudeValidator(AskClaudePrompt prompt, AskClaude
     private static partial Regex LanguageTag();
 
     /// <summary>The first <paramref name="limit"/> Unicode scalars of <paramref name="text"/>.</summary>
-    internal static string Scalars(string text, int limit) => string.Concat(text.EnumerateRunes().Take(limit).Select(rune => rune.ToString()));
+    public static string Scalars(string text, int limit) => string.Concat(text.EnumerateRunes().Take(limit).Select(rune => rune.ToString()));
     private static double? Seconds(JsonNode? value) => AiJson.Number(value) is { } number && double.IsFinite(number) && number >= 0 ? number : null;
     private static int Integer(JsonNode? value) => AiJson.Number(value) is { } number && double.IsFinite(number) ? (int)Math.Clamp(Math.Truncate(number), int.MinValue, int.MaxValue) : -1;
     private static double Clamp(double? value, double lower, double upper, double fallback) =>

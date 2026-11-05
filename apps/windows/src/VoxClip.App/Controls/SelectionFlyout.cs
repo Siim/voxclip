@@ -18,6 +18,12 @@ internal sealed class SelectionFlyout
     private readonly AppBarButton restore;
     private readonly AppBarButton rewrite;
     private readonly AppBarButton rewriteAs;
+    private readonly AppBarButton askClaude;
+    private readonly AppBarSeparator askSeparator = new();
+    /// <summary>Whether ✦ Ask Claude can act on the selection (an AI is chosen and the project can change).</summary>
+    internal Func<bool>? CanAskClaude { get; set; }
+    /// <summary>✦ Ask Claude: opens the inline field on the selected words in the right column (design §6.8).</summary>
+    internal Action? AskClaude { get; set; }
     private readonly MenuFlyout tones = new() { Placement = FlyoutPlacementMode.Bottom };
     /// <summary>The "Rewrite as" strip's items, the default first (design §6.3.1); empty hides "✦ Rewrite as ▾".</summary>
     internal Func<IReadOnlyList<VoxClip.App.ViewModels.RewriteStripItem>>? Tones { get; set; }
@@ -41,10 +47,15 @@ internal sealed class SelectionFlyout
         // "✦ Rewrite as ▾": the strip as a menu; "Rewrite…" stays for typing your own (design §6.3.1).
         rewriteAs = new AppBarButton { Label = "✦ Rewrite as", Icon = new SymbolIcon(Symbol.Edit), Height = 40, MinHeight = 40, Flyout = tones };
         AutomationProperties.SetName(rewriteAs, "Rewrite as");
+        askClaude = Button("✦ Ask Claude", Symbol.Message, () => AskClaude?.Invoke(), true);
+        AutomationProperties.SetAutomationId(askClaude, "Selection.AskClaude");
+        ToolTipService.SetToolTip(askClaude, "Ask Claude to edit these words: bleep, blur, a title, a rewrite…");
         AutomationProperties.SetAutomationId(rewriteAs, "Selection.RewriteAs");
         ToolTipService.SetToolTip(cut, "Cut (Delete)");
         ToolTipService.SetToolTip(restore, "Restore (Shift+Backspace)");
         ToolTipService.SetToolTip(rewrite, "Rewrite… (Ctrl+R)");
+        flyout.PrimaryCommands.Add(askClaude);
+        flyout.PrimaryCommands.Add(askSeparator);
         flyout.PrimaryCommands.Add(make);
         flyout.PrimaryCommands.Add(cut);
         flyout.PrimaryCommands.Add(restore);
@@ -55,7 +66,7 @@ internal sealed class SelectionFlyout
         flyout.Opened += (_, _) =>
         {
             ApplyEffects();
-            if (flyout.ShowMode == FlyoutShowMode.Standard) make.Focus(FocusState.Keyboard);
+            if (flyout.ShowMode == FlyoutShowMode.Standard) (askClaude.Visibility == Visibility.Visible ? askClaude : make).Focus(FocusState.Keyboard);
         };
         flyout.Closing += (_, _) =>
         {
@@ -81,7 +92,7 @@ internal sealed class SelectionFlyout
         if (!owner.IsLoaded || owner.XamlRoot is null || flyout.IsOpen) return;
         var focused = FocusManager.GetFocusedElement(owner.XamlRoot);
         if (focused is null || ReferenceEquals(focused, owner) || ReferenceEquals(focused, make) || ReferenceEquals(focused, cut) ||
-            ReferenceEquals(focused, restore) || ReferenceEquals(focused, rewrite) || ReferenceEquals(focused, rewriteAs)) owner.Focus(FocusState.Keyboard);
+            ReferenceEquals(focused, restore) || ReferenceEquals(focused, rewrite) || ReferenceEquals(focused, rewriteAs) || ReferenceEquals(focused, askClaude)) owner.Focus(FocusState.Keyboard);
     }
 
     private void EffectsChanged(object? sender, EventArgs args) => owner.DispatcherQueue.TryEnqueue(ApplyEffects);
@@ -134,6 +145,8 @@ internal sealed class SelectionFlyout
         flyout.AreOpenCloseAnimationsEnabled = Ui.EffectPolicy.Animations;
         ToolTipService.SetToolTip(make, existingClip ?? "Make clip (Ctrl+Alt+K)");
         cut.IsEnabled = make.IsEnabled = editable;
+        // Shown only when it can act: an AI is chosen and the project can change.
+        askClaude.Visibility = askSeparator.Visibility = editable && CanAskClaude?.Invoke() == true ? Visibility.Visible : Visibility.Collapsed;
         restore.IsEnabled = editable && canRestore;
         rewrite.Visibility = separator.Visibility = voiceLab ? Visibility.Visible : Visibility.Collapsed;
         rewrite.IsEnabled = editable && rewriteAvailable;

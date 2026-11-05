@@ -674,6 +674,13 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         page.ViewModel.ClearSelection();
         if (page.MakeItPostable(id)) ShowScope(id);
     }
+    /// <summary>A clip row's ⋯ "Ask Claude…" (design §6.8): the clip opens and the inline field asks about the whole clip.</summary>
+    private void AskClaudeClipClicked(object sender, RoutedEventArgs args)
+    {
+        if (sender is not FrameworkElement { Tag: string id } || editor is not { } page || !Shell.Rows.Any(row => row.ClipId == id && row.CanAskClaude)) return;
+        ShowScope(id);
+        page.ViewModel.OpenAskClaudeOnClip(id);
+    }
     /// <summary>A clip row's "✦ Rewrite as": the strip's tones, the default first; one keeps a suggestion first and rewrites its clip.</summary>
     private void ClipMenuOpening(object? sender, object args)
     {

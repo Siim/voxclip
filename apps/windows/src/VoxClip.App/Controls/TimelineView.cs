@@ -114,6 +114,14 @@ public sealed class TimelineView : UserControl
     private readonly TextBlock selectionLength = new() { FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock stateMessage = new() { FontSize = 11, Margin = new(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, IsHitTestVisible = false };
     private readonly TextBlock fxHint = new() { Text = "Director results land here", FontSize = 11, IsHitTestVisible = false };
+    /// <summary>Ask Claude's effects in the FX lane (design §6.8 "On the timeline"): a labelled block each; a click opens its Adjust.</summary>
+    private readonly Border[] effectBlocks = Enumerable.Range(0, 24).Select(_ => new Border { CornerRadius = new(2), IsHitTestVisible = false, Child = new TextBlock { FontSize = 11, Margin = new(4, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis } }).ToArray();
+    private readonly List<(string Id, double Left, double Right)> effectHits = [];
+    /// <summary>A range dragged across empty FX-lane time, for the toolbar's ✦ Ask Claude.</summary>
+    private readonly Rectangle askRange = new() { IsHitTestVisible = false, RadiusX = 2, RadiusY = 2 };
+    private readonly Button askClaude = new() { Height = 28, Padding = new(8, 0, 8, 0), Visibility = Visibility.Collapsed };
+    private bool ranging;
+    private double rangeAnchor;
     private readonly TextBlock videoName = new() { FontSize = 9, IsHitTestVisible = false, TextTrimming = TextTrimming.CharacterEllipsis };
     private TimelineTrackGeometry metrics = TimelineLayout.Tracks(1, true, true, true);
     private TimelineWaveform? envelope;
@@ -241,6 +249,9 @@ public sealed class TimelineView : UserControl
             var anchor = Math.Clamp(view.X(ToDisplay(model.SourceTime), 1), 0, 1);
             ChangeWindow(TimelineLayout.Zoom(view, duration, view.Duration / length, anchor));
         };
+        AutomationProperties.SetAutomationId(askClaude, "Timeline.AskClaude");
+        askClaude.Click += (_, _) => model?.OpenAskClaudeOnTimeRange();
+        tools.Children.Add(askClaude);
         tools.Children.Add(snapping); tools.Children.Add(heightPicker);
         tools.Children.Add(Command("−", "Zoom out", () => ChangeWindow(TimelineLayout.Zoom(view, AxisDuration, 1 / 1.5, .5))));
         tools.Children.Add(zoom);
@@ -272,6 +283,8 @@ public sealed class TimelineView : UserControl
         canvas.Children.Add(captions); canvas.Children.Add(overviewClips); canvas.Children.Add(overviewActive); canvas.Children.Add(overviewSuggestions);
         canvas.Children.Add(overviewWindow); canvas.Children.Add(overviewHead);
         canvas.Children.Add(rulerTicks); canvas.Children.Add(rulerLabels); canvas.Children.Add(trimBrackets); canvas.Children.Add(selectionBar); canvas.Children.Add(fxHint); canvas.Children.Add(scrollThumb);
+        canvas.Children.Add(askRange);
+        foreach (var block in effectBlocks) canvas.Children.Add(block);
         captions.RenderTransform = captionTransform; rulerTicks.RenderTransform = rulerTransform;
         var bracketGeometry = new PathGeometry();
         for (var index = 0; index < bracketFigures.Length; index++)
@@ -308,8 +321,8 @@ public sealed class TimelineView : UserControl
         slider.PointerPressed += ScrubPressed;
         slider.PointerMoved += ScrubMoved;
         slider.PointerReleased += ScrubReleased;
-        slider.PointerCanceled += (_, _) => { scrubbing = selecting = false; };
-        slider.PointerCaptureLost += (_, _) => { scrubbing = selecting = false; };
+        slider.PointerCanceled += (_, _) => { scrubbing = selecting = ranging = false; };
+        slider.PointerCaptureLost += (_, _) => { scrubbing = selecting = ranging = false; };
         slider.DoubleTapped += RestoreCut;
         ConfigureTrim(startHandle, true);
         ConfigureTrim(endHandle, false);
@@ -434,12 +447,12 @@ public sealed class TimelineView : UserControl
         if (model is not null) Detach();
         disposed = false;
         model = value; model.Changed += Changed; model.SelectionChanged += SelectionChanged;
-        model.PropertyChanged += PropertyChanged;
+        model.PropertyChanged += PropertyChanged; model.AskClaudeChanged += AskClaudeChanged;
         Rebuild(true);
     }
     public void Detach()
     {
-        if (model is not null) { model.Changed -= Changed; model.SelectionChanged -= SelectionChanged; model.PropertyChanged -= PropertyChanged; }
+        if (model is not null) { model.Changed -= Changed; model.SelectionChanged -= SelectionChanged; model.PropertyChanged -= PropertyChanged; model.AskClaudeChanged -= AskClaudeChanged; }
         disposed = true; CancelTrim(); ClearFilmstrip(); waveformRequest?.Cancel();
         model = null; plan = null; envelope = null; captionPages = []; captionCues = []; captionSnapshot = null;
         scene.Tiles.Clear(); geometryCache.Clear(); attachedSource = null;
@@ -558,6 +571,17 @@ public sealed class TimelineView : UserControl
     {
         if (!args.GetCurrentPoint(slider).Properties.IsLeftButtonPressed) return;
         if (model is null || renderingBlocked || model.IsReadOnly) return;
+        var point = args.GetCurrentPoint(track).Position;
+        if (!InputState.Down(VirtualKey.Control) && point.Y >= metrics.EffectsTop && point.Y < metrics.EffectsTop + metrics.EffectsHeight)
+        {
+            // The FX lane: a click on an effect opens its Adjust; a drag across empty time marks a range to ask Claude about.
+            if (effectHits.FirstOrDefault(hit => point.X >= hit.Left && point.X <= hit.Right) is { Id: { } hit } && model.AdjustAskClaudeFromTimeline(hit)) { args.Handled = true; return; }
+            ranging = true; rangeAnchor = PointerTime(args);
+            model.SetAskClaudeTimeRange(null);
+            slider.Focus(FocusState.Pointer); slider.CapturePointer(args.Pointer); args.Handled = true;
+            return;
+        }
+        if (model.AskClaude.TimeRange is not null) model.SetAskClaudeTimeRange(null);
         scrubbing = true; selecting = InputState.Down(VirtualKey.Control);
         slider.Focus(FocusState.Pointer); slider.CapturePointer(args.Pointer);
         if (selecting && model.Words.Count > 0) model.Select(TimelineLayout.WordAt(model.Words, PointerTime(args)));
@@ -565,6 +589,7 @@ public sealed class TimelineView : UserControl
     }
     private void ScrubMoved(object sender, PointerRoutedEventArgs args)
     {
+        if (ranging && model is not null) { model.SetAskClaudeTimeRange(Ordered(rangeAnchor, PointerTime(args))); return; }
         if (scrubbing) Scrub(args);
         if (model is null || model.Words.Count == 0) return;
         var word = model.Words[TimelineLayout.WordAt(model.Words, PointerTime(args))];
@@ -577,8 +602,15 @@ public sealed class TimelineView : UserControl
         if (selecting && model is { Words.Count: > 0 }) model.Select(TimelineLayout.WordAt(model.Words, source), true);
         Seek(source);
     }
+    private static (double, double) Ordered(double a, double b) => (Math.Min(a, b), Math.Max(a, b));
     private void ScrubReleased(object sender, PointerRoutedEventArgs args)
     {
+        if (ranging)
+        {
+            ranging = false; slider.ReleasePointerCapture(args.Pointer); args.Handled = true;
+            model?.SetAskClaudeTimeRange(Ordered(rangeAnchor, PointerTime(args)));
+            return;
+        }
         if (!scrubbing) return;
         Scrub(args); scrubbing = selecting = false; slider.ReleasePointerCapture(args.Pointer); args.Handled = true;
     }
@@ -713,7 +745,7 @@ public sealed class TimelineView : UserControl
             path.Fill = Brush(index == 8 ? "VcTintDefaultBrush" : "VcAiTintBrush");
             path.Opacity = index == 8 ? .07 : .1;
         }
-        DrawHeaders(); DrawOverview(width); DrawRuler(width); DrawCaptions(width);
+        DrawHeaders(); DrawOverview(width); DrawRuler(width); DrawCaptions(width); DrawEffects(width);
         selectionLength.Text = model.HasSelection ? string.Create(System.Globalization.CultureInfo.InvariantCulture,
             $"{Math.Max(0, ToDisplay(model.Words[model.SelectionEnd].End) - ToDisplay(model.Words[model.SelectionStart].Start)):0.0} s selected") : "";
         updatingControls = true;
@@ -739,7 +771,7 @@ public sealed class TimelineView : UserControl
     private void DrawHeaders()
     {
         string[] ids = ["V1", "A1", "CC", "FX"];
-        string[] names = ["Video", model?.Project.Media.Source.Audio is null ? "No audio" : "Voice", model?.Project.Captions.StyleId == "off" ? "Captions off" : "Captions", "Motion"];
+        string[] names = ["Video", model?.Project.Media.Source.Audio is null ? "No audio" : "Voice", model?.Project.Captions.StyleId == "off" ? "Captions off" : "Captions", "Effects"];
         double[] tops = [metrics.VideoTop, metrics.AudioTop, metrics.CaptionTop, metrics.EffectsTop];
         for (var index = 0; index < 4; index++)
         {
@@ -852,6 +884,48 @@ public sealed class TimelineView : UserControl
         cueBackgrounds.Data = Geometry(blocks, false, true); cueBackgrounds.Fill = Brush("VcTimelineCueBrush");
         cueCuts.Data = Geometry(cuts, false); cueCuts.Fill = Brush("VcTimelineLaneBrush"); cueCuts.Opacity = .42;
     }
+    private void AskClaudeChanged(object? sender, EventArgs args) => DispatcherQueue.TryEnqueue(Draw);
+
+    /// <summary>The FX lane: each Ask Claude effect of the open scope as a labelled block (source times on the display axis), the
+    /// dragged range, and the toolbar's "✦ Ask Claude · 0:12–0:15" while a range is marked.</summary>
+    private void DrawEffects(double width)
+    {
+        effectHits.Clear();
+        var effects = model is null || renderingBlocked ? [] : model.TimelineEffects();
+        var index = 0;
+        foreach (var effect in effects)
+        {
+            var left = Math.Clamp(rendered.X(ToDisplay(effect.Start), width), 0, width);
+            var right = Math.Clamp(rendered.X(ToDisplay(effect.End), width), 0, width);
+            if (right - left < 2 || index >= effectBlocks.Length) continue;
+            var block = effectBlocks[index++];
+            block.Visibility = Visibility.Visible;
+            block.Background = Brush("VcAiTintBrush");
+            block.Width = right - left; block.Height = Math.Max(0, metrics.EffectsHeight - 4);
+            Canvas.SetLeft(block, left); Canvas.SetTop(block, metrics.EffectsTop + 2);
+            var label = (TextBlock)block.Child;
+            label.Text = right - left >= 24 ? effect.Label : "";
+            label.Foreground = Brush("VcTimelineCueTextBrush");
+            effectHits.Add((effect.Id, left, right));
+        }
+        for (var rest = index; rest < effectBlocks.Length; rest++) effectBlocks[rest].Visibility = Visibility.Collapsed;
+        fxHint.Visibility = index == 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (model?.AskClaude.TimeRange is { } range)
+        {
+            var left = Math.Clamp(rendered.X(ToDisplay(range.Start), width), 0, width);
+            var right = Math.Clamp(rendered.X(ToDisplay(range.End), width), 0, width);
+            askRange.Visibility = Visibility.Visible;
+            askRange.Fill = Brush("VcTintDefaultBrush"); askRange.Opacity = .35;
+            askRange.Width = Math.Max(1, right - left); askRange.Height = Math.Max(0, metrics.EffectsHeight - 2);
+            Canvas.SetLeft(askRange, left); Canvas.SetTop(askRange, metrics.EffectsTop + 1);
+        }
+        else askRange.Visibility = Visibility.Collapsed;
+        var title = model?.AskClaudeTimeRangeTitle;
+        askClaude.Visibility = title is null || ranging ? Visibility.Collapsed : Visibility.Visible;
+        askClaude.Content = title ?? "";
+        AutomationProperties.SetName(askClaude, title ?? "Ask Claude");
+    }
+
     private void ChangeWindow(TimelineWindow next)
     {
         animation.Stop(); CancelTrim();

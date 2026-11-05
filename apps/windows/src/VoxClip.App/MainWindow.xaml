@@ -54,6 +54,7 @@
                             <MenuFlyoutItem Text="{x:Bind MakeItName, Mode=OneWay}" Tag="{x:Bind ClipId}" Click="MakeItClipClicked" Visibility="{x:Bind CanMakeIt, Mode=OneWay}"/>
                             <MenuFlyoutItem Text="{x:Bind RewriteName, Mode=OneWay}" Tag="{x:Bind ClipId}" Click="RewriteClipClicked" Visibility="{x:Bind CanRewrite, Mode=OneWay}"/>
                             <MenuFlyoutSubItem Text="✦ Rewrite as" Tag="{x:Bind ClipId}" Visibility="{x:Bind CanRewrite, Mode=OneWay}" AutomationProperties.AutomationId="Clip.RewriteAs"/>
+                            <MenuFlyoutItem Text="Ask Claude…" Tag="{x:Bind ClipId}" Click="AskClaudeClipClicked" Visibility="{x:Bind CanAskClaude, Mode=OneWay}" AutomationProperties.AutomationId="Clip.AskClaude"/>
                             <!-- On Home the project's rows only navigate: the commands that act on the hidden editor are disabled. -->
                             <MenuFlyoutItem Text="Captions" Tag="{x:Bind ClipId}" Click="CaptionsClipClicked" IsEnabled="{x:Bind Edits, Mode=OneWay}"/>
                             <MenuFlyoutItem Text="Find more clips" Tag="{x:Bind ClipId}" Click="FindMoreClipsClicked" IsEnabled="{x:Bind Edits, Mode=OneWay}"/>

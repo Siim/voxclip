@@ -43,6 +43,7 @@ public sealed partial class EditorPage
         ViewModel.MakeItChanged += (_, _) => DispatcherQueue.TryEnqueue(UpdateMakeItCommand);
         InitializeClaudeMode();
         InitializeRewriteTones();
+        InitializeAskClaude();
     }
 
     /// <summary>"✦ Claude does it all" (design §6.7): the remembered choice in Settings, Find Clips started by Claude when it needs
