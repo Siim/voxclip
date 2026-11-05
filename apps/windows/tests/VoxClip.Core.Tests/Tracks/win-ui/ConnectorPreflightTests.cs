@@ -211,13 +211,19 @@ public sealed class ConnectorPreflightTests
             .Where(path => !path.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar, StringComparison.Ordinal))
             .Where(path => File.ReadAllText(path).Contains("ProviderCatalog.ProbeAsync", StringComparison.Ordinal))
             .Select(path => Path.GetRelativePath(root, path).Replace('\\', '/')).Order().ToArray();
-        Assert.Equal(new[] { "Controls/FindClipsJob.cs", "Pages/EditorPage.MakeIt.cs", "Pages/EditorPage.xaml.cs", "Pages/HomePage.xaml.cs", "SettingsWindow.xaml.cs" }, callers);
+        Assert.Equal(new[] { "Controls/FindClipsJob.cs", "Pages/EditorPage.AskClaude.cs", "Pages/EditorPage.MakeIt.cs", "Pages/EditorPage.xaml.cs", "Pages/HomePage.xaml.cs", "SettingsWindow.xaml.cs" }, callers);
         // Make it postable's planner send probes the chosen connector and asks inline in its panel, never in a dialog.
         var makeIt = File.ReadAllText(Path.Combine(root, "Pages/EditorPage.MakeIt.cs"));
         Assert.Contains("var status = await ProviderCatalog.ProbeAsync(chosen, connector, ct)", makeIt);
         Assert.Contains("ConnectorConsent.Text(ConnectorConsentAction.FindClips", makeIt);
         Assert.Contains("await panel.AskAsync(pending)", makeIt);
         Assert.DoesNotContain("ProviderCatalog.ConsentAsync", makeIt);
+        // Ask Claude's send probes the chosen connector the same way and asks inline in its panel, consent action Ask Claude.
+        var ask = File.ReadAllText(Path.Combine(root, "Pages/EditorPage.AskClaude.cs"));
+        Assert.Contains("var status = await ProviderCatalog.ProbeAsync(chosen, connector, ct)", ask);
+        Assert.Contains("ConnectorConsent.Text(ConnectorConsentAction.AskClaude", ask);
+        Assert.Contains("await panel.AskAsync(pending)", ask);
+        Assert.DoesNotContain("ProviderCatalog.ConsentAsync", ask);
     }
 }
 #endif

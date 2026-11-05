@@ -4,6 +4,7 @@
 # classified from the PDB and recorded only as evidence. Regenerate after a reviewed product change:
 #   dotnet run --project apps/windows/build/ReleaseBoundary -c Release -- update <Release assembly> <this file>
 # then review the diff. Fakes, harnesses, probes, seams and DEBUG-only helpers belong under #if DEBUG.
+attribute VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: method private LanguageTag() @ System.Text.RegularExpressions.GeneratedRegexAttribute("\\A[a-z]{2,3}(-[a-z0-9]{2,8})*\\z",512)
 attribute VoxClip.Core.Domain.Autopilot.ClipAutopilotMapping :: method private ClipIdPattern() @ System.Text.RegularExpressions.GeneratedRegexAttribute("\\A(?:[A-Za-z0-9][A-Za-z0-9._:-]{0,63})\\z",512)
 attribute VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan :: method public .ctor() @ System.ObsoleteAttribute("Constructors of types with required members are not supported in this version of your compiler.",true)
 attribute VoxClip.Core.Domain.Autopilot.ClipAutopilotPrompt :: method private Placeholder() @ System.Text.RegularExpressions.GeneratedRegexAttribute("\\{([A-Za-z][A-Za-z0-9]*)\\}",512)
@@ -669,6 +670,7 @@ literal "--skip-git-repo-check"
 literal "--strict-mcp-config"
 literal "--system-prompt"
 literal "--tools"
+literal "-ask-"
 literal "-c"
 literal "-lc"
 literal "-p"
@@ -707,6 +709,7 @@ literal "alignment_time_order"
 literal "alignment_words_mismatch"
 literal "api_error_status"
 literal "apply_text_normalization"
+literal "ask_claude_ops"
 literal "audio_base64"
 literal "audio_event"
 literal "authentication_error"
@@ -857,6 +860,272 @@ member VoxClip.Core.Domain.Autopilot.AiJson :: method internal Get(System.Text.J
 member VoxClip.Core.Domain.Autopilot.AiJson :: method internal Integer(System.Text.Json.Nodes.JsonNode)
 member VoxClip.Core.Domain.Autopilot.AiJson :: method internal Number(System.Text.Json.Nodes.JsonNode)
 member VoxClip.Core.Domain.Autopilot.AiJson :: method internal String(System.Text.Json.Nodes.JsonNode)
+member VoxClip.Core.Domain.Autopilot.AskClaudeAnswer :: method private .ctor(VoxClip.Core.Domain.Autopilot.AskClaudeAnswer)
+member VoxClip.Core.Domain.Autopilot.AskClaudeAnswer :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Autopilot.AskClaudeAnswer :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Autopilot.AskClaudeAnswer :: method public .ctor(string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotOperation>,System.Collections.Generic.IReadOnlyDictionary`2<string,string>,System.Collections.Generic.IReadOnlyList`1<string>)
+member VoxClip.Core.Domain.Autopilot.AskClaudeAnswer :: method public Deconstruct(string&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotOperation>&,System.Collections.Generic.IReadOnlyDictionary`2<string,string>&,System.Collections.Generic.IReadOnlyList`1<string>&)
+member VoxClip.Core.Domain.Autopilot.AskClaudeAnswer :: method public Equals(VoxClip.Core.Domain.Autopilot.AskClaudeAnswer)
+member VoxClip.Core.Domain.Autopilot.AskClaudeAnswer :: method public Equals(object)
+member VoxClip.Core.Domain.Autopilot.AskClaudeAnswer :: method public GetHashCode()
+member VoxClip.Core.Domain.Autopilot.AskClaudeAnswer :: method public ToString()
+member VoxClip.Core.Domain.Autopilot.AskClaudeAnswer :: method public get_Choices()
+member VoxClip.Core.Domain.Autopilot.AskClaudeAnswer :: method public get_Operations()
+member VoxClip.Core.Domain.Autopilot.AskClaudeAnswer :: method public get_Paid()
+member VoxClip.Core.Domain.Autopilot.AskClaudeAnswer :: method public get_Repairs()
+member VoxClip.Core.Domain.Autopilot.AskClaudeAnswer :: method public get_Summary()
+member VoxClip.Core.Domain.Autopilot.AskClaudeAnswer :: method public op_Equality(VoxClip.Core.Domain.Autopilot.AskClaudeAnswer,VoxClip.Core.Domain.Autopilot.AskClaudeAnswer)
+member VoxClip.Core.Domain.Autopilot.AskClaudeAnswer :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.AskClaudeAnswer,VoxClip.Core.Domain.Autopilot.AskClaudeAnswer)
+member VoxClip.Core.Domain.Autopilot.AskClaudeAnswer :: method public set_Choices(System.Collections.Generic.IReadOnlyDictionary`2<string,string>)
+member VoxClip.Core.Domain.Autopilot.AskClaudeAnswer :: method public set_Operations(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotOperation>)
+member VoxClip.Core.Domain.Autopilot.AskClaudeAnswer :: method public set_Repairs(System.Collections.Generic.IReadOnlyList`1<string>)
+member VoxClip.Core.Domain.Autopilot.AskClaudeAnswer :: method public set_Summary(string)
+member VoxClip.Core.Domain.Autopilot.AskClaudeDetection :: method private .ctor(VoxClip.Core.Domain.Autopilot.AskClaudeDetection)
+member VoxClip.Core.Domain.Autopilot.AskClaudeDetection :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Autopilot.AskClaudeDetection :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Autopilot.AskClaudeDetection :: method public .ctor(string,VoxClip.Core.Domain.Autopilot.AskClaudeDetectionKind,double,double,VoxClip.Core.Domain.Effects.ClipEffectRect,string)
+member VoxClip.Core.Domain.Autopilot.AskClaudeDetection :: method public Deconstruct(string&,VoxClip.Core.Domain.Autopilot.AskClaudeDetectionKind&,double&,double&,VoxClip.Core.Domain.Effects.ClipEffectRect&,string&)
+member VoxClip.Core.Domain.Autopilot.AskClaudeDetection :: method public Equals(VoxClip.Core.Domain.Autopilot.AskClaudeDetection)
+member VoxClip.Core.Domain.Autopilot.AskClaudeDetection :: method public Equals(object)
+member VoxClip.Core.Domain.Autopilot.AskClaudeDetection :: method public GetHashCode()
+member VoxClip.Core.Domain.Autopilot.AskClaudeDetection :: method public ToString()
+member VoxClip.Core.Domain.Autopilot.AskClaudeDetection :: method public get_End()
+member VoxClip.Core.Domain.Autopilot.AskClaudeDetection :: method public get_Kind()
+member VoxClip.Core.Domain.Autopilot.AskClaudeDetection :: method public get_Label()
+member VoxClip.Core.Domain.Autopilot.AskClaudeDetection :: method public get_Rect()
+member VoxClip.Core.Domain.Autopilot.AskClaudeDetection :: method public get_Start()
+member VoxClip.Core.Domain.Autopilot.AskClaudeDetection :: method public get_Text()
+member VoxClip.Core.Domain.Autopilot.AskClaudeDetection :: method public op_Equality(VoxClip.Core.Domain.Autopilot.AskClaudeDetection,VoxClip.Core.Domain.Autopilot.AskClaudeDetection)
+member VoxClip.Core.Domain.Autopilot.AskClaudeDetection :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.AskClaudeDetection,VoxClip.Core.Domain.Autopilot.AskClaudeDetection)
+member VoxClip.Core.Domain.Autopilot.AskClaudeDetection :: method public set_End(double)
+member VoxClip.Core.Domain.Autopilot.AskClaudeDetection :: method public set_Kind(VoxClip.Core.Domain.Autopilot.AskClaudeDetectionKind)
+member VoxClip.Core.Domain.Autopilot.AskClaudeDetection :: method public set_Label(string)
+member VoxClip.Core.Domain.Autopilot.AskClaudeDetection :: method public set_Rect(VoxClip.Core.Domain.Effects.ClipEffectRect)
+member VoxClip.Core.Domain.Autopilot.AskClaudeDetection :: method public set_Start(double)
+member VoxClip.Core.Domain.Autopilot.AskClaudeDetection :: method public set_Text(string)
+member VoxClip.Core.Domain.Autopilot.AskClaudeDetectionKind :: field public Face
+member VoxClip.Core.Domain.Autopilot.AskClaudeDetectionKind :: field public Text
+member VoxClip.Core.Domain.Autopilot.AskClaudeDetectionKind :: field public value__
+member VoxClip.Core.Domain.Autopilot.AskClaudeFrameFindings :: method private .cctor()
+member VoxClip.Core.Domain.Autopilot.AskClaudeFrameFindings :: method private .ctor(VoxClip.Core.Domain.Autopilot.AskClaudeFrameFindings)
+member VoxClip.Core.Domain.Autopilot.AskClaudeFrameFindings :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Autopilot.AskClaudeFrameFindings :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Autopilot.AskClaudeFrameFindings :: method public .ctor(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Effects.ClipEffectRect>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.AskClaudeTextLine>)
+member VoxClip.Core.Domain.Autopilot.AskClaudeFrameFindings :: method public Deconstruct(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Effects.ClipEffectRect>&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.AskClaudeTextLine>&)
+member VoxClip.Core.Domain.Autopilot.AskClaudeFrameFindings :: method public Equals(VoxClip.Core.Domain.Autopilot.AskClaudeFrameFindings)
+member VoxClip.Core.Domain.Autopilot.AskClaudeFrameFindings :: method public Equals(object)
+member VoxClip.Core.Domain.Autopilot.AskClaudeFrameFindings :: method public GetHashCode()
+member VoxClip.Core.Domain.Autopilot.AskClaudeFrameFindings :: method public ToString()
+member VoxClip.Core.Domain.Autopilot.AskClaudeFrameFindings :: method public get_Faces()
+member VoxClip.Core.Domain.Autopilot.AskClaudeFrameFindings :: method public get_None()
+member VoxClip.Core.Domain.Autopilot.AskClaudeFrameFindings :: method public get_Texts()
+member VoxClip.Core.Domain.Autopilot.AskClaudeFrameFindings :: method public op_Equality(VoxClip.Core.Domain.Autopilot.AskClaudeFrameFindings,VoxClip.Core.Domain.Autopilot.AskClaudeFrameFindings)
+member VoxClip.Core.Domain.Autopilot.AskClaudeFrameFindings :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.AskClaudeFrameFindings,VoxClip.Core.Domain.Autopilot.AskClaudeFrameFindings)
+member VoxClip.Core.Domain.Autopilot.AskClaudeFrameFindings :: method public set_Faces(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Effects.ClipEffectRect>)
+member VoxClip.Core.Domain.Autopilot.AskClaudeFrameFindings :: method public set_Texts(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.AskClaudeTextLine>)
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: field private document
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: field public Path
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: method internal Int(int)
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: method private Fill(string,System.ValueTuple`2<string,string>[])
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: method private Limit(string,int)
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: method private Template(string)
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: method private Text(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,System.Collections.Generic.IReadOnlyDictionary`2<string,string>,int)
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: method public .ctor(System.Text.Json.Nodes.JsonObject,string)
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: method public Current(VoxClip.Core.Domain.Autopilot.AskClaudeScope,VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: method public Instruction(string,VoxClip.Core.Domain.Autopilot.AskClaudeScope,VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlyList`1<string>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.AskClaudeDetection>,string)
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: method public Load(string)
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: method public Number(double)
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: method public Request(string,VoxClip.Core.Domain.Autopilot.AskClaudeScope,VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.AskClaudeDetection>,string)
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: method public Wire(VoxClip.Core.Domain.Autopilot.AskClaudeDetectionKind)
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: method public get_ContextWords()
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: method public get_Kinds()
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: method public get_MaxChoiceChars()
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: method public get_MaxDetectionTextChars()
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: method public get_MaxDetections()
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: method public get_MaxInstructionChars()
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: method public get_MaxOps()
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: method public get_MaxOutputTokens()
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: method public get_MaxReasonChars()
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: method public get_MaxSelectionWords()
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: method public get_MaxTextChars()
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: method public get_PromptVersion()
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: method public get_Schema()
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: method public get_SchemaName()
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: method public get_Sha256()
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: method public get_Stickers()
+member VoxClip.Core.Domain.Autopilot.AskClaudePrompt :: method public get_System()
+member VoxClip.Core.Domain.Autopilot.AskClaudeScope :: method internal IndexOf(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,string)
+member VoxClip.Core.Domain.Autopilot.AskClaudeScope :: method internal Invalid()
+member VoxClip.Core.Domain.Autopilot.AskClaudeScope :: method private .ctor(VoxClip.Core.Domain.Autopilot.AskClaudeScope)
+member VoxClip.Core.Domain.Autopilot.AskClaudeScope :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Autopilot.AskClaudeScope :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Autopilot.AskClaudeScope :: method public .ctor(System.Nullable`1<VoxClip.Core.Domain.Autopilot.WordSpan>,double,double,string,bool,bool)
+member VoxClip.Core.Domain.Autopilot.AskClaudeScope :: method public Deconstruct(System.Nullable`1<VoxClip.Core.Domain.Autopilot.WordSpan>&,double&,double&,string&,bool&,bool&)
+member VoxClip.Core.Domain.Autopilot.AskClaudeScope :: method public Equals(VoxClip.Core.Domain.Autopilot.AskClaudeScope)
+member VoxClip.Core.Domain.Autopilot.AskClaudeScope :: method public Equals(object)
+member VoxClip.Core.Domain.Autopilot.AskClaudeScope :: method public GetHashCode()
+member VoxClip.Core.Domain.Autopilot.AskClaudeScope :: method public Resolve(VoxClip.Core.Domain.Autopilot.AskClaudeSelection,VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Domain.Autopilot.AskClaudeScope :: method public ToString()
+member VoxClip.Core.Domain.Autopilot.AskClaudeScope :: method public get_ClipId()
+member VoxClip.Core.Domain.Autopilot.AskClaudeScope :: method public get_End()
+member VoxClip.Core.Domain.Autopilot.AskClaudeScope :: method public get_IsClip()
+member VoxClip.Core.Domain.Autopilot.AskClaudeScope :: method public get_IsTime()
+member VoxClip.Core.Domain.Autopilot.AskClaudeScope :: method public get_Start()
+member VoxClip.Core.Domain.Autopilot.AskClaudeScope :: method public get_Words()
+member VoxClip.Core.Domain.Autopilot.AskClaudeScope :: method public op_Equality(VoxClip.Core.Domain.Autopilot.AskClaudeScope,VoxClip.Core.Domain.Autopilot.AskClaudeScope)
+member VoxClip.Core.Domain.Autopilot.AskClaudeScope :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.AskClaudeScope,VoxClip.Core.Domain.Autopilot.AskClaudeScope)
+member VoxClip.Core.Domain.Autopilot.AskClaudeScope :: method public set_ClipId(string)
+member VoxClip.Core.Domain.Autopilot.AskClaudeScope :: method public set_End(double)
+member VoxClip.Core.Domain.Autopilot.AskClaudeScope :: method public set_IsClip(bool)
+member VoxClip.Core.Domain.Autopilot.AskClaudeScope :: method public set_IsTime(bool)
+member VoxClip.Core.Domain.Autopilot.AskClaudeScope :: method public set_Start(double)
+member VoxClip.Core.Domain.Autopilot.AskClaudeScope :: method public set_Words(System.Nullable`1<VoxClip.Core.Domain.Autopilot.WordSpan>)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection :: method private .ctor(VoxClip.Core.Domain.Autopilot.AskClaudeSelection)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection :: method public .ctor(VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope,string)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection :: method public Deconstruct(VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope&,string&)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection :: method public Equals(VoxClip.Core.Domain.Autopilot.AskClaudeSelection)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection :: method public Equals(object)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection :: method public GetHashCode()
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection :: method public ToString()
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection :: method public get_ClipId()
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection :: method public get_Kind()
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection :: method public op_Equality(VoxClip.Core.Domain.Autopilot.AskClaudeSelection,VoxClip.Core.Domain.Autopilot.AskClaudeSelection)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.AskClaudeSelection,VoxClip.Core.Domain.Autopilot.AskClaudeSelection)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection :: method public set_ClipId(string)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection :: method public set_Kind(VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope :: method protected .ctor()
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope :: method protected .ctor(VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope :: method protected get_EqualityContract()
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope :: method public Equals(VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope :: method public Equals(object)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope :: method public GetHashCode()
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope :: method public ToString()
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope :: method public op_Equality(VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope,VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope,VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Clip :: method private .ctor(VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Clip)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Clip :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Clip :: method protected get_EqualityContract()
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Clip :: method public .ctor(string)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Clip :: method public Deconstruct(string&)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Clip :: method public Equals(VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Clip :: method public Equals(VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Clip)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Clip :: method public Equals(object)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Clip :: method public GetHashCode()
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Clip :: method public ToString()
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Clip :: method public get_Id()
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Clip :: method public op_Equality(VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Clip,VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Clip)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Clip :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Clip,VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Clip)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Clip :: method public set_Id(string)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Time :: method private .ctor(VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Time)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Time :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Time :: method protected get_EqualityContract()
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Time :: method public .ctor(double,double)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Time :: method public Deconstruct(double&,double&)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Time :: method public Equals(VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Time :: method public Equals(VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Time)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Time :: method public Equals(object)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Time :: method public GetHashCode()
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Time :: method public ToString()
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Time :: method public get_End()
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Time :: method public get_Start()
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Time :: method public op_Equality(VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Time,VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Time)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Time :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Time,VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Time)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Time :: method public set_End(double)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Time :: method public set_Start(double)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Words :: method private .ctor(VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Words)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Words :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Words :: method protected get_EqualityContract()
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Words :: method public .ctor(int,int)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Words :: method public Deconstruct(int&,int&)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Words :: method public Equals(VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Words :: method public Equals(VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Words)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Words :: method public Equals(object)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Words :: method public GetHashCode()
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Words :: method public ToString()
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Words :: method public get_First()
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Words :: method public get_Last()
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Words :: method public op_Equality(VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Words,VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Words)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Words :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Words,VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Words)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Words :: method public set_First(int)
+member VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Words :: method public set_Last(int)
+member VoxClip.Core.Domain.Autopilot.AskClaudeTextLine :: method private .ctor(VoxClip.Core.Domain.Autopilot.AskClaudeTextLine)
+member VoxClip.Core.Domain.Autopilot.AskClaudeTextLine :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Autopilot.AskClaudeTextLine :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Autopilot.AskClaudeTextLine :: method public .ctor(string,VoxClip.Core.Domain.Effects.ClipEffectRect)
+member VoxClip.Core.Domain.Autopilot.AskClaudeTextLine :: method public Deconstruct(string&,VoxClip.Core.Domain.Effects.ClipEffectRect&)
+member VoxClip.Core.Domain.Autopilot.AskClaudeTextLine :: method public Equals(VoxClip.Core.Domain.Autopilot.AskClaudeTextLine)
+member VoxClip.Core.Domain.Autopilot.AskClaudeTextLine :: method public Equals(object)
+member VoxClip.Core.Domain.Autopilot.AskClaudeTextLine :: method public GetHashCode()
+member VoxClip.Core.Domain.Autopilot.AskClaudeTextLine :: method public ToString()
+member VoxClip.Core.Domain.Autopilot.AskClaudeTextLine :: method public get_Rect()
+member VoxClip.Core.Domain.Autopilot.AskClaudeTextLine :: method public get_Text()
+member VoxClip.Core.Domain.Autopilot.AskClaudeTextLine :: method public op_Equality(VoxClip.Core.Domain.Autopilot.AskClaudeTextLine,VoxClip.Core.Domain.Autopilot.AskClaudeTextLine)
+member VoxClip.Core.Domain.Autopilot.AskClaudeTextLine :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.AskClaudeTextLine,VoxClip.Core.Domain.Autopilot.AskClaudeTextLine)
+member VoxClip.Core.Domain.Autopilot.AskClaudeTextLine :: method public set_Rect(VoxClip.Core.Domain.Effects.ClipEffectRect)
+member VoxClip.Core.Domain.Autopilot.AskClaudeTextLine :: method public set_Text(string)
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: field private MaximumCorrectionScalars
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: field private MaximumFreezeSeconds
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: field private MinimumZoomSeconds
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: field private Positions
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: field private SoundAliases
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: field private StickerScale
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: field private ZoomScale
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: field public DefaultSoundGainDb
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: field public SoundSeconds
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: method private .cctor()
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: method private Clamp(System.Nullable`1<double>,double,double,double)
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: method private ClipContaining()
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: method private Element(System.Text.Json.Nodes.JsonObject)
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: method private Entry(string,string,double,double)
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: method private Integer(System.Text.Json.Nodes.JsonNode)
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: method private LanguageTag()
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: method private PositionValue(System.Text.Json.Nodes.JsonNode,string[],string)
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: method private RectNode(VoxClip.Core.Domain.Effects.ClipEffectRect)
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: method private Region(System.Text.Json.Nodes.JsonNode)
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: method private Seconds(System.Text.Json.Nodes.JsonNode)
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: method private SpokenIds(VoxClip.Core.Domain.Autopilot.WordSpan)
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: method private TimeRange(System.Text.Json.Nodes.JsonNode,string)
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: method private TrackingMode(System.Text.Json.Nodes.JsonNode,VoxClip.Core.Domain.Autopilot.AskClaudeValidator+RegionChoice)
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: method private WithoutVariationSelectors(string)
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: method private WordRange(System.Text.Json.Nodes.JsonNode)
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: method private get_Words()
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: method public .ctor(VoxClip.Core.Domain.Autopilot.AskClaudePrompt,VoxClip.Core.Domain.Autopilot.AskClaudeScope,VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.AskClaudeDetection>)
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: method public Answer(System.Text.Json.Nodes.JsonNode)
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: method public Clamped(VoxClip.Core.Domain.Effects.ClipEffectRect)
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator :: method public Scalars(string,int)
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator+RegionChoice :: method private .ctor(VoxClip.Core.Domain.Autopilot.AskClaudeValidator+RegionChoice)
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator+RegionChoice :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator+RegionChoice :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator+RegionChoice :: method public .ctor(System.Nullable`1<VoxClip.Core.Domain.Effects.ClipEffectRect>,VoxClip.Core.Domain.Autopilot.AskClaudeDetection,bool,string)
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator+RegionChoice :: method public Deconstruct(System.Nullable`1<VoxClip.Core.Domain.Effects.ClipEffectRect>&,VoxClip.Core.Domain.Autopilot.AskClaudeDetection&,bool&,string&)
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator+RegionChoice :: method public Equals(VoxClip.Core.Domain.Autopilot.AskClaudeValidator+RegionChoice)
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator+RegionChoice :: method public Equals(object)
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator+RegionChoice :: method public GetHashCode()
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator+RegionChoice :: method public ToString()
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator+RegionChoice :: method public get_Chosen()
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator+RegionChoice :: method public get_Detection()
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator+RegionChoice :: method public get_Note()
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator+RegionChoice :: method public get_Rect()
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator+RegionChoice :: method public op_Equality(VoxClip.Core.Domain.Autopilot.AskClaudeValidator+RegionChoice,VoxClip.Core.Domain.Autopilot.AskClaudeValidator+RegionChoice)
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator+RegionChoice :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.AskClaudeValidator+RegionChoice,VoxClip.Core.Domain.Autopilot.AskClaudeValidator+RegionChoice)
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator+RegionChoice :: method public set_Chosen(bool)
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator+RegionChoice :: method public set_Detection(VoxClip.Core.Domain.Autopilot.AskClaudeDetection)
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator+RegionChoice :: method public set_Note(string)
+member VoxClip.Core.Domain.Autopilot.AskClaudeValidator+RegionChoice :: method public set_Rect(System.Nullable`1<VoxClip.Core.Domain.Effects.ClipEffectRect>)
+member VoxClip.Core.Domain.Autopilot.AskClaudeVision :: field public DetectionFrames
+member VoxClip.Core.Domain.Autopilot.AskClaudeVision :: field public MaximumTrackSamples
+member VoxClip.Core.Domain.Autopilot.AskClaudeVision :: field public TrackInterval
+member VoxClip.Core.Domain.Autopilot.AskClaudeVision :: method private Distance(VoxClip.Core.Domain.Effects.ClipEffectRect,VoxClip.Core.Domain.Effects.ClipEffectRect)
+member VoxClip.Core.Domain.Autopilot.AskClaudeVision :: method public DetectAsync(VoxClip.Core.Domain.Autopilot.IAskClaudeVision,double,double,System.Threading.CancellationToken,int)
+member VoxClip.Core.Domain.Autopilot.AskClaudeVision :: method public Follows(string)
+member VoxClip.Core.Domain.Autopilot.AskClaudeVision :: method public Grown(VoxClip.Core.Domain.Effects.ClipEffectRect,double)
+member VoxClip.Core.Domain.Autopilot.AskClaudeVision :: method public Iou(VoxClip.Core.Domain.Effects.ClipEffectRect,VoxClip.Core.Domain.Effects.ClipEffectRect)
+member VoxClip.Core.Domain.Autopilot.AskClaudeVision :: method public Smoothed(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Effects.ClipEffectTrackSample>)
+member VoxClip.Core.Domain.Autopilot.AskClaudeVision :: method public TrackAsync(VoxClip.Core.Domain.Autopilot.IAskClaudeVision,string,double,double,VoxClip.Core.Domain.Effects.ClipEffectRect,System.Threading.CancellationToken)
+member VoxClip.Core.Domain.Autopilot.AskClaudeVision :: method public TrackTimes(double,double)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction :: method protected .ctor()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction :: method protected .ctor(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction :: method protected PrintMembers(System.Text.StringBuilder)
@@ -897,6 +1166,20 @@ member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Edit :: method public g
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Edit :: method public op_Equality(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Edit,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Edit)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Edit :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Edit,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Edit)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Edit :: method public set_Operation(VoxClip.Core.Domain.Editing.EditOperation)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Effect :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Effect)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Effect :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Effect :: method protected get_EqualityContract()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Effect :: method public .ctor(System.Text.Json.JsonElement)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Effect :: method public Deconstruct(System.Text.Json.JsonElement&)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Effect :: method public Equals(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Effect :: method public Equals(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Effect)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Effect :: method public Equals(object)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Effect :: method public GetHashCode()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Effect :: method public ToString()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Effect :: method public get_Value()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Effect :: method public op_Equality(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Effect,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Effect)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Effect :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Effect,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Effect)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Effect :: method public set_Value(System.Text.Json.JsonElement)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Hook :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Hook)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Hook :: method protected PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Hook :: method protected get_EqualityContract()
@@ -957,6 +1240,22 @@ member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Music :: method public 
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Music :: method public op_Equality(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Music,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Music)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Music :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Music,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Music)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Music :: method public set_Cue(VoxClip.Core.Domain.Autopilot.ClipAutopilotMusicCue)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+MusicDucking :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+MusicDucking)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+MusicDucking :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+MusicDucking :: method protected get_EqualityContract()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+MusicDucking :: method public .ctor(string,bool)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+MusicDucking :: method public Deconstruct(string&,bool&)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+MusicDucking :: method public Equals(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+MusicDucking :: method public Equals(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+MusicDucking)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+MusicDucking :: method public Equals(object)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+MusicDucking :: method public GetHashCode()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+MusicDucking :: method public ToString()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+MusicDucking :: method public get_ClipId()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+MusicDucking :: method public get_On()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+MusicDucking :: method public op_Equality(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+MusicDucking,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+MusicDucking)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+MusicDucking :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+MusicDucking,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+MusicDucking)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+MusicDucking :: method public set_ClipId(string)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+MusicDucking :: method public set_On(bool)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Rewrite :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Rewrite)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Rewrite :: method protected PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Rewrite :: method protected get_EqualityContract()
@@ -1005,6 +1304,48 @@ member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Speed :: method public 
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Speed :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Speed,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Speed)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Speed :: method public set_Choice(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Speed)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Speed :: method public set_ClipId(string)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch :: method protected get_EqualityContract()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch :: method public .ctor(string,double,double,double)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch :: method public Deconstruct(string&,double&,double&,double&)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch :: method public Equals(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch :: method public Equals(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch :: method public Equals(object)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch :: method public GetHashCode()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch :: method public ToString()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch :: method public get_ClipId()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch :: method public get_End()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch :: method public get_Rate()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch :: method public get_Start()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch :: method public op_Equality(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch :: method public set_ClipId(string)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch :: method public set_End(double)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch :: method public set_Rate(double)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch :: method public set_Start(double)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions :: method protected get_EqualityContract()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions :: method public .ctor(string,int,int,string,string)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions :: method public Deconstruct(string&,int&,int&,string&,string&)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions :: method public Equals(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions :: method public Equals(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions :: method public Equals(object)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions :: method public GetHashCode()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions :: method public ToString()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions :: method public get_ClipId()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions :: method public get_EndWord()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions :: method public get_Language()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions :: method public get_StartWord()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions :: method public get_Text()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions :: method public op_Equality(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions :: method public set_ClipId(string)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions :: method public set_EndWord(int)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions :: method public set_Language(string)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions :: method public set_StartWord(int)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions :: method public set_Text(string)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotCaptionCase :: field public AsSaid
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotCaptionCase :: field public Lower
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotCaptionCase :: field public Upper
@@ -1075,18 +1416,26 @@ member VoxClip.Core.Domain.Autopilot.ClipAutopilotCutKind :: field public Repeat
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotCutKind :: field public Stumble
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotCutKind :: field public Tangent
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotCutKind :: field public value__
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision :: field public Bleep
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision :: field public Blur
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision :: field public Captions
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision :: field public Clip
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision :: field public Correction
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision :: field public Cut
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision :: field public Duck
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision :: field public Freeze
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision :: field public Hook
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision :: field public Look
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision :: field public Music
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision :: field public Overlay
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision :: field public PauseCut
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision :: field public PostText
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision :: field public Rewrite
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision :: field public Sound
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision :: field public Speed
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision :: field public Stretch
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision :: field public Title
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision :: field public Translate
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision :: field public Zoom
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision :: field public value__
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotDefaults :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClipAutopilotDefaults)
@@ -1845,6 +2194,28 @@ member VoxClip.Core.Domain.Autopilot.ClipAutopilotWire :: method public Name(Vox
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotWire :: method public Name(VoxClip.Core.Domain.Clips.ClipLook)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotWire :: method public Transform(VoxClip.Core.Domain.Autopilot.ClipAutopilotCaptionCase)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotWire :: method public Verdict(string)
+member VoxClip.Core.Domain.Autopilot.IAskClaudeVision :: method public ObserveAsync(double,bool,System.Threading.CancellationToken)
+member VoxClip.Core.Domain.Autopilot.LlmRequestParts :: method private .ctor(VoxClip.Core.Domain.Autopilot.LlmRequestParts)
+member VoxClip.Core.Domain.Autopilot.LlmRequestParts :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Autopilot.LlmRequestParts :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Autopilot.LlmRequestParts :: method public .ctor(string,string,string,System.Text.Json.Nodes.JsonObject,int)
+member VoxClip.Core.Domain.Autopilot.LlmRequestParts :: method public Deconstruct(string&,string&,string&,System.Text.Json.Nodes.JsonObject&,int&)
+member VoxClip.Core.Domain.Autopilot.LlmRequestParts :: method public Equals(VoxClip.Core.Domain.Autopilot.LlmRequestParts)
+member VoxClip.Core.Domain.Autopilot.LlmRequestParts :: method public Equals(object)
+member VoxClip.Core.Domain.Autopilot.LlmRequestParts :: method public GetHashCode()
+member VoxClip.Core.Domain.Autopilot.LlmRequestParts :: method public ToString()
+member VoxClip.Core.Domain.Autopilot.LlmRequestParts :: method public get_Instruction()
+member VoxClip.Core.Domain.Autopilot.LlmRequestParts :: method public get_MaxOutputTokens()
+member VoxClip.Core.Domain.Autopilot.LlmRequestParts :: method public get_Schema()
+member VoxClip.Core.Domain.Autopilot.LlmRequestParts :: method public get_SchemaName()
+member VoxClip.Core.Domain.Autopilot.LlmRequestParts :: method public get_System()
+member VoxClip.Core.Domain.Autopilot.LlmRequestParts :: method public op_Equality(VoxClip.Core.Domain.Autopilot.LlmRequestParts,VoxClip.Core.Domain.Autopilot.LlmRequestParts)
+member VoxClip.Core.Domain.Autopilot.LlmRequestParts :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.LlmRequestParts,VoxClip.Core.Domain.Autopilot.LlmRequestParts)
+member VoxClip.Core.Domain.Autopilot.LlmRequestParts :: method public set_Instruction(string)
+member VoxClip.Core.Domain.Autopilot.LlmRequestParts :: method public set_MaxOutputTokens(int)
+member VoxClip.Core.Domain.Autopilot.LlmRequestParts :: method public set_Schema(System.Text.Json.Nodes.JsonObject)
+member VoxClip.Core.Domain.Autopilot.LlmRequestParts :: method public set_SchemaName(string)
+member VoxClip.Core.Domain.Autopilot.LlmRequestParts :: method public set_System(string)
 member VoxClip.Core.Domain.Autopilot.WordSpan :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Autopilot.WordSpan :: method public .ctor(int,int)
 member VoxClip.Core.Domain.Autopilot.WordSpan :: method public Contains(int)
@@ -3609,6 +3980,7 @@ member VoxClip.Core.Domain.Clips.ClipCaptionPick :: method public op_Inequality(
 member VoxClip.Core.Domain.Clips.ClipCaptionPick :: method public set_Reason(string)
 member VoxClip.Core.Domain.Clips.ClipCaptionPick :: method public set_StyleId(string)
 member VoxClip.Core.Domain.Clips.ClipControlsProject :: field private Identifier
+member VoxClip.Core.Domain.Clips.ClipControlsProject :: field public WholeClipToleranceSeconds
 member VoxClip.Core.Domain.Clips.ClipControlsProject :: method internal ValidateWire(System.Text.Json.JsonElement)
 member VoxClip.Core.Domain.Clips.ClipControlsProject :: method private Number(System.Text.Json.JsonElement)
 member VoxClip.Core.Domain.Clips.ClipControlsProject :: method private Require(bool)
@@ -3620,6 +3992,7 @@ member VoxClip.Core.Domain.Clips.ClipControlsProject :: method public SettingLoo
 member VoxClip.Core.Domain.Clips.ClipControlsProject :: method public SettingSpeed(double,string,VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Domain.Clips.ClipControlsProject :: method public SourceSpan(string,VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Domain.Clips.ClipControlsProject :: method public Validate(VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Domain.Clips.ClipControlsProject :: method public WholeClip(string,double,double,VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Domain.Clips.ClipControlsRendering :: method private BaseBitrate(VoxClip.Core.Domain.Clips.ClipShape)
 member VoxClip.Core.Domain.Clips.ClipControlsRendering :: method public ChangesAudio(VoxClip.Core.Domain.Clips.ProjectClipControls)
 member VoxClip.Core.Domain.Clips.ClipControlsRendering :: method public ChangesPicture(VoxClip.Core.Domain.Clips.ProjectClipControls)
@@ -3630,6 +4003,8 @@ member VoxClip.Core.Domain.Clips.ClipControlsRendering :: method public MapRect(
 member VoxClip.Core.Domain.Clips.ClipControlsRendering :: method public Output(VoxClip.Core.Domain.Shared.PixelSize,double,VoxClip.Core.Domain.Shared.ExportAspect,VoxClip.Core.Domain.Shared.ExportQuality,VoxClip.Core.Domain.Clips.ProjectClipControls,string)
 member VoxClip.Core.Domain.Clips.ClipControlsRendering :: method public OutputSize(VoxClip.Core.Domain.Shared.PixelSize,VoxClip.Core.Domain.Shared.ExportAspect,VoxClip.Core.Domain.Clips.ProjectClipControls)
 member VoxClip.Core.Domain.Clips.ClipControlsRendering :: method public Size(VoxClip.Core.Domain.Clips.ClipShape)
+member VoxClip.Core.Domain.Clips.ClipControlsRendering :: method public UnmapAnchor(VoxClip.Core.Domain.Clips.ProjectClipControls,double,double)
+member VoxClip.Core.Domain.Clips.ClipControlsRendering :: method public UnmapRect(VoxClip.Core.Domain.Clips.ProjectClipControls,VoxClip.Core.Domain.Effects.ClipEffectRect)
 member VoxClip.Core.Domain.Clips.ClipControlsRendering :: method public VideoBitrate(VoxClip.Core.Domain.Shared.PixelSize,VoxClip.Core.Domain.Shared.ExportAspect,VoxClip.Core.Domain.Shared.ExportQuality,double,VoxClip.Core.Domain.Clips.ProjectClipControls)
 member VoxClip.Core.Domain.Clips.ClipLook :: field public Bw
 member VoxClip.Core.Domain.Clips.ClipLook :: field public Muted
@@ -5403,7 +5778,9 @@ member VoxClip.Core.Domain.Effects.ClipEffects :: method private Validate(System
 member VoxClip.Core.Domain.Effects.ClipEffects :: method private ValidateWireEntry(System.Text.Json.JsonElement)
 member VoxClip.Core.Domain.Effects.ClipEffects :: method public Adding(System.Collections.Generic.IReadOnlyList`1<System.Text.Json.JsonElement>,VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Domain.Effects.ClipEffects :: method public IsCensor(string)
+member VoxClip.Core.Domain.Effects.ClipEffects :: method public IsValidEntry(System.Text.Json.JsonElement,string)
 member VoxClip.Core.Domain.Effects.ClipEffects :: method public KindKeys(string)
+member VoxClip.Core.Domain.Effects.ClipEffects :: method public NextId(string,System.Collections.Generic.IReadOnlySet`1<string>)
 member VoxClip.Core.Domain.Effects.ClipEffects :: method public Pruned(System.Collections.Generic.IReadOnlyList`1<System.Text.Json.JsonElement>,System.Collections.Generic.IEnumerable`1<string>,System.Collections.Generic.IEnumerable`1<string>)
 member VoxClip.Core.Domain.Effects.ClipEffects :: method public Rendered(VoxClip.Core.Domain.Shared.Project,string)
 member VoxClip.Core.Domain.Effects.ClipEffects :: method public Validate(VoxClip.Core.Domain.Shared.Project)
@@ -11541,6 +11918,37 @@ member VoxClip.Core.Services.Captions.CaptionDataLoader :: method internal Creat
 member VoxClip.Core.Services.Captions.CaptionDataLoader :: method internal Load(string)
 member VoxClip.Core.Services.Captions.CaptionDataLoader :: method internal get_Current()
 member VoxClip.Core.Services.Captions.CaptionDataLoader :: method private .cctor()
+member VoxClip.Core.Services.LLM.AskClaudeResult :: method private .ctor(VoxClip.Core.Services.LLM.AskClaudeResult)
+member VoxClip.Core.Services.LLM.AskClaudeResult :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Services.LLM.AskClaudeResult :: method private get_EqualityContract()
+member VoxClip.Core.Services.LLM.AskClaudeResult :: method public .ctor(VoxClip.Core.Domain.Autopilot.AskClaudeAnswer,string,bool,int,VoxClip.Core.Services.LLM.LlmUsage,int,string)
+member VoxClip.Core.Services.LLM.AskClaudeResult :: method public Deconstruct(VoxClip.Core.Domain.Autopilot.AskClaudeAnswer&,string&,bool&,int&,VoxClip.Core.Services.LLM.LlmUsage&,int&,string&)
+member VoxClip.Core.Services.LLM.AskClaudeResult :: method public Equals(VoxClip.Core.Services.LLM.AskClaudeResult)
+member VoxClip.Core.Services.LLM.AskClaudeResult :: method public Equals(object)
+member VoxClip.Core.Services.LLM.AskClaudeResult :: method public GetHashCode()
+member VoxClip.Core.Services.LLM.AskClaudeResult :: method public ToString()
+member VoxClip.Core.Services.LLM.AskClaudeResult :: method public get_Answer()
+member VoxClip.Core.Services.LLM.AskClaudeResult :: method public get_DroppedItems()
+member VoxClip.Core.Services.LLM.AskClaudeResult :: method public get_Model()
+member VoxClip.Core.Services.LLM.AskClaudeResult :: method public get_PromptSha256()
+member VoxClip.Core.Services.LLM.AskClaudeResult :: method public get_PromptVersion()
+member VoxClip.Core.Services.LLM.AskClaudeResult :: method public get_Usage()
+member VoxClip.Core.Services.LLM.AskClaudeResult :: method public get_UsedFallback()
+member VoxClip.Core.Services.LLM.AskClaudeResult :: method public op_Equality(VoxClip.Core.Services.LLM.AskClaudeResult,VoxClip.Core.Services.LLM.AskClaudeResult)
+member VoxClip.Core.Services.LLM.AskClaudeResult :: method public op_Inequality(VoxClip.Core.Services.LLM.AskClaudeResult,VoxClip.Core.Services.LLM.AskClaudeResult)
+member VoxClip.Core.Services.LLM.AskClaudeResult :: method public set_Answer(VoxClip.Core.Domain.Autopilot.AskClaudeAnswer)
+member VoxClip.Core.Services.LLM.AskClaudeResult :: method public set_DroppedItems(int)
+member VoxClip.Core.Services.LLM.AskClaudeResult :: method public set_Model(string)
+member VoxClip.Core.Services.LLM.AskClaudeResult :: method public set_PromptSha256(string)
+member VoxClip.Core.Services.LLM.AskClaudeResult :: method public set_PromptVersion(int)
+member VoxClip.Core.Services.LLM.AskClaudeResult :: method public set_Usage(VoxClip.Core.Services.LLM.LlmUsage)
+member VoxClip.Core.Services.LLM.AskClaudeResult :: method public set_UsedFallback(bool)
+member VoxClip.Core.Services.LLM.AskClaudeService :: field public AskEffort
+member VoxClip.Core.Services.LLM.AskClaudeService :: method private TimeoutKind(VoxClip.Core.Services.LLM.ConnectorId)
+member VoxClip.Core.Services.LLM.AskClaudeService :: method public .ctor(VoxClip.Core.Services.LLM.LlmRunner,VoxClip.Core.Services.LLM.LlmCatalog,VoxClip.Core.Domain.Autopilot.AskClaudePrompt)
+member VoxClip.Core.Services.LLM.AskClaudeService :: method public AskAsync(string,VoxClip.Core.Domain.Autopilot.AskClaudeSelection,VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.AskClaudeDetection>,string,VoxClip.Core.Services.LLM.ILlmConnector,string,System.Threading.CancellationToken)
+member VoxClip.Core.Services.LLM.AskClaudeService :: method public Request(string,VoxClip.Core.Domain.Autopilot.AskClaudeSelection,VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.AskClaudeDetection>,string,VoxClip.Core.Services.LLM.ConnectorId)
+member VoxClip.Core.Services.LLM.AskClaudeService :: method public get_Prompt()
 member VoxClip.Core.Services.LLM.CaptionPickClip :: method private .ctor(VoxClip.Core.Services.LLM.CaptionPickClip)
 member VoxClip.Core.Services.LLM.CaptionPickClip :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Services.LLM.CaptionPickClip :: method private get_EqualityContract()
@@ -12408,6 +12816,7 @@ member VoxClip.Core.Services.LLM.LlmErrors :: method internal Create(VoxClip.Cor
 member VoxClip.Core.Services.LLM.LlmException :: method public .ctor(VoxClip.Core.Services.LLM.LlmError)
 member VoxClip.Core.Services.LLM.LlmException :: method public get_Error()
 member VoxClip.Core.Services.LLM.LlmFeature :: field public AiTighten
+member VoxClip.Core.Services.LLM.LlmFeature :: field public AskClaude
 member VoxClip.Core.Services.LLM.LlmFeature :: field public CaptionPick
 member VoxClip.Core.Services.LLM.LlmFeature :: field public ClipAutopilot
 member VoxClip.Core.Services.LLM.LlmFeature :: field public ClipFinder
@@ -14450,16 +14859,35 @@ member VoxClip.Core.Services.VoiceLab.VoiceUseGuard :: field private gate
 member VoxClip.Core.Services.VoiceLab.VoiceUseGuard :: method public .ctor(VoxClip.Core.Services.VoiceLab.VoiceConsentStore,VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck)
 member VoxClip.Core.Services.VoiceLab.VoiceUseGuard :: method public AuthorizeAsync(string,string,float[],VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedAction,bool,bool,System.Threading.CancellationToken,VoxClip.Core.Services.VoiceLab.VoiceLabDispatchBinding,System.Nullable`1<long>)
 type VoxClip.Core.Domain.Autopilot.AiJson
+type VoxClip.Core.Domain.Autopilot.AskClaudeAnswer
+type VoxClip.Core.Domain.Autopilot.AskClaudeDetection
+type VoxClip.Core.Domain.Autopilot.AskClaudeDetectionKind
+type VoxClip.Core.Domain.Autopilot.AskClaudeFrameFindings
+type VoxClip.Core.Domain.Autopilot.AskClaudePrompt
+type VoxClip.Core.Domain.Autopilot.AskClaudeScope
+type VoxClip.Core.Domain.Autopilot.AskClaudeSelection
+type VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope
+type VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Clip
+type VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Time
+type VoxClip.Core.Domain.Autopilot.AskClaudeSelection+Scope+Words
+type VoxClip.Core.Domain.Autopilot.AskClaudeTextLine
+type VoxClip.Core.Domain.Autopilot.AskClaudeValidator
+type VoxClip.Core.Domain.Autopilot.AskClaudeValidator+RegionChoice
+type VoxClip.Core.Domain.Autopilot.AskClaudeVision
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotAction
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Edit
+type VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Effect
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Hook
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Look
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Motion
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Music
+type VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+MusicDucking
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Rewrite
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+ShareText
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Speed
+type VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Stretch
+type VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+TranslateCaptions
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotCaptionCase
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotCaptionPreference
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotContext
@@ -14507,6 +14935,8 @@ type VoxClip.Core.Domain.Autopilot.ClipAutopilotValidator
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotValidator+Log
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotVerdict
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotWire
+type VoxClip.Core.Domain.Autopilot.IAskClaudeVision
+type VoxClip.Core.Domain.Autopilot.LlmRequestParts
 type VoxClip.Core.Domain.Autopilot.WordSpan
 type VoxClip.Core.Domain.Captions.CaptionAnimation
 type VoxClip.Core.Domain.Captions.CaptionAnimationSpec
@@ -15148,6 +15578,8 @@ type VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanStatus
 type VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpans
 type VoxClip.Core.Services.AppVersion
 type VoxClip.Core.Services.Captions.CaptionDataLoader
+type VoxClip.Core.Services.LLM.AskClaudeResult
+type VoxClip.Core.Services.LLM.AskClaudeService
 type VoxClip.Core.Services.LLM.CaptionPickClip
 type VoxClip.Core.Services.LLM.CaptionPickPrompt
 type VoxClip.Core.Services.LLM.CaptionPicker
