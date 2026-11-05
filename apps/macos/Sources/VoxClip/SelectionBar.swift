@@ -39,6 +39,14 @@ func selectionBarFrame(lineRects: [CGRect], visibleRect: CGRect, barSize: CGSize
     }
     private var controls: some View {
         HStack(spacing: 4) {
+            // ✦ Ask Claude first (design.md §6.8): one inline field in the right panel; nothing is sent until Return.
+            if model.canAskClaude, model.askClaudeWordSelection != nil {
+                Button { model.openAskClaudeOnSelection(); dismiss() } label: { label("\u{2726} Ask Claude", "") }
+                    .help("Ask Claude to censor, add an overlay or change timing on these words")
+                    .accessibilityLabel("Ask Claude")
+                    .accessibilityIdentifier("voxclip.selectionBar.askClaude")
+                Divider().frame(height: 18)
+            }
             Button { model.makeClip(); dismiss() } label: { label("Make Clip", "⌥⌘K") }
                 .background(Color(nsColor: .unemphasizedSelectedContentBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
                 .focused($focused)
@@ -72,7 +80,7 @@ func selectionBarFrame(lineRects: [CGRect], visibleRect: CGRect, barSize: CGSize
     private func label(_ title: String, _ shortcut: String) -> some View {
         HStack(spacing: 6) {
             Text(title)
-            Text(shortcut).font(DesignValues.mono(11)).foregroundStyle(DesignValues.color("text.secondary"))
+            if !shortcut.isEmpty { Text(shortcut).font(DesignValues.mono(11)).foregroundStyle(DesignValues.color("text.secondary")) }
         }.padding(.horizontal, 8).frame(minWidth: EditorAccessibilityPolicy.minimumTarget, minHeight: 26).contentShape(Rectangle())
     }
     private var makeClipHelp: String {

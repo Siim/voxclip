@@ -1,0 +1,755 @@
+{
+  "format": "voxclip-clip-effects-wire-cases/1",
+  "project": "fixtures/clip-effects/effects-project.voxclip",
+  "valid": [
+    {
+      "id": "every-kind",
+      "patches": []
+    },
+    {
+      "id": "no-effects-is-omitted",
+      "patches": [
+        {
+          "path": "/clipEffects",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "bleep-only",
+      "patches": [
+        {
+          "path": "/clipEffects",
+          "value": [
+            {
+              "id": "fx-bleep-1",
+              "clipId": "clip-main",
+              "kind": "bleep",
+              "start": 2.8,
+              "end": 3.1,
+              "wordIds": [
+                "w5"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "library-sound",
+      "patches": [
+        {
+          "path": "/clipEffects/10/sound",
+          "value": {
+            "source": "library",
+            "file": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11/sfx-pop-1.wav",
+            "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "durationSeconds": 0.5,
+            "title": "Synthetic pop",
+            "creator": "Synthetic artist",
+            "license": "by",
+            "attribution": "\"Synthetic pop\" by Synthetic artist is licensed under CC BY 4.0.",
+            "sourceUrl": "https://example.com/sound/1"
+          }
+        },
+        {
+          "path": "/clipEffects/10/end",
+          "value": 3.1
+        }
+      ]
+    },
+    {
+      "id": "library-sound-cc0",
+      "patches": [
+        {
+          "path": "/clipEffects/10/sound",
+          "value": {
+            "source": "library",
+            "file": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11/sfx-pop-1.wav",
+            "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "durationSeconds": 0.5,
+            "title": "Synthetic pop",
+            "creator": null,
+            "license": "cc0",
+            "attribution": null,
+            "sourceUrl": "https://example.com/sound/1"
+          }
+        },
+        {
+          "path": "/clipEffects/10/end",
+          "value": 3.1
+        }
+      ]
+    },
+    {
+      "id": "saliency-tracking",
+      "patches": [
+        {
+          "path": "/clipEffects/1/tracking",
+          "value": "saliency"
+        }
+      ]
+    },
+    {
+      "id": "full-frame-rect",
+      "patches": [
+        {
+          "path": "/clipEffects/2/rect",
+          "value": {
+            "x": 0,
+            "y": 0,
+            "width": 1,
+            "height": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "progress-top",
+      "patches": [
+        {
+          "path": "/clipEffects/8/position",
+          "value": "top"
+        }
+      ]
+    },
+    {
+      "id": "longest-freeze",
+      "patches": [
+        {
+          "path": "/clipEffects/9/start",
+          "value": 1.0
+        },
+        {
+          "path": "/clipEffects/9/end",
+          "value": 6.0
+        }
+      ]
+    },
+    {
+      "id": "largest-sticker",
+      "patches": [
+        {
+          "path": "/clipEffects/5/scale",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "id": "loudest-sound",
+      "patches": [
+        {
+          "path": "/clipEffects/10/gainDb",
+          "value": 6
+        }
+      ]
+    },
+    {
+      "id": "several-words",
+      "patches": [
+        {
+          "path": "/clipEffects/0/wordIds",
+          "value": [
+            "w4",
+            "w5"
+          ]
+        },
+        {
+          "path": "/clipEffects/0/start",
+          "value": 2.6
+        }
+      ]
+    }
+  ],
+  "invalid": [
+    {
+      "id": "unknown-field",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/0/unexpected",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "field-of-another-kind",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/0/rect",
+          "value": {
+            "x": 0.1,
+            "y": 0.2,
+            "width": 0.3,
+            "height": 0.25
+          }
+        }
+      ]
+    },
+    {
+      "id": "missing-clip-id",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/0/clipId",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "missing-words",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/0/wordIds",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "missing-track",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/1/track",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "missing-position",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/3/position",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "missing-scale",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/5/scale",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "missing-gain",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/10/gainDb",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "unknown-kind",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/0/kind",
+          "value": "explode"
+        }
+      ]
+    },
+    {
+      "id": "empty-words",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/0/wordIds",
+          "value": []
+        }
+      ]
+    },
+    {
+      "id": "duplicate-words",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/0/wordIds",
+          "value": [
+            "w5",
+            "w5"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "negative-start",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/3/start",
+          "value": -0.5
+        }
+      ]
+    },
+    {
+      "id": "string-start",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/3/start",
+          "value": "0.3"
+        }
+      ]
+    },
+    {
+      "id": "unknown-tracking",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/1/tracking",
+          "value": "object"
+        }
+      ]
+    },
+    {
+      "id": "unknown-position",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/3/position",
+          "value": "middle"
+        }
+      ]
+    },
+    {
+      "id": "empty-title",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/3/text",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "id": "long-title",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/3/text",
+          "value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        }
+      ]
+    },
+    {
+      "id": "numeric-title",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/3/text",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "id": "tiny-rect",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/6/rect/width",
+          "value": 0.001
+        }
+      ]
+    },
+    {
+      "id": "rect-missing-height",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/6/rect/height",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "rect-extra-field",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/6/rect/z",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "sticker-too-small",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/5/scale",
+          "value": 0.25
+        }
+      ]
+    },
+    {
+      "id": "gain-too-loud",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/10/gainDb",
+          "value": 6.5
+        }
+      ]
+    },
+    {
+      "id": "unknown-bundled-sound",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/10/sound/id",
+          "value": "airhorn"
+        }
+      ]
+    },
+    {
+      "id": "bundled-sound-licensed-by",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/10/sound/license",
+          "value": "by"
+        }
+      ]
+    },
+    {
+      "id": "library-without-url",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/10/sound",
+          "value": {
+            "source": "library",
+            "file": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11/sfx-pop-1.wav",
+            "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "durationSeconds": 0.5,
+            "title": "Synthetic pop",
+            "creator": "Synthetic artist",
+            "license": "by",
+            "attribution": "\"Synthetic pop\" by Synthetic artist is licensed under CC BY 4.0.",
+            "sourceUrl": null
+          }
+        },
+        {
+          "path": "/clipEffects/10/end",
+          "value": 3.1
+        }
+      ]
+    },
+    {
+      "id": "library-noncommercial",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/10/sound",
+          "value": {
+            "source": "library",
+            "file": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11/sfx-pop-1.wav",
+            "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "durationSeconds": 0.5,
+            "title": "Synthetic pop",
+            "creator": "Synthetic artist",
+            "license": "by-nc",
+            "attribution": "\"Synthetic pop\" by Synthetic artist is licensed under CC BY 4.0.",
+            "sourceUrl": "https://example.com/sound/1"
+          }
+        },
+        {
+          "path": "/clipEffects/10/end",
+          "value": 3.1
+        }
+      ]
+    },
+    {
+      "id": "library-by-without-attribution",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/10/sound",
+          "value": {
+            "source": "library",
+            "file": "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11/sfx-pop-1.wav",
+            "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "durationSeconds": 0.5,
+            "title": "Synthetic pop",
+            "creator": "Synthetic artist",
+            "license": "by",
+            "attribution": null,
+            "sourceUrl": "https://example.com/sound/1"
+          }
+        },
+        {
+          "path": "/clipEffects/10/end",
+          "value": 3.1
+        }
+      ]
+    },
+    {
+      "id": "library-traversal-file",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/10/sound",
+          "value": {
+            "source": "library",
+            "file": "../sfx-pop.wav",
+            "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "durationSeconds": 0.5,
+            "title": "Synthetic pop",
+            "creator": "Synthetic artist",
+            "license": "by",
+            "attribution": "\"Synthetic pop\" by Synthetic artist is licensed under CC BY 4.0.",
+            "sourceUrl": "https://example.com/sound/1"
+          }
+        },
+        {
+          "path": "/clipEffects/10/end",
+          "value": 3.1
+        }
+      ]
+    },
+    {
+      "id": "sound-too-long",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/10/sound/durationSeconds",
+          "value": 10.5
+        },
+        {
+          "path": "/clipEffects/10/end",
+          "value": 13.1
+        }
+      ]
+    },
+    {
+      "id": "empty-effects-list",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects",
+          "value": []
+        }
+      ]
+    },
+    {
+      "id": "null-effects",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects",
+          "value": null
+        }
+      ]
+    },
+    {
+      "id": "bad-identifier",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipEffects/0/id",
+          "value": "-bad"
+        }
+      ]
+    },
+    {
+      "id": "end-before-start",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/clipEffects/3/end",
+          "value": 0.2
+        }
+      ]
+    },
+    {
+      "id": "range-too-long",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/clipEffects/2/end",
+          "value": 601
+        }
+      ]
+    },
+    {
+      "id": "rect-past-frame",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/clipEffects/6/rect/x",
+          "value": 0.9
+        }
+      ]
+    },
+    {
+      "id": "track-out-of-order",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/clipEffects/1/track/1/t",
+          "value": 0.9
+        }
+      ]
+    },
+    {
+      "id": "untracked-with-samples",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/clipEffects/1/tracking",
+          "value": "none"
+        }
+      ]
+    },
+    {
+      "id": "freeze-too-long",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/clipEffects/9/start",
+          "value": 1.0
+        },
+        {
+          "path": "/clipEffects/9/end",
+          "value": 6.1
+        }
+      ]
+    },
+    {
+      "id": "sound-range-mismatch",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/clipEffects/10/end",
+          "value": 3.5
+        }
+      ]
+    },
+    {
+      "id": "long-sticker",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/clipEffects/5/text",
+          "value": "🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥"
+        }
+      ]
+    },
+    {
+      "id": "progress-in-the-middle",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/clipEffects/8/position",
+          "value": "center"
+        }
+      ]
+    },
+    {
+      "id": "unknown-clip",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/clipEffects/0/clipId",
+          "value": "clip-missing"
+        }
+      ]
+    },
+    {
+      "id": "unknown-word",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/clipEffects/0/wordIds",
+          "value": [
+            "w99"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "duplicate-identity",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/clipEffects/1/id",
+          "value": "fx-bleep-1"
+        }
+      ]
+    },
+    {
+      "id": "other-project-sound-folder",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/clipEffects/10/sound",
+          "value": {
+            "source": "library",
+            "file": "00000000-0000-0000-0000-000000000001/sfx-pop.wav",
+            "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "durationSeconds": 0.5,
+            "title": "Synthetic pop",
+            "creator": "Synthetic artist",
+            "license": "by",
+            "attribution": "\"Synthetic pop\" by Synthetic artist is licensed under CC BY 4.0.",
+            "sourceUrl": "https://example.com/sound/1"
+          }
+        },
+        {
+          "path": "/clipEffects/10/end",
+          "value": 3.1
+        }
+      ]
+    },
+    {
+      "id": "v1-effects",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "id": "v2-effects",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "id": "v3-effects",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "id": "future-project",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 5
+        }
+      ],
+      "tooNew": true
+    }
+  ]
+}

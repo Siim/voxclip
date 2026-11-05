@@ -58,10 +58,14 @@ public struct RenderGraph {
     /// The music bed under the voice (doc/spec/music.md §4), a second audio track; nil without music.
     public let musicTrack: AVMutableCompositionTrack?
     public let musicLease: MusicBedLease?
-    /// The tracks a reader mixes: the voice, then the music bed when there is one.
-    public var mixedAudioTracks: [AVMutableCompositionTrack] { [audioTrack, musicTrack].compactMap { $0 } }
-    public init(composition: AVMutableComposition, videoTrack: AVMutableCompositionTrack, audioTrack: AVMutableCompositionTrack?, videoComposition: AVVideoComposition, audioMix: AVAudioMix?, renderSize: CGSize, frameDuration: CMTime, voiceLabLease: VoiceLabRenderLease? = nil, contextDemoLease: ContextDemoCompositionLease? = nil, musicTrack: AVMutableCompositionTrack? = nil, musicLease: MusicBedLease? = nil) {
+    /// Bleep tones and sound effects (ai.md §18.5), a third audio track; nil without them.
+    public let effectsTrack: AVMutableCompositionTrack?
+    public let effectsLease: EffectAudioLease?
+    /// The tracks a reader mixes: the voice, then the music bed and the effects when there are any.
+    public var mixedAudioTracks: [AVMutableCompositionTrack] { [audioTrack, musicTrack, effectsTrack].compactMap { $0 } }
+    public init(composition: AVMutableComposition, videoTrack: AVMutableCompositionTrack, audioTrack: AVMutableCompositionTrack?, videoComposition: AVVideoComposition, audioMix: AVAudioMix?, renderSize: CGSize, frameDuration: CMTime, voiceLabLease: VoiceLabRenderLease? = nil, contextDemoLease: ContextDemoCompositionLease? = nil, musicTrack: AVMutableCompositionTrack? = nil, musicLease: MusicBedLease? = nil, effectsTrack: AVMutableCompositionTrack? = nil, effectsLease: EffectAudioLease? = nil) {
         self.musicTrack = musicTrack; self.musicLease = musicLease
+        self.effectsTrack = effectsTrack; self.effectsLease = effectsLease
         self.composition = composition; self.videoTrack = videoTrack; self.audioTrack = audioTrack; self.videoComposition = videoComposition; self.audioMix = audioMix; self.renderSize = renderSize; self.frameDuration = frameDuration
         self.voiceLabLease = voiceLabLease
         self.contextDemoLease = contextDemoLease
@@ -145,6 +149,7 @@ public struct CompositionBuilder: Sendable {
             if !synthetic, let audio, let sourceAudio { try audio.insertTimeRange(range, of: sourceAudio, at: cursor) }
         }
         let duration = CMTime(value: request.timeline.outputSamples, timescale: rate)
+        try EffectAudio.freeze(request, video: video, sourceVideo: sourceVideo, videoRange: videoRange, nominalRate: nominalRate, duration: duration)
         let demos = try await ContextDemoCompositionRoute.insert(request, into: composition, scratchRoot: scratchRoot)
         let lipsync = try await LipsyncComposition.insert(request, into: composition, scratchRoot: scratchRoot)
         var lease: VoiceLabRenderLease?
@@ -178,17 +183,36 @@ public struct CompositionBuilder: Sendable {
             }
             musicTrack = track; musicLease = bed
         }
+        var effectsTrack: AVMutableCompositionTrack?
+        let effectsLease = try await EffectAudio.stage(request, durationSeconds: duration.seconds, scratchRoot: scratchRoot)
+        if let effectsLease {
+            let effectsAsset = AVURLAsset(url: effectsLease.url) // Held while its track is inserted.
+            guard let effectTrack = try await MediaSupport.audioTrack(in: effectsAsset),
+                  let track = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else {
+                throw VoxClipError.decodeFailed("Cannot add the effects track")
+            }
+            let effectRange = try await effectTrack.load(.timeRange)
+            try withExtendedLifetime(effectsAsset) {
+                try track.insertTimeRange(CMTimeRange(start: .zero, duration: min(effectRange.duration, duration)), of: effectTrack, at: .zero)
+            }
+            effectsTrack = track
+        }
         var mix: AVAudioMix?
-        if let audio, !synthetic {
+        let silenced = EffectAudio.silencedRanges(request)
+        if let audio, !synthetic || !silenced.isEmpty {
             let parameters = AVMutableAudioMixInputParameters(track: audio)
-            parameters.audioTapProcessor = try FadeTap.make(plan: plan)
+            // The synthetic voice mix has its joins baked in; it only needs the bleeps' silence.
+            let tapPlan = synthetic ? EditPlan(sampleRate: Double(rate), totalSamples: request.timeline.outputSamples,
+                                               kept: [MediaInterval(startSample: 0, endSample: request.timeline.outputSamples)]) : plan
+            parameters.audioTapProcessor = try FadeTap.make(plan: tapPlan, silenced: silenced)
             let audioMix = AVMutableAudioMix()
             audioMix.inputParameters = [parameters]
             mix = audioMix
         }
         return RenderGraph(composition: composition, videoTrack: video, audioTrack: audio, videoComposition: videoComposition,
                            audioMix: mix, renderSize: size, frameDuration: frameDuration, voiceLabLease: lease,
-                           contextDemoLease: demos.lease, musicTrack: musicTrack, musicLease: musicLease)
+                           contextDemoLease: demos.lease, musicTrack: musicTrack, musicLease: musicLease,
+                           effectsTrack: effectsTrack, effectsLease: effectsLease)
     }
 
     func makeVideoComposition(_ request: RenderRequest, trackID: CMPersistentTrackID, duration: CMTime,
@@ -218,6 +242,7 @@ public struct CompositionBuilder: Sendable {
                 captionBlocks: blocks)
         } else { disclosure = nil }
         let captionRasterizer = needsRasterizer ? try sharedRasterizer.get() : nil
+        let effects = request.effects.flatMap { $0.picture.isEmpty ? nil : EffectFrames(input: $0) }
         let framingSpans = videoSpans.filter { $0.zoom > 1 }
         let boundaries = ([CMTime.zero, duration] + framingSpans.flatMap { [$0.output.start, $0.output.end] } +
             demoLayers.flatMap { [$0.output.start, $0.output.end] } +
@@ -235,7 +260,8 @@ public struct CompositionBuilder: Sendable {
                 legacyRasterizer: rasterizer, disclosure: disclosure, demoLayer: layer,
                 contextDemoLease: contextDemoLease, videoZoom: span?.zoom ?? 1,
                 videoAnchorX: span?.anchorX ?? 0.5, videoAnchorY: span?.anchorY ?? 0.5,
-                lipsyncLayers: lipsyncLayers.filter { $0.output.start < end && $0.output.end > start }, colorCorrection: colorCorrection)
+                lipsyncLayers: lipsyncLayers.filter { $0.output.start < end && $0.output.end > start }, colorCorrection: colorCorrection,
+                effects: effects)
         }
         let config = AVVideoComposition.Configuration(colorPrimaries: AVVideoColorPrimaries_ITU_R_709_2,
             colorTransferFunction: AVVideoTransferFunction_ITU_R_709_2, colorYCbCrMatrix: AVVideoYCbCrMatrix_ITU_R_709_2,

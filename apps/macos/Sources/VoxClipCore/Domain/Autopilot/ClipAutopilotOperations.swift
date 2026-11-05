@@ -15,6 +15,10 @@ public struct ClipAutopilotMusicCue: Sendable, Equatable {
 public struct ClipAutopilotOperation: Sendable, Equatable, Identifiable {
     public enum Decision: String, Sendable, CaseIterable {
         case clip, title, correction, cut, pauseCut, rewrite, captions, look, speed, zoom, music, hook, postText
+        /// Ask Claude's toolbox (ai.md §18): a bleep or mute, a blur or pixelate, an overlay (title, lower third, sticker,
+        /// arrow, circle, progress bar), a freeze frame, a sound effect, a stretch played faster or slower, translated
+        /// captions and ducking the music. Additive: the planner's decisions above keep their meaning.
+        case bleep, blur, overlay, freeze, sound, stretch, translate, duck
     }
 
     public enum Action: Sendable, Equatable {
@@ -41,12 +45,26 @@ public struct ClipAutopilotOperation: Sendable, Equatable, Identifiable {
         case hook(clipID: String, text: String)
         /// The clip's share text (`project.share.captions[clipID]`).
         case shareText(clipID: String, text: String)
+        /// An effect added to `project.clipEffects` (ai.md §18.2): censoring, an overlay, a freeze frame or a sound.
+        case effect(ClipEffect)
+        /// One stretch (source seconds) played at `rate`, pitch kept. Clip controls (track/v2-clip-controls) owns the time
+        /// mapping, so `apply` leaves it pending until a stretch command lands there.
+        case stretch(clipID: String?, start: Double, end: Double, rate: Double)
+        /// Captions of words `startWord...endWord` shown in `language` as `text`. Nothing renders a caption language
+        /// override yet, so `apply` leaves it pending.
+        case translateCaptions(clipID: String?, startWord: Int, endWord: Int, language: String, text: String)
+        /// The clip's (nil: the full video's) background track ducks under the voice.
+        case musicDucking(clipID: String?, on: Bool)
     }
 
     public let id: String
     public let decision: Decision
     public let action: Action
     public let reason: String
+
+    public init(id: String, decision: Decision, action: Action, reason: String) {
+        self.id = id; self.decision = decision; self.action = action; self.reason = reason
+    }
 }
 
 public enum ClipAutopilotMapping {
@@ -155,20 +173,28 @@ public enum ClipAutopilotMapping {
     }
 
     /// Applies what the editor can apply today, in order, to a copy of `project`: edits (corrections included), captions,
-    /// motion cues and share text. Rewrites, the look, speed, music and the hook come back as `pending`. Pure: one undo step is the caller's choice.
+    /// motion cues, share text, effects and music ducking. Rewrites, the look, speed, music, the hook, stretches and
+    /// translated captions come back as `pending`. Pure: one undo step is the caller's choice.
     public static func apply(_ operations: [ClipAutopilotOperation], to project: Project) throws -> (project: Project, pending: [ClipAutopilotOperation]) {
         var result = project
         var pending: [ClipAutopilotOperation] = []
         var cues: [MotionCue] = []
+        var effects: [ClipEffect] = []
         for operation in operations {
             switch operation.action {
             case .edit(let command): try result.applyEditing(command)
             case .captions(let settings, _): result.captions = settings
             case .motion(let cue): cues.append(cue)
             case .shareText(let clipID, let text): result.share.captions[clipID] = text
-            case .rewrite, .look, .speed, .music, .hook: pending.append(operation)
+            case .effect(let effect): effects.append(effect)
+            case .musicDucking(let clipID, let on):
+                guard var entry = MusicProject.entry(for: clipID, in: result) else { pending.append(operation); continue }
+                entry.ducking = on
+                result = try MusicProject.setting(entry, clipId: clipID, in: result)
+            case .rewrite, .look, .speed, .music, .hook, .stretch, .translateCaptions: pending.append(operation)
             }
         }
+        result = try ClipEffects.adding(effects, to: result)
         if !cues.isEmpty {
             // Motion cues need the v4 project; the Context demo path upgrades and checks them against the clips.
             let kept = result.motionCues.filter { cue in !cues.contains { $0.id == cue.id } }

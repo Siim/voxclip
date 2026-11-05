@@ -30,7 +30,7 @@ protocol ProviderKeyStore: Sendable {
     func save(_ value: String, for provider: String) async throws
 }
 extension SecretStore: ProviderKeyStore {}
-enum ConnectorConsentAction { case findClips, rewrite, test, pickCaptions }
+enum ConnectorConsentAction { case findClips, rewrite, test, pickCaptions, askClaude }
 extension ProviderChoice {
     /// The effort AI decisions send on this connector (ai.md §2.1): Claude Code and Anthropic "extra high", OpenAI,
     /// Gemini and the Codex default "high"; nil for xAI, local servers and Apple, which ignore effort.
@@ -48,13 +48,14 @@ extension ProviderChoice {
         if let name = cliName {
             let vendor = pricingName
             let plan = id == "claude-code" ? "Claude" : "ChatGPT"
-            let subject = action == .rewrite ? "These words are sent" : action == .test ? "A short test request is sent" : action == .pickCaptions ? "These clips' words are sent" : "The transcript is sent"
+            let subject = action == .rewrite ? "These words are sent" : action == .test ? "A short test request is sent" : action == .pickCaptions ? "These clips' words are sent" : action == .askClaude ? "Your request and these words are sent" : "The transcript is sent"
             guard let key = detectedBillingMethod(authMethod) else { return "" }
             let billing: String
             if key == "api_key" { billing = "and billed to the API key \(name) is signed in with." }
-            else { billing = "and \(action == .rewrite || action == .pickCaptions ? "count" : "counts") toward your \(plan) plan's usage." }
+            else { billing = "and \(action == .rewrite || action == .pickCaptions || action == .askClaude ? "count" : "counts") toward your \(plan) plan's usage." }
             return "VoxClip will run your installed \(name) with your own sign-in. \(subject) to \(vendor) \(billing)"
         }
+        if action == .askClaude { return "Ask Claude sends your request and these \(wordCount) words, with what is detected on screen (no audio or video), to \(serverHost.map { "the \(label) server at \($0)" } ?? "\(label) using your API key")." }
         if action == .pickCaptions { return "Pick styles sends the words of these clips (\(wordCount) words, no audio or video) to \(serverHost.map { "the \(label) server at \($0)" } ?? "\(label) using your API key")." }
         if let serverHost {
             if action == .rewrite { return "Rewrite sends these \(wordCount) words (no audio or video) to the \(label) server at \(serverHost)." }

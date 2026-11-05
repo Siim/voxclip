@@ -67,6 +67,7 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
                 request.finish(with: VoxClipError.decodeFailed("Missing source video frame")); return
             }
             var image = CIImage(cvPixelBuffer: source).oriented(instruction.orientation)
+            let sourceExtent = image.extent
             var crop = Self.centerCrop(source: image.extent, output: size)
             if instruction.videoZoom > 1 {
                 crop = CompositionFrameGeometry.faceCrop(in: image.extent, aspectCrop: crop, scale: instruction.videoZoom,
@@ -104,13 +105,21 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
                 image = CompositionFrameGeometry.fill(captured,
                     crop: Self.centerCrop(source: captured.extent, output: size), output: size)
             }
-            let motion = MotionCue.transform(atSourceTime: instruction.request.timeline.sourceTime(request.compositionTime.seconds),
+            let sourceTime = instruction.request.timeline.sourceTime(request.compositionTime.seconds)
+            if let effects = instruction.effects {
+                image = effects.picture(image, source: sourceExtent, crop: crop, output: size, time: effects.input.pictureTime(sourceTime))
+            }
+            let motion = MotionCue.transform(atSourceTime: sourceTime,
                 clipID: instruction.request.motionClipID, cues: instruction.request.motionCues,
                 reduceMotion: instruction.request.forPreview && instruction.request.reduceMotion)
             if motion != .identity {
                 let motionCrop = CompositionFrameGeometry.crop(in: CGRect(origin: .zero, size: size),
                     scale: motion.scale, anchorX: motion.anchorX, anchorY: motion.anchorY)
                 image = CompositionFrameGeometry.fill(image, crop: motionCrop, output: size)
+            }
+            if let effects = instruction.effects {
+                let timeline = instruction.request.timeline
+                image = effects.frame(image, output: size, time: sourceTime, outputTime: request.compositionTime.seconds, mapTime: { timeline.mapTime($0) })
             }
             context.render(image, to: output, bounds: CGRect(origin: .zero, size: size), colorSpace: nil)
             CVBufferSetAttachment(output, kCVImageBufferCGColorSpaceKey, videoColorSpace, .shouldPropagate)
@@ -221,6 +230,8 @@ public final class RenderInstruction: NSObject, AVVideoCompositionInstructionPro
     let videoZoom: Double
     let videoAnchorX: Double
     let videoAnchorY: Double
+    /// The render's picture effects (ai.md §18.5), shared by every instruction of one composition; nil without effects.
+    let effects: EffectFrames?
 
     public convenience init(timeRange: CMTimeRange, sourceTrackID: CMPersistentTrackID, request: RenderRequest) {
         self.init(timeRange: timeRange, sourceTrackID: sourceTrackID, request: request, orientation: .up, rasterizer: nil)
@@ -230,13 +241,14 @@ public final class RenderInstruction: NSObject, AVVideoCompositionInstructionPro
          legacyRasterizer: (any CaptionRasterizer)? = nil, disclosure: VoiceLabDisclosureOverlay? = nil,
          demoLayer: CompositionDemoLayer? = nil, contextDemoLease: ContextDemoCompositionLease? = nil,
          videoZoom: Double = 1, videoAnchorX: Double = 0.5, videoAnchorY: Double = 0.5,
-         lipsyncLayers: [LipsyncVideoLayer] = [], colorCorrection: (scale: Double, bias: Double)? = nil) {
+         lipsyncLayers: [LipsyncVideoLayer] = [], colorCorrection: (scale: Double, bias: Double)? = nil, effects: EffectFrames? = nil) {
         self.timeRange = timeRange; self.sourceTrackID = sourceTrackID; self.request = request
         self.orientation = orientation; self.rasterizer = rasterizer; self.legacyRasterizer = legacyRasterizer
         self.disclosure = disclosure; self.demoLayer = demoLayer; self.contextDemoLease = contextDemoLease
         self.videoZoom = videoZoom; self.videoAnchorX = videoAnchorX; self.videoAnchorY = videoAnchorY
         self.lipsyncLayers = lipsyncLayers
         self.colorCorrection = colorCorrection
+        self.effects = effects
         super.init()
     }
 

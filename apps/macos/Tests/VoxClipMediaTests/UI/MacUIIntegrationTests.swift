@@ -56,7 +56,9 @@ extension HeavyMediaTests {
         let own = ["S-own-typed", "S-own-mic", "S-own-mic-misfit"]
         // ✦ Make it postable on one clip and on the top three suggestions (DebugRewriteSmokeMakeIt.swift).
         let makeIt = ["S-make-it", "S-make-top3"]
-        let names = (1...15).map { "S\($0)" } + own + makeIt
+        // ✦ Ask Claude on a selection (DebugRewriteSmokeAskClaude.swift) makes no takes: the realistic pass only.
+        let ask = lengths == "exact" ? [] : ["S-ask-bleep-blur", "S-ask-overlay"]
+        let names = (1...15).map { "S\($0)" } + own + makeIt + ask
         let directory = try UIProcessHarness.run(mode: "-rewriteSmoke", name: "rewrite-smoke-\(lengths)",
             arguments: ["-rewriteSmokeLengths", lengths, "-rewriteSmokeOnly", names.joined(separator: ",")],
             acceptNonzeroWithReport: "results.json", deadline: 300)

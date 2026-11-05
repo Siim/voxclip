@@ -85,6 +85,17 @@ import VoxClipCore
             .layoutPriority(-1)
             }
             Spacer(minLength: 0)
+            // A dragged range: ✦ Ask Claude about it (design.md §6.8). Shown only while a range is set and Claude can act.
+            if model.askClaude.timeRange != nil, model.canAskClaude {
+                Button { model.openAskClaudeOnTimeRange() } label: {
+                    Text("\u{2726} Ask Claude").font(VCType.small.font(.medium)).padding(.horizontal, VCTokens.spacingRowGap).frame(height: 22)
+                        .background(DesignValues.color("bg.selectedRow"), in: RoundedRectangle(cornerRadius: 5))
+                }
+                .buttonStyle(.plain)
+                .help("Ask Claude about the dragged range")
+                .accessibilityLabel("Ask Claude about the selected range")
+                .accessibilityIdentifier("voxclip.timeline.askClaude")
+            }
             if geometry.size.width >= 720 {
                 Button { model.timelineSnapping.toggle() } label: {
                     TimelineSnapGlyph().stroke(DesignValues.color(model.timelineSnapping ? "text.primary" : "text.tertiary"), lineWidth: 1)

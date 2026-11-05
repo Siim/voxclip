@@ -1,0 +1,7 @@
+VoxClip bundled sound effects: whoosh.wav, pop.wav and ding.wav
+
+These sounds were synthesized from arithmetic alone by tools/media/sfx/gen_sfx.py in the VoxClip repository. They contain
+no recorded or sampled material.
+
+To the extent possible under law, the VoxClip authors have waived all copyright and related or neighboring rights to these
+sounds under the CC0 1.0 Universal Public Domain Dedication: https://creativecommons.org/publicdomain/zero/1.0/

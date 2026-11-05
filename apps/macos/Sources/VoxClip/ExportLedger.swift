@@ -127,6 +127,8 @@ struct ExportRecord: Codable, Equatable {
         let voiceLab: VoiceInput?
         let contextDemo: ContextDemoDocument?
         let motionCues: [MotionCue]?
+        /// Absent without effects, so a project without them keeps its fingerprint.
+        let effects: [ClipEffect]?
     }
 
     static func output(_ project: Project) -> OutputSpec {
@@ -164,7 +166,8 @@ struct ExportRecord: Codable, Equatable {
         let position = preset.flatMap { project.captions.positionByAspect[$0] } ?? project.captions.position
         let captionsOn = project.captions.styleId != "off"
         let captions = Captions(styleId: project.captions.styleId, overrides: captionsOn ? project.captions.overrides : nil, position: captionsOn ? position : nil)
-        var words = captionCopy(segments, plan: plan)
+        let effects = ClipEffects.rendered(in: project, clipID: clip?.id)
+        var words = captionCopy(ClipEffects.maskingBleeps(segments, effects: effects), plan: plan)
         var voice: VoiceInput?
         if project.schemaVersion >= 3 {
             let prepared = try VoiceLabRenderContract.prepare(project, scope: clip.map { .clip($0.id) } ?? .full, labelPosition: labelPosition)
@@ -198,7 +201,7 @@ struct ExportRecord: Codable, Equatable {
             contextDemo: project.contextDemo, motionCues: clip.flatMap { selected in
                 let cues = project.motionCues.filter { $0.clipID == selected.id }
                 return cues.isEmpty ? nil : cues
-            })
+            }, effects: effects.isEmpty ? nil : effects)
         let encoder = ProjectJSON.encoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let data = try encoder.encode(input)

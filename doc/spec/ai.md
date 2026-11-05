@@ -1942,3 +1942,145 @@ for each clip, with a one-line reason. A caption style the user fixed is never s
   an independent standard-library producer. It holds 4 request vectors (instruction text), 4 reply vectors (picks and
   dropped counts) and 14 clip style contract cases (validation, fixing, pruning and the summary). It also records the
   sha256 of the prompt and of `shared/data/clip-styles.json`, so a stale fixture fails both Cores.
+
+## 18. Ask Claude (`askClaude`)
+
+The creator selects words, a clip or a time range, types what they want, and gets edits from one shared toolbox
+(design.md §6.8). The free edits apply as one undo step; anything that can cost money waits for its own priced click.
+
+### 18.1 Request
+
+- **Selection.** `AskClaudeSelection` is a word range (transcript indices, inclusive), a whole clip, or a source time
+  range, with the clip it belongs to (nil for the full video). `AskClaudeScope.resolve` turns it into a word range
+  (nil when a time range holds no words), source seconds and the clip. The request lists at most
+  `limits.maxSelectionWords` (400) selected words.
+- **Instruction.** The user's words, trimmed and cut to `limits.maxInstructionChars` (500 UTF-16 units). An empty
+  instruction sends nothing.
+- **Context.** The instruction template carries the selection line, one `wordLine` per selected word
+  ("[{index}] {start}-{end} {text}", corrections applied), `limits.contextWords` (20) words before and after, the
+  clip line, the frame ("{width}x{height} recorded, exported {aspect}"), what the stretch already has (effects that
+  overlap it, its clip's zooms, corrections and cuts on its words), the Vision detections and the toolbox. Seconds
+  and normalized numbers are written with two decimals and a point.
+- **Detections.** Before the request, Vision looks at the selected stretch of the source (`ClipEffectVision.detect`):
+  faces (`VNDetectFaceRectanglesRequest`) and text (`VNRecognizeTextRequest`), labelled D1, D2… with their seconds,
+  normalized top-left rect and, for text, what it reads (cut to 60 characters). At most `limits.maxDetections` (24)
+  are listed. Connectors take text only, so the detections stand in for frame thumbnails, which are owed.
+- **Send.** Feature `askClaude`, output `ask_claude_ops` (strict), `maxOutputTokens` 4000, effort `xhigh` (decision,
+  §4.4.1), after the inline connector confirmation (verb "Ask Claude", consent action `askClaude`). Refusal and
+  truncation have their own `askClaude` messages; other failures use the shared connector errors, inline under the
+  field.
+
+### 18.2 Toolbox and contract
+
+The toolbox extends the planner's operations (`ClipAutopilotOperation`, §16) additively: `Decision` gains `bleep`,
+`blur`, `overlay`, `freeze`, `sound`, `stretch`, `translate` and `duck`; `Action` gains `effect(ClipEffect)`,
+`stretch(clipID:start:end:rate:)`, `translateCaptions(clipID:startWord:endWord:language:text:)` and
+`musicDucking(clipID:on:)`. `ClipAutopilotMapping.apply` adds effects through `ClipEffects.adding`; stretch and
+translate are returned as pending until their renderers land (Clip controls owns stretch).
+
+| Kind | Group | Fields | Becomes |
+|---|---|---|---|
+| `bleep`, `mute` | Censor | startWord, endWord | `ClipEffect` with `wordIds` and the words' bounds |
+| `blur`, `pixelate` | Censor | start, end, target or x/y/width/height, tracking | `ClipEffect` with `rect`, `tracking` and `track` |
+| `title`, `lowerThird` | Overlays | start, end, text, position | `ClipEffect` with `text`, `position` |
+| `sticker` | Overlays | start, end, text, position, scale | `ClipEffect` (one of the prompt's `stickers`) |
+| `arrow`, `circle` | Overlays | start, end, target or x/y/width/height | `ClipEffect` with `rect` |
+| `progress` | Overlays | start, end, position | `ClipEffect` |
+| `speed` | Timing | start, end, rate | `stretch` (pending) |
+| `freeze` | Timing | start, end | `ClipEffect` |
+| `jumpCut` | Timing | startWord, endWord | `edit(.cutSelection)` |
+| `zoom` | Timing | start, end, scale | `motion` cue |
+| `correction` | Words | startWord, text | `edit(.correct)` |
+| `rewrite` | Words | startWord, endWord, text | `rewrite` (paid) |
+| `translate` | Words | startWord, endWord, language, text | `translateCaptions` (pending) |
+| `music` | Sound | text (the mood) | `music` cue (a row that opens Music) |
+| `duck` | Sound | start, end | `musicDucking` |
+| `sound` | Sound | start, sound | `ClipEffect` with a bundled `sound` |
+
+**Project contract.** Effects are stored as the root `clipEffects` array, project schema v4 only, omitted when empty;
+adding the first effect promotes a project to v4. `ClipEffect` has `id` (`fx-<kind>-<n>`), optional `clipId`,
+`kind`, `start` and `end` (source seconds, at most 600 s long) and exactly the keys of its kind:
+
+- `bleep`, `mute`: `wordIds`. `blur`, `pixelate`: `rect`, `tracking` (`none`, `face` or `saliency`), `track`.
+- `title`, `lowerThird`: `text` (≤80 scalars), `position`. `sticker`: `text` (≤16 scalars), `position`, `scale`
+  (0.5–3). `arrow`, `circle`: `rect`. `progress`: `position`.
+- `freeze`: no more (≤5 s). `sound`: `sound` (`bundled` with `id` whoosh, pop or ding, or `library` with `file`,
+  `sha256`, `title`, `creator`, `license` of `cc0`, `by` or `pdm`, `attribution` and `sourceUrl`; ≤10 s) and `gainDb`.
+- A `rect` is normalized, top-left, inside the frame. A `track` sample is `{t, x, y, width, height}`.
+
+At most 500 entries, unique ids. The JSON Schema `$defs` (`clipEffect`, `clipEffectRect`, `clipEffectTrackSample`,
+`clipEffectBundledSound`, `clipEffectLibrarySound`) come from `tools/schemas/generate_clip_effects_schema.py`.
+Removing a clip removes its effects; replacing the transcript clears them. Censor kinds render in every clip and the
+full edit; other kinds only in their `clipId` (or the full edit when it is nil).
+
+### 18.3 Prompt
+
+`shared/prompts/ask-claude.json` (`promptVersion` 1) holds the system text, the request templates, the toolbox
+(`kind`, `group`, `fields`, `use`, in this order), the 50 `stickers` (the bundled Noto emoji in
+`shared/fonts/noto-emoji/png128`, without variation selectors), the `limits` and `generation`. `AskClaudePrompt`
+renders it; its sha256 is recorded in the vectors. The reply schema `ask_claude_ops` is
+`{summary, ops: [{kind, startWord, endWord, start, end, text, target, x, y, width, height, tracking, position, rate,
+scale, sound, language, choice, reason}]}`, every field required: an unused field is -1 (word indices and seconds), 0
+(numbers) or "".
+
+### 18.4 Validation and repair
+
+`AskClaudeValidator.answer` checks the reply op by op, in order, keeping at most `limits.maxOps` (12):
+
+- **Clamping.** Word indices are clamped to the selection; a missing or empty range takes the whole selection. Seconds
+  are clamped to the selection; missing seconds take the words' times, then the selection. Rates are clamped to
+  0.5–2 and sticker scales to 0.5–3; text is trimmed and cut to `limits.maxTextChars` (80).
+- **Regions.** `target` may name a detection (D1…), "face" or "screen", or the op gives a rect. With neither, the
+  largest face seen in the stretch (else the largest text box) is pre-picked and named ("the face at the left",
+  "the text \"INVOICE 1042\""): `choices[opId]` makes the row read "Claude chose … · Change". A face target tracks
+  the face unless the op says otherwise.
+- **Sounds.** Unknown names map through aliases (swoosh → whoosh, click → pop, chime → ding…) and otherwise to a
+  whoosh, noting the choice. Lengths: whoosh 0.45 s, pop 0.12 s, ding 0.8 s, at −6 dB.
+- **Drops.** An op that cannot act is left out with a repair line ("Left out sticker: not one of the bundled
+  emoji."): no words or time in the selection, no text, no region, the same speed, words already cut, no new
+  spelling, a zoom or music with no clip, a duck with no music, an invalid language tag, or a kind outside the
+  toolbox. Each built effect is validated against the project contract before it is kept.
+- **Paid.** `rewrite` and `music` operations are listed in `paid`. The editor never applies them with the answer: the
+  rewrite row shows "Voice it · about $X" (the text priced at the ElevenLabs `eleven_multilingual_v2`
+  text-to-speech rate) and hands off to Rewrite, which confirms the exact price; the music row opens Music.
+
+### 18.5 Rendering (Mac)
+
+`RenderCallerInputs.prepare` resolves `ClipEffectsRenderInput` (the effects of the rendered clip, sound files by
+effect id) for the preview and the export alike, so the preview is the export.
+
+- **Picture.** `FrameCompositor` applies blur (`CIGaussianBlur`) and pixelate (a pre-blur at half the cell size,
+  then `CIPixellate`) in source space before crop and motion, and draws titles (Roboto Black on a dark box), lower
+  thirds (DM Sans Bold with an accent bar), emoji (the bundled PNG), arrows, circles and the progress bar on the
+  output frame after motion, under the captions. Overlays fade over 0.12 s at each end.
+- **Tracking.** After the answer, a tracked censor is traced through its range (`ClipEffectVision.track`): every 0.25 s
+  it detects faces (each grown by 25 %) or the salient object, picks the one nearest the previous rect (a frame with
+  none keeps it), smooths the samples with a centred 3-sample average and stores them as `track`. Rendering
+  interpolates between samples.
+- **Freeze.** The picture over the freeze range is its first frame, held; the voice plays on.
+- **Audio.** Bleep and mute silence the voice over the words' exact bounds with 10 ms ramps outside them (an
+  `MTAudioProcessingTap` on the voice). A bleep adds a 1 kHz tone at 0.25 with the complementary ramps. Sounds are
+  staged with the tones into one 48 kHz stereo track mixed under the voice like the music bed. Renders that read the
+  voice alone (`withoutMusic`: the edited-audio export and duration probes) drop the sound effects but keep bleeps and
+  mutes, so the edited audio is censored like the video.
+- **Captions.** Bleeped and muted words show × (U+00D7) for each letter and digit, punctuation kept. Every bundled
+  caption font has ×, and it is a symbol, so styles that strip punctuation keep it.
+- **Default.** With no effects nothing in the render path changes.
+
+### 18.6 Vectors
+
+- `shared/fixtures/clip-effects/` (`tools/fixtures/clip-effects/generate_clip_effects.py`): a v4 project with one
+  effect of each kind, and `effects-wire-cases.json` (valid and invalid entries with their schema verdicts), read by
+  both Cores and the schema tests.
+- `shared/fixtures/ask-claude/ask-claude-cases.json` (`tools/fixtures/ask-claude/generate_ask_claude.py`): the
+  invoice project, a request rendered independently of both Cores, and five replies with hand-derived operations,
+  choices and repairs. It records the prompt's sha256, so a stale fixture fails.
+- Mac pixel goldens under `shared/fixtures/media/effects/` (blur, pixelate, title, lower third, emoji, arrow,
+  circle and progress) and the bundled sounds in `shared/data/sfx/` (`tools/media/sfx/gen_sfx.py --check`).
+
+### 18.7 Windows
+
+Windows Core opens, validates and saves `clipEffects` unchanged (`Domain/Effects/ClipEffects.cs` keeps entries as JSON
+elements and checks them against the same wire vectors), prunes them with their clip and clears them with the
+transcript. It refuses to export a project with effects ("Windows cannot render Ask Claude effects (bleeps, blurs,
+overlays, freeze frames or sound effects) into exports yet. Export this project on a Mac…"). The Windows Ask Claude request, validator, field and renderers are owed.

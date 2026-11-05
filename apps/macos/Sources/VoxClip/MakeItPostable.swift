@@ -546,6 +546,9 @@ extension EditorModel {
                 options: ["1×", "1.1×", "1.25×"].filter { $0 != rate + "×" }))
         case .rewrite, .music, .hook:
             return nil
+        case .effect, .stretch, .translateCaptions, .musicDucking:
+            // Ask Claude's toolbox (ai.md §18): the planner doesn't plan these, so a run applies nothing for them.
+            return (nil, nil)
         }
     }
 

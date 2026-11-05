@@ -74,6 +74,8 @@ struct EditorRenderSnapshot {
     let sendConfirmation = ConnectorConfirmation()
     /// The clip style card and Claude's caption pick (design.md §6.6; EditorModel+ClipStyle.swift).
     let clipStyleState = ClipStyleState()
+    /// ✦ Ask Claude's field, run and Adjust state (design.md §6.8).
+    let askClaude = AskClaudeState()
     var connectorSendVerb = "Rewrite"
     @ObservationIgnored lazy var transcription = InlineTranscription(model: self)
     var contextDemoSession: ContextDemoSession?
@@ -1441,7 +1443,9 @@ struct EditorRenderSnapshot {
         guard let plan else { throw VoxClipError.exportFailed("Could not build the edit plan") }
         guard (voiceLab?.prepared.outputPlan.outputSamples ?? plan.outputSamples) > 0 else { throw VoxClipError.everythingCut }
         let output = ExportFingerprint.output(project)
-        let layout = try await buildCaptions(segments: segments, plan: plan, output: output, forPreview: target == nil,
+        // Bleeped and muted words read as × marks in the captions (ai.md §18.5).
+        let captionSegments = segments.map { ClipEffects.maskingBleeps($0, effects: ClipEffects.rendered(in: project, clipID: clip?.id)) }
+        let layout = try await buildCaptions(segments: captionSegments, plan: plan, output: output, forPreview: target == nil,
                                             project: project, voiceLab: voiceLab?.prepared.outputPlan)
         try Task.checkCancellation()
         if target == nil, snapshot.project != self.project || isLeaving { throw CancellationError() }

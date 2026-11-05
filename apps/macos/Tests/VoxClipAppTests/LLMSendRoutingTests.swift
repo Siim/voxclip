@@ -84,6 +84,8 @@ import Testing
             _ = await testProvider(provider, app: app)
         case .pickCaptions:
             Issue.record("Pick styles needs clips; ClipStyleTests routes it")
+        case .askClaude:
+            Issue.record("Ask Claude needs a selection; AskClaudeAppTests routes it")
         }
     }
 

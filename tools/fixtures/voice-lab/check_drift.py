@@ -42,6 +42,8 @@ EXACT = ['shared/fixtures/voice-lab/pace-cases.json', 'shared/fixtures/voice-lab
          'shared/fixtures/voice-lab/window-cases.json', 'shared/fixtures/voice-lab/window-all-cases.json',
          'shared/fixtures/v2/paragraphs.json', 'shared/fixtures/v2/timeline-cases.json',
          'shared/fixtures/music/music-project.voxclip', 'shared/fixtures/music/music-wire-cases.json',
+         'shared/fixtures/clip-effects/effects-project.voxclip', 'shared/fixtures/clip-effects/effects-wire-cases.json',
+         'shared/fixtures/ask-claude/ask-claude-cases.json',
          'shared/schemas/project.schema.json']
 REL_TOL = 1e-10
 ABS_TOL = 1e-12
@@ -72,6 +74,10 @@ def main():
     # The background-music schema field and its shared vectors (doc/spec/music.md section 2).
     subprocess.run([sys.executable, str(root / "tools/schemas/generate_music_schema.py")], check=True)
     subprocess.run([sys.executable, str(root / "tools/fixtures/music/generate_music.py")], check=True)
+    # The clip-effects schema field and its shared vectors (doc/spec/ai.md section 18.2), after the music field.
+    subprocess.run([sys.executable, str(root / "tools/schemas/generate_clip_effects_schema.py")], check=True)
+    subprocess.run([sys.executable, str(root / "tools/fixtures/clip-effects/generate_clip_effects.py")], check=True)
+    subprocess.run([sys.executable, str(root / "tools/fixtures/ask-claude/generate_ask_claude.py")], check=True)
     failed = False
     for path in EXACT:
         committed_bytes = subprocess.run(['git', 'show', f'HEAD:{path}'], check=True, capture_output=True).stdout

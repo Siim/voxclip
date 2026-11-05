@@ -244,7 +244,7 @@ public actor AVExporter: Exporter {
         let outputNeeds = preflight.outputNeeds
         progress(ExportProgress(phase: .preparing, fraction: 0))
         let graph = try await builder.build(job.render)
-        defer { withExtendedLifetime((graph.voiceLabLease, graph.contextDemoLease, graph.musicLease)) {} }
+        defer { withExtendedLifetime((graph.voiceLabLease, graph.contextDemoLease, graph.musicLease, graph.effectsLease)) {} }
         guard Self.canUseSourceOnlyVideo(job.render) || graph.videoComposition.customVideoCompositorClass != nil else {
             throw VoxClipError.exportFailed("This export requires the shared frame compositor")
         }

@@ -82,8 +82,8 @@ actor ConsentFixtureConnector: LLMConnector {
                         await editor.rewrite?.actionTask?.value
                     case .test:
                         _ = await testProvider(provider, app: app)
-                    case .pickCaptions:
-                        break // Not in this audit's list; ClipStyleTests drive Pick styles.
+                    case .pickCaptions, .askClaude:
+                        break // Not in this audit's list; ClipStyleTests and AskClaudeTests drive them.
                     }
                     let sends = await fake.entrySends
                     let known = method != nil && method != "unrecognized"

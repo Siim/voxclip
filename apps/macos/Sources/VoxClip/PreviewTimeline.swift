@@ -146,6 +146,9 @@ enum ViewerTag: Equatable {
             if model.canMoveCaptions, let style = model.app.styles.first(where: { $0.id == model.project.captions.styleId }), style.position.userDraggable {
                 CaptionPositionOverlay(model: model, style: style, dragging: $captionDragging)
             }
+            if model.askClaude.adjusting != nil {
+                GeometryReader { geometry in AskClaudeRectOverlay(model: model, stage: geometry.size) }
+            }
         }
         .overlay(alignment: .topLeading) {
             if let tag = Self.tag(for: model, standIn: standIn) {

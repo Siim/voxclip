@@ -47,6 +47,18 @@ public sealed record Project(string Format, int SchemaVersion, string Id, DateTi
         get => music.Count == 0 ? null : music;
         init => music = value ?? [];
     }
+    private IReadOnlyList<JsonElement> clipEffects = [];
+    /// <summary>Default-empty schema-v4 effects (doc/spec/ai.md §18.2), kept as their JSON so Windows saves them unchanged;
+    /// omitted on the wire when empty. <see cref="VoxClip.Core.Domain.Effects.ClipEffects"/> holds the rules.</summary>
+    [JsonIgnore]
+    public IReadOnlyList<JsonElement> ClipEffects { get => clipEffects; init => clipEffects = value; }
+    /// <summary>Serialization projection preserving the absent field shape of projects without effects.</summary>
+    [JsonPropertyName("clipEffects"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<JsonElement>? PersistedClipEffects
+    {
+        get => clipEffects.Count == 0 ? null : clipEffects;
+        init => clipEffects = value?.Select(effect => effect.Clone()).ToArray() ?? [];
+    }
 }
 
 /// <summary>Writer identity; runtime release version or schema-valid 0.0.0 fallback. Editing §10.2.</summary>

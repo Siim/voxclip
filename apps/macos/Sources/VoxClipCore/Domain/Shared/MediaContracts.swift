@@ -247,6 +247,8 @@ public struct RenderRequest: Sendable, Equatable {
     public var reduceMotion: Bool
     /// The background track mixed under the voice (doc/spec/music.md §4); nil keeps the voice mix exactly as before.
     public var music: MusicRenderInput?
+    /// The effects drawn on the picture and mixed into the audio (ai.md §18.5); nil keeps the render exactly as before.
+    public var effects: ClipEffectsRenderInput?
     public init(sourceURL: URL, plan: EditPlan, captions: CaptionTrack = CaptionTrack(), style: CaptionStyle? = nil, placement: CaptionPosition? = nil, output: OutputSpec, forPreview: Bool = false, captionLayout: CaptionLayoutResult? = nil, voiceLab: VoiceLabRenderInput? = nil, contextDemo: ContextDemoRenderInput? = nil, contextDemoRoot: URL? = nil, motionCues: [MotionCue] = [], motionClipID: String? = nil, reduceMotion: Bool = false, sourceContentKey: String? = nil) {
         self.sourceURL = sourceURL; self.plan = plan; self.captions = captions; self.style = style; self.placement = placement; self.output = output; self.forPreview = forPreview
         self.captionLayout = captionLayout

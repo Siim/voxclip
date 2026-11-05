@@ -27,6 +27,8 @@ struct MotionCueDraft: Equatable {
 struct TimelineMotionCue: Equatable {
     let id: String
     let range: Range<Double>
+    /// What the lane writes on the cue: "Pan & Zoom" when nil; an Ask Claude effect's name on the FX lane.
+    var label: String? = nil
 }
 
 /// One inline editing draft. Only Apply/Delete reach the existing Project snapshot commands.

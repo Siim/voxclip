@@ -24,8 +24,9 @@ enum TimelineMetrics {
     static let reach: CGFloat = 5
     static let overview = Row(y: 0, height: 24)
     static let ruler = Row(y: 24, height: 22)
-    /// V1, A1, CC, FX and M1 at the default track height (M).
-    static let tracks = [Row(y: 47, height: 36), Row(y: 84, height: 44), Row(y: 129, height: 24), Row(y: 154, height: 24), Row(y: 179, height: 24)]
+    /// V1, A1, CC, FX, M1 and E1 (Ask Claude's effects) at the default track height (M).
+    static let tracks = [Row(y: 47, height: 36), Row(y: 84, height: 44), Row(y: 129, height: 24), Row(y: 154, height: 24), Row(y: 179, height: 24),
+                         Row(y: 204, height: 24)]
     static func rows(_ height: TrackHeight) -> [Row] {
         var y: CGFloat = 47
         return height.heights.map { value in
@@ -108,6 +109,7 @@ struct TimelineContent: Equatable {
     var changes: [ClosedRange<Double>] = []
     var cues: [TimelineCue] = []
     var motionCues: [TimelineMotionCue] = []
+    var effects: [TimelineMotionCue] = []
     /// M1: the track under the open clip, on the axis.
     var music: TimelineMusic?
     var clips: [TimelineOverviewClip] = []
@@ -129,9 +131,11 @@ struct TimelineContent: Equatable {
     let captions = CaptionLane()
     let motion = MotionLane()
     let music = MusicLane()
+    /// E1: Ask Claude's effects (design.md §6.8), drawn like the FX motion lane.
+    let effects = MotionLane(hint: "\u{2726} Ask Claude adds effects here", noClipHint: "\u{2726} Ask Claude adds effects here", defaultLabel: "Effect")
     let trackClip = TimelineTrackClip()
     let headers = [TrackHeaderView(id: "V1", name: "Video"), TrackHeaderView(id: "A1", name: "Voice"), TrackHeaderView(id: "CC", name: "Captions"),
-                   TrackHeaderView(id: "FX", name: "Motion"), TrackHeaderView(id: "M1", name: "Music")]
+                   TrackHeaderView(id: "FX", name: "Motion"), TrackHeaderView(id: "M1", name: "Music"), TrackHeaderView(id: "E1", name: "Effects")]
     let horizontalScroller = TimelineScroller()
     let verticalScroller = TimelineScroller()
     var trackHeight: TrackHeight { shell?.layout.trackHeight ?? .medium }
@@ -168,7 +172,7 @@ struct TimelineContent: Equatable {
         identifier = NSUserInterfaceItemIdentifier("voxclip.timeline.canvas")
         for lane in [overview, ruler, bed] as [NSView] { addSubview(lane) }
         addSubview(trackClip)
-        for lane in [video, audio, captions, motion, music] as [NSView] { trackClip.addSubview(lane) }
+        for lane in [video, audio, captions, motion, music, effects] as [NSView] { trackClip.addSubview(lane) }
         for header in headers { trackClip.addSubview(header) }
         headers[1].action = { [weak model] in
             guard let model else { return }
@@ -253,12 +257,12 @@ struct TimelineContent: Equatable {
         }
         trackClip.frame = NSRect(x: 0, y: TimelineMetrics.ruler.maxY, width: width, height: trackRoom)
         verticalOffset = verticalOffset.clamped(to: 0...verticalMaximum)
-        for (index, lane) in ([video, audio, captions, motion, music] as [TimelineLane]).enumerated() {
+        for (index, lane) in ([video, audio, captions, motion, music, effects] as [TimelineLane]).enumerated() {
             let row = rows[index]
             lane.frame = NSRect(x: 0, y: row.y - TimelineMetrics.ruler.maxY - verticalOffset, width: width, height: row.height)
             headers[index].frame = NSRect(x: 0, y: lane.frame.minY, width: headerWidth - 1, height: row.height)
         }
-        for lane in [overview, ruler, bed, video, audio, captions, motion, music] as [TimelineLane] { lane.headerWidth = headerWidth }
+        for lane in [overview, ruler, bed, video, audio, captions, motion, music, effects] as [TimelineLane] { lane.headerWidth = headerWidth }
         overlay.headerWidth = headerWidth
         overlay.line.frame.size.height = max(0, min(trackClip.frame.maxY, rows.last!.maxY - verticalOffset) - TimelineMetrics.ruler.maxY + 1)
         overlay.frame = bounds
@@ -299,6 +303,7 @@ struct TimelineContent: Equatable {
         next.words = next.waveform == nil ? model.timelineKeptWords : []
         next.cues = model.timelineCaptionCues(on: axis, removed: next.removed)
         next.motionCues = model.timelineMotionCues(on: axis)
+        next.effects = model.timelineEffects(on: axis)
         next.music = model.timelineMusic(on: axis)
         video.setSource(model.timelineFilmstripSource)
         video.mediaName = model.timelineMediaName
@@ -389,6 +394,7 @@ struct TimelineContent: Equatable {
         captions.state = CaptionLane.State(viewport: viewport, cues: content.cues, inOut: content.axis == .source ? shownInOut : nil)
         motion.state = MotionLane.State(viewport: viewport, cues: content.motionCues, hasClip: content.scope != nil)
         music.state = MusicLane.State(viewport: viewport, music: content.music)
+        effects.state = MotionLane.State(viewport: viewport, cues: content.effects, hasClip: true)
         updateScrollers()
         onZoom?(zoomValue)
         let top = TimelineMetrics.tracks.first?.y ?? TimelineMetrics.ruler.maxY
@@ -409,6 +415,11 @@ struct TimelineContent: Equatable {
         let point = motion.convert(event.locationInWindow, from: nil)
         if motion.bounds.contains(point), point.x >= headerWidth {
             openMotionCue(id: motion.cueID(at: point))
+            return
+        }
+        let effectPoint = effects.convert(event.locationInWindow, from: nil)
+        if effects.bounds.contains(effectPoint), effectPoint.x >= headerWidth, let id = effects.cueID(at: effectPoint) {
+            model.adjustAskClaudeEffect(fromTimeline: id)
             return
         }
         interaction.mouseDown(event)
@@ -1274,6 +1285,12 @@ struct TimelineOverviewLabel: Equatable {
     var state = State() { didSet { if state != oldValue { invalidate() } } }
     static let emptyHint = "Add motion with FX +"
     private static let hintFont = NSFont.systemFont(ofSize: 11)
+    let hint: String, noClipHint: String, defaultLabel: String
+    init(hint: String = MotionLane.emptyHint, noClipHint: String = "Open a clip to add motion", defaultLabel: String = "Pan & Zoom") {
+        self.hint = hint; self.noClipHint = noClipHint; self.defaultLabel = defaultLabel
+        super.init(frame: .zero)
+    }
+    required init?(coder: NSCoder) { nil }
 
     func cueID(at point: NSPoint) -> String? {
         let time = state.viewport.time(atX: point.x - headerWidth)
@@ -1287,7 +1304,7 @@ struct TimelineOverviewLabel: Equatable {
         context.saveGState(); context.clip(to: lane)
         let font = Self.hintFont
         if state.cues.isEmpty {
-            Self.draw(state.hasClip ? Self.emptyHint : "Open a clip to add motion", font: font, color: DesignValues.nsColor("text.disabled"), x: headerWidth + 10, baseline: bounds.midY + font.xHeight / 2)
+            Self.draw(state.hasClip ? hint : noClipHint, font: font, color: DesignValues.nsColor("text.disabled"), x: headerWidth + 10, baseline: bounds.midY + font.xHeight / 2)
         }
         let visible = state.viewport.visible
         for cue in state.cues where cue.range.upperBound > visible.lowerBound && cue.range.lowerBound < visible.upperBound {
@@ -1299,7 +1316,7 @@ struct TimelineOverviewLabel: Equatable {
             context.addPath(path); context.fillPath()
             context.saveGState(); context.clip(to: rect)
             if rect.width > 44 {
-                Self.draw("Pan & Zoom", font: font, color: DesignValues.nsColor("timeline.cueText"), x: lower + 4, baseline: bounds.midY + font.xHeight / 2)
+                Self.draw(cue.label ?? defaultLabel, font: font, color: DesignValues.nsColor("timeline.cueText"), x: lower + 4, baseline: bounds.midY + font.xHeight / 2)
             }
             context.restoreGState()
         }
@@ -1361,7 +1378,7 @@ struct TimelineOverviewLabel: Equatable {
 enum TrackHeight: String, CaseIterable {
     case small, medium, large
     var label: String { switch self { case .small: "S"; case .medium: "M"; case .large: "L" } }
-    var heights: [CGFloat] { switch self { case .small: [28, 32, 20, 20, 20]; case .medium: [36, 44, 24, 24, 24]; case .large: [52, 64, 28, 28, 28] } }
+    var heights: [CGFloat] { switch self { case .small: [28, 32, 20, 20, 20, 20]; case .medium: [36, 44, 24, 24, 24, 24]; case .large: [52, 64, 28, 28, 28, 28] } }
 }
 
 @MainActor final class TimelineTrackClip: NSView {
@@ -1397,6 +1414,7 @@ enum TrackHeight: String, CaseIterable {
     func update(on: Bool, enabled: Bool) {
         self.on = on
         button.isEnabled = enabled
+        button.isHidden = trackID == "V1" || trackID == "E1"
         let symbol = trackID == "FX" ? "plus" : trackID == "M1" ? "music.note" : trackID == "CC" ? (on ? "eye" : "eye.slash") : (on ? "speaker.wave.1" : "speaker.slash")
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(.init(pointSize: 12, weight: .regular))
         button.contentTintColor = DesignValues.nsColor("text.tertiary")
