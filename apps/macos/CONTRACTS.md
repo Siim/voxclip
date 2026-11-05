@@ -52,6 +52,51 @@ User request (2026-11-04): new caption types with Roboto Black; Claude picks the
   - The planner reads `ClipStyle` through `project.clipStyle ?? catalog.initial(saved:)`. A caption style id there is the user's fixed choice. Never override it or send it for a pick.
   - New caption styles go in a new style set folder, never into set 1's files.
   - `clipStyle.default` must not carry `captionPicks` (`SettingsValidation` rejects them).
+### 2026-11-05 — Make it postable planner v2: best moments only, 20–45 s, corrections, caption variety, a look, speed, two-stage planning
+
+Brief: answer the first evaluation's 6.5/10 (clips too long, a series tiling the video, no misheard-word fix, one caption style, no colour look, 4–6 minutes per series). Spec: doc/spec/ai.md §16 (rewritten). Core only; no UI.
+
+- **Built.**
+  - `ClipAutopilotPlan` **version 2** (reads 1 and 2; a v1 plan upgrades in memory to no corrections, `original` look, no speed, empty reasons, `seconds` 0, no flags). New fields:
+    - `corrections: [{word, heard, text, reason}]`: a misheard word spelled right; maps to `EditCommand.correct(id:text:)`.
+    - `look: {id, reason}`, `id` ∈ `original | muted | warm | bw` (`ClipAutopilotPlan.LookID`).
+    - `speed: {rate, reason}?`, 0.75–1.5, never 1.
+    - `captions.reason`, `lengthReason`, `seconds` (finished length after cuts, pause cuts and speed) and `flags: [{kind, detail}]`, where `kind` ∈ `overLength` (> 60 s) | `longWithoutReason` (> 45 s, empty `lengthReason`).
+  - `ClipAutopilotMoment` (stage 1 pick) and `ClipAutopilotSeries.moments`; the series is version 2 too.
+  - Prompt **v5** (file format 2): sectioned system prompts for the clip plan and for the moments stage, the four looks, the moments schema `clip_autopilot_moments` (replaces the full-plan series schema), strongest moments only (score 5+), 20–45 s after cuts with up to 60 s only with a reason, harder cuts, per-clip caption styles with a reason, corrections, look and speed rules.
+  - Requests: the caption preference line names only the fixed fields (v1 filled the rest with defaults, so a font-only preference fixed vox-bold on every clip); the clip instruction carries the length after fillers and pauses and how much more to cut; it lists names written elsewhere in the recording, so a near-spelling inside the clip can be corrected; stage 2 gets a moment brief (rank, title, idea, the caption style picked for it and the others').
+  - `ClipAutopilotService`:
+    - `series` runs two stages: moments at `high` (`momentsEffort`), then each moment's plan at `xhigh` with its own words only, at most 3 at once (`maxParallelPlans`).
+    - New `clips([span])` mode: chosen spans planned the same way without stage 1.
+    - `plan(_:connector:model:lanes:progress:)`: `lanes` are extra connectors of the same id. Each lane gets its own `LLMRunner` from the given runner's keys, catalog and log, because `LLMRunner` refuses a second concurrent run and `CLIConnector` runs one process at a time.
+    - `ClipAutopilotProgress`: `pickingMoments`, `picked`, `planning`, `planned`, `failed`.
+    - A failed clip plan is left out (`plans[N]` repair); the run fails only when every plan fails, or on cancellation.
+  - Validator: corrections are checked first (the heard word must match, or the nearest match within 3 words; one per word; 1–3 words; punctuation kept; dropped when the plan cuts that word), so rewrites' bridge words read corrected text. A fixed caption style, font or case always wins (a repair when the reply differs). Look aliases ("B&W") are read; speed is clamped. Moments are checked like series spans; only the best `postFirst` keeps it, in the moments and in the ranked series.
+  - Mapping: ops `correction-N` (`.edit(.correct)`), `look` (`.look(clipID:look:)`, always present), `speed` (`.speed(clipID:speed:)`, when set); `apply` returns look and speed as **pending**. `finalSeconds` = `editedSeconds` / speed; the music cue keeps `editedSeconds` so a track covers the clip while speed is unrendered.
+- **Deleted / replaced.** The single-send full-plan series (`seriesSchema`, `ClipAutopilotValidator.series(_:context:)` over plans, `isSeries` plan validation) is replaced by the moments stage plus clip plans. `ClipAutopilotRequestBuilder.render` and `pace` became internal (`spokenTime` replaces `pace`). `seriesOutputTokens` (64k) is replaced by `momentsOutputTokens` (8k).
+- **Shared vectors.** A new file, `shared/fixtures/autopilot/plan-v2-cases.json` (`voxclip-autopilot-v2/1`), holds a synthetic 150-word transcript and 14 hand-derived cases (corrections, speed, look, a v3-style reply, length flags, fixed captions, moments). `plan-validation-cases.json` keeps its keys and case count; only its `sources` hash changed, and its `series` case now replays as moments.
+- **Tests.** `ClipAutopilotTests` (17) and `ClipAutopilotV2Tests` (10 functions, 22 cases). Among them:
+  - a gate that holds stage-2 sends until three are in flight (so three run at once; a deadlock would hit the 1-minute limit) and checks the fourth lane is never used;
+  - the moment brief text, progress order, a failed plan left out, every plan failing, an empty moments reply, `clips` mode, lanes of another connector refused;
+  - v1 decode and upgrade; ranking with a single `postFirst`; corrections through `correct`, with look and speed pending.
+
+  No live calls. Before the fix, the correction-cut vector caught a real bug: the drop was logged under the accepted index, not the reply's.
+- **Live evaluation** (local, 3 rounds, nothing committed; Claude Code 2.1.318 Opus, `oauth_token` plan sign-in, clean environment):
+  - **v5 (kept):** a 6-minute series in 103 s, 4 clips at 21–34 s finished, both misheard product names in the picks corrected (each citing the names line), 4 different caption styles, one look for the series (warm), speed 1.1 on slow delivery. A single clip took 39 s for a 42 s span and 78 s for an 83 s span.
+  - **v6 (reverted):** "never pad to 20 s" made stage 1 pick wider spans (36–50 s).
+  - Rating about 8/10 against the September benchmark. Details in /tmp/voxclip-autopilot-eval/v2/SUMMARY.md.
+- **Next package must know.**
+  - **UI (track/v2-make-it):**
+    - Pass two extra connector lanes (for Claude Code, two more `CLIConnector(id: .claudeCode, …)`) to get three parallel plans; without lanes a series plans its clips one after another.
+    - Use `.clips([...])` for "✦ Make top 3 postable", and drive progress lines from `ClipAutopilotProgress`.
+    - Show `plan.seconds` and `plan.flags` in the review header, and correction rows ("Tvilio → Twilio") applied through the existing correct command.
+    - Show the look and speed as "Claude chose … · Change" rows that stay pending.
+    - Map `ClipStyle`: a fixed caption style → `captionPreference.styleId`; Auto → nil; Roboto Black → `font`.
+    - Switch on `ClipAutopilotOperation.Action` with the new `.look` and `.speed` cases.
+  - **Look renderer (next package):** colour transforms for `muted`, `warm` and `bw` in preview and export on both platforms.
+  - **Clip controls package:** rendering `speed` for video and audio with pitch kept, then music over `finalSeconds`.
+  - **Prompt:** `lengthReason` comes back as an estimate even within target, so `longWithoutReason` rarely fires; ask for it empty within 45 s next round. Looks repeat across a series.
+  - **Windows:** the twin is owed; replay both fixtures.
 
 ### 2026-11-05 — One spacing scale: phrase cards, Rewrite panel, fields and chips
 

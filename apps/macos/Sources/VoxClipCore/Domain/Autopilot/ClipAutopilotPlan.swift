@@ -5,8 +5,10 @@ import Foundation
 /// positions, as the clip finder's are (ai.md §11.2); every range is inclusive. Building, mapping and pricing a plan sends
 /// nothing and changes no project.
 public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
-    /// `version` of this contract. A reader refuses any other value.
-    public static let currentVersion = 1
+    /// `version` of this contract. A reader accepts `readableVersions` and upgrades a version 1 plan to this one: no
+    /// corrections, the original look, no speed change, no stated reasons, no length and no flags.
+    public static let currentVersion = 2
+    public static let readableVersions: ClosedRange<Int> = 1...2
 
     public enum CutKind: String, Codable, Sendable, CaseIterable { case filler, stumble, `repeat`, falseStart, tangent, other }
 
@@ -26,6 +28,18 @@ public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
         public var afterWord: Int
         public var reason: String
         public init(afterWord: Int, reason: String) { self.afterWord = afterWord; self.reason = reason }
+    }
+
+    /// A misheard word spelled right in the transcript and captions (`EditCommand.correct`); the audio is unchanged.
+    /// `heard` is the word as the transcript showed it, `text` its replacement.
+    public struct Correction: Codable, Sendable, Equatable {
+        public var word: Int
+        public var heard: String
+        public var text: String
+        public var reason: String
+        public init(word: Int, heard: String, text: String, reason: String) {
+            self.word = word; self.heard = heard; self.text = text; self.reason = reason
+        }
     }
 
     /// New words for `startWord...endWord`, re-voiced with the creator's voice. `text` is the whole phrase as spoken: it
@@ -60,10 +74,45 @@ public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
         public var font: Font
         public var textCase: CaptionCase
         public var wordsPerCaption: Int
-        public init(styleId: String, font: Font, textCase: CaptionCase, wordsPerCaption: Int) {
-            self.styleId = styleId; self.font = font; self.textCase = textCase; self.wordsPerCaption = wordsPerCaption
+        /// Why this style suits the clip; empty in a version 1 plan.
+        public var reason: String
+        public init(styleId: String, font: Font, textCase: CaptionCase, wordsPerCaption: Int, reason: String = "") {
+            self.styleId = styleId; self.font = font; self.textCase = textCase; self.wordsPerCaption = wordsPerCaption; self.reason = reason
         }
-        private enum CodingKeys: String, CodingKey { case styleId, font, textCase = "case", wordsPerCaption }
+        public init(from decoder: any Decoder) throws {
+            let values = try decoder.container(keyedBy: CodingKeys.self)
+            self.init(styleId: try values.decode(String.self, forKey: .styleId), font: try values.decode(Font.self, forKey: .font),
+                      textCase: try values.decode(CaptionCase.self, forKey: .textCase), wordsPerCaption: try values.decode(Int.self, forKey: .wordsPerCaption),
+                      reason: try values.decodeIfPresent(String.self, forKey: .reason) ?? "")
+        }
+        private enum CodingKeys: String, CodingKey { case styleId, font, textCase = "case", wordsPerCaption, reason }
+    }
+
+    /// The colour look of the clip (ai.md §16.2). Rendering is owed to the next package; the ids are fixed here.
+    public enum LookID: String, Codable, Sendable, CaseIterable {
+        /// The footage as filmed.
+        case original
+        /// A calm, desaturated grade.
+        case muted
+        /// A soft golden grade.
+        case warm
+        /// Black and white.
+        case bw
+    }
+
+    public struct Look: Codable, Sendable, Equatable {
+        public var id: LookID
+        public var reason: String
+        public init(id: LookID, reason: String = "") { self.id = id; self.reason = reason }
+        public static let original = Look(id: .original)
+    }
+
+    /// The whole clip played at `rate` (between the prompt file's `minSpeed` and `maxSpeed`, never 1). Rendering is owed to
+    /// the Clip controls package.
+    public struct Speed: Codable, Sendable, Equatable {
+        public var rate: Double
+        public var reason: String
+        public init(rate: Double, reason: String) { self.rate = rate; self.reason = reason }
     }
 
     /// One background track to generate with Eleven Music; `underVoiceDb` is how far the music sits under the voice.
@@ -116,6 +165,19 @@ public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
         public init(field: String, action: Action, detail: String) { self.field = field; self.action = action; self.detail = detail }
     }
 
+    /// Something the review should show next to the plan; the plan itself is kept as it is (ai.md §16.5).
+    public struct Flag: Codable, Sendable, Equatable {
+        public enum Kind: String, Codable, Sendable, CaseIterable {
+            /// Longer than the target (`maxTargetSeconds`, 45 s) with no `lengthReason`.
+            case longWithoutReason
+            /// Longer than `maxReasonedSeconds` (60 s), with or without a reason.
+            case overLength
+        }
+        public var kind: Kind
+        public var detail: String
+        public init(kind: Kind, detail: String) { self.kind = kind; self.detail = detail }
+    }
+
     public var version: Int
     public var startWord: Int
     public var endWord: Int
@@ -124,8 +186,13 @@ public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
     public var hook: String
     public var cuts: [Cut]
     public var pauseCuts: [PauseCut]
+    /// Applied before every other edit, so rewrites and captions read the corrected words.
+    public var corrections: [Correction]
     public var rewrites: [Rewrite]
     public var captions: Captions
+    public var look: Look
+    /// Nil plays the clip at its own speed.
+    public var speed: Speed?
     /// Up to three suggestions; `musicPick` indexes the one to use, nil when there is none.
     public var music: [Music]
     public var musicPick: Int?
@@ -136,52 +203,102 @@ public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
     public var score: Int
     public var verdict: Verdict
     public var scoreReason: String
+    /// Why the clip runs past the target length; empty when it does not.
+    public var lengthReason: String
+    /// The clip's length once the plan's cuts, pause cuts and speed apply, measured when the plan was checked
+    /// (`ClipAutopilotMapping.finalSeconds`). Zero in a version 1 plan.
+    public var seconds: Double
     public var questions: [Question]
     public var repairs: [Repair]
+    public var flags: [Flag]
 
     public init(version: Int = ClipAutopilotPlan.currentVersion, startWord: Int, endWord: Int, title: String, hook: String,
-                cuts: [Cut] = [], pauseCuts: [PauseCut] = [], rewrites: [Rewrite] = [], captions: Captions, music: [Music] = [],
-                musicPick: Int? = nil, zooms: [Zoom] = [], postText: String, score: Int, verdict: Verdict, scoreReason: String = "",
-                questions: [Question] = [], repairs: [Repair] = []) {
+                cuts: [Cut] = [], pauseCuts: [PauseCut] = [], corrections: [Correction] = [], rewrites: [Rewrite] = [], captions: Captions,
+                look: Look = .original, speed: Speed? = nil, music: [Music] = [], musicPick: Int? = nil, zooms: [Zoom] = [], postText: String,
+                score: Int, verdict: Verdict, scoreReason: String = "", lengthReason: String = "", seconds: Double = 0,
+                questions: [Question] = [], repairs: [Repair] = [], flags: [Flag] = []) {
         self.version = version; self.startWord = startWord; self.endWord = endWord; self.title = title; self.hook = hook
-        self.cuts = cuts; self.pauseCuts = pauseCuts; self.rewrites = rewrites; self.captions = captions; self.music = music
-        self.musicPick = musicPick; self.zooms = zooms; self.postText = postText; self.score = score; self.verdict = verdict
-        self.scoreReason = scoreReason; self.questions = questions; self.repairs = repairs
+        self.cuts = cuts; self.pauseCuts = pauseCuts; self.corrections = corrections; self.rewrites = rewrites; self.captions = captions
+        self.look = look; self.speed = speed; self.music = music; self.musicPick = musicPick; self.zooms = zooms; self.postText = postText
+        self.score = score; self.verdict = verdict; self.scoreReason = scoreReason; self.lengthReason = lengthReason; self.seconds = seconds
+        self.questions = questions; self.repairs = repairs; self.flags = flags
     }
 
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         let version = try values.decode(Int.self, forKey: .version)
-        guard version == Self.currentVersion else {
+        guard Self.readableVersions.contains(version) else {
             throw DecodingError.dataCorruptedError(forKey: .version, in: values, debugDescription: "Unknown plan version")
         }
-        self.init(version: version, startWord: try values.decode(Int.self, forKey: .startWord), endWord: try values.decode(Int.self, forKey: .endWord),
+        self.init(startWord: try values.decode(Int.self, forKey: .startWord), endWord: try values.decode(Int.self, forKey: .endWord),
                   title: try values.decode(String.self, forKey: .title), hook: try values.decode(String.self, forKey: .hook),
                   cuts: try values.decode([Cut].self, forKey: .cuts), pauseCuts: try values.decode([PauseCut].self, forKey: .pauseCuts),
+                  corrections: try values.decodeIfPresent([Correction].self, forKey: .corrections) ?? [],
                   rewrites: try values.decode([Rewrite].self, forKey: .rewrites), captions: try values.decode(Captions.self, forKey: .captions),
+                  look: try values.decodeIfPresent(Look.self, forKey: .look) ?? .original,
+                  speed: try values.decodeIfPresent(Speed.self, forKey: .speed),
                   music: try values.decode([Music].self, forKey: .music), musicPick: try values.decodeIfPresent(Int.self, forKey: .musicPick),
                   zooms: try values.decode([Zoom].self, forKey: .zooms), postText: try values.decode(String.self, forKey: .postText),
                   score: try values.decode(Int.self, forKey: .score), verdict: try values.decode(Verdict.self, forKey: .verdict),
-                  scoreReason: try values.decode(String.self, forKey: .scoreReason), questions: try values.decode([Question].self, forKey: .questions),
-                  repairs: try values.decodeIfPresent([Repair].self, forKey: .repairs) ?? [])
+                  scoreReason: try values.decode(String.self, forKey: .scoreReason),
+                  lengthReason: try values.decodeIfPresent(String.self, forKey: .lengthReason) ?? "",
+                  seconds: try values.decodeIfPresent(Double.self, forKey: .seconds) ?? 0,
+                  questions: try values.decode([Question].self, forKey: .questions),
+                  repairs: try values.decodeIfPresent([Repair].self, forKey: .repairs) ?? [],
+                  flags: try values.decodeIfPresent([Flag].self, forKey: .flags) ?? [])
     }
 
     private enum CodingKeys: String, CodingKey {
-        case version, startWord, endWord, title, hook, cuts, pauseCuts, rewrites, captions, music, musicPick, zooms, postText, score,
-             verdict, scoreReason, questions, repairs
+        case version, startWord, endWord, title, hook, cuts, pauseCuts, corrections, rewrites, captions, look, speed, music, musicPick, zooms,
+             postText, score, verdict, scoreReason, lengthReason, seconds, questions, repairs, flags
     }
 
     /// The picked music, when there is one.
     public var pickedMusic: Music? { musicPick.flatMap { music.indices.contains($0) ? music[$0] : nil } }
 }
 
+/// A moment the first stage of a series picked (ai.md §16.3): a span worth a clip, with its score and the caption style
+/// chosen for it across the series. The second stage plans each one at extra high effort.
+public struct ClipAutopilotMoment: Codable, Sendable, Equatable {
+    public var startWord: Int
+    public var endWord: Int
+    public var title: String
+    /// The one idea and why it hooks, in a sentence; it briefs the second stage.
+    public var idea: String
+    public var score: Int
+    public var verdict: ClipAutopilotPlan.Verdict
+    public var scoreReason: String
+    /// A built-in style id, never `off`; the creator's fixed style when there is one.
+    public var captionStyle: String
+    public var captionReason: String
+    public init(startWord: Int, endWord: Int, title: String, idea: String, score: Int, verdict: ClipAutopilotPlan.Verdict,
+                scoreReason: String = "", captionStyle: String, captionReason: String = "") {
+        self.startWord = startWord; self.endWord = endWord; self.title = title; self.idea = idea; self.score = score
+        self.verdict = verdict; self.scoreReason = scoreReason; self.captionStyle = captionStyle; self.captionReason = captionReason
+    }
+}
+
 /// A whole video made into a series: its clips ranked best first, each with its own plan, never overlapping.
 public struct ClipAutopilotSeries: Codable, Sendable, Equatable {
     public var version: Int
     public var plans: [ClipAutopilotPlan]
-    /// Clips the validator left out (overlap, length, an unreadable span).
+    /// The first stage's picks in its rank order; empty for a clip request.
+    public var moments: [ClipAutopilotMoment]
+    /// Moments and clips left out (overlap, length, an unreadable span, a plan that failed).
     public var repairs: [ClipAutopilotPlan.Repair]
-    public init(version: Int = ClipAutopilotPlan.currentVersion, plans: [ClipAutopilotPlan], repairs: [ClipAutopilotPlan.Repair] = []) {
-        self.version = version; self.plans = plans; self.repairs = repairs
+    public init(version: Int = ClipAutopilotPlan.currentVersion, plans: [ClipAutopilotPlan], moments: [ClipAutopilotMoment] = [],
+                repairs: [ClipAutopilotPlan.Repair] = []) {
+        self.version = version; self.plans = plans; self.moments = moments; self.repairs = repairs
     }
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        let version = try values.decode(Int.self, forKey: .version)
+        guard ClipAutopilotPlan.readableVersions.contains(version) else {
+            throw DecodingError.dataCorruptedError(forKey: .version, in: values, debugDescription: "Unknown series version")
+        }
+        self.init(plans: try values.decode([ClipAutopilotPlan].self, forKey: .plans),
+                  moments: try values.decodeIfPresent([ClipAutopilotMoment].self, forKey: .moments) ?? [],
+                  repairs: try values.decodeIfPresent([ClipAutopilotPlan.Repair].self, forKey: .repairs) ?? [])
+    }
+    private enum CodingKeys: String, CodingKey { case version, plans, moments, repairs }
 }
