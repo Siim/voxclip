@@ -1863,9 +1863,9 @@ The track/v2-quickwins package owns the rest of the effort work: every other AI 
 
 ### 16.10 Owed
 
-- **UI package:** the ✦ action and its price, the review with Undo or Change per operation, applying as one undo step, and the questions.
-- **Music package:** generation, ducking under the voice at `underVoiceDb`, and verifying the music price.
-- **Rewrites:** voicing through the existing Rewrite flow, where window placement adds the audio bridges.
+- **UI (Mac, built in track/v2-make-it; design.md §6.6):** the ✦ action and its cap, the run, the review with Undo or Change per operation, one undo step, and the questions. The Windows twin is owed.
+- **Music:** the Mac UI applies the pick through `MusicPanel` and sets `underVoiceDb` as the bed's level. Verifying the music price is still owed.
+- **Rewrites (Mac, built):** each is voiced through the existing Rewrite flow (`MakeItRewriteDriver`), where window placement adds the audio bridges.
 - **Roboto Black:** the font must be bundled (OFL, with notices) before it renders.
 - **Hook:** a title card for the hook text.
 - **Windows:** the twin.

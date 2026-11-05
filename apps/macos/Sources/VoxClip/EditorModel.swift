@@ -1161,7 +1161,7 @@ struct EditorRenderSnapshot {
     // Clips in the sidebar (design §3.4 and §6.2): kept clips number 1…n in transcript
     // order and suggestions continue after them.
     var keptClips: [ClipRange] { sortedClips.filter { $0.origin == .manual || $0.selected } }
-    /// Suggestions ranked by score, best first (design.md §6.10): the planner's once Make it postable scored the clip,
+    /// Suggestions ranked by score, best first (design.md §6.6): the planner's once Make it postable scored the clip,
     /// else Find Clips' own. Equal scores keep transcript order.
     var suggestedClips: [ClipRange] {
         let found = sortedClips.filter { $0.origin == .ai && !$0.selected }

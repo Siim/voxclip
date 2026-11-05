@@ -4,6 +4,9 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Mac, ✦ Make it postable on a clip lets Claude decide everything at extra high effort, within the price shown on the button: it cuts fillers and pauses, picks captions, zooms and music, re-voices a few phrases in your voice and writes the post text, then one review lists every decision with play, Undo or Change, the post text with Copy, and Export in the clip style's shapes. One ⌘Z takes it all back. ✦ Make top 3 postable does the best three suggestions, which now rank by score. After a free on-device transcription on drop, Find Clips starts by itself when the AI is free too. Windows follows later.
+- The timeline opens tall enough to show the Music lane, and Rewrite's takes footer no longer asks for a video duration the phrase card already shows as chosen.
+- The same music track can now be used on more than one clip.
 - Rewrite phrase cards, panels, fields and next-step chips have even, roomier spacing, and the timeline's header no longer crowds at the smallest window.
 
 - Find Clips, Rewrite and the other AI decisions now think at extra high effort (Claude Code and Anthropic; others at their highest), and the status bar and Settings say so, for example "Claude Code · Opus (latest) · extra high".

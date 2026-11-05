@@ -13,7 +13,7 @@ private final class Calls: Sendable {
     func record(_ call: String) { value.withLock { $0.append(call) } }
 }
 
-/// ✦ Make it postable (doc/design.md §6.10) on a demo editor with its own data folder: the planner, the voice and the
+/// ✦ Make it postable (doc/design.md §6.6) on a demo editor with its own data folder: the planner, the voice and the
 /// music sources are stubs, so nothing is sent, paid or read from the keychain.
 @Suite("Make it postable", .serialized, .offlineFixtures)
 @MainActor struct MakeItPostableTests {

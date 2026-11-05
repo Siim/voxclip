@@ -1,7 +1,7 @@
 import SwiftUI
 import VoxClipCore
 
-// ✦ Make it postable in the right column (doc/design.md §6.10): while Claude works, its progress lines with Stop; then
+// ✦ Make it postable in the right column (doc/design.md §6.6): while Claude works, its progress lines with Stop; then
 // one review, "Ready to post · 0:46 · score 8/10", one line per decision with ▶ · Undo or Change, "Claude chose X ·
 // Change" lines, the post text with Copy, and Export. Nothing pops up; the footer always names the next step.
 

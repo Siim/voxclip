@@ -972,6 +972,7 @@ The inspector and its Captions, Clips and AI tabs are gone. The commands ⌘1–
 - **Captions** live in the right column (§6.1).
 - **Rewrite**, and the Voice Lab steps inside it, open in context: the scope bar above the transcript and the Rewrite panel in the right column (§6.3).
 - **M2 AI commands** live in the toolbar and the menus (§6.4).
+- **✦ Make it postable** is one click on a clip: Claude decides everything, then one review lists it (§6.6).
 
 ### 6.1 Captions (right column)
 
@@ -1054,7 +1055,7 @@ The sidebar list is the clip range layer (editing §2.5 and §10.6), presented a
 **Row actions.**
 
 - **Kept clip context menu** (macOS `.contextMenu`, Windows `ContextFlyout`):
-  - Rewrite Clip {n} (⇧⌘R; §6.3), then a separator;
+  - Make it postable · up to $x (§6.6), Rewrite Clip {n} (⇧⌘R; §6.3), then a separator;
   - Export Clip…;
   - Rename… (macOS: Return on the focused row edits the title inline; Windows: F2);
   - Copy Text;
@@ -1729,6 +1730,59 @@ The Director will run an AI session that proposes cuts, clips, rewrites and capt
   - a step that needs the user is a `PanelCard`.
 
   Phase 1 feeds session events into the same model. Phase 0 adds no Rewrite-only view model.
+
+### 6.6 Make it postable
+
+User, 2026-11-04: "still too hard. too many click to actually use it. claude code should make the best decisions. in extra high effort level." The approved mockups "One-click postable clips" (parts 1–3 and 5) and "Fewer moves, music and captions" (part A) set the target: **four moves from drop to post** (drop, click a clip, ✦ Make it postable, Export). Questions never block; the review says "Claude chose X · Change". The planner is ai.md §16.
+
+**Before the click.**
+
+- **On drop,** transcription starts when the chosen engine is free (on this Mac), as before. When it finishes, Find Clips starts by itself if the AI is free too: a CLI on its plan, a local server or Apple on-device. An API-key connector still waits for Find Clips and asks inline first.
+- **Suggested** ranks its rows by score, best first: the planner's once it scored the clip, else Find Clips' own. Each idle suggestion shows its score in `ai.tint` mono before its length.
+
+**Ways in.**
+
+- the selected (or hovered, or focused) clip row's **✦**, kept or suggested. It is 22 × 20 like ⋯, so a 176 pt row keeps its title. Its tooltip and spoken name carry the price: "Make it postable · up to $0.06". Rewrite Clip {n} moves to ⋯, the context menu and the row's accessibility actions;
+- the clip bar's first verb, **Make it postable** (wand icon), on a kept clip's tab and after Keep and Dismiss on a suggestion's;
+- **Clip › Make It Postable** (so the command palette), titled with its price, on the selected row's clip, else the open tab's;
+- **✦ Make top 3 postable**, a row at the top of Suggested when there are two or more suggestions. It runs the best three (two when there are two) one after another, each with its own cap.
+
+A suggestion is kept first, in the same undo step as everything the run applies.
+
+**The cap.** The button's amount is an upfront ceiling, and the click approves it. It is the voice for up to the planner's rewrite limit on this clip's length (`maxRewrites` × `maxRewriteTextWords` words, at most the clip's own words, at the clip's mean word length, Eleven v4), doubled for Rewrite's automatic fixes. It adds a generated track for the clip's edited length when the clip style allows one. When nothing can cost anything (no voice can be made and no track may be generated), the button has no amount. Inside the cap, every paid step goes through the existing quote, approval and spend-ledger paths. Before a step runs, its price is checked against what is left, and a step past the cap does not run. Paid takes are never discarded.
+
+**The run** (the right column's **Make it postable** job, which stays in view while the run drives Rewrite):
+
+1. "Reading the clip…": the planner at extra high effort (ai.md §16), holding the project's AI lease. An API key's send asks inline first, as every send does.
+2. "Cutting 6 fillers…" (or "Making N cuts…"): the cuts, pause cuts, clip span, title, captions, zooms and post text apply as one change.
+3. "Voicing 2 fixes…": each rewrite opens Rewrite's own session on its words, with the planner's text as the reply. The driver then presses what a creator would, in Rewrite's own controls: Get Price or Make Takes, Choose Take, Use Takes, a priced Make Takes within the cap, and Keep fixing within it. It never presses Discard, Done, Keep original words, Ask again or Try again. A take whose only problem is the join's loudness is used (lead decision), and its row says "Join may sound slightly louder · ▶". A missing voice, a consent, or a step past the cap stops that rewrite: its row says why, and Rewrite stays open on it.
+4. "Picking music…": `MusicPanel.suggest` with the plan's mood, then the first free track (library or folder), or a generated one within the cap when the style allows. Then `use`, `settled()` and the level `underVoiceDb` under the voice.
+
+**Stop** ends at the next safe point and keeps what is done. ⌘Z during a run stops it too.
+
+**Undo.** The whole run, the keep included, is **one undo step** named "Make it postable". Each decision also has its own Undo in the review, which takes back only that one as its own step: cuts restore, the clip and title go back, captions return to before, the zoom and post text go, the music goes back to the previous track, and a voiced rewrite's segment is turned off, its paid take kept. **Undo All** takes back every decision still applied as one step.
+
+**The review** (one panel, no pop-ups):
+
+- **Headline:** "Ready to post · 0:46 · score 8/10". Under it are the verdict and Claude's reason ("Worth posting · One clear idea with a payoff"), and "Spent $0.02 of up to $0.06".
+- **One line per decision,** with its reason, then ▶ (jump 1–1.5 s before it and play), Undo, and Change where they act:
+  - "Cut “uh”"; "Tightened a pause"; "Tightened the clip to 0:46";
+  - "Claude chose the title “…” · Change" (inline rename);
+  - "Claude chose Vox Bold captions, UPPER, 3 per line · Change" (Captions). An unbundled font reads "· Roboto 900 once bundled";
+  - "Zoom to 1.15× · Change" (Motion);
+  - "Voiced “…” in your voice · Change" (the phrase card, opening Rewrite on those words);
+  - "Claude chose music “…” · Change" (Captions, whose Music section is below its rows);
+  - "Claude chose the hook “…” · Copy". The editor has no title card yet; the row says so.
+- **A question** shows "Claude chose “X”" with Change. Change shows the other answers as chips in the row. Picking one takes this clip's decisions back and plans it again with that answer as the note.
+- **Post text** (with the music's credit line) shows in a read-only field with **Copy**.
+- **Top clips** (after ✦ Make top 3 postable): rank, title, "8/10 · Worth posting", and Waiting, Making…, Ready, Stopped or Failed. A row shows that clip's review.
+- **The footer always names the next step:** "Next: wait, or Stop to keep what's done." · "Next: Export. The post text is copied with it." · "Next: wait for the export." · "Next: try again, or edit the clip yourself." Its primary is **Export · 16:9 + 9:16** (the clip style's shapes) with Undo All, Stop while it runs, or Try Again after a failure.
+
+**Export** is one click. The clip renders once per shape of the clip style (`beginExport(targets:folder:aspects:)`) into the export folder. The post text, including the music credit, is copied as the export starts.
+
+**Clip style seam.** Until `ClipStyle` (track/v2-captions-style) merges, `EditorModel.makeItStyle` uses the Auto preset: Claude picks captions, music Auto (free first, generated when nothing fits), rewording allowed, shapes 16:9 and 9:16. `MakeItStyle` documents the field each one will read.
+
+**Timeline.** The default timeline is 242 pt where the title row, a 16:9 viewer, the panel header and the panel's 160 pt minimum body fit above it. It shows V1, A1, CC, FX and M1 at track height M. A shorter window falls back towards 216, within 40% of the work area.
 
 ---
 

@@ -56,7 +56,7 @@ extension InlineTranscription {
             try validate(request)
             let transcript = result.transcript
             model.replaceTranscript(transcript)
-            // On drop: a free transcription goes straight on to Find Clips when the AI is free too (design.md §6.10).
+            // On drop: a free transcription goes straight on to Find Clips when the AI is free too (design.md §6.6).
             if startedOnImport, request.cost == nil { startedOnImport = false; model.findClipsIfFree() }
             completedAt = Date()
             completion = "Transcribed \(request.cost == nil ? "on this Mac" : "with ElevenLabs") · \(transcript.words.count) words"

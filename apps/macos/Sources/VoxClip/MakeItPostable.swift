@@ -3,7 +3,7 @@ import Foundation
 import Observation
 import VoxClipCore
 
-// ✦ Make it postable (doc/design.md §6.10): one click on a clip lets Claude decide everything at extra high effort (the
+// ✦ Make it postable (doc/design.md §6.6): one click on a clip lets Claude decide everything at extra high effort (the
 // planner, ai.md §16), applies every decision as one undo step within an upfront spend cap, and shows one review with ▶,
 // Undo or Change per decision, the post text with Copy, and Export. Questions never block: the plan already follows
 // Claude's answer, and the review says "Claude chose X · Change".
@@ -174,7 +174,7 @@ extension EditorModel {
 
     // MARK: Price
 
-    /// The click's upfront cap (design.md §6.10): the voice for up to the planner's rewrite limit on this clip's length
+    /// The click's upfront cap (design.md §6.6): the voice for up to the planner's rewrite limit on this clip's length
     /// (first takes plus the same again for automatic fixes, which Rewrite's own allowance spends), plus a generated track
     /// for the clip's length when the style allows one. Nil when nothing can cost anything: no voice can be made and no
     /// track may be generated.
