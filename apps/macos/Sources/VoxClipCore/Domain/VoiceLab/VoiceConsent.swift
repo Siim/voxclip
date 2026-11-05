@@ -178,13 +178,37 @@ public struct VoiceConsentRecord: Codable, Sendable, Equatable, Identifiable {
         public let speakerScore: Double
     }
     public struct Speaker: Codable, Sendable, Equatable {
-        package init(model: String, threshold: Double, embedding: String) {
-            self.model = model; self.threshold = threshold; self.embedding = embedding
+        package init(model: String, threshold: Double, embedding: String, references: [Reference]? = nil) {
+            self.model = model; self.threshold = threshold; self.embedding = embedding; self.references = references
         }
 
         public let model: String
         public let threshold: Double
         public let embedding: String
+        /// Speech of the owner learned from their own videos (voice-lab §6.9, ADR-R41): each passed against `embedding`
+        /// itself, one hop, and is never checked against another reference. Absent until the first is learned.
+        public let references: [Reference]?
+
+        /// One learned reference: the guard's embedding of a project's speech, at most one per project.
+        public struct Reference: Codable, Sendable, Equatable {
+            package init(embedding: String, contentKey: String, addedAt: String, statementScore: Double, model: String) {
+                self.embedding = embedding; self.contentKey = contentKey; self.addedAt = addedAt
+                self.statementScore = statementScore; self.model = model
+            }
+            public let embedding: String
+            /// The source project's media `contentKey`.
+            public let contentKey: String
+            public let addedAt: String
+            /// Its cosine against the record's own `embedding` when it was learned.
+            public let statementScore: Double
+            /// The speaker model that embedded it.
+            public let model: String
+        }
+
+        /// The same speaker with these references; an empty list removes the field.
+        package func replacingReferences(_ references: [Reference]) -> Speaker {
+            Speaker(model: model, threshold: threshold, embedding: embedding, references: references.isEmpty ? nil : references)
+        }
     }
     public struct App: Codable, Sendable, Equatable {
         package init(version: String, platform: String) {
@@ -230,6 +254,14 @@ public struct VoiceConsentRecord: Codable, Sendable, Equatable, Identifiable {
         try values.encodeIfPresent(region, forKey: .region); try values.encodeIfPresent(creator, forKey: .creator)
     }
     public static func timestamp(_ date: Date) -> String { ISO8601DateFormatter().string(from: date) }
+    /// This record with another speaker block: the learned references change, nothing else.
+    package func replacingSpeaker(_ speaker: Speaker) -> VoiceConsentRecord {
+        VoiceConsentRecord(schema: schema, recordId: recordId, provider: provider, type: type, voiceId: voiceId, voiceName: voiceName,
+                           status: status, createdAt: createdAt, deletedAt: deletedAt, statement: statement, attestations: attestations,
+                           samples: samples, speaker: speaker, app: app, region: region, creator: creator, projectConsent: projectConsent)
+    }
+    /// The record as it binds the voice: learned references don't change what a run was approved for (ADR-R41).
+    package var withoutReferences: VoiceConsentRecord { replacingSpeaker(speaker.replacingReferences([])) }
     public func validate() throws {
         guard creator.map({ $0.keyFingerprint.count == 16 && $0.keyFingerprint.allSatisfy { "0123456789abcdef".contains($0) } }) ?? true,
               creator == nil || region == nil || creator?.region == region else { throw VoiceConsentError.invalidRecord }
@@ -253,11 +285,12 @@ public struct VoiceConsentRecord: Codable, Sendable, Equatable, Identifiable {
               let embedding = Self.decodeEmbedding(speaker.embedding), !embedding.isEmpty,
               !samples.isEmpty, samples.count <= 24, samples.allSatisfy({ Self.hashValid($0.sha256) && $0.seconds.isFinite && (5...30).contains($0.seconds) && ["project", "readAloud"].contains($0.source) && $0.speakerScore.isFinite && $0.speakerScore >= speaker.threshold && $0.speakerScore <= 1.00001 }),
               app.platform == "macos", !app.version.isEmpty else { throw VoiceConsentError.invalidRecord }
+        try VoiceSpeakerReferences.validate(speaker)
         if consentMethod == .projectAttestation {
             let milliseconds = samples.reduce(0) { $0 + Int(($1.seconds * 1_000 + 0.5).rounded(.down)) }
             guard (30_000...120_000).contains(milliseconds) else { throw VoiceConsentError.invalidRecord }
         }
-        if status == .deleted { guard let deletedAt, ISO8601DateFormatter().date(from: deletedAt) != nil else { throw VoiceConsentError.invalidRecord } }
+        if status == .deleted { guard let deletedAt, ISO8601DateFormatter().date(from: deletedAt) != nil, speaker.references == nil else { throw VoiceConsentError.invalidRecord } }
         else if deletedAt != nil { throw VoiceConsentError.invalidRecord }
     }
     static func hashValid(_ value: String) -> Bool { value.count == 64 && value.allSatisfy { $0.isASCII && ($0.isNumber || ("a"..."f").contains(String($0))) } }
