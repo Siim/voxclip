@@ -9,6 +9,7 @@ using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Effects;
+using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.Speech;
@@ -252,8 +253,10 @@ public sealed partial class EditorPage : Page
         var output = ExportRenderInput.Output(source, project.Export, clip?.Controls);
         var outputSize = output.Size;
         CaptionTrack? captions = null;
-        if (!demo && state is not null && project.Captions.StyleId != "off" && this.captions?.Styles.FirstOrDefault(style => style.Id == project.Captions.StyleId) is { } style)
-            captions = await CaptionEngine.BuildAsync(new(style, project.Captions, outputSize,
+        // Each clip renders in its own caption style: its pick, else the project default (design §6.6).
+        var captionSettings = ClipCaptionStyles.Settings(project, project.Edits.ActiveClipId);
+        if (!demo && state is not null && captionSettings.StyleId != "off" && this.captions?.Styles.FirstOrDefault(style => style.Id == captionSettings.StyleId) is { } style)
+            captions = await CaptionEngine.BuildAsync(new(style, captionSettings, outputSize,
                 ClipEffectsRendering.MaskingBleeps(voice?.Prepared.OutputPlan.Captions ?? EditingEngine.CaptionWords(state, plan), clip?.Effects?.Effects),
                 state.Transcript.Language, voice?.Prepared.OutputPlan.Duration ?? plan.Duration), new HarfBuzzGlyphShaper(), null, ct);
         var snapshot = new ComposeSnapshot(source, plan, captions, output) { VoiceLab = voice, Clip = clip };

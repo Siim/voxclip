@@ -206,14 +206,22 @@ public sealed class CaptionPickTests
         var punchy = ClipStyleCard.Choose(auto, styles.Find("punchy").Style, library);
         Assert.Equal(("punch-in", "Style: Punchy talking head · ≤45 s · 9:16"), (punchy.Captions.StyleId, ClipStyleCard.StatusText(punchy, styles)));
 
+        // Claude's pick is the clip's own style where it renders; the project default is unchanged (design §6.6).
         var picked = auto with { ClipStyle = auto.ClipStyle!.Recording(new Dictionary<string, ClipCaptionPick> { ["clip-b"] = new("minimal", "Quiet story.") }) };
-        var applied = ClipStyleCard.ApplyPick(picked, library);
-        Assert.Equal("minimal", applied?.Captions.StyleId);
-        Assert.Null(ClipStyleCard.ApplyPick(applied!, library));
-        var chosen = ClipStyleCard.ChooseCaptionStyle(applied!, "marker");
-        Assert.Equal(("marker", "marker", "mine"), (chosen.Captions.StyleId, chosen.ClipStyle!.Captions, chosen.ClipStyle.Preset));
-        var injected = chosen with { ClipStyle = chosen.ClipStyle with { CaptionPicks = new Dictionary<string, ClipCaptionPick> { ["clip-b"] = new("glow", "Injected.") } } };
-        Assert.Null(ClipStyleCard.ApplyPick(injected, library));
+        Assert.Equal(("minimal", "box-highlight", "box-highlight"), (ClipCaptionStyles.StyleId(picked, "clip-b"), ClipCaptionStyles.StyleId(picked, "clip-a"), picked.Captions.StyleId));
+        // The user's choice with clip-b active is clip-b's pick; nothing else changes.
+        var chosen = ClipStyleCard.ChooseCaptionStyle(picked, "marker");
+        Assert.Equal(("marker", "box-highlight", "auto"), (ClipCaptionStyles.StyleId(chosen, "clip-b"), chosen.Captions.StyleId, chosen.ClipStyle!.Captions));
+        Assert.Equal(new ClipCaptionPick("marker", ClipCaptionStyles.YourChoice), chosen.ClipStyle.CaptionPicks["clip-b"]);
+        // Claude never replaces the user's own choice.
+        Assert.Equal("marker", chosen.ClipStyle.Recording(new Dictionary<string, ClipCaptionPick> { ["clip-b"] = new("glow", "Later.") }).CaptionPicks["clip-b"].StyleId);
+        // With no clip active the choice is the project default: it fixes the clip style's captions and keeps the user's pick.
+        var none = chosen with { Edits = chosen.Edits with { ActiveClipId = null } };
+        var fixedDefault = ClipStyleCard.ChooseCaptionStyle(none, "glow");
+        Assert.Equal(("glow", "glow", "mine", "marker"), (fixedDefault.Captions.StyleId, fixedDefault.ClipStyle!.Captions, fixedDefault.ClipStyle.Preset, ClipCaptionStyles.StyleId(fixedDefault, "clip-b")));
+        // A fixed style is never overridden by Claude's picks.
+        var injected = fixedDefault with { ClipStyle = fixedDefault.ClipStyle with { CaptionPicks = new Dictionary<string, ClipCaptionPick> { ["clip-a"] = new("punch-in", "Injected.") } } };
+        Assert.Equal("glow", ClipCaptionStyles.StyleId(injected, "clip-a"));
         Assert.Throws<VoxClipException>(() => ClipStyleCard.Choose(project, styles.Find("auto").Style with { Shapes = [] }, library));
     }
 

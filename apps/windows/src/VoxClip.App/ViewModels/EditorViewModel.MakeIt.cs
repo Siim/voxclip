@@ -489,11 +489,13 @@ public sealed partial class EditorViewModel
                 // Captions Off in the clip style: the project's captions stay as they are.
                 if (!style.Captions) return (null, null);
                 var previous = next.Captions;
-                next = next with { Captions = captions.Settings };
+                var previousPick = ClipCaptionStyles.Pick(next, captions.ClipId);
+                // The style is this clip's own pick, so each clip keeps its style in Export all (design §6.6).
+                next = captions.Applying(next, operation.Reason);
                 var name = CaptionStyleName(captions.Settings.StyleId);
                 var casing = plan.CaptionChoice.TextCase switch { ClipAutopilotCaptionCase.Upper => "UPPER", ClipAutopilotCaptionCase.Lower => "lower", _ => "as said" };
                 var font = captions.PendingFont is { } pending ? $" · {pending.Family} {pending.Weight} once bundled" : "";
-                return (new MakeItInverse.Captions(previous), new(operation.Id, $"Claude chose {name} captions, {casing}, {plan.CaptionChoice.WordsPerCaption} per line{font}")
+                return (new MakeItInverse.Captions(previous, captions.ClipId, previousPick), new(operation.Id, $"Claude chose {name} captions, {casing}, {plan.CaptionChoice.WordsPerCaption} per line{font}")
                 { Kind = MakeItRowKind.Choice, Undoable = true, Change = MakeItChange.Captions });
             }
             case ClipAutopilotAction.ShareText share:
@@ -676,7 +678,12 @@ public sealed partial class EditorViewModel
             switch (inverse)
             {
                 case MakeItInverse.Edits edits: return ApplyBatch(edits.Operations);
-                case MakeItInverse.Captions captions: return ReplaceProject(project with { Captions = captions.Previous }, "Undo captions");
+                case MakeItInverse.Captions captions:
+                {
+                    var restored = project with { Captions = captions.Previous };
+                    restored = ClipCaptionStyles.Restoring(restored, captions.ClipId, captions.PreviousPick);
+                    return ReplaceProject(restored, "Undo captions");
+                }
                 case MakeItInverse.Share share:
                 {
                     // Post texts sit outside undo history on Windows (SetShareCaption): restore it directly.

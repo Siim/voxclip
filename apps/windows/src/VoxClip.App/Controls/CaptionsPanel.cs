@@ -37,6 +37,8 @@ internal sealed class CaptionsPanel : UserControl
     private readonly ScrollViewer fineTuneViewport = new() { HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     private readonly TextBlock styleName = new() { TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock summary = new() { FontSize = 12, TextWrapping = TextWrapping.Wrap };
+    /// <summary>Which style applies while a clip is active: "This clip: Bold Pop · Claude's pick" or "Project default" (design §6.6).</summary>
+    private readonly TextBlock styleSource = new() { FontSize = 12, TextWrapping = TextWrapping.Wrap };
     private readonly Image chip = new() { Width = 64, Height = 36, Stretch = Stretch.Fill };
     private readonly TextBlock off = new() { Text = "Off", HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
     private string fineTuneKey = "";
@@ -107,6 +109,7 @@ internal sealed class CaptionsPanel : UserControl
         IsTabStop = false;
         AutomationProperties.SetAutomationId(enabled, "Captions.Toggle");
         AutomationProperties.SetAutomationId(styleName, "Captions.StyleName");
+        AutomationProperties.SetAutomationId(styleSource, "Captions.StyleSource");
         AutomationProperties.SetAutomationId(summary, "Captions.Summary");
         AutomationProperties.SetAutomationId(gallery, "Captions.Gallery");
         gallery.UseSystemFocusVisuals = true;
@@ -212,7 +215,7 @@ internal sealed class CaptionsPanel : UserControl
         enabled.Toggled += (_, _) =>
         {
             if (syncing) return;
-            if (!enabled.IsOn) { rememberedStyle = model.Project.Captions.StyleId; model.SetCaptionStyle("off"); }
+            if (!enabled.IsOn) { rememberedStyle = model.CaptionStyleId; model.SetCaptionStyle("off"); }
             else model.SetCaptionStyle(CaptionFineTune.TurnOn(rememberedStyle, App.Services.Get("captions.defaultStyleId", "vox-highlight")));
         };
         Grid.SetRow(header, 0); body.Children.Add(header);
@@ -221,7 +224,7 @@ internal sealed class CaptionsPanel : UserControl
         styleRow.ColumnDefinitions.Add(new());
         var chipContent = new Grid { Width = 64, Height = 36 }; chipContent.Children.Add(chip); chipContent.Children.Add(off);
         styleRow.Children.Add(new Border { CornerRadius = new(6), Background = Ui.ThemeBrush(this, "VcBgMutedBrush"), Child = chipContent });
-        var labels = Ui.Stack(2); labels.Children.Add(styleName); labels.Children.Add(summary);
+        var labels = Ui.Stack(2); labels.Children.Add(styleName); labels.Children.Add(styleSource); labels.Children.Add(summary);
         labels.Children.Add(new TextBlock { Text = "Fine tune", FontSize = 12, TextWrapping = TextWrapping.Wrap });
         Grid.SetColumn(labels, 1); styleRow.Children.Add(labels);
         fineTune.Header = styleRow;
@@ -281,7 +284,7 @@ internal sealed class CaptionsPanel : UserControl
         {
             var order = Styles.Where(style => CaptionFineTune.Group(style) == CaptionFineTune.Group(tile.Style)).OrderBy(style => style.Order).ToList().FindIndex(style => style.Id == tile.Style.Id);
             panel.Margin = order % 2 == 0 ? new Thickness(0, 0, 4, 0) : new Thickness(4, 0, 0, 0);
-            var selected = tile.Style.Id == model.Project.Captions.StyleId;
+            var selected = tile.Style.Id == model.CaptionStyleId;
             name.Text = tile.Style.Name + (selected && CaptionFineTune.Edited(model.Project) ? " · Edited" : "");
             name.FontWeight = selected ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Normal;
             name.Foreground = Ui.ThemeBrush(this, selected ? "VcTextPrimaryBrush" : "VcTextSecondaryBrush");
@@ -349,7 +352,7 @@ internal sealed class CaptionsPanel : UserControl
     private void RenderVisible(bool force)
     {
         foreach (var tile in visible.ToArray()) _ = RenderTileAsync(tile, force);
-        if (tiles.TryGetValue(model.Project.Captions.StyleId, out var selected) && !visible.Contains(selected)) _ = RenderTileAsync(selected, force);
+        if (tiles.TryGetValue(model.CaptionStyleId, out var selected) && !visible.Contains(selected)) _ = RenderTileAsync(selected, force);
     }
 
     private async Task RenderTileAsync(Tile tile, bool force)
@@ -359,7 +362,7 @@ internal sealed class CaptionsPanel : UserControl
         var key = sample.Time.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + string.Join("|", sample.Words.Select(word => word.Id + word.Text));
         if (!force && tile.SampleKey == key) return;
         tile.SampleKey = key;
-        var project = model.Project;
+        var project = VoxClip.Core.Domain.Clips.ClipCaptionStyles.Rendered(model.Project, model.Project.Edits.ActiveClipId);
         var frame = still;
         var isLoading = loading;
         var stage = ((SolidColorBrush)Ui.ThemeBrush(this, "VcStageBrush")).Color;
@@ -378,7 +381,7 @@ internal sealed class CaptionsPanel : UserControl
                 using (var stream = image.PixelBuffer.AsStream()) stream.Write(pixels.Pixels);
                 image.Invalidate();
                 tile.Bitmap = image;
-                if (tile.Style.Id == model.Project.Captions.StyleId) { chip.Source = image; chip.Visibility = Visibility.Visible; }
+                if (tile.Style.Id == model.CaptionStyleId) { chip.Source = image; chip.Visibility = Visibility.Visible; }
             }, ct);
         }
         catch (OperationCanceledException) { }
@@ -401,9 +404,9 @@ internal sealed class CaptionsPanel : UserControl
                 frameContext = context; frameKey = ""; still = null;
                 loading = !model.IsReadOnly && mediaPath() is not null && project.Media.Source.Video is not null;
             }
-            enabled.IsOn = project.Captions.StyleId != "off";
+            enabled.IsOn = model.CaptionStyleId != "off";
             enabled.IsEnabled = !model.IsReadOnly && !model.Busy;
-            var selected = tiles.GetValueOrDefault(project.Captions.StyleId);
+            var selected = tiles.GetValueOrDefault(model.CaptionStyleId);
             gallery.SelectedItem = selected;
             foreach (var tile in tiles.Values) tile.Selected = tile == selected ? Visibility.Visible : Visibility.Collapsed;
             foreach (var tile in visible)
@@ -415,6 +418,9 @@ internal sealed class CaptionsPanel : UserControl
             summary.Text = selected is null ? "Just the video" : CaptionFineTune.Summary(selected.Style, project);
             summary.Foreground = Ui.ThemeBrush(this, "VcTextSecondaryBrush");
             styleName.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
+            styleSource.Text = project.Edits.ActiveClipId is null ? "" : model.CaptionStyleSource(id => tiles.GetValueOrDefault(id)?.Style.Name ?? id);
+            styleSource.Foreground = Ui.ThemeBrush(this, "VcTextSecondaryBrush");
+            styleSource.Visibility = styleSource.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
             fineTune.IsEnabled = selected is not null && !model.Busy;
             if (selected is null)
             {
@@ -524,7 +530,7 @@ internal sealed class CaptionsPanel : UserControl
         }
         return null;
     }
-    internal bool DebugFitRequiresAccent => tiles.Values.FirstOrDefault(tile => tile.Style.Id == model.Project.Captions.StyleId)?.Style.Accent is not null;
+    internal bool DebugFitRequiresAccent => tiles.Values.FirstOrDefault(tile => tile.Style.Id == model.CaptionStyleId)?.Style.Accent is not null;
     internal IReadOnlyList<string> DebugFitGalleryIds()
     {
         var choices = new List<string>();

@@ -40,8 +40,8 @@ public sealed partial class MainWindow
         catch (Exception) { return null; }
     }
 
-    /// <summary>Called with every shell update: shows or folds the card, the status item, and applies Claude's pick for
-    /// the active clip while the clip style's captions are Auto.</summary>
+    /// <summary>Called with every shell update: shows or folds the card and the status item. Each clip's caption pick applies
+    /// where it renders (ClipCaptionStyles), never by rewriting the project's style.</summary>
     private void RefreshClipStyle()
     {
         var model = !ShowingHome ? editor?.ViewModel : null;
@@ -50,8 +50,6 @@ public sealed partial class MainWindow
             ClipStyleHost.Visibility = Visibility.Collapsed; ClipStyleStatus.Visibility = Visibility.Collapsed; ClaudeModeHost.Visibility = Visibility.Collapsed;
             return;
         }
-        var library = clipStyleLibrary.Select(style => style.Id).ToHashSet(StringComparer.Ordinal);
-        model.ApplyCaptionPick(library);
         RefreshClaudeModeCard(model);
         // Claude mode's item ("✦ Claude does it all · top 3 · ≤$2", or "Choose how clips are made") takes the style item's place.
         var status = model.ClaudeModeStatus ?? ClipStyleCard.StatusText(model.Project, clipStyles!);

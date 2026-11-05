@@ -28,8 +28,16 @@ public abstract record ClipAutopilotAction
     public sealed record Edit(EditOperation Operation) : ClipAutopilotAction;
     /// <summary>A Rewrite proposal for the words: needs a voice, a quote and a paid step, so it stays pending.</summary>
     public sealed record Rewrite(WordSpan Words, string Text) : ClipAutopilotAction;
-    /// <summary>The project's caption settings; <c>PendingFont</c> names an unbundled font.</summary>
-    public sealed record Captions(ProjectCaptions Settings, ClipAutopilotFont? PendingFont) : ClipAutopilotAction;
+    /// <summary>The clip's caption style (its pick, design §6.6) and the project's caption overrides in <c>Settings</c>;
+    /// <c>PendingFont</c> names an unbundled font.</summary>
+    public sealed record Captions(string ClipId, ProjectCaptions Settings, ClipAutopilotFont? PendingFont) : ClipAutopilotAction
+    {
+        /// <summary>Applies the choice: the overrides to the project's captions, the style as the clip's pick with Claude's
+        /// <paramref name="reason"/> (the project default when the project has no clip style yet).</summary>
+        public Project Applying(Project project, string reason) =>
+            ClipCaptionStyles.Choosing(project with { Captions = project.Captions with { Overrides = Settings.Overrides } }, ClipId, Settings.StyleId,
+                reason.Length > 0 && reason != ClipCaptionStyles.YourChoice ? reason : "Claude's pick");
+    }
     /// <summary>The clip's colour look (clip controls).</summary>
     public sealed record Look(string ClipId, ClipAutopilotPlan.Look Choice) : ClipAutopilotAction;
     /// <summary>The whole clip at a speed, pitch kept (clip controls).</summary>
@@ -116,7 +124,7 @@ public static partial class ClipAutopilotMapping
         if (file is not null) Merge("font", new JsonObject { ["file"] = file, ["family"] = captions.Font.Family, ["weight"] = captions.Font.Weight });
         using var document = JsonDocument.Parse(overrides.ToJsonString());
         var settings = project.Captions with { StyleId = captions.StyleId, Overrides = document.RootElement.Clone() };
-        Add("captions", ClipAutopilotDecision.Captions, new ClipAutopilotAction.Captions(settings, file is null ? captions.Font : null), captions.Reason);
+        Add("captions", ClipAutopilotDecision.Captions, new ClipAutopilotAction.Captions(clipId, settings, file is null ? captions.Font : null), captions.Reason);
         Add("look", ClipAutopilotDecision.Look, new ClipAutopilotAction.Look(clipId, plan.ClipLookChoice), plan.ClipLookChoice.Reason);
         if (plan.SpeedChoice is { } speed) Add("speed", ClipAutopilotDecision.Speed, new ClipAutopilotAction.Speed(clipId, speed), speed.Reason);
         for (var index = 0; index < plan.Zooms.Count; index++)
@@ -172,7 +180,7 @@ public static partial class ClipAutopilotMapping
                     var state = EditingEngine.FromProject(result) ?? throw ClipAutopilotRequestBuilder.Invalid();
                     result = EditingEngine.ApplyToProject(result, EditingEngine.Reduce(state, edit.Operation, result.Ai.Results));
                     break;
-                case ClipAutopilotAction.Captions captions: result = result with { Captions = captions.Settings }; break;
+                case ClipAutopilotAction.Captions captions: result = captions.Applying(result, operation.Reason); break;
                 case ClipAutopilotAction.ShareText share:
                     var texts = new Dictionary<string, string>(result.Share.Captions, StringComparer.Ordinal) { [share.ClipId] = share.Text };
                     result = result with { Share = new(texts) };

@@ -870,17 +870,20 @@ member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction :: method public op_Ine
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions :: method protected PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions :: method protected get_EqualityContract()
-member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions :: method public .ctor(VoxClip.Core.Domain.Shared.ProjectCaptions,System.Nullable`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotFont>)
-member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions :: method public Deconstruct(VoxClip.Core.Domain.Shared.ProjectCaptions&,System.Nullable`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotFont>&)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions :: method public .ctor(string,VoxClip.Core.Domain.Shared.ProjectCaptions,System.Nullable`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotFont>)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions :: method public Applying(VoxClip.Core.Domain.Shared.Project,string)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions :: method public Deconstruct(string&,VoxClip.Core.Domain.Shared.ProjectCaptions&,System.Nullable`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotFont>&)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions :: method public Equals(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions :: method public Equals(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions :: method public Equals(object)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions :: method public GetHashCode()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions :: method public ToString()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions :: method public get_ClipId()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions :: method public get_PendingFont()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions :: method public get_Settings()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions :: method public op_Equality(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions :: method public set_ClipId(string)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions :: method public set_PendingFont(System.Nullable`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotFont>)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions :: method public set_Settings(VoxClip.Core.Domain.Shared.ProjectCaptions)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Edit :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Edit)
@@ -3608,6 +3611,16 @@ member VoxClip.Core.Domain.Clips.ClipCaptionPick :: method public op_Equality(Vo
 member VoxClip.Core.Domain.Clips.ClipCaptionPick :: method public op_Inequality(VoxClip.Core.Domain.Clips.ClipCaptionPick,VoxClip.Core.Domain.Clips.ClipCaptionPick)
 member VoxClip.Core.Domain.Clips.ClipCaptionPick :: method public set_Reason(string)
 member VoxClip.Core.Domain.Clips.ClipCaptionPick :: method public set_StyleId(string)
+member VoxClip.Core.Domain.Clips.ClipCaptionStyles :: field public YourChoice
+member VoxClip.Core.Domain.Clips.ClipCaptionStyles :: method private Trimmed(string)
+member VoxClip.Core.Domain.Clips.ClipCaptionStyles :: method public Choosing(VoxClip.Core.Domain.Shared.Project,string,string,string)
+member VoxClip.Core.Domain.Clips.ClipCaptionStyles :: method public IsYours(VoxClip.Core.Domain.Clips.ClipCaptionPick)
+member VoxClip.Core.Domain.Clips.ClipCaptionStyles :: method public Pick(VoxClip.Core.Domain.Shared.Project,string)
+member VoxClip.Core.Domain.Clips.ClipCaptionStyles :: method public Rendered(VoxClip.Core.Domain.Shared.Project,string,System.Collections.Generic.IReadOnlySet`1<string>)
+member VoxClip.Core.Domain.Clips.ClipCaptionStyles :: method public Restoring(VoxClip.Core.Domain.Shared.Project,string,VoxClip.Core.Domain.Clips.ClipCaptionPick)
+member VoxClip.Core.Domain.Clips.ClipCaptionStyles :: method public Settings(VoxClip.Core.Domain.Shared.Project,string,System.Collections.Generic.IReadOnlySet`1<string>)
+member VoxClip.Core.Domain.Clips.ClipCaptionStyles :: method public Source(VoxClip.Core.Domain.Shared.Project,string,System.Func`2<string,string>)
+member VoxClip.Core.Domain.Clips.ClipCaptionStyles :: method public StyleId(VoxClip.Core.Domain.Shared.Project,string,System.Collections.Generic.IReadOnlySet`1<string>)
 member VoxClip.Core.Domain.Clips.ClipControlsProject :: field private Identifier
 member VoxClip.Core.Domain.Clips.ClipControlsProject :: method internal ValidateWire(System.Text.Json.JsonElement)
 member VoxClip.Core.Domain.Clips.ClipControlsProject :: method private Number(System.Text.Json.JsonElement)
@@ -3728,7 +3741,6 @@ member VoxClip.Core.Domain.Clips.ClipStyle :: method public set_Preset(string)
 member VoxClip.Core.Domain.Clips.ClipStyle :: method public set_Rewording(string)
 member VoxClip.Core.Domain.Clips.ClipStyle :: method public set_Shapes(System.Collections.Generic.IReadOnlyList`1<string>)
 member VoxClip.Core.Domain.Clips.ClipStyle :: method public set_Tone(string)
-member VoxClip.Core.Domain.Clips.ClipStyleCard :: method public ApplyPick(VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlySet`1<string>)
 member VoxClip.Core.Domain.Clips.ClipStyleCard :: method public Choose(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.Clips.ClipStyle,System.Collections.Generic.IReadOnlySet`1<string>)
 member VoxClip.Core.Domain.Clips.ClipStyleCard :: method public ChooseCaptionStyle(VoxClip.Core.Domain.Shared.Project,string)
 member VoxClip.Core.Domain.Clips.ClipStyleCard :: method public Showing(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.Clips.ClipStyleCatalog,VoxClip.Core.Domain.Clips.ClipStyle)
@@ -14622,6 +14634,7 @@ type VoxClip.Core.Domain.Clips.AiResult
 type VoxClip.Core.Domain.Clips.ClipAudioMix
 type VoxClip.Core.Domain.Clips.ClipCandidate
 type VoxClip.Core.Domain.Clips.ClipCaptionPick
+type VoxClip.Core.Domain.Clips.ClipCaptionStyles
 type VoxClip.Core.Domain.Clips.ClipControlsProject
 type VoxClip.Core.Domain.Clips.ClipControlsRendering
 type VoxClip.Core.Domain.Clips.ClipLook

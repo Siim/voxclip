@@ -35,20 +35,25 @@ public sealed record ClipStyle(string Preset, string Captions, string Music, int
     [JsonIgnore]
     public string? FixedCaptionStyle => CaptionsAuto ? null : Captions;
 
-    /// <summary>The user's fixed style always wins; with Auto, the AI's pick for the clip, or null (the project's style stays).</summary>
+    /// <summary>The style <paramref name="clipId"/> renders in by this clip style alone: the user's own choice for the clip
+    /// (<see cref="ClipCaptionStyles.YourChoice"/>) first, then a fixed style, which Claude's picks never override, then Claude's
+    /// pick under Auto; null when none applies (the project's style stays). shared/fixtures/clip-style/caption-pick.json "resolve".</summary>
     public string? CaptionStyleFor(string? clipId)
     {
-        if (FixedCaptionStyle is { } fixedStyle) return fixedStyle;
-        return clipId is { Length: > 0 } && CaptionPicks.TryGetValue(clipId, out var pick) ? pick.StyleId : null;
+        var pick = clipId is { Length: > 0 } && CaptionPicks.TryGetValue(clipId, out var found) ? found : null;
+        if (pick is not null && ClipCaptionStyles.IsYours(pick)) return pick.StyleId;
+        return FixedCaptionStyle ?? pick?.StyleId;
     }
 
-    /// <summary>Records AI picks. A fixed caption style is never overridden: with anything but Auto this changes nothing.</summary>
+    /// <summary>Records AI picks. A fixed caption style is never overridden: with anything but Auto this changes nothing. A clip
+    /// whose pick is the user's own choice (<see cref="ClipCaptionStyles.YourChoice"/>) keeps it.</summary>
     public ClipStyle Recording(IReadOnlyDictionary<string, ClipCaptionPick> picks)
     {
         if (!CaptionsAuto) return this;
         var merged = new SortedDictionary<string, ClipCaptionPick>(StringComparer.Ordinal);
         foreach (var (id, pick) in CaptionPicks) merged[id] = pick;
-        foreach (var (id, pick) in picks) merged[id] = pick;
+        foreach (var (id, pick) in picks)
+            if (!merged.TryGetValue(id, out var existing) || !ClipCaptionStyles.IsYours(existing)) merged[id] = pick;
         return this with { CaptionPicks = merged };
     }
 

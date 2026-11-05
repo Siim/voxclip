@@ -43,7 +43,7 @@ internal sealed class CaptionCards(string sharedRoot)
     internal CaptionCard Card(Project project, string? clipId, bool wordsVisible, string defaultStyleId)
     {
         var resources = library.Value;
-        var style = resources.Styles.Find(project.Captions.StyleId) ?? resources.Styles.Find(defaultStyleId) ?? resources.Styles.Find(FallbackStyleId);
+        var style = resources.Styles.Find(VoxClip.Core.Domain.Clips.ClipCaptionStyles.StyleId(project, clipId)) ?? resources.Styles.Find(defaultStyleId) ?? resources.Styles.Find(FallbackStyleId);
         if (style is null) return new("", CaptionCardText.None, "", "{}", null);
         var text = CaptionCardText.Create(project, clipId is null ? CaptionCardScope.FullTake : CaptionCardScope.Clip(clipId), style, wordsVisible, resources.Shaper.Resources);
         // Core applies the project's overrides to whichever style the card uses, so the drawing does too.

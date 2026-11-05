@@ -66,7 +66,9 @@ internal static class ExportFingerprint
                 }).ToArray()
             };
         }
-        // With captions off the export builds no caption track, so caption-only inputs cannot change the render.
+        // The clip's own caption style (its pick, else the project default) is what renders (design §6.6). With captions off the
+        // export builds no caption track, so caption-only inputs cannot change the render.
+        project = VoxClip.Core.Domain.Clips.ClipCaptionStyles.Rendered(project, clipId);
         var captionsOn = project.Captions.StyleId != "off";
         var input = JsonSerializer.SerializeToElement(new
         {

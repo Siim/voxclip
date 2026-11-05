@@ -137,7 +137,7 @@ public abstract record MakeItInverse
     /// <summary>Edit operations that restore the words, pauses, clip and title.</summary>
     public sealed record Edits(IReadOnlyList<Core.Domain.Editing.EditOperation> Operations) : MakeItInverse;
     /// <summary>The captions before the run.</summary>
-    public sealed record Captions(ProjectCaptions Previous) : MakeItInverse;
+    public sealed record Captions(ProjectCaptions Previous, string ClipId, ClipCaptionPick? PreviousPick) : MakeItInverse;
     /// <summary>The clip's post text before the run.</summary>
     public sealed record Share(string ClipId, string? Previous) : MakeItInverse;
     /// <summary>The Voice Lab segments the voice step added, turned off.</summary>

@@ -77,7 +77,7 @@ internal sealed class ExportDialog : InlineEditorJob
             if (closed) return;
             styles.Items.Add(new ComboBoxItem { Content = "Off", Tag = "off" });
             foreach (var entry in entries) styles.Items.Add(new ComboBoxItem { Content = entry.Name, Tag = entry.Id });
-            styles.SelectedItem = styles.Items.OfType<ComboBoxItem>().FirstOrDefault(item => (string)item.Tag == model.Project.Captions.StyleId);
+            styles.SelectedItem = styles.Items.OfType<ComboBoxItem>().FirstOrDefault(item => (string)item.Tag == model.CaptionStyleId);
         }, "Caption styles");
         form.Children.Add(target); form.Children.Add(aspect); form.Children.Add(quality); form.Children.Add(styles); form.Children.Add(srt); form.Children.Add(folder);
         form.Children.Add(Ui.Button("Choose folder…", () => _ = Ui.RunAsync(notice, ChooseFolderAsync, "Export folder")));

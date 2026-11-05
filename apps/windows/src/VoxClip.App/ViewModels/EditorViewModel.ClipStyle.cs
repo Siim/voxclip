@@ -24,15 +24,13 @@ public sealed partial class EditorViewModel
         if (isLeaving || IsReadOnly || Busy) return;
         RecordClipStyle(ClipStyleCard.Choose(project, style, libraryStyles));
         if (collapse) ClipStyleReopened = false;
-        ApplyCaptionPick(libraryStyles);
     }
 
-    /// <summary>With Auto, the active clip uses the AI's pick for it, as one undo step.</summary>
-    public void ApplyCaptionPick(IReadOnlySet<string> libraryStyles)
-    {
-        if (isLeaving || IsReadOnly || Busy || ClipStyleCard.ApplyPick(project, libraryStyles) is not { } next) return;
-        RecordClipStyle(next);
-    }
+    /// <summary>The caption style the active clip renders in (its pick, else the project default); the full video's otherwise.</summary>
+    public string CaptionStyleId => ClipCaptionStyles.StyleId(project, project.Edits.ActiveClipId);
+
+    /// <summary>The Captions panel's line: "This clip: Bold Pop · Claude's pick" or "Project default".</summary>
+    public string CaptionStyleSource(Func<string, string> name) => ClipCaptionStyles.Source(project, project.Edits.ActiveClipId, name);
 
     private void RecordClipStyle(Project next)
     {

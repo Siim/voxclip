@@ -73,7 +73,7 @@ internal static class CaptionFineTune
     }
     /// <summary>What Fine tune's controls are built from. Only another style or a read-only change builds them again; any
     /// other change updates them in place, so the control with keyboard focus survives the change it made.</summary>
-    internal static string Shape(Project project, bool readOnly) => project.Captions.StyleId + "|" + readOnly;
+    internal static string Shape(Project project, bool readOnly) => VoxClip.Core.Domain.Clips.ClipCaptionStyles.StyleId(project, project.Edits.ActiveClipId) + "|" + readOnly;
     internal static string Summary(CaptionStyle style, Project project)
     {
         var patch = Patch(project.Captions);

@@ -14,7 +14,8 @@ public static class ClipStyleCard
     /// <summary>What the card shows: the project's clip style, else the one a new project starts with.</summary>
     public static ClipStyle Showing(Project project, ClipStyleCatalog catalog, ClipStyle? saved) => project.ClipStyle ?? catalog.Initial(saved);
 
-    /// <summary>Stores <paramref name="style"/>. A fixed caption style (or "off") is applied to the project's captions.</summary>
+    /// <summary>Stores <paramref name="style"/>. A fixed caption style (or "off") is applied to the project's captions; Claude's
+    /// per-clip picks never override it (<see cref="ClipStyle.CaptionStyleFor"/>), the user's own per-clip choices still do.</summary>
     public static Project Choose(Project project, ClipStyle style, IReadOnlySet<string> libraryStyles)
     {
         style.Validate();
@@ -24,18 +25,11 @@ public static class ClipStyleCard
         return next;
     }
 
-    /// <summary>The user chose a caption style (a gallery tile, the Export picker): it fixes the clip style's captions,
-    /// so no AI pick overrides it.</summary>
+    /// <summary>The user chose a caption style (a gallery tile, the Captions switch, the Export picker). While a clip is active it
+    /// becomes that clip's pick; with no clip active it changes the project default and fixes the clip style's captions, so no AI
+    /// pick overrides it (<see cref="ClipCaptionStyles.Choosing"/>).</summary>
     public static Project ChooseCaptionStyle(Project project, string styleId) =>
-        project with { Captions = project.Captions with { StyleId = styleId }, ClipStyle = project.ClipStyle?.FixingCaptions(styleId) };
-
-    /// <summary>With Auto, the active clip uses the AI's pick for it; null when there is nothing to change.</summary>
-    public static Project? ApplyPick(Project project, IReadOnlySet<string> libraryStyles)
-    {
-        if (project.ClipStyle is not { CaptionsAuto: true } style || project.Edits.ActiveClipId is not { } clip
-            || !style.CaptionPicks.TryGetValue(clip, out var pick) || pick.StyleId == project.Captions.StyleId || !libraryStyles.Contains(pick.StyleId)) return null;
-        return project with { Captions = project.Captions with { StyleId = pick.StyleId } };
-    }
+        ClipCaptionStyles.Choosing(project, project.Edits.ActiveClipId, styleId);
 
     /// <summary>"Style: Auto · ≤60 s · 16:9+9:16" once the project has a clip style; null before.</summary>
     public static string? StatusText(Project project, ClipStyleCatalog catalog) =>

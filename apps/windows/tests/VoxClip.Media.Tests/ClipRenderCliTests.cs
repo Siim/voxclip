@@ -32,7 +32,11 @@ public sealed class ClipRenderCliTests
         return new(path, source.DurationSeconds, source.Video, source.Audio, new(1920, 1080), "h264", "aac", false, 0, 1, 0);
     }
 
-    private static async Task<(int Exit, ExportJob? Job, string Output)> ExportAsync(Project project, params string[] extra)
+    private static Task<(int Exit, ExportJob? Job, string Output)> ExportAsync(Project project, params string[] extra) =>
+        ExportStyledAsync(project, ["--style", "off"], extra);
+
+    /// <summary>Exports through the CLI with <paramref name="style"/> (empty: the project's own caption styles).</summary>
+    internal static async Task<(int Exit, ExportJob? Job, string Output)> ExportStyledAsync(Project project, string[] style, string[] extra)
     {
         var directory = Directory.CreateTempSubdirectory("voxclip-clip-render-cli-").FullName;
         var oldOutput = Console.Out;
@@ -57,7 +61,7 @@ public sealed class ClipRenderCliTests
             }
             Console.SetOut(output);
             Console.SetError(errors);
-            var exit = await AcceptedCli.RunAsync(["--open", input, "--export", destination, "--style", "off", "--json", .. extra],
+            var exit = await AcceptedCli.RunAsync(["--open", input, "--export", destination, .. style, "--json", .. extra],
                 TestContext.Current.CancellationToken, (_, _) => Task.FromResult<(Project?, MediaInfo)>((project, media)), Prepare);
             return (exit, captured, output + errors.ToString());
         }

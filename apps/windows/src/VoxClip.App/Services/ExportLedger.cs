@@ -33,7 +33,7 @@ internal sealed class ExportLedger(string file)
         try
         {
             var entry = new ExportRecord(project.Id, ExportFingerprint.TargetId(target), DateTimeOffset.UtcNow, ExportFingerprint.For(project, target, labelPosition),
-                project.Captions.StyleId, project.Export.Aspect, output);
+                VoxClip.Core.Domain.Clips.ClipCaptionStyles.StyleId(project, target is ExportTarget.Clip clip ? clip.Id : null), project.Export.Aspect, output);
             var next = records.Where(record => record.ProjectId != entry.ProjectId || record.TargetId != entry.TargetId).Append(entry)
                 .OrderBy(record => record.ProjectId, StringComparer.Ordinal).ThenBy(record => record.TargetId, StringComparer.Ordinal).ToArray();
             Directory.CreateDirectory(Path.GetDirectoryName(file)!);
