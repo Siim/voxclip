@@ -121,6 +121,8 @@ import VoxClipCore
             Text(model.makeItNextStep(run)).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
                 .fixedSize(horizontal: false, vertical: true)
                 .columnLayoutEvidence("makeIt.next", text: model.makeItNextStep(run))
+            // At the video's cap the run waits: the same priced Continue as the sidebar card.
+            if run.running, run.budget?.needed != nil { CapContinueBlock(editor: model, id: "makeIt.continue") }
             HStack(spacing: VCTokens.spacingRowGap) {
                 if run.running {
                     Button("Stop") { model.stopMakeIt() }.disabled(run.cancelled)

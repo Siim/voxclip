@@ -1009,7 +1009,9 @@ extension EditorModel {
     /// The footer's next step.
     func makeItNextStep(_ run: MakeItRun) -> String {
         switch run.phase {
-        case .planning, .applying: return "Next: wait, or Stop to keep what's done."
+        case .planning, .applying:
+            if run.budget?.needed != nil { return "Next: Continue, or Stop to keep what's done." }
+            return "Next: wait, or Stop to keep what's done."
         case .failed: return "Next: try again, or edit the clip yourself."
         case .stopped, .ready:
             if exporting { return "Next: wait for the export." }

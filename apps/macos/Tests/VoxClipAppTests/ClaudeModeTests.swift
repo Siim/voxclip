@@ -290,6 +290,56 @@ private final class ClaudeCalls: Sendable {
         #expect(editor.claudeMode.phase == .done)
     }
 
+    /// The Make it panel's footer carries the sidebar card's priced Continue (design.md §6.7 item 4): one action, the same
+    /// title, exactly the shortfall. VOXCLIP_CLIP_FINISH_CAPTURES=<dir> writes the footer's picture.
+    @Test func theMakeItPanelsFooterCarriesTheSameContinue() async throws {
+        let fixture = try fixture(cap: 1) { _, call in
+            call == 1 ? MakeItRewriteOutcome(result: .overCap(nextUSD: Decimal(string: "1.40")), spent: Decimal(string: "0.10")!)
+                      : MakeItRewriteOutcome(result: .voiced(segments: []), spent: Decimal(string: "1.40")!)
+        }
+        defer { close(fixture) }
+        let editor = fixture.editor
+        await editor.makeIt.refreshVoiceReady(editor)
+        editor.armClaudeMode()
+        editor.claudeModeFindEnded(); await editor.claudeMode.afterFind?.value
+        try await waitAtCap(editor)
+        let run = try #require(editor.makeIt.run(for: "clip-main"))
+        #expect(run.running && editor.makeItNextStep(run) == "Next: Continue, or Stop to keep what's done.")
+        let card = try #require(editor.capContinueAction(id: "claudeMode.continue"))
+        let footer = try #require(editor.capContinueAction(id: "makeIt.continue"))
+        #expect(footer.title == "Continue · $0.50" && footer.priced && footer.title == card.title && card.priced)
+
+        func markers(_ view: some View, height: CGFloat) -> (host: NSHostingView<AnyView>, frames: [String: CGRect]) {
+            let host = NSHostingView(rootView: AnyView(view.environment(editor.app)))
+            host.appearance = NSAppearance(named: .darkAqua)
+            host.frame = CGRect(x: 0, y: 0, width: 404, height: height)
+            host.layoutSubtreeIfNeeded()
+            return (host, DebugRightColumn.markers(in: host))
+        }
+        let panel = markers(MakeItPanel(model: editor, run: run).frame(width: 404, height: 520).background(DesignValues.color("bg.window")), height: 520)
+        let button = try #require(panel.frames["director.button.makeIt.continue"], "the footer shows Continue")
+        let next = try #require(panel.frames["makeIt.next"])
+        #expect(panel.frames["makeIt.needsMore"] != nil && panel.frames["makeIt.stop"] != nil)
+        #expect(button.minY > 520 / 2 && abs(button.midY - next.midY) < 80, "in the footer, by the next step")
+        let sidebar = markers(ClaudeModeCard(editor: editor).frame(width: 224), height: 400)
+        #expect(sidebar.frames["director.button.claudeMode.continue"] != nil, "the sidebar card shows the same Continue")
+        if let folder = ProcessInfo.processInfo.environment["VOXCLIP_CLIP_FINISH_CAPTURES"] {
+            try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+            let rep = try #require(panel.host.bitmapImageRepForCachingDisplay(in: panel.host.bounds))
+            panel.host.cacheDisplay(in: panel.host.bounds, to: rep)
+            try #require(rep.representation(using: .png, properties: [:])).write(to: URL(fileURLWithPath: folder).appendingPathComponent("footer-continue.png"))
+        }
+
+        // The footer's button is the one action: it approves exactly the shortfall and the step goes on.
+        footer.perform()
+        await editor.claudeMode.task?.value
+        let budget = try #require(editor.claudeMode.budget)
+        #expect(budget.approved == Decimal(string: "1.50") && budget.spent == budget.approved && budget.needed == nil)
+        #expect(fixture.calls.all.contains("voice we finally ship budget 1.4"))
+        #expect(editor.capContinueAction(id: "makeIt.continue") == nil)
+        #expect(markers(MakeItPanel(model: editor, run: run).frame(width: 404, height: 520), height: 520).frames["director.button.makeIt.continue"] == nil)
+    }
+
     @Test func aZeroCapNeverVoicesOrAsks() async throws {
         let fixture = try fixture(cap: 0)
         defer { close(fixture) }

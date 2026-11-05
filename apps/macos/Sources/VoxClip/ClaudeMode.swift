@@ -197,8 +197,21 @@ extension EditorModel {
         stopMakeIt()
     }
 
-    /// Continue at the cap: approves exactly the amount shown.
+    /// Continue at the cap: approves exactly the amount shown. The one action behind both entry points, the sidebar card
+    /// and the Make it panel's footer (`capContinueAction`).
     func continueClaudeMode() { claudeMode.budget?.approveNeeded() }
+
+    /// The priced primary while a step waits at the video's cap, "Continue · $0.40"; nil while nothing waits. `id` names
+    /// the entry point for evidence; the action is always `continueClaudeMode()`.
+    func capContinueAction(id: String) -> PanelAction? {
+        guard let needed = claudeMode.budget?.needed else { return nil }
+        return PanelAction(id: id, title: "Continue · " + Self.makeItDollars(needed), priced: true) { [weak self] in self?.continueClaudeMode() }
+    }
+
+    /// "Continue approves exactly $0.40 more for voice or music on this video."
+    nonisolated static func capContinueNote(_ needed: Decimal) -> String {
+        "Continue approves exactly \(makeItDollars(needed)) more for voice or music on this video."
+    }
 
     var claudeModeRuns: [MakeItRun] { claudeMode.clipIDs.compactMap { makeIt.run(for: $0) } }
     var claudeModeReady: [MakeItRun] { claudeModeRuns.filter { $0.phase == .ready } }

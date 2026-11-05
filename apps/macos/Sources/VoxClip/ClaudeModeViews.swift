@@ -120,34 +120,9 @@ import VoxClipCore
                 .frame(height: 4)
                 .accessibilityElement().accessibilityLabel("Progress").accessibilityValue("\(Int(progress * 100)) percent")
             }
-            if let needed = editor.claudeMode.budget?.needed {
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .firstTextBaseline, spacing: VCTokens.spacingRowGap) {
-                        needsMore(needed).fixedSize()
-                        Spacer(minLength: VCTokens.spacingRowGap)
-                        continueButton(needed)
-                    }
-                    VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) {
-                        needsMore(needed).fixedSize(horizontal: false, vertical: true)
-                        continueButton(needed)
-                    }
-                }
-                Text("Continue approves exactly \(EditorModel.makeItDollars(needed)) more for voice or music on this video.")
-                    .font(.system(size: 11)).foregroundStyle(DesignValues.color("text.tertiary")).fixedSize(horizontal: false, vertical: true)
-            }
+            CapContinueBlock(editor: editor, id: "claudeMode.continue")
             footer(editor.claudeMode.running ? editor.claudeModeFooter : "Next: wait. Claude starts once the clips are found.")
         }
-    }
-
-    private func needsMore(_ needed: Decimal) -> some View {
-        Text("Needs about \(EditorModel.makeItDollars(needed)) more").font(.system(size: 12, weight: .medium))
-            .columnLayoutEvidence("claudeMode.needsMore", text: "Needs about \(EditorModel.makeItDollars(needed)) more")
-    }
-
-    private func continueButton(_ needed: Decimal) -> some View {
-        PanelButton(action: PanelAction(id: "claudeMode.continue", title: "Continue · \(EditorModel.makeItDollars(needed))", priced: true) {
-            editor.continueClaudeMode()
-        }, kind: .primary)
     }
 
     private var progress: Double {
@@ -274,5 +249,40 @@ extension View {
             .overlay(RoundedRectangle(cornerRadius: VCTokens.radiusPane)
                 .strokeBorder(highlighted ? DesignValues.color("ai.tint").opacity(0.45) : DesignValues.color("line.default")))
             .padding(.vertical, VCTokens.spacingLabelGap)
+    }
+}
+
+/// The video's cap reached (design.md §6.7, Claude does it all, item 4): "Needs about $0.40 more", the priced primary
+/// **Continue · $0.40** and what it approves. The sidebar card and the Make it panel's footer show the same block, and
+/// both press the one action, `continueClaudeMode()`, which approves exactly the shortfall. Nothing shows while no step
+/// waits.
+@MainActor struct CapContinueBlock: View {
+    let editor: EditorModel
+    /// The evidence id of this entry point's button: "claudeMode.continue" or "makeIt.continue".
+    let id: String
+
+    var body: some View {
+        if let action = editor.capContinueAction(id: id), let needed = editor.claudeMode.budget?.needed {
+            VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .firstTextBaseline, spacing: VCTokens.spacingRowGap) {
+                        needsMore(needed).fixedSize()
+                        Spacer(minLength: VCTokens.spacingRowGap)
+                        PanelButton(action: action, kind: .primary)
+                    }
+                    VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) {
+                        needsMore(needed).fixedSize(horizontal: false, vertical: true)
+                        PanelButton(action: action, kind: .primary)
+                    }
+                }
+                Text(EditorModel.capContinueNote(needed))
+                    .font(.system(size: 11)).foregroundStyle(DesignValues.color("text.tertiary")).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func needsMore(_ needed: Decimal) -> some View {
+        Text("Needs about \(EditorModel.makeItDollars(needed)) more").font(.system(size: 12, weight: .medium))
+            .columnLayoutEvidence(id.replacingOccurrences(of: ".continue", with: ".needsMore"), text: "Needs about \(EditorModel.makeItDollars(needed)) more")
     }
 }
