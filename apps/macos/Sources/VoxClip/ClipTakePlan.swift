@@ -67,6 +67,9 @@ import VoxClipMedia
         case tooManyPhrases(count: Int)
         /// A later part of an approved run was quoted again just before it ran and no longer matched what was priced.
         case priceChanged
+        /// These phrases' takes can't go into the video (their render recipe or the project refuses them); Use keeps
+        /// them as recorded and goes on with the rest (`RewriteSession.acceptTakes`).
+        case unusable(phrases: [Int])
     }
     /// The most phrases one run prices and voices. A run of more than `VoiceLabTakeBatch.maximumWindows` phrases is priced
     /// and approved once, then voiced part by part (`PricedPart`).
@@ -85,6 +88,20 @@ import VoxClipMedia
         /// nil when every selected take is the user's own microphone take, which uses no clone.
         let voice: VoiceLabVoiceReference?
         var videoAssets: [VoiceLabVideoAsset] = []
+        /// The phrase of each segment, in order, so a segment that can't go into the video names its phrase.
+        var phraseIDs: [Int] = []
+        /// These segments alone, with only the assets they use.
+        func only(_ indices: [Int]) -> Acceptance {
+            let kept = indices.filter(segments.indices.contains)
+            let picked = kept.map { segments[$0] }
+            let encoder = JSONEncoder()
+            let text = String(decoding: (try? encoder.encode(picked)) ?? Data(), as: UTF8.self)
+            func uses(_ id: String) -> Bool { text.contains("\"" + id + "\"") }
+            var result = Acceptance(segments: picked, assets: assets.filter { uses($0.id) }, voice: voice,
+                                    videoAssets: videoAssets.filter { uses($0.id) })
+            result.phraseIDs = kept.compactMap { phraseIDs.indices.contains($0) ? phraseIDs[$0] : nil }
+            return result
+        }
     }
     private struct PreparedVideoSelection {
         let choices: [UUID: VoiceLabVideoMode]
@@ -148,6 +165,12 @@ import VoxClipMedia
     }
     /// Each failure the plan reports, for the Rewrite's release log line (`RewriteSession.logFailure`).
     @ObservationIgnored var onFailure: (@MainActor (any Error) -> Void)?
+    /// Phrases kept as recorded because their takes can't go into the video (`Failure.unusable`), for the session's line.
+    @ObservationIgnored var onUnusable: (@MainActor ([Int]) -> Void)?
+    #if DEBUG
+    /// What publishing returns for a phrase, changed (the Rewrite smoke's S-render-recipe: a take whose recipe can't be made).
+    @ObservationIgnored var publishOverride: ((Int, VoiceLabPublishedTake) -> VoiceLabPublishedTake)?
+    #endif
     private(set) var estimate: CostEstimate?
     private(set) var cost: VoiceLabCostPresentation.Kind?
     private(set) var spent = VoiceLabTakeRunQuote.total(of: [], takes: 0)
@@ -235,7 +258,7 @@ import VoxClipMedia
         return problem.isEmpty ? nil : problem
     }
     /// "phrase 2", "phrases 2 and 4", "phrases 1, 2 and 4".
-    static func phraseList(_ numbers: [Int]) -> String {
+    nonisolated static func phraseList(_ numbers: [Int]) -> String {
         let names = numbers.map(String.init)
         guard let last = names.last else { return "" }
         return names.count == 1 ? "phrase \(last)" : "phrases \(names.dropLast().joined(separator: ", ")) and \(last)"
@@ -308,8 +331,15 @@ import VoxClipMedia
                 guard stillCurrent, turn == videoRevision, choices == videoChoices else { throw Failure.stale }
                 preparedVideoSelection = PreparedVideoSelection(choices: choices, acceptance: output, render: render)
                 problem = ""
+            } catch Failure.unusable(let phrases) where turn == videoRevision {
+                // A take that can't go into the video keeps its phrase as recorded here as at Use (MVP32 Clip 7), and
+                // the other phrases' video is prepared next.
+                preparingVideo = false
+                for phrase in phrases { leaveOut(phrase: phrase) }
+                onUnusable?(phrases)
+                continue
             } catch {
-                        if turn == videoRevision {
+                if turn == videoRevision {
                     preparedVideoSelection = nil; videoPreparationFailure = error; report(error)
                 }
             }
@@ -1156,26 +1186,35 @@ import VoxClipMedia
         try validate(windows)
         var segments: [VoiceLabSegment] = [], assets: [VoiceLabAsset] = []
         var voice: VoiceLabVoiceReference?
+        var phraseIDs: [Int] = []
         for phrase in selected {
+            phraseIDs.append(phrase.id)
             guard let row = phrase.selected?.row, row.selectable, !row.requiresJoinAdvisoryAcceptance,
                   let fit = row.audio?.fit.plan else { throw Failure.noSelection }
             if let microphone = microphoneTakes[row.id] {
                 guard let storage = microphoneStorage else { throw Failure.stale }
                 let published = try MicrophoneTakeMaker.publish(microphone, storage: storage, at: date)
-                let candidate = try VoiceLabRecordedTake.candidate(row: row, input: microphone.input, published: published,
-                    model: microphone.model, createdAt: date, videoChoice: phrase.videoChoice)
-                segments.append(try VoiceLabRecordedTake.segment(id: UUID().uuidString.lowercased(), candidate: candidate,
-                    input: microphone.input, plan: fit))
+                segments.append(try usable(phrase: phrase.id) {
+                    let candidate = try VoiceLabRecordedTake.candidate(row: row, input: microphone.input, published: published,
+                        model: microphone.model, createdAt: date, videoChoice: phrase.videoChoice)
+                    return try VoiceLabRecordedTake.segment(id: UUID().uuidString.lowercased(), candidate: candidate,
+                        input: microphone.input, plan: fit)
+                })
                 for asset in published.assets where !assets.contains(where: { $0.id == asset.id }) { assets.append(asset) }
                 continue
             }
             let made = input(for: row, phrase: phrase.id)
-            let (published, record) = try await backend.publish(phrase.id, row, made, date)
+            var (published, record) = try await backend.publish(phrase.id, row, made, date)
+            #if DEBUG
+            if let publishOverride { published = publishOverride(phrase.id, published) }
+            #endif
             try checkCurrent(version)
-            let candidate = try VoiceLabRecipeBuilder.candidate(row: row, input: made, published: published,
-                                                               record: record, createdAt: date, videoChoice: phrase.videoChoice)
-            segments.append(try VoiceLabRecipeBuilder.segment(id: UUID().uuidString.lowercased(), candidates: [candidate],
-                selected: 0, input: made, plan: fit))
+            segments.append(try usable(phrase: phrase.id) {
+                let candidate = try VoiceLabRecipeBuilder.candidate(row: row, input: made, published: published,
+                                                                   record: record, createdAt: date, videoChoice: phrase.videoChoice)
+                return try VoiceLabRecipeBuilder.segment(id: UUID().uuidString.lowercased(), candidates: [candidate],
+                    selected: 0, input: made, plan: fit)
+            })
             for asset in published.assets {
                 if let previous = assets.first(where: { $0.id == asset.id }) {
                     guard previous == asset else { throw VoiceLabProjectError.invalidAsset }
@@ -1187,7 +1226,18 @@ import VoxClipMedia
             voice = reference
         }
         guard !segments.isEmpty else { throw Failure.noSelection }
-        return Acceptance(segments: segments, assets: assets, voice: voice)
+        var acceptance = Acceptance(segments: segments, assets: assets, voice: voice)
+        acceptance.phraseIDs = phraseIDs
+        return acceptance
+    }
+
+    /// One phrase's segment, or `Failure.unusable` naming the phrase when its take can't be made into a render recipe
+    /// (MVP32 Clip 7: Use stopped on such a take with only a button that repeated it). The cause is logged.
+    private func usable(phrase: Int, _ build: () throws -> VoiceLabSegment) throws -> VoiceLabSegment {
+        do { return try build() } catch let error where !(error is Failure) && !(error is CancellationError) {
+            onFailure?(error)
+            throw Failure.unusable(phrases: [phrase])
+        }
     }
 
     // MARK: Own words and own takes (PhraseOwnWords.swift, MicrophoneTake.swift)
@@ -1260,6 +1310,8 @@ import VoxClipMedia
         case Failure.nothingToVoice: "None of these changes needs a new take. Apply the text changes, or rewrite a part with spoken changes."
         case Failure.tooManyPhrases(let count):
             "These changes make \(count) phrases to voice. Up to \(maximumPhrases) can be voiced in one run: voice the first changes now and rewrite the rest after."
+        case Failure.unusable(let phrases):
+            "\(phraseList(phrases.map { $0 + 1 }).prefix(1).uppercased() + phraseList(phrases.map { $0 + 1 }).dropFirst()) couldn't be made part of the video, so \(phrases.count == 1 ? "it keeps" : "they keep") your original audio."
         case Failure.priceChanged:
             "The price of the next phrases changed while takes were made, so nothing more was sent. Finished takes are kept. Get a fresh price for the rest."
         case is RewriteSpeechContextReview.Failure, is VoiceLabSpeechContextPlan.Failure:
@@ -1384,7 +1436,9 @@ extension ClipTakePlan {
             segments[index].candidates[selected].recipe = recipe
             if !videoAssets.contains(where: { $0.id == applied.result.asset.id }) { videoAssets.append(applied.result.asset) }
         }
-        return Acceptance(segments: segments, assets: output.assets, voice: output.voice, videoAssets: videoAssets)
+        var result = Acceptance(segments: segments, assets: output.assets, voice: output.voice, videoAssets: videoAssets)
+        result.phraseIDs = output.phraseIDs
+        return result
     }
 
     func lipsyncPreview() async throws -> RenderRequest {

@@ -310,7 +310,12 @@ extension RewriteSession {
         if blocked > 0 {
             let priceable = included.filter { includedVoice.contains($0.ordinal) }
             guard let voice = priceable.first else {
-                return advised((PanelFooter(note: timingBlockedNote, link: keepAll, primary: apply(beside: true)), nil, false, nil))
+                // Never a footer without a step forward (design.md R2): the held changes keep the speaker's words.
+                let keepWords = PanelAction(id: "keepMyWords", title: "Keep My Words") { [weak self] in
+                    self?.keepLongChangesAsRecorded(evenAfterStop: true)
+                    self?.phraseTimingAction(.original, ordinals: self?.blockedVoiceOrdinals ?? [])
+                }
+                return advised((PanelFooter(note: timingBlockedNote, link: keepAll, primary: apply(beside: true) ?? keepWords), nil, false, nil))
             }
             var footer = takesFooter(voice, keepAll: keepAll)
             let paidNote = takePlan == nil ? nil : footer.note
@@ -339,7 +344,7 @@ extension RewriteSession {
     /// The footer prepares one plan for the entire included set. V18 supplies the phrase rows.
     private func takesFooter(_ voice: ProposalItem, keepAll: PanelAction?) -> PanelFooter {
         // A plan that was refused or could not be used names its blocker; no price shows until a next step resolves it.
-        if let blocker = takePlanBlocker { return PanelFooter(note: blocker, link: keepAll) }
+        if let blocker = takePlanBlocker { return PanelFooter(note: blocker, link: keepAll, primary: takePlanForward) }
         if let takePlan {
             if takePlan.lipsync.usingTakes { return PanelFooter(note: "Waiting for lip syncs. You can cancel them in the phrase rows.") }
             guard !takesBusy else { return PanelFooter(note: takeSpendLine) }
@@ -354,7 +359,9 @@ extension RewriteSession {
                 return PanelFooter(note: note, link: all,
                     primary: PanelAction(id: "useTakes", title: title) { [weak self] in self?.useTake() })
             }
-            if let blocker = takePlan.acceptanceBlocker { return PanelFooter(note: blocker + " " + takeSpendLine) }
+            if let blocker = takePlan.acceptanceBlocker {
+                return PanelFooter(note: blocker + " " + takeSpendLine, primary: acceptanceForward(takePlan))
+            }
             // Nothing left to price (every phrase blocked or kept as recorded): the footer finishes the Rewrite.
             if takePlan.settledWithBlocks, !takePlan.preparing { return settledFooter(takePlan) }
             if takePlan.spent.units > 0 { return takesNextStep(takePlan) }
@@ -384,6 +391,31 @@ extension RewriteSession {
         }
         return PanelFooter(note: unpaid + " " + takeSendLine, link: keepAll,
             primary: PanelAction(id: "prepareTakes", title: Self.priceTitle(priceableVoiceCount)) { [weak self] in self?.makeTakes() })
+    }
+
+    /// The step forward while Use waits on the plan (design.md R2: no advice without its control): prepare the video
+    /// again after a failure, or keep a phrase as recorded whose take has no valid video duration. Nil while the video is
+    /// being prepared, which the panel shows as running.
+    func acceptanceForward(_ plan: ClipTakePlan) -> PanelAction? {
+        guard !plan.preparingVideo else { return nil }
+        if plan.videoPreparationFailure != nil {
+            return PanelAction(id: "prepareVideo", title: "Prepare Video Again") { [weak self, weak plan] in
+                guard let self, let plan else { return }
+                plan.retryVideoPreparation()
+                takesTask = Task { [weak self, weak plan] in
+                    await plan?.prepareVideoChoices(); await plan?.lipsync.refresh()
+                    self?.showProposal()
+                }
+            }
+        }
+        let stuck = plan.phrases.filter { phrase in
+            phrase.selected?.row.selectable == true && !phrase.leftOut
+                && phrase.videoChoice.map { plan.videoAvailability(phrase: phrase.id).allows($0) } != true
+        }
+        guard let first = stuck.first else { return nil }
+        return PanelAction(id: "keepOriginalAudio.\(first.id)", title: "Keep Original Audio for Phrase \(first.id + 1)") { [weak self] in
+            self?.keepOriginal(phrase: first.id)
+        }
     }
 
     /// The footer once takes were made and none can be used yet (design.md R2): it always names the next step. A phrase

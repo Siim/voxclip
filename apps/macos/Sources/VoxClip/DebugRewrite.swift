@@ -444,7 +444,7 @@ enum RewriteFixtureReply {
         }
         results += await scopeChecks(app: app, project: project, envelope: envelope)
         check("a selection with no video audio says so", RewriteSession.refusal(RewriteSessionError.noSourceAudio) == "Find the original video before rewriting speech. Your edits are saved.")
-        check("insertion fallback exact copy", RewriteSession.refusal(VoiceLabGeometryError.insertionUnsupported) == "Inserting words isn't available yet. Your edits are saved.")
+        check("insertion fallback exact copy", RewriteSession.refusal(VoiceLabGeometryError.insertionUnsupported) == "This adds words where you said nothing, and the video has no time for them, so it stays as recorded. Your edits are saved.")
         results.append(.equal("room tone fallback exact copy", expected: "This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in. Clean audio is not available in this build. Re-record this sentence instead.", actual: RewriteSession.refusal(VoiceLabGeometryError.roomToneUnavailable)))
         check("no speech rate fallback exact copy", RewriteSession.refusal(VoiceLabLengthBudgetError.rateUnavailable) == "There isn't enough timed speech to estimate this change. Your edits are saved.")
         check("placement fallback exact copy", RewriteSession.refusal(VoiceLabGeometryError.reversedWords) == "This change can't be placed in this take. Your edits are saved.")

@@ -136,6 +136,10 @@ struct RewriteChange: Equatable, Sendable {
     /// Why the last takes plan could not be made or used (`ClipTakePlan.Failure` and the rest): its next steps, and the
     /// footer's blocker, show until the inputs change or a fresh plan is made.
     var takePlanFailure: (any Error)?
+    #if DEBUG
+    /// Passed to every take plan this session makes (`ClipTakePlan.publishOverride`).
+    @ObservationIgnored var publishOverride: ((Int, VoiceLabPublishedTake) -> VoiceLabPublishedTake)?
+    #endif
     var takeQuotePhrase: Int?
     var focusedTakePhrase = 0
     var takeRowsShown = true
@@ -949,22 +953,26 @@ struct RewriteChange: Equatable, Sendable {
         return true
     }
     /// Uses the selected take with the free changes still pending, one undo step (Use Takes), and closes Rewrite. It waits
-    /// for a review being built again: when that moved a window, the takes no longer fit and are not used.
-    @discardableResult func acceptTakes() async -> Bool {
+    /// for a review being built again: when that moved a window, the takes no longer fit and are not used. A phrase whose
+    /// take can't go into the video keeps the speaker's audio, says why once, and Use goes on with the rest (MVP32 Clip 7:
+    /// the Review card's only button repeated the failure).
+    @discardableResult func acceptTakes(settling: Int? = nil) async -> Bool {
         if let reviewing { await reviewing.value }
         if let takePlan {
+            var output: ClipTakePlan.Acceptance?
             do {
                 guard current else { return false }
-                let output = try await takePlan.acceptance()
+                let made = try await takePlan.acceptance()
+                output = made
                 guard current, takePlan.stillCurrent, self.takePlan === takePlan else { return false }
                 let cuts = pendingFree.filter { $0.kind == .cut }.count
                 let fixes = pendingFree.filter { $0.kind == .fix }.count
                 let used = takePlan.phrases.filter { $0.selected?.row.selectable == true }
-                let first = (pendingFree.compactMap(\.span.first) + output.segments.compactMap(\.replace.firstWordId))
+                let first = (pendingFree.compactMap(\.span.first) + made.segments.compactMap(\.replace.firstWordId))
                     .min { (editor.index($0) ?? 0) < (editor.index($1) ?? 0) }
-                try ownEdit { try editor.applyVoiceLab(output.segments, assets: output.assets, voice: output.voice,
-                    scope: rewriteScope, localCommands: localCommands, videoAssets: output.videoAssets) }
-                editor.finishVoiceRewrite(phrases: used, segments: output.segments, voice: output.voice,
+                try ownEdit { try editor.applyVoiceLab(made.segments, assets: made.assets, voice: made.voice,
+                    scope: rewriteScope, localCommands: localCommands, videoAssets: made.videoAssets) }
+                editor.finishVoiceRewrite(phrases: used, segments: made.segments, voice: made.voice,
                     spent: takePlan.spent, scope: task.words, cuts: cuts, fixes: fixes)
                 editor.closeRewrite()
                 if let first { editor.select(first) }
@@ -972,10 +980,52 @@ struct RewriteChange: Equatable, Sendable {
             } catch {
                 // MVP32 Clip 7: this failure wrote nothing to the log, so its case could not be read afterwards.
                 logFailure(error, stage: "use")
+                // Each retry settles at least one more phrase, so it ends within the plan's phrase count.
+                let remaining = settling ?? takePlan.phrases.count
+                if remaining > 0, current, self.takePlan === takePlan, let phrases = unusablePhrases(error, output: output), !phrases.isEmpty {
+                    keepUnusable(phrases, plan: takePlan)
+                    if takePlan.phrases.contains(where: { !$0.leftOut && $0.selected?.row.selectable == true }) {
+                        return await acceptTakes(settling: remaining - 1)
+                    }
+                    showProposal()
+                    return false
+                }
                 problem = ClipTakePlan.copy(error); takePlanFailure = error; return false
             }
         }
         return false
+    }
+    /// The phrases whose takes keep Use from going on: the one the recipe builder refused, or, when the project refused
+    /// the set, each phrase whose leaving out lets the others in (one phrase at a time, then each alone). Every used phrase
+    /// when nothing narrower lets the rest in. Nil for a failure that is not about the takes (stale, cancelled, no choice).
+    func unusablePhrases(_ error: any Error, output: ClipTakePlan.Acceptance?) -> [Int]? {
+        if case ClipTakePlan.Failure.unusable(let phrases) = error { return phrases }
+        guard !(error is ClipTakePlan.Failure), !(error is CancellationError), let output, output.phraseIDs.count == output.segments.count else { return nil }
+        let all = Array(output.segments.indices)
+        func accepts(_ indices: [Int]) -> Bool {
+            guard !indices.isEmpty else { return true }
+            let part = output.only(indices)
+            return editor.acceptsVoiceLab(part.segments, assets: part.assets, voice: part.voice, scope: rewriteScope,
+                                          localCommands: localCommands, videoAssets: part.videoAssets)
+        }
+        var culprits = all.filter { index in all.count > 1 && accepts(all.filter { $0 != index }) }
+        if culprits.isEmpty { culprits = all.filter { !accepts([$0]) } }
+        if culprits.isEmpty { culprits = all }
+        return culprits.map { output.phraseIDs[$0] }
+    }
+    /// Keeps these phrases as recorded, with one line of why in the automatic notes (design.md R2, ADR-R40's settle).
+    private func keepUnusable(_ phrases: [Int], plan: ClipTakePlan) {
+        for phrase in phrases { plan.leaveOut(phrase: phrase) }
+        takePlanFailure = nil; problem = ""
+        noteUnusable(phrases)
+    }
+    /// The one line for phrases kept as recorded because their takes can't go into the video, said once.
+    func noteUnusable(_ phrases: [Int]) {
+        let copy = ClipTakePlan.copy(ClipTakePlan.Failure.unusable(phrases: phrases))
+        guard !autoFix.notes.contains(copy) else { return }
+        autoFix.notes.append(copy)
+        editor.announce(copy)
+        if isOpen, case .proposal = task.state { showProposal() }
     }
     /// The session's own edit: `follow` does not take it for an edit in the scope.
     private func ownEdit<T>(_ edit: () throws -> T) rethrows -> T {
@@ -1169,7 +1219,7 @@ struct RewriteChange: Equatable, Sendable {
             return "This change can't blend beside the proposed cuts. Keep more of the surrounding speech or re-record this sentence. Your edits are saved."
         case VoiceLabProjectError.invalidScope:
             return "This change extends outside the selected scope. Choose a wider scope and try again. Your edits are saved."
-        case VoiceLabGeometryError.insertionUnsupported: return "Inserting words isn't available yet. Your edits are saved."
+        case VoiceLabGeometryError.insertionUnsupported: return "This adds words where you said nothing, and the video has no time for them, so it stays as recorded. Your edits are saved."
         case VoiceLabGeometryError.roomToneUnavailable: return "This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in. Clean audio is not available in this build. Re-record this sentence instead."
         case is VoiceLabGeometryError: return "This change can't be placed in this take. Your edits are saved."
         case is VoiceLabLengthBudgetError: return "There isn't enough timed speech to estimate this change. Your edits are saved."

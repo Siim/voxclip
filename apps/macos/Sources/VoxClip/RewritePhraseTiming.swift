@@ -4,10 +4,12 @@ import VoxClipCore
 enum PhraseTimingAction { case shorter, longer, surrounding, original, priceAnyway }
 
 extension RewriteSession {
-    /// Voice changes the estimate holds back from takes. A change already voiced (`voicedOrdinals`) is never one: the
-    /// speaking-rate recalibration from measured takes re-estimates only phrases not voiced yet.
+    /// Voice changes the estimate holds back from takes. A change already voiced (`voicedOrdinals`) is never one, and
+    /// once takes are paid none is: the plan's measured takes are the timing then, and a phrase of it that runs long is
+    /// reworded or kept as recorded by the automatic fixes (MVP32 Clip 7: the recalibrated estimate held back changes 3,
+    /// 5 and 6 after takes, where no fit runs, and the footer had no step forward).
     var blockedVoiceOrdinals: [Int] {
-        guard let proposal = ownProposal else { return [] }
+        guard let proposal = ownProposal, !hasPaidTakes else { return [] }
         let voiced = voicedOrdinals
         return proposal.changes.filter {
             $0.kind == .voice && $0.state != .excluded && $0.reviewable && !voiced.contains($0.ordinal) &&

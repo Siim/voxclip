@@ -228,6 +228,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         /// Thrown by the next quotes, after the plan was priced.
         var quoteFailure: (any Error)?
         var beforePublish: ((Int) async -> Void)?
+        /// What publishing returns for a phrase, changed: a take whose render recipe can't be made (MVP32 Clip 7).
+        var transformPublished: ((Int, VoiceLabPublishedTake) -> VoiceLabPublishedTake)?
         var beforeDispatch: (() -> Void)?
         var beforeProgress: (@MainActor @Sendable () async -> Void)?
         var beforeScratch: (() async -> Void)?
@@ -378,7 +380,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         backend.publish = { [weak made] phrase, row, input, date in
             made?.publishedIDs.append(row.id)
             await made?.beforePublish?(phrase)
-            return try await real.publish(phrase, row, input, date)
+            let (published, record) = try await real.publish(phrase, row, input, date)
+            return (made?.transformPublished?(phrase, published) ?? published, record)
         }
         backend.scratch = { [weak made] phrase, take in
             await made?.beforeScratch?()
@@ -2363,6 +2366,67 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(editor.project.voiceLab.segments.count == 1 && feedback.phrases.count == 1)
         #expect(feedback.spent.units == 1 && feedback.message.contains("1 phrase in your voice"))
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
+    }
+
+    /// MVP32 Clip 7: a take whose render recipe can't be made stopped Use on a Review card whose only button, Use 1 Take,
+    /// repeated the failure. Now that phrase keeps the speaker's audio with one line of why, and the others are used.
+    @Test func aTakeThatCannotRenderKeepsItsPhraseAsRecordedAndUseGoesOn() async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = session(fixture); defer { editor.close() }
+        installReview(session, fixture: fixture, withFreeChanges: false)
+        fixture.transformPublished = { phrase, published in
+            guard phrase == 1 else { return published }
+            return VoiceLabPublishedTake(assets: published.assets, audio: published.audio, outDuration: published.outDuration,
+                                         words: [], chunks: published.chunks)
+        }
+        await fixture.plan.prepare(); await fixture.plan.start(approved: true)
+        try chooseSourceDuration(fixture.plan)
+        #expect(await session.acceptTakes(), "\(session.problem)")
+        #expect(fixture.plan.phrases[1].leftOut && !fixture.plan.phrases[0].leftOut && !fixture.plan.phrases[2].leftOut)
+        #expect(editor.project.voiceLab.segments.count == 2)
+        #expect(editor.announcements.contains("Phrase 2 couldn't be made part of the video, so it keeps your original audio."), "\(editor.announcements)")
+        #expect(editor.openRewrite == nil)
+    }
+
+    /// Every take refused: each phrase keeps its audio and the footer ends the Rewrite (never a Review card that repeats Use).
+    @Test func whenNoTakeCanRenderTheFooterEndsTheRewrite() async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = session(fixture); defer { editor.close() }
+        installReview(session, fixture: fixture, withFreeChanges: false)
+        fixture.transformPublished = { _, published in
+            VoiceLabPublishedTake(assets: published.assets, audio: published.audio, outDuration: published.outDuration,
+                                  words: [], chunks: published.chunks)
+        }
+        await fixture.plan.prepare(); await fixture.plan.start(approved: true)
+        try chooseSourceDuration(fixture.plan)
+        #expect(await session.acceptTakes() == false)
+        #expect(fixture.plan.phrases.allSatisfy(\.leftOut) && session.takePlanFailure == nil)
+        session.showProposal()
+        let primary = try #require(session.task.footer.primary, "\(session.task.footer)")
+        #expect(["closeRewrite", "apply"].contains(primary.id))
+        #expect(!session.task.cards.contains { card in
+            if case .nextSteps(let steps) = card { return steps.chips.contains { $0.action.id == "useTakes" } } else { return false }
+        })
+    }
+
+    /// No Rewrite footer that waits on nothing lacks a step forward (design.md R2): a plan failure Use could not settle
+    /// still offers Keep My Original Audio with paid takes, and a fresh price without.
+    @Test func aPlanFailureFooterAlwaysHasAStepForward() async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = session(fixture); defer { editor.close() }
+        installReview(session, fixture: fixture, withFreeChanges: false)
+        session.takePlanFailure = VoiceLabProjectError.invalidSegment
+        session.showProposal()
+        #expect(session.task.footer.primary?.id == "freshPrice", "\(session.task.footer)")
+        await fixture.plan.prepare(); await fixture.plan.start(approved: true)
+        #expect(session.hasPaidTakes)
+        session.takePlanFailure = VoiceLabProjectError.qaRejected
+        session.showProposal()
+        let forward = try #require(session.task.footer.primary, "\(session.task.footer)")
+        #expect(forward.id == "keepOriginalAudio" && session.task.footer.note == "Fix the problem above to go on.")
+        forward.perform()
+        #expect(fixture.plan.phrases.allSatisfy(\.leftOut) && session.takePlanFailure == nil)
+        #expect(["closeRewrite", "apply"].contains(session.task.footer.primary?.id ?? ""), "\(session.task.footer)")
     }
 
     @Test func nonfittingReviewRefusesUseWithoutSuccessFeedbackOrUndo() async throws {

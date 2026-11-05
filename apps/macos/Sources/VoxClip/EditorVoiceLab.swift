@@ -33,12 +33,29 @@ extension EditorModel {
                           outputScope: output, name: words.title, videoAssets: videoAssets)
     }
 
+    /// Whether these takes would go into the project as Use puts them, without changing it: how Use finds the phrase
+    /// whose take can't (`RewriteSession.unusablePhrases`).
+    func acceptsVoiceLab(_ segments: [VoiceLabSegment], assets: [VoiceLabAsset], voice: VoiceLabVoiceReference?,
+                         scope: RewriteScope, localCommands: [EditCommand] = [], videoAssets: [VoiceLabVideoAsset] = []) -> Bool {
+        let output: VoiceLabOutputScope
+        switch scope {
+        case .clip(let id): output = .clip(id)
+        case .fullTake: output = .full
+        case .selection: output = project.edits.activeClipId.map(VoiceLabOutputScope.clip) ?? .full
+        }
+        return (try? changedByVoiceLab(.acceptAll(segments: segments, assets: assets, voice: voice), localCommands: localCommands,
+                                       outputScope: output, videoAssets: videoAssets)) != nil
+    }
+
     private func applyVoiceLab(_ command: VoiceLabEditCommand, localCommands: [EditCommand],
                                outputScope: VoiceLabOutputScope, name: String, videoAssets: [VoiceLabVideoAsset] = []) throws {
+        replace(try changedByVoiceLab(command, localCommands: localCommands, outputScope: outputScope, videoAssets: videoAssets), name: name)
+    }
+    private func changedByVoiceLab(_ command: VoiceLabEditCommand, localCommands: [EditCommand],
+                                   outputScope: VoiceLabOutputScope, videoAssets: [VoiceLabVideoAsset]) throws -> Project {
         guard app.voiceLabRewriteEnabled, capabilities.edit, !capabilities.exporting, !capabilities.aiBusy else { throw VoiceLabProjectError.invalidSegment }
-        var changed = try voiceLabReviewProject(localCommands: localCommands)
-        changed = try command.applying(to: changed, outputScope: outputScope, videoAssets: videoAssets)
-        replace(changed, name: name)
+        let changed = try voiceLabReviewProject(localCommands: localCommands)
+        return try command.applying(to: changed, outputScope: outputScope, videoAssets: videoAssets)
     }
 
     /// The passage quote and single acceptance both use the review after its local edits, in the active output scope.

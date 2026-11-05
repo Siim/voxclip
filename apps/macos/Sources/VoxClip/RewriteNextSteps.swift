@@ -419,6 +419,41 @@ extension RewriteSession {
         return "Fix the problem above to go on."
     }
 
+    /// The footer's step forward while the last plan failed (design.md R2: never "Fix the problem above" without the
+    /// control that does it). A refused phrase keeps its original words; a missing duration opens the choices; with no
+    /// paid takes a fresh price goes on (or the first phrases, or the text fixes); with paid takes every phrase keeps its
+    /// original audio, so the footer ends the Rewrite next.
+    var takePlanForward: PanelAction? {
+        guard let failure = takePlanFailure else { return nil }
+        if let refusal = planRefusal {
+            return PanelAction(id: "keepOriginal", title: "Keep Original Words for Phrase \(refusal.phrase)") { [weak self] in
+                self?.phraseTimingAction(.original, ordinals: [refusal.phrase])
+            }
+        }
+        switch failure {
+        case ClipTakePlan.Failure.noSelection:
+            return PanelAction(id: "reviewTakes", title: "Choose Durations") { [weak self] in
+                guard let self else { return }
+                takeRowsShown = true; showProposal()
+            }
+        case ClipTakePlan.Failure.tooManyPhrases:
+            return PanelAction(id: "voiceFirst", title: "Voice the First \(ClipTakePlan.maximumPhrases) Changes") { [weak self] in self?.voiceFirstChanges() }
+        default: break
+        }
+        if !hasPaidTakes {
+            if case ClipTakePlan.Failure.nothingToVoice = failure {
+                return PanelAction(id: "closeRewrite", title: "Done") { [weak self] in self?.editor.closeRewrite() }
+            }
+            return PanelAction(id: "freshPrice", title: "Get a Fresh Price") { [weak self] in self?.makeTakes() }
+        }
+        return PanelAction(id: "keepOriginalAudio", title: "Keep My Original Audio") { [weak self] in
+            guard let self, let plan = takePlan else { return }
+            for phrase in plan.phrases where !phrase.leftOut { plan.leaveOut(phrase: phrase.id) }
+            takePlanFailure = nil
+            showProposal()
+        }
+    }
+
     /// Next steps for every takes failure the panel shows (`ClipTakePlan.copy`): a placement or collision, a stale plan,
     /// a missing duration choice, the spending limit and a spend that can't be checked. Each has at least one chip that
     /// acts now; the free-text field re-asks the refused phrases.
