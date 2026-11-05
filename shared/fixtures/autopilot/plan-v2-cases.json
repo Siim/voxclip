@@ -1,0 +1,2203 @@
+{
+  "schema": "voxclip-autopilot-v2/1",
+  "id": "autopilot-plan-v2",
+  "origin": "voxclip",
+  "sources": {
+    "shared/prompts/clip-autopilot.json": "75677117ee5e33cfa9ad705be40e42e8849ea65d570b30f780f673166118946d"
+  },
+  "description": "Hand-derived vectors for the Make it postable planner's version 2 fields (doc/spec/ai.md section 16.5): corrections, look, speed, fixed caption choices, the finished length and its flags, and the first stage's moments. A synthetic 150-word transcript of 0.5 s words with no pauses (not user media). 'repairs' lists [field, action] pairs sorted; 'seconds' is the plan's finished length; 'scores' are the moments' scores. Edit this file by hand and replay it in every Core suite that implements the planner.",
+  "transcript": {
+    "language": "en",
+    "durationSeconds": 75,
+    "words": [
+      {
+        "id": "w0",
+        "text": "We",
+        "kind": "word",
+        "start": 0.0,
+        "end": 0.5
+      },
+      {
+        "id": "w1",
+        "text": "tried",
+        "kind": "word",
+        "start": 0.5,
+        "end": 1.0
+      },
+      {
+        "id": "w2",
+        "text": "Tvilio,",
+        "kind": "word",
+        "start": 1.0,
+        "end": 1.5
+      },
+      {
+        "id": "w3",
+        "text": "for",
+        "kind": "word",
+        "start": 1.5,
+        "end": 2.0
+      },
+      {
+        "id": "w4",
+        "text": "the",
+        "kind": "word",
+        "start": 2.0,
+        "end": 2.5
+      },
+      {
+        "id": "w5",
+        "text": "first",
+        "kind": "word",
+        "start": 2.5,
+        "end": 3.0
+      },
+      {
+        "id": "w6",
+        "text": "pilot",
+        "kind": "word",
+        "start": 3.0,
+        "end": 3.5
+      },
+      {
+        "id": "w7",
+        "text": "and",
+        "kind": "word",
+        "start": 3.5,
+        "end": 4.0
+      },
+      {
+        "id": "w8",
+        "text": "it",
+        "kind": "word",
+        "start": 4.0,
+        "end": 4.5
+      },
+      {
+        "id": "w9",
+        "text": "worked.",
+        "kind": "word",
+        "start": 4.5,
+        "end": 5.0
+      },
+      {
+        "id": "w10",
+        "text": "Then",
+        "kind": "word",
+        "start": 5.0,
+        "end": 5.5
+      },
+      {
+        "id": "w11",
+        "text": "the",
+        "kind": "word",
+        "start": 5.5,
+        "end": 6.0
+      },
+      {
+        "id": "w12",
+        "text": "tvilio",
+        "kind": "word",
+        "start": 6.0,
+        "end": 6.5
+      },
+      {
+        "id": "w13",
+        "text": "price",
+        "kind": "word",
+        "start": 6.5,
+        "end": 7.0
+      },
+      {
+        "id": "w14",
+        "text": "changed",
+        "kind": "word",
+        "start": 7.0,
+        "end": 7.5
+      },
+      {
+        "id": "w15",
+        "text": "again.",
+        "kind": "word",
+        "start": 7.5,
+        "end": 8.0
+      },
+      {
+        "id": "w16",
+        "text": "The",
+        "kind": "word",
+        "start": 8.0,
+        "end": 8.5
+      },
+      {
+        "id": "w17",
+        "text": "small",
+        "kind": "word",
+        "start": 8.5,
+        "end": 9.0
+      },
+      {
+        "id": "w18",
+        "text": "team",
+        "kind": "word",
+        "start": 9.0,
+        "end": 9.5
+      },
+      {
+        "id": "w19",
+        "text": "still",
+        "kind": "word",
+        "start": 9.5,
+        "end": 10.0
+      },
+      {
+        "id": "w20",
+        "text": "liked",
+        "kind": "word",
+        "start": 10.0,
+        "end": 10.5
+      },
+      {
+        "id": "w21",
+        "text": "the",
+        "kind": "word",
+        "start": 10.5,
+        "end": 11.0
+      },
+      {
+        "id": "w22",
+        "text": "dashboard",
+        "kind": "word",
+        "start": 11.0,
+        "end": 11.5
+      },
+      {
+        "id": "w23",
+        "text": "a",
+        "kind": "word",
+        "start": 11.5,
+        "end": 12.0
+      },
+      {
+        "id": "w24",
+        "text": "lot.",
+        "kind": "word",
+        "start": 12.0,
+        "end": 12.5
+      },
+      {
+        "id": "w25",
+        "text": "So",
+        "kind": "word",
+        "start": 12.5,
+        "end": 13.0
+      },
+      {
+        "id": "w26",
+        "text": "we",
+        "kind": "word",
+        "start": 13.0,
+        "end": 13.5
+      },
+      {
+        "id": "w27",
+        "text": "kept",
+        "kind": "word",
+        "start": 13.5,
+        "end": 14.0
+      },
+      {
+        "id": "w28",
+        "text": "going",
+        "kind": "word",
+        "start": 14.0,
+        "end": 14.5
+      },
+      {
+        "id": "w29",
+        "text": "anyway.",
+        "kind": "word",
+        "start": 14.5,
+        "end": 15.0
+      },
+      {
+        "id": "w30",
+        "text": "Every",
+        "kind": "word",
+        "start": 15.0,
+        "end": 15.5
+      },
+      {
+        "id": "w31",
+        "text": "week",
+        "kind": "word",
+        "start": 15.5,
+        "end": 16.0
+      },
+      {
+        "id": "w32",
+        "text": "we",
+        "kind": "word",
+        "start": 16.0,
+        "end": 16.5
+      },
+      {
+        "id": "w33",
+        "text": "shipped",
+        "kind": "word",
+        "start": 16.5,
+        "end": 17.0
+      },
+      {
+        "id": "w34",
+        "text": "one",
+        "kind": "word",
+        "start": 17.0,
+        "end": 17.5
+      },
+      {
+        "id": "w35",
+        "text": "small",
+        "kind": "word",
+        "start": 17.5,
+        "end": 18.0
+      },
+      {
+        "id": "w36",
+        "text": "change",
+        "kind": "word",
+        "start": 18.0,
+        "end": 18.5
+      },
+      {
+        "id": "w37",
+        "text": "and",
+        "kind": "word",
+        "start": 18.5,
+        "end": 19.0
+      },
+      {
+        "id": "w38",
+        "text": "asked",
+        "kind": "word",
+        "start": 19.0,
+        "end": 19.5
+      },
+      {
+        "id": "w39",
+        "text": "people",
+        "kind": "word",
+        "start": 19.5,
+        "end": 20.0
+      },
+      {
+        "id": "w40",
+        "text": "what",
+        "kind": "word",
+        "start": 20.0,
+        "end": 20.5
+      },
+      {
+        "id": "w41",
+        "text": "they",
+        "kind": "word",
+        "start": 20.5,
+        "end": 21.0
+      },
+      {
+        "id": "w42",
+        "text": "thought.",
+        "kind": "word",
+        "start": 21.0,
+        "end": 21.5
+      },
+      {
+        "id": "w43",
+        "text": "Most",
+        "kind": "word",
+        "start": 21.5,
+        "end": 22.0
+      },
+      {
+        "id": "w44",
+        "text": "of",
+        "kind": "word",
+        "start": 22.0,
+        "end": 22.5
+      },
+      {
+        "id": "w45",
+        "text": "them",
+        "kind": "word",
+        "start": 22.5,
+        "end": 23.0
+      },
+      {
+        "id": "w46",
+        "text": "wanted",
+        "kind": "word",
+        "start": 23.0,
+        "end": 23.5
+      },
+      {
+        "id": "w47",
+        "text": "fewer",
+        "kind": "word",
+        "start": 23.5,
+        "end": 24.0
+      },
+      {
+        "id": "w48",
+        "text": "buttons",
+        "kind": "word",
+        "start": 24.0,
+        "end": 24.5
+      },
+      {
+        "id": "w49",
+        "text": "and",
+        "kind": "word",
+        "start": 24.5,
+        "end": 25.0
+      },
+      {
+        "id": "w50",
+        "text": "clearer",
+        "kind": "word",
+        "start": 25.0,
+        "end": 25.5
+      },
+      {
+        "id": "w51",
+        "text": "words.",
+        "kind": "word",
+        "start": 25.5,
+        "end": 26.0
+      },
+      {
+        "id": "w52",
+        "text": "We",
+        "kind": "word",
+        "start": 26.0,
+        "end": 26.5
+      },
+      {
+        "id": "w53",
+        "text": "wrote",
+        "kind": "word",
+        "start": 26.5,
+        "end": 27.0
+      },
+      {
+        "id": "w54",
+        "text": "the",
+        "kind": "word",
+        "start": 27.0,
+        "end": 27.5
+      },
+      {
+        "id": "w55",
+        "text": "notes",
+        "kind": "word",
+        "start": 27.5,
+        "end": 28.0
+      },
+      {
+        "id": "w56",
+        "text": "down",
+        "kind": "word",
+        "start": 28.0,
+        "end": 28.5
+      },
+      {
+        "id": "w57",
+        "text": "and",
+        "kind": "word",
+        "start": 28.5,
+        "end": 29.0
+      },
+      {
+        "id": "w58",
+        "text": "read",
+        "kind": "word",
+        "start": 29.0,
+        "end": 29.5
+      },
+      {
+        "id": "w59",
+        "text": "them",
+        "kind": "word",
+        "start": 29.5,
+        "end": 30.0
+      },
+      {
+        "id": "w60",
+        "text": "again",
+        "kind": "word",
+        "start": 30.0,
+        "end": 30.5
+      },
+      {
+        "id": "w61",
+        "text": "on",
+        "kind": "word",
+        "start": 30.5,
+        "end": 31.0
+      },
+      {
+        "id": "w62",
+        "text": "Friday.",
+        "kind": "word",
+        "start": 31.0,
+        "end": 31.5
+      },
+      {
+        "id": "w63",
+        "text": "Every",
+        "kind": "word",
+        "start": 31.5,
+        "end": 32.0
+      },
+      {
+        "id": "w64",
+        "text": "week",
+        "kind": "word",
+        "start": 32.0,
+        "end": 32.5
+      },
+      {
+        "id": "w65",
+        "text": "we",
+        "kind": "word",
+        "start": 32.5,
+        "end": 33.0
+      },
+      {
+        "id": "w66",
+        "text": "shipped",
+        "kind": "word",
+        "start": 33.0,
+        "end": 33.5
+      },
+      {
+        "id": "w67",
+        "text": "one",
+        "kind": "word",
+        "start": 33.5,
+        "end": 34.0
+      },
+      {
+        "id": "w68",
+        "text": "small",
+        "kind": "word",
+        "start": 34.0,
+        "end": 34.5
+      },
+      {
+        "id": "w69",
+        "text": "change",
+        "kind": "word",
+        "start": 34.5,
+        "end": 35.0
+      },
+      {
+        "id": "w70",
+        "text": "and",
+        "kind": "word",
+        "start": 35.0,
+        "end": 35.5
+      },
+      {
+        "id": "w71",
+        "text": "asked",
+        "kind": "word",
+        "start": 35.5,
+        "end": 36.0
+      },
+      {
+        "id": "w72",
+        "text": "people",
+        "kind": "word",
+        "start": 36.0,
+        "end": 36.5
+      },
+      {
+        "id": "w73",
+        "text": "what",
+        "kind": "word",
+        "start": 36.5,
+        "end": 37.0
+      },
+      {
+        "id": "w74",
+        "text": "they",
+        "kind": "word",
+        "start": 37.0,
+        "end": 37.5
+      },
+      {
+        "id": "w75",
+        "text": "thought.",
+        "kind": "word",
+        "start": 37.5,
+        "end": 38.0
+      },
+      {
+        "id": "w76",
+        "text": "Most",
+        "kind": "word",
+        "start": 38.0,
+        "end": 38.5
+      },
+      {
+        "id": "w77",
+        "text": "of",
+        "kind": "word",
+        "start": 38.5,
+        "end": 39.0
+      },
+      {
+        "id": "w78",
+        "text": "them",
+        "kind": "word",
+        "start": 39.0,
+        "end": 39.5
+      },
+      {
+        "id": "w79",
+        "text": "wanted",
+        "kind": "word",
+        "start": 39.5,
+        "end": 40.0
+      },
+      {
+        "id": "w80",
+        "text": "fewer",
+        "kind": "word",
+        "start": 40.0,
+        "end": 40.5
+      },
+      {
+        "id": "w81",
+        "text": "buttons",
+        "kind": "word",
+        "start": 40.5,
+        "end": 41.0
+      },
+      {
+        "id": "w82",
+        "text": "and",
+        "kind": "word",
+        "start": 41.0,
+        "end": 41.5
+      },
+      {
+        "id": "w83",
+        "text": "clearer",
+        "kind": "word",
+        "start": 41.5,
+        "end": 42.0
+      },
+      {
+        "id": "w84",
+        "text": "words.",
+        "kind": "word",
+        "start": 42.0,
+        "end": 42.5
+      },
+      {
+        "id": "w85",
+        "text": "We",
+        "kind": "word",
+        "start": 42.5,
+        "end": 43.0
+      },
+      {
+        "id": "w86",
+        "text": "wrote",
+        "kind": "word",
+        "start": 43.0,
+        "end": 43.5
+      },
+      {
+        "id": "w87",
+        "text": "the",
+        "kind": "word",
+        "start": 43.5,
+        "end": 44.0
+      },
+      {
+        "id": "w88",
+        "text": "notes",
+        "kind": "word",
+        "start": 44.0,
+        "end": 44.5
+      },
+      {
+        "id": "w89",
+        "text": "down",
+        "kind": "word",
+        "start": 44.5,
+        "end": 45.0
+      },
+      {
+        "id": "w90",
+        "text": "and",
+        "kind": "word",
+        "start": 45.0,
+        "end": 45.5
+      },
+      {
+        "id": "w91",
+        "text": "read",
+        "kind": "word",
+        "start": 45.5,
+        "end": 46.0
+      },
+      {
+        "id": "w92",
+        "text": "them",
+        "kind": "word",
+        "start": 46.0,
+        "end": 46.5
+      },
+      {
+        "id": "w93",
+        "text": "again",
+        "kind": "word",
+        "start": 46.5,
+        "end": 47.0
+      },
+      {
+        "id": "w94",
+        "text": "on",
+        "kind": "word",
+        "start": 47.0,
+        "end": 47.5
+      },
+      {
+        "id": "w95",
+        "text": "Friday.",
+        "kind": "word",
+        "start": 47.5,
+        "end": 48.0
+      },
+      {
+        "id": "w96",
+        "text": "Every",
+        "kind": "word",
+        "start": 48.0,
+        "end": 48.5
+      },
+      {
+        "id": "w97",
+        "text": "week",
+        "kind": "word",
+        "start": 48.5,
+        "end": 49.0
+      },
+      {
+        "id": "w98",
+        "text": "we",
+        "kind": "word",
+        "start": 49.0,
+        "end": 49.5
+      },
+      {
+        "id": "w99",
+        "text": "shipped",
+        "kind": "word",
+        "start": 49.5,
+        "end": 50.0
+      },
+      {
+        "id": "w100",
+        "text": "one",
+        "kind": "word",
+        "start": 50.0,
+        "end": 50.5
+      },
+      {
+        "id": "w101",
+        "text": "small",
+        "kind": "word",
+        "start": 50.5,
+        "end": 51.0
+      },
+      {
+        "id": "w102",
+        "text": "change",
+        "kind": "word",
+        "start": 51.0,
+        "end": 51.5
+      },
+      {
+        "id": "w103",
+        "text": "and",
+        "kind": "word",
+        "start": 51.5,
+        "end": 52.0
+      },
+      {
+        "id": "w104",
+        "text": "asked",
+        "kind": "word",
+        "start": 52.0,
+        "end": 52.5
+      },
+      {
+        "id": "w105",
+        "text": "people",
+        "kind": "word",
+        "start": 52.5,
+        "end": 53.0
+      },
+      {
+        "id": "w106",
+        "text": "what",
+        "kind": "word",
+        "start": 53.0,
+        "end": 53.5
+      },
+      {
+        "id": "w107",
+        "text": "they",
+        "kind": "word",
+        "start": 53.5,
+        "end": 54.0
+      },
+      {
+        "id": "w108",
+        "text": "thought.",
+        "kind": "word",
+        "start": 54.0,
+        "end": 54.5
+      },
+      {
+        "id": "w109",
+        "text": "Most",
+        "kind": "word",
+        "start": 54.5,
+        "end": 55.0
+      },
+      {
+        "id": "w110",
+        "text": "of",
+        "kind": "word",
+        "start": 55.0,
+        "end": 55.5
+      },
+      {
+        "id": "w111",
+        "text": "them",
+        "kind": "word",
+        "start": 55.5,
+        "end": 56.0
+      },
+      {
+        "id": "w112",
+        "text": "wanted",
+        "kind": "word",
+        "start": 56.0,
+        "end": 56.5
+      },
+      {
+        "id": "w113",
+        "text": "fewer",
+        "kind": "word",
+        "start": 56.5,
+        "end": 57.0
+      },
+      {
+        "id": "w114",
+        "text": "buttons",
+        "kind": "word",
+        "start": 57.0,
+        "end": 57.5
+      },
+      {
+        "id": "w115",
+        "text": "and",
+        "kind": "word",
+        "start": 57.5,
+        "end": 58.0
+      },
+      {
+        "id": "w116",
+        "text": "clearer",
+        "kind": "word",
+        "start": 58.0,
+        "end": 58.5
+      },
+      {
+        "id": "w117",
+        "text": "words.",
+        "kind": "word",
+        "start": 58.5,
+        "end": 59.0
+      },
+      {
+        "id": "w118",
+        "text": "We",
+        "kind": "word",
+        "start": 59.0,
+        "end": 59.5
+      },
+      {
+        "id": "w119",
+        "text": "wrote",
+        "kind": "word",
+        "start": 59.5,
+        "end": 60.0
+      },
+      {
+        "id": "w120",
+        "text": "the",
+        "kind": "word",
+        "start": 60.0,
+        "end": 60.5
+      },
+      {
+        "id": "w121",
+        "text": "notes",
+        "kind": "word",
+        "start": 60.5,
+        "end": 61.0
+      },
+      {
+        "id": "w122",
+        "text": "down",
+        "kind": "word",
+        "start": 61.0,
+        "end": 61.5
+      },
+      {
+        "id": "w123",
+        "text": "and",
+        "kind": "word",
+        "start": 61.5,
+        "end": 62.0
+      },
+      {
+        "id": "w124",
+        "text": "read",
+        "kind": "word",
+        "start": 62.0,
+        "end": 62.5
+      },
+      {
+        "id": "w125",
+        "text": "them",
+        "kind": "word",
+        "start": 62.5,
+        "end": 63.0
+      },
+      {
+        "id": "w126",
+        "text": "again",
+        "kind": "word",
+        "start": 63.0,
+        "end": 63.5
+      },
+      {
+        "id": "w127",
+        "text": "on",
+        "kind": "word",
+        "start": 63.5,
+        "end": 64.0
+      },
+      {
+        "id": "w128",
+        "text": "Friday.",
+        "kind": "word",
+        "start": 64.0,
+        "end": 64.5
+      },
+      {
+        "id": "w129",
+        "text": "Every",
+        "kind": "word",
+        "start": 64.5,
+        "end": 65.0
+      },
+      {
+        "id": "w130",
+        "text": "week",
+        "kind": "word",
+        "start": 65.0,
+        "end": 65.5
+      },
+      {
+        "id": "w131",
+        "text": "we",
+        "kind": "word",
+        "start": 65.5,
+        "end": 66.0
+      },
+      {
+        "id": "w132",
+        "text": "shipped",
+        "kind": "word",
+        "start": 66.0,
+        "end": 66.5
+      },
+      {
+        "id": "w133",
+        "text": "one",
+        "kind": "word",
+        "start": 66.5,
+        "end": 67.0
+      },
+      {
+        "id": "w134",
+        "text": "small",
+        "kind": "word",
+        "start": 67.0,
+        "end": 67.5
+      },
+      {
+        "id": "w135",
+        "text": "change",
+        "kind": "word",
+        "start": 67.5,
+        "end": 68.0
+      },
+      {
+        "id": "w136",
+        "text": "and",
+        "kind": "word",
+        "start": 68.0,
+        "end": 68.5
+      },
+      {
+        "id": "w137",
+        "text": "asked",
+        "kind": "word",
+        "start": 68.5,
+        "end": 69.0
+      },
+      {
+        "id": "w138",
+        "text": "people",
+        "kind": "word",
+        "start": 69.0,
+        "end": 69.5
+      },
+      {
+        "id": "w139",
+        "text": "what",
+        "kind": "word",
+        "start": 69.5,
+        "end": 70.0
+      },
+      {
+        "id": "w140",
+        "text": "they",
+        "kind": "word",
+        "start": 70.0,
+        "end": 70.5
+      },
+      {
+        "id": "w141",
+        "text": "thought.",
+        "kind": "word",
+        "start": 70.5,
+        "end": 71.0
+      },
+      {
+        "id": "w142",
+        "text": "Most",
+        "kind": "word",
+        "start": 71.0,
+        "end": 71.5
+      },
+      {
+        "id": "w143",
+        "text": "of",
+        "kind": "word",
+        "start": 71.5,
+        "end": 72.0
+      },
+      {
+        "id": "w144",
+        "text": "them",
+        "kind": "word",
+        "start": 72.0,
+        "end": 72.5
+      },
+      {
+        "id": "w145",
+        "text": "wanted",
+        "kind": "word",
+        "start": 72.5,
+        "end": 73.0
+      },
+      {
+        "id": "w146",
+        "text": "fewer",
+        "kind": "word",
+        "start": 73.0,
+        "end": 73.5
+      },
+      {
+        "id": "w147",
+        "text": "buttons",
+        "kind": "word",
+        "start": 73.5,
+        "end": 74.0
+      },
+      {
+        "id": "w148",
+        "text": "and",
+        "kind": "word",
+        "start": 74.0,
+        "end": 74.5
+      },
+      {
+        "id": "w149",
+        "text": "clearer",
+        "kind": "word",
+        "start": 74.5,
+        "end": 75.0
+      }
+    ]
+  },
+  "cases": [
+    {
+      "id": "corrections",
+      "mode": "clip",
+      "scope": [
+        0,
+        29
+      ],
+      "reply": {
+        "startWord": 0,
+        "endWord": 29,
+        "title": "The price changed",
+        "hook": "The price changed again",
+        "corrections": [
+          {
+            "word": 2,
+            "heard": "Tvilio,",
+            "text": "Twilio",
+            "reason": "r"
+          },
+          {
+            "word": 13,
+            "heard": "tvilio",
+            "text": "Twilio",
+            "reason": "r"
+          },
+          {
+            "word": 25,
+            "heard": "Tvilio",
+            "text": "Twilio",
+            "reason": "r"
+          },
+          {
+            "word": "x",
+            "heard": "We",
+            "text": "Wee",
+            "reason": "r"
+          },
+          {
+            "word": 4,
+            "heard": "",
+            "text": "a",
+            "reason": "r"
+          },
+          {
+            "word": 2,
+            "heard": "Tvilio",
+            "text": "Twilio",
+            "reason": "r"
+          },
+          {
+            "word": 6,
+            "heard": "pilot",
+            "text": "pilot program for teams",
+            "reason": "r"
+          },
+          {
+            "word": 5,
+            "heard": "first",
+            "text": "https://first.example",
+            "reason": "r"
+          },
+          {
+            "word": 8,
+            "heard": "it",
+            "text": "[laughs] it",
+            "reason": "r"
+          },
+          {
+            "word": 9,
+            "heard": "worked.",
+            "text": "worked",
+            "reason": "r"
+          },
+          {
+            "word": 16,
+            "heard": "The",
+            "text": "This",
+            "reason": "r"
+          }
+        ],
+        "cuts": [
+          {
+            "startWord": 16,
+            "endWord": 16,
+            "kind": "other",
+            "reason": "extra article"
+          }
+        ],
+        "pauseCuts": [],
+        "rewrites": [
+          {
+            "startWord": 12,
+            "endWord": 15,
+            "text": "Twilio raised the price again.",
+            "reason": "clearer"
+          }
+        ],
+        "lengthReason": "",
+        "captionStyle": "vox-bold",
+        "captionReason": "punchy claim",
+        "captionFont": "Roboto",
+        "captionWeight": 900,
+        "captionCase": "upper",
+        "wordsPerCaption": 3,
+        "look": "original",
+        "lookReason": "",
+        "speed": 1,
+        "speedReason": "",
+        "zooms": [],
+        "music": [],
+        "musicPick": 0,
+        "postText": "The price changed again.",
+        "score": 7,
+        "verdict": "post",
+        "scoreReason": "A clear turn.",
+        "questions": []
+      },
+      "expect": {
+        "span": [
+          0,
+          29
+        ],
+        "corrections": [
+          [
+            2,
+            "Tvilio,",
+            "Twilio,"
+          ],
+          [
+            12,
+            "tvilio",
+            "Twilio"
+          ]
+        ],
+        "rewrites": [
+          [
+            12,
+            15,
+            "Twilio raised the price again."
+          ]
+        ],
+        "cuts": [
+          [
+            16,
+            16,
+            "other"
+          ]
+        ],
+        "captions": {
+          "styleId": "vox-bold",
+          "family": "Roboto",
+          "weight": 900,
+          "case": "upper",
+          "wordsPerCaption": 3,
+          "reason": "punchy claim"
+        },
+        "look": [
+          "original",
+          ""
+        ],
+        "speed": null,
+        "seconds": 14.5,
+        "flags": [],
+        "repairs": [
+          [
+            "corrections[10]",
+            "dropped"
+          ],
+          [
+            "corrections[1]",
+            "repaired"
+          ],
+          [
+            "corrections[2]",
+            "dropped"
+          ],
+          [
+            "corrections[3]",
+            "dropped"
+          ],
+          [
+            "corrections[4]",
+            "dropped"
+          ],
+          [
+            "corrections[5]",
+            "dropped"
+          ],
+          [
+            "corrections[6]",
+            "dropped"
+          ],
+          [
+            "corrections[7]",
+            "dropped"
+          ],
+          [
+            "corrections[8]",
+            "dropped"
+          ],
+          [
+            "corrections[9]",
+            "dropped"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "speed-clamped-bw",
+      "mode": "clip",
+      "scope": [
+        0,
+        29
+      ],
+      "reply": {
+        "startWord": 0,
+        "endWord": 29,
+        "title": "The price changed",
+        "hook": "The price changed again",
+        "corrections": [],
+        "cuts": [],
+        "pauseCuts": [],
+        "rewrites": [],
+        "lengthReason": "",
+        "captionStyle": "vox-bold",
+        "captionReason": "punchy claim",
+        "captionFont": "Roboto",
+        "captionWeight": 900,
+        "captionCase": "upper",
+        "wordsPerCaption": 3,
+        "look": "B&W",
+        "lookReason": "reflective",
+        "speed": 2.0,
+        "speedReason": "drags",
+        "zooms": [],
+        "music": [],
+        "musicPick": 0,
+        "postText": "The price changed again.",
+        "score": 7,
+        "verdict": "post",
+        "scoreReason": "A clear turn.",
+        "questions": []
+      },
+      "expect": {
+        "span": [
+          0,
+          29
+        ],
+        "corrections": [],
+        "rewrites": [],
+        "cuts": [],
+        "captions": {
+          "styleId": "vox-bold",
+          "family": "Roboto",
+          "weight": 900,
+          "case": "upper",
+          "wordsPerCaption": 3,
+          "reason": "punchy claim"
+        },
+        "look": [
+          "bw",
+          "reflective"
+        ],
+        "speed": [
+          1.5,
+          "drags"
+        ],
+        "seconds": 10.0,
+        "flags": [],
+        "repairs": [
+          [
+            "speed",
+            "repaired"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "speed-slow-clamped",
+      "mode": "clip",
+      "scope": [
+        0,
+        29
+      ],
+      "reply": {
+        "startWord": 0,
+        "endWord": 29,
+        "title": "The price changed",
+        "hook": "The price changed again",
+        "corrections": [],
+        "cuts": [],
+        "pauseCuts": [],
+        "rewrites": [],
+        "lengthReason": "",
+        "captionStyle": "vox-bold",
+        "captionReason": "punchy claim",
+        "captionFont": "Roboto",
+        "captionWeight": 900,
+        "captionCase": "upper",
+        "wordsPerCaption": 3,
+        "look": "original",
+        "lookReason": "",
+        "speed": 0.5,
+        "speedReason": "let it land",
+        "zooms": [],
+        "music": [],
+        "musicPick": 0,
+        "postText": "The price changed again.",
+        "score": 7,
+        "verdict": "post",
+        "scoreReason": "A clear turn.",
+        "questions": []
+      },
+      "expect": {
+        "span": [
+          0,
+          29
+        ],
+        "corrections": [],
+        "rewrites": [],
+        "cuts": [],
+        "captions": {
+          "styleId": "vox-bold",
+          "family": "Roboto",
+          "weight": 900,
+          "case": "upper",
+          "wordsPerCaption": 3,
+          "reason": "punchy claim"
+        },
+        "look": [
+          "original",
+          ""
+        ],
+        "speed": [
+          0.75,
+          "let it land"
+        ],
+        "seconds": 20.0,
+        "flags": [],
+        "repairs": [
+          [
+            "speed",
+            "repaired"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "speed-unreadable-unknown-look",
+      "mode": "clip",
+      "scope": [
+        0,
+        29
+      ],
+      "reply": {
+        "startWord": 0,
+        "endWord": 29,
+        "title": "The price changed",
+        "hook": "The price changed again",
+        "corrections": [],
+        "cuts": [],
+        "pauseCuts": [],
+        "rewrites": [],
+        "lengthReason": "",
+        "captionStyle": "vox-bold",
+        "captionReason": "punchy claim",
+        "captionFont": "Roboto",
+        "captionWeight": 900,
+        "captionCase": "upper",
+        "wordsPerCaption": 3,
+        "look": "sepia",
+        "lookReason": "old film",
+        "speed": "fast",
+        "speedReason": "",
+        "zooms": [],
+        "music": [],
+        "musicPick": 0,
+        "postText": "The price changed again.",
+        "score": 7,
+        "verdict": "post",
+        "scoreReason": "A clear turn.",
+        "questions": []
+      },
+      "expect": {
+        "span": [
+          0,
+          29
+        ],
+        "corrections": [],
+        "rewrites": [],
+        "cuts": [],
+        "captions": {
+          "styleId": "vox-bold",
+          "family": "Roboto",
+          "weight": 900,
+          "case": "upper",
+          "wordsPerCaption": 3,
+          "reason": "punchy claim"
+        },
+        "look": [
+          "original",
+          ""
+        ],
+        "speed": null,
+        "seconds": 15.0,
+        "flags": [],
+        "repairs": [
+          [
+            "look",
+            "repaired"
+          ],
+          [
+            "speed",
+            "dropped"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "v3-reply-without-new-fields",
+      "mode": "clip",
+      "scope": [
+        0,
+        29
+      ],
+      "reply": {
+        "startWord": 0,
+        "endWord": 29,
+        "title": "The price changed",
+        "hook": "The price changed again",
+        "cuts": [],
+        "pauseCuts": [],
+        "rewrites": [],
+        "captionStyle": "vox-bold",
+        "captionFont": "Roboto",
+        "captionWeight": 900,
+        "captionCase": "upper",
+        "wordsPerCaption": 3,
+        "zooms": [],
+        "music": [],
+        "musicPick": 0,
+        "postText": "The price changed again.",
+        "score": 7,
+        "verdict": "post",
+        "scoreReason": "A clear turn.",
+        "questions": []
+      },
+      "expect": {
+        "span": [
+          0,
+          29
+        ],
+        "corrections": [],
+        "rewrites": [],
+        "cuts": [],
+        "captions": {
+          "styleId": "vox-bold",
+          "family": "Roboto",
+          "weight": 900,
+          "case": "upper",
+          "wordsPerCaption": 3,
+          "reason": ""
+        },
+        "look": [
+          "original",
+          ""
+        ],
+        "speed": null,
+        "seconds": 15.0,
+        "flags": [],
+        "repairs": []
+      }
+    },
+    {
+      "id": "over-length",
+      "mode": "clip",
+      "scope": [
+        0,
+        149
+      ],
+      "reply": {
+        "startWord": 0,
+        "endWord": 149,
+        "title": "The price changed",
+        "hook": "The price changed again",
+        "corrections": [],
+        "cuts": [],
+        "pauseCuts": [],
+        "rewrites": [],
+        "lengthReason": "it needs every step",
+        "captionStyle": "vox-bold",
+        "captionReason": "punchy claim",
+        "captionFont": "Roboto",
+        "captionWeight": 900,
+        "captionCase": "upper",
+        "wordsPerCaption": 3,
+        "look": "original",
+        "lookReason": "",
+        "speed": 1,
+        "speedReason": "",
+        "zooms": [],
+        "music": [],
+        "musicPick": 0,
+        "postText": "The price changed again.",
+        "score": 7,
+        "verdict": "post",
+        "scoreReason": "A clear turn.",
+        "questions": []
+      },
+      "expect": {
+        "span": [
+          0,
+          149
+        ],
+        "corrections": [],
+        "rewrites": [],
+        "cuts": [],
+        "captions": {
+          "styleId": "vox-bold",
+          "family": "Roboto",
+          "weight": 900,
+          "case": "upper",
+          "wordsPerCaption": 3,
+          "reason": "punchy claim"
+        },
+        "look": [
+          "original",
+          ""
+        ],
+        "speed": null,
+        "seconds": 75.0,
+        "flags": [
+          "overLength"
+        ],
+        "repairs": []
+      }
+    },
+    {
+      "id": "long-without-reason",
+      "mode": "clip",
+      "scope": [
+        0,
+        99
+      ],
+      "reply": {
+        "startWord": 0,
+        "endWord": 99,
+        "title": "The price changed",
+        "hook": "The price changed again",
+        "corrections": [],
+        "cuts": [],
+        "pauseCuts": [],
+        "rewrites": [],
+        "lengthReason": "",
+        "captionStyle": "vox-bold",
+        "captionReason": "punchy claim",
+        "captionFont": "Roboto",
+        "captionWeight": 900,
+        "captionCase": "upper",
+        "wordsPerCaption": 3,
+        "look": "original",
+        "lookReason": "",
+        "speed": 1,
+        "speedReason": "",
+        "zooms": [],
+        "music": [],
+        "musicPick": 0,
+        "postText": "The price changed again.",
+        "score": 7,
+        "verdict": "post",
+        "scoreReason": "A clear turn.",
+        "questions": []
+      },
+      "expect": {
+        "span": [
+          0,
+          99
+        ],
+        "corrections": [],
+        "rewrites": [],
+        "cuts": [],
+        "captions": {
+          "styleId": "vox-bold",
+          "family": "Roboto",
+          "weight": 900,
+          "case": "upper",
+          "wordsPerCaption": 3,
+          "reason": "punchy claim"
+        },
+        "look": [
+          "original",
+          ""
+        ],
+        "speed": null,
+        "seconds": 50.0,
+        "flags": [
+          "longWithoutReason"
+        ],
+        "repairs": []
+      }
+    },
+    {
+      "id": "long-with-reason",
+      "mode": "clip",
+      "scope": [
+        0,
+        99
+      ],
+      "reply": {
+        "startWord": 0,
+        "endWord": 99,
+        "title": "The price changed",
+        "hook": "The price changed again",
+        "corrections": [],
+        "cuts": [],
+        "pauseCuts": [],
+        "rewrites": [],
+        "lengthReason": "the list needs all five steps",
+        "captionStyle": "vox-bold",
+        "captionReason": "punchy claim",
+        "captionFont": "Roboto",
+        "captionWeight": 900,
+        "captionCase": "upper",
+        "wordsPerCaption": 3,
+        "look": "original",
+        "lookReason": "",
+        "speed": 1,
+        "speedReason": "",
+        "zooms": [],
+        "music": [],
+        "musicPick": 0,
+        "postText": "The price changed again.",
+        "score": 7,
+        "verdict": "post",
+        "scoreReason": "A clear turn.",
+        "questions": []
+      },
+      "expect": {
+        "span": [
+          0,
+          99
+        ],
+        "corrections": [],
+        "rewrites": [],
+        "cuts": [],
+        "captions": {
+          "styleId": "vox-bold",
+          "family": "Roboto",
+          "weight": 900,
+          "case": "upper",
+          "wordsPerCaption": 3,
+          "reason": "punchy claim"
+        },
+        "look": [
+          "original",
+          ""
+        ],
+        "speed": null,
+        "seconds": 50.0,
+        "flags": [],
+        "repairs": []
+      }
+    },
+    {
+      "id": "speed-brings-it-in",
+      "mode": "clip",
+      "scope": [
+        0,
+        109
+      ],
+      "reply": {
+        "startWord": 0,
+        "endWord": 109,
+        "title": "The price changed",
+        "hook": "The price changed again",
+        "corrections": [],
+        "cuts": [],
+        "pauseCuts": [],
+        "rewrites": [],
+        "lengthReason": "",
+        "captionStyle": "vox-bold",
+        "captionReason": "punchy claim",
+        "captionFont": "Roboto",
+        "captionWeight": 900,
+        "captionCase": "upper",
+        "wordsPerCaption": 3,
+        "look": "original",
+        "lookReason": "",
+        "speed": 1.25,
+        "speedReason": "slow delivery",
+        "zooms": [],
+        "music": [],
+        "musicPick": 0,
+        "postText": "The price changed again.",
+        "score": 7,
+        "verdict": "post",
+        "scoreReason": "A clear turn.",
+        "questions": []
+      },
+      "expect": {
+        "span": [
+          0,
+          109
+        ],
+        "corrections": [],
+        "rewrites": [],
+        "cuts": [],
+        "captions": {
+          "styleId": "vox-bold",
+          "family": "Roboto",
+          "weight": 900,
+          "case": "upper",
+          "wordsPerCaption": 3,
+          "reason": "punchy claim"
+        },
+        "look": [
+          "original",
+          ""
+        ],
+        "speed": [
+          1.25,
+          "slow delivery"
+        ],
+        "seconds": 44.0,
+        "flags": [],
+        "repairs": []
+      }
+    },
+    {
+      "id": "cuts-bring-it-in",
+      "mode": "clip",
+      "scope": [
+        0,
+        99
+      ],
+      "reply": {
+        "startWord": 0,
+        "endWord": 99,
+        "title": "The price changed",
+        "hook": "The price changed again",
+        "corrections": [],
+        "cuts": [
+          {
+            "startWord": 60,
+            "endWord": 79,
+            "kind": "tangent",
+            "reason": "aside"
+          }
+        ],
+        "pauseCuts": [],
+        "rewrites": [],
+        "lengthReason": "",
+        "captionStyle": "vox-bold",
+        "captionReason": "punchy claim",
+        "captionFont": "Roboto",
+        "captionWeight": 900,
+        "captionCase": "upper",
+        "wordsPerCaption": 3,
+        "look": "original",
+        "lookReason": "",
+        "speed": 1,
+        "speedReason": "",
+        "zooms": [],
+        "music": [],
+        "musicPick": 0,
+        "postText": "The price changed again.",
+        "score": 7,
+        "verdict": "post",
+        "scoreReason": "A clear turn.",
+        "questions": []
+      },
+      "expect": {
+        "span": [
+          0,
+          99
+        ],
+        "corrections": [],
+        "rewrites": [],
+        "cuts": [
+          [
+            60,
+            79,
+            "tangent"
+          ]
+        ],
+        "captions": {
+          "styleId": "vox-bold",
+          "family": "Roboto",
+          "weight": 900,
+          "case": "upper",
+          "wordsPerCaption": 3,
+          "reason": "punchy claim"
+        },
+        "look": [
+          "original",
+          ""
+        ],
+        "speed": null,
+        "seconds": 40.0,
+        "flags": [],
+        "repairs": []
+      }
+    },
+    {
+      "id": "fixed-style",
+      "mode": "clip",
+      "scope": [
+        0,
+        29
+      ],
+      "preference": {
+        "styleId": "karaoke"
+      },
+      "reply": {
+        "startWord": 0,
+        "endWord": 29,
+        "title": "The price changed",
+        "hook": "The price changed again",
+        "corrections": [],
+        "cuts": [],
+        "pauseCuts": [],
+        "rewrites": [],
+        "lengthReason": "",
+        "captionStyle": "vox-bold",
+        "captionReason": "bold claim",
+        "captionFont": "Roboto",
+        "captionWeight": 900,
+        "captionCase": "upper",
+        "wordsPerCaption": 3,
+        "look": "original",
+        "lookReason": "",
+        "speed": 1,
+        "speedReason": "",
+        "zooms": [],
+        "music": [],
+        "musicPick": 0,
+        "postText": "The price changed again.",
+        "score": 7,
+        "verdict": "post",
+        "scoreReason": "A clear turn.",
+        "questions": []
+      },
+      "expect": {
+        "span": [
+          0,
+          29
+        ],
+        "corrections": [],
+        "rewrites": [],
+        "cuts": [],
+        "captions": {
+          "styleId": "karaoke",
+          "family": "Roboto",
+          "weight": 900,
+          "case": "upper",
+          "wordsPerCaption": 3,
+          "reason": "bold claim"
+        },
+        "look": [
+          "original",
+          ""
+        ],
+        "speed": null,
+        "seconds": 15.0,
+        "flags": [],
+        "repairs": [
+          [
+            "captionStyle",
+            "repaired"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "fixed-font-and-case",
+      "mode": "clip",
+      "scope": [
+        0,
+        29
+      ],
+      "preference": {
+        "fontFamily": "Anton",
+        "fontWeight": 400,
+        "case": "asSaid"
+      },
+      "reply": {
+        "startWord": 0,
+        "endWord": 29,
+        "title": "The price changed",
+        "hook": "The price changed again",
+        "corrections": [],
+        "cuts": [],
+        "pauseCuts": [],
+        "rewrites": [],
+        "lengthReason": "",
+        "captionStyle": "karaoke",
+        "captionReason": "punchy claim",
+        "captionFont": "Roboto",
+        "captionWeight": 900,
+        "captionCase": "upper",
+        "wordsPerCaption": 3,
+        "look": "original",
+        "lookReason": "",
+        "speed": 1,
+        "speedReason": "",
+        "zooms": [],
+        "music": [],
+        "musicPick": 0,
+        "postText": "The price changed again.",
+        "score": 7,
+        "verdict": "post",
+        "scoreReason": "A clear turn.",
+        "questions": []
+      },
+      "expect": {
+        "span": [
+          0,
+          29
+        ],
+        "corrections": [],
+        "rewrites": [],
+        "cuts": [],
+        "captions": {
+          "styleId": "karaoke",
+          "family": "Anton",
+          "weight": 400,
+          "case": "asSaid",
+          "wordsPerCaption": 3,
+          "reason": "punchy claim"
+        },
+        "look": [
+          "original",
+          ""
+        ],
+        "speed": null,
+        "seconds": 15.0,
+        "flags": [],
+        "repairs": [
+          [
+            "captionCase",
+            "repaired"
+          ],
+          [
+            "captionFont",
+            "repaired"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "moments",
+      "mode": "moments",
+      "scope": [
+        0,
+        149
+      ],
+      "reply": {
+        "clips": [
+          {
+            "startWord": 0,
+            "endWord": 29,
+            "title": "The price changed",
+            "idea": "A vendor changed its price.",
+            "captionStyle": "karaoke",
+            "captionReason": "punchy",
+            "score": 9,
+            "verdict": "postFirst",
+            "scoreReason": "Clear turn."
+          },
+          {
+            "startWord": 30,
+            "endWord": 59,
+            "title": "Weekly changes",
+            "idea": "One change a week.",
+            "captionStyle": "nope",
+            "captionReason": "",
+            "score": 8,
+            "verdict": "post first",
+            "scoreReason": "Habit."
+          },
+          {
+            "startWord": 50,
+            "endWord": 79,
+            "title": "Overlap",
+            "idea": "",
+            "captionStyle": "outline",
+            "captionReason": "",
+            "score": 6,
+            "verdict": "post",
+            "scoreReason": ""
+          },
+          {
+            "startWord": 80,
+            "endWord": 81,
+            "title": "Too short",
+            "idea": "",
+            "captionStyle": "outline",
+            "captionReason": "",
+            "score": 6,
+            "verdict": "post",
+            "scoreReason": ""
+          },
+          {
+            "startWord": 82,
+            "endWord": 149,
+            "title": "Friday notes",
+            "idea": "Reading notes again.",
+            "captionStyle": "outline",
+            "captionReason": "calm",
+            "score": 12,
+            "verdict": "casual",
+            "scoreReason": "Niche."
+          }
+        ]
+      },
+      "expect": {
+        "moments": [
+          [
+            0,
+            29,
+            "postFirst",
+            "karaoke"
+          ],
+          [
+            30,
+            59,
+            "post",
+            "vox-bold"
+          ],
+          [
+            82,
+            149,
+            "post",
+            "outline"
+          ]
+        ],
+        "scores": [
+          9,
+          8,
+          10
+        ],
+        "repairs": [
+          [
+            "clips[1].captionStyle",
+            "repaired"
+          ],
+          [
+            "clips[1].verdict",
+            "repaired"
+          ],
+          [
+            "clips[2]",
+            "dropped"
+          ],
+          [
+            "clips[3]",
+            "dropped"
+          ],
+          [
+            "clips[4].score",
+            "repaired"
+          ],
+          [
+            "clips[4].verdict",
+            "repaired"
+          ],
+          [
+            "clips[4].verdict",
+            "repaired"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "moments-fixed-style",
+      "mode": "moments",
+      "scope": [
+        0,
+        149
+      ],
+      "preference": {
+        "styleId": "pill"
+      },
+      "reply": {
+        "clips": [
+          {
+            "startWord": 0,
+            "endWord": 29,
+            "title": "The price changed",
+            "idea": "",
+            "captionStyle": "pill",
+            "captionReason": "",
+            "score": 7,
+            "verdict": "post",
+            "scoreReason": ""
+          },
+          {
+            "startWord": 30,
+            "endWord": 59,
+            "title": "Weekly changes",
+            "idea": "",
+            "captionStyle": "karaoke",
+            "captionReason": "",
+            "score": 6,
+            "verdict": "casualPost",
+            "scoreReason": ""
+          }
+        ]
+      },
+      "expect": {
+        "moments": [
+          [
+            0,
+            29,
+            "post",
+            "pill"
+          ],
+          [
+            30,
+            59,
+            "casualPost",
+            "pill"
+          ]
+        ],
+        "scores": [
+          7,
+          6
+        ],
+        "repairs": [
+          [
+            "clips[1].captionStyle",
+            "repaired"
+          ]
+        ]
+      }
+    }
+  ]
+}

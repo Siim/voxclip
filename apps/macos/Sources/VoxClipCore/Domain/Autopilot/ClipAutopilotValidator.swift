@@ -1,54 +1,115 @@
 import Foundation
 
 /// Checks a planner reply item by item (ai.md §16.5). Nothing in a reply refuses the whole plan: an invalid item is
-/// repaired when one safe repair exists, otherwise dropped, and every change is listed in `repairs`. Only a series clip
-/// whose span cannot be read, is too short or too long, or overlaps a better-ranked clip is left out, and the series lists it.
+/// repaired when one safe repair exists, otherwise dropped, and every change is listed in `repairs`. Only a series moment
+/// whose span cannot be read, is too short or too long, or overlaps a better-ranked moment is left out, and the series lists it.
 public enum ClipAutopilotValidator {
-    /// One clip reply. In series mode `isSeries` applies the clip-length limits, and a clip without a usable span is nil.
-    public static func plan(_ value: JSONValue, context: ClipAutopilotContext, isSeries: Bool = false) -> ClipAutopilotPlan? {
+    /// One clip reply. A span that cannot be read falls back to the whole scope; nil only when the scope has no word.
+    public static func plan(_ value: JSONValue, context base: ClipAutopilotContext) -> ClipAutopilotPlan? {
         var log = Log()
-        guard let span = span(value, context: context, isSeries: isSeries, log: &log) else { return nil }
+        guard let span = span(value, context: base, isSeries: false, log: &log) else { return nil }
+        // Corrections come first, so the rewrites' bridge words and every later check read the corrected words.
+        let checked = corrections(value[ai: "corrections"], span: span, context: base, log: &log)
+        let context = base.correcting(checked.map(\.correction))
         let rewrites = rewrites(value[ai: "rewrites"], span: span, context: context, log: &log)
         let cuts = cuts(value[ai: "cuts"], span: span, rewrites: rewrites, context: context, log: &log)
+        let corrections = checked.filter { item in
+            guard cuts.contains(where: { ($0.startWord...$0.endWord).contains(item.correction.word) }) else { return true }
+            log.drop(item.field, "the plan cuts that word")
+            return false
+        }.map(\.correction)
         let pauseCuts = pauseCuts(value[ai: "pauseCuts"], span: span, rewrites: rewrites, context: context, log: &log)
         let captions = captions(value, context: context, log: &log)
+        let look = look(value, context: context, log: &log)
+        let speed = speed(value, context: context, log: &log)
         let (music, pick) = music(value, context: context, log: &log)
         let zooms = zooms(value[ai: "zooms"], span: span, cuts: cuts, context: context, log: &log)
         let limits = context.prompt.limits
         let fallbackTitle = EditingAlgorithms.clipTitle((span.lowerBound...span.upperBound).filter(context.isListedWord).map(context.text)) ?? ""
         let title = text(value[ai: "title"], limit: min(limits.maxTitleScalars, EditingLimits.maxClipTitleScalars), field: "title", log: &log)
         let score = score(value[ai: "score"], context: context, log: &log)
-        let verdict = verdict(value[ai: "verdict"], score: score, log: &log)
-        let plan = ClipAutopilotPlan(startWord: span.lowerBound, endWord: span.upperBound,
+        let verdict = verdict(value[ai: "verdict"], score: score, field: "verdict", log: &log)
+        let seconds = ClipAutopilotMapping.editedSeconds(span: span, words: context.words,
+            cut: context.cutWordIDs.union(cuts.flatMap { ($0.startWord...$0.endWord).map { context.words[$0].id } }),
+            pauses: context.pauses, tightened: Set(pauseCuts.map(\.afterWord)), cutPauseIDs: context.cutPauseIDs,
+            keepSeconds: context.pauseKeepSeconds) / (speed?.rate ?? 1)
+        let lengthReason = text(value[ai: "lengthReason"], limit: limits.maxReasonScalars, field: "lengthReason", log: &log)
+        return ClipAutopilotPlan(startWord: span.lowerBound, endWord: span.upperBound,
             title: title.isEmpty ? fallbackTitle : title,
             hook: text(value[ai: "hook"], limit: limits.maxHookScalars, field: "hook", log: &log),
-            cuts: cuts, pauseCuts: pauseCuts, rewrites: rewrites, captions: captions, music: music, musicPick: pick, zooms: zooms,
+            cuts: cuts, pauseCuts: pauseCuts, corrections: corrections, rewrites: rewrites, captions: captions, look: look, speed: speed,
+            music: music, musicPick: pick, zooms: zooms,
             postText: text(value[ai: "postText"], limit: limits.maxPostScalars, field: "postText", log: &log),
             score: score, verdict: verdict,
             scoreReason: text(value[ai: "scoreReason"], limit: limits.maxReasonScalars, field: "scoreReason", log: &log),
-            questions: questions(value[ai: "questions"], context: context, log: &log), repairs: log.repairs)
-        return plan
+            lengthReason: lengthReason, seconds: seconds,
+            questions: questions(value[ai: "questions"], context: context, log: &log), repairs: log.repairs,
+            flags: flags(seconds: seconds, lengthReason: lengthReason, limits: limits))
     }
 
-    /// A series reply: its clips in the reply's rank order, each checked as `plan`, then any clip overlapping a
-    /// better-ranked one left out, up to `maxClips`.
-    public static func series(_ value: JSONValue, context: ClipAutopilotContext) -> ClipAutopilotSeries {
-        var plans: [ClipAutopilotPlan] = []
-        var repairs: [ClipAutopilotPlan.Repair] = []
+    /// The flags a finished length earns (ai.md §16.5): over `maxReasonedSeconds`, or over `maxTargetSeconds` with no reason.
+    static func flags(seconds: Double, lengthReason: String, limits: ClipAutopilotLimits) -> [ClipAutopilotPlan.Flag] {
+        if seconds > limits.maxReasonedSeconds {
+            return [.init(kind: .overLength, detail: "runs \(toFixed1(seconds)) s, over the \(limits.templateValues["maxReasonedSeconds"]!) s limit")]
+        }
+        if seconds > limits.maxTargetSeconds && lengthReason.isEmpty {
+            return [.init(kind: .longWithoutReason, detail: "runs \(toFixed1(seconds)) s, past \(limits.templateValues["maxTargetSeconds"]!) s with no reason")]
+        }
+        return []
+    }
+
+    /// The first stage of a series: its moments in the reply's rank order, each span checked as a series clip's, then any
+    /// moment overlapping a better-ranked one left out, up to `maxClips`. Only the first `postFirst` keeps that verdict.
+    public static func moments(_ value: JSONValue, context: ClipAutopilotContext) -> (moments: [ClipAutopilotMoment], repairs: [ClipAutopilotPlan.Repair]) {
+        var moments: [ClipAutopilotMoment] = []
+        var log = Log()
+        let limits = context.prompt.limits
         for (index, item) in value[ai: "clips"].aiArray.enumerated() {
             let field = "clips[\(index)]"
-            guard plans.count < context.prompt.limits.maxClips else {
-                repairs.append(.init(field: field, action: .dropped, detail: "more than \(context.prompt.limits.maxClips) clips")); continue
+            guard moments.count < limits.maxClips else { log.drop(field, "more than \(limits.maxClips) clips"); continue }
+            var spanLog = Log()
+            guard let span = span(item, context: context, isSeries: true, log: &spanLog) else {
+                log.drop(field, "the clip's span is unreadable, too short or too long"); continue
             }
-            guard let plan = plan(item, context: context, isSeries: true) else {
-                repairs.append(.init(field: field, action: .dropped, detail: "the clip's span is unreadable, too short or too long")); continue
+            if let earlier = moments.firstIndex(where: { $0.startWord <= span.upperBound && span.lowerBound <= $0.endWord }) {
+                log.drop(field, "overlaps clip \(earlier + 1)"); continue
             }
-            if let earlier = plans.firstIndex(where: { $0.startWord <= plan.endWord && plan.startWord <= $0.endWord }) {
-                repairs.append(.init(field: field, action: .dropped, detail: "overlaps clip \(earlier + 1)")); continue
+            let fallbackTitle = EditingAlgorithms.clipTitle(span.filter(context.isListedWord).map(context.text)) ?? ""
+            let title = text(item[ai: "title"], limit: min(limits.maxTitleScalars, EditingLimits.maxClipTitleScalars), field: field + ".title", log: &log)
+            let score = score(item[ai: "score"], context: context, field: field + ".score", log: &log)
+            var verdict = verdict(item[ai: "verdict"], score: score, field: field + ".verdict", log: &log)
+            if verdict == .postFirst, moments.contains(where: { $0.verdict == .postFirst }) {
+                verdict = .post; log.repair(field + ".verdict", "only the best clip posts first; post")
             }
-            plans.append(plan)
+            let style = captionStyle(item[ai: "captionStyle"], context: context, field: field + ".captionStyle", log: &log)
+            moments.append(.init(startWord: span.lowerBound, endWord: span.upperBound, title: title.isEmpty ? fallbackTitle : title,
+                idea: text(item[ai: "idea"], limit: limits.maxReasonScalars, field: field + ".idea", log: &log), score: score, verdict: verdict,
+                scoreReason: text(item[ai: "scoreReason"], limit: limits.maxReasonScalars, field: field + ".scoreReason", log: &log),
+                captionStyle: style,
+                captionReason: text(item[ai: "captionReason"], limit: limits.maxReasonScalars, field: field + ".captionReason", log: &log)))
         }
-        return ClipAutopilotSeries(plans: plans, repairs: repairs)
+        return (moments, log.repairs)
+    }
+
+    /// A series from its checked plans (nil where a plan failed, with the reason in `failures`): ranked by score, best
+    /// first, ties in the moments' order. Only the best `postFirst` keeps that verdict; the others become `post`.
+    static func series(_ plans: [ClipAutopilotPlan?], moments: [ClipAutopilotMoment], failures: [Int: String],
+                       repairs: [ClipAutopilotPlan.Repair]) -> ClipAutopilotSeries {
+        var repairs = repairs
+        for (index, plan) in plans.enumerated() where plan == nil {
+            repairs.append(.init(field: "plans[\(index)]", action: .dropped, detail: failures[index] ?? "the plan has no words of the clip"))
+        }
+        var ranked = plans.enumerated().compactMap { index, plan in plan.map { (index, $0) } }
+            .sorted { $0.1.score != $1.1.score ? $0.1.score > $1.1.score : $0.0 < $1.0 }.map(\.1)
+        var first = false
+        for index in ranked.indices where ranked[index].verdict == .postFirst {
+            if first {
+                ranked[index].verdict = .post
+                ranked[index].repairs.append(.init(field: "verdict", action: .repaired, detail: "another clip posts first; post"))
+            }
+            first = true
+        }
+        return ClipAutopilotSeries(plans: ranked, moments: moments, repairs: repairs)
     }
 
     struct Log {
@@ -219,17 +280,11 @@ public enum ClipAutopilotValidator {
     }
 
     /// Captions: a built-in style other than `off`, a font that is bundled or the default (Roboto Black), a known case and
-    /// a words-per-caption count inside the limits. Each unreadable value falls back to the creator's preference, then the
-    /// prompt file's default.
+    /// a words-per-caption count inside the limits, with the reason for the style. What the creator fixed in the caption
+    /// preference always wins; any other unreadable value falls back to the prompt file's default.
     static func captions(_ value: JSONValue, context: ClipAutopilotContext, log: inout Log) -> ClipAutopilotPlan.Captions {
         let defaults = context.prompt.defaults, limits = context.prompt.limits
-        let preferredStyle = context.preference?.styleId.flatMap { context.styleIDs.contains($0) && $0 != "off" ? $0 : nil }
-        var style = value[ai: "captionStyle"].aiString ?? ""
-        if !context.styleIDs.contains(style) || style == "off" {
-            let fallback = preferredStyle ?? (context.styleIDs.contains(defaults.styleID) ? defaults.styleID : context.styleIDs.sorted().first ?? defaults.styleID)
-            log.repair("captionStyle", "unknown style “\(style)”; \(fallback)")
-            style = fallback
-        }
+        let style = captionStyle(value[ai: "captionStyle"], context: context, field: "captionStyle", log: &log)
         var font = ClipAutopilotPlan.Font(family: value[ai: "captionFont"].aiString.map(AIText.trim) ?? "", weight: integer(value[ai: "captionWeight"]) ?? -1)
         // "Roboto 900" in the family field: the weight belongs in captionWeight.
         if !context.allows(font), let match = font.family.wholeMatch(of: /(.+?)\s+([1-9]00)/), let weight = Int(match.2),
@@ -237,22 +292,127 @@ public enum ClipAutopilotValidator {
             font = .init(family: String(match.1), weight: weight)
             log.repair("captionFont", "the weight was in the family name")
         }
-        if !context.allows(font) {
-            let fallback = context.preference?.font.flatMap { context.allows($0) ? $0 : nil } ?? defaults.font
-            log.repair("captionFont", "unknown font “\(font.family) \(font.weight)”; \(fallback.family) \(fallback.weight)")
-            font = fallback
+        if let fixed = context.preference?.font, context.allows(fixed) {
+            if font != fixed { log.repair("captionFont", "the creator fixed the font; \(fixed.family) \(fixed.weight)") }
+            font = fixed
+        } else if !context.allows(font) {
+            log.repair("captionFont", "unknown font “\(font.family) \(font.weight)”; \(defaults.font.family) \(defaults.font.weight)")
+            font = defaults.font
         }
-        var textCase = value[ai: "captionCase"].aiString.flatMap(ClipAutopilotPlan.CaptionCase.init(rawValue:))
-        if textCase == nil {
-            textCase = context.preference?.textCase ?? defaults.textCase
-            log.repair("captionCase", "unknown case; \(textCase!.rawValue)")
+        let replyCase = value[ai: "captionCase"].aiString.flatMap(ClipAutopilotPlan.CaptionCase.init(rawValue:))
+        let textCase: ClipAutopilotPlan.CaptionCase
+        if let fixed = context.preference?.textCase {
+            if replyCase != fixed { log.repair("captionCase", "the creator fixed the case; \(fixed.rawValue)") }
+            textCase = fixed
+        } else if let replyCase {
+            textCase = replyCase
+        } else {
+            textCase = defaults.textCase
+            log.repair("captionCase", "unknown case; \(textCase.rawValue)")
         }
         var words = integer(value[ai: "wordsPerCaption"]) ?? defaults.wordsPerCaption
         if !(limits.minWordsPerCaption...limits.maxWordsPerCaption).contains(words) {
             words = min(max(words, limits.minWordsPerCaption), limits.maxWordsPerCaption)
             log.repair("wordsPerCaption", "clamped to \(words)")
         }
-        return .init(styleId: style, font: font, textCase: textCase!, wordsPerCaption: words)
+        return .init(styleId: style, font: font, textCase: textCase, wordsPerCaption: words,
+                     reason: text(value[ai: "captionReason"], limit: limits.maxReasonScalars, field: "captionReason", log: &log))
+    }
+
+    /// A caption style id: the creator's fixed style when there is one, else a built-in style other than `off`, else
+    /// `defaults.styleId` (or the first style when the defaults name none).
+    static func captionStyle(_ value: JSONValue, context: ClipAutopilotContext, field: String, log: inout Log) -> String {
+        let reply = value.aiString ?? ""
+        if let fixed = context.fixedStyle {
+            if reply != fixed { log.repair(field, "the creator fixed the style; \(fixed)") }
+            return fixed
+        }
+        if context.styleIDs.contains(reply) && reply != "off" { return reply }
+        let defaults = context.prompt.defaults
+        let fallback = context.styleIDs.contains(defaults.styleID) ? defaults.styleID : context.styleIDs.filter { $0 != "off" }.sorted().first ?? defaults.styleID
+        log.repair(field, "unknown style “\(reply)”; \(fallback)")
+        return fallback
+    }
+
+    /// The look: one of `ClipAutopilotPlan.LookID`, read ignoring case and non-letters ("B&W" is `bw`), with its reason. A
+    /// reply without one keeps the original look; an unknown one becomes the original look without its reason (a repair).
+    static func look(_ value: JSONValue, context: ClipAutopilotContext, log: inout Log) -> ClipAutopilotPlan.Look {
+        guard value[ai: "look"] != .null else { return .original }
+        let key = (value[ai: "look"].aiString ?? "").lowercased().filter { $0.isLetter }
+        let aliases: [String: ClipAutopilotPlan.LookID] = ["blackandwhite": .bw, "blackwhite": .bw, "monochrome": .bw, "none": .original]
+        guard let id = ClipAutopilotPlan.LookID(rawValue: key) ?? aliases[key] else {
+            log.repair("look", "unknown look “\(value[ai: "look"].aiString ?? "")”; original")
+            return .original
+        }
+        return .init(id: id, reason: text(value[ai: "lookReason"], limit: context.prompt.limits.maxReasonScalars, field: "lookReason", log: &log))
+    }
+
+    /// The speed: a finite rate other than 1 (within 0.005), clamped to `minSpeed...maxSpeed` (a repair), with its reason.
+    /// A reply without one, or with 1, plays at its own speed; a rate that is not a positive number is dropped.
+    static func speed(_ value: JSONValue, context: ClipAutopilotContext, log: inout Log) -> ClipAutopilotPlan.Speed? {
+        let limits = context.prompt.limits
+        guard value[ai: "speed"] != .null else { return nil }
+        guard let rate = value[ai: "speed"].aiDouble, rate.isFinite, rate > 0 else { log.drop("speed", "not a positive number"); return nil }
+        guard abs(rate - 1) >= 0.005 else { return nil }
+        var clamped = rate
+        if !(limits.minSpeed...limits.maxSpeed).contains(rate) {
+            clamped = min(max(rate, limits.minSpeed), limits.maxSpeed)
+            log.repair("speed", "clamped to \(clamped)")
+        }
+        return .init(rate: clamped, reason: text(value[ai: "speedReason"], limit: limits.maxReasonScalars, field: "speedReason", log: &log))
+    }
+
+    /// Corrections (ai.md §16.5): a listed word inside the span that reads as `heard` (letters and digits, ignoring case),
+    /// or the nearest one within 3 positions that does (a repair); one per word; text of 1 to `maxCorrectionWords` words and
+    /// at most `EditingLimits.maxCorrectionScalars`, with no link, control character or bracket tag, that keeps the word's
+    /// own leading and trailing punctuation and changes it. At most `maxCorrections`, in reply order.
+    static func corrections(_ value: JSONValue, span: ClosedRange<Int>, context: ClipAutopilotContext,
+                            log: inout Log) -> [(field: String, correction: ClipAutopilotPlan.Correction)] {
+        let limits = context.prompt.limits
+        func key(_ text: String) -> String { text.lowercased().filter { $0.isLetter || $0.isNumber } }
+        var accepted: [(field: String, correction: ClipAutopilotPlan.Correction)] = []
+        for (index, item) in value.aiArray.enumerated() {
+            let field = "corrections[\(index)]"
+            guard accepted.count < limits.maxCorrections else { log.drop(field, "more than \(limits.maxCorrections) corrections"); continue }
+            guard let word = integer(item[ai: "word"]) else { log.drop(field, "no word index"); continue }
+            let heard = key(item[ai: "heard"].aiString ?? "")
+            guard !heard.isEmpty else { log.drop(field, "no heard word"); continue }
+            func reads(_ position: Int) -> Bool { span.contains(position) && context.isListedWord(position) && key(context.text(position)) == heard }
+            var position = word
+            if !reads(word) {
+                let near = (1...3).flatMap { [word - $0, word + $0] }.first(where: reads)
+                guard let near else { log.drop(field, "word \(word) does not read “\(item[ai: "heard"].aiString ?? "")”"); continue }
+                position = near
+                log.repair(field, "moved to word \(near), which reads “\(context.text(near))”")
+            }
+            guard !accepted.contains(where: { $0.correction.word == position }) else { log.drop(field, "repeats another correction"); continue }
+            let spelled = AIText.trim((item[ai: "text"].aiString ?? "").replacingOccurrences(of: "\n", with: " "))
+            let tokens = EditingPrimitives.splitWords(spelled)
+            guard !tokens.isEmpty, tokens.count <= limits.maxCorrectionWords, spelled.unicodeScalars.count <= EditingLimits.maxCorrectionScalars,
+                  spelled == VoiceLabAudioTags.sanitizedRequest(spelled, modelID: ""),
+                  spelled.range(of: "https?://", options: [.regularExpression, .caseInsensitive]) == nil,
+                  !spelled.unicodeScalars.contains(where: { $0.properties.generalCategory == .control }) else {
+                log.drop(field, "its text is not a short spelling"); continue
+            }
+            let shown = context.text(position)
+            let fixed = punctuated(spelled, like: shown)
+            guard fixed != shown, fixed.unicodeScalars.count <= EditingLimits.maxCorrectionScalars else { log.drop(field, "changes nothing"); continue }
+            accepted.append((field, .init(word: position, heard: shown, text: fixed,
+                reason: text(item[ai: "reason"], limit: limits.maxReasonScalars, field: field + ".reason", log: &log))))
+        }
+        return accepted
+    }
+
+    /// `text` with `shown`'s leading and trailing punctuation when `text` has none of its own at that end, so "Tvilio," corrected
+    /// to "Twilio" stays "Twilio,".
+    static func punctuated(_ text: String, like shown: String) -> String {
+        func isMark(_ character: Character) -> Bool { !character.isLetter && !character.isNumber }
+        let leading = String(shown.prefix(while: isMark)), trailing = String(shown.reversed().prefix(while: isMark).reversed())
+        guard leading.count < shown.count else { return text }
+        var result = text
+        if let first = result.first, !isMark(first) { result = leading + result }
+        if let last = result.last, !isMark(last) { result += trailing }
+        return result
     }
 
     /// Music: up to `maxMusic` suggestions with a title and a prompt, the prompt made instrumental and the level clamped;
@@ -325,23 +485,23 @@ public enum ClipAutopilotValidator {
         return accepted.sorted { $0.word < $1.word }
     }
 
-    static func score(_ value: JSONValue, context: ClipAutopilotContext, log: inout Log) -> Int {
+    static func score(_ value: JSONValue, context: ClipAutopilotContext, field: String = "score", log: inout Log) -> Int {
         guard let number = value.aiDouble, number.isFinite else {
-            log.repair("score", "unreadable; \(context.prompt.defaults.score)")
+            log.repair(field, "unreadable; \(context.prompt.defaults.score)")
             return context.prompt.defaults.score
         }
         let rounded = Int(min(10, max(1, number.rounded())))
-        if Double(rounded) != number { log.repair("score", "clamped to \(rounded)") }
+        if Double(rounded) != number { log.repair(field, "clamped to \(rounded)") }
         return rounded
     }
 
     /// The verdict, read with case, spaces, hyphens and underscores ignored, so "post first" is `postFirst`; otherwise the
     /// one the score implies.
-    static func verdict(_ value: JSONValue, score: Int, log: inout Log) -> ClipAutopilotPlan.Verdict {
+    static func verdict(_ value: JSONValue, score: Int, field: String, log: inout Log) -> ClipAutopilotPlan.Verdict {
         let key = (value.aiString ?? "").lowercased().filter { $0.isLetter }
         if let verdict = ClipAutopilotPlan.Verdict.allCases.first(where: { $0.rawValue.lowercased() == key }) { return verdict }
         let implied = ClipAutopilotPlan.Verdict.implied(by: score)
-        log.repair("verdict", "unknown verdict; \(implied.rawValue)")
+        log.repair(field, "unknown verdict; \(implied.rawValue)")
         return implied
     }
 
