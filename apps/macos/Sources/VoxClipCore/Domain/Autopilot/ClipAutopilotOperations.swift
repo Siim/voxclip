@@ -32,10 +32,9 @@ public struct ClipAutopilotOperation: Sendable, Equatable, Identifiable {
         /// The project's caption settings. `pendingFont` names the plan's font when it is not bundled yet (Roboto Black): the
         /// style's own font renders until it is.
         case captions(CaptionSettings, pendingFont: ClipAutopilotPlan.Font?)
-        /// The clip's colour look. Nothing renders a look yet (the next package owes it), so `apply` leaves it pending;
-        /// `original` needs no rendering.
+        /// The clip's colour look (clip controls, design.md §6.9).
         case look(clipID: String, look: ClipAutopilotPlan.Look)
-        /// The whole clip played at `speed.rate`. The Clip controls package owes the rendering, so `apply` leaves it pending.
+        /// The whole clip played at `speed.rate`, pitch kept (clip controls, design.md §6.9).
         case speed(clipID: String, speed: ClipAutopilotPlan.Speed)
         /// A punch-in cue for the clip.
         case motion(MotionCue)
@@ -47,8 +46,8 @@ public struct ClipAutopilotOperation: Sendable, Equatable, Identifiable {
         case shareText(clipID: String, text: String)
         /// An effect added to `project.clipEffects` (ai.md §18.2): censoring, an overlay, a freeze frame or a sound.
         case effect(ClipEffect)
-        /// One stretch (source seconds) played at `rate`, pitch kept. Clip controls (track/v2-clip-controls) owns the time
-        /// mapping, so `apply` leaves it pending until a stretch command lands there.
+        /// One stretch (source seconds) played at `rate`, pitch kept. A clip has one speed (design.md §6.9), so `apply`
+        /// sets it when the stretch covers a whole clip and leaves a part of a clip pending.
         case stretch(clipID: String?, start: Double, end: Double, rate: Double)
         /// Captions of words `startWord...endWord` shown in `language` as `text`. Nothing renders a caption language
         /// override yet, so `apply` leaves it pending.
@@ -145,7 +144,7 @@ public enum ClipAutopilotMapping {
 
     /// The clip's length once the plan's cuts and pause cuts apply, at its own speed: the span, less each cut item and each
     /// tightened pause beyond the project's kept length. Rewrites are counted at the original words' length. The music cue
-    /// uses this length, so a track still covers the clip while speed is not rendered.
+    /// uses this 1× length, so a track covers the clip at any speed of 1× or faster.
     public static func editedSeconds(_ plan: ClipAutopilotPlan, state: EditState) -> Double {
         let words = state.transcript.words
         guard plan.startWord >= 0, plan.endWord < words.count, plan.startWord <= plan.endWord else { return 0 }
@@ -173,8 +172,10 @@ public enum ClipAutopilotMapping {
     }
 
     /// Applies what the editor can apply today, in order, to a copy of `project`: edits (corrections included), captions,
-    /// motion cues, share text, effects and music ducking. Rewrites, the look, speed, music, the hook, stretches and
-    /// translated captions come back as `pending`. Pure: one undo step is the caller's choice.
+    /// motion cues, share text, effects, music ducking, the clip's look and speed (clip controls, design.md §6.9), and a
+    /// stretch that covers a whole clip (`ClipControlsProject.wholeClip`) as that clip's speed. Rewrites, music, the hook,
+    /// a stretch over part of a clip and translated captions come back as `pending`. Pure: one undo step is the caller's
+    /// choice.
     public static func apply(_ operations: [ClipAutopilotOperation], to project: Project) throws -> (project: Project, pending: [ClipAutopilotOperation]) {
         var result = project
         var pending: [ClipAutopilotOperation] = []
@@ -191,7 +192,12 @@ public enum ClipAutopilotMapping {
                 guard var entry = MusicProject.entry(for: clipID, in: result) else { pending.append(operation); continue }
                 entry.ducking = on
                 result = try MusicProject.setting(entry, clipId: clipID, in: result)
-            case .rewrite, .look, .speed, .music, .hook, .stretch, .translateCaptions: pending.append(operation)
+            case .look(let clipID, let look): result = try ClipControlsProject.settingLook(look.id, clipId: clipID, in: result)
+            case .speed(let clipID, let speed): result = try ClipControlsProject.settingSpeed(speed.rate, clipId: clipID, in: result)
+            case .stretch(let clipID, let start, let end, let rate):
+                guard let whole = ClipControlsProject.wholeClip(clipID, start: start, end: end, in: result) else { pending.append(operation); continue }
+                result = try ClipControlsProject.settingSpeed(rate, clipId: whole, in: result)
+            case .rewrite, .music, .hook, .translateCaptions: pending.append(operation)
             }
         }
         result = try ClipEffects.adding(effects, to: result)

@@ -342,7 +342,10 @@ import Testing
         #expect(applied.captions.styleId == "vox-bold")
         #expect(applied.motionCues.map(\.id) == ["c1-zoom-0"])
         #expect(applied.share.captions["c1"] == "Coffee is great. Sleep is better.")
-        #expect(left.map(\.decision) == [.rewrite, .look, .music, .hook])
+        // The look is a clip control now (design.md §6.9): it applies in the same pure step.
+        #expect(left.map(\.decision) == [.rewrite, .music, .hook])
+        guard case .look(_, let look)? = operations.first(where: { $0.decision == .look })?.action else { Issue.record("no look"); return }
+        #expect(ClipControlsProject.controls(for: "c1", in: applied)?.look == look.id)
         try ProjectValidation.validateModel(applied)
     }
 
