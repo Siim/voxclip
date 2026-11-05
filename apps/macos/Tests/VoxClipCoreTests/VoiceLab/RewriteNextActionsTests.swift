@@ -85,7 +85,7 @@ import Testing
     @Test func bothPromptsOfferOptionalNextActionsThatStrictShapingRequires() throws {
         for name in ["voice-rewrite", "patch-rewrite"] {
             let prompt = try FixtureLoader.decode(JSONValue.self, at: "prompts/\(name).json")
-            #expect(prompt[ai: "promptVersion"].aiInt == 3, "\(name)")
+            #expect(prompt[ai: "promptVersion"].aiInt == 4, "\(name)")
             let schema = prompt[ai: "schema"]
             #expect(CanonicalResponseParser.validateSchemaSubset(schema), "\(name)")
             #expect(!schema[ai: "required"].aiArray.contains(.string("nextActions")), "\(name): optional in the canonical schema")

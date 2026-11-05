@@ -42,7 +42,9 @@ public actor VoiceRewriteService {
               input.instruction.utf8.count <= 1_000,
               (input.feedback?.utf8.count ?? 0) <= 20_000,
               input.targetSeconds.isFinite, input.targetSeconds > 0, input.targetSeconds <= 600,
-              input.minChars >= 1, input.minChars <= input.maxChars, input.maxChars <= 5_000 else { throw VoiceLabError.invalidInput }
+              input.minChars >= 1, input.minChars <= input.maxChars, input.maxChars <= 5_000,
+              (input.slots ?? []).count <= VoiceRewriteSlots.maximumSlots,
+              (input.slots ?? []).allSatisfy({ $0.seconds.isFinite && $0.seconds > 0 && $0.maxWords >= 1 && !$0.text.isEmpty }) else { throw VoiceLabError.invalidInput }
         let source = input.sourceWords.map(\.text).joined(separator: " ")
         guard !AIText.trim(source).isEmpty, source.utf8.count <= 20_000,
               input.language.range(of: #"\A[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*\z"#, options: .regularExpression) != nil else { throw VoiceLabError.invalidInput }
@@ -107,7 +109,21 @@ public actor VoiceRewriteService {
         let length = lengthLine.replacingOccurrences(of: "{targetSeconds}", with: toFixed1(input.targetSeconds))
             .replacingOccurrences(of: "{minChars}", with: String(input.minChars)).replacingOccurrences(of: "{maxChars}", with: String(input.maxChars))
         let request = AIText.trim(input.instruction)
-        let parts = (request.isEmpty ? [] : [requestBlock.replacingOccurrences(of: "{instruction}", with: request)]) + [returnLine + "\n" + length]
+        var lengthPart = returnLine + "\n" + length
+        if let slots = input.slots, !slots.isEmpty {
+            // Each span's time in the video and word budget (ai.md §12.9); a prompt without these templates sends none.
+            guard let slotsBlock = templates[ai: "slotsBlock"].aiString, let slotLine = templates[ai: "slotLine"].aiString,
+                  slotsBlock.contains("{slots}") else { throw VoxClipError.sharedResourcesMissing }
+            let lines = slots.enumerated().map { offset, slot in
+                // The span's words go in last, so they are never read as a placeholder.
+                slotLine.replacingOccurrences(of: "{index}", with: String(offset + 1))
+                    .replacingOccurrences(of: "{seconds}", with: toFixed1(slot.seconds))
+                    .replacingOccurrences(of: "{maxWords}", with: String(slot.maxWords))
+                    .replacingOccurrences(of: "{text}", with: slot.text)
+            }
+            lengthPart += "\n\n" + slotsBlock.replacingOccurrences(of: "{slots}", with: lines.joined(separator: "\n"))
+        }
+        let parts = (request.isEmpty ? [] : [requestBlock.replacingOccurrences(of: "{instruction}", with: request)]) + [lengthPart]
         return (block, (parts + (input.feedback.map { [$0] } ?? [])).joined(separator: "\n\n"))
     }
 

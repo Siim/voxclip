@@ -1532,10 +1532,10 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
     }
 
-    /// The automatic wording fit ended with a change still too long (the Rewrite smoke's S12): Get Price includes it as
-    /// written instead of pricing only the fitting changes, where no automatic fix could add it to the paid plan later.
-    /// Stop is the user's choice and changes nothing.
-    @Test func heldBackChangeIsPricedOnceTheAutomaticFitEnds() async throws {
+    /// The automatic wording fit ended with a change still too long (ai.md §12.9, the Rewrite smoke's S12): it keeps the
+    /// speaker's words, since no take of it could fit the running video, and Get Price prices the rest. Stop is the
+    /// user's choice and changes nothing until the footer's Keep My Words.
+    @Test func heldBackChangeKeepsItsWordsOnceTheAutomaticFitEnds() async throws {
         let fixture = try await fixture(indices: [10, 17]); defer { try? FileManager.default.removeItem(at: fixture.root) }
         let (editor, session) = try await productionSession(fixture)
         defer { editor.close() }
@@ -1548,14 +1548,15 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(session.blockedVoiceOrdinals == [1] && session.includedVoice == [2])
         #expect(session.voiceReview(1)?.timing?.tooLong == true)
         session.wordingFit.stopped = true
-        session.priceHeldBackChanges()
+        session.keepLongChangesAsRecorded()
         #expect(session.blockedVoiceOrdinals == [1] && session.includedVoice == [2] && session.autoFix.notes.isEmpty)
         session.wordingFit.stopped = false
-        session.priceHeldBackChanges()
-        #expect(session.blockedVoiceOrdinals.isEmpty && session.includedVoice == [1, 2])
-        #expect(session.autoFix.notes == ["Change 1 is priced as written; once its take is measured, Rewrite rewords it to fit."])
+        session.keepLongChangesAsRecorded()
+        #expect(session.blockedVoiceOrdinals.isEmpty && session.includedVoice == [2])
+        #expect(session.ownProposal?[1]?.state == .excluded && session.wordingFit.kept == [1])
+        #expect(session.autoFix.notes == ["Change 1 keeps your original words: still longer than its time in the video after a fit."])
         session.showProposal()
-        #expect(session.task.footer.primary?.title == "Get Price · 2 phrases", "\(session.task.footer)")
+        #expect(session.task.footer.primary?.title == "Get Price · 1 phrase", "\(session.task.footer)")
     }
 
     @Test func productionQuoteLeavesOutBlockedPhrasesUntilExplicitOverride() async throws {

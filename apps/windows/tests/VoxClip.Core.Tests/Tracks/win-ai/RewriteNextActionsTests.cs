@@ -108,7 +108,7 @@ public sealed class RewriteNextActionsTests
         foreach (var name in new[] { "voice-rewrite", "patch-rewrite" })
         {
             var prompt = JsonNode.Parse(FixtureLoader.ReadText($"prompts/{name}.json"))!;
-            Assert.Equal(3, prompt["promptVersion"]!.GetValue<int>());
+            Assert.Equal(4, prompt["promptVersion"]!.GetValue<int>());
             var schema = prompt["schema"]!;
             Assert.DoesNotContain("nextActions", schema["required"]!.AsArray().Select(key => key!.GetValue<string>()));
             Assert.Equal(new[] { "instruction", "label" }, schema["properties"]!["nextActions"]!["items"]!["required"]!.AsArray().Select(key => key!.GetValue<string>()).Order());

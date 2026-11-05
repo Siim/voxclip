@@ -282,6 +282,8 @@ public struct VoiceRewriteRequest: Codable, Sendable {
     /// The new words' `VoiceLabTextLength` range, with `1 ≤ minChars ≤ maxChars ≤ 5,000`.
     public let minChars: Int
     public let maxChars: Int
+    /// Each span's time in the video and word budget (ai.md §12.9), rendered beside the length line; nil sends none.
+    public var slots: [VoiceRewriteSlot]? = nil
     public init(id: UUID, scope: VoiceRewriteScope, sourceWords: [TimedWord], instruction: String, language: String,
                 targetSeconds: Double, minChars: Int, maxChars: Int, feedback: String? = nil) {
         self.feedback = feedback

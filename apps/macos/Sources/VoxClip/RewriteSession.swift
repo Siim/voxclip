@@ -546,8 +546,9 @@ struct RewriteChange: Equatable, Sendable {
             let range = try await offMain {
                 try Self.passageRange(project: project, scope: scope, envelope: envelope, source: source, transcript: transcript)
             }
-            let input = VoiceRewriteRequest(id: UUID(), scope: .passage, sourceWords: source.filter { $0.kind == .word }, instruction: asked,
+            var input = VoiceRewriteRequest(id: UUID(), scope: .passage, sourceWords: source.filter { $0.kind == .word }, instruction: asked,
                 language: language, targetSeconds: range.targetSeconds, minChars: range.minChars, maxChars: range.maxChars, feedback: feedback)
+            input.slots = Self.rewriteSlots(project: project, source: source, transcript: transcript)
             return .passage(input, try await service.prepare(input, connector: connector.connector.id, model: connector.model), service)
         case .clip, .fullTake:
             guard let service = scopeService else { throw VoxClipError.sharedResourcesMissing }
@@ -556,6 +557,13 @@ struct RewriteChange: Equatable, Sendable {
             }
             return .scope(plan, try await service.prepare(plan.request, connector: connector.connector.id, model: connector.model), service)
         }
+    }
+    /// Each span's time in the video and its word budget (ai.md §12.9), at the speaker's pace and the project's measured
+    /// take lengths (`VoiceLabWordingFit.multiplier`). Nil when the transcript has no speaking rate: the length line alone goes.
+    nonisolated static func rewriteSlots(project: Project, source: [TimedWord], transcript: [TimedWord]) -> [VoiceRewriteSlot]? {
+        guard let wordsPerSecond = try? VoiceRewriteSlots.wordsPerSecond(transcript: transcript) else { return nil }
+        let multiplier = VoiceLabWordingFit.multiplier(project.voiceLab.speakingRateSamples?[VoiceLabWordingFit.modelID] ?? [])
+        return try? VoiceRewriteSlots.make(sourceWords: source, wordsPerSecond: wordsPerSecond, multiplier: multiplier)
     }
     /// A selection's length range (voice-lab.md §8.9.1): its words placed as one window, or, as C1 does for a line, the
     /// span of its items when there is no envelope or the window is refused. Text Rewrite never needs the placement, which

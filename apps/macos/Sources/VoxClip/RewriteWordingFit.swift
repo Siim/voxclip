@@ -102,9 +102,9 @@ extension RewriteSession {
         do {
             wordingFit.phrases = try fitPhrases(ordinals: blockedVoiceOrdinals)
             guard !wordingFit.phrases.isEmpty else {
-                // Nothing here can be reworded to a slot (only added sentences): price them as written and go on.
+                // Nothing here can be reworded to a slot: the long ones keep the speaker's words, and Rewrite goes on.
                 wordingFit.completed = true
-                priceHeldBackChanges()
+                keepLongChangesAsRecorded()
                 showProposal()
                 return
             }
@@ -125,13 +125,13 @@ extension RewriteSession {
     }
 
     /// A fit that could not start ends as one that ran out of rounds does (design.md R2): its problem shows on the fit
-    /// card, and the changes still too long are priced as written, so Get Price goes on and the automatic fixes reword
-    /// them from their measured takes. Nothing offers the same request again (the log's 2026-11-05 `wordingFit
-    /// invalidInput` left the held changes with no way on but Keep All).
+    /// card, and the changes still too long keep the speaker's words, so Get Price goes on for the rest. Nothing offers
+    /// the same request again (the log's 2026-11-05 `wordingFit invalidInput` left the held changes with no way on but
+    /// Keep All).
     func wordingFitFailed(_ error: any Error) {
         wordingFit.problem = reported(error, stage: "wordingFit")
         wordingFit.completed = true
-        priceHeldBackChanges()
+        keepLongChangesAsRecorded()
         showProposal()
     }
 
@@ -148,13 +148,13 @@ extension RewriteSession {
                 editor.llmRuns.release(lease)
                 if wordingFit.token == token {
                     wordingFit.running = false; wordingFit.completed = true; wordingFit.lease = nil
-                    priceHeldBackChanges()
+                    keepLongChangesAsRecorded()
                     if let plan = takePlan { applyPendingExpressions(plan) }
                     if current { showProposal() }
                 }
             }
             do {
-                while wordingFit.round < VoiceLabWordingFit.maximumRounds {
+                while wordingFit.round < Self.automaticFitRounds {
                     try Task.checkCancellation()
                     guard current, self.revision == revision, wordingFit.token == token else { return }
                     let blocked = Set(blockedVoiceOrdinals)
@@ -184,18 +184,22 @@ extension RewriteSession {
         await work.value
     }
 
-    /// The automatic wording fit ended and a change is still too long for its estimate (design.md R2): Get Price
-    /// includes it as written rather than leaving it out of the paid plan, where nothing could add it back. Once its
-    /// take is measured, the automatic fixes reword it from that take within their spending limit (RewriteAutoFix.swift).
-    /// A change too short keeps its surrounding-sentence route; Stop is the user's choice, and the change keeps its
-    /// row's choices.
-    func priceHeldBackChanges() {
-        guard current, !wordingFit.stopped, !hasPaidTakes, !autoFix.stopped else { return }
-        let held = blockedVoiceOrdinals.filter { voiceReview($0)?.timing?.tooLong == true }
-        guard !held.isEmpty else { return }
-        pricedAnyway.formUnion(held)
-        autoFix.notes.append("\(Self.changeNames(held)) \(held.count == 1 ? "is" : "are") priced as written; "
-            + "once \(held.count == 1 ? "its take is" : "their takes are") measured, Rewrite rewords \(held.count == 1 ? "it" : "them") to fit.")
+    /// The free fit rounds a reply's over-budget changes get before takes (ai.md §12.9): one. A change still longer than
+    /// its slot after it keeps the speaker's words.
+    static let automaticFitRounds = 1
+
+    /// The automatic wording fit ended and a change is still longer than its time in the video (ai.md §12.9): it keeps
+    /// the speaker's own words, as a change the fit itself left as recorded does, and Rewrite goes on with the rest
+    /// (Get Price for what is left, or Done). Nothing is priced that can't fit: the video keeps running under the take.
+    /// A change too short keeps its surrounding-sentence route; after Stop, the footer's Keep my words settles them.
+    func keepLongChangesAsRecorded(evenAfterStop: Bool = false) {
+        guard current, evenAfterStop || !wordingFit.stopped, !hasPaidTakes, !autoFix.stopped || evenAfterStop else { return }
+        let long = blockedVoiceOrdinals.filter { voiceReview($0)?.timing?.tooLong == true }
+        guard !long.isEmpty else { return }
+        do { try applyWordingFit(long.map { VoiceLabFitUpdate(ordinal: $0, keepOriginal: true, text: "") }) }
+        catch { return }
+        autoFix.notes.append("\(Self.changeNames(long)) \(long.count == 1 ? "keeps" : "keep") your original words: "
+            + "still longer than \(long.count == 1 ? "its" : "their") time in the video after a fit.")
     }
 
     func stopWordingFit(refresh: Bool = true) {

@@ -176,7 +176,7 @@ extension RewriteSession {
                 askAgain: nil)
         }
         if wordingIsLocked {
-            headline.text = wordingFit.running ? "Fitting wording to the video · round \(wordingFit.round) of 3" : "Fit wording to the video"
+            headline.text = wordingFit.running ? "Fitting wording to the video · round \(wordingFit.round) of \(Self.automaticFitRounds)" : "Fit wording to the video"
             if wordingFit.running { headline.stop = PanelAction(id: "stopWordingFit", title: "Stop") { [weak self] in self?.stopWordingFit() } }
             askAgain = PanelAction(id: "askAgain", title: "Ask again") { [weak self] in
                 guard let self else { return }
@@ -238,7 +238,10 @@ extension RewriteSession {
         let checkThis = changes.indices.contains(change.ordinal - 1) && changes[change.ordinal - 1].checkThis
         var note = unavailable?.text ?? (checkThis ? "Check this: it adds something you didn't say." : nil)
         if wordingFit.kept.contains(change.ordinal) {
-            note = "kept your original words · \(toFixed1(voiceReview(change.ordinal)?.timing?.slotSeconds ?? 0)) s is too short to re-voice"
+            let slot = toFixed1(voiceReview(change.ordinal)?.timing?.slotSeconds ?? 0)
+            note = voiceReview(change.ordinal)?.timing?.tooLong == true
+                ? "kept your original words · the new wording is longer than its \(slot) s in the video"
+                : "kept your original words · \(slot) s is too short to re-voice"
         } else if let before = wordingFit.initialEstimates[change.ordinal], let timing = voiceReview(change.ordinal)?.timing, timing.fits {
             let fitted = "reworded to fit · was ≈ \(toFixed1(before)) s, now ≈ \(toFixed1(timing.estimateSeconds)) s · slot \(toFixed1(timing.slotSeconds)) s"
             note = [note, fitted].compactMap { $0 }.joined(separator: "\n")

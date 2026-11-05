@@ -189,7 +189,7 @@ struct PatchRewriteServiceTests {
                                    "ordinals": .object(["type": .string("array"), "items": .object(["type": .string("integer")])])])])])
         let schema: JSONValue = .object(["type": .string("object"), "additionalProperties": .bool(false), "required": .array([.string("edits")]),
                                          "properties": .object(["edits": .object(["type": .string("array"), "items": item]), "nextActions": next])])
-        #expect(prompt[ai: "schemaVersion"].aiInt == 1 && prompt[ai: "promptVersion"].aiInt == 3)
+        #expect(prompt[ai: "schemaVersion"].aiInt == 1 && prompt[ai: "promptVersion"].aiInt == 4)
         #expect(prompt[ai: "schemaName"].aiString == "patch_edits")
         #expect(prompt[ai: "schema"] == schema && CanonicalResponseParser.validateSchemaSubset(schema))
         #expect(prompt[ai: "messages"][ai: "checkThis"].aiString == (try PatchRewriteFixtures.document())[ai: "copy"][ai: "checkThis"].aiString)
