@@ -864,9 +864,11 @@ public struct Project: Codable, Sendable, Equatable {
     public var motionCues: [MotionCue]
     /// Background tracks under clips; schema v4 only, omitted when empty (doc/spec/music.md §2).
     public var music: [ProjectMusic]
+    /// Per-clip speed, frame, look, volume, fades, mute, flip and rotation; schema v4 only, omitted when empty (design.md §6.8).
+    public var clipControls: [ProjectClipControls]
 
     /// Creates an explicit value without I/O or generated identifiers.
-    public init(format: String = "voxclip-project", schemaVersion: Int = 1, id: String, title: String? = nil, createdAt: Date, modifiedAt: Date, savedBy: ProjectWriter, media: ProjectMedia, transcript: Transcript? = nil, edits: ProjectEdits = ProjectEdits(), captions: CaptionSettings = CaptionSettings(), export: ProjectExport = ProjectExport(), share: ProjectShare = ProjectShare(), ai: ProjectAI = ProjectAI(), voiceLab: ProjectVoiceLab = ProjectVoiceLab(), extensions: [String: JSONValue]? = nil, contextDemo: ContextDemoDocument? = nil, motionCues: [MotionCue] = [], music: [ProjectMusic] = []) {
+    public init(format: String = "voxclip-project", schemaVersion: Int = 1, id: String, title: String? = nil, createdAt: Date, modifiedAt: Date, savedBy: ProjectWriter, media: ProjectMedia, transcript: Transcript? = nil, edits: ProjectEdits = ProjectEdits(), captions: CaptionSettings = CaptionSettings(), export: ProjectExport = ProjectExport(), share: ProjectShare = ProjectShare(), ai: ProjectAI = ProjectAI(), voiceLab: ProjectVoiceLab = ProjectVoiceLab(), extensions: [String: JSONValue]? = nil, contextDemo: ContextDemoDocument? = nil, motionCues: [MotionCue] = [], music: [ProjectMusic] = [], clipControls: [ProjectClipControls] = []) {
         self.format = format
         self.schemaVersion = schemaVersion
         self.id = id
@@ -886,6 +888,7 @@ public struct Project: Codable, Sendable, Equatable {
         self.contextDemo = contextDemo
         self.motionCues = motionCues
         self.music = music
+        self.clipControls = clipControls
         self.clipStyle = nil
     }
 
@@ -910,6 +913,7 @@ public struct Project: Codable, Sendable, Equatable {
         case contextDemo
         case motionCues
         case music
+        case clipControls
     }
 
     public init(from decoder: any Decoder) throws {
@@ -934,17 +938,21 @@ public struct Project: Codable, Sendable, Equatable {
         self.contextDemo = try values.decodeIfPresent(ContextDemoDocument.self, forKey: .contextDemo)
         self.motionCues = try values.decodeIfPresent([MotionCue].self, forKey: .motionCues) ?? []
         self.music = try values.decodeIfPresent([ProjectMusic].self, forKey: .music) ?? []
+        self.clipControls = try values.decodeIfPresent([ProjectClipControls].self, forKey: .clipControls) ?? []
         guard schemaVersion == 4 || (!values.contains(.contextDemo) && !values.contains(.motionCues)) else {
             throw ContextDemoError.unsupportedVersion
         }
         guard schemaVersion == 4 || !values.contains(.music) else { throw MusicProjectError.unsupportedVersion }
+        guard schemaVersion == 4 || !values.contains(.clipControls) else { throw ClipControlsProjectError.unsupportedVersion }
         try ContextDemoProject.validate(self)
         try MusicProject.validate(self)
+        try ClipControlsProject.validate(self)
     }
 
     public func encode(to encoder: any Encoder) throws {
         try ContextDemoProject.validate(self)
         try MusicProject.validate(self)
+        try ClipControlsProject.validate(self)
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(self.format, forKey: .format)
         try values.encode(self.schemaVersion, forKey: .schemaVersion)
@@ -966,6 +974,7 @@ public struct Project: Codable, Sendable, Equatable {
         try values.encodeIfPresent(self.contextDemo, forKey: .contextDemo)
         if !self.motionCues.isEmpty { try values.encode(self.motionCues, forKey: .motionCues) }
         if !self.music.isEmpty { try values.encode(self.music, forKey: .music) }
+        if !self.clipControls.isEmpty { try values.encode(self.clipControls, forKey: .clipControls) }
     }
 
 }

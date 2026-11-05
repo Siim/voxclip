@@ -42,6 +42,7 @@ EXACT = ['shared/fixtures/voice-lab/pace-cases.json', 'shared/fixtures/voice-lab
          'shared/fixtures/voice-lab/window-cases.json', 'shared/fixtures/voice-lab/window-all-cases.json',
          'shared/fixtures/v2/paragraphs.json', 'shared/fixtures/v2/timeline-cases.json',
          'shared/fixtures/music/music-project.voxclip', 'shared/fixtures/music/music-wire-cases.json',
+         'shared/fixtures/clip-controls/clip-controls-project.voxclip', 'shared/fixtures/clip-controls/clip-controls-wire-cases.json',
          'shared/schemas/project.schema.json']
 REL_TOL = 1e-10
 ABS_TOL = 1e-12
@@ -72,6 +73,9 @@ def main():
     # The background-music schema field and its shared vectors (doc/spec/music.md section 2).
     subprocess.run([sys.executable, str(root / "tools/schemas/generate_music_schema.py")], check=True)
     subprocess.run([sys.executable, str(root / "tools/fixtures/music/generate_music.py")], check=True)
+    # The clip-controls schema field and its shared vectors (doc/design.md section 6.8).
+    subprocess.run([sys.executable, str(root / "tools/schemas/generate_clip_controls_schema.py")], check=True)
+    subprocess.run([sys.executable, str(root / "tools/fixtures/clip-controls/generate_clip_controls.py")], check=True)
     failed = False
     for path in EXACT:
         committed_bytes = subprocess.run(['git', 'show', f'HEAD:{path}'], check=True, capture_output=True).stdout

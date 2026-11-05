@@ -73,5 +73,6 @@ public enum ProjectJSON {
         try VoiceLabProject.validate(project)
         try ContextDemoProject.validate(project)
         try MusicProject.validate(project)
+        try ClipControlsProject.validate(project)
     }
 }

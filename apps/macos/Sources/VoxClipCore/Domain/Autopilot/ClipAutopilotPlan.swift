@@ -88,17 +88,8 @@ public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
         private enum CodingKeys: String, CodingKey { case styleId, font, textCase = "case", wordsPerCaption, reason }
     }
 
-    /// The colour look of the clip (ai.md §16.2). Rendering is owed to the next package; the ids are fixed here.
-    public enum LookID: String, Codable, Sendable, CaseIterable {
-        /// The footage as filmed.
-        case original
-        /// A calm, desaturated grade.
-        case muted
-        /// A soft golden grade.
-        case warm
-        /// Black and white.
-        case bw
-    }
+    /// The colour look of the clip (ai.md §16.2): the renderer's `ClipLook` (design.md §6.8).
+    public typealias LookID = ClipLook
 
     public struct Look: Codable, Sendable, Equatable {
         public var id: LookID
@@ -107,8 +98,8 @@ public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
         public static let original = Look(id: .original)
     }
 
-    /// The whole clip played at `rate` (between the prompt file's `minSpeed` and `maxSpeed`, never 1). Rendering is owed to
-    /// the Clip controls package.
+    /// The whole clip played at `rate` (between the prompt file's `minSpeed` and `maxSpeed`, never 1); applied with
+    /// `ClipControlsProject` (design.md §6.8).
     public struct Speed: Codable, Sendable, Equatable {
         public var rate: Double
         public var reason: String

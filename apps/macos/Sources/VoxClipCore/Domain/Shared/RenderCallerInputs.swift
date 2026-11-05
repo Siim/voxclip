@@ -51,6 +51,7 @@ public enum RenderCallerInputs {
         result.motionClipID = clipID
         result.motionCues = clipID.map { selected in project.motionCues.filter { $0.clipID == selected } } ?? []
         result.music = MusicRenderInput.resolve(project: project, clipId: clipID, dataRoot: dataRoot)
+        result.clipControls = ClipControlsProject.controls(for: clipID, in: project).flatMap { $0.isDefault ? nil : $0 }
         result.reduceMotion = request.forPreview && reduceMotion
         result.contextDemo = nil
         result.contextDemoRoot = nil
