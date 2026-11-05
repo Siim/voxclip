@@ -1,0 +1,496 @@
+{
+  "schema": "voxclip-tts-estimator/1",
+  "caseCount": 31,
+  "prior": {
+    "version": 2,
+    "providerSpeechRateMultiplier": 1.2,
+    "onsetSeconds": 0.4,
+    "sentencePauseSeconds": 0.5,
+    "clausePauseSeconds": 0.1,
+    "trimLeadSeconds": 0.03,
+    "trimTailSeconds": 0.06,
+    "priorSpread": 1.15,
+    "ratioBounds": [
+      0.25,
+      4.0
+    ],
+    "spreadBounds": [
+      1.05,
+      1.6
+    ],
+    "voiceSampleLimit": 30,
+    "projectSampleLimit": 10,
+    "voiceWeight": 3
+  },
+  "observed": {
+    "date": "2026-11-05",
+    "takes": 78,
+    "model": "eleven_v4",
+    "note": "bin medians of measured takes; texts are synthetic"
+  },
+  "estimates": [
+    {
+      "id": "final-mark-is-free",
+      "text": "Hello there.",
+      "rate": 11.69,
+      "letters": 10,
+      "pauseSeconds": 0.0,
+      "expectedSeconds": 1.20285999429712
+    },
+    {
+      "id": "internal-sentence",
+      "text": "Hello there. We ride",
+      "rate": 11.69,
+      "letters": 16,
+      "pauseSeconds": 0.5,
+      "expectedSeconds": 2.130575990875392
+    },
+    {
+      "id": "clause-groups",
+      "text": "One, two; three",
+      "rate": 11.69,
+      "letters": 11,
+      "pauseSeconds": 0.2,
+      "expectedSeconds": 1.4741459937268322
+    },
+    {
+      "id": "one-group-largest-pause",
+      "text": "Wait... what?! Yes",
+      "rate": 11.69,
+      "letters": 11,
+      "pauseSeconds": 1.0,
+      "expectedSeconds": 2.2741459937268322
+    },
+    {
+      "id": "joined-hyphen",
+      "text": "A-10 Canary",
+      "rate": 9.988221436984691,
+      "letters": 9,
+      "pauseSeconds": 0.0,
+      "expectedSeconds": 1.2408844339622638
+    },
+    {
+      "id": "spaced-hyphen",
+      "text": "yes - no",
+      "rate": 10.0,
+      "letters": 5,
+      "pauseSeconds": 0.1,
+      "expectedSeconds": 1.0066666666666668
+    },
+    {
+      "id": "em-dash",
+      "text": "Well — fine.",
+      "rate": 10.0,
+      "letters": 8,
+      "pauseSeconds": 0.1,
+      "expectedSeconds": 1.2566666666666668
+    },
+    {
+      "id": "quote-after-mark",
+      "text": "“Quoted.” Next",
+      "rate": 12.0,
+      "letters": 10,
+      "pauseSeconds": 0.5,
+      "expectedSeconds": 1.6844444444444444
+    },
+    {
+      "id": "no-letters",
+      "text": "...",
+      "rate": 10.0,
+      "letters": 0,
+      "pauseSeconds": 0.0,
+      "expectedSeconds": 0.49
+    },
+    {
+      "id": "digits",
+      "text": "In 2026 we rode 120 km.",
+      "rate": 11.38,
+      "letters": 17,
+      "pauseSeconds": 0.0,
+      "expectedSeconds": 1.7348740480374927
+    },
+    {
+      "id": "estonian",
+      "text": "Tere, õhtust! Sõidame",
+      "rate": 11.0,
+      "letters": 17,
+      "pauseSeconds": 0.6,
+      "expectedSeconds": 2.377878787878788
+    },
+    {
+      "id": "cjk",
+      "text": "你好。世界",
+      "rate": 6.0,
+      "letters": 4,
+      "pauseSeconds": 0.5,
+      "expectedSeconds": 1.5455555555555556
+    }
+  ],
+  "real": [
+    {
+      "id": "v4-6-15-letters",
+      "text": "Turn it on now",
+      "rate": 11.69,
+      "observedSeconds": 1.28,
+      "oldEstimateSeconds": 0.6127639958178881,
+      "expectedSeconds": 1.2741459937268322
+    },
+    {
+      "id": "v4-16-25-letters",
+      "text": "Then we ride on the coast",
+      "rate": 11.69,
+      "observedSeconds": 1.84,
+      "oldEstimateSeconds": 1.04047999239616,
+      "expectedSeconds": 1.9157199885942402
+    },
+    {
+      "id": "v4-26-40-letters",
+      "text": "After this bridge, the road climbs fast",
+      "rate": 11.69,
+      "observedSeconds": 2.6,
+      "oldEstimateSeconds": 1.7307679878338562,
+      "expectedSeconds": 2.8711519817507845
+    },
+    {
+      "id": "v4-41-70-letters",
+      "text": "We left the town early, and the light was still too soft",
+      "rate": 11.69,
+      "observedSeconds": 3.92,
+      "oldEstimateSeconds": 2.3010559832715525,
+      "expectedSeconds": 3.7265839749073284
+    }
+  ],
+  "calibration": [
+    {
+      "id": "empty",
+      "project": [],
+      "voice": [],
+      "robustProject": [],
+      "merged": [],
+      "multiplier": 1.0,
+      "spread": 1.15
+    },
+    {
+      "id": "one-sample-is-uncalibrated",
+      "project": [
+        1.2
+      ],
+      "voice": [],
+      "robustProject": [
+        1.2
+      ],
+      "merged": [
+        1.2
+      ],
+      "multiplier": 1.0,
+      "spread": 1.15
+    },
+    {
+      "id": "two-samples-median",
+      "project": [
+        1.2,
+        1.4
+      ],
+      "voice": [],
+      "robustProject": [
+        1.2,
+        1.4
+      ],
+      "merged": [
+        1.2,
+        1.4
+      ],
+      "multiplier": 1.2999999999999998,
+      "spread": 1.15
+    },
+    {
+      "id": "out-of-bounds-dropped",
+      "project": [
+        0.1,
+        5.0,
+        1.0,
+        1.1
+      ],
+      "voice": [],
+      "robustProject": [
+        1.0,
+        1.1
+      ],
+      "merged": [
+        0.1,
+        5.0,
+        1.0,
+        1.1
+      ],
+      "multiplier": 1.05,
+      "spread": 1.15
+    },
+    {
+      "id": "outlier-trimmed",
+      "project": [
+        1.0,
+        1.02,
+        0.98,
+        1.05,
+        0.97,
+        3.0
+      ],
+      "voice": [],
+      "robustProject": [
+        1.0,
+        1.02,
+        0.98,
+        1.05,
+        0.97
+      ],
+      "merged": [
+        1.0,
+        1.02,
+        0.98,
+        1.05,
+        0.97,
+        3.0
+      ],
+      "multiplier": 1.0,
+      "spread": 1.05
+    },
+    {
+      "id": "project-keeps-last-ten",
+      "project": [
+        2.0,
+        2.0,
+        2.0,
+        1.0,
+        1.1,
+        0.9,
+        1.05,
+        0.95,
+        1.0,
+        1.2,
+        0.8,
+        1.0
+      ],
+      "voice": [],
+      "robustProject": [
+        1.0,
+        1.1,
+        0.9,
+        1.05,
+        0.95,
+        1.0,
+        1.2,
+        0.8,
+        1.0
+      ],
+      "merged": [
+        2.0,
+        2.0,
+        2.0,
+        1.0,
+        1.1,
+        0.9,
+        1.05,
+        0.95,
+        1.0,
+        1.2,
+        0.8,
+        1.0
+      ],
+      "multiplier": 1.0,
+      "spread": 1.07
+    },
+    {
+      "id": "wide-spread-clamped",
+      "project": [
+        0.5,
+        0.6,
+        0.7,
+        1.0,
+        1.9,
+        2.0,
+        2.1
+      ],
+      "voice": [],
+      "robustProject": [
+        0.5,
+        0.6,
+        0.7,
+        1.0,
+        1.9,
+        2.0,
+        2.1
+      ],
+      "merged": [
+        0.5,
+        0.6,
+        0.7,
+        1.0,
+        1.9,
+        2.0,
+        2.1
+      ],
+      "multiplier": 1.0,
+      "spread": 1.6
+    },
+    {
+      "id": "voice-starts-a-new-project",
+      "project": [],
+      "voice": [
+        0.9,
+        0.95,
+        1.0,
+        1.05,
+        1.1,
+        0.92
+      ],
+      "robustProject": [],
+      "merged": [
+        0.975,
+        0.975,
+        0.975
+      ],
+      "multiplier": 0.975,
+      "spread": 1.076923076923077
+    },
+    {
+      "id": "two-project-takes-keep-the-voice",
+      "project": [
+        1.3,
+        1.35
+      ],
+      "voice": [
+        0.9,
+        0.95,
+        1.0,
+        1.05,
+        1.1,
+        0.92
+      ],
+      "robustProject": [
+        1.3,
+        1.35
+      ],
+      "merged": [
+        0.975,
+        0.975,
+        0.975,
+        1.3,
+        1.35
+      ],
+      "multiplier": 0.975,
+      "spread": 1.076923076923077
+    },
+    {
+      "id": "project-outweighs-the-voice",
+      "project": [
+        1.3,
+        1.35,
+        1.32,
+        1.28
+      ],
+      "voice": [
+        0.9,
+        0.95,
+        1.0,
+        1.05,
+        1.1,
+        0.92
+      ],
+      "robustProject": [
+        1.3,
+        1.35,
+        1.32,
+        1.28
+      ],
+      "merged": [
+        0.975,
+        0.975,
+        0.975,
+        1.3,
+        1.35,
+        1.32,
+        1.28
+      ],
+      "multiplier": 1.28,
+      "spread": 1.076923076923077
+    },
+    {
+      "id": "voice-with-one-sample-ignored",
+      "project": [
+        1.3,
+        1.35
+      ],
+      "voice": [
+        0.9
+      ],
+      "robustProject": [
+        1.3,
+        1.35
+      ],
+      "merged": [
+        1.3,
+        1.35
+      ],
+      "multiplier": 1.3250000000000002,
+      "spread": 1.15
+    }
+  ],
+  "wordTargets": [
+    {
+      "id": "prior-spread",
+      "wordsPerSecond": 2.5,
+      "multiplier": 1.0,
+      "minimumSeconds": 2.0,
+      "maximumSeconds": 3.0,
+      "overheadSeconds": 0.49,
+      "bridgeWords": 0,
+      "spread": 1.15,
+      "expected": {
+        "minimum": 5,
+        "maximum": 6
+      }
+    },
+    {
+      "id": "calibrated-and-bridged",
+      "wordsPerSecond": 2.4,
+      "multiplier": 1.1,
+      "minimumSeconds": 1.5,
+      "maximumSeconds": 2.5,
+      "overheadSeconds": 0.6,
+      "bridgeWords": 2,
+      "spread": 1.15,
+      "expected": {
+        "minimum": 1,
+        "maximum": 2
+      }
+    },
+    {
+      "id": "median-budget",
+      "wordsPerSecond": 2.5,
+      "multiplier": 1.0,
+      "minimumSeconds": 2.0,
+      "maximumSeconds": 3.0,
+      "overheadSeconds": 0.49,
+      "bridgeWords": 0,
+      "spread": 1.0,
+      "expected": {
+        "minimum": 5,
+        "maximum": 7
+      }
+    },
+    {
+      "id": "tight-slot-keeps-one-word",
+      "wordsPerSecond": 2.0,
+      "multiplier": 1.0,
+      "minimumSeconds": 0.5,
+      "maximumSeconds": 0.6,
+      "overheadSeconds": 0.49,
+      "bridgeWords": 0,
+      "spread": 1.3,
+      "expected": {
+        "minimum": 1,
+        "maximum": 1
+      }
+    }
+  ]
+}

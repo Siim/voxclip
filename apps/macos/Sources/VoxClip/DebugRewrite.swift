@@ -625,7 +625,9 @@ extension DebugRewrite {
         defer { for (key, value) in zip(keys, saved) { app.settings.values[key] = value } }
         let prices = app.shared.flatMap { try? VoiceLabPriceCatalog(data: Data(contentsOf: $0.root.appendingPathComponent("catalog/voice-lab.json"))) }
         let envelope = AudioEnvelope(sampleRate: 48_000, levels: Array(repeating: 0.01, count: 10_000))
-        /// Clip 1 over words 10–45 of an 80-word take, half a second apart, and the reply `edit` makes of its words.
+        /// Clip 1 over words 10–45 of an 80-word take, 0.4 s each with 0.1 s between, and the reply `edit` makes of its
+        /// words. The words the scenes voice (20, 30 and 40) are drawn out to 0.9 s: a one-word take carries the provider's
+        /// onset (ADR-R41), so a 0.4 s word is no slot for it.
         func scene(_ name: String, voiceLab: Bool = true, edit: ([String]) -> [String]) -> (EditorModel, RewriteSession) {
             app.settings.values["voiceLab.enabled"] = .bool(voiceLab)
             app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(voiceLab)
@@ -633,7 +635,12 @@ extension DebugRewrite {
             var project = fixture
             project.id = UUID().uuidString.lowercased()
             project.edits = ProjectEdits()
-            project.transcript?.words = (0..<80).map { TimedWord(id: "r2-\($0)", text: "word\($0)", start: Double($0) * 0.5 + 1, end: Double($0) * 0.5 + 1.4) }
+            var cursor = 1.0
+            project.transcript?.words = (0..<80).map { index in
+                let length = [20, 30, 40].contains(index) ? 0.9 : 0.4
+                defer { cursor += length + 0.1 }
+                return TimedWord(id: "r2-\(index)", text: "word\(index)", start: cursor, end: cursor + length)
+            }
             project.media.source.durationSeconds = 100
             project.transcript?.durationSeconds = 100
             project.edits.clips = [ClipRange(id: "r2-clip", startWordId: "r2-10", endWordId: "r2-45")]

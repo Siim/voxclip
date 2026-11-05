@@ -251,9 +251,11 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         project.media.source.durationSeconds = 121
         project.media.source.audio?.sampleRate = 24_000
         let wordCount = contextWords ? 32 : 24
+        // A slow speaker: five letters a 3.8 s word, so the calibrated prior (ADR-R41) gives a one-word take about the
+        // length the plan's slots were drawn for.
         project.transcript?.words = (0..<wordCount).map { index in
             let start = 0.2 + Double(index) * (contextWords ? 3.5 : 5)
-            let text = contextWords ? String(repeating: "context", count: 10) + (index % 4 == 3 ? "." : "") : "old"
+            let text = contextWords ? String(repeating: "context", count: 10) + (index % 4 == 3 ? "." : "") : "older"
             return TimedWord(id: "w\(index)", text: text, start: start, end: start + (contextWords ? 3 : 3.8))
         }
         project.transcript?.durationSeconds = 121

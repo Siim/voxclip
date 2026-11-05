@@ -29,7 +29,13 @@ import Testing
                 incomingSilence: nil, outgoingSilence: nil, sourceSampleRate: fixture.sourceSampleRate,
                 supportsPace: false, hardJoinSmoothing: true)
             #expect(timing.fits && timing.pace == 1)
-            let rate = 6 / ((row.speechSeconds - 0.09) * VoiceLabPhraseTiming.providerSpeechRateMultiplier)
+            // Every estimate carries the trim allowance and the take's onset; a shorter length is no estimate's.
+            let fixed = VoiceLabPatchConstants.TTS_TRIM_LEAD + VoiceLabPatchConstants.TTS_TRIM_TAIL + VoiceLabPhraseTiming.onsetSeconds
+            guard row.speechSeconds > fixed else {
+                #expect(try VoiceLabPhraseTiming.estimate(text: "speech", rate: 1_000) > row.speechSeconds)
+                continue
+            }
+            let rate = 6 / ((row.speechSeconds - fixed) * VoiceLabPhraseTiming.providerSpeechRateMultiplier)
             let measured = try VoiceLabPaceMatching.measure(text: "speech", rate: rate, window: source,
                 incomingSilence: nil, outgoingSilence: nil, sourceSampleRate: fixture.sourceSampleRate,
                 supportsPace: false, hardJoinSmoothing: true)
