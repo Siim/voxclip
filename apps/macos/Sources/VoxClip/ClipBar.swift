@@ -44,6 +44,8 @@ enum ClipBarMetrics {
 @MainActor final class ClipBarView: NSView, NSTextFieldDelegate, NSPopoverDelegate {
     let model: EditorModel
     let shell: WorkspaceShell
+    /// ✦ Make it postable on the tab's clip, kept or suggested (design.md §6.10): Claude decides, one review follows.
+    let makeIt = ClipBarButton(style: .verb, symbol: "wand.and.stars", label: "Make it postable", identifier: "voxclip.clipBar.makeIt")
     let rewrite = ClipBarButton(style: .verb, symbol: "sparkles", label: "Rewrite", identifier: "voxclip.clipBar.rewrite")
     let tighten = ClipBarButton(style: .verb, symbol: "arrow.right.and.line.vertical.and.arrow.left", label: "Tighten", identifier: "voxclip.clipBar.tighten")
     let hook = ClipBarButton(style: .verb, symbol: "bolt", label: "Hook", identifier: "voxclip.clipBar.hook")
@@ -74,7 +76,8 @@ enum ClipBarMetrics {
         super.init(frame: NSRect(x: 0, y: 0, width: 652, height: ShellMetrics.clipBar))
         identifier = NSUserInterfaceItemIdentifier("voxclip.shell.clipBar")
         setAccessibilityRole(.group)
-        for view in [rewrite, rewriting, tighten, toast, hook, finding, askButton, ask, picker, suggestionLabel, keep, dismiss] as [NSView] { addSubview(view) }
+        for view in [makeIt, rewrite, rewriting, tighten, toast, hook, finding, askButton, ask, picker, suggestionLabel, keep, dismiss] as [NSView] { addSubview(view) }
+        makeIt.onPress = { [weak self] in self?.makeItPostable() }
         rewrite.onPress = { [weak self] in self?.runRewrite() }
         tighten.onPress = { [weak self] in self?.runTighten() }
         hook.onPress = { [weak self] in self?.model.runHook() }
@@ -198,6 +201,13 @@ enum ClipBarMetrics {
         picker.isHidden = !scoped && !readOnly
         picker.render()
         for view in [suggestionLabel, keep, dismiss] as [NSView] { view.isHidden = !suggested }
+        let makeItClip: String? = switch variant { case .scope(let id): id; case .suggestion(let id): id; default: nil }
+        makeIt.isHidden = makeItClip.map { !model.canMakeItPostable($0) } ?? true
+        if let makeItClip, !makeIt.isHidden {
+            let title = model.makeItTitle(clipID: makeItClip)
+            makeIt.toolTip = title
+            makeIt.setAccessibilityLabel(title.replacingOccurrences(of: "✦ ", with: ""))
+        }
         linkKeyViews()
         needsLayout = true
         needsDisplay = true
@@ -205,7 +215,7 @@ enum ClipBarMetrics {
     /// Tab moves through the bar in reading order, from the active tab (F6's stop, V3a). The window may recalculate
     /// its key-view loop as views come and go, so every render links the bar again.
     private func linkKeyViews() {
-        let order: [NSView] = [self, rewrite, tighten, toast.undo, hook, askButton, ask, picker, keep, dismiss]
+        let order: [NSView] = [self, makeIt, rewrite, tighten, toast.undo, hook, askButton, ask, picker, keep, dismiss]
         for (view, next) in zip(order, order.dropFirst()) where view.nextKeyView !== next { view.nextKeyView = next }
     }
 
@@ -215,8 +225,8 @@ enum ClipBarMetrics {
     private var leadingViews: [NSView] {
         switch variant {
         case .hidden: []
-        case .scope, .readOnly: [rewrite, rewriting, tighten, toast, hook, finding, askButton]
-        case .suggestion: [suggestionLabel, keep, dismiss]
+        case .scope, .readOnly: [makeIt, rewrite, rewriting, tighten, toast, hook, finding, askButton]
+        case .suggestion: [suggestionLabel, keep, dismiss, makeIt]
         }
     }
     override func layout() {
@@ -225,7 +235,7 @@ enum ClipBarMetrics {
         let iconsOnly = width < ClipBarMetrics.iconsBelow
         let collapsed = width < ClipBarMetrics.askButtonBelow
         // "Ask…" keeps its word: its icon would read as Rewrite's.
-        for verb in [rewrite, tighten, hook] where verb.iconOnly != iconsOnly { verb.iconOnly = iconsOnly }
+        for verb in [makeIt, rewrite, tighten, hook] where verb.iconOnly != iconsOnly { verb.iconOnly = iconsOnly }
         askButton.isHidden = !(asks && collapsed)
         ask.isHidden = !(asks && !collapsed)
         if collapsed, ask.currentEditor() != nil { window?.makeFirstResponder(nil) }
@@ -275,6 +285,12 @@ enum ClipBarMetrics {
     var findClipsAnchorView: NSView { hook.isHidden || hook.window == nil ? self : hook }
 
     // MARK: Actions
+
+    /// ✦ Make it postable on the tab's clip.
+    func makeItPostable() {
+        let id: String? = switch variant { case .scope(let id): id; case .suggestion(let id): id; default: nil }
+        if let id { model.makeItPostable(id) }
+    }
 
     /// Rewrite and Return in the Ask field: Rewrite on the scope now with the field's text as its instruction, as Edit ›
     /// Rewrite and ⇧⌘R run it (V13's `runRewrite`); on the open session's own scope it sends again.

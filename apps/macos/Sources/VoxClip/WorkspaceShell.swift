@@ -577,6 +577,18 @@ enum SidebarItem: Hashable {
             guard let self, let model else { return }
             self.leaveExportJob(for: model)
         }
+        model.onShowMakeIt = { [weak self, weak model] in
+            guard let self, let model else { return }
+            if let id = model.makeIt.shownClipID, self.selection != .clip(id) { self.choose(.clip(id), byClick: false) }
+            if !self.viewerShown { self.toggleViewer() }
+            self.choosePanelJob(.makeIt, for: model)
+        }
+        model.onShowPanelJob = { [weak self, weak model] job in
+            guard let self, let model else { return }
+            if !self.viewerShown { self.toggleViewer() }
+            self.choosePanelJob(job, for: model)
+        }
+        model.onRenameClip = { [weak self] id in self?.choose(.clip(id), byClick: false); self?.beginRename(id) }
         model.onNeedsSuggestions = { [weak self] in self?.setExplorerExpanded(.suggested, true) }
         next.editorModel = model
         renaming = nil

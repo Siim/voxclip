@@ -537,7 +537,7 @@ private actor HookFixtureConnector: LLMConnector {
         let work = EditorWorkController(model: editor, shell: shell)
         defer { work.tearDown() }
         work.tabBar.render()
-        #expect(work.tabBar.activeItem?.nextKeyView === work.clipBar && work.clipBar.nextKeyView === work.clipBar.rewrite)
+        #expect(work.tabBar.activeItem?.nextKeyView === work.clipBar && work.clipBar.nextKeyView === work.clipBar.makeIt && work.clipBar.makeIt.nextKeyView === work.clipBar.rewrite)
         #expect(work.clipBar.identifier?.rawValue == "voxclip.shell.clipBar")
     }
 }

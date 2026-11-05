@@ -33,6 +33,7 @@ extension EditorModel {
         switch command {
         case 1, 2, 3, 7, 8, 9, 29, 30, 31, 37, 40, 41, 42, 43, 44: return capabilities.edit
         case 34: return capabilities.ai
+        case 62: return capabilities.ai && capabilities.edit
         case 38: return RewriteEntryPolicy.canRun(editable: capabilities.ai, scope: rewriteScopeNow)
         case 45: return canExport && mediaExportable
         default: return nil

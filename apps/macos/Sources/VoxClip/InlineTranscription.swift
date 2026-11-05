@@ -46,6 +46,8 @@ import VoxClipMedia
     @ObservationIgnored var choiceTask: Task<Void, Never>?
     @ObservationIgnored var installTask: Task<Void, Never>?
     @ObservationIgnored private var begun = false
+    /// The run under way started by itself as the video was imported; Find Clips may follow it (`findClipsIfFree`).
+    @ObservationIgnored var startedOnImport = false
     @ObservationIgnored unowned let model: EditorModel
     @ObservationIgnored var scribeSession: URLSession?
     #if DEBUG
@@ -163,6 +165,7 @@ import VoxClipMedia
     }
     func open(automatic: Bool = false, again: Bool = false) async {
         guard !isRunning else { return }
+        startedOnImport = false
         revision += 1
         let request = revision
         downloadBaseline = nil
@@ -181,6 +184,7 @@ import VoxClipMedia
         guard request == revision, !Task.isCancelled else { return }
         if automatic && preferred != "ask" && !again && !paid && readiness == .ready && (language != "auto" || engine == "local") {
             startApprovedRun()
+            startedOnImport = activeRun != nil
         }
     }
     private func loadPriceAndKey(request: Int) async {
