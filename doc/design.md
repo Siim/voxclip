@@ -1784,6 +1784,43 @@ A new project's card starts from the Settings default, or from Auto when there i
 - **Persistence.** Each choice is one undo step. Settings saves `clipStyle.default` without `captionPicks`. Picks for deleted clips are pruned at the next pick.
 - **Still owed.** Per-clip caption styles at export (today only the active clip's pick is applied to the project's style). Claude-sourced emoji for Emoji pop (it uses the keyword rule for now). The Windows Pick styles action and its consent (Windows records and applies picks, but has no button yet). Music, Length, Shape and Rewording are stored for the planner and music packages, which consume them.
 
+### 6.8 Clip controls (Clip section)
+
+User request (2026-11-05): "the video speed. It should be a clip speed. We should be able to modify it. Some really basic things like this. They shouldn't be screaming into the screen, but we definitely want to have some standard features of video editors." Approved mockup "Clip controls and Ask Claude", part A.
+
+**Where.** A **Clip** section in the right panel, folded under Captions and Music, in the Captions panel's look: a hairline, an uppercase 30 pt heading "CLIP" with a summary of what differs from the defaults ("1.25× · Muted"), and a chevron. It shows only while a clip is open (never on Full Take). It opens and closes in place; nothing in it opens a pop-up. Gaps use the §16.1 tokens (label gap between rows, chip gap between chips).
+
+**Rows** (open):
+
+| Row | Control | Values |
+|---|---|---|
+| Speed | a mini slider and its value, then preset chips | 0.5–2.0×, hundredths; presets 0.75×, 1×, 1.1×, 1.25×, 1.5×, 2× |
+| Shape | "As the project" or "This clip only", then chips | 16:9, 9:16, 1:1, 4:5; the chosen chip again goes back to the project frame |
+| Look | the look's name, then chips | Original, Muted, Warm, B&W |
+| Volume | a mini slider and "−3 dB"; while muted, "Source muted · Unmute" | −24 to +12 dB, half decibels |
+| More ▸ | folds Fade in, Fade out, Mute source, Flip and Rotate | fades 0–5 s in tenths; Rotate turns 90° clockwise and shows "90° → 180°" |
+
+Rotate shows only when the source has a picture. A footer reads "Speed keeps the voice's pitch; captions, cuts and music follow it."
+
+**Status.** The panel header shows the speed ("1.1×", text.secondary, semibold small) after the clip's name when it isn't 1.
+
+**Undo and input.** Each change is one undo step named for it ("Change speed", "Change look", "Change clip shape", "Change clip volume", "Change fade", "Mute source", "Flip", "Rotate"). A slider drag commits once when it ends; keyboard and VoiceOver steps (speed 0.05×, volume 0.5 dB, fades 0.1 s) commit each step. Every control has a VoiceOver name ("Speed", "Speed 1.25×", "Rotate 90 degrees clockwise") and value, and each change is announced ("Speed 1.25×"). Setting a value a control already has is no step.
+
+**Contract.** One `clipControls` entry per clip in the project (schema v4, omitted when empty, never stored at its defaults): `speed`, `shape` (null keeps `export.aspect`; 4:5 exists only here), `look`, `gainDb`, `fadeInSeconds`, `fadeOutSeconds`, `muteSource`, `flipHorizontal`, `rotationDegrees`. Removing a clip, or replacing the transcript, removes its controls. Generator `tools/schemas/generate_clip_controls_schema.py`; shared vectors `shared/fixtures/clip-controls/`.
+
+**Rendering** (Mac; preview and export share one path, `CompositionBuilder` and `FrameCompositor`):
+
+- **Speed.** The voice is staged at 1× through the graph's own mix (join fades, or the Voice Lab mix), stretched in a scaled composition read with `AVAudioTimePitchAlgorithm.spectral` so it keeps its pitch, and inserted in place of the voice track; the whole composition is then time-scaled. Words, caption pages, cuts and motion cues keep their 1× edited times: the compositor multiplies each rendered frame time back by the speed before it looks up captions, motion and Voice Lab layers, the preview clock does the same, and subtitles are written at page times ÷ speed. The music bed is never sped up; it is staged for the rendered length and ducks under the voice as it plays.
+- **Voice Lab phrases** keep their own pacing: a phrase's retime or wording fit is planned at 1×, then the clip's speed applies on top, so a phrase retimed to 1.1× in a clip at 1.25× plays at about 1.375× its take.
+- **Volume, fades and mute** act on the clip's voice track (the source with any Voice Lab phrases already mixed in), in rendered time, before the music bed measures that voice for ducking. A muted clip's bed doesn't dip.
+- **Looks** are fixed colour recipes (`ClipLookRecipe`): Muted is 35% less saturation with blacks lifted 4%; Warm is red ×1.06, green ×1.01, blue ×0.9, +0.01; B&W is Rec. 709 luma with the cubic 0.7x + 0.9x² − 0.6x³ (0, ½ and 1 stay put). They apply to the finished frame before captions.
+- **Flip and rotate** mirror, then turn, the oriented source before the frame's crop, so every shape fills; a framing anchor turns with it. With the project frame on Original, a quarter turn swaps the frame's width and height.
+- **Defaults** render exactly as before: no staged voice, no scaled time, no colour filter.
+
+**Commands** for the planner and Ask Claude (`EditorModel+ClipControls.swift`): `setSpeed`, `setLook`, `setShape`, `setGain`, `setFade(in:out:)`, `setMute`, `setFlip`, `setRotation`, `resetClipControls`, and `apply(look:)` and `apply(speed:)` with the planner's `ClipAutopilotPlan.Look` and `.Speed`. Each takes an optional `clipID` (the open clip by default), returns whether it changed anything, and is one undo step.
+
+**Windows.** Opens, validates and saves clip controls unchanged; export of a project with them stops with "Windows cannot play clip speed, looks, volume, fades, flip or rotation yet. Export this project on a Mac, or reset its clip controls there. Your clip controls and edits are unchanged." Rendering on Windows is owed; the look recipes are plain numbers it can reuse.
+
 ---
 
 ## 7. Home

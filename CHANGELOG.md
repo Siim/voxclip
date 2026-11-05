@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Mac, each clip has quiet Clip controls under Music: speed (0.5–2×, the voice keeps its pitch and the captions follow), its own shape (16:9, 9:16, 1:1 or 4:5), a look (Muted, Warm or B&W), volume, fades, mute, flip and rotate. Windows opens and saves these projects.
 - Seven new caption styles in Roboto Black (Marker, Punch-in, Sing-along, Heavy shadow, Glow, Emoji pop, Minimal), and a "How should clips be made?" card above the clips: pick Auto and Claude chooses a caption style for each clip and says why, or fix your own style and it is never changed.
 - Behind the scenes, the Make it postable planner now picks only a video's strongest moments and lands each clip at 20–45 s, plans a 6-minute video in under two minutes, fixes misheard names in the captions, and chooses a caption style, a colour look and, where it helps, a speed for each clip.
 - Rewrite phrase cards, panels, fields and next-step chips have even, roomier spacing, and the timeline's header no longer crowds at the smallest window.

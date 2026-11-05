@@ -1234,6 +1234,6 @@ import VoxClipCore
                 throw Failure.setup("S15's measured round named no bridge words, so no reply dropped them")
             }
         },
-    ] + ownTakeScenarios }
+    ] + ownTakeScenarios + clipControlsScenarios }
 }
 #endif

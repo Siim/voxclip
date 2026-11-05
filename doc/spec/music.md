@@ -136,6 +136,8 @@ The bed is a 48 kHz stereo float CAF in the render's scratch folder, kept by a l
 Without music nothing changes: no second track, the same audio mix, so every golden and bit-exact test is unchanged.
 The edited-audio path (word and speaker checks) and the video-duration probe always read the voice alone.
 
+A clip's speed (design.md §6.8) never speeds the bed up: it is staged for the clip's rendered length (the edited length divided by the speed) and measures the voice after the clip's volume, fades and mute, so it ducks under the voice as it plays.
+
 ## 5. Credits
 
 `ProjectMusic.creditLine`: CC BY and the other library licences use Openverse's attribution ("Music: " + attribution),
