@@ -162,9 +162,10 @@ public sealed class WindowsShellV2Tests
         Assert.Contains("Visibility=\"{x:Bind ShowsActions, Mode=OneWay}\"", clip);
         Assert.Contains("Visibility=\"{x:Bind ShowsDuration, Mode=OneWay}\"", clip);
         Assert.Contains("<Grid ColumnSpacing=\"8\" MinHeight=\"32\">", clip);
-        Assert.Contains("Click=\"RewriteClipClicked\" Tapped=\"RowButtonTapped\"", clip);
+        // The row ✦ is Make it postable (design §6.7); Rewrite stays in the row's menu.
+        Assert.Contains("Click=\"MakeItClipClicked\" Tapped=\"RowButtonTapped\"", clip);
         Assert.Contains("Click=\"MoreClipClicked\" Tapped=\"RowButtonTapped\"", clip);
-        Assert.Contains("AutomationProperties.Name=\"{x:Bind RewriteName, Mode=OneWay}\"", clip);
+        Assert.Contains("AutomationProperties.Name=\"{x:Bind MakeItName, Mode=OneWay}\"", clip);
         Assert.Contains("AutomationProperties.Name=\"More\"", clip);
         Assert.Equal(2, clip.Split("Style=\"{ThemeResource SubtleButtonStyle}\"").Length - 1);
         Assert.Contains("IsTabStop=\"False\"", clip);
@@ -172,11 +173,11 @@ public sealed class WindowsShellV2Tests
         Assert.Contains("PointerEntered=\"ClipRowPointerEntered\"", suggestion);
         Assert.Contains("Visibility=\"{x:Bind ShowsActions, Mode=OneWay}\"", suggestion);
         Assert.Contains("Visibility=\"{x:Bind ShowsDuration, Mode=OneWay}\"", suggestion);
-        Assert.Contains("Click=\"RewriteClipClicked\" Tapped=\"RowButtonTapped\"", suggestion);
+        Assert.Contains("Click=\"MakeItClipClicked\" Tapped=\"RowButtonTapped\"", suggestion);
         Assert.Contains("Click=\"MoreClipClicked\" Tapped=\"RowButtonTapped\"", suggestion);
         Assert.Equal(1, suggestion.Split("<MenuFlyout>").Length - 1);
         foreach (var template in new[] { clip, suggestion })
-            foreach (var handler in new[] { "RewriteClipClicked", "CaptionsClipClicked", "FindMoreClipsClicked", "ExportClipClicked" })
+            foreach (var handler in new[] { "MakeItClipClicked", "RewriteClipClicked", "CaptionsClipClicked", "FindMoreClipsClicked", "ExportClipClicked" })
                 Assert.Contains($"Click=\"{handler}\"", template.Split("</MenuFlyout>")[0]);
         Assert.Contains("Text=\"Keep clip\"", suggestion);
         Assert.Contains("Text=\"Dismiss\"", suggestion);

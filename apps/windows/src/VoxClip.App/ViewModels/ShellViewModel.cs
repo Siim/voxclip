@@ -23,6 +23,8 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     private bool isSelected;
     private bool isPointerOver;
     private bool canRewrite;
+    private bool canMakeIt, showsMakeTop;
+    private string makeItName = "✦ Make it postable", makeTopName = "";
     private bool isEnabled = true;
     private bool isLlmBusy;
     private bool edits = true;
@@ -87,6 +89,12 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     public string RewriteName => $"Rewrite Clip {Number}";
     public string RewriteHelp => $"{RewriteName} (Ctrl+R)";
     public bool CanRewrite { get => canRewrite; set => SetProperty(ref canRewrite, value); }
+    /// <summary>✦ Make it postable on the row: "✦ Make it postable · up to $0.42" (design §6.7); the row ✦ and the first menu item.</summary>
+    public string MakeItName { get => makeItName; set => SetProperty(ref makeItName, value); }
+    public bool CanMakeIt { get => canMakeIt; set => SetProperty(ref canMakeIt, value); }
+    /// <summary>The Suggested header's "✦ Make top 3 postable".</summary>
+    public string MakeTopName { get => makeTopName; set => SetProperty(ref makeTopName, value); }
+    public bool ShowsMakeTop { get => showsMakeTop; set => SetProperty(ref showsMakeTop, value); }
     public bool IsSelected { get => isSelected; set { if (SetProperty(ref isSelected, value)) RefreshActions(); } }
     public bool IsPointerOver { get => isPointerOver; set { if (SetProperty(ref isPointerOver, value)) RefreshActions(); } }
     /// <summary>✦ Rewrite and ⋯ More: on the selected or hovered clip or suggestion row (a suggestion keeps ✓ and ✕ too).</summary>
@@ -232,12 +240,14 @@ public sealed class ShellViewModel
                 // A suggestion's Rewrite keeps it first (MainWindow.RewriteClipClicked), so it offers Rewrite like a kept clip.
                 row.CanRewrite = row.Edits && !editor.IsReadOnly && editor.CanFindClips && first >= 0 && last >= first
                     && editor.Words.Skip(first).Take(last - first + 1).Any(word => editor.State?.CutWordIds.Contains(word.Id) != true);
-                if (suggestion && number == kept.Length + 1) next.Add(SuggestedHeader(suggested.Length, showingHome));
+                row.CanMakeIt = row.Edits && editor.CanMakeItPostable(clip.Id);
+                if (row.CanMakeIt) row.MakeItName = editor.MakeItTitle(clip.Id);
+                if (suggestion && number == kept.Length + 1) next.Add(SuggestedHeader(suggested.Length, showingHome, editor));
                 next.Add(row);
             }
             if (Finding is { } connector)
             {
-                if (suggested.Length == 0) next.Add(SuggestedHeader(0, showingHome));
+                if (suggested.Length == 0) next.Add(SuggestedHeader(0, showingHome, editor));
                 var finding = Row(SidebarKind.Finding, "finding");
                 finding.Title = "Finding clips…";
                 finding.Detail = connector;
@@ -246,7 +256,7 @@ public sealed class ShellViewModel
             }
             else if (NoneFound is { } message)
             {
-                if (suggested.Length == 0) next.Add(SuggestedHeader(0, showingHome));
+                if (suggested.Length == 0) next.Add(SuggestedHeader(0, showingHome, editor));
                 var none = Row(SidebarKind.NoneFound, "nonefound");
                 none.Title = message;
                 none.AccessibleName = message;
@@ -324,12 +334,15 @@ public sealed class ShellViewModel
 
     /// <summary>"Suggested", or "Suggested (N)" with Keep all from two suggestions up (design §3.4); Keep all is disabled on
     /// Home.</summary>
-    private SidebarRow SuggestedHeader(int count, bool showingHome)
+    private SidebarRow SuggestedHeader(int count, bool showingHome, EditorViewModel? editor)
     {
         var header = Row(SidebarKind.SuggestedHeader, "suggested");
         header.Title = count >= 2 ? $"Suggested ({count})" : "Suggested";
         header.AccessibleName = header.Title;
         header.ShowsKeepAll = count >= 2;
+        // ✦ Make top N postable (design §6.7): the best suggestions, planned at once, each its own run and undo step.
+        header.ShowsMakeTop = count >= 1 && !showingHome && editor?.CanMakeTopPostable == true;
+        header.MakeTopName = $"✦ Make top {Math.Min(3, count)} postable";
         header.Edits = !showingHome;
         return header;
     }

@@ -39,7 +39,7 @@ public sealed partial class EditorViewModel
         CaptionDrag.Cancel();
         if (next.ClipStyle?.SameAs(project.ClipStyle) == true && next.Captions.StyleId == project.Captions.StyleId
             || next.ClipStyle is null && project.ClipStyle is null && next.Captions.StyleId == project.Captions.StyleId) return;
-        undo.Push(CaptureHistory()); redo.Clear();
+        PushHistory();
         project = next with { ModifiedAt = DateTimeOffset.UtcNow };
         foreach (var name in new[] { nameof(IsDirty), nameof(CanUndo), nameof(CanRedo), nameof(UndoActionName), nameof(RedoActionName), nameof(ShowsClipStyleCard) }) OnPropertyChanged(name);
         Changed?.Invoke(this, EventArgs.Empty);

@@ -36,6 +36,10 @@
                     </ResourceDictionary>
                 </controls:ClipBar.Resources>
                 <!-- Restore cuts, then Tighten pauses, move to the overflow first as the row narrows (delta §3.7). -->
+                <!-- ✦ Make it postable on the open clip (design §6.7), titled with its cap; "✦ Review" once its run has finished. -->
+                <AppBarButton x:Name="MakeItCommand" Label="✦ Make it postable" Click="MakeItCommandClicked" IsEnabled="False" DynamicOverflowOrder="6">
+                    <AppBarButton.Icon><FontIcon Glyph="&#xE945;"/></AppBarButton.Icon>
+                </AppBarButton>
                 <AppBarButton x:Name="TightenCommand" Icon="Trim" Label="Tighten" Click="TightenClicked" ToolTipService.ToolTip="Cut fillers and tighten pauses in this scope (local, one Undo)" DynamicOverflowOrder="2"/>
                 <AppBarButton x:Name="HookCommand" Icon="Find" Label="Hook" Click="HookClicked" IsEnabled="False" DynamicOverflowOrder="3"/>
                 <AppBarElementContainer x:Name="AskHost" DynamicOverflowOrder="1">

@@ -315,8 +315,7 @@ public sealed partial class EditorViewModel : ObservableObject
             foreach (var operation in operations) next = reduce(next, operation);
             if (next == state) return false;
             CaptionDrag.Cancel();
-            undo.Push(CaptureHistory());
-            redo.Clear();
+            PushHistory();
             state = next;
             SyncProject();
             Refresh();
@@ -377,8 +376,7 @@ public sealed partial class EditorViewModel : ObservableObject
                 if (ReferenceEquals(change.Present, combined) && nextState == state) return false;
                 CaptionDrag.Cancel();
                 if (!ReferenceEquals(project, snapshot) || isLeaving || IsReadOnly || Busy) return false;
-                undo.Push(CaptureHistory(actionName ?? command.ActionName));
-                redo.Clear();
+                PushHistory(actionName ?? command.ActionName);
                 state = nextState;
                 project = change.Present;
                 Refresh();
@@ -583,6 +581,7 @@ public sealed partial class EditorViewModel : ObservableObject
         if (isLeaving || from.Count == 0 || IsReadOnly && (!ReferenceEquals(from.Peek().State, state) ||
             !ReferenceEquals(from.Peek().Project.VoiceLab, project.VoiceLab))) return;
         CaptionDrag.Cancel();
+        if (undoGroup is not null) undoGroup.Interrupted = true;
         var next = from.Pop();
         to.Push(CaptureHistory(next.ActionName));
         state = next.State;
@@ -629,7 +628,7 @@ public sealed partial class EditorViewModel : ObservableObject
     {
         CaptionDrag.Cancel();
         if (SameCaptions(project.Captions, captions)) return;
-        undo.Push(CaptureHistory()); redo.Clear();
+        PushHistory();
         project = project with { Captions = captions, ModifiedAt = DateTimeOffset.UtcNow };
         foreach (var name in new[] { nameof(IsDirty), nameof(CanUndo), nameof(CanRedo), nameof(UndoActionName), nameof(RedoActionName) }) OnPropertyChanged(name);
         Changed?.Invoke(this, EventArgs.Empty);
@@ -655,7 +654,7 @@ public sealed partial class EditorViewModel : ObservableObject
         if (isLeaving || Busy) return;
         CaptionDrag.Cancel();
         if (CaptionFineTune.StoredPosition(project) == CaptionFineTune.StoredPosition(project with { Captions = captions })) return;
-        undo.Push(CaptureHistory()); redo.Clear();
+        PushHistory();
         project = project with { Captions = captions, ModifiedAt = DateTimeOffset.UtcNow };
         Refresh();
     }

@@ -491,7 +491,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private void Watch(EditorPage? previous, EditorPage next)
     {
         shellModifiedAt = next.ViewModel.Project.ModifiedAt;
-        if (previous?.ViewModel is { } old) { old.Changed -= EditorEdited; old.SelectionChanged -= EditorChanged; old.PropertyChanged -= EditorPropertyChanged; old.ExportStatesChanged -= EditorChanged; }
+        if (previous?.ViewModel is { } old) { old.Changed -= EditorEdited; old.SelectionChanged -= EditorChanged; old.PropertyChanged -= EditorPropertyChanged; old.ExportStatesChanged -= EditorChanged; old.MakeItChanged -= EditorMakeItChanged; }
         if (previous is not null) { previous.FindClips.Changed -= EditorChanged; previous.FindClips.Found -= SuggestionsFound; previous.FindClips.CalloutShown -= CalloutShown; }
         next.FindClips.Changed += EditorChanged;
         next.FindClips.Found += SuggestionsFound;
@@ -500,7 +500,9 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         next.ViewModel.ExportStatesChanged += EditorChanged;
         next.ViewModel.SelectionChanged += EditorChanged;
         next.ViewModel.PropertyChanged += EditorPropertyChanged;
+        next.ViewModel.MakeItChanged += EditorMakeItChanged;
     }
+    private void EditorMakeItChanged(object? sender, EventArgs args) => DispatcherQueue.TryEnqueue(UpdateShell);
     private void EditorChanged(object? sender, EventArgs args) => UpdateShell();
     /// <summary>The status bar's "Style: …" item reopens the clip style card (MainWindow.ClipStyle.cs).</summary>
     private void ClipStyleStatusClicked(object sender, RoutedEventArgs args) => ReopenClipStyleCard();
@@ -661,6 +663,20 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         var first = model.SuggestedClips.FirstOrDefault()?.Id;
         if (model.KeepAll()) FocusRow(Shell.Rows.FirstOrDefault(row => first is not null && row.ClipId == first) ?? Shell.Rows.FirstOrDefault(row => row.Kind == SidebarKind.FullTake));
     }
+    /// <summary>✦ on a clip or suggestion row, and its menu's first item: Make it postable (design §6.7). A suggestion is kept by the run,
+    /// in the run's one undo step.</summary>
+    private void MakeItClipClicked(object sender, RoutedEventArgs args)
+    {
+        if (sender is not FrameworkElement { Tag: string id } || editor is not { } page || !Shell.Rows.Any(row => row.ClipId == id && row.CanMakeIt)) return;
+        page.ViewModel.ClearSelection();
+        if (page.MakeItPostable(id)) ShowScope(id);
+    }
+    /// <summary>"✦ Make top 3 postable" under Suggested.</summary>
+    private void MakeTopPostableClicked(object sender, RoutedEventArgs args)
+    {
+        if (!RowEdits(SidebarKind.SuggestedHeader) || editor is not { } page) return;
+        page.MakeTopPostable();
+    }
     private void CancelFindingClicked(object sender, RoutedEventArgs args) { FocusStayingRow(sender); editor?.FindClips.Cancel(); }
     private void CalloutClosed(InfoBar sender, object args) { FocusStayingRow(sender); editor?.FindClips.Dismiss(); }
     /// <summary>Retry runs the search again; Set up AI… and Sign-in help open Settings at the AI page.</summary>
@@ -728,6 +744,8 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         if (sender is FrameworkElement { Tag: string id } && RowEdits(id)
             && editor?.ShellCommands().FirstOrDefault(command => command.Id == "job.find") is { IsEnabled: true } command) command.TryExecute();
     }
+    /// <summary>Make it postable's Change on the title row opens the sidebar's inline rename.</summary>
+    internal Task RenameClipFromPageAsync(string id) => RenameClipAsync(id);
     private Task RenameClipAsync(string id)
     {
         if (!RowEdits(id) || editor?.ViewModel is not { } model || model.IsReadOnly || model.Busy || model.IsLeaving

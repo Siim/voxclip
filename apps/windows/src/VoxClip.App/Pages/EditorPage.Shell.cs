@@ -92,6 +92,7 @@ public sealed partial class EditorPage
         MakeClipCommand.IsEnabled = ShellEditable && ViewModel.HasSelection;
         AskButton.IsEnabled = ShellJobAvailable(ShellJob.Rewrite);
         HookCommand.IsEnabled = ShellJobAvailable(ShellJob.Hook);
+        UpdateMakeItCommand();
         ToolTipService.SetToolTip(HookCommand, "Find hooks in the full take");
         ShellAsk.IsEnabled = ShellEditable && ViewModel.HasTranscript;
         UpdateFindClips();
@@ -193,6 +194,11 @@ public sealed partial class EditorPage
             Command("edit.pauses", "Tighten pauses", "Ctrl+Shift+P", () => ShellEditable && ViewModel.Summary.CanTighten, () => PausesClicked(this, new())),
             Command("edit.restore", "Restore cuts", "Ctrl+Shift+R", () => ShellEditable && ViewModel.Summary.HasEdits, () => RestoreClicked(this, new())),
             Command("job.rewrite", "Rewrite…", "Ctrl+R", () => ShellJobAvailable(ShellJob.Rewrite), () => _ = RunAsync(() => OpenShellJobAsync(ShellJob.Rewrite, ShellAsk.Text), "Rewrite"), "Rewrite needs an editable transcript and the current right-panel capability."),
+            Command("clip.makeIt", ViewModel.State?.ActiveClipId is { } makeItClip ? ViewModel.MakeItTitle(makeItClip) : "✦ Make it postable", "",
+                () => ViewModel.State?.ActiveClipId is { } clip && ViewModel.CanMakeItPostable(clip), () => MakeItPostable(ViewModel.State!.ActiveClipId!),
+                "Open a clip with words to keep, and finish the current task first."),
+            Command("clips.makeTop", $"✦ Make top {Math.Min(3, ViewModel.SuggestedClips.Count)} postable", "", () => ViewModel.CanMakeTopPostable, () => MakeTopPostable(),
+                "Find clips first, and finish the current task first."),
             Command("job.hook", "Find hooks", "", () => ShellJobAvailable(ShellJob.Hook), () => _ = RunAsync(() => OpenShellJobAsync(ShellJob.Hook), "Hook"), "Transcribe the video and finish the current task first."),
             Command("job.find", "Find clips…", "Ctrl+Shift+K", () => ShellJobAvailable(ShellJob.FindClips), () => _ = RunAsync(() => OpenShellJobAsync(ShellJob.FindClips), "Find clips"), "Transcribe the video and finish the current task first."),
             Command("job.export", ViewModel.State?.ActiveClipId is null ? "Export video…" : "Export clip…", "Ctrl+E", () => ShellJobAvailable(ShellJob.Export), () => _ = RunAsync(() => OpenShellJobAsync(ShellJob.Export), "Export"), ViewModel.ExportBlocked(demo, MediaPath is null || media is null, ViewModel.State?.ActiveClipId)),

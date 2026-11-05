@@ -144,6 +144,7 @@ public sealed partial class EditorPage : Page
         rightContent = new(captions);
         CaptionsHost.Children.Add(rightContent);
         InitializeIntegratedEditor();
+        InitializeMakeIt();
         SelectionChanged(this, EventArgs.Empty);
         await captions.InitializeAsync();
         await RefreshAiStatusAsync();
@@ -548,6 +549,7 @@ public sealed partial class EditorPage : Page
         if (ViewModel.MakeClip() is { } id) owner.RevealClip(id);
     }
     private void MakeClipClicked(object sender, RoutedEventArgs args) => MakeClipAndReveal();
+    private void MakeItCommandClicked(object sender, RoutedEventArgs args) => OpenMakeItFromClipBar();
     private async void RewriteClicked(object sender, RoutedEventArgs args)
     {
         await RunAsync(() => OpenShellJobAsync(ShellJob.Rewrite, ShellAsk.Text), "Rewrite");
@@ -587,6 +589,14 @@ if (insertion ||
                 (entry is null || App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel) == connector?.Model),
             scope: ViewModel.HasSelection ? null : project.Edits.ActiveClipId is { } scopeClip ? RewriteScope.Clip(scopeClip) : RewriteScope.FullTake);
         if (App.Services.VoiceLabEnabled) ConfigureRewriteGeneration(rewrite);
+        ShowRewriteSession(rewrite, instruction);
+        await rewrite.SetInstructionAsync(instruction ?? "");
+    }
+    /// <summary>Shows <paramref name="rewrite"/> in the Rewrite panel: a new one, or Make it postable's with paid takes.</summary>
+    private void ShowRewriteSession(RewriteSession rewrite, string? instruction)
+    {
+        if (rightContent is null) return;
+        if (!ReferenceEquals(this.rewrite, rewrite)) { RetireRewrite(); this.rewrite = rewrite; }
         AttachRewriteProposal(rewrite);
         var panel = new RewritePanel(rewrite, () => Transcript.CorrectionOpen, owner);
         if (instruction is not null && panel.FocusTarget is TextBox field) field.Text = instruction;
@@ -600,7 +610,6 @@ if (insertion ||
         SetViewerVisible(true);
         rightContent.ShowRewrite(panel);
         SizeStage();
-        await rewrite.SetInstructionAsync(instruction ?? "");
     }
     private static async Task RediscoverRewriteAsync(RewriteSession session, IReadOnlyList<RewriteGeneration> windows)
     {

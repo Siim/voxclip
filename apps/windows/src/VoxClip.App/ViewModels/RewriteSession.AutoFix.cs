@@ -105,12 +105,15 @@ internal sealed partial class RewriteSession
     internal string? AutoFixCapLine => AutoFix.Capped is null ? null
         : $"Automatic fixes spent {Dollars(AutoFix.Spent)} of {Dollars(AutoFix.Allowance)}. The next fix waits for you.";
 
+    /// <summary>Make it postable's budget left after the takes' price: automatic fixes never spend past it. Null: no ceiling.</summary>
+    internal decimal? AutoFixCeiling { get; set; }
+
     /// <summary>The approved Get Price: stuck phrases of these takes are fixed from now on.</summary>
     private void ArmAutoFix(VoiceLabTakeRunParts batch)
     {
         AutoFix.Reset();
         AutoFix.Armed = true;
-        AutoFix.Allowance = AutoFixAllowance(batch.Estimate.Usd);
+        AutoFix.Allowance = Math.Min(AutoFixAllowance(batch.Estimate.Usd), AutoFixCeiling ?? decimal.MaxValue);
         foreach (var window in generationWindows) window.KeepEveryTake();
     }
 
