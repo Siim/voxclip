@@ -1,5 +1,53 @@
 # Windows fixed contracts
 
+### 2026-11-05 — Windows: the Make it postable planner twin, the one-click run and its review (track/v2-win-make-it)
+
+Twin of the Mac entries v2-autopilot-planner, planner v2, make-it, wire-1 and mac-polish-2 (the planner and Make it postable). Spec: doc/design.md §6.7; doc/spec/ai.md §16.
+
+- **Core: the planner** (`Domain/Autopilot`, `Services/LLM/ClipAutopilotService.cs`, `Domain/Effects/ClipHookTitle.cs`):
+  - `ClipAutopilotPrompt` reads `shared/prompts/clip-autopilot.json` (schema 2, prompt 6) and pins its SHA after CRLF→LF.
+  - `ClipAutopilotRequestBuilder` builds the clip, clips and series requests, with tone and note.
+  - `ClipAutopilotValidator` checks item by item, repairing or dropping. `ClipAutopilotPlan` is v3: it reads v1 and v2 and refuses v4.
+  - `ClipAutopilotMapping.Operations`/`Apply` map the plan to reducer operations, captions, look, speed (`ClipControlsProject.SettingLook`/`SettingSpeed`), the hook card and the post text. Zooms and music stay pending: Windows renders neither.
+  - `ClipAutopilotPricing`.
+  - `ClipAutopilotService` plans at xhigh effort, picks moments at high, runs up to 3 lanes and retries once with a correction.
+  - `ClipHookTitle` is a top title effect `fx-hook-N` over the first two rendered seconds.
+  - `LlmFeature.ClipAutopilot`.
+- **App: Make it postable** (`ViewModels/MakeItPostable.cs`, `EditorViewModel.MakeIt.cs`, `MakeItRewriteDriver.cs`, `Controls/MakeItPanel.cs`, `Pages/EditorPage.MakeIt.cs`):
+  - **Model.** `MakeItStyle.From(ClipStyle)`, `MakeItServices` (a seam: plan, voice, voice available, export and copy), `MakeItBudget` (ask, approve the needed amount, decline), `MakeItRun`, `MakeItController`, `MakeItRow`, `MakeItInverse`.
+  - **Undo.** Every history push goes through `PushHistory`. An `EditorUndoGroup` that owns its edits merges them into one step while that step is on top. The creator's edits while Claude plans are their own steps, and an undo during the run stops it.
+  - **The run and its rows.** `MakeItCap` covers the voice for the rewrite limit, twice over. The run applies one step, then voices the rewrites. The rows and their Undo, Change, chips, hook field and answers twin the Mac's. `MakeItExportAsync` writes `<video>.txt` beside each file. Zooms and music are note rows.
+  - **Voice.** `MakeItRewriteDriver` gives the planned words to Rewrite's own session through `Edit`. It finds the take windows and makes the takes only when the batch price fits the budget, capping automatic fixes with the new `RewriteSession.AutoFixCeiling`. Keep fixing runs only within the budget. It chooses an offered take, uses the takes, and records join-advisory phrases. It refuses a batch past the monthly cap. A session it could not use that holds paid takes is handed to the page for Change; it never drops a paid take.
+  - **Entry points.** The row ✦ (Rewrite moves to the menu), the menu item with its cap, the Suggested header's "✦ Make top N postable", the clip bar's `MakeItCommand` ("✦ Review" once the run is done), and the palette's `clip.makeIt` and `clips.makeTop`.
+  - **Live services.** The planner probes the chosen connector and asks inline in the panel for a first or billed send (no dialog). It holds the project's AI lease and gives Claude Code lanes when the connector instances differ. The voice opens a session with no connector, so the AI is never asked again. Export goes through `ExportDialogRouting` once per shape, with no dialog.
+- **Tests:**
+  - Core `Tracks/win-ai/ClipAutopilotTests` (60): every planner fixture's SHA and keys, the validation, v2 and tone cases, and the rendering and instruction vectors; mapping, apply, pricing, the hook card, and the service's retry, series, lanes and cancel.
+  - win-ui `MakeItPostableTests` (20), the twin of the Mac's: every decision kind, one step and Undo per row, Undo all including the post text, the cap and each rewrite's budget, a voice step past the cap, no amount, questions and re-planning, a kept suggestion in the same step, Stop, an undo stopping the run, the creator's edit as its own step, look and speed chips, the hook, the clip style, Make top 3, Claude mode's pool (Continue, Stop, $0), copy and export, planner failure, the driver's priced steps, and the XAML entry points.
+  - `MakeItSmokeTests` (2): S-make-it with the real driver checks I1, I2 and I6 after each step, then M1–M5; S-make-top3 checks T1–T4.
+  - Updated: `WindowsShellV2Tests` (the row ✦ is Make it postable; Rewrite stays in the menu) and `ConnectorPreflightTests` (the new send route probes and asks inline).
+  - **Red check.** Breaking the group merge fails 4 tests.
+- **Allowlists.** `ReleaseBoundary update` on all four:
+  - `VoxClip.Core.txt` gains only the planner declarations, with no literals; the zoom id is built with `string.Join`.
+  - `VoxClip.txt` +582 / −1 (`SuggestedHeader` retyped), declarations only.
+  - Media and the CLI are unchanged. No new test seam.
+- **Verification** (macOS host, Release, serial, `VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`):
+  - App type-check 0 warnings, 0 errors; `check-xaml.py` 0 problems.
+  - Core 3,164 total, 0 failed, 29 skipped.
+  - Portable Media 973, 0 failed, 5 skipped.
+  - win-ui 1,268, 0 failed, 5 skipped, `*ReleaseSurrogate*` included.
+  - Both `check_drift.py`, the schema generators and `tools/voice-lab` pass.
+  - `env -i … voxclip-cli.dll --runtime-terms --json` exits 0.
+- **Native, left to hosted Windows CI.** WinUI rendering of `MakeItPanel` and the row, header and clip bar entries. The live planner send through a real connector. Real voicing: Use publishes takes through Media's scratch audio, so the headless twin ends a made take as "needs you" (M4 on the VM). The one-click export through the real exporter.
+- **Owed (Windows):**
+  - **Claude mode (step 3):** card A (asked once); card B's mode control with the Clips, Spend, Style and Tone rows; the automatic run after transcription and Find Clips, after the find task ends, through `MakeTopPostable(count, new MakeItBudget(cap))`; card C (progress, Stop, the cap stop with Continue for the shortfall); card D (Export all, post texts beside the files); the status bar item; Settings › Clips; and the S-claude-does-it-all smoke.
+  - **The Rewrite-as strip (step 4):** the selection flyout's "✦ Rewrite as ▾", Ask Claude's two groups, the clip rows, the scope bar's tone row, "+ Save as my tone", the review's tone row (Mac `MakeItTone.swift`, M7), and `RewriteToneEntryTests`.
+  - **Also owed:** Suggested rows ranked by the planner's score in the sidebar (Make top 3 already ranks by it); a Rewrite opened by Change on a phrase starting with the planner's words.
+- **Deviations:**
+  - Windows renders no zooms or music, so they are review notes and the cap prices the voice only.
+  - Ctrl+Z on a run restores everything except the post text, which Windows keeps outside undo history; the review's Undo all restores it.
+  - A rewrite that is only cuts or corrections applies without audio, and its row has no Undo of its own (Undo all covers it).
+- **Next package must know.** Claude mode should drive runs only through `EditorViewModel.MakeTopPostable(count, budget)`, and the panel already shows Continue · $x while `MakeIt.Budget.Needed` is set. Hooks into the find path go after the find task ends. Every new history push must call `PushHistory`.
+
 ### 2026-11-05 — Claude mode's settings twin: clips.mode, clips.autopilot.count, clips.autopilot.capUSD (track/v2-autopilot-mode)
 
 Twin of the Mac entry track/v2-autopilot-mode (Core settings only). Spec: doc/design.md §6.6 ("Who makes the clips"), §6.7 ("Claude does it all").
