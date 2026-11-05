@@ -1275,6 +1275,15 @@
               }
             }
           }
+        },
+        "tone": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "not": {
+            "const": "auto"
+          },
+          "maxLength": 64,
+          "description": "The tone Claude writes in (design.md sections 6.3.1 and 6.6): a tone id from shared/data/rewrite-tones.json, \"as-said\" for no tone change, or a saved tone's \"my-...\" id from settings rewrite.myTones. Omitted means Auto (Claude picks per clip) and is never written as \"auto\". An id the reader does not know plans as Auto."
         }
       }
     },

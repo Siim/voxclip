@@ -2,7 +2,7 @@ import Foundation
 
 extension SettingsDocument {
     static func isKnownKey(_ key: String) -> Bool {
-        defaults[key] != nil || ["llm.baseUrl.ollama", "llm.baseUrl.lmstudio"].contains(key) || layoutRanges[key] != nil || layoutChoices[key] != nil ||
+        defaults[key] != nil || ["llm.baseUrl.ollama", "llm.baseUrl.lmstudio", RewriteToneCatalog.settingsKey].contains(key) || layoutRanges[key] != nil || layoutChoices[key] != nil ||
         ProjectValidation.matches(key, "(?:llm\\.model|llm\\.cloudConsent|voiceLab\\.providerConsent|voiceLab\\.monthlyCapUsd)\\.[a-z0-9]+(?:-[a-z0-9]+)*")
     }
 
@@ -135,9 +135,21 @@ extension SettingsDocument {
             case "clipStyle.default":
                 // A project clipStyle without captionPicks (design.md §6.6).
                 guard case .object(let object) = value, object["captionPicks"] == nil else { throw VoxClipError.projectUnreadable("Invalid clip style") }
-                _ = try ProjectValidation.object(value, required: "preset captions music maxLengthSec shapes rewording")
+                _ = try ProjectValidation.object(value, required: "preset captions music maxLengthSec shapes rewording", optional: "tone")
                 do { _ = try JSONDecoder().decode(ClipStyle.self, from: JSONEncoder().encode(value)) }
                 catch { throw VoxClipError.projectUnreadable("Invalid clip style") }
+            case RewriteToneCatalog.settingsKey:
+                // The user's saved Rewrite tones (design.md §6.3.1): at most 20 `{id, title, instruction}`, ids unique.
+                let items = try ProjectValidation.array(value)
+                try ProjectValidation.require(items.count <= 20, "Too many saved tones")
+                var ids = Set<String>()
+                for item in items {
+                    let tone = try ProjectValidation.object(item, required: "id title instruction")
+                    guard case .string(let id) = tone["id"], case .string(let title) = tone["title"], case .string(let instruction) = tone["instruction"],
+                          MyRewriteTones.isID(id), ids.insert(id).inserted, (try? MyRewriteTones.check(title: title, instruction: instruction)) != nil else {
+                        throw VoxClipError.projectUnreadable("Invalid saved tone")
+                    }
+                }
             default: break
             }
         }

@@ -7,6 +7,8 @@ public struct ClipAutopilotLimits: Sendable, Equatable {
     public let maxCorrections, maxCorrectionWords: Int
     public let maxZooms, minWordsPerCaption, maxWordsPerCaption, maxMusic, maxQuestions, maxOptions: Int
     public let maxTitleScalars, maxHookScalars, maxPostScalars, maxReasonScalars, maxMusicPromptScalars, maxNoteBytes: Int
+    /// The plan's `toneSummary` ("Hook first, two lines tightened"), prompt version 6.
+    public let maxToneSummaryScalars: Int
     /// A series moment's span before cuts must last `minClipSeconds...maxClipSeconds`.
     public let minClipSeconds, maxClipSeconds: Double
     /// A finished clip lands at `minTargetSeconds...maxTargetSeconds` after cuts; up to `maxReasonedSeconds` with a reason.
@@ -33,7 +35,7 @@ public struct ClipAutopilotLimits: Sendable, Equatable {
         maxMusic = try int("maxMusic"); maxQuestions = try int("maxQuestions"); maxOptions = try int("maxOptions")
         maxTitleScalars = try int("maxTitleScalars"); maxHookScalars = try int("maxHookScalars"); maxPostScalars = try int("maxPostScalars")
         maxReasonScalars = try int("maxReasonScalars"); maxMusicPromptScalars = try int("maxMusicPromptScalars")
-        maxNoteBytes = try int("maxNoteBytes")
+        maxNoteBytes = try int("maxNoteBytes"); maxToneSummaryScalars = try int("maxToneSummaryScalars")
         minClipSeconds = try double("minClipSeconds"); maxClipSeconds = try double("maxClipSeconds")
         minTargetSeconds = try double("minTargetSeconds"); maxTargetSeconds = try double("maxTargetSeconds")
         maxReasonedSeconds = try double("maxReasonedSeconds"); minSpeed = try double("minSpeed"); maxSpeed = try double("maxSpeed")

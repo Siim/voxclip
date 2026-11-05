@@ -46,6 +46,7 @@ EXACT = ['shared/fixtures/voice-lab/pace-cases.json', 'shared/fixtures/voice-lab
          'shared/fixtures/ask-claude/ask-claude-cases.json',
          'shared/fixtures/clip-controls/clip-controls-project.voxclip', 'shared/fixtures/clip-controls/clip-controls-wire-cases.json',
          'shared/fixtures/clip-render/clip-render-cases.json',
+         'shared/data/rewrite-tones.json',
          'shared/schemas/project.schema.json']
 REL_TOL = 1e-10
 ABS_TOL = 1e-12
@@ -83,6 +84,9 @@ def main():
     # The clip-controls schema field and its shared vectors (doc/design.md section 6.9).
     subprocess.run([sys.executable, str(root / "tools/schemas/generate_clip_controls_schema.py")], check=True)
     subprocess.run([sys.executable, str(root / "tools/fixtures/clip-controls/generate_clip_controls.py")], check=True)
+    # The clip style's tone (doc/design.md section 6.6) and the Rewrite tone catalog (section 6.3.1).
+    subprocess.run([sys.executable, str(root / "tools/schemas/generate_clip_style_tone_schema.py")], check=True)
+    subprocess.run([sys.executable, str(root / "tools/fixtures/voice-lab/generate_rewrite_tones.py")], check=True)
     # The renderer decisions both platforms reproduce for clip controls and effects (design.md sections 6.8, 6.9).
     subprocess.run([sys.executable, str(root / "tools/fixtures/clip-render/generate_clip_render.py")], check=True)
     # The bundled sound effects (doc/spec/ai.md section 18.5): the committed WAVs must be the generator's bytes.

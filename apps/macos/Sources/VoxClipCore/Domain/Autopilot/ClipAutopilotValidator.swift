@@ -34,6 +34,7 @@ public enum ClipAutopilotValidator {
             pauses: context.pauses, tightened: Set(pauseCuts.map(\.afterWord)), cutPauseIDs: context.cutPauseIDs,
             keepSeconds: context.pauseKeepSeconds) / (speed?.rate ?? 1)
         let lengthReason = text(value[ai: "lengthReason"], limit: limits.maxReasonScalars, field: "lengthReason", log: &log)
+        let tone = tone(value, context: context, log: &log)
         return ClipAutopilotPlan(startWord: span.lowerBound, endWord: span.upperBound,
             title: title.isEmpty ? fallbackTitle : title,
             hook: text(value[ai: "hook"], limit: limits.maxHookScalars, field: "hook", log: &log),
@@ -44,7 +45,36 @@ public enum ClipAutopilotValidator {
             scoreReason: text(value[ai: "scoreReason"], limit: limits.maxReasonScalars, field: "scoreReason", log: &log),
             lengthReason: lengthReason, seconds: seconds,
             questions: questions(value[ai: "questions"], context: context, log: &log), repairs: log.repairs,
-            flags: flags(seconds: seconds, lengthReason: lengthReason, limits: limits))
+            flags: flags(seconds: seconds, lengthReason: lengthReason, limits: limits), tone: tone)
+    }
+
+    /// The tone the words were written in (prompt version 6, ai.md §16.5). With no tone in the request there is none. A fixed
+    /// tone is the plan's tone whatever the reply says (a repair when it differs); As I said it never has one (a repair when
+    /// the reply names one). Under Auto the reply's id must be one of the offered tones, read ignoring case and spaces;
+    /// "none" or an empty id keeps the creator's own tone, and an unknown one becomes none (a repair).
+    static func tone(_ value: JSONValue, context: ClipAutopilotContext, log: inout Log) -> ClipAutopilotPlan.Tone? {
+        guard let requested = context.tone else { return nil }
+        let raw = (value[ai: "tone"].aiString ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = raw.lowercased().replacingOccurrences(of: " ", with: "-")
+        let none = key.isEmpty || key == "none" || key == "as-said"
+        func summary() -> String {
+            text(value[ai: "toneSummary"], limit: context.prompt.limits.maxToneSummaryScalars, field: "toneSummary", log: &log)
+        }
+        switch requested {
+        case .asSaid:
+            if !none { log.repair("tone", "the creator keeps their own tone; “\(raw)” dropped") }
+            return nil
+        case .fixed(let tone):
+            if key != tone.id { log.repair("tone", "the creator fixed \(tone.id)" + (raw.isEmpty ? "" : "; “\(raw)” replaced")) }
+            return .init(id: tone.id, title: tone.title, summary: summary())
+        case .auto(let offered):
+            if none { return nil }
+            guard let tone = offered.first(where: { $0.id == key }) else {
+                log.repair("tone", "unknown tone “\(raw)”; none")
+                return nil
+            }
+            return .init(id: tone.id, title: tone.title, summary: summary())
+        }
     }
 
     /// The flags a finished length earns (ai.md §16.5): over `maxReasonedSeconds`, or over `maxTargetSeconds` with no reason.
