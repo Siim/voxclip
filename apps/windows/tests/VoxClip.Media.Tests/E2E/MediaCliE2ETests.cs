@@ -182,6 +182,83 @@ public sealed class MediaCliE2ETests
         finally { Directory.Delete(directory, true); }
     }
 
+    /// <summary>A clip of the tone fixture exported with a background track (doc/spec/music.md §4): the 220 Hz bed plays under the
+    /// 440 Hz voice, ducked 12 dB and 20 dB under the speech, on the rendered clock at 1.25× without changing its pitch; the edited
+    /// WAV is the voice alone.</summary>
+    [Fact]
+    public async Task CliExportsAClipWithItsMusicUnderTheVoice()
+    {
+        var fixtures = Path.Combine(FixtureLoader.SharedRoot, "fixtures", "media");
+        if (!File.Exists(Path.Combine(fixtures, "index.json")))
+        {
+            const string reason = "Canonical media fixtures are absent; archive track/tooling shared/fixtures/media into this run.";
+            if (Environment.GetEnvironmentVariable("VOXCLIP_REQUIRE_E2E") == "1") Assert.Fail(reason);
+            Assert.Skip(reason);
+        }
+        VerifyFixtureHashes(fixtures);
+        await NativeTest.RequireAsync(windows: true);
+        var ct = TestContext.Current.CancellationToken;
+        var directory = Directory.CreateTempSubdirectory("voxclip-e2e-music-").FullName;
+        try
+        {
+            var source = Path.Combine(directory, Tone);
+            File.Copy(Path.Combine(fixtures, Tone), source);
+            var media = await new FfmpegMediaProbe().ProbeAsync(source, ct);
+            var transcript = JsonSerializer.Deserialize(File.ReadAllText(Path.Combine(fixtures, ToneTranscript)), CliDataJson.Default.Transcript)!;
+            var project = CliOperations.NewProject(media, transcript, await new ProjectStore().ComputeContentKeyAsync(source, null, ct));
+            project = project with { Edits = project.Edits with { Clips = [new("clip-music", "w21", "w80", "Music", ClipOrigin.Manual, null, null, true)] } };
+            project = VoxClip.Core.Domain.Clips.ClipControlsProject.Setting(new("clip-music", 1.25, null, VoxClip.Core.Domain.Clips.ClipLook.Original,
+                0, 0, 0, false, false, 0), project);
+            // A 220 Hz stereo float WAV in <data>/Music/<projectId>/, where the CLI's data folder keeps it.
+            var file = project.Id + "/music-bed.wav";
+            var track = Path.Combine(directory, "data", "Music", project.Id, "music-bed.wav");
+            Directory.CreateDirectory(Path.GetDirectoryName(track)!);
+            const int rate = 48_000;
+            using (var writer = new BinaryWriter(File.Create(track)))
+            {
+                var frames = rate * 10;
+                writer.Write("RIFF"u8); writer.Write(36 + frames * 8); writer.Write("WAVE"u8);
+                writer.Write("fmt "u8); writer.Write(16); writer.Write((short)3); writer.Write((short)2); writer.Write(rate); writer.Write(rate * 8);
+                writer.Write((short)8); writer.Write((short)32); writer.Write("data"u8); writer.Write(frames * 8);
+                for (var frame = 0; frame < frames; frame++) { var value = 0.4f * MathF.Sin(2 * MathF.PI * 220 * frame / rate); writer.Write(value); writer.Write(value); }
+            }
+            project = VoxClip.Core.Domain.Music.MusicProject.Setting(new("music-bed", "clip-music", new(file, new string('0', 64), 10),
+                VoxClip.Core.Domain.Music.MusicSource.File, "Bed", null, VoxClip.Core.Domain.Music.MusicLicense.Own, null, null, null, -20, true, 0.5, 1.5, 0),
+                "clip-music", project);
+            var projectPath = Path.Combine(directory, "music.voxclip");
+            File.WriteAllText(projectPath, ProjectSerialization.Serialize(project));
+            var output = Path.Combine(directory, "music.mp4");
+            var wave = Path.Combine(directory, "music.wav");
+            var (exit, result) = await RunCli(["--open", projectPath, "--clip", "clip-music", "--export", output, "--audio-out", wave,
+                "--json", "--quiet", "--style", "off"], directory, "e2e-clip-music", ct);
+            // No parity report: VOXCLIP_E2E_OUT holds the ten canonical cases CI compares with the Mac's, and this one is Windows'.
+            Assert.True(exit == 0, result.ToJsonString());
+            var plan = CliOperations.BuildPlan(project with { Edits = project.Edits with { ActiveClipId = "clip-music" } }, true);
+            var renderedSeconds = new VoxClip.Core.Domain.Clips.ClipSpeedTiming(1.25).RenderedSamples(plan.OutputSamples) / plan.SampleRate;
+            var mixed = await MediaThread.Run("vc-e2e-music-audio", () =>
+            {
+                using var reader = new AudioDecoder(output, 2);
+                var all = new float[(int)Math.Ceiling(renderedSeconds * 48_000) * 2];
+                reader.Read(all, all.Length / 2, ct);
+                return Enumerable.Range(0, all.Length / 2).Select(index => all[index * 2]).ToArray();
+            }, ct);
+            int At(double seconds) => (int)(seconds * 48_000);
+            var voice = ClipRenderMediaTests.Amplitude(mixed, At(1), At(3), 440);
+            var bed = ClipRenderMediaTests.Amplitude(mixed, At(1), At(3), 220);
+            // Under continuous speech the bed is ducked: about 20 + 12 dB under the voice (the words' gaps make the voice's
+            // measured loudness a little lower than its tone).
+            Assert.True(voice > 0.25, $"voice {voice}");
+            Assert.InRange(20 * Math.Log10(bed / voice), -36, -29);
+            // A sped-up bed would sit at 275 Hz.
+            Assert.True(ClipRenderMediaTests.Amplitude(mixed, At(1), At(3), 275) < bed / 4);
+            // The edited WAV is the voice alone.
+            var edited = Wave(wave, plan);
+            var left = Enumerable.Range(0, edited.Length / 2).Select(index => edited[index * 2]).ToArray();
+            Assert.True(ClipRenderMediaTests.Amplitude(left, At(1), At(3), 220) < 0.0005);
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
     public static TheoryData<string> Cases
     {
         get { var cases = new TheoryData<string>(); foreach (var id in CaseIds) cases.Add(id); return cases; }

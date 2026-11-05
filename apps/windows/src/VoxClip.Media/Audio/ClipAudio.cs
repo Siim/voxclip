@@ -305,9 +305,10 @@ internal static class EffectAudio
 }
 
 /// <summary>The audio a preview or export plays for a snapshot: the edited voice with bleeps and mutes silenced, stretched to the
-/// clip's speed with its pitch kept, its volume, fades and mute applied on the rendered clock, and the effects track (bleep tones
-/// and sound effects) added on that clock (design §6.9, ai.md §18.5; Mac ClipVoiceRenderer and EffectAudio). Without clip
-/// controls or audio effects it reads the edited voice unchanged, sample for sample.</summary>
+/// clip's speed with its pitch kept, its volume, fades and mute applied on the rendered clock, the effects track (bleep tones
+/// and sound effects) and the music bed (<see cref="MusicBed"/>) added on that clock (design §6.9, ai.md §18.5, music.md §4; Mac
+/// ClipVoiceRenderer, EffectAudio and MusicBedRenderer). Without clip controls, audio effects or music it reads the edited voice
+/// unchanged, sample for sample.</summary>
 internal sealed class RenderedAudioReader : IDisposable
 {
     private readonly StereoRead edited;
@@ -317,6 +318,7 @@ internal sealed class RenderedAudioReader : IDisposable
     private readonly WsolaStretcher? stretcher;
     private readonly ProjectClipControls? gain;
     private readonly EffectAudio.Track effects;
+    private readonly MusicBed? music;
     private readonly double renderedStart;
     private readonly double renderedDuration;
     private readonly double editedStart;
@@ -328,30 +330,36 @@ internal sealed class RenderedAudioReader : IDisposable
     /// <summary>Rendered frames from the start position to the end.</summary>
     internal long TotalFrames { get; }
 
-    /// <summary>The rendered audio of <paramref name="snapshot"/> from edited time <paramref name="startEdited"/>.</summary>
+    /// <summary>The rendered audio of <paramref name="snapshot"/> from edited time <paramref name="startEdited"/>, with
+    /// <paramref name="music"/> (staged once by <c>MusicBed.Stage</c> for the same snapshot and rate) under the voice.</summary>
     internal static RenderedAudioReader Open(ComposeSnapshot snapshot, int rate, double startEdited = 0, VoiceLabRenderSession? session = null,
-        CancellationToken ct = default) => Open(snapshot, rate, startEdited, session, true, ct);
+        CancellationToken ct = default, MusicBed? music = null) => Open(snapshot, rate, startEdited, session, true, ct, music);
+
+    /// <summary>The voice the music bed measures (Mac: the composition's voice track): the clip's speed, volume, fades and mute,
+    /// bleeps and mutes silent, without the tones, sound effects or music.</summary>
+    internal static RenderedAudioReader OpenVoiceForMusic(ComposeSnapshot snapshot, int rate, VoiceLabRenderSession? session, CancellationToken ct)
+        => Open(snapshot, rate, 0, session, false, ct, null);
 
     /// <summary>The edited voice alone for the edited WAV (Mac withoutClipControls + withoutAudio): 1×, no clip levels, bleeps and
     /// mutes silent, no tones or sounds.</summary>
     internal static RenderedAudioReader OpenEditedVoice(ComposeSnapshot snapshot, int rate, VoiceLabRenderSession? session, CancellationToken ct)
-        => Open(EditedVoiceSnapshot(snapshot), rate, 0, session, false, ct);
+        => Open(EditedVoiceSnapshot(snapshot), rate, 0, session, false, ct, null);
 
     /// <summary>The snapshot the edited WAV reads: no controls, no sounds, bleeps and mutes kept.</summary>
     internal static ComposeSnapshot EditedVoiceSnapshot(ComposeSnapshot snapshot) => snapshot with { Clip = snapshot.Clip?.ForEditedAudio };
 
     private static RenderedAudioReader Open(ComposeSnapshot snapshot, int rate, double startEdited, VoiceLabRenderSession? session, bool effectsTrack,
-        CancellationToken ct)
+        CancellationToken ct, MusicBed? music)
     {
         var reader = new EditedAudioReader(snapshot, rate, startEdited, session, ct);
-        try { return new(snapshot, rate, startEdited, reader.Read, reader, reader.TotalFrames, effectsTrack); }
+        try { return new(snapshot, rate, startEdited, reader.Read, reader, reader.TotalFrames, effectsTrack, music); }
         catch { reader.Dispose(); throw; }
     }
 
     internal RenderedAudioReader(ComposeSnapshot snapshot, int rate, double startEdited, StereoRead edited, IDisposable? owner, long editedFrames,
-        bool effectsTrack = true)
+        bool effectsTrack = true, MusicBed? music = null)
     {
-        this.edited = edited; this.owner = owner; this.rate = rate;
+        this.edited = edited; this.owner = owner; this.rate = rate; this.music = music;
         editedStart = startEdited;
         silenced = EffectAudio.SilencedRanges(snapshot);
         effects = effectsTrack ? EffectAudio.Stage(snapshot, rate) : new([], []);
@@ -367,7 +375,7 @@ internal sealed class RenderedAudioReader : IDisposable
             TotalFrames = Math.Max(0, (long)Math.Round(renderedDuration * rate, MidpointRounding.AwayFromZero) - renderedFirstFrame);
         }
         else TotalFrames = editedFrames;
-        passthrough = stretcher is null && gain is null && silenced.Length == 0 && effects.IsEmpty;
+        passthrough = stretcher is null && gain is null && silenced.Length == 0 && effects.IsEmpty && music is null;
     }
 
     internal int Read(Span<float> target, int frames, CancellationToken ct)
@@ -395,6 +403,7 @@ internal sealed class RenderedAudioReader : IDisposable
                 voice[frame * 2] *= level; voice[frame * 2 + 1] *= level;
             }
         if (!effects.IsEmpty) EffectAudio.Mix(effects, voice, renderedFirstFrame + produced, frames, rate);
+        music?.Mix(voice, renderedFirstFrame + produced, frames);
         produced += frames;
         return frames;
     }

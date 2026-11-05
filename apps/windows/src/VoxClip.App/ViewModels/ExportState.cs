@@ -39,7 +39,7 @@ internal static class ExportFingerprint
     internal static string TargetId(ExportTarget target) => target is ExportTarget.Clip clip ? clip.Id : "full";
     internal static string For(Project project, ExportTarget target, VoxClip.Core.Domain.VoiceLab.VoiceLabLabelPosition? labelPosition = null)
     {
-        if (project.ContextDemo is { Placements.Length: > 0 } || project.MotionCues.Count > 0 || project.Music.Count > 0)
+        if (project.ContextDemo is { Placements.Length: > 0 } || project.MotionCues.Count > 0)
             return Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(
                 "unsupported-windows-visuals-v1\n" + TargetId(target) + "\n" + ProjectSerialization.Serialize(project))));
         var state = ExportSelection.Scope(EditingEngine.FromProject(project), target);
@@ -88,8 +88,11 @@ internal static class ExportFingerprint
         // A clip's controls and the scope's effects change the render; without them the fingerprint is unchanged.
         var effects = project.ClipEffects.Where(effect => VoxClip.Core.Domain.Effects.ClipEffects.IsCensor(effect.GetProperty("kind").GetString()!) ||
             (effect.GetProperty("clipId").ValueKind == JsonValueKind.String ? effect.GetProperty("clipId").GetString() : null) == clipId).ToArray();
-        if (controls is null && effects.Length == 0) return hash;
-        var clipInput = JsonSerializer.SerializeToElement(new { Controls = controls, Effects = effects });
+        // The scope's music track mixes under the voice (music.md §4); without music the clip input, and so the hash, is unchanged.
+        var music = VoxClip.Core.Domain.Music.MusicProject.Entry(clipId, project);
+        if (controls is null && effects.Length == 0 && music is null) return hash;
+        var clipInput = music is null ? JsonSerializer.SerializeToElement(new { Controls = controls, Effects = effects })
+            : JsonSerializer.SerializeToElement(new { Controls = controls, Effects = effects, Music = music });
         using var clipStream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(clipStream)) WriteCanonical(writer, clipInput);
         return Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(hash + "\n").Concat(clipStream.ToArray()).ToArray()));

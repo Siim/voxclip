@@ -61,17 +61,21 @@ public sealed class MusicProjectWireTests
     }
 
     [Fact]
-    public void WindowsRefusesToExportMusicWithAReasonAndKeepsTheProject()
+    public void WindowsRendersMusicForItsScopeAndKeepsTheProject()
     {
         var project = ProjectSerialization.Deserialize(Fixture().ToJsonString());
-        var refusal = Assert.IsType<VoxClipException>(Record.Exception(() => VoiceLabRenderContract.RequireWindowsVisualSupport(project)));
-        Assert.Equal(VoxClipErrorCode.ExportFailed, refusal.Code);
-        Assert.Equal(MusicProject.ExportUnsupportedMessage, refusal.Message);
-        Assert.Throws<VoxClipException>(() => VoiceLabRenderContract.Prepare(project, VoiceLabOutputScope.Clip("clip-main"), VoiceLabLabelPosition.TopRight));
-        Assert.Contains(project.Music, entry => entry.ClipId == "clip-main");
+        VoiceLabRenderContract.RequireWindowsVisualSupport(project);
+        VoiceLabRenderContract.Prepare(project, VoiceLabOutputScope.Clip("clip-main"), VoiceLabLabelPosition.TopRight);
+        var data = Path.Combine(Path.GetTempPath(), "voxclip-music-scope");
+        // The clip plays its own track, the full video the full-video track; each from <data>/Music/<projectId>/.
+        var clip = ClipRenderInput.Resolve(project, "clip-main", data, FixtureLoader.SharedRoot)!.Music!;
+        var full = ClipRenderInput.Resolve(project, null, data, FixtureLoader.SharedRoot)!.Music!;
+        Assert.Equal(("music-main", "music-full"), (clip.Entry.Id, full.Entry.Id));
+        Assert.Equal(Path.Combine(data, "Music", project.Id, Path.GetFileName(clip.Entry.Asset.File)), clip.AssetPath);
+        Assert.Null(ClipRenderInput.Resolve(project, "clip-main", data, FixtureLoader.SharedRoot)!.ForEditedAudio);
         var without = MusicProject.Setting(null, null, MusicProject.Setting(null, "clip-main", project));
         Assert.Empty(without.Music);
-        VoiceLabRenderContract.RequireWindowsVisualSupport(without);
+        Assert.Null(ClipRenderInput.Resolve(without, null, data, FixtureLoader.SharedRoot)?.Music);
     }
 
     [Fact]

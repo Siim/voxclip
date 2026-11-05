@@ -205,6 +205,23 @@ member VoxClip.Media.Audio.MicrophoneTake :: method public op_Equality(VoxClip.M
 member VoxClip.Media.Audio.MicrophoneTake :: method public op_Inequality(VoxClip.Media.Audio.MicrophoneTake,VoxClip.Media.Audio.MicrophoneTake)
 member VoxClip.Media.Audio.MicrophoneTake :: method public set_Mono(float[])
 member VoxClip.Media.Audio.MicrophoneTake :: method public set_Rate(int)
+member VoxClip.Media.Audio.MusicBed :: field internal NoAudioMessage
+member VoxClip.Media.Audio.MusicBed :: field private bedGain
+member VoxClip.Media.Audio.MusicBed :: field private ducking
+member VoxClip.Media.Audio.MusicBed :: field private entry
+member VoxClip.Media.Audio.MusicBed :: field private pieces
+member VoxClip.Media.Audio.MusicBed :: field private rate
+member VoxClip.Media.Audio.MusicBed :: field private track
+member VoxClip.Media.Audio.MusicBed :: method internal Create(VoxClip.Core.Domain.Music.ProjectMusic,float[],double[],long,int)
+member VoxClip.Media.Audio.MusicBed :: method internal Decode(VoxClip.Core.Domain.Music.MusicRenderInput,double,int)
+member VoxClip.Media.Audio.MusicBed :: method internal Mix(System.Span`1<float>,long,int)
+member VoxClip.Media.Audio.MusicBed :: method internal SpeechLevels(VoxClip.Media.Audio.RenderedAudioReader,int,System.Threading.CancellationToken)
+member VoxClip.Media.Audio.MusicBed :: method internal Stage(VoxClip.Core.Domain.Shared.ComposeSnapshot,int,System.Func`1<VoxClip.Media.Audio.RenderedAudioReader>,System.Threading.CancellationToken)
+member VoxClip.Media.Audio.MusicBed :: method internal Stage(VoxClip.Core.Domain.Shared.ComposeSnapshot,int,VoxClip.Media.VoiceLab.VoiceLabRenderSession,System.Threading.CancellationToken)
+member VoxClip.Media.Audio.MusicBed :: method internal get_BedGainDb()
+member VoxClip.Media.Audio.MusicBed :: method internal get_OutputFrames()
+member VoxClip.Media.Audio.MusicBed :: method internal get_SpeechDb()
+member VoxClip.Media.Audio.MusicBed :: method private .ctor(float[],System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Music.MusicMix+LoopPiece>,double[],VoxClip.Core.Domain.Music.ProjectMusic,int,long,double,System.Nullable`1<double>)
 member VoxClip.Media.Audio.PhraseCueOutput :: method public DefaultOutputIsHeadphones()
 member VoxClip.Media.Audio.PhraseCueOutput :: method public HasMicrophone()
 member VoxClip.Media.Audio.PhraseCueOutput :: method public PlayAsync(float[],int,System.Threading.CancellationToken)
@@ -213,6 +230,7 @@ member VoxClip.Media.Audio.RenderedAudioReader :: field private editedRead
 member VoxClip.Media.Audio.RenderedAudioReader :: field private editedStart
 member VoxClip.Media.Audio.RenderedAudioReader :: field private effects
 member VoxClip.Media.Audio.RenderedAudioReader :: field private gain
+member VoxClip.Media.Audio.RenderedAudioReader :: field private music
 member VoxClip.Media.Audio.RenderedAudioReader :: field private owner
 member VoxClip.Media.Audio.RenderedAudioReader :: field private passthrough
 member VoxClip.Media.Audio.RenderedAudioReader :: field private produced
@@ -222,13 +240,14 @@ member VoxClip.Media.Audio.RenderedAudioReader :: field private renderedFirstFra
 member VoxClip.Media.Audio.RenderedAudioReader :: field private renderedStart
 member VoxClip.Media.Audio.RenderedAudioReader :: field private silenced
 member VoxClip.Media.Audio.RenderedAudioReader :: field private stretcher
-member VoxClip.Media.Audio.RenderedAudioReader :: method internal .ctor(VoxClip.Core.Domain.Shared.ComposeSnapshot,int,double,VoxClip.Media.Audio.StereoRead,System.IDisposable,long,bool)
+member VoxClip.Media.Audio.RenderedAudioReader :: method internal .ctor(VoxClip.Core.Domain.Shared.ComposeSnapshot,int,double,VoxClip.Media.Audio.StereoRead,System.IDisposable,long,bool,VoxClip.Media.Audio.MusicBed)
 member VoxClip.Media.Audio.RenderedAudioReader :: method internal EditedVoiceSnapshot(VoxClip.Core.Domain.Shared.ComposeSnapshot)
-member VoxClip.Media.Audio.RenderedAudioReader :: method internal Open(VoxClip.Core.Domain.Shared.ComposeSnapshot,int,double,VoxClip.Media.VoiceLab.VoiceLabRenderSession,System.Threading.CancellationToken)
+member VoxClip.Media.Audio.RenderedAudioReader :: method internal Open(VoxClip.Core.Domain.Shared.ComposeSnapshot,int,double,VoxClip.Media.VoiceLab.VoiceLabRenderSession,System.Threading.CancellationToken,VoxClip.Media.Audio.MusicBed)
 member VoxClip.Media.Audio.RenderedAudioReader :: method internal OpenEditedVoice(VoxClip.Core.Domain.Shared.ComposeSnapshot,int,VoxClip.Media.VoiceLab.VoiceLabRenderSession,System.Threading.CancellationToken)
+member VoxClip.Media.Audio.RenderedAudioReader :: method internal OpenVoiceForMusic(VoxClip.Core.Domain.Shared.ComposeSnapshot,int,VoxClip.Media.VoiceLab.VoiceLabRenderSession,System.Threading.CancellationToken)
 member VoxClip.Media.Audio.RenderedAudioReader :: method internal Read(System.Span`1<float>,int,System.Threading.CancellationToken)
 member VoxClip.Media.Audio.RenderedAudioReader :: method internal get_TotalFrames()
-member VoxClip.Media.Audio.RenderedAudioReader :: method private Open(VoxClip.Core.Domain.Shared.ComposeSnapshot,int,double,VoxClip.Media.VoiceLab.VoiceLabRenderSession,bool,System.Threading.CancellationToken)
+member VoxClip.Media.Audio.RenderedAudioReader :: method private Open(VoxClip.Core.Domain.Shared.ComposeSnapshot,int,double,VoxClip.Media.VoiceLab.VoiceLabRenderSession,bool,System.Threading.CancellationToken,VoxClip.Media.Audio.MusicBed)
 member VoxClip.Media.Audio.RenderedAudioReader :: method private Silenced(System.Span`1<float>,int,System.Threading.CancellationToken)
 member VoxClip.Media.Audio.RenderedAudioReader :: method public Dispose()
 member VoxClip.Media.Audio.SharedWasapiOutput :: field private player
@@ -1305,6 +1324,9 @@ member VoxClip.Media.Pipeline.PreviewEngine :: field private generation
 member VoxClip.Media.Pipeline.PreviewEngine :: field private initialize
 member VoxClip.Media.Pipeline.PreviewEngine :: field private leases
 member VoxClip.Media.Pipeline.PreviewEngine :: field private lookAhead
+member VoxClip.Media.Pipeline.PreviewEngine :: field private musicBed
+member VoxClip.Media.Pipeline.PreviewEngine :: field private musicFor
+member VoxClip.Media.Pipeline.PreviewEngine :: field private musicLock
 member VoxClip.Media.Pipeline.PreviewEngine :: field private nextFrame
 member VoxClip.Media.Pipeline.PreviewEngine :: field private origin
 member VoxClip.Media.Pipeline.PreviewEngine :: field private playbackFailure
@@ -1332,6 +1354,7 @@ member VoxClip.Media.Pipeline.PreviewEngine :: method private OpenAudio(double,S
 member VoxClip.Media.Pipeline.PreviewEngine :: method private Own()
 member VoxClip.Media.Pipeline.PreviewEngine :: method private Pause()
 member VoxClip.Media.Pipeline.PreviewEngine :: method private Present(double,bool,System.Threading.CancellationToken)
+member VoxClip.Media.Pipeline.PreviewEngine :: method private PreviewMusic(VoxClip.Core.Domain.Shared.ComposeSnapshot,VoxClip.Media.VoiceLab.VoiceLabRenderSession,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.PreviewEngine :: method private RecoverPlayback(System.Exception)
 member VoxClip.Media.Pipeline.PreviewEngine :: method private ReopenAfterLoss(VoxClip.Media.Audio.IPreviewAudioOutput,System.Exception)
 member VoxClip.Media.Pipeline.PreviewEngine :: method private ReportAudio(VoxClip.Core.Services.Media.PreviewAudioStatus)
@@ -2426,6 +2449,7 @@ type VoxClip.Media.Audio.MicrophonePacket
 type VoxClip.Media.Audio.MicrophoneSampleKind
 type VoxClip.Media.Audio.MicrophoneSnapshot
 type VoxClip.Media.Audio.MicrophoneTake
+type VoxClip.Media.Audio.MusicBed
 type VoxClip.Media.Audio.PhraseCueOutput
 type VoxClip.Media.Audio.RenderedAudioReader
 type VoxClip.Media.Audio.SharedWasapiOutput

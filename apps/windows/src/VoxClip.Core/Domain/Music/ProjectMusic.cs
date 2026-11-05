@@ -35,7 +35,7 @@ public enum MusicLicense
     [JsonStringEnumMemberName("own")] Own
 }
 
-/// <summary>The track file under the Mac data folder's Music root; Windows keeps the reference and never reads the file.</summary>
+/// <summary>The track file under the data folder's Music root (<see cref="MusicRenderInput.Root"/>).</summary>
 public sealed record MusicAsset(string File, string Sha256, double DurationSeconds);
 
 /// <summary>One background track under a clip, or the full video when ClipId is null; schema v4, doc/spec/music.md §2.
@@ -44,14 +44,9 @@ public sealed record ProjectMusic(string Id, string? ClipId, MusicAsset Asset, M
     MusicLicense License, string? Attribution, string? SourceUrl, string? Prompt, double GainDb, bool Ducking,
     double FadeInSeconds, double FadeOutSeconds, double StartOffsetSeconds);
 
-/// <summary>Validation, pruning and the export refusal for the v4 music field. Windows opens, validates and saves music
-/// unchanged; mixing it is Mac-only for now, so Windows export refuses with a reason.</summary>
+/// <summary>Validation, setting and pruning for the v4 music field; preview and export mix it under the voice (<see cref="MusicMix"/>).</summary>
 public static class MusicProject
 {
-    /// <summary>The reason a Windows render or export of a project with music stops.</summary>
-    public const string ExportUnsupportedMessage =
-        "Windows cannot mix background music into exports yet. Export this project on a Mac, or remove its music there. Your music and edits are unchanged.";
-
     private const string Identifier = "[A-Za-z0-9][A-Za-z0-9._:-]{0,63}";
     private const string File = "[0-9a-f-]{36}/music-[a-z0-9][a-z0-9_-]{0,57}\\.(mp3|m4a|wav|aif|aiff|flac)";
 
@@ -135,6 +130,9 @@ public static class MusicProject
         Validate(result);
         return result;
     }
+
+    /// <summary>The track under a clip, or under the full video for null.</summary>
+    public static ProjectMusic? Entry(string? clipId, Project project) => project.Music.FirstOrDefault(entry => entry.ClipId == clipId);
 
     /// <summary>Keeps tracks whose clip still exists and every full-video track.</summary>
     public static IReadOnlyList<ProjectMusic> Pruned(IReadOnlyList<ProjectMusic> music, IEnumerable<string> clipIds)
