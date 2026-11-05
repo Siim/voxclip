@@ -41,6 +41,31 @@ public sealed partial class EditorPage
         ViewModel.MakeItPlayRequested += (_, time) => _ = RunAsync(() => PlayMakeItAsync(time), "Preview");
         ViewModel.MakeItChangeRequested += (_, change) => MakeItChange(change.Run, change.Row);
         ViewModel.MakeItChanged += (_, _) => DispatcherQueue.TryEnqueue(UpdateMakeItCommand);
+        InitializeClaudeMode();
+    }
+
+    /// <summary>"✦ Claude does it all" (design §6.7): the remembered choice in Settings, Find Clips started by Claude when it needs
+    /// no approval, and the run once the find task has ended.</summary>
+    private void InitializeClaudeMode()
+    {
+        ViewModel.ClaudeMode.Services = new ClaudeModeServices(
+            () => App.Services.Settings.GetClipsAutopilot(),
+            async value =>
+            {
+                await App.Services.SetAsync(ClipsMode.CountKey, value.Count);
+                await App.Services.SetAsync(ClipsMode.CapKey, value.CapUsd);
+                if (value.Mode is { } mode) await App.Services.SetAsync(ClipsMode.Key, mode);
+            },
+            () => FindClips.Running is not null,
+            () => FindClips.FailureText ?? FindClips.NoneFound,
+            FindClips.FindIfFreeAsync,
+            blocker =>
+            {
+                if (blocker is ClaudeModeBlocker.SetUp) App.OpenSettings(SettingsSections.ProvidersAndKeys);
+                else ShowFindClips(null);
+            });
+        FindClips.Started += (_, find) => ViewModel.ClaudeModeFindStarted(find);
+        ViewModel.Transcribed += (_, _) => DispatcherQueue.TryEnqueue(() => _ = ViewModel.ClaudeModeContinueAsync());
     }
 
     /// <summary>The clip bar's verb: "✦ Make it postable · up to $x" on the open clip, or "✦ Review" once its run has finished.</summary>

@@ -7,6 +7,7 @@
         <NavigationView x:Name="Navigation" Grid.Row="1" IsBackButtonVisible="Collapsed" IsSettingsVisible="False" PaneDisplayMode="Left" OpenPaneLength="210" SelectionChanged="PaneChanged">
             <NavigationView.MenuItems>
                 <NavigationViewItem Content="General" Tag="General" Icon="Setting"/>
+                <NavigationViewItem Content="Clips" Tag="Clips" Icon="Video"/>
                 <NavigationViewItem Content="Transcription" Tag="Transcription" Icon="Microphone"/>
                 <NavigationViewItem Content="Providers &amp; Keys" Tag="Providers &amp; Keys" Icon="Permissions"/>
                 <NavigationViewItem Content="Local Models" Tag="Local Models" Icon="Download"/>

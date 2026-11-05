@@ -172,8 +172,12 @@ public sealed class ConnectorPreflightTests
     {
         var root = Path.Combine(Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!, "apps/windows/src/VoxClip.App");
         var find = File.ReadAllText(Path.Combine(root, "Controls/FindClipsJob.cs"));
-        Assert.Equal(2, find.Split("ProviderCatalog.ProbeAsync").Length - 1);
-        Assert.Contains("internal Task RetryAsync() => FindAsync()", find);
+        // Opening, Find and Claude mode's headless start (which probes, then starts only when no send asks first).
+        Assert.Equal(3, find.Split("ProviderCatalog.ProbeAsync").Length - 1);
+        Assert.Contains("var (firstUse, paid) = SendNeeds(chosen, connector);", find);
+        // Retry runs the same find through Start, which tells Claude mode the find's task.
+        Assert.Contains("internal Task RetryAsync() => Start()", find);
+        Assert.Contains("var task = FindAsync();", find);
         Assert.Contains("ConnectorConsentAction.FindClips", find);
         Assert.Contains("var snap = App.Services.Get(\"llm.clips.snapToLines\", true)", find);
         Assert.Contains("Snap: snap", find);

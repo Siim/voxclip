@@ -60,11 +60,11 @@ internal sealed class FindClipsJob
             if (host?.OwnsComposition == true || args.Handled || args.KeyStatus.WasKeyDown) return;
             if (args.Key != VirtualKey.Enter) return;
             args.Handled = true;
-            _ = FindAsync();
+            _ = Start();
         };
         problem.Foreground = Ui.ThemeBrush(problem, "VcStatusWarningBrush");
         problem.Visibility = Visibility.Collapsed;
-        find.Click += (_, _) => _ = FindAsync();
+        find.Click += (_, _) => _ = Start();
         foreach (var child in new UIElement[] { title, line, preset, instructions, footnote, problem, busy, find, confirmation }) body.Children.Add(child);
     }
 
@@ -122,7 +122,54 @@ internal sealed class FindClipsJob
     }
 
     /// <summary>Run the last search again from the callout's Retry.</summary>
-    internal Task RetryAsync() => FindAsync();
+    internal Task RetryAsync() => Start();
+    /// <summary>A find began: Claude mode goes on once this task has ended (design §6.7), never inside it.</summary>
+    internal event EventHandler<Task>? Started;
+    private Task Start()
+    {
+        var task = FindAsync();
+        Started?.Invoke(this, task);
+        return task;
+    }
+
+    /// <summary>What the last find said when it failed; null otherwise.</summary>
+    internal string? FailureText => Callout?.Title;
+
+    /// <summary>Claude mode: starts a find with the job's defaults when the chosen AI needs no approval (a local server, or a CLI or
+    /// key already allowed and not billed per send), and returns null; otherwise what blocks it, with its one fix.</summary>
+    internal async Task<VoxClip.App.ViewModels.ClaudeModeBlocker?> FindIfFreeAsync()
+    {
+        if (Running is not null || starting) return null;
+        ProviderEntry? chosen;
+        try { chosen = await ChosenAsync(); }
+        catch (Exception exception) when (exception is not OutOfMemoryException) { return new VoxClip.App.ViewModels.ClaudeModeBlocker.SetUp(UiError.Message(exception, "Find clips")); }
+        if (chosen is null)
+            return new VoxClip.App.ViewModels.ClaudeModeBlocker.SetUp("Claude isn't set up yet. Choose Claude Code in Settings › Providers & Keys, then Claude starts on its own.");
+        var connector = App.Services.Connector(chosen.Id);
+        ConnectorStatus status;
+        try { status = await ProviderCatalog.ProbeAsync(chosen, connector, ct); }
+        catch (Exception exception) when (exception is not OutOfMemoryException) { return new VoxClip.App.ViewModels.ClaudeModeBlocker.SetUp(UiError.Message(exception, "Find clips")); }
+        if (status is not ConnectorStatus.Ready)
+            return new VoxClip.App.ViewModels.ClaudeModeBlocker.SetUp($"{chosen.ShortName} isn't installed or signed in. Set it up in Settings › Providers & Keys.");
+        var (firstUse, paid) = SendNeeds(chosen, connector);
+        if (paid) return new VoxClip.App.ViewModels.ClaudeModeBlocker.ApproveSend($"{chosen.ShortName} bills each send to your key, so Claude waits for your OK to find clips.");
+        if (firstUse) return new VoxClip.App.ViewModels.ClaudeModeBlocker.ApproveSend("Claude waits for your OK to read the transcript and find clips.");
+        _ = Start();
+        return null;
+    }
+
+    /// <summary>Whether a send to <paramref name="chosen"/> asks first: a first use of a cloud or CLI connector (or a remote server), or
+    /// a send billed to a key.</summary>
+    private static (bool FirstUse, bool Paid) SendNeeds(ProviderEntry chosen, LlmConnector selected)
+    {
+        var signIn = RewriteSession.SignIn(selected.CliDetection);
+        var address = App.Services.Get("llm.baseUrl." + chosen.WireId, "");
+        var remote = chosen.Group == "local" && Uri.TryCreate(address, UriKind.Absolute, out var server) && !server.IsLoopback;
+        var firstUse = remote || (chosen.Cloud || chosen.Cli) && !App.Services.Get("llm.cloudConsent." + chosen.WireId, false) || chosen.Cli && signIn is null;
+        var billing = VoxClip.Core.Domain.VoiceLab.VoiceLabCostPresentation.KindForLlmSend(chosen.Id, signIn,
+            chosen.Cli ? chosen.Id == ConnectorId.ClaudeCode ? "Anthropic" : "OpenAI" : chosen.ShortName);
+        return (firstUse, billing.Kind == VoxClip.Core.Domain.VoiceLab.VoiceLabCostPresentationKind.Confirm);
+    }
     private void InputsChanged() { inputRevision++; approval?.Cancel(); search?.Cancel(); }
     internal void Cancel() { presentationRevision++; approval?.Cancel(); search?.Cancel(); }
     internal void Close() { retired = true; model.PropertyChanged -= BusyChanged; host?.RequestClose(); Cancel(); }

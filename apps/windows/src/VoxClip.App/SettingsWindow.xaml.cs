@@ -1,3 +1,4 @@
+using VoxClip.Core.Services.Settings;
 using System.Net.Http;
 using System.Runtime.InteropServices;
 using CommunityToolkit.WinUI.Controls;
@@ -122,6 +123,7 @@ public sealed partial class SettingsWindow : Window
             switch ((string)item.Tag)
             {
                 case "General": General(); break;
+                case "Clips": Clips(); break;
                 case "Transcription": await TranscriptionAsync(); break;
                 case "Providers & Keys": await ProvidersAsync(); break;
                 case "Local Models": await ModelsAsync(); break;
@@ -230,6 +232,28 @@ public sealed partial class SettingsWindow : Window
         restartPreparation.Resume();
     }
     private void AddSetting(FrameworkElement content) => Body.Children.Add(content);
+    /// <summary>Settings › Clips (design §6.6): who makes the clips of every new video, how many and the spend that approves paid
+    /// voice. The same choices as the editor's card A and the clip style card's mode rows.</summary>
+    private void Clips()
+    {
+        var settings = App.Services.Settings.GetClipsAutopilot();
+        Body.Children.Add(Ui.Text("Who makes the clips", "BodyStrongTextBlockStyle"));
+        var modes = new[] { ClipsMode.Claude, ClipsMode.Pick };
+        var mode = Ui.Radios("Every new video", ["✦ Claude does it all", "I'll pick"], Array.IndexOf(modes, settings.Mode));
+        mode.SelectionChanged += (_, _) => { if (mode.SelectedIndex >= 0) Save(ClipsMode.Key, modes[mode.SelectedIndex]); };
+        AddSetting(mode);
+        if (settings.Mode is null) Body.Children.Add(Ui.Text("Not chosen yet", "HelperText"));
+        var count = Ui.Choice("Clips per video", ClipsMode.Counts.Select(value => $"Top {value}"), ClipsMode.Counts.ToList().IndexOf(settings.Count));
+        count.SelectionChanged += (_, _) => { if (count.SelectedIndex >= 0) Save(ClipsMode.CountKey, ClipsMode.Counts[count.SelectedIndex]); };
+        AddSetting(count);
+        var cap = Ui.Choice("Spend per video", ClipsMode.CapsUsd.Select(value => value == 0 ? "$0 · no paid voice" : $"Up to ${value}"), ClipsMode.CapsUsd.ToList().IndexOf(settings.CapUsd));
+        cap.SelectionChanged += (_, _) => { if (cap.SelectedIndex >= 0) Save(ClipsMode.CapKey, ClipsMode.CapsUsd[cap.SelectedIndex]); };
+        AddSetting(cap);
+        Body.Children.Add(Ui.Text("✦ Claude does it all: after a new video is transcribed and its clips found, Claude (Opus, extra high) makes the top clips " +
+            "postable by itself: cuts, rewording in your voice, captions and shape. The spend cap is your approval for ElevenLabs voice; Claude never spends " +
+            "past it and asks inline for more. I'll pick: Claude suggests clips and you press ✦ Make it postable on the ones you want.", "HelperText"));
+    }
+
     private void General()
     {
         var appearance = Ui.Choice("Appearance", ["System", "Light", "Dark"], Array.IndexOf(new[] { "system", "light", "dark" }, App.Services.Get("general.appearance", "system")));

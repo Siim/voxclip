@@ -87,6 +87,68 @@ public sealed class MakeItSmokeTests
         Assert.True(smoke.Failures.Count == 0, string.Join("\n", smoke.Failures) + "\n--- log ---\n" + string.Join("\n", smoke.Log));
     }
 
+    /// <summary>S-claude-does-it-all: a newly imported video is transcribed; Claude mode finds the clips, makes the top 3 postable
+    /// within the per-video cap through the real driver, and Export all writes each post text beside its videos. After every step:
+    /// C1 the card shows something that acts, C2 spend never passes what was approved, C3 the status item names the mode. At the end:
+    /// CD1 done, CD2 three clips ready and kept, CD3 Export all wrote a post text beside every video, CD4 one undo step per clip.</summary>
+    [Fact]
+    public async Task SClaudeDoesItAll()
+    {
+        var failures = new List<string>();
+        var log = new List<string>();
+        var handed = new List<RewriteSession>();
+        var (editor, claude, stub) = ClaudeModeTests.Video(stub: new Stub { VoiceReady = true });
+        var services = editor.MakeIt.Services!;
+        editor.MakeIt.Services = services with
+        {
+            Voice = (request, ct) =>
+            {
+                var session = RewriteAutoFixTests.Session(new(RewriteAutoFixTests.Reply, (_, ordinals) => RewriteAutoFixTests.Rows(ordinals, "x")), request.First, request.Last, editor: editor);
+                RewriteAutoFixTests.Configure(session, new((_, _) => (RewriteAutoFixTests.Fit, RewriteAutoFixTests.Passed)));
+                return new MakeItRewriteDriver(editor, request, _ => Task.FromResult<RewriteSession?>(session), _ => Task.FromResult<VoiceLabMonthlyCap?>(null), handed.Add).RunAsync(ct);
+            }
+        };
+        void Observe(string label)
+        {
+            var phase = editor.ClaudeMode.Phase;
+            log.Add($"{label}: {phase} · {editor.ClaudeMode.Blocker?.Reason} · {string.Join(" / ", editor.ClaudeModeSteps.Select(step => step.Text))} · runs {string.Join(", ", editor.ClaudeModeRuns.Select(run => run.Phase + " " + run.Failure))}");
+            var acts = phase switch
+            {
+                ClaudeModePhase.Waiting => true,
+                ClaudeModePhase.Running => true,
+                ClaudeModePhase.Blocked => editor.ClaudeMode.Blocker is not null,
+                ClaudeModePhase.Done or ClaudeModePhase.Stopped => editor.CanClaudeExportAll || editor.ClaudeModeRuns.Count > 0,
+                _ => false
+            };
+            if (!editor.ShowsClaudeModeCard || !acts) failures.Add($"{label} C1: no card that acts ({phase})");
+            if (editor.ClaudeMode.Budget is { } budget && budget.Spent > budget.Approved) failures.Add($"{label} C2: spent {budget.Spent} past {budget.Approved}");
+            if (editor.ClaudeModeStatus?.StartsWith("✦ Claude does it all", StringComparison.Ordinal) != true) failures.Add($"{label} C3: status '{editor.ClaudeModeStatus}'");
+        }
+        Observe("open a new video");
+        editor.SetTranscript(editor.Project.Transcript!);
+        await editor.ClaudeModeContinueAsync();
+        Observe("the transcript arrives; Find Clips starts");
+        claude.Gate.SetResult();
+        await editor.ClaudeMode.WaitAsync();
+        Observe("the clips are made");
+        if (editor.ClaudeMode.Phase != ClaudeModePhase.Done) failures.Add($"CD1: {editor.ClaudeMode.Phase}");
+        if (editor.ClaudeModeReady.Count != 3 || editor.SuggestedClips.Count != 1) failures.Add($"CD2: {editor.ClaudeModeReady.Count} ready, {editor.SuggestedClips.Count} suggestions left");
+        try
+        {
+            await editor.ClaudeExportAllAsync();
+            Observe("Export all");
+            if (editor.ClaudeExported.Count != 6 || editor.ClaudeExported.Any(file => !File.Exists(Path.ChangeExtension(file, ".txt")))) failures.Add($"CD3: {editor.ClaudeExported.Count} files");
+        }
+        finally { if (Directory.Exists(stub.ExportFolder)) Directory.Delete(stub.ExportFolder, true); }
+        for (var index = 0; index < 3; index++)
+        {
+            if (editor.UndoActionName != "Make it postable") failures.Add($"CD4: step {index} is '{editor.UndoActionName}'");
+            editor.Undo();
+        }
+        foreach (var session in handed) session.Dispose();
+        Assert.True(failures.Count == 0, string.Join("\n", failures) + "\n--- log ---\n" + string.Join("\n", log));
+    }
+
     [Fact]
     public async Task SMakeTop3()
     {

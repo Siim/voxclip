@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Clips;
+using VoxClip.Core.Services.Settings;
 
 namespace VoxClip.App.Controls;
 
@@ -14,6 +15,12 @@ internal sealed class ClipStyleCardPanel : Grid
 {
     /// <summary>A chip or a row chose <c>Style</c>; <c>Collapse</c> is true for a chip and Done.</summary>
     internal event Action<ClipStyle, bool>? Chosen;
+    /// <summary>Card B's mode control (design §6.6): "claude" or "pick".</summary>
+    internal event Action<string>? ModeChosen;
+    /// <summary>Claude mode's Clips row: top 1, 3 or 5 per video.</summary>
+    internal event Action<int>? CountChosen;
+    /// <summary>Claude mode's Spend row: up to $0, $1, $2 or $5 per video.</summary>
+    internal event Action<int>? CapChosen;
 
     private static double Token(string key) => (double)Application.Current.Resources[key];
 
@@ -29,9 +36,11 @@ internal sealed class ClipStyleCardPanel : Grid
     }
 
     /// <summary>Lays the card out for <paramref name="style"/>.</summary>
-    internal void Show(ClipStyle style, ClipStyleCatalog catalog, IReadOnlyList<CaptionStyle> library, ClipStyle? saved)
+    internal void Show(ClipStyle style, ClipStyleCatalog catalog, IReadOnlyList<CaptionStyle> library, ClipStyle? saved,
+        ClipsAutopilotSettings? autopilot = null, IReadOnlyList<RewriteTone>? tones = null)
     {
         var stack = Ui.Stack(Token("VcSpacingGroupGap"));
+        if (autopilot is not null) stack.Children.Add(Mode(autopilot));
         var header = new Grid { ColumnSpacing = Token("VcSpacingRowGap") };
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -60,6 +69,16 @@ internal sealed class ClipStyleCardPanel : Grid
             chips.Children.Add(chip);
         }
         stack.Children.Add(chips);
+        if (autopilot is { Mode: ClipsMode.Claude } claude)
+        {
+            // Claude mode's rows: how many clips per video and the spend that approves paid voice.
+            var claudeRows = Ui.Stack(Token("VcSpacingLabelGap"));
+            claudeRows.Children.Add(Row("Clips", ClipsMode.Counts.Select(count => $"Top {count}").ToArray(), ClipsMode.Counts.ToList().IndexOf(claude.Count),
+                index => CountChosen?.Invoke(ClipsMode.Counts[index])));
+            claudeRows.Children.Add(Row("Spend", ClipsMode.CapsUsd.Select(cap => cap == 0 ? "$0 · no paid voice" : $"Up to ${cap} per video").ToArray(),
+                ClipsMode.CapsUsd.ToList().IndexOf(claude.CapUsd), index => CapChosen?.Invoke(ClipsMode.CapsUsd[index])));
+            stack.Children.Add(claudeRows);
+        }
 
         var rows = Ui.Stack(Token("VcSpacingLabelGap"));
         var ordered = library.OrderBy(caption => caption.Order).ThenBy(caption => caption.Id, StringComparer.Ordinal).ToArray();
@@ -83,9 +102,35 @@ internal sealed class ClipStyleCardPanel : Grid
         rows.Children.Add(Labeled("Shape", shapes));
         rows.Children.Add(Row("Rewording", catalog.Rewording.Select(option => option.Label).ToArray(),
             catalog.Rewording.Select(option => option.Id).ToList().IndexOf(style.Rewording), index => Mine(style with { Rewording = catalog.Rewording[index].Id })));
+        if (tones is not null)
+        {
+            // The tone Claude writes each clip's words in (design §6.6 Tone row); Never reword means As I said it.
+            var ids = new List<string?> { null, "as-said" }.Concat(tones.Select(tone => (string?)tone.Id)).ToArray();
+            var names = new List<string> { "Auto · Claude picks per clip", "As I said it · no tone change" }.Concat(tones.Select(tone => tone.Title)).ToArray();
+            var selected = Math.Max(0, Array.IndexOf(ids, style.EffectiveTone));
+            var tone = Row("Tone", names, selected, index => Mine(style with { Tone = ids[index] }));
+            tone.IsHitTestVisible = style.Rewording != "off";
+            if (style.Rewording == "off") AutomationProperties.SetHelpText(tone, "Never reword keeps your words as said.");
+            rows.Children.Add(tone);
+        }
         stack.Children.Add(rows);
         Children.Clear();
         Children.Add(stack);
+    }
+
+    /// <summary>Card B's mode control: "✦ Claude does it all" or "I'll pick", one of them on.</summary>
+    private FrameworkElement Mode(ClipsAutopilotSettings autopilot)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = Token("VcSpacingLabelGap") };
+        foreach (var (mode, label) in new[] { (ClipsMode.Claude, "✦ Claude does it all"), (ClipsMode.Pick, "I'll pick") })
+        {
+            var toggle = new ToggleButton { Content = label, IsChecked = autopilot.Mode == mode };
+            AutomationProperties.SetAutomationId(toggle, "ClipStyle.Mode." + mode);
+            toggle.Click += (_, _) => { if (autopilot.Mode != mode) ModeChosen?.Invoke(mode); else toggle.IsChecked = true; };
+            row.Children.Add(toggle);
+        }
+        AutomationProperties.SetName(row, "Who makes the clips");
+        return Labeled("Mode", row);
     }
 
     private void Mine(ClipStyle style) => Chosen?.Invoke(style with { Preset = "mine" }, false);

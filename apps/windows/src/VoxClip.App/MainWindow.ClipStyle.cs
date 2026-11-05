@@ -13,12 +13,14 @@ public sealed partial class MainWindow
     private ClipStyleCatalog? clipStyles;
     private IReadOnlyList<CaptionStyle> clipStyleLibrary = [];
     private ClipStyleCardPanel? clipStyleCard;
+    private ClaudeModeCard? claudeModeCard;
+    private RewriteToneCatalog? rewriteTones;
 
     private bool LoadClipStyles()
     {
         if (clipStyles is not null) return true;
         if (App.Services.SharedRoot is not { } root) return false;
-        try { clipStyles = ClipStyleCatalog.Load(root); clipStyleLibrary = CaptionStyleLibrary.Load(root).Styles; }
+        try { clipStyles = ClipStyleCatalog.Load(root); clipStyleLibrary = CaptionStyleLibrary.Load(root).Styles; rewriteTones = RewriteToneCatalog.Load(root); }
         catch (Exception) { clipStyles = null; return false; }
         return true;
     }
@@ -45,12 +47,14 @@ public sealed partial class MainWindow
         var model = !ShowingHome ? editor?.ViewModel : null;
         if (model is null || !LoadClipStyles())
         {
-            ClipStyleHost.Visibility = Visibility.Collapsed; ClipStyleStatus.Visibility = Visibility.Collapsed;
+            ClipStyleHost.Visibility = Visibility.Collapsed; ClipStyleStatus.Visibility = Visibility.Collapsed; ClaudeModeHost.Visibility = Visibility.Collapsed;
             return;
         }
         var library = clipStyleLibrary.Select(style => style.Id).ToHashSet(StringComparer.Ordinal);
         model.ApplyCaptionPick(library);
-        var status = ClipStyleCard.StatusText(model.Project, clipStyles!);
+        RefreshClaudeModeCard(model);
+        // Claude mode's item ("✦ Claude does it all · top 3 · ≤$2", or "Choose how clips are made") takes the style item's place.
+        var status = model.ClaudeModeStatus ?? ClipStyleCard.StatusText(model.Project, clipStyles!);
         ClipStyleStatus.Content = status;
         ClipStyleStatus.IsEnabled = !model.IsReadOnly;
         ClipStyleStatus.Visibility = status is null ? Visibility.Collapsed : Visibility.Visible;
@@ -60,9 +64,13 @@ public sealed partial class MainWindow
         {
             clipStyleCard = new ClipStyleCardPanel();
             clipStyleCard.Chosen += ClipStyleChosen;
+            clipStyleCard.ModeChosen += mode => _ = ClaudeModeChangedAsync(model => model.ChooseClipsModeAsync(mode));
+            clipStyleCard.CountChosen += count => _ = ClaudeModeChangedAsync(model => model.SetClaudeClipCountAsync(count));
+            clipStyleCard.CapChosen += cap => _ = ClaudeModeChangedAsync(model => model.SetClaudeSpendCapAsync(cap));
             ClipStyleHost.Content = clipStyleCard;
         }
-        clipStyleCard.Show(ClipStyleCard.Showing(model.Project, clipStyles!, SavedClipStyle()), clipStyles!, clipStyleLibrary, SavedClipStyle());
+        clipStyleCard.Show(ClipStyleCard.Showing(model.Project, clipStyles!, SavedClipStyle()), clipStyles!, clipStyleLibrary, SavedClipStyle(),
+            App.Services.Settings.GetClipsAutopilot(), rewriteTones is null ? null : rewriteTones.Tones.Concat(SavedRewriteTones()).ToArray());
         ClipStyleHost.Visibility = Visibility.Visible;
     }
 
@@ -86,6 +94,28 @@ public sealed partial class MainWindow
         try { await App.Services.SetAsync("clipStyle.default", value.RootElement.Clone()); } catch (Exception) { }
         RefreshClipStyle();
     }
+
+    /// <summary>Claude mode's card above the clip style card: A, the blocked card, C or D.</summary>
+    private void RefreshClaudeModeCard(VoxClip.App.ViewModels.EditorViewModel model)
+    {
+        if (!ClaudeModeCard.Shows(model) || !Nav.IsPaneOpen) { ClaudeModeHost.Visibility = Visibility.Collapsed; return; }
+        claudeModeCard ??= new ClaudeModeCard();
+        if (!ReferenceEquals(ClaudeModeHost.Content, claudeModeCard)) ClaudeModeHost.Content = claudeModeCard;
+        claudeModeCard.Show(model);
+        ClaudeModeHost.Visibility = Visibility.Visible;
+    }
+
+    private async Task ClaudeModeChangedAsync(Func<VoxClip.App.ViewModels.EditorViewModel, Task> change)
+    {
+        if (editor?.ViewModel is not { } model) return;
+        try { await change(model); }
+        catch (Exception exception) { ShowError(exception, "Settings"); }
+        UpdateShell();
+    }
+
+    /// <summary>The creator's saved tones (Settings rewrite.myTones).</summary>
+    internal static IReadOnlyList<RewriteTone> SavedRewriteTones() =>
+        MyRewriteTones.Decode(App.Services.Settings.Values.TryGetValue(RewriteToneCatalog.SettingsKey, out var saved) ? saved : null);
 
     private void ReopenClipStyleCard()
     {

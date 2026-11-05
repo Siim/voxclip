@@ -345,6 +345,8 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
                 {
                     // Keep the cache under its limit after each import, once the new project's editor holds its lease (architecture §8.2).
                     App.Services.CacheUpkeep.Imported();
+                    // A newly imported video: Claude mode runs on it once it is transcribed (design §6.7).
+                    incoming.ViewModel.ArmClaudeMode();
                     await incoming.PromptTranscriptionAsync();
                 }
             }

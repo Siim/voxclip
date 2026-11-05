@@ -149,15 +149,37 @@ member VoxClip.App.Controls.CaptionsPanel+Tile :: method public get_Selected()
 member VoxClip.App.Controls.CaptionsPanel+Tile :: method public remove_PropertyChanged(System.ComponentModel.PropertyChangedEventHandler)
 member VoxClip.App.Controls.CaptionsPanel+Tile :: method public set_Bitmap(Microsoft.UI.Xaml.Media.ImageSource)
 member VoxClip.App.Controls.CaptionsPanel+Tile :: method public set_Selected(Microsoft.UI.Xaml.Visibility)
+member VoxClip.App.Controls.ClaudeModeCard :: method internal .ctor()
+member VoxClip.App.Controls.ClaudeModeCard :: method internal Show(VoxClip.App.ViewModels.EditorViewModel)
+member VoxClip.App.Controls.ClaudeModeCard :: method internal Shows(VoxClip.App.ViewModels.EditorViewModel)
+member VoxClip.App.Controls.ClaudeModeCard :: method private Blocked(Microsoft.UI.Xaml.Controls.StackPanel,VoxClip.App.ViewModels.EditorViewModel,VoxClip.App.ViewModels.ClaudeModeBlocker)
+member VoxClip.App.Controls.ClaudeModeCard :: method private Choose(Microsoft.UI.Xaml.Controls.StackPanel,VoxClip.App.ViewModels.EditorViewModel)
+member VoxClip.App.Controls.ClaudeModeCard :: method private Finished(Microsoft.UI.Xaml.Controls.StackPanel,VoxClip.App.ViewModels.EditorViewModel)
+member VoxClip.App.Controls.ClaudeModeCard :: method private Heading(string)
+member VoxClip.App.Controls.ClaudeModeCard :: method private Running(Microsoft.UI.Xaml.Controls.StackPanel,VoxClip.App.ViewModels.EditorViewModel)
+member VoxClip.App.Controls.ClaudeModeCard :: method private Secondary(string)
+member VoxClip.App.Controls.ClaudeModeCard :: method private Step(VoxClip.App.ViewModels.ClaudeModeStep)
+member VoxClip.App.Controls.ClaudeModeCard :: method private Token(string)
+member VoxClip.App.Controls.ClaudeModeCard :: method private Wrapped(string)
 member VoxClip.App.Controls.ClipBar :: method public .ctor()
+member VoxClip.App.Controls.ClipStyleCardPanel :: field private CapChosen
 member VoxClip.App.Controls.ClipStyleCardPanel :: field private Chosen
+member VoxClip.App.Controls.ClipStyleCardPanel :: field private CountChosen
+member VoxClip.App.Controls.ClipStyleCardPanel :: field private ModeChosen
 member VoxClip.App.Controls.ClipStyleCardPanel :: method internal .ctor()
 member VoxClip.App.Controls.ClipStyleCardPanel :: method internal FontName(VoxClip.Core.Domain.Captions.CaptionStyle)
-member VoxClip.App.Controls.ClipStyleCardPanel :: method internal Show(VoxClip.Core.Domain.Clips.ClipStyle,VoxClip.Core.Domain.Clips.ClipStyleCatalog,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Captions.CaptionStyle>,VoxClip.Core.Domain.Clips.ClipStyle)
+member VoxClip.App.Controls.ClipStyleCardPanel :: method internal Show(VoxClip.Core.Domain.Clips.ClipStyle,VoxClip.Core.Domain.Clips.ClipStyleCatalog,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Captions.CaptionStyle>,VoxClip.Core.Domain.Clips.ClipStyle,VoxClip.Core.Services.Settings.ClipsAutopilotSettings,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.RewriteTone>)
+member VoxClip.App.Controls.ClipStyleCardPanel :: method internal add_CapChosen(System.Action`1<int>)
 member VoxClip.App.Controls.ClipStyleCardPanel :: method internal add_Chosen(System.Action`2<VoxClip.Core.Domain.Clips.ClipStyle,bool>)
+member VoxClip.App.Controls.ClipStyleCardPanel :: method internal add_CountChosen(System.Action`1<int>)
+member VoxClip.App.Controls.ClipStyleCardPanel :: method internal add_ModeChosen(System.Action`1<string>)
+member VoxClip.App.Controls.ClipStyleCardPanel :: method internal remove_CapChosen(System.Action`1<int>)
 member VoxClip.App.Controls.ClipStyleCardPanel :: method internal remove_Chosen(System.Action`2<VoxClip.Core.Domain.Clips.ClipStyle,bool>)
+member VoxClip.App.Controls.ClipStyleCardPanel :: method internal remove_CountChosen(System.Action`1<int>)
+member VoxClip.App.Controls.ClipStyleCardPanel :: method internal remove_ModeChosen(System.Action`1<string>)
 member VoxClip.App.Controls.ClipStyleCardPanel :: method private Labeled(string,Microsoft.UI.Xaml.FrameworkElement)
 member VoxClip.App.Controls.ClipStyleCardPanel :: method private Mine(VoxClip.Core.Domain.Clips.ClipStyle)
+member VoxClip.App.Controls.ClipStyleCardPanel :: method private Mode(VoxClip.Core.Services.Settings.ClipsAutopilotSettings)
 member VoxClip.App.Controls.ClipStyleCardPanel :: method private Row(string,System.Collections.Generic.IReadOnlyList`1<string>,int,System.Action`1<int>)
 member VoxClip.App.Controls.ClipStyleCardPanel :: method private Token(string)
 member VoxClip.App.Controls.CommandPalette :: field private CommandInvoking
@@ -345,6 +367,7 @@ member VoxClip.App.Controls.FindClipsJob :: field private Announcement
 member VoxClip.App.Controls.FindClipsJob :: field private CalloutShown
 member VoxClip.App.Controls.FindClipsJob :: field private Changed
 member VoxClip.App.Controls.FindClipsJob :: field private Found
+member VoxClip.App.Controls.FindClipsJob :: field private Started
 member VoxClip.App.Controls.FindClipsJob :: field private anchor
 member VoxClip.App.Controls.FindClipsJob :: field private approval
 member VoxClip.App.Controls.FindClipsJob :: field private body
@@ -370,19 +393,23 @@ member VoxClip.App.Controls.FindClipsJob :: method internal .ctor(VoxClip.App.Vi
 member VoxClip.App.Controls.FindClipsJob :: method internal Cancel()
 member VoxClip.App.Controls.FindClipsJob :: method internal Close()
 member VoxClip.App.Controls.FindClipsJob :: method internal Dismiss()
+member VoxClip.App.Controls.FindClipsJob :: method internal FindIfFreeAsync()
 member VoxClip.App.Controls.FindClipsJob :: method internal RetryAsync()
 member VoxClip.App.Controls.FindClipsJob :: method internal ShowAsync(Microsoft.UI.Xaml.FrameworkElement,bool)
 member VoxClip.App.Controls.FindClipsJob :: method internal add_Announcement(System.EventHandler`1<string>)
 member VoxClip.App.Controls.FindClipsJob :: method internal add_CalloutShown(System.EventHandler`1<Microsoft.UI.Xaml.FrameworkElement>)
 member VoxClip.App.Controls.FindClipsJob :: method internal add_Changed(System.EventHandler)
 member VoxClip.App.Controls.FindClipsJob :: method internal add_Found(System.EventHandler`1<string>)
+member VoxClip.App.Controls.FindClipsJob :: method internal add_Started(System.EventHandler`1<System.Threading.Tasks.Task>)
 member VoxClip.App.Controls.FindClipsJob :: method internal get_Callout()
+member VoxClip.App.Controls.FindClipsJob :: method internal get_FailureText()
 member VoxClip.App.Controls.FindClipsJob :: method internal get_NoneFound()
 member VoxClip.App.Controls.FindClipsJob :: method internal get_Running()
 member VoxClip.App.Controls.FindClipsJob :: method internal remove_Announcement(System.EventHandler`1<string>)
 member VoxClip.App.Controls.FindClipsJob :: method internal remove_CalloutShown(System.EventHandler`1<Microsoft.UI.Xaml.FrameworkElement>)
 member VoxClip.App.Controls.FindClipsJob :: method internal remove_Changed(System.EventHandler)
 member VoxClip.App.Controls.FindClipsJob :: method internal remove_Found(System.EventHandler`1<string>)
+member VoxClip.App.Controls.FindClipsJob :: method internal remove_Started(System.EventHandler`1<System.Threading.Tasks.Task>)
 member VoxClip.App.Controls.FindClipsJob :: method private ApproveSendAsync(VoxClip.App.Services.ProviderEntry,VoxClip.Core.Services.LLM.LlmConnector,object,System.Func`1<bool>,System.Threading.CancellationToken)
 member VoxClip.App.Controls.FindClipsJob :: method private BusyChanged(object,System.ComponentModel.PropertyChangedEventArgs)
 member VoxClip.App.Controls.FindClipsJob :: method private ChosenAsync()
@@ -392,8 +419,10 @@ member VoxClip.App.Controls.FindClipsJob :: method private FindAsync()
 member VoxClip.App.Controls.FindClipsJob :: method private FindWithAsync(VoxClip.App.Services.ProviderEntry)
 member VoxClip.App.Controls.FindClipsJob :: method private InputsChanged()
 member VoxClip.App.Controls.FindClipsJob :: method private Problem(string)
+member VoxClip.App.Controls.FindClipsJob :: method private SendNeeds(VoxClip.App.Services.ProviderEntry,VoxClip.Core.Services.LLM.LlmConnector)
 member VoxClip.App.Controls.FindClipsJob :: method private Set(VoxClip.App.ViewModels.SidebarCallout)
 member VoxClip.App.Controls.FindClipsJob :: method private Show(VoxClip.App.ViewModels.SidebarCallout)
+member VoxClip.App.Controls.FindClipsJob :: method private Start()
 member VoxClip.App.Controls.FindClipsJob :: method private set_Callout(VoxClip.App.ViewModels.SidebarCallout)
 member VoxClip.App.Controls.FindClipsJob :: method private set_NoneFound(string)
 member VoxClip.App.Controls.FindClipsJob :: method private set_Running(string)
@@ -1421,6 +1450,7 @@ member VoxClip.App.Controls.VoiceLabSettingsPane :: method private SessionChange
 member VoxClip.App.Controls.WindowsRuntimeTermsDialog :: method internal ShowAsync(VoxClip.Core.Services.Project.WindowsRuntimeAgreement)
 member VoxClip.App.Controls.WindowsRuntimeTermsDialog :: method private GetDpiForWindow(nint)
 member VoxClip.App.Controls.WindowsRuntimeTermsDialog :: method private ShowDialogAsync(Microsoft.UI.Xaml.Controls.ContentDialog)
+member VoxClip.App.MainWindow :: field private claudeModeCard
 member VoxClip.App.MainWindow :: field private clipStyleCard
 member VoxClip.App.MainWindow :: field private clipStyleLibrary
 member VoxClip.App.MainWindow :: field private clipStyles
@@ -1438,6 +1468,7 @@ member VoxClip.App.MainWindow :: field private renameCompositionJustEnded
 member VoxClip.App.MainWindow :: field private renameInput
 member VoxClip.App.MainWindow :: field private renaming
 member VoxClip.App.MainWindow :: field private restartPrepared
+member VoxClip.App.MainWindow :: field private rewriteTones
 member VoxClip.App.MainWindow :: field private rightColumnWidth
 member VoxClip.App.MainWindow :: field private shellModifiedAt
 member VoxClip.App.MainWindow :: field private syncingSelection
@@ -1458,6 +1489,7 @@ member VoxClip.App.MainWindow :: method internal RememberRightColumnWidth(double
 member VoxClip.App.MainWindow :: method internal RenameClipFromPageAsync(string)
 member VoxClip.App.MainWindow :: method internal RevealClip(string)
 member VoxClip.App.MainWindow :: method internal RightColumnWidth(double,double)
+member VoxClip.App.MainWindow :: method internal SavedRewriteTones()
 member VoxClip.App.MainWindow :: method internal SetProjectPath(string)
 member VoxClip.App.MainWindow :: method internal ShowError(System.Exception,string)
 member VoxClip.App.MainWindow :: method internal ShowHome(VoxClip.App.ViewModels.ShellPath)
@@ -1479,6 +1511,7 @@ member VoxClip.App.MainWindow :: method private CancelFindingClicked(object,Micr
 member VoxClip.App.MainWindow :: method private CancelRecentTranscriptionClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.MainWindow :: method private CancelTakeTranscriptionClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.MainWindow :: method private CaptionsClipClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
+member VoxClip.App.MainWindow :: method private ClaudeModeChangedAsync(System.Func`2<VoxClip.App.ViewModels.EditorViewModel,System.Threading.Tasks.Task>)
 member VoxClip.App.MainWindow :: method private ClipCommand(string,System.Func`2<VoxClip.App.ViewModels.EditorViewModel,bool>)
 member VoxClip.App.MainWindow :: method private ClipRowPointerEntered(object,Microsoft.UI.Xaml.Input.PointerRoutedEventArgs)
 member VoxClip.App.MainWindow :: method private ClipRowPointerExited(object,Microsoft.UI.Xaml.Input.PointerRoutedEventArgs)
@@ -1524,6 +1557,7 @@ member VoxClip.App.MainWindow :: method private OpenCommandPalette()
 member VoxClip.App.MainWindow :: method private PaneAccelerator(string)
 member VoxClip.App.MainWindow :: method private PaneRowKeyDown(object,Microsoft.UI.Xaml.Input.KeyRoutedEventArgs)
 member VoxClip.App.MainWindow :: method private PaneToggleRequested(Microsoft.UI.Xaml.Controls.TitleBar,object)
+member VoxClip.App.MainWindow :: method private RefreshClaudeModeCard(VoxClip.App.ViewModels.EditorViewModel)
 member VoxClip.App.MainWindow :: method private RefreshClipStyle()
 member VoxClip.App.MainWindow :: method private RefreshShellStatus()
 member VoxClip.App.MainWindow :: method private RefreshTakeAsync()
@@ -1676,6 +1710,7 @@ member VoxClip.App.Pages.EditorPage :: method private FitViewer(double)
 member VoxClip.App.Pages.EditorPage :: method private ForwardClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private HandleShellAskKeyDown(object,Microsoft.UI.Xaml.Input.KeyRoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private HookClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
+member VoxClip.App.Pages.EditorPage :: method private InitializeClaudeMode()
 member VoxClip.App.Pages.EditorPage :: method private InitializeIntegratedEditor()
 member VoxClip.App.Pages.EditorPage :: method private InitializeMakeIt()
 member VoxClip.App.Pages.EditorPage :: method private InitializeShell()
@@ -2368,6 +2403,7 @@ member VoxClip.App.SettingsWindow :: method internal TrackTextField(Microsoft.UI
 member VoxClip.App.SettingsWindow :: method private AboutAsync()
 member VoxClip.App.SettingsWindow :: method private AddSetting(Microsoft.UI.Xaml.FrameworkElement)
 member VoxClip.App.SettingsWindow :: method private ClearCache(bool)
+member VoxClip.App.SettingsWindow :: method private Clips()
 member VoxClip.App.SettingsWindow :: method private ConfirmDownloadAsync(VoxClip.Core.Services.Models.TranscriptionModel,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Services.Models.TranscriptionModel>,System.Threading.CancellationToken)
 member VoxClip.App.SettingsWindow :: method private Export()
 member VoxClip.App.SettingsWindow :: method private General()
@@ -2548,6 +2584,145 @@ member VoxClip.App.ViewModels.CaptionTileBackdrop :: field public FrameBand
 member VoxClip.App.ViewModels.CaptionTileBackdrop :: field public Stage
 member VoxClip.App.ViewModels.CaptionTileBackdrop :: field public value__
 member VoxClip.App.ViewModels.CaptionTileState :: method public Backdrop(bool,bool)
+member VoxClip.App.ViewModels.ClaudeClipState :: field public Failed
+member VoxClip.App.ViewModels.ClaudeClipState :: field public Making
+member VoxClip.App.ViewModels.ClaudeClipState :: field public Ready
+member VoxClip.App.ViewModels.ClaudeClipState :: field public Stopped
+member VoxClip.App.ViewModels.ClaudeClipState :: field public Waiting
+member VoxClip.App.ViewModels.ClaudeClipState :: field public value__
+member VoxClip.App.ViewModels.ClaudeModeBlocker :: method protected .ctor(VoxClip.App.ViewModels.ClaudeModeBlocker)
+member VoxClip.App.ViewModels.ClaudeModeBlocker :: method protected .ctor(string)
+member VoxClip.App.ViewModels.ClaudeModeBlocker :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.ViewModels.ClaudeModeBlocker :: method protected get_EqualityContract()
+member VoxClip.App.ViewModels.ClaudeModeBlocker :: method public Deconstruct(string&)
+member VoxClip.App.ViewModels.ClaudeModeBlocker :: method public Equals(VoxClip.App.ViewModels.ClaudeModeBlocker)
+member VoxClip.App.ViewModels.ClaudeModeBlocker :: method public Equals(object)
+member VoxClip.App.ViewModels.ClaudeModeBlocker :: method public GetHashCode()
+member VoxClip.App.ViewModels.ClaudeModeBlocker :: method public ToString()
+member VoxClip.App.ViewModels.ClaudeModeBlocker :: method public get_Action()
+member VoxClip.App.ViewModels.ClaudeModeBlocker :: method public get_Reason()
+member VoxClip.App.ViewModels.ClaudeModeBlocker :: method public op_Equality(VoxClip.App.ViewModels.ClaudeModeBlocker,VoxClip.App.ViewModels.ClaudeModeBlocker)
+member VoxClip.App.ViewModels.ClaudeModeBlocker :: method public op_Inequality(VoxClip.App.ViewModels.ClaudeModeBlocker,VoxClip.App.ViewModels.ClaudeModeBlocker)
+member VoxClip.App.ViewModels.ClaudeModeBlocker :: method public set_Reason(string)
+member VoxClip.App.ViewModels.ClaudeModeBlocker+ApproveSend :: method private .ctor(VoxClip.App.ViewModels.ClaudeModeBlocker+ApproveSend)
+member VoxClip.App.ViewModels.ClaudeModeBlocker+ApproveSend :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.ViewModels.ClaudeModeBlocker+ApproveSend :: method protected get_EqualityContract()
+member VoxClip.App.ViewModels.ClaudeModeBlocker+ApproveSend :: method public .ctor(string)
+member VoxClip.App.ViewModels.ClaudeModeBlocker+ApproveSend :: method public Deconstruct(string&)
+member VoxClip.App.ViewModels.ClaudeModeBlocker+ApproveSend :: method public Equals(VoxClip.App.ViewModels.ClaudeModeBlocker)
+member VoxClip.App.ViewModels.ClaudeModeBlocker+ApproveSend :: method public Equals(VoxClip.App.ViewModels.ClaudeModeBlocker+ApproveSend)
+member VoxClip.App.ViewModels.ClaudeModeBlocker+ApproveSend :: method public Equals(object)
+member VoxClip.App.ViewModels.ClaudeModeBlocker+ApproveSend :: method public GetHashCode()
+member VoxClip.App.ViewModels.ClaudeModeBlocker+ApproveSend :: method public ToString()
+member VoxClip.App.ViewModels.ClaudeModeBlocker+ApproveSend :: method public get_Text()
+member VoxClip.App.ViewModels.ClaudeModeBlocker+ApproveSend :: method public op_Equality(VoxClip.App.ViewModels.ClaudeModeBlocker+ApproveSend,VoxClip.App.ViewModels.ClaudeModeBlocker+ApproveSend)
+member VoxClip.App.ViewModels.ClaudeModeBlocker+ApproveSend :: method public op_Inequality(VoxClip.App.ViewModels.ClaudeModeBlocker+ApproveSend,VoxClip.App.ViewModels.ClaudeModeBlocker+ApproveSend)
+member VoxClip.App.ViewModels.ClaudeModeBlocker+ApproveSend :: method public set_Text(string)
+member VoxClip.App.ViewModels.ClaudeModeBlocker+FindAgain :: method private .ctor(VoxClip.App.ViewModels.ClaudeModeBlocker+FindAgain)
+member VoxClip.App.ViewModels.ClaudeModeBlocker+FindAgain :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.ViewModels.ClaudeModeBlocker+FindAgain :: method protected get_EqualityContract()
+member VoxClip.App.ViewModels.ClaudeModeBlocker+FindAgain :: method public .ctor(string)
+member VoxClip.App.ViewModels.ClaudeModeBlocker+FindAgain :: method public Deconstruct(string&)
+member VoxClip.App.ViewModels.ClaudeModeBlocker+FindAgain :: method public Equals(VoxClip.App.ViewModels.ClaudeModeBlocker)
+member VoxClip.App.ViewModels.ClaudeModeBlocker+FindAgain :: method public Equals(VoxClip.App.ViewModels.ClaudeModeBlocker+FindAgain)
+member VoxClip.App.ViewModels.ClaudeModeBlocker+FindAgain :: method public Equals(object)
+member VoxClip.App.ViewModels.ClaudeModeBlocker+FindAgain :: method public GetHashCode()
+member VoxClip.App.ViewModels.ClaudeModeBlocker+FindAgain :: method public ToString()
+member VoxClip.App.ViewModels.ClaudeModeBlocker+FindAgain :: method public get_Text()
+member VoxClip.App.ViewModels.ClaudeModeBlocker+FindAgain :: method public op_Equality(VoxClip.App.ViewModels.ClaudeModeBlocker+FindAgain,VoxClip.App.ViewModels.ClaudeModeBlocker+FindAgain)
+member VoxClip.App.ViewModels.ClaudeModeBlocker+FindAgain :: method public op_Inequality(VoxClip.App.ViewModels.ClaudeModeBlocker+FindAgain,VoxClip.App.ViewModels.ClaudeModeBlocker+FindAgain)
+member VoxClip.App.ViewModels.ClaudeModeBlocker+FindAgain :: method public set_Text(string)
+member VoxClip.App.ViewModels.ClaudeModeBlocker+SetUp :: method private .ctor(VoxClip.App.ViewModels.ClaudeModeBlocker+SetUp)
+member VoxClip.App.ViewModels.ClaudeModeBlocker+SetUp :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.ViewModels.ClaudeModeBlocker+SetUp :: method protected get_EqualityContract()
+member VoxClip.App.ViewModels.ClaudeModeBlocker+SetUp :: method public .ctor(string)
+member VoxClip.App.ViewModels.ClaudeModeBlocker+SetUp :: method public Deconstruct(string&)
+member VoxClip.App.ViewModels.ClaudeModeBlocker+SetUp :: method public Equals(VoxClip.App.ViewModels.ClaudeModeBlocker)
+member VoxClip.App.ViewModels.ClaudeModeBlocker+SetUp :: method public Equals(VoxClip.App.ViewModels.ClaudeModeBlocker+SetUp)
+member VoxClip.App.ViewModels.ClaudeModeBlocker+SetUp :: method public Equals(object)
+member VoxClip.App.ViewModels.ClaudeModeBlocker+SetUp :: method public GetHashCode()
+member VoxClip.App.ViewModels.ClaudeModeBlocker+SetUp :: method public ToString()
+member VoxClip.App.ViewModels.ClaudeModeBlocker+SetUp :: method public get_Text()
+member VoxClip.App.ViewModels.ClaudeModeBlocker+SetUp :: method public op_Equality(VoxClip.App.ViewModels.ClaudeModeBlocker+SetUp,VoxClip.App.ViewModels.ClaudeModeBlocker+SetUp)
+member VoxClip.App.ViewModels.ClaudeModeBlocker+SetUp :: method public op_Inequality(VoxClip.App.ViewModels.ClaudeModeBlocker+SetUp,VoxClip.App.ViewModels.ClaudeModeBlocker+SetUp)
+member VoxClip.App.ViewModels.ClaudeModeBlocker+SetUp :: method public set_Text(string)
+member VoxClip.App.ViewModels.ClaudeModePhase :: field public Blocked
+member VoxClip.App.ViewModels.ClaudeModePhase :: field public Done
+member VoxClip.App.ViewModels.ClaudeModePhase :: field public Idle
+member VoxClip.App.ViewModels.ClaudeModePhase :: field public Running
+member VoxClip.App.ViewModels.ClaudeModePhase :: field public Stopped
+member VoxClip.App.ViewModels.ClaudeModePhase :: field public Waiting
+member VoxClip.App.ViewModels.ClaudeModePhase :: field public value__
+member VoxClip.App.ViewModels.ClaudeModeServices :: method private .ctor(VoxClip.App.ViewModels.ClaudeModeServices)
+member VoxClip.App.ViewModels.ClaudeModeServices :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.ViewModels.ClaudeModeServices :: method private get_EqualityContract()
+member VoxClip.App.ViewModels.ClaudeModeServices :: method public .ctor(System.Func`1<VoxClip.Core.Services.Settings.ClipsAutopilotSettings>,System.Func`2<VoxClip.Core.Services.Settings.ClipsAutopilotSettings,System.Threading.Tasks.Task>,System.Func`1<bool>,System.Func`1<string>,System.Func`1<System.Threading.Tasks.Task`1<VoxClip.App.ViewModels.ClaudeModeBlocker>>,System.Action`1<VoxClip.App.ViewModels.ClaudeModeBlocker>)
+member VoxClip.App.ViewModels.ClaudeModeServices :: method public Deconstruct(System.Func`1<VoxClip.Core.Services.Settings.ClipsAutopilotSettings>&,System.Func`2<VoxClip.Core.Services.Settings.ClipsAutopilotSettings,System.Threading.Tasks.Task>&,System.Func`1<bool>&,System.Func`1<string>&,System.Func`1<System.Threading.Tasks.Task`1<VoxClip.App.ViewModels.ClaudeModeBlocker>>&,System.Action`1<VoxClip.App.ViewModels.ClaudeModeBlocker>&)
+member VoxClip.App.ViewModels.ClaudeModeServices :: method public Equals(VoxClip.App.ViewModels.ClaudeModeServices)
+member VoxClip.App.ViewModels.ClaudeModeServices :: method public Equals(object)
+member VoxClip.App.ViewModels.ClaudeModeServices :: method public GetHashCode()
+member VoxClip.App.ViewModels.ClaudeModeServices :: method public ToString()
+member VoxClip.App.ViewModels.ClaudeModeServices :: method public get_FindIfFree()
+member VoxClip.App.ViewModels.ClaudeModeServices :: method public get_FindProblem()
+member VoxClip.App.ViewModels.ClaudeModeServices :: method public get_Finding()
+member VoxClip.App.ViewModels.ClaudeModeServices :: method public get_Fix()
+member VoxClip.App.ViewModels.ClaudeModeServices :: method public get_Save()
+member VoxClip.App.ViewModels.ClaudeModeServices :: method public get_Settings()
+member VoxClip.App.ViewModels.ClaudeModeServices :: method public op_Equality(VoxClip.App.ViewModels.ClaudeModeServices,VoxClip.App.ViewModels.ClaudeModeServices)
+member VoxClip.App.ViewModels.ClaudeModeServices :: method public op_Inequality(VoxClip.App.ViewModels.ClaudeModeServices,VoxClip.App.ViewModels.ClaudeModeServices)
+member VoxClip.App.ViewModels.ClaudeModeServices :: method public set_FindIfFree(System.Func`1<System.Threading.Tasks.Task`1<VoxClip.App.ViewModels.ClaudeModeBlocker>>)
+member VoxClip.App.ViewModels.ClaudeModeServices :: method public set_FindProblem(System.Func`1<string>)
+member VoxClip.App.ViewModels.ClaudeModeServices :: method public set_Finding(System.Func`1<bool>)
+member VoxClip.App.ViewModels.ClaudeModeServices :: method public set_Fix(System.Action`1<VoxClip.App.ViewModels.ClaudeModeBlocker>)
+member VoxClip.App.ViewModels.ClaudeModeServices :: method public set_Save(System.Func`2<VoxClip.Core.Services.Settings.ClipsAutopilotSettings,System.Threading.Tasks.Task>)
+member VoxClip.App.ViewModels.ClaudeModeServices :: method public set_Settings(System.Func`1<VoxClip.Core.Services.Settings.ClipsAutopilotSettings>)
+member VoxClip.App.ViewModels.ClaudeModeState :: method internal get_AfterFind()
+member VoxClip.App.ViewModels.ClaudeModeState :: method internal get_Task()
+member VoxClip.App.ViewModels.ClaudeModeState :: method internal set_AfterFind(System.Threading.Tasks.Task)
+member VoxClip.App.ViewModels.ClaudeModeState :: method internal set_Armed(bool)
+member VoxClip.App.ViewModels.ClaudeModeState :: method internal set_Blocker(VoxClip.App.ViewModels.ClaudeModeBlocker)
+member VoxClip.App.ViewModels.ClaudeModeState :: method internal set_Budget(VoxClip.App.ViewModels.MakeItBudget)
+member VoxClip.App.ViewModels.ClaudeModeState :: method internal set_ClipIds(System.Collections.Generic.IReadOnlyList`1<string>)
+member VoxClip.App.ViewModels.ClaudeModeState :: method internal set_Found(int)
+member VoxClip.App.ViewModels.ClaudeModeState :: method internal set_Phase(VoxClip.App.ViewModels.ClaudeModePhase)
+member VoxClip.App.ViewModels.ClaudeModeState :: method internal set_Searched(bool)
+member VoxClip.App.ViewModels.ClaudeModeState :: method internal set_Task(System.Threading.Tasks.Task)
+member VoxClip.App.ViewModels.ClaudeModeState :: method public .ctor()
+member VoxClip.App.ViewModels.ClaudeModeState :: method public WaitAsync()
+member VoxClip.App.ViewModels.ClaudeModeState :: method public get_Armed()
+member VoxClip.App.ViewModels.ClaudeModeState :: method public get_Blocker()
+member VoxClip.App.ViewModels.ClaudeModeState :: method public get_Budget()
+member VoxClip.App.ViewModels.ClaudeModeState :: method public get_ClipIds()
+member VoxClip.App.ViewModels.ClaudeModeState :: method public get_Found()
+member VoxClip.App.ViewModels.ClaudeModeState :: method public get_Phase()
+member VoxClip.App.ViewModels.ClaudeModeState :: method public get_Running()
+member VoxClip.App.ViewModels.ClaudeModeState :: method public get_Searched()
+member VoxClip.App.ViewModels.ClaudeModeState :: method public get_Services()
+member VoxClip.App.ViewModels.ClaudeModeState :: method public set_Services(VoxClip.App.ViewModels.ClaudeModeServices)
+member VoxClip.App.ViewModels.ClaudeModeStep :: method private .ctor(VoxClip.App.ViewModels.ClaudeModeStep)
+member VoxClip.App.ViewModels.ClaudeModeStep :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.ViewModels.ClaudeModeStep :: method private get_EqualityContract()
+member VoxClip.App.ViewModels.ClaudeModeStep :: method public .ctor(string,VoxClip.App.ViewModels.ClaudeModeStepState,string,string)
+member VoxClip.App.ViewModels.ClaudeModeStep :: method public Deconstruct(string&,VoxClip.App.ViewModels.ClaudeModeStepState&,string&,string&)
+member VoxClip.App.ViewModels.ClaudeModeStep :: method public Equals(VoxClip.App.ViewModels.ClaudeModeStep)
+member VoxClip.App.ViewModels.ClaudeModeStep :: method public Equals(object)
+member VoxClip.App.ViewModels.ClaudeModeStep :: method public GetHashCode()
+member VoxClip.App.ViewModels.ClaudeModeStep :: method public ToString()
+member VoxClip.App.ViewModels.ClaudeModeStep :: method public get_Detail()
+member VoxClip.App.ViewModels.ClaudeModeStep :: method public get_Id()
+member VoxClip.App.ViewModels.ClaudeModeStep :: method public get_State()
+member VoxClip.App.ViewModels.ClaudeModeStep :: method public get_Text()
+member VoxClip.App.ViewModels.ClaudeModeStep :: method public op_Equality(VoxClip.App.ViewModels.ClaudeModeStep,VoxClip.App.ViewModels.ClaudeModeStep)
+member VoxClip.App.ViewModels.ClaudeModeStep :: method public op_Inequality(VoxClip.App.ViewModels.ClaudeModeStep,VoxClip.App.ViewModels.ClaudeModeStep)
+member VoxClip.App.ViewModels.ClaudeModeStep :: method public set_Detail(string)
+member VoxClip.App.ViewModels.ClaudeModeStep :: method public set_Id(string)
+member VoxClip.App.ViewModels.ClaudeModeStep :: method public set_State(VoxClip.App.ViewModels.ClaudeModeStepState)
+member VoxClip.App.ViewModels.ClaudeModeStep :: method public set_Text(string)
+member VoxClip.App.ViewModels.ClaudeModeStepState :: field public Done
+member VoxClip.App.ViewModels.ClaudeModeStepState :: field public Note
+member VoxClip.App.ViewModels.ClaudeModeStepState :: field public Now
+member VoxClip.App.ViewModels.ClaudeModeStepState :: field public Todo
+member VoxClip.App.ViewModels.ClaudeModeStepState :: field public value__
 member VoxClip.App.ViewModels.ClipAnnouncements :: field internal NoResults
 member VoxClip.App.ViewModels.ClipAnnouncements :: method internal Found(int,string)
 member VoxClip.App.ViewModels.ClipCallouts :: field private Saved
@@ -2950,6 +3125,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: field private MakeItPlayRequest
 member VoxClip.App.ViewModels.EditorViewModel :: field private MakeItShown
 member VoxClip.App.ViewModels.EditorViewModel :: field private SaveRequested
 member VoxClip.App.ViewModels.EditorViewModel :: field private SelectionChanged
+member VoxClip.App.ViewModels.EditorViewModel :: field private Transcribed
 member VoxClip.App.ViewModels.EditorViewModel :: field private applyingVoiceLab
 member VoxClip.App.ViewModels.EditorViewModel :: field private busy
 member VoxClip.App.ViewModels.EditorViewModel :: field private clipStyleReopened
@@ -3008,9 +3184,11 @@ member VoxClip.App.ViewModels.EditorViewModel :: method internal get_RewriteSele
 member VoxClip.App.ViewModels.EditorViewModel :: method internal get_UndoGroupName()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal remove_ExportStatesChanged(System.EventHandler)
 member VoxClip.App.ViewModels.EditorViewModel :: method private .cctor()
+member VoxClip.App.ViewModels.EditorViewModel :: method private AfterFindAsync(System.Threading.Tasks.Task)
 member VoxClip.App.ViewModels.EditorViewModel :: method private Announce(bool,System.Func`1<string>)
 member VoxClip.App.ViewModels.EditorViewModel :: method private ApplyPlanAsync(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan,VoxClip.App.ViewModels.MakeItRun,VoxClip.App.ViewModels.MakeItServices)
 member VoxClip.App.ViewModels.EditorViewModel :: method private ApplyVoiceLabCore(VoxClip.Core.Domain.VoiceLab.VoiceLabEditCommand,VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.EditOperation>,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope,string,System.Collections.Generic.IReadOnlyDictionary`2<string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabRateSample>>)
+member VoxClip.App.ViewModels.EditorViewModel :: method private Block(VoxClip.App.ViewModels.ClaudeModeBlocker)
 member VoxClip.App.ViewModels.EditorViewModel :: method private Cancelled(System.Exception)
 member VoxClip.App.ViewModels.EditorViewModel :: method private CaptionStyleName(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method private CaptureHistory(string)
@@ -3020,10 +3198,12 @@ member VoxClip.App.ViewModels.EditorViewModel :: method private ClipSpan(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method private DirtyIdentity(VoxClip.Core.Domain.Shared.Project)
 member VoxClip.App.ViewModels.EditorViewModel :: method private Fail(VoxClip.App.ViewModels.MakeItRun,string)
 member VoxClip.App.ViewModels.EditorViewModel :: method private FinishAsync(VoxClip.App.ViewModels.MakeItRun,VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan,VoxClip.App.ViewModels.MakeItServices)
+member VoxClip.App.ViewModels.EditorViewModel :: method private FinishClaudeModeAsync()
 member VoxClip.App.ViewModels.EditorViewModel :: method private IndexOfSpeechStart(int)
 member VoxClip.App.ViewModels.EditorViewModel :: method private InitializeState()
 member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItNoteText()
 member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItNotify()
+member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItShownRequest()
 member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItStep(VoxClip.Core.Domain.Autopilot.ClipAutopilotOperation,VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan,VoxClip.Core.Domain.Shared.Project&,VoxClip.App.ViewModels.MakeItStyle)
 member VoxClip.App.ViewModels.EditorViewModel :: method private MakeItStopped(VoxClip.App.ViewModels.MakeItRun)
 member VoxClip.App.ViewModels.EditorViewModel :: method private MoveCaptionSettings(VoxClip.Core.Domain.Shared.ProjectCaptions)
@@ -3040,12 +3220,15 @@ member VoxClip.App.ViewModels.EditorViewModel :: method private Refresh()
 member VoxClip.App.ViewModels.EditorViewModel :: method private RefreshExportRows()
 member VoxClip.App.ViewModels.EditorViewModel :: method private SameCaptions(VoxClip.Core.Domain.Shared.ProjectCaptions,VoxClip.Core.Domain.Shared.ProjectCaptions)
 member VoxClip.App.ViewModels.EditorViewModel :: method private ScopeKeepsWords(string)
+member VoxClip.App.ViewModels.EditorViewModel :: method private StartClaudeMode()
 member VoxClip.App.ViewModels.EditorViewModel :: method private SyncProject()
 member VoxClip.App.ViewModels.EditorViewModel :: method private UndoInverse(VoxClip.App.ViewModels.MakeItInverse)
 member VoxClip.App.ViewModels.EditorViewModel :: method private UpdateSummaryLine(double)
 member VoxClip.App.ViewModels.EditorViewModel :: method private VoiceStepAsync(VoxClip.Core.Domain.Autopilot.ClipAutopilotOperation,VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Rewrite,VoxClip.App.ViewModels.MakeItRun,VoxClip.App.ViewModels.MakeItServices,bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method private WaitAtCapAsync(VoxClip.App.ViewModels.MakeItRun,VoxClip.App.ViewModels.MakeItBudget,System.Decimal)
 member VoxClip.App.ViewModels.EditorViewModel :: method private WordStates(int,bool)
+member VoxClip.App.ViewModels.EditorViewModel :: method private get_ClipsAutopilot()
+member VoxClip.App.ViewModels.EditorViewModel :: method private set_ClaudeExporting(bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method private set_CorrectionWordId(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method private set_FullTakeDuration(double)
 member VoxClip.App.ViewModels.EditorViewModel :: method private set_IsReadOnly(bool)
@@ -3065,10 +3248,19 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public ApplyBatch(System
 member VoxClip.App.ViewModels.EditorViewModel :: method public ApplyCaptionPick(System.Collections.Generic.IReadOnlySet`1<string>)
 member VoxClip.App.ViewModels.EditorViewModel :: method public ApplyVoiceLab(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabSegment>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabAsset>,VoxClip.Core.Domain.VoiceLab.VoiceLabVoiceReference,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope,string,VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.EditOperation>,System.Collections.Generic.IReadOnlyDictionary`2<string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabRateSample>>)
 member VoxClip.App.ViewModels.EditorViewModel :: method public ApplyVoiceLab(VoxClip.Core.Domain.VoiceLab.VoiceLabEditCommand,VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.EditOperation>)
+member VoxClip.App.ViewModels.EditorViewModel :: method public ArmClaudeMode()
 member VoxClip.App.ViewModels.EditorViewModel :: method public BeginCorrection()
 member VoxClip.App.ViewModels.EditorViewModel :: method public CanMakeItPostable(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public ChooseClipStyle(VoxClip.Core.Domain.Clips.ClipStyle,System.Collections.Generic.IReadOnlySet`1<string>,bool)
+member VoxClip.App.ViewModels.EditorViewModel :: method public ChooseClipsModeAsync(string)
+member VoxClip.App.ViewModels.EditorViewModel :: method public ClaudeClipLabel(VoxClip.App.ViewModels.ClaudeClipState)
+member VoxClip.App.ViewModels.EditorViewModel :: method public ClaudeClipStateFor(string)
+member VoxClip.App.ViewModels.EditorViewModel :: method public ClaudeExportAllAsync()
+member VoxClip.App.ViewModels.EditorViewModel :: method public ClaudeLine(string)
+member VoxClip.App.ViewModels.EditorViewModel :: method public ClaudeModeContinueAsync()
+member VoxClip.App.ViewModels.EditorViewModel :: method public ClaudeModeFindStarted(System.Threading.Tasks.Task)
 member VoxClip.App.ViewModels.EditorViewModel :: method public ClipTitleProblem(string)
+member VoxClip.App.ViewModels.EditorViewModel :: method public ContinueClaudeMode()
 member VoxClip.App.ViewModels.EditorViewModel :: method public CopyMakeItPostText(VoxClip.App.ViewModels.MakeItRun)
 member VoxClip.App.ViewModels.EditorViewModel :: method public CutSelection(bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method public CycleClip(int)
@@ -3077,6 +3269,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public DisplayText(VoxCl
 member VoxClip.App.ViewModels.EditorViewModel :: method public Duration(double)
 member VoxClip.App.ViewModels.EditorViewModel :: method public EndCorrection(bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method public ExportBlocked(bool,bool,string)
+member VoxClip.App.ViewModels.EditorViewModel :: method public FixClaudeModeBlocker()
 member VoxClip.App.ViewModels.EditorViewModel :: method public Index(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public Keep(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public KeepAll()
@@ -3107,6 +3300,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public Redo()
 member VoxClip.App.ViewModels.EditorViewModel :: method public RelinkAsync(VoxClip.Core.Services.Project.IProjectStore,string,System.Func`1<System.Threading.Tasks.Task`1<string>>,System.Func`2<string,System.Threading.Tasks.Task`1<VoxClip.Core.Domain.Shared.MediaInfo>>,System.Func`1<System.Threading.Tasks.Task`1<bool>>,System.Threading.CancellationToken)
 member VoxClip.App.ViewModels.EditorViewModel :: method public Remove(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public Rename(string,string)
+member VoxClip.App.ViewModels.EditorViewModel :: method public ReviewClaudeMode()
 member VoxClip.App.ViewModels.EditorViewModel :: method public SaveCorrection(bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method public Select(int,bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method public SelectSentence(int,bool)
@@ -3114,6 +3308,8 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public SelectionAnnounce
 member VoxClip.App.ViewModels.EditorViewModel :: method public SetCaptionOverrides(System.Text.Json.JsonElement)
 member VoxClip.App.ViewModels.EditorViewModel :: method public SetCaptionStyle(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public SetCaptions(VoxClip.Core.Domain.Shared.ProjectCaptions)
+member VoxClip.App.ViewModels.EditorViewModel :: method public SetClaudeClipCountAsync(int)
+member VoxClip.App.ViewModels.EditorViewModel :: method public SetClaudeSpendCapAsync(int)
 member VoxClip.App.ViewModels.EditorViewModel :: method public SetClipEdgeAtCaret(bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method public SetExport(VoxClip.Core.Domain.Shared.ProjectExport)
 member VoxClip.App.ViewModels.EditorViewModel :: method public SetMediaUnavailable(bool)
@@ -3123,6 +3319,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public SetShareCaption(s
 member VoxClip.App.ViewModels.EditorViewModel :: method public SetTranscript(VoxClip.Core.Domain.Transcript.Transcript)
 member VoxClip.App.ViewModels.EditorViewModel :: method public ShapeName(VoxClip.Core.Domain.Shared.ExportAspect)
 member VoxClip.App.ViewModels.EditorViewModel :: method public Step(int,bool)
+member VoxClip.App.ViewModels.EditorViewModel :: method public StopClaudeMode()
 member VoxClip.App.ViewModels.EditorViewModel :: method public StopMakeIt()
 member VoxClip.App.ViewModels.EditorViewModel :: method public Timecode(double)
 member VoxClip.App.ViewModels.EditorViewModel :: method public Undo()
@@ -3135,7 +3332,9 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public add_MakeItPlayReq
 member VoxClip.App.ViewModels.EditorViewModel :: method public add_MakeItShown(System.EventHandler)
 member VoxClip.App.ViewModels.EditorViewModel :: method public add_SaveRequested(System.EventHandler)
 member VoxClip.App.ViewModels.EditorViewModel :: method public add_SelectionChanged(System.EventHandler)
+member VoxClip.App.ViewModels.EditorViewModel :: method public add_Transcribed(System.EventHandler)
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_Busy()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_CanClaudeExportAll()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_CanExport()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_CanFindClips()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_CanMakeTopPostable()
@@ -3143,6 +3342,25 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public get_CanPreviewCut
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_CanRedo()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_CanUndo()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_CaptionStyleNames()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_ClaudeExportAllTitle()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_ClaudeExportProblems()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_ClaudeExported()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_ClaudeExporting()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_ClaudeMode()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_ClaudeModeButtonTitle()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_ClaudeModeDoneTitle()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_ClaudeModeFooter()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_ClaudeModeMeta()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_ClaudeModeNextStep()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_ClaudeModeOn()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_ClaudeModeProgress()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_ClaudeModeReady()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_ClaudeModeRuns()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_ClaudeModeSpent()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_ClaudeModeStatus()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_ClaudeModeSteps()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_ClaudeModeSummary()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_ClaudeModeTitle()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_ClipStyleReopened()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_Clips()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_CorrectionText()
@@ -3170,7 +3388,9 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public get_SelectionCare
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_SelectionEnd()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_SelectionStart()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_SelectionText()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_ShowsClaudeModeCard()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_ShowsClipStyleCard()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_ShowsClipsModeCard()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_SourceTime()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_State()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_SuggestedClips()
@@ -3190,6 +3410,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public remove_MakeItPlay
 member VoxClip.App.ViewModels.EditorViewModel :: method public remove_MakeItShown(System.EventHandler)
 member VoxClip.App.ViewModels.EditorViewModel :: method public remove_SaveRequested(System.EventHandler)
 member VoxClip.App.ViewModels.EditorViewModel :: method public remove_SelectionChanged(System.EventHandler)
+member VoxClip.App.ViewModels.EditorViewModel :: method public remove_Transcribed(System.EventHandler)
 member VoxClip.App.ViewModels.EditorViewModel :: method public set_Busy(bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method public set_CaptionStyleNames(System.Func`2<string,string>)
 member VoxClip.App.ViewModels.EditorViewModel :: method public set_ClipStyleReopened(bool)
@@ -6712,6 +6933,7 @@ type VoxClip.App.Controls.CaptionPositionOverlay
 type VoxClip.App.Controls.CaptionsPanel
 type VoxClip.App.Controls.CaptionsPanel+Group
 type VoxClip.App.Controls.CaptionsPanel+Tile
+type VoxClip.App.Controls.ClaudeModeCard
 type VoxClip.App.Controls.ClipBar
 type VoxClip.App.Controls.ClipStyleCardPanel
 type VoxClip.App.Controls.CommandPalette
@@ -6815,6 +7037,16 @@ type VoxClip.App.ViewModels.CaptionFineTune+FineTuneValues
 type VoxClip.App.ViewModels.CaptionGalleryViewModel
 type VoxClip.App.ViewModels.CaptionTileBackdrop
 type VoxClip.App.ViewModels.CaptionTileState
+type VoxClip.App.ViewModels.ClaudeClipState
+type VoxClip.App.ViewModels.ClaudeModeBlocker
+type VoxClip.App.ViewModels.ClaudeModeBlocker+ApproveSend
+type VoxClip.App.ViewModels.ClaudeModeBlocker+FindAgain
+type VoxClip.App.ViewModels.ClaudeModeBlocker+SetUp
+type VoxClip.App.ViewModels.ClaudeModePhase
+type VoxClip.App.ViewModels.ClaudeModeServices
+type VoxClip.App.ViewModels.ClaudeModeState
+type VoxClip.App.ViewModels.ClaudeModeStep
+type VoxClip.App.ViewModels.ClaudeModeStepState
 type VoxClip.App.ViewModels.ClipAnnouncements
 type VoxClip.App.ViewModels.ClipCallouts
 type VoxClip.App.ViewModels.ClipExportState

@@ -673,7 +673,10 @@ public sealed partial class EditorViewModel : ObservableObject
         else project = ProjectStore.ReplaceTranscript(project, value);
         undo.Clear(); redo.Clear(); selectionAnchor = -1; selectionEnd = -1;
         InitializeState(); Refresh();
+        Transcribed?.Invoke(this, EventArgs.Empty);
     }
+    /// <summary>A transcript arrived: Claude mode goes on with Find Clips (design §6.7).</summary>
+    public event EventHandler? Transcribed;
 
     /// <summary>Cache the run, then add its clips as suggestions (not kept) in one undo step; delta §6.2.</summary>
     /// <summary>Add a Find clips result as suggestions in one undo step and return the new suggestions' ids.</summary>

@@ -254,10 +254,13 @@
             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
             <!-- The clip style card sits above the clip list (design §6.6; MainWindow.ClipStyle.cs). -->
             <Grid x:Name="ExplorerColumn">
-                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-                <ContentControl x:Name="ClipStyleHost" Width="224" IsTabStop="False" HorizontalContentAlignment="Stretch" Visibility="Collapsed"
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                <!-- Claude mode's cards (design §6.7; MainWindow.ClipStyle.cs): who makes the clips, the run, and Export all. -->
+                <ContentControl x:Name="ClaudeModeHost" Width="224" IsTabStop="False" HorizontalContentAlignment="Stretch" Visibility="Collapsed"
                     BorderThickness="0,0,1,0" BorderBrush="{ThemeResource VcLineDefaultBrush}"/>
-                <controls:ExplorerPane x:Name="Nav" Grid.Row="1" Width="224" ItemsSource="{x:Bind Shell.Rows}" ItemTemplateSelector="{StaticResource SidebarTemplates}"
+                <ContentControl x:Name="ClipStyleHost" Grid.Row="1" Width="224" IsTabStop="False" HorizontalContentAlignment="Stretch" Visibility="Collapsed"
+                    BorderThickness="0,0,1,0" BorderBrush="{ThemeResource VcLineDefaultBrush}"/>
+                <controls:ExplorerPane x:Name="Nav" Grid.Row="2" Width="224" ItemsSource="{x:Bind Shell.Rows}" ItemTemplateSelector="{StaticResource SidebarTemplates}"
                     SelectionChanged="NavSelectionChanged" ItemClick="NavItemInvoked" AutomationProperties.Name="Explorer" BorderThickness="0,0,1,0" BorderBrush="{ThemeResource VcLineDefaultBrush}"/>
             </Grid>
             <Grid x:Name="ContentLayer" Grid.Column="1" Background="{ThemeResource VcBgSurfaceBrush}">

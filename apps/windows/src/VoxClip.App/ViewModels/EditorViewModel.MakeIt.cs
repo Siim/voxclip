@@ -43,6 +43,7 @@ public sealed partial class EditorViewModel
     public MakeItStyle MakeItStyle => MakeItStyle.From(project.ClipStyle);
 
     private void MakeItNotify() => MakeItChanged?.Invoke(this, EventArgs.Empty);
+    private void MakeItShownRequest() => MakeItShown?.Invoke(this, EventArgs.Empty);
 
     // MARK: One undo step over a run
 

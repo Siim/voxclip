@@ -222,11 +222,15 @@ public sealed class ShellViewModel
                 var export = suggestion ? new ExportRowState(ClipExportState.None) : editor.ExportStatus(clip.Id);
                 row.ExportState = export.State; row.ExportProgress = export.Progress;
                 if (export.State is ClipExportState.Exported or ClipExportState.Exporting) row.MetaStatus += " · " + export.Label;
+                // Claude mode's pill while it makes the clip (design §6.7): Ready, Making…, Waiting.
+                var claude = editor.ClaudeClipStateFor(clip.Id);
+                if (claude is { } pill) row.MetaStatus += " · " + EditorViewModel.ClaudeClipLabel(pill);
                 row.AccessibleName = suggestion
                     ? $"Suggested clip {number}, {clip.Title}, {Spoken(clip.DurationSeconds)}"
                     : $"Clip {number}, {clip.Title}, {Spoken(clip.DurationSeconds)}";
                 row.ToolTip = clip.ToolTip;
                 if (export.Label.Length > 0) row.AccessibleName += ", " + export.Label;
+                if (claude is { } said) row.AccessibleName += ", " + EditorViewModel.ClaudeClipLabel(said);
                 if (editor.ContainsAiSpeech(clip.Id))
                 {
                     row.MetaStatus += " · AI modified";
