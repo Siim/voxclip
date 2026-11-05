@@ -2094,6 +2094,10 @@ effect id) for the preview and the export alike, so the preview is the export.
 ### 18.7 Windows
 
 Windows Core opens, validates and saves `clipEffects` unchanged (`Domain/Effects/ClipEffects.cs` keeps entries as JSON
-elements and checks them against the same wire vectors), prunes them with their clip and clears them with the
-transcript. It refuses to export a project with effects ("Windows cannot render Ask Claude effects (bleeps, blurs,
-overlays, freeze frames or sound effects) into exports yet. Export this project on a Mac…"). The Windows Ask Claude request, validator, field and renderers are owed.
+elements and checks them against the same wire vectors), prunes them with their clip, clears them with the transcript and
+renders them (design §6.8). The request and validator are a twin of the Mac's (`Domain/Autopilot/AskClaude.cs`,
+`Services/LLM/AskClaudeService.cs`): the same prompt file, schema and printf-exact numbers, so the request matches
+`shared/fixtures/ask-claude` byte for byte and every reply validates op by op to the same operations and repair counts
+(`Tracks/win-ai/AskClaudeTests`). Detections come through `IAskClaudeVision`; the native implementation uses Windows
+`FaceDetector` and `OcrEngine`, and tracking follows faces only (a "subject" track holds the box). The send runs at the
+decision effort (extra high). Zoom cues and music changes validate but stay later rows, since Windows renders neither yet.
