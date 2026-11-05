@@ -35,8 +35,8 @@ enum TimelineMetrics {
     }
     static var audio: Row { tracks[1] }
     static var tracksEnd: CGFloat { tracks.last?.maxY ?? ruler.maxY }
-    /// The panel's default height less the toolbar.
-    static let height: CGFloat = 188
+    /// The panel's default height (242) less the toolbar: room for every track at M, M1 included.
+    static let height: CGFloat = 214
 }
 
 /// What the lanes show of one axis: points per second and the time at the lane's left edge.

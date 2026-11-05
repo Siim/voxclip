@@ -45,11 +45,22 @@ enum SidebarItem: Hashable {
     }
     static let explorerRange = Double(VCTokens.sizeSidebarMin)...Double(VCTokens.sizeSidebarMax)
     static let rightRange = Double(VCTokens.sizeRightColumnMin)...Double(VCTokens.sizeRightColumnMax)
-    /// notes.md §6: the bottom panel defaults to 216; it never gets shorter than today's strip.
-    static let timelineDefault = 216.0
+    /// notes.md §6: the bottom panel defaults to 242, so V1, A1, CC, FX and M1 all show at track height M, when the window
+    /// has room for it beside a 16:9 viewer and the panel's minimum body; else to 216 (the five-track default before M1).
+    static let timelineDefault = 242.0
+    static let timelineCompactDefault = 216.0
     static let timelineRange = Double(ShellMetrics.timelineMinimum)...640.0
-    /// impl-plan §3.5: the panel starts at 216 or 40% of the work area's height, whichever is less.
+    /// impl-plan §3.5: the panel starts at its default or 40% of the work area's height, whichever is less.
     static let timelineShare = 0.4
+    /// The timeline's starting height in a work area `workHeight` tall beside a right column `rightWidth` wide: 242 when
+    /// the title row, a 16:9 viewer, the panel header and `PanelHost.bodyMinimum` still fit above it, else what is left
+    /// down to 216, and never more than 40% of the work area.
+    @MainActor static func defaultTimelineHeight(workHeight: Double, rightWidth: Double) -> Double {
+        let reserve = Double(ShellMetrics.titleRow) + Double(ViewerSection.boxHeight(forWidth: CGFloat(rightWidth)))
+            + Double(PanelHost.headerHeight) + Double(PanelHost.bodyMinimum)
+        let start = min(timelineDefault, max(timelineCompactDefault, (workHeight - reserve).rounded(.down)))
+        return min(start, (workHeight * timelineShare).rounded(.down))
+    }
 
     /// The right column's width when the user never dragged it (impl-plan item 18):
     /// 404 + (W − 1280) × 0.25 within 300–560, so 404 at 1280 and 444 at 1440, narrowed
@@ -73,11 +84,11 @@ enum SidebarItem: Hashable {
         return Self.fitted(app.number(Self.rightWidthKey, fallback: Self.rightColumnWidth(windowWidth: windowWidth, explorer: explorer)), windowWidth: windowWidth, explorer: explorer)
     }
     /// The timeline panel's height below its top edge: where the user last dragged that
-    /// edge, else 216 within 40% of the work area (impl-plan §3.5).
+    /// edge, else 242 within 40% of the work area (impl-plan §3.5).
     var timelineHeight: Double {
         // Maximized: everything but the columns' minimum and the 1 pt edge.
         if timelineMaximized { return (workHeight - Double(ShellMetrics.topMinimum) - 1).clamped(to: Self.timelineRange) }
-        let start = min(Self.timelineDefault, (workHeight * Self.timelineShare).rounded(.down))
+        let start = Self.defaultTimelineHeight(workHeight: workHeight, rightWidth: rightVisible ? rightWidth : 0)
         return app.number(Self.timelineHeightKey, fallback: start).clamped(to: Self.timelineRange)
     }
     func rememberExplorerWidth(_ width: Double) { app.set(Self.explorerWidthKey, .number(width.rounded().clamped(to: Self.explorerRange))) }
