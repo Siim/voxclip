@@ -2,6 +2,7 @@
 import AppKit
 import Foundation
 import Synchronization
+import SwiftUI
 import Testing
 @testable import VoxClipCore
 @testable import VoxClipMedia
@@ -173,6 +174,7 @@ private final class Calls: Sendable {
         #expect(editor.project.edits.cutWordIds == fixture.original.edits.cutWordIds && editor.project.captions == fixture.original.captions)
         #expect(editor.project.motionCues == fixture.original.motionCues && editor.project.music == fixture.original.music)
         #expect(editor.project.share.captions["clip-main"] == fixture.original.share.captions["clip-main"])
+        #expect(editor.project.clipEffects == fixture.original.clipEffects, "the hook's card goes too")
         #expect(editor.makeIt.run(for: "clip-main") == nil)
     }
 
@@ -372,6 +374,55 @@ private final class Calls: Sendable {
         // Undo all takes back the rest.
         editor.makeItUndoAll(run)
         #expect(editor.project.edits.corrections["w8"] == nil && editor.makeIt.run(for: "clip-main") == nil)
+    }
+
+    /// The hook is a title card (design.md §6.7): the run adds it in its one undo step over the clip's first ~2 s, its row
+    /// comes last with ▶ and Undo, Change edits its text inline as one undo step, Undo removes the card, and the post text
+    /// still opens with the hook.
+    @Test func theHookIsATitleCardWithInlineChangeAndUndo() async throws {
+        let fixture = try fixture(plan: Self.plan(music: false, rewrite: false))
+        defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
+        let editor = fixture.editor
+        let steps = editor.undoSteps
+        let run = try await run(fixture)
+        #expect(editor.undoSteps == steps + 1, "the card joins the run's one undo step")
+        let card = try #require(ClipHookTitle.existing(clipID: "clip-main", in: editor.project))
+        #expect(card.kind == .title && card.text == "We ship today" && card.position == .top && card.clipId == "clip-main")
+        // The first ~2 s of the clip as it renders: from just before its first frame to two edited seconds later.
+        let timeline = try RenderCallerInputs.timeline(project: editor.project, clipID: "clip-main")
+        #expect(abs(timeline.mapTime(card.end) - min(2, timeline.duration)) < 0.01)
+        #expect(card.start <= timeline.sourceTime(0) && card.opacity(at: timeline.sourceTime(0)) > 0.999)
+        // It renders: the clip's render request carries it.
+        let request = try await editor.renderRequest(target: .clip("clip-main"))
+        #expect(request.effects?.picture.contains(card) == true)
+        let row = try #require(run.rows.last)
+        #expect(row.id == "hook" && row.kind == .choice && row.text == "Claude chose the hook “We ship today”")
+        #expect(row.detail == "Title card for the first 2 s · the post text keeps it" && row.undoable && row.change == .hook && row.play != nil)
+        #expect(!row.detail.contains("once title cards ship"))
+        #expect(editor.makeItPostCopy(run) == "We ship today\n\nWe ship the clipper today.")
+
+        try await ReviewCaptures.capture(MakeItPanel(model: editor, run: run).environment(editor.app), name: "make-it-hook-row", size: CGSize(width: 404, height: 760))
+        // Change opens the row's field; Return applies the new text to the card as one undo step.
+        editor.makeItChange(.hook, run: run)
+        #expect(run.openChoice == "hook")
+        try await ReviewCaptures.capture(MakeItPanel(model: editor, run: run).environment(editor.app), name: "make-it-hook-change", size: CGSize(width: 404, height: 760))
+        let changed = editor.undoSteps
+        step(fixture.undo) { editor.makeItSetHook("  Ship it today ", rowID: "hook", run: run) }
+        #expect(editor.undoSteps == changed + 1 && fixture.undo.undoActionName == "Change hook" && run.openChoice == nil)
+        #expect(ClipHookTitle.existing(clipID: "clip-main", in: editor.project)?.text == "Ship it today")
+        #expect(run.rows.last?.text == "You chose the hook “Ship it today”" && editor.makeItPostCopy(run).hasPrefix("Ship it today\n\n"))
+        // The same text again changes nothing.
+        editor.makeItSetHook("Ship it today", rowID: "hook", run: run)
+        #expect(editor.undoSteps == changed + 1)
+        // Undo removes the card; the post text still carries the hook.
+        step(fixture.undo) { editor.makeItUndo("hook", in: run) }
+        #expect(ClipHookTitle.existing(clipID: "clip-main", in: editor.project) == nil && run.rows.last?.undone == true)
+        #expect(editor.makeItPostCopy(run).hasPrefix("Ship it today\n\n"))
+        // ⌘Z brings the card back; ⌘Z twice more goes back to the clip before the run.
+        fixture.undo.undo()
+        #expect(ClipHookTitle.existing(clipID: "clip-main", in: editor.project)?.text == "Ship it today")
+        fixture.undo.undo(); fixture.undo.undo()
+        #expect(editor.project.clipEffects == fixture.original.clipEffects)
     }
 
     /// ClipStyle (design.md §6.6): a fixed caption style is the planner's preference, Auto leaves it to Claude, Off keeps

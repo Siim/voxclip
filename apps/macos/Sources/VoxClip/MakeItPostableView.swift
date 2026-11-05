@@ -16,7 +16,7 @@ import VoxClipCore
                     headline
                     if run.running || run.rows.isEmpty { progress }
                     if !run.rows.isEmpty { decisions }
-                    if !run.postText.isEmpty, !run.running { postText }
+                    if !model.makeItPostCopy(run).isEmpty, !run.running { postText }
                     if !model.makeIt.series.isEmpty { MakeItSeriesList(model: model) }
                 }
                 .padding(.horizontal, VCTokens.spacingCardPadding)
@@ -105,7 +105,7 @@ import VoxClipCore
                     .accessibilityLabel(run.copied ? "Post text copied" : "Copy post text")
                     .columnLayoutEvidence("makeIt.copy", text: "Copy")
             }
-            Text(run.postText).font(VCType.callout.font()).textSelection(.enabled)
+            Text(model.makeItPostCopy(run)).font(VCType.callout.font()).textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, VCTokens.spacingFieldPaddingX).padding(.vertical, VCTokens.spacingFieldPaddingY)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -189,6 +189,11 @@ import VoxClipCore
                 }
                 .padding(.leading, 22)
             }
+            if row.change == .hook, run.openChoice == row.id, !row.undone {
+                // The hook's text, edited in place; Return applies it to the title card as one undo step.
+                MakeItHookField(text: run.hook, commit: { model.makeItSetHook($0, rowID: row.id, run: run) }, cancel: { run.openChoice = nil })
+                    .padding(.leading, 22)
+            }
             if row.kind == .question, case .question(let index) = row.change, run.openQuestion == index, !row.options.isEmpty {
                 HStack(spacing: VCTokens.spacingChipGap) {
                     ForEach(row.options, id: \.self) { option in
@@ -217,7 +222,7 @@ import VoxClipCore
                     .accessibilityLabel("Undo \(row.text)")
             }
             if let change = row.change, !row.undone, !run.running {
-                Button(change == .post || change == .hook ? "Copy" : "Change") { model.makeItChange(change, run: run) }
+                Button(change == .post ? "Copy" : "Change") { model.makeItChange(change, run: run) }
                     .buttonStyle(.borderless).accessibilityLabel("Change \(row.text)")
             }
         }
@@ -232,6 +237,31 @@ import VoxClipCore
         case .question: "questionmark.circle"
         case .note: "info.circle"
         }
+    }
+}
+
+/// The hook row's inline field: the card's text, at most a title's length; Return applies it, Escape closes it.
+@MainActor struct MakeItHookField: View {
+    @State var text: String
+    let commit: (String) -> Void
+    let cancel: () -> Void
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        TextField("Hook", text: $text)
+            .textFieldStyle(.roundedBorder)
+            .font(VCType.callout.font())
+            .focused($focused)
+            .onAppear { focused = true }
+            .onSubmit { commit(text) }
+            .onExitCommand(perform: cancel)
+            .onChange(of: text) { _, value in
+                if value.unicodeScalars.count > ClipEffect.maximumTitleScalars {
+                    text = String(String.UnicodeScalarView(value.unicodeScalars.prefix(ClipEffect.maximumTitleScalars)))
+                }
+            }
+            .accessibilityLabel("Hook text; Return applies it to the title card")
+            .columnLayoutEvidence("makeIt.hookField", text: text)
     }
 }
 

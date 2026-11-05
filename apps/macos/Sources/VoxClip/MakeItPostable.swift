@@ -112,11 +112,15 @@ enum MakeItInverse {
     case look(clipID: String, previous: ClipLook)
     /// The clip's speed before the choice; the look and the other controls stay.
     case speed(clipID: String, previous: Double)
+    /// An effect the run added (the hook's title card): removed, or put back as it was when the run replaced one.
+    case effect(id: String, previous: ClipEffect?)
 }
 
 /// Where a decision's Change goes.
 enum MakeItChange: Equatable {
-    case captions, music, motion, rename, post, hook
+    case captions, music, motion, rename, post
+    /// The hook's title card: Change edits its text inline in the row.
+    case hook
     case phrase(ClosedRange<Int>)
     case question(Int)
     /// The clip's look or speed: Change shows the other choices as chips in the row, and a chip applies at once.
@@ -162,7 +166,7 @@ struct MakeItRow: Identifiable, Equatable {
     var exported: [URL] = []
     /// A question row whose options show.
     var openQuestion: Int?
-    /// The look or speed row whose other choices show.
+    /// The look or speed row whose other choices show, or the hook row whose text field shows.
     var openChoice: String?
     @ObservationIgnored var task: Task<Void, Never>?
     @ObservationIgnored var inverses: [String: MakeItInverse] = [:]
@@ -442,17 +446,19 @@ extension EditorModel {
             let fillers = plan.cuts.allSatisfy { $0.kind == .filler } && operations.allSatisfy { $0.decision != .pauseCut }
             run.line(fillers ? "Cutting \(cuts.count) \(cuts.count == 1 ? "filler" : "fillers")…" : "Making \(cuts.count) \(cuts.count == 1 ? "cut" : "cuts")…")
         }
-        // The edits the editor applies itself, in one change.
+        // The edits the editor applies itself, in one change. The hook's card is timed on the clip they leave; its row
+        // goes last in the review.
         var next = project
+        var hookRow: MakeItRow?
         for operation in operations {
             guard let (inverse, row) = makeItStep(operation, plan: plan, in: &next) else { continue }
             if let inverse { run.inverses[operation.id] = inverse }
-            if let row { rows.append(row) }
+            if operation.decision == .hook { hookRow = row } else if let row { rows.append(row) }
         }
         replace(next, name: "Make it postable")
         run.seconds = makeItRenderedSeconds(run.clipID)
         run.postText = project.share.captions[run.clipID] ?? ""
-        run.hook = plan.hook
+        run.hook = ClipHookTitle.text(plan.hook) ?? ""
         // Rewrites, in the creator's voice, each through Rewrite's own takes.
         let rewrites = operations.filter { $0.decision == .rewrite }
         if !rewrites.isEmpty, !makeItStopped(run) {
@@ -469,9 +475,7 @@ extension EditorModel {
                 rows.append(await musicStep(cue, run: run, generated: style.generatedMusic))
             }
         }
-        if let hook = operations.first(where: { $0.decision == .hook }), case .hook(_, let text) = hook.action {
-            rows.append(MakeItRow(id: hook.id, kind: .choice, text: "Claude chose the hook “\(text)”", detail: "Shown in the first 2 s once title cards ship; copy it into your post meanwhile.", change: .hook))
-        }
+        if let hookRow { rows.append(hookRow) }
         for (index, question) in plan.questions.enumerated() {
             rows.append(MakeItRow(id: "question-\(index)", kind: .question, text: question.question, detail: "Claude chose “\(question.answer)”",
                                   change: .question(index), options: question.options.filter { $0 != question.answer }))
@@ -482,7 +486,7 @@ extension EditorModel {
     }
 
     /// One pure operation applied to `project`, with how to take it back and its review row; nil for the operations a
-    /// later step owns (rewrites, music, the hook).
+    /// later step owns (rewrites, music).
     private func makeItStep(_ operation: ClipAutopilotOperation, plan: ClipAutopilotPlan, in project: inout Project) -> (MakeItInverse?, MakeItRow?)? {
         let words = project.transcript?.words ?? []
         func start(_ ids: [String]) -> Double? { ids.compactMap { id in words.first { $0.id == id }?.start }.min() }
@@ -557,7 +561,16 @@ extension EditorModel {
             return (applied ? .speed(clipID: clipID, previous: previous) : nil,
                     MakeItRow(id: operation.id, kind: .choice, text: "Claude chose \(ProjectClipControls.speedLabel(rate)) speed", detail: speed.reason,
                               play: clipPlay(clipID, in: project), undoable: applied, change: .speed, options: Self.makeItSpeedOptions(except: rate)))
-        case .rewrite, .music, .hook:
+        case .hook(let clipID, let text):
+            // The hook as the clip's title card over its first ~2 s (design.md §6.7), replacing a card an earlier run made.
+            let previous = ClipHookTitle.existing(clipID: clipID, in: project)
+            guard let card = ClipHookTitle.effect(hook: text, clipID: clipID, in: project),
+                  let changed = try? ClipEffects.adding([card], to: project) else { return (nil, nil) }
+            project = changed
+            return (.effect(id: card.id, previous: previous),
+                    MakeItRow(id: operation.id, kind: .choice, text: Self.makeItHookRowText(card.text ?? text, chosenBy: "Claude"),
+                              detail: Self.makeItHookDetail, play: clipPlay(clipID, in: project), undoable: true, change: .hook))
+        case .rewrite, .music:
             return nil
         case .effect, .stretch, .translateCaptions, .musicDucking:
             // Ask Claude's toolbox (ai.md §18): the planner doesn't plan these, so a run applies nothing for them.
@@ -716,6 +729,11 @@ extension EditorModel {
             guard let next = try? ClipControlsProject.settingSpeed(previous, clipId: clipID, in: project) else { return false }
             if next != project { replace(next, name: name) }
             return true
+        case .effect(let id, let previous):
+            let next = previous.flatMap { try? ClipEffects.adding([$0], to: project) } ?? (try? ClipEffects.removing([id], from: project))
+            guard let next else { return false }
+            if next != project { replace(next, name: name) }
+            return true
         }
     }
 
@@ -727,9 +745,8 @@ extension EditorModel {
         case .rename: onRenameClip?(run.clipID)
         case .post: copyMakeItPostText(run)
         case .hook:
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(run.hook, forType: .string)
-            announce("Hook copied.")
+            guard let row = run.rows.first(where: { $0.change == .hook }) else { return }
+            run.openChoice = run.openChoice == row.id ? nil : row.id
         case .phrase(let range):
             if let rewrite, rewrite.isOpen, rewrite.rewriteScope == .selection(range) { onShowPanelJob?(.rewrite); return }
             _ = setScope(run.clipID)
@@ -764,6 +781,34 @@ extension EditorModel {
         run.rows[index].undoable = true
         run.rows[index].detail = ""
         run.openChoice = nil
+    }
+
+    /// The hook row's Change, committed from its inline field: the card's text becomes `text` as one undo step
+    /// ("Change hook"), the row reads "You chose the hook …", and the post text carries the new hook. The row's Undo still
+    /// removes the card.
+    func makeItSetHook(_ text: String, rowID: String, run: MakeItRun) {
+        guard !run.running, let index = run.rows.firstIndex(where: { $0.id == rowID }), run.rows[index].change == .hook,
+              !run.rows[index].undone, case .effect(let id, _)? = run.inverses[rowID], let hook = ClipHookTitle.text(text),
+              var card = project.clipEffects.first(where: { $0.id == id }) else { return }
+        run.openChoice = nil
+        guard card.text != hook else { return }
+        card.text = hook
+        guard let next = try? ClipEffects.adding([card], to: project) else { return }
+        replace(next, name: "Change hook")
+        run.hook = hook
+        run.rows[index].text = Self.makeItHookRowText(hook, chosenBy: "You")
+        announce("Hook changed.")
+    }
+
+    static func makeItHookRowText(_ hook: String, chosenBy who: String) -> String { "\(who) chose the hook “\(hook)”" }
+    static let makeItHookDetail = "Title card for the first 2 s · the post text keeps it"
+
+    /// The post text as it is copied and shown: the hook first, unless the post already says it, then the plan's post
+    /// text with its music credit.
+    func makeItPostCopy(_ run: MakeItRun) -> String {
+        let hook = run.hook.trimmingCharacters(in: .whitespacesAndNewlines)
+        let carries = hook.isEmpty || run.postText.range(of: hook, options: [.caseInsensitive, .diacriticInsensitive]) != nil
+        return (carries ? [run.postText] : [hook, run.postText]).filter { !$0.isEmpty }.joined(separator: "\n\n")
     }
 
     /// The look row's other choices.
@@ -803,7 +848,7 @@ extension EditorModel {
     }
 
     func copyMakeItPostText(_ run: MakeItRun) {
-        let text = [run.postText].filter { !$0.isEmpty }.joined(separator: "\n\n")
+        let text = makeItPostCopy(run)
         guard !text.isEmpty else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
