@@ -132,8 +132,7 @@ internal sealed partial class RewriteSession : IDisposable
         RewriteSourceReader source, CancellationToken ct, int windowIndex = 0)
     {
         if (!GenerationIsCurrent || Review is null || PricedVoiceHunks.Count == 0) return null;
-        if (PricedVoiceHunks.Count > VoiceLabTakeBatch.MaximumWindows)
-            throw new RewriteGenerationException("Keep fewer changed passages before generating takes. Your edits are saved.");
+        if (PricedVoiceHunks.Count > VoiceLabTakeBatch.MaximumRunPhrases) throw new RewriteGenerationException(TooManyPhrasesCopy(PricedVoiceHunks.Count));
         if (windowIndex < 0 || windowIndex >= PricedVoiceHunks.Count) return null;
         var hunk = PricedVoiceHunks[windowIndex];
         if (hunk.Window is not { } window || hunk.PatchText is not { } patch)

@@ -8,13 +8,14 @@ public sealed record TakeRowPresentation(string Title, string Duration, string N
     string PlayName, string RejectName, bool Selectable, bool BestMatch, string? FailureText)
 {
     public bool JoinAdvisory { get; init; }
-    public string UseAnywayName { get; init; } = "";
     public string Copy => Title + " · " + Duration + " · " + Note;
     /// <summary>Accessible name while the row's Play button shows Pause.</summary>
     public string PauseName => PlayName.Length > 0 ? "Pause" + PlayName[4..] : "";
     public string PlayHelp => Selectable ? PlayName : PlayName.EndsWith(", not checked", StringComparison.Ordinal)
         ? "Listen to this take as ElevenLabs returned it. It was not checked and stays left out."
         : "Listen to this take. It stays left out.";
+    /// <summary>A passing take's join advisory, a note rather than a choice (ADR-R39).</summary>
+    public const string JoinNote = "join may sound slightly louder";
     /// <summary>Indexes are Core's zero-based take indexes; bestId is the exact ranked best take.</summary>
     public static TakeRowPresentation From(VoiceLabTakeRow row, Guid? bestId, int phraseNumber = 1)
     {
@@ -35,17 +36,15 @@ public sealed record TakeRowPresentation(string Title, string Duration, string N
         }
         var audio = row.Audio!;
         var duration = (audio.Fit.Plan.OutputFrames / (double)audio.SampleRate).ToString("F1", CultureInfo.InvariantCulture) + " s";
+        var best = row.Id == bestId;
+        // ADR-R39: a join advisory is a note on the take's row, "join may sound slightly louder", beside its ▶; the take is
+        // chosen like any other, automatically when it ranks best.
         if (row.HasJoinAdvisory)
         {
-            var sides = row.Qa!.JoinSeams.Select(seam => seam.Side).Distinct().ToArray();
-            var side = sides.Length == 1 ? sides[0] : "either";
-            var advisory = "The join may sound uneven (" + side + " side). Listen before using.";
-            var qualifier = "phrase " + phraseNumber.ToString(CultureInfo.InvariantCulture) + ", take " + number + ", join advisory";
-            return new(title, duration, advisory, "Phrase " + phraseNumber.ToString(CultureInfo.InvariantCulture) + ", join advisory. " + title + " · " + duration + " · " + advisory,
-                "Play " + qualifier, "", true, false, null) { JoinAdvisory = true,
-                    UseAnywayName = "Use take " + number + " anyway, phrase " + phraseNumber.ToString(CultureInfo.InvariantCulture) + ", accept join advisory" };
+            var advisory = (best ? "Best match · " : "") + JoinNote;
+            return new(title, duration, advisory, title + ", " + duration + ", " + advisory,
+                "Play take " + number + ", join advisory", "Reject take " + number, true, best, null) { JoinAdvisory = true };
         }
-        var best = row.Id == bestId;
         var frames = audio.Fit.Plan.Edits.Sum(edit => edit.Kind == VoiceLabFitEditKind.Insert ? edit.Count : -edit.Count);
         var fit = best ? "Best match" : VoiceLabPauseFitNote.Format(frames / (double)audio.SampleRate);
         // ADR-R37: a pooled check names its takes; an unmeasured voice says so, and only a click chooses it.
@@ -104,10 +103,11 @@ public sealed record TakeRowPresentation(string Title, string Duration, string N
             : "The required checks did not complete. No result is available.";
     }
 
-    /// <summary>Preselects the highest-ranked eligible take only after a completed or early-stop run.</summary>
+    /// <summary>Preselects the highest-ranked eligible take only after a completed or early-stop run. Core's ranking puts clean
+    /// takes before ones with a join advisory, which is chosen when it is the best left (ADR-R39).</summary>
     public static Guid? Preselect(VoiceLabTakeRunResult result, IReadOnlySet<Guid>? rejected = null) =>
         result.End is VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop
-            ? result.Ranked.FirstOrDefault(row => row.AutomaticallySelectable && rejected?.Contains(row.Id) != true)?.Id : null;
+            ? result.Ranked.FirstOrDefault(row => row.Selectable && rejected?.Contains(row.Id) != true)?.Id : null;
 
     /// <summary>Live notification for a newly ready row, using its zero-based Core index.</summary>
     public static string Ready(int index) => $"Take {(index + 1).ToString(CultureInfo.InvariantCulture)} ready.";

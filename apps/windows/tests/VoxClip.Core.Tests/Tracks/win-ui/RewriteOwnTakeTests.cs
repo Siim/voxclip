@@ -156,9 +156,9 @@ public sealed class RewriteOwnTakeTests : IDisposable
 
     internal static readonly IReadOnlyList<VoiceLabSpokenWord> Words = [new("much", 0.15, 0.4), new("clearer", 0.45, 0.8), new("words", 0.85, 1.2)];
 
-    /// <summary>[Use your take], or Use anyway when the join needs listening first: the control the own take's row shows.</summary>
-    private static Task<bool> UseAsync(RewriteGeneration window, VoiceLabTakeRow row) =>
-        row.RequiresJoinAdvisoryAcceptance ? window.UseTakeAnywayAsync(row.Id) : window.SelectTakeAsync(row.Id);
+    /// <summary>[Use your take] (or Use anyway for a changed duration): the control the own take's row shows. Choosing it accepts
+    /// a join advisory (ADR-R39).</summary>
+    private static Task<bool> UseAsync(RewriteGeneration window, VoiceLabTakeRow row) => window.SelectTakeAsync(row.Id);
 
     private static async Task RecordAsync(RewriteSession session, FakeMicrophone microphone)
     {

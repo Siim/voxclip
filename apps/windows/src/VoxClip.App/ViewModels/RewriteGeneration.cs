@@ -224,6 +224,14 @@ internal sealed partial class RewriteGeneration : IDisposable
             audioTags: VoiceLabNaturalPacing.PauseTags(input.AudioTags, input.ModelId,
                 VoxClip.Core.Domain.Editing.EditingAlgorithms.SplitWords(input.Text).Count)).Pace;
     }
+    /// <summary>A later part of a long run is quoted again just before it runs (Mac <c>ClipTakePlan.continueRun</c>): the
+    /// fresh quote, for the run to compare with the priced one.</summary>
+    internal async Task<VoiceLabTakeBatch.Window?> RequoteAsync()
+    {
+        if (closed || IsRunning || !current()) return null;
+        await InputsChangedAsync(preserveReview: true);
+        return closed || IsPreparing ? null : PreparedWindow;
+    }
     internal void MarkEstimateShown(VoiceLabTakeRunQuote quote)
     {
         if (closed || IsPreparing || !ReferenceEquals(Quote, quote) || ReferenceEquals(shownQuote, quote)) return;

@@ -23,9 +23,12 @@ public sealed class RewriteSmokeTests
     private const string Fifteen = "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen";
 
     /// <summary>S15 twins Mac S15 (bridge words); S16 twins Mac S14 (Eleven v4 timing quirks), renumbered because Windows S14 is the
-    /// collision after paid takes; the own-take scenarios keep Mac's names.</summary>
+    /// collision after paid takes; S17 twins Mac S16 (a long run voiced in parts); the own-take scenarios keep Mac's names.</summary>
     public static TheoryData<string> Scenarios => new(["S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9", "S10", "S11", "S12", "S13", "S14",
-        "S15", "S16", "S-own-typed", "S-own-mic", "S-own-mic-misfit"]);
+        "S15", "S16", "S17", "S-own-typed", "S-own-mic", "S-own-mic-misfit"]);
+    /// <summary>S17's take: words 10–79 with every fifth word from 12 to 67 changed, twelve phrases in three parts.</summary>
+    internal static readonly int[] LongRunWords = Enumerable.Range(0, 12).Select(index => 12 + 5 * index).ToArray();
+    internal static string LongRunReply => string.Join(" ", Enumerable.Range(10, 70).Select(index => LongRunWords.Contains(index) ? "a much clearer phrasing" : "word" + index));
     /// <summary>S16's reply: words 10 and 14 change, words 11–13 stay, so two phrases are voiced.</summary>
     private const string TwoChanges = "a much clearer phrasing word11 word12 word13 a much brighter phrasing word15 word16";
 
@@ -211,6 +214,39 @@ public sealed class RewriteSmokeTests
                 smoke.End(VoiceLabVideoMode.Source, voiced: 2);
                 return smoke;
             }
+            case "S17":
+            {
+                // Mac S16 (MVP23): a long take whose Rewrite changes more phrases than one batch holds is priced and approved once,
+                // then voiced part by part; each later part is quoted again just before it runs, at the price approved.
+                var runners = LongRunWords.Select(_ => new Runner((_, _) => (Fit, Passed))).ToArray();
+                using var smoke = new Smoke(id, new(LongRunReply, (_, ordinals) => Rows(ordinals, "x")), runners[0], last: 79, runners: index => runners[index]);
+                await smoke.ProposeAsync();
+                await smoke.Session.DiscoverWindowsAsync();
+                foreach (var window in smoke.Session.GenerationWindows) await window.PendingUpdate;
+                smoke.Observe("Get Price");
+                if (smoke.Session.PreparedBatch is not { } run) { smoke.Failures.Add($"{id}: no price to approve"); return smoke; }
+                if (smoke.Session.GenerationWindows.Count != LongRunWords.Length || run.Parts.Count != 3 || run.TakeCount != 3 * LongRunWords.Length)
+                    smoke.Failures.Add($"{id}: {smoke.Session.GenerationWindows.Count} phrases in {run.Parts.Count} parts, {run.TakeCount} takes priced");
+                smoke.Session.MarkBatchEstimateShown(run);
+                var priced = runners.Select(runner => runner.Prepares).ToArray();
+                var approvals = 0;
+                await smoke.Session.GenerateWindowsAsync((_, text, _, _) =>
+                {
+                    approvals++;
+                    if (!text.Contains($"across {LongRunWords.Length} passages", StringComparison.Ordinal)) smoke.Failures.Add($"{id}: the price reads '{text}'");
+                    return Task.FromResult(true);
+                }, _ => Task.FromResult<VoiceLabMonthlyCap?>(null));
+                await smoke.SettleAsync("approve the price once and make takes");
+                if (approvals != 1) smoke.Failures.Add($"{id}: {approvals} approvals for one run");
+                // Every phrase prices its next take after its run; a later part's phrases were also quoted again before theirs.
+                var after = runners[0].Prepares - priced[0];
+                for (var index = 0; index < runners.Length; index++)
+                    if (runners[index].Sends != 1 || runners[index].Prepares - priced[index] != after + (index < VoiceLabTakeBatch.MaximumWindows ? 0 : 1))
+                        smoke.Failures.Add($"{id}: phrase {index + 1} was quoted {runners[index].Prepares - priced[index]} more times and run {runners[index].Sends} times");
+                if (smoke.Session.Problem.Length > 0) smoke.Failures.Add($"{id}: {smoke.Session.Problem}");
+                smoke.End(VoiceLabVideoMode.Source, voiced: LongRunWords.Length);
+                return smoke;
+            }
             case "S-own-typed":
             {
                 // Mac S-own-typed: the user types the wording, the cloned voice reads it, Use.
@@ -338,13 +374,14 @@ public sealed class RewriteSmokeTests
             if (phrase.Problem.Length > 0) Failures.Add($"{id}: the take could not be checked: {phrase.Problem}");
         }
 
-        /// <summary>[Use your take], or [Use anyway] for a join to listen to first or a take a changed video duration carries.</summary>
+        /// <summary>[Use your take], or [Use anyway] for a take a changed video duration carries (ADR-R39: a join advisory alone
+        /// needs no Use anyway).</summary>
         internal async Task UseOwnTakeAsync()
         {
             var window = Session.Generation!;
             if (window.Rows.LastOrDefault(row => window.IsRecorded(row.Id)) is not { } take) { Failures.Add($"{id}: no own take"); return; }
-            var anyway = take.RequiresJoinAdvisoryAcceptance;
-            if (!await (anyway ? window.UseTakeAnywayAsync(take.Id) : window.SelectTakeAsync(take.Id))) Failures.Add($"{id}: Use your take didn't act");
+            var anyway = !window.LengthFits(take);
+            if (!await window.SelectTakeAsync(take.Id)) Failures.Add($"{id}: Use your take didn't act");
             Observe(anyway ? "click [Use anyway]" : "click [Use your take]");
             if (window.SelectedTakeId != take.Id) Failures.Add($"{id}: the own take isn't the one used");
         }

@@ -13,6 +13,9 @@ public sealed class VoiceLabTakeBatch
     }
     public const string ProviderName = "ElevenLabs";
     public const int MaximumWindows = 32 / (2 * VoiceLabPricing.MaximumCandidates);
+    /// <summary>The most phrases one Rewrite run prices and voices: a run of more than <see cref="MaximumWindows"/> is priced and
+    /// approved once, then voiced part by part (<see cref="VoiceLabTakeRunParts"/>, Mac <c>ClipTakePlan.maximumPhrases</c>).</summary>
+    public const int MaximumRunPhrases = 100;
     public Guid Id { get; }
     public IReadOnlyList<Window> Windows { get; }
     public CostEstimate Estimate { get; }
@@ -31,9 +34,12 @@ public sealed class VoiceLabTakeBatch
         Windows = Array.AsReadOnly(windows.Select(window => window with { Input = window.Input.Snapshot() }).ToArray());
         Estimate = VoiceLabTakeRunQuote.Total(Windows.SelectMany(window => window.Quote.Actions).Select(action => action.Estimate.ToCostEstimate()), TakeCount);
     }
-    public static void Validate(IReadOnlyList<VoiceLabTakeInput> inputs)
+    public static void Validate(IReadOnlyList<VoiceLabTakeInput> inputs) => Validate(inputs, MaximumWindows);
+    /// <summary>The batch rules across a whole run of parts: one voice, language, model and source, in source order.</summary>
+    public static void ValidateRun(IReadOnlyList<VoiceLabTakeInput> inputs) => Validate(inputs, MaximumRunPhrases);
+    private static void Validate(IReadOnlyList<VoiceLabTakeInput> inputs, int maximum)
     {
-        if (inputs.Count is < 1 or > MaximumWindows) throw Invalid();
+        if (inputs.Count < 1 || inputs.Count > maximum) throw Invalid();
         var first = inputs[0];
         for (int index = 0; index < inputs.Count; index++)
         {
@@ -51,6 +57,45 @@ public sealed class VoiceLabTakeBatch
         return VoiceLabTakeRunQuote.Total(quotes.Select(action => action.Estimate.ToCostEstimate()), touched);
     }
     static VoiceLabException Invalid() => new(VoiceLabErrorKind.InvalidInput);
+}
+/// <summary>One approval of a whole Rewrite run (Mac <c>ClipTakePlan</c> parts): its windows in consecutive batches of at most
+/// <see cref="VoiceLabTakeBatch.MaximumWindows"/>, priced together. A later part is quoted again just before it runs and runs under
+/// this approval only when every window's inputs and estimate equal the priced ones (<see cref="SamePrice"/>); otherwise the run
+/// stops with "price changed" and sends nothing more.</summary>
+public sealed class VoiceLabTakeRunParts
+{
+    public IReadOnlyList<VoiceLabTakeBatch> Parts { get; }
+    public IReadOnlyList<VoiceLabTakeBatch.Window> Windows { get; }
+    public CostEstimate Estimate { get; }
+    public int TakeCount => Parts.Sum(part => part.TakeCount);
+    public VoiceLabTakeRunParts(IReadOnlyList<VoiceLabTakeBatch.Window> windows)
+    {
+        VoiceLabTakeBatch.ValidateRun(windows.Select(window => window.Input).ToArray());
+        Parts = Array.AsReadOnly(windows.Chunk(VoiceLabTakeBatch.MaximumWindows).Select(part => new VoiceLabTakeBatch(part)).ToArray());
+        Windows = Array.AsReadOnly(Parts.SelectMany(part => part.Windows).ToArray());
+        if (Windows.SelectMany(window => window.Quote.Actions).Select(action => action.Token).Distinct().Count() != Windows.Sum(window => window.Quote.Actions.Count))
+            throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
+        Estimate = VoiceLabTakeRunQuote.Total(Windows.SelectMany(window => window.Quote.Actions).Select(action => action.Estimate.ToCostEstimate()), TakeCount);
+    }
+    /// <summary>The part a window (zero-based, in run order) belongs to.</summary>
+    public static int PartOf(int window) => window / VoiceLabTakeBatch.MaximumWindows;
+    public VoiceLabCostPresentationResult Kind(VoiceLabMonthlyCap? cap = null) =>
+        VoiceLabCostPresentation.Kind(Estimate, false, VoiceLabTakeBatch.ProviderName, cap);
+    /// <summary>A window quoted again just before its part runs: the same inputs, by value, and the same estimate and takes.</summary>
+    public static bool SamePrice(VoiceLabTakeBatch.Window priced, VoiceLabTakeBatch.Window requoted)
+    {
+        VoiceLabTakeInput a = priced.Input, b = requoted.Input;
+        return a.Text == b.Text && a.ModelId == b.ModelId && a.RecordId == b.RecordId && a.Language == b.Language && a.Seed == b.Seed &&
+            a.ContentKey == b.ContentKey && a.SourceSampleRate == b.SourceSampleRate && Nullable.Equals(a.IncomingSilence, b.IncomingSilence) &&
+            Nullable.Equals(a.OutgoingSilence, b.OutgoingSilence) && a.CleanAudioOn == b.CleanAudioOn && a.ProviderConsent == b.ProviderConsent &&
+            Nullable.Equals(a.Pace, b.Pace) && a.HardJoinSmoothing == b.HardJoinSmoothing && a.AudioTags.SequenceEqual(b.AudioTags) &&
+            a.CutWordIds.SetEquals(b.CutWordIds) && a.Items.SequenceEqual(b.Items) && SameWindow(a.Window, b.Window) &&
+            priced.Quote.Takes.Count == requoted.Quote.Takes.Count && priced.Quote.Estimate == requoted.Quote.Estimate;
+    }
+    private static bool SameWindow(VoiceLabWindow a, VoiceLabWindow b) =>
+        a.FirstWordId == b.FirstWordId && a.LastWordId == b.LastWordId && a.StartSample == b.StartSample && a.EndSample == b.EndSample &&
+        a.LeftSeam == b.LeftSeam && a.RightSeam == b.RightSeam && a.LeftBridgeWordIds.SequenceEqual(b.LeftBridgeWordIds) &&
+        a.RightBridgeWordIds.SequenceEqual(b.RightBridgeWordIds);
 }
 /// <summary>Window-by-window progress. Only provider-accepted requests count as sent; every unsent quote is discarded.</summary>
 public sealed class VoiceLabTakeBatchProgress(VoiceLabTakeBatch batch)

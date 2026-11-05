@@ -106,7 +106,7 @@ internal sealed partial class RewriteSession
         : $"Automatic fixes spent {Dollars(AutoFix.Spent)} of {Dollars(AutoFix.Allowance)}. The next fix waits for you.";
 
     /// <summary>The approved Get Price: stuck phrases of these takes are fixed from now on.</summary>
-    private void ArmAutoFix(VoiceLabTakeBatch batch)
+    private void ArmAutoFix(VoiceLabTakeRunParts batch)
     {
         AutoFix.Reset();
         AutoFix.Armed = true;

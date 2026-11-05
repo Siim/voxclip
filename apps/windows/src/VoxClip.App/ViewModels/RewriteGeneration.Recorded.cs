@@ -18,8 +18,16 @@ internal sealed partial class RewriteGeneration
     /// <summary>Only the user's own takes are in use, or none at all: the footer's Use carries no AI label.</summary>
     internal bool UsesOwnTake => Selected is { } selected && IsRecorded(selected.Id);
 
+    /// <summary>Selects a take. Choosing one whose only issue is its join, automatically or by the user's click, accepts the
+    /// advisory now (ADR-R39): no Use anyway click follows.</summary>
     private void Select(Guid? id)
     {
+        if (id is { } advisory && Rows.FirstOrDefault(row => row.Id == advisory) is { RequiresJoinAdvisoryAcceptance: true })
+        {
+            if (recordedTakes.ContainsKey(advisory)) { UseRecordedAnyway(advisory, clock.GetUtcNow()); return; }
+            recordedSelection = null; core.UseTakeAnyway(advisory, clock.GetUtcNow());
+            return;
+        }
         if (id is { } own && recordedTakes.ContainsKey(own)) { recordedSelection = own; core.SelectTake(null); }
         else { recordedSelection = null; core.SelectTake(id); }
     }

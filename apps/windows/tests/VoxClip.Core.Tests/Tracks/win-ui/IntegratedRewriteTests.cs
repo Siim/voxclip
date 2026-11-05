@@ -137,14 +137,14 @@ public sealed class IntegratedRewriteTests
         await using var test = new Harness();
         await test.PrepareAsync();
         Assert.Equal(2, test.Session.GenerationWindows.Count);
-        var batch = Assert.IsType<VoiceLabTakeBatch>(test.Session.PreparedBatch);
+        var batch = Assert.IsType<VoiceLabTakeRunParts>(test.Session.PreparedBatch);
         Assert.Equal(6, batch.TakeCount);
         var before = ProjectSerialization.Serialize(test.Editor.Project);
         var approvals = 0;
         await test.Session.GenerateWindowsAsync((snapshot, text, current, token) =>
         {
             token.ThrowIfCancellationRequested(); Assert.True(current());
-            Assert.Equal(6, Assert.IsType<VoiceLabTakeBatch>(snapshot).TakeCount);
+            Assert.Equal(6, Assert.IsType<VoiceLabTakeRunParts>(snapshot).TakeCount);
             Assert.Contains("2 passages", text); Assert.Equal(before, ProjectSerialization.Serialize(test.Editor.Project));
             approvals++; return Task.FromResult(true);
         }, _ => Task.FromResult<VoiceLabMonthlyCap?>(null));
@@ -255,7 +255,7 @@ public sealed class IntegratedRewriteTests
         internal async Task PrepareAsync()
         {
             await Session.DiscoverWindowsAsync();
-            var batch = Assert.IsType<VoiceLabTakeBatch>(Session.PreparedBatch);
+            var batch = Assert.IsType<VoiceLabTakeRunParts>(Session.PreparedBatch);
             Session.MarkBatchEstimateShown(batch);
             Assert.True(Session.CanGenerateAll);
         }
