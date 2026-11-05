@@ -119,7 +119,7 @@ public sealed class FrameComposer : IFrameComposer
             var target = new byte_ptrArray4(); target[0] = (byte*)outputMemory.Pointer;
             var targetStride = new int_array4(); targetStride[0] = output.Stride;
             Native.Check(ffmpeg.sws_scale((SwsContext*)scaling.Handle!.Pointer, source, sourceStride, 0, heightCrop, target, targetStride), "Crop and scale video");
-            FinishClipFrame(output, snapshot, editedTime, decoded.Width, decoded.Height, new(left, top, widthCrop, heightCrop), ct);
+            FinishClipFrame(output, snapshot, editedTime, decoded.Width, decoded.Height, new(left, top, widthCrop, heightCrop), ct, forPreview);
             if (snapshot.Captions is { } captions)
                 rasterizer.Draw(new(captions, editedTime, false, output.Width / (double)captions.Frame.Width), output, ct);
             if (snapshot.VoiceLab is { Prepared.OutputPlan.RequiresSyntheticRendering: true })
@@ -139,23 +139,24 @@ public sealed class FrameComposer : IFrameComposer
         }
     }
 
-    /// <summary>The clip's look and Ask Claude's picture effects on the scaled frame, before captions (Mac FrameCompositor order):
-    /// the look grades the picture first, so censors cover graded pixels and pointers, titles and stickers keep their colours;
+    /// <summary>The clip's look, Ask Claude's picture effects and its motion on the scaled frame, before captions (Mac FrameCompositor
+    /// order): the look grades the picture first, so censors cover graded pixels and pointers, titles and stickers keep their colours;
     /// then censors and pointers in picture space through <paramref name="crop"/> of the <paramref name="pictureWidth"/> ×
-    /// <paramref name="pictureHeight"/> oriented source, at the freeze-held source time; then titles, lower thirds, stickers
-    /// and the progress bar in the output frame.</summary>
+    /// <paramref name="pictureHeight"/> oriented source, at the freeze-held source time; then the clip's motion cue crops the finished
+    /// picture (in output coordinates, so a flipped or turned clip zooms where it is seen); then titles, lower thirds, stickers and the
+    /// progress bar in the output frame, unzoomed.</summary>
     internal void FinishClipFrame(PixelBuffer output, ComposeSnapshot snapshot, double editedTime, int pictureWidth, int pictureHeight, RectD crop,
-        CancellationToken ct)
+        CancellationToken ct, bool forPreview = false)
     {
         if (snapshot.Clip is not { } clip) return;
         if (clip.Controls is { Look: not ClipLook.Original } controls) ClipPicture.Look(output, controls.Look, ct);
-        if (clip.Effects is not { } input) return;
-        var frames = effectFrames.GetValue(input, key => new EffectFrames(key, sharedRoot));
-        if (!frames.HasPicture) return;
         var timeline = snapshot.Timeline;
         var sourceTime = timeline.SourceTime(editedTime);
-        frames.DrawPicture(output, pictureWidth, pictureHeight, crop, input.PictureTime(sourceTime), clip.Controls, ct);
-        frames.DrawFrame(output, sourceTime, editedTime, timeline.MapTime, ct);
+        var frames = clip.Effects is { } input ? effectFrames.GetValue(input, key => new EffectFrames(key, sharedRoot)) : null;
+        if (frames is { HasPicture: true }) frames.DrawPicture(output, pictureWidth, pictureHeight, crop, clip.Effects!.PictureTime(sourceTime), clip.Controls, ct);
+        if (clip.Motion.Count > 0 && !(forPreview && clip.ReduceMotionInPreview))
+            ClipPicture.Motion(output, VoxClip.Core.Domain.ContextDemo.MotionCueRendering.Transform(clip.Motion, sourceTime), forPreview, ct);
+        if (frames is { HasPicture: true }) frames.DrawFrame(output, sourceTime, editedTime, timeline.MapTime, ct);
     }
 
     /// <summary>The changed-duration crop for this output time: a zoomed span (Match video's 1.12× crop, a cut's 1.06×

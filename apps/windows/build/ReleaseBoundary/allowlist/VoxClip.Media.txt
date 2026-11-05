@@ -1062,6 +1062,7 @@ member VoxClip.Media.Pipeline.AudioCacheMetadata :: method public set_Envelope(V
 member VoxClip.Media.Pipeline.AudioCacheMetadata :: method public set_LastAccessAt(System.DateTimeOffset)
 member VoxClip.Media.Pipeline.AudioCacheMetadata :: method public set_Schema(string)
 member VoxClip.Media.Pipeline.ClipPicture :: method internal Look(VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Clips.ClipLook,System.Threading.CancellationToken)
+member VoxClip.Media.Pipeline.ClipPicture :: method internal Motion(VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.ContextDemo.MotionCropTransform,bool,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.ClipPicture :: method internal Orient(VoxClip.Core.Domain.Captions.PixelBuffer,System.Span`1<byte>,VoxClip.Core.Domain.Clips.ProjectClipControls,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.ClipPicture :: method internal OrientedSize(int,int,VoxClip.Core.Domain.Clips.ProjectClipControls)
 member VoxClip.Media.Pipeline.ClipPicture :: method internal Orients(VoxClip.Core.Domain.Clips.ProjectClipControls)
@@ -1264,7 +1265,7 @@ member VoxClip.Media.Pipeline.FrameComposer :: field private rasterizer
 member VoxClip.Media.Pipeline.FrameComposer :: field private sharedRoot
 member VoxClip.Media.Pipeline.FrameComposer :: field private state
 member VoxClip.Media.Pipeline.FrameComposer :: method internal .ctor(VoxClip.Core.Domain.Captions.ICaptionRasterizer,string)
-member VoxClip.Media.Pipeline.FrameComposer :: method internal FinishClipFrame(VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Shared.ComposeSnapshot,double,int,int,VoxClip.Core.Domain.Shared.RectD,System.Threading.CancellationToken)
+member VoxClip.Media.Pipeline.FrameComposer :: method internal FinishClipFrame(VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Shared.ComposeSnapshot,double,int,int,VoxClip.Core.Domain.Shared.RectD,System.Threading.CancellationToken,bool)
 member VoxClip.Media.Pipeline.FrameComposer :: method internal PrepareDisclosure(VoxClip.Core.Domain.Shared.ComposeSnapshot)
 member VoxClip.Media.Pipeline.FrameComposer :: method internal ReleaseDisclosure(VoxClip.Core.Domain.Shared.ComposeSnapshot)
 member VoxClip.Media.Pipeline.FrameComposer :: method internal ReleaseThreadResources()

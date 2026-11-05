@@ -3935,6 +3935,22 @@ member VoxClip.App.ViewModels.MakeItInverse+Look :: method public op_Equality(Vo
 member VoxClip.App.ViewModels.MakeItInverse+Look :: method public op_Inequality(VoxClip.App.ViewModels.MakeItInverse+Look,VoxClip.App.ViewModels.MakeItInverse+Look)
 member VoxClip.App.ViewModels.MakeItInverse+Look :: method public set_ClipId(string)
 member VoxClip.App.ViewModels.MakeItInverse+Look :: method public set_Previous(VoxClip.Core.Domain.Clips.ClipLook)
+member VoxClip.App.ViewModels.MakeItInverse+Motion :: method private .ctor(VoxClip.App.ViewModels.MakeItInverse+Motion)
+member VoxClip.App.ViewModels.MakeItInverse+Motion :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.ViewModels.MakeItInverse+Motion :: method protected get_EqualityContract()
+member VoxClip.App.ViewModels.MakeItInverse+Motion :: method public .ctor(string,VoxClip.Core.Domain.ContextDemo.MotionCue)
+member VoxClip.App.ViewModels.MakeItInverse+Motion :: method public Deconstruct(string&,VoxClip.Core.Domain.ContextDemo.MotionCue&)
+member VoxClip.App.ViewModels.MakeItInverse+Motion :: method public Equals(VoxClip.App.ViewModels.MakeItInverse)
+member VoxClip.App.ViewModels.MakeItInverse+Motion :: method public Equals(VoxClip.App.ViewModels.MakeItInverse+Motion)
+member VoxClip.App.ViewModels.MakeItInverse+Motion :: method public Equals(object)
+member VoxClip.App.ViewModels.MakeItInverse+Motion :: method public GetHashCode()
+member VoxClip.App.ViewModels.MakeItInverse+Motion :: method public ToString()
+member VoxClip.App.ViewModels.MakeItInverse+Motion :: method public get_Id()
+member VoxClip.App.ViewModels.MakeItInverse+Motion :: method public get_Previous()
+member VoxClip.App.ViewModels.MakeItInverse+Motion :: method public op_Equality(VoxClip.App.ViewModels.MakeItInverse+Motion,VoxClip.App.ViewModels.MakeItInverse+Motion)
+member VoxClip.App.ViewModels.MakeItInverse+Motion :: method public op_Inequality(VoxClip.App.ViewModels.MakeItInverse+Motion,VoxClip.App.ViewModels.MakeItInverse+Motion)
+member VoxClip.App.ViewModels.MakeItInverse+Motion :: method public set_Id(string)
+member VoxClip.App.ViewModels.MakeItInverse+Motion :: method public set_Previous(VoxClip.Core.Domain.ContextDemo.MotionCue)
 member VoxClip.App.ViewModels.MakeItInverse+Music :: method private .ctor(VoxClip.App.ViewModels.MakeItInverse+Music)
 member VoxClip.App.ViewModels.MakeItInverse+Music :: method protected PrintMembers(System.Text.StringBuilder)
 member VoxClip.App.ViewModels.MakeItInverse+Music :: method protected get_EqualityContract()
@@ -7378,6 +7394,7 @@ type VoxClip.App.ViewModels.MakeItInverse+Captions
 type VoxClip.App.ViewModels.MakeItInverse+Edits
 type VoxClip.App.ViewModels.MakeItInverse+Effect
 type VoxClip.App.ViewModels.MakeItInverse+Look
+type VoxClip.App.ViewModels.MakeItInverse+Motion
 type VoxClip.App.ViewModels.MakeItInverse+Music
 type VoxClip.App.ViewModels.MakeItInverse+Share
 type VoxClip.App.ViewModels.MakeItInverse+Speed

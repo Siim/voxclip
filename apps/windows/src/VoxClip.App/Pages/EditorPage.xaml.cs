@@ -251,6 +251,8 @@ public sealed partial class EditorPage : Page
         var plan = ExportRenderInput.Plan(source, state);
         // A clip's controls and the scope's effects render in preview and export alike (design §6.9, ai.md §18.5).
         var clip = ClipRenderInput.Resolve(project, project.Edits.ActiveClipId, App.Services.Data.Root, Core.Services.Project.SharedResources.ResolveRoot());
+        // Windows "Animation effects" off: the preview holds still, as the Mac's Reduce Motion (export always zooms).
+        if (clip is { Motion.Count: > 0 } && !Ui.AnimationsEnabled) clip = clip with { ReduceMotionInPreview = true };
         var output = ExportRenderInput.Output(source, project.Export, clip?.Controls);
         var outputSize = output.Size;
         CaptionTrack? captions = null;

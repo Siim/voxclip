@@ -154,6 +154,8 @@ public abstract record MakeItInverse
     public sealed record Effect(string Id, System.Text.Json.JsonElement? Previous) : MakeItInverse;
     /// <summary>The clip's track before the run (null: none).</summary>
     public sealed record Music(string ClipId, Core.Domain.Music.ProjectMusic? Previous) : MakeItInverse;
+    /// <summary>A zoom the run set: removed, or the cue with its id put back as it was.</summary>
+    public sealed record Motion(string Id, Core.Domain.ContextDemo.MotionCue? Previous) : MakeItInverse;
 }
 
 /// <summary>Where a decision's Change goes.</summary>

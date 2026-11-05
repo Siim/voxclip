@@ -39,7 +39,7 @@ internal static class ExportFingerprint
     internal static string TargetId(ExportTarget target) => target is ExportTarget.Clip clip ? clip.Id : "full";
     internal static string For(Project project, ExportTarget target, VoxClip.Core.Domain.VoiceLab.VoiceLabLabelPosition? labelPosition = null)
     {
-        if (project.ContextDemo is { Placements.Length: > 0 } || project.MotionCues.Count > 0)
+        if (project.ContextDemo is { Placements.Length: > 0 })
             return Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(
                 "unsupported-windows-visuals-v1\n" + TargetId(target) + "\n" + ProjectSerialization.Serialize(project))));
         var state = ExportSelection.Scope(EditingEngine.FromProject(project), target);
@@ -90,9 +90,15 @@ internal static class ExportFingerprint
             (effect.GetProperty("clipId").ValueKind == JsonValueKind.String ? effect.GetProperty("clipId").GetString() : null) == clipId).ToArray();
         // The scope's music track mixes under the voice (music.md §4); without music the clip input, and so the hash, is unchanged.
         var music = VoxClip.Core.Domain.Music.MusicProject.Entry(clipId, project);
-        if (controls is null && effects.Length == 0 && music is null) return hash;
-        var clipInput = music is null ? JsonSerializer.SerializeToElement(new { Controls = controls, Effects = effects })
-            : JsonSerializer.SerializeToElement(new { Controls = controls, Effects = effects, Music = music });
+        // The clip's zoom cues crop its picture (design §6.7); the full video has none.
+        var motion = VoxClip.Core.Domain.ContextDemo.MotionCueRendering.For(project, clipId);
+        if (controls is null && effects.Length == 0 && music is null && motion.Count == 0) return hash;
+        var clipInput = (music, motion.Count) switch
+        {
+            (null, 0) => JsonSerializer.SerializeToElement(new { Controls = controls, Effects = effects }),
+            (_, 0) => JsonSerializer.SerializeToElement(new { Controls = controls, Effects = effects, Music = music }),
+            _ => JsonSerializer.SerializeToElement(new { Controls = controls, Effects = effects, Music = music, Motion = motion })
+        };
         using var clipStream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(clipStream)) WriteCanonical(writer, clipInput);
         return Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(hash + "\n").Concat(clipStream.ToArray()).ToArray()));

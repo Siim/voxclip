@@ -404,9 +404,6 @@ public sealed partial class EditorViewModel
                 MakeItNotify();
             }
         }
-        // Windows renders no zoom yet: the review names Claude's choice and nothing is applied.
-        var zooms = operations.Count(operation => operation.Decision == ClipAutopilotDecision.Zoom);
-        if (zooms > 0) rows.Add(new("zooms", $"Claude suggests {zooms} {(zooms == 1 ? "zoom" : "zooms")}") { Kind = MakeItRowKind.Note, Detail = "Zooms render on the Mac for now." });
         // "Picking music…": the plan's mood in the Music section, the first free track, or a generated one within the cap (design §6.7 step 4).
         if (style.Music && !MakeItStopped(run) && operations.FirstOrDefault(operation => operation.Action is ClipAutopilotAction.Music) is { Action: ClipAutopilotAction.Music music })
         {
@@ -432,7 +429,7 @@ public sealed partial class EditorViewModel
     }
 
     /// <summary>One pure operation applied to <paramref name="next"/>, with how to take it back and its review row; nothing for the
-    /// operations a later step owns (rewrites) or Windows doesn't render (zooms, music).</summary>
+    /// operations a later step owns (rewrites, music).</summary>
     private (MakeItInverse? Inverse, MakeItRow? Row) MakeItStep(ClipAutopilotOperation operation, ClipAutopilotPlan plan, ref Project next, MakeItStyle style)
     {
         var words = next.Transcript?.Words ?? [];
@@ -503,6 +500,16 @@ public sealed partial class EditorViewModel
                 var font = captions.PendingFont is { } pending ? $" · {pending.Family} {pending.Weight} once bundled" : "";
                 return (new MakeItInverse.Captions(previous, captions.ClipId, previousPick), new(operation.Id, $"Claude chose {name} captions, {casing}, {plan.CaptionChoice.WordsPerCaption} per line{font}")
                 { Kind = MakeItRowKind.Choice, Undoable = true, Change = MakeItChange.Captions });
+            }
+            case ClipAutopilotAction.Motion motion:
+            {
+                // A zoom (motion cue) on the clip, replacing a cue with its id (Mac MakeItPostable .motion); the row plays from 1 s before.
+                var cue = motion.Cue;
+                var previous = next.MotionCues.FirstOrDefault(item => item.Id == cue.Id);
+                next = ClipAutopilotMapping.WithMotionCues([cue], next);
+                var scale = (cue.Keyframes.Count > 0 ? cue.Keyframes[0].Scale : 1).ToString("0.00", CultureInfo.InvariantCulture);
+                return (new MakeItInverse.Motion(cue.Id, previous),
+                    new(operation.Id, $"Zoom to {scale}×") { Detail = operation.Reason, Play = Math.Max(0, cue.SourceStart - 1), Undoable = true });
             }
             case ClipAutopilotAction.ShareText share:
             {
@@ -755,6 +762,11 @@ public sealed partial class EditorViewModel
                 }
                 case MakeItInverse.Music music:
                     return SetMusic(music.Previous, music.ClipId, "Undo music") || true;
+                case MakeItInverse.Motion motion:
+                {
+                    var kept = project.MotionCues.Where(cue => cue.Id != motion.Id).Concat(motion.Previous is { } previous ? [previous] : []).ToArray();
+                    return ReplaceProject(Core.Domain.ContextDemo.ContextDemoProject.SettingMotionCues(kept, project), "Undo zoom") || true;
+                }
                 default: return false;
             }
         }

@@ -71,6 +71,10 @@ public sealed record ClipRenderInput(ProjectClipControls? Controls, ClipEffectsR
 {
     /// <summary>The track mixed under the voice for this scope.</summary>
     public MusicRenderInput? Music { get; init; }
+    /// <summary>The clip's motion cues (punch-in zooms), applied after censors and before overlays; empty for the full video.</summary>
+    public IReadOnlyList<ContextDemo.MotionCue> Motion { get; init; } = [];
+    /// <summary>Windows "Animation effects" off: a preview shows no motion (export always renders it), as the Mac's Reduce Motion.</summary>
+    public bool ReduceMotionInPreview { get; init; }
 
     /// <summary>The input for a render of <paramref name="clipId"/> (null: the full video), or null when nothing changes it.</summary>
     public static ClipRenderInput? Resolve(Project project, string? clipId, string dataRoot, string sharedRoot)
@@ -78,7 +82,8 @@ public sealed record ClipRenderInput(ProjectClipControls? Controls, ClipEffectsR
         var controls = ClipControlsRendering.Controls(project, clipId);
         var effects = ClipEffectsRenderInput.Resolve(project, clipId, dataRoot, sharedRoot);
         var music = MusicRenderInput.Resolve(project, clipId, dataRoot);
-        return controls is null && effects is null && music is null ? null : new(controls, effects) { Music = music };
+        var motion = ContextDemo.MotionCueRendering.For(project, clipId);
+        return controls is null && effects is null && music is null && motion.Count == 0 ? null : new(controls, effects) { Music = music, Motion = motion };
     }
 
     /// <summary>The same input for the edited WAV: 1× with no controls, bleeps and mutes kept, no sound effects and no music
