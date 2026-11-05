@@ -32,14 +32,17 @@ public static class SharedResources
 /// writes the user's log folder (<see cref="DataLocations.Logs"/>).</summary>
 public static class TestProcess
 {
-    /// <summary>Whether this process runs tests, decided once at first use.</summary>
-    public static bool IsRunning { get; } = Detect(Environment.GetEnvironmentVariables().Keys.Cast<object>().Select(key => key.ToString() ?? ""),
+    // Declared before anything that reads it: static initializers run in source order, and the app and CLI (never a
+    // test host) reach the environment check, so a later declaration was still null there and every start threw.
+    private static readonly string[] EnvironmentPrefixes = ["VSTEST_", "TESTINGPLATFORM_", "XUNIT_"];
+    private static readonly Lazy<bool> Running = new(() => Detect(Environment.GetEnvironmentVariables().Keys.Cast<object>().Select(key => key.ToString() ?? ""),
         Environment.ProcessPath is { } path ? Path.GetFileNameWithoutExtension(path) : "", Environment.GetCommandLineArgs(),
         AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetName().Name ?? ""),
-        System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name);
+        System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name));
+    /// <summary>Whether this process runs tests, decided once at first use.</summary>
+    public static bool IsRunning => Running.Value;
     /// <summary>Where a test process's logs go when no <c>VOXCLIP_DATA_DIR</c> is set: this process's own temporary folder.</summary>
     public static string Logs => Path.Combine(Path.GetTempPath(), "VoxClipTests-" + Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture), "Logs");
-    private static readonly string[] EnvironmentPrefixes = ["VSTEST_", "TESTINGPLATFORM_", "XUNIT_"];
     internal static bool Detect(IEnumerable<string> environmentNames, string processName, IReadOnlyList<string> arguments,
         IEnumerable<string> assemblyNames, string? entryAssembly) =>
         processName.Contains("testhost", StringComparison.OrdinalIgnoreCase)

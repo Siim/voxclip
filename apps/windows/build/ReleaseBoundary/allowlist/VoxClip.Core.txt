@@ -11904,6 +11904,7 @@ member VoxClip.Core.Services.Project.SharedResources :: method private Require(s
 member VoxClip.Core.Services.Project.SharedResources :: method private Valid(string)
 member VoxClip.Core.Services.Project.SharedResources :: method public ResolveRoot(string)
 member VoxClip.Core.Services.Project.TestProcess :: field private EnvironmentPrefixes
+member VoxClip.Core.Services.Project.TestProcess :: field private Running
 member VoxClip.Core.Services.Project.TestProcess :: method internal Detect(System.Collections.Generic.IEnumerable`1<string>,string,System.Collections.Generic.IReadOnlyList`1<string>,System.Collections.Generic.IEnumerable`1<string>,string)
 member VoxClip.Core.Services.Project.TestProcess :: method private .cctor()
 member VoxClip.Core.Services.Project.TestProcess :: method public get_IsRunning()

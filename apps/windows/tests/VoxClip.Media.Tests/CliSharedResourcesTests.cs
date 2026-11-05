@@ -40,7 +40,26 @@ public sealed class CliSharedResourcesTests
         finally { Directory.Delete(directory, true); }
     }
 
-    private static async Task<(int Exit, string Stdout)> Run(string[] arguments, string shared, string directory, CancellationToken ct)
+    /// <summary>MVP28 CI: <c>TestProcess.IsRunning</c> read a static array declared after it, so every process that is not a
+    /// test host (the App, the CLI) threw on its first data path and every command ended in <c>unexpectedFailure</c>. A test
+    /// host short-circuits before that read, so this child drops the test platforms' variables, as the App never has them.</summary>
+    [Fact]
+    public async Task TheCliStartsOutsideATestHost()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var directory = Directory.CreateTempSubdirectory("voxclip-cli-outside-tests-").FullName;
+        try
+        {
+            var terms = await Run(["--runtime-terms", "--json"], FixtureLoader.SharedRoot, directory, ct, outsideTestHost: true);
+            Assert.True(terms.Exit == 0, terms.Stdout);
+            using var document = JsonDocument.Parse(terms.Stdout);
+            Assert.True(document.RootElement.GetProperty("ok").GetBoolean(), terms.Stdout);
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    private static async Task<(int Exit, string Stdout)> Run(string[] arguments, string shared, string directory, CancellationToken ct,
+        bool outsideTestHost = false)
     {
         var cli = Path.GetFullPath(Environment.GetEnvironmentVariable("VOXCLIP_CLI") ?? Path.Combine(NativePipelineTests.TestRoot,
             "..", "..", "src", "VoxClip.Cli", "bin", "Release", "net10.0", "voxclip-cli.dll"));
@@ -59,6 +78,10 @@ public sealed class CliSharedResourcesTests
         start.Environment["VOXCLIP_DATA_DIR"] = data;
         start.Environment["VOXCLIP_LIVE_TESTS"] = "0";
         start.Environment["VOXCLIP_TEST_DOWNLOAD"] = "0";
+        if (outsideTestHost)
+            foreach (var name in start.Environment.Keys.Where(name => new[] { "VSTEST_", "TESTINGPLATFORM_", "XUNIT_" }
+                .Any(prefix => name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))).ToArray())
+                start.Environment.Remove(name);
         return await MediaCliE2ETests.RunProcess(start, (_, _) => Task.CompletedTask, ct, TimeSpan.FromMinutes(1));
     }
 
