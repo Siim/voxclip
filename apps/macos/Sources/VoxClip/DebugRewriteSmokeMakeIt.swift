@@ -72,7 +72,11 @@ extension DebugRewriteSmoke.Harness {
                 }
                 self?.planRequests.append(request.mode)
                 for index in spans.indices { progress(.planning(clip: index, of: spans.count)) }
-                let plans = spans.compactMap { plan($0, request.transcript.words) }
+                // A fixed tone comes back as the plan's tone, as the planner reports it (ai.md §16.5).
+                let tone: ClipAutopilotPlan.Tone? = if case .fixed(let tone)? = request.tone {
+                    .init(id: tone.id, title: tone.title, summary: "Hook first, one line tightened")
+                } else { nil }
+                let plans = spans.compactMap { plan($0, request.transcript.words) }.map { var plan = $0; plan.tone = tone; return plan }
                 guard !plans.isEmpty else { throw LLMError.invalidOutput(reason: "no smoke plan") }
                 for index in spans.indices { progress(.planned(clip: index, of: spans.count)) }
                 return ClipAutopilotSeries(plans: plans)
@@ -114,6 +118,8 @@ extension DebugRewriteSmoke.Harness {
         editor.apply(.addClip(ClipRange(id: "smoke-clip", startWordId: words[start].id, endWordId: words[end].id, title: "Smoke clip",
                                         origin: .manual, selected: true)), name: "Make clip")
         _ = editor.setScope("smoke-clip")
+        // The card's Tone: the run writes the clip as Viral YouTuber, and the review says so.
+        editor.updateClipStyle { $0.tone = .tone("viral-youtuber") }
         await editor.makeIt.refreshVoiceReady(editor)
         let cap = editor.makeItCap(clipID: "smoke-clip")
         let steps = editor.undoSteps
@@ -130,6 +136,9 @@ extension DebugRewriteSmoke.Harness {
             DebugRewriteSmoke.Check(invariant: "M1", passed: run.phase == .ready && next.hasPrefix("Next: Export") && span.lowerBound == start,
                 detail: "\(editor.makeItHeadline(run)) · \(next)"),
             DebugRewriteSmoke.Check(invariant: "M2", passed: editor.undoSteps == steps + 1, detail: "\(editor.undoSteps - steps) undo step(s) for the run"),
+            DebugRewriteSmoke.Check(invariant: "M7", passed: run.rows.first?.text == "✦ Claude wrote it as Viral YouTuber" && run.rows.first?.change == .tone
+                                        && run.rows.first?.detail.contains("voiced 1 phrase") == true,
+                detail: (run.rows.first.map { "\($0.text) · \($0.detail)" } ?? "no rows")),
             DebugRewriteSmoke.Check(invariant: "M3", passed: cap.map { run.spent <= $0 } ?? (run.spent == 0),
                 detail: "spent \(EditorModel.makeItDollars(run.spent)) of up to \(cap.map(EditorModel.makeItDollars) ?? "nothing")"),
             DebugRewriteSmoke.Check(invariant: "M4", passed: rewrite?.undoable == true && MusicProject.entry(for: "smoke-clip", in: editor.project) != nil,
