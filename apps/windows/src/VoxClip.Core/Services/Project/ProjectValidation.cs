@@ -66,7 +66,8 @@ internal static class ProjectValidation
         if (root.TryGetProperty("clipStyle", out var clipStyle))
         {
             // Project schema $defs/clipStyle (design §6.6).
-            Object(clipStyle, "preset captions music maxLengthSec shapes rewording captionPicks");
+            Object(clipStyle, "preset captions music maxLengthSec shapes rewording captionPicks", "tone");
+            if (clipStyle.TryGetProperty("tone", out var tone)) { String(tone, Slug); Require(tone.GetString() != "auto" && System.Text.Encoding.UTF8.GetByteCount(tone.GetString()!) <= 64); }
             Choice(clipStyle.GetProperty("preset"), "auto", "punchy", "calm", "demo", "mine"); String(clipStyle.GetProperty("captions"), Slug);
             Choice(clipStyle.GetProperty("music"), "auto", "off"); Number(clipStyle.GetProperty("maxLengthSec"), 5, 600, true);
             var shapes = clipStyle.GetProperty("shapes");
