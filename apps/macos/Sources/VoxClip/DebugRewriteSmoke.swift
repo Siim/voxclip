@@ -712,6 +712,7 @@ import VoxClipCore
         func finish(maximumSteps: Int = 12) async throws {
             for _ in 0..<maximumSteps {
                 guard let session, session.isOpen else { completed = applied; ended = true; return }
+                if await chooseOfferedTakeIfNeeded() { continue }
                 if await chooseDurationIfNeeded() { continue }
                 var order = ["approveTakeQuote", "discardChanges", "useTakes", "chooseTake", "takeQuote-", "prepareTakes", "makeTakes", "rewriteAgain",
                              "keepFixing", "withinSentence", "revoiceAll", "keepOriginal", "mergePhrases", "suggestion.", "tryAnother", "freshPrice",
@@ -745,6 +746,18 @@ import VoxClipCore
 
         /// The evidence controls the panel drew last.
         private var drawn: [Control] { steps.last?.snapshot.controls.filter { $0.source == "evidence" && $0.enabled } ?? [] }
+        /// A passing take the automatic choice may not pick (its voice couldn't be measured, ADR-R37) waits for the user's click
+        /// on its number in the phrase card; a join advisory never does (ADR-R39).
+        private func chooseOfferedTakeIfNeeded() async -> Bool {
+            guard let session, let plan = session.takePlan, !session.takesBusy,
+                  let phrase = plan.phrases.first(where: { plan.offeredTake(phrase: $0.id) != nil }),
+                  let take = plan.offeredTake(phrase: phrase.id) else { return false }
+            try? await act("click take \(take.number) on phrase \(phrase.id + 1)", clicked: "takeNumber") {
+                session.focusedTakePhrase = phrase.id
+                session.mutateLipsync(phrase: phrase.id) { _ = plan.select(take: take.id, phrase: phrase.id) }
+            }
+            return true
+        }
         /// A row's own control when no footer or chip offers a way on, as a user reaches for it: a phrase row's priced
         /// [Try another · $] or [Try another…] (DirectorTakeRows), then a row's [Keep original words] (PhraseTimingRecovery).
         private func rowActionIfOffered() async -> Bool {
