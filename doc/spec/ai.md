@@ -1871,7 +1871,7 @@ Every send checks the model's context as Voice Lab sends do (§12.8): `est()` of
 - the music cue: the picked track, the alternatives and `editedSeconds`, the length at the clip's own speed. A bed is staged for the rendered length (design.md §6.9), so a track of `editedSeconds` always covers the clip;
 - the hook text, and the share text (`project.share.captions[clipID]`).
 
-`ClipAutopilotMapping.apply` applies edits (corrections included), captions, the look and the speed (`ClipControlsProject.settingLook` and `settingSpeed`, design.md §6.9, keeping the clip's other controls), motion cues (through `ContextDemoProject.settingMotionCues`, which upgrades the project to version 4) and share text to a copy, in order. It returns rewrites, music and the hook as pending. Make it postable applies the same operations in its own pure step (`makeItStep`), which also records each one's inverse for the review's Undo. One undo step is the caller's choice. `finalSeconds` is `editedSeconds` divided by the speed.
+`ClipAutopilotMapping.apply` applies edits (corrections included), captions, the look and the speed (`ClipControlsProject.settingLook` and `settingSpeed`, design.md §6.9, keeping the clip's other controls), motion cues (through `ContextDemoProject.settingMotionCues`, which upgrades the project to version 4), share text and the hook, as the clip's title card (`ClipHookTitle`: a `title` effect at the top over the clip's first ~2 rendered seconds, timed on the clip the operations before it leave; design.md §6.7), to a copy, in order. It returns rewrites and music as pending. Make it postable applies the same operations in its own pure step (`makeItStep`), which also records each one's inverse for the review's Undo. One undo step is the caller's choice. `finalSeconds` is `editedSeconds` divided by the speed.
 
 ### 16.7 Price
 
@@ -1905,7 +1905,7 @@ Planner v2 evaluation (Claude Code 2.1.318, Opus, plan sign-in, three prompt rou
 - **Music:** the Mac UI applies the pick through `MusicPanel` and sets `underVoiceDb` as the bed's level. Verifying the music price is still owed.
 - **Rewrites (Mac, built):** each is voiced through the existing Rewrite flow (`MakeItRewriteDriver`), where window placement adds the audio bridges.
 - **Roboto Black:** bundled by track/v2-captions-style; the captions operation applies it.
-- **Hook:** a title card for the hook text.
+- **Hook (done on Mac, design.md §6.7):** a title card over the clip's first ~2 s, with Change (inline text) and Undo. Windows rendering of titles is owed.
 - **Prompt:** `lengthReason` comes back as a length estimate even when the clip fits, so `longWithoutReason` rarely fires; the next round should ask for it to be empty within the target. Looks came back the same for a whole series.
 - **Windows:** the twin, replaying both fixtures.
 

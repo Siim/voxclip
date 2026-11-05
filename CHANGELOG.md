@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Mac, ✦ Make it postable shows Claude's hook as a title card over the clip's first 2 seconds, with Change to edit it in place and Undo, and long titles wrap to stay readable in 9:16 and 16:9; Ask Claude's Adjust box sits on the blur of a flipped or turned clip; bleeped words show × in captions of clips with re-voiced phrases and in CLI exports; Rewrite picks a take whose only issue is a slightly louder join instead of asking you to listen first, and its Use button says "Use 2 of 3" while another phrase's take still waits for your pick.
 - On Mac, ✦ Make it postable now applies the look and speed Claude picks, each with play, Undo and Change chips, and shows the clip's length at that speed; Ask Claude sets a clip's speed when asked for the whole clip and offers "Apply to the whole clip" for part of one; blurs follow a flipped or turned picture, overlays keep their colours under a look, and the bundled sound effects ship with the app.
 - Rewrite prices a phrase the wording fit can't take as written, instead of stopping the whole fit with "invalid input".
 - Rewrite takes work on camera files whose audio runs a few milliseconds past the video, such as DJI recordings.
