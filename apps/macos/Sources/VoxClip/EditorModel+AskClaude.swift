@@ -11,13 +11,16 @@ struct AskClaudeRow: Identifiable, Equatable {
         case undone
         /// Needs a paid click first: a voice rewrite or generated music, with its price.
         case paid(price: String)
-        /// The editor cannot render it yet (a stretch's speed, translated captions); the row names the package that owes it.
+        /// The editor cannot render it yet (translated captions); the row says why and that nothing changed.
         case later(String)
+        /// A speed for part of a clip, which plays at one speed (design.md §6.9): the row offers that speed for the whole
+        /// clip, applied with one click (`applyAskClaudeStretchToClip`).
+        case wholeClip(clipID: String)
     }
     let operation: ClipAutopilotOperation
     var status: Status
     let title: String
-    let detail: String
+    var detail: String
     /// "Claude chose the face at the left": the pre-picked answer to an ambiguous instruction.
     let choice: String?
     var id: String { operation.id }
@@ -217,6 +220,9 @@ extension EditorModel {
         run.rows = answer.operations.map { operation in
             let status: AskClaudeRow.Status
             if paid.contains(operation.id) { status = .paid(price: askClaudePrice(operation)) }
+            else if pending.contains(operation.id), case .stretch = operation.action, let clip = Self.stretchClip(operation, in: project) {
+                status = .wholeClip(clipID: clip)
+            }
             else if pending.contains(operation.id) { status = .later(Self.laterReason(operation)) }
             else { status = .applied }
             return AskClaudeRow(operation: operation, status: status, title: Self.rowTitle(operation), detail: rowDetail(operation),
@@ -260,7 +266,8 @@ extension EditorModel {
         }
     }
 
-    static func rate(_ value: Double) -> String { value == value.rounded() ? "\(Int(value))\u{00D7}" : String(format: "%.2g\u{00D7}", value) }
+    /// "1.25×", "0.5×", "2×", as the Clip section shows a speed.
+    static func rate(_ value: Double) -> String { ProjectClipControls.speedLabel(ProjectClipControls.normalizedSpeed(value)) }
 
     func rowDetail(_ operation: ClipAutopilotOperation) -> String {
         let range: String
@@ -283,7 +290,7 @@ extension EditorModel {
 
     static func laterReason(_ operation: ClipAutopilotOperation) -> String {
         switch operation.action {
-        case .stretch: return "Speed for part of a clip arrives with Clip controls. Nothing changed."
+        case .stretch: return "A clip plays at one speed. Ask on a clip to change its speed. Nothing changed."
         case .translateCaptions: return "Translated captions are not rendered yet. Nothing changed."
         case .musicDucking: return "This clip has no music to duck."
         default: return "Not available yet. Nothing changed."
@@ -344,6 +351,37 @@ extension EditorModel {
         }
     }
 
+    // MARK: Speed
+
+    /// The clip a stretch's speed would apply to: the one it covers whole, else its own clip, else the one clip holding it.
+    static func stretchClip(_ operation: ClipAutopilotOperation, in project: Project) -> String? {
+        guard case .stretch(let clipID, let start, let end, _) = operation.action else { return nil }
+        if let whole = ClipControlsProject.wholeClip(clipID, start: start, end: end, in: project) { return whole }
+        if let clipID, project.edits.clips.contains(where: { $0.id == clipID }) { return clipID }
+        let tolerance = ClipControlsProject.wholeClipToleranceSeconds
+        let holding = project.edits.clips.map(\.id).filter { id in
+            ClipControlsProject.sourceSpan(of: id, in: project).map { $0.lowerBound - tolerance <= start && end <= $0.upperBound + tolerance } ?? false
+        }
+        return holding.count == 1 ? holding[0] : nil
+    }
+
+    /// "Apply 1.25× to the whole clip".
+    static func wholeClipTitle(_ operation: ClipAutopilotOperation) -> String {
+        guard case .stretch(_, _, _, let rate) = operation.action else { return "" }
+        return "Apply \(Self.rate(rate)) to the whole clip"
+    }
+
+    /// The partial stretch's one inline action: that speed for its whole clip, as one undo step ("Change speed").
+    func applyAskClaudeStretchToClip(_ id: String) {
+        guard let run = askClaude.run, let index = run.rows.firstIndex(where: { $0.id == id }),
+              case .wholeClip(let clip) = run.rows[index].status, case .stretch(_, _, _, let rate) = run.rows[index].operation.action,
+              setSpeed(rate, clipID: clip) || ClipControlsProject.controls(for: clip, in: project)?.speed == ProjectClipControls.normalizedSpeed(rate) else { return }
+        run.rows[index].status = .applied
+        let span = ClipControlsProject.sourceSpan(of: clip, in: project)
+        run.rows[index].detail = "Whole clip" + (span.map { " \u{00B7} \(Self.clock($0.lowerBound))\u{2013}\(Self.clock($0.upperBound))" } ?? "")
+        announce("\(Self.rate(rate)) for the whole clip")
+    }
+
     // MARK: Undo
 
     /// Takes one applied row out as its own undo step; the other rows stay.
@@ -384,6 +422,11 @@ extension EditorModel {
                     entry.ducking = original.ducking
                     next = try MusicProject.setting(entry, clipId: clip, in: next)
                 }
+            case .stretch:
+                // The clip's speed goes back to what it was before the answer; its other controls stay.
+                guard let clip = Self.stretchClip(operation, in: next) else { break }
+                let previous = base.flatMap { ClipControlsProject.controls(for: clip, in: $0) }?.speed ?? 1
+                next = try ClipControlsProject.settingSpeed(previous, clipId: clip, in: next)
             default: break
             }
         }

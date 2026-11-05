@@ -108,7 +108,9 @@ private actor AskFixtureConnector: LLMConnector {
         #expect(editor.askClaude.error == nil && !editor.llmRuns.isBusy)
         #expect(run.rows.count == 5 && run.rows[0...2].allSatisfy { $0.status == .applied })
         #expect(priced(run.rows[3]).hasPrefix("Voice it \u{00B7} "), "\(run.rows[3].status)")
-        #expect(run.rows[4].status == .later(EditorModel.laterReason(run.rows[4].operation)))
+        // A speed on Full Take words that no clip holds: a clip plays at one speed, so the row says why and changes nothing.
+        #expect(EditorModel.stretchClip(run.rows[4].operation, in: editor.project) == nil)
+        #expect(run.rows[4].status == .later(EditorModel.laterReason(run.rows[4].operation)) && run.rows[4].title == "Speed up 1.5\u{00D7}")
         #expect(editor.project.clipEffects.map(\.kind) == [.bleep, .title, .sound])
         #expect(run.appliedCount == 3 && shell.panelJob(for: editor) == .askClaude)
         // Paid rows wait for their click: nothing else was sent.
@@ -135,6 +137,64 @@ private actor AskFixtureConnector: LLMConnector {
     }
 
     private func priced(_ row: AskClaudeRow) -> String { if case .paid(let price) = row.status { price } else { "" } }
+
+    /// "Play this clip at 1.25×" on a clip: the stretch covers the whole clip (within 0.25 s at each end), so it applies
+    /// as the clip's speed in the answer's one undo step, and its Undo takes the speed back.
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR; only stub connectors are called."))
+    func aStretchOverTheWholeClipSetsTheClipsSpeed() async throws {
+        let (shell, editor, _, undo) = try await open(reply: try Self.reply([Self.op("speed", ["rate": 1.25])]))
+        defer { editor.close() }
+        let clip = try #require(editor.project.edits.clips.first)
+        shell.choose(.clip(clip.id), byClick: false)
+        editor.openAskClaude(clip: clip.id)
+        editor.askClaude.text = "play this clip a bit faster"
+        undo.beginUndoGrouping(); editor.sendAskClaude(); await editor.askClaude.task?.value; undo.endUndoGrouping()
+        let run = try #require(editor.askClaude.run, "\(editor.askClaude.error ?? "no error")")
+        let row = try #require(run.rows.first)
+        guard case .stretch(_, let start, let end, _) = row.operation.action else { Issue.record("no stretch: \(row.operation.action)"); return }
+        let span = try #require(ClipControlsProject.sourceSpan(of: clip.id, in: editor.project))
+        #expect(abs(start - span.lowerBound) <= 0.25 && abs(end - span.upperBound) <= 0.25)
+        #expect(row.status == .applied && ClipControlsProject.controls(for: clip.id, in: editor.project)?.speed == 1.25)
+        #expect(undo.undoActionName == "Ask Claude")
+        undo.beginUndoGrouping(); editor.undoAskClaudeRow(row.id); undo.endUndoGrouping()
+        #expect(editor.project.clipControls.isEmpty && run.rows[0].status == .undone)
+        // The pure step: a stretch just inside the tolerance applies; one past it stays pending.
+        let inside = ClipAutopilotOperation(id: "s1", decision: .stretch, action: .stretch(clipID: clip.id, start: span.lowerBound + 0.2,
+                                            end: span.upperBound - 0.2, rate: 1.25), reason: "")
+        let partial = ClipAutopilotOperation(id: "s2", decision: .stretch, action: .stretch(clipID: clip.id, start: span.lowerBound + 0.3,
+                                             end: span.upperBound, rate: 1.25), reason: "")
+        let applied = try ClipAutopilotMapping.apply([inside], to: editor.project)
+        #expect(applied.pending.isEmpty && ClipControlsProject.controls(for: clip.id, in: applied.project)?.speed == 1.25)
+        let kept = try ClipAutopilotMapping.apply([partial], to: editor.project)
+        #expect(kept.pending.map(\.id) == ["s2"] && kept.project == editor.project)
+    }
+
+    /// "Slow this bit down" on words inside a clip: a clip plays at one speed, so nothing changes and the row offers one
+    /// inline action, "Apply 0.5× to the whole clip", which applies it as one undo step; Undo all takes it back.
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR; only stub connectors are called."))
+    func aStretchOverPartOfAClipOffersItsSpeedForTheWholeClip() async throws {
+        let (shell, editor, _, undo) = try await open(reply: try Self.reply([Self.op("speed", ["rate": 0.5])]))
+        defer { editor.close() }
+        let clip = try #require(editor.project.edits.clips.first { $0.selected })
+        shell.choose(.clip(clip.id), byClick: false)
+        let first = try #require(editor.index(clip.startWordId))
+        select(editor, (first + 2)...(first + 4))
+        editor.openAskClaudeOnSelection()
+        #expect(editor.askClaude.selection?.clipID == clip.id)
+        editor.askClaude.text = "slow this bit down"
+        undo.beginUndoGrouping(); editor.sendAskClaude(); await editor.askClaude.task?.value; undo.endUndoGrouping()
+        let run = try #require(editor.askClaude.run, "\(editor.askClaude.error ?? "no error")")
+        let row = try #require(run.rows.first)
+        #expect(row.status == .wholeClip(clipID: clip.id) && row.title == "Slow-mo 0.5\u{00D7}", "\(row.status)")
+        #expect(EditorModel.wholeClipTitle(row.operation) == "Apply 0.5\u{00D7} to the whole clip")
+        #expect(editor.project.clipControls.isEmpty, "nothing changes until that click")
+        undo.beginUndoGrouping(); editor.applyAskClaudeStretchToClip(row.id); undo.endUndoGrouping()
+        #expect(ClipControlsProject.controls(for: clip.id, in: editor.project)?.speed == 0.5 && run.rows[0].status == .applied)
+        #expect(run.rows[0].detail.hasPrefix("Whole clip \u{00B7} "), "\(run.rows[0].detail)")
+        #expect(undo.undoActionName == "Change speed")
+        undo.beginUndoGrouping(); editor.undoAllAskClaude(); undo.endUndoGrouping()
+        #expect(editor.project.clipControls.isEmpty && run.rows[0].status == .undone)
+    }
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR; only stub connectors are called."))
     func adjustNudgesTheRangeEditsTextAndMovesTheBoxAsUndoSteps() async throws {

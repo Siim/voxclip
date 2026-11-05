@@ -111,8 +111,12 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
                     crop: Self.centerCrop(source: captured.extent, output: size), output: size)
             }
             let sourceTime = instruction.request.timeline.sourceTime(editedTime)
+            // The look grades the picture before any Ask Claude effect: censors cover graded pixels, and pointers, titles
+            // and stickers keep their own colours. A colour transform per pixel, so it commutes with the motion crop.
+            if let look = controls?.look, look != .original { image = ClipPicture.look(image, look) }
             if let effects = instruction.effects {
-                image = effects.picture(image, source: sourceExtent, crop: crop, output: size, time: effects.input.pictureTime(sourceTime))
+                image = effects.picture(image, source: sourceExtent, crop: crop, output: size, time: effects.input.pictureTime(sourceTime),
+                                        controls: controls)
             }
             let motion = MotionCue.transform(atSourceTime: sourceTime,
                 clipID: instruction.request.motionClipID, cues: instruction.request.motionCues,
@@ -122,8 +126,6 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
                     scale: motion.scale, anchorX: motion.anchorX, anchorY: motion.anchorY)
                 image = CompositionFrameGeometry.fill(image, crop: motionCrop, output: size)
             }
-            // The look grades the picture; Ask Claude's overlays draw on top in their own colours.
-            if let look = controls?.look, look != .original { image = ClipPicture.look(image, look) }
             if let effects = instruction.effects {
                 let timeline = instruction.request.timeline
                 image = effects.frame(image, output: size, time: sourceTime, outputTime: editedTime, mapTime: { timeline.mapTime($0) })

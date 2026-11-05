@@ -19,7 +19,7 @@ import Testing
         let valid: [WireCase]
         let invalid: [WireCase]
     }
-    private static let fixture = "fixtures/clip-controls/clip-controls-project.voxclip"
+    static let fixture = "fixtures/clip-controls/clip-controls-project.voxclip"
     private func cases() throws -> Cases {
         try JSONDecoder().decode(Cases.self, from: FixtureLoader.data("fixtures/clip-controls/clip-controls-wire-cases.json"))
     }
@@ -236,5 +236,38 @@ import Testing
         #expect(map(false, 180) == [0.8, 0.9])
         #expect(map(false, 270) == [0.1, 0.8])
         #expect(map(true, 90) == [0.9, 0.8])
+    }
+
+    /// An Ask Claude box (top-left normalized, as filmed) flips and turns with the picture and keeps its size.
+    @Test func effectBoxesFollowTheFlipAndTheTurns() {
+        let box = ClipEffect.Rect(x: 0.1, y: 0.2, width: 0.3, height: 0.4)
+        func map(_ flip: Bool, _ degrees: Int) -> [Double] {
+            let rect = ProjectClipControls(clipId: "a", flipHorizontal: flip, rotationDegrees: degrees).mapRect(box)
+            return [rect.x, rect.y, rect.width, rect.height].map { ($0 * 100).rounded() / 100 }
+        }
+        #expect(map(false, 0) == [0.1, 0.2, 0.3, 0.4])
+        #expect(map(true, 0) == [0.6, 0.2, 0.3, 0.4])
+        #expect(map(false, 90) == [0.4, 0.1, 0.4, 0.3])
+        #expect(map(false, 180) == [0.6, 0.4, 0.3, 0.4])
+        #expect(map(false, 270) == [0.2, 0.6, 0.4, 0.3])
+    }
+
+    /// The pure steps Make it postable and Ask Claude use: a look or a speed changes only that control, normalised, and a
+    /// stretch counts as the whole clip within 0.25 s of each end.
+    @Test func lookAndSpeedStepsKeepTheOtherControlsAndAStretchFindsItsWholeClip() throws {
+        let project = try ProjectJSON.decode(FixtureLoader.data(ClipControlsProjectWireTests.fixture))
+        let before = try #require(ClipControlsProject.controls(for: "clip-main", in: project))
+        let faster = try ClipControlsProject.settingSpeed(1.234, clipId: "clip-main", in: project)
+        var expected = before; expected.speed = 1.23
+        #expect(ClipControlsProject.controls(for: "clip-main", in: faster) == expected)
+        let warm = try ClipControlsProject.settingLook(.warm, clipId: "clip-main", in: faster)
+        expected.look = .warm
+        #expect(ClipControlsProject.controls(for: "clip-main", in: warm) == expected)
+        #expect(throws: ClipControlsProjectError.unknownClip) { try ClipControlsProject.settingSpeed(2, clipId: "missing", in: project) }
+        let span = try #require(ClipControlsProject.sourceSpan(of: "clip-main", in: project))
+        #expect(ClipControlsProject.wholeClip("clip-main", start: span.lowerBound + 0.25, end: span.upperBound - 0.25, in: project) == "clip-main")
+        #expect(ClipControlsProject.wholeClip(nil, start: span.lowerBound - 0.1, end: span.upperBound + 0.1, in: project) == "clip-main")
+        #expect(ClipControlsProject.wholeClip("clip-main", start: span.lowerBound + 0.3, end: span.upperBound, in: project) == nil)
+        #expect(ClipControlsProject.wholeClip("clip-main", start: span.lowerBound, end: span.upperBound - 0.3, in: project) == nil)
     }
 }

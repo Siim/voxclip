@@ -179,6 +179,7 @@ extension DebugRewriteSmoke {
         case .applied, .undone: true
         case .paid(let price): !price.isEmpty
         case .later(let reason): !reason.isEmpty
+        case .wholeClip(let clip): !clip.isEmpty
         }
     }
 

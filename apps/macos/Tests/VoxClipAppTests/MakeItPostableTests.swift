@@ -130,7 +130,7 @@ private final class Calls: Sendable {
         #expect(run.rows.first { $0.id == "captions" }?.text.hasPrefix("Claude chose ") == true)
         #expect(run.rows.first { $0.id == "rewrite-0" }?.text == "Voiced “we finally ship” in your voice")
         #expect(run.postText.hasPrefix("We ship the clipper today.") && run.postText.contains("Quiet piano"), "the music credit joins the post text")
-        #expect(editor.makeItHeadline(run) == "Ready to post · \(durationLabel(run.editedSeconds)) · score 8/10")
+        #expect(editor.makeItHeadline(run) == "Ready to post · \(durationLabel(run.seconds)) · score 8/10")
         #expect(editor.makeItNextStep(run) == "Next: Export. The post text is copied with it.")
         #expect(editor.makeIt.scores["clip-main"]?.score == 8)
     }
@@ -299,10 +299,11 @@ private final class Calls: Sendable {
         #expect(editor.makeIt.run(for: "clip-two")?.rows.first { $0.id == "music" }?.undoable == true)
     }
 
-    /// Planner v2: a misheard word is corrected through `correct` and undoes on its own; the look and the speed are
-    /// pending "Claude chose … · Change" rows whose Change shows the other choices; the review shows Claude's finished
-    /// length and the plan's flags.
-    @Test func correctionsApplyAndLookAndSpeedStayPending() async throws {
+    /// Planner v2: a misheard word is corrected through `correct` and undoes on its own. The look and the speed render
+    /// (clip controls, design.md §6.9): both apply in the run's one undo step, each row's Undo takes back only its own
+    /// choice, a chip under Change applies another as one undo step, and the headline and the export use the rendered
+    /// length (edited ÷ speed).
+    @Test func correctionsApplyAndTheLookAndSpeedRender() async throws {
         var plan = Self.plan(music: false, rewrite: false)
         plan.corrections = [.init(word: 7, heard: "clipper.", text: "Clipper.", reason: "The product's name")]
         plan.look = .init(id: .warm, reason: "Friendly")
@@ -312,25 +313,65 @@ private final class Calls: Sendable {
         let fixture = try fixture(plan: plan)
         defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
         let editor = fixture.editor
+        let steps = editor.undoSteps
         let run = try await run(fixture)
+        #expect(editor.undoSteps == steps + 1, "the look and the speed join the run's one undo step")
         #expect(editor.project.edits.corrections["w8"] == "Clipper.")
         let correction = try #require(run.rows.first { $0.id == "correction-0" })
         #expect(correction.text == "Corrected “clipper.” → “Clipper.”" && correction.undoable && correction.play != nil)
+        // Both are on the clip, as the Clip section sets them.
+        let controls = try #require(editor.project.clipControls.first { $0.clipId == "clip-main" })
+        #expect(controls.look == .warm && controls.speed == 1.1)
+        let clipStart = try #require(editor.words.first { $0.id == "w3" }).start
         let look = try #require(run.rows.first { $0.id == "look" })
-        #expect(look.kind == .choice && look.text == "Claude chose the warm look" && look.change == .pending && !look.undoable)
+        #expect(look.kind == .choice && look.text == "Claude chose the warm look" && look.detail == "Friendly")
+        #expect(look.change == .look && look.undoable && look.play == max(0, clipStart - 0.5))
         #expect(look.options == ["original", "muted", "black and white"])
         let speed = try #require(run.rows.first { $0.id == "speed" })
-        #expect(speed.text == "Claude chose 1.1× speed" && speed.change == .pending)
-        #expect(editor.project.motionCues.count == 1, "pending rows change nothing in the project")
-        editor.makeItTogglePending("look", run: run)
-        #expect(run.openPending == "look")
-        editor.makeItChoosePending("muted", rowID: "look", run: run)
-        #expect(run.rows.first { $0.id == "look" }?.text == "You chose the muted look" && run.openPending == nil)
+        #expect(speed.text == "Claude chose 1.1× speed" && speed.change == .speed && speed.undoable && speed.play == look.play)
+        #expect(speed.options == ["0.75×", "1×", "1.25×", "1.5×", "2×"])
+        // The headline and the export use the rendered length.
+        let edited = editor.editedDuration(editor.project.edits.clips.first { $0.id == "clip-main" })
+        #expect(abs(run.seconds - edited / 1.1) < 1e-9 && edited > 0)
+        #expect(editor.makeItHeadline(run) == "Ready to post · \(durationLabel(edited / 1.1)) · score 8/10")
+        let request = try await editor.renderRequest(target: .clip("clip-main"))
+        #expect(request.clipControls?.speed == 1.1 && request.clipControls?.look == .warm)
+        #expect(abs(request.renderedDuration - run.seconds) < 0.001, "\(request.renderedDuration) vs \(run.seconds)")
         let notes = editor.makeItLengthNotes(run)
-        #expect(notes.first == "Claude's cut: \(durationLabel(62)) finished at 1.1× (speed not rendered yet)")
+        #expect(notes.first == "Claude's cut: \(durationLabel(62)) finished at 1.1×")
         #expect(notes.contains("⚠ 62 s is over 60 s."))
+
+        // Change on the speed row shows the other speeds; a chip applies at once as one undo step.
+        editor.makeItChange(.speed, run: run)
+        #expect(run.openChoice == "speed")
+        let chosen = editor.undoSteps
+        step(fixture.undo) { editor.makeItChoose("1.25×", rowID: "speed", run: run) }
+        #expect(editor.undoSteps == chosen + 1 && fixture.undo.undoActionName == "Change speed")
+        #expect(ClipControlsProject.controls(for: "clip-main", in: editor.project)?.speed == 1.25)
+        let changed = try #require(run.rows.first { $0.id == "speed" })
+        #expect(changed.text == "You chose 1.25× speed" && changed.options.contains("1.1×") && !changed.options.contains("1.25×"))
+        #expect(run.openChoice == nil && abs(run.seconds - edited / 1.25) < 1e-9)
+        editor.makeItChange(.look, run: run)
+        #expect(run.openChoice == "look")
+        step(fixture.undo) { editor.makeItChoose("black and white", rowID: "look", run: run) }
+        #expect(ClipControlsProject.controls(for: "clip-main", in: editor.project)?.look == .bw)
+        #expect(run.rows.first { $0.id == "look" }?.text == "You chose the black and white look")
+        // Undo on the look row goes back to the clip's look before the run; the speed stays.
+        step(fixture.undo) { editor.makeItUndo("look", in: run) }
+        #expect(ClipControlsProject.controls(for: "clip-main", in: editor.project)?.look == .original)
+        #expect(ClipControlsProject.controls(for: "clip-main", in: editor.project)?.speed == 1.25)
+        #expect(run.rows.first { $0.id == "look" }?.undone == true)
+        // And the speed row's Undo goes back to 1×, the clip's speed before the run.
+        step(fixture.undo) { editor.makeItUndo("speed", in: run) }
+        #expect(editor.project.clipControls.isEmpty && abs(run.seconds - edited) < 1e-9)
+        // ⌘Z brings the speed back.
+        fixture.undo.undo()
+        #expect(ClipControlsProject.controls(for: "clip-main", in: editor.project)?.speed == 1.25)
         step(fixture.undo) { editor.makeItUndo("correction-0", in: run) }
         #expect(editor.project.edits.corrections["w8"] == nil)
+        // Undo all takes back the rest.
+        editor.makeItUndoAll(run)
+        #expect(editor.project.edits.corrections["w8"] == nil && editor.makeIt.run(for: "clip-main") == nil)
     }
 
     /// ClipStyle (design.md §6.6): a fixed caption style is the planner's preference, Auto leaves it to Claude, Off keeps

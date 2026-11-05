@@ -111,7 +111,7 @@ import Testing
         #expect(try JSONDecoder().decode(ClipAutopilotSeries.self, from: JSONEncoder().encode(series)) == series)
     }
 
-    @Test func correctionsMapToTheCorrectCommandAndLookAndSpeedStayPending() throws {
+    @Test func correctionsMapToTheCorrectCommandAndTheLookAndSpeedApply() throws {
         guard case .object(var reply) = try ClipAutopilotTests.reply("valid-clip") else { Issue.record("not an object"); return }
         reply["corrections"] = .array([.object(["word": .number(13), "heard": .string("sleep"), "text": .string("Sleep"), "reason": .string("name")])])
         reply["look"] = .string("warm"); reply["lookReason"] = .string("a human moment")
@@ -128,7 +128,9 @@ import Testing
         #expect(speed.action == .speed(clipID: "c1", speed: .init(rate: 1.2, reason: "drags")))
         let (applied, pending) = try ClipAutopilotMapping.apply(operations, to: project)
         #expect(applied.edits.corrections == ["w13": "Sleep"])
-        #expect(pending.map(\.decision) == [.rewrite, .look, .speed, .music, .hook])
+        // The look and the speed are clip controls (design.md §6.9): both apply in the same pure step.
+        #expect(pending.map(\.decision) == [.rewrite, .music, .hook])
+        #expect(applied.clipControls == [ProjectClipControls(clipId: "c1", speed: 1.2, look: .warm)])
         try ProjectValidation.validateModel(applied)
         // 9.75 s edited (ClipAutopilotTests.editedLengthTakesOffCutsAndTightenedPauses) at 1.2.
         let state = try EditState(transcript: try ClipAutopilotTests.transcript(), edits: ProjectEdits(pauseThresholdSeconds: 1))

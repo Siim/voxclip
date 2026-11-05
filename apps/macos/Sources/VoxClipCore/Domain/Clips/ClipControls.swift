@@ -253,6 +253,45 @@ public enum ClipControlsProject {
         return result
     }
 
+    /// `project` with one clip's speed set to `rate` (normalised, as the Clip section's slider is) and its other controls
+    /// kept. Make it postable's planner speed and Ask Claude's whole-clip stretch go through here.
+    public static func settingSpeed(_ rate: Double, clipId: String, in project: Project) throws -> Project {
+        guard var controls = controls(for: clipId, in: project) else { throw ClipControlsProjectError.unknownClip }
+        controls.speed = ProjectClipControls.normalizedSpeed(rate)
+        return try setting(controls, in: project)
+    }
+
+    /// `project` with one clip's look set and its other controls kept.
+    public static func settingLook(_ look: ClipLook, clipId: String, in project: Project) throws -> Project {
+        guard var controls = controls(for: clipId, in: project) else { throw ClipControlsProjectError.unknownClip }
+        controls.look = look
+        return try setting(controls, in: project)
+    }
+
+    /// A clip's span in source seconds: its first word's start to its last word's end.
+    public static func sourceSpan(of clipId: String, in project: Project) -> ClosedRange<Double>? {
+        guard let clip = project.edits.clips.first(where: { $0.id == clipId }), let words = project.transcript?.words,
+              let first = words.first(where: { $0.id == clip.startWordId }), let last = words.first(where: { $0.id == clip.endWordId }),
+              last.end > first.start else { return nil }
+        return first.start...last.end
+    }
+
+    /// How far a stretch may miss a clip's ends and still count as the whole clip (Ask Claude's speed, ai.md §18).
+    public static let wholeClipToleranceSeconds = 0.25
+
+    /// The clip a stretch of source seconds plays whole: `clipId`'s, else the one clip whose span it matches, within
+    /// `wholeClipToleranceSeconds` at each end. Nil for a part of a clip, which a clip's single speed cannot play.
+    public static func wholeClip(_ clipId: String?, start: Double, end: Double, in project: Project) -> String? {
+        let tolerance = wholeClipToleranceSeconds + 1e-9
+        func covers(_ id: String) -> Bool {
+            guard let span = sourceSpan(of: id, in: project) else { return false }
+            return abs(span.lowerBound - start) <= tolerance && abs(span.upperBound - end) <= tolerance
+        }
+        if let clipId { return covers(clipId) ? clipId : nil }
+        let matching = project.edits.clips.map(\.id).filter(covers)
+        return matching.count == 1 ? matching[0] : nil
+    }
+
     /// Keeps only entries whose clip still exists.
     public static func pruned(_ controls: [ProjectClipControls], clips: [ClipRange]) -> [ProjectClipControls] {
         let identities = Set(clips.map(\.id))
@@ -339,6 +378,15 @@ extension ProjectClipControls {
         default: break
         }
         return point
+    }
+
+    /// Where a region of the source as filmed (top-left normalized, as Ask Claude and Vision give it) lands after the flip
+    /// and the quarter turns, so a blur or a pointer stays on the same content.
+    public func mapRect(_ rect: ClipEffect.Rect) -> ClipEffect.Rect {
+        guard flipHorizontal || rotationDegrees != 0 else { return rect }
+        let first = mapAnchor(x: rect.x, y: rect.y), second = mapAnchor(x: rect.x + rect.width, y: rect.y + rect.height)
+        let x = min(first.x, second.x), y = min(first.y, second.y)
+        return ClipEffect.Rect(x: x, y: y, width: max(first.x, second.x) - x, height: max(first.y, second.y) - y)
     }
 }
 

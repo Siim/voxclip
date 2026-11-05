@@ -1871,7 +1871,7 @@ Every send checks the model's context as Voice Lab sends do (§12.8): `est()` of
 - the music cue: the picked track, the alternatives and `editedSeconds`, the length at the clip's own speed. A bed is staged for the rendered length (design.md §6.9), so a track of `editedSeconds` always covers the clip;
 - the hook text, and the share text (`project.share.captions[clipID]`).
 
-`ClipAutopilotMapping.apply` applies edits (corrections included), captions, motion cues (through `ContextDemoProject.settingMotionCues`, which upgrades the project to version 4) and share text to a copy, in order. It returns rewrites, the look, the speed, music and the hook as pending. One undo step is the caller's choice. `finalSeconds` is `editedSeconds` divided by the speed.
+`ClipAutopilotMapping.apply` applies edits (corrections included), captions, the look and the speed (`ClipControlsProject.settingLook` and `settingSpeed`, design.md §6.9, keeping the clip's other controls), motion cues (through `ContextDemoProject.settingMotionCues`, which upgrades the project to version 4) and share text to a copy, in order. It returns rewrites, music and the hook as pending. Make it postable applies the same operations in its own pure step (`makeItStep`), which also records each one's inverse for the review's Undo. One undo step is the caller's choice. `finalSeconds` is `editedSeconds` divided by the speed.
 
 ### 16.7 Price
 
@@ -1901,7 +1901,7 @@ Planner v2 evaluation (Claude Code 2.1.318, Opus, plan sign-in, three prompt rou
 ### 16.10 Owed
 
 - **UI (Mac, built in track/v2-make-it; design.md §6.7):** the ✦ action and its cap, the run with progress lines from `ClipAutopilotProgress`, the review with Undo or Change per operation (correction, look and speed rows and the flags included), one undo step, and the questions. The Windows twin is owed.
-- **Look and speed (done on Mac, design.md §6.9):** the UI applies a pending look or speed with `EditorModel.apply(look:clipID:)` and `apply(speed:clipID:)`, one undo step each. Windows rendering is owed; Windows refuses to export clip controls.
+- **Look and speed (done on Mac, design.md §6.7 and §6.9):** the run applies both in its one undo step, with "Claude chose the warm look · Change" and "Claude chose 1.1× speed · Change" rows (▶, Undo, chips that apply another as one step), and the headline is the rendered length. Windows rendering is owed; Windows refuses to export clip controls.
 - **Music:** the Mac UI applies the pick through `MusicPanel` and sets `underVoiceDb` as the bed's level. Verifying the music price is still owed.
 - **Rewrites (Mac, built):** each is voiced through the existing Rewrite flow (`MakeItRewriteDriver`), where window placement adds the audio bridges.
 - **Roboto Black:** bundled by track/v2-captions-style; the captions operation applies it.
@@ -1974,8 +1974,10 @@ The creator selects words, a clip or a time range, types what they want, and get
 The toolbox extends the planner's operations (`ClipAutopilotOperation`, §16) additively: `Decision` gains `bleep`,
 `blur`, `overlay`, `freeze`, `sound`, `stretch`, `translate` and `duck`; `Action` gains `effect(ClipEffect)`,
 `stretch(clipID:start:end:rate:)`, `translateCaptions(clipID:startWord:endWord:language:text:)` and
-`musicDucking(clipID:on:)`. `ClipAutopilotMapping.apply` adds effects through `ClipEffects.adding`; stretch and
-translate are returned as pending until their renderers land (Clip controls owns stretch).
+`musicDucking(clipID:on:)`. `ClipAutopilotMapping.apply` adds effects through `ClipEffects.adding`. A clip plays at one
+speed (design.md §6.9): a stretch that covers a whole clip, within `ClipControlsProject.wholeClipToleranceSeconds`
+(0.25 s) at each end, sets that clip's speed (`ClipControlsProject.wholeClip`, `settingSpeed`); a stretch over part of
+a clip is returned as pending, and the editor's row offers "Apply 1.25× to the whole clip". Translate stays pending.
 
 | Kind | Group | Fields | Becomes |
 |---|---|---|---|
@@ -1985,7 +1987,7 @@ translate are returned as pending until their renderers land (Clip controls owns
 | `sticker` | Overlays | start, end, text, position, scale | `ClipEffect` (one of the prompt's `stickers`) |
 | `arrow`, `circle` | Overlays | start, end, target or x/y/width/height | `ClipEffect` with `rect` |
 | `progress` | Overlays | start, end, position | `ClipEffect` |
-| `speed` | Timing | start, end, rate | `stretch` (pending) |
+| `speed` | Timing | start, end, rate | `stretch` (the clip's speed when whole; else pending with a whole-clip offer) |
 | `freeze` | Timing | start, end | `ClipEffect` |
 | `jumpCut` | Timing | startWord, endWord | `edit(.cutSelection)` |
 | `zoom` | Timing | start, end, scale | `motion` cue |
@@ -2064,6 +2066,11 @@ effect id) for the preview and the export alike, so the preview is the export.
   mutes, so the edited audio is censored like the video.
 - **Captions.** Bleeped and muted words show × (U+00D7) for each letter and digit, punctuation kept. Every bundled
   caption font has ×, and it is a symbol, so styles that strip punctuation keep it.
+- **Clip controls** (design.md §6.9). At a clip's speed every effect keeps its edited time and lands on the rendered
+  clock: the bleep's silence is applied to the 1× voice before it is stretched, the tone and sounds are placed at their
+  times ÷ speed (never resampled, so the tone stays 1 kHz), and overlays show over their window ÷ speed. The look
+  grades the picture before any effect, so overlays keep their colours. Censor and pointer boxes are given on the
+  source as filmed and are flipped and turned with the picture (`ProjectClipControls.mapRect`).
 - **Default.** With no effects nothing in the render path changes.
 
 ### 18.6 Vectors
