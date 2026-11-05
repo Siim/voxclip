@@ -24,8 +24,8 @@ public actor VoiceRebuildFinder {
     public enum Failure: Error, Equatable {
         /// The voice, its speaker model or its language isn't available on this Mac.
         case unavailable
-        /// Less than 30 s of verified speech across every video.
-        case notEnough(milliseconds: Int)
+        /// Less than 30 s of verified speech across every video; `noisy` stretches were under the clean-speech floor.
+        case notEnough(milliseconds: Int, noisy: Int)
     }
 
     private let store: VoiceConsentStore
@@ -45,7 +45,7 @@ public actor VoiceRebuildFinder {
         let kept = record.projectConsent == nil ? nil : try? await keptSample(recordID: recordID)
         var candidates: [VoiceRebuild.Candidate] = []
         var places: [String: (media: URL, rate: Int)] = [:]
-        var checked = 0, skipped = 0
+        var checked = 0, skipped = 0, noisy = 0
         for (index, source) in sources.enumerated() {
             try Task.checkCancellation()
             await progress(index + 1, sources.count)
@@ -57,10 +57,11 @@ public actor VoiceRebuildFinder {
             checked += 1
             places[key] = (source.media, found.rate)
             candidates += found.candidates
+            noisy += found.noisy
         }
         let keptMs = kept.map { Int(($0.seconds * 1_000 + 0.5).rounded(.down)) }
         let plan = VoiceRebuild.pick(candidates, threshold: threshold, keptMs: keptMs)
-        guard plan.enough else { throw Failure.notEnough(milliseconds: plan.totalMs) }
+        guard plan.enough else { throw Failure.notEnough(milliseconds: plan.totalMs, noisy: noisy) }
         var samples: [VoiceTrainingSample] = kept.map { [$0] } ?? []
         for piece in plan.pieces {
             try Task.checkCancellation()
@@ -73,7 +74,7 @@ public actor VoiceRebuildFinder {
     }
 
     /// The cleanest qualifying §6.5.1 spans of one video, each scored as its lowest part against the owner.
-    private func videoCandidates(_ source: Source, owner: [Float]) async throws -> (rate: Int, candidates: [VoiceRebuild.Candidate]) {
+    func videoCandidates(_ source: Source, owner: [Float]) async throws -> (rate: Int, candidates: [VoiceRebuild.Candidate], noisy: Int) {
         let levels = try await VoiceTrainingAudio.levels(source: source.media)
         let inputs = VoiceTrainingSpans.inputs(project: source.project)
         let selection = try VoiceTrainingSpans.select(items: inputs.items, excluded: inputs.excluded, frameDb: levels.frameDb, duration: levels.duration)
@@ -89,7 +90,7 @@ public actor VoiceRebuildFinder {
             result.append(.init(video: source.project.media.source.contentKey, startMs: span.startMs, endMs: span.endMs,
                                 snrDb: span.snrDb, score: score, embedding: embedded.whole))
         }
-        return (levels.sampleRate, result)
+        return (levels.sampleRate, result, selection.rejected.filter { $0.reason == .lowSnr }.count)
     }
 
     /// The voice's stored reference sample as a training sample.

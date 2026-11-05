@@ -93,9 +93,9 @@ extension VoiceLabSession {
                 state.summary = VoiceRebuild.summary(found.plan)
                 state.phase = .found
                 rebuildAttestationsChanged(state)
-            } catch VoiceRebuildFinder.Failure.notEnough(let milliseconds) {
+            } catch VoiceRebuildFinder.Failure.notEnough(let milliseconds, let noisy) {
                 state.phase = .failed
-                state.line = "Only \(VoiceRebuild.amount(milliseconds)) of speech that's clearly yours in \(urls.count) \(urls.count == 1 ? "video" : "videos"). A rebuild needs 30 s. Transcribe more of your videos, then try again."
+                state.line = Self.notEnoughLine(milliseconds: milliseconds, noisy: noisy, videos: urls.count)
             } catch is CancellationError {
                 state.phase = .idle; state.line = ""
             } catch {
@@ -149,6 +149,13 @@ extension VoiceLabSession {
                 state.line = await rebuildError(error)
             }
         }
+    }
+
+    /// Too little clean speech that's clearly the owner's: how much, why, and the next step.
+    static func notEnoughLine(milliseconds: Int, noisy: Int, videos: Int) -> String {
+        let found = "Only \(VoiceRebuild.amount(milliseconds)) of clean speech that's clearly yours in \(videos) \(videos == 1 ? "video" : "videos")"
+        let why = noisy > 0 ? ", and \(noisy) \(noisy == 1 ? "stretch was" : "stretches were") too noisy to train a voice" : ""
+        return found + why + ". A rebuild needs 30 s. Transcribe a video recorded somewhere quiet, then try again."
     }
 
     /// "siim (VoxClip)" → "siim": the display name the new voice keeps.

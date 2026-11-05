@@ -255,7 +255,9 @@ private struct RebuildKeys: KeyProvider {
         await session.rebuilds[old.id]?.task?.value
         let state = try #require(session.rebuilds[old.id])
         #expect(state.phase == .failed && state.found == nil)
-        #expect(state.line == "Only 6 s of speech that's clearly yours in 1 video. A rebuild needs 30 s. Transcribe more of your videos, then try again.")
+        #expect(state.line == "Only 6 s of clean speech that's clearly yours in 1 video. A rebuild needs 30 s. Transcribe a video recorded somewhere quiet, then try again.")
+        #expect(VoiceLabSession.notEnoughLine(milliseconds: 27_720, noisy: 16, videos: 2)
+            == "Only 27 s of clean speech that's clearly yours in 2 videos, and 16 stretches were too noisy to train a voice. A rebuild needs 30 s. Transcribe a video recorded somewhere quiet, then try again.")
         session.findRebuild(recordID: old.id, projects: [])
         #expect(state.line == "Open or export a video first. VoxClip rebuilds your voice from your projects on this Mac.")
         #expect(RebuildHTTP.calls.withLock { $0 }.isEmpty)
