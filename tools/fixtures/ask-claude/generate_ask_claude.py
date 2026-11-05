@@ -140,6 +140,15 @@ def generated():
                     {'decision': 'rewrite', 'kind': 'rewrite', 'wordRange': [17, 20], 'text': 'that number really scared me.', 'paid': True},
                     {'decision': 'translate', 'kind': 'translate', 'wordRange': [9, 13], 'language': 'es', 'text': 'cuatro mil doscientos dólares,'}],
          'repairs': 3},
+        # Word ranges reaching past the selection are clamped to it; one wholly outside it is left out.
+        {'id': 'censor-words-clamped-to-the-selection', 'selection': {'words': [3, 17]}, 'clipID': 'clip-main', 'detections': [],
+         'reply': {'summary': 'Bleeped and muted the words.',
+                   'ops': [op('bleep', startWord=0, endWord=12), op('mute', startWord=15, endWord=40), op('bleep', startWord=20, endWord=22)]},
+         'expect': [{'decision': 'bleep', 'kind': 'bleep', 'start': words[3]['start'], 'end': words[12]['end'],
+                     'wordIds': [f'w{i + 1}' for i in range(3, 13)]},
+                    {'decision': 'bleep', 'kind': 'mute', 'start': words[15]['start'], 'end': words[17]['end'],
+                     'wordIds': [f'w{i + 1}' for i in range(15, 18)]}],
+         'repairs': 1},
     ]
     prompt_sha = hashlib.sha256(PROMPT.read_bytes()).hexdigest()
     return {'format': 'voxclip-ask-claude/1', 'promptSha256': prompt_sha, 'project': doc, 'requests': [request], 'replies': replies}

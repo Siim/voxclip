@@ -1088,6 +1088,117 @@
         }
       ],
       "repairs": 3
+    },
+    {
+      "id": "censor-words-clamped-to-the-selection",
+      "selection": {
+        "words": [
+          3,
+          17
+        ]
+      },
+      "clipID": "clip-main",
+      "detections": [],
+      "reply": {
+        "summary": "Bleeped and muted the words.",
+        "ops": [
+          {
+            "kind": "bleep",
+            "startWord": 0,
+            "endWord": 12,
+            "start": -1,
+            "end": -1,
+            "text": "",
+            "target": "",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "tracking": "",
+            "position": "",
+            "rate": 0,
+            "scale": 0,
+            "sound": "",
+            "language": "",
+            "choice": "",
+            "reason": "bleep reason"
+          },
+          {
+            "kind": "mute",
+            "startWord": 15,
+            "endWord": 40,
+            "start": -1,
+            "end": -1,
+            "text": "",
+            "target": "",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "tracking": "",
+            "position": "",
+            "rate": 0,
+            "scale": 0,
+            "sound": "",
+            "language": "",
+            "choice": "",
+            "reason": "mute reason"
+          },
+          {
+            "kind": "bleep",
+            "startWord": 20,
+            "endWord": 22,
+            "start": -1,
+            "end": -1,
+            "text": "",
+            "target": "",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "tracking": "",
+            "position": "",
+            "rate": 0,
+            "scale": 0,
+            "sound": "",
+            "language": "",
+            "choice": "",
+            "reason": "bleep reason"
+          }
+        ]
+      },
+      "expect": [
+        {
+          "decision": "bleep",
+          "kind": "bleep",
+          "start": 1.64,
+          "end": 6.26,
+          "wordIds": [
+            "w4",
+            "w5",
+            "w6",
+            "w7",
+            "w8",
+            "w9",
+            "w10",
+            "w11",
+            "w12",
+            "w13"
+          ]
+        },
+        {
+          "decision": "bleep",
+          "kind": "mute",
+          "start": 7.41,
+          "end": 8.66,
+          "wordIds": [
+            "w16",
+            "w17",
+            "w18"
+          ]
+        }
+      ],
+      "repairs": 1
     }
   ]
 }
