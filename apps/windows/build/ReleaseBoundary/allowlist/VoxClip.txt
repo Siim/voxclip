@@ -3798,6 +3798,7 @@ member VoxClip.App.ViewModels.ExportDialogRouting :: method internal get_Project
 member VoxClip.App.ViewModels.ExportDialogRouting :: method internal get_Targets()
 member VoxClip.App.ViewModels.ExportFingerprint :: method internal For(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.Shared.ExportTarget,System.Nullable`1<VoxClip.Core.Domain.VoiceLab.VoiceLabLabelPosition>)
 member VoxClip.App.ViewModels.ExportFingerprint :: method internal TargetId(VoxClip.Core.Domain.Shared.ExportTarget)
+member VoxClip.App.ViewModels.ExportFingerprint :: method private WithDemo(string,System.Nullable`1<System.Text.Json.JsonElement>)
 member VoxClip.App.ViewModels.ExportFingerprint :: method private WriteCanonical(System.Text.Json.Utf8JsonWriter,System.Text.Json.JsonElement)
 member VoxClip.App.ViewModels.ExportProgressText :: method internal Format(int,int,System.Nullable`1<double>,double)
 member VoxClip.App.ViewModels.ExportRecord :: method private .ctor(VoxClip.App.ViewModels.ExportRecord)

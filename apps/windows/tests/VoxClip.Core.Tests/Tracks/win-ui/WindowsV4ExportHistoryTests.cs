@@ -53,7 +53,7 @@ public sealed class WindowsV4ExportHistoryTests
     }
 
     [Fact]
-    public void UnsupportedVisualIdentityCannotMatchAnOldSourceOnlyExport()
+    public void PlacedScreenRecordingsArePartOfTheExportsIdentity()
     {
         var original = Fixture();
         var sourceOnly = original with { ContextDemo = null, MotionCues = [] };

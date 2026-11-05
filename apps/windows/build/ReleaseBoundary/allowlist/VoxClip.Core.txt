@@ -4716,6 +4716,19 @@ member VoxClip.Core.Domain.ContextDemo.ContextDemoError :: field public value__
 member VoxClip.Core.Domain.ContextDemo.ContextDemoException :: method public .ctor(VoxClip.Core.Domain.ContextDemo.ContextDemoError)
 member VoxClip.Core.Domain.ContextDemo.ContextDemoException :: method public get_Code()
 member VoxClip.Core.Domain.ContextDemo.ContextDemoJsonContext :: field private InstanceMemberBindingFlags
+member VoxClip.Core.Domain.ContextDemo.ContextDemoLayerFrame :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.ContextDemo.ContextDemoLayerFrame :: method public .ctor(string,double)
+member VoxClip.Core.Domain.ContextDemo.ContextDemoLayerFrame :: method public Deconstruct(string&,double&)
+member VoxClip.Core.Domain.ContextDemo.ContextDemoLayerFrame :: method public Equals(VoxClip.Core.Domain.ContextDemo.ContextDemoLayerFrame)
+member VoxClip.Core.Domain.ContextDemo.ContextDemoLayerFrame :: method public Equals(object)
+member VoxClip.Core.Domain.ContextDemo.ContextDemoLayerFrame :: method public GetHashCode()
+member VoxClip.Core.Domain.ContextDemo.ContextDemoLayerFrame :: method public ToString()
+member VoxClip.Core.Domain.ContextDemo.ContextDemoLayerFrame :: method public get_AssetId()
+member VoxClip.Core.Domain.ContextDemo.ContextDemoLayerFrame :: method public get_SourceTime()
+member VoxClip.Core.Domain.ContextDemo.ContextDemoLayerFrame :: method public op_Equality(VoxClip.Core.Domain.ContextDemo.ContextDemoLayerFrame,VoxClip.Core.Domain.ContextDemo.ContextDemoLayerFrame)
+member VoxClip.Core.Domain.ContextDemo.ContextDemoLayerFrame :: method public op_Inequality(VoxClip.Core.Domain.ContextDemo.ContextDemoLayerFrame,VoxClip.Core.Domain.ContextDemo.ContextDemoLayerFrame)
+member VoxClip.Core.Domain.ContextDemo.ContextDemoLayerFrame :: method public set_AssetId(string)
+member VoxClip.Core.Domain.ContextDemo.ContextDemoLayerFrame :: method public set_SourceTime(double)
 member VoxClip.Core.Domain.ContextDemo.ContextDemoNarrationMapping :: method private .ctor(VoxClip.Core.Domain.ContextDemo.ContextDemoNarrationMapping)
 member VoxClip.Core.Domain.ContextDemo.ContextDemoNarrationMapping :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.ContextDemo.ContextDemoNarrationMapping :: method private get_EqualityContract()
@@ -4841,6 +4854,27 @@ member VoxClip.Core.Domain.ContextDemo.ContextDemoRenderInput :: method public g
 member VoxClip.Core.Domain.ContextDemo.ContextDemoRenderInput :: method public get_SourceContentKey()
 member VoxClip.Core.Domain.ContextDemo.ContextDemoRenderInput :: method public op_Equality(VoxClip.Core.Domain.ContextDemo.ContextDemoRenderInput,VoxClip.Core.Domain.ContextDemo.ContextDemoRenderInput)
 member VoxClip.Core.Domain.ContextDemo.ContextDemoRenderInput :: method public op_Inequality(VoxClip.Core.Domain.ContextDemo.ContextDemoRenderInput,VoxClip.Core.Domain.ContextDemo.ContextDemoRenderInput)
+member VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers :: method private .ctor(VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers)
+member VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers :: method private get_EqualityContract()
+member VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers :: method public .ctor(VoxClip.Core.Domain.ContextDemo.ContextDemoRenderInput,string)
+member VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers :: method public AssetPath(VoxClip.Core.Domain.ContextDemo.ContextDemoAsset)
+member VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers :: method public At(double)
+member VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers :: method public Deconstruct(VoxClip.Core.Domain.ContextDemo.ContextDemoRenderInput&,string&)
+member VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers :: method public Equals(VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers)
+member VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers :: method public Equals(object)
+member VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers :: method public GetHashCode()
+member VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers :: method public ToString()
+member VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers :: method public get_DataRoot()
+member VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers :: method public get_Input()
+member VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers :: method public op_Equality(VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers,VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers)
+member VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers :: method public op_Inequality(VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers,VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers)
+member VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers :: method public set_DataRoot(string)
+member VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers :: method public set_Input(VoxClip.Core.Domain.ContextDemo.ContextDemoRenderInput)
+member VoxClip.Core.Domain.ContextDemo.ContextDemoRendering :: field public AssetMessage
+member VoxClip.Core.Domain.ContextDemo.ContextDemoRendering :: field public StaleMessage
+member VoxClip.Core.Domain.ContextDemo.ContextDemoRendering :: method public FullTimeline(VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Domain.ContextDemo.ContextDemoRendering :: method public Resolve(VoxClip.Core.Domain.Shared.Project,string,VoxClip.Core.Domain.VoiceLab.RenderTimeline,string)
 member VoxClip.Core.Domain.ContextDemo.ContextDemoReviewedAction :: method private .ctor(VoxClip.Core.Domain.ContextDemo.ContextDemoReviewedAction)
 member VoxClip.Core.Domain.ContextDemo.ContextDemoReviewedAction :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.ContextDemo.ContextDemoReviewedAction :: method private get_EqualityContract()
@@ -6289,6 +6323,7 @@ member VoxClip.Core.Domain.Shared.ComposeSnapshot :: method public GetHashCode()
 member VoxClip.Core.Domain.Shared.ComposeSnapshot :: method public ToString()
 member VoxClip.Core.Domain.Shared.ComposeSnapshot :: method public get_Captions()
 member VoxClip.Core.Domain.Shared.ComposeSnapshot :: method public get_Clip()
+member VoxClip.Core.Domain.Shared.ComposeSnapshot :: method public get_ContextDemo()
 member VoxClip.Core.Domain.Shared.ComposeSnapshot :: method public get_Media()
 member VoxClip.Core.Domain.Shared.ComposeSnapshot :: method public get_Output()
 member VoxClip.Core.Domain.Shared.ComposeSnapshot :: method public get_Plan()
@@ -6301,6 +6336,7 @@ member VoxClip.Core.Domain.Shared.ComposeSnapshot :: method public op_Equality(V
 member VoxClip.Core.Domain.Shared.ComposeSnapshot :: method public op_Inequality(VoxClip.Core.Domain.Shared.ComposeSnapshot,VoxClip.Core.Domain.Shared.ComposeSnapshot)
 member VoxClip.Core.Domain.Shared.ComposeSnapshot :: method public set_Captions(VoxClip.Core.Domain.Captions.CaptionTrack)
 member VoxClip.Core.Domain.Shared.ComposeSnapshot :: method public set_Clip(VoxClip.Core.Domain.Shared.ClipRenderInput)
+member VoxClip.Core.Domain.Shared.ComposeSnapshot :: method public set_ContextDemo(VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers)
 member VoxClip.Core.Domain.Shared.ComposeSnapshot :: method public set_Media(VoxClip.Core.Domain.Shared.MediaInfo)
 member VoxClip.Core.Domain.Shared.ComposeSnapshot :: method public set_Output(VoxClip.Core.Domain.Shared.OutputSpec)
 member VoxClip.Core.Domain.Shared.ComposeSnapshot :: method public set_Plan(VoxClip.Core.Domain.Editing.EditPlan)
@@ -10374,12 +10410,10 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabRecordedTake :: method public IsAIMo
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRecordedTake :: method public IsRecorded(VoxClip.Core.Domain.VoiceLab.VoiceLabProvenance)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRecordedTake :: method public Segment(string,VoxClip.Core.Domain.VoiceLab.VoiceLabCandidate,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput,VoxClip.Core.Domain.VoiceLab.VoiceLabFitPlan)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRecordedTake :: method public WireKind(VoxClip.Core.Domain.VoiceLab.VoiceLabSegmentKind)
-member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderContract :: field public ContextDemoUnsupportedMessage
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderContract :: method private DeriveDisclosure(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabSelectedRecipe>,VoxClip.Core.Domain.VoiceLab.VoiceLabLabelPosition)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderContract :: method private SelectedRecipes(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan,string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderContract :: method private ValidateSelectedSeams(VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabRenderContract+SeamPiece>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderContract :: method public Prepare(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope,VoxClip.Core.Domain.VoiceLab.VoiceLabLabelPosition)
-member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderContract :: method public RequireWindowsVisualSupport(VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderContract :: method public ValidatePlacement(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderContract+SeamPiece :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabRenderContract+SeamPiece)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRenderContract+SeamPiece :: method private PrintMembers(System.Text.StringBuilder)
@@ -15463,6 +15497,7 @@ type VoxClip.Core.Domain.ContextDemo.ContextDemoDocument
 type VoxClip.Core.Domain.ContextDemo.ContextDemoError
 type VoxClip.Core.Domain.ContextDemo.ContextDemoException
 type VoxClip.Core.Domain.ContextDemo.ContextDemoJsonContext
+type VoxClip.Core.Domain.ContextDemo.ContextDemoLayerFrame
 type VoxClip.Core.Domain.ContextDemo.ContextDemoNarrationMapping
 type VoxClip.Core.Domain.ContextDemo.ContextDemoNarrationPiece
 type VoxClip.Core.Domain.ContextDemo.ContextDemoNarrationSnapshot
@@ -15471,6 +15506,8 @@ type VoxClip.Core.Domain.ContextDemo.ContextDemoPlanner
 type VoxClip.Core.Domain.ContextDemo.ContextDemoPreparedPlacement
 type VoxClip.Core.Domain.ContextDemo.ContextDemoProject
 type VoxClip.Core.Domain.ContextDemo.ContextDemoRenderInput
+type VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers
+type VoxClip.Core.Domain.ContextDemo.ContextDemoRendering
 type VoxClip.Core.Domain.ContextDemo.ContextDemoReviewedAction
 type VoxClip.Core.Domain.ContextDemo.ContextDemoTarget
 type VoxClip.Core.Domain.ContextDemo.ContextDemoTargetKind

@@ -36,7 +36,6 @@ public sealed class VoiceLabPreparedRender
     }
     public void Verify(Project project, VoiceLabOutputScope scope, VoiceLabLabelPosition position)
     {
-        VoiceLabRenderContract.RequireWindowsVisualSupport(project);
         if (scope != OutputPlan.Scope || position != Disclosure.Position)
             throw new VoiceLabProjectException(VoiceLabProjectErrorCode.StaleRenderContract);
         try
@@ -56,19 +55,8 @@ public sealed class VoiceLabPreparedRender
 }
 public static class VoiceLabRenderContract
 {
-    /// <summary>The reason a Windows render or export of a project with context-demo placements stops.</summary>
-    public const string ContextDemoUnsupportedMessage =
-        "Windows cannot render or export context-demo placements yet. Your media and saved edits are unchanged.";
-
-    public static void RequireWindowsVisualSupport(Project project)
-    {
-        if (project.ContextDemo is { Placements.Length: > 0 })
-            throw new VoxClipException(VoxClipErrorCode.ExportFailed, ContextDemoUnsupportedMessage);
-    }
-
     public static VoiceLabPreparedRender Prepare(Project project, VoiceLabOutputScope scope, VoiceLabLabelPosition labelPosition)
     {
-        RequireWindowsVisualSupport(project);
         if (!Enum.IsDefined(labelPosition))
             throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidSegment);
         var plan = VoiceLabOutputPlanner.Build(project, scope);

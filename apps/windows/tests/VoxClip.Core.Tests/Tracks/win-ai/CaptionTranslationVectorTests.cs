@@ -105,7 +105,6 @@ public sealed class CaptionTranslationVectorTests
     {
         var project = ProjectSerialization.Deserialize(Applied(Cases()["wire"]!["valid"]![0]!).ToJsonString());
         Assert.NotEmpty(project.CaptionTranslations);
-        VoiceLabRenderContract.RequireWindowsVisualSupport(project);
         VoiceLabRenderContract.Prepare(project, VoiceLabOutputScope.Full, VoiceLabLabelPosition.TopRight);
     }
 }

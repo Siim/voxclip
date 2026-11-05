@@ -28,13 +28,7 @@ public sealed class FfmpegMediaProbe : IMediaProbe
         {
             var stream = format->streams[videoIndex];
             var parameters = stream->codecpar;
-            var rotation = 0;
-            var matrix = ffmpeg.av_packet_side_data_get(parameters->coded_side_data, parameters->nb_coded_side_data, AVPacketSideDataType.AV_PKT_DATA_DISPLAYMATRIX);
-            if (matrix != null && matrix->size >= 36)
-            {
-                var degrees = -ffmpeg.av_display_rotation_get(in *(int_array9*)matrix->data);
-                if (double.IsFinite(degrees)) rotation = ((int)Native.Round(degrees / 90) * 90 % 360 + 360) % 360;
-            }
+            var rotation = Rotation(parameters);
             var rate = ffmpeg.av_guess_frame_rate(format, stream, null);
             video = new(parameters->width, parameters->height, rate.den == 0 ? 30 : ffmpeg.av_q2d(rate), rotation);
             videoCodec = ffmpeg.avcodec_get_name(parameters->codec_id);
@@ -62,6 +56,15 @@ public sealed class FfmpegMediaProbe : IMediaProbe
         var size = video is null ? new PixelSize(0, 0) : video.RotationDegrees is 90 or 270
             ? new PixelSize(video.Height, video.Width) : new PixelSize(video.Width, video.Height);
         return new(Path.GetFullPath(path), duration, video, audio, size, videoCodec, audioCodec, hdr, videoIndex, audioIndex, timelineStart);
+    }
+
+    /// <summary>The stream's display rotation in clockwise quarter turns (0, 90, 180 or 270).</summary>
+    internal static unsafe int Rotation(AVCodecParameters* parameters)
+    {
+        var matrix = ffmpeg.av_packet_side_data_get(parameters->coded_side_data, parameters->nb_coded_side_data, AVPacketSideDataType.AV_PKT_DATA_DISPLAYMATRIX);
+        if (matrix == null || matrix->size < 36) return 0;
+        var degrees = -ffmpeg.av_display_rotation_get(in *(int_array9*)matrix->data);
+        return double.IsFinite(degrees) ? ((int)Native.Round(degrees / 90) * 90 % 360 + 360) % 360 : 0;
     }
 
     internal static double PresentationDuration(double start, double? duration, double origin, double fallback)

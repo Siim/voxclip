@@ -64,7 +64,6 @@ public sealed class MusicProjectWireTests
     public void WindowsRendersMusicForItsScopeAndKeepsTheProject()
     {
         var project = ProjectSerialization.Deserialize(Fixture().ToJsonString());
-        VoiceLabRenderContract.RequireWindowsVisualSupport(project);
         VoiceLabRenderContract.Prepare(project, VoiceLabOutputScope.Clip("clip-main"), VoiceLabLabelPosition.TopRight);
         var data = Path.Combine(Path.GetTempPath(), "voxclip-music-scope");
         // The clip plays its own track, the full video the full-video track; each from <data>/Music/<projectId>/.

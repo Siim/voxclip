@@ -20,6 +20,8 @@ public sealed record ComposeSnapshot(MediaInfo Media, EditPlan Plan, CaptionTrac
     public VoiceLabRenderInput? VoiceLab { get; init; }
     /// <summary>The clip's controls and the scope's effects (design §6.9, ai.md §18.5); null renders exactly as before.</summary>
     public ClipRenderInput? Clip { get; init; }
+    /// <summary>The screen recordings placed over this scope (doc/spec/context-demo.md); null draws the source picture throughout.</summary>
+    public VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers? ContextDemo { get; init; }
     /// <summary>The clip's speed timing; 1× without controls.</summary>
     public ClipSpeedTiming Speed => new(Clip?.Controls?.Speed ?? 1);
     /// <summary>The rendered length in samples at the timeline rate: the edited length divided by the speed.</summary>

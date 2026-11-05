@@ -19,14 +19,15 @@ public sealed class WindowsV4CliCallerTests
     [InlineData(true, true, "full")]
     [InlineData(true, false, "range")]
     [InlineData(true, true, "clip")]
-    // Zoom motion cues alone render on Windows (MotionCueRenderTests); context-demo placements still refuse.
-    public async Task ActualVisualsRefuseBeforeEncoderAudioOrPublication(bool demo, bool motion, string scope)
+    // Context-demo placements render on Windows (ContextDemoRenderTests); a screen recording missing from the data folder stops the
+    // export before the encoder, the edited WAV or publication, with no black or source frame standing in for it.
+    public async Task AMissingScreenRecordingStopsBeforeEncoderAudioOrPublication(bool demo, bool motion, string scope)
     {
         var original = Fixture();
         var project = original with { ContextDemo = demo ? original.ContextDemo : null, MotionCues = motion ? original.MotionCues : [],
             Edits = original.Edits with { ActiveClipId = scope == "full" ? null : original.Edits.ActiveClipId } };
-        Assert.Equal(VoxClipErrorCode.ExportFailed, Assert.Throws<VoxClipException>(() => CliOperations.BuildPlan(project, false)).Code);
-        Assert.Equal(VoxClipErrorCode.ExportFailed, Assert.Throws<VoxClipException>(() => CliOperations.BuildPlan(project, true)).Code);
+        CliOperations.BuildPlan(project, false);
+        CliOperations.BuildPlan(project, true);
         var directory = Directory.CreateTempSubdirectory("voxclip-v4-cli-refusal-").FullName;
         var oldOutput = Console.Out;
         var oldError = Console.Error;
@@ -55,7 +56,7 @@ public sealed class WindowsV4CliCallerTests
             using var result = JsonDocument.Parse(output.ToString());
             var error = result.RootElement.GetProperty("error");
             Assert.Equal("exportFailed", error.GetProperty("code").GetString());
-            Assert.Equal(VoiceLabRenderContract.ContextDemoUnsupportedMessage, error.GetProperty("message").GetString());
+            Assert.Equal(VoxClip.Core.Domain.ContextDemo.ContextDemoRendering.AssetMessage, error.GetProperty("message").GetString());
             Assert.Equal("previous export", File.ReadAllText(destination));
             Assert.False(File.Exists(destination + ".partial"));
             Assert.False(File.Exists(destination + ".provenance.json"));

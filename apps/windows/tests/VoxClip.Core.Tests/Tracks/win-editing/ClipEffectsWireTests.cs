@@ -70,7 +70,7 @@ public sealed class ClipEffectsWireTests
     public void WindowsRendersEffectsInTheirScopeAndKeepsTheProject()
     {
         var project = ProjectSerialization.Deserialize(Fixture().ToJsonString());
-        VoiceLabRenderContract.RequireWindowsVisualSupport(project);
+        VoiceLabRenderContract.Prepare(project, VoiceLabOutputScope.Full, VoiceLabLabelPosition.TopRight);
         Assert.Equal(12, project.ClipEffects.Count);
         var typed = project.ClipEffects.Select(ClipEffect.Parse).ToArray();
         Assert.Equal(project.ClipEffects.Select(effect => effect.GetProperty("id").GetString()), typed.Select(effect => effect.Id));

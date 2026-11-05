@@ -4,6 +4,7 @@ using FFmpeg.AutoGen;
 using SkiaSharp;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Clips;
+using VoxClip.Core.Domain.ContextDemo;
 using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
@@ -23,12 +24,51 @@ public sealed class FrameComposer : IFrameComposer
     private readonly ThreadLocal<ScaleState> state = new(() => new());
     private readonly Dictionary<ComposeSnapshot, VoiceLabDisclosureOverlay> disclosures = new(ReferenceEqualityComparer.Instance);
     private readonly ConditionalWeakTable<ClipEffectsRenderInput, EffectFrames> effectFrames = new();
+    // Screen recordings by their layers' identity (data folder, project, assets): snapshots that only change captions share one copy.
+    private readonly Dictionary<string, (IContextDemoFrames Frames, int Count)> demos = new(StringComparer.Ordinal);
+    private readonly Func<ContextDemoRenderLayers, IContextDemoFrames> openDemo;
     /// <summary>Use the platform caption rasterizer for every frame.</summary>
     public FrameComposer() : this(SharedResources.ResolveRoot()) { }
     private FrameComposer(string sharedRoot) : this(new SkiaCaptionRasterizer(sharedRoot), sharedRoot) { }
-    internal FrameComposer(ICaptionRasterizer rasterizer, string? sharedRoot = null) { this.rasterizer = rasterizer; this.sharedRoot = sharedRoot; }
+    internal FrameComposer(ICaptionRasterizer rasterizer, string? sharedRoot = null, Func<ContextDemoRenderLayers, IContextDemoFrames>? openDemo = null)
+    {
+        this.rasterizer = rasterizer; this.sharedRoot = sharedRoot;
+        this.openDemo = openDemo ?? (layers => ContextDemoFrames.Open(layers, CancellationToken.None));
+    }
 
-    internal void PrepareDisclosure(ComposeSnapshot snapshot)
+    private static string? DemoKey(ComposeSnapshot? snapshot) => snapshot?.ContextDemo is { } layers
+        ? string.Join('\n', [layers.DataRoot, layers.Input.ProjectId, .. layers.Input.Assets.Select(asset => asset.Id + ":" + asset.Sha256 + ":" + asset.ByteSize)])
+        : null;
+
+    /// <summary>Opens what composing <paramref name="snapshot"/>'s frames needs: its screen recordings (checked and copied) and its
+    /// Voice Lab disclosure. Pair with <see cref="ReleaseSnapshot"/>.</summary>
+    internal void PrepareSnapshot(ComposeSnapshot snapshot)
+    {
+        if (DemoKey(snapshot) is { } key)
+        {
+            lock (demos)
+            {
+                if (demos.TryGetValue(key, out var shared)) demos[key] = (shared.Frames, shared.Count + 1);
+                else demos[key] = (openDemo(snapshot.ContextDemo!), 1);
+            }
+        }
+        try { PrepareDisclosureOverlay(snapshot); }
+        catch { ReleaseDemo(snapshot); throw; }
+    }
+
+    private void ReleaseDemo(ComposeSnapshot? snapshot)
+    {
+        if (DemoKey(snapshot) is not { } key) return;
+        lock (demos)
+        {
+            if (!demos.TryGetValue(key, out var shared)) return;
+            if (shared.Count > 1) { demos[key] = (shared.Frames, shared.Count - 1); return; }
+            demos.Remove(key);
+            shared.Frames.Dispose();
+        }
+    }
+
+    private void PrepareDisclosureOverlay(ComposeSnapshot snapshot)
     {
         if (snapshot.VoiceLab is not { Prepared.OutputPlan.RequiresSyntheticRendering: true } input) return;
         var blocks = new List<VoiceLabDisclosureCaptionBlock>();
@@ -62,11 +102,26 @@ public sealed class FrameComposer : IFrameComposer
         }
     }
 
-    internal void ReleaseDisclosure(ComposeSnapshot? snapshot)
+    internal void ReleaseSnapshot(ComposeSnapshot? snapshot)
     {
         if (snapshot is null) return;
+        ReleaseDemo(snapshot);
         lock (disclosures)
             if (disclosures.Remove(snapshot, out var overlay)) overlay.Dispose();
+    }
+
+    /// <summary>The screen recording placed over <paramref name="editedTime"/>, if any, in place of the scaled source picture (Mac
+    /// FrameCompositor: after the source's orientation and crop, before the look, Ask Claude's effects and the clip's motion). It keeps
+    /// its own orientation: the clip's flip and quarter turns never reach it (design §6.9).</summary>
+    internal void DrawContextDemo(PixelBuffer output, ComposeSnapshot snapshot, double editedTime, bool forPreview, CancellationToken ct)
+    {
+        if (snapshot.ContextDemo?.At(editedTime) is not { } layer) return;
+        IContextDemoFrames frames;
+        lock (demos)
+            frames = demos.TryGetValue(DemoKey(snapshot)!, out var shared) ? shared.Frames
+                : throw new InvalidOperationException("Prepare the context demo before composing frames.");
+        var (frame, rotation) = frames.Read(layer.AssetId, layer.SourceTime, ct);
+        ContextDemoPicture.Fill(frame, rotation, output, forPreview, ct);
     }
 
     /// <inheritdoc />
@@ -119,6 +174,7 @@ public sealed class FrameComposer : IFrameComposer
             var target = new byte_ptrArray4(); target[0] = (byte*)outputMemory.Pointer;
             var targetStride = new int_array4(); targetStride[0] = output.Stride;
             Native.Check(ffmpeg.sws_scale((SwsContext*)scaling.Handle!.Pointer, source, sourceStride, 0, heightCrop, target, targetStride), "Crop and scale video");
+            DrawContextDemo(output, snapshot, editedTime, forPreview, ct);
             FinishClipFrame(output, snapshot, editedTime, decoded.Width, decoded.Height, new(left, top, widthCrop, heightCrop), ct, forPreview);
             if (snapshot.Captions is { } captions)
                 rasterizer.Draw(new(captions, editedTime, false, output.Width / (double)captions.Frame.Width), output, ct);

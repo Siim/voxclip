@@ -1,3 +1,4 @@
+using VoxClip.Core.Domain.ContextDemo;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
@@ -12,32 +13,63 @@ public sealed class WindowsV4CallerTests
     private static Project Visuals() => ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/context-demo/v4-project.voxclip"));
     private static Project Voice() => ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/voice-lab/passage-render-v3.voxclip"));
 
+    /// <summary>The scope's rendered timeline, as the App and CLI build it: the edit plan with the clip active (or none).</summary>
+    internal static RenderTimeline Scoped(Project project, string? clipId)
+    {
+        var state = EditingEngine.FromProject(project)! with { ActiveClipId = clipId };
+        var duration = project.Media.Source.DurationSeconds;
+        return new RenderTimeline.Legacy(EditingEngine.BuildEditPlan(EditingEngine.BuildSegments(state, duration), duration,
+            project.Media.Source.Audio!.SampleRate, state.PauseKeepSeconds));
+    }
+
     [Theory]
-    [InlineData(true, false)]
-    [InlineData(true, true)]
-    public void ContextDemoPlacementsRefusePreparationForEveryScopeWithoutMutation(bool demo, bool motion)
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ContextDemoPlacementsRenderOnTheScopesEditedClockWithoutMutation(bool motion)
     {
         var original = Visuals();
-        var project = original with { ContextDemo = demo ? original.ContextDemo : null, MotionCues = motion ? original.MotionCues : [] };
+        var project = original with { MotionCues = motion ? original.MotionCues : [] };
         var before = ProjectSerialization.Serialize(project);
         foreach (var scope in new[] { VoiceLabOutputScope.Full, VoiceLabOutputScope.Clip(project.Edits.Clips[0].Id) })
-        {
-            var error = Assert.Throws<VoxClipException>(() => VoiceLabRenderContract.Prepare(project, scope, VoiceLabLabelPosition.TopRight));
-            Assert.Equal(VoxClipErrorCode.ExportFailed, error.Code);
-            Assert.Equal("Windows cannot render or export context-demo placements yet. Your media and saved edits are unchanged.", error.Message);
-            Assert.Equal(VoiceLabRenderContract.ContextDemoUnsupportedMessage, error.Message);
-        }
+            Assert.False(VoiceLabRenderContract.Prepare(project, scope, VoiceLabLabelPosition.TopRight).OutputPlan.RequiresSyntheticRendering);
+        // The full video: placement-a shows demo-a's first second over edited 1–2 s, half-open.
+        var full = Assert.IsType<ContextDemoRenderLayers>(ContextDemoRendering.Resolve(project, null, Scoped(project, null), "/data"));
+        Assert.Equal(new TimeRange(0, 7), full.Input.Scope);
+        Assert.Null(full.At(0.99));
+        Assert.Equal(new ContextDemoLayerFrame("demo-a", 0.5), full.At(1.5));
+        Assert.Null(full.At(2));
+        Assert.Equal(Path.Combine("/data", "context-demo", project.Id, "demo-a.mp4"), full.AssetPath(full.Input.Assets.Single()));
+        // The clip starts later in the narration, so the same placement starts earlier on its clock: rebased to the clip's start.
+        var clipId = project.Edits.Clips[0].Id;
+        var clip = Assert.IsType<ContextDemoRenderLayers>(ContextDemoRendering.Resolve(project, clipId, Scoped(project, clipId), "/data"));
+        var offset = clip.Input.Scope.Start;
+        Assert.InRange(offset, 0.01, 1);
+        var placement = Assert.Single(clip.Input.Placements);
+        Assert.Equal((1 - offset, 2 - offset), (placement.Output.Start, placement.Output.End), (left, right) =>
+            Math.Abs(left.Item1 - right.Item1) < 1e-9 && Math.Abs(left.Item2 - right.Item2) < 1e-9);
+        Assert.Equal("demo-a", clip.At(1.5 - offset)!.Value.AssetId);
+        Assert.Equal(0.5, clip.At(1.5 - offset)!.Value.SourceTime, 9);
+        // No placements, no layers.
+        Assert.Null(ContextDemoRendering.Resolve(project with { ContextDemo = project.ContextDemo! with { Placements = [] } }, null, Scoped(project, null), "/data"));
         Assert.Equal(before, ProjectSerialization.Serialize(project));
+    }
+
+    [Fact]
+    public void PlacementsThatNoLongerFitTheEditedNarrationStopWithAReason()
+    {
+        var project = Visuals();
+        var cut = project with { Edits = project.Edits with { CutWordIds = ["w4"] } };
+        var error = Assert.Throws<VoxClipException>(() => ContextDemoRendering.Resolve(cut, null, Scoped(cut, null), "/data"));
+        Assert.Equal((VoxClipErrorCode.ExportFailed, ContextDemoRendering.StaleMessage), (error.Code, error.Message));
     }
 
     [Fact]
     public void ZoomMotionCuesAloneRenderOnWindows()
     {
-        // Zooms crop the picture in preview and export (design §6.7); only context-demo placements still refuse.
+        // Zooms crop the picture in preview and export (design §6.7), with or without context demos.
         var original = Visuals();
         var project = original with { ContextDemo = null };
         Assert.NotEmpty(project.MotionCues);
-        VoiceLabRenderContract.RequireWindowsVisualSupport(project);
         foreach (var scope in new[] { VoiceLabOutputScope.Full, VoiceLabOutputScope.Clip(project.Edits.Clips[0].Id) })
             Assert.False(VoiceLabRenderContract.Prepare(project, scope, VoiceLabLabelPosition.TopRight).OutputPlan.RequiresSyntheticRendering);
         var clipId = project.MotionCues[0].ClipID;
@@ -54,7 +86,8 @@ public sealed class WindowsV4CallerTests
         Assert.False(prepared.OutputPlan.RequiresSyntheticRendering);
         Assert.False(prepared.Disclosure.Required);
         prepared.Verify(metadata, VoiceLabOutputScope.Full, VoiceLabLabelPosition.TopRight);
-        Assert.Equal(VoxClipErrorCode.ExportFailed, Assert.Throws<VoxClipException>(() =>
+        // Adding the placements changes the project, so the prepared contract is stale rather than reused.
+        Assert.Equal(VoiceLabProjectErrorCode.StaleRenderContract, Assert.Throws<VoiceLabProjectException>(() =>
             prepared.Verify(original, VoiceLabOutputScope.Full, VoiceLabLabelPosition.TopRight)).Code);
     }
 

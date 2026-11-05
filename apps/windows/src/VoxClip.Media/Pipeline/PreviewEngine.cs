@@ -90,7 +90,7 @@ public sealed class PreviewEngine : IPreviewEngine
             initialize(ct);
             voiceSession = VoiceLabRenderSession.PrepareAsync(snapshot, ct).GetAwaiter().GetResult();
             this.snapshot = CapPreview(snapshot);
-            if (composer is FrameComposer concrete) concrete.PrepareDisclosure(this.snapshot);
+            if (composer is FrameComposer concrete) concrete.PrepareSnapshot(this.snapshot);
             current = createWorker(snapshot.Media.Path, "vc-dec-a"); lookAhead = createWorker(snapshot.Media.Path, "vc-dec-b");
             Task.WhenAll(current.Ready, lookAhead.Ready).WaitAsync(ct).GetAwaiter().GetResult();
             Seek(0, ct);
@@ -138,7 +138,7 @@ public sealed class PreviewEngine : IPreviewEngine
         try
         {
             nextSnapshot = CapPreview(snapshot);
-            if (composer is FrameComposer concrete) concrete.PrepareDisclosure(nextSnapshot);
+            if (composer is FrameComposer concrete) concrete.PrepareSnapshot(nextSnapshot);
             var resume = playing;
             Pause();
             // A fault Pause recovered keeps playback stopped; the playhead it settled on carries over to the new plan.
@@ -150,14 +150,14 @@ public sealed class PreviewEngine : IPreviewEngine
             var edited = snapshot.Timeline.MapTime(source);
             Seek(edited, ct);
             if (resume) Resume(ct);
-            if (composer is FrameComposer used) used.ReleaseDisclosure(previousSnapshot);
+            if (composer is FrameComposer used) used.ReleaseSnapshot(previousSnapshot);
         }
         catch
         {
             if (composer is FrameComposer used)
             {
-                if (swapped) used.ReleaseDisclosure(previousSnapshot);
-                else used.ReleaseDisclosure(nextSnapshot);
+                if (swapped) used.ReleaseSnapshot(previousSnapshot);
+                else used.ReleaseSnapshot(nextSnapshot);
             }
             if (!sameVoice && !ReferenceEquals(voiceSession, nextSession)) nextSession?.Dispose();
             throw;
@@ -171,10 +171,10 @@ public sealed class PreviewEngine : IPreviewEngine
         var updated = snapshot! with { Captions = captions };
         updated = updated.VoiceLab?.CaptureSnapshot(updated) ?? updated;
         var previous = snapshot;
-        if (composer is FrameComposer concrete) concrete.PrepareDisclosure(updated);
+        if (composer is FrameComposer concrete) concrete.PrepareSnapshot(updated);
         Interlocked.Exchange(ref snapshot, updated);
         try { if (!playing) Present(Position.EditedTime, true, ct); }
-        finally { if (composer is FrameComposer used) used.ReleaseDisclosure(previous); }
+        finally { if (composer is FrameComposer used) used.ReleaseSnapshot(previous); }
     }, ct);
     /// <inheritdoc />
     public async IAsyncEnumerable<PreviewFrame> ReadFramesAsync([EnumeratorCancellation] CancellationToken ct)
@@ -486,7 +486,7 @@ public sealed class PreviewEngine : IPreviewEngine
                 finally
                 {
                     current = null; lookAhead = null; prepared = null;
-                    if (composer is FrameComposer concrete) concrete.ReleaseDisclosure(snapshot);
+                    if (composer is FrameComposer concrete) concrete.ReleaseSnapshot(snapshot);
                     voiceSession?.Dispose(); voiceSession = null;
                 }
             }

@@ -72,7 +72,7 @@ public sealed class ClipControlsProjectWireTests
         var controls = Assert.Single(project.ClipControls);
         Assert.Equal(new ProjectClipControls("clip-main", 1.25, ClipShape.Portrait, ClipLook.Muted, -3.5, 0.5, 1, false, true, 90), controls);
         // The refusal is gone: the clip render carries its controls; the full video renders without them (design §6.9).
-        VoiceLabRenderContract.RequireWindowsVisualSupport(project);
+        VoiceLabRenderContract.Prepare(project, VoiceLabOutputScope.Clip("clip-main"), VoiceLabLabelPosition.TopRight);
         Assert.Equal(controls, ClipRenderInput.Resolve(project, "clip-main", "/data", "/shared")?.Controls);
         Assert.Null(ClipControlsRendering.Controls(project, null));
         Assert.Equal(ProjectSerialization.Serialize(project), ProjectSerialization.Serialize(ProjectSerialization.Deserialize(ProjectSerialization.Serialize(project))));

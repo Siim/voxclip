@@ -87,6 +87,8 @@ public sealed class Exporter : IExporter
             if (!File.Exists(music.AssetPath))
                 throw new VoxClipException(VoxClipErrorCode.ExportFailed, $"Export stopped: the music file {Path.GetFileName(music.AssetPath)} is missing. Your edits are saved.");
         }
+        // Each screen recording it shows must be on disk with its recorded size; the full check runs as the export copies them.
+        if (snapshot.ContextDemo is { } demo) ContextDemoFrames.RequirePresent(demo);
         if (snapshot.VoiceLab is { Prepared.OutputPlan.RequiresSyntheticRendering: true } input)
         {
             var requestedClip = job.Target is ExportTarget.Clip clip ? clip.Id : null;
@@ -172,7 +174,7 @@ public sealed class Exporter : IExporter
         var ownsXmpStage = false;
         try
         {
-            if (composer is FrameComposer frameComposer) frameComposer.PrepareDisclosure(snapshot);
+            if (composer is FrameComposer frameComposer) frameComposer.PrepareSnapshot(snapshot);
             using (OutputSafety.CreatePartial(partial)) { hasPartial = true; }
             var reporter = new Action<string, long>((phase, count) =>
             {
@@ -318,7 +320,7 @@ public sealed class Exporter : IExporter
             if (ownsXmpStage && xmpStage is not null) DeletePartial(xmpStage);
             if (composer is FrameComposer concrete)
             {
-                concrete.ReleaseDisclosure(snapshot);
+                concrete.ReleaseSnapshot(snapshot);
                 concrete.ReleaseThreadResources();
             }
         }

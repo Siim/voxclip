@@ -1033,6 +1033,7 @@ member VoxClip.Media.Ffmpeg.VideoDecoder :: method internal ReadAt(double,bool,S
 member VoxClip.Media.Ffmpeg.VideoDecoder :: method internal Seek(double)
 member VoxClip.Media.Ffmpeg.VideoDecoder :: method internal get_Height()
 member VoxClip.Media.Ffmpeg.VideoDecoder :: method internal get_Position()
+member VoxClip.Media.Ffmpeg.VideoDecoder :: method internal get_RotationDegrees()
 member VoxClip.Media.Ffmpeg.VideoDecoder :: method internal get_Width()
 member VoxClip.Media.Ffmpeg.VideoDecoder :: method private Read(byte[],double&,System.Threading.CancellationToken)
 member VoxClip.Media.Ffmpeg.VideoDecoder :: method private set_Position(double)
@@ -1066,6 +1067,22 @@ member VoxClip.Media.Pipeline.ClipPicture :: method internal Motion(VoxClip.Core
 member VoxClip.Media.Pipeline.ClipPicture :: method internal Orient(VoxClip.Core.Domain.Captions.PixelBuffer,System.Span`1<byte>,VoxClip.Core.Domain.Clips.ProjectClipControls,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.ClipPicture :: method internal OrientedSize(int,int,VoxClip.Core.Domain.Clips.ProjectClipControls)
 member VoxClip.Media.Pipeline.ClipPicture :: method internal Orients(VoxClip.Core.Domain.Clips.ProjectClipControls)
+member VoxClip.Media.Pipeline.ContextDemoFrames :: field internal MaximumBytes
+member VoxClip.Media.Pipeline.ContextDemoFrames :: field private Brands
+member VoxClip.Media.Pipeline.ContextDemoFrames :: field private decoders
+member VoxClip.Media.Pipeline.ContextDemoFrames :: field private directory
+member VoxClip.Media.Pipeline.ContextDemoFrames :: field private gate
+member VoxClip.Media.Pipeline.ContextDemoFrames :: field private rotations
+member VoxClip.Media.Pipeline.ContextDemoFrames :: method internal Open(VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers,System.Threading.CancellationToken)
+member VoxClip.Media.Pipeline.ContextDemoFrames :: method internal RequirePresent(VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers)
+member VoxClip.Media.Pipeline.ContextDemoFrames :: method private .cctor()
+member VoxClip.Media.Pipeline.ContextDemoFrames :: method private .ctor(string)
+member VoxClip.Media.Pipeline.ContextDemoFrames :: method private RequireNoLinks(string,string)
+member VoxClip.Media.Pipeline.ContextDemoFrames :: method private Snapshot(VoxClip.Core.Domain.ContextDemo.ContextDemoAsset,string,string,System.Threading.CancellationToken)
+member VoxClip.Media.Pipeline.ContextDemoFrames :: method private Unavailable()
+member VoxClip.Media.Pipeline.ContextDemoFrames :: method public Dispose()
+member VoxClip.Media.Pipeline.ContextDemoFrames :: method public Read(string,double,System.Threading.CancellationToken)
+member VoxClip.Media.Pipeline.ContextDemoPicture :: method internal Fill(VoxClip.Core.Domain.Captions.PixelBuffer,int,VoxClip.Core.Domain.Captions.PixelBuffer,bool,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.EffectFrames :: field internal Accent
 member VoxClip.Media.Pipeline.EffectFrames :: field internal LowerThirdFontPath
 member VoxClip.Media.Pipeline.EffectFrames :: field internal TitleFontPath
@@ -1256,21 +1273,28 @@ member VoxClip.Media.Pipeline.FfmpegAudioExtractor :: method private Extract(Vox
 member VoxClip.Media.Pipeline.FfmpegAudioExtractor :: method public .ctor()
 member VoxClip.Media.Pipeline.FfmpegAudioExtractor :: method public ExtractAsync(VoxClip.Core.Domain.Shared.AudioExtractionRequest,System.IProgress`1<VoxClip.Core.Domain.Shared.MediaProgress>,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.FfmpegMediaProbe :: method internal PresentationDuration(double,System.Nullable`1<double>,double,double)
+member VoxClip.Media.Pipeline.FfmpegMediaProbe :: method internal Rotation(FFmpeg.AutoGen.AVCodecParameters*)
 member VoxClip.Media.Pipeline.FfmpegMediaProbe :: method private Probe(string,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.FfmpegMediaProbe :: method public .ctor()
 member VoxClip.Media.Pipeline.FfmpegMediaProbe :: method public ProbeAsync(string,System.Threading.CancellationToken)
+member VoxClip.Media.Pipeline.FrameComposer :: field private demos
 member VoxClip.Media.Pipeline.FrameComposer :: field private disclosures
 member VoxClip.Media.Pipeline.FrameComposer :: field private effectFrames
+member VoxClip.Media.Pipeline.FrameComposer :: field private openDemo
 member VoxClip.Media.Pipeline.FrameComposer :: field private rasterizer
 member VoxClip.Media.Pipeline.FrameComposer :: field private sharedRoot
 member VoxClip.Media.Pipeline.FrameComposer :: field private state
-member VoxClip.Media.Pipeline.FrameComposer :: method internal .ctor(VoxClip.Core.Domain.Captions.ICaptionRasterizer,string)
+member VoxClip.Media.Pipeline.FrameComposer :: method internal .ctor(VoxClip.Core.Domain.Captions.ICaptionRasterizer,string,System.Func`2<VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers,VoxClip.Media.Pipeline.IContextDemoFrames>)
+member VoxClip.Media.Pipeline.FrameComposer :: method internal DrawContextDemo(VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Shared.ComposeSnapshot,double,bool,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.FrameComposer :: method internal FinishClipFrame(VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Shared.ComposeSnapshot,double,int,int,VoxClip.Core.Domain.Shared.RectD,System.Threading.CancellationToken,bool)
-member VoxClip.Media.Pipeline.FrameComposer :: method internal PrepareDisclosure(VoxClip.Core.Domain.Shared.ComposeSnapshot)
-member VoxClip.Media.Pipeline.FrameComposer :: method internal ReleaseDisclosure(VoxClip.Core.Domain.Shared.ComposeSnapshot)
+member VoxClip.Media.Pipeline.FrameComposer :: method internal PrepareSnapshot(VoxClip.Core.Domain.Shared.ComposeSnapshot)
+member VoxClip.Media.Pipeline.FrameComposer :: method internal ReleaseSnapshot(VoxClip.Core.Domain.Shared.ComposeSnapshot)
 member VoxClip.Media.Pipeline.FrameComposer :: method internal ReleaseThreadResources()
 member VoxClip.Media.Pipeline.FrameComposer :: method internal VideoCrop(VoxClip.Core.Domain.Shared.ComposeSnapshot,VoxClip.Core.Domain.Shared.RectD,int,int,double)
 member VoxClip.Media.Pipeline.FrameComposer :: method private .ctor(string)
+member VoxClip.Media.Pipeline.FrameComposer :: method private DemoKey(VoxClip.Core.Domain.Shared.ComposeSnapshot)
+member VoxClip.Media.Pipeline.FrameComposer :: method private PrepareDisclosureOverlay(VoxClip.Core.Domain.Shared.ComposeSnapshot)
+member VoxClip.Media.Pipeline.FrameComposer :: method private ReleaseDemo(VoxClip.Core.Domain.Shared.ComposeSnapshot)
 member VoxClip.Media.Pipeline.FrameComposer :: method private Rotate(VoxClip.Core.Domain.Captions.PixelBuffer,byte[],int,int,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.FrameComposer :: method private Validate(VoxClip.Core.Domain.Captions.PixelBuffer)
 member VoxClip.Media.Pipeline.FrameComposer :: method public .ctor()
@@ -1278,6 +1302,7 @@ member VoxClip.Media.Pipeline.FrameComposer :: method public Compose(VoxClip.Cor
 member VoxClip.Media.Pipeline.FrameComposer+ScaleState :: field internal Handle
 member VoxClip.Media.Pipeline.FrameComposer+ScaleState :: field internal Key
 member VoxClip.Media.Pipeline.FrameComposer+ScaleState :: method public .ctor()
+member VoxClip.Media.Pipeline.IContextDemoFrames :: method public Read(string,double,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.IPreviewVideoWorker :: method public ReadAsync(double,bool,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.IPreviewVideoWorker :: method public get_Position()
 member VoxClip.Media.Pipeline.IPreviewVideoWorker :: method public get_Ready()
@@ -2503,6 +2528,8 @@ type VoxClip.Media.Ffmpeg.VideoDecoder
 type VoxClip.Media.Pipeline.AudioCacheJson
 type VoxClip.Media.Pipeline.AudioCacheMetadata
 type VoxClip.Media.Pipeline.ClipPicture
+type VoxClip.Media.Pipeline.ContextDemoFrames
+type VoxClip.Media.Pipeline.ContextDemoPicture
 type VoxClip.Media.Pipeline.EffectFrames
 type VoxClip.Media.Pipeline.EffectFrames+Overlay
 type VoxClip.Media.Pipeline.EffectTextFont
@@ -2519,6 +2546,7 @@ type VoxClip.Media.Pipeline.FfmpegAudioExtractor
 type VoxClip.Media.Pipeline.FfmpegMediaProbe
 type VoxClip.Media.Pipeline.FrameComposer
 type VoxClip.Media.Pipeline.FrameComposer+ScaleState
+type VoxClip.Media.Pipeline.IContextDemoFrames
 type VoxClip.Media.Pipeline.IPreviewVideoWorker
 type VoxClip.Media.Pipeline.OutputSafety
 type VoxClip.Media.Pipeline.OutputSafety+FileInformation

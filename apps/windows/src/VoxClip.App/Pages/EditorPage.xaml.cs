@@ -234,7 +234,6 @@ public sealed partial class EditorPage : Page
         => ExportRenderInput.Media(project);
     private async Task<ComposeSnapshot> SnapshotAsync(CancellationToken ct, EditState? stateOverride = null, Project? projectOverride = null)
     {
-        VoiceLabRenderContract.RequireWindowsVisualSupport(projectOverride ?? ViewModel.Project);
         var source = media ?? MediaFromProject(projectOverride ?? ViewModel.Project);
         var state = projectOverride is null ? stateOverride ?? ViewModel.State : stateOverride;
         var project = projectOverride ?? ViewModel.ScopedProject(state);
@@ -263,7 +262,9 @@ public sealed partial class EditorPage : Page
                 ExportRenderInput.CaptionWords(project, state, plan, voice?.Prepared.OutputPlan, clip?.Effects?.Effects),
                 state.Transcript.Language, voice?.Prepared.OutputPlan.Duration ?? plan.Duration), new HarfBuzzGlyphShaper(), null, ct);
         var snapshot = new ComposeSnapshot(source, plan, captions, output) { VoiceLab = voice, Clip = clip };
-        return voice?.CaptureSnapshot(snapshot) ?? snapshot;
+        snapshot = voice?.CaptureSnapshot(snapshot) ?? snapshot;
+        // Screen recordings placed over this scope replace the picture there, upright (doc/spec/context-demo.md, design §6.9).
+        return snapshot with { ContextDemo = VoxClip.Core.Domain.ContextDemo.ContextDemoRendering.Resolve(project, project.Edits.ActiveClipId, snapshot.Timeline, App.Services.Data.Root) };
     }
     private void PositionChanged(PreviewPosition position)
     {
@@ -914,7 +915,6 @@ if (insertion ||
             Transcript.Announce(reason);
             return;
         }
-        VoiceLabRenderContract.RequireWindowsVisualSupport(ViewModel.Project);
         await new ExportDialog(owner, ViewModel, demo, (project, state, ct) => SnapshotAsync(ct, state, project), clipId) { XamlRoot = XamlRoot }.ShowAsync();
     }, "Export");
     internal async Task PromptTranscriptionAsync() => await RunAsync(async () =>
