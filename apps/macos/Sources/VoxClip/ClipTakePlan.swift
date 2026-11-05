@@ -441,7 +441,7 @@ import VoxClipMedia
 
     #if DEBUG
     func showFixture(_ state: String) {
-        if ["ready", "none-passed", "length-changed", "cancelled", "generating"].contains(state) {
+        if ["ready", "none-passed", "length-changed", "cancelled", "generating", "guard-blocked"].contains(state) {
             let estimate = CostEstimate(provider: "elevenlabs", operation: "textToSpeech", units: Double(phrases.count), unit: "take",
                 usd: Decimal(phrases.count) / 100, basis: "fixture")
             spent = VoiceLabTakeRunQuote.total(of: [estimate], takes: phrases.count)
@@ -465,6 +465,19 @@ import VoxClipMedia
             if state == "generating" { phrases[index].status = .generating("Phrase \(index + 1) of \(phrases.count)…"); generating = true }
             if state == "cancelled" { phrases[index].status = .stopped("Take 2 stopped.") }
             if state == "none-passed" { phrases[index].status = .failed("These takes didn't sound right. Edit the words or try again.") }
+        }
+        // The use-time guard blocked the last phrase, or every phrase: no take was made for it (RewriteSettledPhrases.swift).
+        if state == "guard-blocked" || state == "guard-all-blocked" {
+            let blocked = state == "guard-all-blocked" ? Array(phrases.indices) : Array(phrases.indices.suffix(1))
+            for index in blocked {
+                phrases[index].takes = []
+                block(phrase: index, reason: Self.blockedCopy(.consent(.voiceOwnerMismatch)))
+            }
+        }
+        // A price that failed reading the source (the log's rangeOutsideMedia): nothing was made or sent.
+        if state == "range-outside-media" {
+            for index in phrases.indices { phrases[index].takes = []; phrases[index].selectedID = nil; phrases[index].status = .waiting }
+            report(VoiceLabSourceAudioError.rangeOutsideMedia)
         }
         if state == "provider-error" { problem = "ElevenLabs rejected the key (401). Your edits are saved." }
         if state == "cost-confirmation" { problem = "VoxClip can't tell what this costs. Check ElevenLabs' pricing." }

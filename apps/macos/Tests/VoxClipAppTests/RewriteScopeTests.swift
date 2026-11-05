@@ -250,6 +250,23 @@ private final class WorkThreads: Sendable {
         #expect(session.wordingFit.problem.isEmpty, "\(session.wordingFit.problem) blocked \(blocked)")
     }
 
+    /// The user's log (2026-11-05): `stage=wordingFit type=VoiceLabError case=invalidInput` as the fit was prepared. A fit
+    /// that can't start ends with the held change priced as written and Get Price as the next step, never a control that
+    /// sends the same fit again.
+    @Test func aWordingFitThatCannotStartLeavesGetPriceAsTheNextStep() async throws {
+        let (session, _, editor) = try await fitFixture()
+        defer { editor.close() }
+        let held = session.blockedVoiceOrdinals
+        #expect(!held.isEmpty && held.allSatisfy { session.voiceReview($0)?.timing?.tooLong == true })
+        session.wordingFitFailed(VoiceLabError.invalidInput)
+        #expect(!session.wordingFit.problem.isEmpty && session.wordingFit.completed && !session.wordingIsLocked)
+        #expect(held.allSatisfy(session.pricedAnyway.contains) && session.blockedVoiceOrdinals.isEmpty)
+        #expect(session.task.footer.primary?.title.hasPrefix("Get Price") == true, "\(session.task.footer.primary?.title ?? "none")")
+        #expect(session.task.footer.primary?.id != "fitWording" && !session.task.cards.contains { card in
+            if case .nextSteps(let steps) = card { return steps.chips.contains { $0.action.id.hasPrefix("fit") } } else { return false }
+        })
+    }
+
     @Test func automaticWordingKeepsTheRecordingOnlyForAStructuredDecision() async throws {
         let (session, stub, editor) = try await fitFixture()
         defer { editor.close() }

@@ -120,9 +120,19 @@ extension RewriteSession {
             } else { await fitWording(approved: true) }
         } catch {
             guard current, token == wordingFit.token else { return }
-            wordingFit.problem = reported(error, stage: "wordingFit")
-            showProposal()
+            wordingFitFailed(error)
         }
+    }
+
+    /// A fit that could not start ends as one that ran out of rounds does (design.md R2): its problem shows on the fit
+    /// card, and the changes still too long are priced as written, so Get Price goes on and the automatic fixes reword
+    /// them from their measured takes. Nothing offers the same request again (the log's 2026-11-05 `wordingFit
+    /// invalidInput` left the held changes with no way on but Keep All).
+    func wordingFitFailed(_ error: any Error) {
+        wordingFit.problem = reported(error, stage: "wordingFit")
+        wordingFit.completed = true
+        priceHeldBackChanges()
+        showProposal()
     }
 
     func fitWording(approved: Bool) async {
