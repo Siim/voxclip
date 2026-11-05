@@ -55,7 +55,7 @@ import Testing
         let context = try Self.context(scope: try ClipAutopilotTests.range(vector[ai: "scope"]), preference: Self.preference(vector[ai: "preference"]))
         let plan = try #require(ClipAutopilotValidator.plan(vector[ai: "reply"], context: context))
         let expect = vector[ai: "expect"]
-        #expect(plan.version == 2)
+        #expect(plan.version == ClipAutopilotPlan.currentVersion)
         #expect(plan.startWord...plan.endWord == (try ClipAutopilotTests.range(expect[ai: "span"])))
         let corrections: [[String]] = plan.corrections.map { [String($0.word), $0.heard, $0.text] }
         #expect(corrections == expect[ai: "corrections"].aiArray.map { $0.aiArray.map { $0.aiString ?? String($0.aiInt ?? -1) } })
@@ -102,9 +102,9 @@ import Testing
         object["captions"] = .object(captions)
         object["version"] = .number(1)
         let old = try JSONDecoder().decode(ClipAutopilotPlan.self, from: JSONEncoder().encode(JSONValue.object(object)))
-        #expect(old.version == 2 && old.corrections.isEmpty && old.look == .original && old.speed == nil && old.seconds == 0 && old.flags.isEmpty)
+        #expect(old.version == ClipAutopilotPlan.currentVersion && old.corrections.isEmpty && old.look == .original && old.speed == nil && old.seconds == 0 && old.flags.isEmpty)
         #expect(old.captions.reason.isEmpty && old.cuts == plan.cuts && old.rewrites == plan.rewrites)
-        object["version"] = .number(3)
+        object["version"] = .number(4)
         #expect(throws: DecodingError.self) { try JSONDecoder().decode(ClipAutopilotPlan.self, from: JSONEncoder().encode(JSONValue.object(object))) }
         let series = ClipAutopilotSeries(plans: [plan], moments: [.init(startWord: 0, endWord: 29, title: "T", idea: "I", score: 7, verdict: .post,
                                                                          captionStyle: "karaoke")])
@@ -190,6 +190,8 @@ import Testing
         guard case .object(var reply) = try vector("long-with-reason")[ai: "reply"] else { throw VoiceLabError.invalidInput }
         reply["startWord"] = .number(Double(start)); reply["endWord"] = .number(Double(end))
         reply["score"] = .number(Double(score(start))); reply["verdict"] = .string("postFirst")
+        // Prompt version 6 requires the tone fields in every reply.
+        reply["tone"] = .string("none"); reply["toneSummary"] = .string("")
         return try JSONValue.object(reply).aiCompact()
     }
 

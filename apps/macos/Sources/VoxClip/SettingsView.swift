@@ -9,8 +9,8 @@ import VoxClipCore
             GeneralSettings(app: app).tabItem { Label("General", systemImage: "gear") }.tag("general")
             TranscriptionSettings(app: app).tabItem { Label("Transcription", systemImage: "waveform") }.tag("transcription")
             ProviderSettings(app: app).tabItem { Label("AI", systemImage: "key") }.tag("ai")
-            ClipsSettings(app: app).tabItem { Label("Clips", systemImage: "sparkles") }.tag("clips")
             ExportSettings(app: app).tabItem { Label("Export", systemImage: "square.and.arrow.up") }.tag("export")
+            ClipsSettings(app: app).tabItem { Label("Clips", systemImage: "film.stack") }.tag("clips")
             if app.voiceLabSettingsVisible {
                 VoiceLabSettings(app: app, session: app.voiceLabSession).tabItem { Label("Voice Lab", systemImage: "waveform.badge.mic") }.tag("voiceLab")
             }
@@ -312,34 +312,6 @@ extension AppModel {
         return UserMessages.message(error)
     } catch let error as URLError where error.code != .cancelled { return UserMessages.message(VoxClipError.offline)
     } catch { return "Failed: " + (await app.safeError(error)) }
-}
-
-/// Settings › Clips (design.md §6.6): who makes the clips of every new video, and Claude mode's count and cap. It mirrors
-/// the editor's "Who makes the clips?" card and the clip style card's mode, Clips and Spend rows.
-@MainActor struct ClipsSettings: View {
-    @Bindable var app: AppModel
-    var body: some View {
-        let settings = app.settings.clipsAutopilot
-        Form {
-            Section {
-                Picker("Every new video", selection: Binding(get: { settings.mode?.rawValue ?? "" },
-                                                             set: { if let mode = ClipsMode(rawValue: $0) { app.set(ClipsMode.key, .string(mode.rawValue)) } })) {
-                    if settings.mode == nil { Text("Not chosen yet").tag("") }
-                    Text("✦ Claude does it all").tag(ClipsMode.claude.rawValue)
-                    Text("I'll pick").tag(ClipsMode.pick.rawValue)
-                }
-                .pickerStyle(.radioGroup)
-                Picker("Clips per video", selection: Binding(get: { settings.count }, set: { app.set(ClipsMode.countKey, .number(Double($0))) })) {
-                    ForEach(ClipsMode.counts, id: \.self) { Text("Top \($0)").tag($0) }
-                }
-                Picker("Spend per video", selection: Binding(get: { settings.capUSD }, set: { app.set(ClipsMode.capKey, .number(Double($0))) })) {
-                    ForEach(ClipsMode.capsUSD, id: \.self) { Text(ClipStyleCard.spendLabel($0)).tag($0) }
-                }
-            } header: { Text("Who makes the clips") } footer: {
-                Text("✦ Claude does it all: after a new video is transcribed and its clips found, Claude (Opus, extra high) makes the top clips postable by itself: cuts, rewording in your voice, captions, music and shape. The spend cap is your approval for ElevenLabs voice and generated music; Claude never spends past it and asks inline for more. I'll pick: Claude suggests clips and you press ✦ Make it postable on the ones you want.")
-            }
-        }.formStyle(.grouped)
-    }
 }
 
 @MainActor struct ExportSettings: View {

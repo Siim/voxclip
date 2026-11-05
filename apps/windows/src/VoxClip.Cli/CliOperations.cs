@@ -478,7 +478,9 @@ internal static class CliOperations
     internal static Project NewProject(MediaInfo media, TranscriptModel? transcript, string key)
     {
         var now = DateTimeOffset.UtcNow;
-        var project = new Project("voxclip-project", 1, Guid.NewGuid().ToString("N"), now, now, new("voxclip-cli", CliApplication.Version, OperatingSystem.IsWindows() ? "windows" : "macos"),
+        // The schema's id is a dashed lowercase UUID and its writer is "VoxClip" (shared/schemas/project.schema.json), as the Mac CLI
+        // writes them; a dashless id failed the v3/v4 upgrades and "voxclip-cli" failed validation on save.
+        var project = new Project("voxclip-project", 1, Guid.NewGuid().ToString("D"), now, now, new("VoxClip", CliApplication.Version, OperatingSystem.IsWindows() ? "windows" : "macos"),
             new(new(media.Path, null, new FileInfo(media.Path).Length, media.DurationSeconds, key, media.Video, media.Audio)), null,
             new(1.0, 0.15, [], [], new Dictionary<string, string>(StringComparer.Ordinal), [], null),
             new("off", JsonDocument.Parse("{}").RootElement.Clone(), null, new Dictionary<string, CaptionPosition>()),

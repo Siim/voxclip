@@ -15,6 +15,15 @@ public sealed record ClipCaptionPick(string StyleId, string Reason);
 public sealed record ClipStyle(string Preset, string Captions, string Music, int MaxLengthSec, IReadOnlyList<string> Shapes,
     string Rewording, IReadOnlyDictionary<string, ClipCaptionPick> CaptionPicks)
 {
+    /// <summary>The tone Claude writes each clip's words in (design §6.6 Tone row): null is Auto (omitted from the file and never
+    /// written as "auto"), "as-said", a catalogue tone id from shared/data/rewrite-tones.json or a saved "my-..." id.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Tone { get; init; }
+
+    /// <summary>The tone the planner gets: "as-said" whenever the style never rewords, else <see cref="Tone"/>.</summary>
+    [JsonIgnore]
+    public string? EffectiveTone => Rewording == "off" ? "as-said" : Tone;
+
     /// <summary>The preset ids, in the card's order.</summary>
     public static readonly IReadOnlyList<string> Presets = ["auto", "punchy", "calm", "demo", "mine"];
 
@@ -59,7 +68,7 @@ public sealed record ClipStyle(string Preset, string Captions, string Music, int
 
     /// <summary>The same value, field by field (records compare collections by reference).</summary>
     public bool SameAs(ClipStyle? other) => other is not null && Preset == other.Preset && Captions == other.Captions && Music == other.Music
-        && MaxLengthSec == other.MaxLengthSec && Shapes.SequenceEqual(other.Shapes) && Rewording == other.Rewording
+        && MaxLengthSec == other.MaxLengthSec && Shapes.SequenceEqual(other.Shapes) && Rewording == other.Rewording && Tone == other.Tone
         && CaptionPicks.Count == other.CaptionPicks.Count && CaptionPicks.All(item => other.CaptionPicks.TryGetValue(item.Key, out var pick) && pick == item.Value);
 
     /// <summary>Project schema $defs/clipStyle.</summary>
@@ -75,6 +84,7 @@ public sealed record ClipStyle(string Preset, string Captions, string Music, int
         Require(MaxLengthSec is >= 5 and <= 600, "maxLengthSec");
         Require(Shapes.Count > 0 && Shapes.Distinct(StringComparer.Ordinal).Count() == Shapes.Count && Shapes.All(shape => shape is "16:9" or "9:16" or "1:1"), "shapes");
         Require(Rewording is "off" or "fix-only" or "tighten", "rewording");
+        Require(Tone is null || IsSlug(Tone) && Tone != "auto" && System.Text.Encoding.UTF8.GetByteCount(Tone) <= 64, "tone");
         foreach (var (_, pick) in CaptionPicks)
             Require(IsSlug(pick.StyleId) && pick.StyleId != "auto" && pick.Reason.EnumerateRunes().Count() <= 120, "captionPicks");
     }

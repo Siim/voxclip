@@ -32,7 +32,7 @@ internal static class SettingsValidation
     private static readonly HashSet<string> KnownKeys = AppSettings.Defaults.Keys.ToHashSet(StringComparer.Ordinal);
 
     internal static bool KnownKey(string key)
-        => KnownKeys.Contains(key) || key is "llm.baseUrl.ollama" or "llm.baseUrl.lmstudio" or "ui.layout.trackHeight" or "clipStyle.default" or ClipsMode.Key ||
+        => KnownKeys.Contains(key) || key is "llm.baseUrl.ollama" or "llm.baseUrl.lmstudio" or "ui.layout.trackHeight" or "clipStyle.default" or ClipsMode.Key or Domain.Clips.RewriteToneCatalog.SettingsKey ||
             Regex.IsMatch(key, "\\A(?:llm\\.(?:model|cloudConsent)|voiceLab\\.(?:providerConsent|monthlyCapUsd))\\.[a-z0-9]+(?:-[a-z0-9]+)*\\z", RegexOptions.CultureInvariant);
 
     internal static void Validate(AppSettings settings)
@@ -49,6 +49,7 @@ internal static class SettingsValidation
                 case ClipsMode.Key: Choice(value, ClipsMode.Claude, ClipsMode.Pick); break;
                 case ClipsMode.CountKey: Require(value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var count) && ClipsMode.Counts.Contains(count)); break;
                 case ClipsMode.CapKey: Require(value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var cap) && ClipsMode.CapsUsd.Contains(cap)); break;
+                case Domain.Clips.RewriteToneCatalog.SettingsKey: Require(Domain.Clips.MyRewriteTones.Validates(value)); break;
                 case "general.appearance": Choice(value, "system", "light", "dark"); break;
                 case "general.transcriptTextSize": if (value.ValueKind != JsonValueKind.Null) Require(value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var size) && double.IsFinite(size) && size >= 13 && size <= 28); break;
                 case "ui.rightColumnWidth": if (value.ValueKind != JsonValueKind.Null) Require(value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var width) && double.IsFinite(width) && width >= 240 && width <= 720); break;
@@ -111,7 +112,10 @@ internal static class SettingsValidation
     {
         Require(value.ValueKind == JsonValueKind.Object);
         var keys = value.EnumerateObject().Select(property => property.Name).ToHashSet(StringComparer.Ordinal);
-        Require(keys.SetEquals(["preset", "captions", "music", "maxLengthSec", "shapes", "rewording"]));
+        var tone = value.TryGetProperty("tone", out var toneValue) ? toneValue : (JsonElement?)null;
+        Require(keys.SetEquals(tone is null ? ["preset", "captions", "music", "maxLengthSec", "shapes", "rewording"]
+                                            : ["preset", "captions", "music", "maxLengthSec", "shapes", "rewording", "tone"]));
+        Require(tone is null || tone.Value.ValueKind == JsonValueKind.String);
         var length = 0;
         Require(value.GetProperty("maxLengthSec").ValueKind == JsonValueKind.Number && value.GetProperty("maxLengthSec").TryGetInt32(out length));
         Require(value.GetProperty("shapes").ValueKind == JsonValueKind.Array && value.GetProperty("shapes").EnumerateArray().All(shape => shape.ValueKind == JsonValueKind.String));
@@ -120,7 +124,7 @@ internal static class SettingsValidation
         {
             new Domain.Clips.ClipStyle(value.GetProperty("preset").GetString()!, value.GetProperty("captions").GetString()!, value.GetProperty("music").GetString()!, length,
                 value.GetProperty("shapes").EnumerateArray().Select(shape => shape.GetString()!).ToArray(), value.GetProperty("rewording").GetString()!,
-                new Dictionary<string, Domain.Clips.ClipCaptionPick>()).Validate();
+                new Dictionary<string, Domain.Clips.ClipCaptionPick>()) { Tone = tone?.GetString() }.Validate();
         }
         catch (VoxClip.Core.Domain.Shared.VoxClipException) { Require(false); }
     }

@@ -189,6 +189,19 @@ import VoxClipCore
                 }
                 .padding(.leading, 22)
             }
+            if row.change == .tone, run.openChoice == row.id, !row.undone {
+                // The tones as chips; one re-plans this clip in it (one undo step), As I said it takes the rewording back.
+                ClipStyleFlowLayout(spacing: VCTokens.spacingChipGap) {
+                    ForEach(model.makeItToneChoices, id: \.id) { choice in
+                        RewriteToneChip(title: choice.title, selected: choice.id == run.plan?.tone?.id,
+                                        identifier: "voxclip.makeIt.tone.\(choice.id)") { model.makeItChooseTone(choice.id, run: run) }
+                            .disabled(choice.id != EditorModel.makeItAsSaidID && !model.capabilities.ai)
+                    }
+                }
+                .padding(.leading, 22)
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Tones")
+            }
             if row.change == .hook, run.openChoice == row.id, !row.undone {
                 // The hook's text, edited in place; Return applies it to the title card as one undo step.
                 MakeItHookField(text: run.hook, commit: { model.makeItSetHook($0, rowID: row.id, run: run) }, cancel: { run.openChoice = nil })

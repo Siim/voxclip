@@ -66,12 +66,18 @@ public struct ClipStyle: Codable, Sendable, Hashable {
     public var rewording: ClipRewording
     /// The AI's picks by clip id. Only consulted while `captions` is `.auto`.
     public var captionPicks: [String: ClipCaptionPick]
+    /// The tone Claude writes each clip's words in (design.md §6.6 Tone row; shared/data/rewrite-tones.json). Auto lets
+    /// Claude pick per clip; stored only when it is not Auto. Rewording Off overrides it: the words stay as said.
+    public var tone: ClipTone
 
     public init(preset: ClipStylePresetID, captions: ClipCaptionChoice, music: ClipMusicPreference, maxLengthSec: Int,
-                shapes: [AspectRatio], rewording: ClipRewording, captionPicks: [String: ClipCaptionPick] = [:]) {
+                shapes: [AspectRatio], rewording: ClipRewording, captionPicks: [String: ClipCaptionPick] = [:], tone: ClipTone = .auto) {
         self.preset = preset; self.captions = captions; self.music = music; self.maxLengthSec = maxLengthSec
-        self.shapes = shapes; self.rewording = rewording; self.captionPicks = captionPicks
+        self.shapes = shapes; self.rewording = rewording; self.captionPicks = captionPicks; self.tone = tone
     }
+
+    /// The tone the planner gets: As I said it whenever the style never rewords, else the chosen tone.
+    public var effectiveTone: ClipTone { rewording == .off ? .asSaid : tone }
 
     /// The caption style the user fixed, or "off"; nil while the AI picks.
     public var fixedCaptionStyle: String? {
@@ -123,7 +129,7 @@ public struct ClipStyle: Codable, Sendable, Hashable {
         return next
     }
 
-    private enum CodingKeys: String, CodingKey { case preset, captions, music, maxLengthSec, shapes, rewording, captionPicks }
+    private enum CodingKeys: String, CodingKey { case preset, captions, music, maxLengthSec, shapes, rewording, captionPicks, tone }
 
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -134,6 +140,10 @@ public struct ClipStyle: Codable, Sendable, Hashable {
         shapes = try values.decode([AspectRatio].self, forKey: .shapes)
         rewording = try values.decode(ClipRewording.self, forKey: .rewording)
         captionPicks = try values.decodeIfPresent([String: ClipCaptionPick].self, forKey: .captionPicks) ?? [:]
+        // Omitted is Auto; the schema never lets "auto" be written.
+        let tone = try values.decodeIfPresent(String.self, forKey: .tone)
+        if tone == "auto" { throw VoxClipError.projectUnreadable("clipStyle.tone") }
+        self.tone = tone.map(ClipTone.init(raw:)) ?? .auto
         try validate()
     }
 
@@ -146,6 +156,7 @@ public struct ClipStyle: Codable, Sendable, Hashable {
         try values.encode(shapes, forKey: .shapes)
         try values.encode(rewording, forKey: .rewording)
         try values.encode(captionPicks, forKey: .captionPicks)
+        if tone != .auto { try values.encode(tone, forKey: .tone) }
     }
 
     /// The schema rules a decoder cannot express (project schema `$defs.clipStyle`).
@@ -154,6 +165,7 @@ public struct ClipStyle: Codable, Sendable, Hashable {
         guard Self.isSlug(captions.raw) else { throw fail("captions") }
         guard (5...600).contains(maxLengthSec) else { throw fail("maxLengthSec") }
         guard !shapes.isEmpty, Set(shapes).count == shapes.count, !shapes.contains(.source) else { throw fail("shapes") }
+        if tone != .auto { guard Self.isSlug(tone.raw), tone.raw.utf8.count <= 64 else { throw fail("tone") } }
         for (_, pick) in captionPicks {
             guard Self.isSlug(pick.styleId), pick.styleId != "auto", pick.reason.unicodeScalars.count <= 120 else { throw fail("captionPicks") }
         }

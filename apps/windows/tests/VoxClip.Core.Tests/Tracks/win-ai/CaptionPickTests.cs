@@ -162,7 +162,8 @@ public sealed class CaptionPickTests
             return root.ToJsonString();
         }
         Assert.ThrowsAny<Exception>(() => ProjectSerialization.Deserialize(Patched(style => style["maxLengthSec"] = 2)));
-        Assert.ThrowsAny<Exception>(() => ProjectSerialization.Deserialize(Patched(style => style["tone"] = "warm")));
+        // tone is a clip style field now (design §6.6); any other key is still refused.
+        Assert.ThrowsAny<Exception>(() => ProjectSerialization.Deserialize(Patched(style => style["mood"] = "warm")));
         Assert.ThrowsAny<Exception>(() => ProjectSerialization.Deserialize(Patched(style => style.Remove("captionPicks"))));
         Assert.True(styles.Initial(null).SameAs(styles.Find("auto").Style));
         Assert.True(styles.Initial(chosen).SameAs(chosen.SettingsDefault));

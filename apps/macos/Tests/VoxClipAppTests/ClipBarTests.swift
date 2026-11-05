@@ -443,7 +443,7 @@ private actor HookFixtureConnector: LLMConnector {
         editor.selectedWordIDs = []
         lay(bar, width: 652)
         #expect(shows(bar.rewrite) && shows(bar.ask) && !shows(bar.askButton) && bar.rewrite.label == "Rewrite")
-        #expect(bar.rewrite.accessibilityLabel() == "Rewrite clip 1" && bar.ask.placeholder == "Ask about Clip 1…" && bar.ask.accessibilityLabel() == "Ask about Clip 1")
+        #expect(bar.rewrite.accessibilityLabel() == "Rewrite clip 1" && bar.ask.placeholder == "What should change in clip 1? Or pick a tone ↓" && bar.ask.accessibilityLabel() == "What should change in clip 1?")
         #expect(abs(bar.picker.frame.maxX - (bar.ask.frame.maxX - ClipBarMetrics.askTrailing)) <= 0.5)
         bar.ask.stringValue = "Make it punchier"
         bar.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: bar.ask))
@@ -464,7 +464,7 @@ private actor HookFixtureConnector: LLMConnector {
         bar.render()
         #expect(clipSession.failureStatus != nil)
         #expect(bar.rewrite.label == "Rewrite" && bar.rewrite.symbol == "sparkles" && !bar.rewrite.isOn)
-        #expect(bar.rewrite.accessibilityLabel() == "Rewrite selection" && bar.ask.placeholder == "Ask about these words…")
+        #expect(bar.rewrite.accessibilityLabel() == "Rewrite selection" && bar.ask.placeholder == "What should change in these words? Or pick a tone ↓")
         bar.ask.stringValue = "Shorter"
         bar.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: bar.ask))
         let editorView = NSTextView()
@@ -479,7 +479,7 @@ private actor HookFixtureConnector: LLMConnector {
         editor.selectedWordIDs = []
         shell.selection = .fullTake
         lay(bar, width: 652)
-        #expect(shows(bar.rewrite) && bar.rewrite.accessibilityLabel() == "Rewrite full take" && bar.ask.placeholder == "Ask about Full Take…")
+        #expect(shows(bar.rewrite) && bar.rewrite.accessibilityLabel() == "Rewrite full take" && bar.ask.placeholder == "What should change in this video? Or pick a tone ↓")
         // An API-key AI asks before each send: "Rewrite…", as Edit › Rewrite's title.
         app.set("llm.connector", .string("anthropic"))
         bar.render()

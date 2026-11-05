@@ -61,6 +61,12 @@ private final class ClaudeCalls: Sendable {
         editor.makeIt.services = MakeItServices(
             plan: { request, _, _ in
                 calls.record("plan \(request.mode)")
+                switch request.tone {
+                case .fixed(let tone)?: calls.record("tone \(tone.id)")
+                case .asSaid?: calls.record("tone as-said")
+                case .auto?: calls.record("tone auto")
+                case nil: calls.record("tone none")
+                }
                 guard case .clips(let spans) = request.mode else { return ClipAutopilotSeries(plans: []) }
                 return ClipAutopilotSeries(plans: spans.map { span in
                     span.lowerBound == 0
@@ -194,6 +200,28 @@ private final class ClaudeCalls: Sendable {
         #expect(planned.count == 1, "one .clips request: \(planned)")
         #expect(editor.claudeMode.phase == .done && editor.claudeModeReady.count == 3, "\(editor.claudeMode.phase) \(editor.clipError ?? "")")
         #expect(!editor.llmRuns.isBusy && !editor.finding)
+    }
+
+    /// The automatic run plans with the clip style's effective tone, exactly as ✦ Make it postable does: the card's Tone,
+    /// and "As I said it" whenever Rewording is "Never reword".
+    @Test(arguments: [false, true])
+    func theRunSendsTheClipStylesEffectiveTone(neverReword: Bool) async throws {
+        let fixture = try fixture()
+        defer { close(fixture) }
+        let editor = fixture.editor
+        fixture.undo.beginUndoGrouping()
+        editor.updateClipStyle { style in
+            style.tone = .tone("viral-youtuber")
+            if neverReword { style.rewording = .off }
+        }
+        fixture.undo.endUndoGrouping()
+        #expect(editor.makeItStyle.tone == (neverReword ? .asSaid : .tone("viral-youtuber")))
+        await editor.makeIt.refreshVoiceReady(editor)
+        editor.armClaudeMode()
+        editor.claudeModeTranscribed(started: false)
+        await editor.claudeMode.task?.value
+        #expect(fixture.calls.all.filter { $0.hasPrefix("tone") } == [neverReword ? "tone as-said" : "tone viral-youtuber"], "\(fixture.calls.all)")
+        #expect(editor.claudeMode.phase == .done)
     }
 
     @Test func aReopenedOrReadOnlyProjectNeverStarts() async throws {

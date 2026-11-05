@@ -1757,15 +1757,17 @@ Version 2 of the plan (planner v2, 2026-11-05) answers the first live evaluation
 
 | File | Holds |
 | --- | --- |
-| `shared/prompts/clip-autopilot.json` | File format `schemaVersion` 2, `promptVersion` 5. `sections` of system text and `system.plan` / `system.moments`, the section lists of the two system prompts; `looks`, the colour looks with their descriptions; transcript and request templates; defaults; limits; the plan schema `clip_autopilot_plan` and the moments schema `clip_autopilot_moments`; output-token caps (`clip` 16,000, `moments` 8,000) and the minimum timeout |
+| `shared/prompts/clip-autopilot.json` | File format `schemaVersion` 2, `promptVersion` 6 (version 6 adds the tone: the `tone` section, the `toneFixed`, `toneAuto`, `toneLine` and `toneAsSaid` templates, `maxToneSummaryScalars` and the reply's `tone` and `toneSummary`). `sections` of system text and `system.plan` / `system.moments`, the section lists of the two system prompts; `looks`, the colour looks with their descriptions; transcript and request templates; defaults; limits; the plan schema `clip_autopilot_plan` and the moments schema `clip_autopilot_moments`; output-token caps (`clip` 16,000, `moments` 8,000) and the minimum timeout |
 | `shared/catalog/music-prices.json` | Eleven Music list price in the Voice Lab price format (`voxclip-voice-lab-prices/1`), read by `VoiceLabPriceCatalog`. It is a separate file because both Core suites pin `voice-lab.json`'s hash and entry count. **TODO (lead):** verify the 0.15 USD per minute row before the music package ships; the pricing page also says music is billed per generation |
 | `shared/fixtures/autopilot/plan-validation-cases.json` | `voxclip-autopilot-validation/1`: a synthetic 30-item transcript, two rendered-transcript vectors and eleven hand-derived validation cases (version 1 fields); its `series` case replays as the moments stage. `sources` pins the prompt's SHA-256 |
+| `shared/fixtures/autopilot/plan-tone-cases.json` | `voxclip-autopilot-tone/1`: eleven hand-derived tone cases on the version 1 fixture's transcript (fixed, saved, Auto, As I said it and no tone; a reply that names another tone, an unknown one or a long summary) and four instruction vectors, the tone line each mode adds. `sources` pins the prompt's and `shared/data/rewrite-tones.json`'s SHA-256 |
+| `shared/data/rewrite-tones.json` | The tone catalogue (design.md §6.3.1), read by `RewriteToneCatalog` |
 | `shared/fixtures/autopilot/plan-v2-cases.json` | `voxclip-autopilot-v2/1`: a synthetic 150-word transcript of 0.5 s words and fourteen hand-derived cases for the version 2 fields, the finished length and its flags, and the moments stage. `sources` pins the same SHA-256 |
 | Mac Core `Domain/Autopilot/`, `Services/Autopilot/` | `ClipAutopilotPlan`, `ClipAutopilotMoment`, `ClipAutopilotSeries`, `ClipAutopilotPrompt`, `ClipAutopilotRequestBuilder`, `ClipAutopilotValidator`, `ClipAutopilotMapping`, `ClipAutopilotPricing`, `ClipAutopilotService`, `ClipAutopilotProgress` |
 
 ### 16.2 Contract
 
-`ClipAutopilotPlan` (`version` 2) is one clip's decisions. A reader accepts versions 1 and 2 and upgrades a version 1 plan in memory: no corrections, the original look, no speed, empty reasons, `seconds` 0 and no flags. Any other version is refused. Word indices are transcript item positions, as in §11.2, and every range is inclusive.
+`ClipAutopilotPlan` (`version` 3) is one clip's decisions. A reader accepts versions 1 to 3 and upgrades an older plan in memory: version 1 has no corrections, the original look, no speed, empty reasons, `seconds` 0 and no flags; versions 1 and 2 have no tone. Any other version is refused. Word indices are transcript item positions, as in §11.2, and every range is inclusive.
 
 - `startWord`, `endWord`: the clip, which the plan may tighten inside the requested span.
 - `title` (at most 120 scalars), `hook` (the on-screen text for the first 2 s), `postText` (short X or LinkedIn text).
@@ -1783,6 +1785,7 @@ Version 2 of the plan (planner v2, 2026-11-05) answers the first live evaluation
 - `seconds` (v2): the finished length the validator measured: the span less cut items and each tightened pause beyond `pauseKeepSeconds`, divided by the speed (`ClipAutopilotMapping.finalSeconds`).
 - `questions`: `{question, answer, options}`. The plan already follows `answer`.
 - `repairs`: `{field, action, detail}`, one per item the validator repaired or dropped (§16.5).
+- `tone` (v3): `{id, title, summary}` or absent: the tone the words were written in, a tone the creator fixed or the one Claude picked under Auto, and what it changed in a few words ("Hook first, two lines tightened"). Absent when the creator's own tone was kept. The review's "✦ Claude wrote it as {title}" row reads it (design.md §6.7).
 - `flags` (v2): `{kind, detail}`, what the review should show next to the plan: `overLength` past `maxReasonedSeconds` (60 s), or `longWithoutReason` past `maxTargetSeconds` (45 s) with an empty `lengthReason`.
 
 `ClipAutopilotMoment` is a moment the first stage of a series picked: `{startWord, endWord, title, idea, score, verdict, scoreReason, captionStyle, captionReason}`. `idea` is one sentence naming the idea and why it hooks.
@@ -1791,13 +1794,15 @@ Version 2 of the plan (planner v2, 2026-11-05) answers the first live evaluation
 
 ### 16.3 Request
 
-`ClipAutopilotRequest` holds the transcript, the project's edits, a mode, the creator's caption preference, the language (the transcript's when nil) and an optional note of at most `maxNoteBytes`. The modes:
+`ClipAutopilotRequest` holds the transcript, the project's edits, a mode, the creator's caption preference, the language (the transcript's when nil), an optional note of at most `maxNoteBytes` and an optional `tone` (v6). The modes:
 
 - `clip(span)`: one send, the clip plan at `effort` `xhigh`.
 - `clips([span])` (v2): spans chosen already, such as the top suggestions ("✦ Make top 3 postable"). Each span is planned as its own clip request, in parallel where the service has lanes, and the result ranks them like a series. At most `maxClips`; an empty list is `invalidInput`.
 - `series(range?)`, the whole transcript when nil: two stages (below).
 
 The caption preference's set fields are **fixed** (v2): every plan uses them as they are. A nil field leaves the choice to Claude, per clip. The track/v2-captions-style `ClipStyle` maps onto it: a fixed caption style is `styleId`, Auto leaves it nil.
+
+**Tone** (prompt version 6). `ClipAutopilotTone` is `auto(offered:)` (Claude picks one of the offered tones per clip, or none), `asSaid` (the creator's own tone) or `fixed(tone)` (a catalogue or saved tone). Make it postable sends the clip style's Tone (design.md §6.6): Auto offers the catalogue's tones, a tone id resolves against the catalogue and the saved tones (an unknown id plans as Auto), and a style whose Rewording is "Never reword" sends `asSaid`; the review's Change sends its tone once. A clip instruction (single clip, `clips` and a series' second stage, which keeps the request's tone through `clip(span)`) ends with its tone line: `toneFixed` (title, id and the tone's instruction), `toneAuto` with one `toneLine` per offered tone (id, title, descriptor, instruction), or `toneAsSaid`. A request without a tone sends no tone line, as before version 6; the moments stage never gets one. The system prompt's `tone` section says a tone shapes only the words Claude writes (rewrites, title, hook, post text), never the facts, names, numbers or meaning; that with a tone it may rewrite where the tone helps most, within `maxRewrites` and every rewrite rule (speakable, bridge words kept, near the slot's length); and to report `tone` (an id or "none") and `toneSummary`. With "Fix only", the note reads "Reword only what sounds wrong or what the tone needs."
 
 A request lists the scope's items except words already cut, with corrections applied; it fails with `invalidInput` for an empty or out-of-range scope, a scope with no word, more than `maxTranscriptWords` items, a long note or a malformed language tag.
 
@@ -1852,6 +1857,7 @@ Every send checks the model's context as Voice Lab sends do (§12.8): `est()` of
 - **Score and verdict.** The score is rounded and clamped to 1…10, or the default 5 when unreadable. The verdict is read ignoring case and non-letters ("post first" is `postFirst`). Otherwise it is the one the score implies: 9+ `postFirst`, 7+ `post`, 5+ `casualPost`, else `holdBack`.
 - **Length** (v2). `seconds` is measured as §16.2 says. Past `maxReasonedSeconds` (60 s) the plan gets an `overLength` flag whatever its reason; past `maxTargetSeconds` (45 s) with an empty `lengthReason`, a `longWithoutReason` flag. Flags change nothing in the plan.
 - **Title, hook, questions.** An empty title becomes `EditingAlgorithms.clipTitle` of the span's words. A question needs a question and an answer; options are deduplicated and cut to `maxOptions`; at most `maxQuestions`.
+- **Tone** (v3, prompt version 6). With no tone in the request the plan has none, whatever the reply says. A fixed tone is the plan's tone (its id and title) whatever the reply names; a reply naming another is a repair. As I said it never has a tone; a reply naming one is a repair. Under Auto the reply's id, read lowercased with spaces as hyphens ("Clear Explainer" is `clear-explainer`), must be an offered tone; "none", "as-said" or an empty id keeps the creator's own tone, and an unknown id (a saved tone was not offered) becomes none (a repair). `toneSummary` is shown text cut to `maxToneSummaryScalars` (120) and is read only when the plan has a tone.
 - **Moments** (v2, the series' first stage). In reply order, at most `maxClips` (12). A moment's span is checked as a clip span, and the moment is left out (`clips[N]`) when it is unreadable, has no words, lasts outside `minClipSeconds`…`maxClipSeconds` as recorded, or overlaps a better-ranked moment. Title, idea, score and verdict are read as above, and the caption style as Captions; their repairs are named `clips[N].field`. Only the first `postFirst` keeps it: a later one becomes `post` (a repair).
 - **Series** (v2). The clip plans are ranked by score, best first, ties in the moments' order. Only the best `postFirst` keeps it; the others become `post`, with a `verdict` repair in their plan.
 
@@ -1883,7 +1889,7 @@ Every send checks the model's context as Voice Lab sends do (§12.8): `est()` of
 
 - the prompt file: both system prompts filled, the looks, both schemas, defects refused (a missing section, a look missing, a bad moments schema, an unknown placeholder), and both fixtures' prompt hash;
 - the rendered transcript vectors and the requests: efforts, schemas, tags, timeout, output caps, the preference line with only the fixed fields, styles and fonts, the length estimate and `lengthOver`, the names line, the note, refusals;
-- every case of both fixtures, including the version 1 `series` case replayed as moments;
+- every case of both fixtures, including the version 1 `series` case replayed as moments; `ClipAutopilotToneTests` replays plan-tone-cases.json (each tone case and the four instruction vectors), the series' moments stage without a tone line, and a version 2 plan read without a tone;
 - a version 1 plan read and upgraded, and a version 3 plan refused;
 - the service with stub connectors: the correction retry; the two stages, with a gate that holds clip plans until three are in flight (so three run at once) and a fourth lane that is never used; the moment brief text; progress events; a failed clip plan left out; every plan failing; an empty moments reply; `clips` without the moments stage; lanes of another connector refused;
 - ranking and the single `postFirst`;
@@ -1907,7 +1913,8 @@ Planner v2 evaluation (Claude Code 2.1.318, Opus, plan sign-in, three prompt rou
 - **Roboto Black:** bundled by track/v2-captions-style; the captions operation applies it.
 - **Hook (done on Mac, design.md §6.7):** a title card over the clip's first ~2 s, with Change (inline text) and Undo. Windows rendering of titles is owed.
 - **Prompt:** `lengthReason` comes back as a length estimate even when the clip fits, so `longWithoutReason` rarely fires; the next round should ask for it to be empty within the target. Looks came back the same for a whole series.
-- **Windows:** the twin, replaying both fixtures.
+- **Windows:** the twin, replaying the three fixtures (Windows Core reads, validates and saves `clipStyle.tone` and `rewrite.myTones` and loads the tone catalogue).
+- **Tone:** a live evaluation of prompt version 6's tones (do Viral YouTuber rewrites stay near their slots, does Auto pick none when the delivery already works).
 
 ---
 

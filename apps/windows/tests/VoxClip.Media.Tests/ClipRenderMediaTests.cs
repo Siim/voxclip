@@ -430,17 +430,7 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
         // upscales bilinearly, so the checkerboard's phase under the translucent box differs. The title is compared by its
         // geometry instead: the box's edges and the white text's ink bounds, each within 3 px of the golden's.
         var title = Render([Effect("title", text: "Day 1", position: "top")], 360, 640);
-        using var titleGolden = SKBitmap.Decode(Path.Combine(FixtureLoader.SharedRoot, "fixtures", "media", "effects", "title.png"));
-        var expected = TitleGeometry((column, row) => { var pixel = titleGolden.GetPixel(column, row); return (pixel.Red, pixel.Green, pixel.Blue); });
-        var actual = TitleGeometry((column, row) =>
-        {
-            var offset = row * title.Stride + column * 4;
-            return (title.Pixels.Span[offset + 2], title.Pixels.Span[offset + 1], title.Pixels.Span[offset]);
-        });
-        output.WriteLine($"title box {actual.Box} vs Mac {expected.Box}; text {actual.Text} vs Mac {expected.Text}");
-        foreach (var (mine, mac) in new[] { (actual.Box, expected.Box), (actual.Text, expected.Text) })
-            Assert.True(Math.Abs(mine.Left - mac.Left) <= 3 && Math.Abs(mine.Right - mac.Right) <= 3 && Math.Abs(mine.Top - mac.Top) <= 3 &&
-                Math.Abs(mine.Bottom - mac.Bottom) <= 3, $"{mine} vs Mac {mac}");
+        ExpectSameGeometry("title", FrameTitleGeometry(title, (60, 18), (150, 30), 150), GoldenTitleGeometry("title", (60, 18), (150, 30), 150));
         var cases = new (string Name, PixelBuffer Frame)[]
         {
             ("emoji", Render([Effect("sticker", text: "\U0001F525", position: "topRight")])),
@@ -455,22 +445,93 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
             Assert.True(mean < 1.5 && far < 0.01, $"{name}: mean {mean}, far {far}");
     }
 
-    /// <summary>The title box (columns and rows whose brightest pixel in a band stays under 120: the box darkens every checker
-    /// square) and the white text's ink bounds, in the top 200 rows of a 360 × 640 frame.</summary>
-    private static (SKRectI Box, SKRectI Text) TitleGeometry(Func<int, int, (byte Red, byte Green, byte Blue)> pixel)
+    /// <summary>The title box (columns whose brightest pixel in a band of rows inside the box, and rows whose brightest pixel in a
+    /// band of columns inside it, stay under 120: the box darkens every checker square) and the white text's ink bounds above
+    /// <paramref name="textRows"/>. <paramref name="rows"/> and <paramref name="columns"/> are the bands.</summary>
+    private static (SKRectI Box, SKRectI Text) TitleGeometry(Func<int, int, (byte Red, byte Green, byte Blue)> pixel, int width, int height,
+        (int From, int Count) rows, (int From, int Count) columns, int textRows)
     {
         static int Luma((byte Red, byte Green, byte Blue) value) => (value.Red * 299 + value.Green * 587 + value.Blue * 114) / 1000;
-        var columns = Enumerable.Range(0, 360).Where(column => Enumerable.Range(60, 18).Max(row => Luma(pixel(column, row))) < 120).ToArray();
-        var rows = Enumerable.Range(0, 200).Where(row => Enumerable.Range(150, 30).Max(column => Luma(pixel(column, row))) < 120).ToArray();
+        var boxColumns = Enumerable.Range(0, width).Where(column => Enumerable.Range(rows.From, rows.Count).Max(row => Luma(pixel(column, row))) < 120).ToArray();
+        var boxRows = Enumerable.Range(0, Math.Min(height, textRows + 20)).Where(row => Enumerable.Range(columns.From, columns.Count).Max(column => Luma(pixel(column, row))) < 120).ToArray();
         int top = int.MaxValue, bottom = 0, left = int.MaxValue, right = 0;
-        for (var row = 0; row < 150; row++)
-            for (var column = 0; column < 360; column++)
+        for (var row = 0; row < textRows; row++)
+            for (var column = 0; column < width; column++)
             {
                 var value = pixel(column, row);
                 if (Math.Min(value.Red, Math.Min(value.Green, value.Blue)) <= 235) continue;
                 top = Math.Min(top, row); bottom = Math.Max(bottom, row); left = Math.Min(left, column); right = Math.Max(right, column);
             }
-        return (new(columns.Min(), rows.Min(), columns.Max(), rows.Max()), new(left, top, right, bottom));
+        return (new(boxColumns.Min(), boxRows.Min(), boxColumns.Max(), boxRows.Max()), new(left, top, right, bottom));
+    }
+
+    private static (SKRectI Box, SKRectI Text) GoldenTitleGeometry(string name, (int, int) rows, (int, int) columns, int textRows)
+    {
+        using var golden = SKBitmap.Decode(Path.Combine(FixtureLoader.SharedRoot, "fixtures", "media", "effects", name + ".png"));
+        return TitleGeometry((column, row) => { var pixel = golden.GetPixel(column, row); return (pixel.Red, pixel.Green, pixel.Blue); },
+            golden.Width, golden.Height, rows, columns, textRows);
+    }
+
+    private static (SKRectI Box, SKRectI Text) FrameTitleGeometry(PixelBuffer frame, (int, int) rows, (int, int) columns, int textRows)
+        => TitleGeometry((column, row) =>
+        {
+            var offset = row * frame.Stride + column * 4;
+            return (frame.Pixels.Span[offset + 2], frame.Pixels.Span[offset + 1], frame.Pixels.Span[offset]);
+        }, frame.Width, frame.Height, rows, columns, textRows);
+
+    private void ExpectSameGeometry(string name, (SKRectI Box, SKRectI Text) actual, (SKRectI Box, SKRectI Text) expected)
+    {
+        output.WriteLine($"{name} box {actual.Box} vs Mac {expected.Box}; text {actual.Text} vs Mac {expected.Text}");
+        foreach (var (mine, mac) in new[] { (actual.Box, expected.Box), (actual.Text, expected.Text) })
+            Assert.True(Math.Abs(mine.Left - mac.Left) <= 3 && Math.Abs(mine.Right - mac.Right) <= 3 && Math.Abs(mine.Top - mac.Top) <= 3 &&
+                Math.Abs(mine.Bottom - mac.Bottom) <= 3, $"{name}: {mine} vs Mac {mac}");
+    }
+
+    private const string Hook = "Most founders price their product completely wrong";
+
+    [Theory]
+    [InlineData(360, 640)]
+    [InlineData(640, 360)]
+    public void AHookTitleWrapsWholeInsideTheFrame(int width, int height)
+    {
+        using var frames = new EffectFrames(Effects(), FixtureLoader.SharedRoot);
+        var layout = frames.TitleLayout(Hook, "top", width, height)!;
+        var shortSide = Math.Min(width, height);
+        Assert.InRange(layout.Lines.Count, width < height ? 2 : 1, width < height ? 3 : 2);
+        Assert.InRange(layout.Size, Math.Round(shortSide * 0.05, MidpointRounding.AwayFromZero), Math.Round(shortSide * 0.075, MidpointRounding.AwayFromZero));
+        Assert.Equal(Hook, string.Join(' ', layout.Texts));
+        var widths = layout.Lines.Select(line => line.Width).ToArray();
+        Assert.True(widths.Min() > widths.Max() * 0.5, $"balanced: {string.Join(", ", widths)}");
+        Assert.True(layout.TextWidth + layout.PadX * 2 <= layout.Box.Width + 1 && layout.Box.Width <= width * 0.92 + 1);
+        Assert.True(layout.Box.Left >= 0 && layout.Box.Right <= width && layout.Box.Top >= 0 && layout.Box.Bottom <= height);
+        Assert.True(layout.Box.MidY < height * 0.4, "at the top");
+        // Every white text pixel lies inside the box, clear of its clip edge: no word is cut off.
+        var card = new ClipEffect("fx-hook-1", null, "title", 0, 4) { Text = Hook, Position = "top" };
+        var shown = Render([card], width, height);
+        var inner = SKRectI.Inflate(layout.Box, -(int)Math.Floor(layout.PadX * 0.5), 0);
+        for (var row = 0; row < height; row++)
+            for (var column = 0; column < width; column++)
+            {
+                var offset = row * shown.Stride + column * 4;
+                if (shown.Pixels.Span[offset] > 235 && shown.Pixels.Span[offset + 1] > 235 && shown.Pixels.Span[offset + 2] > 235)
+                    Assert.True(inner.Contains(column, row), $"text pixel {column},{row} outside {inner}");
+            }
+    }
+
+    [Fact]
+    public void HookTitlesMatchTheMacGoldens()
+    {
+        var card = new ClipEffect("fx-hook-1", null, "title", 0, 4) { Text = Hook, Position = "top" };
+        // Landscape: the unscaled base, so the whole frame compares.
+        var (mean, far) = CompareGolden("hook-landscape", Render([card], 640, 360));
+        Assert.True(mean < 1.5 && far < 0.01, $"hook-landscape: mean {mean}, far {far}");
+        // Portrait: the Mac's 9:16 base is Lanczos-upscaled, so the card compares by geometry, as the single-line title does.
+        using var frames = new EffectFrames(Effects(), FixtureLoader.SharedRoot);
+        var layout = frames.TitleLayout(Hook, "top", 360, 640)!;
+        var rows = (layout.Box.Top + 2, Math.Min(18, layout.Box.Height - 4));
+        var columns = (layout.Box.MidX - 15, 30);
+        ExpectSameGeometry("hook-portrait", FrameTitleGeometry(Render([card], 360, 640), rows, columns, layout.Box.Bottom + 10),
+            GoldenTitleGeometry("hook-portrait", rows, columns, layout.Box.Bottom + 10));
     }
 
     [Fact]

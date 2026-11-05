@@ -59,7 +59,10 @@ extension EditorModel {
 
     func chooseClipPreset(_ id: ClipStylePresetID, collapse: Bool = true) {
         guard let clipStyles else { return }
-        commitClipStyle(clipStyles.style(for: id, mine: savedClipStyle), name: "Choose clip style", collapse: collapse)
+        // Presets have no tone: a chip keeps the card's Tone (design.md §6.6).
+        var style = clipStyles.style(for: id, mine: savedClipStyle)
+        if id != .mine, let tone = cardClipStyle?.tone { style.tone = tone }
+        commitClipStyle(style, name: "Choose clip style", collapse: collapse)
     }
 
     /// A row on the card changed: the style becomes the user's own ("My style").

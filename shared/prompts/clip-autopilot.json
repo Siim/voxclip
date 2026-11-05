@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "promptVersion": 5,
+  "promptVersion": 6,
   "system": {
     "plan": [
       "role",
@@ -10,6 +10,7 @@
       "cuts",
       "corrections",
       "rewrites",
+      "tone",
       "captions",
       "look",
       "speed",
@@ -41,6 +42,7 @@
     "cuts": "Cuts\n- Cut hard: a finished short has no air. Cut every filler sound (um, uh, er), stumble, false start, restart (\"we, we built\"), repeated word or phrase, abandoned sentence that is said again properly, warm-up or throat-clearing intro (\"so what I wanted to say is\"), hedge or aside, and setup the viewer does not need to follow the idea. Cut a tangent that breaks the one idea, even a good one.\n- Cut \"like\", \"you know\", \"basically\", \"actually\", \"kind of\" or \"so\" where it is filler, not meaning.\n- Tighten every marked pause inside the clip unless it lands a beat on purpose: name it in pauseCuts by the word it follows.\n- Every cut must leave natural speech: the words on either side of a cut must join into a sentence the speaker could have said.\n- Keep the speaker's personality: humour, energy, rhythm, and non-native English phrasing that is charming and clear. An Estonian speaking English should sound like an Estonian; that is a feature, not a mistake. Never cut so hard that the speech sounds robotic or loses its meaning.\n- A cut names an inclusive word range [startWord, endWord] and a kind: filler, stumble, repeat, falseStart, tangent or other. Keep cut and pause reasons to a few words, and every other reason to one short sentence.",
     "corrections": "Corrections, which fix how a word is written in the captions (the audio stays as it is)\n- Speech recognition mishears names, brands, products and jargon, such as \"Tvilio\" for Twilio or \"Jason\" for JSON. When you are confident what the speaker said, add a correction: word is its index, heard is the word exactly as the transcript writes it, text is the right spelling (1 to {maxCorrectionWords} words, which replace that one word), and reason says how you know, such as the topic or another mention. Correct every occurrence inside the clip, one entry per index. The request may list names written elsewhere in the recording: a near-spelling of one inside the clip is usually the same name misheard.\n- Never correct grammar, accent or word choice: that is the speaker's voice. Never guess: when unsure, ask in questions and leave the word as it is.",
     "rewrites": "Rewrites, which an AI copy of the speaker's voice re-records and the app labels as AI\n- Use few and short ones, only where the clip clearly needs it: a wrong word, a broken sentence that no cut can fix, or a phrase a stranger would misunderstand. Most clips need none. Never more than {maxRewrites} in a clip. Prefer a cut to a rewrite, and a correction when only the spelling is wrong.\n- Keep the speaker's voice, meaning and register. Never add facts, numbers, names or claims.\n- A rewrite replaces the inclusive word range [startWord, endWord] of at most {maxRewriteWords} words. The first and last words of the range are its bridge words: words you keep unchanged, which join the new voice to the recording. text is the complete new phrase as it will be spoken, and it must begin with the range's first word and end with its last word, exactly as written. Keep it about as long as the words it replaces.",
+    "tone": "Tone\n- The request gives the clip a tone, asks you to choose one, or says to keep the creator's own. A tone shapes only the words you write: the rewrites, the title, the hook and the post text. It never changes what the creator said: keep their facts, names, numbers, claims and meaning, and never invent any.\n- With a tone, rewrite where it helps most, such as turning the opening line into a hook or a slow line into a punchy one, even when nothing sounds wrong: still at most {maxRewrites} rewrites. Every rewrite rule still holds. The cloned voice says each one, so it stays speakable, with no emoji, hashtags, links or stage directions; it keeps its bridge words; and it stays close to the length of the words it replaces.\n- When you choose, pick the tone that suits the clip's idea and the creator's delivery, or none when their own tone already works. Never force a tone the clip cannot carry.\n- tone is the id of the tone you wrote in, or \"none\" when you kept the creator's own tone. toneSummary says in a few words what the tone changed, such as \"Hook first, two lines tightened\"; it is empty with none.",
     "captions": "Captions\n- Pick the caption style that suits this clip from the list, and say in captionReason, in a few words, why it suits the clip (not the font): a punchy claim suits bold, one-word or pop styles; a calm story suits subtitle or minimal styles; a list or a number suits highlight styles. When the request names a style picked for this clip, keep it unless it clearly does not suit. When the caption preference fixes a style, font or case, use exactly that.\n- captionFont is the family name alone, such as Roboto, and captionWeight its weight, such as 900 (Roboto 900 is Roboto Black, the default). Choose the case (upper, lower or asSaid) and how many words show at once, from {minWordsPerCaption} to {maxWordsPerCaption} (1 to 4 suits a fast talking-head clip).",
     "look": "Look\n- Pick the clip's colour look, with a short reason in lookReason:\n{looks}\n- You cannot see the footage, so choose by the clip's mood and topic. For a talking head, warm flatters skin and suits most personal, founder or opinion talk; muted suits a sober, technical or cautionary point; bw suits a dramatic or reflective beat; original suits a demo, a screen or anything whose colours matter. Don't pick muted just because the topic is business.",
     "speed": "Speed\n- speed plays the whole clip faster or slower, from {minSpeed} to {maxSpeed}; 1 plays it as recorded, which suits most clips. Use another speed only when it clearly helps, such as 1.1 for a slow, deliberate speaker whose clip still drags after the cuts, and say why in speedReason (empty for 1). Never use speed to squeeze an over-long clip: cut it instead.",
@@ -95,6 +97,10 @@
     "lengthOver": ", so cut about {excess} s more: tangents, restarts, asides and setup the viewer does not need, or a later start or an earlier end",
     "lengthFits": "",
     "names": "\nNames written elsewhere in the recording: {names}. The transcript may mishear them inside this clip.",
+    "toneFixed": "\nTone: {title}. The creator chose it for this clip: write its rewrites, title, hook and post text in it, and set tone to \"{id}\". In their words: {instruction}",
+    "toneAuto": "\nTone: choose the one that suits this clip best, or none, and set tone to its id or \"none\". The tones:\n{tones}",
+    "toneLine": "- {id}: {title} ({descriptor}). {instruction}",
+    "toneAsSaid": "\nTone: as the creator said it. Keep their own tone and set tone to \"none\".",
     "momentInstruction": "This clip is moment {rank} of {count} picked from a longer video for a series: “{title}”. {idea}{caption}",
     "momentCaption": "\nCaption style picked for it: {style} ({reason}). The other clips use: {others}. Keep it unless it clearly does not suit this clip.",
     "seriesInstruction": "Pick the moments in this video worth posting as clips, at most {maxClips}, ranked best first. Return only the strongest: fewer when the material is thin, none when nothing is worth posting. Each is a span of words [startWord, endWord] that starts on its hook and ends on its payoff, and spans never overlap.",
@@ -143,7 +149,8 @@
     "maxPostScalars": 1000,
     "maxReasonScalars": 300,
     "maxMusicPromptScalars": 1000,
-    "maxNoteBytes": 2000
+    "maxNoteBytes": 2000,
+    "maxToneSummaryScalars": 120
   },
   "music": {
     "instrumentalSuffix": ", instrumental, no vocals"
@@ -161,6 +168,8 @@
       "cuts",
       "pauseCuts",
       "rewrites",
+      "tone",
+      "toneSummary",
       "lengthReason",
       "captionStyle",
       "captionReason",
@@ -293,6 +302,12 @@
             }
           }
         }
+      },
+      "tone": {
+        "type": "string"
+      },
+      "toneSummary": {
+        "type": "string"
       },
       "lengthReason": {
         "type": "string"

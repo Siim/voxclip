@@ -134,7 +134,8 @@ import Testing
         }
         let short = try patched { $0["maxLengthSec"] = .number(2) }
         #expect(throws: (any Error).self) { try ProjectJSON.decoder().decode(Project.self, from: short) }
-        let extra = try patched { $0["tone"] = .string("warm") }
+        // `tone` is a clip style field now (design.md §6.6); any other key is still refused.
+        let extra = try patched { $0["mood"] = .string("warm") }
         #expect(throws: (any Error).self) { try ProjectValidation.validate(JSONDecoder().decode(JSONValue.self, from: extra)) }
         let pickless = try patched { $0["captionPicks"] = nil }
         #expect(throws: (any Error).self) { try ProjectValidation.validate(JSONDecoder().decode(JSONValue.self, from: pickless)) }

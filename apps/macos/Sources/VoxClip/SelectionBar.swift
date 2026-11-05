@@ -19,6 +19,9 @@ func selectionBarFrame(lineRects: [CGRect], visibleRect: CGRect, barSize: CGSize
     var focusRequest = 0
     var forceOpaque = false
     var policyOverride: EditorAccessibilityPolicy?
+    /// "✦ Rewrite as ▾" opens or closes the tone strip under the bar (design.md §6.3.1); nil hides the verb.
+    var rewriteAs: (() -> Void)?
+    var stripOpen = false
     let dismiss: () -> Void
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
@@ -39,7 +42,17 @@ func selectionBarFrame(lineRects: [CGRect], visibleRect: CGRect, barSize: CGSize
     }
     private var controls: some View {
         HStack(spacing: 4) {
-            // ✦ Ask Claude first (design.md §6.8): one inline field in the right panel; nothing is sent until Return.
+            // ✦ Rewrite as first (design.md §6.3.1): one click opens the tone strip under the bar, a chip rewrites the words
+            // at once, and ⇧⌘R asks the default tone. Text Rewrite needs no Voice Lab.
+            if let rewriteAs, !model.selectedIDs.isEmpty, model.capabilities.ai {
+                Button(action: rewriteAs) { label("\u{2726} Rewrite as \u{25BE}", "⇧⌘R") }
+                    .background(stripOpen ? DesignValues.color("bg.selectedRow") : .clear, in: RoundedRectangle(cornerRadius: 6))
+                    .help("Rewrite these words in a tone. ⇧⌘R uses your default, \(model.defaultRewriteItem?.title ?? "Fix mistakes").")
+                    .accessibilityLabel("Rewrite as")
+                    .accessibilityValue(stripOpen ? "Tones shown" : "")
+                    .accessibilityIdentifier("voxclip.selectionBar.rewriteAs")
+            }
+            // ✦ Ask Claude second (design.md §6.8): one inline field in the right panel; nothing is sent until Return.
             if model.canAskClaude, model.askClaudeWordSelection != nil {
                 Button { model.openAskClaudeOnSelection(); dismiss() } label: { label("\u{2726} Ask Claude", "") }
                     .help("Ask Claude to censor, add an overlay or change timing on these words")
@@ -54,11 +67,6 @@ func selectionBarFrame(lineRects: [CGRect], visibleRect: CGRect, barSize: CGSize
             Button { model.cutSelection(); dismiss() } label: { label("Cut", "⌫") }
             Button { model.cutSelection(restore: true); dismiss() } label: { label("Restore", "⇧⌫") }
                 .disabled(model.selectedWordIDs.isDisjoint(with: model.cutWordIDs) && model.selectedPauseIDs.isDisjoint(with: model.cutPauseIDs))
-            // Text Rewrite of the selected words (design.md §8), with no Voice Lab gate.
-            if !model.selectedIDs.isEmpty {
-                Divider().frame(height: 18)
-                Button { model.runRewrite(); dismiss() } label: { label(model.rewriteAsksFirst ? "Rewrite…" : "Rewrite", "⇧⌘R") }.disabled(!model.capabilities.ai)
-            }
         }
         .buttonStyle(.plain)
         .disabled(!model.capabilities.edit)

@@ -145,8 +145,8 @@ public sealed class MediaCliE2ETests
             var wave = Path.Combine(directory, "clip.wav");
             var (exit, result) = await RunCli(["--open", projectPath, "--clip", "clip-speed", "--export", output, "--audio-out", wave,
                 "--json", "--quiet", "--style", "off"], directory, "e2e-clip-speed", ct);
-            WriteReport("e2e-clip-speed", exit, result);
-            Assert.Equal(0, exit);
+            // No parity report: VOXCLIP_E2E_OUT holds the ten canonical cases CI compares with the Mac's, and this one is Windows'.
+            Assert.True(exit == 0, result.ToJsonString());
             var plan = CliOperations.BuildPlan(project with { Edits = project.Edits with { ActiveClipId = "clip-speed" } }, true);
             var rendered = new VoxClip.Core.Domain.Clips.ClipSpeedTiming(1.25);
             var renderedSeconds = rendered.RenderedSamples(plan.OutputSamples) / plan.SampleRate;

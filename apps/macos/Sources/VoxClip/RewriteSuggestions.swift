@@ -1,4 +1,5 @@
 import SwiftUI
+import VoxClipCore
 
 /// A suggestion for Rewrite's Ask field (design.md §6.3.1): choosing one fills the field and does not send.
 struct RewriteSuggestion: Identifiable, Equatable, Sendable {
@@ -38,17 +39,21 @@ enum RewriteSuggestions {
     static func list(recent: [String]) -> [RewriteSuggestion] {
         presets + recent.prefix(recentLimit).map { RewriteSuggestion(title: $0, instruction: $0, asked: nil) }
     }
-    /// What the field's `text` sends: Fix mistakes for an empty field, a preset for its title, else the text as typed.
-    static func suggestion(for text: String) -> RewriteSuggestion {
+    /// What the field's `text` sends: Fix mistakes for an empty field, a preset for its title or its instruction, a tone
+    /// (design.md §6.3.1 "Rewrite as") for its instruction, else the text as typed.
+    static func suggestion(for text: String, tones: [RewriteTone] = []) -> RewriteSuggestion {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return fixMistakes }
-        return presets.first { $0.title.caseInsensitiveCompare(trimmed) == .orderedSame }
-            ?? RewriteSuggestion(title: trimmed, instruction: trimmed, asked: nil)
+        if let preset = presets.first(where: { $0.title.caseInsensitiveCompare(trimmed) == .orderedSame || $0.instruction == trimmed }) { return preset }
+        if let tone = tones.first(where: { $0.instruction == trimmed }) {
+            return RewriteSuggestion(title: tone.title, instruction: tone.instruction, asked: tone.isSaved ? "your saved tone." : tone.descriptor + ".")
+        }
+        return RewriteSuggestion(title: trimmed, instruction: trimmed, asked: nil)
     }
-    /// `recent` with `text` asked now: most recent first, distinct, at most three. Presets and the empty field are not
-    /// recorded; they are always offered.
-    static func noting(_ text: String, in recent: [String]) -> [String] {
-        let asked = suggestion(for: text)
+    /// `recent` with `text` asked now: most recent first, distinct, at most three. Presets, tones and the empty field are
+    /// not recorded; they are always offered.
+    static func noting(_ text: String, in recent: [String], tones: [RewriteTone] = []) -> [String] {
+        let asked = suggestion(for: text, tones: tones)
         guard asked.asked == nil else { return recent }
         return Array(([asked.title] + recent.filter { $0 != asked.title }).prefix(recentLimit))
     }
@@ -62,7 +67,7 @@ extension AppModel {
     }
     /// Records an instruction a Rewrite of `projectID` sent.
     func noteRewriteInstruction(_ text: String, for projectID: String) {
-        let next = RewriteSuggestions.noting(text, in: rewriteRecents[projectID] ?? [])
+        let next = RewriteSuggestions.noting(text, in: rewriteRecents[projectID] ?? [], tones: allRewriteTones)
         if next != rewriteRecents[projectID] ?? [] { rewriteRecents[projectID] = next }
     }
 }

@@ -36,6 +36,8 @@ import VoxClipCore
                 if !editor.claudeModeOn { pickRows(style, catalog: catalog) }
                 shapeRow(style, shapes: catalog.shapes)
                 if !editor.claudeModeOn { rewordingRow(style, catalog: catalog) }
+                // The tone row (its own view) sits under the rows in both modes.
+                ClipStyleToneRow(editor: editor, style: style)
             }
             footer
         }
