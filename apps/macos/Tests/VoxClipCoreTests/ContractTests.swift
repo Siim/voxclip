@@ -166,6 +166,7 @@ func portableProjectRoundTrip(name: String) throws {
     #expect(locations.settings.path == "/tmp/voxclip-contract-test/settings.json")
 }
 
+#if DEBUG // Only debug builds detect a test process; CI's Release E2E step compiles this file too.
 /// MVP23: test processes wrote ~/Library/Logs/VoxClip/voxclip.log, so the user's log held test lines and not the failure.
 @Test func aTestProcessNeverLogsIntoTheUsersLogFolder() throws {
     let home = FileManager.default.homeDirectoryForCurrentUser
@@ -181,6 +182,7 @@ func portableProjectRoundTrip(name: String) throws {
     #expect(TestProcess.detect(environment: [:], processName: "xctest", arguments: []))
     #expect(!TestProcess.detect(environment: [:], processName: "VoxClip", arguments: ["/Applications/VoxClip.app/Contents/MacOS/VoxClip"]))
 }
+#endif
 
 @Test func projectStoreRejectsMissingInput() async {
     let store: any ProjectStore = JSONProjectStore()
