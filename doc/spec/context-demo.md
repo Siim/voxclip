@@ -1,6 +1,6 @@
 # Context demonstrations and clip motion
 
-Status: Mac integration and synthetic preview/export validation on 2026-11-02. Real recording, interaction and accessibility acceptance remain separate from fake-backed and synthetic-media tests. Windows reads and validates the v4 format and refuses visual routes it cannot render. The previously delivered Mac bundle predates this work.
+Status: Mac integration and synthetic preview/export validation on 2026-11-02. Real recording, interaction and accessibility acceptance remain separate from fake-backed and synthetic-media tests. Windows reads and validates the v4 format and renders placements a Mac made (upright, on the scope's edited clock, from verified private copies); it has no recording or placement UI. The previously delivered Mac bundle predates this work.
 
 The user can start from a webpage URL, a code-project folder or an exact running app window. A source repository is optional. A demonstration records the real application or page, remains silent, and appears over the matching narration. Captures can be previewed, trimmed, moved, replaced or removed. Original narration, source words and source word timings remain unchanged.
 

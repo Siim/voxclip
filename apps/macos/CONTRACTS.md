@@ -1,5 +1,21 @@
 # macOS implementation contracts
 
+### 2026-11-05 — The Mac replays the shared music-mix vectors; the bed's plan and mix are one pure type (track/v2-win-render-3)
+
+Owed by track/v2-win-render-2. Spec: doc/spec/music.md §4.
+
+- **Built.**
+  - **Media.** `MusicBedPlan` (`Music/MusicBedRenderer.swift`): from the decoded track, the speech levels, the entry, the output frames and a sample rate, it computes the trim or loop pieces, the music and speech levels, the bed gain and the ducking; `gain(atFrame:)` and `mix(_:from:count:)` give each frame's gain and samples. `MusicBedRenderer.stage` and `write(track:plan:to:)` use it, with the same arithmetic in the same order as before, so the shared vectors replay the renderer itself at the fixture's 1 kHz.
+  - **Tests.** Core `MusicMixVectorTests` (3): the keys, `caseCount` 35 and the constants; levels, activity, ducking and its factors, bed gain, music level and fades; loops and their crossfade weights. Media `MusicBedVectorTests` (1): both beds' pieces, levels, gains and samples, and a mid-bed block equal to the whole.
+- **Result.** Every case agreed, so neither side was wrong and nothing in the generator changed. Its docstring and `shared/fixtures/music/README.md` now name the Swift replays.
+- **Tolerances.** 1e-9 for double inputs. The samples are float32, as on Windows, so levels from samples are compared within 1e-5 dB and bed samples within 1e-6.
+- **Deleted.** `write(track:pieces:outputFrames:bedGain:ducking:entry:to:)`, which took the plan's values loose and became the `MusicBedPlan` overload.
+- **Red check.** A copy of the fixture with one bed sample, one ducking value and one loop count changed fails all three affected tests.
+- **Verification** (`VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`):
+  - `swift test --filter 'MusicMixVectorTests|MusicBedVectorTests|MusicBedTests|MusicMixTests'`: 4 suites, 18 tests passed.
+  - `-warn-long-expression-type-checking=300` flags nothing this change added.
+- **Next package must know.** Change the bed's arithmetic in `MusicBedPlan` only, and regenerate the vectors with `tools/fixtures/music/generate_music_mix.py`; both platforms replay them.
+
 ### 2026-11-05 — Each clip exports in its own caption look; Continue in the Make it footer; an adjusted hook updates the review; the clip-render replay; translated captions (track/v2-mac-clip-finish)
 
 User (2026-11-04/05): one-click postable clips, Claude Code at xhigh deciding everything; the benchmark session gives each clip its own caption look. Spec: doc/design.md §6.6 (each clip's caption look), §6.7 (hook row, the cap's Continue), §6.8 (translated captions); doc/spec/ai.md §18.2.

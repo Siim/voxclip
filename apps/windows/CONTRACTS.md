@@ -1,5 +1,42 @@
 # Windows fixed contracts
 
+### 2026-11-05 — Windows renders translated captions and context-demo placements; the Mac replays the music mix (track/v2-win-render-3)
+
+Twin of the Mac entries mac-clip-finish step 5 (translated captions) and mac-polish-2 (context demos stay upright). Lifts Windows' last two export refusals. Spec: doc/design.md §6.8, §6.9; doc/spec/ai.md §18.2; doc/spec/context-demo.md.
+
+- **1 · Translated captions render** (Core `Domain/Captions/CaptionTranslations.cs`; App `ExportRenderInput.CaptionWords`, `EditorPage.SnapshotAsync`, `ExportFingerprint`; CLI `CliOperations`):
+  - **Core.** The Mac's `Translating` (v4 upgrade, replaces an overlap in its scope), `Untranslating`, `Rendered` (the clip's own first, then the Full Take's), `Applying`, `Spreading` and `NextId`, plus `Shown` (mask bleeps, then translate), the one call every caption path makes.
+  - **Paths.** Preview, export, Export all and the SRT go through `ExportRenderInput.CaptionWords` (the Voice Lab or edit plan's words, then `Shown`). The CLI uses `Shown` with the scope's effects, in the clip's own caption look. The fingerprint hashes the translated words, so a project without translations keeps its hash.
+  - **Ask Claude.** `ClipAutopilotMapping.Apply` applies `TranslateCaptions`, so it is no longer pending. `AskClaudeUndone` takes it back through `Untranslating`. The row reads "Captions in Spanish" and is Applied, with row Undo.
+  - **Bug fixed.** `EditorViewModel` undo/redo now restores `CaptionTranslations`; before, Ctrl+Z left a translation in place.
+  - **Deleted.** `CaptionTranslations.ExportUnsupportedMessage`, its check in `RequireWindowsVisualSupport`, and the "Translated captions are not rendered yet. Nothing changed." reason.
+- **2 · Context-demo placements render** (Core `Domain/ContextDemo/ContextDemoRendering.cs`, `ComposeSnapshot.ContextDemo`; Media `Pipeline/ContextDemoFrames.cs`, `FrameComposer`, `Exporter.Validate`, `VideoDecoder.RotationDegrees`):
+  - **Resolve** (Mac `RenderCallerInputs.prepare`). The document must be current for the full edited narration (`FullTimeline`). A clip's scope is its span of that narration (`full.MapTime` of its first and last source times). `ContextDemoPlanner.Prepare` clips the placements to the scope and rebases them to zero, and `VerifyRenderedTimeline` checks them against the scope's rendered timeline. Otherwise the render stops with `ContextDemoRendering.StaleMessage`. `At(edited)` is half-open on the edited clock.
+  - **Compose** (Mac `FrameCompositor` order). After the source's orientation, crop and scale, the recording replaces the picture over its placement. It is upright by its own display rotation only, centre-cropped to fill the clip's frame (Mitchell in export, bilinear in preview). Then come the look, censors, motion, overlays, captions and disclosure. The clip's flip and quarter turns never reach it.
+  - **Files** (Mac `ContextDemoCompositionAssets`). `FrameComposer.PrepareSnapshot` (renamed from `PrepareDisclosure`) opens each recording once per set of layers, reference-counted, so a caption-only snapshot reuses it. Each file is checked (no links on its canonical path, regular file, byte size ≤ 64 MiB, MP4 `ftyp` brand, SHA-256, pixel size), copied into a private temporary folder and decoded from there; `ReleaseSnapshot` deletes the copy. `Exporter.Validate` checks presence and size before anything is written. A missing or changed file stops with `ContextDemoRendering.AssetMessage`; no black or source frame stands in.
+  - **Fingerprint.** It hashes the document (revision, assets, placements) when it has placements; otherwise the hash is unchanged.
+  - **Deleted.** `VoiceLabRenderContract.RequireWindowsVisualSupport`, `ContextDemoUnsupportedMessage` and every call to them (App ×2, CLI ×3, `Prepare`, `VoiceLabPreparedRender.Verify`), plus the "unsupported-windows-visuals-v1" fingerprint.
+- **3 · The Mac replays `music-mix-cases.json`** (see the apps/macos/CONTRACTS.md entry). Every case agreed, so neither side was wrong and nothing in the generator changed. Its docstring and the fixture README now name both replays.
+- **Tests.**
+  - Core: `CaptionTranslationVectorTests` (6: the 9 spread vectors, translating and undoing, masking then translating, rendering instead of refusing); `AskClaudeTests` (pending is Stretch and Rewrite; the translation is stored); `WindowsV4CallerTests` (placements on the full and clip clocks, half-open, rebased; a cut word stops with the stale reason).
+  - Media: `CaptionTranslationCliTests` (2: the CLI's caption words and SRT in the clip's look, cue bounds kept, pixels changed; × under a translation and the Full Take's translation inside a clip); `ContextDemoRenderTests` (7: placement at a time and the source picture outside it, a portrait centre-crop, upright under flip / 180° / flip + 90°, a recording stored on its side, shared and released copies, missing / changed / linked files).
+  - Updated: `WindowsV4CliCallerTests` (a missing recording stops before the encoder, the WAV or publication), `WindowsV4ExportHistoryTests` (renamed `PlacedScreenRecordingsArePartOfTheExportsIdentity`), and the wire tests that called the removed check.
+  - win-ui: `AskClaudeAppTests.TranslatedCaptionsApplyRenderAndUndo`.
+  - **Red checks.** `Shown` skipping the translation fails Media 2/2 and App 1. The demo following the clip's flip fails all 3 upright cases.
+- **Allowlists.** `ReleaseBoundary update` on all four; the diff is declarations only. Core gains the new `CaptionTranslations` members and the `ContextDemoRendering`, `ContextDemoRenderLayers` and `ContextDemoLayerFrame` types and loses the refusal members. Media gains `ContextDemoFrames`, `ContextDemoPicture`, `IContextDemoFrames` and the composer's prepare/release members. App gains `ExportRenderInput.CaptionWords` and `ExportFingerprint.WithDemo`. The CLI is unchanged. The test frame source is injected through the composer's internal constructor (like its rasterizer), not a test-only member.
+- **Verification** (macOS host, Release, serial, `-m:1 -nodeReuse:false -p:UseSharedCompilation=false`, `VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`):
+  - Cross-platform solution, win-ui and App type-check 0 warnings, 0 errors; `check-xaml.py` 0 problems.
+  - Core (`Category!=RequiresWindows`) 3,201, 0 failed, 28 skipped. Portable Media 991, 0 failed, 5 skipped. win-ui 1,316, 0 failed, 5 skipped, `*ReleaseSurrogate*` included.
+  - Both `check_drift.py` exit 0; `tools/voice-lab` OK.
+  - `env -i … dotnet voxclip-cli.dll --runtime-terms --json` exits 0. No E2E parity report added (CI still validates ten).
+- **Native, left to hosted Windows CI.**
+  - The WinUI App build.
+  - A real export and preview with a context demo through FFmpeg: `VideoDecoder` on an H.264 recording, `RotationDegrees` from its display matrix, `sws_scale` before the demo, and the D3D11 preview path.
+  - Translated captions in the WinUI preview, and the Ask Claude panel's translate row in a real window.
+- **Owed.**
+  - A native E2E test exporting a placed recording through `Exporter`; it needs FFmpeg, so it was not added untested.
+  - Windows has no context-demo recording, placement, trim or replace UI: it renders what a Mac placed.
+
 ### 2026-11-05 — Windows Core reads each clip's caption look and translated captions (track/v2-mac-clip-finish, Core twin only)
 
 Twin of the Mac entry "Each clip exports in its own caption look … translated captions". Spec: doc/design.md §6.6, doc/spec/ai.md §18.2.

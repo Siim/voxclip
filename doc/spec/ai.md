@@ -2036,8 +2036,8 @@ translated word over a bleeped word is masked. The voice and the transcript stay
 translations; replacing the transcript clears them. The schema (`$defs.captionTranslation`) comes from
 `tools/schemas/generate_caption_translations_schema.py`; the vectors `shared/fixtures/caption-translations/
 caption-translation-cases.json` (`voxclip-caption-translation-cases/1`, wire and spread cases) from
-`tools/fixtures/caption-translations/generate_caption_translations.py`. Windows Core reads, validates and saves the
-field and refuses to render or export a project with a translation ("Windows cannot show translated captions yet…").
+`tools/fixtures/caption-translations/generate_caption_translations.py`. Windows renders translations the same way
+(`CaptionTranslations.Shown`: masking, then translation) and replays both the wire and the spread cases.
 
 ### 18.3 Prompt
 

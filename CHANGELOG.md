@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Windows, Ask Claude's translated captions now show in preview, export and the SRT, in each clip's own caption look, with the row's Undo; and screen recordings placed on a Mac render upright over their part of the video
 - On Windows, ✦ Ask Claude on selected words, a kept clip or a dragged timeline range: say what to change and Claude bleeps, blurs (following faces), adds titles, emoji, arrows, freezes, sounds or a clip speed as one undo step, with a change list to play, adjust or undo each change; a rewrite in your voice waits for its priced click, and "Reword these words" runs your Rewrite-as tones
 - On Windows, each clip exports in its own caption look, background music plays under your voice in preview and export with a Music section (free library, your folder or a generated track at its price) and Make it postable picks it, and zooms render, so Make it postable applies its zooms with ▶ and Undo
 - On Mac, each clip now exports in its own caption look (Claude's pick or yours, shown in the Captions panel), Continue at the spend cap is also in the Make it panel's footer, an edited hook title updates the review and post text, and Ask Claude's "translate these captions" shows the translation in preview, export and SRT.
