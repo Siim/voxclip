@@ -54,9 +54,12 @@ extension RewriteSession {
         let samples = project.voiceLab.speakingRateSamples?[VoiceLabWordingFit.modelID] ?? []
         let multiplier = VoiceLabWordingFit.multiplier(samples)
         let readings = Dictionary(uniqueKeysWithValues: editor.changeReadings.map { ($0.change.ordinal, $0) })
-        return try ordinals.map { ordinal in
+        let built: [VoiceLabFitPhrase] = try ordinals.compactMap { ordinal in
             guard let reading = readings[ordinal], let review = voiceReview(ordinal), let timing = review.timing,
                   let window = review.window, let patch = review.patchText else { throw RewriteSessionError.noSourceAudio }
+            // New words with nothing removed (a sentence the rewrite adds) have no slot to fit: they lengthen the video,
+            // so they are priced as written rather than reworded (MVP25: one such phrase refused the whole fit request).
+            guard !reading.removed.isEmpty, !reading.text.isEmpty, timing.slotSeconds.isFinite, timing.slotSeconds > 0 else { return nil }
             let allowance = VoiceLabAudioTags.allowance(review.hunk.audioTags, text: patch, modelID: VoiceLabWordingFit.modelID)
             let baseline = try VoiceLabPhraseTiming.estimate(text: patch, rate: rate)
             let speech = Double(VoiceLabTextLength.length(patch)) / (rate * VoiceLabPhraseTiming.providerSpeechRateMultiplier)
@@ -74,6 +77,19 @@ extension RewriteSession {
                 direction: length > (timing.maximumSeconds ?? timing.slotSeconds) ? "shorter" : "longer",
                 target: target, measuredSeconds: measured[ordinal], calibrated: samples.count >= 2)
         }
+        // A phrase the fit request can't take is priced as written, and its reason is logged (never its text).
+        let log = editor.app.log
+        let fittable = built.filter { phrase in
+            guard let reason = VoiceLabWordingFitService.refusal(phrase) else { return true }
+            Task { await log.write(LogEntry(level: .warn, category: "rewrite", message: "wording fit skipped phrase check=\(reason)")) }
+            return false
+        }
+        // One request takes 60 phrases; the rest are priced as written.
+        let limit = VoiceLabWordingFitService.maximumPhrases
+        if fittable.count > limit {
+            Task { await log.write(LogEntry(level: .warn, category: "rewrite", message: "wording fit capped phrases=\(fittable.count) limit=\(limit)")) }
+        }
+        return Array(fittable.prefix(limit))
     }
 
     func beginAutomaticWordingFit() async {
@@ -85,6 +101,13 @@ extension RewriteSession {
         let token = wordingFit.token
         do {
             wordingFit.phrases = try fitPhrases(ordinals: blockedVoiceOrdinals)
+            guard !wordingFit.phrases.isEmpty else {
+                // Nothing here can be reworded to a slot (only added sentences): price them as written and go on.
+                wordingFit.completed = true
+                priceHeldBackChanges()
+                showProposal()
+                return
+            }
             for phrase in wordingFit.phrases { wordingFit.initialEstimates[phrase.ordinal] = phrase.estimateSeconds }
             let service = VoiceLabWordingFitService(shared: shared)
             let quote = try await service.prepare(wordingFit.phrases, connector: connector.connector.id, model: connector.model,
@@ -131,6 +154,7 @@ extension RewriteSession {
                         fitting: wordingFit.frozen, kept: wordingFit.kept, stopped: wordingFit.stopped)
                     if ordinals.isEmpty { break }
                     wordingFit.phrases = try fitPhrases(ordinals: ordinals)
+                    if wordingFit.phrases.isEmpty { break }
                     wordingFit.round += 1
                     showProposal()
                     let language = project.transcript?.language ?? "en"
@@ -261,7 +285,8 @@ extension RewriteSession {
             var tried = triedWordings(phrase, plan: plan)
             let bridge = plan.bridge(phrase: suggestion.phrase)
             func request(_ tried: [VoiceLabFitTried]) -> VoiceLabFitPhrase {
-                VoiceLabFitPhrase(ordinal: ordinal, original: readings.flatMap(\.removed).joined(separator: " "),
+                // An added sentence removed nothing; the request still names that, rather than sending no original words.
+                VoiceLabFitPhrase(ordinal: ordinal, original: { let removed = readings.flatMap(\.removed).joined(separator: " "); return removed.isEmpty ? "(none: new words)" : removed }(),
                     proposed: phrase.text, estimateSeconds: seconds, slotSeconds: phrase.originalLength,
                     direction: suggestion.tooLong ? "shorter" : "longer", target: target,
                     measuredSeconds: suggestion.measuredSeconds, calibrated: true, tried: tried.isEmpty ? nil : tried, bridge: bridge)

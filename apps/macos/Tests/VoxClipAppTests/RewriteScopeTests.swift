@@ -233,6 +233,23 @@ private final class WorkThreads: Sendable {
         #expect(!session.task.wordingLocked)
     }
 
+    /// MVP25 (2026-11-05): a viral rewrite turned one short word into two sentences. Its slot was so short that the
+    /// word target's minimum was 0, the fit request refused it, and the whole wording fit failed with invalidInput.
+    /// A phrase no wording can fit is priced as written now, and the others still go to the fit.
+    @Test func aPhraseNoWordingCanFitIsPricedAsWrittenNotSentToTheWordingFit() async throws {
+        let (session, stub, editor) = try await fitFixture(selected: ["w20"])
+        defer { editor.close() }
+        try session.receivePassage("Stop scrolling right now. Here is the truth that nobody ever tells you about this.")
+        session.finishRun(seconds: 0.1)
+        let blocked = session.blockedVoiceOrdinals
+        let phrases = try session.fitPhrases(ordinals: blocked)
+        #expect(phrases.allSatisfy { $0.target.minimum > 0 && $0.target.maximum >= $0.target.minimum })
+        await stub.configureFit([try fitReply("Stop scrolling.")])
+        await session.beginAutomaticWordingFit()
+        #expect(!session.wordingFit.problem.contains("ElevenLabs can't take"), "\(session.wordingFit.problem)")
+        #expect(session.wordingFit.problem.isEmpty, "\(session.wordingFit.problem) blocked \(blocked)")
+    }
+
     @Test func automaticWordingKeepsTheRecordingOnlyForAStructuredDecision() async throws {
         let (session, stub, editor) = try await fitFixture()
         defer { editor.close() }

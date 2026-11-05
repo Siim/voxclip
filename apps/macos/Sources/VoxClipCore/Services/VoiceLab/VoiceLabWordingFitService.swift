@@ -12,13 +12,28 @@ public actor VoiceLabWordingFitService {
     private let now: @Sendable () -> Duration = VoiceLabQuoteClock.continuousSource()
     public init(shared: SharedResources) { self.shared = shared }
 
+    /// Why the fit request would refuse this phrase, or nil when it can be sent. A caller drops a refused phrase (it is
+    /// priced as written) and logs the reason, so one phrase never fails the whole fit.
+    /// The most phrases one fit request takes.
+    public static let maximumPhrases = 60
+
+    public static func refusal(_ phrase: VoiceLabFitPhrase) -> String? {
+        if phrase.ordinal <= 0 { return "ordinal" }
+        if phrase.original.isEmpty { return "original_empty" }
+        if phrase.proposed.isEmpty { return "proposed_empty" }
+        if phrase.original.utf8.count > 20_000 || phrase.proposed.utf8.count > 20_000 { return "text_too_long" }
+        if !phrase.estimateSeconds.isFinite || phrase.estimateSeconds <= 0 { return "estimate" }
+        if !phrase.slotSeconds.isFinite || phrase.slotSeconds <= 0 { return "slot" }
+        if !["longer", "shorter"].contains(phrase.direction) { return "direction" }
+        if phrase.target.minimum <= 0 { return "target_minimum" }
+        if phrase.target.maximum < phrase.target.minimum || phrase.target.maximum > 2_000 { return "target_maximum" }
+        if let measured = phrase.measuredSeconds, !(measured.isFinite && measured > 0) { return "measured" }
+        return nil
+    }
+
     public func request(_ phrases: [VoiceLabFitPhrase], connector: ConnectorID, language: String) throws -> LLMRequest {
-        guard !phrases.isEmpty, phrases.count <= 60, Set(phrases.map(\.ordinal)).count == phrases.count,
-              phrases.allSatisfy({ $0.ordinal > 0 && !$0.original.isEmpty && !$0.proposed.isEmpty &&
-                  $0.original.utf8.count <= 20_000 && $0.proposed.utf8.count <= 20_000 &&
-                  $0.estimateSeconds.isFinite && $0.estimateSeconds > 0 && $0.slotSeconds.isFinite && $0.slotSeconds > 0 &&
-                  ["longer", "shorter"].contains($0.direction) && $0.target.minimum > 0 && $0.target.maximum >= $0.target.minimum &&
-                  $0.target.maximum <= 2_000 && ($0.measuredSeconds.map { $0.isFinite && $0 > 0 } ?? true) }),
+        guard !phrases.isEmpty, phrases.count <= Self.maximumPhrases, Set(phrases.map(\.ordinal)).count == phrases.count,
+              phrases.allSatisfy({ Self.refusal($0) == nil }),
               language.range(of: #"\A[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*\z"#, options: .regularExpression) != nil else {
             throw VoiceLabError.invalidInput
         }

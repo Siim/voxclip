@@ -3,6 +3,27 @@ import Testing
 @testable import VoxClipCore
 
 @Suite(.offlineFixtures) struct VoiceLabWordingFitTests {
+    /// One phrase the fit request can't take names its check, so the App drops just that phrase (priced as written)
+    /// and logs the check, instead of the whole fit failing with invalidInput (MVP25, 2026-11-05).
+    @Test func aRefusedPhraseNamesItsCheck() async throws {
+        let target = try VoiceLabWordingFit.wordTarget(wordsPerSecond: 2, multiplier: 1, minimumSeconds: 1, maximumSeconds: 2, overheadSeconds: 0)
+        func phrase(original: String = "a similar way", proposed: String = "I use a similar method as",
+                    slot: Double = 2, direction: String = "shorter") -> VoiceLabFitPhrase {
+            VoiceLabFitPhrase(ordinal: 1, original: original, proposed: proposed, estimateSeconds: 3, slotSeconds: slot,
+                direction: direction, target: target, calibrated: true)
+        }
+        #expect(VoiceLabWordingFitService.refusal(phrase()) == nil)
+        #expect(VoiceLabWordingFitService.refusal(phrase(original: "")) == "original_empty")
+        #expect(VoiceLabWordingFitService.refusal(phrase(proposed: "")) == "proposed_empty")
+        #expect(VoiceLabWordingFitService.refusal(phrase(slot: 0)) == "slot")
+        #expect(VoiceLabWordingFitService.refusal(phrase(direction: "sideways")) == "direction")
+        // The request refuses exactly what refusal names.
+        let service = VoiceLabWordingFitService(shared: try SharedResources.locate())
+        await #expect(throws: VoiceLabError.invalidInput) {
+            _ = try await service.request([phrase(), phrase(slot: 0)], connector: .ollama, language: "en")
+        }
+    }
+
     struct Vectors: Decodable {
         struct Target: Decodable {
             struct Input: Decodable {

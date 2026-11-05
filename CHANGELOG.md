@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Rewrite prices a phrase the wording fit can't take as written, instead of stopping the whole fit with "invalid input".
 - Rewrite takes work on camera files whose audio runs a few milliseconds past the video, such as DJI recordings.
 - Seven new caption styles in Roboto Black (Marker, Punch-in, Sing-along, Heavy shadow, Glow, Emoji pop, Minimal), and a "How should clips be made?" card above the clips: pick Auto and Claude chooses a caption style for each clip and says why, or fix your own style and it is never changed.
 - Behind the scenes, the Make it postable planner now picks only a video's strongest moments and lands each clip at 20–45 s, plans a 6-minute video in under two minutes, fixes misheard names in the captions, and chooses a caption style, a colour look and, where it helps, a speed for each clip.
