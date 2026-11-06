@@ -484,6 +484,20 @@ extension ProviderChoice {
     /// the smoke's data folder is temporary.
     func forgetRateCalibrationsForSmoke() { rateCalibrations = [:] }
     #endif
+    /// A new video voice (voice-lab §6.13) starts from its anchor's length calibration; its own takes then take over.
+    /// Nothing happens when the anchor has none or the new voice already has its own.
+    func seedRateCalibration(from anchorID: String, to recordID: String) {
+        guard VoiceLabRateCalibrationStore.isValid(recordId: recordID), rateCalibrations[recordID] == nil,
+              let anchor = rateCalibrations[anchorID], !anchor.models.isEmpty else { return }
+        let seeded = VoicePerVideo.seededCalibration(from: anchor, recordId: recordID)
+        rateCalibrations[recordID] = seeded
+        guard persistsRateCalibration else { return }
+        let store = rateCalibrationStore, log = log
+        Task.detached(priority: .utility) {
+            do { try await store.save(seeded) }
+            catch { await log.write(LogEntry(level: .warn, category: "voice-lab", message: "rate calibration write failed")) }
+        }
+    }
     /// One measured take for its voice and model, kept in memory now and on disk in the background.
     func recordRateCalibration(recordID: String, model: String, take: String, measured: Double, estimated: Double) {
         guard VoiceLabRateCalibrationStore.isValid(recordId: recordID) else { return }

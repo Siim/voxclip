@@ -246,7 +246,7 @@ extension VoiceLabSession {
         return sources
     }
 
-    private func rebuildError(_ error: any Error) async -> String {
+    func rebuildError(_ error: any Error) async -> String {
         if let error = error as? VoiceConsentError, error == .speakerMismatch {
             return "Some of this speech doesn't sound like your consent recording, and too little is left. Nothing was sent."
         }

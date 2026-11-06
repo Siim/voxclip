@@ -244,6 +244,7 @@ extension RewriteSession {
                         measured: Double(audio.trimmed.count) / Double(audio.sampleRate) * (input.pace ?? 1), baseline: estimate)
                 }
             }
+            measureVideoVoiceMatch(plan)
             // Once an approved price armed the automatic fixes, they make this round (RewriteAutoFix.swift).
             guard autoFix.plan !== plan else { advanceAutoFix(); return }
             guard connector != nil, wordingFit.measuredWork == nil, wordingFit.measured == nil,

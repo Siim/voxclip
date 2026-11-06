@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Mac, Rewrite can make a matching voice for each video from that video's own verified speech, asked once inline and remembered: every take in the video uses it, the previous video's voice is removed, your consent voice stays, and Settings › Voices shows how close takes sound to your speech.
 - On Mac, a Rewrite take far too short or too long for every video duration now keeps that phrase's original audio by itself, says why in one line, and Use applies the rest; the footer never asks for a duration it can't offer.
 - On Mac, Settings › Voices can rebuild your voice from your clearest speech across your videos, checked against your consent recording, with one priced click and a separate step to switch Rewrite to it and remove the old voice; and generated takes are gently tilted to match the tone of your speech beside them.
 - On Windows, Rewrite predicts take lengths from the measured prior and learns each voice's pace across projects, writes each line to fit its time in the video, keeps a line that still can't fit as recorded, and settles a phrase that doesn't sound like your voice with Keep as recorded or Say it myself instead of a dead end

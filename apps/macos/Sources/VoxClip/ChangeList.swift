@@ -221,6 +221,8 @@ extension RewriteSession {
             }
             if footer.steps == nil { cards += withReaskNotice(stuckSteps()).map(PanelCard.nextSteps) }
         }
+        // A matching voice for this video (voice-lab §6.13): the one-time question, or what the video's voice is doing.
+        if set.voiceCount > 0, let steps = videoVoiceSteps() { cards.insert(.nextSteps(steps), at: 0) }
         return ProposalContent(set: set, headline: headline, cards: cards, footer: footer.footer, askAgain: askAgain)
     }
 

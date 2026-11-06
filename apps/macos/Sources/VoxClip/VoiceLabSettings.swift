@@ -94,6 +94,7 @@ enum LipSyncAvailability {
                     .accessibilityLabel(Self.actionAccessibilityLabel("Remove unfinished voice", context: context))
             }
             VoiceRecoveryRows(session: session, shared: app.shared)
+            if session.records.contains(where: { $0.status == .active && $0.projectConsent != nil }) { VideoVoiceRows(session: session) }
             Text("Make your voice from Rewrite when a phrase needs it.").font(.caption)
             Text(session.speakerMessage).font(.caption).foregroundStyle(.secondary)
         }
@@ -184,6 +185,51 @@ enum LipSyncAvailability {
             }
         }
         Text("Checks speech in your projects on this Mac against your consent recording. Free; nothing is sent.").font(.caption).foregroundStyle(.secondary)
+    }
+}
+
+/// A matching voice for each video (voice-lab §6.13, ADR-R45): the remembered answer, which video has its own voice,
+/// a removal still owed, and how close takes sound to the speech beside them.
+@MainActor struct VideoVoiceRows: View {
+    @Bindable var session: VoiceLabSession
+    var body: some View {
+        let anchor = session.anchorVoice(language: nil).map { VoiceLabSession.rebuildName($0.voiceName) } ?? "your voice"
+        VStack(alignment: .leading, spacing: VCTokens.spacingLabelGap) {
+            Picker("Each video", selection: Binding(get: { session.videoVoiceMode }, set: { session.setVideoVoiceMode($0) })) {
+                Text("Make a matching voice").tag(VoicePerVideo.Mode.match)
+                Text("Use \(anchor)").tag(VoicePerVideo.Mode.anchor)
+                Text("Ask in Rewrite").tag(VoicePerVideo.Mode.ask)
+            }
+            .accessibilityIdentifier("voice-per-video-mode")
+            Text(Self.modeLine(session.videoVoiceMode, anchor: anchor)).font(.caption).foregroundStyle(.secondary)
+            ForEach(session.perVideoBook.videos, id: \.recordId) { video in
+                let name = session.records.first { $0.id == video.recordId }?.voiceName ?? video.title
+                Text("\(name) · \(VoiceRebuild.amount(Int(video.videoSeconds * 1_000))) of \(video.title)\(video.removesBackgroundNoise ? ", background noise removed" : "")")
+                    .font(.caption).accessibilityIdentifier("voice-per-video-\(video.recordId)")
+            }
+            if let note = session.perVideoNote {
+                HStack {
+                    Text(note).font(.caption).accessibilityIdentifier("voice-per-video-note")
+                    if session.perVideoBook.removals.contains(where: { $0.lastError != nil }) {
+                        Button("Retry now") { Task { await session.removePreviousVideoVoices() } }.disabled(session.busy)
+                    }
+                }
+            }
+            if !session.perVideoBook.measurements.isEmpty {
+                Text("How close takes sound to your speech beside them (1.00 is the same voice):").font(.caption)
+                ForEach(session.perVideoBook.measurements, id: \.contentKey) { measurement in
+                    Text(VoiceLabSession.matchLine(measurement, anchor: anchor)).font(.caption).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("voice-per-video-match-\(measurement.contentKey.prefix(8))")
+                }
+            }
+        }
+    }
+    static func modeLine(_ mode: VoicePerVideo.Mode, anchor: String) -> String {
+        switch mode {
+        case .match: "Each video gets a voice made from its own speech, so takes sound like that recording. The previous video's voice is removed; \(anchor) stays."
+        case .anchor: "Every video uses \(anchor)."
+        case .ask: "Rewrite asks once, on the next video that needs your voice."
+        }
     }
 }
 

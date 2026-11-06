@@ -101,9 +101,11 @@ public actor VoiceEnrollment {
         return plan
     }
 
+    /// `removeBackgroundNoise` asks ElevenLabs to clean the samples (§6.5 step 5): a per-video voice (§6.13) sets it when
+    /// a piece of its video is under 20 dB SNR. The quote binds it like every other creation setting.
     public func prepareProjectPlan(recordID: String, language: String, attestations: VoiceConsentRecord.Attestations,
                                    displayName: String, samples: [VoiceTrainingSample], enabled: Bool,
-                                   now: Date = Date()) async throws -> VoiceEnrollmentPlan {
+                                   removeBackgroundNoise: Bool = false, now: Date = Date()) async throws -> VoiceEnrollmentPlan {
         guard enabled else { throw VoiceLabError.consentRequired }
         guard attestations.complete else { throw VoiceConsentError.attestationsRequired }
         guard speaker.supports(language: language), let threshold = speaker.threshold else { throw VoiceConsentError.speakerUnavailable }
@@ -143,7 +145,7 @@ public actor VoiceEnrollment {
         let verification = Verified(statement: nil, match: nil, hash: consent.audioSha256, attestations: attestations, projectConsent: consent)
         let request = VoiceLabCloneRequest(displayName: name, language: language,
                                           samples: accepted.map { .init(role: .training, wav: $0.wav) }, createdAt: now,
-                                          removeBackgroundNoise: false, recoveryNonce: recordID)
+                                          removeBackgroundNoise: removeBackgroundNoise, recoveryNonce: recordID)
         let policy = OwnVoicePolicy(recordID: recordID, recordActive: true, providerConsentGranted: true,
                                     statementVerified: false, speakerMatched: true, consentMethod: .projectAttestation)
         let create = try await client.prepareEnrollmentClone(request, policy: policy, requestID: UUID())

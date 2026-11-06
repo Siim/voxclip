@@ -2,7 +2,7 @@ import Foundation
 
 extension SettingsDocument {
     static func isKnownKey(_ key: String) -> Bool {
-        defaults[key] != nil || ["llm.baseUrl.ollama", "llm.baseUrl.lmstudio", ClipsMode.key, RewriteToneCatalog.settingsKey].contains(key) || layoutRanges[key] != nil || layoutChoices[key] != nil ||
+        defaults[key] != nil || ["llm.baseUrl.ollama", "llm.baseUrl.lmstudio", ClipsMode.key, RewriteToneCatalog.settingsKey, VoicePerVideo.settingKey].contains(key) || layoutRanges[key] != nil || layoutChoices[key] != nil ||
         ProjectValidation.matches(key, "(?:llm\\.model|llm\\.cloudConsent|voiceLab\\.providerConsent|voiceLab\\.monthlyCapUsd)\\.[a-z0-9]+(?:-[a-z0-9]+)*")
     }
 
@@ -136,6 +136,11 @@ extension SettingsDocument {
                 if value == .null { continue }
                 guard case .string(let text) = value else { throw VoxClipError.projectUnreadable("Invalid Rewrite voice") }
                 try ProjectValidation.text(text, pattern: "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+            case VoicePerVideo.settingKey:
+                // "Make a matching voice from this video?" (voice-lab §6.13): true matches each video, false keeps the
+                // consent voice, null or missing asks once. No default.
+                if value == .null { continue }
+                guard case .bool = value else { throw VoxClipError.projectUnreadable("Invalid per-video voice setting") }
             case "captions.defaultStyleId", "transcription.language", "export.fileNamePattern", "llm.connector", "llm.cliPath.claude-code", "llm.cliPath.codex", "llm.baseUrl.ollama", "llm.baseUrl.lmstudio":
                 guard case .string(let text) = value else { throw VoxClipError.projectUnreadable("Invalid text setting") }
                 if key == "captions.defaultStyleId" { try ProjectValidation.text(text, pattern: ProjectValidation.slugPattern) }

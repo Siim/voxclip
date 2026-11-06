@@ -69,13 +69,16 @@ public enum VoiceRebuild {
     ///    lowest (ties: SNR, score, video, start), until 24 files or 120 s; a piece that would pass 120 s is skipped and
     ///    a later, shorter one may still fit.
     /// `keptMs` (the existing reference sample, already verified as the statement itself) counts toward both limits.
-    public static func pick(_ candidates: [Candidate], threshold: Double, keptMs: Int? = nil) -> Plan {
+    /// `minimumSnrDb` is the cleanliness floor only: a per-video voice (§6.13, ADR-R45) lowers it and asks ElevenLabs to
+    /// remove the background noise; identity is still one hop at `threshold`, whatever the floor.
+    public static func pick(_ candidates: [Candidate], threshold: Double, keptMs: Int? = nil,
+                            minimumSnrDb floor: Double = minimumSnrDb) -> Plan {
         var rejected: [Rejection: Int] = [:]
         var pool: [Candidate] = []
         for candidate in candidates {
             let rejection: Rejection?
             if !(candidate.score.isFinite && candidate.score >= threshold) { rejection = .notTheOwner }
-            else if !(candidate.snrDb.isFinite && candidate.snrDb >= minimumSnrDb) { rejection = .noisy }
+            else if !(candidate.snrDb.isFinite && candidate.snrDb >= floor) { rejection = .noisy }
             else if !(minimumPieceMs...maximumPieceMs).contains(candidate.durationMs) { rejection = .length }
             else { rejection = nil }
             if let rejection { rejected[rejection, default: 0] += 1 } else { pool.append(candidate) }
