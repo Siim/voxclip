@@ -21,7 +21,8 @@ internal sealed class VoiceLabBackend(DataLocations data, IKeyProvider keys, ILo
     TimeProvider? timeProvider = null, Func<ElevenLabsRegion, IVoiceLabAccount>? accountFactory = null,
     Func<IReadOnlyList<string>>? learningProjects = null, Func<string, CancellationToken, Task<VoiceLabProjectSource?>>? readProject = null,
     Func<string, VoiceSpeakerProbe?>? speaker = null, Func<string, CancellationToken, Task>? setRewriteVoice = null, Func<string?>? rewriteVoice = null,
-    Func<float[], int, CancellationToken, Task>? play = null) : IVoiceLabBackend, IDisposable
+    Func<float[], int, CancellationToken, Task>? play = null, Func<bool?>? matchEachVideo = null,
+    Func<bool?, CancellationToken, Task>? setMatchEachVideo = null, Action<string, string>? seedCalibration = null) : IVoiceLabBackend, IDisposable
 {
     private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
     private readonly VoiceConsentStore store = new(data, timeProvider);
@@ -130,6 +131,61 @@ internal sealed class VoiceLabBackend(DataLocations data, IKeyProvider keys, ILo
         var (samples, rate) = sample.Pcm();
         return play?.Invoke(samples, rate, ct) ?? Task.CompletedTask;
     }
+    /// <summary>The per-video book (voice-lab.md §6.13), in app data.</summary>
+    public VoicePerVideoStore? PerVideoStore { get; } = new(data);
+    public bool? MatchEachVideo() => matchEachVideo?.Invoke();
+    public Task SetMatchEachVideoAsync(bool? value, CancellationToken ct)
+    {
+        RequireEnabled(ct);
+        return setMatchEachVideo?.Invoke(value, ct) ?? throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
+    }
+    public string? VideoVoicePrice()
+    {
+        try { return VoicePerVideo.PriceLabel(VoiceLabPrices.Load()); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or VoiceLabException) { return null; }
+    }
+    /// <summary>One video's own speech under the per-video rules (8 dB, 30 s of its own). Behind the closed parity gate there is no speaker
+    /// check, so this refuses before reading any media.</summary>
+    public async Task<VoiceRebuildFind> FindVideoVoiceAsync(string anchorId, VoiceLabProjectSource source, CancellationToken ct)
+    {
+        RequireEnabled(ct);
+        // The closed parity gate refuses before the consent store or the media is read.
+        if (Speaker(CreateVoiceSession.StatementLanguage(source.Project.Transcript?.Language, _ => true)) is null)
+            throw new VoiceRebuildFailedException(VoiceRebuildFailureKind.Unavailable);
+        var record = store.Load(anchorId);
+        var probe = Speaker(record.Language) ?? throw new VoiceRebuildFailedException(VoiceRebuildFailureKind.Unavailable);
+        try
+        {
+            var found = await new VoiceRebuildFinder(store, probe).FindAsync(anchorId, [new(source.Project, source.Media)], VoiceRebuildFinder.Rules.PerVideo,
+                ct: ct).ConfigureAwait(false);
+            return new(VoiceRebuild.Summary(found.Plan), found.Samples.Select(sample => sample.Seconds).ToArray(), found,
+                VoicePerVideo.RemovesBackgroundNoise(found.Plan), VoicePerVideo.VideoMs(found.Plan));
+        }
+        catch (VoiceRebuildFailedException error) when (error.Kind == VoiceRebuildFailureKind.NotEnough)
+        { throw new VoiceRebuildNotEnoughException(error.Milliseconds, error.Noisy); }
+    }
+    /// <summary>A video's voice through the attested creation (§6.13): the anchor's creator checked first, its attestations, the found
+    /// speech with the anchor's consent clip first and the noise flag, one journaled creation, then the anchor's references carried one hop.
+    /// The shipping enrollment has no speaker check, so preparation refuses with SpeakerUnavailable before any provider access.</summary>
+    public async Task<VoiceRebuildCreated> CreateVideoVoiceAsync(VoiceConsentRecord anchor, VoiceRebuildFind found, string displayName, CancellationToken ct)
+    {
+        // The closed parity gate: no speaker check, so nothing is created, sent or paid for.
+        RequireEnabled(ct);
+        if (Speaker(anchor.Language) is null) throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
+        var (client, enrollment) = RebuildCreation(ct);
+        await client.ValidateCreatorAsync(anchor.CreatorIdentity, ct).ConfigureAwait(false);
+        var plan = await enrollment.PrepareProjectPlanAsync(Guid.NewGuid().ToString("D"), anchor.Language, anchor.Attestations, displayName,
+            ((VoiceRebuildFinder.Found)found.Ticket).Samples, Enabled, removeBackgroundNoise: found.RemovesBackgroundNoise, ct: ct).ConfigureAwait(false);
+        var quote = new VoiceRebuildQuote(plan.RecordId, plan.Quote.Estimate.Usd, plan.TrainingMilliseconds, plan);
+        return await ApproveRebuildAsync(anchor.RecordId, quote, ct).ConfigureAwait(false);
+    }
+    public void SeedRateCalibration(string fromRecordId, string toRecordId) => seedCalibration?.Invoke(fromRecordId, toRecordId);
+    public async Task<double?> ScoreTakeMatchAsync(VoiceLabTakeAudio take, VoiceLabTakeInput input, CancellationToken ct)
+    {
+        RequireEnabled(ct);
+        return Speaker(input.Language) is { } probe ? await VoicePerVideoMatch.ScoreAsync(take, input, probe, ct).ConfigureAwait(false) : null;
+    }
+    public void Log(string message) => log.Write(LogLevel.Info, "voice-lab", message);
     public void Dispose() { rebuildCreation?.Client.Dispose(); rebuildCreation = null; }
     internal static void ReconcileLocalStatements(DataLocations data) => new VoiceConsentStore(data).ReconcileAbandonedEnrollments();
     public bool Enabled => enabled();

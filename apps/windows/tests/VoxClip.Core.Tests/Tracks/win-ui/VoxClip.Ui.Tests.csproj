@@ -62,6 +62,7 @@
     <Compile Include="VoiceLabSessionTests.cs" />
     <Compile Include="VoiceLabLearningTests.cs" />
     <Compile Include="VoiceRebuildFlowTests.cs" />
+    <Compile Include="VideoVoiceFlowTests.cs" />
     <Compile Include="VoiceLabRecoveryTests.cs" />
     <Compile Include="TakeRowPresentationTests.cs" />
     <Compile Include="PaidTakePlaybackTests.cs" />

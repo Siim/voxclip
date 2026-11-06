@@ -113,7 +113,15 @@ internal sealed class AppServices : IAsyncDisposable
                     await save!;
                 },
                 rewriteVoice: () => Settings.GetString(VoiceRebuild.RewriteVoiceKey),
-                play: VoxClip.Media.Audio.PhraseCueOutput.PlayAsync);
+                play: VoxClip.Media.Audio.PhraseCueOutput.PlayAsync,
+                matchEachVideo: () => Settings.GetBool(VoicePerVideo.SettingKey),
+                setMatchEachVideo: async (value, ct) =>
+                {
+                    Task? save = null;
+                    await OnUiAsync(() => save = SetAsync(VoicePerVideo.SettingKey, value, ct));
+                    await save!;
+                },
+                seedCalibration: (from, to) => RateCalibrations.Seed(from, to));
 #if DEBUG
             var fixtures = Environment.GetEnvironmentVariable("VOXCLIP_DEBUG_VOICELAB");
             if (fixtures?.StartsWith("fixtures:", StringComparison.Ordinal) == true)

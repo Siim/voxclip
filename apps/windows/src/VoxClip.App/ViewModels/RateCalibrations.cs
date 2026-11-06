@@ -46,6 +46,27 @@ internal sealed class RateCalibrations(VoiceLabRateCalibrationStore? store, Acti
         }
     }
 
+    /// <summary>A video's new voice starts from its anchor's measured takes (voice-lab.md §6.13; Mac <c>AppModel.seedRateCalibration</c>):
+    /// <see cref="VoicePerVideo.SeededCalibration"/>, in memory now and on disk in the background. Its own takes then replace them. Nothing
+    /// happens when the anchor has no calibration or the new voice already has one.</summary>
+    internal void Seed(string fromRecordId, string toRecordId)
+    {
+        if (!VoiceLabRateCalibrationStore.IsValid(fromRecordId) || !VoiceLabRateCalibrationStore.IsValid(toRecordId) || fromRecordId == toRecordId) return;
+        lock (gate)
+        {
+            if (!cache.TryGetValue(fromRecordId, out var anchor) || anchor.Models.Count == 0 || cache.ContainsKey(toRecordId)) return;
+            var seeded = VoicePerVideo.SeededCalibration(anchor, toRecordId);
+            cache[toRecordId] = seeded;
+            if (store is null) return;
+            writes = writes.ContinueWith(async _ =>
+            {
+                try { await store.SaveAsync(seeded).ConfigureAwait(false); }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or VoiceLabLengthBudgetException)
+                { log?.Invoke("rate calibration seed failed"); }
+            }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default).Unwrap();
+        }
+    }
+
     /// <summary>One measured take for its voice and model: in memory now, on disk in the background.</summary>
     internal void Record(string recordId, string model, string take, double measured, double estimated)
     {

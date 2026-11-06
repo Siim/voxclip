@@ -1,5 +1,61 @@
 # Windows fixed contracts
 
+### 2026-11-06 — Windows: a matching voice per video, the App side: the session, the R2 card, Settings › Voices "Each video" and the take match (track/v2-win-per-video-app)
+
+Twin of the Mac track/v2-per-video-voice App side (ADR-R45; voice-lab.md §6.13; design.md R2 "A matching voice for this video" and Settings › Voice Lab "Each video"). It closes parity 3's "Owed: step 3, App". The reference is Mac `VoiceLabSession+PerVideo.swift`, `RewriteVideoVoice.swift`, `VideoVoiceFlowTests` and `DebugRewriteSmokeVideoVoice.swift`.
+
+- **1 · `VoiceLabSession`, per video** (439d11ad; `VoiceLabSession.PerVideo.cs`, `VideoVoiceState`/`VideoVoicePhase`, new `IVoiceLabBackend` members with inert defaults, `VoiceLabBackend` implementations, `RateCalibrations.Seed`, `VoiceRebuildFind.VideoMilliseconds`):
+  - `VideoVoiceMode` reads `voiceLab.matchEachVideo` (`MatchEachVideo`), and `SetVideoVoiceModeAsync` writes true, false or null. `VideoVoicePrice` is `VoicePerVideo.PriceLabel` of the catalogue ("free").
+  - `AnchorVoice` is an active voice in the statement language that is not a video's voice, `voiceLab.rewriteVoice` first. `RewriteVoicePreference` gives the video's own voice in "match", otherwise the anchor, never another video's voice.
+  - `OffersVideoVoice` needs Voice Lab on, a transcript and content key, an attested (`/2`) anchor, and the speaker check ready for it (`LearningAvailable`).
+  - `MakeVideoVoice` follows the Mac order: the stored voice when active; once-only short notes (`ShortNoted`); find on this PC (`FindVideoVoiceAsync`, per-video rules); then one attested creation (`CreateVideoVoiceAsync`: the anchor's creator checked, its attestations, its consent clip first, `removeBackgroundNoise` from the pieces, the journal, references carried one hop). After that it seeds the calibration from the anchor's, writes the book with `Adding`, and removes the previous voice.
+  - `RemovePreviousVideoVoicesAsync` deletes through the existing `DeleteAsync` (creator binding, journal, tombstone). It never deletes the anchor or the current voice, and keeps a voice an open Rewrite holds unused paid takes of (`PendingTakeVoices`, from the Editor's Rewrite). A failure stays owed with `Attempts`, `LastError` and `NextAttemptAt` (30 s doubling to 1 h), and a background retry runs on the session clock (`RemovalRetryWork`).
+  - `RemovalNote`, `RecordTakeMatchAsync` (the first take with the video's voice is kept; the anchor's takes are pooled), `MatchLine`, `ModeLine`, `ModeChoices` and `VideoLine` are the Mac's copy. The book is read after every records load (`LoadPerVideoAsync`). Voices deleted elsewhere leave it, and a failed removal schedules its retry.
+- **2 · The R2 card** (6d6b511c; `RewriteSession.VideoVoice.cs`; `DiscoverWindowsAsync`; `NextStepCards`; `MakeItRewriteDriver` docs; `EditorPage.ConfigureRewriteGeneration`):
+  - Card `Rewrite.Steps.VideoVoice` sits at the top, with no free-text field.
+    - Unset: the question plus "Only your clearest speech from this video is sent to ElevenLabs; no video.", with **Match this video · {price}** (`Rewrite.Chip.VideoVoiceMatch`; "price unknown" plus a line when the catalogue has none) and **Use {anchor}** (`Rewrite.Chip.VideoVoiceAnchor`). It is never shown beside paid takes.
+    - "match": the making line, the too-little line once per run, and the failure line with **Try Again** (`Rewrite.Chip.VideoVoiceRetry`).
+  - `EnsureVideoVoiceAsync` is the first step of `DiscoverWindowsAsync`, under "Checking it's your voice…" while no price is shown or approvable. It makes the voice (or awaits it), then chooses it on every window, listing again a window discovered before the voice existed. Every new window prefers `PreferredVoiceForVideo`, then its own `voiceLab.rewriteVoice` preference.
+  - `MakeItRewriteDriver` never presses the card, so ✦ Make it postable and ✦ Claude does it all (which voices through it) go on with the anchor while the answer is unset. With "match" they make the voice like a manual Get Price.
+  - The take-match observer (`MeasureVideoVoiceMatch`, from `ObserveMeasuredTakes`) scores each paid take once in the background through `ScoreTakeMatchAsync` (Media `VoicePerVideoMatch.ScoreAsync`) and records it.
+- **3 · Settings › Voices "Each video"** (8172d41c; `VoiceLabSettingsPane.AddVideoVoiceRows`):
+  - The rows show only when `ShowsVideoVoiceRows`.
+  - **Each video** is a ComboBox (Make a matching voice · Use {anchor} · Ask in Rewrite) that writes the setting. Below it: its line, each video's voice line, an owed removal's note with **Retry now** (only after a failure), and the match lines under "How close takes sound to your speech beside them (1.00 is the same voice):".
+  - The pane keeps its one live region. The mode, note and match lines go through `AnnounceLine(…, announceFirst: initialLoadComplete)`, so a line already there at open is not read out, and a later change is read once.
+- **4 · The take-match diagnostic and the shipping gate** (94e65bf9). `VoiceLabBackend.FindVideoVoiceAsync` refuses before the consent store or media is read, and `CreateVideoVoiceAsync` refuses with SpeakerUnavailable before any key read or client, when the speaker probe is null. `ScoreTakeMatchAsync` is null without a probe.
+- **What stays inert** (`VoiceSpeakerCheck.WindowsNativeParityVerified` false; the App's `VoiceLabBackend.Speaker` is `VoiceSpeakerProbe.From(VoiceSpeakerCheck.Unavailable)`, null):
+  - `LearningAvailable` is false, so `OffersVideoVoice` and `ShowsVideoVoiceRows` are false: no card, no Settings rows.
+  - `EnsureVideoVoiceAsync` and the take-match observer return at once. `MakeVideoVoice` returns the state unchanged before any call, even with the setting true, and `RemovePreviousVideoVoicesAsync` has nothing in the book to remove.
+  - `PreferredVoiceForVideo` is null, so Rewrite starts with `voiceLab.rewriteVoice` exactly as before.
+  - Even if called, the shipping backend's find and create refuse first. The shipping `VoiceEnrollment` has no speaker check either, a third gate. Nothing inert can create, use or remove a voice or spend money.
+  - The only live pieces are plain local reads: the setting, the price label, and the book (empty, never written).
+- **Tests** (win-ui; stubs only, the gate opened only by the stub backend's `LearningAvailable`):
+  - `VideoVoiceFlowTests` (15), twins of the Mac 5 plus the Rewrite, Settings and gate cases: the answer's states and memory; make, use and remove with the seeded calibration and the book in app data; pending takes, a failed removal's note, its 30 s and 60 s backoff and the background retry on a manual clock; too little speech said once across sessions; the take match pooled and kept; the closed gate in the session and in Rewrite; the card and Match this video; Get Price making the voice first and the next video removing the previous; Use siim; Make it postable never pressing the card; a failure with Try Again; the first take scored; Settings "Each video"; and the shipping backend's refusals behind the gate.
+  - Smoke twins in `RewriteSmokeTests` keep the I-invariants on every step:
+    - **S-voice-per-video** — PV1: the question with both answers, nothing sent. PV2: Match this video, one creation, every take in video 1's voice. PV3: video 2 by ✦ Make it postable, never asked, its own voice, video 1's deleted, the anchor kept.
+    - **S-voice-per-video-short** — PV4: too little speech, the anchor's takes, said once, not again in a later Rewrite.
+  - **Red without each rule**, one at a time (17), each failing at least one test: the stored answer; removing the previous voice; pending takes; keeping a failed removal; the backoff; said once (book); said once (run); the video voice preferred; the seeded calibration; first take kept; ensure at the start of Get Price; the gate in `OffersVideoVoice`; the gate in `MakeVideoVoice`; the card ignoring the stored answer; the take-match observer; the shipping backend's create gate and find gate.
+- **Verification** (macOS host, Release, `-m:1 -nodeReuse:false -p:UseSharedCompilation=false`, `VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`):
+  - Suites: Core 3,250 (3,221 passed, 29 skipped, 0 failed). Portable Media 1,007 (1,002 passed, 5 skipped, 0 failed). win-ui 1,377 (1,372 passed, 5 skipped, 0 failed).
+  - App type-check build: 0 warnings. `check-xaml.py`: 0 problems. `*ReleaseSurrogate*` passes.
+  - ReleaseBoundary `update` on the WinCheck surrogate (`VoxClip.txt`): 110 lines added and 4 replaced, declarations only, no literals. Core, Media and the CLI are unchanged and pass their allowlists.
+  - `check_drift.py` exit 0. `tools/voice-lab` unittests: 61 OK. `env -i … dotnet voxclip-cli.dll --runtime-terms --json` exits 0.
+- **Owed.**
+  - The real speaker check (ADR-R41's ONNX on real speech) before `WindowsNativeParityVerified` can open. Then a real per-video voice needs the user's opt-in click on their account.
+  - The anchor's takes accepted into projects before this package are not re-read by the diagnostic (as on the Mac).
+  - Optionally, a shared `voice-per-video-cases.json` both Cores replay.
+- **Native, hosted Windows CI only:**
+  - the WinUI App build, the XAML compiler and the App allowlist check against the real App (here the WinCheck surrogate stands in);
+  - the `RequiresWindows`/`RequiresFFmpeg` Media tests;
+  - the ONNX speaker check on real speech;
+  - real-window panel, Narrator and keyboard checks of the R2 card and the Settings "Each video" ComboBox and lines.
+- **Next package must know.**
+  - A video's voice is made only through `VoiceLabSession.MakeVideoVoice` with the stored answer "match". Nothing else creates or deletes one. Never delete a voice that is not in `VoicePerVideoBook.Removals`.
+  - A new path that prices takes must go through `DiscoverWindowsAsync`, or call `EnsureVideoVoiceAsync` first. Otherwise that video's takes use the anchor.
+  - A new take window made outside `ReconcileGenerationWindows`/`ConfigureGeneration` must call `PreferVideoVoice`.
+  - A new Rewrite host must call `ConfigureVideoVoice` and keep `VoiceLabSession.PendingTakeVoices` covering its paid takes.
+  - Opening the gate means making `VoiceLabBackend.Speaker` non-null. Every per-video path then goes live at once, so re-run these tests with the real probe on Windows.
+
 ### 2026-11-06 — Windows Rewrite parity 3: voice references in the App, Rebuild from my videos, a matching voice per video (Core and Media) (track/v2-win-parity-3)
 
 Twin of the Mac ADR-R41 (App side), ADR-R44 (rebuild) and ADR-R45 (per-video voice, Core and Media only), plus the owed Mac replay of `rewrite-slot-cases.json`. Spec: doc/spec/voice-lab.md §6.9, §6.12, §6.13; doc/design.md R2 "Not your voice here" and "A matching voice for this video".

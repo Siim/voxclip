@@ -6,7 +6,9 @@ namespace VoxClip.App.ViewModels;
 /// <c>MakeItRewriteDriver</c>: the planner's words are the session's reply, and the driver takes the steps a creator would, within
 /// the run's budget. Each priced step is checked against the budget before it runs; the click on ✦ Make it postable is its approval.
 /// It never discards a paid take, never sends the words to the AI again, and stops where the creator is needed. Rewrite already
-/// chooses a take whose only problem is the join's loudness (ADR-R39); the driver names those phrases for the review.</summary>
+/// chooses a take whose only problem is the join's loudness (ADR-R39); the driver names those phrases for the review. It never presses the
+/// "Make a matching voice from this video?" card (voice-lab.md §6.13): Get Price makes the video's voice first only with the stored answer
+/// "match", and with the answer unset the takes use the anchor.</summary>
 internal sealed class MakeItRewriteDriver(EditorViewModel editor, MakeItRewriteRequest request, Func<MakeItRewriteRequest, Task<RewriteSession?>> open,
     Func<CancellationToken, Task<VoiceLabMonthlyCap?>> readCap, Action<RewriteSession>? handOff = null)
 {

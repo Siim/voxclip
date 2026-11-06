@@ -644,6 +644,12 @@ if (insertion ||
     private void ConfigureRewriteGeneration(RewriteSession session)
     {
         session.ConfigureRateCalibrations(App.Services.RateCalibrations);
+        // A matching voice per video (§6.13): inert behind the closed parity gate, where Voice Lab offers none.
+        if (!demo)
+        {
+            session.ConfigureVideoVoice(App.Services.VoiceLab, () => media?.Path);
+            App.Services.VoiceLab.PendingTakeVoices = () => rewrite?.PendingTakeVoices ?? new HashSet<string>(StringComparer.Ordinal);
+        }
         session.ConfigureGenerationFactory(index => CreateRewriteGeneration(session, index));
         ConfigureRewriteMicrophone(session);
     }
