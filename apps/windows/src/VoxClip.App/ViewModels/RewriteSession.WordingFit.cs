@@ -95,9 +95,23 @@ internal sealed partial class RewriteSession
     }
     private string Language => Project.Transcript?.Language ?? "en";
 
-    /// <summary>This project's (and this session's measured) speaking-rate samples for a model.</summary>
-    internal IReadOnlyList<VoiceLabRateSample> RateSamples(string model) => sessionRates.TryGetValue(model, out var measured) ? measured :
-        Project.VoiceLab.SpeakingRateSamples?.GetValueOrDefault(model) ?? [];
+    private RateCalibrations? rateCalibrations;
+    /// <summary>The app's per-voice calibrations (ADR-R43); without them a phrase's estimate starts from the prior.</summary>
+    internal void ConfigureRateCalibrations(RateCalibrations calibrations) { rateCalibrations = calibrations; InvalidateEstimates(); }
+    private void InvalidateEstimates() { if (IsOpen && Review is not null) RefreshReview(preserveGenerations: true); }
+    /// <summary>The voice whose calibration a phrase's estimate starts from (ADR-R43): the chosen voice, else the only calibrated one.</summary>
+    internal VoiceLabVoiceCalibration? VoiceCalibration => rateCalibrations?.For(Generation?.VoiceId);
+    /// <summary>This project's (and this session's measured) samples for a model, under the current prior's key.</summary>
+    private IReadOnlyList<VoiceLabRateSample> ProjectRateSamples(string model)
+    {
+        var key = VoiceLabRateCalibration.ProjectKey(model);
+        return sessionRates.TryGetValue(key, out var measured) ? measured : Project.VoiceLab.SpeakingRateSamples?.GetValueOrDefault(key) ?? [];
+    }
+    /// <summary>The ratios a phrase's multiplier reads for a model: its voice's calibration, then this project's own samples.</summary>
+    internal IReadOnlyList<VoiceLabRateSample> RateSamples(string model) =>
+        VoiceLabRateCalibration.Samples(ProjectRateSamples(model), VoiceCalibration?.Samples(model));
+    /// <summary>How far above the median four takes in five may run, for word budgets (<see cref="VoiceLabWordingFit.WordTarget"/>).</summary>
+    internal double RateSpread(string model) => VoiceLabRateCalibration.Spread(ProjectRateSamples(model), VoiceCalibration?.Samples(model));
     /// <summary>The samples to save with accepted takes, or null when nothing was measured here.</summary>
     internal IReadOnlyDictionary<string, IReadOnlyList<VoiceLabRateSample>>? CalibratedRates()
     {
@@ -130,6 +144,7 @@ internal sealed partial class RewriteSession
         var (rate, wordsPerSecond, _) = SpeakingRate();
         var samples = RateSamples(synthesisModel);
         var multiplier = VoiceLabWordingFit.Multiplier(samples);
+        var spread = RateSpread(synthesisModel);
         return ordinals.Select(ordinal =>
         {
             if (review.VoiceHunks.FirstOrDefault(hunk => hunk.Ordinals.SequenceEqual([ordinal])) is not { Fit: { } fit, Window: { } window, PatchText: { } patch } phrase)
@@ -140,7 +155,7 @@ internal sealed partial class RewriteSession
             var lower = fit.MinimumSeconds ?? fit.SlotSeconds;
             var upper = Math.Max(lower, fit.MaximumSeconds ?? fit.SlotSeconds);
             var target = VoiceLabWordingFit.WordTarget(wordsPerSecond, multiplier, lower, upper, Math.Max(0, baseline - speech) * multiplier + allowance,
-                window.LeftBridgeWordIds.Count + window.RightBridgeWordIds.Count);
+                window.LeftBridgeWordIds.Count + window.RightBridgeWordIds.Count, spread);
             var original = string.Join(" ", phrase.Hunk.SourceWordIds.Select(id => Transcript.First(word => word.Id == id).Text));
             return new VoiceLabFitPhrase(ordinal, original, string.Join(" ", phrase.Hunk.NewTokens), fit.EstimateSeconds, fit.SlotSeconds,
                 fit.EstimateSeconds > (fit.MaximumSeconds ?? fit.SlotSeconds) ? "shorter" : "longer", target, Calibrated: samples.Count >= 2);
@@ -294,9 +309,11 @@ internal sealed partial class RewriteSession
                 var model = row.Receipt?.ModelId ?? input.ModelId;
                 var estimate = VoiceLabRewriteFit.Estimate(input.Text, rate) + VoiceLabAudioTags.Allowance(input.AudioTags, input.Text, model);
                 var measured = audio.Trimmed.Length / (double)audio.SampleRate * (row.Receipt?.Pace ?? input.Pace ?? 1);
-                var previous = RateSamples(model);
+                // One measured take: a sample for this project, under the current prior's key, and for its voice across projects.
+                rateCalibrations?.Record(input.RecordId, model, row.Id.ToString("D"), measured, estimate);
+                var previous = ProjectRateSamples(model);
                 var next = VoiceLabWordingFit.Recording(previous, row.Id.ToString("D"), measured, estimate);
-                if (!ReferenceEquals(next, previous)) sessionRates[model] = next;
+                if (!ReferenceEquals(next, previous)) sessionRates[VoiceLabRateCalibration.ProjectKey(model)] = next;
             }
     }
 
@@ -345,7 +362,7 @@ internal sealed partial class RewriteSession
         var speech = VoiceLabTextLength.Length(text) / (rate * VoiceLabRewriteFit.ProviderSpeechRateMultiplier);
         var lower = timing.MinimumSeconds ?? timing.SlotSeconds;
         var target = VoiceLabWordingFit.WordTarget(wordsPerSecond, ratio, lower, Math.Max(lower, timing.MaximumSeconds ?? timing.SlotSeconds),
-            Math.Max(0, baseline - speech) * ratio);
+            Math.Max(0, baseline - speech) * ratio, spread: RateSpread(synthesisModel));
         var original = string.Join(" ", hunk.Hunk.SourceWordIds.Select(id => Transcript.First(word => word.Id == id).Text));
         // The loop's memory (voice-lab.md §8.2.2): every wording this phrase had, with its measured result. The whole phrase is
         // reworded, so the words joining it to the recording are named as required.

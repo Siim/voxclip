@@ -641,6 +641,7 @@ if (insertion ||
     }
     private void ConfigureRewriteGeneration(RewriteSession session)
     {
+        session.ConfigureRateCalibrations(App.Services.RateCalibrations);
         session.ConfigureGenerationFactory(index => CreateRewriteGeneration(session, index));
         ConfigureRewriteMicrophone(session);
     }

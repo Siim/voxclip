@@ -17,11 +17,19 @@ public sealed record VoiceLabRewriteFitResult(double EstimateSeconds, double Slo
 
 public static class VoiceLabRewriteFit
 {
-    public const double MinorPauseSeconds = 0.12;
-    public const double SentencePauseSeconds = 0.22;
     public const double MinimumVideoSpeed = 0.80;
     public const double MaximumVideoSpeed = 1.25;
-    public const double ProviderSpeechRateMultiplier = 1.8;
+    /// <summary>The calibrated prior (ADR-R43; Mac <c>VoiceLabPhraseTiming</c>): how many times the speaker's letters per voiced second a
+    /// cloned take speaks. Observed on 78 real Eleven v4 takes: about the speaker's own letter rate, plus a fixed onset.</summary>
+    public const double ProviderSpeechRateMultiplier = 1.2;
+    /// <summary>Fixed per-take speech overhead beyond the trim allowance: the onset and decay a take always has.</summary>
+    public const double OnsetSeconds = 0.4;
+    /// <summary>A sentence-ending group followed by more speech; a final group adds nothing.</summary>
+    public const double SentencePauseSeconds = 0.5;
+    /// <summary>A comma, semicolon, colon or dash group followed by more speech.</summary>
+    public const double ClausePauseSeconds = 0.1;
+    /// <summary>The prior's generation. Ratios measured against an older prior are not comparable and are not read.</summary>
+    public const int PriorVersion = 2;
     public const string TooLongCopy = "Too long for its slot. A take won't fit the video.";
     public const string TooShortCopy = "Too short for its slot. A take won't fit the video.";
 
@@ -40,19 +48,40 @@ public static class VoiceLabRewriteFit
         return letters / seconds;
     }
 
+    /// <summary>letters ÷ (rate × <see cref="ProviderSpeechRateMultiplier"/>) + the trim allowance + <see cref="OnsetSeconds"/> + the
+    /// pauses inside the text (<see cref="PauseSeconds"/>), in the shared evaluation order (<c>tts-estimator-cases.json</c>).</summary>
     public static double Estimate(string text, double rate)
     {
-        var seconds = VoiceLabLengthBudget.Estimate(text, rate * ProviderSpeechRateMultiplier);
-        var previous = 0;
-        foreach (var character in text)
-        {
-            var kind = ".!?…。！？".Contains(character) ? 2 : ",;:—–-，；：".Contains(character) ? 1 : 0;
-            if (kind != 0 && previous == 0) seconds += kind == 2 ? SentencePauseSeconds : MinorPauseSeconds;
-            else if (kind == 2 && previous == 1) seconds += SentencePauseSeconds - MinorPauseSeconds;
-            previous = kind == 0 ? 0 : Math.Max(previous, kind);
-        }
-        return seconds;
+        if (!double.IsFinite(rate) || rate <= 0) throw new VoiceLabLengthBudgetException(VoiceLabLengthBudgetErrorCode.InvalidInput);
+        var speech = VoiceLabTextLength.Length(text) / (rate * ProviderSpeechRateMultiplier);
+        var fixedSeconds = VoiceLabPatchConstants.TTS_TRIM_LEAD + VoiceLabPatchConstants.TTS_TRIM_TAIL + OnsetSeconds;
+        var estimate = speech + fixedSeconds + PauseSeconds(text);
+        if (!double.IsFinite(estimate) || estimate <= 0) throw new VoiceLabLengthBudgetException(VoiceLabLengthBudgetErrorCode.InvalidInput);
+        return estimate;
     }
+
+    /// <summary>The pauses inside <paramref name="text"/>: each punctuation group counts once, at its largest pause, and only when more
+    /// speech follows it. A hyphen between two letters or digits joins a word ("A-10") and is no pause.</summary>
+    public static double PauseSeconds(string text)
+    {
+        var runes = EditingAlgorithms.Nfc(text).EnumerateRunes().ToArray();
+        double total = 0, pending = 0;
+        for (var index = 0; index < runes.Length; index++)
+        {
+            var rune = runes[index].ToString();
+            if (".!?…。！？".Contains(rune, StringComparison.Ordinal)) pending = Math.Max(pending, SentencePauseSeconds);
+            else if (",;:—–，；：".Contains(rune, StringComparison.Ordinal)) pending = Math.Max(pending, ClausePauseSeconds);
+            else if (rune == "-")
+            {
+                var joined = index > 0 && index + 1 < runes.Length && Counts(runes[index - 1]) && Counts(runes[index + 1]);
+                if (!joined) pending = Math.Max(pending, ClausePauseSeconds);
+            }
+            else if (Counts(runes[index])) { total += pending; pending = 0; }
+        }
+        return total;
+    }
+
+    private static bool Counts(System.Text.Rune rune) => VoiceLabTextLength.Length(rune.ToString()) > 0;
 
     /// <summary>The seconds the take occupies in the video: the window, plus the residual after a partial fit. Every video
     /// choice, the cut search included, sizes its output from <c>Round(VideoDuration × sourceRate)</c>, never from asset frames.</summary>
@@ -94,8 +123,8 @@ public static class VoiceLabRewriteFit
         var tokens = generatedText?.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries) ?? [];
         if (tokens.Length > 1 && pauseProfile is not null)
         {
-            var gaps = tokens.SkipLast(1).Select(token => VoiceLabNaturalPacing.EndsSentence(token) ? 0.22 :
-                VoiceLabNaturalPacing.ClauseBoundary(token, "") ? 0.12 : 0.06).ToArray();
+            var gaps = tokens.SkipLast(1).Select(token => VoiceLabNaturalPacing.EndsSentence(token) ? SentencePauseSeconds :
+                VoiceLabNaturalPacing.ClauseBoundary(token, "") ? ClausePauseSeconds : 0.06).ToArray();
             var speech = lastWord - gaps.Sum();
             if (speech > (double)tokens.Length / assetRate)
             {

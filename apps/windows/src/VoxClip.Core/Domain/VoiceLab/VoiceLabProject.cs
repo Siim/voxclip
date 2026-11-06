@@ -102,7 +102,7 @@ public static class VoiceLabProject
     public static void Validate(Project project)
     {
         if (project.VoiceLab.SpeakingRateSamples is { } rates)
-            Require(rates.All(pair => pair.Key.Length > 0 && pair.Value is { Count: <= VoiceLabWordingFit.MaximumSamples } samples &&
+            Require(rates.All(pair => pair.Key.Length > 0 && pair.Value is { Count: <= VoiceLabWordingFit.ProjectSampleLimit } samples &&
                 samples.All(sample => sample is { Id.Length: > 0 } && double.IsFinite(sample.Ratio) && sample.Ratio > 0)), VoiceLabProjectErrorCode.InvalidSegment);
         if (project.SchemaVersion == 1)
         {

@@ -30,7 +30,7 @@ public sealed class RewriteSmokeTests
     internal static readonly int[] LongRunWords = Enumerable.Range(0, 12).Select(index => 12 + 5 * index).ToArray();
     internal static string LongRunReply => string.Join(" ", Enumerable.Range(10, 70).Select(index => LongRunWords.Contains(index) ? "a much clearer phrasing" : "word" + index));
     /// <summary>S16's reply: words 10 and 14 change, words 11–13 stay, so two phrases are voiced.</summary>
-    private const string TwoChanges = "a much clearer phrasing word11 word12 word13 a much brighter phrasing word15 word16";
+    private const string TwoChanges = "a much clearer phrasing word11 word12 word13 a brighter phrasing word15 word16";
 
     [Theory]
     [MemberData(nameof(Scenarios))]

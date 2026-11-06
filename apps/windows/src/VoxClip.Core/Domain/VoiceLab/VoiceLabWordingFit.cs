@@ -53,42 +53,42 @@ public sealed record VoiceLabFitTried(string Text, string Result, double? Second
 /// <summary>The structured answer for one requested phrase: reworded text, or keep the original recording.</summary>
 public sealed record VoiceLabFitUpdate(int Ordinal, bool KeepOriginal, string Text);
 
-/// <summary>Pure wording-fit rules shared with macOS through <c>autofit-cases.json</c>.</summary>
+/// <summary>Pure wording-fit rules shared with macOS through <c>autofit-cases.json</c> and <c>tts-estimator-cases.json</c>.</summary>
 public static class VoiceLabWordingFit
 {
     public const string ModelId = "eleven_v4";
     public const int MaximumRounds = 3;
-    public const int MaximumSamples = 10;
+    /// <summary>A project keeps its last ten samples per model key (<c>voiceLab.speakingRateSamples</c>).</summary>
+    public const int ProjectSampleLimit = 10;
 
-    /// <summary>The model's speaking-rate multiplier: the median of its last ten valid ratios, or 1 with fewer than two.</summary>
-    public static double Multiplier(IReadOnlyList<VoiceLabRateSample>? samples)
-    {
-        var ratios = (samples ?? []).Where(sample => sample is not null && double.IsFinite(sample.Ratio) && sample.Ratio > 0)
-            .Select(sample => sample.Ratio).TakeLast(MaximumSamples).Order().ToArray();
-        if (ratios.Length < 2) return 1;
-        var middle = ratios.Length / 2;
-        return ratios.Length % 2 == 0 ? ratios[middle - 1] / 2 + ratios[middle] / 2 : ratios[middle];
-    }
+    /// <summary>The median of the last ten in-bounds ratios, outliers trimmed (<see cref="VoiceLabRateCalibration.RobustRatios"/>); 1 below
+    /// two. Callers pass <see cref="VoiceLabRateCalibration.Samples(IReadOnlyList{VoiceLabRateSample}?, IReadOnlyList{VoiceLabRateSample}?)"/>,
+    /// so a new project starts from its voice.</summary>
+    public static double Multiplier(IReadOnlyList<VoiceLabRateSample>? samples) => VoiceLabRateCalibration.Multiplier(samples, ProjectSampleLimit);
 
-    /// <summary>Adds a take's ratio once, keeping the last ten. Invalid lengths and an already recorded take change nothing.</summary>
+    /// <summary>Adds a take's ratio once, keeping the last ten. Invalid lengths, a ratio outside 0.25–4 and an already recorded take change
+    /// nothing.</summary>
     public static IReadOnlyList<VoiceLabRateSample> Recording(IReadOnlyList<VoiceLabRateSample>? samples, string id, double measured, double estimated)
     {
         var previous = samples ?? [];
         if (string.IsNullOrEmpty(id) || !double.IsFinite(measured) || !double.IsFinite(estimated) || measured <= 0 || estimated <= 0 ||
-            measured / estimated is var ratio && (!double.IsFinite(ratio) || ratio <= 0) || previous.Any(sample => sample.Id == id)) return previous;
-        return previous.Append(new(id, measured / estimated)).TakeLast(MaximumSamples).ToArray();
+            !VoiceLabRateCalibration.InBounds(measured / estimated) || previous.Any(sample => sample.Id == id)) return previous;
+        return previous.Append(new(id, measured / estimated)).TakeLast(ProjectSampleLimit).ToArray();
     }
 
-    /// <summary>The deterministic target word range for a fit range of <paramref name="minimumSeconds"/>…<paramref name="maximumSeconds"/>.</summary>
+    /// <summary>The deterministic word range for a fit range of <paramref name="minimumSeconds"/>…<paramref name="maximumSeconds"/>. The
+    /// upper bound aims at the p80 duration (<paramref name="spread"/> × the median, from the calibration's spread), so four takes in five
+    /// fit the first time; the lower bound aims at the median.</summary>
     public static VoiceLabWordTarget WordTarget(double wordsPerSecond, double multiplier, double minimumSeconds, double maximumSeconds,
-        double overheadSeconds, int bridgeWords = 0)
+        double overheadSeconds, int bridgeWords = 0, double spread = VoiceLabRateCalibration.PriorSpread)
     {
-        if (!new[] { wordsPerSecond, multiplier, minimumSeconds, maximumSeconds, overheadSeconds }.All(double.IsFinite) ||
-            wordsPerSecond <= 0 || multiplier <= 0 || minimumSeconds < 0 || maximumSeconds < minimumSeconds || overheadSeconds < 0 || bridgeWords < 0)
+        if (!new[] { wordsPerSecond, multiplier, minimumSeconds, maximumSeconds, overheadSeconds, spread }.All(double.IsFinite) ||
+            wordsPerSecond <= 0 || multiplier <= 0 || minimumSeconds < 0 || maximumSeconds < minimumSeconds || overheadSeconds < 0 || bridgeWords < 0 ||
+            spread < 1)
             throw new VoiceLabLengthBudgetException(VoiceLabLengthBudgetErrorCode.InvalidInput);
         var rate = wordsPerSecond * VoiceLabRewriteFit.ProviderSpeechRateMultiplier / multiplier;
         var lower = Math.Max(0, minimumSeconds - overheadSeconds) * rate - bridgeWords;
-        var upper = Math.Max(0, maximumSeconds - overheadSeconds) * rate - bridgeWords;
+        var upper = Math.Max(0, maximumSeconds / spread - overheadSeconds) * rate - bridgeWords;
         if (!double.IsFinite(lower) || !double.IsFinite(upper)) throw new VoiceLabLengthBudgetException(VoiceLabLengthBudgetErrorCode.InvalidInput);
         var minimum = Math.Max(1, (int)Math.Max(0, Math.Min(2_000, Math.Ceiling(lower))));
         var maximum = Math.Max(minimum, Math.Min(2_000, (int)Math.Max(0, Math.Min(2_000, Math.Floor(upper)))));

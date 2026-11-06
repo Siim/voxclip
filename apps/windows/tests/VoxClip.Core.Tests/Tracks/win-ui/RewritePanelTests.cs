@@ -153,7 +153,8 @@ public sealed class RewritePanelTests
     [Fact]
     public async Task TooShortPhrasesOfferSentenceRecoveryWithoutRequestingEvenShorterWords()
     {
-        var words = Enumerable.Range(0, 80).Select(index => Word(index, "word" + index) with { End = index + 1.98 }).ToArray();
+        // Every take carries the provider's onset (ADR-R43): one letter is too short only for a slot of about two seconds.
+        var words = Enumerable.Range(0, 45).Select(index => Word(index, "word" + index) with { Start = index * 2 + 1, End = index * 2 + 2.98 }).ToArray();
         var connector = new RecordingConnector();
         using var session = new RewriteSession(Editor(words), 10, 12, Envelope(), new(connector, "chosen", "Stub", "local", ""));
         await session.SetInstructionAsync("Plainly");

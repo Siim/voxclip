@@ -1,20 +1,19 @@
 #!/usr/bin/env python3
-"""Independent wording-fit word targets, calibration and round selection vectors."""
+"""Independent wording-fit word targets, calibration and round selection vectors. Targets and calibration use the calibrated
+prior (ADR-R43): 1.2x the speaker rate, the p80 upper bound at the prior spread, and the robust bounded median."""
 import json
 import math
 import hashlib
 import re
 from pathlib import Path
-from statistics import median
+
+import generate_tts_estimator as tts
 
 ROOT = Path(__file__).resolve().parents[3]
 
 
-def target(rate, multiplier, lower, upper, overhead, bridges=0):
-    calibrated = rate * 1.8 / multiplier
-    minimum = max(1, min(2000, math.ceil(max(0, lower - overhead) * calibrated - bridges)))
-    maximum = max(minimum, min(2000, math.floor(max(0, upper - overhead) * calibrated - bridges)))
-    return dict(minimum=minimum, maximum=maximum)
+def target(rate, multiplier, lower, upper, overhead, bridges=0, spread=tts.SPREAD):
+    return tts.word_target(rate, multiplier, lower, upper, overhead, bridges, spread)
 
 
 def main():
@@ -27,11 +26,12 @@ def main():
         ("round-inwards", [2.3, 1.1, 1.25, 1.75, 0.15, 1]),
         ("bounded", [100, 0.1, 300, 600, 0.15, 0]),
     ]:
-        keys = ["wordsPerSecond", "multiplier", "minimumSeconds", "maximumSeconds", "overheadSeconds", "bridgeWords"]
+        keys = ["wordsPerSecond", "multiplier", "minimumSeconds", "maximumSeconds", "overheadSeconds", "bridgeWords", "spread"]
+        values = values + [tts.SPREAD]
         targets.append(dict(id=name, input=dict(zip(keys, values)), expected=target(*values)))
     calibration = []
     for ratios in [[], [1.7], [1.2, 1.8], [1, 7, 2], [100, 100, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]]:
-        calibration.append(dict(ratios=ratios, expected=median(ratios[-10:]) if len(ratios) >= 2 else 1))
+        calibration.append(dict(ratios=ratios, expected=tts.multiplier(ratios, tts.PROJECT_LIMIT)))
     rounds = []
     for completed, candidates, fitting, kept, stopped in [
         (0, [1, 2, 3], [2], [], False),

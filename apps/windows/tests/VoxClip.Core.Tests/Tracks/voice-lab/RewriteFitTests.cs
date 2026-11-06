@@ -13,17 +13,20 @@ public sealed class RewriteFitTests
     public void PhraseTimingUsesTheSingleProductionPaceMatcher() =>
         Assert.Null(typeof(VoiceLabRewriteFit).GetMethod("Measure"));
 
+    /// <summary>The calibrated prior (ADR-R43): a final mark adds nothing; one group counts once at its largest pause.</summary>
     [Theory]
-    [InlineData("then, well, let's get going.", 1.3436507936507938)]
-    [InlineData("players can actually work together, choose their team,", 2.1157142857142857)]
-    [InlineData("word...?!", 0.4687301587301588)]
-    [InlineData("word,—next!", 0.7474603174603174)]
-    [InlineData("word，；next！？", 0.7474603174603174)]
+    [InlineData("then, well, let's get going.", 1.8804761904761904)]
+    [InlineData("players can actually work together, choose their team,", 3.2685714285714282)]
+    [InlineData("word...?!", 0.7280952380952381)]
+    [InlineData("word,—next!", 1.0661904761904761)]
+    [InlineData("word，；next！？", 1.0661904761904761)]
     public void CalibratedEstimateCountsPunctuationRunsWithoutAProviderRateFloor(string text, double expected)
     {
-        Assert.Equal(expected, VoiceLabRewriteFit.Estimate(text, 14), 9);
+        Assert.Equal(expected, VoiceLabRewriteFit.Estimate(text, 14), 12);
     }
 
+    /// <summary>The 3 November phrases (another speaker, an older model) replay at the calibrated prior, which overshoots them; two
+    /// measured takes of that voice bring the third within 15% (Mac <c>anotherVoiceIsCorrectedByItsOwnTakes</c>).</summary>
     [Fact]
     public void SharedRealPhraseCalibrationReplaysWithoutAProviderCall()
     {
@@ -31,25 +34,35 @@ public sealed class RewriteFitTests
         var fixture = JsonNode.Parse(File.ReadAllText(Path.Combine(shared, "fixtures", "voice-lab", "phrase-timing-cases.json")))!;
         Assert.Equal("voxclip-phrase-timing/1", fixture["schema"]!.GetValue<string>());
         Assert.Equal(3, fixture["caseCount"]!.GetValue<int>());
-        Assert.Equal(3, fixture["cases"]!.AsArray().Count);
-        Assert.Equal(VoiceLabRewriteFit.ProviderSpeechRateMultiplier, fixture["calibration"]!["providerSpeechRateMultiplier"]!.GetValue<double>());
-        Assert.Equal(VoiceLabRewriteFit.MinorPauseSeconds, fixture["calibration"]!["minorPauseSeconds"]!.GetValue<double>());
-        Assert.Equal(VoiceLabRewriteFit.SentencePauseSeconds, fixture["calibration"]!["sentencePauseSeconds"]!.GetValue<double>());
-        Assert.Equal(VoiceLabPatchConstants.TTS_TRIM_LEAD, fixture["calibration"]!["trimLeadSeconds"]!.GetValue<double>());
-        Assert.Equal(VoiceLabPatchConstants.TTS_TRIM_TAIL, fixture["calibration"]!["trimTailSeconds"]!.GetValue<double>());
-        foreach (var phrase in fixture["cases"]!.AsArray())
+        var cases = fixture["cases"]!.AsArray();
+        Assert.Equal(3, cases.Count);
+        var calibration = fixture["calibration"]!;
+        Assert.Equal(VoiceLabRewriteFit.PriorVersion, calibration["prior"]!.GetValue<int>());
+        Assert.Equal(VoiceLabRewriteFit.ProviderSpeechRateMultiplier, calibration["providerSpeechRateMultiplier"]!.GetValue<double>());
+        Assert.Equal(VoiceLabRewriteFit.OnsetSeconds, calibration["onsetSeconds"]!.GetValue<double>());
+        Assert.Equal(VoiceLabRewriteFit.ClausePauseSeconds, calibration["clausePauseSeconds"]!.GetValue<double>());
+        Assert.Equal(VoiceLabRewriteFit.SentencePauseSeconds, calibration["sentencePauseSeconds"]!.GetValue<double>());
+        Assert.Equal(VoiceLabPatchConstants.TTS_TRIM_LEAD, calibration["trimLeadSeconds"]!.GetValue<double>());
+        Assert.Equal(VoiceLabPatchConstants.TTS_TRIM_TAIL, calibration["trimTailSeconds"]!.GetValue<double>());
+        var voice = new VoiceLabVoiceCalibration("other-voice");
+        foreach (var phrase in cases)
         {
-            var estimate = VoiceLabRewriteFit.Estimate(phrase!["text"]!.GetValue<string>(), phrase["rate"]!.GetValue<double>());
-            Assert.Equal(phrase["expectedSeconds"]!.GetValue<double>(), estimate, 9);
-            if (phrase["id"]!.GetValue<string>() == "phrase-2")
-                Assert.InRange(estimate / phrase["measuredVoicedSeconds"]![0]!.GetValue<double>(), 0.8, 1.2);
-            if (phrase["id"]!.GetValue<string>() == "phrase-3")
+            var text = phrase!["text"]!.GetValue<string>();
+            var rate = phrase["rate"]!.GetValue<double>();
+            var measured = phrase["measuredVoicedSeconds"]!.AsArray().Select(value => value!.GetValue<double>()).ToArray();
+            var estimate = VoiceLabRewriteFit.Estimate(text, rate);
+            Assert.Equal(phrase["expectedSeconds"]!.GetValue<double>(), estimate, 12);
+            if (phrase["id"]!.GetValue<string>() != "phrase-3")
             {
-                Assert.True(estimate >= 1.6);
-                var window = new VoiceLabWindow("first", "last", [], [], 2, 3.1, 96_000, 148_800,
-                    new(VoiceLabSeamKind.Hard, 2, 96_000, 0), new(VoiceLabSeamKind.Hard, 3.1, 148_800, 0));
-                Assert.False(VoiceLabPaceMatching.Measure(phrase["text"]!.GetValue<string>(), phrase["rate"]!.GetValue<double>(), window, null, null, 48_000, supportsPace: false, hardJoinSmoothing: true).Fits);
+                Assert.True(estimate > measured.Max());
+                voice = voice.Recording("eleven_multilingual_v2", phrase["id"]!.GetValue<string>(), measured.Average(), estimate);
+                continue;
             }
+            var samples = VoiceLabRateCalibration.Samples([], voice.Samples("eleven_multilingual_v2"));
+            Assert.InRange(estimate * VoiceLabWordingFit.Multiplier(samples) / measured[0], 0.85, 1.15);
+            var window = new VoiceLabWindow("first", "last", [], [], 2, 3.1, 96_000, 148_800,
+                new(VoiceLabSeamKind.Hard, 2, 96_000, 0), new(VoiceLabSeamKind.Hard, 3.1, 148_800, 0));
+            Assert.False(VoiceLabPaceMatching.Measure(text, rate, window, null, null, 48_000, supportsPace: false, hardJoinSmoothing: true).Fits);
         }
     }
 

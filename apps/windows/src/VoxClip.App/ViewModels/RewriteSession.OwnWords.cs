@@ -201,7 +201,7 @@ internal sealed partial class RewriteSession
         {
             var (_, wordsPerSecond, _) = SpeakingRate();
             var calibrated = VoiceLabWordingFit.Multiplier(RateSamples(synthesisModel));
-            var target = VoiceLabWordingFit.WordTarget(wordsPerSecond, calibrated, fit.Lower, fit.Upper, 0);
+            var target = VoiceLabWordingFit.WordTarget(wordsPerSecond, calibrated, fit.Lower, fit.Upper, 0, spread: RateSpread(synthesisModel));
             var original = string.Join(" ", hunk.Hunk.SourceWordIds.Select(id => Transcript.First(word => word.Id == id).Text));
             var request = new VoiceLabFitPhrase(hunk.Ordinals[0], original, text, fit.Seconds, fit.Gap, fit.TooLong ? "shorter" : "longer", target, Calibrated: true);
             using var lease = Editor.LlmRuns.TryAcquire() ?? throw new RewriteGenerationException(FitBusy);

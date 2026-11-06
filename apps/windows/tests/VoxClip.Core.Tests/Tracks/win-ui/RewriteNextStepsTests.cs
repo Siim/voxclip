@@ -13,10 +13,18 @@ namespace VoxClip.Core.Tests.Tracks.WinUi;
 /// advisory voice budget and footers that name the next step. Stub connectors and runners only.</summary>
 public sealed class RewriteNextStepsTests
 {
-    private const string Two = "a much clearer phrasing word11 word12 word13 a much clearer ending word15";
+    private const string Two = "a much clearer phrasing word11 word12 word13 an ending word15";
     /// <summary>Fit replies that keep each change's words, so a change that misses its slot is priced as written.</summary>
     private static JsonArray Same(int round, IReadOnlyList<int> ordinals) => new(ordinals.Select(ordinal => (JsonNode)new JsonObject
-        { ["ordinal"] = ordinal, ["action"] = "reword", ["text"] = ordinal == 1 ? "a much clearer phrasing" : "a much clearer ending" }).ToArray());
+        { ["ordinal"] = ordinal, ["action"] = "reword", ["text"] = ordinal == 1 ? "a much clearer phrasing" : "an ending" }).ToArray());
+    /// <summary>Every take carries the provider's onset (ADR-R43), so a change is too short only for a long slot: here the word change 2
+    /// replaces lasts 1.5 s, and its two short words stay too short for it.</summary>
+    private static EditorViewModel LongWordEditor()
+    {
+        var project = Editor().Project;
+        var words = project.Transcript!.Words.Select(word => word.Id == "w14" ? word with { Start = 14.45, End = 15.95 } : word).ToArray();
+        return new(project with { Transcript = project.Transcript with { Words = words } }, now: () => new DateTimeOffset(2026, 11, 4, 0, 0, 0, TimeSpan.Zero));
+    }
     private const string Fifteen = "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen";
 
     [Fact]
@@ -51,8 +59,8 @@ public sealed class RewriteNextStepsTests
     public async Task AScopedReaskLandsOnlyTheAskedPhraseAndShowsAskingWithStop()
     {
         var connector = new Connector(Two, Same)
-            { Reask = "a warmer clearer phrasing word11 word12 word13 an entirely different ending word15", HoldReasks = true };
-        using var session = Session(connector, 10, 15);
+            { Reask = "a warmer phrasing word11 word12 word13 a different end word15", HoldReasks = true };
+        using var session = Session(connector, 10, 15, editor: LongWordEditor());
         Assert.True(await ProposeAsync(session));
         Assert.Equal(2, session.Review!.Diff.Hunks.Count);
         var asking = session.ReaskAsync(new("Warmer start", "Make the first change warmer.", [1], RewriteBlockedReason.Asked));
@@ -65,7 +73,7 @@ public sealed class RewriteNextStepsTests
         connector.ReaskRelease.SetResult();
         Assert.True(await asking);
         Assert.Null(session.Reasking);
-        Assert.Equal("a warmer clearer phrasing word11 word12 word13 a much clearer ending word15", session.NewWords);
+        Assert.Equal("a warmer phrasing word11 word12 word13 an ending word15", session.NewWords);
         Assert.Equal(2, session.Review!.Diff.Hunks.Count);
     }
 
@@ -73,8 +81,8 @@ public sealed class RewriteNextStepsTests
     public async Task StopOnAReaskChangesNothingAndOffersAskAgain()
     {
         var connector = new Connector(Two, Same)
-            { Reask = "a warmer clearer phrasing word11 word12 word13 an entirely different ending word15", HoldReasks = true };
-        using var session = Session(connector, 10, 15);
+            { Reask = "a warmer phrasing word11 word12 word13 a different end word15", HoldReasks = true };
+        using var session = Session(connector, 10, 15, editor: LongWordEditor());
         Assert.True(await ProposeAsync(session));
         var asking = session.TellTheAiAsync("Keep it casual");
         await connector.ReaskSent.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
