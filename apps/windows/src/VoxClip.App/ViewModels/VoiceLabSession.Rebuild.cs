@@ -4,8 +4,10 @@ using VoxClip.Media.VoiceLab;
 namespace VoxClip.App.ViewModels;
 
 /// <summary>What the rebuild finder found, for the row (Media <c>VoiceRebuildFinder.Found</c>): the line shown first, the pieces' lengths
-/// in send order, and the backend's own handle for the preparation.</summary>
-internal sealed record VoiceRebuildFind(string Summary, IReadOnlyList<double> PieceSeconds, object Ticket, bool RemovesBackgroundNoise = false);
+/// in send order, and the backend's own handle for the preparation. For a video's voice (§6.13), <see cref="RemovesBackgroundNoise"/> says a
+/// piece is under 20 dB and <see cref="VideoMilliseconds"/> is the video's own speech, the anchor's clip not counted.</summary>
+internal sealed record VoiceRebuildFind(string Summary, IReadOnlyList<double> PieceSeconds, object Ticket, bool RemovesBackgroundNoise = false,
+    long VideoMilliseconds = 0);
 /// <summary>A prepared rebuild creation (the attested route's local quote): the new record id, its price, the speech it sends and the
 /// backend's own plan.</summary>
 internal sealed record VoiceRebuildQuote(string RecordId, decimal? Usd, long TrainingMilliseconds, object Ticket);

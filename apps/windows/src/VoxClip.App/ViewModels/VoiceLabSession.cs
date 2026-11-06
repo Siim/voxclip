@@ -55,6 +55,29 @@ internal interface IVoiceLabBackend
     string? RewriteVoice() => null;
     /// <summary>Plays one found piece on this PC.</summary>
     Task PlayRebuildPieceAsync(VoiceRebuildFind found, int index, CancellationToken ct) => throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
+    /// <summary>The <c>voiceLab.matchEachVideo</c> setting (voice-lab.md §6.13): true, false, or null while unset.</summary>
+    bool? MatchEachVideo() => null;
+    /// <summary>Writes <c>voiceLab.matchEachVideo</c>; null clears the answer, so Rewrite asks again.</summary>
+    Task SetMatchEachVideoAsync(bool? value, CancellationToken ct) => throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
+    /// <summary>The per-video book's store (<c>&lt;data&gt;/VoiceLab/per-video.json</c>); null keeps the book in memory only.</summary>
+    VoicePerVideoStore? PerVideoStore => null;
+    /// <summary>"free": the catalogue's creation price for a video's voice; null when the catalogue has none.</summary>
+    string? VideoVoicePrice() => null;
+    /// <summary>A video's own owner-verified speech for its voice, free and on this PC (Media <c>VoiceRebuildFinder</c>, per-video rules), or
+    /// <see cref="VoiceRebuildNotEnoughException"/>, or Media's unavailable failure where the speaker check isn't ready (the closed gate).</summary>
+    Task<VoiceRebuildFind> FindVideoVoiceAsync(string anchorId, VoiceLabProjectSource source, CancellationToken ct) =>
+        throw new VoxClip.Media.VoiceLab.VoiceRebuildFailedException(VoxClip.Media.VoiceLab.VoiceRebuildFailureKind.Unavailable);
+    /// <summary>Makes a video's voice under the anchor's attestations through the attested creation and its journal (the opt-in's click is
+    /// the approval), then carries the anchor's learned references over one hop. Refuses with SpeakerUnavailable behind the closed gate.</summary>
+    Task<VoiceRebuildCreated> CreateVideoVoiceAsync(VoiceConsentRecord anchor, VoiceRebuildFind found, string displayName, CancellationToken ct) =>
+        throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
+    /// <summary>Seeds a new voice's length calibration from another's (Core <c>VoicePerVideo.SeededCalibration</c>).</summary>
+    void SeedRateCalibration(string fromRecordId, string toRecordId) { }
+    /// <summary>The take-match diagnostic (Media <c>VoicePerVideoMatch.ScoreAsync</c>): null without a speaker check.</summary>
+    Task<double?> ScoreTakeMatchAsync(VoiceLabTakeAudio take, VoiceLabTakeInput input, CancellationToken ct) =>
+        Task.FromResult<double?>(null);
+    /// <summary>Writes one line to the app log (the per-video voice's numbers; no content).</summary>
+    void Log(string message) { }
 }
 
 internal sealed partial class VoiceLabSession(IVoiceLabBackend backend, Func<Action, Task> dispatch,
@@ -188,6 +211,7 @@ internal sealed partial class VoiceLabSession(IVoiceLabBackend backend, Func<Act
                 Notify();
                 ScheduleRecovery();
             });
+            await LoadPerVideoAsync(version, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
         catch (Exception)
@@ -300,6 +324,7 @@ internal sealed partial class VoiceLabSession(IVoiceLabBackend backend, Func<Act
     {
         if (disposed) return;
         disposed = true; generation++; recovery?.Cancel(); recovery?.Dispose();
+        removalRetry?.Cancel(); removalRetry?.Dispose(); removalRetry = null;
         lifetime.Cancel(); lifetime.Dispose();
     }
 }
