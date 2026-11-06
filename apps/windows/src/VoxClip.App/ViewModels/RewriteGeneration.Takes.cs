@@ -204,13 +204,29 @@ internal sealed partial class RewriteGeneration
     }
     /// <summary>The passing take a phrase with none chosen offers for one click ([Choose Take N], Mac <c>offeredTake</c>): one the
     /// automatic choice may not pick, such as a take whose voice couldn't be measured (ADR-R37). Choosing a take with a join
-    /// advisory accepts it (ADR-R39).</summary>
+    /// advisory accepts it (ADR-R39). Only a take some video duration can carry is offered: choosing one no duration carries
+    /// would only lead to a choice no control makes.</summary>
     internal VoiceLabTakeRow? OfferedTake()
     {
         if (closed || LeftOut || Selected is not null) return null;
-        var passing = Rows.Where(row => row.Selectable && !rejected.Contains(row.Id) && AdvisoryCanBeAccepted(row)).ToArray();
+        var passing = Rows.Where(row => row.Selectable && !rejected.Contains(row.Id) && AdvisoryCanBeAccepted(row) && DurationAvailable(row)).ToArray();
         var current = passing.Where(row => !beforeExpression.Contains(row.Id)).ToArray();
         return Ranked(current.Length > 0 ? current : passing).FirstOrDefault();
+    }
+    /// <summary>No video duration can carry this phrase (design.md R2 "A take that can't fit its place", Mac
+    /// <c>ClipTakePlan.fitsNoDuration</c>): its selected take allows none of keep source, cut and match, or, with none selected,
+    /// none of its passing takes does. False while its takes are made or checked, and for a phrase kept as recorded, settled as
+    /// blocked or with no passing take.</summary>
+    internal bool FitsNoDuration
+    {
+        get
+        {
+            if (closed || LeftOut || Blocked is not null || IsRunning || IsPreparing ||
+                Rows.Any(row => row.VoiceCheck is VoiceLabTakeVoiceCheck.WaitingCheck)) return false;
+            if (Selected is { Selectable: true }) return ValidVideoChoices.Count == 0;
+            var passing = Rows.Where(row => row.Selectable && !beforeExpression.Contains(row.Id)).ToArray();
+            return passing.Length > 0 && !passing.Any(DurationAvailable);
+        }
     }
     /// <summary>ADR-R37: this phrase's take runs share the Rewrite plan's voice-check session, so a short retry can borrow its
     /// earlier generated speech.</summary>

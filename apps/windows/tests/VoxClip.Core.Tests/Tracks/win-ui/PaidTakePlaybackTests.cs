@@ -63,9 +63,12 @@ public sealed class PaidTakePlaybackTests
         test.Runner.ReportChangedDuration = true;
         var project = ProjectSerialization.Serialize(test.Editor.Project);
         await test.GenerateAsync();
-        Assert.Equal(RewriteGenerationPhase.LengthChanged, test.Generation.Phase);
-        Assert.True(test.Generation.NeedsShorterWording);
-        Assert.False(test.Generation.CanRetime); Assert.False(test.Generation.CanCut);
+        // A paid take no video duration carries keeps the phrase's recording at once (design.md R2 "A take that can't fit its
+        // place"), with one line; its change's own recovery steps still ask before discarding the paid take.
+        Assert.True(test.Generation.LeftOut);
+        Assert.Contains(test.Generation.Rows, row => row.Selectable);
+        Assert.DoesNotContain(test.Generation.Rows, test.Generation.DurationAvailable);
+        Assert.Contains(RewriteSession.NoDurationCopy([1]), test.Session.AutoFix.Notes);
         Assert.False(test.Generation.ReadyToAccept);
         Assert.False(test.Session.SetChangeIncluded(1, false));
         Assert.True(test.Session.HasPaidTakes);

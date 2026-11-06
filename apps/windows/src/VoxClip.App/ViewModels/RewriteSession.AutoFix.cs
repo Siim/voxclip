@@ -186,8 +186,11 @@ internal sealed partial class RewriteSession
         if (current.Length == 0) return null;
         if (window.Selected is { Selectable: true } selected)
         {
-            if (!window.NeedsShorterWording || RewriteGeneration.Length(selected) is not { } length || window.Slot(selected) is not { } slot) return null;
-            return new StuckTakeReason.Length(length > slot, length, slot, selected.Id, selected.Index + 1, true);
+            // A take too short for every duration is not reworded longer, which would only pad (ADR-R42): its phrase keeps the
+            // recorded audio (SettleTakesThatFitNoDuration).
+            if (!window.NeedsShorterWording || RewriteGeneration.Length(selected) is not { } length || window.Slot(selected) is not { } slot ||
+                length <= slot) return null;
+            return new StuckTakeReason.Length(true, length, slot, selected.Id, selected.Index + 1, true);
         }
         // A passing take not chosen yet (a join to listen to first) is the user's pick, not a stuck phrase.
         if (current.Any(row => row.Selectable)) return null;
@@ -249,10 +252,55 @@ internal sealed partial class RewriteSession
     internal static string ProviderProblem(Exception error) =>
         Refusal(error) + (error is VoiceLabException { Kind: var kind } && ProviderFix(kind) is { } fix ? " " + fix : "");
 
+    /// <summary>design.md R2 "A take that can't fit its place" (Mac <c>settleTakesThatFitNoDuration</c>): a phrase whose take no video
+    /// duration can carry (too short even with a cut, too long even with the matched speed, or a duration that can't be mapped) keeps
+    /// its recorded audio with one line of why, and Use goes on with the rest, with no click in every mode. It runs before the footer
+    /// is read, whenever the takes settle. A too-long take is left to the resolver while it is armed (<see cref="ResolverOwns"/>) and
+    /// to the measured rewording round while that round is about to start, runs or waits on the creator
+    /// (<see cref="MeasuredRoundOwns"/>); their ends settle it here. A too-short take is never reworded longer (ADR-R42).</summary>
+    internal void SettleTakesThatFitNoDuration()
+    {
+        if (!IsOpen || !GenerationIsCurrent || IsGeneratingBatch || applyingBatch ||
+            generationWindows.Any(window => window.IsRunning || window.IsPreparing)) return;
+        List<int> settled = [];
+        for (var index = 0; index < generationWindows.Count; index++)
+        {
+            if (!generationWindows[index].FitsNoDuration || AutoFix.Lines.ContainsKey(index) || ResolverOwns(index) || MeasuredRoundOwns(index)) continue;
+            if (generationWindows[index].LeaveOut()) settled.Add(index);
+        }
+        if (settled.Count == 0) return;
+        var copy = NoDurationCopy(settled.Select(index => index + 1).ToArray());
+        if (AutoFix.Notes.Contains(copy)) return;
+        AutoFix.Notes.Add(copy);
+        AutoFix.Announcement = copy;
+    }
+    /// <summary>The armed resolver has a fix for phrase <paramref name="index"/> (Mac <c>resolverOwns</c>): a wording round, Keep fixing
+    /// at the cap, or after Stop the phrase's own steps.</summary>
+    private bool ResolverOwns(int index) => AutoFix.Armed && Wording(index) == PhraseWording.Suggested &&
+        StuckReason(index) is { } reason and not StuckTakeReason.Provider;
+    /// <summary>The measured rewording round has a shorter wording to offer for this too-long take (Mac <c>measuredRoundOwns</c>): it is
+    /// about to start, is running, or waits on the creator (Skip, Keep Take N or the priced Make Take). Its end settles the phrase if
+    /// the take still fits no duration. The round starts only while the resolver is not armed (<see cref="ObserveMeasuredTakes"/>); a
+    /// too-short take never gets it.</summary>
+    private bool MeasuredRoundOwns(int index)
+    {
+        if (Connector is null || Wording(index) != PhraseWording.Suggested || generationWindows.ElementAtOrDefault(index) is not { } window ||
+            window.Selected is not { } take || RewriteGeneration.Length(take) is not { } length || window.Slot(take) is not { } slot || length <= slot) return false;
+        if (MeasuredWording is { } open && open.Window == index && open.Take == take.Id) return true;
+        return !AutoFix.Armed && !measuredTakes.Contains(take.Id) && (take.Receipt?.ModelId ?? window.InputFor(take.Id)?.ModelId) == synthesisModel;
+    }
+    /// <summary>The measured card's keep button (Mac <c>measuredKeepTitle</c>). A take no video duration carries can't be kept: keeping it
+    /// ends in the recorded audio (<see cref="SettleTakesThatFitNoDuration"/>), so the button names that instead of the take.</summary>
+    internal string MeasuredKeepTitle(RewriteMeasuredWording suggestion) => suggestion.AwaitingApproval ? "Skip"
+        : MeasuredFitsNoDuration(suggestion) ? "Keep Original Audio" : $"Keep Take {suggestion.Number}";
+    /// <summary>The measured round's take fits no video duration (its card says so; Mac <c>fitsNoDuration</c> for the round's phrase).</summary>
+    internal bool MeasuredFitsNoDuration(RewriteMeasuredWording suggestion) => generationWindows.ElementAtOrDefault(suggestion.Window)?.FitsNoDuration == true;
+
     /// <summary>Takes the next automatic step, if one is due: one phrase, one step at a time. Called whenever the takes settle.</summary>
     internal void AdvanceAutoFix()
     {
         ApplyPendingExpressions();
+        SettleTakesThatFitNoDuration();
         if (!AutoFix.Running || AutoFix.Work is not null || !IsOpen || !GenerationIsCurrent || IsGeneratingBatch || applyingBatch ||
             MeasuredWording is { Preparing: true } || PendingPaidReviewChange is not null ||
             generationWindows.Any(window => window.IsRunning || window.IsPreparing)) return;

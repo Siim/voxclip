@@ -25,7 +25,8 @@ public sealed class RewriteSmokeTests
     /// <summary>S15 twins Mac S15 (bridge words); S16 twins Mac S14 (Eleven v4 timing quirks), renumbered because Windows S14 is the
     /// collision after paid takes; S17 twins Mac S16 (a long run voiced in parts); the own-take scenarios keep Mac's names.</summary>
     public static TheoryData<string> Scenarios => new(["S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9", "S10", "S11", "S12", "S13", "S14",
-        "S15", "S16", "S17", "S-own-typed", "S-own-mic", "S-own-mic-misfit", "S-viral-fit", "S-guard-blocked"]);
+        "S15", "S16", "S17", "S-own-typed", "S-own-mic", "S-own-mic-misfit", "S-viral-fit", "S-guard-blocked",
+        "S-duration-short"]);
     /// <summary>S17's take: words 10–79 with every fifth word from 12 to 67 changed, twelve phrases in three parts.</summary>
     internal static readonly int[] LongRunWords = Enumerable.Range(0, 12).Select(index => 12 + 5 * index).ToArray();
     internal static string LongRunReply => string.Join(" ", Enumerable.Range(10, 70).Select(index => LongRunWords.Contains(index) ? "a much clearer phrasing" : "word" + index));
@@ -158,6 +159,25 @@ public sealed class RewriteSmokeTests
                     smoke.Session.FooterStep.Phrase == 0 || smoke.Session.FooterStep.Title?.Contains('$') == true)
                     // The headless stub has no scratch audio, so its takes never read ready for Use; End checks what Use would apply.
                     smoke.Failures.Add($"{id} G2: phrase 1 was offered or sent again ({runners[0].Executions} runs): footer '{smoke.Session.FooterStep.Title}'");
+                smoke.End(VoiceLabVideoMode.Source, voiced: 1);
+                return smoke;
+            }
+            case "S-duration-short":
+            {
+                // Mac S-duration-short (DS1): phrase 1's take is far shorter than its slot and no video duration can carry it. Rewrite keeps
+                // phrase 1's recorded audio with one line and no click, no footer asks for a duration no control makes, and Use applies
+                // phrase 2.
+                Runner[] runners = [new((_, _) => (RewriteDurationSettleTests.TooShort, Passed)), new((_, _) => (Fit, Passed))];
+                using var smoke = new Smoke(id, new(TwoChanges, (_, ordinals) => Rows(ordinals, "x")), runners[0], last: 16, runners: index => runners[index]);
+                await smoke.ProposeAsync();
+                await smoke.GetPriceAsync();
+                const string line = "Phrase 1's take can't fit its place in the video, so it keeps your original audio.";
+                var said = smoke.Session.AutoFix.Notes.Count(note => note == line);
+                var asked = smoke.Log.Any(entry => entry.Contains("Choose the video duration", StringComparison.Ordinal));
+                if (!smoke.Session.GenerationWindows[0].LeftOut || said != 1 || smoke.Session.AutoFix.Announcement != line || asked ||
+                    smoke.Session.FooterStep.Phrase == 0 || runners[0].Sends != 1)
+                    smoke.Failures.Add($"{id} DS1: phrase 1 {(smoke.Session.GenerationWindows[0].LeftOut ? "kept" : "not kept")}, said {said}×" +
+                        (asked ? ", a footer asked for a duration" : "") + $", phrase 1 made {runners[0].Sends} take(s); footer '{smoke.Session.FooterStep.Title}'");
                 smoke.End(VoiceLabVideoMode.Source, voiced: 1);
                 return smoke;
             }

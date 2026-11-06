@@ -207,11 +207,16 @@ public sealed class RewriteWordingFitTests
         // Measured against the current prior, so saved under its key (ADR-R43); the bare model ID is the old prior's.
         Assert.Single(session.CalibratedRates()![VoiceLabRateCalibration.ProjectKey("eleven_v4")]);
         Assert.False(session.CalibratedRates()!.ContainsKey("eleven_v4"));
-        var original = generation.Selected!;
+        // Declining can't keep a take no video duration carries (Mac measuredRewordingPreparesButNeverPaysAndDecliningKeepsTheRecording):
+        // the button reads Keep Original Audio and the phrase keeps the recording with one line. Nothing more is paid for.
+        Assert.True(generation.FitsNoDuration);
+        Assert.Equal("Keep Original Audio", session.MeasuredKeepTitle(suggestion));
         await session.KeepMeasuredTakeAsync();
         Assert.Null(session.MeasuredWording);
         Assert.Equal(Fits, runner.Input.Text);
-        Assert.Same(original, generation.Selected);
+        Assert.True(generation.LeftOut);
+        Assert.Null(generation.Selected);
+        Assert.Contains(RewriteSession.NoDurationCopy([1]), session.AutoFix.Notes);
         Assert.Equal(1, runner.Sends);
     }
 
@@ -251,7 +256,7 @@ public sealed class RewriteWordingFitTests
         var source = PanelSource("RewritePanel.WordingFit.cs");
         foreach (var id in new[] { "Rewrite.FitApprove", "Rewrite.FitSkip", "Rewrite.FitStop", "Rewrite.FitProgress", "Rewrite.MeasuredMakeTake", "Rewrite.MeasuredKeep", "Rewrite.MeasuredFitApprove" })
             Assert.Contains(id, source);
-        foreach (var copy in new[] { "Fitting stopped. Your latest proposal is kept.", "Reworded with the measured length: “", "Keep Take {suggestion.Number}",
+        foreach (var copy in new[] { "Fitting stopped. Your latest proposal is kept.", "Reworded with the measured length: “", "session.MeasuredKeepTitle(suggestion)",
             "Make a new take with the reworded text. ", "Fitting wording, round {session.WordingFitRound} of 3", "That approval covers this reply only." })
             Assert.Contains(copy, source);
         Assert.Contains("TextWrapping = TextWrapping.Wrap", source);

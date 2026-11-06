@@ -143,7 +143,7 @@ internal sealed partial class RewritePanel
             RewriteFooterAction.KeepOriginal => "Rewrite.FooterKeepOriginal",
             RewriteFooterAction.KeepChangeWords => "Rewrite.FooterKeepChangeWords",
             RewriteFooterAction.KeepMyWords => "Rewrite.FooterKeepMyWords",
-            RewriteFooterAction.ChooseDurations => "Rewrite.FooterChooseDurations",
+            RewriteFooterAction.ChooseDuration => "Rewrite.FooterChooseDuration",
             RewriteFooterAction.StopReask or RewriteFooterAction.StopAutoFix => "Rewrite.FooterStop",
             _ => "Rewrite.Apply"
         });
@@ -186,7 +186,7 @@ internal sealed partial class RewritePanel
             case RewriteFooterAction.KeepOriginal: session.KeepOriginal(session.FooterStep.Phrase); break;
             case RewriteFooterAction.KeepChangeWords: session.KeepCollidedOriginal(session.FooterStep.Phrase); break;
             case RewriteFooterAction.KeepMyWords: session.KeepMyWords(); break;
-            case RewriteFooterAction.ChooseDurations: session.ChooseDurations(); break;
+            case RewriteFooterAction.ChooseDuration: session.ChooseDuration(session.FooterStep.Phrase); break;
             case RewriteFooterAction.StopReask: session.StopReask(); break;
             case RewriteFooterAction.StopAutoFix: session.StopAutoFix(); break;
         }

@@ -17,7 +17,7 @@ internal sealed record RewriteChip(string Id, string Title, bool Ai, Func<Task>?
 /// "Choose yourself…" does not ask for the field (<see cref="Asks"/>), as Mac's collapsed steps carry no <c>ask</c>.</summary>
 internal sealed record RewriteNextStepCard(string Id, string Sentence, IReadOnlyList<RewriteChip> Chips, bool Asks = true);
 
-internal enum RewriteFooterAction { None, ApplyLocal, UseTakes, ApplyTextFixes, Done, KeepFixing, StopReask, StopAutoFix, ChooseTake, PriceTake, KeepOriginal, KeepChangeWords, KeepMyWords, ChooseDurations }
+internal enum RewriteFooterAction { None, ApplyLocal, UseTakes, ApplyTextFixes, Done, KeepFixing, StopReask, StopAutoFix, ChooseTake, PriceTake, KeepOriginal, KeepChangeWords, KeepMyWords, ChooseDuration }
 
 /// <summary>The footer always names the next step: a line, and the one primary action when there is one. <see cref="Phrase"/> is the
 /// phrase a per-phrase action acts on.</summary>
@@ -336,7 +336,7 @@ internal sealed partial class RewriteSession
             if (KeepFixingTitle is { } keep) return new(AutoFixCapLine ?? "", keep, RewriteFooterAction.KeepFixing);
             if (IsGeneratingBatch || generationWindows.Any(window => window.IsRunning)) return new("Making takes…", null, RewriteFooterAction.None);
             if (generationWindows.Any(window => window.IsPreparing)) return new("Checking takes…", null, RewriteFooterAction.None);
-            if (AcceptanceBlocker is { } blocker) return new(blocker, "Choose Durations", RewriteFooterAction.ChooseDurations);
+            if (AcceptanceBlocker is { } blocker) return AcceptanceForward(blocker);
             for (var index = 0; index < generationWindows.Count; index++)
                 if (StuckReason(index) is { } reason)
                     return new(StuckSentence(reason, index + 1) + " Choose a next step above.", $"Keep Original Audio for Phrase {index + 1}", RewriteFooterAction.KeepOriginal, index);

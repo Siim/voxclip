@@ -19,30 +19,62 @@ internal sealed partial class RewriteSession
     internal bool CanAcceptAll => GenerationIsCurrent && !IsGeneratingBatch && !applyingBatch && AutoFix.Work is null && generationWindows.Count > 0 && Collision is null &&
         generationWindows.Count == PricedVoiceHunks.Count && generationWindows.All(window => window.LeftOut || window.ReadyToAccept) &&
         (generationWindows.Any(window => !window.LeftOut) || LocalOperations().Count > 0);
+    /// <summary>Phrases whose selected take waits on a video duration (Mac <c>acceptanceBlocker</c>'s undecided phrases), in order.</summary>
+    private IEnumerable<int> UndecidedDurations() => generationWindows.Select((window, index) => (window, index))
+        .Where(item => !item.window.LeftOut && item.window.Phase == RewriteGenerationPhase.LengthChanged &&
+            item.window.Selected is { Selectable: true, RequiresJoinAdvisoryAcceptance: false, Fits: false } && item.window.VideoChoice is null)
+        .Select(item => item.index);
     /// <summary>The footer's next step while selected takes cannot be used yet because a changed-duration phrase has no
-    /// video choice (Mac ClipTakePlan.acceptanceBlocker); null otherwise.</summary>
+    /// video choice (Mac ClipTakePlan.acceptanceBlocker); null otherwise. A duration is asked for only when one is allowed (the
+    /// footer's primary makes it); a take no duration can carry is named as such, and Rewrite keeps that phrase as recorded
+    /// (<see cref="RewriteGeneration.FitsNoDuration"/>).</summary>
     internal string? AcceptanceBlocker
     {
         get
         {
             if (!GenerationIsCurrent || IsGeneratingBatch || applyingBatch || CanAcceptAll) return null;
-            var missing = generationWindows.Select((window, index) => (window, number: index + 1))
-                .Where(item => !item.window.LeftOut && item.window.Phase == RewriteGenerationPhase.LengthChanged &&
-                    item.window.Selected is { Selectable: true, RequiresJoinAdvisoryAcceptance: false, Fits: false } && item.window.VideoChoice is null &&
-                    item.window.ValidVideoChoices.Count > 0)
-                .Select(item => item.number).ToArray();
-            return missing.Length == 0 ? null : $"Choose the video duration for {PhraseList(missing)}.";
+            var undecided = UndecidedDurations().ToArray();
+            var missing = undecided.Where(index => generationWindows[index].ValidVideoChoices.Count > 0).Select(index => index + 1).ToArray();
+            if (missing.Length > 0) return $"Choose the video duration for {PhraseList(missing)}.";
+            return undecided.Length == 0 ? null : NoDurationCopy(undecided.Select(index => index + 1).ToArray(), kept: false);
         }
     }
-    /// <summary>[Choose Durations] (Mac <c>takePlanForward</c>): each phrase waiting on a video duration gets its first valid one (cut,
-    /// then match), as the automatic choice would; [Change] on the card still picks another.</summary>
-    internal bool ChooseDurations()
+    /// <summary>The footer's primary under <see cref="AcceptanceBlocker"/> (Mac <c>acceptanceForward</c>): the first duration a waiting
+    /// take allows (<c>chooseDuration.N</c>), else Keep Original Audio for a take no duration carries.</summary>
+    private RewriteFooterStep AcceptanceForward(string blocker)
     {
-        var chosen = false;
-        foreach (var window in generationWindows.Where(window => !window.LeftOut && window.VideoChoice is null && window.ValidVideoChoices.Count > 0).ToArray())
-            chosen |= window.ChooseVideo(window.ValidVideoChoices[0]);
-        if (chosen) Changed?.Invoke(this, EventArgs.Empty);
-        return chosen;
+        var undecided = UndecidedDurations().ToArray();
+        if (undecided.FirstOrDefault(index => generationWindows[index].ValidVideoChoices.Count > 0, -1) is var phrase and >= 0)
+            return new(blocker, DurationTitle(generationWindows[phrase].ValidVideoChoices[0], phrase), RewriteFooterAction.ChooseDuration, phrase);
+        var first = undecided.Length > 0 ? undecided[0] : 0;
+        return new(blocker, $"Keep Original Audio for Phrase {first + 1}", RewriteFooterAction.KeepOriginal, first);
+    }
+    /// <summary>The footer's title for a duration choice the take allows (the phrase card's radio, as a primary; Mac
+    /// <c>durationTitle</c>).</summary>
+    internal static string DurationTitle(VoiceLabVideoMode choice, int phrase) => choice switch
+    {
+        VoiceLabVideoMode.Source => "Keep Source Duration",
+        VoiceLabVideoMode.Cut => "Cut the Video",
+        _ => "Match the Video"
+    } + $" for Phrase {phrase + 1}";
+    /// <summary>[Keep Source Duration / Cut the Video / Match the Video for Phrase N] (Mac <c>chooseDuration.N</c>): what the phrase
+    /// card's duration radio does with the first valid choice; [Change] on the card still picks another.</summary>
+    internal bool ChooseDuration(int phrase)
+    {
+        if (generationWindows.ElementAtOrDefault(phrase) is not { LeftOut: false, VideoChoice: null } window || window.ValidVideoChoices.Count == 0 ||
+            !window.ChooseVideo(window.ValidVideoChoices[0])) return false;
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+    /// <summary>design.md R2 "A take that can't fit its place" (Mac <c>noDurationCopy</c>): the one line for phrases kept as recorded
+    /// because no video duration (keep source, cut or match) can carry their take. <paramref name="kept"/> false: the reason alone,
+    /// while the phrase still waits (the footer's Keep Original Audio keeps it).</summary>
+    internal static string NoDurationCopy(IReadOnlyList<int> numbers, bool kept = true)
+    {
+        var list = PhraseList(numbers);
+        var one = numbers.Count == 1;
+        var reason = one ? "P" + list[1..] + "'s take can't fit its place in the video" : $"The takes of {list} can't fit their places in the video";
+        return reason + (kept ? one ? ", so it keeps your original audio." : ", so they keep your original audio." : ".");
     }
     /// <summary>"phrase 2", "phrases 2 and 4", "phrases 1, 2 and 4".</summary>
     internal static string PhraseList(IReadOnlyList<int> numbers) => numbers.Count switch

@@ -21,7 +21,11 @@ public sealed class RewritePaceMatchingTests
         var generation = session.Generation!;
         generation.MarkEstimateShown(generation.Quote!);
         await generation.GenerateAsync((_, _) => Task.FromResult(true), autoplay: false);
-        var paid = generation.Selected!;
+        // The paid take fits no video duration, so the phrase already keeps its recording (design.md R2, Mac
+        // ClipTakePlanTests); its change's own recovery steps still measure it and ask before discarding the paid take.
+        var paid = Assert.Single(generation.Rows);
+        Assert.True(generation.LeftOut);
+        Assert.Contains(RewriteSession.NoDurationCopy([1]), session.AutoFix.Notes);
         var feedback = Assert.Single(session.ShorterFeedback(1));
         Assert.Equal(paid.Audio!.Fit.Plan.OutputFrames / (double)paid.Audio.SampleRate, feedback.MeasuredSeconds);
         Assert.Equal(session.Review!.VoiceHunks[0].Fit!.EstimateSeconds, feedback.EstimateSeconds);
@@ -32,7 +36,7 @@ public sealed class RewritePaceMatchingTests
         Assert.False(await session.PrepareShorterAsync(1));
         Assert.True(session.PendingPaidReviewChange!.Shorter);
         session.CancelPaidReviewChange();
-        Assert.Same(paid, generation.Selected);
+        Assert.Same(paid, Assert.Single(generation.Rows));
         Assert.True(generation.ReviewedInputsCurrent);
     }
 
@@ -368,18 +372,19 @@ public sealed class RewritePaceMatchingTests
         var other = session.GenerationWindows[1];
         other.MarkEstimateShown(other.Quote!);
         await other.GenerateAsync((_, _) => Task.FromResult(true), autoplay: false);
-        var paid = other.Selected;
-        Assert.NotNull(paid);
+        // The stub's 5.8 s take fits no video duration, so that phrase keeps its recording (design.md R2); its paid take stays listed.
+        var paid = Assert.Single(other.Rows);
+        Assert.True(other.LeftOut);
         Assert.True(session.ReviewSurroundingSentence(1), session.SentenceProblem);
         Assert.True(session.AcceptSurroundingSentence(session.SentenceReview!), session.SentenceProblem);
         Assert.Same(other, session.GenerationWindows[1]);
-        Assert.Same(paid, other.Selected);
+        Assert.Same(paid, Assert.Single(other.Rows));
         Assert.True(other.ReviewedInputsCurrent);
         await session.DiscoverWindowsAsync();
         var included = session.PricedVoiceHunks.ToArray();
         Assert.Equal(included.SelectMany(hunk => hunk.Ordinals), session.PricedVoiceHunks.SelectMany(hunk => hunk.Ordinals));
         Assert.All(session.Review!.VoiceHunks, hunk => Assert.Equal(1, hunk.Fit!.Pace));
-        Assert.Same(paid, other.Selected);
+        Assert.Same(paid, Assert.Single(other.Rows));
         Assert.Equal(1, other.NextPace);
         Assert.Equal(1, paid.Receipt!.Pace);
     }

@@ -104,10 +104,12 @@ internal sealed partial class RewritePanel
                 if (window.Quote is { } quote) DispatcherQueue.TryEnqueue(() => window.MarkEstimateShown(quote));
             }
         }
-        else if (suggestion.KeepOriginal) measuredFit.Children.Add(Wrapped("This phrase cannot fit naturally. Keep the original words or keep this take."));
-        var keep = Ui.Button(suggestion.AwaitingApproval ? "Skip" : $"Keep Take {suggestion.Number}", () => _ = session.KeepMeasuredTakeAsync());
+        else if (suggestion.KeepOriginal) measuredFit.Children.Add(Wrapped(session.MeasuredFitsNoDuration(suggestion)
+            ? "This take can't fit its place in the video. Keep your original audio."
+            : "This phrase cannot fit naturally. Keep the original words or keep this take."));
+        var keep = Ui.Button(session.MeasuredKeepTitle(suggestion), () => _ = session.KeepMeasuredTakeAsync());
         AutomationProperties.SetAutomationId(keep, "Rewrite.MeasuredKeep");
-        SetName(keep, suggestion.AwaitingApproval ? "Skip measured rewording" : $"Keep Take {suggestion.Number}");
+        SetName(keep, suggestion.AwaitingApproval ? "Skip measured rewording" : session.MeasuredKeepTitle(suggestion));
         measuredFit.Children.Add(keep);
         if (suggestion.Problem.Length > 0)
             measuredFit.Children.Add(Themed(Wrapped(suggestion.Problem), TextBlock.ForegroundProperty, "VcStatusWarningBrush"));

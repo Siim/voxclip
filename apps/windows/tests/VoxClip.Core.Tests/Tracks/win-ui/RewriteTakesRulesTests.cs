@@ -25,8 +25,11 @@ public sealed class RewriteTakesRulesTests
         Assert.NotNull(session.AutoFix.Capped);
         Assert.Equal(window.Rows[0].Id, window.AutomaticTake()!.Id);
         Assert.Equal(window.Rows[0].Id, window.SelectedTakeId);
-        // No duration can carry it, so the footer never asks for a duration choice that doesn't exist.
-        Assert.Null(session.AcceptanceBlocker);
+        // No duration can carry it, so the footer never asks for a duration choice that doesn't exist: it names the take that can't
+        // fit (Mac acceptanceBlocker), and the capped resolver still owns the phrase, so it is not kept as recorded yet.
+        Assert.Equal("Phrase 1's take can't fit its place in the video.", session.AcceptanceBlocker);
+        Assert.False(window.LeftOut);
+        Assert.Equal(RewriteFooterAction.KeepFixing, session.FooterStep.Action);
         Assert.False(window.DurationAvailable(window.Rows[1]));
         session.KeepFixing();
         await SettleAsync(session);

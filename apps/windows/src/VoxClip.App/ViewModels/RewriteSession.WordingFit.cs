@@ -382,6 +382,9 @@ internal sealed partial class RewriteSession
             if (Wording(index) != PhraseWording.Suggested || window.IsRunning || window.IsPreparing || !window.NeedsShorterWording || window.Selected is not { Audio: { } audio } selected ||
                 measuredTakes.Contains(selected.Id) || (selected.Receipt?.ModelId ?? window.InputFor(selected.Id)?.ModelId) != synthesisModel ||
                 PricedVoiceHunks.ElementAtOrDefault(index) is not { Fit: { } fit }) continue;
+            // A too-short take gets no round: a longer wording would only pad (ADR-R42); its phrase keeps the recorded audio
+            // (SettleTakesThatFitNoDuration).
+            if (audio.Fit.Plan.OutputFrames / (double)audio.SampleRate <= fit.SlotSeconds) continue;
             measuredTakes.Add(selected.Id);
             MeasuredWording = new(index, selected.Id, selected.Index + 1, audio.Fit.Plan.OutputFrames / (double)audio.SampleRate, fit.SlotSeconds);
             MeasuredWork = RewordMeasuredTakeAsync(!FitAsksFirst);
