@@ -1,5 +1,56 @@
 # macOS implementation contracts
 
+### 2026-11-06 — Rebuild from my videos: a new clone from owner-verified clean speech across videos; tone match at render (track/v2-voice-rebuild)
+
+Owed by track/v2-voice-references (step 6 and "Room match: tilt"). Spec: doc/spec/voice-lab.md §6.12, §8.7 item 2b; [ADR-R42](../../doc/adr/R42-rebuild-from-your-videos-and-tone-match.md); design.md Settings › Voice Lab and the "Rebuild from my videos" copy row.
+
+- **Measured** (`VoiceRebuildMeasureTests`, local only, the user's files read only; wespeaker-resnet34, τ 0.45).
+  - **The voice.** "siim (VoxClip)" has 8 training samples, 118.57 s in all. Its `reference.wav` is 27.72 s and scores 1.000 against the record.
+  - **DJI_20261014184458_0030_D_1080p** (348 s, 48 kHz) has 0 qualifying spans: all 16 transcribed stretches are `lowSnr` (4.5–15.4 dB, median 7.44) and 2 are short. Below the floor, the lowest-part scores are 0.330–0.491 (whole 0.360–0.518), and five stretches reach τ: 72–82 s 0.467, 83–100 s 0.481, 101–116 s 0.491, 172–184 s 0.452, 295–312 s 0.466.
+  - **DJI_0075** (recovered project): its media is gone from the Desktop. The export folder holds no `.voxclip`, and the app's recent list (NSDocumentController) is not readable outside the app.
+  - **Plan today:** "27 s from 0 videos and your consent clip", 1 file, not enough. In the app, the row would show the too-little line.
+- **Built.**
+  - **Core.** `VoiceRebuild` (pure): `Candidate`, `Rejection` (`notTheOwner`, `noisy`, `length`, `full`), `Plan` (`pieces`, `keptMs`, `totalMs`, `videoCount`, `fileCount`, `enough`), `pick` (one hop at the lowest part score; SNR ≥ `TRAIN_MIN_SNR`; 5–30 s; round 1 each video's cleanest, round 2 the most dissimilar; ≤ 24 files, ≤ 120 s, the kept clip counting toward both), `amount`, `summary`. `VoiceConsentStore.carryReferences(from:to:at:)` re-learns each old reference with `VoiceSpeakerReferences.learning` against the new record. `VoiceLabTilt`: band measurement (radix-2 FFT, periodic Hann, voiced −45 dBFS frames, 20 one-third-octave bands), `slope`, `match`, `sections` (three bilinear first-order high shelves, pivot-normalised), `magnitude`, `Filter`, `apply`, `neighbourhoodBands`. `VoiceLabAudio.tiltDbPerOctave` (`encodeIfPresent`; `tiltIsValid`: finite, non-zero, within ±2) is validated in `VoiceLabProject`, `VoiceLabRenderValidation` (2 places) and `ProjectValidation` (optional key on both audio objects). `VoiceLabTakeProcessing.process(…, matchTone:)` tilts the whole asset, then trims, then measures the gain. `VoiceLabTakePreflight.sourceTone`. `VoiceLabTakeAudio.tiltDbPerOctave`. `SettingsValidation` and `settings.schema.json` add `voiceLab.rewriteVoice` (a lowercase UUID, no default).
+  - **Media.** `VoiceRebuildFinder` (actor): it reads the same projects as the learner, skipping missing media, untranscribed or other-language projects and media labelled AI modified. Per video it embeds the six cleanest §6.5.1 spans (`videoCandidates`). It keeps `reference.wav` first for `/2`, and re-cuts the picked spans with `VoiceTrainingAudio.projectSamples`. The take run calls `process(…, matchTone: true)` for generated takes (recorded takes keep `false`). `publish` carries the tilt to `VoiceLabAudio`. `PreparedVoiceLabAsset.tiltDbPerOctave`. The renderer tilts in `stageTake` (`tiltedChannels`) and in `conform` (`warmedToneFilters` from frame 0, then the filtered `VoiceLabConversionInput`).
+  - **App.** `VoiceRebuildState` and `VoiceLabSession` `findRebuild`, `rebuildAttestationsChanged` (one chained task; it drafts `prepareProjectPlan` only with all three boxes), `approveRebuild` (`execute` through the journal, then `carryReferences`), `useRebuiltVoice`, `removeOldVoice` (only after `confirmingRemoval`, through `enrollment.delete`) and `playRebuildPiece`. `VoiceRebuildRows` sit in each voice's Settings row, with an inline confirm and no sheet or alert. `RewriteGenerationSession.initialVoice(_:preferred:)` and `preferredVoiceID`, set by `RewriteSession.configureGeneration` from the setting.
+  - **Shared.** `shared/fixtures/voice-lab/tilt-cases.json` (`voxclip-voice-lab-tilt/1`, 35 cases: frameSize, sections, filter, bands, match, neighbourhood) comes from `tools/fixtures/voice-lab/generate_tilt.py` (pure Python) and is on `check_drift.py` TOLERANT. `tilt-README.md`. `tools/schemas/generate_tone_match_schema.py` (with its test, run by `check_drift.py`) adds `tiltDbPerOctave` to the three audio definitions of `project.schema.json`.
+  - **DEBUG.** Smoke S-voice-rebuild (V1–V4). It rebuilds and removes a *copy* of the fixture voice under its own record and voice ids, then restores the consent records, `voice-ops`, the preference and its two projects. A deleted record's id stays revoked in `VoiceDispatchGate` for the process, and every later scenario reuses the fixture's id. The smoke stubs gain `voices`, `requests` and `synthesisVoices`, plus routes for the subscription, `voices/add`, a dynamic `/v2/voices`, `DELETE /v1/voices/<id>` and TTS for any listed voice.
+- **Deleted.** Nothing: the rebuild reuses the attested creation, the deletion and the learner's sources unchanged. The renderer's inline warm-up became `warmedToneFilters`.
+- **Tests.**
+  - Core `VoiceRebuildTests` (4), `VoiceLabTiltReplayTests` (2) and `VoiceLabToneMatchTests` (3), plus `VoiceLabTakeRunTests.aGeneratedTakeIsToneMatchedAndItsRecipeCarriesTheTilt`.
+  - Media `VoiceLabCompositionTests.toneMatchTiltsTheStagedTakeOnlyWhenTheSegmentSaysSo` (with and without the tilt; export equals preview) and `toneMatchRunsFromTheAssetsFirstFrameWhenTheReadStartsLater`.
+  - App `VoiceRebuildFlowTests` (3: the stubbed rebuild, switch and inline removal; Rewrite's first voice; the too-little line).
+  - Windows `VoiceLabToneMatchWireTests` (3).
+  - **Red** without each rule, one at a time:
+    - one hop and the SNR floor → `onlyTheOwnersCleanSpeechOfTheRightLengthIsUsed`;
+    - round 1 → `everyVideoOnceBeforeAnyRepeatsThenTheMostDifferent`;
+    - the limits → `theSetStaysWithinTheClientsLimits`;
+    - the carry's re-check → `referencesReachTheNewVoiceOnlyWhenTheyPassItsOwnEmbedding`;
+    - the removal confirm → `rebuildsFromVerifiedSpeechThenSwitchesAndRemovesTheOldVoiceInline`;
+    - the preference → `rewriteStartsWithTheVoiceSettingsChose`;
+    - `matchTone` → `aGeneratedTakeIsToneMatchedAndItsRecipeCarriesTheTilt`;
+    - the cascade clamp → `replaysEveryToneMatchVector` and `theTiltIsGentleClampedAndPivotsAtOneKilohertz`;
+    - the match clamp → `replaysEveryToneMatchVector` and `aGeneratedTakeIsTiltedBeforeItsGainIsMeasured`;
+    - the pivot → `replaysEveryToneMatchVector` and `theTiltIsGentleClampedAndPivotsAtOneKilohertz`;
+    - the warm-up → `toneMatchRunsFromTheAssetsFirstFrameWhenTheReadStartsLater`.
+- **Verification** (`VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`): Core 1,340 tests in 135 suites passed (2 known issues). Media 575 in 71 suites and App 975 in 75 suites ran with one failure each, both load-dependent and outside this package: the asset store's `concurrentWritersOfOneAssetPublishItExactlyOnce` and the transcript proposal's 60 fps budget (`thirtyChangesWriteOnlyTheirParagraphs`, p95 22.5 ms at load average ~27). They pass alone, 5/5 and 3/3. After the suites, the `voiceLab.rewriteVoice` null fix and the smoke isolation were checked with the flow and settings tests (31 passed). `rewrite-smoke.sh --lengths both`: 58 scenarios ok, including S-voice-rebuild and S-voice-rebuild-exact. `swift build --build-tests -Xswiftc -Xfrontend -Xswiftc -warn-long-expression-type-checking=250`: no warning. `check_drift.py`, the voice-lab and schema unit tests and `validate.py` on the render fixtures: clean. @@E2E@@
+- **Owed.**
+  - **Windows twin.** Windows reads, validates and saves `audio.tiltDbPerOctave` and renders without it. Owed:
+    - `VoiceLabTilt` in Core, replaying `tilt-cases.json` (tolerant);
+    - take processing's `sourceTone`, `matchTone` and the gain after the tilt;
+    - the filter in `VoiceLabAudioMixer`, which reads assets random-access, so the state from frame 0 has to be computed per read;
+    - the rebuild: `VoiceRebuild` (pure, ideally pinned by a new shared vector file), the finder, `carryReferences`, the Settings rows and `voiceLab.rewriteVoice` in Rewrite's first voice;
+    - all of this on top of the still-owed twin of track/v2-voice-references.
+  - **A real rebuild** needs cleaner videos on this Mac: no project here has 30 s of clean speech. Then comes the user's click (Rebuild · price, on their account), and the real before/after comparison: the takes' score against the speech beside them, and the slope. The 20 dB floor is kept. Relaxing it with ElevenLabs' `remove_background_noise` is a decision for the lead and user.
+  - Real-window `-sceneAudit` of Settings › Voice Lab with the rebuild row in each state (not run: the user is using the Mac).
+- **Next package must know.**
+  - A rebuilt voice's embedding is the old one's only because `reference.wav` is sent first. Never reorder the training files.
+  - Carry references only through `carryReferences`, which re-checks them one hop.
+  - `voiceLab.rewriteVoice` is a preference, not a binding. A removed or inactive record falls back to the first active voice.
+  - Any new path that reads a generated asset mid-file must warm the cascade from frame 0 (`warmedToneFilters`), or preview and export differ from the take QA.
+  - A smoke scenario must never delete or withdraw the fixture's consent record: its id is revoked for the rest of the run (`VoiceDispatchGate`), and every later take run fails `consent(inactive)` with an empty footer problem. Copy the record under a new id, as S-voice-rebuild does.
+  - A new audio field on `VoiceLabAudio` goes into `ProjectValidation`'s key sets on both platforms, or Windows refuses the project; the schema needs it too (`tools/schemas`).
+
 ### 2026-11-05 — Let a video teach your voice: owner-verified references, one hop from the consent statement; Get Price checks every phrase first (track/v2-voice-references)
 
 User decision (2026-11-05): "let a video teach your voice", and the follow-up "we don't have to match the voice so desperately … Can use more references to construct the original voice. We have plenty of different clips available, right?" Spec: doc/spec/voice-lab.md §6.9, §6.10; [ADR-R41](../../doc/adr/R41-voice-references-from-your-videos.md); doc/design.md R2 "Not your voice here", Settings › Voice Lab.
