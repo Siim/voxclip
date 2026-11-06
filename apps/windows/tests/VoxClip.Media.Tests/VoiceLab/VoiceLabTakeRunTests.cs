@@ -801,6 +801,32 @@ public sealed partial class VoiceLabTakeRunTests
                 start = fits ? 0.65 : seconds > 0.3 ? 0.1 : seconds * 0.1, end = fits ? Duration + 0.35 : seconds > 0.3 ? seconds - 0.1 : seconds * 0.9 } } });
         }
     }
+    /// <summary>The free screen at Get Price (ADR-R41; Mac <c>screenGuard</c>): one call over every phrase's guard speech, the same speech the
+    /// run's own guard reads at dispatch; phrases of different voices or videos, or a run without a screen, are unchecked.</summary>
+    [Fact]
+    public async Task TheScreenJudgesEveryPhraseOnTheGuardsOwnSpeech()
+    {
+        List<(string Key, string Record, IReadOnlyList<float[]> Speech)> calls = [];
+        await using var fixture = new Fixture(screen: (key, record, speech, _) =>
+        {
+            calls.Add((key, record, speech));
+            return Task.FromResult<IReadOnlyList<VoiceGuardVerdict>>([VoiceGuardVerdict.Blocked(VoiceConsentError.VoiceOwnerMismatch), VoiceGuardVerdict.Unchecked]);
+        });
+        var verdicts = await fixture.Run.ScreenGuardAsync([fixture.Input, fixture.Input], TestContext.Current.CancellationToken);
+        Assert.Equal(VoiceConsentError.VoiceOwnerMismatch, verdicts[0].Blocker);
+        var call = Assert.Single(calls);
+        Assert.Equal(("synthetic-source", fixture.Record.RecordId), (call.Key, call.Record));
+        Assert.Equal(2, call.Speech.Count);
+        Assert.Equal(VoiceLabTakeRun.GuardSpeech(fixture.Input), call.Speech[0]);
+        var mixed = await fixture.Run.ScreenGuardAsync([fixture.Input, fixture.Input with { ContentKey = "another-video" }], TestContext.Current.CancellationToken);
+        Assert.All(mixed, verdict => Assert.Same(VoiceGuardVerdict.Unchecked, verdict));
+        Assert.Single(calls);
+        await using var plain = new Fixture();
+        Assert.All(await plain.Run.ScreenGuardAsync([plain.Input], TestContext.Current.CancellationToken), verdict => Assert.Same(VoiceGuardVerdict.Unchecked, verdict));
+        // Nothing was quoted or sent.
+        Assert.Empty(fixture.Speech);
+    }
+
     private sealed class Fixture : IAsyncDisposable
     {
         internal readonly string Root = Path.Combine(Path.GetTempPath(), "voxclip-takes-" + Guid.NewGuid().ToString("N"));
@@ -824,7 +850,8 @@ public sealed partial class VoiceLabTakeRunTests
         /// <summary>The generated voiced speech each take yields (16 kHz frames); under 48,000 the take waits for its run's pool.</summary>
         internal int VoicedFrames = 48000;
         internal bool Current = true;
-        internal Fixture(Func<VoiceLabTakeInput, VoiceLabTakeInput>? input = null)
+        internal Fixture(Func<VoiceLabTakeInput, VoiceLabTakeInput>? input = null,
+            Func<string, string, IReadOnlyList<float[]>, CancellationToken, Task<IReadOnlyList<VoiceGuardVerdict>>>? screen = null)
         {
             Directory.CreateDirectory(Root);
             var locations = new DataLocations(Root, Path.Combine(Root, "settings.json"), Path.Combine(Root, "Models"), Path.Combine(Root, "Cache"),
@@ -856,7 +883,7 @@ public sealed partial class VoiceLabTakeRunTests
                 if (voiced.Length < SpeakerAudio.WindowSize) throw new VoiceInsufficientGeneratedSpeechException();
                 lock (Embedded) Embedded.Add(voiced.Length);
                 return Task.FromResult(SpeakerFailure ? new float[] { 0, 1 } : [1f, 0f]);
-            });
+            }, screen);
             Run = new(Client, Store, new(Guid.NewGuid().ToString("D"), Path.Combine(Root, "Paid"), Path.Combine(Root, "scratch")), Gate,
                 _ => Task.FromResult(Current), checks);
             var source = Samples = Enumerable.Range(0, 24000 * 8).Select(index =>

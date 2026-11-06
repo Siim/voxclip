@@ -252,6 +252,7 @@ internal sealed class VoiceLabSettingsPane : UserControl
             var date = VoiceLabSession.CardName(record)[(record.VoiceName.Length + ", created ".Length)..];
             card.Children.Add(Selectable("Created " + date + " · " + record.VoiceId));
             if (record.Status == VoiceConsentStatus.VerificationRequired) card.Children.Add(Ui.Text(VoiceLabCopy.VerificationRequired, "HelperText"));
+            AddReferenceRows(card, record);
             var deleting = session.Deleting.Contains(record.RecordId);
             if (deleting) card.Children.Add(Ui.Text(session.Busy ? "Deleting…" : "Couldn't finish deleting", "HelperText"));
             var delete = SessionButton(deleting ? "Retry deletion…" : "Delete voice", VoiceLabActionNames.ForRecord("Delete voice", record, session.VisibleRecords),
@@ -352,6 +353,38 @@ internal sealed class VoiceLabSettingsPane : UserControl
         c2pa.Toggled += (_, _) => owner.RunSensitive(() => Ui.RunAsync(message,
             () => App.Services.VoiceLabEnabled ? App.Services.SetAsync("voiceLab.c2pa", c2pa.IsOn, token) : Task.CompletedTask, "Save Content Credentials preference"), "Save Content Credentials preference");
         var credentials = Ui.Stack(); credentials.Children.Add(c2pa); credentials.Children.Add(Ui.Text(VoiceLabCopy.C2paHelper, "HelperText")); AddCard(section, credentials);
+    }
+    /// <summary>A voice's learned references, inline (ADR-R41; Mac <c>VoiceReferenceRows</c>): "Learned from n of your videos", Learn from my
+    /// videos where the speaker check is ready on this PC, Forget learned references while it holds some, and the last step's line.</summary>
+    private void AddReferenceRows(StackPanel card, VoiceConsentRecord record)
+    {
+        var learned = Ui.Text(VoiceLabSession.LearnedLine(record), "HelperText");
+        AutomationProperties.SetAutomationId(learned, "voice-learned-" + record.RecordId);
+        card.Children.Add(learned);
+        var buttons = Ui.Stack(8); buttons.Orientation = Orientation.Horizontal;
+        if (session.LearningOffered(record))
+        {
+            var learn = SessionButton(session.IsLearning ? "Learning…" : "Learn from my videos",
+                VoiceLabActionNames.ForRecord("Learn from my videos", record, session.VisibleRecords), () => session.LearnFromVideosAsync(record.RecordId));
+            learn.IsEnabled = session.CanLearn(record);
+            AutomationProperties.SetAutomationId(learn, "voice-learn-" + record.RecordId);
+            buttons.Children.Add(learn);
+        }
+        if (session.CanForget(record))
+        {
+            var forget = SessionButton("Forget learned references", VoiceLabActionNames.ForRecord("Forget learned references", record, session.VisibleRecords),
+                () => session.ForgetLearnedAsync(record.RecordId));
+            AutomationProperties.SetAutomationId(forget, "voice-forget-learned-" + record.RecordId);
+            buttons.Children.Add(forget);
+        }
+        if (buttons.Children.Count > 0) card.Children.Add(buttons);
+        if (session.LearningLines.TryGetValue(record.RecordId, out var line))
+        {
+            var text = Ui.Text(line, "HelperText");
+            AutomationProperties.SetAutomationId(text, "voice-learning-line-" + record.RecordId);
+            AutomationProperties.SetLiveSetting(text, AutomationLiveSetting.Polite);
+            card.Children.Add(text);
+        }
     }
     private void AddVoiceCard(UIElement content, string recordId, string label)
     {

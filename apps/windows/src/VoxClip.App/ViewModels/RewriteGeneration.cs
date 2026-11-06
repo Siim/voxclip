@@ -57,6 +57,10 @@ internal sealed partial class RewriteGeneration : IDisposable
     internal bool IsRequestingConsent { get; private set; }
     internal VoiceLabTakeRunQuote? Quote => core.PendingQuote;
     internal VoiceLabTakeBatch.Window? PreparedWindow => Quote is { } quote && pendingInput is { } input ? new(input, quote) : null;
+    /// <summary>The guard's free verdict on these phrases before any price (ADR-R41), through this phrase's take runner.</summary>
+    internal Task<IReadOnlyList<VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict>> ScreenGuardAsync(IReadOnlyList<VoiceLabTakeInput> inputs, CancellationToken ct) =>
+        closed ? Task.FromResult<IReadOnlyList<VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict>>(inputs.Select(_ => VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict.Unchecked).ToArray())
+            : takeRunner.ScreenGuardAsync(inputs, ct);
     internal VoiceLabCostPresentationResult? Cost => core.Cost;
     /// <summary>The phrase's one take list: its generated takes, then the user's own recorded takes (Say it myself).</summary>
     internal IReadOnlyList<VoiceLabTakeRow> Rows => core.Rows.Where(row => !rejected.Contains(row.Id)).Concat(recordedRows).ToArray();
@@ -447,6 +451,8 @@ internal sealed partial class RewriteGeneration : IDisposable
         public bool IsQuoteFresh(VoiceLabTakeRunQuote quote) => inner.IsQuoteFresh(quote);
         public Task<VoiceLabMonthlyCap?> RefreshMonthlyCapAsync(VoiceLabMonthlyCap? cap, CancellationToken ct = default) => inner.RefreshMonthlyCapAsync(cap, ct);
         public Task<decimal?> ReadMonthlySpendAsync(VoiceLabMonthlyCap? cap, CancellationToken ct = default) => inner.ReadMonthlySpendAsync(cap, ct);
+        public Task<IReadOnlyList<VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict>> ScreenGuardAsync(IReadOnlyList<VoiceLabTakeInput> inputs, CancellationToken ct = default) =>
+            inner.ScreenGuardAsync(inputs, ct);
         public async Task<VoiceLabTakeRunResult> ExecuteAsync(VoiceLabTakeRunQuote quote, bool approved, Func<IReadOnlyList<VoiceLabTakeRow>, Task>? progress = null, CancellationToken ct = default)
         {
             try { return await inner.ExecuteAsync(quote, approved, progress, ct); }

@@ -1846,6 +1846,7 @@ member VoxClip.Media.VoiceLab.VoiceLabDisclosureWriter :: field public DigitalSo
 member VoxClip.Media.VoiceLab.VoiceLabDisclosureWriter :: method private .cctor()
 member VoxClip.Media.VoiceLab.VoiceLabDisclosureWriter :: method private Sidecar(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedRender,string,string,string,System.DateTimeOffset)
 member VoxClip.Media.VoiceLab.VoiceLabDisclosureWriter :: method private ValidateMp4(System.IO.FileStream)
+member VoxClip.Media.VoiceLab.VoiceLabDisclosureWriter :: method public IsLabelled(string)
 member VoxClip.Media.VoiceLab.VoiceLabDisclosureWriter :: method public StageAsync(string,string,string,VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedRender,string,System.DateTimeOffset,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceLabDisclosureWriter :: method public XmpPacket()
 member VoxClip.Media.VoiceLab.VoiceLabFileIdentity :: method private .ctor(VoxClip.Media.VoiceLab.VoiceLabFileIdentity)
@@ -2088,6 +2089,7 @@ member VoxClip.Media.VoiceLab.VoiceLabSourceAudio :: method internal Aligned(lon
 member VoxClip.Media.VoiceLab.VoiceLabSourceAudio :: method internal ConversionChunk(long,long,double)
 member VoxClip.Media.VoiceLab.VoiceLabSourceAudio :: method internal DecodeAsset(string,int,string,System.Threading.CancellationToken,System.Action`1<string>)
 member VoxClip.Media.VoiceLab.VoiceLabSourceAudio :: method internal DecodeChunkFrames(int)
+member VoxClip.Media.VoiceLab.VoiceLabSourceAudio :: method internal GuardSpeechAsync(string,long,int,VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech,System.Func`6<string,long,long,double,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<byte[]>>,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceLabSourceAudio :: method internal Merged(System.Collections.Generic.IEnumerable`1<System.ValueTuple`2<long,long>>)
 member VoxClip.Media.VoiceLab.VoiceLabSourceAudio :: method internal NearWindow(VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,System.Nullable`1<double>,System.Nullable`1<double>,long,int)
 member VoxClip.Media.VoiceLab.VoiceLabSourceAudio :: method internal Resample(VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt,int,int)
@@ -2107,6 +2109,7 @@ member VoxClip.Media.VoiceLab.VoiceLabSourceAudio :: method private Resample(flo
 member VoxClip.Media.VoiceLab.VoiceLabSourceAudio :: method public ConversionInputAsync(string,long,long,double,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceLabSourceAudio :: method public DecodeAsset(string,int,string,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceLabSourceAudio :: method public Envelope(System.ReadOnlySpan`1<float>,int)
+member VoxClip.Media.VoiceLab.VoiceLabSourceAudio :: method public GuardSpeechAsync(string,long,int,VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceLabSourceAudio :: method public RewriteSourceAsync(string,long,int,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,System.Nullable`1<double>,System.Nullable`1<double>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceLabSourceAudio :: method public RewriteSourceAsync(string,long,int,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,System.Nullable`1<double>,System.Nullable`1<double>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,bool,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceLabSourceAudio+SampleBlock :: method public .ctor(object,nint)
@@ -2212,6 +2215,7 @@ member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public ReadMonthlySpendA
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public RefreshMonthlyCapAsync(VoxClip.Core.Domain.VoiceLab.VoiceLabMonthlyCap,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public RejectAsync(System.Guid)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public Scratch(System.Guid)
+member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public ScreenGuardAsync(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput>,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public get_KeepsEarlierTakes()
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public get_LocalTiming()
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method public get_PhraseId()
@@ -2258,20 +2262,22 @@ member VoxClip.Media.VoiceLab.VoiceLabTakeRun+Pending :: method public set_Speec
 member VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks :: method private .ctor(VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks :: method private get_EqualityContract()
-member VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks :: method public .ctor(System.Action`1<VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord>,System.Func`7<VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord,float[],VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedAction,VoxClip.Core.Services.VoiceLab.VoiceLabDispatchBinding,long,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<VoxClip.Core.Domain.VoiceLab.OwnVoicePolicy>>,System.Func`4<float[],int,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<float[]>>,System.Func`3<float[],System.Threading.CancellationToken,System.Threading.Tasks.Task`1<float[]>>)
-member VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks :: method public Deconstruct(System.Action`1<VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord>&,System.Func`7<VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord,float[],VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedAction,VoxClip.Core.Services.VoiceLab.VoiceLabDispatchBinding,long,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<VoxClip.Core.Domain.VoiceLab.OwnVoicePolicy>>&,System.Func`4<float[],int,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<float[]>>&,System.Func`3<float[],System.Threading.CancellationToken,System.Threading.Tasks.Task`1<float[]>>&)
+member VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks :: method public .ctor(System.Action`1<VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord>,System.Func`7<VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord,float[],VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedAction,VoxClip.Core.Services.VoiceLab.VoiceLabDispatchBinding,long,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<VoxClip.Core.Domain.VoiceLab.OwnVoicePolicy>>,System.Func`4<float[],int,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<float[]>>,System.Func`3<float[],System.Threading.CancellationToken,System.Threading.Tasks.Task`1<float[]>>,System.Func`5<string,string,System.Collections.Generic.IReadOnlyList`1<float[]>,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict>>>)
+member VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks :: method public Deconstruct(System.Action`1<VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord>&,System.Func`7<VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord,float[],VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedAction,VoxClip.Core.Services.VoiceLab.VoiceLabDispatchBinding,long,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<VoxClip.Core.Domain.VoiceLab.OwnVoicePolicy>>&,System.Func`4<float[],int,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<float[]>>&,System.Func`3<float[],System.Threading.CancellationToken,System.Threading.Tasks.Task`1<float[]>>&,System.Func`5<string,string,System.Collections.Generic.IReadOnlyList`1<float[]>,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict>>>&)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks :: method public Equals(VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks :: method public Equals(object)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks :: method public GetHashCode()
 member VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks :: method public ToString()
 member VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks :: method public get_Authorize()
 member VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks :: method public get_Embedding()
+member VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks :: method public get_Screen()
 member VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks :: method public get_Validate()
 member VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks :: method public get_Voiced()
 member VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks :: method public op_Equality(VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks,VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks :: method public op_Inequality(VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks,VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks :: method public set_Authorize(System.Func`7<VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord,float[],VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedAction,VoxClip.Core.Services.VoiceLab.VoiceLabDispatchBinding,long,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<VoxClip.Core.Domain.VoiceLab.OwnVoicePolicy>>)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks :: method public set_Embedding(System.Func`3<float[],System.Threading.CancellationToken,System.Threading.Tasks.Task`1<float[]>>)
+member VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks :: method public set_Screen(System.Func`5<string,string,System.Collections.Generic.IReadOnlyList`1<float[]>,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict>>>)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks :: method public set_Validate(System.Action`1<VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord>)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks :: method public set_Voiced(System.Func`4<float[],int,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<float[]>>)
 member VoxClip.Media.VoiceLab.VoiceLabTakeScratch :: field private lifetime
@@ -2410,6 +2416,48 @@ member VoxClip.Media.VoiceLab.VoiceLabWindowsFiles :: method private GetFileInfo
 member VoxClip.Media.VoiceLab.VoiceLabWindowsFiles :: method private GetFinalPathNameByHandleW(Microsoft.Win32.SafeHandles.SafeFileHandle,System.Text.StringBuilder,uint,uint)
 member VoxClip.Media.VoiceLab.VoiceLabWindowsFiles+AttributeTagInformation :: field internal Attributes
 member VoxClip.Media.VoiceLab.VoiceLabWindowsFiles+AttributeTagInformation :: field internal ReparseTag
+member VoxClip.Media.VoiceLab.VoiceReferenceLearner :: field private clock
+member VoxClip.Media.VoiceLab.VoiceReferenceLearner :: field private decode
+member VoxClip.Media.VoiceLab.VoiceReferenceLearner :: field private labelled
+member VoxClip.Media.VoiceLab.VoiceReferenceLearner :: field private probe
+member VoxClip.Media.VoiceLab.VoiceReferenceLearner :: field private store
+member VoxClip.Media.VoiceLab.VoiceReferenceLearner :: field public Candidates
+member VoxClip.Media.VoiceLab.VoiceReferenceLearner :: field public MinimumSeconds
+member VoxClip.Media.VoiceLab.VoiceReferenceLearner :: method internal .ctor(VoxClip.Core.Services.VoiceLab.VoiceConsentStore,VoxClip.Media.VoiceLab.VoiceSpeakerProbe,System.Func`6<string,long,int,VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<float[]>>,System.Func`2<string,bool>,System.TimeProvider)
+member VoxClip.Media.VoiceLab.VoiceReferenceLearner :: method public .ctor(VoxClip.Core.Services.VoiceLab.VoiceConsentStore,VoxClip.Media.VoiceLab.VoiceSpeakerProbe,System.TimeProvider)
+member VoxClip.Media.VoiceLab.VoiceReferenceLearner :: method public LearnAsync(VoxClip.Core.Domain.Shared.Project,string,string,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.VoiceReferenceLearner :: method public Selections(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,int,long,int)
+member VoxClip.Media.VoiceLab.VoiceReferenceLearnerOutcome :: field public Generated
+member VoxClip.Media.VoiceLab.VoiceReferenceLearnerOutcome :: field public Kept
+member VoxClip.Media.VoiceLab.VoiceReferenceLearnerOutcome :: field public Learned
+member VoxClip.Media.VoiceLab.VoiceReferenceLearnerOutcome :: field public NoSpeech
+member VoxClip.Media.VoiceLab.VoiceReferenceLearnerOutcome :: field public NotTheOwner
+member VoxClip.Media.VoiceLab.VoiceReferenceLearnerOutcome :: field public Unavailable
+member VoxClip.Media.VoiceLab.VoiceReferenceLearnerOutcome :: field public value__
+member VoxClip.Media.VoiceLab.VoiceReferenceLearning :: method private .ctor(VoxClip.Media.VoiceLab.VoiceReferenceLearning)
+member VoxClip.Media.VoiceLab.VoiceReferenceLearning :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Media.VoiceLab.VoiceReferenceLearning :: method private get_EqualityContract()
+member VoxClip.Media.VoiceLab.VoiceReferenceLearning :: method public .ctor(VoxClip.Media.VoiceLab.VoiceReferenceLearnerOutcome,System.Nullable`1<double>)
+member VoxClip.Media.VoiceLab.VoiceReferenceLearning :: method public Deconstruct(VoxClip.Media.VoiceLab.VoiceReferenceLearnerOutcome&,System.Nullable`1<double>&)
+member VoxClip.Media.VoiceLab.VoiceReferenceLearning :: method public Equals(VoxClip.Media.VoiceLab.VoiceReferenceLearning)
+member VoxClip.Media.VoiceLab.VoiceReferenceLearning :: method public Equals(object)
+member VoxClip.Media.VoiceLab.VoiceReferenceLearning :: method public GetHashCode()
+member VoxClip.Media.VoiceLab.VoiceReferenceLearning :: method public ToString()
+member VoxClip.Media.VoiceLab.VoiceReferenceLearning :: method public get_Outcome()
+member VoxClip.Media.VoiceLab.VoiceReferenceLearning :: method public get_Score()
+member VoxClip.Media.VoiceLab.VoiceReferenceLearning :: method public op_Equality(VoxClip.Media.VoiceLab.VoiceReferenceLearning,VoxClip.Media.VoiceLab.VoiceReferenceLearning)
+member VoxClip.Media.VoiceLab.VoiceReferenceLearning :: method public op_Inequality(VoxClip.Media.VoiceLab.VoiceReferenceLearning,VoxClip.Media.VoiceLab.VoiceReferenceLearning)
+member VoxClip.Media.VoiceLab.VoiceReferenceLearning :: method public set_Outcome(VoxClip.Media.VoiceLab.VoiceReferenceLearnerOutcome)
+member VoxClip.Media.VoiceLab.VoiceReferenceLearning :: method public set_Score(System.Nullable`1<double>)
+member VoxClip.Media.VoiceLab.VoiceSpeakerProbe :: method internal .ctor(string,double,string,System.Func`3<float[],System.Threading.CancellationToken,System.Threading.Tasks.Task`1<float[]>>,System.Func`3<float[],System.Threading.CancellationToken,System.Threading.Tasks.Task`1<System.ValueTuple`2<float[],float[][]>>>,System.Action)
+member VoxClip.Media.VoiceLab.VoiceSpeakerProbe :: method internal Fits(VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord)
+member VoxClip.Media.VoiceLab.VoiceSpeakerProbe :: method internal get_Embedding()
+member VoxClip.Media.VoiceLab.VoiceSpeakerProbe :: method internal get_PartEmbeddings()
+member VoxClip.Media.VoiceLab.VoiceSpeakerProbe :: method internal get_ValidateAvailability()
+member VoxClip.Media.VoiceLab.VoiceSpeakerProbe :: method public From(VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck)
+member VoxClip.Media.VoiceLab.VoiceSpeakerProbe :: method public get_Language()
+member VoxClip.Media.VoiceLab.VoiceSpeakerProbe :: method public get_ModelId()
+member VoxClip.Media.VoiceLab.VoiceSpeakerProbe :: method public get_Threshold()
 member VoxClip.Media.VoiceLab.VoiceTrainingAudio :: method internal ProjectSpan(float[],int,VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan)
 member VoxClip.Media.VoiceLab.VoiceTrainingAudio :: method internal SpanSamples(VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan,int)
 member VoxClip.Media.VoiceLab.VoiceTrainingAudio :: method private Invalid()
@@ -2643,6 +2691,10 @@ type VoxClip.Media.VoiceLab.VoiceLabWavePcm
 type VoxClip.Media.VoiceLab.VoiceLabWaveReader
 type VoxClip.Media.VoiceLab.VoiceLabWindowsFiles
 type VoxClip.Media.VoiceLab.VoiceLabWindowsFiles+AttributeTagInformation
+type VoxClip.Media.VoiceLab.VoiceReferenceLearner
+type VoxClip.Media.VoiceLab.VoiceReferenceLearnerOutcome
+type VoxClip.Media.VoiceLab.VoiceReferenceLearning
+type VoxClip.Media.VoiceLab.VoiceSpeakerProbe
 type VoxClip.Media.VoiceLab.VoiceTrainingAudio
 type VoxClip.Media.VoiceLab.VoiceTrainingCut
 type VoxClip.Media.VoiceLab.VoiceTrainingLevels

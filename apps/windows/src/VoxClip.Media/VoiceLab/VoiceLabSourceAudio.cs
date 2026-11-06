@@ -187,6 +187,30 @@ public static class VoiceLabSourceAudio
         return Math.Min(280 * sampleRate, largest - trailing);
     }
 
+    /// <summary>A guard selection's speech from a source of <paramref name="frames"/> frames at <paramref name="sampleRate"/> (Mac
+    /// <c>VoiceLabSourceAudio.guardSpeech</c>): each range decoded exactly, joined in order and resampled to 16 kHz, as the use-time guard
+    /// embeds it. Learn from my videos reads it (ADR-R41).</summary>
+    public static Task<float[]> GuardSpeechAsync(string source, long frames, int sampleRate, VoiceLabGuardSpeech selection, CancellationToken ct = default)
+        => GuardSpeechAsync(source, frames, sampleRate, selection, ConversionInputAsync, ct);
+
+    internal static async Task<float[]> GuardSpeechAsync(string source, long frames, int sampleRate, VoiceLabGuardSpeech selection,
+        Func<string, long, long, double, CancellationToken, Task<byte[]>> conversion, CancellationToken ct)
+    {
+        if (sampleRate is < 8_000 or > 96_000) throw Failure(VoiceLabSourceAudioErrorCode.UnsupportedRate);
+        if (selection.Ranges.Count == 0 || selection.Ranges.Any(range => range.Start < 0 || range.End > frames || range.End <= range.Start))
+            throw Failure(VoiceLabSourceAudioErrorCode.RangeOutsideMedia);
+        var joined = new float[checked((int)selection.Frames)];
+        var offset = 0;
+        foreach (var (start, end) in selection.Ranges)
+        {
+            var at = offset;
+            await DecodeMonoAsync(source, start, end, sampleRate, conversion,
+                (block, first) => block.CopyTo(joined.AsSpan(at + (int)(first - start))), ct).ConfigureAwait(false);
+            offset += (int)(end - start);
+        }
+        return VoiceConsentAudio.Resample(joined, sampleRate, 16000);
+    }
+
     /// <summary>Source frames [<paramref name="start"/>, <paramref name="end"/>) as mono Float32, decoded in chunks of
     /// <see cref="DecodeChunkFrames"/> through <paramref name="conversion"/> (<see cref="ConversionInputAsync"/>) and handed to
     /// <paramref name="consume"/> in order. A remainder shorter than 20 ms joins the chunk before it.</summary>

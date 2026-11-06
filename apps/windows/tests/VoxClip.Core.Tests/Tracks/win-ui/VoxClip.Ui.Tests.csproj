@@ -30,6 +30,7 @@
     <Compile Include="RewriteWordingFitTests.cs" />
     <Compile Include="RewriteAutoFixTests.cs" />
     <Compile Include="RewriteGuardBlockedTests.cs" />
+    <Compile Include="RewriteGuardScreenTests.cs" />
     <Compile Include="RewriteDurationSettleTests.cs" />
     <Compile Include="MakeItPostableTests.cs" />
     <Compile Include="MakeItSmokeTests.cs" />
@@ -59,6 +60,7 @@
     <Compile Include="WindowsV4ExportHistoryTests.cs" />
     <Compile Include="VoiceLabSettingsTests.cs" />
     <Compile Include="VoiceLabSessionTests.cs" />
+    <Compile Include="VoiceLabLearningTests.cs" />
     <Compile Include="VoiceLabRecoveryTests.cs" />
     <Compile Include="TakeRowPresentationTests.cs" />
     <Compile Include="PaidTakePlaybackTests.cs" />

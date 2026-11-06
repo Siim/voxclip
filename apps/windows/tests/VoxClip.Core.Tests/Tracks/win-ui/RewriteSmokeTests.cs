@@ -2,6 +2,7 @@
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Core.Services.VoiceLab;
 using Xunit;
 using static VoxClip.Core.Tests.Tracks.WinUi.RewriteAutoFixTests;
 
@@ -26,7 +27,7 @@ public sealed class RewriteSmokeTests
     /// collision after paid takes; S17 twins Mac S16 (a long run voiced in parts); the own-take scenarios keep Mac's names.</summary>
     public static TheoryData<string> Scenarios => new(["S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9", "S10", "S11", "S12", "S13", "S14",
         "S15", "S16", "S17", "S-own-typed", "S-own-mic", "S-own-mic-misfit", "S-viral-fit", "S-guard-blocked",
-        "S-duration-short"]);
+        "S-duration-short", "S-guard-learns", "S-guard-guest"]);
     /// <summary>S17's take: words 10–79 with every fifth word from 12 to 67 changed, twelve phrases in three parts.</summary>
     internal static readonly int[] LongRunWords = Enumerable.Range(0, 12).Select(index => 12 + 5 * index).ToArray();
     internal static string LongRunReply => string.Join(" ", Enumerable.Range(10, 70).Select(index => LongRunWords.Contains(index) ? "a much clearer phrasing" : "word" + index));
@@ -159,6 +160,44 @@ public sealed class RewriteSmokeTests
                     smoke.Session.FooterStep.Phrase == 0 || smoke.Session.FooterStep.Title?.Contains('$') == true)
                     // The headless stub has no scratch audio, so its takes never read ready for Use; End checks what Use would apply.
                     smoke.Failures.Add($"{id} G2: phrase 1 was offered or sent again ({runners[0].Executions} runs): footer '{smoke.Session.FooterStep.Title}'");
+                smoke.End(VoiceLabVideoMode.Source, voiced: 1);
+                return smoke;
+            }
+            case "S-guard-learns":
+            {
+                // Mac S-guard-learns (G5, G6; ADR-R41): phrase 1's speech is below τ on its own, phrase 2's passes. Get Price screens both
+                // first: phrase 2 teaches this video's reference, phrase 1 passes through it, both are priced and voiced, and the spend
+                // line says the voice was matched from this video.
+                var screen = new ScriptedScreen(new Dictionary<string, float[]> { ["w10"] = ScriptedScreen.Beside, ["w14"] = ScriptedScreen.Near });
+                Runner[] runners = [new((_, _) => (Fit, Passed)) { Screen = screen.Screen }, new((_, _) => (Fit, Passed))];
+                using var smoke = new Smoke(id, new(TwoChanges, (_, ordinals) => Rows(ordinals, "x")), runners[0], last: 16, runners: index => runners[index]);
+                await smoke.ProposeAsync();
+                await smoke.Session.DiscoverWindowsAsync();
+                foreach (var window in smoke.Session.GenerationWindows) await window.PendingUpdate;
+                smoke.Observe("Get Price screens first");
+                if (smoke.Session.GenerationWindows.Any(window => window.Blocked is not null) || smoke.Session.PricedWindows.Count != 2 ||
+                    VoiceSpeakerReferences.LearnedCount(screen.Speaker) != 1)
+                    smoke.Failures.Add($"{id} G5: {smoke.Session.PricedWindows.Count} phrases priced, {VoiceSpeakerReferences.LearnedCount(screen.Speaker)} learned");
+                if (!smoke.Session.LearnedFromThisVideo || smoke.Session.ReviewFooter != "Nothing paid yet. Matched your voice from this video.")
+                    smoke.Failures.Add($"{id} G6: the spend line reads '{smoke.Session.ReviewFooter}'");
+                await smoke.GetPriceAsync();
+                if (runners[0].Sends != 1 || runners[1].Sends != 1) smoke.Failures.Add($"{id} G5: phrases sent {runners[0].Sends} and {runners[1].Sends} time(s)");
+                smoke.End(VoiceLabVideoMode.Source, voiced: 2);
+                return smoke;
+            }
+            case "S-guard-guest":
+            {
+                // Mac S-guard-guest (G7): in a video that teaches a reference, a guest's phrase stays blocked before any price; the owner's
+                // phrase is voiced, and the guest's sends nothing.
+                var screen = new ScriptedScreen(new Dictionary<string, float[]> { ["w10"] = ScriptedScreen.Guest, ["w14"] = ScriptedScreen.Near });
+                Runner[] runners = [new((_, _) => (Fit, Passed)) { Screen = screen.Screen }, new((_, _) => (Fit, Passed))];
+                using var smoke = new Smoke(id, new(TwoChanges, (_, ordinals) => Rows(ordinals, "x")), runners[0], last: 16, runners: index => runners[index]);
+                await smoke.ProposeAsync();
+                await smoke.GetPriceAsync();
+                var windows = smoke.Session.GenerationWindows;
+                if (windows[0].Blocked is null || runners[0].Executions != 0 || runners[1].Sends != 1 || VoiceSpeakerReferences.LearnedCount(screen.Speaker) != 1)
+                    smoke.Failures.Add($"{id} G7: the guest's phrase {(windows[0].Blocked is null ? "wasn't blocked" : "was blocked")}, ran {runners[0].Executions} time(s); phrase 2 sent {runners[1].Sends}");
+                await smoke.ClickAsync("Rewrite.Chip.KeepAsRecorded1");
                 smoke.End(VoiceLabVideoMode.Source, voiced: 1);
                 return smoke;
             }

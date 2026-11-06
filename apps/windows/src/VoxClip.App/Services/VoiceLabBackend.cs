@@ -18,10 +18,35 @@ internal interface IVoiceLabAccount : IDisposable
 
 internal sealed class VoiceLabBackend(DataLocations data, IKeyProvider keys, ILog log,
     Func<bool> enabled, Func<ElevenLabsRegion> region, Func<CancellationToken, Task> persistConsent,
-    TimeProvider? timeProvider = null, Func<ElevenLabsRegion, IVoiceLabAccount>? accountFactory = null) : IVoiceLabBackend
+    TimeProvider? timeProvider = null, Func<ElevenLabsRegion, IVoiceLabAccount>? accountFactory = null,
+    Func<IReadOnlyList<string>>? learningProjects = null, Func<string, CancellationToken, Task<VoiceLabProjectSource?>>? readProject = null,
+    Func<string, VoiceSpeakerProbe?>? speaker = null) : IVoiceLabBackend
 {
     private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
     private readonly VoiceConsentStore store = new(data, timeProvider);
+    /// <summary>The speaker check for a language. The App makes no speaker check while the parity gate is closed, so this is null and
+    /// every free local step (learning, the rebuild and per-video finders) says it is unavailable.</summary>
+    private VoiceSpeakerProbe? Speaker(string language) => (speaker ?? (_ => VoiceSpeakerProbe.From(VoiceSpeakerCheck.Unavailable)))(language);
+    public IReadOnlyList<string> LearningProjects() => learningProjects?.Invoke() ?? [];
+    public bool LearningAvailable(string language) => Enabled && Speaker(language) is not null;
+    public async Task<VoiceLabProjectSource?> ReadProjectAsync(string projectPath, CancellationToken ct)
+    {
+        RequireEnabled(ct);
+        return readProject is null ? null : await readProject(projectPath, ct).ConfigureAwait(false);
+    }
+    public async Task<VoiceReferenceLearnerOutcome> LearnAsync(VoiceLabProjectSource source, string recordId, CancellationToken ct)
+    {
+        RequireEnabled(ct);
+        var record = store.Load(recordId);
+        if (Speaker(record.Language) is not { } probe) return VoiceReferenceLearnerOutcome.Unavailable;
+        return (await new VoiceReferenceLearner(store, probe, clock).LearnAsync(source.Project, source.Media, recordId, ct).ConfigureAwait(false)).Outcome;
+    }
+    public Task ForgetReferencesAsync(string recordId, CancellationToken ct)
+    {
+        RequireEnabled(ct);
+        store.ForgetReferences(recordId);
+        return Task.CompletedTask;
+    }
     internal static void ReconcileLocalStatements(DataLocations data) => new VoiceConsentStore(data).ReconcileAbandonedEnrollments();
     public bool Enabled => enabled();
     private void RequireEnabled(CancellationToken ct)

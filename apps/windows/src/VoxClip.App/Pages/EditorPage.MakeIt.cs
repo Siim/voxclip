@@ -69,6 +69,12 @@ public sealed partial class EditorPage
             });
         FindClips.Started += (_, find) => ViewModel.ClaudeModeFindStarted(find);
         ViewModel.Transcribed += (_, _) => DispatcherQueue.TryEnqueue(() => _ = ViewModel.ClaudeModeContinueAsync());
+        // A video just transcribed teaches each active voice in its language, quietly and on this PC (ADR-R41); nothing where the speaker
+        // check isn't ready.
+        ViewModel.Transcribed += (_, _) => DispatcherQueue.TryEnqueue(() =>
+        {
+            if (App.Services.VoiceLabEnabled && !demo && media?.Path is { Length: > 0 } path) _ = App.Services.VoiceLab.LearnFromTranscribedAsync(ViewModel.Project, path);
+        });
     }
 
     /// <summary>The clip bar's verb: "✦ Make it postable · up to $x" on the open clip, or "✦ Review" once its run has finished.</summary>

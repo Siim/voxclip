@@ -7638,6 +7638,7 @@ member VoxClip.Core.Domain.VoiceLab.IVoiceLabTakeRunner :: method public IsQuote
 member VoxClip.Core.Domain.VoiceLab.IVoiceLabTakeRunner :: method public PrepareAsync(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput,System.Threading.CancellationToken)
 member VoxClip.Core.Domain.VoiceLab.IVoiceLabTakeRunner :: method public ReadMonthlySpendAsync(VoxClip.Core.Domain.VoiceLab.VoiceLabMonthlyCap,System.Threading.CancellationToken)
 member VoxClip.Core.Domain.VoiceLab.IVoiceLabTakeRunner :: method public RefreshMonthlyCapAsync(VoxClip.Core.Domain.VoiceLab.VoiceLabMonthlyCap,System.Threading.CancellationToken)
+member VoxClip.Core.Domain.VoiceLab.IVoiceLabTakeRunner :: method public ScreenGuardAsync(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput>,System.Threading.CancellationToken)
 member VoxClip.Core.Domain.VoiceLab.OwnVoicePolicy :: method internal get_Creator()
 member VoxClip.Core.Domain.VoiceLab.OwnVoicePolicy :: method internal get_DispatchPermit()
 member VoxClip.Core.Domain.VoiceLab.OwnVoicePolicy :: method internal get_ModelRevision()

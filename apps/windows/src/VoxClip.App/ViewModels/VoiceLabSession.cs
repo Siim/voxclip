@@ -9,6 +9,9 @@ internal sealed record VoiceLabSnapshot(IReadOnlyList<VoiceConsentRecord> Record
 internal enum VoiceLabRequestKind { Subscription, Delete, RemoveLocal, StopLooking }
 internal sealed record VoiceLabRequest(VoiceLabRequestKind Kind, string? RecordId = null, Guid? OperationId = null);
 
+/// <summary>A project read for Voice Lab's free local steps (learning, the rebuild): the project and its resolved source media.</summary>
+internal sealed record VoiceLabProjectSource(VoxClip.Core.Domain.Shared.Project Project, string Media);
+
 internal interface IVoiceLabBackend
 {
     bool Enabled { get; }
@@ -22,9 +25,21 @@ internal interface IVoiceLabBackend
     Task SaveAsync(VoiceConsentRecord record, CancellationToken ct);
     Task RemoveSpeakerAsync(CancellationToken ct);
     Task StopLookingAsync(Guid operationId, CancellationToken ct);
+    /// <summary>The projects Learn from my videos and Rebuild from my videos read (ADR-R41): recent projects, then the <c>.voxclip</c> files at
+    /// the top of the export folder, each once.</summary>
+    IReadOnlyList<string> LearningProjects() => [];
+    /// <summary>The speaker check for a voice in <paramref name="language"/> is ready on this PC; false behind the closed parity gate.</summary>
+    bool LearningAvailable(string language) => false;
+    /// <summary>A project file and its resolved source media; null when either can't be read.</summary>
+    Task<VoiceLabProjectSource?> ReadProjectAsync(string projectPath, CancellationToken ct) => Task.FromResult<VoiceLabProjectSource?>(null);
+    /// <summary>Learns one project's reference for the voice (Media <c>VoiceReferenceLearner</c>).</summary>
+    Task<VoxClip.Media.VoiceLab.VoiceReferenceLearnerOutcome> LearnAsync(VoiceLabProjectSource source, string recordId, CancellationToken ct) =>
+        Task.FromResult(VoxClip.Media.VoiceLab.VoiceReferenceLearnerOutcome.Unavailable);
+    /// <summary>Forgets every learned reference of a voice (Core <c>VoiceConsentStore.ForgetReferences</c>).</summary>
+    Task ForgetReferencesAsync(string recordId, CancellationToken ct) => throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
 }
 
-internal sealed class VoiceLabSession(IVoiceLabBackend backend, Func<Action, Task> dispatch,
+internal sealed partial class VoiceLabSession(IVoiceLabBackend backend, Func<Action, Task> dispatch,
     TimeProvider? timeProvider = null) : IDisposable
 {
     private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
@@ -78,6 +93,10 @@ internal sealed class VoiceLabSession(IVoiceLabBackend backend, Func<Action, Tas
         return VoiceLabActionNames.Created(record.VoiceName, record.CreatedAt);
     }
     private void Notify() => Changed?.Invoke(this, EventArgs.Empty);
+    /// <summary>The backend and the UI dispatcher, for the session's other parts (primary constructor parameters stay in this file).</summary>
+    private IVoiceLabBackend Backend => backend;
+    private Task Dispatch(Action action) => dispatch(action);
+    private CancellationToken Lifetime => lifetime.Token;
     internal void Request(VoiceLabRequest request)
     {
         if (!Enabled || Busy || loading) return;

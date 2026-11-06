@@ -23,6 +23,58 @@ public static class VoiceLabDisclosureWriter
         "<rdf:Description rdf:about=\"\" xmlns:Iptc4xmpExt=\"http://iptc.org/std/Iptc4xmpExt/2008-02-29/\" " +
         "Iptc4xmpExt:DigitalSourceType=\"" + DigitalSourceType + "\"/></rdf:RDF></x:xmpmeta><?xpacket end=\"w\"?>");
 
+    /// <summary>Whether a media file carries an AI-modified XMP label (Mac <c>isLabelled</c>): a trained-algorithmic
+    /// <c>DigitalSourceType</c> in the top-level XMP UUID box this writer adds, or in a QuickTime <c>moov/udta/XMP_</c> box. A file that is
+    /// not ISO BMFF, or cannot be read, has no label. Such media never teaches a voice (ADR-R41) or trains one (ADR-R44).</summary>
+    public static bool IsLabelled(string path)
+    {
+        byte[][] sourceTypes = ["digitalsourcetype/trainedAlgorithmicMedia"u8.ToArray(), "digitalsourcetype/compositeWithTrainedAlgorithmicMedia"u8.ToArray()];
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            byte[] Read(long offset, int count)
+            {
+                stream.Position = offset;
+                var buffer = new byte[count];
+                var read = 0;
+                while (read < count && stream.Read(buffer, read, count - read) is var got and > 0) read += got;
+                return read == count ? buffer : buffer[..read];
+            }
+            bool Names(long start, long end)
+            {
+                var packet = Read(start, (int)Math.Min(end - start, 1 << 20));
+                return sourceTypes.Any(type => packet.AsSpan().IndexOf(type) >= 0);
+            }
+            bool Scan(long start, long end, int depth)
+            {
+                var cursor = start;
+                while (depth <= 4 && end - cursor >= 8)
+                {
+                    var header = Read(cursor, (int)Math.Min(16, end - cursor));
+                    if (header.Length < 8) return false;
+                    var size32 = BinaryPrimitives.ReadUInt32BigEndian(header);
+                    long headerSize = size32 == 1 ? 16 : 8;
+                    if (header.Length < headerSize) return false;
+                    var size = size32 == 0 ? end - cursor : size32 == 1 ? (long)BinaryPrimitives.ReadUInt64BigEndian(header.AsSpan(8)) : size32;
+                    if (size < headerSize || size > end - cursor) return false;
+                    long body = cursor + headerSize, bodyEnd = cursor + size;
+                    switch (Encoding.ASCII.GetString(header, 4, 4))
+                    {
+                        case "uuid":
+                            if (bodyEnd - body >= 16 && Read(body, 16).AsSpan().SequenceEqual(XmpUuid) && Names(body + 16, bodyEnd)) return true;
+                            break;
+                        case "XMP_": if (Names(body, bodyEnd)) return true; break;
+                        case "moov" or "udta": if (Scan(body, bodyEnd, depth + 1)) return true; break;
+                    }
+                    cursor = bodyEnd;
+                }
+                return false;
+            }
+            return Scan(0, stream.Length, 0);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or OverflowException) { return false; }
+    }
+
     /// <summary>The caller passes its actual app version and publishes both returned artifacts transactionally.</summary>
     public static async Task<VoiceLabStagedDisclosure> StageAsync(string sourceMp4, string stagedMp4, string finalFilename,
         Project project, VoiceLabPreparedRender prepared, string appVersion, DateTimeOffset createdAt, CancellationToken ct)
