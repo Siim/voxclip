@@ -142,19 +142,25 @@ public sealed class RewriteAutoFixTests
         Assert.Equal(take, window.SelectedTakeId);
     }
 
+    /// <summary>Mac <c>anOverBudgetLineIsRepairedOnceThenKeptAsRecorded</c> (ADR-R42): one free fit round, then a change still longer than its
+    /// slot keeps the speaker's words, with one line, and nothing is priced that can't fit. After Stop it waits, and the footer's Keep My
+    /// Words settles it: never a footer without a step forward.</summary>
     [Fact]
-    public async Task AChangeStillTooLongWhenTheFitEndsIsPricedAsWrittenButNotAfterStop()
+    public async Task AnOverBudgetLineIsRepairedOnceThenKeptAsRecorded()
     {
         const string Long = "a much much longer phrasing than this little slot could ever hold in its time";
         var connector = new Connector(Long + " word11 word12", (_, ordinals) => Rows(ordinals, Long));
         using (var session = Session(connector))
         {
             Assert.True(await ProposeAsync(session));
-            Assert.Equal(3, connector.FitRequests.Count);
+            Assert.Single(connector.FitRequests);
             Assert.Empty(session.BlockedVoiceHunks);
-            Assert.Single(session.PricedVoiceHunks);
-            Assert.Equal(RewriteSession.HeldBackNote(1), session.FitRowNote(1));
-            Assert.Equal("Change 1 is priced as written; once its take is measured, Rewrite rewords it to fit.", session.FitRowNote(1));
+            Assert.Empty(session.PricedVoiceHunks);
+            Assert.Equal(TranscriptChangeState.Excluded, session.ChangeStates[1]);
+            Assert.StartsWith("kept your original words · the new wording is longer than its ", session.FitRowNote(1));
+            Assert.EndsWith(" s in the video", session.FitRowNote(1));
+            Assert.Contains("Change 1 keeps your original words: still longer than its time in the video after a fit.", session.AutoFix.Notes);
+            Assert.Equal(RewriteFooterAction.Done, session.FooterStep.Action);
         }
         var held = new Connector(Long + " word11 word12", (_, ordinals) => Rows(ordinals, Long)) { HoldFits = true };
         using var stopped = Session(held);
@@ -166,6 +172,29 @@ public sealed class RewriteAutoFixTests
         await stopped.WordingFitWork;
         Assert.Single(stopped.BlockedVoiceHunks);
         Assert.Empty(stopped.PricedVoiceHunks);
+        Assert.Equal(new RewriteFooterStep("Change 1 needs a shorter wording before takes.", "Keep My Words", RewriteFooterAction.KeepMyWords), stopped.FooterStep);
+        Assert.True(stopped.KeepMyWords());
+        Assert.Empty(stopped.BlockedVoiceHunks);
+        Assert.Equal(TranscriptChangeState.Excluded, stopped.ChangeStates[1]);
+        Assert.Equal(RewriteFooterAction.Done, stopped.FooterStep.Action);
+    }
+
+    /// <summary>Mac <c>aWordingFitThatCannotStartKeepsTheWordsAndGoesOn</c>: a fit that fails shows its problem and keeps the long change as
+    /// recorded, so Rewrite goes on; nothing offers the same request again.</summary>
+    [Fact]
+    public async Task AWordingFitThatFailsKeepsTheWordsAndGoesOn()
+    {
+        const string Long = "a much much longer phrasing than this little slot could ever hold in its time";
+        var connector = new Connector(Long + " word11 word12", (_, _) => throw new HttpRequestException("The stub connector could not be reached."));
+        using var session = Session(connector);
+        Assert.True(await ProposeAsync(session));
+        await session.WordingFitWork;
+        Assert.Single(connector.FitRequests);
+        Assert.NotEqual("", session.WordingFitProblem);
+        Assert.True(session.WordingFitCompleted);
+        Assert.Empty(session.BlockedVoiceHunks);
+        Assert.Equal(TranscriptChangeState.Excluded, session.ChangeStates[1]);
+        Assert.NotEqual(RewriteFooterAction.None, session.FooterStep.Action);
     }
 
     [Fact]
@@ -240,6 +269,8 @@ public sealed class RewriteAutoFixTests
     {
         internal List<LlmRequest> FitRequests { get; } = [];
         internal List<LlmRequest> Reasks { get; } = [];
+        /// <summary>The Rewrite requests sent (not fits or re-asks).</summary>
+        internal List<LlmRequest> Rewrites { get; } = [];
         internal string? Reask { get; init; }
         /// <summary>The first this-many Rewrite sends fail, as a connector error would.</summary>
         internal int FailRewrites { get; set; }
@@ -267,6 +298,7 @@ public sealed class RewriteAutoFixTests
                     ReaskSent.TrySetResult();
                     if (HoldReasks) await ReaskRelease.Task.WaitAsync(ct);
                 }
+                else Rewrites.Add(request);
                 var reply = new JsonObject { ["rewrite"] = reasked ? Reask ?? rewrite : rewrite };
                 if (NextActions is { } next) reply["nextActions"] = next.DeepClone();
                 return new(null, reply, model, new StopKind.Complete(), null, "fake");

@@ -12077,6 +12077,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest :: method public get_Min
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest :: method public get_RequestId()
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest :: method public get_Scope()
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest :: method public get_ShorterPhrases()
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest :: method public get_Slots()
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest :: method public get_SourceWords()
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest :: method public get_TargetSeconds()
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest,VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest)
@@ -12089,11 +12090,34 @@ member VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest :: method public set_Min
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest :: method public set_RequestId(System.Guid)
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest :: method public set_Scope(VoxClip.Core.Domain.VoiceLab.VoiceRewriteScope)
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest :: method public set_ShorterPhrases(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback>)
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest :: method public set_Slots(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlot>)
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest :: method public set_SourceWords(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>)
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest :: method public set_TargetSeconds(double)
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteScope :: field public FullTake
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteScope :: field public Passage
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteScope :: field public value__
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlot :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlot)
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlot :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlot :: method private get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlot :: method public .ctor(string,double,int)
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlot :: method public Deconstruct(string&,double&,int&)
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlot :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlot)
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlot :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlot :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlot :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlot :: method public get_MaxWords()
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlot :: method public get_Seconds()
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlot :: method public get_Text()
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlot :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlot,VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlot)
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlot :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlot,VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlot)
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlot :: method public set_MaxWords(int)
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlot :: method public set_Seconds(double)
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlot :: method public set_Text(string)
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlots :: field public Closing
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlots :: field public MaximumSlots
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlots :: field public PauseSeconds
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlots :: method public Make(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,double,double,double)
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlots :: method public WordsPerSecond(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>)
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback)
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback :: method private get_EqualityContract()
@@ -16047,6 +16071,8 @@ type VoxClip.Core.Domain.VoiceLab.VoiceProjectConsent
 type VoxClip.Core.Domain.VoiceLab.VoiceRewriteProposal
 type VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest
 type VoxClip.Core.Domain.VoiceLab.VoiceRewriteScope
+type VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlot
+type VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlots
 type VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback
 type VoxClip.Core.Domain.VoiceLab.VoiceStatementMatch
 type VoxClip.Core.Domain.VoiceLab.VoiceTrainingInputs

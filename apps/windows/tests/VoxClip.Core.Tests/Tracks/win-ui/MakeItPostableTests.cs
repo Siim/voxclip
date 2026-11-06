@@ -543,6 +543,32 @@ public sealed class MakeItPostableTests
         Assert.True(editor.CanMakeItPostable("c1"));
     }
 
+    /// <summary>Mac smoke S-make-it-long (MK1, ADR-R42): a planned rewrite longer than its time in the video keeps the speaker's words with no
+    /// click; nothing is priced or spent, the Rewrite ends and the clip is ready to export.</summary>
+    [Fact]
+    public async Task TheDriverKeepsALineTooLongForItsSlotAsRecordedWithNoClick()
+    {
+        const string Long = "a much much longer phrasing than this little slot could ever hold in its time";
+        RewriteSession? opened = null;
+        var editor = RewriteAutoFixTests.Editor();
+        var before = ProjectSerialization.Serialize(editor.Project);
+        var driver = new MakeItRewriteDriver(editor, new(10, 12, Long + " word11 word12", "c1", 5m), request =>
+        {
+            opened = RewriteAutoFixTests.Session(new(RewriteAutoFixTests.Reply, (_, ordinals) => RewriteAutoFixTests.Rows(ordinals, "x")), request.First, request.Last, editor: editor);
+            RewriteAutoFixTests.Configure(opened, new((_, _) => (RewriteAutoFixTests.Fit, RewriteAutoFixTests.Passed)));
+            return Task.FromResult<RewriteSession?>(opened);
+        }, _ => Task.FromResult<VoiceLabMonthlyCap?>(null));
+        var outcome = await driver.RunAsync(CancellationToken.None);
+        var kept = Assert.IsType<MakeItRewriteResult.KeptAsRecorded>(outcome.Result);
+        Assert.Equal("Change 1 keeps your original words: still longer than its time in the video after a fit.", kept.Reason);
+        Assert.Equal(0m, outcome.Spent);
+        Assert.Contains("Keep My Words", driver.Pressed);
+        Assert.DoesNotContain(driver.Pressed, step => step.StartsWith("Make takes", StringComparison.Ordinal));
+        Assert.False(opened!.HasPaidTakes);
+        Assert.False(opened.IsOpen);
+        Assert.Equal(before, ProjectSerialization.Serialize(editor.Project));
+    }
+
     /// <summary>The driver prices the takes from Rewrite's own windows and makes them only within its budget; it never discards a paid
     /// take. Use publishes takes through Media's scratch audio, which this headless test has none of, so a made take ends as "needs you"
     /// with its session handed to the page.</summary>

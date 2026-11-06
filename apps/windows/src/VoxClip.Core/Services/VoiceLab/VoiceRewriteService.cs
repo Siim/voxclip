@@ -126,8 +126,21 @@ public sealed class VoiceRewriteService
             .Replace("{minChars}", input.MinChars.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
             .Replace("{maxChars}", input.MaxChars.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
         var request = EditingAlgorithms.JsTrim(input.Instruction);
-        return (block, (request.Length == 0 ? "" : requestBlock.Replace("{instruction}", request, StringComparison.Ordinal) + "\n\n") + returnLine + "\n" + length + VoiceRewriteFeedback.Render(input.ShorterPhrases, prompt) +
-            (input.Feedback is { } feedback ? "\n\n" + feedback : ""));
+        var slots = "";
+        if (input.Slots is { Count: > 0 } spans)
+        {
+            // Each span's time in the video and word budget (ai.md §12.9); a prompt without these templates sends none.
+            if (Template("slotsBlock") is not { } slotsBlock || Template("slotLine") is not { } slotLine || !slotsBlock.Contains("{slots}", StringComparison.Ordinal))
+                throw new VoxClipException(VoxClipErrorCode.SharedResourcesMissing, "VoxClip is missing some of its files. Reinstall VoxClip.");
+            // The span's words go in last, so they are never read as a placeholder.
+            var lines = spans.Select((slot, index) => slotLine.Replace("{index}", (index + 1).ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
+                .Replace("{seconds}", EditingFormat.ToFixed1(slot.Seconds), StringComparison.Ordinal)
+                .Replace("{maxWords}", slot.MaxWords.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
+                .Replace("{text}", slot.Text, StringComparison.Ordinal));
+            slots = "\n\n" + slotsBlock.Replace("{slots}", string.Join("\n", lines), StringComparison.Ordinal);
+        }
+        return (block, (request.Length == 0 ? "" : requestBlock.Replace("{instruction}", request, StringComparison.Ordinal) + "\n\n") + returnLine + "\n" + length + slots +
+            VoiceRewriteFeedback.Render(input.ShorterPhrases, prompt) + (input.Feedback is { } feedback ? "\n\n" + feedback : ""));
     }
 
     private static string Validate(VoiceRewriteRequest input)
@@ -137,7 +150,10 @@ public sealed class VoiceRewriteService
             input.Feedback is { } feedback && Encoding.UTF8.GetByteCount(feedback) > 20_000 ||
             input.Language is null || !LanguageCode.IsMatch(input.Language) ||
             !double.IsFinite(input.TargetSeconds) || input.TargetSeconds is <= 0 or > 600 ||
-            input.MinChars < 1 || input.MinChars > input.MaxChars || input.MaxChars > 5000) throw Invalid();
+            input.MinChars < 1 || input.MinChars > input.MaxChars || input.MaxChars > 5000 ||
+            input.Slots is { } slots && (slots.Count > VoiceRewriteSlots.MaximumSlots ||
+                slots.Any(slot => slot is null || !double.IsFinite(slot.Seconds) || slot.Seconds <= 0 || slot.MaxWords < 1 || string.IsNullOrEmpty(slot.Text))))
+            throw Invalid();
         var previous = 0.0;
         foreach (var word in input.SourceWords)
         {

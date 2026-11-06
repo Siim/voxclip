@@ -240,7 +240,7 @@ internal sealed partial class RewriteSession : IDisposable
                 return;
             }
             var input = new VoiceRewriteRequest(Guid.NewGuid(), VoiceRewriteScope.Passage, words, text,
-                Editor.State?.Transcript.Language ?? "en", targetSeconds, 1, 5000) { ShorterPhrases = shorterPhrases ?? [] };
+                Editor.State?.Transcript.Language ?? "en", targetSeconds, 1, 5000) { ShorterPhrases = shorterPhrases ?? [], Slots = RewriteSlots(words) };
             var action = await service.PrepareAsync(input, Connector.Connector, Connector.Model, lifetime.Token);
             if (!IsOpen || current != revision) return;
             request = input;
@@ -441,12 +441,14 @@ internal sealed partial class RewriteSession : IDisposable
         if (Editor.IsLeaving || Editor.IsReadOnly) Dispose();
         else if (args.PropertyName == nameof(EditorViewModel.Busy)) Changed?.Invoke(this, EventArgs.Empty);
     }
+    /// <summary>A change that only inserts words has no source words to replace (Mac, ADR-R42): the video has no time for them.</summary>
+    internal const string InsertionCopy = "This adds words where you said nothing, and the video has no time for them, so it stays as recorded. Your edits are saved.";
     internal static string Refusal(Exception exception) => exception switch
     {
         VoiceLabGeometryException { Code: VoiceLabGeometryErrorCode.SeamFadeOutsideTake, TakeEdgeIsStart: bool start } =>
             $"This change is too close to the {(start ? "start" : "end")} of the take to blend in. Re-record this sentence instead.",
         VoiceLabGeometryException { Code: VoiceLabGeometryErrorCode.InsertionUnsupported } =>
-            "Inserting words isn't available yet. Your edits are saved.",
+            InsertionCopy,
         VoiceLabGeometryException { Code: VoiceLabGeometryErrorCode.RoomToneUnavailable } =>
             "This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in. Clean audio is not available in this build. Re-record this sentence instead.",
         VoiceLabGeometryException { Code: VoiceLabGeometryErrorCode.NoVoicedAudio } or

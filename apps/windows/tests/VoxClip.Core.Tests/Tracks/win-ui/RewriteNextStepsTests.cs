@@ -31,10 +31,17 @@ public sealed class RewriteNextStepsTests
     public async Task OverTheVoiceBudgetRewriteGoesOnWithANoteAndFoldedChips()
     {
         var connector = new Connector(Fifteen + " word11 word12", (_, ordinals) => Rows(ordinals, Fifteen))
-        { NextActions = [new JsonObject { ["label"] = "Shorten the change", ["instruction"] = "Say it in five words.", ["ordinals"] = new JsonArray(1) }] };
+        { NextActions = [new JsonObject { ["label"] = "Shorten the change", ["instruction"] = "Say it in five words.", ["ordinals"] = new JsonArray(1) }], HoldFits = true };
         var runner = new Runner((_, _) => (Fit, Passed));
         using var session = Session(connector);
-        Assert.True(await ProposeAsync(session));
+        // Stopped before the fit keeps the long change (ADR-R42), then priced by the user's own click.
+        var proposing = ProposeAsync(session);
+        await connector.FitSent.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        session.StopWordingFit();
+        connector.Release.SetResult();
+        Assert.True(await proposing);
+        await session.WordingFitWork;
+        Assert.True(session.PriceItAnyway(1));
         Assert.Equal("These changes re-voice 15 words, a lot for a 80-word clip. Long stretches in your voice can sound stitched; Rewrite goes on.",
             session.VoiceBudgetCallout);
         // Over the budget the phrases are voiced anyway: the batch is prepared with no click.
@@ -153,13 +160,26 @@ public sealed class RewriteNextStepsTests
 
     /// <summary>Over the budget with a text fix: words 10–25 re-voiced and word 12 capitalized (a correction).</summary>
     private const string OverWithFix = Fifteen + " word11 Word12";
+    /// <summary>A fifteen-word change can't fit a one-word slot, so after its one fit it would keep the speaker's words (ADR-R42). These
+    /// tests stop the fit and price it by the user's own click, to reach the voice budget's choices.</summary>
+    private static async Task<RewriteSession> StoppedAndPricedAsync(string reply)
+    {
+        var connector = new Connector(reply, (_, ordinals) => Rows(ordinals, Fifteen)) { HoldFits = true };
+        var session = Session(connector);
+        var proposing = ProposeAsync(session);
+        await connector.FitSent.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        session.StopWordingFit();
+        connector.Release.SetResult();
+        Assert.True(await proposing);
+        await session.WordingFitWork;
+        Assert.True(session.PriceItAnyway(1));
+        return session;
+    }
 
     [Fact]
     public async Task KeepTextFixesOnlyAppliesTheTextFixesAtOnceAsOneUndoStepAndClosesRewrite()
     {
-        var connector = new Connector(OverWithFix, (_, ordinals) => Rows(ordinals, Fifteen));
-        using var session = Session(connector);
-        Assert.True(await ProposeAsync(session));
+        using var session = await StoppedAndPricedAsync(OverWithFix);
         Assert.Equal(1, session.TextFixCount);
         var editor = session.Editor;
         var budget = Assert.Single(session.NextStepCards, card => card.Id == "Rewrite.Steps.Budget");
@@ -179,9 +199,12 @@ public sealed class RewriteNextStepsTests
     [Fact]
     public async Task KeepTextFixesOnlyWithPaidTakesAppliesWithoutADiscardPrompt()
     {
-        var connector = new Connector(OverWithFix, (_, ordinals) => Rows(ordinals, Fifteen));
         var runner = new Runner((_, _) => (Fit, Passed));
-        using var session = await PricedAsync(connector, runner);
+        using var session = await StoppedAndPricedAsync(OverWithFix);
+        Configure(session, runner);
+        await session.DiscoverWindowsAsync();
+        session.MarkBatchEstimateShown(session.PreparedBatch!);
+        await session.GenerateWindowsAsync((_, _, _, _) => Task.FromResult(true), _ => Task.FromResult<VoiceLabMonthlyCap?>(null));
         await SettleAsync(session);
         Assert.True(session.HasPaidTakes);
         session.ShowAutoFixChoices();
@@ -245,7 +268,8 @@ public sealed class RewriteNextStepsTests
         var card = Assert.Single(session.NextStepCards, card => card.Id == "Rewrite.Steps.Collision2");
         Assert.Equal("Change 2 is too close to change 1 to voice separately.", card.Sentence);
         Assert.Equal(["Keep original words for 2", "✦ Merge with change 1"], card.Chips.Select(chip => chip.Label));
-        Assert.Equal(new RewriteFooterStep("Change 2 needs a fix above.", null, RewriteFooterAction.None), session.FooterStep);
+        // Never a footer without a step forward (I10): the footer keeps change 2's words, as the card's first chip does.
+        Assert.Equal(new RewriteFooterStep("Change 2 needs a fix above.", "Keep Original Words for Change 2", RewriteFooterAction.KeepChangeWords, 2), session.FooterStep);
         Assert.False(session.CanAcceptAll);
         await card.Chips[0].Invoke!();
         Assert.Null(session.PendingPaidReviewChange);

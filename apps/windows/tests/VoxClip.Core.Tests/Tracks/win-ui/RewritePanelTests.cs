@@ -1145,7 +1145,7 @@ public sealed class RewritePanelTests
         Assert.Equal("Choose a connector in Settings → Providers & Keys.", missing.SendLine);
         Assert.Equal("This change can't be placed in this take. Your edits are saved.",
             RewriteSession.Refusal(new VoiceLabGeometryException(VoiceLabGeometryErrorCode.InvalidInput)));
-        Assert.Equal("Inserting words isn't available yet. Your edits are saved.",
+        Assert.Equal("This adds words where you said nothing, and the video has no time for them, so it stays as recorded. Your edits are saved.",
             RewriteSession.Refusal(new VoiceLabGeometryException(VoiceLabGeometryErrorCode.InsertionUnsupported)));
         foreach (var group in new[] { "local", "cli" })
         {

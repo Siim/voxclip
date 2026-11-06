@@ -125,6 +125,10 @@ public abstract record MakeItRewriteResult
     public sealed record NeedsYou(string Reason) : MakeItRewriteResult;
     /// <summary>No voice can be made here (Voice Lab off, no key): nothing was sent.</summary>
     public sealed record Unavailable(string Reason) : MakeItRewriteResult;
+    /// <summary>Every phrase kept the speaker's words on its own (too long for its time in the video, its take couldn't go into the video,
+    /// or the voice check blocked it): nothing was voiced; the line says why and whether the rewrite's text fixes were applied (Mac
+    /// <c>keptAsRecorded</c>).</summary>
+    public sealed record KeptAsRecorded(string Reason) : MakeItRewriteResult;
 }
 
 /// <summary>What one rewrite came to, what it spent, and the phrases whose chosen take only has a join advisory.</summary>
@@ -132,6 +136,8 @@ public sealed record MakeItRewriteOutcome(MakeItRewriteResult Result, decimal Sp
 {
     /// <summary>Phrases whose take was chosen with a join-loudness advisory (autopilot accepts it; the row says so).</summary>
     public IReadOnlyList<int> JoinNotes { get; init; } = [];
+    /// <summary>Phrases kept as recorded on their own because the voice check blocked them (Mac <c>keptAsRecorded</c>).</summary>
+    public int KeptAsRecorded { get; init; }
 }
 
 /// <summary>How a decision is taken back on its own (the review's Undo).</summary>

@@ -26,6 +26,15 @@ internal sealed class MakeItRewriteDriver(EditorViewModel editor, MakeItRewriteR
             session.Edit(request.Text);
             Pressed.Add("receive the planned words");
             if (session.Review is null) return new(new MakeItRewriteResult.NeedsYou("Rewrite couldn't place these words. Change to try it yourself."));
+            // A planned change that can't fit its time in the video keeps the speaker's words with no click (ADR-R42, Mac S-make-it-long);
+            // nothing is priced that can't fit.
+            var voices = session.Review.VoiceHunks.Count > 0;
+            if (session.BlockedVoiceHunks.Count > 0)
+            {
+                Pressed.Add("Keep My Words");
+                session.KeepMyWords();
+            }
+            if (session.PricedVoiceHunks.Count == 0 && voices) return new(FinishAsRecorded(session));
             if (session.PricedVoiceHunks.Count == 0)
             {
                 // Only cuts or corrections: Rewrite applies them without a voice.
@@ -75,6 +84,14 @@ internal sealed class MakeItRewriteDriver(EditorViewModel editor, MakeItRewriteR
                     Pressed.Add(footer.Title ?? "Choose take");
                     if (await session.ChooseOfferedTakeAsync()) continue;
                 }
+                // The free steps forward a creator would take: a duration, or a phrase that keeps its original audio (Mac keepOriginalAudio).
+                if (footer.Action == RewriteFooterAction.ChooseDurations && session.ChooseDurations()) { Pressed.Add(footer.Title!); continue; }
+                if (footer.Action == RewriteFooterAction.KeepOriginal && footer.Title?.StartsWith("Keep Original Audio", StringComparison.Ordinal) == true &&
+                    session.KeepOriginal(footer.Phrase)) { Pressed.Add(footer.Title); continue; }
+                if (footer.Action == RewriteFooterAction.KeepChangeWords && session.KeepCollidedOriginal(footer.Phrase)) { Pressed.Add(footer.Title!); continue; }
+                // Every phrase keeps its audio: the text fixes apply and the Rewrite ends, nothing voiced.
+                if (session.GenerationWindows.Count > 0 && session.GenerationWindows.All(window => window.LeftOut))
+                    return new(FinishAsRecorded(session), price + session.AutoFix.Spent) { JoinNotes = joins };
                 return new(new MakeItRewriteResult.NeedsYou(FirstLine(footer.Line, "Rewrite is waiting for you. Change to finish it.")), price + session.AutoFix.Spent) { JoinNotes = joins };
             }
             return new(new MakeItRewriteResult.NeedsYou("Rewrite is waiting for you. Change to finish it."), price + session.AutoFix.Spent) { JoinNotes = joins };
@@ -85,6 +102,16 @@ internal sealed class MakeItRewriteDriver(EditorViewModel editor, MakeItRewriteR
             if (session.IsOpen && !used && session.HasPaidTakes && handOff is not null) handOff(session);
             else if (session.IsOpen) session.Dispose();
         }
+    }
+
+    /// <summary>Nothing is left to voice (Mac <c>finishAsRecorded</c>): the Rewrite's text fixes are applied as free edits when it has any,
+    /// and the result says why the words stay.</summary>
+    private MakeItRewriteResult FinishAsRecorded(RewriteSession session)
+    {
+        var reason = session.AutoFix.Notes.LastOrDefault() ?? "Your words stay as recorded.";
+        var fixes = session.TextFixCount > 0 && session.ApplyTextFixesOnly();
+        Pressed.Add(fixes ? "apply text fixes; keep the words as recorded" : "keep the words as recorded");
+        return new MakeItRewriteResult.KeptAsRecorded(fixes ? reason + " Its text fixes are applied." : reason);
     }
 
     /// <summary>The phrases whose chosen take only has a join-loudness advisory.</summary>

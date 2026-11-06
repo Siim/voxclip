@@ -393,6 +393,25 @@ public sealed partial class EditorViewModel : ObservableObject
         finally { Monitor.Exit(voiceLabEdits); }
     }
 
+    /// <summary>Whether these takes would be accepted now, without changing anything (Mac <c>EditorModel.acceptsVoiceLab</c>): the same
+    /// local operations and project validation as <see cref="ApplyVoiceLab(IReadOnlyList{VoiceLabSegment}, IReadOnlyList{VoiceLabAsset}, VoiceLabVoiceReference?, VoiceLabOutputScope, string, Project?, IReadOnlyList{EditOperation}?, IReadOnlyDictionary{string, IReadOnlyList{VoiceLabRateSample}}?)"/>.</summary>
+    internal bool AcceptsVoiceLab(IReadOnlyList<VoiceLabSegment> segments, IReadOnlyList<VoiceLabAsset> assets, VoiceLabVoiceReference? voice,
+        VoiceLabOutputScope scope, string actionName, IReadOnlyList<EditOperation>? localOperations = null)
+    {
+        if (state is null) return false;
+        try
+        {
+            var nextState = state;
+            foreach (var operation in localOperations ?? []) nextState = reduce(nextState, operation);
+            var combined = nextState == state ? project : EditingEngine.ApplyToProject(project, nextState);
+            var modifiedAt = now();
+            if (modifiedAt <= project.ModifiedAt) modifiedAt = project.ModifiedAt.AddTicks(1);
+            new VoiceLabEditHistory(combined, IsDirty).Apply(segments, assets, voice, scope, actionName, modifiedAt);
+            return true;
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException) { return false; }
+    }
+
     public void CutSelection(bool restore = false)
     {
         if (!HasSelection) return;

@@ -42,30 +42,21 @@ public sealed class RewriteWordingFitTests
         Assert.False(session.Editor.CanUndo);
     }
 
+    /// <summary>One free round (ADR-R42, Mac <c>automaticFitRounds</c>): a phrase the round leaves too short is not asked again; it keeps its
+    /// recovery row, and the footer's Keep My Words goes on without it.</summary>
     [Fact]
-    public async Task APhraseThatFitsInRoundTwoIsAskedAgainWithItsLatestWords()
+    public async Task APhraseStillTooShortAfterTheOneRoundIsNotAskedAgainAndKeepsTheRecoveryRow()
     {
-        var connector = new Connector(Short + " word11 word12", (round, ordinals) => Rows(ordinals, round == 1 ? "plainly put" : Fits));
+        var connector = new Connector(Short + " word11 word12", (round, ordinals) => Rows(ordinals, round == 1 ? "x" : Fits));
         using var session = Session(connector);
         Assert.True(await ProposeAsync(session));
-        Assert.Equal(2, connector.FitRequests.Count);
-        Assert.Contains("Current proposal: plainly put", connector.FitRequests[1].CachedBlock);
-        Assert.Equal(Fits + " word11 word12", session.NewWords);
-        Assert.Equal(2, session.WordingFitRound);
-        Assert.Empty(session.BlockedVoiceHunks);
-    }
-
-    [Fact]
-    public async Task APhraseThatNeverFitsStopsAfterThreeRoundsAndKeepsTheRecoveryRow()
-    {
-        var connector = new Connector(Short + " word11 word12", (_, ordinals) => Rows(ordinals, "x"));
-        using var session = Session(connector);
-        Assert.True(await ProposeAsync(session));
-        Assert.Equal(VoiceLabWordingFit.MaximumRounds, connector.FitRequests.Count);
-        Assert.Equal(3, session.WordingFitRound);
+        Assert.Single(connector.FitRequests);
+        Assert.Equal(1, session.WordingFitRound);
+        Assert.Equal("x word11 word12", session.NewWords);
         Assert.Single(session.BlockedVoiceHunks);
         Assert.Equal("1 phrase needs wording that fits.", session.ReviewFooter);
         Assert.Null(session.FitRowNote(1));
+        Assert.Equal(new RewriteFooterStep("Change 1 needs a longer wording before takes.", "Keep My Words", RewriteFooterAction.KeepMyWords), session.FooterStep);
         Assert.True(session.ReviewIsCurrent);
         Assert.True(session.PriceItAnyway(1));
         var review = PanelSource("RewritePanel.Review.cs");
@@ -90,20 +81,19 @@ public sealed class RewriteWordingFitTests
     [Fact]
     public async Task FittingPhrasesAreFrozenAndNeverSentAgain()
     {
-        // Phrase 2 replaces a 0.4 s word, so no wording of it fits: every round asks for it again, never for phrase 1.
+        // Phrase 2 replaces a 0.4 s word, so no wording of it fits: the round asks for it, never for phrase 1, and it then keeps the
+        // speaker's words (ADR-R42); phrase 1 is priced.
         const string longer = "a far longer and very much clearer phrasing";
         var connector = new Connector(Fits + " word11 word12 word13 word14 word15 word16 word17 " + longer,
             (_, ordinals) => Rows(ordinals, "still a much longer phrasing than it ever needed"));
         using var session = Session(connector, 10, 18);
         Assert.True(await ProposeAsync(session));
-        Assert.Equal(3, connector.FitRequests.Count);
-        Assert.All(connector.FitRequests, request =>
-        {
-            Assert.Contains("Phrase 2\n", request.CachedBlock);
-            Assert.DoesNotContain("Phrase 1\n", request.CachedBlock);
-        });
+        var request = Assert.Single(connector.FitRequests);
+        Assert.Contains("Phrase 2\n", request.CachedBlock);
+        Assert.DoesNotContain("Phrase 1\n", request.CachedBlock);
         Assert.StartsWith(Fits + " ", session.NewWords);
-        Assert.EndsWith(" still a much longer phrasing than it ever needed", session.NewWords);
+        Assert.Equal(TranscriptChangeState.Excluded, session.ChangeStates[2]);
+        Assert.Equal([1], session.PricedVoiceHunks.SelectMany(hunk => hunk.Ordinals).ToArray());
     }
 
     [Fact]
@@ -115,7 +105,7 @@ public sealed class RewriteWordingFitTests
         await connector.FitSent.Task;
         Assert.True(session.WordingFitRunning);
         Assert.False(session.ReviewIsCurrent);
-        Assert.Equal("Fitting wording to the video · round 1 of 3", session.FitRunningHeadline);
+        Assert.Equal("Fitting wording to the video · round 1 of 1", session.FitRunningHeadline);
         Assert.Equal("Phrase 1 · ≈ 0.9 s, slot 1.4 s · asking for about 1 more words", RewriteSession.FitPhraseLine(Assert.Single(session.WordingFitPhrases)));
         session.StopWordingFit();
         Assert.False(session.Editor.LlmRuns.IsBusy);
@@ -155,7 +145,7 @@ public sealed class RewriteWordingFitTests
             Assert.True(await ProposeAsync(session));
             Assert.True(session.WordingFitAwaitingApproval);
             Assert.True(session.FitAsksFirst);
-            Assert.Equal("Fit wording automatically · up to 3 requests · price unavailable · billed to your key", session.FitApprovalLine);
+            Assert.Equal("Fit wording automatically · 1 request · price unavailable · billed to your key", session.FitApprovalLine);
             Assert.False(session.GenerationIsCurrent);
             session.StopWordingFit();
             Assert.True(session.WordingFitStopped);
@@ -171,7 +161,7 @@ public sealed class RewriteWordingFitTests
         fitted.Changed += (_, _) => { if (fitted.WordingFitAwaitingApproval) approvals++; };
         await fitted.FitWordingAsync(true);
         Assert.Equal(0, approvals);
-        Assert.Equal(3, approved.FitRequests.Count);
+        Assert.Single(approved.FitRequests);
         Assert.Equal("Uses Stub, billed to your key. Making a take still needs your paid click.", fitted.FitNote);
     }
 

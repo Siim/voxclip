@@ -372,7 +372,7 @@ internal sealed partial class RewriteGeneration
         var version = revision; var selection = selectionRevision;
         bool Current() => !closed && revision == version && selectionRevision == selection && current() &&
             ReferenceEquals(project, editor.Project) && ReferenceEquals(ReviewedInput, reviewed) && SelectedTakeId == selected.Id;
-        accepting = true; Notify();
+        accepting = true; LastAcceptanceUnusable = false; Notify();
         try
         {
             await takes.Audition.StopAsync();
@@ -409,8 +409,18 @@ internal sealed partial class RewriteGeneration
             return new(segment, assets, voice, Current);
         }
         catch (OperationCanceledException) { }
-        catch (Exception error) when (error is not OutOfMemoryException) { if (!closed && revision == version) { Problem = RewriteSession.Refusal(error); Announcement = Problem; } }
+        catch (Exception error) when (error is not OutOfMemoryException)
+        {
+            if (!closed && revision == version)
+            {
+                Problem = RewriteSession.Refusal(error); Announcement = Problem;
+                // The recipe or its placement refused this take (Mac `ClipTakePlan.Failure.unusable`): it can't go into the video.
+                LastAcceptanceUnusable = error is VoiceLabProjectException or VoiceLabGeometryException;
+            }
+        }
         finally { accepting = false; Notify(); }
         return null;
     }
+    /// <summary>Whether the last Use of this phrase failed because its take can't be made part of the video, not for a passing reason.</summary>
+    internal bool LastAcceptanceUnusable { get; private set; }
 }
