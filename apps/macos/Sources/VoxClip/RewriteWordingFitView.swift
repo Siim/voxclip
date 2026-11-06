@@ -69,9 +69,7 @@ import VoxClipCore
                             .accessibilityLabel("Make a new take with the reworded text. " + action.title)
                     }
                 } else if suggestion.keepOriginal {
-                    Text(plan.fitsNoDuration(phrase: suggestion.phrase)
-                         ? "This take can't fit its place in the video. Keep your original audio."
-                         : "This phrase cannot fit naturally. Keep the original words or keep this take.")
+                    Text(session.measuredKeepOriginalCopy(suggestion, plan: plan))
                         .font(VCType.small.font())
                 }
                 Button(session.measuredKeepTitle(suggestion, plan: plan)) { session.keepMeasuredTake() }

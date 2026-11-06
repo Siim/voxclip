@@ -46,13 +46,29 @@ struct VoiceLabTiltReplayTests {
             state = state &* 1_664_525 &+ 1_013_904_223
             base.append((Double(state >> 16) / 32_768 - 1) * scale)
         }
-        var values: [Double]
+        // Typed steps in the generator's own order (hosted Xcode 26 times out on the one-line closures).
+        var values: [Double] = []
         switch signal.shape {
         case "white": values = Array(base[3...])
-        case "bright": values = (0..<signal.samples).map { (base[$0 + 3] - base[$0 + 2]) / 2 }
-        case "warm": values = (0..<signal.samples).map { (base[$0 + 3] + base[$0 + 2] / 2) / 2 }
-        case "dark": values = (0..<signal.samples).map { (base[$0] + base[$0 + 1] + base[$0 + 2] + base[$0 + 3]) / 4 }
-        default: Issue.record("unknown shape \(signal.shape)"); values = []
+        case "bright":
+            for index in 0..<signal.samples {
+                let current: Double = base[index + 3], previous: Double = base[index + 2]
+                values.append((current - previous) / 2)
+            }
+        case "warm":
+            for index in 0..<signal.samples {
+                let current: Double = base[index + 3], half: Double = base[index + 2] / 2
+                values.append((current + half) / 2)
+            }
+        case "dark":
+            for index in 0..<signal.samples {
+                var sum: Double = base[index]
+                sum += base[index + 1]
+                sum += base[index + 2]
+                sum += base[index + 3]
+                values.append(sum / 4)
+            }
+        default: Issue.record("unknown shape \(signal.shape)")
         }
         for range in signal.quiet ?? [] { for index in range[0]..<range[1] { values[index] *= pow(2.0, -12) } }
         return values.map { Float($0) }

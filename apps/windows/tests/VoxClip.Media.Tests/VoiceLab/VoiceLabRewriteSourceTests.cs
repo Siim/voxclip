@@ -49,16 +49,17 @@ public sealed class VoiceLabRewriteSourceTests
         Assert.Equal(envelope.FrameSeconds, result.Envelope.FrameSeconds);
         Assert.Equal(envelope.Rms, result.Envelope.Rms);
         Assert.Equal(400_000, VoiceLabRoomToneSelection.Select(items, result.Envelope, rate, frames).SourceStartSample);
-        // One pass in 280 s chunks, then only two regions: 6 s around the window, and 1 s around the 0.5 s room-tone run.
+        // One pass in 280 s chunks, then only two regions: 6 s around the window, and 1 s around the 0.5 s room-tone run joined with
+        // the guard's first 2 s of the word after the patch (50.7–52.7 s, ADR-R40).
         var expected = new List<(long Start, long End)>();
         for (long start = 0; start < frames; start += 2_240_000) expected.Add((start, Math.Min(frames, start + 2_240_000)));
         Assert.Equal(14, expected.Count);
         expected.Add((192_000, 296_000));
-        expected.Add((392_000, 412_000));
+        expected.Add((392_000, 421_600));
         Assert.Equal(expected, spans);
         Assert.Equal(frames, result.Excerpt.TotalFrames);
         Assert.Equal(new long[] { 192_000, 392_000 }, result.Excerpt.Regions.Select(region => region.Start));
-        Assert.Equal(new long[] { 296_000, 412_000 }, result.Excerpt.Regions.Select(region => region.End));
+        Assert.Equal(new long[] { 296_000, 421_600 }, result.Excerpt.Regions.Select(region => region.End));
         foreach (var region in result.Excerpt.Regions)
             Assert.Equal(whole[(int)region.Start..(int)region.End], region.Samples.ToArray());
         Assert.Null(result.Excerpt.Samples(0, rate));
@@ -145,7 +146,7 @@ public sealed class VoiceLabRewriteSourceTests
         // Left alone, the read makes three envelope conversions and then decodes two regions.
         var spans = new List<(long Start, long End)>();
         await VoiceLabSourceAudio.RewriteSourceAsync("cancel", frames, rate, window, null, null, items, Conversion(frames, Pcm, spans), Token);
-        Assert.Equal(new (long Start, long End)[] { (0, 2_240_000), (2_240_000, 4_480_000), (4_480_000, frames), (192_000, 296_000), (392_000, 412_000) },
+        Assert.Equal(new (long Start, long End)[] { (0, 2_240_000), (2_240_000, 4_480_000), (4_480_000, frames), (192_000, 296_000), (392_000, 421_600) },
             spans);
         using var cancel = CancellationTokenSource.CreateLinkedTokenSource(Token);
         if (completed == 0) await cancel.CancelAsync();
@@ -360,7 +361,7 @@ public sealed class VoiceLabRewriteSourceTests
         Assert.Equal(VoiceLabTakeProcessing.Envelope(whole.ToArray(), rate).Rms, result.Envelope.Rms);
         Assert.Equal(400_000, VoiceLabRoomToneSelection.Select(items, result.Envelope, rate, frames).SourceStartSample);
         Assert.Equal(new long[] { 192_000, 392_000 }, result.Excerpt.Regions.Select(region => region.Start));
-        Assert.Equal(new long[] { 296_000, 412_000 }, result.Excerpt.Regions.Select(region => region.End));
+        Assert.Equal(new long[] { 296_000, 421_600 }, result.Excerpt.Regions.Select(region => region.End));
         foreach (var region in result.Excerpt.Regions)
             Assert.Equal(whole.GetRange((int)region.Start, (int)(region.End - region.Start)), region.Samples.ToArray());
         // Nothing refuses a length up front: a track shorter than the frames asked for fails only where the decode passes its end.

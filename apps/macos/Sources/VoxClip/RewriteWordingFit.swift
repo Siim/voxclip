@@ -424,6 +424,12 @@ extension RewriteSession {
         if suggestion.awaitingApproval { return "Skip" }
         return plan.fitsNoDuration(phrase: suggestion.phrase) ? "Keep Original Audio" : "Keep Take \(suggestion.number)"
     }
+    /// The measured card's line when its phrase can't fit naturally, matching the keep button.
+    func measuredKeepOriginalCopy(_ suggestion: MeasuredWordingSuggestion, plan: ClipTakePlan) -> String {
+        plan.fitsNoDuration(phrase: suggestion.phrase)
+            ? "This take can't fit its place in the video. Keep your original audio."
+            : "This phrase cannot fit naturally. Keep the original words or keep this take."
+    }
 
     func keepMeasuredTake() {
         guard let suggestion = wordingFit.measured, let plan = takePlan, !takesBusy else { return }

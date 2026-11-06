@@ -1069,9 +1069,10 @@ public sealed partial class VoiceLabTakeRunTests
         var spans = new List<(long Start, long End)>();
         var read = await VoiceLabSourceAudio.RewriteSourceAsync("long-source", frames, rate, window, null, null, items,
             SourceConversion.Fake(frames, Pcm, spans), Token);
-        // Three envelope chunks, then two regions: 2.5 s around the room-tone run at 100 s and 16 s around the window.
+        // Three envelope chunks, then two regions: the room-tone run at 100 s, joined with the guard's last 2 s of "intro" (98–100 s,
+        // ADR-R40), and 16 s around the window.
         Assert.Equal(5, spans.Count);
-        Assert.Equal(new long[] { 4_365_900, 396L * rate }, read.Excerpt.Regions.Select(region => region.Start));
+        Assert.Equal(new long[] { 4_321_800, 396L * rate }, read.Excerpt.Regions.Select(region => region.Start));
         Assert.Equal(new long[] { 4_476_150, 412L * rate }, read.Excerpt.Regions.Select(region => region.End));
         var whole = new float[frames];
         for (var frame = 0; frame < whole.Length; frame++) whole[frame] = Pcm(frame) / 32768f;
