@@ -261,6 +261,31 @@ public sealed class VoiceConsentStore
             return learned;
         }
     }
+    /// <summary>Carries a rebuilt or per-video voice's learned references over from the voice it was made from (voice-lab.md §6.12 step 6,
+    /// ADR-R44; Mac <c>carryReferences</c>): each old reference is learned again into the new record with
+    /// <see cref="VoiceSpeakerReferences.Learning"/>, so it is one hop from the new record's own embedding; one that no longer passes is
+    /// dropped. The new record must be active (or awaiting the provider's verification) with no operation in flight. Returns the new
+    /// record's learned count.</summary>
+    public int CarryReferences(string fromRecordId, string toRecordId, DateTimeOffset? at = null)
+    {
+        lock (State.Sync)
+        {
+            var old = Load(fromRecordId);
+            var current = Load(toRecordId);
+            if (current.Status is not (VoiceConsentStatus.Active or VoiceConsentStatus.VerificationRequired) || HasOperation(toRecordId) ||
+                State.Revoked.Contains(toRecordId)) throw new VoiceConsentException(VoiceConsentError.Inactive);
+            var speaker = current.Speaker;
+            foreach (var reference in old.Speaker.References ?? [])
+            {
+                if (VoiceConsentRecord.DecodeEmbedding(reference.Embedding) is not { } embedding) continue;
+                try { speaker = VoiceSpeakerReferences.Learning(embedding, reference.ContentKey, reference.Model, at ?? clock.GetUtcNow(), speaker); }
+                catch (VoiceReferenceRefusedException) { }
+            }
+            if (ReferenceEquals(speaker, current.Speaker)) return VoiceSpeakerReferences.LearnedCount(current.Speaker);
+            Save(current with { Speaker = speaker });
+            return VoiceSpeakerReferences.LearnedCount(speaker);
+        }
+    }
     /// <summary>Forgets every learned reference of a voice. The guard then judges phrases against the record's own embedding only.</summary>
     public VoiceConsentRecord ForgetReferences(string recordId)
     {

@@ -767,6 +767,7 @@ if (insertion ||
         App.Services.VoiceLab.Changed += ConsentRecordsChanged;
         generation.ConfigureTransport(transportCoordinator);
         generation.PhraseNumber = windowIndex + 1;
+        generation.PreferredVoice = () => App.Services.Settings.GetString(VoxClip.Core.Domain.VoiceLab.VoiceRebuild.RewriteVoiceKey);
         generation.ConfigureSpendObserver(() => WorkflowSpendCache.RefreshAsync(App.Services.Data));
         var audition = new VoxClip.Media.Audio.VoiceLabAudition(ct => RewriteGeneration.PausePreviewAsync(preview, ct));
         _ = generation.ConfigureTakesAsync(new(audition, scratch, reject, publish, backend.PaidAudioAsync));

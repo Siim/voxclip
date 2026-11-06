@@ -331,6 +331,17 @@ public sealed class RewriteAutoFixTests
         /// anything is sent; null runs as scripted.</summary>
         internal Func<int, Exception?>? Blocks { get; init; }
         internal int Executions;
+        /// <summary>The guard's free screen at Get Price (ADR-R41) by inputs; null leaves every phrase unchecked, as the production runner
+        /// does behind the closed parity gate. A held screen waits for <see cref="ScreenHold"/>.</summary>
+        internal Func<IReadOnlyList<VoiceLabTakeInput>, IReadOnlyList<VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict>>? Screen { get; init; }
+        internal TaskCompletionSource? ScreenHold { get; init; }
+        internal int Screens;
+        public async Task<IReadOnlyList<VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict>> ScreenGuardAsync(IReadOnlyList<VoiceLabTakeInput> inputs, CancellationToken ct = default)
+        {
+            Screens++;
+            if (ScreenHold is { } hold) await hold.Task.WaitAsync(ct);
+            return Screen?.Invoke(inputs) ?? inputs.Select(_ => VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict.Unchecked).ToArray();
+        }
         /// <summary>How many quotes were prepared; a long run's later part is quoted again just before it runs.</summary>
         internal int Prepares;
         /// <summary>Each quoted action's price by prepare; null: $0.01.</summary>

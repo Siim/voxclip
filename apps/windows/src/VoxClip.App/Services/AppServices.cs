@@ -102,7 +102,18 @@ internal sealed class AppServices : IAsyncDisposable
                 await save!;
             }
             IVoiceLabBackend backend = new VoiceLabBackend(Data, Keys, Log, () => VoiceLabEnabled,
-                () => ElevenLabsRegions.FromSettings(Settings, Log), Consent);
+                () => ElevenLabsRegions.FromSettings(Settings, Log), Consent,
+                learningProjects: () => VoiceLabSession.LearningProjects(Get<string[]>("general.recentProjects", []),
+                    Get("export.folder", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "VoxClip"))),
+                readProject: ReadVoiceLabProjectAsync,
+                setRewriteVoice: async (recordId, ct) =>
+                {
+                    Task? save = null;
+                    await OnUiAsync(() => save = SetAsync(VoiceRebuild.RewriteVoiceKey, recordId, ct));
+                    await save!;
+                },
+                rewriteVoice: () => Settings.GetString(VoiceRebuild.RewriteVoiceKey),
+                play: VoxClip.Media.Audio.PhraseCueOutput.PlayAsync);
 #if DEBUG
             var fixtures = Environment.GetEnvironmentVariable("VOXCLIP_DEBUG_VOICELAB");
             if (fixtures?.StartsWith("fixtures:", StringComparison.Ordinal) == true)
@@ -111,6 +122,17 @@ internal sealed class AppServices : IAsyncDisposable
             voiceLab = new(backend, OnUiAsync);
             return voiceLab;
         }
+    }
+    /// <summary>A project file and its resolved source media for Voice Lab's free local steps (learning, the rebuild); null when either
+    /// can't be read.</summary>
+    private async Task<VoiceLabProjectSource?> ReadVoiceLabProjectAsync(string path, CancellationToken ct)
+    {
+        try
+        {
+            var opened = await Projects.LoadAsync(path, ct).ConfigureAwait(false);
+            return opened.ResolvedMediaPath is { } media ? new(opened.Project, media) : null;
+        }
+        catch (Exception error) when (error is not OperationCanceledException and not OutOfMemoryException) { return null; }
     }
     internal async Task<CreateVoiceSession> CreateVoiceEnrollmentAsync(CancellationToken ct)
     {

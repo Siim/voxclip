@@ -15,6 +15,11 @@ public interface IVoiceLabTakeRunner
         (await RefreshMonthlyCapAsync(fallback ?? new(decimal.MaxValue, 0), ct).ConfigureAwait(false))?.Spent;
     Task<VoiceLabTakeRunResult> ExecuteWithDispatchAsync(VoiceLabTakeRunQuote quote, VoiceLabRunDispatch dispatch,
         Func<IReadOnlyList<VoiceLabTakeRow>, Task>? progress = null, CancellationToken ct = default);
+    /// <summary>The guard's free local verdict on each of these phrases before any price (voice-lab.md §6.9, ADR-R41; Mac
+    /// <c>VoiceLabTakeRun.screenGuard</c>). A runner without a speaker check leaves every phrase unchecked: the run's own guard decides at
+    /// dispatch.</summary>
+    Task<IReadOnlyList<VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict>> ScreenGuardAsync(IReadOnlyList<VoiceLabTakeInput> inputs, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict>>(inputs.Select(_ => VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict.Unchecked).ToArray());
 }
 
 public enum VoiceLabGenerationAction { Completed, ConfirmationRequired }

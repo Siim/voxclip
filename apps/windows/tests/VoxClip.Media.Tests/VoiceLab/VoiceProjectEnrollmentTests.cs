@@ -9,7 +9,7 @@ public sealed partial class VoiceEnrollmentPlanTests
 {
     private static Task<VoiceEnrollmentPlan> PrepareProject(Fixture fixture, VoiceConsentAttestations? attestations = null,
         IReadOnlyList<VoiceTrainingSample>? samples = null) => fixture.Service.PrepareProjectPlanAsync(fixture.Id, "en",
-        attestations ?? new(true, true, true, fixture.Clock.Now), "Example", samples ?? fixture.Samples(source: "project"), true, Token);
+        attestations ?? new(true, true, true, fixture.Clock.Now), "Example", samples ?? fixture.Samples(source: "project"), true, ct: Token);
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -192,7 +192,7 @@ public sealed partial class VoiceEnrollmentPlanTests
         var shipping = new VoxClip.Media.VoiceLab.VoiceEnrollment(fixture.Store, fixture.Client, clock: fixture.Clock);
         Assert.False(shipping.SpeakerAvailable);
         var failure = await Assert.ThrowsAsync<VoiceConsentException>(() => shipping.PrepareProjectPlanAsync(fixture.Id, "en",
-            new(true, true, true, fixture.Clock.Now), "Example", fixture.Samples(source: "project"), true, Token));
+            new(true, true, true, fixture.Clock.Now), "Example", fixture.Samples(source: "project"), true, ct: Token));
         Assert.Equal(VoiceConsentError.SpeakerUnavailable, failure.Kind);
         Assert.Empty(fixture.Remote.Events); Assert.False(Directory.Exists(Path.Combine(fixture.Store.Root, fixture.Id)));
     }

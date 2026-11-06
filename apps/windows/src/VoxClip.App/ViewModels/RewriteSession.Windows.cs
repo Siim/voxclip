@@ -190,15 +190,67 @@ internal sealed partial class RewriteSession
         foreach (var generation in generationWindows.ToArray()) _ = generation.InputsChangedAsync();
     }
 
+    /// <summary>Get Price (Mac <c>ClipTakePlan.prepareQuote</c>): every phrase is discovered and quoted, then the guard screens them all
+    /// before a price is shown (<see cref="ScreenWindowsAsync"/>). No price is shown or approvable while the screen runs.</summary>
     internal async Task DiscoverWindowsAsync()
     {
         var windows = generationWindows.ToArray();
-        foreach (var window in windows)
+        ScreeningVoice = windows.Length > 0;
+        Changed?.Invoke(this, EventArgs.Empty);
+        try
         {
-            if (!GenerationIsCurrent || !generationWindows.SequenceEqual(windows)) return;
-            await window.DiscoverAsync();
-            if (!window.HasDiscovered) return;
+            foreach (var window in windows)
+            {
+                if (!GenerationIsCurrent || !generationWindows.SequenceEqual(windows)) return;
+                await window.DiscoverAsync();
+                if (!window.HasDiscovered) return;
+            }
+            foreach (var window in windows) if (window.IsPreparing) await window.PendingUpdate;
+            if (GenerationIsCurrent && generationWindows.SequenceEqual(windows)) await ScreenWindowsAsync(windows);
         }
+        finally
+        {
+            ScreeningVoice = false;
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>"Checking it's your voice…" while the guard screens the phrases at Get Price (Mac <c>preparationStep</c>).</summary>
+    internal const string ScreeningCopy = "Checking it's your voice…";
+    /// <summary>The guard is screening the phrases: nothing is priced or approvable until it is done.</summary>
+    internal bool ScreeningVoice { get; private set; }
+    /// <summary>A phrase passed through the reference this video taught (Mac <c>learnedFromThisVideo</c>): the spend line says so.</summary>
+    internal bool LearnedFromThisVideo { get; private set; }
+
+    /// <summary>The guard runs first, free and on this PC (voice-lab.md §6.9, ADR-R41): a phrase it blocks is settled before any price, so
+    /// Get Price never prices, and never asks approval for, a phrase that would be blocked. Phrases that pass against the record's own
+    /// embedding teach this project's reference first, so the rest are judged with it. A phrase the screen can't check is unchecked, and
+    /// the run's own guard decides at dispatch. Inert while <see cref="VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck.WindowsNativeParityVerified"/>
+    /// is false: the production runner has no speaker check, so every phrase is unchecked.</summary>
+    private async Task ScreenWindowsAsync(IReadOnlyList<RewriteGeneration> windows)
+    {
+        var identity = ReviewIdentity;
+        var inputs = windows.Select(window => window.PreparedWindow?.Input).ToArray();
+        var screened = inputs.Select((input, index) => (input, index)).Where(item => item.input is not null).ToArray();
+        LearnedFromThisVideo = false;
+        if (screened.Length == 0) return;
+        IReadOnlyList<VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict> verdicts;
+        try { verdicts = await windows[0].ScreenGuardAsync(screened.Select(item => item.input!).ToArray(), lifetime.Token); }
+        catch (Exception error) when (error is not OutOfMemoryException) { return; }
+        if (!GenerationIsCurrent || identity != ReviewIdentity || !generationWindows.SequenceEqual(windows) || verdicts.Count != screened.Length) return;
+        var blocked = false;
+        for (var item = 0; item < screened.Length; item++)
+        {
+            var (input, index) = screened[item];
+            var verdict = verdicts[item];
+            if (verdict.Blocker is { } reason && windows[index].Blocked is null)
+            {
+                windows[index].Block(BlockedCopy(new VoiceConsentException(reason)));
+                blocked = true;
+            }
+            else if (verdict.Match is { ContentKey: { } key } && key == input!.ContentKey) LearnedFromThisVideo = true;
+        }
+        if (blocked) RememberBlocked();
     }
 
     internal async Task ChooseVoiceForWindowsAsync(string? id)
@@ -218,7 +270,7 @@ internal sealed partial class RewriteSession
     {
         get
         {
-            if (Review is null || generationWindows.Count != PricedVoiceHunks.Count || generationWindows.Count == 0) return null;
+            if (ScreeningVoice || Review is null || generationWindows.Count != PricedVoiceHunks.Count || generationWindows.Count == 0) return null;
             var windows = PricedWindows.Select(window => window.PreparedWindow).ToArray();
             if (windows.Length == 0 || windows.Any(window => window is null)) return null;
             try { return new(windows.Select(window => window!).ToArray()); }

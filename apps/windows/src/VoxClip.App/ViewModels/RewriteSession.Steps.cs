@@ -321,6 +321,7 @@ internal sealed partial class RewriteSession
                     return PricedVoiceHunks.Count == 0 && TextFixCount > 0
                         ? new($"Change {blocked.Ordinals[0]} needs a {(blocked.Fit?.TooLong ?? true ? "shorter" : "longer")} wording before takes. Or apply the text fixes now.", ApplyTextFixesTitle, RewriteFooterAction.ApplyTextFixes)
                         : new($"Change {blocked.Ordinals[0]} needs a {(blocked.Fit?.TooLong ?? true ? "shorter" : "longer")} wording before takes.", "Keep My Words", RewriteFooterAction.KeepMyWords);
+                if (ScreeningVoice) return new(ScreeningCopy, null, RewriteFooterAction.None);
                 if (PricedVoiceHunks.Count > 0)
                     return new(Generation?.Voices.Count > 0 ? "Make the takes to hear the new words." : "Get Price to hear the new words in your voice.", null, RewriteFooterAction.None);
                 return TextFixCount > 0 ? new("These changes can't be voiced here. The text fixes still apply.", ApplyTextFixesTitle, RewriteFooterAction.ApplyTextFixes)

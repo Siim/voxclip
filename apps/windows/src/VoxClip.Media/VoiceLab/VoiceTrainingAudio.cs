@@ -13,6 +13,14 @@ public sealed class VoiceTrainingSample
     public bool CleanAudioApplied { get; }
     internal VoiceTrainingSample(byte[] wav, double seconds, string source, double snrDb, bool cleanAudioApplied = false)
     { Wav = wav; Seconds = seconds; Source = source; SnrDb = snrDb; CleanAudioApplied = cleanAudioApplied; }
+    /// <summary>The sample's mono PCM and rate, for playing it on this PC (Rebuild from my videos ▶).</summary>
+    public (float[] Samples, int Rate) Pcm()
+    {
+        var (rate, frames, offset) = VoiceConsentAudio.ValidateWav(Wav);
+        var samples = new float[frames];
+        for (var index = 0; index < frames; index++) samples[index] = BinaryPrimitives.ReadInt16LittleEndian(Wav.AsSpan(offset + index * 2)) / 32768f;
+        return (samples, rate);
+    }
 }
 
 public static class VoiceTrainingAudio
@@ -79,15 +87,17 @@ public static class VoiceTrainingAudio
         return cut.Finish();
     }
     /// <summary>A span's source samples [floor((startMs × rate + 500) / 1000), floor((endMs × rate + 500) / 1000)) in integer
-    /// arithmetic, so a 5–30 s span always cuts 5–30 s of samples.</summary>
+    /// arithmetic, so a 5–30 s span always cuts 5–30 s of samples. A span needs a finite SNR of at least the per-video floor (8 dB, §6.13):
+    /// the §6.5.1 selection only yields 20 dB spans, and a per-video voice's relaxed spans reach 8 dB.</summary>
     internal static (long Start, long End) SpanSamples(VoiceTrainingSpan span, int rate)
     {
         if (rate is < 8000 or > 96000 || span.StartMs < 0 || span.EndMs - span.StartMs is < VoiceTrainingSpans.SpanMinMs or > VoiceTrainingSpans.SpanMaxMs ||
-            span.EndMs > long.MaxValue / 96000 || !double.IsFinite(span.SnrDb) || span.SnrDb < VoiceTrainingSpans.MinSnrDb) throw Invalid();
+            span.EndMs > long.MaxValue / 96000 || !double.IsFinite(span.SnrDb) || span.SnrDb < VoicePerVideo.MinimumSnrDb) throw Invalid();
         return ((span.StartMs * rate + 500) / 1000, (span.EndMs * rate + 500) / 1000);
     }
     /// <summary>One cut span as a project sample: normalised like every training WAV, lasting its sample count over the rate, with the
-    /// selection's take-relative SNR. Project spans always clear 20 dB, so they never ask for background-noise removal.</summary>
+    /// selection's take-relative SNR. §6.5.1 spans clear 20 dB; a per-video voice's relaxed spans (8–20 dB) make its creation ask for
+    /// background-noise removal (§6.13).</summary>
     internal static VoiceTrainingSample ProjectSpan(float[] samples, int rate, VoiceTrainingSpan span)
     {
         var (start, end) = SpanSamples(span, rate);

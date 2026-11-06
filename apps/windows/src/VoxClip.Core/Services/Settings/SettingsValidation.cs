@@ -32,7 +32,7 @@ internal static class SettingsValidation
     private static readonly HashSet<string> KnownKeys = AppSettings.Defaults.Keys.ToHashSet(StringComparer.Ordinal);
 
     internal static bool KnownKey(string key)
-        => KnownKeys.Contains(key) || key is "llm.baseUrl.ollama" or "llm.baseUrl.lmstudio" or "ui.layout.trackHeight" or "clipStyle.default" or ClipsMode.Key or Domain.Clips.RewriteToneCatalog.SettingsKey ||
+        => KnownKeys.Contains(key) || key is "llm.baseUrl.ollama" or "llm.baseUrl.lmstudio" or "ui.layout.trackHeight" or "clipStyle.default" or ClipsMode.Key or Domain.Clips.RewriteToneCatalog.SettingsKey or Domain.VoiceLab.VoiceRebuild.RewriteVoiceKey or Domain.VoiceLab.VoicePerVideo.SettingKey ||
             Regex.IsMatch(key, "\\A(?:llm\\.(?:model|cloudConsent)|voiceLab\\.(?:providerConsent|monthlyCapUsd))\\.[a-z0-9]+(?:-[a-z0-9]+)*\\z", RegexOptions.CultureInvariant);
 
     internal static void Validate(AppSettings settings)
@@ -81,6 +81,14 @@ internal static class SettingsValidation
                 case "export.srt": case "export.openFolderAfter": case "update.autoCheck": case "llm.clips.snapToLines": case "voiceLab.enabled":
                 case "voiceLab.c2pa": case "voiceLab.betaNoticeAccepted": Boolean(value); break;
                 case "voiceLab.labelPosition": Choice(value, "top-right", "top-left", "bottom-right", "bottom-left"); break;
+                // The consent record Rewrite starts with (voice-lab.md §6.12): a lowercase record UUID, or null for none. No default.
+                case Domain.VoiceLab.VoiceRebuild.RewriteVoiceKey:
+                    if (value.ValueKind != JsonValueKind.Null) Pattern(value, "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
+                    break;
+                // The per-video voice answer (voice-lab.md §6.13): true, false, or null for unset (asks once). No default.
+                case Domain.VoiceLab.VoicePerVideo.SettingKey:
+                    if (value.ValueKind != JsonValueKind.Null) Boolean(value);
+                    break;
                 default:
                     if (Regex.IsMatch(pair.Key, "\\Allm\\.model\\.[a-z0-9]+(?:-[a-z0-9]+)*\\z", RegexOptions.CultureInvariant)) Text(value, 1, 128);
                     else if (Regex.IsMatch(pair.Key, "\\A(?:llm\\.cloudConsent|voiceLab\\.providerConsent)\\.[a-z0-9]+(?:-[a-z0-9]+)*\\z", RegexOptions.CultureInvariant)) Boolean(value);

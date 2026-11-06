@@ -5,10 +5,13 @@ using VoxClip.Core.Services.VoiceLab;
 namespace VoxClip.Media.VoiceLab;
 
 /// <summary>The run's consent and speaker checks. <see cref="Voiced"/> gives a generated take's voiced speech at 16 kHz;
-/// <see cref="Embedding"/> embeds voiced speech of at least one calibrated window (a long take's own, or a pooled group's).</summary>
+/// <see cref="Embedding"/> embeds voiced speech of at least one calibrated window (a long take's own, or a pooled group's).
+/// <see cref="Screen"/> is the guard's free verdict on every phrase before any price (<see cref="VoiceUseGuard.ScreenAsync"/>); null leaves
+/// every phrase unchecked.</summary>
 internal sealed record VoiceLabTakeRunChecks(Action<VoiceConsentRecord> Validate,
     Func<VoiceConsentRecord, float[], VoiceLabPreparedAction, VoiceLabDispatchBinding, long, CancellationToken, Task<OwnVoicePolicy>> Authorize,
-    Func<float[], int, CancellationToken, Task<float[]>> Voiced, Func<float[], CancellationToken, Task<float[]>> Embedding);
+    Func<float[], int, CancellationToken, Task<float[]>> Voiced, Func<float[], CancellationToken, Task<float[]>> Embedding,
+    Func<string, string, IReadOnlyList<float[]>, CancellationToken, Task<IReadOnlyList<VoiceGuardVerdict>>>? Screen = null);
 
 public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
 {
@@ -60,7 +63,27 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                 throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
         }, (record, speech, quote, binding, model, ct) => guard.AuthorizeAsync("take:" + VoiceConsentStore.Hash(System.Runtime.InteropServices.MemoryMarshal.AsBytes(speech.AsSpan()).ToArray()),
             record.RecordId, speech, quote, true, ct: ct, binding: binding, modelRevision: model),
-            (samples, rate, ct) => speaker.GeneratedVoicedAsync(samples, rate, ct), (voiced, ct) => speaker.VoicedEmbeddingAsync(voiced, ct));
+            (samples, rate, ct) => speaker.GeneratedVoicedAsync(samples, rate, ct), (voiced, ct) => speaker.VoicedEmbeddingAsync(voiced, ct),
+            (contentKey, recordId, speech, ct) => guard.ScreenAsync(contentKey, recordId, speech, ct));
+    }
+    /// <summary>The guard's free verdict on each of these phrases before any price (voice-lab.md §6.9, ADR-R41; Mac <c>screenGuard</c>), on
+    /// the same speech the run's own guard reads at dispatch (<see cref="GuardSpeech"/>). Phrases that pass against the record's own
+    /// embedding teach this project's reference first. Nothing is sent anywhere. Phrases of different voices or videos, or a phrase whose
+    /// speech can't be read, are unchecked.</summary>
+    public async Task<IReadOnlyList<VoiceGuardVerdict>> ScreenGuardAsync(IReadOnlyList<VoiceLabTakeInput> inputs, CancellationToken ct = default)
+    {
+        var none = inputs.Select(_ => VoiceGuardVerdict.Unchecked).ToArray();
+        if (inputs.Count == 0 || checks.Screen is not { } screen ||
+            inputs.Any(input => input.RecordId != inputs[0].RecordId || input.ContentKey != inputs[0].ContentKey)) return none;
+        var speech = new float[inputs.Count][];
+        for (var index = 0; index < inputs.Count; index++)
+        {
+            ct.ThrowIfCancellationRequested();
+            try { speech[index] = GuardSpeech(inputs[index].Snapshot()); }
+            catch (Exception error) when (error is VoiceLabException or VoiceConsentException or ArgumentException) { speech[index] = []; }
+        }
+        var verdicts = await screen(inputs[0].ContentKey, inputs[0].RecordId, speech, ct).ConfigureAwait(false);
+        return verdicts.Count == inputs.Count ? verdicts : none;
     }
     internal Guid? PreparedSetId { get { lock (sync) return pending?.Quote.Id; } }
     public VoiceLabTakeScratch? Scratch(Guid id) { lock (sync) return scratches.GetValueOrDefault(id); }

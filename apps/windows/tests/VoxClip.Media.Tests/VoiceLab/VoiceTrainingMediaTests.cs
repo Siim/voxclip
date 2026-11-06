@@ -259,7 +259,7 @@ public sealed class VoiceTrainingMediaTests
             Assert.Equal((start * rate + 500) / 1000, first); Assert.Equal((end * rate + 500) / 1000, last);
             Assert.InRange(last - first, 5L * rate, 30L * rate);
         }
-        foreach (var span in new VoiceTrainingSpan[] { new(0, 4_999, 30), new(0, 30_001, 30), new(-1, 5_000, 30), new(0, 5_000, 19.999), new(0, 5_000, double.NaN) })
+        foreach (var span in new VoiceTrainingSpan[] { new(0, 4_999, 30), new(0, 30_001, 30), new(-1, 5_000, 30), new(0, 5_000, 7.999), new(0, 5_000, double.NaN) })
             Assert.Throws<VoiceLabException>(() => VoiceTrainingAudio.SpanSamples(span, rate));
         Assert.Throws<VoiceLabException>(() => VoiceTrainingAudio.SpanSamples(new(0, 5_000, 30), 7_999));
         Assert.Throws<VoiceLabException>(() => VoiceTrainingAudio.SpanSamples(new(0, 5_000, 30), 96_001));

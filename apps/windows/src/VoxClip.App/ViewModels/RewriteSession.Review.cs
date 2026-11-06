@@ -63,7 +63,7 @@ internal sealed partial class RewriteSession
         ? BlockedVoiceHunks.Any(hunk => hunk.Fit is { TooLong: false })
             ? count == 1 ? "1 phrase needs wording that fits." : $"{count} phrases need wording that fits."
             : count == 1 ? "1 phrase needs a shorter wording." : $"{count} phrases need a shorter wording."
-        : "Nothing paid yet.";
+        : LearnedFromThisVideo ? "Nothing paid yet. Matched your voice from this video." : "Nothing paid yet.";
     /// <summary>The review footer: the fitted summary once automatic rounds fit every phrase, otherwise the fit status.</summary>
     /// <summary>Only before paid takes: after them the takes footer names the next step.</summary>
     internal string ReviewFooter => HasPaidTakes ? "" : WordingFitCompleted && BlockedVoiceHunks.Count == 0 && PricedVoiceHunks.Count > 0 ? FitFittedFooter : FitFooter;
