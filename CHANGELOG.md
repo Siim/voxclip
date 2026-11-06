@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Windows, Get Price checks every phrase is your voice before showing a price, and Settings › Voices can learn your voice from your videos and rebuild it from your clearest speech; these stay off until the Windows speaker check is verified.
 - On Windows, a Rewrite take no video duration can carry keeps that phrase's original audio by itself and says why once, Use keeps a phrase that doesn't sound like your voice as recorded in the same click and leaves it out of the price, passage requests carry their own length budget, and generated takes are gently tone-matched to the speech beside them.
 - On Mac, Rewrite can make a matching voice for each video from that video's own verified speech, asked once inline and remembered: every take in the video uses it, the previous video's voice is removed, your consent voice stays, and Settings › Voices shows how close takes sound to your speech.
 - On Mac, a Rewrite take far too short or too long for every video duration now keeps that phrase's original audio by itself, says why in one line, and Use applies the rest; the footer never asks for a duration it can't offer.

@@ -1,5 +1,63 @@
 # Windows fixed contracts
 
+### 2026-11-06 — Windows Rewrite parity 3: voice references in the App, Rebuild from my videos, a matching voice per video (Core and Media) (track/v2-win-parity-3)
+
+Twin of the Mac ADR-R41 (App side), ADR-R44 (rebuild) and ADR-R45 (per-video voice, Core and Media only), plus the owed Mac replay of `rewrite-slot-cases.json`. Spec: doc/spec/voice-lab.md §6.9, §6.12, §6.13; doc/design.md R2 "Not your voice here" and "A matching voice for this video".
+
+- **1 · Voice references, App** (424b5593, 875ba9c3; Core `IVoiceLabTakeRunner.ScreenGuardAsync`; Media `VoiceLabTakeRun.ScreenGuardAsync`, `VoiceLabTakeRunChecks.Screen`, `VoiceLabDisclosureWriter.IsLabelled`, `VoiceLabSourceAudio.GuardSpeechAsync`, `VoiceSpeakerProbe`, `VoiceReferenceLearner`; App `RewriteSession.ScreenWindowsAsync`/`ScreeningCopy`/`LearnedFromThisVideo`, `RewriteGeneration.ScreenGuardAsync`, `VoiceLabSession` Learn/Forget, `VoiceLabBackend` learning, `VoiceLabSettingsPane.AddReferenceRows`, `EditorPage.MakeIt` learning on Transcribed):
+  - Get Price discovers and quotes every phrase, then screens them all in one call on the guard's own speech, before any price shows ("Checking it's your voice…"). A blocked phrase is settled first. A phrase matched through this video's reference says "Nothing paid yet. Matched your voice from this video."
+  - Phrases of different voices or videos are not screened together; they stay unchecked, and the run's guard decides.
+  - Learn from my videos reads the ADR-R41 projects (`general.recentProjects` and the export folder), skips labelled, untranscribed and other-language media, and learns one hop against the record's own embedding. Settings › Voices: "Learned from {n} of your videos", [Learn from my videos] only when it can act, [Forget learned references] only when there are some.
+  - The learning and rebuild lines are announced once when they change (`AnnounceLine`), so the pane keeps one live region.
+- **4 · Mac replay of `rewrite-slot-cases.json`** (2802c282; Mac `VoiceRewriteSlotsReplayTests`, 2 tests). The Mac agrees with all 8 cases; no Mac source changed.
+- **2 · Rebuild from my videos** (5e8d0af7; Core `VoiceRebuild`, `VoiceConsentStore.CarryReferences`, `voiceLab.rewriteVoice` in `SettingsValidation`; Media `VoiceRebuildFinder`, `VoiceTrainingSample.Pcm`; App `VoiceLabSession.Rebuild*`, `VoiceRebuildState`/`Phase`/`Find`/`Quote`/`Created`, `VoiceLabBackend` rebuild creation, `RewriteGeneration.PreferredVoice`/`InitialVoice`, `VoiceLabSettingsPane.AddRebuildRows`):
+  - New shared vectors `voice-rebuild-cases.json` (`voxclip-voice-rebuild/1`, `tools/fixtures/voice-lab/generate_voice_rebuild.py`, pure binary64, on the check_drift EXACT list). Both Cores replay them, the Mac in the new `VoiceRebuildReplayTests`.
+  - The finder sends the voice's own `reference.wav` first, so the new record's embedding is the old one's, then each video's cleanest §6.5.1 spans scored one hop by their lowest part.
+  - Creation goes through the existing journal, consent and creator bindings (`PrepareProjectPlanAsync` → one priced click → `ExecuteAsync`), with the old record's creator checked first. `CarryReferences` re-learns each old reference against the new embedding and drops those that no longer pass.
+  - Settings rows: found speech with ▶, three inline attestations that draft the free quote, **Rebuild · {price}** as the only paid click, then **Use the new voice for Rewrite** (writes `voiceLab.rewriteVoice`) and **Remove the old voice** with an inline [Keep it] [Remove old voice]. Rewrite starts with the setting's voice when it is listed.
+- **3 · A matching voice per video, Core and Media** (6e83e5dd; Core `VoicePerVideo`, `VoicePerVideoBook`, `VoicePerVideoStore`, `voiceLab.matchEachVideo` in `SettingsValidation`; Media `VoiceRebuildFinder.Rules.PerVideo`/`RelaxedSpans`, `VoiceTrainingAudio.SpanSamples` at 8 dB, `VoiceEnrollment.PrepareProjectPlanAsync(…, removeBackgroundNoise, ct)`, `VoicePerVideoMatch.ScoreAsync`):
+  - The book is the Mac's `voxclip-voice-per-video/1`: the same keys and validation, written with sorted keys and absent optionals omitted; it reads the Mac's escaped-slash output. The store is `<data>/VoiceLab/per-video.json`, folder 0700 and file 0600, and a damaged or invalid file reads as empty.
+  - The per-video rules take §6.5.1's `lowSnr` pieces (5–30 s) down to 8 dB, up to 24 candidates, and need 30 s of the video's own speech beside the consent clip. Identity is still one hop at τ.
+  - `PrepareProjectPlanAsync` now takes `removeBackgroundNoise` before `ct` (callers pass `ct:` by name), and the request carries it. The cut accepts spans from 8 dB; the 7.999 dB case still throws.
+  - No shared vector file for per-video (the brief's "ideally"): the Core tests port the Mac `VoicePerVideoTests` cases one for one.
+- **What stays inert** (`VoiceSpeakerCheck.WindowsNativeParityVerified` is false):
+  - The App builds no available speaker check: `VoiceLabBackend.Speaker` is `VoiceSpeakerProbe.From(VoiceSpeakerCheck.Unavailable)`, which is null.
+  - Without it, Learn and Rebuild are not offered, and a call finds nothing and reads no media. The screen returns every phrase unchecked, so nothing is blocked or learned at Get Price.
+  - The shipping `VoiceEnrollment` has no speaker check either, so `PrepareProjectPlanAsync` refuses with `SpeakerUnavailable` before any provider access. That is a second gate: nothing inert can create a voice or spend money.
+  - The per-video Core and Media code has no App caller yet.
+- **Tests.**
+  - Core: `VoiceRebuildTests` (2), `VoiceSpeakerReferencesTests.CarriedReferencesReachTheNewVoiceOnlyWhenTheyPassItsOwnEmbedding`, `VoicePerVideoTests` (6, including both new settings keys).
+  - Media: `VoiceReferenceLearnerTests` (5); `VoiceLabTakeRunTests.TheScreenJudgesEveryPhraseOnTheGuardsOwnSpeech` and `TheTakeMatchScoresTheTakeAgainstTheSpeechBesideThePatch`; `VoiceRebuildFinderTests` (4, in `VoiceEnrollmentPlanTests`, including the noisy-video per-video case and the creation's `remove_background_noise`).
+  - win-ui: `RewriteGuardScreenTests` (5), `VoiceLabLearningTests` (4), `VoiceRebuildFlowTests` (4), and the smoke twins S-guard-learns (G5, G6) and S-guard-guest (G7).
+  - Mac Core: `VoiceRewriteSlotsReplayTests` (2), `VoiceRebuildReplayTests` (2).
+  - **Red checks.**
+    - Step 1: disabling the screen fails 6.
+    - Step 2: ignoring the preferred voice, dropping the kept clip, or carrying references without the re-check each fails its test.
+    - Step 3: dropping the setting's rule, the removals in `Adding` or the key sort fails 3 Core tests. Dropping the relaxed spans, the noise flag or the 8 dB cut floor fails 3 Media tests.
+- **Verification** (macOS host, Release, `-m:1 -nodeReuse:false -p:UseSharedCompilation=false`, `VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`):
+  - Core 3,250 (3,221 passed, 29 skipped, 0 failed). Portable Media 1,007 (1,002 passed, 5 skipped, 0 failed). win-ui 1,360 (1,355 passed, 5 skipped, 0 failed).
+  - Mac Core `swift test --filter 'VoiceRewriteSlotsReplayTests|VoiceRebuildReplayTests'`: 4/4. `swift build --build-tests` with `-warn-long-expression-type-checking=250` flags only existing files, none of the new tests.
+  - App type-check build: 0 warnings. `check-xaml.py`: 0 problems. `*ReleaseSurrogate*` passes.
+  - ReleaseBoundary `update` on Core, Media, the WinCheck surrogate (`VoxClip.txt`) and the CLI. The diffs are declarations only; the CLI is unchanged. `VoxClip.txt` gained 200 members and lost the old `VoiceLabBackend` constructor.
+  - The voice-lab generators and `check_drift.py` are clean. `tools/voice-lab` unittests pass.
+  - `env -i … dotnet voxclip-cli.dll --runtime-terms --json` exits 0.
+- **Owed: step 3, App.**
+  - `VoiceLabSession` per-video:
+    - the mode from `voiceLab.matchEachVideo`, the price label and the anchor;
+    - make, use, remove and retry with backoff (the book's `Removal.Attempts`/`NextAttemptAt`);
+    - pending-take voices kept (`VoicePerVideo.Kept`), the removal note and the match line.
+  - Seed the video voice's calibration from the anchor's with `VoicePerVideo.SeededCalibration` in `RateCalibrations`.
+  - The R2 card ("Make a matching voice from this video?", **Match this video · {price}** / **Use {anchor}**), plus the too-little and failure lines.
+  - `EnsureVideoVoice` at the start of `DiscoverWindowsAsync`, before any price. `MakeItRewriteDriver` never presses the card.
+  - Settings › Voices "Each video" rows.
+  - The take-match diagnostic: call `VoicePerVideoMatch.ScoreAsync` after the first take and record it with `VoicePerVideoBook.Measuring`.
+  - The App tests mirroring the Mac `VideoVoiceFlowTests`, with smoke twins.
+  - Optionally, a shared `voice-per-video-cases.json` for both Cores.
+- **Native, hosted Windows CI only:**
+  - the WinUI App build, the XAML compiler and the App allowlist check against the real App;
+  - the `RequiresWindows`/`RequiresFFmpeg` Media tests;
+  - the ONNX speaker check on real speech, and real-window panel and Narrator checks of the new Settings rows.
+
 ### 2026-11-06 — Windows Rewrite parity 2: the duration settle, settled-phrase leftovers, voice references in the Core, tone match (track/v2-win-parity-2)
 
 Twin of the Mac "a take no video duration can carry keeps its phrase's audio", the ADR-R40 Use and price leftovers, ADR-R41 (voice references, Core and guard only) and the ADR-R44 tone match. Spec: doc/spec/voice-lab.md §6.9, §8.7 item 2b, the video-duration rows; doc/spec/ai.md §12.9; doc/design.md R2 "A take that can't fit its place".
