@@ -1144,7 +1144,8 @@ import VoxClipCore
     /// Every word but the last (words 0–92), S8's scope: its last word can be cut outside the Rewrite.
     static func allButLast(_ text: String) -> String { text.split(separator: " ").dropLast().joined(separator: " ") }
 
-    static var scenarios: [Definition] { [
+    static var scenarios: [Definition] {
+        var all: [Definition] = [
         Definition(id: "S1", title: "happy path: 2 changes, takes pass, Use",
             fixture: Fixture(rewrites: [.passage(replace(twoChanges))], voice: RewriteSmokeVoiceScript(offset: -0.2))) { harness in
             try await harness.start()
@@ -1316,7 +1317,13 @@ import VoxClipCore
             // A take whose only issue is its join is chosen with it (ADR-R39): no phrase needs its own click.
             try await harness.finish()
         },
-    ] + ownTakeScenarios + guardScenarios + fitScenarios + makeItScenarios + askClaudeScenarios + clipControlsScenarios + toneScenarios + claudeModeScenarios }
+    ]
+        // Built step by step: a long `+` chain of scenario lists strains hosted Xcode 26's type checker.
+        let groups: [[Definition]] = [ownTakeScenarios, guardScenarios, fitScenarios, rebuildScenarios, makeItScenarios,
+                                      askClaudeScenarios, clipControlsScenarios, toneScenarios, claudeModeScenarios]
+        for group in groups { all += group }
+        return all
+    }
 
     /// S16's take: the base script twelve times over, about nine minutes.
     nonisolated static let longTakeScript = Array(repeating: baseScript, count: longTakeRepeats).joined(separator: " ")

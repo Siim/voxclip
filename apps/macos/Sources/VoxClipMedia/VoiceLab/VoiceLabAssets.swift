@@ -40,6 +40,8 @@ public final class PreparedVoiceLabAsset: @unchecked Sendable {
     public let trimEndFrame: Int64
     public let stretch: Double
     public let gainDb: Double
+    /// The segment's tone match, applied when the asset is conformed (§8.7 item 2b).
+    public let tiltDbPerOctave: Double?
     private let scratch: VoiceLabAssetRecovery.Operation
     private let valid = Mutex(true)
     public var isValid: Bool { valid.withLock { $0 } }
@@ -52,10 +54,11 @@ public final class PreparedVoiceLabAsset: @unchecked Sendable {
     }
 
     fileprivate init(segmentId: String, assetId: String, sha256: String, url: URL, sampleRate: Int, channels: Int, frameCount: Int64,
-                     trimStartFrame: Int64, trimEndFrame: Int64, stretch: Double, gainDb: Double, scratch: VoiceLabAssetRecovery.Operation) {
+                     trimStartFrame: Int64, trimEndFrame: Int64, stretch: Double, gainDb: Double, tiltDbPerOctave: Double? = nil,
+                     scratch: VoiceLabAssetRecovery.Operation) {
         self.segmentId = segmentId; self.assetId = assetId; self.sha256 = sha256; self.url = url; self.sampleRate = sampleRate; self.channels = channels
         self.frameCount = frameCount; self.trimStartFrame = trimStartFrame; self.trimEndFrame = trimEndFrame
-        self.stretch = stretch; self.gainDb = gainDb; self.scratch = scratch
+        self.stretch = stretch; self.gainDb = gainDb; self.tiltDbPerOctave = tiltDbPerOctave; self.scratch = scratch
     }
     deinit { invalidate() }
 }
@@ -197,7 +200,7 @@ public enum VoiceLabAssets {
             guard start >= 0, end > start, end <= decoded else { throw VoiceLabAssetError.invalidTrim(asset.file) }
             return PreparedVoiceLabAsset(segmentId: segmentId, assetId: asset.id, sha256: asset.sha256, url: snapshot, sampleRate: Int(rate), channels: channels,
                                          frameCount: decoded, trimStartFrame: start, trimEndFrame: end,
-                                         stretch: audio.stretch, gainDb: audio.gainDb, scratch: operation)
+                                         stretch: audio.stretch, gainDb: audio.gainDb, tiltDbPerOctave: audio.tiltDbPerOctave, scratch: operation)
         } catch {
             operation.discard()
             if error is CancellationError || error is VoiceLabAssetError { throw error }

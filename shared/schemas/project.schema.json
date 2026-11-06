@@ -477,6 +477,15 @@
             },
             "gainDb": {
               "type": "number"
+            },
+            "tiltDbPerOctave": {
+              "type": "number",
+              "minimum": -2,
+              "maximum": 2,
+              "not": {
+                "const": 0
+              },
+              "description": "The tone match (voice-lab.md section 8.7 item 2b): the generated take tilted towards the spectral slope of the original speech beside it, in dB per octave (0.1 steps, within plus or minus 2), applied from the asset's first frame before gainDb. Omitted when the take is left as it is. Windows renders without it for now."
             }
           }
         },
@@ -2204,6 +2213,15 @@
             },
             "gainDb": {
               "type": "number"
+            },
+            "tiltDbPerOctave": {
+              "type": "number",
+              "minimum": -2,
+              "maximum": 2,
+              "not": {
+                "const": 0
+              },
+              "description": "The tone match (voice-lab.md section 8.7 item 2b): the generated take tilted towards the spectral slope of the original speech beside it, in dB per octave (0.1 steps, within plus or minus 2), applied from the asset's first frame before gainDb. Omitted when the take is left as it is. Windows renders without it for now."
             }
           }
         },
@@ -2471,6 +2489,15 @@
             },
             "gainDb": {
               "type": "number"
+            },
+            "tiltDbPerOctave": {
+              "type": "number",
+              "minimum": -2,
+              "maximum": 2,
+              "not": {
+                "const": 0
+              },
+              "description": "The tone match (voice-lab.md section 8.7 item 2b): the generated take tilted towards the spectral slope of the original speech beside it, in dB per octave (0.1 steps, within plus or minus 2), applied from the asset's first frame before gainDb. Omitted when the take is left as it is. Windows renders without it for now."
             }
           }
         },

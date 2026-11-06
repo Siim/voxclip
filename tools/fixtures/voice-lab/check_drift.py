@@ -18,7 +18,9 @@ import sys
 from pathlib import Path
 
 TOLERANT = ['shared/fixtures/voice-lab/audio-math-cases.json',
-            'shared/fixtures/voice-lab/accept-all-cases.json']
+            'shared/fixtures/voice-lab/accept-all-cases.json',
+            # The tone match (voice-lab section 8.7 item 2b): libm tan/pow/cos/sin/log10 in its coefficients and FFT.
+            'shared/fixtures/voice-lab/tilt-cases.json']
 EXACT = ['shared/fixtures/voice-lab/pace-cases.json', 'shared/fixtures/voice-lab/dialogue-cases.json', 'shared/fixtures/voice-lab/continuity-cases.json', 'shared/fixtures/voice-lab/scope-rewrite-plan-cases.json',
          'shared/fixtures/voice-lab/autofit-cases.json',
          'shared/fixtures/voice-lab/lipsync-window-cases.json',
@@ -100,6 +102,8 @@ def main():
     # Ask Claude's translated captions (doc/spec/ai.md section 18.2): the schema field and its vectors.
     subprocess.run([sys.executable, str(root / "tools/schemas/generate_caption_translations_schema.py")], check=True)
     subprocess.run([sys.executable, str(root / "tools/fixtures/caption-translations/generate_caption_translations.py")], check=True)
+    # The tone match's optional audio.tiltDbPerOctave (voice-lab section 8.7 item 2b), after the other schema fields.
+    subprocess.run([sys.executable, str(root / "tools/schemas/generate_tone_match_schema.py")], check=True)
     # The renderer decisions both platforms reproduce for clip controls and effects (design.md sections 6.8, 6.9).
     subprocess.run([sys.executable, str(root / "tools/fixtures/clip-render/generate_clip_render.py")], check=True)
     # Claude mode's settings vectors (doc/design.md section 6.6), replayed by both Cores.

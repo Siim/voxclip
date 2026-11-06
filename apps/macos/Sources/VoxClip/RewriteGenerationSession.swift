@@ -61,6 +61,8 @@ import xlocale
     @ObservationIgnored private var quotePreparation: Task<Void, Never>?
     @ObservationIgnored var prepareQuote: (@MainActor () async -> Void)?
     @ObservationIgnored var onInputsChanged: (@MainActor () -> Void)?
+    /// The consent record Rewrite starts with when it is listed (Settings › Voices, "Use the new voice for Rewrite").
+    @ObservationIgnored var preferredVoiceID: (@MainActor () -> String?)?
     @ObservationIgnored var readMonthlyCap: (@MainActor () async throws -> VoiceLabMonthlyCap?)?
     @ObservationIgnored private var preparedCap: VoiceLabMonthlyCap?
     @ObservationIgnored private var activeQuote: VoiceLabTakeRunQuote?
@@ -302,13 +304,18 @@ import xlocale
             models = choices.models; voices = choices.voices
             if !voices.contains(where: { $0.id == selectedVoiceID }) { chooseVoice(nil) }
             if !models.contains(where: { $0.id == selectedModelID }) { chooseModel(nil) }
-            if selectedVoiceID == nil { chooseVoice(voices.first?.id) }
+            if selectedVoiceID == nil { chooseVoice(Self.initialVoice(voices, preferred: preferredVoiceID?())) }
             if let fixedModelID {
                 chooseModel(models.first { $0.id == fixedModelID }?.id)
                 if selectedModelID == nil { problem = "Eleven v4 is not available on this account. New Rewrite takes require Eleven v4." }
             }
             else if selectedModelID == nil { chooseModel(VoiceLabModel.patchDefault(models)?.id) }
         } catch { problem = reported(error) }
+    }
+    /// The voice Rewrite starts with: the one Settings › Voices chose ("Use the new voice for Rewrite") when it is
+    /// listed, otherwise the first listed (the newest).
+    static func initialVoice(_ voices: [VoiceConsentRecord], preferred: String?) -> String? {
+        preferred.flatMap { id in voices.first { $0.id == id }?.id } ?? voices.first?.id
     }
     func chooseVoice(_ id: String?) {
         guard id == nil || voices.contains(where: { $0.id == id }) else { return }

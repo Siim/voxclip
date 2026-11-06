@@ -17,7 +17,14 @@ public enum VoiceLabSegmentKind
     [JsonStringEnumMemberName("recorded")] Recorded
 }
 public sealed record VoiceLabReplacement(double Start, double End, string FirstWordId, string LastWordId);
-public sealed record VoiceLabAudio(string AssetId, double TrimStart, double TrimEnd, double Stretch, double GainDb);
+/// <summary>A segment's audio. <c>TiltDbPerOctave</c> (Mac since 2026-11-06, voice-lab §8.7 item 2b) is the Mac's tone
+/// match: read, validated and saved unchanged; Windows renders without it for now (owed). Omitted when null.</summary>
+public sealed record VoiceLabAudio(string AssetId, double TrimStart, double TrimEnd, double Stretch, double GainDb,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? TiltDbPerOctave = null)
+{
+    /// <summary>A stored tilt is finite, not 0 and within ±2 dB per octave.</summary>
+    public bool TiltIsValid => TiltDbPerOctave is not { } tilt || double.IsFinite(tilt) && tilt != 0 && Math.Abs(tilt) <= 2;
+}
 public sealed record VoiceLabAudioTag(int BeforeToken, string Tag);
 public sealed record VoiceLabText(string Original, string New)
 {
@@ -150,7 +157,7 @@ public static class VoiceLabProject
             Require(asset is not null, VoiceLabProjectErrorCode.DanglingAsset);
             var audio = segment.Audio;
             Require(double.IsFinite(audio.TrimStart) && double.IsFinite(audio.TrimEnd) && double.IsFinite(audio.Stretch) &&
-                double.IsFinite(audio.GainDb) && audio.TrimStart >= 0 && audio.TrimEnd > audio.TrimStart &&
+                double.IsFinite(audio.GainDb) && audio.TiltIsValid && audio.TrimStart >= 0 && audio.TrimEnd > audio.TrimStart &&
                 audio.TrimEnd <= asset!.DurationSeconds && audio.Stretch > 0 &&
                 VoiceLabRenderValidation.ContentMatchesDuration(audio, segment.OutDuration, asset.SampleRate),
                 VoiceLabProjectErrorCode.InvalidSegment);

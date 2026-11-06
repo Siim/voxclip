@@ -186,6 +186,8 @@ struct RewriteChange: Equatable, Sendable {
         }
         generation = RewriteGenerationSession(run: run) { [weak self] in self?.generationIsCurrent(region: region) ?? false }
         generation?.fixedModelID = VoiceLabWordingFit.modelID
+        // Settings › Voices "Use the new voice for Rewrite" (voice-lab §6.12): the voice Rewrite starts with, when listed.
+        generation?.preferredVoiceID = { [weak self] in self?.editor.app.string(VoiceLabSession.rewriteVoiceKey) }
         generation?.onFailure = { [weak self] error in self?.logFailure(error, stage: "generation") }
         generation?.prepareDurationRender = durationRenderPreparer()
         takeBackend = { [weak self] count, dispatch in

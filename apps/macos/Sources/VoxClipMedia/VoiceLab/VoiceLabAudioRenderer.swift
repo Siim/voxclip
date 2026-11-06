@@ -54,11 +54,16 @@ enum VoiceLabAudioRenderer {
         func background(_ relative: Int) -> Float {
             tone.isEmpty ? 0 : loop.sample(at: Int64(relative), channel: 0) * bedGain(relative)
         }
+        // The tone match (§8.7 item 2b) from the asset's first frame, per channel, as the render's conform runs it.
+        let tilted = tiltedChannels(fitted.wave, tiltDbPerOctave: analysis.tiltDbPerOctave)
         func signal(_ relative: Int) throws -> Float {
             let frame = fitted.trimStartFrame + Int64(relative)
             guard frame >= 0, frame < fitted.wave.frames else { throw VoiceLabError.invalidAudio }
             var sample: Float = 0
-            for channel in 0..<fitted.wave.channels { sample += Float(fitted.wave.sample(frame: frame, channel: channel)) / Float(fitted.wave.channels) }
+            for channel in 0..<fitted.wave.channels {
+                let value = tilted.map { $0[channel][Int(frame)] } ?? Float(fitted.wave.sample(frame: frame, channel: channel))
+                sample += value / Float(fitted.wave.channels)
+            }
             guard smoothing else { return sample * gain + background(relative) }
             let seconds = Double(relative) / Double(rate)
             let voice = VoiceLabHardJoin.generatedWeight(seconds: seconds, duration: duration, incoming: incomingPause, outgoing: outgoingPause)
@@ -161,10 +166,21 @@ enum VoiceLabAudioRenderer {
                 patchRange: lead..<(lead + length), seams: seams, gainDb: analysis.gainDb, roomTone: analysis.roomTone, fit: analysis.fit,
                 sourceSeamSteps: sourceSeamSteps, sourceSeamPauses: sourceSeamPauses)
             audio.microPauseIn = incomingPause; audio.microPauseOut = outgoingPause; audio.edgeGain = edgeGain
+            audio.tiltDbPerOctave = analysis.tiltDbPerOctave
             audio.measuredSeamSteps = smoothing ? measuredSteps : nil
             audio.measuredPauseExcesses = smoothing ? pauseExcesses : nil
             return VoiceLabTakeScratch(directory: directory, operation: operation, fitted: fitted, audio: audio)
         } catch { operation.discard(); throw error }
+    }
+
+    /// Each channel of `wave` through the tone match from its first frame, or nil without one.
+    static func tiltedChannels(_ wave: VoiceLabWavePCM, tiltDbPerOctave: Double?) -> [[Float]]? {
+        let sections = VoiceLabTilt.sections(tiltDbPerOctave: tiltDbPerOctave ?? 0, sampleRate: wave.rate)
+        guard !sections.isEmpty else { return nil }
+        return (0..<wave.channels).map { channel in
+            var filter = VoiceLabTilt.Filter(sections)
+            return (0..<wave.frames).map { filter.process(Float(wave.sample(frame: $0, channel: channel))) }
+        }
     }
 
     private static func writePrivate(_ bytes: Data, to url: URL) throws {
@@ -426,6 +442,27 @@ enum VoiceLabAudioRenderer {
         }
     }
 
+    /// The tone match (§8.7 item 2b) runs from the asset's first frame, as the take's own mix ran it: the frames before
+    /// `start` only set each channel's filter state. Nil when the asset has no tilt.
+    static func warmedToneFilters(_ source: AVAudioFile, start: Int64, tiltDbPerOctave: Double?, sampleRate: Int) throws -> [VoiceLabTilt.Filter]? {
+        let sections = VoiceLabTilt.sections(tiltDbPerOctave: tiltDbPerOctave ?? 0, sampleRate: sampleRate)
+        guard !sections.isEmpty else { return nil }
+        var warming = Array(repeating: VoiceLabTilt.Filter(sections), count: Int(source.processingFormat.channelCount))
+        guard let warm = AVAudioPCMBuffer(pcmFormat: source.processingFormat, frameCapacity: AVAudioFrameCount(block)) else {
+            throw VoiceLabProjectError.invalidFadeHandles
+        }
+        source.framePosition = 0
+        var left = start
+        while left > 0 {
+            try Task.checkCancellation()
+            try source.read(into: warm, frameCount: AVAudioFrameCount(min(Int64(block), left)))
+            guard warm.frameLength > 0, let planes = warm.floatChannelData else { throw VoiceLabProjectError.invalidFadeHandles }
+            for channel in warming.indices { for index in 0..<Int(warm.frameLength) { _ = warming[channel].process(planes[channel][index]) } }
+            left -= Int64(warm.frameLength)
+        }
+        return warming
+    }
+
     private static func conform(asset: PreparedVoiceLabAsset, start: Int64, frames: Int64,
                                 rate: Double, to url: URL) throws {
         let source = try AVAudioFile(forReading: asset.url, commonFormat: .pcmFormatFloat32, interleaved: false)
@@ -435,8 +472,9 @@ enum VoiceLabAudioRenderer {
               let buffer = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: AVAudioFrameCount(block)) else {
             throw VoiceLabProjectError.invalidFadeHandles
         }
+        let filters = try warmedToneFilters(source, start: start, tiltDbPerOctave: asset.tiltDbPerOctave, sampleRate: asset.sampleRate)
         source.framePosition = start
-        let input = VoiceLabConversionInput(file: source, remaining: frames)
+        let input = VoiceLabConversionInput(file: source, remaining: frames, filters: filters)
         let output = try AVAudioFile(forWriting: url, settings: target.settings,
                                      commonFormat: .pcmFormatFloat32, interleaved: false)
         var noProgress = 0
@@ -793,7 +831,11 @@ private final class VoiceLabConversionInput: @unchecked Sendable {
     private let file: AVAudioFile
     private var remaining: Int64
     private var failure: (any Error)?
-    init(file: AVAudioFile, remaining: Int64) { self.file = file; self.remaining = remaining }
+    /// The tone match per channel, already run up to the first frame read (§8.7 item 2b).
+    private var filters: [VoiceLabTilt.Filter]?
+    init(file: AVAudioFile, remaining: Int64, filters: [VoiceLabTilt.Filter]? = nil) {
+        self.file = file; self.remaining = remaining; self.filters = filters
+    }
     var error: (any Error)? { lock.lock(); defer { lock.unlock() }; return failure }
     func next(packets: AVAudioPacketCount, status: UnsafeMutablePointer<AVAudioConverterInputStatus>) -> AVAudioBuffer? {
         lock.lock(); defer { lock.unlock() }
@@ -809,6 +851,9 @@ private final class VoiceLabConversionInput: @unchecked Sendable {
         do {
             try file.read(into: buffer, frameCount: count)
             guard buffer.frameLength > 0 else { throw VoxClipError.decodeFailed("Generated audio ended before its trim") }
+            if filters != nil, let planes = buffer.floatChannelData {
+                for channel in filters!.indices { for index in 0..<Int(buffer.frameLength) { planes[channel][index] = filters![channel].process(planes[channel][index]) } }
+            }
             remaining -= Int64(buffer.frameLength)
             status.pointee = .haveData
             return buffer

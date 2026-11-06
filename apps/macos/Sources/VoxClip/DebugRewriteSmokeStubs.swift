@@ -195,6 +195,11 @@ struct RewriteSmokeVoiceScript: Sendable {
     /// Paid synthesis requests and word checks answered.
     var syntheses = 0
     var checks = 0
+    /// The owner's cloned voices the account lists; S-voice-rebuild adds and removes them (voice-lab §6.12).
+    var voices = ["fixtureOwnVoice"]
+    /// Every request, as "METHOD /path", and the voice each paid synthesis used.
+    var requests: [String] = []
+    var synthesisVoices: [String] = []
     var lastText = ""
     var lastDuration = 1.0
 }
@@ -221,6 +226,12 @@ final class RewriteSmokeHTTP: URLProtocol, @unchecked Sendable {
         let pauses: Double = words.dropLast().reduce(0) { $0 + ($1.hasSuffix(".") ? 0.6 : $1.hasSuffix(",") ? 0.25 : 0.07) }
         return spoken + pauses + 0.1
     }
+    /// A synthesis request for one of the account's listed voices.
+    static func speaks(_ path: String) -> Bool {
+        guard path.hasPrefix("/v1/text-to-speech/"), path.hasSuffix("/with-timestamps") else { return false }
+        let voice = String(path.dropFirst("/v1/text-to-speech/".count).dropLast("/with-timestamps".count))
+        return script.withLock { $0.voices.contains(voice) }
+    }
     static func words(_ text: String) -> String {
         text.replacing(#/\[[^\]]*\]/#, with: "").split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
@@ -229,16 +240,30 @@ final class RewriteSmokeHTTP: URLProtocol, @unchecked Sendable {
         do {
             guard let url = request.url else { throw URLError(.badURL) }
             let data: Data
-            switch (request.httpMethod ?? "GET", url.path) {
+            let method = request.httpMethod ?? "GET"
+            Self.script.withLock { $0.requests.append("\(method) \(url.path)") }
+            switch (method, url.path) {
+            case ("GET", "/v1/user/subscription"):
+                data = Data(#"{"tier":"starter","status":"active","character_count":0,"character_limit":100000,"can_use_instant_voice_cloning":true,"voice_slots_used":1,"voice_limit":3}"#.utf8)
+            case ("POST", "/v1/voices/add"):
+                Self.script.withLock { $0.voices.append("fixtureRebuiltVoice") }
+                data = Data(#"{"voice_id":"fixtureRebuiltVoice","requires_verification":false}"#.utf8)
+            case ("DELETE", let path) where path.hasPrefix("/v1/voices/"):
+                let id = String(path.dropFirst("/v1/voices/".count))
+                Self.script.withLock { $0.voices.removeAll { $0 == id } }
+                data = Data(#"{"status":"ok"}"#.utf8)
             case ("GET", "/v1/models"):
                 data = Data(#"[{"model_id":"eleven_v3","name":"Speech","can_do_text_to_speech":true,"can_do_voice_conversion":false,"languages":[{"language_id":"en"}],"maximum_text_length_per_request":5000},{"model_id":"eleven_v4","name":"Eleven v4","can_do_text_to_speech":true,"languages":[{"language_id":"en"}],"maximum_text_length_per_request":5000}]"#.utf8)
             case ("GET", "/v2/voices"):
-                data = Data(#"{"voices":[{"voice_id":"fixtureOwnVoice","name":"My voice","category":"cloned","is_owner":true}],"has_more":false}"#.utf8)
-            case ("POST", "/v1/text-to-speech/fixtureOwnVoice/with-timestamps"), ("POST", "/v1/text-to-dialogue/with-timestamps"):
+                let listed = Self.script.withLock { $0.voices }.map { #"{"voice_id":"\#($0)","name":"My voice","category":"cloned","is_owner":true}"# }
+                data = Data("{\"voices\":[\(listed.joined(separator: ","))],\"has_more\":false}".utf8)
+            case ("POST", let path) where path == "/v1/text-to-dialogue/with-timestamps" || Self.speaks(path):
                 let body = try JSONSerialization.jsonObject(with: Self.body(request)) as? [String: Any] ?? [:]
                 let dialogue = url.path.hasPrefix("/v1/text-to-dialogue")
                 let input = (body["inputs"] as? [[String: Any]])?.first
                 let text = ((dialogue ? input?["text"] : body["text"]) as? String) ?? ""
+                let voice = dialogue ? (input?["voice_id"] as? String ?? "") : String(url.path.dropFirst("/v1/text-to-speech/".count).dropLast("/with-timestamps".count))
+                Self.script.withLock { $0.synthesisVoices.append(voice) }
                 let duration = Self.script.withLock { script -> Double in
                     script.syntheses += 1
                     let fits = script.fitting[Self.words(text)] ?? script.fitting.first { Self.words(text).contains($0.key) }?.value

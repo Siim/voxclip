@@ -256,6 +256,8 @@ public enum VoiceLabTakeQuality {
 }
 
 public struct VoiceLabTakeAudio: Sendable, Equatable {
+    /// The tone match `mixed` and `trimmed` already have, stored on the segment at Use (§8.7 item 2b).
+    public var tiltDbPerOctave: Double?
     public var microPauseIn: VoiceLabMicroPause?
     public var microPauseOut: VoiceLabMicroPause?
     public var edgeGain: VoiceLabEdgeGain?

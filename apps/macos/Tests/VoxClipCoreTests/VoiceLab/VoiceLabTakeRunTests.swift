@@ -124,6 +124,8 @@ private final class TakeRunHTTP: Sendable {
         /// The PCM is silent this long at each end, inside the aligned lead and tail, as a take that pauses at its edges.
         var silentEdges = 0.0
         var unevenJoin = false
+        /// The take adds a 3 kHz partial to its 100 Hz tone, so it is brighter than the source's 100 Hz speech beside it.
+        var brightTake = false
         /// Scribe answers 200 with no words, after the spend ledger has recorded the QA request.
         var malformedQA = false
         var current = true
@@ -247,7 +249,9 @@ struct VoiceLabTakeRunTests {
                     let inside = edge == 0 ? Int.max : min(index - edge, frames - edge - 1 - index)
                     let envelope = inside < 0 ? 0 : inside >= 480 ? 1 : 0.5 - 0.5 * cos(Double.pi * Double(inside) / 480)
                     let level = state.unevenJoin && index >= frames / 2 ? 0.1 : 1.0
-                    var value = Int16((sin(2 * Double.pi * 100 * Double(index) / 24_000) * 3_200 * envelope * level).rounded()).littleEndian
+                    let time = Double(index) / 24_000
+                    let bright: Double = state.brightTake ? sin(2 * Double.pi * 3_000 * time) * 0.5 : 0
+                    var value = Int16(((sin(2 * Double.pi * 100 * time) + bright) * 3_200 * envelope * level).rounded()).littleEndian
                     withUnsafeBytes(of: &value) { pcm.append(contentsOf: $0) }
                 }
                 let inputs = body["inputs"] as? [[String: Any]]
@@ -589,6 +593,19 @@ struct VoiceLabTakeRunTests {
         _ = try await sending.value
         #expect(fixture.http.value.withLock { $0.seeds.count == 1 && $0.qa == 0 })
     }
+    /// voice-lab §8.7 item 2b: the run tone-matches a generated take to the speech beside it, and the recipe it publishes
+    /// carries that tilt, so preview and export hear the take the QA heard.
+    @Test func aGeneratedTakeIsToneMatchedAndItsRecipeCarriesTheTilt() async throws {
+        let fixture = try await fixture({ $0.brightTake = true }); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let quote = try await fixture.run.prepare(fixture.input)
+        let result = try await fixture.run.execute(quote, approved: true)
+        let row = try #require(result.best, "Failures: \(result.rows.map(\.failure))")
+        let tilt = try #require(row.audio?.tiltDbPerOctave, "a take brighter than the speech beside it is tilted down")
+        #expect(tilt < 0 && tilt >= -VoiceLabTilt.maximumDbPerOctave)
+        let (published, _) = try await fixture.run.publishForAcceptance(row, input: fixture.input, at: fixture.clock.now())
+        #expect(published.audio.tiltDbPerOctave == tilt && published.audio.tiltIsValid)
+    }
+
     @Test func oneApprovalStopsAfterFirstPassingFitAndCannotReplay() async throws {
         let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
         let quote = try await fixture.run.prepare(fixture.input)

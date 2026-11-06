@@ -80,7 +80,7 @@ public static class VoiceLabRenderValidation
         var output = Samples(recipe.OutDuration, rate);
         var audio = recipe.Audio;
         Require(output > 0 &&
-            double.IsFinite(audio.TrimStart) && double.IsFinite(audio.TrimEnd) && double.IsFinite(audio.GainDb) &&
+            double.IsFinite(audio.TrimStart) && double.IsFinite(audio.TrimEnd) && double.IsFinite(audio.GainDb) && audio.TiltIsValid &&
             audio.TrimStart >= 0 && audio.TrimEnd <= asset!.DurationSeconds && audio.TrimEnd > audio.TrimStart &&
             double.IsFinite(audio.Stretch) && (audio.Stretch == 1 || Math.Abs(audio.Stretch - recipe.OutDuration / (audio.TrimEnd-audio.TrimStart)) <= 1e-6) &&
             (audio.Stretch == 1 || (audio.TrimEnd-audio.TrimStart)/recipe.OutDuration is >= 0.92 and <= 1.08), VoiceLabProjectErrorCode.InvalidRange);
@@ -235,7 +235,7 @@ public static class VoiceLabRenderValidation
         static bool Finite(double? value) => value is not { } number || double.IsFinite(number);
         var audio = recipe.Audio; var video = recipe.Video; var qa = recipe.Qa; var provenance = recipe.Provenance;
         Require(Id(audio.AssetId) && double.IsFinite(audio.TrimStart) && audio.TrimStart >= 0 && double.IsFinite(audio.TrimEnd) && audio.TrimEnd >= 0 &&
-            double.IsFinite(audio.Stretch) && audio.Stretch > 0 && double.IsFinite(audio.GainDb) && double.IsFinite(recipe.OutDuration) && recipe.OutDuration > 0 &&
+            double.IsFinite(audio.Stretch) && audio.Stretch > 0 && double.IsFinite(audio.GainDb) && audio.TiltIsValid && double.IsFinite(recipe.OutDuration) && recipe.OutDuration > 0 &&
             (recipe.RoomTone is not { } tone || tone.SourceStartSample >= 0 && tone.SourceEndSample >= 0 && double.IsFinite(tone.GainDb) &&
                 (tone.EndGainDb is not { } endGain || double.IsFinite(endGain))), VoiceLabProjectErrorCode.InvalidSegment);
         Require(recipe.Words is null || recipe.Words.Count > 0 && recipe.Words.All(word => !string.IsNullOrEmpty(word.Text) &&

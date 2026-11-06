@@ -76,7 +76,7 @@ enum ProjectValidation {
             for segment in try array(voice["segments"]) {
                 let item = try object(segment, required: "id kind enabled replace outDuration audio text words provenance qa candidates selectedCandidateIndex" + (version >= 3 ? " scope" : ""), optional: version >= 3 ? "groupId" : "")
                 _ = try object(item["replace"], required: "start end firstWordId lastWordId")
-                _ = try object(item["audio"], required: "assetId trimStart trimEnd stretch gainDb")
+                _ = try object(item["audio"], required: "assetId trimStart trimEnd stretch gainDb", optional: "tiltDbPerOctave")
                 if item["text"] != .null {
                     let text = try object(item["text"], required: "original new", optional: "audioTags")
                     if let annotations = text["audioTags"] {
@@ -146,7 +146,7 @@ enum ProjectValidation {
 
     static func validateRenderRecipe(_ value: JSONValue) throws {
         let recipe = try object(value, required: "audio words outDuration seed chunks roomTone seams video qa provenance cost voiceSource voiceRefId consentVerifiedAt", optional: "edgeGain")
-        _ = try object(recipe["audio"], required: "assetId trimStart trimEnd stretch gainDb")
+        _ = try object(recipe["audio"], required: "assetId trimStart trimEnd stretch gainDb", optional: "tiltDbPerOctave")
         if recipe["words"] != .null { for word in try array(recipe["words"]) { _ = try object(word, required: "text start end synthetic") } }
         for value in try array(recipe["chunks"]) { _ = try object(value, required: "sourceStartSample sourceEndSample requestId seed assetId assetSha256 assembledStartFrame assembledEndFrame") }
         if recipe["roomTone"] != .null { _ = try object(recipe["roomTone"], required: "sourceStartSample sourceEndSample gainDb", optional: "endGainDb") }
