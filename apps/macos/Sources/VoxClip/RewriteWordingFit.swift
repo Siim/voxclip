@@ -418,6 +418,13 @@ extension RewriteSession {
         return nil
     }
 
+    /// The measured card's keep button. A take that no video duration carries can't be kept: keeping it ends in the
+    /// recorded audio (`settleTakesThatFitNoDuration`), so the button names that instead of the take.
+    func measuredKeepTitle(_ suggestion: MeasuredWordingSuggestion, plan: ClipTakePlan) -> String {
+        if suggestion.awaitingApproval { return "Skip" }
+        return plan.fitsNoDuration(phrase: suggestion.phrase) ? "Keep Original Audio" : "Keep Take \(suggestion.number)"
+    }
+
     func keepMeasuredTake() {
         guard let suggestion = wordingFit.measured, let plan = takePlan, !takesBusy else { return }
         wordingFit.token = UUID()

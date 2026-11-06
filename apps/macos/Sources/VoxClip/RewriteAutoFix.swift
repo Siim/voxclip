@@ -442,7 +442,7 @@ extension RewriteSession {
         guard current, takePlan === plan, !takesBusy else { return }
         var settled: [Int] = []
         for phrase in plan.phrases where plan.fitsNoDuration(phrase: phrase.id) && !plan.lipsync.blocksMutation(phrase.id) {
-            guard autoFix.lines[phrase.id] == nil, !resolverOwns(phrase, plan: plan) else { continue }
+            guard autoFix.lines[phrase.id] == nil, !resolverOwns(phrase, plan: plan), !measuredRoundOwns(phrase, plan: plan) else { continue }
             plan.leaveOut(phrase: phrase.id)
             settled.append(phrase.id)
         }
@@ -451,6 +451,15 @@ extension RewriteSession {
         guard !autoFix.notes.contains(copy) else { return }
         autoFix.notes.append(copy)
         editor.announce(copy)
+    }
+    /// The measured rewording round (`observeMeasuredTakes`) has a shorter wording to offer for this too-long take: it is
+    /// about to start, is running, or waits on the creator (Skip, Keep Take N or the priced Make Take). Its end settles the
+    /// phrase here if the take still fits no duration; a too-short take never gets the round (ADR-R42).
+    private func measuredRoundOwns(_ phrase: ClipTakePlan.Phrase, plan: ClipTakePlan) -> Bool {
+        guard connector != nil, phrase.wording == .suggested, let take = phrase.selected, let length = take.length,
+              length > phrase.originalLength else { return false }
+        if wordingFit.measured?.take == take.id { return true }
+        return !wordingFit.measuredTakes.contains(take.id) && plan.measuredInput(take: take.id)?.modelID == VoiceLabWordingFit.modelID
     }
     /// The resolver armed for this plan has a fix for the phrase (`advanceAutoFix`): a wording round, Keep fixing at the
     /// cap, or after Stop the phrase's own steps.

@@ -1503,7 +1503,28 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         fixture.plan.stopAudition()
     }
 
-    @Test(arguments: [false, true]) func measuredRewordingPreparesButNeverPaysAndKeepRestoresTheTake(tooLong: Bool) async throws {
+    /// A take too short for every video duration gets no measured rewording round, which could only pad (ADR-R42): its
+    /// phrase keeps the recorded audio with one line (design.md R2 "A take that can't fit its place"). Nothing is sent.
+    @Test func aTooShortMeasuredTakeKeepsTheRecordingWithoutARewordingRound() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let connector = MeasuredFitConnector()
+        let (editor, session) = try await productionSession(fixture, rewriteConnector: connector); defer { editor.close() }
+        let plan = try #require(session.takePlan)
+        ClipTakeHTTP.state.withLock { $0.duration = 4; $0.speechMargin = 0.15 }
+        await plan.start(approved: true, quoteID: plan.approvalID)
+        await session.wordingFit.measuredWork?.value
+        #expect(session.wordingFit.measured == nil)
+        #expect(await connector.requests.isEmpty)
+        #expect(plan.phrases[0].leftOut)
+        #expect(session.autoFix.notes.contains(ClipTakePlan.noDurationCopy([1])))
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
+    }
+
+    /// A take too long for every duration: the measured round offers a shorter wording before the phrase is settled.
+    /// Declining it can't keep a take no duration carries, so the button reads Keep Original Audio and the phrase keeps
+    /// the recording with one line (design.md R2 "A take that can't fit its place"). Nothing more is paid for.
+    @Test func measuredRewordingPreparesButNeverPaysAndDecliningKeepsTheRecording() async throws {
+        let tooLong = true
         let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
         let connector = MeasuredFitConnector()
         let (editor, session) = try await productionSession(fixture, rewriteConnector: connector); defer { editor.close() }
@@ -1527,11 +1548,14 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(editor.project.voiceLab.speakingRateSamples?[VoiceLabRateCalibration.projectKey("eleven_v4")]?.count == 1)
         let staleAction = try #require(session.pricedTakeAction(phrase: 0))
         #expect(staleAction.title.hasPrefix("Make Take"))
+        #expect(session.measuredKeepTitle(suggestion, plan: plan) == "Keep Original Audio")
         session.keepMeasuredTake()
         staleAction.perform()
         await session.takesTask?.value
         #expect(session.wordingFit.measured == nil && plan.phrases[0].text == originalText)
-        #expect(plan.phrases[0].selectedID == suggestion.take && plan.approvalID == nil)
+        #expect(plan.phrases[0].leftOut && plan.phrases[0].selectedID == nil && plan.approvalID == nil,
+                "selected \(String(describing: plan.phrases[0].selectedID)) approval \(String(describing: plan.approvalID)) \(plan.problem)")
+        #expect(session.autoFix.notes.contains(ClipTakePlan.noDurationCopy([1])))
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
     }
 
@@ -1568,7 +1592,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         }
         let availability = plan.videoAvailability(phrase: 0)
         #expect(!availability.allows(.source) && !availability.allows(.cut) && availability.allows(.retimed))
-        #expect(session.wordingFit.measured?.text != nil && plan.approvalID != nil)
+        #expect(session.wordingFit.measured?.text != nil && plan.approvalID != nil,
+                "measured \(String(describing: session.wordingFit.measured)) left out \(plan.phrases[0].leftOut) \(plan.problem) \(session.wordingFit.problem)")
         #expect(await connector.requests.count == 1)
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
     }
@@ -1664,7 +1689,10 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         ClipTakeHTTP.state.withLock { $0.duration += 5; $0.speechMargin = 0.15 }
         await plan.start(approved: true)
         let phrase = try #require(plan.phrases.first)
-        #expect(session.takeNeedsWordingRecovery(phrase, plan: plan))
+        // The paid take fits no video duration, so the phrase already keeps its recording (design.md R2); its change's
+        // own recovery steps still ask before discarding paid takes.
+        #expect(phrase.leftOut && plan.phrases[0].takes.count == 1)
+        #expect(session.autoFix.notes.contains(ClipTakePlan.noDurationCopy([1])))
         let ordinal = try #require(session.takePhraseOrdinals(phrase).first)
         let synthesisCount = ClipTakeHTTP.state.withLock { $0.texts.count }
         session.phraseTimingAction(.shorter, ordinal: ordinal)
