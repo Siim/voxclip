@@ -529,6 +529,8 @@ attribute VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: property ReferenceA
 attribute VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: property ReferenceAudioSha256 @ System.Text.Json.Serialization.JsonIgnoreAttribute()
 attribute VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: property Region @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: property Statement @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
+attribute VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: property WithoutReferences @ System.Text.Json.Serialization.JsonIgnoreAttribute()
+attribute VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker :: property References @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
 attribute VoxClip.Core.Domain.VoiceLab.VoiceConsentStatus :: field public Active @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("active")
 attribute VoxClip.Core.Domain.VoiceLab.VoiceConsentStatus :: field public Deleted @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("deleted")
 attribute VoxClip.Core.Domain.VoiceLab.VoiceConsentStatus :: field public VerificationRequired @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("verificationRequired")
@@ -8233,6 +8235,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: method internal Assign
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: method internal CanonicalCreator()
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: method internal HashValid(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: method internal SafeId(string)
+member VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: method internal TimestampValid(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord)
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: method private get_EqualityContract()
@@ -8243,6 +8246,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: method public EncodeEm
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord)
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: method public Equals(object)
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: method public Timestamp(System.DateTimeOffset)
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: method public ToString()
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: method public Validate()
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: method public get_App()
@@ -8267,6 +8271,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: method public get_Stat
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: method public get_Type()
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: method public get_VoiceId()
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: method public get_VoiceName()
+member VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: method public get_WithoutReferences()
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord,VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord)
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord,VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord)
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: method public set_App(VoxClip.Core.Domain.VoiceLab.VoiceConsentApp)
@@ -8286,6 +8291,27 @@ member VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: method public set_Stat
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: method public set_Type(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: method public set_VoiceId(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord :: method public set_VoiceName(string)
+member VoxClip.Core.Domain.VoiceLab.VoiceConsentReference :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceConsentReference)
+member VoxClip.Core.Domain.VoiceLab.VoiceConsentReference :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.VoiceConsentReference :: method private get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.VoiceConsentReference :: method public .ctor(string,string,string,double,string)
+member VoxClip.Core.Domain.VoiceLab.VoiceConsentReference :: method public Deconstruct(string&,string&,string&,double&,string&)
+member VoxClip.Core.Domain.VoiceLab.VoiceConsentReference :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceConsentReference)
+member VoxClip.Core.Domain.VoiceLab.VoiceConsentReference :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.VoiceConsentReference :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.VoiceConsentReference :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.VoiceConsentReference :: method public get_AddedAt()
+member VoxClip.Core.Domain.VoiceLab.VoiceConsentReference :: method public get_ContentKey()
+member VoxClip.Core.Domain.VoiceLab.VoiceConsentReference :: method public get_Embedding()
+member VoxClip.Core.Domain.VoiceLab.VoiceConsentReference :: method public get_Model()
+member VoxClip.Core.Domain.VoiceLab.VoiceConsentReference :: method public get_StatementScore()
+member VoxClip.Core.Domain.VoiceLab.VoiceConsentReference :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceConsentReference,VoxClip.Core.Domain.VoiceLab.VoiceConsentReference)
+member VoxClip.Core.Domain.VoiceLab.VoiceConsentReference :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceConsentReference,VoxClip.Core.Domain.VoiceLab.VoiceConsentReference)
+member VoxClip.Core.Domain.VoiceLab.VoiceConsentReference :: method public set_AddedAt(string)
+member VoxClip.Core.Domain.VoiceLab.VoiceConsentReference :: method public set_ContentKey(string)
+member VoxClip.Core.Domain.VoiceLab.VoiceConsentReference :: method public set_Embedding(string)
+member VoxClip.Core.Domain.VoiceLab.VoiceConsentReference :: method public set_Model(string)
+member VoxClip.Core.Domain.VoiceLab.VoiceConsentReference :: method public set_StatementScore(double)
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentSample :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceConsentSample)
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentSample :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentSample :: method private get_EqualityContract()
@@ -8308,19 +8334,22 @@ member VoxClip.Core.Domain.VoiceLab.VoiceConsentSample :: method public set_Spea
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker)
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker :: method private get_EqualityContract()
-member VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker :: method public .ctor(string,double,string)
-member VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker :: method public Deconstruct(string&,double&,string&)
+member VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker :: method public .ctor(string,double,string,VoxClip.Core.Domain.VoiceLab.VoiceConsentReference[])
+member VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker :: method public Deconstruct(string&,double&,string&,VoxClip.Core.Domain.VoiceLab.VoiceConsentReference[]&)
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker)
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker :: method public Equals(object)
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker :: method public ReplacingReferences(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceConsentReference>)
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker :: method public ToString()
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker :: method public get_Embedding()
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker :: method public get_Model()
+member VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker :: method public get_References()
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker :: method public get_Threshold()
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker,VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker)
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker,VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker)
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker :: method public set_Embedding(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker :: method public set_Model(string)
+member VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker :: method public set_References(VoxClip.Core.Domain.VoiceLab.VoiceConsentReference[])
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker :: method public set_Threshold(double)
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentStatement :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceConsentStatement)
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentStatement :: method private PrintMembers(System.Text.StringBuilder)
@@ -12122,6 +12151,12 @@ member VoxClip.Core.Domain.VoiceLab.VoiceProjectConsent :: method public set_Aud
 member VoxClip.Core.Domain.VoiceLab.VoiceProjectConsent :: method public set_AudioSha256(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceProjectConsent :: method public set_ConsentText(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceProjectConsent :: method public set_Language(string)
+member VoxClip.Core.Domain.VoiceLab.VoiceReferenceRefusal :: field public NotBetter
+member VoxClip.Core.Domain.VoiceLab.VoiceReferenceRefusal :: field public NotTheOwner
+member VoxClip.Core.Domain.VoiceLab.VoiceReferenceRefusal :: field public OtherModel
+member VoxClip.Core.Domain.VoiceLab.VoiceReferenceRefusal :: field public value__
+member VoxClip.Core.Domain.VoiceLab.VoiceReferenceRefusedException :: method public .ctor(VoxClip.Core.Domain.VoiceLab.VoiceReferenceRefusal)
+member VoxClip.Core.Domain.VoiceLab.VoiceReferenceRefusedException :: method public get_Reason()
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteProposal :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceRewriteProposal)
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteProposal :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteProposal :: method private get_EqualityContract()
@@ -12236,6 +12271,32 @@ member VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback :: method public 
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback :: method public set_Original(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback :: method public set_Proposed(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback :: method public set_SlotSeconds(double)
+member VoxClip.Core.Domain.VoiceLab.VoiceSpeakerMatch :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceSpeakerMatch)
+member VoxClip.Core.Domain.VoiceLab.VoiceSpeakerMatch :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.VoiceSpeakerMatch :: method private get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.VoiceSpeakerMatch :: method public .ctor(double,string)
+member VoxClip.Core.Domain.VoiceLab.VoiceSpeakerMatch :: method public Deconstruct(double&,string&)
+member VoxClip.Core.Domain.VoiceLab.VoiceSpeakerMatch :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceSpeakerMatch)
+member VoxClip.Core.Domain.VoiceLab.VoiceSpeakerMatch :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.VoiceSpeakerMatch :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.VoiceSpeakerMatch :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.VoiceSpeakerMatch :: method public get_ContentKey()
+member VoxClip.Core.Domain.VoiceLab.VoiceSpeakerMatch :: method public get_Score()
+member VoxClip.Core.Domain.VoiceLab.VoiceSpeakerMatch :: method public get_ViaReference()
+member VoxClip.Core.Domain.VoiceLab.VoiceSpeakerMatch :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceSpeakerMatch,VoxClip.Core.Domain.VoiceLab.VoiceSpeakerMatch)
+member VoxClip.Core.Domain.VoiceLab.VoiceSpeakerMatch :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceSpeakerMatch,VoxClip.Core.Domain.VoiceLab.VoiceSpeakerMatch)
+member VoxClip.Core.Domain.VoiceLab.VoiceSpeakerMatch :: method public set_ContentKey(string)
+member VoxClip.Core.Domain.VoiceLab.VoiceSpeakerMatch :: method public set_Score(double)
+member VoxClip.Core.Domain.VoiceLab.VoiceSpeakerReferences :: field public Bound
+member VoxClip.Core.Domain.VoiceLab.VoiceSpeakerReferences :: field public MaximumContentKey
+member VoxClip.Core.Domain.VoiceLab.VoiceSpeakerReferences :: method internal MostRedundant(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceConsentReference>)
+member VoxClip.Core.Domain.VoiceLab.VoiceSpeakerReferences :: method internal Validate(VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker)
+member VoxClip.Core.Domain.VoiceLab.VoiceSpeakerReferences :: method private Invalid()
+member VoxClip.Core.Domain.VoiceLab.VoiceSpeakerReferences :: method public ContentKeyValid(string)
+member VoxClip.Core.Domain.VoiceLab.VoiceSpeakerReferences :: method public LearnedCount(VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker)
+member VoxClip.Core.Domain.VoiceLab.VoiceSpeakerReferences :: method public Learning(System.Collections.Generic.IReadOnlyList`1<float>,string,string,System.DateTimeOffset,VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker)
+member VoxClip.Core.Domain.VoiceLab.VoiceSpeakerReferences :: method public Match(System.Collections.Generic.IReadOnlyList`1<float>,VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker)
+member VoxClip.Core.Domain.VoiceLab.VoiceSpeakerReferences :: method public Usable(VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker)
 member VoxClip.Core.Domain.VoiceLab.VoiceStatementMatch :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceStatementMatch)
 member VoxClip.Core.Domain.VoiceLab.VoiceStatementMatch :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceStatementMatch :: method private get_EqualityContract()
@@ -15138,7 +15199,9 @@ member VoxClip.Core.Services.VoiceLab.VoiceConsentStore :: method public ClearEn
 member VoxClip.Core.Services.VoiceLab.VoiceConsentStore :: method public CreateDeletionPolicy(string)
 member VoxClip.Core.Services.VoiceLab.VoiceConsentStore :: method public DiscardUnsentEnrollmentOperations(string)
 member VoxClip.Core.Services.VoiceLab.VoiceConsentStore :: method public EnrollmentRecovery(string)
+member VoxClip.Core.Services.VoiceLab.VoiceConsentStore :: method public ForgetReferences(string)
 member VoxClip.Core.Services.VoiceLab.VoiceConsentStore :: method public Hash(System.ReadOnlySpan`1<byte>)
+member VoxClip.Core.Services.VoiceLab.VoiceConsentStore :: method public LearnReference(string,System.Collections.Generic.IReadOnlyList`1<float>,string,string,System.Nullable`1<System.DateTimeOffset>)
 member VoxClip.Core.Services.VoiceLab.VoiceConsentStore :: method public Load(string)
 member VoxClip.Core.Services.VoiceLab.VoiceConsentStore :: method public Operations()
 member VoxClip.Core.Services.VoiceLab.VoiceConsentStore :: method public ReconcileAbandonedEnrollments()
@@ -15175,6 +15238,25 @@ member VoxClip.Core.Services.VoiceLab.VoiceDispatchPermit :: method internal Sta
 member VoxClip.Core.Services.VoiceLab.VoiceDispatchPermit :: method internal get_RequestId()
 member VoxClip.Core.Services.VoiceLab.VoiceDispatchPermit :: method private StartCurrent`1(System.Func`1<System.Threading.Tasks.Task`1<!!0>>,System.Threading.CancellationToken)
 member VoxClip.Core.Services.VoiceLab.VoiceDispatchPermit :: method public .ctor(VoxClip.Core.Services.VoiceLab.VoiceConsentStore,string,System.Guid,System.Action,VoxClip.Core.Services.VoiceLab.VoiceLabDispatchBinding)
+member VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict :: method private .cctor()
+member VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict :: method private .ctor(VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict)
+member VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict :: method private get_EqualityContract()
+member VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict :: method public .ctor(VoxClip.Core.Domain.VoiceLab.VoiceSpeakerMatch,System.Nullable`1<VoxClip.Core.Domain.VoiceLab.VoiceConsentError>)
+member VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict :: method public Blocked(VoxClip.Core.Domain.VoiceLab.VoiceConsentError)
+member VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict :: method public Deconstruct(VoxClip.Core.Domain.VoiceLab.VoiceSpeakerMatch&,System.Nullable`1<VoxClip.Core.Domain.VoiceLab.VoiceConsentError>&)
+member VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict :: method public Equals(VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict)
+member VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict :: method public Equals(object)
+member VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict :: method public GetHashCode()
+member VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict :: method public Passes(VoxClip.Core.Domain.VoiceLab.VoiceSpeakerMatch)
+member VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict :: method public ToString()
+member VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict :: method public get_Blocker()
+member VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict :: method public get_Match()
+member VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict :: method public get_Unchecked()
+member VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict :: method public op_Equality(VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict,VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict)
+member VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict :: method public op_Inequality(VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict,VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict)
+member VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict :: method public set_Blocker(System.Nullable`1<VoxClip.Core.Domain.VoiceLab.VoiceConsentError>)
+member VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict :: method public set_Match(VoxClip.Core.Domain.VoiceLab.VoiceSpeakerMatch)
 member VoxClip.Core.Services.VoiceLab.VoiceLabActionGate :: field private approvedByRun
 member VoxClip.Core.Services.VoiceLab.VoiceLabActionGate :: field private claimedRunActions
 member VoxClip.Core.Services.VoiceLab.VoiceLabActionGate :: field private clock
@@ -15438,8 +15520,11 @@ member VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck :: method public get_Win
 member VoxClip.Core.Services.VoiceLab.VoiceUseGuard :: field private cache
 member VoxClip.Core.Services.VoiceLab.VoiceUseGuard :: field private check
 member VoxClip.Core.Services.VoiceLab.VoiceUseGuard :: field private gate
+member VoxClip.Core.Services.VoiceLab.VoiceUseGuard :: method private Matched(float[],VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker)
+member VoxClip.Core.Services.VoiceLab.VoiceUseGuard :: method private ReferencesKey(VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord)
 member VoxClip.Core.Services.VoiceLab.VoiceUseGuard :: method public .ctor(VoxClip.Core.Services.VoiceLab.VoiceConsentStore,VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck)
 member VoxClip.Core.Services.VoiceLab.VoiceUseGuard :: method public AuthorizeAsync(string,string,float[],VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedAction,bool,bool,System.Threading.CancellationToken,VoxClip.Core.Services.VoiceLab.VoiceLabDispatchBinding,System.Nullable`1<long>)
+member VoxClip.Core.Services.VoiceLab.VoiceUseGuard :: method public ScreenAsync(string,string,System.Collections.Generic.IReadOnlyList`1<float[]>,System.Threading.CancellationToken)
 type VoxClip.Core.Domain.Autopilot.AiJson
 type VoxClip.Core.Domain.Autopilot.AskClaudeAnswer
 type VoxClip.Core.Domain.Autopilot.AskClaudeDetection
@@ -15919,6 +16004,7 @@ type VoxClip.Core.Domain.VoiceLab.VoiceConsentError
 type VoxClip.Core.Domain.VoiceLab.VoiceConsentException
 type VoxClip.Core.Domain.VoiceLab.VoiceConsentMethod
 type VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord
+type VoxClip.Core.Domain.VoiceLab.VoiceConsentReference
 type VoxClip.Core.Domain.VoiceLab.VoiceConsentSample
 type VoxClip.Core.Domain.VoiceLab.VoiceConsentSpeaker
 type VoxClip.Core.Domain.VoiceLab.VoiceConsentStatement
@@ -16170,12 +16256,16 @@ type VoxClip.Core.Domain.VoiceLab.VoiceLabWordTarget
 type VoxClip.Core.Domain.VoiceLab.VoiceLabWordingFit
 type VoxClip.Core.Domain.VoiceLab.VoiceLabZoomCover
 type VoxClip.Core.Domain.VoiceLab.VoiceProjectConsent
+type VoxClip.Core.Domain.VoiceLab.VoiceReferenceRefusal
+type VoxClip.Core.Domain.VoiceLab.VoiceReferenceRefusedException
 type VoxClip.Core.Domain.VoiceLab.VoiceRewriteProposal
 type VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest
 type VoxClip.Core.Domain.VoiceLab.VoiceRewriteScope
 type VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlot
 type VoxClip.Core.Domain.VoiceLab.VoiceRewriteSlots
 type VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback
+type VoxClip.Core.Domain.VoiceLab.VoiceSpeakerMatch
+type VoxClip.Core.Domain.VoiceLab.VoiceSpeakerReferences
 type VoxClip.Core.Domain.VoiceLab.VoiceStatementMatch
 type VoxClip.Core.Domain.VoiceLab.VoiceTrainingInputs
 type VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem
@@ -16398,6 +16488,7 @@ type VoxClip.Core.Services.VoiceLab.VoiceConsentPrivacy
 type VoxClip.Core.Services.VoiceLab.VoiceConsentStore
 type VoxClip.Core.Services.VoiceLab.VoiceCreationClaim
 type VoxClip.Core.Services.VoiceLab.VoiceDispatchPermit
+type VoxClip.Core.Services.VoiceLab.VoiceGuardVerdict
 type VoxClip.Core.Services.VoiceLab.VoiceLabActionGate
 type VoxClip.Core.Services.VoiceLab.VoiceLabDispatchBinding
 type VoxClip.Core.Services.VoiceLab.VoiceLabDispatchGate
