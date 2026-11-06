@@ -311,13 +311,15 @@ private struct VideoVoiceKeys: KeyProvider {
 
     @Test func tooLittleOfTheVideosOwnSpeechKeepsTheAnchorAndSaysSoOnce() async throws {
         let h = try await harness(); defer { try? FileManager.default.removeItem(at: h.root) }
-        let short = try Self.video(h.root, seconds: 20, hertz: 110, name: "short")
+        // 29 s of its own speech: with the anchor's 6 s clip the set would reach the 30 s a voice needs, but the video's own
+        // speech must reach it alone.
+        let short = try Self.video(h.root, seconds: 30, hertz: 110, name: "short")
         let key = short.project.media.source.contentKey
         h.session.setVideoVoiceMode(.match)
         let state = h.session.makeVideoVoice(project: short.project, media: short.media)
         await state.task?.value
         #expect(state.phase == .anchor)
-        #expect(state.line == "This video has only 19 s of your own clear speech, so takes use siim. A matching voice needs 30 s.")
+        #expect(state.line == "This video has only 29 s of your own clear speech, so takes use siim. A matching voice needs 30 s.")
         #expect(VideoVoiceHTTP.calls.withLock { $0 }.isEmpty, "nothing is sent")
         #expect(h.session.perVideoBook.shortNoted == [key])
         #expect(h.session.rewriteVoicePreference(contentKey: key, language: "en") == h.anchor.id)

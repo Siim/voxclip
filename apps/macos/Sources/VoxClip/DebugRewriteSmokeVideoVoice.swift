@@ -17,9 +17,9 @@ import VoxClipMedia
 //   says so once.
 
 extension DebugRewriteSmoke {
-    /// Three sentences: about 13 s of speech, under the 30 s a video's own voice needs.
-    nonisolated static let shortVideoScript = "Today I want to show you how cloud tools edit video. First we record a short clip in one take. "
-        + "Then we fix the words we got wrong."
+    /// The base script's first six sentences: under the 30 s of its own speech a video's voice needs, though with the
+    /// anchor's 8 s consent clip the set would reach 30 s.
+    nonisolated static let shortVideoScript = baseScript.components(separatedBy: ". ").prefix(6).joined(separator: ". ") + "."
 
     static var videoVoiceScenarios: [Definition] { [
         Definition(id: "S-voice-per-video", title: "a matching voice for each video: asked once, made from video 1, its takes use it; video 2 by ✦ Make it postable makes its own and removes video 1's",
