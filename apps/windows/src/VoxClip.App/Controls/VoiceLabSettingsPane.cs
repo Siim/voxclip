@@ -253,6 +253,7 @@ internal sealed class VoiceLabSettingsPane : UserControl
             card.Children.Add(Selectable("Created " + date + " · " + record.VoiceId));
             if (record.Status == VoiceConsentStatus.VerificationRequired) card.Children.Add(Ui.Text(VoiceLabCopy.VerificationRequired, "HelperText"));
             AddReferenceRows(card, record);
+            AddRebuildRows(card, record);
             var deleting = session.Deleting.Contains(record.RecordId);
             if (deleting) card.Children.Add(Ui.Text(session.Busy ? "Deleting…" : "Couldn't finish deleting", "HelperText"));
             var delete = SessionButton(deleting ? "Retry deletion…" : "Delete voice", VoiceLabActionNames.ForRecord("Delete voice", record, session.VisibleRecords),
@@ -384,6 +385,87 @@ internal sealed class VoiceLabSettingsPane : UserControl
             AutomationProperties.SetAutomationId(text, "voice-learning-line-" + record.RecordId);
             AutomationProperties.SetLiveSetting(text, AutomationLiveSetting.Polite);
             card.Children.Add(text);
+        }
+    }
+    /// <summary>Rebuild from my videos, inline (ADR-R44; Mac <c>VoiceRebuildRows</c>): found speech first, the three attestations as checkboxes,
+    /// Rebuild · price as the only paid click, then Use the new voice for Rewrite and Remove the old voice with its inline confirmation. Shown
+    /// only on an attested voice where the speaker check is ready on this PC.</summary>
+    private void AddRebuildRows(StackPanel card, VoiceConsentRecord record)
+    {
+        if (!session.RebuildOffered(record) && !session.HasRebuild(record.RecordId)) return;
+        var state = session.Rebuild(record.RecordId);
+        var context = VoiceLabActionNames.ForRecord("Rebuild from my videos", record, session.VisibleRecords);
+        switch (state.Phase)
+        {
+            case VoiceRebuildPhase.Idle or VoiceRebuildPhase.Failed or VoiceRebuildPhase.Finding:
+                if (!session.RebuildOffered(record)) break;
+                var find = SessionButton(state.Phase == VoiceRebuildPhase.Finding ? "Finding your speech…" : "Rebuild from my videos", context,
+                    () => session.FindRebuildAsync(record.RecordId));
+                find.IsEnabled = state.Phase != VoiceRebuildPhase.Finding && session.Enabled && !session.Busy && !session.IsLearning;
+                AutomationProperties.SetAutomationId(find, "voice-rebuild-" + record.RecordId);
+                card.Children.Add(find);
+                if (state.Phase == VoiceRebuildPhase.Idle) card.Children.Add(Ui.Text(VoiceLabSession.RebuildIntro, "HelperText"));
+                break;
+            case VoiceRebuildPhase.Found or VoiceRebuildPhase.Preparing or VoiceRebuildPhase.Ready or VoiceRebuildPhase.Creating:
+                var summary = Ui.Text("Rebuild with " + state.Summary);
+                AutomationProperties.SetAutomationId(summary, "voice-rebuild-summary-" + record.RecordId);
+                card.Children.Add(summary);
+                var pieces = Ui.Stack(8); pieces.Orientation = Orientation.Horizontal;
+                foreach (var (seconds, index) in (state.Found?.PieceSeconds ?? []).Take(3).Select((seconds, index) => (seconds, index)))
+                {
+                    var play = Ui.Button($"▶ {(int)seconds} s", () => _ = session.PlayRebuildPieceAsync(state, index));
+                    AutomationProperties.SetName(play, $"Play piece {index + 1}, {(int)seconds} seconds");
+                    pieces.Children.Add(play);
+                }
+                if (pieces.Children.Count > 0) card.Children.Add(pieces);
+                var locked = state.Phase == VoiceRebuildPhase.Creating || session.Busy;
+                CheckBox Attestation(string text, bool value, Func<bool, Task> changed)
+                {
+                    var box = new CheckBox { Content = text, IsChecked = value, IsEnabled = !locked };
+                    AutomationProperties.SetName(box, text);
+                    box.Checked += (_, _) => _ = changed(true);
+                    box.Unchecked += (_, _) => _ = changed(false);
+                    return box;
+                }
+                card.Children.Add(Attestation(VoiceProjectConsent.Text, state.OwnVoice, value => session.SetRebuildAttestationAsync(state, ownVoice: value)));
+                card.Children.Add(Attestation("I am 18 or older.", state.Adult, value => session.SetRebuildAttestationAsync(state, adult: value)));
+                card.Children.Add(Attestation("I will use it only on videos of myself.", state.OwnVideosOnly, value => session.SetRebuildAttestationAsync(state, ownVideosOnly: value)));
+                if (state.Phase is VoiceRebuildPhase.Ready or VoiceRebuildPhase.Creating)
+                {
+                    var title = VoiceLabSession.RebuildTitle(state);
+                    var rebuild = SessionButton(state.Phase == VoiceRebuildPhase.Creating ? "Rebuilding…" : title,
+                        VoiceLabActionNames.ForRecord(title, record, session.VisibleRecords), () => session.ApproveRebuildAsync(state));
+                    rebuild.IsEnabled = state.Phase == VoiceRebuildPhase.Ready && !session.Busy;
+                    AutomationProperties.SetAutomationId(rebuild, "voice-rebuild-approve-" + record.RecordId);
+                    card.Children.Add(rebuild);
+                }
+                break;
+            case VoiceRebuildPhase.Created:
+                var actions = Ui.Stack(8); actions.Orientation = Orientation.Horizontal;
+                if (!state.UsedForRewrite)
+                    actions.Children.Add(SessionButton("Use the new voice for Rewrite", "Use the new voice for Rewrite", () => session.UseRebuiltVoiceAsync(state)));
+                if (!state.Removed && !state.ConfirmingRemoval)
+                    actions.Children.Add(SessionButton("Remove the old voice", VoiceLabActionNames.ForRecord("Remove the old voice", record, session.VisibleRecords),
+                        () => { session.ConfirmOldVoiceRemoval(state, true); return Task.CompletedTask; }));
+                if (actions.Children.Count > 0) card.Children.Add(actions);
+                if (state.ConfirmingRemoval)
+                {
+                    var made = VoiceLabSession.CardName(record)[(record.VoiceName.Length + ", created ".Length)..];
+                    card.Children.Add(Ui.Text($"Deletes {record.VoiceName}, made {made}, from your ElevenLabs account and VoxClip. Free. Existing takes stay playable and labelled.", "HelperText"));
+                    var confirm = Ui.Stack(8); confirm.Orientation = Orientation.Horizontal;
+                    confirm.Children.Add(SessionButton("Keep it", "Keep the old voice", () => { session.ConfirmOldVoiceRemoval(state, false); return Task.CompletedTask; }));
+                    confirm.Children.Add(SessionButton("Remove old voice", VoiceLabActionNames.ForRecord("Remove old voice", record, session.VisibleRecords),
+                        () => session.RemoveOldVoiceAsync(state)));
+                    card.Children.Add(confirm);
+                }
+                break;
+        }
+        if (state.Line.Length > 0)
+        {
+            var line = Ui.Text(state.Line, "HelperText");
+            AutomationProperties.SetAutomationId(line, "voice-rebuild-line-" + record.RecordId);
+            AutomationProperties.SetLiveSetting(line, AutomationLiveSetting.Polite);
+            card.Children.Add(line);
         }
     }
     private void AddVoiceCard(UIElement content, string recordId, string label)

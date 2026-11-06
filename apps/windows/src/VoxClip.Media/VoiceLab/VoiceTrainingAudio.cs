@@ -13,6 +13,14 @@ public sealed class VoiceTrainingSample
     public bool CleanAudioApplied { get; }
     internal VoiceTrainingSample(byte[] wav, double seconds, string source, double snrDb, bool cleanAudioApplied = false)
     { Wav = wav; Seconds = seconds; Source = source; SnrDb = snrDb; CleanAudioApplied = cleanAudioApplied; }
+    /// <summary>The sample's mono PCM and rate, for playing it on this PC (Rebuild from my videos ▶).</summary>
+    public (float[] Samples, int Rate) Pcm()
+    {
+        var (rate, frames, offset) = VoiceConsentAudio.ValidateWav(Wav);
+        var samples = new float[frames];
+        for (var index = 0; index < frames; index++) samples[index] = BinaryPrimitives.ReadInt16LittleEndian(Wav.AsSpan(offset + index * 2)) / 32768f;
+        return (samples, rate);
+    }
 }
 
 public static class VoiceTrainingAudio

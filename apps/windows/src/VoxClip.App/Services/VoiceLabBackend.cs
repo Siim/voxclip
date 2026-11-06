@@ -20,7 +20,8 @@ internal sealed class VoiceLabBackend(DataLocations data, IKeyProvider keys, ILo
     Func<bool> enabled, Func<ElevenLabsRegion> region, Func<CancellationToken, Task> persistConsent,
     TimeProvider? timeProvider = null, Func<ElevenLabsRegion, IVoiceLabAccount>? accountFactory = null,
     Func<IReadOnlyList<string>>? learningProjects = null, Func<string, CancellationToken, Task<VoiceLabProjectSource?>>? readProject = null,
-    Func<string, VoiceSpeakerProbe?>? speaker = null) : IVoiceLabBackend
+    Func<string, VoiceSpeakerProbe?>? speaker = null, Func<string, CancellationToken, Task>? setRewriteVoice = null, Func<string?>? rewriteVoice = null,
+    Func<float[], int, CancellationToken, Task>? play = null) : IVoiceLabBackend, IDisposable
 {
     private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
     private readonly VoiceConsentStore store = new(data, timeProvider);
@@ -47,6 +48,89 @@ internal sealed class VoiceLabBackend(DataLocations data, IKeyProvider keys, ILo
         store.ForgetReferences(recordId);
         return Task.CompletedTask;
     }
+    /// <summary>The attested creation a rebuild runs through (§6.12): one enrollment per backend, so a prepared plan is still there at the
+    /// priced click. It has no speaker check while the parity gate is closed, so its preparation refuses with SpeakerUnavailable.</summary>
+    private (ElevenLabsRegion Region, ElevenLabsVoiceLab Client, VoiceEnrollment Enrollment)? rebuildCreation;
+    private (ElevenLabsVoiceLab Client, VoiceEnrollment Enrollment) RebuildCreation(CancellationToken ct)
+    {
+        RequireEnabled(ct);
+        var selected = region();
+        if (rebuildCreation is { } current && current.Region == selected) return (current.Client, current.Enrollment);
+        rebuildCreation?.Client.Dispose();
+        var client = new ElevenLabsVoiceLab(keys, selected, log, VoiceLabPrices.Load());
+        var enrollment = new VoiceEnrollment(store, client, clock: clock);
+        rebuildCreation = (selected, client, enrollment);
+        return (client, enrollment);
+    }
+    public async Task<VoiceRebuildFind> FindRebuildAsync(string recordId, IReadOnlyList<string> projects, Func<int, int, Task> progress, CancellationToken ct)
+    {
+        RequireEnabled(ct);
+        var record = store.Load(recordId);
+        var probe = Speaker(record.Language) ?? throw new VoiceRebuildFailedException(VoiceRebuildFailureKind.Unavailable);
+        List<VoiceRebuildFinder.Source> sources = [];
+        foreach (var path in projects)
+            if (readProject is not null && await readProject(path, ct).ConfigureAwait(false) is { } source) sources.Add(new(source.Project, source.Media));
+        RequireEnabled(ct);
+        try
+        {
+            var found = await new VoiceRebuildFinder(store, probe).FindAsync(recordId, sources, VoiceRebuildFinder.Rules.Rebuild, progress, ct).ConfigureAwait(false);
+            return new(VoiceRebuild.Summary(found.Plan), found.Samples.Select(sample => sample.Seconds).ToArray(), found);
+        }
+        catch (VoiceRebuildFailedException error) when (error.Kind == VoiceRebuildFailureKind.NotEnough)
+        { throw new VoiceRebuildNotEnoughException(error.Milliseconds, error.Noisy); }
+    }
+    public async Task<VoiceRebuildQuote> PrepareRebuildAsync(VoiceConsentRecord old, VoiceRebuildFind found, VoiceConsentAttestations attestations,
+        string displayName, CancellationToken ct)
+    {
+        var (client, enrollment) = RebuildCreation(ct);
+        // The new voice goes to the account that holds the old one.
+        await client.ValidateCreatorAsync(old.CreatorIdentity, ct).ConfigureAwait(false);
+        var id = Guid.NewGuid().ToString("D");
+        var plan = await enrollment.PrepareProjectPlanAsync(id, old.Language, attestations, displayName, ((VoiceRebuildFinder.Found)found.Ticket).Samples,
+            Enabled, ct).ConfigureAwait(false);
+        return new(id, plan.Quote.Estimate.Usd, plan.TrainingMilliseconds, plan);
+    }
+    public Task CancelRebuildAsync(VoiceRebuildQuote quote, CancellationToken ct)
+    {
+        if (rebuildCreation is { } current && quote.Ticket is VoiceEnrollmentPlan plan)
+        {
+            current.Client.ReleaseEnrollment(plan.Quote);
+            try { current.Enrollment.Cancel(quote.RecordId); }
+            catch (Exception error) when (error is VoiceConsentException or VoiceLabException or IOException) { }
+        }
+        return Task.CompletedTask;
+    }
+    public async Task<VoiceRebuildCreated> ApproveRebuildAsync(string oldRecordId, VoiceRebuildQuote quote, CancellationToken ct)
+    {
+        var (_, enrollment) = RebuildCreation(ct);
+        await persistConsent(ct).ConfigureAwait(false);
+        RequireEnabled(ct);
+        VoiceConsentRecord record;
+        try
+        {
+            record = await enrollment.ExecuteAsync((VoiceEnrollmentPlan)quote.Ticket, approved: true, enabled: Enabled,
+                typeof(VoiceLabBackend).Assembly.GetName().Version?.ToString() ?? "unknown", ct).ConfigureAwait(false);
+        }
+        catch (VoiceConsentSaveException error) { throw new VoiceLabRebuildSaveException(error.Record); }
+        int carried;
+        try { carried = store.CarryReferences(oldRecordId, record.RecordId, clock.GetUtcNow()); }
+        catch (Exception error) when (error is VoiceConsentException or VoiceLabException or IOException) { carried = 0; }
+        return new(record, carried);
+    }
+    public Task SetRewriteVoiceAsync(string recordId, CancellationToken ct)
+    {
+        RequireEnabled(ct);
+        return setRewriteVoice?.Invoke(recordId, ct) ?? throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
+    }
+    public string? RewriteVoice() => rewriteVoice?.Invoke();
+    public Task PlayRebuildPieceAsync(VoiceRebuildFind found, int index, CancellationToken ct)
+    {
+        RequireEnabled(ct);
+        var sample = ((VoiceRebuildFinder.Found)found.Ticket).Samples[index];
+        var (samples, rate) = sample.Pcm();
+        return play?.Invoke(samples, rate, ct) ?? Task.CompletedTask;
+    }
+    public void Dispose() { rebuildCreation?.Client.Dispose(); rebuildCreation = null; }
     internal static void ReconcileLocalStatements(DataLocations data) => new VoiceConsentStore(data).ReconcileAbandonedEnrollments();
     public bool Enabled => enabled();
     private void RequireEnabled(CancellationToken ct)

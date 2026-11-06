@@ -42,6 +42,12 @@ internal sealed partial class RewriteGeneration : IDisposable
     internal IReadOnlyList<RewriteVoice> Voices { get; private set; } = [];
     internal IReadOnlyList<VoiceLabModel> Models { get; private set; } = [];
     internal string? VoiceId { get; private set; }
+    /// <summary>The voice Rewrite starts with when it is listed (Mac <c>preferredVoiceID</c>): this video's own voice (§6.13), else the
+    /// <c>voiceLab.rewriteVoice</c> setting (§6.12). A preference, not a binding: an unlisted one falls back to the first listed voice.</summary>
+    internal Func<string?>? PreferredVoice { get; set; }
+    /// <summary>Mac <c>initialVoice(_:preferred:)</c>: the preferred voice when it is listed, else the first.</summary>
+    internal static string? InitialVoice(IReadOnlyList<RewriteVoice> voices, string? preferred) =>
+        voices.FirstOrDefault(voice => preferred is not null && voice.Id == preferred)?.Id ?? voices.FirstOrDefault()?.Id;
     internal string? ModelId { get; private set; }
     /// <summary>The only model new takes may use (Rewrite: Eleven v4). Takes already made keep their receipts' models.</summary>
     internal string? FixedModelId { get; set; }
@@ -147,7 +153,7 @@ internal sealed partial class RewriteGeneration : IDisposable
                     if (closed || !current()) return;
                     if (version != discoveryRevision) continue;
                     Voices = choices.Voices; Models = choices.Models;
-                    if (!Voices.Any(voice => voice.Id == VoiceId)) VoiceId = Voices.FirstOrDefault()?.Id;
+                    if (!Voices.Any(voice => voice.Id == VoiceId)) VoiceId = InitialVoice(Voices, PreferredVoice?.Invoke());
                     if (!Models.Any(model => model.Id == ModelId) || FixedModelId is { } required && ModelId != required)
                         ModelId = FixedModelId is { } only ? Models.FirstOrDefault(model => model.Id == only)?.Id : VoiceLabModel.PatchDefault(Models)?.Id;
                     HasDiscovered = true;

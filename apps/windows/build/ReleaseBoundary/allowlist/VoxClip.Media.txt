@@ -2416,6 +2416,77 @@ member VoxClip.Media.VoiceLab.VoiceLabWindowsFiles :: method private GetFileInfo
 member VoxClip.Media.VoiceLab.VoiceLabWindowsFiles :: method private GetFinalPathNameByHandleW(Microsoft.Win32.SafeHandles.SafeFileHandle,System.Text.StringBuilder,uint,uint)
 member VoxClip.Media.VoiceLab.VoiceLabWindowsFiles+AttributeTagInformation :: field internal Attributes
 member VoxClip.Media.VoiceLab.VoiceLabWindowsFiles+AttributeTagInformation :: field internal ReparseTag
+member VoxClip.Media.VoiceLab.VoiceRebuildFailedException :: method public .ctor(VoxClip.Media.VoiceLab.VoiceRebuildFailureKind,long,int)
+member VoxClip.Media.VoiceLab.VoiceRebuildFailedException :: method public get_Kind()
+member VoxClip.Media.VoiceLab.VoiceRebuildFailedException :: method public get_Milliseconds()
+member VoxClip.Media.VoiceLab.VoiceRebuildFailedException :: method public get_Noisy()
+member VoxClip.Media.VoiceLab.VoiceRebuildFailureKind :: field public NotEnough
+member VoxClip.Media.VoiceLab.VoiceRebuildFailureKind :: field public Unavailable
+member VoxClip.Media.VoiceLab.VoiceRebuildFailureKind :: field public value__
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder :: field private analyze
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder :: field private cut
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder :: field private labelled
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder :: field private probe
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder :: field private store
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder :: method internal .ctor(VoxClip.Core.Services.VoiceLab.VoiceConsentStore,VoxClip.Media.VoiceLab.VoiceSpeakerProbe,System.Func`4<string,int,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<VoxClip.Media.VoiceLab.VoiceTrainingTake>>,System.Func`5<string,int,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan>,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<System.Collections.Generic.IReadOnlyList`1<VoxClip.Media.VoiceLab.VoiceTrainingSample>>>,System.Func`2<string,bool>)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder :: method internal VideoCandidatesAsync(VoxClip.Media.VoiceLab.VoiceRebuildFinder+Source,float[],VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder :: method private KeptSample(string)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder :: method private Unavailable()
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder :: method public .ctor(VoxClip.Core.Services.VoiceLab.VoiceConsentStore,VoxClip.Media.VoiceLab.VoiceSpeakerProbe)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder :: method public FindAsync(string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Media.VoiceLab.VoiceRebuildFinder+Source>,VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules,System.Func`3<int,int,System.Threading.Tasks.Task>,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Found :: method private .ctor(VoxClip.Media.VoiceLab.VoiceRebuildFinder+Found)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Found :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Found :: method private get_EqualityContract()
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Found :: method public .ctor(VoxClip.Core.Domain.VoiceLab.VoiceRebuild+Plan,System.Collections.Generic.IReadOnlyList`1<VoxClip.Media.VoiceLab.VoiceTrainingSample>,int,int)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Found :: method public Deconstruct(VoxClip.Core.Domain.VoiceLab.VoiceRebuild+Plan&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Media.VoiceLab.VoiceTrainingSample>&,int&,int&)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Found :: method public Equals(VoxClip.Media.VoiceLab.VoiceRebuildFinder+Found)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Found :: method public Equals(object)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Found :: method public GetHashCode()
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Found :: method public ToString()
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Found :: method public get_Plan()
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Found :: method public get_Samples()
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Found :: method public get_VideosChecked()
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Found :: method public get_VideosSkipped()
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Found :: method public op_Equality(VoxClip.Media.VoiceLab.VoiceRebuildFinder+Found,VoxClip.Media.VoiceLab.VoiceRebuildFinder+Found)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Found :: method public op_Inequality(VoxClip.Media.VoiceLab.VoiceRebuildFinder+Found,VoxClip.Media.VoiceLab.VoiceRebuildFinder+Found)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Found :: method public set_Plan(VoxClip.Core.Domain.VoiceLab.VoiceRebuild+Plan)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Found :: method public set_Samples(System.Collections.Generic.IReadOnlyList`1<VoxClip.Media.VoiceLab.VoiceTrainingSample>)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Found :: method public set_VideosChecked(int)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Found :: method public set_VideosSkipped(int)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules :: method private .cctor()
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules :: method private .ctor(VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules :: method private get_EqualityContract()
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules :: method public .ctor(double,int,long)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules :: method public Deconstruct(double&,int&,long&)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules :: method public Equals(VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules :: method public Equals(object)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules :: method public GetHashCode()
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules :: method public ToString()
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules :: method public get_CandidatesPerVideo()
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules :: method public get_MinimumOwnMs()
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules :: method public get_MinimumSnrDb()
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules :: method public get_Rebuild()
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules :: method public op_Equality(VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules,VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules :: method public op_Inequality(VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules,VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules :: method public set_CandidatesPerVideo(int)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules :: method public set_MinimumOwnMs(long)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules :: method public set_MinimumSnrDb(double)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Source :: method private .ctor(VoxClip.Media.VoiceLab.VoiceRebuildFinder+Source)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Source :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Source :: method private get_EqualityContract()
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Source :: method public .ctor(VoxClip.Core.Domain.Shared.Project,string)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Source :: method public Deconstruct(VoxClip.Core.Domain.Shared.Project&,string&)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Source :: method public Equals(VoxClip.Media.VoiceLab.VoiceRebuildFinder+Source)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Source :: method public Equals(object)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Source :: method public GetHashCode()
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Source :: method public ToString()
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Source :: method public get_Media()
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Source :: method public get_Project()
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Source :: method public op_Equality(VoxClip.Media.VoiceLab.VoiceRebuildFinder+Source,VoxClip.Media.VoiceLab.VoiceRebuildFinder+Source)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Source :: method public op_Inequality(VoxClip.Media.VoiceLab.VoiceRebuildFinder+Source,VoxClip.Media.VoiceLab.VoiceRebuildFinder+Source)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Source :: method public set_Media(string)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Source :: method public set_Project(VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Media.VoiceLab.VoiceReferenceLearner :: field private clock
 member VoxClip.Media.VoiceLab.VoiceReferenceLearner :: field private decode
 member VoxClip.Media.VoiceLab.VoiceReferenceLearner :: field private labelled
@@ -2485,6 +2556,7 @@ member VoxClip.Media.VoiceLab.VoiceTrainingLevels :: method internal Finish(long
 member VoxClip.Media.VoiceLab.VoiceTrainingLevels :: method public .ctor(int)
 member VoxClip.Media.VoiceLab.VoiceTrainingSample :: method internal .ctor(byte[],double,string,double,bool)
 member VoxClip.Media.VoiceLab.VoiceTrainingSample :: method internal get_Wav()
+member VoxClip.Media.VoiceLab.VoiceTrainingSample :: method public Pcm()
 member VoxClip.Media.VoiceLab.VoiceTrainingSample :: method public get_CleanAudioApplied()
 member VoxClip.Media.VoiceLab.VoiceTrainingSample :: method public get_Seconds()
 member VoxClip.Media.VoiceLab.VoiceTrainingSample :: method public get_SnrDb()
@@ -2691,6 +2763,12 @@ type VoxClip.Media.VoiceLab.VoiceLabWavePcm
 type VoxClip.Media.VoiceLab.VoiceLabWaveReader
 type VoxClip.Media.VoiceLab.VoiceLabWindowsFiles
 type VoxClip.Media.VoiceLab.VoiceLabWindowsFiles+AttributeTagInformation
+type VoxClip.Media.VoiceLab.VoiceRebuildFailedException
+type VoxClip.Media.VoiceLab.VoiceRebuildFailureKind
+type VoxClip.Media.VoiceLab.VoiceRebuildFinder
+type VoxClip.Media.VoiceLab.VoiceRebuildFinder+Found
+type VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules
+type VoxClip.Media.VoiceLab.VoiceRebuildFinder+Source
 type VoxClip.Media.VoiceLab.VoiceReferenceLearner
 type VoxClip.Media.VoiceLab.VoiceReferenceLearnerOutcome
 type VoxClip.Media.VoiceLab.VoiceReferenceLearning

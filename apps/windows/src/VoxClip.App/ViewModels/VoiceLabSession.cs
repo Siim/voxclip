@@ -37,6 +37,24 @@ internal interface IVoiceLabBackend
         Task.FromResult(VoxClip.Media.VoiceLab.VoiceReferenceLearnerOutcome.Unavailable);
     /// <summary>Forgets every learned reference of a voice (Core <c>VoiceConsentStore.ForgetReferences</c>).</summary>
     Task ForgetReferencesAsync(string recordId, CancellationToken ct) => throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
+    /// <summary>Rebuild from my videos, free and on this PC (Media <c>VoiceRebuildFinder</c>): the owner-verified speech across these
+    /// projects, or <see cref="VoiceRebuildNotEnoughException"/>, or Media's unavailable failure where the speaker check isn't ready.</summary>
+    Task<VoiceRebuildFind> FindRebuildAsync(string recordId, IReadOnlyList<string> projects, Func<int, int, Task> progress, CancellationToken ct) =>
+        throw new VoxClip.Media.VoiceLab.VoiceRebuildFailedException(VoxClip.Media.VoiceLab.VoiceRebuildFailureKind.Unavailable);
+    /// <summary>The attested creation's local quote for a rebuild (free): the found speech, the voice's own consent clip first.</summary>
+    Task<VoiceRebuildQuote> PrepareRebuildAsync(VoiceConsentRecord old, VoiceRebuildFind found, VoiceConsentAttestations attestations, string displayName,
+        CancellationToken ct) => throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
+    /// <summary>Drops a prepared rebuild quote and its local draft; nothing was sent.</summary>
+    Task CancelRebuildAsync(VoiceRebuildQuote quote, CancellationToken ct) => Task.CompletedTask;
+    /// <summary>The one priced click: the attested creation through the journal, then the old voice's references carried over one hop.</summary>
+    Task<VoiceRebuildCreated> ApproveRebuildAsync(string oldRecordId, VoiceRebuildQuote quote, CancellationToken ct) =>
+        throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+    /// <summary>Writes <c>voiceLab.rewriteVoice</c>, the voice Rewrite starts with.</summary>
+    Task SetRewriteVoiceAsync(string recordId, CancellationToken ct) => throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
+    /// <summary>The <c>voiceLab.rewriteVoice</c> setting; null when unset.</summary>
+    string? RewriteVoice() => null;
+    /// <summary>Plays one found piece on this PC.</summary>
+    Task PlayRebuildPieceAsync(VoiceRebuildFind found, int index, CancellationToken ct) => throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
 }
 
 internal sealed partial class VoiceLabSession(IVoiceLabBackend backend, Func<Action, Task> dispatch,
@@ -97,6 +115,7 @@ internal sealed partial class VoiceLabSession(IVoiceLabBackend backend, Func<Act
     private IVoiceLabBackend Backend => backend;
     private Task Dispatch(Action action) => dispatch(action);
     private CancellationToken Lifetime => lifetime.Token;
+    private TimeProvider Clock => clock;
     internal void Request(VoiceLabRequest request)
     {
         if (!Enabled || Busy || loading) return;

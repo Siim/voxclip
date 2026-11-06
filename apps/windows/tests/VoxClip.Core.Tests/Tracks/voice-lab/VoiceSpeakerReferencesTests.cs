@@ -166,6 +166,34 @@ public sealed class VoiceSpeakerReferencesTests
         return record;
     }
 
+    /// <summary>Mac <c>referencesReachTheNewVoiceOnlyWhenTheyPassItsOwnEmbedding</c> (ADR-R44 step 6): a rebuilt or per-video voice keeps the
+    /// old voice's references only by learning each again against its own embedding, one hop; one that fails it is dropped, the old voice is
+    /// untouched, and a voice that isn't active learns nothing.</summary>
+    [Fact]
+    public void CarriedReferencesReachTheNewVoiceOnlyWhenTheyPassItsOwnEmbedding()
+    {
+        using var storage = new Storage();
+        var store = new VoiceConsentStore(storage.Locations);
+        var old = Saved(store);
+        store.LearnReference(old.RecordId, [.6f, .8f, 0, 0], "project-near", "fixture-model");
+        store.LearnReference(old.RecordId, [.6f, -.8f, 0, 0], "project-other-side", "fixture-model");
+        var before = store.Load(old.RecordId);
+        Assert.Equal(2, VoiceSpeakerReferences.LearnedCount(before.Speaker));
+        var rebuilt = Saved(store);
+        store.Save(store.Load(rebuilt.RecordId) with { Speaker = new("fixture-model", .45, VoiceConsentRecord.EncodeEmbedding([.8f, .6f, 0, 0])) });
+        Assert.Equal(1, store.CarryReferences(old.RecordId, rebuilt.RecordId, new DateTimeOffset(2026, 11, 6, 12, 0, 0, TimeSpan.Zero)));
+        var carried = Assert.Single(store.Load(rebuilt.RecordId).Speaker.References!);
+        Assert.Equal("project-near", carried.ContentKey);
+        Assert.Equal(.96, carried.StatementScore, 5);
+        Assert.Equal("2026-11-06T12:00:00Z", carried.AddedAt);
+        Assert.Equal(before, store.Load(old.RecordId), RecordComparer);
+        // Again: nothing better to learn, so nothing is written.
+        Assert.Equal(1, store.CarryReferences(old.RecordId, rebuilt.RecordId));
+        var withdrawn = Saved(store);
+        store.Save(store.Load(withdrawn.RecordId) with { Status = VoiceConsentStatus.Deleted, DeletedAt = withdrawn.CreatedAt, Speaker = withdrawn.Speaker });
+        Assert.Equal(VoiceConsentError.Inactive, Assert.Throws<VoiceConsentException>(() => store.CarryReferences(old.RecordId, withdrawn.RecordId)).Kind);
+    }
+
     [Fact]
     public void TheStoreLearnsAndForgetsWithoutChangingWhatARunWasApprovedFor()
     {

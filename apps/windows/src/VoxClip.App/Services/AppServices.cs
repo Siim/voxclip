@@ -105,7 +105,15 @@ internal sealed class AppServices : IAsyncDisposable
                 () => ElevenLabsRegions.FromSettings(Settings, Log), Consent,
                 learningProjects: () => VoiceLabSession.LearningProjects(Get<string[]>("general.recentProjects", []),
                     Get("export.folder", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "VoxClip"))),
-                readProject: ReadVoiceLabProjectAsync);
+                readProject: ReadVoiceLabProjectAsync,
+                setRewriteVoice: async (recordId, ct) =>
+                {
+                    Task? save = null;
+                    await OnUiAsync(() => save = SetAsync(VoiceRebuild.RewriteVoiceKey, recordId, ct));
+                    await save!;
+                },
+                rewriteVoice: () => Settings.GetString(VoiceRebuild.RewriteVoiceKey),
+                play: VoxClip.Media.Audio.PhraseCueOutput.PlayAsync);
 #if DEBUG
             var fixtures = Environment.GetEnvironmentVariable("VOXCLIP_DEBUG_VOICELAB");
             if (fixtures?.StartsWith("fixtures:", StringComparison.Ordinal) == true)
