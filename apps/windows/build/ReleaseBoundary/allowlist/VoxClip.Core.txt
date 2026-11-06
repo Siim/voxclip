@@ -9601,6 +9601,30 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabGeometryException :: method public g
 member VoxClip.Core.Domain.VoiceLab.VoiceLabGeometryException :: method public get_TakeEdgeIsStart()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabGeometryException :: method public get_WordId()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabGeometryException :: method public set_TakeEdgeIsStart(System.Nullable`1<bool>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech :: field internal JoinSeconds
+member VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech :: field public MaximumSeconds
+member VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech :: field public MaximumWordSeconds
+member VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech :: method private NearestPart(VoxClip.Core.Domain.Shared.TimedWord,double,double,double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech :: method private PatchSpeaker(VoxClip.Core.Domain.Shared.TimedWord[],System.Func`2<int,double>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech :: method private get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech :: method public .ctor(System.Collections.Generic.IReadOnlyList`1<System.ValueTuple`2<long,long>>,string)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech :: method public Covers(long)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech :: method public Deconstruct(System.Collections.Generic.IReadOnlyList`1<System.ValueTuple`2<long,long>>&,string&)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech :: method public Samples(VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech :: method public Select(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,double,double,int,long,double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech :: method public get_Frames()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech :: method public get_Ranges()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech :: method public get_Speaker()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech,VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech,VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech :: method public set_Ranges(System.Collections.Generic.IReadOnlyList`1<System.ValueTuple`2<long,long>>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech :: method public set_Speaker(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabHandles :: method public CheckTrim(VoxClip.Core.Domain.VoiceLab.VoiceLabSeams,double,double,double,int)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabHandles :: method public Minimum(long,bool,int,double,double)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabHandles :: method public Seam(VoxClip.Core.Domain.VoiceLab.VoiceLabSeamKind,long,bool,int,double,double)
@@ -11350,6 +11374,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow :: method public set_Receipt
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow :: method public set_Score(System.Nullable`1<double>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow :: method public set_Seed(uint)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow :: method public set_VoiceCheck(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunEnd :: field public Blocked
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunEnd :: field public Cancelled
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunEnd :: field public Completed
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunEnd :: field public EarlyStop
@@ -11383,11 +11408,13 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunResult :: method public ToStr
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunResult :: method public get_Best()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunResult :: method public get_BestAutomatic()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunResult :: method public get_End()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunResult :: method public get_Failure()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunResult :: method public get_Ranked()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunResult :: method public get_Rows()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunResult :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunResult,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunResult)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunResult :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunResult,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunResult)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunResult :: method public set_End(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunEnd)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunResult :: method public set_Failure(System.Exception)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRunResult :: method public set_Rows(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck :: method private .cctor()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck :: method private .ctor()
@@ -15909,6 +15936,7 @@ type VoxClip.Core.Domain.VoiceLab.VoiceLabGenerationSession+Preparation
 type VoxClip.Core.Domain.VoiceLab.VoiceLabGeometry
 type VoxClip.Core.Domain.VoiceLab.VoiceLabGeometryErrorCode
 type VoxClip.Core.Domain.VoiceLab.VoiceLabGeometryException
+type VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech
 type VoxClip.Core.Domain.VoiceLab.VoiceLabHandles
 type VoxClip.Core.Domain.VoiceLab.VoiceLabHardJoin
 type VoxClip.Core.Domain.VoiceLab.VoiceLabJoinAdvisory

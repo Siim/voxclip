@@ -441,14 +441,15 @@ internal sealed partial class RewritePanel : Grid
         discover.IsEnabled = VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck.WindowsNativeParityVerified && !session.IsGeneratingBatch && !generation.IsPreparing &&
             !session.WordingIsLocked;
         var unavailable = generation.Voices.Count == 0 && session.VoicesUnavailable;
-        discover.Visibility = unavailable || session.PricedVoiceHunks.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        discover.Visibility = unavailable || session.PricedVoiceHunks.Count == 0 || session.EveryPhraseSettled ? Visibility.Collapsed : Visibility.Visible;
         noVoice.Visibility = !unavailable && generation.HasDiscovered && generation.Voices.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         languageUnavailable.Visibility = unavailable ? Visibility.Visible : Visibility.Collapsed;
         var batch = session.PreparedBatch;
         var actionTitle = session.GenerationWindows.All(window => window.Rows.Count == 0) ? "Make take" : "Try another";
         var title = batch is null ? actionTitle : VoiceLabCostPresentation.ButtonTitle(actionTitle, null, batch.Kind());
         generate.Content = title;
-        generate.Visibility = session.PricedVoiceHunks.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        // No priced control once every phrase is settled (ADR-R40): the footer finishes the Rewrite.
+        generate.Visibility = session.PricedVoiceHunks.Count == 0 || session.EveryPhraseSettled ? Visibility.Collapsed : Visibility.Visible;
         generate.IsEnabled = VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck.WindowsNativeParityVerified && session.CanGenerateAll;
         SetName(generate, title); ToolTipService.SetToolTip(generate, title);
         var running = session.GenerationWindows.FirstOrDefault(window => window.IsRunning);

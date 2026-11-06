@@ -116,6 +116,7 @@ internal sealed partial class RewriteSession : IDisposable
     }
     private void GenerationChanged(object? sender, EventArgs args)
     {
+        RememberBlocked();
         ObserveMeasuredTakes();
         AdvanceAutoFix();
         ApplyPendingExpressions();

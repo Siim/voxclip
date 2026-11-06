@@ -113,6 +113,9 @@ public static class VoiceLabSourceAudio
         await DecodeMonoAsync(source, 0, frames, sampleRate, conversion, (samples, _) => levels.Append(samples), ct).ConfigureAwait(false);
         var envelope = levels.Finish();
         var ranges = new List<(long Start, long End)> { NearWindow(window, incomingSilence, outgoingSilence, frames, sampleRate) };
+        // The use-time guard's words nearest the patch (voice-lab §6.9, ADR-R40), read in a few spans.
+        foreach (var (start, end) in VoiceLabGuardSpeech.Select(items, window.Start, window.End, sampleRate, frames).Covers(5L * sampleRate))
+            ranges.Add(Aligned(start, end, frames, sampleRate));
         // A search that finds no run leaves the refusal to the take run's own preflight, which repeats it.
         VoiceLabRoomTone? tone = null;
         try { tone = VoiceLabRoomToneSelection.Select(items, envelope, sampleRate, frames,

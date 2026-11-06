@@ -106,6 +106,7 @@ internal sealed partial class RewriteGeneration
     private void FinishTakes(VoiceLabTakeRunResult result)
     {
         reviewEnd = result.End;
+        if (result.End == VoiceLabTakeRunEnd.Blocked) Blocked ??= RewriteSession.BlockedCopy(result.Failure);
         VideoChoice = null;
         BestTakeId = result.End is VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop && !LeftOut ? AutomaticTake()?.Id : null;
         var retained = explicitSelection is { } chosen && Rows.Any(row => row.Id == chosen && row.Selectable && !row.RequiresJoinAdvisoryAcceptance) ? explicitSelection : null;
@@ -119,6 +120,7 @@ internal sealed partial class RewriteGeneration
         };
         Announcement = !Rows.Any(row => row.Selectable) ? TakeRowPresentation.NonePassed :
             TakeRowPresentation.Completion(Rows.Count, Selected is { Fits: true, AutomaticallySelectable: true } row ? row.Index + 1 : null, Rows.Count(row => !row.Selectable && !row.Stopped));
+        if (result.End == VoiceLabTakeRunEnd.Blocked && Blocked is not null) Announcement = Blocked;
         Notify();
     }
     /// <summary>Automatic fixes (voice-lab.md §8.2.2): later runs add their takes beside these, so no paid take is replaced
@@ -133,6 +135,18 @@ internal sealed partial class RewriteGeneration
     /// <summary>The phrase keeps its original words (Keep original words, or the last automatic round): no take is used and
     /// every take stays listed (Mac <c>ClipTakePlan.leaveOut</c>). <see cref="Restore"/> undoes it.</summary>
     internal bool LeftOut { get; private set; }
+    /// <summary>The use-time guard settled this phrase for the Rewrite (ADR-R40, voice-lab.md §6.9; Mac <c>Phrase.blocked</c>): its stop,
+    /// said once. Nothing was sent for it and no priced control is offered for it again; Keep as recorded or Say it myself settles it.</summary>
+    internal string? Blocked { get; private set; }
+    /// <summary>A blocked phrase with neither a take of the user's own nor Keep as recorded yet (Mac <c>waitsOnBlock</c>).</summary>
+    internal bool WaitsOnBlock => Blocked is not null && !LeftOut && Selected is null;
+    internal void Block(string reason)
+    {
+        if (closed || Blocked is not null) return;
+        Blocked = reason; Announcement = reason;
+        if (!IsRunning) Phase = ReviewPhase();
+        Notify();
+    }
     internal bool LeaveOut()
     {
         if (closed || accepting || IsRunning || LeftOut) return false;

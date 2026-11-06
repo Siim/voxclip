@@ -84,7 +84,7 @@ internal sealed partial class RewriteSession
             window.ShareVoiceChecks(VoiceChecks, index);
             if (AutoFix.Armed) window.KeepEveryTake();
             generationWindows.Add(window);
-            if (!reusable) window.Changed += GenerationChanged;
+            if (!reusable) { ApplyRememberedBlock(window, desired.ElementAtOrDefault(index)); window.Changed += GenerationChanged; }
             else if (desired.Count == 0 || previousHunks.Length == 0) _ = window.InputsChangedAsync();
         }
         foreach (var retired in previous.Where(window => !generationWindows.Contains(window)))
@@ -187,7 +187,10 @@ internal sealed partial class RewriteSession
     internal const string PriceChangedCopy =
         "The price of the next phrases changed while takes were made, so nothing more was sent. Finished takes are kept. Get a fresh price for the rest.";
 
-    internal bool CanGenerateAll => GenerationIsCurrent && !IsGeneratingBatch && PreparedBatch is not null && generationWindows.All(window => window.CanExecute);
+    /// <summary>A phrase the guard settled is skipped by the run (nothing is sent for it); a run of only settled phrases is not offered.</summary>
+    internal bool CanGenerateAll => GenerationIsCurrent && !IsGeneratingBatch && PreparedBatch is not null &&
+        generationWindows.All(window => window.CanExecute || window.Blocked is not null && !window.IsRunning && !window.IsPreparing) &&
+        generationWindows.Any(window => window.Blocked is null && !window.LeftOut);
     internal void MarkBatchEstimateShown(VoiceLabTakeRunParts batch)
     {
         if (batch.Windows.Count != generationWindows.Count) return;
@@ -254,6 +257,13 @@ internal sealed partial class RewriteSession
                     progress = new VoiceLabTakeBatchProgress(new VoiceLabTakeBatch(requoted));
                 }
                 if (!Current()) return;
+                if (windows[index].Blocked is not null)
+                {
+                    // Settled earlier in this Rewrite: nothing is sent for it, and the run goes on (ADR-R40).
+                    progress.Finish(index % VoiceLabTakeBatch.MaximumWindows, new VoiceLabTakeRunResult([], VoiceLabTakeRunEnd.Blocked));
+                    started = index;
+                    continue;
+                }
                 started = index;
                 await windows[index].GenerateAsync(async (changedCost, token) =>
                 {
@@ -266,6 +276,8 @@ internal sealed partial class RewriteSession
                 }, quotes[index], autoplay: false);
                 if (!Current() || windows[index].LastRunResult is not { } result) return;
                 progress.Finish(index % VoiceLabTakeBatch.MaximumWindows, result);
+                // The guard settled this phrase before anything was sent for it; the other phrases go on (voice-lab.md §6.9).
+                if (result.End == VoiceLabTakeRunEnd.Blocked) { RememberBlocked(); continue; }
                 if (result.End is not (VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop)) return;
             }
         }

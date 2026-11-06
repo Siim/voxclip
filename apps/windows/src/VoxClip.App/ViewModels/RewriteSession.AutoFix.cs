@@ -26,6 +26,9 @@ internal abstract record StuckTakeReason
     internal sealed record Provider(Exception Error) : StuckTakeReason;
     /// <summary>No word timing even after recovery from the word check and on device (voice-lab.md §8.5): one more take.</summary>
     internal sealed record Timing : StuckTakeReason;
+    /// <summary>The use-time guard refused the phrase's speech before anything was sent (ADR-R40, voice-lab.md §6.9): no retry or
+    /// rewording can change that, so the phrase is settled with <see cref="Reason"/>.</summary>
+    internal sealed record Blocked(string Reason) : StuckTakeReason;
     /// <summary>Any other failed check, in the take row's own words.</summary>
     internal sealed record Other(string Reason) : StuckTakeReason;
 
@@ -174,8 +177,9 @@ internal sealed partial class RewriteSession
     /// <summary>Why phrase <paramref name="index"/>'s takes are stuck (Mac <c>stuckReason</c>); null when it isn't.</summary>
     internal StuckTakeReason? StuckReason(int index)
     {
-        if (generationWindows.ElementAtOrDefault(index) is not { } window || window.LeftOut || window.Rows.Count == 0 ||
-            window.IsRunning || window.IsPreparing) return null;
+        if (generationWindows.ElementAtOrDefault(index) is not { } window || window.LeftOut || window.IsRunning || window.IsPreparing) return null;
+        if (window.WaitsOnBlock) return new StuckTakeReason.Blocked(window.Blocked!);
+        if (window.Rows.Count == 0) return null;
         // ADR-R37: a short take waiting for its run's pooled voice check is not stuck yet.
         if (window.Rows.Any(row => row.VoiceCheck is VoiceLabTakeVoiceCheck.WaitingCheck)) return null;
         var current = window.Rows.Where(row => !row.Stopped && !window.IsBeforeExpression(row.Id)).ToArray();
@@ -221,6 +225,7 @@ internal sealed partial class RewriteSession
             StuckTakeReason.ShortSpeech => $"Phrase {phrase}: too short to check your voice on its own words.",
             StuckTakeReason.Provider provider => $"Phrase {phrase}: {ProviderProblem(provider.Error)}",
             StuckTakeReason.Timing => $"Phrase {phrase}: its take's word timing couldn't be read, even from the word check.",
+            StuckTakeReason.Blocked blocked => $"Phrase {phrase}: {blocked.Reason}",
             StuckTakeReason.Other other => $"Phrase {phrase}: {other.Reason}",
             _ => $"Phrase {phrase}: its takes did not pass the checks."
         };
@@ -272,6 +277,8 @@ internal sealed partial class RewriteSession
             // The user's own words and own takes are final: the resolver never rewrites them (design.md §6.3.8).
             if (Wording(index) != PhraseWording.Suggested || StuckReason(index) is not { } reason) { AutoFix.Lines.Remove(index); continue; }
             if (reason is StuckTakeReason.Provider) { AutoFix.Lines.Remove(index); AutoFix.ShowChoices = true; continue; }
+            // A phrase the guard settled is never retried or reworded: its card offers Keep as recorded and Say it myself.
+            if (reason is StuckTakeReason.Blocked) { AutoFix.Lines.Remove(index); continue; }
             var used = AutoFix.Rounds.GetValueOrDefault(index);
             if (used >= RewriteAutoFixState.MaximumRounds) { GiveUp(index); continue; }
             if (reason is StuckTakeReason.Timing && AutoFix.TriedAnother.Contains(index)) { GiveUp(index); continue; }

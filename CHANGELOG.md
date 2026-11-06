@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Windows, Rewrite predicts take lengths from the measured prior and learns each voice's pace across projects, writes each line to fit its time in the video, keeps a line that still can't fit as recorded, and settles a phrase that doesn't sound like your voice with Keep as recorded or Say it myself instead of a dead end
 - On Mac, your videos teach Rewrite's voice check your voice: speech that already matches your consent recording is remembered per video, so your other phrases in the same car or room pass too; Get Price checks every phrase first, free, and never prices one it would block; Settings › Voices shows how many videos it learned from, with Learn from my videos and Forget learned references
 - Rewrite now writes each line to fit the time it has in your video: tones like Viral YouTuber tighten instead of padding with filler, a line still too long keeps your own words, a take that can't be rendered keeps that phrase's audio while the others are used, and every step of the Rewrite panel ends with a button that moves on.
 - On Mac, Rewrite predicts how long a take in your voice will be from measured real takes (it used to plan Eleven v4 takes at about half their length), learns each voice's pace across projects, and words changes to a length four takes in five fit, so fewer takes come back too long

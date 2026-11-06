@@ -25,7 +25,7 @@ public sealed class RewriteSmokeTests
     /// <summary>S15 twins Mac S15 (bridge words); S16 twins Mac S14 (Eleven v4 timing quirks), renumbered because Windows S14 is the
     /// collision after paid takes; S17 twins Mac S16 (a long run voiced in parts); the own-take scenarios keep Mac's names.</summary>
     public static TheoryData<string> Scenarios => new(["S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9", "S10", "S11", "S12", "S13", "S14",
-        "S15", "S16", "S17", "S-own-typed", "S-own-mic", "S-own-mic-misfit", "S-viral-fit"]);
+        "S15", "S16", "S17", "S-own-typed", "S-own-mic", "S-own-mic-misfit", "S-viral-fit", "S-guard-blocked"]);
     /// <summary>S17's take: words 10–79 with every fifth word from 12 to 67 changed, twelve phrases in three parts.</summary>
     internal static readonly int[] LongRunWords = Enumerable.Range(0, 12).Select(index => 12 + 5 * index).ToArray();
     internal static string LongRunReply => string.Join(" ", Enumerable.Range(10, 70).Select(index => LongRunWords.Contains(index) ? "a much clearer phrasing" : "word" + index));
@@ -133,6 +133,31 @@ public sealed class RewriteSmokeTests
                     !asked.Contains("1. “word10”: 0.4 s, at most 1 words", StringComparison.Ordinal) || !asked.Contains("7. “word16”: 0.4 s", StringComparison.Ordinal))
                     smoke.Failures.Add($"{id} VF2: the request didn't carry the slots and the why: {connector.Rewrites.Count} sent; " + connector.Rewrites.FirstOrDefault()?.Instruction);
                 await smoke.GetPriceAsync();
+                smoke.End(VoiceLabVideoMode.Source, voiced: 1);
+                return smoke;
+            }
+            case "S-guard-blocked":
+            {
+                // Mac S-guard-blocked (G1, G2; ADR-R40): the guard refuses phrase 1's speech before anything is sent. It is settled: the
+                // run goes on and voices phrase 2, the stop is said once with its two ways on, and nothing prices phrase 1 again.
+                Runner[] runners = [new((_, _) => (Fit, Passed)) { Blocks = _ => new VoiceConsentException(VoiceConsentError.VoiceOwnerMismatch) },
+                    new((_, _) => (Fit, Passed))];
+                using var smoke = new Smoke(id, new(TwoChanges, (_, ordinals) => Rows(ordinals, "x")), runners[0], last: 16, runners: index => runners[index]);
+                await smoke.ProposeAsync();
+                await smoke.GetPriceAsync();
+                var windows = smoke.Session.GenerationWindows;
+                var card = smoke.Session.NextStepCards.FirstOrDefault(card => card.Id == "Rewrite.Steps.Phrase1");
+                if (windows[0].Blocked is null || runners[1].Sends != 1 || windows[1].Selected is null)
+                    smoke.Failures.Add($"{id} G1: phrase 1 {(windows[0].Blocked is null ? "wasn't settled" : "settled")}, phrase 2 ran {runners[1].Sends} time(s)");
+                if (card is null || !card.Chips.Select(chip => chip.Label).SequenceEqual(["● Say it myself", "Keep as recorded"]) ||
+                    smoke.Session.FooterStep.Title != "Keep Original Audio for Phrase 1")
+                    smoke.Failures.Add($"{id} G1: the stop and its two ways on aren't shown; footer '{smoke.Session.FooterStep.Title}'");
+                await smoke.ClickAsync("Rewrite.Chip.KeepAsRecorded1");
+                if (runners[0].Sends != 0 || runners[0].Executions != 1 || windows[0].CanExecute ||
+                    smoke.Session.NextStepCards.SelectMany(card => card.Chips).Any(chip => chip.Label.Contains('$')) ||
+                    smoke.Session.FooterStep.Phrase == 0 || smoke.Session.FooterStep.Title?.Contains('$') == true)
+                    // The headless stub has no scratch audio, so its takes never read ready for Use; End checks what Use would apply.
+                    smoke.Failures.Add($"{id} G2: phrase 1 was offered or sent again ({runners[0].Executions} runs): footer '{smoke.Session.FooterStep.Title}'");
                 smoke.End(VoiceLabVideoMode.Source, voiced: 1);
                 return smoke;
             }

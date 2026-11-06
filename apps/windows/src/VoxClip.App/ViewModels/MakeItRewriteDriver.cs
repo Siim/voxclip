@@ -12,13 +12,14 @@ internal sealed class MakeItRewriteDriver(EditorViewModel editor, MakeItRewriteR
 {
     /// <summary>The steps the last run took, for the smoke's log.</summary>
     internal List<string> Pressed { get; } = [];
+    /// <summary>Phrases kept as recorded because the use-time guard blocked them (voice-lab.md §6.9): no click of the creator's.</summary>
+    private readonly HashSet<int> keptBlocked = [];
 
     internal async Task<MakeItRewriteOutcome> RunAsync(CancellationToken ct)
     {
         var session = await open(request);
         if (session is null) return new(new MakeItRewriteResult.NeedsYou("Rewrite couldn't place these words. Change to try it yourself."));
         var used = false;
-        decimal price = 0;
         List<int> joins = [];
         try
         {
@@ -51,7 +52,9 @@ internal sealed class MakeItRewriteDriver(EditorViewModel editor, MakeItRewriteR
             var cap = await readCap(ct);
             if (cap is not null && batch.Kind(cap).Kind == VoiceLabCostPresentationKind.Confirm)
                 return new(new MakeItRewriteResult.NeedsYou("This would pass your monthly ElevenLabs cap. Voice it in Rewrite. Nothing was sent."));
-            price = amount;
+            // A phrase the guard blocked sent nothing, so its share of the price is never counted as spent (Mac G4).
+            var quoted = batch.Windows.Select(window => window.Quote.Estimate.Usd ?? 0m).ToArray();
+            decimal Spent() => quoted.Where((_, index) => session.GenerationWindows.ElementAtOrDefault(index)?.Blocked is null).Sum() + session.AutoFix.Spent;
             // An approved price also lets Rewrite fix stuck phrases on its own; that allowance stays inside the budget.
             session.AutoFixCeiling = Math.Max(0, budget - amount);
             session.MarkBatchEstimateShown(batch);
@@ -63,13 +66,20 @@ internal sealed class MakeItRewriteDriver(EditorViewModel editor, MakeItRewriteR
                 if (session.AutoFix.Work is { } work) { await work; continue; }
                 if (session.AutoFix.Capped is { } capped)
                 {
-                    var spent = price + session.AutoFix.Spent;
+                    var spent = Spent();
                     if (capped.Usd is not { } next || spent + next > budget) return new(new MakeItRewriteResult.OverCap(capped.Usd), spent);
                     Pressed.Add("Keep fixing · " + MakeItController.Dollars(next));
                     session.KeepFixing();
                     continue;
                 }
                 joins = JoinNotes(session);
+                // A phrase the guard blocked is kept as recorded with no click (Mac keepBlockedPhrases); the other phrases go on.
+                if (session.KeepBlockedAsRecorded() is { Count: > 0 } blocked)
+                {
+                    keptBlocked.UnionWith(blocked);
+                    Pressed.Add("Make it postable keeps " + string.Join(", ", blocked.Select(index => "phrase " + (index + 1))) + " as recorded (not the voice owner)");
+                    continue;
+                }
                 var footer = session.FooterStep;
                 if (footer.Action == RewriteFooterAction.UseTakes && session.CanAcceptAll)
                 {
@@ -77,7 +87,7 @@ internal sealed class MakeItRewriteDriver(EditorViewModel editor, MakeItRewriteR
                     if (!await session.ApplyTakeAsync()) break;
                     var added = editor.Project.VoiceLab.Segments.Select(segment => segment.Id).Where(id => !before.Contains(id)).ToArray();
                     used = true;
-                    return new(new MakeItRewriteResult.Voiced(added), price + session.AutoFix.Spent) { JoinNotes = joins };
+                    return new(new MakeItRewriteResult.Voiced(added), Spent()) { JoinNotes = joins, KeptAsRecorded = keptBlocked.Count };
                 }
                 if (footer.Action == RewriteFooterAction.ChooseTake)
                 {
@@ -91,10 +101,10 @@ internal sealed class MakeItRewriteDriver(EditorViewModel editor, MakeItRewriteR
                 if (footer.Action == RewriteFooterAction.KeepChangeWords && session.KeepCollidedOriginal(footer.Phrase)) { Pressed.Add(footer.Title!); continue; }
                 // Every phrase keeps its audio: the text fixes apply and the Rewrite ends, nothing voiced.
                 if (session.GenerationWindows.Count > 0 && session.GenerationWindows.All(window => window.LeftOut))
-                    return new(FinishAsRecorded(session), price + session.AutoFix.Spent) { JoinNotes = joins };
-                return new(new MakeItRewriteResult.NeedsYou(FirstLine(footer.Line, "Rewrite is waiting for you. Change to finish it.")), price + session.AutoFix.Spent) { JoinNotes = joins };
+                    return new(FinishAsRecorded(session), Spent()) { JoinNotes = joins, KeptAsRecorded = keptBlocked.Count };
+                return new(new MakeItRewriteResult.NeedsYou(FirstLine(footer.Line, "Rewrite is waiting for you. Change to finish it.")), Spent()) { JoinNotes = joins };
             }
-            return new(new MakeItRewriteResult.NeedsYou("Rewrite is waiting for you. Change to finish it."), price + session.AutoFix.Spent) { JoinNotes = joins };
+            return new(new MakeItRewriteResult.NeedsYou("Rewrite is waiting for you. Change to finish it."), Spent()) { JoinNotes = joins };
         }
         finally
         {
@@ -108,7 +118,7 @@ internal sealed class MakeItRewriteDriver(EditorViewModel editor, MakeItRewriteR
     /// and the result says why the words stay.</summary>
     private MakeItRewriteResult FinishAsRecorded(RewriteSession session)
     {
-        var reason = session.AutoFix.Notes.LastOrDefault() ?? "Your words stay as recorded.";
+        var reason = keptBlocked.Count > 0 ? RewriteSession.NotYourVoiceHere : session.AutoFix.Notes.LastOrDefault() ?? "Your words stay as recorded.";
         var fixes = session.TextFixCount > 0 && session.ApplyTextFixesOnly();
         Pressed.Add(fixes ? "apply text fixes; keep the words as recorded" : "keep the words as recorded");
         return new MakeItRewriteResult.KeptAsRecorded(fixes ? reason + " Its text fixes are applied." : reason);

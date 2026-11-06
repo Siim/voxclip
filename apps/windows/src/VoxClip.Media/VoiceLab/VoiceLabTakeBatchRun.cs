@@ -45,7 +45,7 @@ public sealed class VoiceLabTakeBatchRun(IReadOnlyList<VoiceLabTakeRun> runs)
         VoiceLabTakeRunResult result;
         try { result = await Runs[window].ExecuteWithDispatchAsync(batch.Windows[window].Quote, dispatch, progress, ct).ConfigureAwait(false); }
         catch { await DiscardAsync(window).ConfigureAwait(false); throw; }
-        if (result.End is not (VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop)) await DiscardAsync(window).ConfigureAwait(false);
+        if (result.End is not (VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop or VoiceLabTakeRunEnd.Blocked)) await DiscardAsync(window).ConfigureAwait(false);
         return result;
     }
     public async Task DiscardAsync(int from)

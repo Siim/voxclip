@@ -65,7 +65,7 @@ internal sealed partial class RewriteGeneration : IDisposable
     internal VoiceLabTakeInput? ReviewedInput { get; private set; }
     internal VoiceLabTakeRunResult? LastRunResult => runner.Result;
     internal bool ReviewedInputsCurrent { get; private set; }
-    internal bool CanExecute => !closed && current() && !accepting && !IsRunning && !IsPreparing && !discovering &&
+    internal bool CanExecute => !closed && Blocked is null && current() && !accepting && !IsRunning && !IsPreparing && !discovering &&
         Quote is { } quote && ReferenceEquals(quote, shownQuote) && Cost is not null;
     internal string ButtonTitle
     {
@@ -283,7 +283,9 @@ internal sealed partial class RewriteGeneration : IDisposable
                 if (runStarted && runner.Result is { } completed) FinishTakes(completed);
             }
             if (runner.Result is { End: VoiceLabTakeRunEnd.Fatal } result)
-                Fail(result.Rows.LastOrDefault()?.Failure ?? new VoiceLabException(VoiceLabErrorKind.ProviderFailure));
+                Fail(result.Rows.LastOrDefault()?.Failure ?? result.Failure ?? new VoiceLabException(VoiceLabErrorKind.ProviderFailure));
+            // The guard settled the phrase before anything was sent (ADR-R40): no take run started, so no takes finish.
+            if (runner.Result is { End: VoiceLabTakeRunEnd.Blocked } settled && !runStarted) Block(RewriteSession.BlockedCopy(settled.Failure));
             if (core.PreparationFailure is { } error) Fail(error);
         }
         catch (OperationCanceledException) { if (!closed && revision == version) Phase = runStarted ? RewriteGenerationPhase.Cancelled : ReviewPhase(); }

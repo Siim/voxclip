@@ -327,6 +327,10 @@ public sealed class RewriteAutoFixTests
         /// <summary>A run's failure by run: the row's exception and whether the run ends fatally; null makes the scripted take.</summary>
         internal Func<int, VoiceLabTakeInput, (Exception Error, bool Fatal)?>? Fails { get; init; }
         internal TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        /// <summary>The use-time guard's refusal by execution (ADR-R40): the run ends <see cref="VoiceLabTakeRunEnd.Blocked"/> before
+        /// anything is sent; null runs as scripted.</summary>
+        internal Func<int, Exception?>? Blocks { get; init; }
+        internal int Executions;
         /// <summary>How many quotes were prepared; a long run's later part is quoted again just before it runs.</summary>
         internal int Prepares;
         /// <summary>Each quoted action's price by prepare; null: $0.01.</summary>
@@ -352,6 +356,8 @@ public sealed class RewriteAutoFixTests
         public async Task<VoiceLabTakeRunResult> ExecuteWithDispatchAsync(VoiceLabTakeRunQuote quote, VoiceLabRunDispatch dispatch,
             Func<IReadOnlyList<VoiceLabTakeRow>, Task>? progress = null, CancellationToken ct = default)
         {
+            Executions++;
+            if (Blocks?.Invoke(Executions) is { } refused) return new([], VoiceLabTakeRunEnd.Blocked) { Failure = refused };
             await dispatch.AuthorizeAsync(quote.Takes[0].Synthesis.Review.RequestId, ct);
             await dispatch.Start(() => Task.FromResult(true), ct);
             Sends++;

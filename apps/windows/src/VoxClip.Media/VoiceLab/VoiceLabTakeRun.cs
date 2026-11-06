@@ -99,12 +99,7 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
             // Each region is resampled on the whole track's 24 kHz grid, where staging reads it.
             var source = await Task.Run(() => VoiceLabSourceAudio.Resample(snapshot.Source, snapshot.SourceSampleRate, VoiceLabSourceAudio.TakeAssetRate), ct).ConfigureAwait(false);
             Check(version, binding, ct);
-            var rate = snapshot.SourceSampleRate;
-            var center = (snapshot.Window.StartSample + snapshot.Window.EndSample) / 2;
-            var start = Math.Max(0, center - 5L * rate);
-            var end = Math.Min(snapshot.Source.TotalFrames, start + 10L * rate);
-            var span = snapshot.Source.Samples(start, end) ?? throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
-            var speech = VoiceConsentAudio.Resample(span.Span, rate, 16000);
+            var speech = GuardSpeech(snapshot);
             var model = client.ModelRevision;
             for (var index = 0; index < 3; index++)
             {
@@ -218,7 +213,7 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
             ApplyVoiceChecks(checkedRows);
             var rows = result.Rows.Select(row => checkedRows.GetValueOrDefault(row.Id) ?? row).ToArray();
             await report(Array.AsReadOnly(rows)).ConfigureAwait(false);
-            return new(Array.AsReadOnly(rows), result.End);
+            return new(Array.AsReadOnly(rows), result.End) { Failure = result.Failure };
         }
         catch (VoiceLabConfirmationRequiredException) { retainQuote = !transportStarted; throw; }
         finally
@@ -392,7 +387,10 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
             {
                 if (!hasStarted())
                 {
-                    if (error is VoiceConsentException or VoiceLabRunInvalidatedException) return new(rows.AsReadOnly(), End(error));
+                    // The guard judged this window before anything was sent: no retry changes its verdict, and a batch's other
+                    // windows go on (voice-lab.md §6.9, ADR-R40; Mac guardSettles).
+                    if (GuardSettles(error)) return new(rows.AsReadOnly(), VoiceLabTakeRunEnd.Blocked) { Failure = error };
+                    if (error is VoiceConsentException or VoiceLabRunInvalidatedException) return new(rows.AsReadOnly(), End(error)) { Failure = error };
                     throw;
                 }
                 if (generated is null && synthesisAccepted.UnalignedAudio is { } decoded)
@@ -574,7 +572,30 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
             return error is VoiceLabRunInvalidatedException ? VoiceLabTakeRunEnd.Invalidated : VoiceLabTakeRunEnd.Fatal;
         }
     }
+    /// <summary>The use-time guard's own refusals, which the same speech always repeats: not the voice owner, or too little of the patch
+    /// speaker's speech to check.</summary>
+    internal static bool GuardSettles(Exception error) =>
+        error is VoiceConsentException { Kind: VoiceConsentError.VoiceOwnerMismatch or VoiceConsentError.SpeakerMismatch };
     private static bool Fatal(Exception error) => error is VoiceConsentException or VoiceCreatorMismatchException or OperationCanceledException or VoiceLabRunInvalidatedException ||
         error is VoiceLabException { Kind: VoiceLabErrorKind.Unauthorized or VoiceLabErrorKind.PermissionMissing or VoiceLabErrorKind.MissingKey or
             VoiceLabErrorKind.QuotaExceeded or VoiceLabErrorKind.ConsentRequired or VoiceLabErrorKind.SpeakerMismatch or VoiceLabErrorKind.Cancelled };
+
+    /// <summary>The use-time guard's speech for this patch (voice-lab §6.9, ADR-R40; Mac <c>guardSpeech</c>), at 16 kHz: the transcript
+    /// words' own audio nearest the patch (<see cref="VoiceLabGuardSpeech"/>), joined, up to 10 s, from the original source. A transcript
+    /// with no timed words leaves only the patch's own 10 s of source, centred on it.</summary>
+    internal static float[] GuardSpeech(VoiceLabTakeInput input)
+    {
+        var rate = input.SourceSampleRate;
+        var selection = VoiceLabGuardSpeech.Select(input.Items, input.Window.Start, input.Window.End, rate, input.Source.TotalFrames);
+        float[] speech;
+        if (selection.Ranges.Count == 0)
+        {
+            var center = (input.Window.StartSample + input.Window.EndSample) / 2;
+            var start = Math.Max(0, center - 5L * rate);
+            var end = Math.Min(input.Source.TotalFrames, start + 10L * rate);
+            speech = (input.Source.Samples(start, end) ?? throw new VoiceLabException(VoiceLabErrorKind.InvalidInput)).ToArray();
+        }
+        else speech = selection.Samples(input.Source) ?? throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
+        return VoiceConsentAudio.Resample(speech, rate, 16000);
+    }
 }
