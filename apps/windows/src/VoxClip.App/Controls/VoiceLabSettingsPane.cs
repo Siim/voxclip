@@ -307,6 +307,7 @@ internal sealed class VoiceLabSettingsPane : UserControl
             }
             AddVoiceCard(row, operation.RecordId, VoiceLabActionNames.Created(operation.ExpectedVoiceName ?? "Voice creation", operation.StartedAt));
         }
+        if (session.ShowsVideoVoiceRows) AddVideoVoiceRows();
         var create = Ui.Button("Create Your Voice…", owner.ShowCreateVoice); create.IsEnabled = session.Enabled && !session.Busy;
         AutomationProperties.SetName(create, "Create Your Voice…");
         AutomationProperties.SetHelpText(create, session.CreateBlockedReason);
@@ -471,10 +472,72 @@ internal sealed class VoiceLabSettingsPane : UserControl
             AnnounceLine(line, state.Line, "voice-rebuild-" + record.RecordId);
         }
     }
-    private void AnnounceLine(TextBlock owner, string line, string activity)
+    /// <summary>A matching voice for each video (voice-lab.md §6.13, ADR-R45; Mac <c>VideoVoiceRows</c>): the remembered answer, which video
+    /// has its own voice, a removal still owed with Retry now, and how close takes sound to the speech beside them. Shown only where an
+    /// attested voice can be matched on this PC (never behind the closed parity gate) or the book still holds something. Lines that change
+    /// are announced once through <see cref="AnnounceLine"/>; the pane keeps its one live region.</summary>
+    private void AddVideoVoiceRows()
     {
-        if (announcedLines.TryGetValue(activity, out var previous) && previous == line) return;
+        var anchor = session.AnchorName(null);
+        var panel = Ui.Stack();
+        var choices = VoiceLabSession.ModeChoices(anchor);
+        var mode = new ComboBox { Header = "Each video", HorizontalAlignment = HorizontalAlignment.Left, IsEnabled = session.Enabled && !session.Busy };
+        foreach (var (_, title) in choices) mode.Items.Add(title);
+        mode.SelectedIndex = choices.Select(choice => choice.Mode).ToList().IndexOf(session.VideoVoiceMode);
+        AutomationProperties.SetName(mode, "Each video");
+        AutomationProperties.SetAutomationId(mode, "voice-per-video-mode");
+        mode.SelectionChanged += (_, _) =>
+        {
+            if (mode.SelectedIndex < 0 || choices[mode.SelectedIndex].Mode == session.VideoVoiceMode) return;
+            var chosen = choices[mode.SelectedIndex].Mode;
+            owner.RunSensitive(() => Ui.RunAsync(message, () => session.SetVideoVoiceModeAsync(chosen), "Each video"), "Each video");
+        };
+        panel.Children.Add(mode);
+        var modeLine = VoiceLabSession.ModeLine(session.VideoVoiceMode, anchor);
+        var modeText = Ui.Text(modeLine, "HelperText");
+        AutomationProperties.SetAutomationId(modeText, "voice-per-video-mode-line");
+        panel.Children.Add(modeText);
+        AnnounceLine(modeText, modeLine, "voice-per-video-mode", announceFirst: initialLoadComplete);
+        foreach (var video in session.PerVideoBook.Videos)
+        {
+            var row = Ui.Text(session.VideoLine(video), "HelperText");
+            AutomationProperties.SetAutomationId(row, "voice-per-video-" + video.RecordId);
+            panel.Children.Add(row);
+        }
+        if (session.PerVideoNote is { } note)
+        {
+            var noteRow = Ui.Stack(8); noteRow.Orientation = Orientation.Horizontal;
+            var noteText = Ui.Text(note, "HelperText");
+            AutomationProperties.SetAutomationId(noteText, "voice-per-video-note");
+            noteRow.Children.Add(noteText);
+            if (session.PerVideoBook.Removals.Any(removal => removal.LastError is not null))
+                noteRow.Children.Add(SessionButton("Retry now", "Retry removing the previous video's voice", () => session.RemovePreviousVideoVoicesAsync()));
+            panel.Children.Add(noteRow);
+            AnnounceLine(noteText, note, "voice-per-video-note", announceFirst: initialLoadComplete);
+        }
+        if (session.PerVideoBook.Measurements.Count > 0)
+        {
+            panel.Children.Add(Ui.Text("How close takes sound to your speech beside them (1.00 is the same voice):", "HelperText"));
+            foreach (var measurement in session.PerVideoBook.Measurements)
+            {
+                var line = VoiceLabSession.MatchLine(measurement, anchor);
+                var text = Ui.Text(line, "HelperText");
+                var key = measurement.ContentKey[..Math.Min(8, measurement.ContentKey.Length)];
+                AutomationProperties.SetAutomationId(text, "voice-per-video-match-" + key);
+                panel.Children.Add(text);
+                AnnounceLine(text, line, "voice-per-video-match-" + measurement.ContentKey, announceFirst: initialLoadComplete);
+            }
+        }
+        AddCard(voices, panel);
+    }
+    /// <summary>Announces <paramref name="line"/> once when it changes. With <paramref name="announceFirst"/> false, a line already there when
+    /// the pane opens is only remembered, so state the user didn't just change isn't read out.</summary>
+    private void AnnounceLine(TextBlock owner, string line, string activity, bool announceFirst = true)
+    {
+        var known = announcedLines.TryGetValue(activity, out var previous);
+        if (known && previous == line) return;
         announcedLines[activity] = line;
+        if (!known && !announceFirst) return;
         // Once it is in the tree, so the peer exists.
         owner.Loaded += Announce;
         void Announce(object sender, RoutedEventArgs args) { owner.Loaded -= Announce; Ui.Announce(owner, line, activity); }

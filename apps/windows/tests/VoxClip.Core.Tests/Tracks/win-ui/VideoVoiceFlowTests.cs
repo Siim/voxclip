@@ -2,6 +2,7 @@
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Core.Services.Project;
 using VoxClip.Core.Services.VoiceLab;
 using VoxClip.Media.VoiceLab;
 using Xunit;
@@ -226,6 +227,32 @@ public sealed class VideoVoiceFlowTests
         Assert.Empty(h.Backend.Calls);
         Assert.Equal(h.Anchor.RecordId, h.Session.RewriteVoicePreference("car-key", "en"));
         Assert.False(VoiceSpeakerCheck.WindowsNativeParityVerified);
+    }
+
+    /// <summary>Settings › Voices "Each video" (Mac <c>VideoVoiceRows</c>): the answer and its line, the video's voice, the owed removal with
+    /// Retry now, and the match lines; the pane keeps its one live region and says changed lines once.</summary>
+    [Fact]
+    public async Task SettingsEachVideoShowsTheAnswerTheVoiceTheNoteAndTheMatch()
+    {
+        using var h = new Harness();
+        h.Backend.Finds["car-key"] = new("41 s from 1 video and your consent clip", [27.72, 15.4, 12.3, 13.3], new object(), RemovesBackgroundNoise: true, VideoMilliseconds: 41_000);
+        await h.LoadAsync();
+        await h.Session.SetVideoVoiceModeAsync(VoicePerVideo.Mode.Match);
+        await h.Session.MakeVideoVoice(Video("car"), "/videos/car.mp4").Work;
+        Assert.True(h.Session.ShowsVideoVoiceRows);
+        Assert.Equal("siim", h.Session.AnchorName(null));
+        Assert.Equal("siim · car (VoxClip) · 41 s of car, background noise removed", h.Session.VideoLine(Assert.Single(h.Session.PerVideoBook.Videos)));
+        var app = Path.Combine(Directory.GetParent(SharedResources.ResolveRoot())!.FullName, "apps", "windows", "src", "VoxClip.App");
+        var pane = File.ReadAllText(Path.Combine(app, "Controls", "VoiceLabSettingsPane.cs"));
+        Assert.Equal(1, pane.Split("SetLiveSetting").Length - 1);
+        Assert.Contains("if (session.ShowsVideoVoiceRows) AddVideoVoiceRows();", pane);
+        Assert.Contains("Header = \"Each video\"", pane);
+        Assert.Contains("session.SetVideoVoiceModeAsync(chosen)", pane);
+        Assert.Contains("SessionButton(\"Retry now\"", pane);
+        Assert.Contains("session.RemovePreviousVideoVoicesAsync()", pane);
+        Assert.Contains("AnnounceLine(modeText, modeLine, \"voice-per-video-mode\", announceFirst: initialLoadComplete)", pane);
+        Assert.Contains("AnnounceLine(noteText, note, \"voice-per-video-note\", announceFirst: initialLoadComplete)", pane);
+        Assert.Contains("VoiceLabSession.MatchLine(measurement, anchor)", pane);
     }
 
     /// <summary>A Rewrite of <paramref name="project"/> connected to the harness's Voice Lab: its voices are the backend's active records, the
