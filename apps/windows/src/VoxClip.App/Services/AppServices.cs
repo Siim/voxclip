@@ -76,6 +76,20 @@ internal sealed class AppServices : IAsyncDisposable
     private readonly DispatcherQueue dispatcher = DispatcherQueue.GetForCurrentThread();
     internal bool VoiceLabEnabled => RewriteEntryPolicy.Available(Settings.GetBool("voiceLab.enabled") == true,
         Settings.GetBool("voiceLab.betaNoticeAccepted") == true);
+    private RateCalibrations? rateCalibrations;
+    /// <summary>Each voice's speaking-rate calibration across projects (ADR-R43), loaded in the background on first use. A harness launch
+    /// (self-checks, probes, demo captures) keeps it in memory only: it never reads or writes the store.</summary>
+    internal RateCalibrations RateCalibrations
+    {
+        get
+        {
+            if (rateCalibrations is not null) return rateCalibrations;
+            rateCalibrations = new(RewriteEntryPolicy.HarnessLaunch(Program.Arguments) ? null : new VoxClip.Core.Services.VoiceLab.VoiceLabRateCalibrationStore(Data),
+                message => Log.Write(LogLevel.Warn, "voice-lab", message));
+            _ = rateCalibrations.LoadAsync();
+            return rateCalibrations;
+        }
+    }
     internal VoiceLabSession VoiceLab
     {
         get

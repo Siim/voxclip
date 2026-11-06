@@ -31,41 +31,32 @@ public sealed class RewriteWordingFitTests
         Assert.Equal(1, session.WordingFitRound);
         Assert.True(session.WordingFitCompleted);
         Assert.False(session.WordingIsLocked);
-        Assert.StartsWith("reworded to fit · was ≈ 0.4 s, now ≈ ", session.FitRowNote(1));
-        Assert.EndsWith(" · slot 1.0 s", session.FitRowNote(1));
+        Assert.StartsWith("reworded to fit · was ≈ 0.9 s, now ≈ ", session.FitRowNote(1));
+        Assert.EndsWith(" · slot 1.4 s", session.FitRowNote(1));
         Assert.Equal("1 phrases fit · 0 kept as recorded", session.ReviewFooter);
         var line = connector.FitRequests[0].CachedBlock!;
         Assert.Contains("Phrase 1\nOriginal words: word10\nCurrent proposal: clearer\n", line);
         Assert.Contains("say the same point more fully, about 1 more words of real content", line);
-        Assert.Contains("Word budget: 2 to 6 words; never more than 6", line);
+        Assert.Contains("Word budget: 1 to 3 words; never more than 3", line);
         Assert.False(session.Editor.LlmRuns.IsBusy);
         Assert.False(session.Editor.CanUndo);
     }
 
+    /// <summary>One free round (ADR-R42, Mac <c>automaticFitRounds</c>): a phrase the round leaves too short is not asked again; it keeps its
+    /// recovery row, and the footer's Keep My Words goes on without it.</summary>
     [Fact]
-    public async Task APhraseThatFitsInRoundTwoIsAskedAgainWithItsLatestWords()
+    public async Task APhraseStillTooShortAfterTheOneRoundIsNotAskedAgainAndKeepsTheRecoveryRow()
     {
-        var connector = new Connector(Short + " word11 word12", (round, ordinals) => Rows(ordinals, round == 1 ? "plainly put" : Fits));
+        var connector = new Connector(Short + " word11 word12", (round, ordinals) => Rows(ordinals, round == 1 ? "x" : Fits));
         using var session = Session(connector);
         Assert.True(await ProposeAsync(session));
-        Assert.Equal(2, connector.FitRequests.Count);
-        Assert.Contains("Current proposal: plainly put", connector.FitRequests[1].CachedBlock);
-        Assert.Equal(Fits + " word11 word12", session.NewWords);
-        Assert.Equal(2, session.WordingFitRound);
-        Assert.Empty(session.BlockedVoiceHunks);
-    }
-
-    [Fact]
-    public async Task APhraseThatNeverFitsStopsAfterThreeRoundsAndKeepsTheRecoveryRow()
-    {
-        var connector = new Connector(Short + " word11 word12", (_, ordinals) => Rows(ordinals, "x"));
-        using var session = Session(connector);
-        Assert.True(await ProposeAsync(session));
-        Assert.Equal(VoiceLabWordingFit.MaximumRounds, connector.FitRequests.Count);
-        Assert.Equal(3, session.WordingFitRound);
+        Assert.Single(connector.FitRequests);
+        Assert.Equal(1, session.WordingFitRound);
+        Assert.Equal("x word11 word12", session.NewWords);
         Assert.Single(session.BlockedVoiceHunks);
         Assert.Equal("1 phrase needs wording that fits.", session.ReviewFooter);
         Assert.Null(session.FitRowNote(1));
+        Assert.Equal(new RewriteFooterStep("Change 1 needs a longer wording before takes.", "Keep My Words", RewriteFooterAction.KeepMyWords), session.FooterStep);
         Assert.True(session.ReviewIsCurrent);
         Assert.True(session.PriceItAnyway(1));
         var review = PanelSource("RewritePanel.Review.cs");
@@ -84,24 +75,25 @@ public sealed class RewriteWordingFitTests
         Assert.Equal(TranscriptChangeState.Excluded, session.ChangeStates[1]);
         Assert.Contains(1, session.WordingFitKept);
         Assert.Empty(session.PricedVoiceHunks);
-        Assert.Equal("kept your original words · 1.0 s is too short to re-voice", session.FitRowNote(1));
+        Assert.Equal("kept your original words · 1.4 s is too short to re-voice", session.FitRowNote(1));
     }
 
     [Fact]
     public async Task FittingPhrasesAreFrozenAndNeverSentAgain()
     {
-        var connector = new Connector(Fits + " word11 word12 word13 word14 word15 word16 word17 " + Short,
-            (_, ordinals) => Rows(ordinals, "x"));
+        // Phrase 2 replaces a 0.4 s word, so no wording of it fits: the round asks for it, never for phrase 1, and it then keeps the
+        // speaker's words (ADR-R42); phrase 1 is priced.
+        const string longer = "a far longer and very much clearer phrasing";
+        var connector = new Connector(Fits + " word11 word12 word13 word14 word15 word16 word17 " + longer,
+            (_, ordinals) => Rows(ordinals, "still a much longer phrasing than it ever needed"));
         using var session = Session(connector, 10, 18);
         Assert.True(await ProposeAsync(session));
-        Assert.Equal(3, connector.FitRequests.Count);
-        Assert.All(connector.FitRequests, request =>
-        {
-            Assert.Contains("Phrase 2\n", request.CachedBlock);
-            Assert.DoesNotContain("Phrase 1\n", request.CachedBlock);
-        });
+        var request = Assert.Single(connector.FitRequests);
+        Assert.Contains("Phrase 2\n", request.CachedBlock);
+        Assert.DoesNotContain("Phrase 1\n", request.CachedBlock);
         Assert.StartsWith(Fits + " ", session.NewWords);
-        Assert.EndsWith(" x", session.NewWords);
+        Assert.Equal(TranscriptChangeState.Excluded, session.ChangeStates[2]);
+        Assert.Equal([1], session.PricedVoiceHunks.SelectMany(hunk => hunk.Ordinals).ToArray());
     }
 
     [Fact]
@@ -113,8 +105,8 @@ public sealed class RewriteWordingFitTests
         await connector.FitSent.Task;
         Assert.True(session.WordingFitRunning);
         Assert.False(session.ReviewIsCurrent);
-        Assert.Equal("Fitting wording to the video · round 1 of 3", session.FitRunningHeadline);
-        Assert.Equal("Phrase 1 · ≈ 0.4 s, slot 1.0 s · asking for about 1 more words", RewriteSession.FitPhraseLine(Assert.Single(session.WordingFitPhrases)));
+        Assert.Equal("Fitting wording to the video · round 1 of 1", session.FitRunningHeadline);
+        Assert.Equal("Phrase 1 · ≈ 0.9 s, slot 1.4 s · asking for about 1 more words", RewriteSession.FitPhraseLine(Assert.Single(session.WordingFitPhrases)));
         session.StopWordingFit();
         Assert.False(session.Editor.LlmRuns.IsBusy);
         connector.Release.SetResult();
@@ -153,7 +145,7 @@ public sealed class RewriteWordingFitTests
             Assert.True(await ProposeAsync(session));
             Assert.True(session.WordingFitAwaitingApproval);
             Assert.True(session.FitAsksFirst);
-            Assert.Equal("Fit wording automatically · up to 3 requests · price unavailable · billed to your key", session.FitApprovalLine);
+            Assert.Equal("Fit wording automatically · 1 request · price unavailable · billed to your key", session.FitApprovalLine);
             Assert.False(session.GenerationIsCurrent);
             session.StopWordingFit();
             Assert.True(session.WordingFitStopped);
@@ -169,7 +161,7 @@ public sealed class RewriteWordingFitTests
         fitted.Changed += (_, _) => { if (fitted.WordingFitAwaitingApproval) approvals++; };
         await fitted.FitWordingAsync(true);
         Assert.Equal(0, approvals);
-        Assert.Equal(3, approved.FitRequests.Count);
+        Assert.Single(approved.FitRequests);
         Assert.Equal("Uses Stub, billed to your key. Making a take still needs your paid click.", fitted.FitNote);
     }
 
@@ -178,6 +170,8 @@ public sealed class RewriteWordingFitTests
     {
         var connector = new Connector(Fits + " word11 word12", (_, ordinals) => Rows(ordinals, "said briefly"));
         using var session = Session(connector);
+        var calibrations = new RateCalibrations(null);
+        session.ConfigureRateCalibrations(calibrations);
         Assert.True(await ProposeAsync(session));
         Assert.Empty(connector.FitRequests);
         var runner = new Runner();
@@ -197,7 +191,7 @@ public sealed class RewriteWordingFitTests
         var suggestion = session.MeasuredWording!;
         Assert.True(suggestion.TooLong);
         Assert.StartsWith("Take 1 · ", suggestion.Heading);
-        Assert.EndsWith(" · slot 1.0 s · too long", suggestion.Heading);
+        Assert.EndsWith(" · slot 1.4 s · too long", suggestion.Heading);
         var request = Assert.Single(connector.FitRequests);
         Assert.Contains("Measured take: ", request.CachedBlock);
         Assert.Contains("Use shorter wording", request.CachedBlock);
@@ -208,7 +202,11 @@ public sealed class RewriteWordingFitTests
         Assert.Equal("said briefly", runner.Input!.Text);
         Assert.Equal(1, runner.Sends);
         Assert.Single(session.RateSamples("eleven_v4"));
-        Assert.Single(session.CalibratedRates()!["eleven_v4"]);
+        // The take also teaches its voice, across projects (ADR-R43).
+        Assert.Single(calibrations.For("record")!.Samples("eleven_v4"));
+        // Measured against the current prior, so saved under its key (ADR-R43); the bare model ID is the old prior's.
+        Assert.Single(session.CalibratedRates()![VoiceLabRateCalibration.ProjectKey("eleven_v4")]);
+        Assert.False(session.CalibratedRates()!.ContainsKey("eleven_v4"));
         var original = generation.Selected!;
         await session.KeepMeasuredTakeAsync();
         Assert.Null(session.MeasuredWording);
@@ -278,6 +276,41 @@ public sealed class RewriteWordingFitTests
         return await session.ProposeAsync(action, true);
     }
 
+    /// <summary>Mac <c>aNewProjectsEstimateUsesTheStoredVoiceCalibration</c> at the session: a new project's phrase starts from its voice's
+    /// stored calibration, written by an earlier project's takes, and its word budget aims at that voice's p80 (ADR-R43).</summary>
+    [Fact]
+    public async Task ANewProjectsPhraseStartsFromItsVoicesStoredCalibration()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var root = Path.Combine(Path.GetTempPath(), "voxclip-rate-session-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var store = new VoxClip.Core.Services.VoiceLab.VoiceLabRateCalibrationStore(root);
+            foreach (var (ratio, index) in new[] { 1.3, 1.25, 1.35, 1.28, 1.32 }.Select((ratio, index) => (ratio, index)))
+                await store.RecordAsync("record", "eleven_v4", "take" + index, ratio * 2, 2, ct);
+            using var plain = new RewriteSession(Editor(), 10, 12, Envelope(), null);
+            plain.Edit(Fits + " word11 word12");
+            var uncalibrated = plain.Review!.VoiceHunks[0].Fit!.EstimateSeconds;
+            Assert.Equal(1, VoiceLabWordingFit.Multiplier(plain.RateSamples("eleven_v4")));
+
+            var calibrations = new RateCalibrations(store);
+            await calibrations.LoadAsync(ct);
+            using var session = new RewriteSession(Editor(), 10, 12, Envelope(), null);
+            session.ConfigureRateCalibrations(calibrations);
+            session.Edit(Fits + " word11 word12");
+            Assert.Equal(1.3, VoiceLabWordingFit.Multiplier(session.RateSamples("eleven_v4")), 12);
+            Assert.Equal(uncalibrated * 1.3, session.Review!.VoiceHunks[0].Fit!.EstimateSeconds, 9);
+            Assert.InRange(session.RateSpread("eleven_v4"), VoiceLabRateCalibration.MinimumSpread, VoiceLabRateCalibration.MaximumSpread);
+            // A measured take is kept in memory now and written in the background.
+            calibrations.Record("record", "eleven_v4", "take9", 2.6, 2);
+            await calibrations.Writes;
+            Assert.Equal(6, (await store.LoadAsync("record", ct)).Samples("eleven_v4").Count);
+            // The project itself saved nothing: its own samples come only from its own takes.
+            Assert.Null(session.CalibratedRates());
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
     private static JsonArray Rows(IReadOnlyList<int> ordinals, string text) =>
         new(ordinals.Select(ordinal => (JsonNode)new JsonObject { ["ordinal"] = ordinal, ["action"] = "reword", ["text"] = text }).ToArray());
 
@@ -287,8 +320,9 @@ public sealed class RewriteWordingFitTests
     private static EditorViewModel Editor()
     {
         var project = ProjectSerialization.Deserialize(File.ReadAllText(Path.Combine(SharedResources.ResolveRoot(), "fixtures", "projects", "interview-take.voxclip")));
-        var words = Enumerable.Range(0, 80).Select(index => new TimedWord("w" + index, "word" + index, WordKind.Word, index + 1, index + 1.4,
-            null, null, 1, null, TimingSource.Native)).ToArray();
+        // Every take carries the provider's onset (ADR-R43), so a one-word change is too short only for a long word: word10 lasts 1.2 s.
+        var words = Enumerable.Range(0, 80).Select(index => new TimedWord("w" + index, "word" + index, WordKind.Word, index == 10 ? 10.6 : index + 1,
+            index == 10 ? 11.8 : index + 1.4, null, null, 1, null, TimingSource.Native)).ToArray();
         project = project with { Transcript = project.Transcript! with { Words = words },
             Media = project.Media with { Source = project.Media.Source with { DurationSeconds = 100, Audio = new(48000, 1) } },
             Edits = project.Edits with { CutWordIds = [], CutPauseIds = [], Corrections = new Dictionary<string, string>(), Clips = [], ActiveClipId = null } };

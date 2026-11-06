@@ -5,9 +5,11 @@
     "date": "2026-11-03",
     "vad": "SpeakerVAD / Silero 6.2.0 CPU",
     "vadSha256": "2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987",
-    "providerSpeechRateMultiplier": 1.8,
-    "minorPauseSeconds": 0.12,
-    "sentencePauseSeconds": 0.22,
+    "prior": 2,
+    "providerSpeechRateMultiplier": 1.2,
+    "onsetSeconds": 0.4,
+    "sentencePauseSeconds": 0.5,
+    "clausePauseSeconds": 0.1,
     "trimLeadSeconds": 0.03,
     "trimTailSeconds": 0.06
   },
@@ -20,7 +22,7 @@
         11.02,
         12.2148125
       ],
-      "expectedSeconds": 9.400023584905657
+      "expectedSeconds": 14.455035377358486
     },
     {
       "id": "phrase-2",
@@ -29,7 +31,7 @@
       "measuredVoicedSeconds": [
         2.6799375
       ],
-      "expectedSeconds": 2.8329481132075465
+      "expectedSeconds": 4.3444221698113195
     },
     {
       "id": "phrase-3",
@@ -38,7 +40,7 @@
       "measuredVoicedSeconds": [
         1.63
       ],
-      "expectedSeconds": 1.6624213836477983
+      "expectedSeconds": 2.358632075471698
     }
   ]
 }

@@ -30,7 +30,14 @@ public sealed class VoiceLabNaturalPacingTests
             var timing = VoiceLabPaceMatching.Match(seconds, source, null, null, sampleRate, true, supportsPace: false);
             Assert.True(timing.Fits);
             Assert.Equal(1, timing.Pace);
-            var rate = 6 / ((seconds - 0.09) * VoiceLabRewriteFit.ProviderSpeechRateMultiplier);
+            // Every estimate carries the trim allowance and the take's onset; a shorter length is no estimate's (ADR-R43).
+            var fixedSeconds = VoiceLabPatchConstants.TTS_TRIM_LEAD + VoiceLabPatchConstants.TTS_TRIM_TAIL + VoiceLabRewriteFit.OnsetSeconds;
+            if (seconds <= fixedSeconds)
+            {
+                Assert.True(VoiceLabRewriteFit.Estimate("speech", 1_000) > seconds);
+                continue;
+            }
+            var rate = 6 / ((seconds - fixedSeconds) * VoiceLabRewriteFit.ProviderSpeechRateMultiplier);
             var measured = VoiceLabPaceMatching.Measure("speech", rate, source, null, null, sampleRate, true, supportsPace: false);
             Assert.True(measured.Fits);
             Assert.Equal(seconds, measured.EstimateSeconds, 9);

@@ -103,7 +103,7 @@ internal static class ProjectValidation
         if (voice.ValueKind == JsonValueKind.Object && voice.TryGetProperty("speakingRateSamples", out var rates))
             Dictionary(rates, key => Require(key.Length > 0), samples =>
             {
-                Require(samples.ValueKind == JsonValueKind.Array && samples.GetArrayLength() <= VoiceLabWordingFit.MaximumSamples);
+                Require(samples.ValueKind == JsonValueKind.Array && samples.GetArrayLength() <= VoiceLabWordingFit.ProjectSampleLimit);
                 Array(samples, sample =>
                 {
                     Object(sample, "id ratio"); Text(sample.GetProperty("id"), 1, int.MaxValue);

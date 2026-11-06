@@ -17,7 +17,7 @@ internal sealed record RewriteChip(string Id, string Title, bool Ai, Func<Task>?
 /// "Choose yourself…" does not ask for the field (<see cref="Asks"/>), as Mac's collapsed steps carry no <c>ask</c>.</summary>
 internal sealed record RewriteNextStepCard(string Id, string Sentence, IReadOnlyList<RewriteChip> Chips, bool Asks = true);
 
-internal enum RewriteFooterAction { None, ApplyLocal, UseTakes, ApplyTextFixes, Done, KeepFixing, StopReask, StopAutoFix, ChooseTake, PriceTake, KeepOriginal }
+internal enum RewriteFooterAction { None, ApplyLocal, UseTakes, ApplyTextFixes, Done, KeepFixing, StopReask, StopAutoFix, ChooseTake, PriceTake, KeepOriginal, KeepChangeWords, KeepMyWords, ChooseDurations }
 
 /// <summary>The footer always names the next step: a line, and the one primary action when there is one. <see cref="Phrase"/> is the
 /// phrase a per-phrase action acts on.</summary>
@@ -106,6 +106,19 @@ internal sealed partial class RewriteSession
                         .. AiChips()
                     ]));
                 }
+            // A phrase the guard settled (ADR-R40): the stop once, and the two ways on (Mac BlockedPhraseRow), shown whether or not the
+            // other choices are; the user's own recording needs no clone.
+            for (var index = 0; index < generationWindows.Count; index++)
+            {
+                if (generationWindows[index].IsRunning || StuckReason(index) is not StuckTakeReason.Blocked blocked) continue;
+                var phrase = index;
+                cards.Add(new("Rewrite.Steps.Phrase" + (index + 1), StuckSentence(blocked, index + 1),
+                [
+                    new("Rewrite.Chip.SayItMyself" + (index + 1), PhraseWordingCopy.Title(PhraseWording.Microphone), false,
+                        () => ChooseWordingAsync(PhraseWording.Microphone, phrase)),
+                    new("Rewrite.Chip.KeepAsRecorded" + (index + 1), "Keep as recorded", false, () => { KeepOriginal(phrase); return Task.CompletedTask; }),
+                ], Asks: false));
+            }
             if ((HasPaidTakes || AutoFix.Armed) && AutoFix.ChoicesShown && !IsGeneratingBatch)
                 for (var index = 0; index < generationWindows.Count; index++)
                 {
@@ -114,6 +127,7 @@ internal sealed partial class RewriteSession
                     var window = generationWindows[index];
                     var price = window.Quote?.Estimate.Usd is { } usd ? " · ≈ " + Dollars(usd) : "";
                     List<RewriteChip> chips = [];
+                    if (reason is StuckTakeReason.Blocked) continue;
                     if (reason is StuckTakeReason.Provider)
                     {
                         // The cause and its one fix (voice-lab.md §8.2.2): never wording chips.
@@ -290,18 +304,28 @@ internal sealed partial class RewriteSession
             // Once an approved Get Price armed the fixes, the takes footer applies even if no take was paid (an account failure).
             if (!HasPaidTakes && !AutoFix.Armed)
             {
-                if (Collision is { } collision) return new($"Change {collision.Change} needs a fix above.", null, RewriteFooterAction.None);
+                // Every footer has a step forward (Mac `takePlanForward`, I10): a collision or a change still waiting on its wording keeps
+                // the speaker's words with one click.
+                if (Collision is { } collision)
+                    return new($"Change {collision.Change} needs a fix above.", $"Keep Original Words for Change {collision.Change}", RewriteFooterAction.KeepChangeWords, collision.Change);
+                // A phrase the guard settled earlier in this Rewrite keeps its original audio with one click (ADR-R40).
+                if (FirstWaitingOnBlock is var waiting and >= 0 && StuckReason(waiting) is { } settled)
+                    return new(StuckSentence(settled, waiting + 1), $"Keep Original Audio for Phrase {waiting + 1}", RewriteFooterAction.KeepOriginal, waiting);
+                if (generationWindows.Count > 0 && generationWindows.All(window => window.LeftOut))
+                    return TextFixCount > 0 ? new("Every phrase keeps its original audio. Nothing was sent. The text fixes still apply.", ApplyTextFixesTitle, RewriteFooterAction.ApplyTextFixes)
+                        : new("Every phrase keeps its original audio. Nothing was sent.", "Done", RewriteFooterAction.Done);
                 if (BlockedVoiceHunks.FirstOrDefault() is { } blocked)
                     return PricedVoiceHunks.Count == 0 && TextFixCount > 0
                         ? new($"Change {blocked.Ordinals[0]} needs a {(blocked.Fit?.TooLong ?? true ? "shorter" : "longer")} wording before takes. Or apply the text fixes now.", ApplyTextFixesTitle, RewriteFooterAction.ApplyTextFixes)
-                        : new($"Change {blocked.Ordinals[0]} needs a {(blocked.Fit?.TooLong ?? true ? "shorter" : "longer")} wording before takes.", null, RewriteFooterAction.None);
+                        : new($"Change {blocked.Ordinals[0]} needs a {(blocked.Fit?.TooLong ?? true ? "shorter" : "longer")} wording before takes.", "Keep My Words", RewriteFooterAction.KeepMyWords);
                 if (PricedVoiceHunks.Count > 0)
                     return new(Generation?.Voices.Count > 0 ? "Make the takes to hear the new words." : "Get Price to hear the new words in your voice.", null, RewriteFooterAction.None);
                 return TextFixCount > 0 ? new("These changes can't be voiced here. The text fixes still apply.", ApplyTextFixesTitle, RewriteFooterAction.ApplyTextFixes)
                     : new("Nothing can be voiced here. Your original words stay.", "Done", RewriteFooterAction.Done);
             }
             // Mac `takePlanBlocker`: a collision found after paid takes names its fix; Use waits for it.
-            if (Collision is { } refused) return new($"Change {refused.Change} needs a fix above.", null, RewriteFooterAction.None);
+            if (Collision is { } refused)
+                return new($"Change {refused.Change} needs a fix above.", $"Keep Original Words for Change {refused.Change}", RewriteFooterAction.KeepChangeWords, refused.Change);
             if (CanAcceptAll)
                 return generationWindows.All(window => window.LeftOut)
                     ? new("Every phrase keeps its original words. The text fixes still apply.", ApplyTextFixesTitle, RewriteFooterAction.ApplyTextFixes)
@@ -312,9 +336,10 @@ internal sealed partial class RewriteSession
             if (KeepFixingTitle is { } keep) return new(AutoFixCapLine ?? "", keep, RewriteFooterAction.KeepFixing);
             if (IsGeneratingBatch || generationWindows.Any(window => window.IsRunning)) return new("Making takes…", null, RewriteFooterAction.None);
             if (generationWindows.Any(window => window.IsPreparing)) return new("Checking takes…", null, RewriteFooterAction.None);
-            if (AcceptanceBlocker is { } blocker) return new(blocker, null, RewriteFooterAction.None);
+            if (AcceptanceBlocker is { } blocker) return new(blocker, "Choose Durations", RewriteFooterAction.ChooseDurations);
             for (var index = 0; index < generationWindows.Count; index++)
-                if (StuckReason(index) is { } reason) return new(StuckSentence(reason, index + 1) + " Choose a next step above.", null, RewriteFooterAction.None);
+                if (StuckReason(index) is { } reason)
+                    return new(StuckSentence(reason, index + 1) + " Choose a next step above.", $"Keep Original Audio for Phrase {index + 1}", RewriteFooterAction.KeepOriginal, index);
             for (var index = 0; index < generationWindows.Count; index++)
             {
                 var window = generationWindows[index];

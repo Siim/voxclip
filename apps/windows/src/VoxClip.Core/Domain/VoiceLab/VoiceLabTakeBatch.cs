@@ -110,7 +110,8 @@ public sealed class VoiceLabTakeBatchProgress(VoiceLabTakeBatch batch)
         if (!requestIds.IsSubsetOf(own.RequestIds) || own.Quote.Takes.Any(take => requestIds.Contains(take.Qa.Review.RequestId) && !requestIds.Contains(take.Synthesis.Review.RequestId)))
             throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
         sent.UnionWith(requestIds); discarded.UnionWith(own.RequestIds.Except(requestIds));
-        if (end is VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop)
+        // A window the guard settled sent nothing; the batch goes on to the next one (ADR-R40).
+        if (end is VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop or VoiceLabTakeRunEnd.Blocked)
             Window = window + 1 < Batch.Windows.Count ? window + 1 : null;
         else
         {

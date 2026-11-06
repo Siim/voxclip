@@ -1,5 +1,68 @@
 # Windows fixed contracts
 
+### 2026-11-06 — Windows Rewrite twins the estimator prior, slot fitting and the settled guard (track/v2-win-rewrite-twin)
+
+Twin of the Mac ADR-R43 (tts-estimator), ADR-R42 (rewrite-fit) and ADR-R40 (unstick) packages. ADR-R41 (voice references) is owed. Spec: doc/spec/voice-lab.md §4 (estimator), §6.9 (guard); doc/spec/ai.md §12.9; doc/design.md R2 "Not your voice here".
+
+- **4 · Estimator prior and per-voice calibration** (7723b07c; Core `VoiceLabRewriteFit`, `VoiceLabRateCalibration`, `VoiceLabRateCalibrationStore`, `VoiceLabWordingFit`; App `RateCalibrations`):
+  - The prior is 1.2× the speaker rate, plus a 0.4 s onset, 0.5 s per inner sentence break and 0.1 s per inner clause break. An in-word hyphen adds no pause.
+  - Samples are read and written only under `<model>@prior2`.
+  - Each voice has a calibration file at `VoiceLab/calibration/<recordId>.json`, written 0600, keeping the last 30 ratios per model with the robust MAD trim.
+  - `WordTarget` aims its upper bound at p80 (spread 1.15).
+  - Core replays `tts-estimator-cases.json`. `phrase-timing-cases.json` and `autofit-cases.json` were regenerated through their generators, keeping every key the Mac decodes.
+- **3 · Slots, one fit round, settle at Use** (008a2ec9; Core `VoiceRewriteSlots`, `VoiceRewriteRequest.Slots`, `VoiceRewriteService`; App `RewriteSession.*`, `MakeItRewriteDriver`):
+  - New shared vectors in `rewrite-slot-cases.json` (`voxclip-rewrite-slots/1`, `tools/fixtures/voice-lab/generate_rewrite_slots.py`, in check_drift EXACT).
+  - One automatic fit round, then keep-as-recorded.
+  - No estimate is held back after paid takes.
+  - An unusable acceptance (project or geometry refusal) is settled at Use with leave-one-out, using "Phrase {n} couldn't be made part of the video, so it keeps your original audio.", once per phrase.
+  - Every footer has a forward button: Keep My Words, Keep Original Words for Change {n}, Choose Durations, Keep Original Audio for Phrase {n}.
+  - The insertion copy is added. The driver keeps a too-long line as recorded with no click.
+  - **Deleted.** `heldBack`, `HeldBackNote` and `PriceHeldBackChanges`.
+- **1 · The guard hears the patch speech and settles a phrase** (this commit; Core `VoiceLabGuardSpeech`, `VoiceLabTakeRunEnd.Blocked`, `VoiceLabTakeRunResult.Failure`, `VoiceLabTakeBatchProgress.Finish`; Media `VoiceLabTakeRun.GuardSpeech`/`GuardSettles`, `VoiceLabTakeBatchRun`, `VoiceLabSourceAudio.RewriteSourceAsync`; App `RewriteSession.Blocked.cs`, `RewriteGeneration.Blocked`, `StuckTakeReason.Blocked`, `MakeItRewriteDriver`):
+  - **Guard speech.** The guard embeds the transcript words' own spans nearest the patch: at most 2 s per word and 10 s in total, the patch speaker's turn first. With no words it falls back to the patch's own 10 s.
+  - **Blocked run end.** A `VoiceOwnerMismatch` or `SpeakerMismatch` refusal before anything is sent ends the run `Blocked`. The batch goes on, and the blocked window's requests are discarded unsent.
+  - **The settled phrase.** It is said once on a card with ● Say it myself and Keep as recorded. AutoFix never retries or rewords it.
+  - **No price again.** It is never priced again: `CanExecute` is false and the batch skips it. Its change ordinals are remembered for later plans of the same Rewrite.
+  - **Footer.** The footer offers Keep Original Audio for Phrase {n}. Get Price and Make Takes hide once every phrase is settled.
+  - **Driver.** The driver keeps blocked phrases with no click and counts `KeptAsRecorded`. It finishes with "It doesn't sound like your voice here, so nothing was sent." The blocked window's share of the quote is not counted as spent.
+- **Tests.**
+  - Core: `VoiceLabTTSEstimatorTests`, `VoiceRewriteSlotsTests` (5), `VoiceLabGuardSpeechTests` (9: the Mac selection cases, sample joining, a blocked window letting the batch go on).
+  - Media: `VoiceLabGuardSpeechMediaTests` (3: road noise excluded, the 10 s fallback, which refusals settle).
+  - win-ui: `RewriteGuardBlockedTests` (4, including the driver), the smoke twins S-viral-fit and S-guard-blocked (G1, G2), and the updated auto-fix, next-steps, wording-fit and Make it postable tests.
+  - **Red checks.** For step 3, disabling keep-as-recorded fails 6 tests. For step 1, S-guard-blocked G1 failed until a run with no started transport settled the phrase.
+- **Verification** (macOS host, Release, `-m:1 -nodeReuse:false -p:UseSharedCompilation=false`, `VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`):
+  - **Step 3.** Core 3,186 passed, 29 skipped. win-ui 1,314 passed, 5 skipped.
+  - **Step 4.** Media 986 passed, 5 skipped.
+  - **Step 1, targeted runs only.** Core guard class 9/9, Media guard class 3/3, win-ui guard class 4/4, all 22 smoke scenarios. Full suites were not rerun: free disk fell below the 9 GiB stop line.
+  - `check_drift.py` (voice-lab and captions) exit 0. The generators show zero drift. `tools/voice-lab` OK. `check-xaml.py` 0 problems.
+  - Core and Media allowlists were updated for step 1, declarations only. The App `VoxClip.txt` for step 1 is owed: it needs the type-check build.
+- **Owed.**
+  - **2 · ADR-R41**, in full:
+    - `VoiceConsentRecord` `speaker.references`, with validation, the one-hop rule, the bound of 16, the drop on a model change and `WithoutReferences` in `ValidateUse`;
+    - a `VoiceSpeakerReferences` twin;
+    - `VoiceUseGuard`/`VoiceSpeakerCheck` matching through references, with the references in the cache key;
+    - the free pre-price check at Get Price;
+    - "Learn from my videos";
+    - the Settings › Voices rows "Learned from n of your videos" with Learn and Forget.
+    - The ONNX embedder exists, but `VoiceSpeakerCheck.WindowsNativeParityVerified` is false, so the Windows speaker check (and any learning) stays off until native parity is verified.
+  - **Step 1:**
+    - the one-click Use that keeps blocked phrases;
+    - the every-phrase card at the top;
+    - the price leaving blocked phrases out;
+    - a test of the cross-plan memory;
+    - the App allowlist.
+  - **Step 3:**
+    - the Mac replay of `rewrite-slot-cases.json`;
+    - a Release-runnable S-render-recipe (the Use settle is covered only by the DEBUG `IntegratedRewriteTests`, which fail 5/9 at base for an unrelated recipe reason);
+    - the `stage=use` log line;
+    - passage requests still say "at most 5000 letters".
+  - **Step 4:** the one-time calibration seed from on-device timing (`VoiceLabLocalTiming` exists; no seeder).
+  - **S-make-it-long:** covered by `MakeItPostableTests.TheDriverKeepsALineTooLongForItsSlotAsRecordedWithNoClick`, not a smoke scenario.
+- **Native, left to hosted Windows CI.**
+  - The WinUI App build and the App allowlist check.
+  - The ONNX guard embedding on real speech.
+  - The panel's blocked card and footer in a real window.
+
 ### 2026-11-05 — Windows renders translated captions and context-demo placements; the Mac replays the music mix (track/v2-win-render-3)
 
 Twin of the Mac entries mac-clip-finish step 5 (translated captions) and mac-polish-2 (context demos stay upright). Lifts Windows' last two export refusals. Spec: doc/design.md §6.8, §6.9; doc/spec/ai.md §18.2; doc/spec/context-demo.md.

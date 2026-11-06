@@ -403,14 +403,15 @@ public sealed class RewritePaceMatchingTests
     private static RewriteSession SentenceSession(params int[] changes)
     {
         var project = ProjectSerialization.Deserialize(File.ReadAllText(Path.Combine(SharedResources.ResolveRoot(), "fixtures/projects/interview-take.voxclip")));
-        double Start(int index) => index < 48 ? 1 + index * .45 : 22.6 + (index - 48) * .85;
+        // Every take carries the provider's onset (ADR-R43): a one-letter change is too short only for a word over a second long.
+        double Start(int index) => index < 48 ? 1 + index * 1.25 : 61.05 + (index - 48) * 1.3;
         var words = Enumerable.Range(0, 200).Select(index => new TimedWord("w" + index, "sample" + index.ToString("D3") + (index % 16 == 15 ? "." : ""),
-            WordKind.Word, Start(index), Start(index) + (index < 48 ? .4 : .8), null, null, 1, null, TimingSource.Native)).ToArray();
+            WordKind.Word, Start(index), Start(index) + (index < 48 ? 1.2 : 1.25), null, null, 1, null, TimingSource.Native)).ToArray();
         var editor = new EditorViewModel(project with { SchemaVersion = 1, VoiceLab = new([]),
-            Media = project.Media with { Source = project.Media.Source with { DurationSeconds = 160, Audio = new(48_000, 1) } },
+            Media = project.Media with { Source = project.Media.Source with { DurationSeconds = 270, Audio = new(48_000, 1) } },
             Transcript = project.Transcript! with { Words = words }, Edits = project.Edits with
                 { Clips = [], ActiveClipId = null, CutWordIds = [], CutPauseIds = [], Corrections = new Dictionary<string, string>() } });
-        var session = new RewriteSession(editor, 0, 199, new(48_000, .01, Enumerable.Repeat(.01f, 16_000).ToArray()), null);
+        var session = new RewriteSession(editor, 0, 199, new(48_000, .01, Enumerable.Repeat(.01f, 27_000).ToArray()), null);
         session.Edit(string.Join(" ", words.Select((word, index) => changes.Contains(index) ? "x" : word.Text)));
         return session;
     }

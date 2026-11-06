@@ -160,6 +160,23 @@ public sealed class IntegratedRewriteTests
         test.Editor.Redo(); Assert.Equal(after, ProjectSerialization.Serialize(test.Editor.Project)); Assert.False(test.Editor.CanRedo);
     }
 
+    /// <summary>Mac <c>whenNoTakeCanRenderTheFooterEndsTheRewrite</c> and smoke S-render-recipe: when no take can go into the video, Use keeps
+    /// every phrase as recorded, announces each once and still applies the text fixes; it never repeats the failure.</summary>
+    [Fact]
+    public async Task WhenNoTakeCanGoIntoTheVideoUseKeepsEveryPhraseAndAppliesTheTextFixes()
+    {
+        await using var test = new Harness(unusable: _ => true);
+        await test.PrepareAsync();
+        await test.Session.GenerateWindowsAsync((_, _, current, _) => Task.FromResult(current()), _ => Task.FromResult<VoiceLabMonthlyCap?>(null));
+        List<string> announced = [];
+        test.Session.Changed += (_, _) => { if (test.Session.AutoFix.Announcement is { Length: > 0 } line && !announced.Contains(line)) announced.Add(line); };
+        Assert.True(test.Session.CanAcceptAll);
+        Assert.True(await test.Session.ApplyTakeAsync());
+        Assert.Empty(test.Editor.Project.VoiceLab.Segments);
+        Assert.Equal("WORD15", test.Editor.Project.Edits.Corrections["w15"]);
+        Assert.Equal([RewriteSession.UnusableNote(1), RewriteSession.UnusableNote(2)], announced);
+    }
+
     [Fact]
     public async Task RevisionDuringUnionApprovalSendsNothingAndCannotApply()
     {
@@ -219,7 +236,8 @@ public sealed class IntegratedRewriteTests
         internal EditorViewModel Editor { get; }
         internal RewriteSession Session { get; }
         internal List<DebugRewriteTakeRunner> Runners { get; } = [];
-        internal Harness(string scope = "passage")
+        /// <param name="unusable">Phrases whose take the recipe refuses at Use (Mac S-render-recipe): publishing it throws.</param>
+        internal Harness(string scope = "passage", Func<int, bool>? unusable = null)
         {
             var fixture = HomeViewModelTests.Fixture("clip-from-long-take.voxclip");
             var words = Enumerable.Range(0, 100).Select(index => new TimedWord("w" + index, "word" + index, WordKind.Word,
@@ -248,7 +266,8 @@ public sealed class IntegratedRewriteTests
                         (request, _) => Task.FromResult(RewriteSourceFixture.Silent(request)), token, index),
                     _ => Task.FromResult(true), _ => Task.FromResult<decimal?>(null), () => Session.GenerationIsCurrent);
                 var audition = new VoiceLabAudition(() => new SilentEndpoint(), _ => Task.CompletedTask);
-                _ = generation.ConfigureTakesAsync(new(audition, runner.Scratch, runner.RejectAsync, runner.PublishAsync));
+                _ = generation.ConfigureTakesAsync(new(audition, runner.Scratch, runner.RejectAsync, unusable?.Invoke(index) == true
+                    ? (_, _, _) => throw new VoiceLabProjectException(VoiceLabProjectErrorCode.QaRejected) : runner.PublishAsync));
                 return generation;
             });
         }

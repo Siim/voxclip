@@ -34,7 +34,7 @@ public sealed class VoiceLabWordingFitTests
             var input = row!["input"]!;
             var target = VoiceLabWordingFit.WordTarget(input["wordsPerSecond"]!.GetValue<double>(), input["multiplier"]!.GetValue<double>(),
                 input["minimumSeconds"]!.GetValue<double>(), input["maximumSeconds"]!.GetValue<double>(), input["overheadSeconds"]!.GetValue<double>(),
-                input["bridgeWords"]!.GetValue<int>());
+                input["bridgeWords"]!.GetValue<int>(), input["spread"]!.GetValue<double>());
             Assert.Equal(new VoiceLabWordTarget(row["expected"]!["minimum"]!.GetValue<int>(), row["expected"]!["maximum"]!.GetValue<int>()), target);
         }
         Assert.Throws<VoiceLabLengthBudgetException>(() => VoiceLabWordingFit.WordTarget(0, 1, 1, 2, 0));
@@ -54,17 +54,23 @@ public sealed class VoiceLabWordingFitTests
         Assert.Equal(2, VoiceLabWordingFit.Multiplier([new("a", 2), new("b", double.NaN), new("c", 2), new("d", -1)]));
     }
 
+    /// <summary>Mac <c>calibrationKeepsTenDistinctMeasuredTakesAndIgnoresBadMeasurements</c>: a ratio outside 0.25–4 is a failed
+    /// measurement, never a pace.</summary>
     [Fact]
     public void RecordingAddsEachTakeOnceAndKeepsTheLastTen()
     {
         IReadOnlyList<VoiceLabRateSample> samples = [];
-        for (var index = 0; index < 12; index++) samples = VoiceLabWordingFit.Recording(samples, "take" + index, 2 + index, 2);
+        for (var index = 0; index < 12; index++) samples = VoiceLabWordingFit.Recording(samples, "take" + index, 1 + index / 4.0, 1);
         Assert.Equal(10, samples.Count);
         Assert.Equal("take2", samples[0].Id);
+        Assert.Equal(2.625, VoiceLabWordingFit.Multiplier(samples));
         Assert.Same(samples, VoiceLabWordingFit.Recording(samples, "take11", 9, 3));
         Assert.Same(samples, VoiceLabWordingFit.Recording(samples, "other", 0, 3));
         Assert.Same(samples, VoiceLabWordingFit.Recording(samples, "other", 1, double.PositiveInfinity));
         Assert.Same(samples, VoiceLabWordingFit.Recording(samples, "", 1, 1));
+        Assert.Same(samples, VoiceLabWordingFit.Recording(samples, "far", 9, 1));
+        Assert.Same(samples, VoiceLabWordingFit.Recording(samples, "near", 0.2, 1));
+        Assert.Equal(1, VoiceLabWordingFit.Multiplier([new("bad", double.PositiveInfinity)]));
     }
 
     [Fact]

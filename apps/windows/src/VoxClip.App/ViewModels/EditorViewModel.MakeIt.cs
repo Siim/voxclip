@@ -638,7 +638,9 @@ public sealed partial class EditorViewModel
                 return row with { Detail = "Your words changed without new audio." };
             case MakeItRewriteResult.Voiced voiced:
                 run.Inverses[operation.Id] = new MakeItInverse.Voice(voiced.Segments);
-                return row with { Undoable = true, Text = $"Voiced “{text}” in your voice", Detail = outcome.JoinNotes.Count > 0 ? "Join may sound slightly louder · ▶" : row.Detail };
+                return row with { Undoable = true, Text = $"Voiced “{text}” in your voice", Detail = outcome.KeptAsRecorded > 0
+                    ? (outcome.KeptAsRecorded == 1 ? "1 phrase kept as recorded" : $"{outcome.KeptAsRecorded} phrases kept as recorded") + ": it doesn't sound like your voice there."
+                    : outcome.JoinNotes.Count > 0 ? "Join may sound slightly louder · ▶" : row.Detail };
             case MakeItRewriteResult.OverCap over:
                 var price = over.NextUsd is { } usd ? MakeItController.Dollars(usd) : "price unknown";
                 return row with { Kind = MakeItRowKind.Note, Text = $"Kept your words for “{text}”",
@@ -647,6 +649,8 @@ public sealed partial class EditorViewModel
                 return row with { Kind = MakeItRowKind.Note, Text = $"“{text}” needs you", Detail = needs.Reason };
             case MakeItRewriteResult.Unavailable unavailable:
                 return row with { Kind = MakeItRowKind.Note, Text = $"Claude suggests “{text}”", Detail = unavailable.Reason };
+            case MakeItRewriteResult.KeptAsRecorded kept:
+                return row with { Kind = MakeItRowKind.Note, Text = $"Kept your words for “{text}”", Detail = kept.Reason };
             default:
                 return row;
         }

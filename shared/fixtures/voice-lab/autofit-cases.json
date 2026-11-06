@@ -12,11 +12,12 @@
         "minimumSeconds": 2.5,
         "maximumSeconds": 3,
         "overheadSeconds": 0.15,
-        "bridgeWords": 0
+        "bridgeWords": 0,
+        "spread": 1.15
       },
       "expected": {
-        "minimum": 9,
-        "maximum": 10
+        "minimum": 6,
+        "maximum": 6
       }
     },
     {
@@ -27,11 +28,12 @@
         "minimumSeconds": 2.5,
         "maximumSeconds": 3,
         "overheadSeconds": 0.15,
-        "bridgeWords": 0
+        "bridgeWords": 0,
+        "spread": 1.15
       },
       "expected": {
-        "minimum": 6,
-        "maximum": 6
+        "minimum": 4,
+        "maximum": 4
       }
     },
     {
@@ -42,11 +44,12 @@
         "minimumSeconds": 3,
         "maximumSeconds": 3.5,
         "overheadSeconds": 0.75,
-        "bridgeWords": 2
+        "bridgeWords": 2,
+        "spread": 1.15
       },
       "expected": {
-        "minimum": 11,
-        "maximum": 13
+        "minimum": 7,
+        "maximum": 7
       }
     },
     {
@@ -57,7 +60,8 @@
         "minimumSeconds": 0.05,
         "maximumSeconds": 0.1,
         "overheadSeconds": 0.15,
-        "bridgeWords": 0
+        "bridgeWords": 0,
+        "spread": 1.15
       },
       "expected": {
         "minimum": 1,
@@ -72,11 +76,12 @@
         "minimumSeconds": 1.25,
         "maximumSeconds": 1.75,
         "overheadSeconds": 0.15,
-        "bridgeWords": 1
+        "bridgeWords": 1,
+        "spread": 1.15
       },
       "expected": {
-        "minimum": 4,
-        "maximum": 5
+        "minimum": 2,
+        "maximum": 2
       }
     },
     {
@@ -87,7 +92,8 @@
         "minimumSeconds": 300,
         "maximumSeconds": 600,
         "overheadSeconds": 0.15,
-        "bridgeWords": 0
+        "bridgeWords": 0,
+        "spread": 1.15
       },
       "expected": {
         "minimum": 2000,
@@ -98,13 +104,13 @@
   "calibration": [
     {
       "ratios": [],
-      "expected": 1
+      "expected": 1.0
     },
     {
       "ratios": [
         1.7
       ],
-      "expected": 1
+      "expected": 1.0
     },
     {
       "ratios": [
@@ -119,7 +125,7 @@
         7,
         2
       ],
-      "expected": 2
+      "expected": 1.5
     },
     {
       "ratios": [
@@ -136,7 +142,7 @@
         9,
         10
       ],
-      "expected": 5.5
+      "expected": 2.5
     }
   ],
   "rounds": [

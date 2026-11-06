@@ -34,6 +34,16 @@ internal sealed partial class RewriteSession
             return missing.Length == 0 ? null : $"Choose the video duration for {PhraseList(missing)}.";
         }
     }
+    /// <summary>[Choose Durations] (Mac <c>takePlanForward</c>): each phrase waiting on a video duration gets its first valid one (cut,
+    /// then match), as the automatic choice would; [Change] on the card still picks another.</summary>
+    internal bool ChooseDurations()
+    {
+        var chosen = false;
+        foreach (var window in generationWindows.Where(window => !window.LeftOut && window.VideoChoice is null && window.ValidVideoChoices.Count > 0).ToArray())
+            chosen |= window.ChooseVideo(window.ValidVideoChoices[0]);
+        if (chosen) Changed?.Invoke(this, EventArgs.Empty);
+        return chosen;
+    }
     /// <summary>"phrase 2", "phrases 2 and 4", "phrases 1, 2 and 4".</summary>
     internal static string PhraseList(IReadOnlyList<int> numbers) => numbers.Count switch
     {
@@ -74,7 +84,7 @@ internal sealed partial class RewriteSession
             window.ShareVoiceChecks(VoiceChecks, index);
             if (AutoFix.Armed) window.KeepEveryTake();
             generationWindows.Add(window);
-            if (!reusable) window.Changed += GenerationChanged;
+            if (!reusable) { ApplyRememberedBlock(window, desired.ElementAtOrDefault(index)); window.Changed += GenerationChanged; }
             else if (desired.Count == 0 || previousHunks.Length == 0) _ = window.InputsChangedAsync();
         }
         foreach (var retired in previous.Where(window => !generationWindows.Contains(window)))
@@ -177,7 +187,10 @@ internal sealed partial class RewriteSession
     internal const string PriceChangedCopy =
         "The price of the next phrases changed while takes were made, so nothing more was sent. Finished takes are kept. Get a fresh price for the rest.";
 
-    internal bool CanGenerateAll => GenerationIsCurrent && !IsGeneratingBatch && PreparedBatch is not null && generationWindows.All(window => window.CanExecute);
+    /// <summary>A phrase the guard settled is skipped by the run (nothing is sent for it); a run of only settled phrases is not offered.</summary>
+    internal bool CanGenerateAll => GenerationIsCurrent && !IsGeneratingBatch && PreparedBatch is not null &&
+        generationWindows.All(window => window.CanExecute || window.Blocked is not null && !window.IsRunning && !window.IsPreparing) &&
+        generationWindows.Any(window => window.Blocked is null && !window.LeftOut);
     internal void MarkBatchEstimateShown(VoiceLabTakeRunParts batch)
     {
         if (batch.Windows.Count != generationWindows.Count) return;
@@ -244,6 +257,13 @@ internal sealed partial class RewriteSession
                     progress = new VoiceLabTakeBatchProgress(new VoiceLabTakeBatch(requoted));
                 }
                 if (!Current()) return;
+                if (windows[index].Blocked is not null)
+                {
+                    // Settled earlier in this Rewrite: nothing is sent for it, and the run goes on (ADR-R40).
+                    progress.Finish(index % VoiceLabTakeBatch.MaximumWindows, new VoiceLabTakeRunResult([], VoiceLabTakeRunEnd.Blocked));
+                    started = index;
+                    continue;
+                }
                 started = index;
                 await windows[index].GenerateAsync(async (changedCost, token) =>
                 {
@@ -256,6 +276,8 @@ internal sealed partial class RewriteSession
                 }, quotes[index], autoplay: false);
                 if (!Current() || windows[index].LastRunResult is not { } result) return;
                 progress.Finish(index % VoiceLabTakeBatch.MaximumWindows, result);
+                // The guard settled this phrase before anything was sent for it; the other phrases go on (voice-lab.md §6.9).
+                if (result.End == VoiceLabTakeRunEnd.Blocked) { RememberBlocked(); continue; }
                 if (result.End is not (VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop)) return;
             }
         }
@@ -283,32 +305,68 @@ internal sealed partial class RewriteSession
         foreach (var generation in generationWindows.ToArray()) await generation.CancelAsync();
     }
 
+    /// <summary>Use (Mac <c>acceptTakes(settling:)</c>): a phrase whose take can't be made part of the video keeps its original audio, with
+    /// one line, and Use goes on with the rest, at most once per phrase; never a footer that repeats the failure.</summary>
     private async Task<bool> ApplyReviewedWindowsAsync()
     {
         if (!CanAcceptAll) return false;
+        var settled = new HashSet<int>();
+        while (true)
+        {
+            if (await TryApplyReviewedWindowsAsync(settled) is { } done) return done;
+            if (!CanAcceptAll) return false;
+        }
+    }
+
+    /// <summary>True or false when Use finished; null when it settled a phrase and should run again.</summary>
+    private async Task<bool?> TryApplyReviewedWindowsAsync(HashSet<int> settled)
+    {
         applyingBatch = true;
         var identity = ReviewIdentity;
         var windows = generationWindows.ToArray();
         var operations = LocalOperations();
-        List<RewriteAcceptance> prepared = [];
+        List<(int Index, RewriteAcceptance Accepted)> prepared = [];
         try
         {
             // A phrase kept as recorded adds no segment; its text fixes still apply.
             if (windows.All(window => window.LeftOut)) return operations.Count > 0 && Editor.ApplyBatch(operations);
-            foreach (var generation in windows.Where(window => !window.LeftOut))
+            for (var index = 0; index < windows.Length; index++)
             {
+                var generation = windows[index];
+                if (generation.LeftOut) continue;
                 var accepted = await generation.PrepareAcceptanceAsync(Editor, Project, operations);
-                if (accepted is null || !GenerationIsCurrent || ReviewIdentity != identity || !generationWindows.SequenceEqual(windows)) return false;
-                prepared.Add(accepted);
+                if (!GenerationIsCurrent || ReviewIdentity != identity || !generationWindows.SequenceEqual(windows)) return false;
+                if (accepted is null) return generation.LastAcceptanceUnusable && SettleUnusable(index, settled) ? null : false;
+                prepared.Add((index, accepted));
             }
             // Generated phrases share one voice; the user's own recorded takes carry none.
-            var voices = prepared.Select(item => item.Voice).OfType<VoiceLabVoiceReference>().Distinct().ToArray();
-            if (prepared.Any(item => !item.IsCurrent()) || voices.Length > 1) return false;
-            var assets = prepared.SelectMany(item => item.Assets).ToArray();
+            var voices = prepared.Select(item => item.Accepted.Voice).OfType<VoiceLabVoiceReference>().Distinct().ToArray();
+            if (prepared.Any(item => !item.Accepted.IsCurrent()) || voices.Length > 1) return false;
+            var assets = prepared.SelectMany(item => item.Accepted.Assets).ToArray();
             if (assets.GroupBy(asset => asset.Id).Any(group => group.Distinct().Count() != 1)) return false;
-            return Editor.ApplyVoiceLab(prepared.Select(item => item.Segment).ToArray(), assets.DistinctBy(asset => asset.Id).ToArray(),
-                voices.FirstOrDefault(), Scope, RewriteActionName, Project, operations, CalibratedRates());
+            if (Editor.ApplyVoiceLab(prepared.Select(item => item.Accepted.Segment).ToArray(), assets.DistinctBy(asset => asset.Id).ToArray(),
+                voices.FirstOrDefault(), Scope, RewriteActionName, Project, operations, CalibratedRates())) return true;
+            // The project refused the takes together: the phrases it refuses alone can't go into the video (leave-one-out, Mac
+            // `unusablePhrases`); the others are used on the next pass.
+            if (!GenerationIsCurrent || ReviewIdentity != identity || !generationWindows.SequenceEqual(windows) || prepared.Count < 1) return false;
+            var unusable = prepared.Where(item => !Editor.AcceptsVoiceLab([item.Accepted.Segment], item.Accepted.Assets, item.Accepted.Voice, Scope,
+                RewriteActionName, operations)).Select(item => item.Index).ToArray();
+            var any = false;
+            foreach (var index in unusable) any |= SettleUnusable(index, settled);
+            return any ? null : false;
         }
         finally { applyingBatch = false; Changed?.Invoke(this, EventArgs.Empty); }
     }
+
+    /// <summary>Phrase <paramref name="index"/> keeps its original audio because its take can't be made part of the video (Mac
+    /// <c>keepUnusable</c>/<c>noteUnusable</c>), announced once.</summary>
+    private bool SettleUnusable(int index, HashSet<int> settled)
+    {
+        if (!settled.Add(index) || generationWindows.ElementAtOrDefault(index) is not { } window || !window.LeaveOut()) return false;
+        var note = UnusableNote(index + 1);
+        AutoFix.Notes.Add(note);
+        AutoFix.Announcement = note;
+        return true;
+    }
+    internal static string UnusableNote(int phrase) => $"Phrase {phrase} couldn't be made part of the video, so it keeps your original audio.";
 }

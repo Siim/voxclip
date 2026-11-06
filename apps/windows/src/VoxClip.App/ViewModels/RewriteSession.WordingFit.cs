@@ -59,8 +59,11 @@ internal sealed partial class RewriteSession
     /// <summary>Billed connectors (an API key, or a CLI signed in with one) need one inline approval for this reply's rounds.</summary>
     internal bool FitAsksFirst => Connector is { } connector && VoiceLabCostPresentation.KindForLlmSend(connector.Connector.Id,
         SignIn((connector.Connector as LlmConnector)?.CliDetection), connector.Name).Kind == VoiceLabCostPresentationKind.Confirm;
-    internal string FitApprovalLine => "Fit wording automatically · up to 3 requests · price unavailable · billed to your key";
-    internal string FitRunningHeadline => $"Fitting wording to the video · round {WordingFitRound} of {VoiceLabWordingFit.MaximumRounds}";
+    internal string FitApprovalLine => "Fit wording automatically · 1 request · price unavailable · billed to your key";
+    /// <summary>The free fit rounds a reply's over-budget changes get before takes (ai.md §12.9, Mac <c>automaticFitRounds</c>): one. A change
+    /// still longer than its slot after it keeps the speaker's words.</summary>
+    internal const int AutomaticFitRounds = 1;
+    internal string FitRunningHeadline => $"Fitting wording to the video · round {WordingFitRound} of {AutomaticFitRounds}";
     internal string FitNote => FitAsksFirst ? $"Uses {Connector?.Name}, billed to your key. Making a take still needs your paid click."
         : Connector?.Group == "cli" ? $"Uses {Connector.Name} on your plan; nothing is paid until Get Price."
         : $"Uses {Connector?.Name}; nothing is paid until Get Price.";
@@ -72,7 +75,8 @@ internal sealed partial class RewriteSession
     internal string? FitRowNote(int ordinal)
     {
         if (VoicedOrdinals.Contains(ordinal)) return null;
-        if (heldBack.Contains(ordinal) && priceOverrides.Contains(ordinal)) return HeldBackNote(ordinal);
+        if (fitKeptLong.TryGetValue(ordinal, out var slot))
+            return $"kept your original words · the new wording is longer than its {EditingFormat.ToFixed1(slot)} s in the video";
         if (fitKept.Contains(ordinal))
             return $"kept your original words · {EditingFormat.ToFixed1(fitInitialSlots.GetValueOrDefault(ordinal))} s is too short to re-voice";
         if (!fitInitialEstimates.TryGetValue(ordinal, out var before) || Review?.VoiceHunks.FirstOrDefault(hunk => hunk.Ordinals.SequenceEqual([ordinal]))?.Fit is not { Fits: true } fit)
@@ -80,24 +84,62 @@ internal sealed partial class RewriteSession
         return $"reworded to fit · was ≈ {EditingFormat.ToFixed1(before)} s, now ≈ {EditingFormat.ToFixed1(fit.EstimateSeconds)} s · slot {EditingFormat.ToFixed1(fit.SlotSeconds)} s";
     }
     private readonly Dictionary<int, double> fitInitialSlots = [];
-    private readonly HashSet<int> heldBack = [];
-    internal static string HeldBackNote(int ordinal) => $"Change {ordinal} is priced as written; once its take is measured, Rewrite rewords it to fit.";
-    /// <summary>Mac <c>priceHeldBackChanges</c>: when the automatic fit ends (not after Stop, not with paid takes) with a change still
-    /// too long, it is priced as written, so Get Price voices it and the automatic fixes reword it from its measured take.</summary>
-    private void PriceHeldBackChanges()
+    /// <summary>Changes the fit left as recorded because their wording stayed longer than their slot, with that slot's seconds.</summary>
+    private readonly Dictionary<int, double> fitKeptLong = [];
+    /// <summary>The automatic wording fit ended, or could not start, and a change is still longer than its time in the video (ai.md §12.9,
+    /// Mac <c>keepLongChangesAsRecorded</c>): it keeps the speaker's own words, as a change the fit itself left as recorded does, and Rewrite
+    /// goes on with the rest. Nothing is priced that can't fit: the video keeps running under the take. A change too short keeps its
+    /// surrounding-sentence route; after Stop, the footer's Keep My Words settles them.</summary>
+    internal void KeepLongChangesAsRecorded(bool evenAfterStop = false)
     {
-        if (WordingFitStopped || HasPaidTakes || Review is null) return;
-        var held = BlockedVoiceHunks.Where(hunk => hunk.Fit is { TooLong: true }).SelectMany(hunk => hunk.Ordinals).ToArray();
-        if (held.Length == 0) return;
-        heldBack.UnionWith(held);
-        priceOverrides.UnionWith(held);
-        RefreshReview(preserveGenerations: true);
+        if (!IsOpen || Review is null || HasPaidTakes || !evenAfterStop && (WordingFitStopped || AutoFix.Stopped)) return;
+        var hunks = BlockedVoiceHunks.Where(hunk => hunk.Fit is { TooLong: true }).ToArray();
+        var ordinals = hunks.SelectMany(hunk => hunk.Ordinals).Distinct().Order().ToArray();
+        if (ordinals.Length == 0) return;
+        try { ApplyWordingFit(ordinals.Select(ordinal => new VoiceLabFitUpdate(ordinal, true, "")).ToArray()); }
+        catch (Exception exception) when (exception is VoiceLabException or OperationCanceledException) { return; }
+        foreach (var hunk in hunks) foreach (var ordinal in hunk.Ordinals) fitKeptLong[ordinal] = hunk.Fit!.SlotSeconds;
+        AutoFix.Notes.Add($"{ChangeNames(ordinals)} {(ordinals.Length == 1 ? "keeps" : "keep")} your original words: still longer than " +
+            $"{(ordinals.Length == 1 ? "its" : "their")} time in the video after a fit.");
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+    /// <summary>"Change 3", "Changes 3 and 5", "Changes 3, 5 and 6".</summary>
+    internal static string ChangeNames(IReadOnlyList<int> ordinals) => ordinals.Count == 1 ? $"Change {ordinals[0]}"
+        : $"Changes {string.Join(", ", ordinals.Take(ordinals.Count - 1))} and {ordinals[^1]}";
+    /// <summary>[Keep My Words]: every change still waiting on a wording keeps the speaker's words, so Rewrite goes on.</summary>
+    internal bool KeepMyWords()
+    {
+        StopWordingFit(markStopped: false);
+        if (!IsOpen || Review is null || HasPaidTakes) return false;
+        KeepLongChangesAsRecorded(evenAfterStop: true);
+        var waiting = BlockedVoiceHunks.SelectMany(hunk => hunk.Ordinals).Distinct().Order().ToArray();
+        if (waiting.Length > 0)
+        {
+            try { ApplyWordingFit(waiting.Select(ordinal => new VoiceLabFitUpdate(ordinal, true, "")).ToArray()); }
+            catch (Exception exception) when (exception is VoiceLabException or OperationCanceledException) { return false; }
+        }
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
     }
     private string Language => Project.Transcript?.Language ?? "en";
 
-    /// <summary>This project's (and this session's measured) speaking-rate samples for a model.</summary>
-    internal IReadOnlyList<VoiceLabRateSample> RateSamples(string model) => sessionRates.TryGetValue(model, out var measured) ? measured :
-        Project.VoiceLab.SpeakingRateSamples?.GetValueOrDefault(model) ?? [];
+    private RateCalibrations? rateCalibrations;
+    /// <summary>The app's per-voice calibrations (ADR-R43); without them a phrase's estimate starts from the prior.</summary>
+    internal void ConfigureRateCalibrations(RateCalibrations calibrations) { rateCalibrations = calibrations; InvalidateEstimates(); }
+    private void InvalidateEstimates() { if (IsOpen && Review is not null) RefreshReview(preserveGenerations: true); }
+    /// <summary>The voice whose calibration a phrase's estimate starts from (ADR-R43): the chosen voice, else the only calibrated one.</summary>
+    internal VoiceLabVoiceCalibration? VoiceCalibration => rateCalibrations?.For(Generation?.VoiceId);
+    /// <summary>This project's (and this session's measured) samples for a model, under the current prior's key.</summary>
+    private IReadOnlyList<VoiceLabRateSample> ProjectRateSamples(string model)
+    {
+        var key = VoiceLabRateCalibration.ProjectKey(model);
+        return sessionRates.TryGetValue(key, out var measured) ? measured : Project.VoiceLab.SpeakingRateSamples?.GetValueOrDefault(key) ?? [];
+    }
+    /// <summary>The ratios a phrase's multiplier reads for a model: its voice's calibration, then this project's own samples.</summary>
+    internal IReadOnlyList<VoiceLabRateSample> RateSamples(string model) =>
+        VoiceLabRateCalibration.Samples(ProjectRateSamples(model), VoiceCalibration?.Samples(model));
+    /// <summary>How far above the median four takes in five may run, for word budgets (<see cref="VoiceLabWordingFit.WordTarget"/>).</summary>
+    internal double RateSpread(string model) => VoiceLabRateCalibration.Spread(ProjectRateSamples(model), VoiceCalibration?.Samples(model));
     /// <summary>The samples to save with accepted takes, or null when nothing was measured here.</summary>
     internal IReadOnlyDictionary<string, IReadOnlyList<VoiceLabRateSample>>? CalibratedRates()
     {
@@ -105,6 +147,19 @@ internal sealed partial class RewriteSession
         var merged = new Dictionary<string, IReadOnlyList<VoiceLabRateSample>>(Project.VoiceLab.SpeakingRateSamples ?? new Dictionary<string, IReadOnlyList<VoiceLabRateSample>>(), StringComparer.Ordinal);
         foreach (var (model, samples) in sessionRates) merged[model] = samples;
         return merged;
+    }
+
+    /// <summary>Each span's time in the video and its word budget (ai.md §12.9, Mac <c>rewriteSlots</c>), at the speaker's pace and the
+    /// measured take lengths: the voice's calibration, then this project's. Null when the transcript has no speaking rate: the length
+    /// line alone goes.</summary>
+    internal IReadOnlyList<VoiceRewriteSlot>? RewriteSlots(IReadOnlyList<Core.Domain.Shared.TimedWord> source)
+    {
+        try
+        {
+            var wordsPerSecond = VoiceRewriteSlots.WordsPerSecond(RewriteReview.TimingWords(this, Project));
+            return VoiceRewriteSlots.Make(source, wordsPerSecond, VoiceLabWordingFit.Multiplier(RateSamples(synthesisModel)), RateSpread(synthesisModel));
+        }
+        catch (VoiceLabLengthBudgetException) { return null; }
     }
 
     /// <summary>Single-change voice phrases that can be reworded; a merged window keeps today's recovery row.</summary>
@@ -130,6 +185,7 @@ internal sealed partial class RewriteSession
         var (rate, wordsPerSecond, _) = SpeakingRate();
         var samples = RateSamples(synthesisModel);
         var multiplier = VoiceLabWordingFit.Multiplier(samples);
+        var spread = RateSpread(synthesisModel);
         return ordinals.Select(ordinal =>
         {
             if (review.VoiceHunks.FirstOrDefault(hunk => hunk.Ordinals.SequenceEqual([ordinal])) is not { Fit: { } fit, Window: { } window, PatchText: { } patch } phrase)
@@ -140,7 +196,7 @@ internal sealed partial class RewriteSession
             var lower = fit.MinimumSeconds ?? fit.SlotSeconds;
             var upper = Math.Max(lower, fit.MaximumSeconds ?? fit.SlotSeconds);
             var target = VoiceLabWordingFit.WordTarget(wordsPerSecond, multiplier, lower, upper, Math.Max(0, baseline - speech) * multiplier + allowance,
-                window.LeftBridgeWordIds.Count + window.RightBridgeWordIds.Count);
+                window.LeftBridgeWordIds.Count + window.RightBridgeWordIds.Count, spread);
             var original = string.Join(" ", phrase.Hunk.SourceWordIds.Select(id => Transcript.First(word => word.Id == id).Text));
             return new VoiceLabFitPhrase(ordinal, original, string.Join(" ", phrase.Hunk.NewTokens), fit.EstimateSeconds, fit.SlotSeconds,
                 fit.EstimateSeconds > (fit.MaximumSeconds ?? fit.SlotSeconds) ? "shorter" : "longer", target, Calibrated: samples.Count >= 2);
@@ -150,7 +206,7 @@ internal sealed partial class RewriteSession
     private void ResetWordingFit()
     {
         WordingFitRound = 0; WordingFitCompleted = false; WordingFitStopped = false; WordingFitProblem = "";
-        WordingFitPhrases = []; fitInitialEstimates.Clear(); fitInitialSlots.Clear(); fitFrozen.Clear(); fitKept.Clear(); heldBack.Clear();
+        WordingFitPhrases = []; fitInitialEstimates.Clear(); fitInitialSlots.Clear(); fitFrozen.Clear(); fitKept.Clear(); fitKeptLong.Clear();
     }
 
     /// <summary>After a reply lands: fit every phrase outside its slot, automatically for a no-extra-cost connector and after one
@@ -170,7 +226,11 @@ internal sealed partial class RewriteSession
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
+            // A fit that could not start ends as one that ran out of rounds does (Mac `wordingFitFailed`): its problem shows on the fit
+            // card, and the changes still too long keep the speaker's words, so Get Price goes on for the rest.
             WordingFitProblem = Refusal(exception);
+            WordingFitCompleted = true;
+            KeepLongChangesAsRecorded();
             Changed?.Invoke(this, EventArgs.Empty);
             return Task.CompletedTask;
         }
@@ -183,7 +243,7 @@ internal sealed partial class RewriteSession
         return FitWordingAsync(true);
     }
 
-    /// <summary>Runs up to three rounds, one request each, for the phrases still outside their slots. Fitting phrases are frozen and
+    /// <summary>Runs the automatic round (<see cref="AutomaticFitRounds"/>), one request, for the phrases still outside their slots. Fitting phrases are frozen and
     /// never re-sent; Stop, an edit, Ask again or close end the rounds and keep the latest words.</summary>
     internal Task FitWordingAsync(bool approved)
     {
@@ -209,7 +269,7 @@ internal sealed partial class RewriteSession
     {
         try
         {
-            while (WordingFitRound < VoiceLabWordingFit.MaximumRounds)
+            while (WordingFitRound < AutomaticFitRounds)
             {
                 cancellation.Token.ThrowIfCancellationRequested();
                 if (!IsOpen || token != fitToken || Review is null) return;
@@ -238,7 +298,7 @@ internal sealed partial class RewriteSession
             if (token == fitToken)
             {
                 WordingFitRunning = false; WordingFitCompleted = true; fitting = null; fitLease = null;
-                if (IsOpen && !cancellation.IsCancellationRequested) PriceHeldBackChanges();
+                if (IsOpen && !cancellation.IsCancellationRequested) KeepLongChangesAsRecorded();
                 if (IsOpen) { InvalidateGenerationInputs(); Changed?.Invoke(this, EventArgs.Empty); }
             }
             cancellation.Dispose();
@@ -294,9 +354,11 @@ internal sealed partial class RewriteSession
                 var model = row.Receipt?.ModelId ?? input.ModelId;
                 var estimate = VoiceLabRewriteFit.Estimate(input.Text, rate) + VoiceLabAudioTags.Allowance(input.AudioTags, input.Text, model);
                 var measured = audio.Trimmed.Length / (double)audio.SampleRate * (row.Receipt?.Pace ?? input.Pace ?? 1);
-                var previous = RateSamples(model);
+                // One measured take: a sample for this project, under the current prior's key, and for its voice across projects.
+                rateCalibrations?.Record(input.RecordId, model, row.Id.ToString("D"), measured, estimate);
+                var previous = ProjectRateSamples(model);
                 var next = VoiceLabWordingFit.Recording(previous, row.Id.ToString("D"), measured, estimate);
-                if (!ReferenceEquals(next, previous)) sessionRates[model] = next;
+                if (!ReferenceEquals(next, previous)) sessionRates[VoiceLabRateCalibration.ProjectKey(model)] = next;
             }
     }
 
@@ -345,7 +407,7 @@ internal sealed partial class RewriteSession
         var speech = VoiceLabTextLength.Length(text) / (rate * VoiceLabRewriteFit.ProviderSpeechRateMultiplier);
         var lower = timing.MinimumSeconds ?? timing.SlotSeconds;
         var target = VoiceLabWordingFit.WordTarget(wordsPerSecond, ratio, lower, Math.Max(lower, timing.MaximumSeconds ?? timing.SlotSeconds),
-            Math.Max(0, baseline - speech) * ratio);
+            Math.Max(0, baseline - speech) * ratio, spread: RateSpread(synthesisModel));
         var original = string.Join(" ", hunk.Hunk.SourceWordIds.Select(id => Transcript.First(word => word.Id == id).Text));
         // The loop's memory (voice-lab.md §8.2.2): every wording this phrase had, with its measured result. The whole phrase is
         // reworded, so the words joining it to the recording are named as required.

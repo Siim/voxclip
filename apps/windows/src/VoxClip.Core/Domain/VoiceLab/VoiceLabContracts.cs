@@ -179,6 +179,9 @@ public sealed record VoiceRewriteRequest(Guid RequestId, VoiceRewriteScope Scope
     /// <summary>A next step's feedback block (<see cref="RewriteNextActionFeedback"/>, voice-lab.md §8.2.1), sent after the
     /// instruction. At most 20,000 UTF-8 bytes.</summary>
     public string? Feedback { get; init; }
+    /// <summary>Each span's time in the video and its word budget (ai.md §12.9, <see cref="VoiceRewriteSlots"/>); null sends the length
+    /// line alone.</summary>
+    public IReadOnlyList<VoiceRewriteSlot>? Slots { get; init; }
 }
 public sealed record VoiceRewriteTimingFeedback(string Original, string Proposed, double EstimateSeconds, double SlotSeconds)
 {

@@ -46,8 +46,10 @@ internal sealed partial class RewriteSession
     private readonly HashSet<int> priceOverrides = [];
     private IReadOnlyList<VoiceLabAudioTag> audioTags = [];
     internal IReadOnlyList<RewriteHunkReview> PricedVoiceHunks => Review?.VoiceHunks.Where(CanPriceHunk).ToArray() ?? [];
-    internal IReadOnlyList<RewriteHunkReview> BlockedVoiceHunks => Review?.VoiceHunks.Where(hunk => hunk.Fit is { Fits: false } && !CanPriceHunk(hunk) &&
-        !hunk.Ordinals.All(VoicedOrdinals.Contains)).ToArray() ?? [];
+    /// <summary>Changes held back by their estimate before takes. Once takes are paid nothing is held back (Mac
+    /// <c>blockedVoiceOrdinals</c>): a recalibrated estimate never blocks a phrase or Use.</summary>
+    internal IReadOnlyList<RewriteHunkReview> BlockedVoiceHunks => HasPaidTakes ? [] : Review?.VoiceHunks.Where(hunk => hunk.Fit is { Fits: false } &&
+        !CanPriceHunk(hunk) && !hunk.Ordinals.All(VoicedOrdinals.Contains)).ToArray() ?? [];
     /// <summary>Mac <c>voicedOrdinals</c>: changes whose phrase has a selected passing take that fits by length (keep source or a
     /// cut), made for the phrase's wording now. Such a change is never held back by a re-estimate (a new speaking-rate
     /// calibration), and its row shows no estimate or recovery.</summary>

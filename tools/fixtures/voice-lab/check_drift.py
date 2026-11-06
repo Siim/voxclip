@@ -34,6 +34,7 @@ EXACT = ['shared/fixtures/voice-lab/pace-cases.json', 'shared/fixtures/voice-lab
          'shared/fixtures/voice-lab/hard-join-review-cases.json',
          'shared/fixtures/voice-lab/phrase-timing-cases.json',
          'shared/fixtures/voice-lab/tts-estimator-cases.json',
+         'shared/fixtures/voice-lab/rewrite-slot-cases.json',
          'shared/fixtures/voice-lab/pace-matching-cases.json',
          'shared/fixtures/voice-lab/natural-pacing-cases.json',
          'shared/fixtures/voice-lab/video-framing-cases.json',

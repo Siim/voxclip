@@ -15,7 +15,7 @@ public sealed class VoiceLabTakeBatchTests
     static string S(JsonNode node, string key) => node[key]!.GetValue<string>();
     static JsonNode Vectors() => JsonNode.Parse(FixtureLoader.ReadText("fixtures/voice-lab/take-batch-cases.json"))!;
     static decimal? Money(JsonNode? node) => node is null ? null : decimal.Parse(node.GetValue<string>(), CultureInfo.InvariantCulture);
-    static VoiceLabTakeBatch.Window Window(JsonNode row, int rate)
+    internal static VoiceLabTakeBatch.Window Window(JsonNode row, int rate)
     {
         long start = row["startSample"]!.GetValue<long>(), end = row["endSample"]!.GetValue<long>();
         var window = new VoiceLabWindow("first", "last", [], [], start / (double)rate, end / (double)rate, start, end,

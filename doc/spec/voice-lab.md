@@ -107,7 +107,7 @@ Optional `voiceLab.speakingRateSamples` stores, per key, an ordered array of at 
 `{id, ratio}` samples. A sample is the measured trimmed speech length at pace 1.00 divided
 by the uncalibrated estimate, including applicable tags. Samples against the current prior
 (ADR-R43) sit under `"<model>@prior2"`. Samples under the bare model ID were measured against
-the retired 1.8 prior and are not read; the Windows twin still writes them until it moves.
+the retired 1.8 prior and are not read; Windows reads and writes only `"<model>@prior2"` too (2026-11-06).
 Each measured take contributes once. A ratio outside 0.25–4 is a failed measurement and is
 not stored. Old projects omit the field and decode unchanged. Calibration is project data,
 not a reason to stale a proposal or its paid take ownership.
@@ -1028,6 +1028,8 @@ The embedding runs the same VAD, features and 3 s windows as the enrollment stat
 Too little speech to embed blocks the same way, with "There isn't enough speech near this phrase to check that it's your voice." Either block happens before anything is sent. It settles the phrase for the Rewrite: the run's other phrases go on, and nothing prices that phrase again (design.md R2 "Not your voice here").
 
 The result is cached per (project `contentKey`, the guard's speech, `recordId`, the learned references). The same phrase is not embedded twice, but a pass on one phrase never covers another, so a guest's phrase in the creator's video stays blocked ([ADR-R40](../adr/R40-guard-hears-the-patch-speech.md)).
+
+**Windows (2026-11-06).** `VoiceLabGuardSpeech` (Core) selects the same word spans, and `VoiceLabTakeRun.PrepareAsync` embeds them (`GuardSpeech`); `RewriteSource` decodes them with the window's regions. A guard refusal before anything is sent ends the run `VoiceLabTakeRunEnd.Blocked`, and the batch goes on. The phrase is settled for the Rewrite: its change ordinals are remembered, so a later plan of the same Rewrite blocks it before pricing. The free check at Get Price and learned references (ADR-R41, steps 1–2 above) are not on Windows yet: a blocked phrase is found when its run starts, and Windows' speaker check stays off until `VoiceSpeakerCheck.WindowsNativeParityVerified`.
 
 ### 6.10 Deletion
 

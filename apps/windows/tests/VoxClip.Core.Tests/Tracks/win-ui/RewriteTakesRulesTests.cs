@@ -41,12 +41,18 @@ public sealed class RewriteTakesRulesTests
     public async Task AVoicedPhraseIsNeverHeldBackAndItsRowShowsNoEstimateOrRecovery()
     {
         const string Long = "a much much longer phrasing than this slot could hold";
-        var connector = new Connector(Long + " word11 word12", (_, ordinals) => Rows(ordinals, Long));
+        // Stopped before the fit kept it, then priced by the user's own click (ADR-R42 keeps a long change otherwise).
+        var connector = new Connector(Long + " word11 word12", (_, ordinals) => Rows(ordinals, Long)) { HoldFits = true };
         var runner = new Runner((_, _) => (Fit, Passed));
         using var session = Session(connector);
-        Assert.True(await ProposeAsync(session));
+        var proposing = ProposeAsync(session);
+        await connector.FitSent.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        session.StopWordingFit();
+        connector.Release.SetResult();
+        Assert.True(await proposing);
+        await session.WordingFitWork;
         Assert.True(session.ShowsEstimate(1));
-        Assert.Equal(RewriteSession.HeldBackNote(1), session.FitRowNote(1));
+        Assert.True(session.PriceItAnyway(1));
         Assert.False(session.Review!.VoiceHunks[0].Fit!.Fits);
         Configure(session, runner);
         await session.DiscoverWindowsAsync();

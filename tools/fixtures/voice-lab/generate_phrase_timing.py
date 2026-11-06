@@ -1,27 +1,18 @@
-"""Offline phrase-timing reference; recorded VAD measurements, never provider calls."""
+"""Offline phrase-timing reference; recorded VAD measurements, never provider calls. Expectations use the calibrated prior
+(ADR-R43, generate_tts_estimator.py); the 3 November measurements are another speaker and an older model, which the prior
+overshoots: the Mac replays them as a voice corrected by its own takes, Windows replays the expectations."""
 import argparse
 import json
 import pathlib
+
+import generate_tts_estimator as tts
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 OUTPUT = ROOT / "shared/fixtures/voice-lab/phrase-timing-cases.json"
 
 
 def estimate(text, rate):
-    punctuation = 0.0
-    group = 0.0
-    for character in text:
-        pause = 0.22 if character in ".!?…。！？" else 0.12 if character in ",;:—–-，；：" else 0.0
-        if pause:
-            group = max(group, pause)
-        else:
-            punctuation += group
-            group = 0.0
-    punctuation += group
-    speech = sum(character.isalnum() for character in text) / (rate * 1.8)
-    lead = speech + 0.03
-    trimmed = lead + 0.06
-    return trimmed + punctuation
+    return tts.estimate(text, rate)
 
 
 def document():
@@ -36,8 +27,9 @@ def document():
     return {"schema": "voxclip-phrase-timing/1", "caseCount": len(cases),
             "calibration": {"date": "2026-11-03", "vad": "SpeakerVAD / Silero 6.2.0 CPU",
                             "vadSha256": "2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987",
-                            "providerSpeechRateMultiplier": 1.8, "minorPauseSeconds": 0.12,
-                            "sentencePauseSeconds": 0.22, "trimLeadSeconds": 0.03, "trimTailSeconds": 0.06},
+                            "prior": 2, "providerSpeechRateMultiplier": tts.K, "onsetSeconds": tts.ONSET,
+                            "sentencePauseSeconds": tts.SENTENCE, "clausePauseSeconds": tts.CLAUSE,
+                            "trimLeadSeconds": tts.LEAD, "trimTailSeconds": tts.TAIL},
             "cases": cases}
 
 

@@ -270,9 +270,13 @@ public sealed record VoiceLabTakeRow(Guid Id, int Index, uint Seed, VoiceLabRece
         return this with { Qa = qa, VoiceCheck = check, Failure = failure ?? Failure };
     }
 }
-public enum VoiceLabTakeRunEnd { Completed, EarlyStop, Cancelled, Invalidated, Fatal }
+/// <summary>How a take run ended. <see cref="Blocked"/> (ADR-R40, voice-lab.md §6.9): the use-time guard refused the window's speech before
+/// anything was sent; no retry changes that verdict, so the window is settled and a batch's later windows go on.</summary>
+public enum VoiceLabTakeRunEnd { Completed, EarlyStop, Cancelled, Invalidated, Fatal, Blocked }
 public sealed record VoiceLabTakeRunResult(IReadOnlyList<VoiceLabTakeRow> Rows, VoiceLabTakeRunEnd End)
 {
+    /// <summary>The failure that ended the run before any take row was made (the guard's refusal on <see cref="VoiceLabTakeRunEnd.Blocked"/>).</summary>
+    public Exception? Failure { get; init; }
     public IReadOnlyList<VoiceLabTakeRow> Ranked => Rows.Where(row => row.Selectable).OrderBy(row => row.HasJoinAdvisory).ThenByDescending(row => row.Score).ThenBy(row => row.Index).ToArray();
     public VoiceLabTakeRow? Best => Ranked.FirstOrDefault();
     public VoiceLabTakeRow? BestAutomatic => Ranked.FirstOrDefault(row => row.AutomaticallySelectable);

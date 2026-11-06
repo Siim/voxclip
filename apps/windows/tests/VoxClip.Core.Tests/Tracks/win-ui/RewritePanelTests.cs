@@ -153,7 +153,8 @@ public sealed class RewritePanelTests
     [Fact]
     public async Task TooShortPhrasesOfferSentenceRecoveryWithoutRequestingEvenShorterWords()
     {
-        var words = Enumerable.Range(0, 80).Select(index => Word(index, "word" + index) with { End = index + 1.98 }).ToArray();
+        // Every take carries the provider's onset (ADR-R43): one letter is too short only for a slot of about two seconds.
+        var words = Enumerable.Range(0, 45).Select(index => Word(index, "word" + index) with { Start = index * 2 + 1, End = index * 2 + 2.98 }).ToArray();
         var connector = new RecordingConnector();
         using var session = new RewriteSession(Editor(words), 10, 12, Envelope(), new(connector, "chosen", "Stub", "local", ""));
         await session.SetInstructionAsync("Plainly");
@@ -1144,7 +1145,7 @@ public sealed class RewritePanelTests
         Assert.Equal("Choose a connector in Settings → Providers & Keys.", missing.SendLine);
         Assert.Equal("This change can't be placed in this take. Your edits are saved.",
             RewriteSession.Refusal(new VoiceLabGeometryException(VoiceLabGeometryErrorCode.InvalidInput)));
-        Assert.Equal("Inserting words isn't available yet. Your edits are saved.",
+        Assert.Equal("This adds words where you said nothing, and the video has no time for them, so it stays as recorded. Your edits are saved.",
             RewriteSession.Refusal(new VoiceLabGeometryException(VoiceLabGeometryErrorCode.InsertionUnsupported)));
         foreach (var group in new[] { "local", "cli" })
         {

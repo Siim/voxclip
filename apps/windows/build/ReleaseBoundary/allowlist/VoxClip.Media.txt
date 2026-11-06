@@ -2174,6 +2174,8 @@ member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: field private storage
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: field private store
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: field private sync
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method internal .ctor(VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab,VoxClip.Core.Services.VoiceLab.VoiceConsentStore,VoxClip.Media.VoiceLab.VoiceLabTakeStorage,VoxClip.Core.Services.VoiceLab.VoiceLabDispatchGate,System.Func`2<System.Threading.CancellationToken,System.Threading.Tasks.Task`1<bool>>,VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks)
+member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method internal GuardSettles(System.Exception)
+member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method internal GuardSpeech(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method internal get_PreparedSetId()
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method internal get_Suspension()
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method internal set_Suspension(System.Func`2<string,System.Threading.Tasks.Task>)

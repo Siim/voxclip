@@ -178,9 +178,11 @@ public sealed class RewriteLearningLoopTests
         var runner = new Runner((_, _) => (Fit, Passed)) { Fails = (_, _) => (new VoiceLabException(VoiceLabErrorKind.QuotaExceeded), true) };
         using var session = await PricedAsync(connector, runner);
         await SettleAsync(session);
-        // A provider-stuck phrase names its fix above; past it, a phrase with no take to use offers Keep original words.
+        // A provider-stuck phrase names its fix above and still carries a step forward (ADR-R42, I10): keep its original audio.
         Assert.True(session.FooterStep.Line.Contains("Choose a next step above.", StringComparison.Ordinal), session.FooterStep.ToString());
-        Assert.Equal(RewriteFooterAction.None, session.FooterStep.Action);
+        Assert.Equal(RewriteFooterAction.KeepOriginal, session.FooterStep.Action);
+        Assert.Equal("Keep Original Audio for Phrase 1", session.FooterStep.Title);
+        Assert.Equal(0, session.FooterStep.Phrase);
         Assert.Equal(new RewriteFooterStep("Phrase 1 has no take to use.", "Keep original words for phrase 1", RewriteFooterAction.KeepOriginal, 0),
             RewriteSession.NoTakeToUseStep(0));
         Assert.Equal(new RewriteFooterStep("Phrase 2 has no take yet.", "Price a take for phrase 2", RewriteFooterAction.PriceTake, 1), RewriteSession.NoTakeYetStep(1));

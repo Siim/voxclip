@@ -25,12 +25,12 @@ public sealed class RewriteSmokeTests
     /// <summary>S15 twins Mac S15 (bridge words); S16 twins Mac S14 (Eleven v4 timing quirks), renumbered because Windows S14 is the
     /// collision after paid takes; S17 twins Mac S16 (a long run voiced in parts); the own-take scenarios keep Mac's names.</summary>
     public static TheoryData<string> Scenarios => new(["S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9", "S10", "S11", "S12", "S13", "S14",
-        "S15", "S16", "S17", "S-own-typed", "S-own-mic", "S-own-mic-misfit"]);
+        "S15", "S16", "S17", "S-own-typed", "S-own-mic", "S-own-mic-misfit", "S-viral-fit", "S-guard-blocked"]);
     /// <summary>S17's take: words 10–79 with every fifth word from 12 to 67 changed, twelve phrases in three parts.</summary>
     internal static readonly int[] LongRunWords = Enumerable.Range(0, 12).Select(index => 12 + 5 * index).ToArray();
     internal static string LongRunReply => string.Join(" ", Enumerable.Range(10, 70).Select(index => LongRunWords.Contains(index) ? "a much clearer phrasing" : "word" + index));
     /// <summary>S16's reply: words 10 and 14 change, words 11–13 stay, so two phrases are voiced.</summary>
-    private const string TwoChanges = "a much clearer phrasing word11 word12 word13 a much brighter phrasing word15 word16";
+    private const string TwoChanges = "a much clearer phrasing word11 word12 word13 a brighter phrasing word15 word16";
 
     [Theory]
     [MemberData(nameof(Scenarios))]
@@ -100,10 +100,64 @@ public sealed class RewriteSmokeTests
             }
             case "S6":
             {
-                using var smoke = new Smoke(id, new(Fifteen + " word11 word12", (_, ordinals) => Rows(ordinals, Fifteen)), new((_, _) => (Fit, Passed)));
-                await smoke.ProposeAsync();
-                // Over the voice budget Rewrite goes on: a note, and the batch is priced with no click.
+                // A fifteen-word change can't fit a one-word slot and would keep the speaker's words after its fit (ADR-R42): the fit is
+                // stopped and the change priced by the user's own click, and over the voice budget Rewrite goes on with a note.
+                var connector = new Connector(Fifteen + " word11 word12", (_, ordinals) => Rows(ordinals, Fifteen)) { HoldFits = true };
+                using var smoke = new Smoke(id, connector, new((_, _) => (Fit, Passed)));
+                var proposing = RewriteAutoFixTests.ProposeAsync(smoke.Session);
+                await connector.FitSent.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+                smoke.Session.StopWordingFit();
+                connector.Release.SetResult();
+                if (!await proposing) smoke.Failures.Add($"{id}: the reply didn't land");
+                await smoke.Session.WordingFitWork;
+                smoke.Observe("stop the fit");
+                if (!smoke.Session.PriceItAnyway(1)) smoke.Failures.Add($"{id}: the stopped change couldn't be priced");
                 await smoke.GetPriceAsync();
+                smoke.End(VoiceLabVideoMode.Source, voiced: 1);
+                return smoke;
+            }
+            case "S-viral-fit":
+            {
+                // Mac S-viral-fit (MVP32, ADR-R42): a padded line longer than its slot is repaired once, then keeps the speaker's words
+                // with one line; the other change is voiced (VF1). The request carried each slot and why (VF2).
+                const string padded = "Here's the truth, and honestly this is the most amazing software you will ever see";
+                var connector = new Connector("a much clearer phrasing word11 word12 word13 " + padded + " word15 word16",
+                    (_, ordinals) => Rows(ordinals, padded + " today"));
+                using var smoke = new Smoke(id, connector, new((_, _) => (Fit, Passed)), last: 16);
+                await smoke.ProposeAsync();
+                if (connector.FitRequests.Count != 1) smoke.Failures.Add($"{id} VF1: {connector.FitRequests.Count} fit requests, expected one");
+                if (smoke.Session.ChangeStates.GetValueOrDefault(2) != TranscriptChangeState.Excluded ||
+                    !smoke.Session.AutoFix.Notes.Contains("Change 2 keeps your original words: still longer than its time in the video after a fit."))
+                    smoke.Failures.Add($"{id} VF1: the padded line wasn't kept as recorded with its line");
+                if (connector.Rewrites.FirstOrDefault()?.Instruction is not { } asked || !asked.Contains("TIME IN THE VIDEO (the picture keeps running", StringComparison.Ordinal) ||
+                    !asked.Contains("1. “word10”: 0.4 s, at most 1 words", StringComparison.Ordinal) || !asked.Contains("7. “word16”: 0.4 s", StringComparison.Ordinal))
+                    smoke.Failures.Add($"{id} VF2: the request didn't carry the slots and the why: {connector.Rewrites.Count} sent; " + connector.Rewrites.FirstOrDefault()?.Instruction);
+                await smoke.GetPriceAsync();
+                smoke.End(VoiceLabVideoMode.Source, voiced: 1);
+                return smoke;
+            }
+            case "S-guard-blocked":
+            {
+                // Mac S-guard-blocked (G1, G2; ADR-R40): the guard refuses phrase 1's speech before anything is sent. It is settled: the
+                // run goes on and voices phrase 2, the stop is said once with its two ways on, and nothing prices phrase 1 again.
+                Runner[] runners = [new((_, _) => (Fit, Passed)) { Blocks = _ => new VoiceConsentException(VoiceConsentError.VoiceOwnerMismatch) },
+                    new((_, _) => (Fit, Passed))];
+                using var smoke = new Smoke(id, new(TwoChanges, (_, ordinals) => Rows(ordinals, "x")), runners[0], last: 16, runners: index => runners[index]);
+                await smoke.ProposeAsync();
+                await smoke.GetPriceAsync();
+                var windows = smoke.Session.GenerationWindows;
+                var card = smoke.Session.NextStepCards.FirstOrDefault(card => card.Id == "Rewrite.Steps.Phrase1");
+                if (windows[0].Blocked is null || runners[1].Sends != 1 || windows[1].Selected is null)
+                    smoke.Failures.Add($"{id} G1: phrase 1 {(windows[0].Blocked is null ? "wasn't settled" : "settled")}, phrase 2 ran {runners[1].Sends} time(s)");
+                if (card is null || !card.Chips.Select(chip => chip.Label).SequenceEqual(["● Say it myself", "Keep as recorded"]) ||
+                    smoke.Session.FooterStep.Title != "Keep Original Audio for Phrase 1")
+                    smoke.Failures.Add($"{id} G1: the stop and its two ways on aren't shown; footer '{smoke.Session.FooterStep.Title}'");
+                await smoke.ClickAsync("Rewrite.Chip.KeepAsRecorded1");
+                if (runners[0].Sends != 0 || runners[0].Executions != 1 || windows[0].CanExecute ||
+                    smoke.Session.NextStepCards.SelectMany(card => card.Chips).Any(chip => chip.Label.Contains('$')) ||
+                    smoke.Session.FooterStep.Phrase == 0 || smoke.Session.FooterStep.Title?.Contains('$') == true)
+                    // The headless stub has no scratch audio, so its takes never read ready for Use; End checks what Use would apply.
+                    smoke.Failures.Add($"{id} G2: phrase 1 was offered or sent again ({runners[0].Executions} runs): footer '{smoke.Session.FooterStep.Title}'");
                 smoke.End(VoiceLabVideoMode.Source, voiced: 1);
                 return smoke;
             }
@@ -299,9 +353,17 @@ public sealed class RewriteSmokeTests
             }
             case "S12":
             {
-                using var smoke = new Smoke(id, new(Long + " word11 word12", (round, ordinals) => Rows(ordinals, round <= 3 ? Long : "said briefly")),
-                    new((run, _) => run == 1 ? (5.8, Passed) : (Fit, Passed)));
-                await smoke.ProposeAsync();
+                // A long line would keep the speaker's words after its one fit (ADR-R42); stopped and priced by the user's own click, its
+                // too-long take is reworded from its measured length.
+                var connector = new Connector(Long + " word11 word12", (round, ordinals) => Rows(ordinals, round <= 1 ? Long : "said briefly")) { HoldFits = true };
+                using var smoke = new Smoke(id, connector, new((run, _) => run == 1 ? (5.8, Passed) : (Fit, Passed)));
+                var proposing = RewriteAutoFixTests.ProposeAsync(smoke.Session);
+                await connector.FitSent.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+                smoke.Session.StopWordingFit();
+                connector.Release.SetResult();
+                if (!await proposing) smoke.Failures.Add($"{id}: the reply didn't land");
+                await smoke.Session.WordingFitWork;
+                if (!smoke.Session.PriceItAnyway(1)) smoke.Failures.Add($"{id}: the stopped change couldn't be priced");
                 Assert.Single(smoke.Session.PricedVoiceHunks);
                 await smoke.GetPriceAsync();
                 smoke.End(VoiceLabVideoMode.Source, voiced: 1);
@@ -459,6 +521,11 @@ public sealed class RewriteSmokeTests
                 var acts = footer.Title is not null || cards.Any(card => card.Chips.Count > 0) || getPrice || Session.PreparedBatch is not null ||
                     Session.KeepFixingTitle is not null || Session.LeftOutPhrases.Count > 0 || Session.MeasuredGeneration is not null;
                 if (!acts && !running) Failures.Add($"{name} I1: nothing acts; footer '{footer.Line}'");
+                // I10 (Mac, ADR-R42): a Rewrite waiting on nothing has a footer primary, unless the panel's own Get Price or priced Make
+                // take, drawn right above, is the step.
+                if (!running && footer.Title is null && !getPrice && Session.PreparedBatch is null && Session.MeasuredGeneration is null &&
+                    Session.Review is { Diff.Hunks.Count: > 0 })
+                    Failures.Add($"{name} I10: no step forward in the footer '{footer.Line}'");
                 var inert = footer.Action switch
                 {
                     RewriteFooterAction.UseTakes => !Session.CanAcceptAll,
