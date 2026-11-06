@@ -691,6 +691,7 @@ import VoxClipCore
             if session.wordingFit.measured?.preparing == true { reasons.append("measuring") }
             if session.takePlan?.lipsync.usingTakes == true { reasons.append("lipsync") }
             if session.autoFix.work != nil { reasons.append("auto fix") }
+            if app.voiceLabSession.videoVoices.values.contains(where: { $0.task != nil }) { reasons.append("video voice") }
             return reasons.isEmpty ? nil : reasons.joined(separator: "+")
         }
         /// Tells the scripted ElevenLabs each prepared phrase's fitting length (the plan's windows are known now).
@@ -1320,7 +1321,7 @@ import VoxClipCore
     ]
         // Built step by step: a long `+` chain of scenario lists strains hosted Xcode 26's type checker.
         let groups: [[Definition]] = [ownTakeScenarios, guardScenarios, fitScenarios, rebuildScenarios, makeItScenarios,
-                                      askClaudeScenarios, clipControlsScenarios, toneScenarios, claudeModeScenarios]
+                                      askClaudeScenarios, clipControlsScenarios, toneScenarios, claudeModeScenarios, videoVoiceScenarios]
         for group in groups { all += group }
         return all
     }

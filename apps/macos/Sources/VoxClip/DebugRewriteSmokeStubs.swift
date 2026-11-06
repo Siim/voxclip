@@ -197,6 +197,8 @@ struct RewriteSmokeVoiceScript: Sendable {
     var checks = 0
     /// The owner's cloned voices the account lists; S-voice-rebuild adds and removes them (voice-lab §6.12).
     var voices = ["fixtureOwnVoice"]
+    /// Voices created so far (`POST /v1/voices/add`).
+    var created = 0
     /// Every request, as "METHOD /path", and the voice each paid synthesis used.
     var requests: [String] = []
     var synthesisVoices: [String] = []
@@ -246,8 +248,14 @@ final class RewriteSmokeHTTP: URLProtocol, @unchecked Sendable {
             case ("GET", "/v1/user/subscription"):
                 data = Data(#"{"tier":"starter","status":"active","character_count":0,"character_limit":100000,"can_use_instant_voice_cloning":true,"voice_slots_used":1,"voice_limit":3}"#.utf8)
             case ("POST", "/v1/voices/add"):
-                Self.script.withLock { $0.voices.append("fixtureRebuiltVoice") }
-                data = Data(#"{"voice_id":"fixtureRebuiltVoice","requires_verification":false}"#.utf8)
+                // Each creation its own id: the first is S-voice-rebuild's, later ones are a further video's voice.
+                let id = Self.script.withLock { script -> String in
+                    script.created += 1
+                    let id = script.created == 1 ? "fixtureRebuiltVoice" : "fixtureRebuiltVoice\(script.created)"
+                    script.voices.append(id)
+                    return id
+                }
+                data = Data("{\"voice_id\":\"\(id)\",\"requires_verification\":false}".utf8)
             case ("DELETE", let path) where path.hasPrefix("/v1/voices/"):
                 let id = String(path.dropFirst("/v1/voices/".count))
                 Self.script.withLock { $0.voices.removeAll { $0 == id } }
