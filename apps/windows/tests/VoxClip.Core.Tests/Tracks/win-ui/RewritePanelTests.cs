@@ -426,7 +426,7 @@ public sealed class RewritePanelTests
         using (var production = new RewriteSession(Project(), 10, 12, Envelope(), null)) Assert.False(production.VoicesUnavailable);
         var panel = AppSource("Controls", "RewritePanel.cs");
         Assert.Contains("var unavailable = generation.Voices.Count == 0 && session.VoicesUnavailable;", panel);
-        Assert.Contains("discover.Visibility = unavailable || session.PricedVoiceHunks.Count == 0 ? Visibility.Collapsed : Visibility.Visible;", panel);
+        Assert.Contains("discover.Visibility = unavailable || session.PricedVoiceHunks.Count == 0 || session.EveryPhraseSettled ? Visibility.Collapsed : Visibility.Visible;", panel);
         Assert.Contains("noVoice.Visibility = !unavailable && generation.HasDiscovered && generation.Voices.Count == 0 ? Visibility.Visible : Visibility.Collapsed;", panel);
         Assert.Contains("languageUnavailable.Visibility = unavailable ? Visibility.Visible : Visibility.Collapsed;", panel);
         Assert.Contains("var unavailable = Small(VoiceLabCopy.LanguageUnavailable);", panel);
