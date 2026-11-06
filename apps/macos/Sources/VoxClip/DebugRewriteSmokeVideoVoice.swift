@@ -21,9 +21,14 @@ extension DebugRewriteSmoke {
     /// anchor's 8 s consent clip the set would reach 30 s.
     nonisolated static let shortVideoScript = baseScript.components(separatedBy: ". ").prefix(6).joined(separator: ". ") + "."
 
+    /// Two voice changes a sentence apart, the second a whole clause: its take is over the 3 s of speech the speaker
+    /// model embeds, so PV3 has an earlier take to measure in both lengths.
+    nonisolated static let videoVoiceChanges = [twoChanges[0],
+        ("captions follow the words as they change, so nobody has to retype them", "subtitles track every line while it shifts, so no one types them again")]
+
     static var videoVoiceScenarios: [Definition] { [
         Definition(id: "S-voice-per-video", title: "a matching voice for each video: asked once, made from video 1, its takes use it; video 2 by ✦ Make it postable makes its own and removes video 1's",
-            requiresCompletion: false, fixture: Fixture(rewrites: [.passage(replace(twoChanges))], voice: RewriteSmokeVoiceScript(offset: -0.2))) { harness in
+            requiresCompletion: false, fixture: Fixture(rewrites: [.passage(replace(videoVoiceChanges))], voice: RewriteSmokeVoiceScript(offset: -0.2))) { harness in
             let saved = try harness.saveVoices()
             let setup = try await harness.videoVoiceSetup()
             defer { harness.endVideoVoices(setup, saved: saved) }
@@ -86,6 +91,8 @@ extension DebugRewriteSmoke.Harness {
         let voiceLab = VoiceLabSession(app: app, store: store, reconciler: VoiceOperationReconciler(store: store, client: client))
         voiceLab.stageEnrollmentForTests(client: client, speaker: .rewriteSmoke)
         voiceLab.pendingTakeVoices = { [] }
+        // The anchor's baseline reads only the projects a check names, never the recent list or the export folder.
+        voiceLab.anchorBaselineProjects = { [] }
         await voiceLab.load(recover: false)
         let previous = app.voiceLabSession
         app.voiceLabSession = voiceLab
@@ -145,6 +152,9 @@ extension DebugRewriteSmoke.Harness {
     /// PV3: video 2 by ✦ Make it postable with the stored answer: never asked, its own voice made, video 1's removed.
     func videoVoiceSecondVideo(_ setup: VideoVoiceSetup, first: VideoVoice) async throws {
         guard let store else { throw DebugRewriteSmoke.Failure.setup("no store") }
+        let earlier = try videoVoiceEarlierTakes(setup, first: first)
+        let earlierLengths = (editor?.project.voiceLab.segments ?? []).map { String(format: "%.1f s", $0.audio.trimEnd - $0.audio.trimStart) }
+        defer { try? FileManager.default.removeItem(at: earlier.deletingLastPathComponent()) }
         // A second video: the same script, recorded on another microphone (the scripted voice check's 135 Hz, 35° away).
         // The account outlives the project: its voices and the ids it has handed out stay.
         let (listed, created) = RewriteSmokeHTTP.script.withLock { ($0.voices, $0.created) }
@@ -184,14 +194,39 @@ extension DebugRewriteSmoke.Harness {
         let made = second.map { $0.status == .active && $0.id != first.recordID && $0.speaker.embedding == setup.anchor.speaker.embedding } ?? false
         let segments = editor.project.voiceLab.segments
         let used = !voices.isEmpty && voices.allSatisfy { $0 == second?.voiceId } && !segments.isEmpty && segments.allSatisfy { $0.provenance.consentRecordId == second?.id }
+        // Settings › Voices shows the comparison once a video has its own voice; showing it measures siim's earlier takes.
+        setup.voiceLab.anchorBaselineProjects = { [earlier] }
+        let comparison = VideoVoiceRows.showsComparison(setup.voiceLab.perVideoBook)
+        await setup.voiceLab.measureAnchorBaseline()?.value
         let book = setup.voiceLab.perVideoBook
+        let baselineLine = setup.voiceLab.anchorBaselineLine ?? "no baseline line"
+        let baseline = comparison && book.anchorBaseline?.anchorId == setup.anchor.id && (book.anchorBaseline?.takes ?? 0) > 0
+            && baselineLine.hasPrefix("siim · ") && baselineLine.contains(" across \(book.anchorBaseline?.takes ?? 0) earlier take")
         completed = used
         makeItAppend([DebugRewriteSmoke.Check(invariant: "PV3",
             passed: !asked && made && removed && anchor.status == .active && used && book.videos.map(\.contentKey) == [key] && book.removals.isEmpty
-                && requests.filter { $0 == "POST /v1/voices/add" }.count == 1 && !requests.contains("DELETE /v1/voices/\(setup.anchor.voiceId)"),
+                && requests.filter { $0 == "POST /v1/voices/add" }.count == 1 && !requests.contains("DELETE /v1/voices/\(setup.anchor.voiceId)") && baseline,
             detail: (asked ? "asked again · " : "not asked · ") + "video 2: \(second.map { "\($0.voiceName) \($0.voiceId)" } ?? "no voice") · video 1's voice \(old.status.rawValue)"
                 + (removed ? " (deleted in the account)" : "") + " · anchor \(anchor.status.rawValue) · \(voices.count) takes with \(Set(voices).sorted().joined(separator: ", "))"
-                + " · \(segments.count) segments · " + (setup.voiceLab.perVideoNote ?? "no removal owed"))])
+                + " · \(segments.count) segments · " + (setup.voiceLab.perVideoNote ?? "no removal owed") + " · Settings: " + baselineLine + " (video 1's takes as siim's: \(earlierLengths.joined(separator: ", ")))")])
+    }
+
+    /// Video 1's accepted takes as earlier takes of siim, in a project file of their own beside the smoke's media: the
+    /// anchor's baseline reads it as it reads the owner's recent projects. Video 1's voice id becomes the anchor's
+    /// throughout, so the project's voices, recipes and evidence still agree.
+    private func videoVoiceEarlierTakes(_ setup: VideoVoiceSetup, first: VideoVoice) throws -> URL {
+        guard let editor else { throw DebugRewriteSmoke.Failure.setup("no editor") }
+        let encoded = String(decoding: try JSONProjectStore.encode(editor.project), as: UTF8.self)
+        let data = Data(encoded.replacingOccurrences(of: first.recordID, with: setup.anchor.id).utf8)
+        let project = try JSONProjectStore.decode(data)
+        guard !VoicePerVideo.anchorTakes(in: project, anchorID: setup.anchor.id).isEmpty else {
+            throw DebugRewriteSmoke.Failure.setup("video 1 has no takes to read as earlier takes")
+        }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-smoke-baseline-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let url = folder.appendingPathComponent("earlier.voxclip")
+        try data.write(to: url)
+        return url
     }
 
     /// PV4: too little of the video's own speech: the anchor, nothing created, said once.
