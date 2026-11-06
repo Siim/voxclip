@@ -426,6 +426,33 @@ private actor HookFixtureConnector: LLMConnector {
         #expect(editor.project.edits.clips.contains { $0.id == "five-1" })
     }
 
+    /// Typed text stays between the sparkles and the picker (MVP37: a long direction ran under "Claude Code"): the field
+    /// editor takes the cell's text rect when typing starts and again when a narrower bar compacts the picker.
+    @Test func typedTextNeverRunsUnderTheIconOrThePicker() async throws {
+        let app = AppModel(settingsStore: RegressionSettingsStore())
+        app.set("llm.connector", .string("claude-code"))
+        let (shell, editor, _, bar) = try await open(try fiveQuestions(), app: app)
+        defer { bar.tearDown(); editor.close() }
+        shell.selection = .clip("five-1")
+        lay(bar, width: 900)
+        let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 900, height: ShellMetrics.clipBar), styleMask: [.titled], backing: .buffered, defer: true)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        window.contentView?.addSubview(bar)
+        #expect(window.makeFirstResponder(bar.ask))
+        bar.ask.currentEditor()?.string = "Keep the directions. revoice and lipsync everything in my own voice"
+        for width: CGFloat in [900, 520] {
+            lay(bar, width: width)
+            let cell = try #require(bar.ask.cell as? ClipBarAskCell)
+            let clip = try #require(bar.ask.currentEditor()?.superview)
+            let text: NSRect = cell.textRect(bar.ask.bounds)
+            let picker: NSRect = bar.ask.convert(bar.picker.bounds, from: bar.picker)
+            #expect(clip.frame == text, "width \(width): editor \(clip.frame) text \(text)")
+            #expect(clip.frame.minX >= ClipBarAskCell.leadingInset, "width \(width)")
+            #expect(clip.frame.maxX <= picker.minX, "width \(width): editor ends \(clip.frame.maxX), picker starts \(picker.minX)")
+        }
+    }
+
     // MARK: Rewrite and Ask
 
     /// Rewrite and Return in the Ask field run V13's Rewrite on the scope now with the field's text: the tab's clip with

@@ -269,6 +269,7 @@ enum ClipBarMetrics {
             let pickerWidth = picker.intrinsicContentSize.width
             place(ask, x: fieldStart, width: max(0, end - fieldStart), height: ClipBarMetrics.control)
             (ask.cell as? ClipBarAskCell)?.trailingInset = ClipBarMetrics.askTrailing + pickerWidth + ClipBarMetrics.askIconGap
+            ask.keepEditorInTextRect()
             place(picker, x: end - ClipBarMetrics.askTrailing - pickerWidth, width: pickerWidth, height: HarnessPicker.height)
         } else {
             picker.compact = end - ClipBarMetrics.askTrailing - picker.fullWidth < x
@@ -690,6 +691,12 @@ enum ClipBarMetrics {
         onFocus()
         return true
     }
+    /// While typing, the field editor's frame follows the cell's text rect when a layout moves the picker or resizes the field.
+    func keepEditorInTextRect() {
+        guard let cell = cell as? ClipBarAskCell, let clip = currentEditor()?.superview else { return }
+        let rect = cell.textRect(bounds)
+        if clip.frame != rect { clip.frame = rect }
+    }
 }
 
 @MainActor final class ClipBarAskCell: NSTextFieldCell {
@@ -706,6 +713,16 @@ enum ClipBarMetrics {
     }
     private func box(_ frame: NSRect) -> NSBezierPath { NSBezierPath(roundedRect: frame.insetBy(dx: 0.5, dy: 0.5), xRadius: 6, yRadius: 6) }
     override func drawingRect(forBounds rect: NSRect) -> NSRect { textRect(rect) }
+    override func titleRect(forBounds rect: NSRect) -> NSRect { textRect(rect) }
+    // Typing happens in AppKit's field editor, which takes the frame these pass on: the same text rect, so typed text never
+    // runs under the sparkles or the picker (MVP37: "…irections. revoice and lipsync everythin" over "Claude Code").
+    override func edit(withFrame rect: NSRect, in controlView: NSView, editor textObj: NSText, delegate: Any?, event: NSEvent?) {
+        super.edit(withFrame: textRect(rect), in: controlView, editor: textObj, delegate: delegate, event: event)
+    }
+    override func select(withFrame rect: NSRect, in controlView: NSView, editor textObj: NSText, delegate: Any?,
+                         start selStart: Int, length selLength: Int) {
+        super.select(withFrame: textRect(rect), in: controlView, editor: textObj, delegate: delegate, start: selStart, length: selLength)
+    }
     override func draw(withFrame cellFrame: NSRect, in controlView: NSView) {
         let path = box(cellFrame)
         DesignValues.nsColor("bg.window").setFill()
