@@ -149,6 +149,9 @@ internal sealed class VoiceLabBackend(DataLocations data, IKeyProvider keys, ILo
     public async Task<VoiceRebuildFind> FindVideoVoiceAsync(string anchorId, VoiceLabProjectSource source, CancellationToken ct)
     {
         RequireEnabled(ct);
+        // The closed parity gate refuses before the consent store or the media is read.
+        if (Speaker(CreateVoiceSession.StatementLanguage(source.Project.Transcript?.Language, _ => true)) is null)
+            throw new VoiceRebuildFailedException(VoiceRebuildFailureKind.Unavailable);
         var record = store.Load(anchorId);
         var probe = Speaker(record.Language) ?? throw new VoiceRebuildFailedException(VoiceRebuildFailureKind.Unavailable);
         try

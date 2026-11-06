@@ -255,6 +255,61 @@ public sealed class VideoVoiceFlowTests
         Assert.Contains("VoiceLabSession.MatchLine(measurement, anchor)", pane);
     }
 
+    /// <summary>The shipping backend behind the closed gate (the App's speaker probe is null): finding refuses before the store or media is
+    /// read, creating refuses with SpeakerUnavailable before any key is read or client made, and a take has no score. The setting, the
+    /// price and the book's place are plain local reads.</summary>
+    [Fact]
+    public async Task TheShippingBackendRefusesEveryPerVideoStepBehindTheGate()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "voxclip-per-video-backend-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var locations = new DataLocations(root, Path.Combine(root, "settings.json"), Path.Combine(root, "Models"), Path.Combine(root, "cache"),
+                Path.Combine(root, "autosave"), Path.Combine(root, "secrets"), Path.Combine(root, "logs"));
+            bool? stored = true;
+            using var backend = new VoxClip.App.Services.VoiceLabBackend(locations, new NoKeys(), new QuietLog(), () => true, () => VoxClip.Core.Services.Speech.ElevenLabsRegion.Default,
+                _ => Task.CompletedTask, matchEachVideo: () => stored, setMatchEachVideo: (value, _) => { stored = value; return Task.CompletedTask; });
+            IVoiceLabBackend shipping = backend;
+            Assert.False(shipping.LearningAvailable("en"));
+            Assert.True(shipping.MatchEachVideo());
+            await shipping.SetMatchEachVideoAsync(null, CancellationToken.None);
+            Assert.Null(stored);
+            Assert.Equal("free", shipping.VideoVoicePrice());
+            Assert.Equal(Path.Combine(root, "VoiceLab", "per-video.json"), shipping.PerVideoStore!.FilePath);
+            var found = await Assert.ThrowsAsync<VoiceRebuildFailedException>(() =>
+                shipping.FindVideoVoiceAsync(Anchor().RecordId, new(Video("car"), "/videos/missing.mp4"), CancellationToken.None));
+            Assert.Equal(VoiceRebuildFailureKind.Unavailable, found.Kind);
+            var created = await Assert.ThrowsAsync<VoiceConsentException>(() =>
+                shipping.CreateVideoVoiceAsync(Anchor(), new("", [], new object()), "siim · car", CancellationToken.None));
+            Assert.Equal(VoiceConsentError.SpeakerUnavailable, created.Kind);
+            // A real take's audio and input from a Rewrite: no speaker check, no score.
+            using var h = new Harness();
+            await h.LoadAsync();
+            var runner = Takes();
+            using var session = Rewrite(h, Video("car"), runner);
+            Assert.True(await RewriteAutoFixTests.ProposeAsync(session));
+            await MakeTakesAsync(session);
+            var take = session.GenerationWindows[0].Rows.First(row => row.Audio is not null);
+            Assert.Null(await shipping.ScoreTakeMatchAsync(take.Audio!, runner.Input!, CancellationToken.None));
+            Assert.False(Directory.Exists(Path.Combine(root, "VoiceLab")));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    private sealed class NoKeys : VoxClip.Core.Services.LLM.IKeyProvider
+    {
+        public Task<string?> GetKeyAsync(string account, CancellationToken ct) => throw new InvalidOperationException("No key reads allowed");
+    }
+
+    private sealed class QuietLog : VoxClip.Core.Services.Logging.ILog
+    {
+        public void RegisterSecret(string secret) { }
+        public void Write(VoxClip.Core.Services.Logging.LogLevel level, string category, string message) { }
+        public Task<IReadOnlyList<string>> ReadRecentAsync(int count, CancellationToken ct) => Task.FromResult<IReadOnlyList<string>>([]);
+        public Task FlushAsync(CancellationToken ct) => Task.CompletedTask;
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
     /// <summary>A Rewrite of <paramref name="project"/> connected to the harness's Voice Lab: its voices are the backend's active records, the
     /// media is found, and each phrase runs on <paramref name="runner"/>.</summary>
     internal static RewriteSession Rewrite(Harness h, Project project, RewriteAutoFixTests.Runner runner, string reply = RewriteAutoFixTests.Reply)
