@@ -93,6 +93,18 @@ public struct VoiceLabGuardSpeech: Sendable, Equatable {
         return VoiceLabGuardSpeech(ranges: merged, speaker: speaker)
     }
 
+    /// The speech the use-time guard reads for a take whose window is `start..<end` (`startSample..<endSample` on the
+    /// source grid): `select`'s word spans, or, when the transcript gives none, the 10 s of source around the window's
+    /// centre. A take being made and a take already accepted into a project read the same speech.
+    public static func forTake(items: [TimedWord], start: Double, end: Double, startSample: Int64, endSample: Int64,
+                               sampleRate: Int, totalFrames: Int) -> VoiceLabGuardSpeech {
+        let selection = select(items: items, start: start, end: end, sampleRate: sampleRate, totalFrames: totalFrames)
+        guard selection.ranges.isEmpty, sampleRate > 0, totalFrames > 0 else { return selection }
+        let center = Int((startSample + endSample) / 2)
+        let lower = max(0, center - 5 * sampleRate), upper = min(totalFrames, lower + 10 * sampleRate)
+        return VoiceLabGuardSpeech(ranges: upper > lower ? [lower..<upper] : [], speaker: nil)
+    }
+
     /// The `seconds` of `word` nearest the patch: a word before it gives its end, one after it its start, and one over it
     /// the part around the patch. A word whose timing swallowed a long pause brings no more than this.
     private static func nearestPart(of word: TimedWord, start: Double, end: Double, seconds: Double) -> ClosedRange<Double> {

@@ -84,6 +84,25 @@ public enum VoicePerVideo {
 }
 
 extension VoicePerVideo {
+    /// The most earlier takes the anchor's baseline reads (voice-lab §6.13), newest first.
+    public static let maximumBaselineTakes = 12
+
+    /// The anchor's earlier takes in a project, newest first: accepted (enabled) text-to-speech segments made with the
+    /// voice `anchorID`, each with its asset. A recorded take, a voice-changed one, another voice's take and a take the
+    /// user turned off are not the anchor's.
+    public static func anchorTakes(in project: Project, anchorID: String) -> [(segment: VoiceLabSegment, asset: VoiceLabAsset)] {
+        let assets = project.voiceLab.assets ?? []
+        let takes = project.voiceLab.segments.compactMap { segment -> (segment: VoiceLabSegment, asset: VoiceLabAsset)? in
+            guard segment.kind == .tts, segment.enabled, segment.provenance.consentRecordId == anchorID,
+                  let asset = assets.first(where: { $0.id == segment.audio.assetId }) else { return nil }
+            return (segment, asset)
+        }
+        return takes.sorted { left, right in
+            left.segment.provenance.createdAt == right.segment.provenance.createdAt
+                ? left.segment.id < right.segment.id : left.segment.provenance.createdAt > right.segment.provenance.createdAt
+        }
+    }
+
     /// "Match this video · free": the creation price from the catalogue's `createClone` row; nil when it has no price,
     /// which the opt-in then says instead of inventing one.
     public static func priceLabel(catalog: VoiceLabPriceCatalog?) -> String? {
@@ -150,13 +169,34 @@ public struct VoicePerVideoBook: Codable, Sendable, Equatable {
         }
     }
 
+    /// "Did matching help" before the first video's voice: the anchor's takes already accepted into the owner's projects,
+    /// each scored against the original speech beside it, with the speaker model that scored them.
+    public struct AnchorBaseline: Codable, Sendable, Equatable {
+        public var anchorId: String
+        /// The speaker model's id: a baseline from another model is dropped and measured again.
+        public var model: String
+        /// The mean over `takes`; nil when no earlier take could be read.
+        public var score: Double?
+        public var takes: Int
+        public var measuredAt: String
+        public init(anchorId: String, model: String, score: Double?, takes: Int, measuredAt: String) {
+            self.anchorId = anchorId; self.model = model; self.score = score; self.takes = takes; self.measuredAt = measuredAt
+        }
+    }
+
     public var schema = Self.schema
     public var videos: [Video] = []
     public var removals: [Removal] = []
     /// Videos already told, once, that they keep the anchor (too little of their own speech).
     public var shortNoted: [String] = []
     public var measurements: [Measurement] = []
+    public var anchorBaseline: AnchorBaseline?
     public init() {}
+
+    /// The stored baseline when it is the anchor's and was scored by `model`; nil otherwise, so it is measured again.
+    public func baseline(anchorId: String, model: String) -> AnchorBaseline? {
+        anchorBaseline.flatMap { $0.anchorId == anchorId && $0.model == model ? $0 : nil }
+    }
 
     public func video(_ contentKey: String) -> Video? { videos.first { $0.contentKey == contentKey } }
     public func isVideoVoice(_ recordId: String) -> Bool {
@@ -216,6 +256,11 @@ public struct VoicePerVideoBook: Codable, Sendable, Equatable {
         for measurement in measurements {
             try require(Self.isKey(measurement.contentKey) && Self.isScore(measurement.videoVoice) && Self.isScore(measurement.anchor))
             try require(measurement.title.unicodeScalars.count <= 200)
+        }
+        if let baseline = anchorBaseline {
+            try require(Self.isRecord(baseline.anchorId) && !baseline.model.isEmpty && baseline.model.unicodeScalars.count <= 128)
+            try require((0...VoicePerVideo.maximumBaselineTakes).contains(baseline.takes) && Self.isScore(baseline.score))
+            try require((baseline.takes == 0) == (baseline.score == nil))
         }
     }
 }
