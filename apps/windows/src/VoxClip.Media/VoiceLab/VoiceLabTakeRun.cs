@@ -295,7 +295,7 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                 try
                 {
                     if (generated.Alignment is null) throw new VoiceLabException(VoiceLabErrorKind.InvalidAlignment);
-                    analysis = VoiceLabTakeProcessing.Process(generated, value.Input, value.Preflight);
+                    analysis = VoiceLabTakeProcessing.Process(generated, value.Input, value.Preflight, matchTone: true);
                 }
                 catch (Exception error) when (IsTimingFailure(error))
                 {
@@ -305,7 +305,7 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                     heard = recovered.Words;
                     var timing = await RecoverTimingAsync(recovered.Words, samples, value.Input, ct).ConfigureAwait(false);
                     generated = generated with { Alignment = timing };
-                    analysis = VoiceLabTakeProcessing.Process(generated, value.Input, value.Preflight);
+                    analysis = VoiceLabTakeProcessing.Process(generated, value.Input, value.Preflight, matchTone: true);
                 }
                 var snapshot = await VoiceLabAssets.PreparePaidAsync(paid, storage.ProjectId, storage.PaidRoot, storage.ScratchRoot, ct).ConfigureAwait(false);
                 VoiceLabTakeScratch? staged = null;
@@ -559,7 +559,7 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
         }
         var acceptance = item.Input with { Binding = item.Input.AcceptanceBinding };
         await ValidateAsync(acceptance, ct).ConfigureAwait(false);
-        var publication = scratch.Fitted.Publish(storage.ProjectId, Guid.NewGuid().ToString("D"), storage.PaidRoot, date, id.ToString("D"), item.Row.Seed, scratch.Audio.GainDb, ct);
+        var publication = scratch.Fitted.Publish(storage.ProjectId, Guid.NewGuid().ToString("D"), storage.PaidRoot, date, id.ToString("D"), item.Row.Seed, scratch.Audio.GainDb, scratch.Audio.TiltDbPerOctave, ct);
         await ValidateAsync(acceptance, ct).ConfigureAwait(false);
         if (!scratch.IsValid || item.Row.Receipt?.VoiceId != item.Input.Record.VoiceId) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
         return (publication, item.Input.Record);

@@ -109,7 +109,7 @@ public static class MicrophoneTakeMaker
         ArgumentNullException.ThrowIfNull(take);
         if (!take.Scratch.IsValid) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
         var publication = take.Scratch.Fitted.Publish(take.Storage.ProjectId, Guid.NewGuid().ToString("D"), take.Storage.PaidRoot, date,
-            take.Row.Id.ToString("D"), 0, take.Scratch.Audio.GainDb, ct);
+            take.Row.Id.ToString("D"), 0, take.Scratch.Audio.GainDb, ct: ct);
         return new(publication.Assets, publication.Audio, publication.OutDuration, publication.Words, publication.Chunks);
     }
 }

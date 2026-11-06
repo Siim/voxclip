@@ -87,6 +87,68 @@ public sealed class MakeItSmokeTests
         Assert.True(smoke.Failures.Count == 0, string.Join("\n", smoke.Failures) + "\n--- log ---\n" + string.Join("\n", smoke.Log));
     }
 
+    /// <summary>One ✦ Make it postable run over a plan whose only rewrite is <paramref name="words"/> for words 20–21, voiced by the real
+    /// driver with <paramref name="runner"/>. Returns the run, its rewrite row and the sessions handed back.</summary>
+    private static async Task<(EditorViewModel Editor, MakeItRun Run, MakeItRow Row, Smoke Smoke, RewriteSession? Opened)> RunRewriteAsync(string words,
+        RewriteAutoFixTests.Runner runner)
+    {
+        var smoke = new Smoke();
+        var editor = Editor();
+        RewriteSession? opened = null;
+        var stub = new Stub { VoiceReady = true, Series = _ => new([Plan() with { Rewrites = [new(20, 21, words, "a stumble")] }], [], []) };
+        editor.MakeIt.Services = stub.Services() with
+        {
+            Voice = (request, ct) =>
+            {
+                opened = RewriteAutoFixTests.Session(new(RewriteAutoFixTests.Reply, (_, ordinals) => RewriteAutoFixTests.Rows(ordinals, "x")), request.First, request.Last, editor: editor);
+                RewriteAutoFixTests.Configure(opened, runner);
+                return new MakeItRewriteDriver(editor, request, _ => Task.FromResult<RewriteSession?>(opened), _ => Task.FromResult<VoiceLabMonthlyCap?>(null), smoke.Handed.Add).RunAsync(ct);
+            }
+        };
+        Assert.True(editor.MakeItPostable("c1"));
+        var run = editor.MakeIt.Run("c1")!;
+        smoke.Observe(editor, run, "click ✦ Make it postable");
+        await run.Task!;
+        smoke.Observe(editor, run, "the run ends");
+        return (editor, run, run.Rows.Single(row => row.Change == MakeItChange.Phrase), smoke, opened);
+    }
+
+    /// <summary>Mac S-duration-claude (DC1): ✦ Make it postable rewrites two words with a wording the estimate fits; its take lands far shorter, and no video duration carries it. The driver keeps it as
+    /// recorded with no click, the row says why, a take was paid for, nothing is voiced into the project, the Rewrite is closed and the
+    /// clip is ready to export.</summary>
+    [Fact]
+    public async Task SDurationClaude()
+    {
+        // Each quoted action at $0.001, so the take fits inside the click's cap.
+        var runner = new RewriteAutoFixTests.Runner((_, _) => (RewriteDurationSettleTests.TooShort, RewriteAutoFixTests.Passed)) { Price = _ => .001m };
+        var (editor, run, row, smoke, opened) = await RunRewriteAsync("much clearer wordings here", runner);
+        const string line = "Phrase 1's take can't fit its place in the video, so it keeps your original audio.";
+        smoke.Log.Add($"DC1: {row.Text} · {row.Detail} · spent {run.Spent} · {run.Phase}");
+        if (row.Text != "Kept your words for “much clearer wordings here”" || !row.Detail.StartsWith(line, StringComparison.Ordinal)) smoke.Failures.Add($"DC1: the row reads '{row.Text} · {row.Detail}'");
+        if (runner.Sends != 1 || run.Spent <= 0) smoke.Failures.Add($"DC1: {runner.Sends} takes made, {run.Spent} spent");
+        if (editor.Project.VoiceLab.Segments.Count != 0) smoke.Failures.Add("DC1: a take was voiced into the project");
+        if (opened?.IsOpen != false || smoke.Handed.Count != 0) smoke.Failures.Add("DC1: the Rewrite was left open");
+        if (run.Phase != MakeItPhase.Ready || editor.ExportBlocked(false, false, "c1") is not null) smoke.Failures.Add($"DC1: {run.Phase}, not ready to export");
+        Assert.True(smoke.Failures.Count == 0, string.Join("\n", smoke.Failures) + "\n--- log ---\n" + string.Join("\n", smoke.Log));
+    }
+
+    /// <summary>Mac S-make-it-long (MK1, ADR-R42): a planned rewrite longer than its time in the video keeps the speaker's words with no click.
+    /// Nothing is priced or spent, the Rewrite ends, and the clip is ready to export.</summary>
+    [Fact]
+    public async Task SMakeItLong()
+    {
+        var runner = new RewriteAutoFixTests.Runner((_, _) => (RewriteAutoFixTests.Fit, RewriteAutoFixTests.Passed));
+        var (editor, run, row, smoke, opened) = await RunRewriteAsync("a much much longer phrasing than this little slot could ever hold in its time", runner);
+        smoke.Log.Add($"MK1: {row.Text} · {row.Detail} · spent {run.Spent} · {run.Phase}");
+        if (!row.Text.StartsWith("Kept your words for", StringComparison.Ordinal) ||
+            row.Detail != "Change 1 keeps your original words: still longer than its time in the video after a fit.")
+            smoke.Failures.Add($"MK1: the row reads '{row.Text} · {row.Detail}'");
+        if (runner.Sends != 0 || run.VoiceSpent != 0) smoke.Failures.Add($"MK1: {runner.Sends} takes made, {run.VoiceSpent} spent on the voice");
+        if (editor.Project.VoiceLab.Segments.Count != 0 || opened?.IsOpen != false || smoke.Handed.Count != 0) smoke.Failures.Add("MK1: the Rewrite didn't end");
+        if (run.Phase != MakeItPhase.Ready || editor.ExportBlocked(false, false, "c1") is not null) smoke.Failures.Add($"MK1: {run.Phase}, not ready to export");
+        Assert.True(smoke.Failures.Count == 0, string.Join("\n", smoke.Failures) + "\n--- log ---\n" + string.Join("\n", smoke.Log));
+    }
+
     /// <summary>S-claude-does-it-all: a newly imported video is transcribed; Claude mode finds the clips, makes the top 3 postable
     /// within the per-video cap through the real driver, and Export all writes each post text beside its videos. After every step:
     /// C1 the card shows something that acts, C2 spend never passes what was approved, C3 the status item names the mode. At the end:

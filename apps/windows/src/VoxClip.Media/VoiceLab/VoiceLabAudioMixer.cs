@@ -23,6 +23,13 @@ internal sealed class VoiceLabWaveReader : IDisposable
     private int cachedFrames;
     private readonly PreparedVoiceLabAsset owner;
     private readonly IDisposable? lease;
+    /// <summary>The asset's tone match (voice-lab.md §8.7 item 2b; Mac <c>warmedToneFilters</c>): each channel's cascade, whose state is
+    /// that of frame 0 onwards up to <see cref="filtered"/>. A block that doesn't follow the last one warms them from frame 0 again, so a
+    /// random-access read hears what the take's own mix and the export hear.</summary>
+    private readonly IReadOnlyList<VoiceLabTilt.Section> toneSections = [];
+    private VoiceLabTilt.Filter[]? filters;
+    private long filtered;
+    private float[]? warming;
     internal int Rate { get; }
     internal int Channels { get; }
     internal long Frames { get; }
@@ -62,6 +69,7 @@ internal sealed class VoiceLabWaveReader : IDisposable
             Rate = rate; Channels = channels; Frames = asset.FrameCount;
             dataStart = offset; bytesPerFrame = block; format = sampleFormat; bits = sampleBits;
             bytes = new byte[checked(4096 * block)]; cache = new float[4096 * channels];
+            toneSections = VoiceLabTilt.Sections(asset.TiltDbPerOctave ?? 0, rate);
             lease = asset.AttachConsumer(() => { Dispose(); return Task.CompletedTask; });
         }
         catch { file.Dispose(); throw; }
@@ -102,10 +110,36 @@ internal sealed class VoiceLabWaveReader : IDisposable
     {
         if (frame < 0 || frame >= Frames) throw Invalid();
         cachedStart = frame; cachedFrames = (int)Math.Min(4096, Frames - frame);
+        if (toneSections.Count > 0 && (filters is null || filtered != frame)) Warm(frame);
+        Decode(frame, cachedFrames, cache);
+        if (filters is null) return;
+        for (var i = 0; i < cachedFrames; i++)
+            for (var channel = 0; channel < Channels; channel++) cache[i * Channels + channel] = filters[channel].Process(cache[i * Channels + channel]);
+        filtered = frame + cachedFrames;
+    }
+
+    /// <summary>Each channel's cascade from zero state, run over frames [0, <paramref name="frame"/>): only its state is kept.</summary>
+    private void Warm(long frame)
+    {
+        filters = Enumerable.Range(0, Channels).Select(_ => new VoiceLabTilt.Filter(toneSections)).ToArray();
+        warming ??= new float[4096 * Channels];
+        for (long start = 0; start < frame;)
+        {
+            var count = (int)Math.Min(4096, frame - start);
+            Decode(start, count, warming);
+            for (var i = 0; i < count * Channels; i++) _ = filters[i % Channels].Process(warming[i]);
+            start += count;
+        }
+        filtered = frame;
+    }
+
+    /// <summary>Frames [<paramref name="frame"/>, +<paramref name="count"/>) as interleaved floats into <paramref name="into"/>.</summary>
+    private void Decode(long frame, int count, float[] into)
+    {
         file.Position = checked(dataStart + frame * bytesPerFrame);
-        file.ReadExactly(bytes.AsSpan(0, cachedFrames * bytesPerFrame));
+        file.ReadExactly(bytes.AsSpan(0, count * bytesPerFrame));
         var sampleBytes = bits / 8;
-        for (var i = 0; i < cachedFrames * Channels; i++)
+        for (var i = 0; i < count * Channels; i++)
         {
             var sample = bytes.AsSpan(i * sampleBytes, sampleBytes);
             var value = format == 3 ? bits == 32
@@ -118,7 +152,7 @@ internal sealed class VoiceLabWaveReader : IDisposable
                     _ => BinaryPrimitives.ReadInt32LittleEndian(sample) / 2147483648f
                 };
             if (!float.IsFinite(value)) throw Invalid();
-            cache[i] = value;
+            into[i] = value;
         }
     }
 

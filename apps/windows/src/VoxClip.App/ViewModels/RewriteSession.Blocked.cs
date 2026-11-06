@@ -58,6 +58,25 @@ internal sealed partial class RewriteSession
         return kept;
     }
 
+    /// <summary>Every phrase of the plan is blocked and none has a take of its own (Mac <c>everyPhraseBlocked</c>): the stop is said once, at
+    /// the top.</summary>
+    internal bool EveryPhraseBlocked => generationWindows.Count > 0 && generationWindows.All(window => window.WaitsOnBlock && !window.IsRunning);
+    /// <summary>The top-of-Rewrite card when the guard blocked every phrase (Mac <c>everyPhraseBlockedSteps</c>): the stop once, with
+    /// [● Say it myself] for the first phrase and [Keep as recorded] (or [Keep all as recorded]) for all of them. Null otherwise.</summary>
+    internal RewriteNextStepCard? EveryPhraseBlockedCard
+    {
+        get
+        {
+            if (!EveryPhraseBlocked || generationWindows[0].Blocked is not { } reason) return null;
+            var count = generationWindows.Count;
+            return new("Rewrite.Steps.GuardBlocked", reason + (count == 1 ? "" : $" This holds for all {count} phrases."),
+            [
+                new("Rewrite.Chip.GuardSayItMyself", PhraseWordingCopy.Title(PhraseWording.Microphone), false, () => ChooseWordingAsync(PhraseWording.Microphone, 0)),
+                new("Rewrite.Chip.GuardKeepAll", count == 1 ? "Keep as recorded" : "Keep all as recorded", false, () => { KeepBlockedAsRecorded(); return Task.CompletedTask; }),
+            ], Asks: false);
+        }
+    }
+
     /// <summary>Every phrase is blocked or kept as recorded and at least one was blocked: nothing is left to price.</summary>
     internal bool EveryPhraseSettled => generationWindows.Count > 0 && generationWindows.Any(window => window.Blocked is not null) &&
         generationWindows.All(window => window.Blocked is not null || window.LeftOut);

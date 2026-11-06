@@ -1,4 +1,4 @@
-#if DEBUG
+#if DEBUG || VOXCLIP_REWRITE_FIXTURE_RUNNER
 using System.Reflection;
 using System.Text.Json;
 using VoxClip.Core.Domain.Transcript;
@@ -70,6 +70,8 @@ internal sealed class DebugRewriteTakeRunner : IVoiceLabTakeRunner, IDisposable
         Func<IReadOnlyList<VoiceLabTakeRow>, Task>? progress = null, CancellationToken ct = default)
     {
         if (!IsQuoteFresh(quote)) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+        // The use-time guard refused this phrase's speech before anything was sent (ADR-R40).
+        if (State == "blocked") return new([], VoiceLabTakeRunEnd.Blocked) { Failure = new VoiceConsentException(VoiceConsentError.VoiceOwnerMismatch) };
         if (BeforeTransport is { } pause) await pause(ct);
         await dispatch.AuthorizeAsync(quote.Takes[0].Synthesis.Review.RequestId, ct);
         await dispatch.Start(() => { PaidRequests++; return Task.FromResult(true); }, ct);

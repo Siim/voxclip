@@ -115,7 +115,20 @@ public sealed record VoiceConsentAttestations(bool OwnVoice, bool Adult, bool Ow
     [JsonIgnore] public bool Complete => OwnVoice && Adult && OwnVideosOnly;
 }
 public sealed record VoiceConsentSample(string Sha256, double Seconds, string Source, double SpeakerScore);
-public sealed record VoiceConsentSpeaker(string Model, double Threshold, string Embedding);
+/// <summary>The speaker block. <see cref="References"/> is speech of the owner learned from their own videos (voice-lab.md §6.9,
+/// ADR-R41): each passed against <see cref="Embedding"/> itself, one hop, and is never checked against another reference. Absent until the
+/// first is learned.</summary>
+public sealed record VoiceConsentSpeaker(string Model, double Threshold, string Embedding,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] VoiceConsentReference[]? References = null)
+{
+    /// <summary>The same speaker with these references; an empty list removes the field.</summary>
+    public VoiceConsentSpeaker ReplacingReferences(IReadOnlyList<VoiceConsentReference> references) =>
+        this with { References = references.Count == 0 ? null : references.ToArray() };
+}
+/// <summary>One learned reference: the guard's embedding of a project's speech, at most one per project. <see cref="ContentKey"/> is the
+/// source project's media content key; <see cref="StatementScore"/> its cosine against the record's own embedding when it was learned;
+/// <see cref="Model"/> the speaker model that embedded it; <see cref="AddedAt"/> an ISO 8601 UTC timestamp, as the Mac writes it.</summary>
+public sealed record VoiceConsentReference(string Embedding, string ContentKey, string AddedAt, double StatementScore, string Model);
 public sealed record VoiceConsentApp(string Version, string Platform);
 public sealed record VoiceConsentCreator(ElevenLabsRegion Region, string? KeyFingerprint)
 {
@@ -174,10 +187,19 @@ public sealed record VoiceConsentRecord(string Schema, string RecordId, string P
                 sample.SpeakerScore < Speaker.Threshold || sample.SpeakerScore > 1.00001) ||
             App.Platform is not ("macos" or "windows") || App.Version.Length == 0 || (Status == VoiceConsentStatus.Deleted) != DeletedAt.HasValue)
             throw new VoiceConsentException(VoiceConsentError.InvalidRecord);
+        VoiceSpeakerReferences.Validate(Speaker);
+        // The learned references go with the voice (ADR-R41): a deleted record holds none.
+        if (Status == VoiceConsentStatus.Deleted && Speaker.References is not null) throw new VoiceConsentException(VoiceConsentError.InvalidRecord);
         if (ConsentMethod == VoiceConsentMethod.ProjectAttestation &&
             Samples.Sum(sample => (long)Math.Floor(sample.Seconds * 1000 + 0.5)) is < 30000 or > 120000)
             throw new VoiceConsentException(VoiceConsentError.InvalidRecord);
     }
+    /// <summary>The record as it binds the voice: learned references don't change what a run was approved for (ADR-R41).</summary>
+    [JsonIgnore] public VoiceConsentRecord WithoutReferences => Speaker.References is null ? this : this with { Speaker = Speaker.ReplacingReferences([]) };
+    /// <summary>A timestamp as the consent record keeps a learned reference's <c>addedAt</c> (the Mac's ISO8601DateFormatter form).</summary>
+    public static string Timestamp(DateTimeOffset date) => date.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
+    internal static bool TimestampValid(string value) =>
+        DateTimeOffset.TryParseExact(value, ["yyyy-MM-dd'T'HH:mm:ss'Z'", "yyyy-MM-dd'T'HH:mm:sszzz"], CultureInfo.InvariantCulture, DateTimeStyles.None, out _);
     internal VoiceConsentRecord AssignVoice(string id, bool verification) => this with
     {
         VoiceId = id, Status = verification ? VoiceConsentStatus.VerificationRequired : VoiceConsentStatus.Active, DeletedAt = null

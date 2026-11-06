@@ -109,7 +109,11 @@ public sealed class RewriteOwnWordsTests
         await session.GenerateWindowsAsync((_, _, _, _) => Task.FromResult(true), _ => Task.FromResult<VoiceLabMonthlyCap?>(null));
         await SettleAsync(session);
         Assert.True(session.AutoFix.Armed);
-        Assert.IsType<StuckTakeReason.Length>(session.StuckReason(0));
+        // The take of the user's own words fits no video duration, so the phrase keeps its recording (design.md R2): neither the
+        // resolver nor the measured round owns the user's words.
+        Assert.True(session.GenerationWindows[0].LeftOut);
+        Assert.Contains(RewriteSession.NoDurationCopy([1]), session.AutoFix.Notes);
+        Assert.Null(session.StuckReason(0));
         Assert.Equal(1, runner.Sends);
         Assert.Empty(session.AutoFix.Rounds);
         Assert.DoesNotContain(connector.FitRequests, request => request.CachedBlock!.Contains("Measured take:", StringComparison.Ordinal));

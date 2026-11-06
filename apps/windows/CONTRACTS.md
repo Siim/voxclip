@@ -1,5 +1,58 @@
 # Windows fixed contracts
 
+### 2026-11-06 — Windows Rewrite parity 2: the duration settle, settled-phrase leftovers, voice references in the Core, tone match (track/v2-win-parity-2)
+
+Twin of the Mac "a take no video duration can carry keeps its phrase's audio", the ADR-R40 Use and price leftovers, ADR-R41 (voice references, Core and guard only) and the ADR-R44 tone match. Spec: doc/spec/voice-lab.md §6.9, §8.7 item 2b, the video-duration rows; doc/spec/ai.md §12.9; doc/design.md R2 "A take that can't fit its place".
+
+- **1 · The duration settle** (3013f547; App `RewriteGeneration.FitsNoDuration`, `RewriteSession.SettleTakesThatFitNoDuration`, `AcceptanceForward`, `ChooseDuration(int)`, `DurationTitle`, `NoDurationCopy`, `MeasuredKeepTitle`, `MeasuredFitsNoDuration`; `MakeItRewriteDriver`):
+  - A take no duration can carry is never offered as Choose Take; once it is the phrase's only kind of take it keeps the original audio by itself (leave-one-out), said once: "Phrase {n}'s take can't fit its place in the video, so it keeps your original audio." (and the plural).
+  - The footer asks "Choose the video duration for {list}." only for a take some duration carries, with that phrase's first valid duration as the primary: Keep Source Duration / Cut the Video / Match the Video for Phrase {n}. Otherwise its forward button is Keep Original Audio for Phrase {n}.
+  - A take too short is never reworded longer (the resolver and the measured round both skip it). A take too long is the armed resolver's, or the measured round's, before the settle.
+  - The driver presses Choose Duration before Keep Original Audio, and disposes a Rewrite whose every phrase finished as recorded instead of handing it back.
+  - **Deleted.** `RewriteFooterAction.ChooseDurations` and `RewriteSession.ChooseDurations()`.
+- **2 · Settled-phrase leftovers** (a8b4d33d; App `RewriteSession.PricedWindows`, `BlockedUseLine`, `EveryPhraseBlocked`/`EveryPhraseBlockedCard`, `PassageRange`, `Log`/`LogFailure`/`FailureKind`, `RewriteGeneration.LastAcceptanceError`):
+  - Use keeps a blocked phrase's original audio in the same click ("Use keeps phrase {n}'s original audio."), and the price, the shown estimate and the batch leave blocked phrases out.
+  - When every phrase is blocked, one card at the top says it once ("… This holds for all {n} phrases.") with ● Say it myself and Keep all as recorded.
+  - A settled change stays settled, and unpriced, in a later plan of the same Rewrite.
+  - A passage request carries the passage's own length budget (the Mac `passageRange`), not "at most 5000 letters".
+  - A refused acceptance logs `rewrite failure stage=use type=… case=…`.
+  - `DebugRewriteTakeRunner`/`DebugRewriteTakeAssets` also build under `VOXCLIP_REWRITE_FIXTURE_RUNNER` (test project only), so S-render-recipe runs in Release. The v4 fixture receipts record the dialogue endpoint.
+- **3 · Voice references, Core and guard** (972fa608; Core `VoiceConsentSpeaker.References`, `VoiceConsentReference`, `VoiceConsentRecord.WithoutReferences`/`Timestamp`, `VoiceSpeakerReferences`, `VoiceSpeakerMatch`, `VoiceReferenceRefusal`/`VoiceReferenceRefusedException`, `VoiceConsentStore.LearnReference`/`ForgetReferences`, `VoiceUseGuard.ScreenAsync`, `VoiceGuardVerdict`):
+  - The references are validated as on Mac: at most 16, one per content key, ASCII keys of up to 128, ISO 8601 `addedAt`, finite scores ≤ 1.00001, a decodable embedding the owner's length for the record's model. A deleted record holds none, and the tombstone drops them.
+  - `ValidateUse` compares the records without references, so learning or forgetting one never stops an approved run. Anything else still does.
+  - The guard matches the statement first, then the best usable reference (same model, stored score ≥ τ, passing against the owner when re-checked: one hop). The references are in its cache key.
+  - `ScreenAsync` is the Mac `screen`: the best phrase that passes on its own teaches the project's reference, every phrase is judged, too little speech is blocked, and a check that can't run is unchecked.
+  - New shared vectors `voice-references-cases.json` (`voxclip-voice-references/1`, `tools/fixtures/voice-lab/generate_voice_references.py`, pure binary64, on the check_drift EXACT list). Both Cores replay them, the Mac in the new `VoiceSpeakerReferencesReplayTests`.
+  - **Inert behind `VoiceSpeakerCheck.WindowsNativeParityVerified` (false).** The check is unavailable, so the guard refuses as before (`SpeakerUnavailable`), `ScreenAsync` returns every phrase unchecked and nothing is learned. Only the store's Learn/Forget and the record validation run today.
+- **4 · Tone match at render** (7008e0ca; Core `VoiceLabTilt`, `VoiceLabTakePreflight.SourceTone`, `VoiceLabTakeAnalysis.TiltDbPerOctave`, `VoiceLabTakeProcessing.Process(…, matchTone)`; Media `VoiceLabTakeRun`, `VoiceLabSilenceFit.Publish(…, tiltDbPerOctave)`, `VoiceLabTakeRenderer.TiltedChannels`, `PreparedVoiceLabAsset.TiltDbPerOctave`, `VoiceLabWaveReader`):
+  - Core replays `tilt-cases.json`.
+  - A generated take is tilted from its first frame, before the trim and before its gain is measured. A recorded take is not.
+  - The take's own mix and the render's reader run the cascade from frame 0; a read that starts mid-asset, or goes back, warms up from frame 0 first.
+- **Tests.**
+  - Core: `VoiceSpeakerReferencesTests` (6: the replay, validation, no chaining, store learn/forget/ValidateUse, the tombstone, the inert screen), `VoiceLabTiltReplayTests` (2), `VoiceLabToneMatchTests` (3).
+  - Media: `VoiceLabToneMatchMediaTests` (1 and 2 channels), and a publish-tilt assertion in `VoiceLabSilenceFitTests`.
+  - win-ui: `RewriteDurationSettleTests`, `RewriteGuardBlockedTests` (two more), `IntegratedRewriteTests.UseKeepsABlockedPhrasesOriginalAudioWithOneClick`, and the smoke twins S-duration-short (DS1), S-duration-Claude (DC1) and S-make-it-long (MK1). The Release-runnable S-render-recipe asserts its `stage=use` lines.
+  - Mac Core: `VoiceSpeakerReferencesReplayTests`.
+  - **Red checks.** Step 1, disabling the settle fails 6. Step 2, reverting fails 5. Step 3: flipping the age tie-break or skipping the hop fails the replay, and comparing references in `ValidateUse` (or keeping them at the tombstone) fails 2. Step 4: no warm-up fails both Media cases, and no `matchTone` fails the Core order test.
+- **Verification** (macOS host, Release, `-m:1 -nodeReuse:false -p:UseSharedCompilation=false`, `VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`):
+  - Core 3,241 (29 skipped, 0 failed); portable Media 996 (5 skipped, 0 failed); win-ui 1,345 (5 skipped, 0 failed). Mac Core `swift test --filter 'VoiceSpeakerReferences'` 12/12.
+  - App type-check build 0 warnings; `check-xaml.py` 0 problems; `*ReleaseSurrogate*` passes.
+  - ReleaseBoundary `update` on Core, Media and the WinCheck surrogate. Core gained the step 3 and 4 declarations only. Media gained step 4's. `VoxClip.txt` gained steps 1 and 2's.
+  - The voice-lab generators and `check_drift.py` are clean, and so are the project generators. The caption `check_drift.py` passes, but the caption generators need `uharfbuzz`, which isn't installed here. `tools/voice-lab` unittests pass.
+  - `env -i … dotnet voxclip-cli.dll --runtime-terms --json` exits 0.
+- **Owed.**
+  - **3 · ADR-R41, App:**
+    - the free screen at Get Price (call `VoiceUseGuard.ScreenAsync` with each phrase's guard speech, then settle blocked phrases before pricing);
+    - `VoiceReferenceLearner` (Media: Learn from my videos over the owner's projects);
+    - the Settings › Voices rows "Learned from {n} of your videos" with Learn from my videos and Forget learned references;
+    - the Mac `carryReferences` (ADR-R44 rebuild) twin.
+  - **Native, hosted Windows CI only:**
+    - the WinUI App build and the App allowlist check;
+    - the `RequiresWindows`/`RequiresFFmpeg` Media tests, notably `VoiceLabAudioMixerTests` and `VoiceLabNativeRoutesTests`, which generated takes now pass through the tilt;
+    - the ONNX guard on real speech;
+    - real-window panel checks.
+  - From the previous entry, still owed: the Mac replay of `rewrite-slot-cases.json` and the calibration seed from on-device timing.
+
 ### 2026-11-06 — Windows Rewrite twins the estimator prior, slot fitting and the settled guard (track/v2-win-rewrite-twin)
 
 Twin of the Mac ADR-R43 (tts-estimator), ADR-R42 (rewrite-fit) and ADR-R40 (unstick) packages. ADR-R41 (voice references) is owed. Spec: doc/spec/voice-lab.md §4 (estimator), §6.9 (guard); doc/spec/ai.md §12.9; doc/design.md R2 "Not your voice here".

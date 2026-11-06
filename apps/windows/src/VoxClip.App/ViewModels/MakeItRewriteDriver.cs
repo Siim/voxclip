@@ -20,6 +20,8 @@ internal sealed class MakeItRewriteDriver(EditorViewModel editor, MakeItRewriteR
         var session = await open(request);
         if (session is null) return new(new MakeItRewriteResult.NeedsYou("Rewrite couldn't place these words. Change to try it yourself."));
         var used = false;
+        // Every phrase kept its recorded audio by Rewrite's own rules: the Rewrite is complete, so it is closed, not handed back.
+        var finished = false;
         List<int> joins = [];
         try
         {
@@ -53,8 +55,10 @@ internal sealed class MakeItRewriteDriver(EditorViewModel editor, MakeItRewriteR
             if (cap is not null && batch.Kind(cap).Kind == VoiceLabCostPresentationKind.Confirm)
                 return new(new MakeItRewriteResult.NeedsYou("This would pass your monthly ElevenLabs cap. Voice it in Rewrite. Nothing was sent."));
             // A phrase the guard blocked sent nothing, so its share of the price is never counted as spent (Mac G4).
+            // The batch covers the priced phrases only (a phrase settled earlier in this Rewrite is left out of it), in their order.
             var quoted = batch.Windows.Select(window => window.Quote.Estimate.Usd ?? 0m).ToArray();
-            decimal Spent() => quoted.Where((_, index) => session.GenerationWindows.ElementAtOrDefault(index)?.Blocked is null).Sum() + session.AutoFix.Spent;
+            var priced = session.PricedWindows.ToArray();
+            decimal Spent() => quoted.Where((_, index) => priced.ElementAtOrDefault(index)?.Blocked is null).Sum() + session.AutoFix.Spent;
             // An approved price also lets Rewrite fix stuck phrases on its own; that allowance stays inside the budget.
             session.AutoFixCeiling = Math.Max(0, budget - amount);
             session.MarkBatchEstimateShown(batch);
@@ -94,14 +98,18 @@ internal sealed class MakeItRewriteDriver(EditorViewModel editor, MakeItRewriteR
                     Pressed.Add(footer.Title ?? "Choose take");
                     if (await session.ChooseOfferedTakeAsync()) continue;
                 }
-                // The free steps forward a creator would take: a duration, or a phrase that keeps its original audio (Mac keepOriginalAudio).
-                if (footer.Action == RewriteFooterAction.ChooseDurations && session.ChooseDurations()) { Pressed.Add(footer.Title!); continue; }
+                // The free steps forward a creator would take, in the Mac order: a duration a take allows (Mac chooseDuration), then a
+                // phrase that keeps its original audio (Mac keepOriginalAudio).
+                if (footer.Action == RewriteFooterAction.ChooseDuration && session.ChooseDuration(footer.Phrase)) { Pressed.Add(footer.Title!); continue; }
                 if (footer.Action == RewriteFooterAction.KeepOriginal && footer.Title?.StartsWith("Keep Original Audio", StringComparison.Ordinal) == true &&
                     session.KeepOriginal(footer.Phrase)) { Pressed.Add(footer.Title); continue; }
                 if (footer.Action == RewriteFooterAction.KeepChangeWords && session.KeepCollidedOriginal(footer.Phrase)) { Pressed.Add(footer.Title!); continue; }
                 // Every phrase keeps its audio: the text fixes apply and the Rewrite ends, nothing voiced.
                 if (session.GenerationWindows.Count > 0 && session.GenerationWindows.All(window => window.LeftOut))
+                {
+                    finished = true;
                     return new(FinishAsRecorded(session), Spent()) { JoinNotes = joins, KeptAsRecorded = keptBlocked.Count };
+                }
                 return new(new MakeItRewriteResult.NeedsYou(FirstLine(footer.Line, "Rewrite is waiting for you. Change to finish it.")), Spent()) { JoinNotes = joins };
             }
             return new(new MakeItRewriteResult.NeedsYou("Rewrite is waiting for you. Change to finish it."), Spent()) { JoinNotes = joins };
@@ -109,7 +117,7 @@ internal sealed class MakeItRewriteDriver(EditorViewModel editor, MakeItRewriteR
         finally
         {
             // Paid takes are never dropped: an unused session with paid takes stays for Change, which shows it in Rewrite.
-            if (session.IsOpen && !used && session.HasPaidTakes && handOff is not null) handOff(session);
+            if (session.IsOpen && !used && !finished && session.HasPaidTakes && handOff is not null) handOff(session);
             else if (session.IsOpen) session.Dispose();
         }
     }

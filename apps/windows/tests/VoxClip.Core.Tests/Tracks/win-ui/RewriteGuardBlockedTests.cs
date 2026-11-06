@@ -31,9 +31,11 @@ public sealed class RewriteGuardBlockedTests
         Assert.Empty(connector.Reasks);
         Assert.Empty(session.AutoFix.Lines);
         Assert.False(session.HasPaidTakes);
-        // The stop once, with its two ways on and no priced control.
-        var card = Assert.Single(session.NextStepCards, card => card.Id == "Rewrite.Steps.Phrase1");
-        Assert.Equal("Phrase 1: " + window.Blocked, card.Sentence);
+        // The stop once, at the top (every phrase is blocked), with its two ways on and no priced control.
+        var card = session.NextStepCards[0];
+        Assert.Equal("Rewrite.Steps.GuardBlocked", card.Id);
+        Assert.Equal(window.Blocked, card.Sentence);
+        Assert.DoesNotContain(session.NextStepCards, card => card.Id == "Rewrite.Steps.Phrase1");
         Assert.Equal(["● Say it myself", "Keep as recorded"], card.Chips.Select(chip => chip.Label));
         Assert.False(card.Asks);
         Assert.DoesNotContain(session.NextStepCards.SelectMany(card => card.Chips), chip => chip.Label.Contains('$') || chip.Id.StartsWith("Rewrite.Chip.TryAnother", StringComparison.Ordinal));
@@ -48,6 +50,80 @@ public sealed class RewriteGuardBlockedTests
         Assert.Null(session.StuckReason(0));
         Assert.Equal(RewriteFooterAction.Done, session.FooterStep.Action);
         Assert.Equal(1, runner.Executions);
+    }
+
+    /// <summary>Mac <c>everyPhraseBlockedSteps</c>: every phrase blocked, none with a take of its own. The stop is said once at the top with
+    /// "This holds for all 2 phrases.", [● Say it myself] and [Keep all as recorded]; no card per phrase repeats it.</summary>
+    [Fact]
+    public async Task EveryPhraseBlockedIsSaidOnceAtTheTopAndKeepAllKeepsThem()
+    {
+        var connector = new Connector(RewriteDurationSettleTests.TwoChanges, (_, ordinals) => Rows(ordinals, "x"));
+        Runner[] runners = [Blocked(VoiceConsentError.VoiceOwnerMismatch), Blocked(VoiceConsentError.VoiceOwnerMismatch)];
+        using var session = Session(connector, last: 16);
+        RewriteOwnTakeTests.ConfigureWithSource(session, index => runners[index]);
+        Assert.True(await ProposeAsync(session));
+        await PriceAndMakeAsync(session);
+        Assert.All(session.GenerationWindows, window => Assert.True(window.WaitsOnBlock));
+        Assert.True(session.EveryPhraseBlocked);
+        var card = Assert.Single(session.NextStepCards);
+        Assert.Equal("Rewrite.Steps.GuardBlocked", card.Id);
+        Assert.Equal(session.GenerationWindows[0].Blocked + " This holds for all 2 phrases.", card.Sentence);
+        Assert.Equal(["● Say it myself", "Keep all as recorded"], card.Chips.Select(chip => chip.Label));
+        Assert.False(card.Asks);
+        await card.Chips[1].Invoke!();
+        Assert.All(session.GenerationWindows, window => Assert.True(window.LeftOut));
+        Assert.Null(session.EveryPhraseBlockedCard);
+        Assert.Equal(RewriteFooterAction.Done, session.FooterStep.Action);
+        Assert.All(runners, runner => Assert.Equal(0, runner.Sends));
+    }
+
+    /// <summary>Mac <c>rememberBlocked</c>/<c>applyRememberedBlocks</c> and <c>voiceableIndices</c>: a change the guard settled stays settled in a
+    /// later plan of the same Rewrite, blocked before anything is priced, and left out of that plan's price and run.</summary>
+    [Fact]
+    public async Task ASettledChangeStaysSettledInALaterPlanAndIsLeftOutOfItsPrice()
+    {
+        var connector = new Connector(RewriteDurationSettleTests.TwoChanges, (_, ordinals) => Rows(ordinals, "x"));
+        Runner[] runners = [Blocked(VoiceConsentError.VoiceOwnerMismatch), new((_, _) => (Fit, Passed))];
+        using var session = Session(connector, last: 16);
+        RewriteOwnTakeTests.ConfigureWithSource(session, index => runners[index]);
+        Assert.True(await ProposeAsync(session));
+        await PriceAndMakeAsync(session);
+        var first = session.GenerationWindows[0];
+        Assert.NotNull(first.Blocked);
+        Assert.True(session.HasPaidTakes);
+        // A later plan: change 2 is left out (its paid take is discarded only after the confirm), so phrase 1 is planned again.
+        Assert.False(session.SetChangeIncluded(2, false));
+        Assert.True(await session.ConfirmPaidReviewChangeAsync(session.PendingPaidReviewChange!));
+        var alone = Assert.Single(session.GenerationWindows);
+        Assert.NotNull(alone.Blocked);
+        await session.DiscoverWindowsAsync();
+        Assert.Null(session.PreparedBatch);
+        Assert.False(session.CanGenerateAll);
+        Assert.Equal(1, runners[0].Executions);
+        // Change 2 comes back: only its phrase is priced and run; the settled phrase sends nothing again.
+        Assert.True(session.SetChangeIncluded(2, true));
+        Assert.Equal(2, session.GenerationWindows.Count);
+        Assert.NotNull(session.GenerationWindows[0].Blocked);
+        await session.DiscoverWindowsAsync();
+        foreach (var window in session.GenerationWindows) await window.PendingUpdate;
+        var batch = session.PreparedBatch!;
+        Assert.Same(session.GenerationWindows[1], Assert.Single(session.PricedWindows));
+        Assert.Single(batch.Windows);
+        Assert.Equal(.06m, batch.Estimate.Usd);
+        session.MarkBatchEstimateShown(batch);
+        await session.GenerateWindowsAsync((_, _, _, _) => Task.FromResult(true), _ => Task.FromResult<VoiceLabMonthlyCap?>(null));
+        Assert.Equal(1, runners[0].Executions);
+        Assert.Equal(0, runners[0].Sends);
+        Assert.Equal(2, runners[1].Sends);
+    }
+
+    private static async Task PriceAndMakeAsync(RewriteSession session)
+    {
+        await session.DiscoverWindowsAsync();
+        foreach (var window in session.GenerationWindows) await window.PendingUpdate;
+        session.MarkBatchEstimateShown(session.PreparedBatch!);
+        await session.GenerateWindowsAsync((_, _, _, _) => Task.FromResult(true), _ => Task.FromResult<VoiceLabMonthlyCap?>(null));
+        await SettleAsync(session);
     }
 
     [Fact]

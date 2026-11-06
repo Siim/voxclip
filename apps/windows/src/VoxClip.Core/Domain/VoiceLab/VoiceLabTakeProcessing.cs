@@ -5,8 +5,13 @@ using VoxClip.Core.Domain.Transcript;
 
 namespace VoxClip.Core.Domain.VoiceLab;
 
-public sealed record VoiceLabTakePreflight(double SourceLevel, VoiceLabRoomTone? RoomTone);
-public sealed record VoiceLabTakeAnalysis(int SampleRate, float[] Trimmed, double GainDb, VoiceLabRoomTone? RoomTone, VoiceLabFitResult Fit);
+/// <summary>What a take run measures of the source once. <see cref="SourceTone"/>: the spectrum of the speech beside the window, from the
+/// level match's sides (voice-lab.md §8.7 item 2b); null when unmeasured.</summary>
+public sealed record VoiceLabTakePreflight(double SourceLevel, VoiceLabRoomTone? RoomTone, VoiceLabTilt.Bands? SourceTone = null);
+/// <summary>A processed take. <see cref="TiltDbPerOctave"/>: the tone match applied before <see cref="GainDb"/> (§8.7 item 2b);
+/// <see cref="Trimmed"/> already has it. Null leaves the take as it is.</summary>
+public sealed record VoiceLabTakeAnalysis(int SampleRate, float[] Trimmed, double GainDb, VoiceLabRoomTone? RoomTone, VoiceLabFitResult Fit,
+    double? TiltDbPerOctave = null);
 public static class VoiceLabTakeProcessing
 {
     public const int MaximumQaSeconds = 290;
@@ -27,7 +32,7 @@ public static class VoiceLabTakeProcessing
             VoiceLabRoomToneSelection.ExcludeDigitalSilence(input.Items, input.SourceEnvelope, rate, total, window, input.HardJoinSmoothing));
         if (input.HardJoinSmoothing && (window.LeftSeam.Kind == VoiceLabSeamKind.Hard || window.RightSeam.Kind == VoiceLabSeamKind.Hard) && tone is not null)
             tone = VoiceLabHardJoin.MatchedRoomTone(tone, input, level);
-        return new(level, tone);
+        return new(level, tone, VoiceLabTilt.NeighbourhoodBands(input.Source, rate, window.StartSample, window.EndSample));
     }
     public static AudioEnvelope Envelope(float[] samples, int sampleRate)
     {
@@ -41,7 +46,9 @@ public static class VoiceLabTakeProcessing
         }
         return new(sampleRate, 0.01, levels);
     }
-    public static VoiceLabTakeAnalysis Process(VoiceLabAudioResult result, VoiceLabTakeInput input, VoiceLabTakePreflight preflight)
+    /// <summary>A take's analysis (Mac <c>process</c>). <paramref name="matchTone"/>: a generated take is tilted towards the speech beside it
+    /// (§8.7 item 2b); the user's own recorded take is their real voice and is left as it is.</summary>
+    public static VoiceLabTakeAnalysis Process(VoiceLabAudioResult result, VoiceLabTakeInput input, VoiceLabTakePreflight preflight, bool matchTone = false)
     {
         var rate = result.SampleRate;
         if (rate != 24000 || result.Pcm.Length == 0 || result.Pcm.Length % 2 != 0 || result.Pcm.Length / 2 > rate * 289 || result.Alignment is not { } alignment)
@@ -57,14 +64,19 @@ public static class VoiceLabTakeProcessing
         var lower = Frames(trim.Start, rate);
         var upper = Frames(trim.End, rate);
         if (lower < 0 || upper > samples.Length || upper <= lower) throw new VoiceLabException(VoiceLabErrorKind.InvalidAlignment);
-        var trimmed = samples[lower..upper];
+        // The tone match runs over the whole asset from its first frame, as every reader of the take runs it; the level is then
+        // measured on the tilted take, so the gain still meets the speech beside it.
+        var tilt = matchTone && preflight.SourceTone is { } source
+            ? VoiceLabTilt.Match(source, VoiceLabTilt.Measure([samples.AsMemory(lower, upper - lower)], rate)) : null;
+        var tilted = tilt is { } value ? VoiceLabTilt.Apply(samples, VoiceLabTilt.Sections(value, rate)) : samples;
+        var trimmed = tilted[lower..upper];
         var gain = VoiceLabLoudness.LevelGainDb(preflight.SourceLevel, VoiceLabLoudness.VoicedRmsDb(trimmed, rate), VoiceLabLoudness.TruePeakDbtp(trimmed, rate));
         var take = new VoiceLabFitTake(samples.Length, rate, trim.Start, trim.End, words, Envelope(samples, rate));
         var profile = input.PauseProfile ?? VoiceLabPauseProfile.Measure(input.Items, input.SourceEnvelope, 0, double.MaxValue);
         var fit = VoiceLabNaturalPacing.Fit(input.Window, input.IncomingSilence, input.OutgoingSilence, take,
             input.SourceSampleRate, input.HardJoinSmoothing, profile,
             VoiceLabNaturalPacing.PauseTags(input.AudioTags, input.ModelId, words.Count), input.SourceEnvelope, input.Items);
-        return new(rate, trimmed, gain, preflight.RoomTone, fit);
+        return new(rate, trimmed, gain, preflight.RoomTone, fit, tilt);
     }
     /// <summary>The bridge words a take's text must begin and end with (voice-lab §8.4; Mac <c>bridgeWords</c>): the unchanged
     /// words that join the change to the source around it, as the input's items spell them. Throws when a bridge word is cut

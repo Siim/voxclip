@@ -347,7 +347,7 @@ public sealed class VoiceLabReleaseBoundaryTests
             {
                 var condition = directive[4..].Split("||", StringSplitOptions.TrimEntries).Any(term => term switch
                 {
-                    "DEBUG" or "WIN_UI_TESTS" or "VOXCLIP_DEVELOPMENT" => false,
+                    "DEBUG" or "WIN_UI_TESTS" or "VOXCLIP_DEVELOPMENT" or "VOXCLIP_REWRITE_FIXTURE_RUNNER" => false,
                     "!DEBUG" or "!VOXCLIP_DEVELOPMENT" or "DISABLE_XAML_GENERATED_MAIN" => true,
                     _ => throw new InvalidOperationException("Unrecognized Release condition: " + term)
                 });

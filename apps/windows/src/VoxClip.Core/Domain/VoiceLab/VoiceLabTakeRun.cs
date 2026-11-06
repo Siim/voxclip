@@ -209,6 +209,9 @@ public static class VoiceLabTakeQuality
 public sealed record VoiceLabTakeAudio(int SampleRate, float[] Trimmed, float[] Mixed, int PatchStart, int PatchEnd,
     IReadOnlyList<int> Seams, double GainDb, VoiceLabRoomTone? RoomTone, VoiceLabFitResult Fit)
 {
+    /// <summary>The tone match <see cref="Mixed"/> and <see cref="Trimmed"/> already have, stored on the segment at Use (voice-lab.md §8.7
+    /// item 2b, Mac <c>VoiceLabTakeAudio.tiltDbPerOctave</c>).</summary>
+    public double? TiltDbPerOctave { get; init; }
     public VoiceLabMicroPause? MicroPauseIn { get; init; }
     public VoiceLabMicroPause? MicroPauseOut { get; init; }
     public VoiceLabEdgeGain? EdgeGain { get; init; }

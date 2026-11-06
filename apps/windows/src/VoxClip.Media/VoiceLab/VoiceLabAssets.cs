@@ -47,11 +47,14 @@ public sealed class PreparedVoiceLabAsset : IDisposable, IAsyncDisposable
     public long TrimEndFrame { get; }
     public double Stretch { get; }
     public double GainDb { get; }
+    /// <summary>The segment's tone match, applied from the asset's first frame wherever it is read (voice-lab.md §8.7 item 2b).</summary>
+    public double? TiltDbPerOctave { get; }
     public string Sha256 { get; }
     public bool IsValid => lifetime.IsValid;
     internal PreparedVoiceLabAsset(string segmentId, string id, string path, string scratch, int rate, int channels, long frames,
-        long trimStart, long trimEnd, double stretch, double gainDb, string? sha256 = null)
+        long trimStart, long trimEnd, double stretch, double gainDb, string? sha256 = null, double? tiltDbPerOctave = null)
     {
+        TiltDbPerOctave = tiltDbPerOctave;
         SegmentId = segmentId; AssetId = id; Path = path; this.scratch = scratch; SampleRate = rate; Channels = channels;
         FrameCount = frames; TrimStartFrame = trimStart; TrimEndFrame = trimEnd; Stretch = stretch; GainDb = gainDb;
         Sha256 = sha256 ?? Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(path)));
@@ -172,7 +175,7 @@ public static class VoiceLabAssets
             if (start < 0 || end <= start || end > frames)
                 throw new VoiceLabAssetException(VoiceLabAssetErrorCode.InvalidTrim, asset.File);
             return new PreparedVoiceLabAsset(segmentId, asset.Id, snapshot, scratch, rate, channels, frames,
-                start, end, audio.Stretch, audio.GainDb, asset.Sha256);
+                start, end, audio.Stretch, audio.GainDb, asset.Sha256, audio.TiltDbPerOctave);
         }
         catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
         {
