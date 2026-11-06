@@ -19,6 +19,9 @@ extension DebugRewriteSmoke {
         Definition(id: "S-voice-rebuild", title: "Rebuild from my videos (stubbed), use the new voice for Rewrite: all three phrases voiced with it, references still pass; Remove the old voice",
             voiced: 3, fixture: Fixture(rewrites: [.passage(replace(threeChanges))], voice: RewriteSmokeVoiceScript(offset: -0.2),
                                         ownerPitches: learningPitches)) { harness in
+            // Later scenarios share the data folder: they get the fixture's own voice back, and no preference.
+            let saved = try harness.saveVoices()
+            defer { harness.restoreVoices(saved) }
             let rebuilt = try await harness.rebuildVoice()
             try await harness.start()
             try await harness.finish()
@@ -38,13 +41,53 @@ extension DebugRewriteSmoke.Harness {
         let contentKey: String
     }
 
+    /// The consent records and their operation journal: the rebuild adds a voice and deletes the fixture's.
+    private var voiceFolders: [URL] {
+        ["VoiceLab/consent", "VoiceLab/voice-ops"].map { app.locations.root.appendingPathComponent($0, isDirectory: true) }
+    }
+    private var rebuildProjects: [URL] { ["smoke-car.voxclip", "smoke-closer.voxclip"].map { app.locations.root.appendingPathComponent($0) } }
+
+    /// A copy of the voices as they are before the rebuild.
+    func saveVoices() throws -> URL {
+        let copy = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-smoke-voices-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: copy, withIntermediateDirectories: false)
+        for folder in voiceFolders where FileManager.default.fileExists(atPath: folder.path) {
+            try FileManager.default.copyItem(at: folder, to: copy.appendingPathComponent(folder.lastPathComponent))
+        }
+        return copy
+    }
+
+    /// Puts the voices back as they were, clears the Rewrite voice preference and removes the two projects.
+    func restoreVoices(_ copy: URL) {
+        for folder in voiceFolders {
+            try? FileManager.default.removeItem(at: folder)
+            let saved = copy.appendingPathComponent(folder.lastPathComponent)
+            if FileManager.default.fileExists(atPath: saved.path) { try? FileManager.default.moveItem(at: saved, to: folder) }
+        }
+        try? FileManager.default.removeItem(at: copy)
+        for url in rebuildProjects { try? FileManager.default.removeItem(at: url) }
+        app.set(VoiceLabSession.rewriteVoiceKey, .null)
+    }
+
+    private func copyVoice(_ fixture: VoiceConsentRecord, store: VoiceConsentStore) async throws -> VoiceConsentRecord {
+        var object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(fixture)) as? [String: Any] ?? [:]
+        object["recordId"] = UUID().uuidString.lowercased(); object["voiceId"] = "fixtureOldVoice"
+        let copy = try JSONDecoder().decode(VoiceConsentRecord.self, from: JSONSerialization.data(withJSONObject: object))
+        try await store.saveStatement(store.referenceAudio(recordID: fixture.id), recordID: copy.id)
+        try await store.save(copy)
+        RewriteSmokeHTTP.script.withLock { $0.voices.append(copy.voiceId) }
+        return copy
+    }
+
     /// Learns this video's reference, writes the owner's two videos as projects, and rebuilds the voice from them.
     func rebuildVoice() async throws -> Rebuilt {
-        // The fixture's own voice: a later length pass shares the data folder, where an earlier pass's rebuilt voice stays.
         guard let store, let editor, let shared = app.shared,
-              let old = try await store.activeVoices().first(where: { $0.voiceId == "fixtureOwnVoice" }) else {
+              let fixture = try await store.activeVoices().first(where: { $0.voiceId == "fixtureOwnVoice" }) else {
             throw DebugRewriteSmoke.Failure.setup("no voice or project")
         }
+        // The voice rebuilt and then removed is a copy of the fixture's under its own record and voice id: a deleted
+        // record's id stays revoked for this process (VoiceDispatchGate), and every later scenario uses the fixture's.
+        let old = try await copyVoice(fixture, store: store)
         let project = editor.project
         let contentKey = project.media.source.contentKey
         _ = await VoiceReferenceLearner(store: store, check: .rewriteSmoke)
@@ -52,7 +95,7 @@ extension DebugRewriteSmoke.Harness {
         let root = app.locations.root
         let closer = Dictionary(uniqueKeysWithValues: (0..<8).map { ($0, 135.0) })
         let (other, _) = try await DebugRewriteSmoke.project(DebugRewriteSmoke.Fixture(rewrites: [], ownerPitches: closer), root: root, shared: shared)
-        let urls = [root.appendingPathComponent("smoke-car.voxclip"), root.appendingPathComponent("smoke-closer.voxclip")]
+        let urls = rebuildProjects
         try ProjectJSON.encode(project).write(to: urls[0]); try ProjectJSON.encode(other).write(to: urls[1])
 
         let prices = try VoiceLabPriceCatalog(data: Data(contentsOf: shared.root.appendingPathComponent("catalog/voice-lab.json")))

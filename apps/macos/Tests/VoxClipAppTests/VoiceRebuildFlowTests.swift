@@ -236,6 +236,9 @@ private struct RebuildKeys: KeyProvider {
         #expect(try await store.load(newID).status == .active && state.removed)
         #expect(session.confirmation == nil, "inline: no sheet")
         #expect(state.line == "Removed the old voice. Rewrite uses your rebuilt voice. Existing takes stay playable and labelled.")
+        // The preference can be cleared again (null): Rewrite then starts with the first listed voice.
+        #expect(app.set(VoiceLabSession.rewriteVoiceKey, .null) && app.string(VoiceLabSession.rewriteVoiceKey).isEmpty)
+        #expect(!app.set(VoiceLabSession.rewriteVoiceKey, .string("Not-A-Record")), "only a lowercase record id")
     }
 
     @Test func rewriteStartsWithTheVoiceSettingsChose() throws {

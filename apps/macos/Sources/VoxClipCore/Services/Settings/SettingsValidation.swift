@@ -132,7 +132,8 @@ extension SettingsDocument {
                     try ProjectValidation.require(formatter.date(from: text) != nil || ISO8601DateFormatter().date(from: text) != nil, "Invalid update timestamp")
                 }
             case "voiceLab.rewriteVoice":
-                // The consent record Rewrite starts with (voice-lab §6.12): a lowercase record UUID. No default.
+                // The consent record Rewrite starts with (voice-lab §6.12): a lowercase record UUID, or null for none. No default.
+                if value == .null { continue }
                 guard case .string(let text) = value else { throw VoxClipError.projectUnreadable("Invalid Rewrite voice") }
                 try ProjectValidation.text(text, pattern: "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
             case "captions.defaultStyleId", "transcription.language", "export.fileNamePattern", "llm.connector", "llm.cliPath.claude-code", "llm.cliPath.codex", "llm.baseUrl.ollama", "llm.baseUrl.lmstudio":
