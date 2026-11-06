@@ -106,6 +106,7 @@ internal sealed partial class RewriteSession : IDisposable
         RetireGenerationWindows();
         generation.FixedModelId = synthesisModel;
         generation.ShareVoiceChecks(VoiceChecks, 0);
+        PreferVideoVoice(generation);
         generationWindows.Add(generation);
         ActiveWindow = 0;
         Generation = generation;
@@ -495,6 +496,7 @@ internal sealed partial class RewriteSession : IDisposable
         AutoFix.Reset();
         if (PhraseMicrophone is { } microphone) { microphone.Changed -= MicrophoneChanged; _ = microphone.DisposeAsync(); }
         Editor.SelectionChanged -= GenerationSelectionChanged;
+        DisconnectVideoVoice();
         RetireGenerationWindows();
         InvalidateProposal();
         lifetime.Cancel();

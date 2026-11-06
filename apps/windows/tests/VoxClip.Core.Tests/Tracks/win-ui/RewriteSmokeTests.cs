@@ -27,7 +27,7 @@ public sealed class RewriteSmokeTests
     /// collision after paid takes; S17 twins Mac S16 (a long run voiced in parts); the own-take scenarios keep Mac's names.</summary>
     public static TheoryData<string> Scenarios => new(["S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9", "S10", "S11", "S12", "S13", "S14",
         "S15", "S16", "S17", "S-own-typed", "S-own-mic", "S-own-mic-misfit", "S-viral-fit", "S-guard-blocked",
-        "S-duration-short", "S-guard-learns", "S-guard-guest"]);
+        "S-duration-short", "S-guard-learns", "S-guard-guest", "S-voice-per-video", "S-voice-per-video-short"]);
     /// <summary>S17's take: words 10–79 with every fifth word from 12 to 67 changed, twelve phrases in three parts.</summary>
     internal static readonly int[] LongRunWords = Enumerable.Range(0, 12).Select(index => 12 + 5 * index).ToArray();
     internal static string LongRunReply => string.Join(" ", Enumerable.Range(10, 70).Select(index => LongRunWords.Contains(index) ? "a much clearer phrasing" : "word" + index));
@@ -199,6 +199,80 @@ public sealed class RewriteSmokeTests
                     smoke.Failures.Add($"{id} G7: the guest's phrase {(windows[0].Blocked is null ? "wasn't blocked" : "was blocked")}, ran {runners[0].Executions} time(s); phrase 2 sent {runners[1].Sends}");
                 await smoke.ClickAsync("Rewrite.Chip.KeepAsRecorded1");
                 smoke.End(VoiceLabVideoMode.Source, voiced: 1);
+                return smoke;
+            }
+            case "S-voice-per-video":
+            {
+                // Mac S-voice-per-video (PV1–PV3; ADR-R45), with the gate opened only in this harness (a stub Voice Lab whose speaker check is
+                // ready). PV1: video 1's first Rewrite asks once, inline, and nothing is sent. PV2: Match this video makes video 1's voice
+                // under the anchor's consent before any price, and every take uses it. PV3: video 2 by ✦ Make it postable with the stored
+                // answer is never asked, makes its own voice, removes video 1's through the deletion, keeps the anchor and uses its own.
+                using var voices = new VideoVoiceFlowTests.Harness();
+                await voices.LoadAsync();
+                var takes = new Runner((_, _) => (Fit, Passed));
+                using var smoke = new Smoke(id, new(Reply, (_, ordinals) => Rows(ordinals, "x")), takes, editor: new(VideoVoiceFlowTests.Video("car"), now: () => DateTimeOffset.UnixEpoch));
+                VideoVoiceFlowTests.ConfigureVoices(smoke.Session, voices, takes);
+                await smoke.ProposeAsync();
+                var question = smoke.Session.NextStepCards.FirstOrDefault(card => card.Id == RewriteSession.VideoVoiceCardId);
+                if (question is null || !question.Sentence.StartsWith(VoiceLabSession.VideoVoiceQuestion, StringComparison.Ordinal) ||
+                    !question.Chips.Select(chip => chip.Label).SequenceEqual(["Match this video · free", "Use siim"]) || voices.Backend.Calls.Count > 0)
+                    smoke.Failures.Add($"{id} PV1: {question?.Sentence ?? "no question"} [{string.Join("] [", question?.Chips.Select(chip => chip.Label) ?? [])}], {voices.Backend.Calls.Count} calls");
+                await smoke.ClickAsync(RewriteSession.VideoVoiceMatchChip);
+                await smoke.GetPriceAsync();
+                var first = voices.Session.PerVideoBook.VideoFor("car-key");
+                if (first is null || voices.Backend.Created.Count != 1 || takes.Input?.RecordId != first.RecordId || first.AnchorId != voices.Anchor.RecordId ||
+                    voices.Session.VideoVoiceMode != VoicePerVideo.Mode.Match)
+                    smoke.Failures.Add($"{id} PV2: {voices.Backend.Created.Count} voices made, takes with {takes.Input?.RecordId}, video 1's {first?.RecordId}");
+                smoke.End(VoiceLabVideoMode.Source, voiced: 1);
+                // PV3: a second video, by ✦ Make it postable.
+                var kitchen = new EditorViewModel(VideoVoiceFlowTests.Video("kitchen"), now: () => DateTimeOffset.UnixEpoch);
+                var second = new Runner((_, _) => (Fit, Passed));
+                RewriteSession? opened = null;
+                var driver = new MakeItRewriteDriver(kitchen, new(10, 12, Reply, "c1", 5m), request =>
+                {
+                    opened = RewriteAutoFixTests.Session(new(Reply, (_, ordinals) => Rows(ordinals, "x")), request.First, request.Last, editor: kitchen);
+                    VideoVoiceFlowTests.ConfigureVoices(opened, voices, second);
+                    return Task.FromResult<RewriteSession?>(opened);
+                }, _ => Task.FromResult<VoiceLabMonthlyCap?>(null), session => session.Dispose());
+                smoke.Session.Dispose();
+                var outcome = await driver.RunAsync(CancellationToken.None);
+                opened?.Dispose();
+                smoke.Log.Add($"{id} PV3: ✦ Make it postable pressed {string.Join(" → ", driver.Pressed)}");
+                var made = voices.Session.PerVideoBook.VideoFor("kitchen-key");
+                var asked = driver.Pressed.Any(step => step.Contains("Match this video", StringComparison.Ordinal) || step.Contains("Use siim", StringComparison.Ordinal));
+                var old = voices.Backend.Records.Single(record => record.RecordId == first?.RecordId);
+                var anchor = voices.Backend.Records.Single(record => record.RecordId == voices.Anchor.RecordId);
+                if (asked || made is null || second.Input?.RecordId != made.RecordId || old.Status != VoiceConsentStatus.Deleted ||
+                    anchor.Status != VoiceConsentStatus.Active || !voices.Backend.Deleted.SequenceEqual([first!.RecordId]) ||
+                    !voices.Session.PerVideoBook.Videos.Select(video => video.ContentKey).SequenceEqual(["kitchen-key"]) || voices.Session.PerVideoBook.Removals.Count > 0 ||
+                    voices.Backend.Created.Count != 2 || outcome.Result is MakeItRewriteResult.NeedsYou { Reason: var reason } && reason.Contains("voice", StringComparison.OrdinalIgnoreCase))
+                    smoke.Failures.Add($"{id} PV3: {(asked ? "asked again" : "not asked")}, video 2's voice {made?.RecordId}, takes with {second.Input?.RecordId}, video 1's {old.Status}, anchor {anchor.Status}, {voices.Backend.Created.Count} made");
+                return smoke;
+            }
+            case "S-voice-per-video-short":
+            {
+                // Mac S-voice-per-video-short (PV4): too little of the video's own clear speech keeps the anchor; nothing is made, the takes
+                // use siim, and it says so once: a later Rewrite of the same video doesn't say it again.
+                using var voices = new VideoVoiceFlowTests.Harness();
+                await voices.LoadAsync();
+                voices.Backend.Match = true;
+                voices.Backend.NotEnough["short-key"] = 29_000;
+                var takes = new Runner((_, _) => (Fit, Passed));
+                var video = VideoVoiceFlowTests.Video("short");
+                using var smoke = new Smoke(id, new(Reply, (_, ordinals) => Rows(ordinals, "x")), takes, editor: new(video, now: () => DateTimeOffset.UnixEpoch));
+                VideoVoiceFlowTests.ConfigureVoices(smoke.Session, voices, takes);
+                await smoke.ProposeAsync();
+                await smoke.GetPriceAsync();
+                const string line = "This video has only 29 s of your own clear speech, so takes use siim. A matching voice needs 30 s.";
+                var shown = smoke.Log.Count(entry => entry.Contains(line, StringComparison.Ordinal));
+                if (voices.Backend.Created.Count > 0 || takes.Input?.RecordId != voices.Anchor.RecordId || shown < 1 ||
+                    !voices.Session.PerVideoBook.ShortNoted.SequenceEqual(["short-key"]))
+                    smoke.Failures.Add($"{id} PV4: shown in {shown} step(s), {voices.Backend.Created.Count} made, takes with {takes.Input?.RecordId}");
+                smoke.End(VoiceLabVideoMode.Source, voiced: 1);
+                using var again = VideoVoiceFlowTests.Rewrite(voices, video, new Runner((_, _) => (Fit, Passed)));
+                await RewriteAutoFixTests.ProposeAsync(again);
+                await again.DiscoverWindowsAsync();
+                if (again.NextStepCards.Any(card => card.Sentence == line)) smoke.Failures.Add($"{id} PV4: said again in a later Rewrite");
                 return smoke;
             }
             case "S-duration-short":

@@ -228,6 +228,218 @@ public sealed class VideoVoiceFlowTests
         Assert.False(VoiceSpeakerCheck.WindowsNativeParityVerified);
     }
 
+    /// <summary>A Rewrite of <paramref name="project"/> connected to the harness's Voice Lab: its voices are the backend's active records, the
+    /// media is found, and each phrase runs on <paramref name="runner"/>.</summary>
+    internal static RewriteSession Rewrite(Harness h, Project project, RewriteAutoFixTests.Runner runner, string reply = RewriteAutoFixTests.Reply)
+    {
+        var editor = new EditorViewModel(project, now: () => new DateTimeOffset(2026, 11, 6, 0, 0, 0, TimeSpan.Zero));
+        var session = RewriteAutoFixTests.Session(new(reply, (_, ordinals) => RewriteAutoFixTests.Rows(ordinals, "x")), editor: editor);
+        ConfigureVoices(session, h, runner);
+        return session;
+    }
+
+    /// <summary>Connects <paramref name="session"/> to the harness's Voice Lab, as the Editor does.</summary>
+    internal static void ConfigureVoices(RewriteSession session, Harness h, RewriteAutoFixTests.Runner runner)
+    {
+        session.ConfigureVideoVoice(h.Session, () => session.Project.Media.Source.AbsolutePath);
+        session.ConfigureGenerationFactory(index => new(runner,
+            _ => Task.FromResult(new RewriteGenerationChoices(h.Backend.Records.Where(record => record.Status == VoiceConsentStatus.Active)
+                .Select(record => new RewriteVoice(record.RecordId, record.VoiceName)).ToArray(), [new("eleven_v4", "Eleven v4", ["en"], true, false, 5000, 1)])),
+            (voice, model, seed, ct) => session.GenerationInputAsync(voice, model, seed, true,
+                (request, _) => Task.FromResult((new VoiceLabSourceExcerpt(request.Frames, []), session.Envelope!)), ct, index),
+            _ => Task.FromResult(true), _ => Task.FromResult<decimal?>(null), () => session.GenerationIsCurrent));
+    }
+
+    private static RewriteAutoFixTests.Runner Takes() => new((_, _) => (RewriteAutoFixTests.Fit, RewriteAutoFixTests.Passed));
+
+    private static async Task PriceAsync(RewriteSession session)
+    {
+        await session.DiscoverWindowsAsync();
+        foreach (var window in session.GenerationWindows) await window.PendingUpdate;
+    }
+
+    private static async Task MakeTakesAsync(RewriteSession session)
+    {
+        await PriceAsync(session);
+        var batch = session.PreparedBatch!;
+        session.MarkBatchEstimateShown(batch);
+        await session.GenerateWindowsAsync((_, _, _, _) => Task.FromResult(true), _ => Task.FromResult<VoiceLabMonthlyCap?>(null));
+    }
+
+    /// <summary>design.md R2: the question once, inline, with its two answers and what is sent; Match this video is the approval, and the
+    /// video's voice is made before any phrase is priced, so the takes use it.</summary>
+    [Fact]
+    public async Task TheCardAsksThenMatchThisVideoMakesTheVoiceAndEveryTakeUsesIt()
+    {
+        using var h = new Harness();
+        await h.LoadAsync();
+        var runner = Takes();
+        using var session = Rewrite(h, Video("car"), runner);
+        Assert.True(await RewriteAutoFixTests.ProposeAsync(session));
+        await session.WordingFitWork;
+        var card = session.NextStepCards[0];
+        Assert.Equal(RewriteSession.VideoVoiceCardId, card.Id);
+        Assert.Equal("Make a matching voice from this video? Your takes will sound like this recording. The previous video's voice is removed. Only your clearest speech from this video is sent to ElevenLabs; no video.", card.Sentence);
+        Assert.Equal(["Match this video · free", "Use siim"], card.Chips.Select(chip => chip.Label));
+        Assert.False(card.Asks);
+        Assert.All(card.Chips, chip => Assert.NotNull(chip.Invoke));
+        Assert.Empty(h.Backend.Calls);
+        await card.Chips[0].Invoke!();
+        Assert.True(h.Backend.Match);
+        Assert.Equal("Matching voice on. Making a voice from this video.", session.AutoFix.Announcement);
+        var voice = Assert.Single(h.Session.PerVideoBook.Videos).RecordId;
+        await PriceAsync(session);
+        // The price shown, and approved, is for takes in the video's own voice.
+        Assert.Equal(voice, Assert.Single(session.PreparedBatch!.Windows).Input.RecordId);
+        await MakeTakesAsync(session);
+        Assert.Equal(voice, session.GenerationWindows.Single().VoiceId);
+        Assert.Equal(voice, runner.Input!.RecordId);
+        Assert.DoesNotContain(session.NextStepCards, step => step.Id == RewriteSession.VideoVoiceCardId);
+        Assert.Single(h.Backend.Created);
+    }
+
+    /// <summary>Get Price with the stored answer "match": the voice is made first, so the only quote is with it; the next video makes its own
+    /// and removes the first; a video with paid takes keeps its voice.</summary>
+    [Fact]
+    public async Task GetPriceMakesTheVoiceFirstAndTheNextVideoRemovesThePreviousOne()
+    {
+        using var h = new Harness();
+        await h.LoadAsync();
+        h.Backend.Match = true;
+        var car = Takes();
+        using (var session = Rewrite(h, Video("car"), car))
+        {
+            Assert.True(await RewriteAutoFixTests.ProposeAsync(session));
+            Assert.DoesNotContain(session.NextStepCards, step => step.Id == RewriteSession.VideoVoiceCardId);
+            await PriceAsync(session);
+            var made = h.Session.PerVideoBook.VideoFor("car-key")!.RecordId;
+            Assert.Equal((made, 1), (car.Input!.RecordId, car.Prepares));
+            Assert.NotNull(session.PreparedBatch);
+        }
+        var carVoice = h.Session.PerVideoBook.VideoFor("car-key")!.RecordId;
+        var kitchen = Takes();
+        using var next = Rewrite(h, Video("kitchen"), kitchen);
+        Assert.True(await RewriteAutoFixTests.ProposeAsync(next));
+        await PriceAsync(next);
+        var kitchenVoice = h.Session.PerVideoBook.VideoFor("kitchen-key")!.RecordId;
+        Assert.Equal(kitchenVoice, kitchen.Input!.RecordId);
+        Assert.Equal([carVoice], h.Backend.Deleted);
+        Assert.Equal(2, h.Backend.Created.Count);
+    }
+
+    [Fact]
+    public async Task UseTheAnchorIsRememberedAndTheTakesUseIt()
+    {
+        using var h = new Harness();
+        await h.LoadAsync();
+        var runner = Takes();
+        using var session = Rewrite(h, Video("car"), runner);
+        Assert.True(await RewriteAutoFixTests.ProposeAsync(session));
+        await session.NextStepCards[0].Chips.Single(chip => chip.Id == RewriteSession.VideoVoiceAnchorChip).Invoke!();
+        Assert.False(h.Backend.Match);
+        Assert.DoesNotContain(session.NextStepCards, step => step.Id == RewriteSession.VideoVoiceCardId);
+        await PriceAsync(session);
+        Assert.Equal(h.Anchor.RecordId, runner.Input!.RecordId);
+        Assert.Empty(h.Backend.Calls);
+    }
+
+    /// <summary>✦ Make it postable (and so ✦ Claude does it all) never presses the card: unset, it goes on with the anchor; with the stored
+    /// answer it makes the video's voice first, as a manual Get Price does, and is never asked.</summary>
+    [Fact]
+    public async Task MakeItPostableNeverPressesTheCardAndHonoursTheStoredAnswer()
+    {
+        using var h = new Harness();
+        await h.LoadAsync();
+        async Task<(MakeItRewriteOutcome Outcome, MakeItRewriteDriver Driver, RewriteAutoFixTests.Runner Runner)> RunAsync(string name)
+        {
+            var editor = new EditorViewModel(Video(name), now: () => new DateTimeOffset(2026, 11, 6, 0, 0, 0, TimeSpan.Zero));
+            var runner = Takes();
+            RewriteSession? opened = null;
+            var driver = new MakeItRewriteDriver(editor, new(10, 12, RewriteAutoFixTests.Reply, "c1", 5m), request =>
+            {
+                opened = RewriteAutoFixTests.Session(new(RewriteAutoFixTests.Reply, (_, ordinals) => RewriteAutoFixTests.Rows(ordinals, "x")), request.First, request.Last, editor: editor);
+                ConfigureVoices(opened, h, runner);
+                return Task.FromResult<RewriteSession?>(opened);
+            }, _ => Task.FromResult<VoiceLabMonthlyCap?>(null), session => session.Dispose());
+            var outcome = await driver.RunAsync(CancellationToken.None);
+            opened?.Dispose();
+            return (outcome, driver, runner);
+        }
+        var unset = await RunAsync("car");
+        Assert.Contains(unset.Driver.Pressed, step => step.StartsWith("Make takes", StringComparison.Ordinal));
+        Assert.DoesNotContain(unset.Driver.Pressed, step => step.Contains("Match this video", StringComparison.Ordinal) || step.Contains("Use siim", StringComparison.Ordinal));
+        Assert.Equal(h.Anchor.RecordId, unset.Runner.Input!.RecordId);
+        Assert.Null(h.Backend.Match);
+        Assert.Empty(h.Backend.Calls);
+        h.Backend.Match = true;
+        var matched = await RunAsync("kitchen");
+        Assert.DoesNotContain(matched.Driver.Pressed, step => step.Contains("Match this video", StringComparison.Ordinal));
+        Assert.Equal(h.Session.PerVideoBook.VideoFor("kitchen-key")!.RecordId, matched.Runner.Input!.RecordId);
+        Assert.Single(h.Backend.Created);
+    }
+
+    [Fact]
+    public async Task AFailedMakingSaysWhyKeepsTheAnchorAndTryAgainActs()
+    {
+        using var h = new Harness();
+        await h.LoadAsync();
+        h.Backend.Match = true;
+        h.Backend.FailCreates = 1;
+        var runner = Takes();
+        using var session = Rewrite(h, Video("car"), runner);
+        Assert.True(await RewriteAutoFixTests.ProposeAsync(session));
+        await PriceAsync(session);
+        Assert.Equal(h.Anchor.RecordId, runner.Input!.RecordId);
+        var card = session.NextStepCards[0];
+        Assert.Equal("Couldn't make this video's voice. Your ElevenLabs account has no free voice slot. Free one on elevenlabs.io, then try again. Takes use siim.", card.Sentence);
+        Assert.Equal(["Try Again"], card.Chips.Select(chip => chip.Label));
+        await card.Chips[0].Invoke!();
+        var voice = h.Session.PerVideoBook.VideoFor("car-key")!.RecordId;
+        Assert.Equal(voice, session.GenerationWindows[0].VoiceId);
+        Assert.DoesNotContain(session.NextStepCards, step => step.Id == RewriteSession.VideoVoiceCardId);
+    }
+
+    /// <summary>The take-match diagnostic: the first paid take with the video's voice is scored against the speech beside it and kept.</summary>
+    [Fact]
+    public async Task TheFirstTakeIsScoredAndRecordedForTheVideo()
+    {
+        using var h = new Harness();
+        await h.LoadAsync();
+        h.Backend.Match = true;
+        h.Backend.Score = 0.71;
+        using var session = Rewrite(h, Video("car"), Takes());
+        Assert.True(await RewriteAutoFixTests.ProposeAsync(session));
+        await MakeTakesAsync(session);
+        await session.VideoVoiceMatchWork;
+        var measurement = Assert.Single(h.Session.PerVideoBook.Measurements);
+        Assert.Equal(("car-key", "car", 0.71, (double?)null), (measurement.ContentKey, measurement.Title, measurement.VideoVoice, measurement.Anchor));
+        Assert.Equal(1, h.Backend.Scored);
+        Assert.Equal("car: its own voice 0.71", VoiceLabSession.MatchLine(measurement, "siim"));
+    }
+
+    /// <summary>The closed gate in Rewrite: with the stored answer "match" nothing is asked, found, made, scored or removed, and the takes
+    /// use the voice they used before.</summary>
+    [Fact]
+    public async Task BehindTheClosedGateRewriteIsUnchanged()
+    {
+        using var h = new Harness();
+        h.Backend.Available = false;
+        await h.LoadAsync();
+        h.Backend.Match = true;
+        h.Backend.Score = 0.71;
+        var runner = Takes();
+        using var session = Rewrite(h, Video("car"), runner);
+        Assert.True(await RewriteAutoFixTests.ProposeAsync(session));
+        Assert.DoesNotContain(session.NextStepCards, step => step.Id == RewriteSession.VideoVoiceCardId);
+        Assert.Null(session.PreferredVoiceForVideo);
+        await MakeTakesAsync(session);
+        await session.VideoVoiceMatchWork;
+        Assert.Equal(h.Anchor.RecordId, runner.Input!.RecordId);
+        Assert.Empty(h.Backend.Calls);
+        Assert.Equal(0, h.Backend.Scored);
+        Assert.Empty(h.Session.PerVideoBook.Measurements);
+    }
+
     /// <summary>A Voice Lab backend for per-video voices: an attested anchor, the setting, a temporary book, scripted finds, creations that
     /// hand out a new record each, and deletions that tombstone or fail. The gate is <see cref="Available"/>.</summary>
     internal sealed class Backend : IVoiceLabBackend
@@ -245,6 +457,9 @@ public sealed class VideoVoiceFlowTests
         internal bool Available = true;
         internal bool? Match;
         internal bool FailDeletes;
+        internal int FailCreates;
+        internal double? Score;
+        internal int Scored;
         internal readonly Dictionary<string, VoiceRebuildFind> Finds = [];
         internal readonly Dictionary<string, long> NotEnough = [];
         internal readonly List<string> Calls = [];
@@ -286,6 +501,7 @@ public sealed class VideoVoiceFlowTests
         {
             Calls.Add("create " + displayName);
             if (!Available) throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
+            if (FailCreates > 0) { FailCreates--; throw new VoiceLabException(VoiceLabErrorKind.NoVoiceSlots); }
             Created.Add((anchor, found, displayName));
             var record = anchor with { RecordId = Guid.NewGuid().ToString("D"), VoiceId = "videoVoice" + Created.Count, VoiceName = displayName + " (VoxClip)" };
             Records.Add(record);
@@ -293,6 +509,12 @@ public sealed class VideoVoiceFlowTests
         }
         public void SeedRateCalibration(string fromRecordId, string toRecordId) => Calibrations.Seed(fromRecordId, toRecordId);
         public void Log(string message) => Logged.Add(message);
+        public Task<double?> ScoreTakeMatchAsync(VoiceLabTakeAudio take, VoiceLabTakeInput input, CancellationToken ct)
+        {
+            if (!Available) return Task.FromResult<double?>(null);
+            Scored++;
+            return Task.FromResult(Score);
+        }
         internal void Clean() { try { Directory.Delete(root, true); } catch (DirectoryNotFoundException) { } }
     }
 

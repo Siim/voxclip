@@ -122,6 +122,8 @@ internal sealed partial class RewriteSession
                     new("Rewrite.Chip.KeepAsRecorded" + (index + 1), "Keep as recorded", false, () => { KeepOriginal(phrase); return Task.CompletedTask; }),
                 ], Asks: false));
             }
+            // A matching voice for this video (§6.13): its question or its line, at the top.
+            if (VideoVoiceCard is { } videoVoice) cards.Insert(0, videoVoice);
             if ((HasPaidTakes || AutoFix.Armed) && AutoFix.ChoicesShown && !IsGeneratingBatch)
                 for (var index = 0; index < generationWindows.Count; index++)
                 {

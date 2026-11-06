@@ -126,7 +126,7 @@ internal sealed partial class RewriteSession
             window.ShareVoiceChecks(VoiceChecks, index);
             if (AutoFix.Armed) window.KeepEveryTake();
             generationWindows.Add(window);
-            if (!reusable) { ApplyRememberedBlock(window, desired.ElementAtOrDefault(index)); window.Changed += GenerationChanged; }
+            if (!reusable) { ApplyRememberedBlock(window, desired.ElementAtOrDefault(index)); PreferVideoVoice(window); window.Changed += GenerationChanged; }
             else if (desired.Count == 0 || previousHunks.Length == 0) _ = window.InputsChangedAsync();
         }
         foreach (var retired in previous.Where(window => !generationWindows.Contains(window)))
@@ -190,8 +190,9 @@ internal sealed partial class RewriteSession
         foreach (var generation in generationWindows.ToArray()) _ = generation.InputsChangedAsync();
     }
 
-    /// <summary>Get Price (Mac <c>ClipTakePlan.prepareQuote</c>): every phrase is discovered and quoted, then the guard screens them all
-    /// before a price is shown (<see cref="ScreenWindowsAsync"/>). No price is shown or approvable while the screen runs.</summary>
+    /// <summary>Get Price (Mac <c>ClipTakePlan.prepareQuote</c>): first, with the stored answer "match", this video's own voice is made and
+    /// chosen (<see cref="EnsureVideoVoiceAsync"/>); then every phrase is discovered and quoted, and the guard screens them all before a price
+    /// is shown (<see cref="ScreenWindowsAsync"/>). No price is shown or approvable while either runs.</summary>
     internal async Task DiscoverWindowsAsync()
     {
         var windows = generationWindows.ToArray();
@@ -199,6 +200,7 @@ internal sealed partial class RewriteSession
         Changed?.Invoke(this, EventArgs.Empty);
         try
         {
+            await EnsureVideoVoiceAsync();
             foreach (var window in windows)
             {
                 if (!GenerationIsCurrent || !generationWindows.SequenceEqual(windows)) return;

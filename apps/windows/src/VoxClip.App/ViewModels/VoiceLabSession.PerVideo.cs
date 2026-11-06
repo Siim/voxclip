@@ -369,6 +369,10 @@ internal sealed partial class VoiceLabSession
         Backend.Log($"per-video take match video={contentKey[..Math.Min(8, contentKey.Length)]} voice={(isVideoVoice ? "video" : "anchor")} score={score.ToString("F3", CultureInfo.InvariantCulture)}");
     }
 
+    /// <summary>A take's speaker cosine against the speech beside it, on this PC; null without a speaker check (the closed gate).</summary>
+    internal Task<double?> ScoreTakeMatchAsync(VoiceLabTakeAudio take, VoiceLabTakeInput input) =>
+        Enabled ? Backend.ScoreTakeMatchAsync(take, input, Lifetime) : Task.FromResult<double?>(null);
+
     /// <summary>Settings › Voices' diagnostic for one video (Mac <c>matchLine</c>): "DJI_0030: its own voice 0.71 · siim 0.54".</summary>
     internal static string MatchLine(VoicePerVideoBook.Measurement measurement, string anchor)
     {

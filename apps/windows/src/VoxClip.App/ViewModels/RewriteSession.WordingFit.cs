@@ -368,6 +368,7 @@ internal sealed partial class RewriteSession
     {
         if (!IsOpen) return;
         RecordCalibration();
+        MeasureVideoVoiceMatch();
         if (MeasuredWording is { } open)
         {
             if (!open.Unselected && generationWindows.ElementAtOrDefault(open.Window)?.SelectedTakeId != open.Take && !open.AwaitingApproval && !open.Preparing && open.Text is null)
