@@ -152,6 +152,8 @@ struct RewriteChange: Equatable, Sendable {
     @ObservationIgnored var takeBackend: ((Int, @escaping VoiceLabTakeDispatchBoundary) -> ClipTakePlan.Backend)?
     @ObservationIgnored var takePlanOrdinals: [Int] = []
     @ObservationIgnored var takeRegion: ElevenLabsRegion?
+    /// Takes whose match against the speech beside them was measured (voice-lab §6.13).
+    @ObservationIgnored var videoVoiceMeasured: Set<UUID> = []
     /// The Director task the Rewrite job shows (impl-plan V12m); the session drives it.
     let task: DirectorTask
     /// The AIs R0 lists, once detected.
@@ -186,8 +188,9 @@ struct RewriteChange: Equatable, Sendable {
         }
         generation = RewriteGenerationSession(run: run) { [weak self] in self?.generationIsCurrent(region: region) ?? false }
         generation?.fixedModelID = VoiceLabWordingFit.modelID
-        // Settings › Voices "Use the new voice for Rewrite" (voice-lab §6.12): the voice Rewrite starts with, when listed.
-        generation?.preferredVoiceID = { [weak self] in self?.editor.app.string(VoiceLabSession.rewriteVoiceKey) }
+        // The voice Rewrite starts with, when listed: this video's own (voice-lab §6.13), else the anchor, Settings ›
+        // Voices' "Use the new voice for Rewrite" first (§6.12).
+        generation?.preferredVoiceID = { [weak self] in self?.preferredVoiceForVideo }
         generation?.onFailure = { [weak self] error in self?.logFailure(error, stage: "generation") }
         generation?.prepareDurationRender = durationRenderPreparer()
         takeBackend = { [weak self] count, dispatch in

@@ -107,6 +107,15 @@ import VoxClipMedia
     /// Settings › Voices' "Rebuild from my videos" rows, per voice (voice-lab §6.12).
     var rebuilds: [String: VoiceRebuildState] = [:]
     @ObservationIgnored var rebuildPlayer: AVAudioPlayer?
+    /// A matching voice for each video (voice-lab §6.13): the book in app data, each video's state this run, and the
+    /// one-line note Settings › Voices shows while a previous video's voice could not be removed yet.
+    var perVideoBook = VoicePerVideoBook()
+    var videoVoices: [String: VideoVoiceState] = [:]
+    var perVideoNote: String?
+    @ObservationIgnored lazy var perVideoStore = VoicePerVideoStore(locations: app.locations)
+    /// The voices whose project still holds paid takes nobody used or discarded: they are never removed yet.
+    @ObservationIgnored lazy var pendingTakeVoices: @MainActor () -> Set<String> = { Self.openPendingTakeVoices() }
+    @ObservationIgnored var removalRetry: Task<Void, Never>?
     @ObservationIgnored private var client: ElevenLabsVoiceLab?
     @ObservationIgnored private var enrollment: VoiceEnrollment?
     @ObservationIgnored private let reconciler: VoiceOperationReconciler
@@ -350,6 +359,7 @@ import VoxClipMedia
             operations = try await store.operations()
             deleting = Set(operations.filter { !$0.finished && ($0.kind == .delete || $0.state == .withdrawing) }.map(\.recordID))
             records = try await store.records()
+            await loadPerVideo()
             if !Task.isCancelled { scheduleRecovery() }
         } catch { message = "The local voice records could not be read. No audio was sent." }
     }

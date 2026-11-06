@@ -58,6 +58,9 @@ extension RewriteSession {
             generation.fail("Your paid takes are kept. Leave this review and confirm discarding them before making a fresh takes plan.")
             return
         }
+        // This video's own voice first, when matching is on (voice-lab §6.13): the price is for the voice takes use.
+        await ensureVideoVoice()
+        guard current, !hasPaidTakes else { return }
         takePlan?.invalidate(); takePlan = nil
         takeQuotePhrase = nil; takeRowsShown = true; takePlanFailure = nil
         guard let recordID = generation.selectedVoiceID, let modelID = generation.selectedModelID,
