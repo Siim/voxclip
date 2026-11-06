@@ -87,7 +87,7 @@ internal sealed class VoiceLabBackend(DataLocations data, IKeyProvider keys, ILo
         await client.ValidateCreatorAsync(old.CreatorIdentity, ct).ConfigureAwait(false);
         var id = Guid.NewGuid().ToString("D");
         var plan = await enrollment.PrepareProjectPlanAsync(id, old.Language, attestations, displayName, ((VoiceRebuildFinder.Found)found.Ticket).Samples,
-            Enabled, ct).ConfigureAwait(false);
+            Enabled, ct: ct).ConfigureAwait(false);
         return new(id, plan.Quote.Estimate.Usd, plan.TrainingMilliseconds, plan);
     }
     public Task CancelRebuildAsync(VoiceRebuildQuote quote, CancellationToken ct)

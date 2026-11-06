@@ -16,7 +16,7 @@ namespace VoxClip.Media.Tests.VoiceLab;
 public sealed partial class VoiceEnrollmentPlanTests
 {
     /// <summary>Words every 0.5 s in three runs (0–20 s, 23–45 s, 48–60 s), each word -20 dBFS over a -70 dBFS room.</summary>
-    private static (Project Project, VoiceTrainingTake Take) Video(string key, string? language = "en", bool transcribed = true)
+    private static (Project Project, VoiceTrainingTake Take) Video(string key, string? language = "en", bool transcribed = true, double room = -70)
     {
         var project = ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/projects/interview-take.voxclip"));
         List<TimedWord> words = [];
@@ -26,7 +26,7 @@ public sealed partial class VoiceEnrollmentPlanTests
         var frames = Enumerable.Range(0, 6000).Select(frame =>
         {
             var seconds = frame / 100.0;
-            return words.Any(word => seconds >= word.Start && seconds < word.End) ? -20.0 : -70.0;
+            return words.Any(word => seconds >= word.Start && seconds < word.End) ? -20.0 : room;
         }).ToArray();
         project = project with
         {
@@ -100,6 +100,47 @@ public sealed partial class VoiceEnrollmentPlanTests
         Assert.Equal(0, reads);
     }
 
+    /// <summary>A matching voice for each video (§6.13, ADR-R45; Mac <c>VoicePerVideoMeasureTests</c>): a video recorded in a noisy room
+    /// has no 20 dB speech, so the rebuild finds nothing; the per-video rules take its owner pieces from 8 dB, still one hop, need 30 s of
+    /// the video's own speech beside the consent clip, and the creation then asks ElevenLabs to remove the background noise.</summary>
+    [Fact]
+    public async Task ANoisyVideosOwnSpeechMakesItsVoiceAtTheLowerFloorWithNoiseRemoval()
+    {
+        using var fixture = new Fixture();
+        var old = await CreateOld(fixture);
+        // Words at -20 dBFS over a -35 dBFS room: about 15 dB, under §6.5.1's floor and over the per-video one.
+        var (car, take) = Video("video-car", room: -35);
+        var finder = new VoiceRebuildFinder(fixture.Store, Probe(), (_, _, _) => Task.FromResult(take),
+            (_, _, spans, _) => Task.FromResult(Cut(spans, span => span.StartMs is < 21_000 or > 46_000)), _ => false);
+        var rebuild = await Assert.ThrowsAsync<VoiceRebuildFailedException>(() => finder.FindAsync(old.RecordId, [new(car, "/car.mp4")], ct: Token));
+        Assert.Equal(VoiceRebuildFailureKind.NotEnough, rebuild.Kind);
+        Assert.True(rebuild.Noisy > 0);
+        var found = await finder.FindAsync(old.RecordId, [new(car, "/car.mp4")], VoiceRebuildFinder.Rules.PerVideo, ct: Token);
+        Assert.Equal(15_000, found.Plan.KeptMs);
+        Assert.All(found.Plan.Pieces, piece => Assert.InRange(piece.SnrDb, VoicePerVideo.MinimumSnrDb, VoiceRebuild.MinimumSnrDb - 1e-9));
+        // Identity is still one hop: the 23–45 s run is someone else's and never makes it in.
+        Assert.All(found.Plan.Pieces, piece => Assert.True(piece.StartMs is < 21_000 or > 46_000, $"{piece.StartMs}"));
+        Assert.True(found.Plan.Rejected.GetValueOrDefault(VoiceRebuild.Rejection.NotTheOwner) > 0);
+        Assert.True(VoicePerVideo.VideoMs(found.Plan) >= VoicePerVideo.MinimumVideoMs);
+        Assert.True(VoicePerVideo.RemovesBackgroundNoise(found.Plan));
+        // Too little of the video's own speech: the kept clip doesn't count toward the 30 s.
+        var shortFinder = new VoiceRebuildFinder(fixture.Store, Probe(), (_, _, _) => Task.FromResult(take),
+            (_, _, spans, _) => Task.FromResult(Cut(spans, span => span.StartMs < 21_000)), _ => false);
+        var little = await Assert.ThrowsAsync<VoiceRebuildFailedException>(() =>
+            shortFinder.FindAsync(old.RecordId, [new(car, "/car.mp4")], VoiceRebuildFinder.Rules.PerVideo, ct: Token));
+        Assert.Equal(VoiceRebuildFailureKind.NotEnough, little.Kind);
+        Assert.InRange(little.Milliseconds, 1, VoicePerVideo.MinimumVideoMs - 1);
+        fixture.Remote.Events.Clear();
+        var plan = await fixture.Service.PrepareProjectPlanAsync(Guid.NewGuid().ToString("D"), "en", new(true, true, true, fixture.Clock.Now),
+            VoicePerVideo.DisplayName("Example", VoicePerVideo.Title("/car.mp4")), found.Samples, true,
+            removeBackgroundNoise: VoicePerVideo.RemovesBackgroundNoise(found.Plan), ct: Token);
+        Assert.Empty(fixture.Remote.Events);
+        var made = await fixture.Service.ExecuteAsync(plan, true, true, "test", Token);
+        Assert.Equal(old.Speaker.Embedding, made.Speaker.Embedding);
+        Assert.StartsWith("Example · car", made.VoiceName, StringComparison.Ordinal);
+        Assert.Matches("name=\"?remove_background_noise\"?\\s+true", fixture.Remote.CreationBody!);
+    }
+
     [Fact]
     public async Task ARebuildGoesThroughTheAttestedCreationAndKeepsTheVoicesEmbeddingAndReferences()
     {
@@ -111,7 +152,7 @@ public sealed partial class VoiceEnrollmentPlanTests
         var found = await finder.FindAsync(old.RecordId, [new(a, "/a.mp4")], ct: Token);
         fixture.Remote.Events.Clear();
         var id = Guid.NewGuid().ToString("D");
-        var plan = await fixture.Service.PrepareProjectPlanAsync(id, "en", new(true, true, true, fixture.Clock.Now), "Example", found.Samples, true, Token);
+        var plan = await fixture.Service.PrepareProjectPlanAsync(id, "en", new(true, true, true, fixture.Clock.Now), "Example", found.Samples, true, ct: Token);
         Assert.Empty(fixture.Remote.Events);
         Assert.Equal(found.Plan.TotalMs, plan.TrainingMilliseconds);
         var rebuilt = await fixture.Service.ExecuteAsync(plan, true, true, "test", Token);
@@ -120,6 +161,7 @@ public sealed partial class VoiceEnrollmentPlanTests
         Assert.Equal(old.ReferenceAudioSha256, rebuilt.ReferenceAudioSha256);
         Assert.Equal(fixture.Store.ReferenceAudio(old.RecordId), fixture.Store.ReferenceAudio(rebuilt.RecordId));
         Assert.Contains("Reference sha256:" + old.ReferenceAudioSha256, fixture.Remote.CreationBody!);
+        Assert.Matches("name=\"?remove_background_noise\"?\\s+false", fixture.Remote.CreationBody!);
         Assert.Equal(VoiceConsentMethod.ProjectAttestation, rebuilt.ConsentMethod);
         Assert.Equal(old.CreatorIdentity, rebuilt.CreatorIdentity);
         Assert.Equal(1, fixture.Store.CarryReferences(old.RecordId, rebuilt.RecordId));

@@ -154,8 +154,11 @@ public sealed partial class VoiceEnrollment
         }
         finally { Release(); }
     }
+    /// <summary>The attested project route's free plan (§6.7): owner-verified project samples, the first kept as the record's reference.
+    /// <paramref name="removeBackgroundNoise"/> asks ElevenLabs to remove background noise; a per-video voice (§6.13) sets it when a piece
+    /// is under the 20 dB clean-speech floor.</summary>
     public async Task<VoiceEnrollmentPlan> PrepareProjectPlanAsync(string recordId, string language, VoiceConsentAttestations attestations,
-        string displayName, IReadOnlyList<VoiceTrainingSample> samples, bool enabled, CancellationToken ct = default)
+        string displayName, IReadOnlyList<VoiceTrainingSample> samples, bool enabled, bool removeBackgroundNoise = false, CancellationToken ct = default)
     {
         if (!enabled) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
         if (!attestations.Complete) throw new VoiceConsentException(VoiceConsentError.AttestationsRequired);
@@ -197,7 +200,7 @@ public sealed partial class VoiceEnrollment
             var consent = new VoiceProjectConsent(language, VoiceConsentStore.Hash(accepted[0].Wav));
             var creator = await client.GetCreatorIdentityAsync(ct).ConfigureAwait(false);
             var verification = new Verified(null, null, consent.AudioSha256, attestations, creator, consent);
-            var request = new VoiceLabCloneRequest(name, language, accepted.ToArray(), clock.GetUtcNow(), false, recordId);
+            var request = new VoiceLabCloneRequest(name, language, accepted.ToArray(), clock.GetUtcNow(), removeBackgroundNoise, recordId);
             var policy = new OwnVoicePolicy(recordId, null, true, true, false, true, true) { ConsentMethod = VoiceConsentMethod.ProjectAttestation };
             ValidateSpeaker();
             var create = client.PrepareEnrollmentClone(request, policy, Guid.NewGuid());

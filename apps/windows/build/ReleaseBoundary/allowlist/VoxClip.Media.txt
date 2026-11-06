@@ -1614,7 +1614,7 @@ member VoxClip.Media.VoiceLab.VoiceEnrollment :: method public DeleteAsync(strin
 member VoxClip.Media.VoiceLab.VoiceEnrollment :: method public ExecuteAsync(VoxClip.Core.Domain.VoiceLab.VoiceEnrollmentPlan,bool,bool,string,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceEnrollment :: method public PrepareAsync(string,string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Media.VoiceLab.VoiceTrainingSample>,bool,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceEnrollment :: method public PreparePlanAsync(string,VoxClip.Core.Domain.VoiceLab.VoiceConsentStatement,byte[],VoxClip.Core.Domain.VoiceLab.VoiceConsentAttestations,string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Media.VoiceLab.VoiceTrainingSample>,bool,System.Threading.CancellationToken)
-member VoxClip.Media.VoiceLab.VoiceEnrollment :: method public PrepareProjectPlanAsync(string,string,VoxClip.Core.Domain.VoiceLab.VoiceConsentAttestations,string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Media.VoiceLab.VoiceTrainingSample>,bool,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.VoiceEnrollment :: method public PrepareProjectPlanAsync(string,string,VoxClip.Core.Domain.VoiceLab.VoiceConsentAttestations,string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Media.VoiceLab.VoiceTrainingSample>,bool,bool,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceEnrollment :: method public RecoverPlanAsync(string,bool,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceEnrollment :: method public RemoveFromVoxClipOnlyAsync(string,bool,bool,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceEnrollment :: method public SetSpeakerCheck(VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck)
@@ -2416,6 +2416,7 @@ member VoxClip.Media.VoiceLab.VoiceLabWindowsFiles :: method private GetFileInfo
 member VoxClip.Media.VoiceLab.VoiceLabWindowsFiles :: method private GetFinalPathNameByHandleW(Microsoft.Win32.SafeHandles.SafeFileHandle,System.Text.StringBuilder,uint,uint)
 member VoxClip.Media.VoiceLab.VoiceLabWindowsFiles+AttributeTagInformation :: field internal Attributes
 member VoxClip.Media.VoiceLab.VoiceLabWindowsFiles+AttributeTagInformation :: field internal ReparseTag
+member VoxClip.Media.VoiceLab.VoicePerVideoMatch :: method public ScoreAsync(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput,VoxClip.Media.VoiceLab.VoiceSpeakerProbe,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceRebuildFailedException :: method public .ctor(VoxClip.Media.VoiceLab.VoiceRebuildFailureKind,long,int)
 member VoxClip.Media.VoiceLab.VoiceRebuildFailedException :: method public get_Kind()
 member VoxClip.Media.VoiceLab.VoiceRebuildFailedException :: method public get_Milliseconds()
@@ -2429,6 +2430,7 @@ member VoxClip.Media.VoiceLab.VoiceRebuildFinder :: field private labelled
 member VoxClip.Media.VoiceLab.VoiceRebuildFinder :: field private probe
 member VoxClip.Media.VoiceLab.VoiceRebuildFinder :: field private store
 member VoxClip.Media.VoiceLab.VoiceRebuildFinder :: method internal .ctor(VoxClip.Core.Services.VoiceLab.VoiceConsentStore,VoxClip.Media.VoiceLab.VoiceSpeakerProbe,System.Func`4<string,int,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<VoxClip.Media.VoiceLab.VoiceTrainingTake>>,System.Func`5<string,int,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan>,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<System.Collections.Generic.IReadOnlyList`1<VoxClip.Media.VoiceLab.VoiceTrainingSample>>>,System.Func`2<string,bool>)
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder :: method internal RelaxedSpans(VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection,double)
 member VoxClip.Media.VoiceLab.VoiceRebuildFinder :: method internal VideoCandidatesAsync(VoxClip.Media.VoiceLab.VoiceRebuildFinder+Source,float[],VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceRebuildFinder :: method private KeptSample(string)
 member VoxClip.Media.VoiceLab.VoiceRebuildFinder :: method private Unavailable()
@@ -2466,6 +2468,7 @@ member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules :: method public ToString
 member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules :: method public get_CandidatesPerVideo()
 member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules :: method public get_MinimumOwnMs()
 member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules :: method public get_MinimumSnrDb()
+member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules :: method public get_PerVideo()
 member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules :: method public get_Rebuild()
 member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules :: method public op_Equality(VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules,VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules)
 member VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules :: method public op_Inequality(VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules,VoxClip.Media.VoiceLab.VoiceRebuildFinder+Rules)
@@ -2763,6 +2766,7 @@ type VoxClip.Media.VoiceLab.VoiceLabWavePcm
 type VoxClip.Media.VoiceLab.VoiceLabWaveReader
 type VoxClip.Media.VoiceLab.VoiceLabWindowsFiles
 type VoxClip.Media.VoiceLab.VoiceLabWindowsFiles+AttributeTagInformation
+type VoxClip.Media.VoiceLab.VoicePerVideoMatch
 type VoxClip.Media.VoiceLab.VoiceRebuildFailedException
 type VoxClip.Media.VoiceLab.VoiceRebuildFailureKind
 type VoxClip.Media.VoiceLab.VoiceRebuildFinder

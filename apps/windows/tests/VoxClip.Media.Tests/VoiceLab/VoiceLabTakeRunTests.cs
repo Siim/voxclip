@@ -827,6 +827,30 @@ public sealed partial class VoiceLabTakeRunTests
         Assert.Empty(fixture.Speech);
     }
 
+    /// <summary>"Did matching help" (voice-lab.md §6.13; Mac <c>VoicePerVideoMatch</c>): the take's own speech against the guard's speech
+    /// beside the patch, both at 16 kHz, with the speaker model on this PC; no speaker check (the closed parity gate) or no take speech
+    /// gives no score. A scripted embedder; nothing is sent.</summary>
+    [Fact]
+    public async Task TheTakeMatchScoresTheTakeAgainstTheSpeechBesideThePatch()
+    {
+        await using var fixture = new Fixture();
+        List<int> lengths = [];
+        var probe = new VoiceSpeakerProbe("fixture-calibrated", 0.45, "en", (pcm, _) =>
+        {
+            lengths.Add(pcm.Length);
+            return Task.FromResult(pcm.Max() > 0.3f ? new[] { 0.6f, 0.8f } : [1f, 0f]);
+        }, (pcm, _) => throw new InvalidOperationException("whole embeddings only"));
+        VoiceLabTakeAudio Take(float[] trimmed) => new(48000, trimmed, trimmed, 0, trimmed.Length, [], 0, null, null!);
+        var take = Take(Enumerable.Repeat(0.5f, 48000).ToArray());
+        var score = await VoicePerVideoMatch.ScoreAsync(take, fixture.Input, probe, TestContext.Current.CancellationToken);
+        Assert.Equal(0.6, score!.Value, 6);
+        Assert.Equal([16000, VoiceLabTakeRun.GuardSpeech(fixture.Input).Length], lengths);
+        Assert.Null(await VoicePerVideoMatch.ScoreAsync(take, fixture.Input, null, TestContext.Current.CancellationToken));
+        Assert.Null(await VoicePerVideoMatch.ScoreAsync(Take([]), fixture.Input, probe, TestContext.Current.CancellationToken));
+        Assert.Equal(2, lengths.Count);
+        Assert.Empty(fixture.Speech);
+    }
+
     private sealed class Fixture : IAsyncDisposable
     {
         internal readonly string Root = Path.Combine(Path.GetTempPath(), "voxclip-takes-" + Guid.NewGuid().ToString("N"));

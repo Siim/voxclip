@@ -39,11 +39,15 @@ public sealed class VoiceRebuildFinder
     public sealed record Found(VoiceRebuild.Plan Plan, IReadOnlyList<VoiceTrainingSample> Samples, int VideosChecked, int VideosSkipped);
 
     /// <summary>What a set must meet. <see cref="Rebuild"/> is §6.12's: the clean-speech floor, six candidates per video, 30 s in all with
-    /// the kept clip. Identity is one hop at τ whatever the rules.</summary>
+    /// the kept clip. <see cref="PerVideo"/> is §6.13's (ADR-R45): one video, a lower floor because creation asks ElevenLabs to remove the
+    /// background noise, more candidates from that one video, and at least <see cref="MinimumOwnMs"/> of the video's own speech beside the
+    /// kept clip. Identity is one hop at τ whatever the rules.</summary>
     public sealed record Rules(double MinimumSnrDb, int CandidatesPerVideo, long MinimumOwnMs)
     {
         /// <summary>Rebuild from my videos.</summary>
         public static Rules Rebuild { get; } = new(VoiceRebuild.MinimumSnrDb, VoiceRebuild.CandidatesPerVideo, 0);
+        /// <summary>A matching voice for one video.</summary>
+        public static Rules PerVideo { get; } = new(VoicePerVideo.MinimumSnrDb, VoiceRebuild.MaximumFiles, VoicePerVideo.MinimumVideoMs);
     }
 
     private readonly VoiceConsentStore store;
@@ -115,7 +119,9 @@ public sealed class VoiceRebuildFinder
         return new(plan, samples, checkedVideos, skipped);
     }
 
-    /// <summary>The cleanest §6.5.1 spans of one video at the rules' floor, each scored as its lowest part against the owner.</summary>
+    /// <summary>The cleanest §6.5.1 spans of one video at the rules' floor, each scored as its lowest part against the owner. Below the
+    /// §6.5.1 floor the spans also include the pieces it rejected only as <c>lowSnr</c> (already split to 5–30 s within one speaker's run,
+    /// ended by any event such as music), never a short or unsplittable one.</summary>
     internal async Task<(int Rate, IReadOnlyList<VoiceRebuild.Candidate> Candidates, int Noisy)> VideoCandidatesAsync(Source source, float[] owner, Rules rules,
         CancellationToken ct)
     {
@@ -123,7 +129,7 @@ public sealed class VoiceRebuildFinder
         var take = await analyze(source.Media, rate, ct).ConfigureAwait(false);
         var inputs = VoiceTrainingSpans.Inputs(source.Project);
         var selection = VoiceTrainingSpans.Select(inputs.Items, inputs.Excluded, take.FrameDb, take.Duration);
-        var spans = selection.Qualifying
+        var spans = selection.Qualifying.Concat(RelaxedSpans(selection, rules.MinimumSnrDb))
             .OrderByDescending(span => span.SnrDb).ThenBy(span => span.StartMs).Take(rules.CandidatesPerVideo).ToArray();
         List<VoiceRebuild.Candidate> result = [];
         foreach (var span in spans)
@@ -142,6 +148,14 @@ public sealed class VoiceRebuildFinder
         var noisy = selection.Rejected.Count(piece => piece.Reason == VoiceTrainingRejectionReason.LowSnr && !(piece.SnrDb >= rules.MinimumSnrDb));
         return (rate, result, noisy);
     }
+
+    /// <summary>The pieces §6.5.1 rejected only for their SNR that reach <paramref name="minimumSnrDb"/>, as spans; none at or above its own
+    /// floor.</summary>
+    internal static IReadOnlyList<VoiceTrainingSpan> RelaxedSpans(VoiceTrainingSpanSelection selection, double minimumSnrDb) =>
+        minimumSnrDb >= VoiceRebuild.MinimumSnrDb ? [] : selection.Rejected
+            .Where(piece => piece.Reason == VoiceTrainingRejectionReason.LowSnr && piece.SnrDb is { } snr && double.IsFinite(snr) && snr >= minimumSnrDb &&
+                piece.EndMs - piece.StartMs is >= VoiceRebuild.MinimumPieceMs and <= VoiceRebuild.MaximumPieceMs)
+            .Select(piece => new VoiceTrainingSpan(piece.StartMs, piece.EndMs, piece.SnrDb!.Value)).ToArray();
 
     /// <summary>The voice's stored reference sample as a training sample.</summary>
     private VoiceTrainingSample? KeptSample(string recordId)
