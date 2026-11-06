@@ -215,15 +215,23 @@ enum LipSyncAvailability {
                     }
                 }
             }
-            if !session.perVideoBook.measurements.isEmpty {
-                Text("How close takes sound to your speech beside them (1.00 is the same voice):").font(.caption)
-                ForEach(session.perVideoBook.measurements, id: \.contentKey) { measurement in
-                    Text(VoiceLabSession.matchLine(measurement, anchor: anchor)).font(.caption).foregroundStyle(.secondary)
-                        .accessibilityIdentifier("voice-per-video-match-\(measurement.contentKey.prefix(8))")
-                }
-            }
+            if Self.showsComparison(session.perVideoBook) { comparison(anchor: anchor) }
         }
     }
+    /// "Did matching help": each video's scores and, beside them, the anchor's from its earlier takes. Shown once a video
+    /// has its own voice or a take was measured; showing it starts the anchor's baseline in the background.
+    @ViewBuilder private func comparison(anchor: String) -> some View {
+        Text("How close takes sound to your speech beside them (1.00 is the same voice):").font(.caption)
+            .task { _ = session.measureAnchorBaseline() }
+        ForEach(session.perVideoBook.measurements, id: \.contentKey) { measurement in
+            Text(VoiceLabSession.matchLine(measurement, anchor: anchor)).font(.caption).foregroundStyle(.secondary)
+                .accessibilityIdentifier("voice-per-video-match-\(measurement.contentKey.prefix(8))")
+        }
+        if let line = session.anchorBaselineLine {
+            Text(line).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("voice-per-video-baseline")
+        }
+    }
+    static func showsComparison(_ book: VoicePerVideoBook) -> Bool { !book.measurements.isEmpty || !book.videos.isEmpty }
     static func modeLine(_ mode: VoicePerVideo.Mode, anchor: String) -> String {
         switch mode {
         case .match: "Each video gets a voice made from its own speech, so takes sound like that recording. The previous video's voice is removed; \(anchor) stays."

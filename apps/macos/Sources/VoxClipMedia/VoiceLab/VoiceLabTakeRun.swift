@@ -173,18 +173,9 @@ public actor VoiceLabTakeRun {
     /// own 10 s of source, centred on it.
     package static func guardSpeech(_ input: VoiceLabTakeInput) throws -> [Float] {
         let rate = input.sourceSampleRate
-        let selection = VoiceLabGuardSpeech.select(items: input.items, start: input.window.start, end: input.window.end,
-                                                   sampleRate: rate, totalFrames: input.source.totalFrames)
-        let speech: [Float]
-        if selection.ranges.isEmpty {
-            let center = Int((input.window.startSample + input.window.endSample) / 2)
-            let start = max(0, center - 5 * rate), end = min(input.source.totalFrames, start + 10 * rate)
-            guard let raw = input.source.samples(start..<end) else { throw VoiceLabError.invalidInput }
-            speech = Array(raw)
-        } else {
-            guard let joined = selection.samples(from: input.source) else { throw VoiceLabError.invalidInput }
-            speech = joined
-        }
+        let selection = VoiceLabGuardSpeech.forTake(items: input.items, start: input.window.start, end: input.window.end,
+            startSample: input.window.startSample, endSample: input.window.endSample, sampleRate: rate, totalFrames: input.source.totalFrames)
+        guard let speech = selection.samples(from: input.source) else { throw VoiceLabError.invalidInput }
         return VoiceConsentAudio.resample(speech, rate: rate)
     }
     /// Pins this run's prepared set under a take batch's one approval (voice-lab §8.6 with several hunks, `VoiceLabTakeBatchRun`).

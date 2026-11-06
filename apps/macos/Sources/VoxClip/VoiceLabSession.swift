@@ -116,6 +116,11 @@ import VoxClipMedia
     /// The voices whose project still holds paid takes nobody used or discarded: they are never removed yet.
     @ObservationIgnored lazy var pendingTakeVoices: @MainActor () -> Set<String> = { Self.openPendingTakeVoices() }
     @ObservationIgnored var removalRetry: Task<Void, Never>?
+    /// The anchor's baseline from its earlier takes (voice-lab §6.13): Settings › Voices' quiet line while it measures.
+    var measuringAnchorBaseline = false
+    @ObservationIgnored var anchorBaselineTask: Task<Void, Never>?
+    /// The projects the baseline reads: the same as Learn from my videos.
+    @ObservationIgnored lazy var anchorBaselineProjects: @MainActor () -> [URL] = { [unowned self] in learningProjects() }
     @ObservationIgnored private var client: ElevenLabsVoiceLab?
     @ObservationIgnored private var enrollment: VoiceEnrollment?
     @ObservationIgnored private let reconciler: VoiceOperationReconciler

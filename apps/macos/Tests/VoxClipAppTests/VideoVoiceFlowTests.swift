@@ -177,6 +177,8 @@ private struct VideoVoiceKeys: KeyProvider {
         let session = try makeSession(app: app, store: store)
         await session.load(recover: false)
         session.pendingTakeVoices = { [] }
+        // The anchor's baseline reads only the projects a test names, never the recent list or the export folder.
+        session.anchorBaselineProjects = { [] }
         return Harness(root: root, app: app, store: store, session: session, anchor: anchor, reference: reference)
     }
 
@@ -346,6 +348,184 @@ private struct VideoVoiceKeys: KeyProvider {
         #expect(measurement.anchor == 0.54, "the anchor's takes pooled")
         #expect(VoiceLabSession.matchLine(measurement, anchor: "siim") == "car: its own voice 0.81 · siim 0.54")
         #expect(await VoicePerVideoStore(locations: h.app.locations).load().measurements == h.session.perVideoBook.measurements)
+        await h.session.anchorBaselineTask?.value
+    }
+}
+
+/// The anchor's baseline from its takes already in projects (voice-lab §6.13): fixture projects (schema 2, no render
+/// recipes) whose takes are 4 s tones at 24 kHz (the calibrated embedding needs 3 s) in the paid store, each replacing one word of a 110 Hz video. With the
+/// pitch embedder a take at `p` Hz scores about cos(p − 110°) against the speech beside it: 0.97 at 120 Hz, about 0.5 at 170 Hz.
+extension VideoVoiceFlowTests {
+    struct FixtureTake {
+        var id: String
+        var minutes: Double
+        var hertz: Double = 120
+        var voice: String?
+        var kind = "tts"
+        var enabled = true
+    }
+
+    /// A project of `takes` over a 40 s video at 110 Hz; each take's asset is written to the paid store unless `missing`.
+    private static func takesProject(_ h: Harness, name: String, takes: [FixtureTake], missing: Set<String> = []) throws -> (url: URL, media: URL) {
+        let base = try video(h.root, seconds: 40, hertz: 110, name: name)
+        var json = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: SharedResources.locate().root.appendingPathComponent("fixtures/voice-lab/passage-project.voxclip"))) as? [String: Any])
+        let current = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: base.url)) as? [String: Any])
+        let projectID = base.project.id
+        json["id"] = projectID; json["media"] = current["media"]; json["transcript"] = current["transcript"]
+        var edits = try #require(json["edits"] as? [String: Any]); edits["clips"] = [Any](); edits["activeClipId"] = NSNull(); json["edits"] = edits
+        let template = try #require((json["voiceLab"] as? [String: Any])?["segments"] as? [[String: Any]]).first!
+        let words = base.project.transcript?.words ?? []
+        let formatter = ISO8601DateFormatter()
+        var assets: [[String: Any]] = [], segments: [[String: Any]] = []
+        for (index, take) in takes.enumerated() {
+            let word = words[2 + index], asset = "take-\(take.id)"
+            let samples = (0..<96_000).map { Float(0.3 * sin(2 * Double.pi * take.hertz * Double($0) / 24_000)) }
+            let wav = try VoiceTrainingAudio.wav(samples, rate: 24_000)
+            let file = "\(projectID)/\(asset).wav"
+            if !missing.contains(take.id) {
+                let url = h.app.locations.root.appendingPathComponent("VoiceLab").appendingPathComponent(file)
+                try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try wav.write(to: url)
+            }
+            let created = formatter.string(from: Date(timeIntervalSince1970: 1_790_000_000 + take.minutes * 60))
+            assets.append(["id": asset, "kind": "audio", "file": file, "sha256": VoiceLabFingerprint.bytes(wav), "durationSeconds": 4,
+                           "sampleRate": 24_000, "createdAt": created])
+            var segment = template
+            segment["id"] = "vl-\(take.id)"; segment["kind"] = take.kind; segment["enabled"] = take.enabled
+            segment["replace"] = ["start": word.start, "end": word.end, "firstWordId": word.id, "lastWordId": word.id]
+            segment["outDuration"] = 4
+            segment["audio"] = ["assetId": asset, "trimStart": 0, "trimEnd": 4, "stretch": 1, "gainDb": 0]
+            segment["text"] = ["original": word.text, "new": "new words"]
+            segment["words"] = [["text": "new", "start": 0, "end": 0.5, "synthetic": true], ["text": "words", "start": 0.5, "end": 1, "synthetic": true]]
+            var provenance = try #require(segment["provenance"] as? [String: Any])
+            provenance["consentRecordId"] = take.voice ?? NSNull(); provenance["createdAt"] = created
+            segment["provenance"] = provenance
+            segment["candidates"] = [["assetId": asset, "score": 0.9, "rejected": NSNull()]]
+            segment["selectedCandidateIndex"] = 0
+            segments.append(segment)
+        }
+        json["voiceLab"] = ["assets": assets, "segments": segments]
+        let data = try JSONSerialization.data(withJSONObject: json)
+        _ = try JSONProjectStore.decode(data)
+        try data.write(to: base.url)
+        return (base.url, base.media)
+    }
+
+    /// The projects and videos at the top of the test folder and every file in the paid store (the per-video book aside),
+    /// by path, with each file's hash and modification date.
+    private static func snapshot(_ h: Harness) -> [String: String] {
+        var urls = (try? FileManager.default.contentsOfDirectory(at: h.root, includingPropertiesForKeys: nil)) ?? []
+        let paid = h.app.locations.root.appendingPathComponent("VoiceLab")
+        if let walk = FileManager.default.enumerator(at: paid, includingPropertiesForKeys: nil) { urls += walk.compactMap { $0 as? URL } }
+        var files: [String: String] = [:]
+        for url in urls where url.standardizedFileURL.path != h.session.perVideoStore.url.standardizedFileURL.path {
+            guard let data = try? Data(contentsOf: url) else { continue }
+            let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)?.timeIntervalSince1970 ?? 0
+            files[url.standardizedFileURL.path] = VoiceLabFingerprint.bytes(data) + "@\(date)"
+        }
+        return files
+    }
+
+    @Test func theBaselineReadsOnlyTheAnchorsNewestTwelveTakesSkipsMissingFilesAndWritesNothing() async throws {
+        let h = try await harness(); defer { try? FileManager.default.removeItem(at: h.root) }
+        let anchor = h.anchor.id, other = "22222222-2222-4222-8222-222222222222"
+        // Twelve readable takes of siim at 120 Hz (0.98 beside the 110 Hz speech) are the newest; the rest would pull
+        // the mean to 0.50 or change the count: other voices, a recorded take, one turned off, a missing file, a
+        // project whose video is gone, and the two oldest takes.
+        let first = try Self.takesProject(h, name: "first", takes: (0..<7).map { FixtureTake(id: "a\($0)", minutes: 10 + Double($0), voice: anchor) }
+            + [FixtureTake(id: "other", minutes: 90, hertz: 170, voice: other), FixtureTake(id: "unlinked", minutes: 91, hertz: 170, voice: nil),
+               FixtureTake(id: "mic", minutes: 92, hertz: 170, voice: anchor, kind: "recorded"),
+               FixtureTake(id: "off", minutes: 93, hertz: 170, voice: anchor, enabled: false)])
+        let second = try Self.takesProject(h, name: "second", takes: (0..<6).map { FixtureTake(id: "b\($0)", minutes: 30 + Double($0), voice: anchor) }
+            + [FixtureTake(id: "lost", minutes: 94, hertz: 170, voice: anchor)], missing: ["lost"])
+        let oldest = try Self.takesProject(h, name: "oldest", takes: (0..<2).map { FixtureTake(id: "c\($0)", minutes: 1 + Double($0), hertz: 170, voice: anchor) })
+        let gone = try Self.takesProject(h, name: "gone", takes: [FixtureTake(id: "d0", minutes: 95, hertz: 170, voice: anchor)])
+        try FileManager.default.removeItem(at: gone.media)
+        let before = Self.snapshot(h)
+        #expect(before.count >= 4 + 4 + 18, "the projects, their videos and the paid files are watched")
+        h.session.anchorBaselineProjects = { [first.url, gone.url, second.url, oldest.url] }
+
+        #expect(VoiceLabSession.baselineLine(nil, measuring: false, anchorID: anchor, anchor: "siim") == nil, "nothing before it is measured")
+        let task = try #require(h.session.measureAnchorBaseline())
+        #expect(h.session.measureAnchorBaseline() == task, "one measurement at a time")
+        await task.value
+        let baseline = try #require(h.session.perVideoBook.anchorBaseline)
+        #expect(baseline.anchorId == anchor && baseline.model == "fixture-calibrated")
+        #expect(baseline.takes == 12, "the newest twelve readable takes of the anchor, not \(baseline.takes)")
+        // One 170 Hz take among the twelve would pull the mean under 0.94.
+        #expect((0.95...1).contains(baseline.score ?? 0), "only siim's 120 Hz takes: \(baseline.score ?? -1)")
+        #expect(!h.session.measuringAnchorBaseline && h.session.anchorBaselineTask == nil)
+        #expect(VoiceLabSession.baselineLine(baseline, measuring: false, anchorID: anchor, anchor: "siim") == "siim · 0.97 across 12 earlier takes")
+        #expect(VoiceLabSession.baselineLine(baseline, measuring: true, anchorID: anchor, anchor: "siim") == "Measuring siim's earlier takes…")
+        #expect(VoiceLabSession.baselineLine(baseline, measuring: false, anchorID: other, anchor: "siim") == nil, "another anchor's baseline isn't shown")
+        #expect(await VoicePerVideoStore(locations: h.app.locations).load().anchorBaseline == baseline, "kept in the per-video book")
+        // Read only: every project, video and paid file is as it was; the book is the only new file.
+        #expect(Self.snapshot(h) == before, "nothing in a project, its media or the paid store changed")
+        // Measured: not again for the same anchor and model.
+        #expect(h.session.measureAnchorBaseline() != nil)
+        await h.session.anchorBaselineTask?.value
+        #expect(h.session.perVideoBook.anchorBaseline == baseline)
+    }
+
+    @Test func aBaselineFromAnotherSpeakerModelIsDroppedAndMeasuredAgain() async throws {
+        let h = try await harness(); defer { try? FileManager.default.removeItem(at: h.root) }
+        let project = try Self.takesProject(h, name: "earlier", takes: [FixtureTake(id: "a0", minutes: 1, voice: h.anchor.id),
+                                                                         FixtureTake(id: "a1", minutes: 2, voice: h.anchor.id)])
+        var book = VoicePerVideoBook()
+        book.anchorBaseline = .init(anchorId: h.anchor.id, model: "older-model", score: 0.10, takes: 3, measuredAt: "2026-11-01T10:00:00Z")
+        try await h.session.perVideoStore.save(book)
+        await h.session.loadPerVideo()
+        #expect(h.session.perVideoBook.anchorBaseline?.model == "older-model")
+        h.session.anchorBaselineProjects = { [project.url] }
+        await h.session.measureAnchorBaseline()?.value
+        let baseline = try #require(h.session.perVideoBook.anchorBaseline)
+        #expect(baseline.model == "fixture-calibrated" && baseline.takes == 2, "measured again with this model: \(baseline.model) × \(baseline.takes)")
+        #expect((0.95...1).contains(baseline.score ?? 0), "not the older model's 0.10: \(baseline.score ?? -1)")
+        #expect(await VoicePerVideoStore(locations: h.app.locations).load().anchorBaseline == baseline)
+    }
+
+    @Test func theFirstTakeWithTheVideosOwnVoiceStartsTheBaselineAndAnAnchorTakeDoesNot() async throws {
+        let h = try await harness(); defer { try? FileManager.default.removeItem(at: h.root) }
+        let earlier = try Self.takesProject(h, name: "earlier", takes: [FixtureTake(id: "a0", minutes: 1, voice: h.anchor.id)])
+        let car = try Self.video(h.root, seconds: 40, hertz: 110, name: "car")
+        let key = car.project.media.source.contentKey
+        h.session.setVideoVoiceMode(.match)
+        await h.session.makeVideoVoice(project: car.project, media: car.media).task?.value
+        let voice = try #require(h.session.perVideoBook.video(key)?.recordId)
+        #expect(VideoVoiceRows.showsComparison(h.session.perVideoBook), "a video's own voice shows the comparison")
+        h.session.anchorBaselineProjects = { [earlier.url] }
+        await h.session.recordTakeMatch(contentKey: key, title: "car", recordID: h.anchor.id, score: 0.5)
+        #expect(h.session.anchorBaselineTask == nil, "an anchor take in the video doesn't start it")
+        await h.session.recordTakeMatch(contentKey: key, title: "car", recordID: voice, score: 0.81)
+        let task = try #require(h.session.anchorBaselineTask, "the first take with the video's voice starts it")
+        await task.value
+        #expect(h.session.perVideoBook.anchorBaseline?.takes == 1)
+        #expect(h.session.perVideoBook.measurements.first?.videoVoice == 0.81)
+        #expect(!VideoVoiceRows.showsComparison(VoicePerVideoBook()))
+    }
+
+    @Test func theMeasurementOpensOneProjectAtATimeAndStopsAtTheBound() async throws {
+        let h = try await harness(); defer { try? FileManager.default.removeItem(at: h.root) }
+        let projects = try (0..<3).map { index in
+            try Self.takesProject(h, name: "p\(index)", takes: (0..<5).map { FixtureTake(id: "t\(index)\($0)", minutes: Double(index * 10 + $0), voice: h.anchor.id) })
+        }
+        final class Opens: @unchecked Sendable {
+            let state = Mutex((open: 0, most: 0, total: 0))
+        }
+        let opens = Opens()
+        let store = h.app.projectStore
+        let check = VoiceSpeakerCheck(embedder: VideoPitchEmbedder(), calibratedThreshold: 0.45, language: "en")
+        let result = await VoiceAnchorBaseline.measure(projects: projects.map(\.url), anchorID: h.anchor.id,
+            paidRoot: h.app.locations.root.appendingPathComponent("VoiceLab"), check: check, maximum: 7) { url in
+            opens.state.withLock { $0.open += 1; $0.most = max($0.most, $0.open); $0.total += 1 }
+            let opened = await VoiceLabSession.openForBaseline(url, store: store)
+            opens.state.withLock { $0.open -= 1 }
+            return opened
+        }
+        let counts = opens.state.withLock { $0 }
+        #expect(result.scores.count == 7, "the bound")
+        #expect(counts.most == 1, "one project open at a time")
+        #expect(counts.total == 5, "each project listed once, then only the two holding the newest seven read again: \(counts.total)")
     }
 }
 

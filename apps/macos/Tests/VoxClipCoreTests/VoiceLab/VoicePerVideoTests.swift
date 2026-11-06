@@ -95,6 +95,63 @@ struct VoicePerVideoTests {
         await #expect(throws: (any Error).self) { try await store.save(invalid) }
     }
 
+    @Test func theAnchorsEarlierTakesAreItsOwnAcceptedTextToSpeechTakesNewestFirst() throws {
+        var project = try ProjectJSON.decode(FixtureLoader.data("fixtures/voice-lab/passage-project.voxclip"))
+        let template = try #require(project.voiceLab.segments.first)
+        func take(_ id: String, minutes: Double, kind: VoiceLabSegmentKind = .tts, voice: String? = Self.anchor, enabled: Bool = true,
+                  asset: String = "asset-one") -> VoiceLabSegment {
+            var segment = template
+            segment.id = id; segment.kind = kind; segment.enabled = enabled; segment.audio.assetId = asset
+            segment.provenance.consentRecordId = voice
+            segment.provenance.createdAt = Date(timeIntervalSince1970: 1_790_000_000 + minutes * 60)
+            return segment
+        }
+        project.voiceLab.segments = [take("old", minutes: 1), take("new", minutes: 9), take("other-voice", minutes: 5, voice: Self.one),
+                                     take("recorded", minutes: 6, kind: .recorded), take("changed", minutes: 7, kind: .voiceChanger),
+                                     take("off", minutes: 8, enabled: false), take("no-asset", minutes: 4, asset: "gone"),
+                                     take("unlinked", minutes: 3, voice: nil), take("middle", minutes: 5)]
+        let takes = VoicePerVideo.anchorTakes(in: project, anchorID: Self.anchor)
+        #expect(takes.map(\.segment.id) == ["new", "middle", "old"], "only the anchor's accepted text-to-speech takes with their file, newest first")
+        #expect(takes.allSatisfy { $0.asset.id == $0.segment.audio.assetId })
+        #expect(VoicePerVideo.anchorTakes(in: project, anchorID: Self.two).isEmpty)
+        #expect(VoicePerVideo.maximumBaselineTakes == 12)
+    }
+
+    @Test func theAnchorsBaselineIsKeptWithItsModelAndReadAsMissingForAnotherModelOrVoice() throws {
+        var book = VoicePerVideoBook()
+        #expect(book.baseline(anchorId: Self.anchor, model: "wespeaker-resnet34") == nil)
+        book.anchorBaseline = .init(anchorId: Self.anchor, model: "wespeaker-resnet34", score: 0.54, takes: 8, measuredAt: "2026-11-06T10:00:00Z")
+        try book.validate()
+        #expect(book.baseline(anchorId: Self.anchor, model: "wespeaker-resnet34")?.score == 0.54)
+        #expect(book.baseline(anchorId: Self.anchor, model: "ecapa-tdnn") == nil, "another model's numbers don't compare")
+        #expect(book.baseline(anchorId: Self.one, model: "wespeaker-resnet34") == nil, "another voice's numbers aren't the anchor's")
+        let decoded = try JSONDecoder().decode(VoicePerVideoBook.self, from: JSONEncoder().encode(book))
+        #expect(decoded == book)
+        // A book written before the baseline existed still reads.
+        let legacy = try JSONDecoder().decode(VoicePerVideoBook.self, from: Data(#"{"schema":"voxclip-voice-per-video/1","videos":[],"removals":[],"shortNoted":[],"measurements":[]}"#.utf8))
+        #expect(legacy.anchorBaseline == nil)
+        try legacy.validate()
+        var none = book; none.anchorBaseline = .init(anchorId: Self.anchor, model: "m", score: nil, takes: 0, measuredAt: "2026-11-06T10:00:00Z")
+        try none.validate()
+        for broken in [VoicePerVideoBook.AnchorBaseline(anchorId: Self.anchor, model: "m", score: 0.5, takes: 13, measuredAt: ""),
+                       .init(anchorId: Self.anchor, model: "m", score: nil, takes: 3, measuredAt: ""),
+                       .init(anchorId: Self.anchor, model: "m", score: 0.5, takes: 0, measuredAt: ""),
+                       .init(anchorId: Self.anchor, model: "", score: 0.5, takes: 2, measuredAt: ""),
+                       .init(anchorId: "not-a-record", model: "m", score: 0.5, takes: 2, measuredAt: ""),
+                       .init(anchorId: Self.anchor, model: "m", score: 1.5, takes: 2, measuredAt: "")] {
+            var invalid = book; invalid.anchorBaseline = broken
+            #expect(throws: (any Error).self) { try invalid.validate() }
+        }
+    }
+
+    @Test func aTakesGuardSpeechFallsBackToTenSecondsAroundItsWindow() {
+        let none = VoiceLabGuardSpeech.forTake(items: [], start: 20, end: 22, startSample: 320_000, endSample: 352_000, sampleRate: 16_000, totalFrames: 960_000)
+        #expect(none.ranges == [256_000..<416_000] && none.speaker == nil)
+        let word = TimedWord(id: "w1", text: "hi", start: 21, end: 21.5)
+        let spoken = VoiceLabGuardSpeech.forTake(items: [word], start: 20, end: 22, startSample: 320_000, endSample: 352_000, sampleRate: 16_000, totalFrames: 960_000)
+        #expect(spoken == VoiceLabGuardSpeech.select(items: [word], start: 20, end: 22, sampleRate: 16_000, totalFrames: 960_000))
+    }
+
     @Test func neverTheAnchorTheCurrentVoiceOrOneWithPendingTakes() {
         #expect(VoicePerVideo.keep(Self.anchor, anchorID: Self.anchor, currentID: Self.two, pendingTakes: []) == .anchor)
         #expect(VoicePerVideo.keep(Self.two, anchorID: Self.anchor, currentID: Self.two, pendingTakes: []) == .current)

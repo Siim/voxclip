@@ -294,6 +294,10 @@ extension VoiceLabSession {
         perVideoBook = (try? await perVideoStore.update { $0.measuring(measurement) }) ?? perVideoBook.measuring(measurement)
         await Log(logger: app.log).write(.info, category: "voice-lab",
             message: "per-video take match video=\(contentKey.prefix(8)) voice=\(isVideoVoice ? "video" : "anchor") score=\(String(format: "%.3f", score))")
+        guard isVideoVoice else { return }
+        // The first take with the video's own voice: the anchor's earlier takes give it something to compare with.
+        if let stored = perVideoBook.measurements.first(where: { $0.contentKey == contentKey }) { await logMatchComparison(stored, log: Log(logger: app.log)) }
+        measureAnchorBaseline()
     }
 
     /// Settings › Voices' diagnostic for one video: "DJI_0030: its own voice 0.71 · siim 0.54".
