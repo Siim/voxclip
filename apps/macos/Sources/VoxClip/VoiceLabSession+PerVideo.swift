@@ -134,7 +134,7 @@ extension VoiceLabSession {
 
     private func runVideoVoice(_ state: VideoVoiceState, project: Project, media: URL, anchor: VoiceConsentRecord) async {
         let key = project.media.source.contentKey
-        let owner = anchor.voiceName
+        let owner = Self.rebuildName(anchor.voiceName)
         do {
             let check = try await referenceSpeakerCheck(language: anchor.language)
             guard check.available else { throw VoiceConsentError.speakerUnavailable }
@@ -149,7 +149,7 @@ extension VoiceLabSession {
             let videoMs = VoicePerVideo.videoMs(found.plan)
             // The anchor's attestations are the consent this voice is made under; its consent clip is the first file.
             let plan = try await enrollment.prepareProjectPlan(recordID: UUID().uuidString.lowercased(), language: anchor.language,
-                attestations: anchor.attestations, displayName: VoicePerVideo.displayName(owner: Self.rebuildName(owner), title: title),
+                attestations: anchor.attestations, displayName: VoicePerVideo.displayName(owner: owner, title: title),
                 samples: found.samples, enabled: enabled, removeBackgroundNoise: removesNoise)
             state.line = "Making a matching voice from \(VoiceRebuild.amount(videoMs)) of this video in your ElevenLabs account…"
             busy = true

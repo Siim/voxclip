@@ -205,7 +205,7 @@ extension DebugRewriteSmoke.Harness {
         let segments = editor.project.voiceLab.segments
         let noted = setup.voiceLab.perVideoBook.shortNoted.contains(key)
         makeItAppend([DebugRewriteSmoke.Check(invariant: "PV4",
-            passed: line.hasPrefix("This video has only") && line.hasSuffix("so takes use siim (VoxClip). A matching voice needs 30 s.") && noted
+            passed: line.hasPrefix("This video has only") && line.hasSuffix("so takes use siim. A matching voice needs 30 s.") && noted
                 && !requests.contains("POST /v1/voices/add") && !voices.isEmpty && voices.allSatisfy { $0 == setup.anchor.voiceId }
                 && segments.allSatisfy { $0.provenance.consentRecordId == setup.anchor.id } && shown >= 1,
             detail: "\(line) · shown in \(shown) step(s) · \(voices.count) takes with \(Set(voices).sorted().joined(separator: ", ")) · "

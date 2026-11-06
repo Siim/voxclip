@@ -317,7 +317,7 @@ private struct VideoVoiceKeys: KeyProvider {
         let state = h.session.makeVideoVoice(project: short.project, media: short.media)
         await state.task?.value
         #expect(state.phase == .anchor)
-        #expect(state.line == "This video has only 19 s of your own clear speech, so takes use siim (VoxClip). A matching voice needs 30 s.")
+        #expect(state.line == "This video has only 19 s of your own clear speech, so takes use siim. A matching voice needs 30 s.")
         #expect(VideoVoiceHTTP.calls.withLock { $0 }.isEmpty, "nothing is sent")
         #expect(h.session.perVideoBook.shortNoted == [key])
         #expect(h.session.rewriteVoicePreference(contentKey: key, language: "en") == h.anchor.id)
