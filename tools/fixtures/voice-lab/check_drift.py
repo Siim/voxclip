@@ -42,6 +42,7 @@ EXACT = ['shared/fixtures/voice-lab/pace-cases.json', 'shared/fixtures/voice-lab
          'shared/fixtures/voice-lab/scope-rewrite-diff-cases.json', 'shared/fixtures/voice-lab/llm-send-cost-cases.json',
          'shared/fixtures/voice-lab/training-spans.json', 'shared/fixtures/voice-lab/take-batch-cases.json',
          'shared/fixtures/voice-lab/enrollment-cases.json',
+         'shared/fixtures/voice-lab/voice-references-cases.json',
          'shared/fixtures/voice-lab/accept-all-review-cases.json',
          'shared/fixtures/voice-lab/window-cases.json', 'shared/fixtures/voice-lab/window-all-cases.json',
          'shared/fixtures/v2/paragraphs.json', 'shared/fixtures/v2/timeline-cases.json',

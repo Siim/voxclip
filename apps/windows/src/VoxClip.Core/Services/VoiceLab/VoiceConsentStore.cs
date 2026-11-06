@@ -241,8 +241,36 @@ public sealed class VoiceConsentStore
         {
             var current = Load(expected.RecordId);
             if (current.Status != VoiceConsentStatus.Active || current.VoiceId == "pending" || HasOperation(current.RecordId) || State.Revoked.Contains(current.RecordId) ||
-                !JsonSerializer.SerializeToUtf8Bytes(expected, VoiceConsentJson.Default.VoiceConsentRecord).AsSpan().SequenceEqual(
-                    JsonSerializer.SerializeToUtf8Bytes(current, VoiceConsentJson.Default.VoiceConsentRecord))) throw new VoiceConsentException(VoiceConsentError.Inactive);
+                // Learning or forgetting a reference (ADR-R41) doesn't change what a run was approved for; the guard reads the references
+                // when it judges a phrase.
+                !JsonSerializer.SerializeToUtf8Bytes(expected.WithoutReferences, VoiceConsentJson.Default.VoiceConsentRecord).AsSpan().SequenceEqual(
+                    JsonSerializer.SerializeToUtf8Bytes(current.WithoutReferences, VoiceConsentJson.Default.VoiceConsentRecord))) throw new VoiceConsentException(VoiceConsentError.Inactive);
+        }
+    }
+    /// <summary>Learns a reference for an active voice from the project <paramref name="contentKey"/> (voice-lab.md §6.9, ADR-R41): the
+    /// speech's embedding must pass against the record's own embedding (one hop). Returns the record as saved, or throws the
+    /// <see cref="VoiceReferenceRefusedException"/>.</summary>
+    public VoiceConsentRecord LearnReference(string recordId, IReadOnlyList<float> embedding, string contentKey, string model, DateTimeOffset? at = null)
+    {
+        lock (State.Sync)
+        {
+            var record = Load(recordId);
+            if (record.Status != VoiceConsentStatus.Active || HasOperation(recordId) || State.Revoked.Contains(recordId)) throw new VoiceConsentException(VoiceConsentError.Inactive);
+            var learned = record with { Speaker = VoiceSpeakerReferences.Learning(embedding, contentKey, model, at ?? clock.GetUtcNow(), record.Speaker) };
+            Save(learned);
+            return learned;
+        }
+    }
+    /// <summary>Forgets every learned reference of a voice. The guard then judges phrases against the record's own embedding only.</summary>
+    public VoiceConsentRecord ForgetReferences(string recordId)
+    {
+        lock (State.Sync)
+        {
+            var record = Load(recordId);
+            if (record.Speaker.References is null) return record;
+            var forgotten = record.WithoutReferences;
+            Save(forgotten);
+            return forgotten;
         }
     }
     internal VoiceDispatchPermit UsePermit(VoiceConsentRecord record, Guid requestId) => new(this, record.RecordId, requestId, () => ValidateUse(record));
@@ -584,7 +612,8 @@ public sealed class VoiceConsentStore
             if (File.Exists(FileIn(DirectoryFor(value.RecordId), "record.json")))
             {
                 var record = Load(value.RecordId);
-                Save(record with { VoiceId = value.RemoteVoiceId ?? record.VoiceId, Status = VoiceConsentStatus.Deleted, DeletedAt = value.UpdatedAt });
+                // The learned references go with the voice (ADR-R41); the tombstone keeps the record's hashes as the audit trail.
+                Save(record.WithoutReferences with { VoiceId = value.RemoteVoiceId ?? record.VoiceId, Status = VoiceConsentStatus.Deleted, DeletedAt = value.UpdatedAt });
             }
         }
     }
