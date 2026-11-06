@@ -252,16 +252,42 @@ import VoxClipMedia
     }
     /// The next step that keeps selected takes from being used (design.md, T3 footer), nil when nothing is selected or
     /// they can be used. "Left out until a take fits." belongs to a phrase none of whose takes passed, not to a missing
-    /// duration choice.
+    /// duration choice. A duration is asked for only when one is allowed (the footer's primary makes it); a take no
+    /// duration can carry is named as such, and Rewrite keeps that phrase as recorded (`fitsNoDuration`).
     var acceptanceBlocker: String? {
         guard stillCurrent, !generating, !preparing, !publishing, !selectedPhrases.isEmpty, !canAccept else { return nil }
-        let missing = selectedPhrases.filter { phrase in
+        let undecided = selectedPhrases.filter { phrase in
             phrase.selected?.row.requiresJoinAdvisoryAcceptance == false &&
                 phrase.videoChoice.map { videoAvailability(phrase: phrase.id).allows($0) } != true
-        }.map { $0.id + 1 }
+        }
+        let missing = undecided.filter { !validVideoChoices(phrase: $0.id).isEmpty }.map { $0.id + 1 }
         if !missing.isEmpty { return "Choose the video duration for \(Self.phraseList(missing))." }
+        let unplaced = undecided.map { $0.id + 1 }
+        if !unplaced.isEmpty { return Self.noDurationCopy(unplaced, kept: false) }
         if preparingVideo { return "Preparing the matched video…" }
         return problem.isEmpty ? nil : problem
+    }
+    /// design.md R2 "A take that can't fit its place": the one line for phrases kept as recorded because no video duration
+    /// (keep source, cut or match) can carry their take.
+    /// `kept` false: the reason alone, while the phrase still waits (the footer's Keep Original Audio keeps it).
+    nonisolated static func noDurationCopy(_ numbers: [Int], kept: Bool = true) -> String {
+        let list = phraseList(numbers)
+        let one = numbers.count == 1
+        let reason = one ? "P" + list.dropFirst() + "'s take can't fit its place in the video"
+            : "The takes of \(list) can't fit their places in the video"
+        return reason + (kept ? (one ? ", so it keeps your original audio." : ", so they keep your original audio.") : ".")
+    }
+    /// No video duration can carry this phrase (design.md R2 "A take that can't fit its place"): its selected take allows
+    /// none of keep source, cut and match, or, with none selected, none of its passing takes does. False while its takes are
+    /// made or checked, and for a phrase kept as recorded, settled as blocked or with no passing take.
+    func fitsNoDuration(phrase index: Int) -> Bool {
+        guard phrases.indices.contains(index) else { return false }
+        let phrase = phrases[index]
+        guard !phrase.leftOut, phrase.blocked == nil, !phrase.takes.contains(where: { $0.row.voiceCheck == .waiting }) else { return false }
+        if case .generating = phrase.status { return false }
+        if let selected = phrase.selected, selected.row.selectable { return validVideoChoices(phrase: index).isEmpty }
+        let passing = phrase.takes.filter { $0.row.selectable && !phrase.beforeExpression.contains($0.id) }
+        return !passing.isEmpty && !passing.contains(where: durationAvailable)
     }
     /// "phrase 2", "phrases 2 and 4", "phrases 1, 2 and 4".
     nonisolated static func phraseList(_ numbers: [Int]) -> String {
@@ -685,11 +711,12 @@ import VoxClipMedia
     }
     /// The passing take a phrase with none chosen offers for the user's one click ([Choose Take N] in the footer): a take
     /// the automatic choice may not pick, such as one whose voice couldn't be measured (ADR-R37: it needs the user's
-    /// explicit click). Choosing a take with a join advisory accepts it (ADR-R39).
+    /// explicit click). Choosing a take with a join advisory accepts it (ADR-R39). Only a take some video duration can
+    /// carry is offered: choosing one no duration carries would only lead to a choice no control makes.
     func offeredTake(phrase index: Int) -> Take? {
         guard phrases.indices.contains(index), !phrases[index].leftOut, phrases[index].selected == nil else { return nil }
         let phrase = phrases[index]
-        let passing = phrase.takes.filter { $0.row.selectable }
+        let passing = phrase.takes.filter { $0.row.selectable && durationAvailable(take: $0) }
         let current = passing.filter { !phrase.beforeExpression.contains($0.id) }
         return ranked(current.isEmpty ? passing : current, phrase: index).first
     }

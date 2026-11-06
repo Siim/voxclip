@@ -393,9 +393,18 @@ extension RewriteSession {
             primary: PanelAction(id: "prepareTakes", title: Self.priceTitle(priceableVoiceCount)) { [weak self] in self?.makeTakes() })
     }
 
+    /// The footer's title for a duration choice the take allows (the phrase card's radio, as a primary).
+    static func durationTitle(_ choice: VoiceLabVideoMode, phrase: Int) -> String {
+        let verb = switch choice {
+        case .source: "Keep Source Duration"
+        case .cut: "Cut the Video"
+        default: "Match the Video"
+        }
+        return verb + " for Phrase \(phrase + 1)"
+    }
     /// The step forward while Use waits on the plan (design.md R2: no advice without its control): prepare the video
-    /// again after a failure, or keep a phrase as recorded whose take has no valid video duration. Nil while the video is
-    /// being prepared, which the panel shows as running.
+    /// again after a failure, make a duration choice a take allows but nobody made yet, or keep a phrase as recorded whose
+    /// take no video duration can carry. Nil while the video is being prepared, which the panel shows as running.
     func acceptanceForward(_ plan: ClipTakePlan) -> PanelAction? {
         guard !plan.preparingVideo else { return nil }
         if plan.videoPreparationFailure != nil {
@@ -411,6 +420,22 @@ extension RewriteSession {
         let stuck = plan.phrases.filter { phrase in
             phrase.selected?.row.selectable == true && !phrase.leftOut
                 && phrase.videoChoice.map { plan.videoAvailability(phrase: phrase.id).allows($0) } != true
+        }
+        if let undecided = stuck.first(where: { !plan.validVideoChoices(phrase: $0.id).isEmpty }),
+           let choice = plan.validVideoChoices(phrase: undecided.id).first {
+            let phrase = undecided.id
+            return PanelAction(id: "chooseDuration.\(phrase)", title: Self.durationTitle(choice, phrase: phrase)) { [weak self, weak plan] in
+                guard let self, let plan else { return }
+                // What the phrase card's duration radio does (VideoDurationChoiceView in DirectorTakeRows).
+                mutateLipsync(phrase: phrase) {
+                    guard plan.chooseVideo(choice, phrase: phrase) else { return }
+                    self.takesTask = Task { [weak self, weak plan] in
+                        await plan?.prepareVideoChoices(); await plan?.lipsync.refresh()
+                        self?.showProposal()
+                    }
+                }
+                showProposal()
+            }
         }
         guard let first = stuck.first else { return nil }
         return PanelAction(id: "keepOriginalAudio.\(first.id)", title: "Keep Original Audio for Phrase \(first.id + 1)") { [weak self] in

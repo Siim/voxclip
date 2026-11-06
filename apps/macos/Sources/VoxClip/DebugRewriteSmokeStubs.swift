@@ -183,6 +183,8 @@ struct RewriteSmokeVoiceScript: Sendable {
     var lengthFactor = 1.0
     /// The first takes' factors, in order; `lengthFactor` after them.
     var lengthFactors: [Double] = []
+    /// A take's base seconds by words it contains, in both passes: S-duration-short's "bits." stays far shorter than its slot.
+    var seconds: [String: Double] = [:]
     /// Word-check transcript substitutions, lowercased: "claude code" heard as "cloud code".
     var heard: [String: String] = [:]
     /// Quirky v4 timing for every synthesis, cycling in order.
@@ -242,7 +244,8 @@ final class RewriteSmokeHTTP: URLProtocol, @unchecked Sendable {
                     let fits = script.fitting[Self.words(text)] ?? script.fitting.first { Self.words(text).contains($0.key) }?.value
                         ?? Self.scaled(Self.words(text), from: script.fitting)
                     let factor = script.syntheses <= script.lengthFactors.count ? script.lengthFactors[script.syntheses - 1] : script.lengthFactor
-                    let base: Double = script.exactFit ? fits : Self.naturalSeconds(text) + script.offset
+                    let fixed = script.seconds.first { Self.words(text).contains($0.key) }?.value
+                    let base: Double = fixed ?? (script.exactFit ? fits : Self.naturalSeconds(text) + script.offset)
                     script.lastText = Self.words(text); script.lastDuration = max(0.3, base * factor)
                     return script.lastDuration
                 }

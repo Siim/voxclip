@@ -90,6 +90,11 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         var models: [String] = []
         /// A synthesis duration by request text, over `duration`.
         var durations: [String: Double] = [:]
+        /// A synthesis duration by request order (0 = the first synthesis), over `durations` and `duration`: phrases with
+        /// the same words.
+        var durationsInOrder: [Int: Double] = [:]
+        /// The last synthesis's duration when `durationsInOrder` set it: its word check times words within it.
+        var orderedDuration: Double?
         /// The first this many word checks hear "wrong".
         var failFirstQA = 0
         /// Words the echoing word check writes as another word, as Scribe writes "Claude" as "cloud".
@@ -122,7 +127,10 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
                 let pace = (body["voice_settings"] as? [String: Any])?["speed"] as? Double ?? 1
                 let duration = Self.state.withLock { state in
                     state.paces.append(pace)
-                    state.texts.append(text); state.seeds.append(seed); state.models.append(model); return state.durations[text] ?? state.duration
+                    let order = state.texts.count
+                    state.texts.append(text); state.seeds.append(seed); state.models.append(model)
+                    state.orderedDuration = state.durationsInOrder[order]
+                    return state.durationsInOrder[order] ?? state.durations[text] ?? state.duration
                 }
                 let variance = Self.state.withLock { $0.amplitudeVariance }
                 let silent = Self.state.withLock { $0.silentSynthesis }
@@ -155,7 +163,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
                 if state.malformedQA { data = Data(#"{"language_code":"eng"}"#.utf8) }
                 else {
                     let words = state.echoQA && !failing ? (state.texts.last ?? word).split(separator: " ").map { state.heardAs[String($0)] ?? String($0) } : [word]
-                    let stride = (state.duration - 0.2) / Double(words.count)
+                    let stride = ((state.orderedDuration ?? state.duration) - 0.2) / Double(words.count)
                     let timed = words.enumerated().map { index, text in
                         ["type": "word", "text": text, "start": 0.1 + Double(index) * stride,
                          "end": 0.1 + Double(index + 1) * stride] as [String: Any]
@@ -2483,6 +2491,93 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(["closeRewrite", "apply"].contains(session.task.footer.primary?.id ?? ""), "\(session.task.footer)")
     }
 
+    /// design.md R2 "A take that can't fit its place" (the old S5's dead end: a 0.41 s take asked "Choose the video duration
+    /// for phrase 1." with no duration to choose). A take far too short, or far too long, for every video duration keeps its
+    /// phrase's recorded audio with one line of why and no click, and the footer's primary is Use for the rest.
+    @Test(arguments: [false, true]) func aTakeNoVideoDurationCarriesKeepsItsAudioAndUseGoesOn(tooLong: Bool) async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = session(fixture); defer { editor.close() }
+        installReview(session, fixture: fixture, withFreeChanges: false)
+        let plan = fixture.plan
+        ClipTakeHTTP.state.withLock { $0.durationsInOrder[1] = tooLong ? $0.duration + 5 : $0.duration * 0.6 }
+        await plan.prepare(); await plan.start(approved: true)
+        // The panel's observation may already have drawn it (and settled phrase 2) while the takes landed.
+        #expect(plan.phrases[1].takes.contains { $0.row.selectable && !plan.durationAvailable(take: $0) }, "\(plan.phrases[1].takeDetail)")
+        #expect(!plan.fitsNoDuration(phrase: 0) && !plan.fitsNoDuration(phrase: 2))
+        session.showProposal()
+        #expect(plan.phrases[1].leftOut && !plan.phrases[0].leftOut && !plan.phrases[2].leftOut,
+                "\(plan.phrases.map(\.takeDetail)) \(editor.announcements)")
+        let line = "Phrase 2's take can't fit its place in the video, so it keeps your original audio."
+        #expect(editor.announcements.filter { $0 == line }.count == 1, "\(editor.announcements)")
+        let footer = session.task.footer
+        #expect(footer.primary?.id == "useTakes", "\(footer)")
+        #expect(footer.note.map { !$0.contains("Choose the video duration") } ?? true, "\(footer)")
+        session.showProposal()
+        #expect(editor.announcements.filter { $0 == line }.count == 1, "said once")
+        #expect(await session.acceptTakes(), "\(session.problem)")
+        #expect(editor.project.voiceLab.segments.count == 2 && editor.openRewrite == nil)
+    }
+
+    /// A passing take whose voice couldn't be measured (ADR-R37) is offered for the user's click only when a video duration
+    /// can carry it; one that none can carry is never offered ([Choose Take 1] led to the dead end) and keeps its audio.
+    @Test func anUnmeasuredTakeNoDurationCarriesIsNeverOfferedAndKeepsItsAudio() async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = session(fixture); defer { editor.close() }
+        installReview(session, fixture: fixture, withFreeChanges: false)
+        let plan = fixture.plan
+        let starts = plan.phrases.map(\.window.start)
+        let evidence = VoiceLabShortSpeechEvidence(mode: .unmeasured, recordId: fixture.record.id,
+            consentMethod: fixture.record.consentMethod, voicedFrames: 16_000, takeCount: 1)
+        fixture.transformRow = { row in
+            let start = row.audio?.fit.plan.windowStart ?? 0
+            guard row.audio != nil, starts.indices.min(by: { abs(starts[$0] - start) < abs(starts[$1] - start) }) == 0 else { return row }
+            let unmeasured = row.checkingVoice(.shortSpeech(evidence))
+            return VoiceLabTakeRow(id: row.id, index: row.index, seed: row.seed, receipt: row.receipt,
+                audio: row.audio, qa: unmeasured.qa, score: row.score, failure: row.failure,
+                qaReceipt: row.qaReceipt, generated: row.generated, quote: row.quote,
+                accepted: row.acceptedRequestIDs, voiceCheck: unmeasured.voiceCheck)
+        }
+        ClipTakeHTTP.state.withLock { $0.durationsInOrder[0] = $0.duration * 0.6 }
+        await plan.prepare(); await plan.start(approved: true)
+        #expect(plan.phrases[0].selectedID == nil, "\(plan.phrases[0].takeDetail)")
+        #expect(plan.phrases[0].takes.contains { $0.row.selectable && !plan.durationAvailable(take: $0) }, "\(plan.phrases[0].takeDetail)")
+        #expect(plan.offeredTake(phrase: 0) == nil)
+        session.showProposal()
+        #expect(plan.phrases[0].leftOut, "\(plan.phrases[0].takeDetail)")
+        #expect(editor.announcements.contains("Phrase 1's take can't fit its place in the video, so it keeps your original audio."))
+        #expect(session.task.footer.primary?.id == "useTakes" && session.task.footer.primary?.id != "chooseTake", "\(session.task.footer)")
+    }
+
+    /// design.md R2 footer: a duration a take allows that nobody chose yet is the footer's primary, the phrase card's
+    /// radio made one click away; a take no duration carries has Keep Original Audio instead (never a request for a choice
+    /// no control makes).
+    @Test func aDurationAllowedButNotChosenIsTheFootersPrimary() async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = session(fixture); defer { editor.close() }
+        installReview(session, fixture: fixture, withFreeChanges: false)
+        let plan = fixture.plan
+        ClipTakeHTTP.state.withLock { $0.durationsInOrder[2] = $0.duration + 5 }
+        // The takes land while no panel is drawn: drawing it chooses each duration (autoChooseVideo) and keeps phrase 3's
+        // audio, so the footer's own steps are read before it is drawn again.
+        session.takePlan = nil
+        await plan.prepare(); await plan.start(approved: true)
+        session.takePlan = plan
+        #expect(plan.phrases.allSatisfy { $0.selected != nil && $0.videoChoice == nil }, "\(plan.phrases.map(\.takeDetail))")
+        #expect(plan.acceptanceBlocker == "Choose the video duration for phrases 1 and 2.", "\(plan.acceptanceBlocker ?? "none")")
+        #expect(plan.chooseVideo(.source, phrase: 1))
+        #expect(plan.acceptanceBlocker == "Choose the video duration for phrase 1.", "\(plan.acceptanceBlocker ?? "none")")
+        let forward = try #require(session.acceptanceForward(plan))
+        #expect(forward.id == "chooseDuration.0" && forward.title == "Keep Source Duration for Phrase 1")
+        #expect(ClipTakePlan.noDurationCopy([3], kept: false) == "Phrase 3's take can't fit its place in the video.")
+        #expect(ClipTakePlan.noDurationCopy([1, 3]) == "The takes of phrases 1 and 3 can't fit their places in the video, so they keep your original audio.")
+        // The click chooses phrase 1's duration and draws the panel, which keeps phrase 3's audio: Use is the step left.
+        forward.perform()
+        #expect(plan.phrases[0].videoChoice == .source && plan.phrases[2].leftOut, "\(plan.phrases.map(\.takeDetail))")
+        #expect(session.task.footer.primary?.id == "useTakes", "\(session.task.footer)")
+        #expect(RewriteSession.durationTitle(.cut, phrase: 0) == "Cut the Video for Phrase 1")
+        #expect(RewriteSession.durationTitle(.retimed, phrase: 1) == "Match the Video for Phrase 2")
+    }
+
     @Test func nonfittingReviewRefusesUseWithoutSuccessFeedbackOrUndo() async throws {
         let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
         let (editor, session) = session(fixture); defer { editor.close() }
@@ -2493,7 +2588,10 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         let undo = UndoManager(); undo.groupsByEvent = false; editor.undoManager = undo
         ClipTakeHTTP.state.withLock { $0.duration += 2.5; $0.speechMargin = 0.15 }
         await fixture.plan.prepare(); await fixture.plan.start(approved: true)
-        #expect(fixture.plan.phrases[0].selected?.fits == false)
+        #expect(fixture.plan.phrases[0].takes.first?.fits == false)
+        // No video duration carries the take, so the panel keeps the phrase's audio (design.md R2) and Use has nothing.
+        session.showProposal()
+        #expect(fixture.plan.phrases[0].leftOut)
         #expect(await session.acceptTakes() == false)
         #expect(editor.project == original && editor.currentVoiceFeedback == nil && !editor.voiceRewriteToastVisible)
         #expect(!undo.canUndo && editor.undoSteps == 0 && editor.openRewrite === session)

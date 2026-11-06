@@ -26,7 +26,7 @@ import VoxClipCore
     /// can put in the video) give up nothing usable, so a run never waits on the creator for them (ai.md §12.9).
     static let order = ["approveTakeQuote", "useTakes", "chooseTake", "takeQuote-", "prepareTakes", "makeTakes", "keepFixing",
                         "withinSentence", "revoiceAll", "mergePhrases", "freshPrice", "reviewTakes", "showTakes", "keepMyWords",
-                        "keepOriginalAudio", "keepAll", "useTake"]
+                        "chooseDuration", "keepOriginalAudio", "keepAll", "useTake"]
     /// Controls whose click costs money; they run only within the budget.
     static func pricedID(_ id: String) -> Bool { id.hasPrefix("takeQuote-") || id.hasPrefix("approveTakeQuote") || id.hasPrefix("keepFixing") }
 

@@ -184,7 +184,9 @@ extension RewriteSession {
         guard !current.isEmpty else { return nil }
         let slot = phrase.originalLength
         if let selected = phrase.selected, selected.row.selectable {
-            guard takeNeedsWordingRecovery(phrase, plan: plan), let length = selected.length else { return nil }
+            // A take too short for every duration is not reworded longer, which would only pad (ADR-R42): its phrase keeps
+            // the recorded audio (`settleTakesThatFitNoDuration`).
+            guard takeNeedsWordingRecovery(phrase, plan: plan), let length = selected.length, length > slot else { return nil }
             return .length(tooLong: length > slot, measured: length, slot: slot, take: selected.id, number: selected.number, selected: true)
         }
         // A passing take not chosen yet (one whose voice could not be measured) is the user's pick, not a stuck phrase.
@@ -429,6 +431,34 @@ extension RewriteSession {
         plan.leaveOut(phrase: phrase)
         autoFix.lines[phrase] = nil
         showProposal()
+    }
+    /// design.md R2 "A take that can't fit its place": a phrase whose take no video duration can carry (too short even
+    /// with a cut, too long even with the matched speed, or a duration that can't be mapped) keeps its recorded audio with
+    /// one line of why, and Use goes on with the rest, with no click in every mode. A too-long take is left to the resolver
+    /// while it is armed: it rewords the take shorter, waits on Keep fixing at the cap, or, after Stop, leaves the phrase's
+    /// own steps and the footer's Keep Original Audio; its rounds end in the same keep. A too-short take is never reworded
+    /// longer, which would only pad (ADR-R42).
+    func settleTakesThatFitNoDuration(_ plan: ClipTakePlan) {
+        guard current, takePlan === plan, !takesBusy else { return }
+        var settled: [Int] = []
+        for phrase in plan.phrases where plan.fitsNoDuration(phrase: phrase.id) && !plan.lipsync.blocksMutation(phrase.id) {
+            guard autoFix.lines[phrase.id] == nil, !resolverOwns(phrase, plan: plan) else { continue }
+            plan.leaveOut(phrase: phrase.id)
+            settled.append(phrase.id)
+        }
+        guard !settled.isEmpty else { return }
+        let copy = ClipTakePlan.noDurationCopy(settled.map { $0 + 1 })
+        guard !autoFix.notes.contains(copy) else { return }
+        autoFix.notes.append(copy)
+        editor.announce(copy)
+    }
+    /// The resolver armed for this plan has a fix for the phrase (`advanceAutoFix`): a wording round, Keep fixing at the
+    /// cap, or after Stop the phrase's own steps.
+    private func resolverOwns(_ phrase: ClipTakePlan.Phrase, plan: ClipTakePlan) -> Bool {
+        guard autoFix.armed, autoFix.plan === plan, phrase.wording == .suggested,
+              let reason = stuckReason(phrase, plan: plan) else { return false }
+        if case .provider = reason { return false }
+        return true
     }
     /// Undo of Keep original words or of the resolver's fallback: the phrase's best passing take is used again.
     func undoKeepOriginal(phrase: Int) {
