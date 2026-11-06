@@ -9,7 +9,7 @@ using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.Project;
 using VoxClip.Core.Services.LLM;
 using Xunit;
-#if DEBUG
+#if DEBUG || VOXCLIP_REWRITE_FIXTURE_RUNNER
 using VoxClip.Media.Audio;
 using VoxClip.Media.VoiceLab;
 #endif
@@ -112,7 +112,7 @@ public sealed class IntegratedRewriteTests
         finally { Directory.Delete(root, true); }
     }
 
-#if DEBUG
+#if DEBUG || VOXCLIP_REWRITE_FIXTURE_RUNNER
     [Theory]
     [InlineData("full")]
     [InlineData("clip")]
@@ -170,11 +170,39 @@ public sealed class IntegratedRewriteTests
         await test.Session.GenerateWindowsAsync((_, _, current, _) => Task.FromResult(current()), _ => Task.FromResult<VoiceLabMonthlyCap?>(null));
         List<string> announced = [];
         test.Session.Changed += (_, _) => { if (test.Session.AutoFix.Announcement is { Length: > 0 } line && !announced.Contains(line)) announced.Add(line); };
+        var log = new LinesLog();
+        test.Session.Log = log;
         Assert.True(test.Session.CanAcceptAll);
         Assert.True(await test.Session.ApplyTakeAsync());
         Assert.Empty(test.Editor.Project.VoiceLab.Segments);
         Assert.Equal("WORD15", test.Editor.Project.Edits.Corrections["w15"]);
         Assert.Equal([RewriteSession.UnusableNote(1), RewriteSession.UnusableNote(2)], announced);
+        // Mac logFailure(stage: "use"): each refusal is in the log by type and case, with no provider text.
+        Assert.Equal(["rewrite failure stage=use type=VoiceLabProjectException case=QaRejected", "rewrite failure stage=use type=VoiceLabProjectException case=QaRejected"],
+            log.Lines);
+    }
+
+    /// <summary>Mac <c>blockedUseLine</c> (ADR-R40): a phrase the guard blocked doesn't hold up Use. One click on Use keeps its original
+    /// audio, with no Keep Original Audio first, applies the other phrase's take and the text fixes, and says so beside Use.</summary>
+    [Fact]
+    public async Task UseKeepsABlockedPhrasesOriginalAudioWithOneClick()
+    {
+        await using var test = new Harness(blocked: index => index == 0);
+        await test.PrepareAsync();
+        await test.Session.GenerateWindowsAsync((_, _, current, _) => Task.FromResult(current()), _ => Task.FromResult<VoiceLabMonthlyCap?>(null));
+        var windows = test.Session.GenerationWindows;
+        Assert.True(windows[0].WaitsOnBlock);
+        Assert.Equal(0, test.Runners[0].PaidRequests);
+        Assert.True(test.Session.CanAcceptAll);
+        var footer = test.Session.FooterStep;
+        Assert.Equal(RewriteFooterAction.UseTakes, footer.Action);
+        Assert.Equal("Use the reviewed takes.\nUse keeps phrase 1's original audio.", footer.Line);
+        Assert.Equal("Use keeps phrase 1's original audio.", test.Session.BlockedUseLine);
+        Assert.True(await test.Session.ApplyTakeAsync(), test.Editor.Notice);
+        var segment = Assert.Single(test.Editor.Project.VoiceLab.Segments);
+        Assert.Contains("better", segment.Text!.New);
+        Assert.Equal("WORD15", test.Editor.Project.Edits.Corrections["w15"]);
+        Assert.Contains("w18", test.Editor.Project.Edits.CutWordIds);
     }
 
     [Fact]
@@ -237,14 +265,17 @@ public sealed class IntegratedRewriteTests
         internal RewriteSession Session { get; }
         internal List<DebugRewriteTakeRunner> Runners { get; } = [];
         /// <param name="unusable">Phrases whose take the recipe refuses at Use (Mac S-render-recipe): publishing it throws.</param>
-        internal Harness(string scope = "passage", Func<int, bool>? unusable = null)
+        /// <param name="blocked">Phrases the use-time guard refuses before anything is sent (ADR-R40).</param>
+        internal Harness(string scope = "passage", Func<int, bool>? unusable = null, Func<int, bool>? blocked = null)
         {
             var fixture = HomeViewModelTests.Fixture("clip-from-long-take.voxclip");
             var words = Enumerable.Range(0, 100).Select(index => new TimedWord("w" + index, "word" + index, WordKind.Word,
                 index + 1, index + 1.4, null, null, 1, null, TimingSource.Native)).ToArray();
+            // The fixture's clips are removed, so their share text goes too: the editor drops text for a clip that doesn't exist.
             Editor = new(fixture with { SchemaVersion = 1, VoiceLab = new([]), Transcript = fixture.Transcript! with { Words = words },
                 Media = fixture.Media with { Source = fixture.Media.Source with { DurationSeconds = 105, Audio = new(48_000, 1) } },
-                Edits = fixture.Edits with { ActiveClipId = null, Clips = [], CutWordIds = [], CutPauseIds = [], Corrections = new Dictionary<string, string>() } });
+                Edits = fixture.Edits with { ActiveClipId = null, Clips = [], CutWordIds = [], CutPauseIds = [], Corrections = new Dictionary<string, string>() },
+                Share = new(new Dictionary<string, string>()) });
             if (scope == "clip")
             {
                 Editor.Select(8); Editor.Select(26, true); Assert.NotNull(Editor.MakeClip());
@@ -259,7 +290,7 @@ public sealed class IntegratedRewriteTests
             Session.ConfigureGenerationFactory(index =>
             {
                 var runner = new DebugRewriteTakeRunner(Path.Combine(SharedResources.ResolveRoot(), "fixtures/voice-lab/take-run-cases.json"),
-                    storage: new(Editor.Project.Id, Path.Combine(root, "paid"), Path.Combine(root, "scratch"))) { State = "three-ready" };
+                    storage: new(Editor.Project.Id, Path.Combine(root, "paid"), Path.Combine(root, "scratch"))) { State = blocked?.Invoke(index) == true ? "blocked" : "three-ready" };
                 Runners.Add(runner);
                 var generation = new RewriteGeneration(runner, runner.DiscoverAsync,
                     (voice, model, seed, token) => Session.GenerationInputAsync(voice, model, seed, true,
@@ -284,6 +315,17 @@ public sealed class IntegratedRewriteTests
             foreach (var runner in Runners) runner.Dispose();
             if (Directory.Exists(root)) Directory.Delete(root, true);
         }
+    }
+
+    /// <summary>The session's log, kept in memory.</summary>
+    private sealed class LinesLog : VoxClip.Core.Services.Logging.ILog
+    {
+        internal List<string> Lines { get; } = [];
+        public void RegisterSecret(string secret) { }
+        public void Write(VoxClip.Core.Services.Logging.LogLevel level, string category, string message) { if (category == "rewrite") Lines.Add(message); }
+        public Task<IReadOnlyList<string>> ReadRecentAsync(int count, CancellationToken ct) => Task.FromResult<IReadOnlyList<string>>(Lines);
+        public Task FlushAsync(CancellationToken ct) => Task.CompletedTask;
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
     private sealed class SilentEndpoint : IVoiceLabRenderEndpoint

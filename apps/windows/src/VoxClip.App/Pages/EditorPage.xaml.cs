@@ -619,6 +619,8 @@ if (insertion ||
     {
         if (rightContent is null) return;
         if (!ReferenceEquals(this.rewrite, rewrite)) { RetireRewrite(); this.rewrite = rewrite; }
+        // Why a step failed goes to the App's log by type and case only (Mac logFailure, `stage=use`).
+        rewrite.Log ??= App.Services.Log;
         AttachRewriteProposal(rewrite);
         var panel = new RewritePanel(rewrite, () => Transcript.CorrectionOpen, owner);
         rewritePanel = panel;

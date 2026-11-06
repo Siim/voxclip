@@ -402,7 +402,7 @@ internal sealed partial class RewriteGeneration
         var version = revision; var selection = selectionRevision;
         bool Current() => !closed && revision == version && selectionRevision == selection && current() &&
             ReferenceEquals(project, editor.Project) && ReferenceEquals(ReviewedInput, reviewed) && SelectedTakeId == selected.Id;
-        accepting = true; LastAcceptanceUnusable = false; Notify();
+        accepting = true; LastAcceptanceUnusable = false; LastAcceptanceError = null; Notify();
         try
         {
             await takes.Audition.StopAsync();
@@ -443,7 +443,7 @@ internal sealed partial class RewriteGeneration
         {
             if (!closed && revision == version)
             {
-                Problem = RewriteSession.Refusal(error); Announcement = Problem;
+                Problem = RewriteSession.Refusal(error); Announcement = Problem; LastAcceptanceError = error;
                 // The recipe or its placement refused this take (Mac `ClipTakePlan.Failure.unusable`): it can't go into the video.
                 LastAcceptanceUnusable = error is VoiceLabProjectException or VoiceLabGeometryException;
             }
@@ -453,4 +453,6 @@ internal sealed partial class RewriteGeneration
     }
     /// <summary>Whether the last Use of this phrase failed because its take can't be made part of the video, not for a passing reason.</summary>
     internal bool LastAcceptanceUnusable { get; private set; }
+    /// <summary>Why the last Use of this phrase failed, for the session's <c>stage=use</c> log line; null after a Use that worked.</summary>
+    internal Exception? LastAcceptanceError { get; private set; }
 }

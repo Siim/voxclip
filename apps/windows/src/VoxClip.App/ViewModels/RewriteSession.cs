@@ -227,7 +227,6 @@ internal sealed partial class RewriteSession : IDisposable
                     : "Find the original video before rewriting speech. Your edits are saved.";
                 return;
             }
-            var targetSeconds = Math.Max(0.01, words[^1].End - words[0].Start);
             if (requestedScope is not null)
             {
                 scopePlan = ScopeRewritePlan.Make(Project, requestedScope, string.IsNullOrWhiteSpace(text) ? "Fix mistakes" : text,
@@ -240,8 +239,11 @@ internal sealed partial class RewriteSession : IDisposable
                     Connector.Connector.Id is ConnectorId.ClaudeCode ? "Anthropic" : Connector.Connector.Id is ConnectorId.Codex ? "OpenAI" : Connector.Name);
                 return;
             }
+            // The passage's own length range, as on the Mac (passageRange): the placed window's budget, or the words' own.
+            var range = PassageRange(Project, Scope, Envelope, Source, Transcript);
             var input = new VoiceRewriteRequest(Guid.NewGuid(), VoiceRewriteScope.Passage, words, text,
-                Editor.State?.Transcript.Language ?? "en", targetSeconds, 1, 5000) { ShorterPhrases = shorterPhrases ?? [], Slots = RewriteSlots(words) };
+                Editor.State?.Transcript.Language ?? "en", range.TargetSeconds, range.MinChars, range.MaxChars)
+                { ShorterPhrases = shorterPhrases ?? [], Slots = RewriteSlots(words) };
             var action = await service.PrepareAsync(input, Connector.Connector, Connector.Model, lifetime.Token);
             if (!IsOpen || current != revision) return;
             request = input;
@@ -256,6 +258,28 @@ internal sealed partial class RewriteSession : IDisposable
             if (current == revision) proposalProblem = Refusal(exception);
         }
         finally { if (IsOpen && current == revision) Changed?.Invoke(this, EventArgs.Empty); }
+    }
+
+    /// <summary>A passage request's length range (Mac <c>passageRange</c>): the placed window's budget with the silence it may borrow, or,
+    /// when the passage can't be placed, the selected words' own (<see cref="VoiceLabLengthBudget.FullTake"/>). A refusal naming a
+    /// Voice Lab segment is the passage's own problem and is not hidden.</summary>
+    internal static VoiceLabLengthRange PassageRange(Project project, VoiceLabOutputScope scope, AudioEnvelope? envelope, IReadOnlyList<TimedWord> source,
+        IReadOnlyList<TimedWord> transcript)
+    {
+        var rate = VoiceLabLengthBudget.Rate(transcript).CharactersPerSecond;
+        if (envelope is not null && source.FirstOrDefault(word => word.Kind == WordKind.Word) is { } first &&
+            source.LastOrDefault(word => word.Kind == WordKind.Word) is { } last)
+        {
+            try
+            {
+                var window = VoiceLabWindowPlanner.Place(project, scope, envelope, first.Id, last.Id);
+                var silence = VoiceLabWindowPlanner.LendableSilence(project, scope, window);
+                return VoiceLabLengthBudget.Passage(window, transcript, silence.Incoming, silence.Outgoing, rate);
+            }
+            catch (Exception error) when (error is not (VoiceLabGeometryException { Code: VoiceLabGeometryErrorCode.InvalidInput, SegmentId: not null }
+                or OutOfMemoryException or OperationCanceledException)) { }
+        }
+        return VoiceLabLengthBudget.FullTake(source, rate);
     }
 
     internal static CliSignIn? SignIn(CliDetectionInfo? detection)

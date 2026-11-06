@@ -34,6 +34,21 @@ public sealed class RewriteDurationSettleTests
         await SettleAsync(session);
     }
 
+    /// <summary>A passage request names its own length (Mac <c>passageRange</c>): the placed window's budget, never "at most 5000 letters".</summary>
+    [Fact]
+    public async Task APassageRequestCarriesItsOwnLengthBudget()
+    {
+        var connector = new Connector(Reply, (_, ordinals) => Rows(ordinals, "x"));
+        using var session = Session(connector);
+        Assert.True(await ProposeAsync(session));
+        var range = RewriteSession.PassageRange(session.Project, session.Scope, session.Envelope, session.Source, session.Transcript);
+        Assert.True(range.MaxChars < 100, $"{range.MaxChars}");
+        var instruction = connector.Rewrites[0].Instruction;
+        Assert.DoesNotContain("at most 5000 letters", instruction, StringComparison.Ordinal);
+        Assert.Contains($"at most {range.MaxChars} letters and digits", instruction, StringComparison.Ordinal);
+        Assert.Contains($"about {range.MinChars} keeps the same length", instruction, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task ATakeTooShortForEveryDurationKeepsItsAudioWithNoClickAndUseGoesOn()
     {

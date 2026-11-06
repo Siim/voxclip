@@ -55,8 +55,10 @@ internal sealed class MakeItRewriteDriver(EditorViewModel editor, MakeItRewriteR
             if (cap is not null && batch.Kind(cap).Kind == VoiceLabCostPresentationKind.Confirm)
                 return new(new MakeItRewriteResult.NeedsYou("This would pass your monthly ElevenLabs cap. Voice it in Rewrite. Nothing was sent."));
             // A phrase the guard blocked sent nothing, so its share of the price is never counted as spent (Mac G4).
+            // The batch covers the priced phrases only (a phrase settled earlier in this Rewrite is left out of it), in their order.
             var quoted = batch.Windows.Select(window => window.Quote.Estimate.Usd ?? 0m).ToArray();
-            decimal Spent() => quoted.Where((_, index) => session.GenerationWindows.ElementAtOrDefault(index)?.Blocked is null).Sum() + session.AutoFix.Spent;
+            var priced = session.PricedWindows.ToArray();
+            decimal Spent() => quoted.Where((_, index) => priced.ElementAtOrDefault(index)?.Blocked is null).Sum() + session.AutoFix.Spent;
             // An approved price also lets Rewrite fix stuck phrases on its own; that allowance stays inside the budget.
             session.AutoFixCeiling = Math.Max(0, budget - amount);
             session.MarkBatchEstimateShown(batch);

@@ -106,9 +106,12 @@ internal sealed partial class RewriteSession
                         .. AiChips()
                     ]));
                 }
+            // Every phrase blocked and none with a take of its own (Mac everyPhraseBlockedSteps): the stop once, at the top, with the
+            // rows' two actions; no card per phrase repeats it.
+            if (EveryPhraseBlockedCard is { } everyPhrase) cards.Insert(0, everyPhrase);
             // A phrase the guard settled (ADR-R40): the stop once, and the two ways on (Mac BlockedPhraseRow), shown whether or not the
             // other choices are; the user's own recording needs no clone.
-            for (var index = 0; index < generationWindows.Count; index++)
+            for (var index = 0; index < generationWindows.Count && EveryPhraseBlockedCard is null; index++)
             {
                 if (generationWindows[index].IsRunning || StuckReason(index) is not StuckTakeReason.Blocked blocked) continue;
                 var phrase = index;
@@ -329,7 +332,8 @@ internal sealed partial class RewriteSession
             if (CanAcceptAll)
                 return generationWindows.All(window => window.LeftOut)
                     ? new("Every phrase keeps its original words. The text fixes still apply.", ApplyTextFixesTitle, RewriteFooterAction.ApplyTextFixes)
-                    : new("Use the reviewed takes.", generationWindows.Count > 1 ? "Use Reviewed Takes" : Generation?.AcceptTitle, RewriteFooterAction.UseTakes);
+                    : new("Use the reviewed takes." + (BlockedUseLine is { } keeps ? "\n" + keeps : ""),
+                        generationWindows.Count > 1 ? "Use Reviewed Takes" : Generation?.AcceptTitle, RewriteFooterAction.UseTakes);
             if (generationWindows.Count > 0 && generationWindows.All(window => window.LeftOut))
                 return new("Every phrase keeps its original words.", "Done", RewriteFooterAction.Done);
             if (AutoFix.Running && AutoFix.Lines.Values.FirstOrDefault() is { } fixing) return new(fixing, "Stop", RewriteFooterAction.StopAutoFix);

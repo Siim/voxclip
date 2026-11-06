@@ -1,4 +1,4 @@
-#if DEBUG
+#if DEBUG || VOXCLIP_REWRITE_FIXTURE_RUNNER
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.Speech;
 using VoxClip.Media.VoiceLab;
@@ -41,7 +41,9 @@ internal sealed class DebugRewriteTakeAssets(VoiceLabTakeStorage storage)
             var tone = VoiceLabRoomToneSelection.Select(input.Items, input.SourceEnvelope, input.SourceSampleRate, input.Source.TotalFrames);
             var scratch = VoiceLabTakeRenderer.Stage(fitted, new(rate, samples, 0, tone, fit), input, VoiceLabSourceExcerpt.Whole(source), storage.ScratchRoot, ct);
             var id = quote.Synthesis.Review.RequestId; rows.Add(id, (scratch, input, quote.Seed));
-            var receipt = new VoiceLabReceipt("elevenlabs", ElevenLabsRegion.Default, "v1/text-to-speech/fixture-provider-voice/with-timestamps",
+            // Eleven v4 takes come from the dialogue route; the render contract refuses any other endpoint for them.
+            var endpoint = input.ModelId == "eleven_v4" ? "v1/text-to-dialogue/with-timestamps" : "v1/text-to-speech/fixture-provider-voice/with-timestamps";
+            var receipt = new VoiceLabReceipt("elevenlabs", ElevenLabsRegion.Default, endpoint,
                 input.ModelId, "fixture-provider-voice", quote.Synthesis.Review.RequestId, "fixture", null);
             return new(id, quote.Index, quote.Seed, receipt, Quote: quote, Audio: scratch.Audio, Qa: qa, Score: score);
         }

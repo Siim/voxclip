@@ -10,7 +10,7 @@
     <IsTestProject>true</IsTestProject>
     <IsPackable>false</IsPackable>
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
-    <DefineConstants>$(DefineConstants);WIN_UI_TESTS;VOXCLIP_ENROLLMENT_TESTS</DefineConstants>
+    <DefineConstants>$(DefineConstants);WIN_UI_TESTS;VOXCLIP_ENROLLMENT_TESTS;VOXCLIP_REWRITE_FIXTURE_RUNNER</DefineConstants>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
   <ItemGroup>

@@ -15,10 +15,20 @@ internal sealed partial class RewriteSession
     internal IReadOnlyList<RewriteGeneration> GenerationWindows => generationWindows;
     internal int ActiveWindow { get; private set; }
     internal bool IsGeneratingBatch { get; private set; }
-    /// <summary>Every phrase is ready or kept as recorded, and at least one take or text fix applies.</summary>
+    /// <summary>Every phrase is ready, kept as recorded or blocked by the guard, and at least one take or text fix applies. Use keeps a
+    /// blocked phrase's original audio with no click first (Mac <c>canAccept</c> over the selected phrases, <c>blockedUseLine</c>).</summary>
     internal bool CanAcceptAll => GenerationIsCurrent && !IsGeneratingBatch && !applyingBatch && AutoFix.Work is null && generationWindows.Count > 0 && Collision is null &&
-        generationWindows.Count == PricedVoiceHunks.Count && generationWindows.All(window => window.LeftOut || window.ReadyToAccept) &&
-        (generationWindows.Any(window => !window.LeftOut) || LocalOperations().Count > 0);
+        generationWindows.Count == PricedVoiceHunks.Count && generationWindows.All(window => window.LeftOut || window.WaitsOnBlock || window.ReadyToAccept) &&
+        (generationWindows.Any(window => !window.LeftOut && !window.WaitsOnBlock) || LocalOperations().Count > 0);
+    /// <summary>Beside Use (Mac <c>blockedUseLine</c>): what it does with the blocked phrases still waiting; null when none waits.</summary>
+    internal string? BlockedUseLine
+    {
+        get
+        {
+            var waiting = generationWindows.Select((window, index) => (window, index)).Where(item => item.window.WaitsOnBlock).Select(item => item.index + 1).ToArray();
+            return waiting.Length == 0 ? null : $"Use keeps {PhraseList(waiting)}'s original audio.";
+        }
+    }
     /// <summary>Phrases whose selected take waits on a video duration (Mac <c>acceptanceBlocker</c>'s undecided phrases), in order.</summary>
     private IEnumerable<int> UndecidedDurations() => generationWindows.Select((window, index) => (window, index))
         .Where(item => !item.window.LeftOut && item.window.Phase == RewriteGenerationPhase.LengthChanged &&
@@ -199,15 +209,18 @@ internal sealed partial class RewriteSession
     internal string TakeSendLine => RewriteGeneration.SendLine + string.Concat(generationWindows.Select((window, index) =>
         window.NextPace is { } pace && pace != 1 ? " Phrase " + (index + 1) + " at " + pace.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) + "× pace." : ""));
 
+    /// <summary>The phrases a price and a run cover (Mac <c>voiceableIndices</c>): every phrase not settled as blocked, in order.</summary>
+    internal IReadOnlyList<RewriteGeneration> PricedWindows => generationWindows.Where(window => window.Blocked is null).ToArray();
     /// <summary>The whole run's one price (Mac <c>ClipTakePlan</c> parts): every phrase's quote, in parts of at most
-    /// <see cref="VoiceLabTakeBatch.MaximumWindows"/>, approved once.</summary>
+    /// <see cref="VoiceLabTakeBatch.MaximumWindows"/>, approved once. A phrase the guard settled earlier in this Rewrite is left out of it
+    /// (<see cref="PricedWindows"/>): nothing is sent for it, so nothing is priced.</summary>
     internal VoiceLabTakeRunParts? PreparedBatch
     {
         get
         {
             if (Review is null || generationWindows.Count != PricedVoiceHunks.Count || generationWindows.Count == 0) return null;
-            var windows = generationWindows.Select(window => window.PreparedWindow).ToArray();
-            if (windows.Any(window => window is null)) return null;
+            var windows = PricedWindows.Select(window => window.PreparedWindow).ToArray();
+            if (windows.Length == 0 || windows.Any(window => window is null)) return null;
             try { return new(windows.Select(window => window!).ToArray()); }
             catch (VoiceLabException) { return null; }
         }
@@ -225,9 +238,9 @@ internal sealed partial class RewriteSession
         generationWindows.Any(window => window.Blocked is null && !window.LeftOut);
     internal void MarkBatchEstimateShown(VoiceLabTakeRunParts batch)
     {
-        if (batch.Windows.Count != generationWindows.Count) return;
-        for (var index = 0; index < generationWindows.Count; index++)
-            generationWindows[index].MarkEstimateShown(batch.Windows[index].Quote);
+        var priced = PricedWindows;
+        if (batch.Windows.Count != priced.Count) return;
+        for (var index = 0; index < priced.Count; index++) priced[index].MarkEstimateShown(batch.Windows[index].Quote);
     }
 
     /// <summary>Makes every phrase's takes under one approval. A run of more than <see cref="VoiceLabTakeBatch.MaximumWindows"/>
@@ -239,12 +252,14 @@ internal sealed partial class RewriteSession
     {
         if (!CanGenerateAll || PreparedBatch is not { } run) return;
         var identity = ReviewIdentity;
-        var windows = generationWindows.ToArray();
+        var all = generationWindows.ToArray();
+        // The run covers the priced phrases only; a phrase settled earlier in this Rewrite sends nothing (ADR-R40).
+        var windows = PricedWindows.ToArray();
         var quotes = run.Windows.Select(window => window.Quote).ToArray();
         var started = -1;
         var partEnd = Math.Min(VoiceLabTakeBatch.MaximumWindows, windows.Length);
         VoxClip.Media.VoiceLab.VoiceLabShortTakePool? pool = null;
-        bool Same() => GenerationIsCurrent && identity == ReviewIdentity && generationWindows.SequenceEqual(windows);
+        bool Same() => GenerationIsCurrent && identity == ReviewIdentity && generationWindows.SequenceEqual(all);
         // Only the running part's quotes must stay the priced ones; a later part is quoted again before it runs.
         bool Current() => Same() && Enumerable.Range(started + 1, Math.Max(0, partEnd - started - 1))
             .All(index => ReferenceEquals(windows[index].Quote, quotes[index]));
@@ -360,15 +375,21 @@ internal sealed partial class RewriteSession
         List<(int Index, RewriteAcceptance Accepted)> prepared = [];
         try
         {
-            // A phrase kept as recorded adds no segment; its text fixes still apply.
-            if (windows.All(window => window.LeftOut)) return operations.Count > 0 && Editor.ApplyBatch(operations);
+            // A phrase kept as recorded, or one the guard blocked that still waits, adds no segment: it keeps its original audio (Mac
+            // `blockedUseLine`); its text fixes still apply.
+            if (windows.All(window => window.LeftOut || window.WaitsOnBlock)) return operations.Count > 0 && Editor.ApplyBatch(operations);
             for (var index = 0; index < windows.Length; index++)
             {
                 var generation = windows[index];
-                if (generation.LeftOut) continue;
+                if (generation.LeftOut || generation.WaitsOnBlock) continue;
                 var accepted = await generation.PrepareAcceptanceAsync(Editor, Project, operations);
                 if (!GenerationIsCurrent || ReviewIdentity != identity || !generationWindows.SequenceEqual(windows)) return false;
-                if (accepted is null) return generation.LastAcceptanceUnusable && SettleUnusable(index, settled) ? null : false;
+                if (accepted is null)
+                {
+                    // Mac `logFailure(stage: "use")`: why Use failed is in the log, by type and case only.
+                    if (generation.LastAcceptanceError is { } error) LogFailure(error, "use");
+                    return generation.LastAcceptanceUnusable && SettleUnusable(index, settled) ? null : false;
+                }
                 prepared.Add((index, accepted));
             }
             // Generated phrases share one voice; the user's own recorded takes carry none.
@@ -378,6 +399,7 @@ internal sealed partial class RewriteSession
             if (assets.GroupBy(asset => asset.Id).Any(group => group.Distinct().Count() != 1)) return false;
             if (Editor.ApplyVoiceLab(prepared.Select(item => item.Accepted.Segment).ToArray(), assets.DistinctBy(asset => asset.Id).ToArray(),
                 voices.FirstOrDefault(), Scope, RewriteActionName, Project, operations, CalibratedRates())) return true;
+            Log?.Write(VoxClip.Core.Services.Logging.LogLevel.Warn, "rewrite", "rewrite failure stage=use type=EditorViewModel case=applyVoiceLabRefused");
             // The project refused the takes together: the phrases it refuses alone can't go into the video (leave-one-out, Mac
             // `unusablePhrases`); the others are used on the next pass.
             if (!GenerationIsCurrent || ReviewIdentity != identity || !generationWindows.SequenceEqual(windows) || prepared.Count < 1) return false;
@@ -400,5 +422,22 @@ internal sealed partial class RewriteSession
         AutoFix.Announcement = note;
         return true;
     }
+    /// <summary>Where the session writes why a step failed (Mac <c>logFailure</c>); the App's log, none in tests.</summary>
+    internal VoxClip.Core.Services.Logging.ILog? Log { get; set; }
+    /// <summary>Mac <c>logFailure</c>: one line "rewrite failure stage={stage} type=… case=…" with no provider text.</summary>
+    internal void LogFailure(Exception error, string stage)
+    {
+        if (error is OperationCanceledException) return;
+        Log?.Write(VoxClip.Core.Services.Logging.LogLevel.Warn, "rewrite", $"rewrite failure stage={stage} " + FailureKind(error));
+    }
+    /// <summary>An error's type and case, with no associated text (Mac <c>failureKind</c>): "type=VoiceLabProjectException case=VideoModeUnsupported".</summary>
+    internal static string FailureKind(Exception error) => "type=" + error.GetType().Name + error switch
+    {
+        VoiceLabProjectException project => " case=" + project.Code,
+        VoiceLabGeometryException geometry => " case=" + geometry.Code,
+        VoiceLabException voiceLab => " case=" + voiceLab.Kind,
+        VoiceConsentException consent => " case=" + consent.Kind,
+        _ => ""
+    };
     internal static string UnusableNote(int phrase) => $"Phrase {phrase} couldn't be made part of the video, so it keeps your original audio.";
 }
