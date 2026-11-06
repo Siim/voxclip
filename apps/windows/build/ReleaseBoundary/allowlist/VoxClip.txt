@@ -1501,6 +1501,7 @@ member VoxClip.App.Controls.Ui :: method private .cctor()
 member VoxClip.App.Controls.VoiceLabDialogs :: method internal ConfirmCreationAsync(Microsoft.UI.Xaml.XamlRoot,VoxClip.App.ViewModels.VoiceCreationDialog,System.Threading.CancellationToken)
 member VoxClip.App.Controls.VoiceLabDialogs :: method internal TurnOnAsync(Microsoft.UI.Xaml.XamlRoot,System.Threading.CancellationToken)
 member VoxClip.App.Controls.VoiceLabSettingsPane :: field private accountCheck
+member VoxClip.App.Controls.VoiceLabSettingsPane :: field private announcedLines
 member VoxClip.App.Controls.VoiceLabSettingsPane :: field private beta
 member VoxClip.App.Controls.VoiceLabSettingsPane :: field private betaTag
 member VoxClip.App.Controls.VoiceLabSettingsPane :: field private body
@@ -1527,6 +1528,7 @@ member VoxClip.App.Controls.VoiceLabSettingsPane :: method private AddRebuildRow
 member VoxClip.App.Controls.VoiceLabSettingsPane :: method private AddReferenceRows(Microsoft.UI.Xaml.Controls.StackPanel,VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord)
 member VoxClip.App.Controls.VoiceLabSettingsPane :: method private AddStorage()
 member VoxClip.App.Controls.VoiceLabSettingsPane :: method private AddVoiceCard(Microsoft.UI.Xaml.UIElement,string,string)
+member VoxClip.App.Controls.VoiceLabSettingsPane :: method private AnnounceLine(Microsoft.UI.Xaml.Controls.TextBlock,string,string)
 member VoxClip.App.Controls.VoiceLabSettingsPane :: method private ConfirmAsync(VoxClip.App.ViewModels.VoiceLabRequest)
 member VoxClip.App.Controls.VoiceLabSettingsPane :: method private EffectsChanged(object,System.EventArgs)
 member VoxClip.App.Controls.VoiceLabSettingsPane :: method private RefreshTheme()

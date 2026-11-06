@@ -31,6 +31,9 @@ internal sealed class VoiceLabSettingsPane : UserControl
     private readonly SettingsExpander voices = Section("My voices");
     private Button? accountCheck;
     private readonly Dictionary<Guid, TextBlock> operationStates = [];
+    /// <summary>The learning and rebuild lines last announced, by activity: the pane is rebuilt on every change, so a line is announced once
+    /// when it changes, never through another live region.</summary>
+    private readonly Dictionary<string, string> announcedLines = new(StringComparer.Ordinal);
     private string? focusRecordId;
     private bool initialLoadComplete;
 
@@ -383,8 +386,8 @@ internal sealed class VoiceLabSettingsPane : UserControl
         {
             var text = Ui.Text(line, "HelperText");
             AutomationProperties.SetAutomationId(text, "voice-learning-line-" + record.RecordId);
-            AutomationProperties.SetLiveSetting(text, AutomationLiveSetting.Polite);
             card.Children.Add(text);
+            AnnounceLine(text, line, "voice-learning-" + record.RecordId);
         }
     }
     /// <summary>Rebuild from my videos, inline (ADR-R44; Mac <c>VoiceRebuildRows</c>): found speech first, the three attestations as checkboxes,
@@ -464,9 +467,17 @@ internal sealed class VoiceLabSettingsPane : UserControl
         {
             var line = Ui.Text(state.Line, "HelperText");
             AutomationProperties.SetAutomationId(line, "voice-rebuild-line-" + record.RecordId);
-            AutomationProperties.SetLiveSetting(line, AutomationLiveSetting.Polite);
             card.Children.Add(line);
+            AnnounceLine(line, state.Line, "voice-rebuild-" + record.RecordId);
         }
+    }
+    private void AnnounceLine(TextBlock owner, string line, string activity)
+    {
+        if (announcedLines.TryGetValue(activity, out var previous) && previous == line) return;
+        announcedLines[activity] = line;
+        // Once it is in the tree, so the peer exists.
+        owner.Loaded += Announce;
+        void Announce(object sender, RoutedEventArgs args) { owner.Loaded -= Announce; Ui.Announce(owner, line, activity); }
     }
     private void AddVoiceCard(UIElement content, string recordId, string label)
     {
