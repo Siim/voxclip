@@ -38,10 +38,16 @@ public sealed class VoiceLabToneMatchWireTests
     [InlineData("0")]
     [InlineData("2.1")]
     [InlineData("-2.5")]
-    [InlineData("\"1\"")]
-    public void AnInvalidTiltRefusesTheProject(string value)
+    public void AnOutOfRangeTiltRefusesTheProjectAsAnInvalidSegment(string value)
     {
-        Assert.Throws<VoxClipException>(() => ProjectSerialization.Deserialize(WithTilt(JsonNode.Parse(value)).ToJsonString()));
+        var refusal = Assert.Throws<VoiceLabProjectException>(() => ProjectSerialization.Deserialize(WithTilt(JsonNode.Parse(value)).ToJsonString()));
+        Assert.Equal(VoiceLabProjectErrorCode.InvalidSegment, refusal.Code);
+    }
+
+    [Fact]
+    public void ATiltThatIsNotANumberRefusesTheProject()
+    {
+        Assert.Throws<VoxClipException>(() => ProjectSerialization.Deserialize(WithTilt(JsonNode.Parse("\"1\"")).ToJsonString()));
     }
 
     [Fact]

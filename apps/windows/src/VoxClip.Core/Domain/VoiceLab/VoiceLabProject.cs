@@ -23,7 +23,7 @@ public sealed record VoiceLabAudio(string AssetId, double TrimStart, double Trim
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? TiltDbPerOctave = null)
 {
     /// <summary>A stored tilt is finite, not 0 and within ±2 dB per octave.</summary>
-    public bool TiltIsValid => TiltDbPerOctave is not { } tilt || double.IsFinite(tilt) && tilt != 0 && Math.Abs(tilt) <= 2;
+    [JsonIgnore] public bool TiltIsValid => TiltDbPerOctave is not { } tilt || double.IsFinite(tilt) && tilt != 0 && Math.Abs(tilt) <= 2;
 }
 public sealed record VoiceLabAudioTag(int BeforeToken, string Tag);
 public sealed record VoiceLabText(string Original, string New)
