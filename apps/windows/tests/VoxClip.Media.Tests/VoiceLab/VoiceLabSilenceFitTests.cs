@@ -137,7 +137,7 @@ public sealed class VoiceLabSilenceFitTests
             Assert.Equal(expected.GetProperty("fittedSHA256").GetString(), Convert.ToHexStringLower(SHA256.HashData(fitted.Wave.Bytes())));
             Assert.Equal(Number(expected, "trimStartFrame"), fitted.TrimStartFrame);
             Assert.Equal(Number(expected, "trimEndFrame"), fitted.TrimEndFrame);
-            var publication = fitted.Publish(Project, "fitted-output", storage.Root, DateTimeOffset.UnixEpoch, "request", 7, -3, TestContext.Current.CancellationToken);
+            var publication = fitted.Publish(Project, "fitted-output", storage.Root, DateTimeOffset.UnixEpoch, "request", 7, -3, ct: TestContext.Current.CancellationToken);
             Assert.Equal(expected.GetProperty("fittedSHA256").GetString(), publication.Assets[^1].Sha256);
             Assert.Equal(1, publication.Audio.Stretch);
             Assert.Equal(-3, publication.Audio.GainDb);
@@ -146,6 +146,11 @@ public sealed class VoiceLabSilenceFitTests
             Assert.Equal(fitted.PaidAsset.Sha256, publication.Chunks[0].AssetSha256);
             Assert.Equal(fitted.IsDerived ? 2 : 1, publication.Assets.Count);
             Assert.Equal(fitted.OutDuration, publication.OutDuration);
+            // The take's tone match goes on the segment (voice-lab.md §8.7 item 2b); the asset is stored as generated.
+            Assert.Null(publication.Audio.TiltDbPerOctave);
+            var tilted = fitted.Publish(Project, "fitted-tilted", storage.Root, DateTimeOffset.UnixEpoch, "request", 7, -3, 1.2, TestContext.Current.CancellationToken);
+            Assert.Equal(1.2, tilted.Audio.TiltDbPerOctave);
+            Assert.Equal(publication.Assets[^1].Sha256, tilted.Assets[^1].Sha256);
         }
     }
     [Theory]

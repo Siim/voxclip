@@ -62,7 +62,7 @@ internal sealed class DebugRewriteTakeAssets(VoiceLabTakeStorage storage)
     {
         ct.ThrowIfCancellationRequested();
         if (!rows.TryGetValue(id, out var row) || !row.Scratch.IsValid) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
-        var published = row.Scratch.Fitted.Publish(storage.ProjectId, Guid.NewGuid().ToString("D"), storage.PaidRoot, date, id.ToString("D"), row.Seed, 0, ct);
+        var published = row.Scratch.Fitted.Publish(storage.ProjectId, Guid.NewGuid().ToString("D"), storage.PaidRoot, date, id.ToString("D"), row.Seed, 0, ct: ct);
         var consent = new VoiceConsentRecord("voxclip-voice-consent/1", row.Input.RecordId, "elevenlabs", "ivc", "fixture-provider-voice", "Fixture voice",
             VoiceConsentStatus.Active, date.AddDays(-1), null, new("en", "Fixture only", [], "fixture.wav", new('a', 64), new(0, "fixture")),
             new(true, true, true, date.AddDays(-1)), [], new("fixture-speaker", 0.5, "fixture"), new("fixture", "windows"));

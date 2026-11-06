@@ -1,6 +1,6 @@
 # Voice Lab tone-match vectors
 
-`tilt-cases.json` (`voxclip-voice-lab-tilt/1`) pins the tone match of voice-lab.md §8.7 item 2b: a generated take is tilted towards the spectral slope of the original speech beside it. Regenerate it only with `python3 tools/fixtures/voice-lab/generate_tilt.py` (pure Python, no NumPy) and review the diff as a behaviour change. `check_drift.py` compares it within its float tolerance, because the coefficients and the FFT twiddles use libm. The Mac suite `apps/macos/Tests/VoxClipCoreTests/VoiceLab/VoiceLabTiltReplayTests.swift` replays every case and fails on an unknown kind. Windows reads and saves the stored tilt but does not render it yet, so it does not replay this file (owed; apps/macos/CONTRACTS.md).
+`tilt-cases.json` (`voxclip-voice-lab-tilt/1`) pins the tone match of voice-lab.md §8.7 item 2b: a generated take is tilted towards the spectral slope of the original speech beside it. Regenerate it only with `python3 tools/fixtures/voice-lab/generate_tilt.py` (pure Python, no NumPy) and review the diff as a behaviour change. `check_drift.py` compares it within its float tolerance, because the coefficients and the FFT twiddles use libm. The Mac suite `apps/macos/Tests/VoxClipCoreTests/VoiceLab/VoiceLabTiltReplayTests.swift` and the Windows suite `apps/windows/tests/VoxClip.Core.Tests/Tracks/voice-lab/VoiceLabTiltReplayTests.cs` replay every case within the tolerances and fail on an unknown kind.
 
 ## Signals
 

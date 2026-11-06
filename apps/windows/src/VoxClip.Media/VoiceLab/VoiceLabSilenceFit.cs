@@ -28,12 +28,13 @@ public sealed class VoiceLabFittedAudio
         TrimStartFrame = trimStart; TrimEndFrame = trimEnd; IsDerived = derived; Wave = wave;
     }
     public VoiceLabFittedPublication Publish(string projectId, string assetId, string paidRoot, DateTimeOffset createdAt,
-        string requestId, uint seed, double gainDb, CancellationToken ct = default)
+        string requestId, uint seed, double gainDb, double? tiltDbPerOctave = null, CancellationToken ct = default)
     {
         if (!Snapshot.IsValid || string.IsNullOrEmpty(requestId) || !double.IsFinite(gainDb) || !double.IsFinite(OutDuration) || OutDuration <= 0 ||
             VoiceLabAssetNaming.File(projectId, PaidAsset.Id, "wav") != PaidAsset.File) throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
         var asset = IsDerived ? VoiceLabAssetStore.WriteWave(Wave.Pcm, Wave.Rate, Wave.Channels, Wave.Bits, Wave.Floating, projectId, assetId, paidRoot, createdAt, ct) : PaidAsset;
-        var audio = new VoiceLabAudio(asset.Id, TrimStartFrame / (double)Wave.Rate, TrimEndFrame / (double)Wave.Rate, 1, gainDb);
+        // The take's tone match (voice-lab.md §8.7 item 2b) goes on the segment; the asset itself is stored as generated.
+        var audio = new VoiceLabAudio(asset.Id, TrimStartFrame / (double)Wave.Rate, TrimEndFrame / (double)Wave.Rate, 1, gainDb, TiltDbPerOctave: tiltDbPerOctave);
         if ((long)Math.Floor(audio.TrimEnd * Wave.Rate + 0.5) - (long)Math.Floor(audio.TrimStart * Wave.Rate + 0.5) != Fit.Plan.OutputFrames)
             throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
         var chunk = new VoiceLabChunk(Fit.Plan.WindowStartSample, Fit.Plan.WindowEndSample, requestId, seed, PaidAsset.Id, PaidAsset.Sha256, TrimStartFrame, TrimEndFrame);

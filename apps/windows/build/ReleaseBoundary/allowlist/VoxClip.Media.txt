@@ -1558,7 +1558,7 @@ member VoxClip.Media.VoiceLab.OnDeviceTakeTranscriber :: method public .ctor(Vox
 member VoxClip.Media.VoiceLab.OnDeviceTakeTranscriber :: method public WordsAsync(float[],string,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.PreparedVoiceLabAsset :: field private lifetime
 member VoxClip.Media.VoiceLab.PreparedVoiceLabAsset :: field private scratch
-member VoxClip.Media.VoiceLab.PreparedVoiceLabAsset :: method internal .ctor(string,string,string,string,int,int,long,long,long,double,double,string)
+member VoxClip.Media.VoiceLab.PreparedVoiceLabAsset :: method internal .ctor(string,string,string,string,int,int,long,long,long,double,double,string,System.Nullable`1<double>)
 member VoxClip.Media.VoiceLab.PreparedVoiceLabAsset :: method public AttachConsumer(System.Func`1<System.Threading.Tasks.Task>)
 member VoxClip.Media.VoiceLab.PreparedVoiceLabAsset :: method public Dispose()
 member VoxClip.Media.VoiceLab.PreparedVoiceLabAsset :: method public DisposeAsync()
@@ -1573,6 +1573,7 @@ member VoxClip.Media.VoiceLab.PreparedVoiceLabAsset :: method public get_SampleR
 member VoxClip.Media.VoiceLab.PreparedVoiceLabAsset :: method public get_SegmentId()
 member VoxClip.Media.VoiceLab.PreparedVoiceLabAsset :: method public get_Sha256()
 member VoxClip.Media.VoiceLab.PreparedVoiceLabAsset :: method public get_Stretch()
+member VoxClip.Media.VoiceLab.PreparedVoiceLabAsset :: method public get_TiltDbPerOctave()
 member VoxClip.Media.VoiceLab.PreparedVoiceLabAsset :: method public get_TrimEndFrame()
 member VoxClip.Media.VoiceLab.PreparedVoiceLabAsset :: method public get_TrimStartFrame()
 member VoxClip.Media.VoiceLab.VoiceConsentSaveException :: method public .ctor(VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord)
@@ -1870,7 +1871,7 @@ member VoxClip.Media.VoiceLab.VoiceLabFileIdentity :: method public set_Index(ul
 member VoxClip.Media.VoiceLab.VoiceLabFileIdentity :: method public set_Platform(string)
 member VoxClip.Media.VoiceLab.VoiceLabFittedAudio :: method internal .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabAsset,VoxClip.Media.VoiceLab.PreparedVoiceLabAsset,VoxClip.Core.Domain.VoiceLab.VoiceLabFitResult,long,long,long,long,bool,VoxClip.Media.VoiceLab.VoiceLabWavePcm)
 member VoxClip.Media.VoiceLab.VoiceLabFittedAudio :: method internal get_Wave()
-member VoxClip.Media.VoiceLab.VoiceLabFittedAudio :: method public Publish(string,string,string,System.DateTimeOffset,string,uint,double,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.VoiceLabFittedAudio :: method public Publish(string,string,string,System.DateTimeOffset,string,uint,double,System.Nullable`1<double>,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceLabFittedAudio :: method public get_Fit()
 member VoxClip.Media.VoiceLab.VoiceLabFittedAudio :: method public get_IncomingHandleFrames()
 member VoxClip.Media.VoiceLab.VoiceLabFittedAudio :: method public get_IsDerived()
@@ -2153,6 +2154,7 @@ member VoxClip.Media.VoiceLab.VoiceLabTakeBatchRun :: method public ExecuteAsync
 member VoxClip.Media.VoiceLab.VoiceLabTakeBatchRun :: method public ExecuteAsync(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeBatch,int,VoxClip.Core.Domain.VoiceLab.VoiceLabRunDispatch,System.Func`2<System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow>,System.Threading.Tasks.Task>,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceLabTakeBatchRun :: method public PrepareAsync(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput>,System.Nullable`1<System.Guid>,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceLabTakeBatchRun :: method public get_Runs()
+member VoxClip.Media.VoiceLab.VoiceLabTakeRenderer :: method internal TiltedChannels(VoxClip.Media.VoiceLab.VoiceLabWavePcm,System.Nullable`1<double>)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRenderer :: method private Invalid()
 member VoxClip.Media.VoiceLab.VoiceLabTakeRenderer :: method private WritePrivate(string,byte[])
 member VoxClip.Media.VoiceLab.VoiceLabTakeRenderer :: method public Stage(VoxClip.Media.VoiceLab.VoiceLabFittedAudio,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput,VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt,string,System.Threading.CancellationToken)
@@ -2382,17 +2384,23 @@ member VoxClip.Media.VoiceLab.VoiceLabWaveReader :: field private cachedFrames
 member VoxClip.Media.VoiceLab.VoiceLabWaveReader :: field private cachedStart
 member VoxClip.Media.VoiceLab.VoiceLabWaveReader :: field private dataStart
 member VoxClip.Media.VoiceLab.VoiceLabWaveReader :: field private file
+member VoxClip.Media.VoiceLab.VoiceLabWaveReader :: field private filtered
+member VoxClip.Media.VoiceLab.VoiceLabWaveReader :: field private filters
 member VoxClip.Media.VoiceLab.VoiceLabWaveReader :: field private format
 member VoxClip.Media.VoiceLab.VoiceLabWaveReader :: field private lease
 member VoxClip.Media.VoiceLab.VoiceLabWaveReader :: field private owner
+member VoxClip.Media.VoiceLab.VoiceLabWaveReader :: field private toneSections
+member VoxClip.Media.VoiceLab.VoiceLabWaveReader :: field private warming
 member VoxClip.Media.VoiceLab.VoiceLabWaveReader :: method internal .ctor(VoxClip.Media.VoiceLab.PreparedVoiceLabAsset)
 member VoxClip.Media.VoiceLab.VoiceLabWaveReader :: method internal Read(double,double,System.Span`1<float>,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceLabWaveReader :: method internal get_Channels()
 member VoxClip.Media.VoiceLab.VoiceLabWaveReader :: method internal get_Frames()
 member VoxClip.Media.VoiceLab.VoiceLabWaveReader :: method internal get_Rate()
+member VoxClip.Media.VoiceLab.VoiceLabWaveReader :: method private Decode(long,int,float[])
 member VoxClip.Media.VoiceLab.VoiceLabWaveReader :: method private Invalid()
 member VoxClip.Media.VoiceLab.VoiceLabWaveReader :: method private Load(long)
 member VoxClip.Media.VoiceLab.VoiceLabWaveReader :: method private Sample(long,int)
+member VoxClip.Media.VoiceLab.VoiceLabWaveReader :: method private Warm(long)
 member VoxClip.Media.VoiceLab.VoiceLabWaveReader :: method public Dispose()
 member VoxClip.Media.VoiceLab.VoiceLabWindowsFiles :: field internal MoveWriteThrough
 member VoxClip.Media.VoiceLab.VoiceLabWindowsFiles :: method internal Attributes(Microsoft.Win32.SafeHandles.SafeFileHandle)

@@ -81,12 +81,15 @@ public static class VoiceLabTakeRenderer
             var bed = analysis.RoomTone is { EndGainDb: not null } ramp ? (float)Math.Pow(10, ramp.GainDbAt(relative, smoothing ? duration * rate : length) / 20) : toneGain;
             return tone.Length == 0 ? 0 : VoiceLabAudioMixer.RoomToneSample(tone, relative, 0, loop, smoothing) * bed;
         }
+        // The tone match (voice-lab.md §8.7 item 2b) from the asset's first frame, per channel, as the render's mixer runs it.
+        var tilted = TiltedChannels(fitted.Wave, analysis.TiltDbPerOctave);
         float Signal(int relative)
         {
             var frame = fitted.TrimStartFrame + relative;
             if (frame < 0 || frame >= fitted.Wave.Frames) throw Invalid();
             float sample = 0;
-            for (var channel = 0; channel < fitted.Wave.Channels; channel++) sample += (float)fitted.Wave.Sample(frame, channel) / fitted.Wave.Channels;
+            for (var channel = 0; channel < fitted.Wave.Channels; channel++)
+                sample += (tilted is null ? (float)fitted.Wave.Sample(frame, channel) : tilted[channel][frame]) / fitted.Wave.Channels;
             if (!smoothing) return sample * gain + Background(relative);
             var seconds = relative / (double)rate;
             var voice = VoiceLabHardJoin.GeneratedWeight(seconds, duration, incomingPause, outgoingPause);
@@ -202,9 +205,23 @@ public static class VoiceLabTakeRenderer
             if (!mixed.AsSpan().SequenceEqual(measured)) throw Invalid();
             ct.ThrowIfCancellationRequested();
             return new(directory, fitted, new(rate, analysis.Trimmed, measured, lead, lead + length, seams.AsReadOnly(), analysis.GainDb, analysis.RoomTone, fitted.Fit)
-            { MicroPauseIn = incomingPause, MicroPauseOut = outgoingPause, EdgeGain = edgeGain, SeamExcesses = excesses });
+            { MicroPauseIn = incomingPause, MicroPauseOut = outgoingPause, EdgeGain = edgeGain, SeamExcesses = excesses, TiltDbPerOctave = analysis.TiltDbPerOctave });
         }
         catch { Directory.Delete(directory, true); throw; }
+    }
+    /// <summary>Each channel of <paramref name="wave"/> through the tone match from its first frame (Mac <c>tiltedChannels</c>); null without one.</summary>
+    internal static float[][]? TiltedChannels(VoiceLabWavePcm wave, double? tiltDbPerOctave)
+    {
+        var sections = VoiceLabTilt.Sections(tiltDbPerOctave ?? 0, wave.Rate);
+        if (sections.Count == 0) return null;
+        var channels = new float[wave.Channels][];
+        for (var channel = 0; channel < wave.Channels; channel++)
+        {
+            var filter = new VoiceLabTilt.Filter(sections);
+            channels[channel] = new float[wave.Frames];
+            for (var frame = 0; frame < wave.Frames; frame++) channels[channel][frame] = filter.Process((float)wave.Sample(frame, channel));
+        }
+        return channels;
     }
     private static void WritePrivate(string path, byte[] bytes)
     {

@@ -11086,8 +11086,8 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabSubscription :: method public set_Vo
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis :: method private get_EqualityContract()
-member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis :: method public .ctor(int,float[],double,VoxClip.Core.Domain.VoiceLab.VoiceLabRoomTone,VoxClip.Core.Domain.VoiceLab.VoiceLabFitResult)
-member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis :: method public Deconstruct(int&,float[]&,double&,VoxClip.Core.Domain.VoiceLab.VoiceLabRoomTone&,VoxClip.Core.Domain.VoiceLab.VoiceLabFitResult&)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis :: method public .ctor(int,float[],double,VoxClip.Core.Domain.VoiceLab.VoiceLabRoomTone,VoxClip.Core.Domain.VoiceLab.VoiceLabFitResult,System.Nullable`1<double>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis :: method public Deconstruct(int&,float[]&,double&,VoxClip.Core.Domain.VoiceLab.VoiceLabRoomTone&,VoxClip.Core.Domain.VoiceLab.VoiceLabFitResult&,System.Nullable`1<double>&)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis :: method public Equals(object)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis :: method public GetHashCode()
@@ -11096,6 +11096,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis :: method public get_Fi
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis :: method public get_GainDb()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis :: method public get_RoomTone()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis :: method public get_SampleRate()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis :: method public get_TiltDbPerOctave()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis :: method public get_Trimmed()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis)
@@ -11103,6 +11104,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis :: method public set_Fi
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis :: method public set_GainDb(double)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis :: method public set_RoomTone(VoxClip.Core.Domain.VoiceLab.VoiceLabRoomTone)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis :: method public set_SampleRate(int)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis :: method public set_TiltDbPerOctave(System.Nullable`1<double>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAnalysis :: method public set_Trimmed(float[])
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio :: method private PrintMembers(System.Text.StringBuilder)
@@ -11125,6 +11127,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio :: method public get_RoomT
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio :: method public get_SampleRate()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio :: method public get_SeamExcesses()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio :: method public get_Seams()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio :: method public get_TiltDbPerOctave()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio :: method public get_Trimmed()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio)
@@ -11140,6 +11143,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio :: method public set_RoomT
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio :: method public set_SampleRate(int)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio :: method public set_SeamExcesses(System.Collections.Generic.IReadOnlyList`1<double>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio :: method public set_Seams(System.Collections.Generic.IReadOnlyList`1<int>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio :: method public set_TiltDbPerOctave(System.Nullable`1<double>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio :: method public set_Trimmed(float[])
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeBatch :: field public MaximumRunPhrases
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeBatch :: field public MaximumWindows
@@ -11243,18 +11247,20 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public set_Windo
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight :: method private get_EqualityContract()
-member VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight :: method public .ctor(double,VoxClip.Core.Domain.VoiceLab.VoiceLabRoomTone)
-member VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight :: method public Deconstruct(double&,VoxClip.Core.Domain.VoiceLab.VoiceLabRoomTone&)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight :: method public .ctor(double,VoxClip.Core.Domain.VoiceLab.VoiceLabRoomTone,VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight :: method public Deconstruct(double&,VoxClip.Core.Domain.VoiceLab.VoiceLabRoomTone&,VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands&)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight :: method public Equals(object)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight :: method public GetHashCode()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight :: method public ToString()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight :: method public get_RoomTone()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight :: method public get_SourceLevel()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight :: method public get_SourceTone()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight,VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight,VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight :: method public set_RoomTone(VoxClip.Core.Domain.VoiceLab.VoiceLabRoomTone)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight :: method public set_SourceLevel(double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight :: method public set_SourceTone(VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeProcessing :: field public MaximumQaSeconds
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeProcessing :: method private Frames(double,int)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeProcessing :: method private SourceFrames(double,int)
@@ -11263,7 +11269,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeProcessing :: method public Enco
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeProcessing :: method public Envelope(float[],int)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeProcessing :: method public KeepsBridgeWords(string,System.ValueTuple`2<System.Collections.Generic.IReadOnlyList`1<string>,System.Collections.Generic.IReadOnlyList`1<string>>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeProcessing :: method public Preflight(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput)
-member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeProcessing :: method public Process(VoxClip.Core.Domain.VoiceLab.VoiceLabAudioResult,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput,VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeProcessing :: method public Process(VoxClip.Core.Domain.VoiceLab.VoiceLabAudioResult,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput,VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight,bool)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaFailure :: field public Clipping
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaFailure :: field public InsufficientGeneratedSpeech
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaFailure :: field public Loudness
@@ -11491,6 +11497,65 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabText :: method public set_AudioTags(
 member VoxClip.Core.Domain.VoiceLab.VoiceLabText :: method public set_New(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabText :: method public set_Original(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTextLength :: method public Length(string)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt :: field public MaximumDbPerOctave
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt :: field public MinimumBands
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt :: field public PivotHz
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt :: field public StepDbPerOctave
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt :: field public VoicedRms
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt :: method internal Fft(double[],double[])
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt :: method private .cctor()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt :: method public Apply(System.ReadOnlySpan`1<float>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Section>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt :: method public Bins(int,int,int)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt :: method public FrameSize(int)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt :: method public Level(VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands,int)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt :: method public Magnitude(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Section>,double,int)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt :: method public Match(VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands,VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt :: method public Measure(System.Collections.Generic.IReadOnlyList`1<System.ReadOnlyMemory`1<float>>,int)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt :: method public NeighbourhoodBands(VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt,int,long,long)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt :: method public Sections(double,int)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt :: method public Slope(VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands,VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt :: method public get_BandIndices()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt :: method public get_ShelfHz()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands :: method private get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands :: method public .ctor(int,int,System.Collections.Generic.IReadOnlyList`1<System.Nullable`1<double>>,int)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands :: method public Deconstruct(int&,int&,System.Collections.Generic.IReadOnlyList`1<System.Nullable`1<double>>&,int&)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands :: method public get_FrameSize()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands :: method public get_Frames()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands :: method public get_Power()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands :: method public get_SampleRate()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands,VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands,VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands :: method public set_FrameSize(int)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands :: method public set_Frames(int)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands :: method public set_Power(System.Collections.Generic.IReadOnlyList`1<System.Nullable`1<double>>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands :: method public set_SampleRate(int)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Filter :: field private input
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Filter :: field private output
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Filter :: method public .ctor(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Section>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Filter :: method public Process(float)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Filter :: method public Step(double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Filter :: method public get_Sections()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Section :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Section :: method public .ctor(double,double,double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Section :: method public Deconstruct(double&,double&,double&)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Section :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Section)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Section :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Section :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Section :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Section :: method public get_A1()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Section :: method public get_B0()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Section :: method public get_B1()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Section :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Section,VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Section)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Section :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Section,VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Section)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Section :: method public set_A1(double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Section :: method public set_B0(double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Section :: method public set_B1(double)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTimingFailure :: method private Code(System.Nullable`1<int>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTimingFailure :: method public .ctor(string,System.Nullable`1<int>,System.Nullable`1<int>,System.Nullable`1<int>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTimingFailure :: method public get_Check()
@@ -16065,6 +16130,10 @@ type VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+ShortSpeechCheck
 type VoxClip.Core.Domain.VoiceLab.VoiceLabTakeVoiceCheck+WaitingCheck
 type VoxClip.Core.Domain.VoiceLab.VoiceLabText
 type VoxClip.Core.Domain.VoiceLab.VoiceLabTextLength
+type VoxClip.Core.Domain.VoiceLab.VoiceLabTilt
+type VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Bands
+type VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Filter
+type VoxClip.Core.Domain.VoiceLab.VoiceLabTilt+Section
 type VoxClip.Core.Domain.VoiceLab.VoiceLabTimingFailure
 type VoxClip.Core.Domain.VoiceLab.VoiceLabVideoAsset
 type VoxClip.Core.Domain.VoiceLab.VoiceLabVideoCut
