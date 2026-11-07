@@ -1543,6 +1543,11 @@ struct EditorRenderSnapshot {
         guard stageShowsPlayer, let previewError, !previewError.isEmpty else { return nil }
         return previewError
     }
+    /// The stage's player layer held a ready item without showing a frame and was re-attached once (design.md §5.4.4 g):
+    /// logged so a black stage with no compositor reason is told apart from failed frames.
+    func previewDisplayStalled() async {
+        await app.log.write(LogEntry(level: .error, category: "preview", message: "display stalled, layer reattached"))
+    }
     /// The preview's compositor failed a frame or left an overlay out (design.md §5.4.4 g): logged by its fixed tag,
     /// never user text, and shown on the stage. The item reports once, so this runs once per load.
     func previewFailed(_ reason: PreviewFailureReason) async {

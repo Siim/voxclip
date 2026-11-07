@@ -209,3 +209,51 @@ import VoxClipMedia
     }
 }
 #endif
+
+/// The display side of a black stage (design.md §5.4.4 g): a ready item whose layer shows no frame for four ticks in a
+/// window is re-attached once per item; anything else resets the count.
+@Suite struct PlayerDisplayWatchTests {
+    final class Item {}
+    @Test func aReadyItemWhoseLayerShowsNothingIsReattachedOncePerItem() {
+        var watch = PlayerDisplayWatch()
+        let first = Item(), second = Item()
+        func tick(_ item: Item?, ready: Bool = true, layer: Bool = false, window: Bool = true) -> Bool {
+            watch.tick(item: item, itemReady: ready, layerReady: layer, inWindow: window)
+        }
+        var answers: [Bool] = []
+        for _ in 0..<4 { answers.append(tick(first)) }
+        #expect(answers == [false, false, false, true])
+        // Once per item: the same item never asks again.
+        answers = []
+        for _ in 0..<8 { answers.append(tick(first)) }
+        #expect(!answers.contains(true))
+        // A new item gets its own chance.
+        answers = []
+        for _ in 0..<4 { answers.append(tick(second)) }
+        #expect(answers == [false, false, false, true])
+        // The handled item is held weakly: once it is gone, a new item is never mistaken for it.
+        var fresh = PlayerDisplayWatch()
+        do {
+            let gone = Item()
+            for _ in 0..<4 { _ = fresh.tick(item: gone, itemReady: true, layerReady: false, inWindow: true) }
+        }
+        #expect(fresh.handled == nil)
+    }
+
+    @Test func aShownFrameAnItemNotReadyOrNoWindowResetsTheCount() {
+        let item = Item()
+        for reset in [(true, true, true), (false, false, true), (true, false, false)] {
+            var watch = PlayerDisplayWatch()
+            for _ in 0..<3 { _ = watch.tick(item: item, itemReady: true, layerReady: false, inWindow: true) }
+            let atReset = watch.tick(item: item, itemReady: reset.0, layerReady: reset.1, inWindow: reset.2)
+            #expect(!atReset)
+            #expect(watch.stalledTicks == 0)
+            let after = watch.tick(item: item, itemReady: true, layerReady: false, inWindow: true)
+            #expect(!after)
+        }
+        var empty = PlayerDisplayWatch()
+        var answers: [Bool] = []
+        for _ in 0..<6 { answers.append(empty.tick(item: nil, itemReady: true, layerReady: false, inWindow: true)) }
+        #expect(!answers.contains(true))
+    }
+}

@@ -5,15 +5,66 @@ import VoxClipMedia
 
 @MainActor struct PlayerSurface: NSViewRepresentable {
     let player: AVPlayer
-    func makeNSView(context: Context) -> PlayerLayerView { let view = PlayerLayerView(); view.playerLayer.player = player; return view }
-    func updateNSView(_ view: PlayerLayerView, context: Context) { view.playerLayer.player = player }
+    /// The layer held a ready item without showing a frame and was re-attached (design.md §5.4.4 g).
+    var onDisplayStall: (() -> Void)?
+    func makeNSView(context: Context) -> PlayerLayerView {
+        let view = PlayerLayerView(); view.playerLayer.player = player; view.onDisplayStall = onDisplayStall; return view
+    }
+    func updateNSView(_ view: PlayerLayerView, context: Context) {
+        if view.playerLayer.player !== player { view.playerLayer.player = player }
+        view.onDisplayStall = onDisplayStall
+    }
+}
+
+/// The display side of a black stage: the player's item is ready but its layer has shown no frame for `limit` ticks
+/// in a window. Answers true once per item, when the layer should be re-attached and the stall logged.
+struct PlayerDisplayWatch {
+    static let limit = 4
+    private(set) var stalledTicks = 0
+    /// Held weakly: a later item at a freed item's address still gets its own chance.
+    private(set) weak var handled: AnyObject?
+    /// The item being counted: a new item starts its own count.
+    private weak var counting: AnyObject?
+    mutating func tick(item: AnyObject?, itemReady: Bool, layerReady: Bool, inWindow: Bool) -> Bool {
+        guard inWindow, let item, itemReady, !layerReady else { stalledTicks = 0; return false }
+        if counting !== item { counting = item; stalledTicks = 0 }
+        stalledTicks += 1
+        guard stalledTicks >= Self.limit, handled !== item else { return false }
+        handled = item; stalledTicks = 0
+        return true
+    }
 }
 
 @MainActor final class PlayerLayerView: NSView {
     let playerLayer = AVPlayerLayer()
+    var onDisplayStall: (() -> Void)?
+    private var watch = PlayerDisplayWatch()
+    private var watchTask: Task<Void, Never>?
     override init(frame: NSRect) { super.init(frame: frame); wantsLayer = true; layer?.masksToBounds = true; layer?.addSublayer(playerLayer); playerLayer.videoGravity = .resizeAspectFill }
     required init?(coder: NSCoder) { nil }
     override func layout() { super.layout(); playerLayer.frame = bounds }
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        watchTask?.cancel(); watchTask = nil
+        guard window != nil else { return }
+        // Once a second while on screen: a ready item whose layer shows nothing is re-attached once and reported.
+        watchTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, !Task.isCancelled else { return }
+                self.checkDisplay()
+            }
+        }
+    }
+    func checkDisplay() {
+        let item = playerLayer.player?.currentItem
+        guard watch.tick(item: item, itemReady: item?.status == .readyToPlay,
+                         layerReady: playerLayer.isReadyForDisplay, inWindow: window != nil && !isHiddenOrHasHiddenAncestor && bounds.width > 1 && bounds.height > 1)
+        else { return }
+        let player = playerLayer.player
+        playerLayer.player = nil; playerLayer.player = player
+        onDisplayStall?()
+    }
 }
 
 /// The one tag on the stage (impl-plan V4): "AI voice" while the frame plays AI-voiced
@@ -144,7 +195,9 @@ enum ViewerTag: Equatable {
     private var stageView: some View {
         ZStack {
             Rectangle().fill(DesignValues.color("stage"))
-            if !standIn, let native = model.nativePreview { PlayerSurface(player: native.player) } else { ViewerStandIn(model: model) }
+            if !standIn, let native = model.nativePreview {
+                PlayerSurface(player: native.player, onDisplayStall: { Task { await model.previewDisplayStalled() } })
+            } else { ViewerStandIn(model: model) }
             if model.canMoveCaptions, let style = model.app.styles.first(where: { $0.id == model.activeCaptions.styleId }), style.position.userDraggable {
                 CaptionPositionOverlay(model: model, style: style, dragging: $captionDragging)
             }
