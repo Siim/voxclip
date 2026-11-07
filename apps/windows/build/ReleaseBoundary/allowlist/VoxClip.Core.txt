@@ -5957,20 +5957,59 @@ member VoxClip.Core.Domain.Effects.ClipHookTitle :: method public Timeline(VoxCl
 member VoxClip.Core.Domain.Loudness.ExportLoudness :: field public Off
 member VoxClip.Core.Domain.Loudness.ExportLoudness :: field public Social
 member VoxClip.Core.Domain.Loudness.ExportLoudness :: field public value__
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: field internal DetectionTaps
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: field private PhaseGain
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: field private attack
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: field private gain
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: field private gained
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: field private inputs
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: field private lastOvershoot
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: field private lookahead
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: field private magnitudes
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: field private overshoots
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: field private reduction
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: field private releaseFactor
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: field private shape
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: field private silence
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: field private threshold
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: field public LookaheadSeconds
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: field public ReleaseFloorDb
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: field public ReleaseSeconds
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: method private .cctor()
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: method private InterpolatedPeak(long)
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: method private Push(System.ReadOnlySpan`1<float>,System.Span`1<float>)
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: method private set_Frames(long)
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: method private set_LimitedFrames(long)
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: method private set_MaximumReductionDb(double)
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: method public .ctor(double,bool,int,int)
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: method public Finish(System.Span`1<float>)
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: method public Process(System.ReadOnlySpan`1<float>,System.Span`1<float>)
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: method public get_Channels()
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: method public get_Frames()
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: method public get_GainDb()
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: method public get_Latency()
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: method public get_LimitedFrames()
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: method public get_LimitedPercent()
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: method public get_Limiting()
+member VoxClip.Core.Domain.Loudness.SocialLimiter :: method public get_MaximumReductionDb()
 member VoxClip.Core.Domain.Loudness.SocialLoudness :: field internal AbsoluteGateLufs
 member VoxClip.Core.Domain.Loudness.SocialLoudness :: field internal BlockSteps
 member VoxClip.Core.Domain.Loudness.SocialLoudness :: field internal RelativeGateLu
 member VoxClip.Core.Domain.Loudness.SocialLoudness :: field internal StepSeconds
 member VoxClip.Core.Domain.Loudness.SocialLoudness :: field public CeilingDbtp
+member VoxClip.Core.Domain.Loudness.SocialLoudness :: field public LandingToleranceLu
 member VoxClip.Core.Domain.Loudness.SocialLoudness :: field public MaximumBoostDb
 member VoxClip.Core.Domain.Loudness.SocialLoudness :: field public MaximumCutDb
+member VoxClip.Core.Domain.Loudness.SocialLoudness :: field public MaximumReductionDb
 member VoxClip.Core.Domain.Loudness.SocialLoudness :: field public TargetLufs
+member VoxClip.Core.Domain.Loudness.SocialLoudness :: method internal Bounded(double,double)
 member VoxClip.Core.Domain.Loudness.SocialLoudness :: method public Decide(System.Nullable`1<double>,System.Nullable`1<double>)
+member VoxClip.Core.Domain.Loudness.SocialLoudness :: method public Landing(VoxClip.Core.Domain.Loudness.SocialLoudnessDecision,System.Nullable`1<double>,System.Collections.Generic.IReadOnlyList`1<System.ValueTuple`2<double,System.Nullable`1<double>>>)
 member VoxClip.Core.Domain.Loudness.SocialLoudness :: method public LinearGain(double)
-member VoxClip.Core.Domain.Loudness.SocialLoudness :: method public Report(VoxClip.Core.Domain.Loudness.SocialLoudnessMeasurement)
+member VoxClip.Core.Domain.Loudness.SocialLoudness :: method public Report(VoxClip.Core.Domain.Loudness.SocialLoudnessMeasurement,VoxClip.Core.Domain.Loudness.SocialLoudnessDecision,VoxClip.Core.Domain.Loudness.SocialLimiter,VoxClip.Core.Domain.Loudness.SocialLoudnessMeasurement)
 member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method private PrintMembers(System.Text.StringBuilder)
-member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method public .ctor(double,VoxClip.Core.Domain.Loudness.SocialLoudnessLimit)
-member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method public Deconstruct(double&,VoxClip.Core.Domain.Loudness.SocialLoudnessLimit&)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method public .ctor(double,VoxClip.Core.Domain.Loudness.SocialLoudnessLimit,bool)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method public Deconstruct(double&,VoxClip.Core.Domain.Loudness.SocialLoudnessLimit&,bool&)
 member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method public Equals(VoxClip.Core.Domain.Loudness.SocialLoudnessDecision)
 member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method public Equals(object)
 member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method public GetHashCode()
@@ -5978,14 +6017,31 @@ member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method public ToSt
 member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method public get_Capped()
 member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method public get_GainDb()
 member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method public get_Limit()
+member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method public get_Limiting()
 member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method public op_Equality(VoxClip.Core.Domain.Loudness.SocialLoudnessDecision,VoxClip.Core.Domain.Loudness.SocialLoudnessDecision)
 member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method public op_Inequality(VoxClip.Core.Domain.Loudness.SocialLoudnessDecision,VoxClip.Core.Domain.Loudness.SocialLoudnessDecision)
 member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method public set_GainDb(double)
 member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method public set_Limit(VoxClip.Core.Domain.Loudness.SocialLoudnessLimit)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method public set_Limiting(bool)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessLanding :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessLanding :: method public .ctor(bool,double,VoxClip.Core.Domain.Loudness.SocialLoudnessDecision)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessLanding :: method public Deconstruct(bool&,double&,VoxClip.Core.Domain.Loudness.SocialLoudnessDecision&)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessLanding :: method public Equals(VoxClip.Core.Domain.Loudness.SocialLoudnessLanding)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessLanding :: method public Equals(object)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessLanding :: method public GetHashCode()
+member VoxClip.Core.Domain.Loudness.SocialLoudnessLanding :: method public ToString()
+member VoxClip.Core.Domain.Loudness.SocialLoudnessLanding :: method public get_Decision()
+member VoxClip.Core.Domain.Loudness.SocialLoudnessLanding :: method public get_GainDb()
+member VoxClip.Core.Domain.Loudness.SocialLoudnessLanding :: method public get_Settled()
+member VoxClip.Core.Domain.Loudness.SocialLoudnessLanding :: method public op_Equality(VoxClip.Core.Domain.Loudness.SocialLoudnessLanding,VoxClip.Core.Domain.Loudness.SocialLoudnessLanding)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessLanding :: method public op_Inequality(VoxClip.Core.Domain.Loudness.SocialLoudnessLanding,VoxClip.Core.Domain.Loudness.SocialLoudnessLanding)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessLanding :: method public set_Decision(VoxClip.Core.Domain.Loudness.SocialLoudnessDecision)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessLanding :: method public set_GainDb(double)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessLanding :: method public set_Settled(bool)
 member VoxClip.Core.Domain.Loudness.SocialLoudnessLimit :: field public GainLimit
 member VoxClip.Core.Domain.Loudness.SocialLoudnessLimit :: field public None
+member VoxClip.Core.Domain.Loudness.SocialLoudnessLimit :: field public ReductionCap
 member VoxClip.Core.Domain.Loudness.SocialLoudnessLimit :: field public Silent
-member VoxClip.Core.Domain.Loudness.SocialLoudnessLimit :: field public TruePeak
 member VoxClip.Core.Domain.Loudness.SocialLoudnessLimit :: field public value__
 member VoxClip.Core.Domain.Loudness.SocialLoudnessMeasurement :: method internal .ctor(double[],int,double)
 member VoxClip.Core.Domain.Loudness.SocialLoudnessMeasurement :: method private Sum(double[])
@@ -6017,8 +6073,8 @@ member VoxClip.Core.Domain.Loudness.SocialLoudnessMeter :: method public get_Sam
 member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method private .ctor(VoxClip.Core.Domain.Loudness.SocialLoudnessReport)
 member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method private get_EqualityContract()
-member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public .ctor(System.Nullable`1<double>,double,System.Nullable`1<double>,System.Nullable`1<double>,bool)
-member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public Deconstruct(System.Nullable`1<double>&,double&,System.Nullable`1<double>&,System.Nullable`1<double>&,bool&)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public .ctor(System.Nullable`1<double>,double,System.Nullable`1<double>,System.Nullable`1<double>,bool,double,double)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public Deconstruct(System.Nullable`1<double>&,double&,System.Nullable`1<double>&,System.Nullable`1<double>&,bool&,double&,double&)
 member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public Equals(VoxClip.Core.Domain.Loudness.SocialLoudnessReport)
 member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public Equals(object)
 member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public GetHashCode()
@@ -6026,6 +6082,8 @@ member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public LogLin
 member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public ToString()
 member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public get_Capped()
 member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public get_GainDb()
+member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public get_LimitedPercent()
+member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public get_LimiterMaxReductionDb()
 member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public get_MeasuredLufs()
 member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public get_OutputLufs()
 member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public get_TruePeakDbtp()
@@ -6033,6 +6091,8 @@ member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public op_Equ
 member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public op_Inequality(VoxClip.Core.Domain.Loudness.SocialLoudnessReport,VoxClip.Core.Domain.Loudness.SocialLoudnessReport)
 member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public set_Capped(bool)
 member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public set_GainDb(double)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public set_LimitedPercent(double)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public set_LimiterMaxReductionDb(double)
 member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public set_MeasuredLufs(System.Nullable`1<double>)
 member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public set_OutputLufs(System.Nullable`1<double>)
 member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public set_TruePeakDbtp(System.Nullable`1<double>)
@@ -16552,8 +16612,10 @@ type VoxClip.Core.Domain.Effects.ClipEffectsRenderInput
 type VoxClip.Core.Domain.Effects.ClipEffectsRendering
 type VoxClip.Core.Domain.Effects.ClipHookTitle
 type VoxClip.Core.Domain.Loudness.ExportLoudness
+type VoxClip.Core.Domain.Loudness.SocialLimiter
 type VoxClip.Core.Domain.Loudness.SocialLoudness
 type VoxClip.Core.Domain.Loudness.SocialLoudnessDecision
+type VoxClip.Core.Domain.Loudness.SocialLoudnessLanding
 type VoxClip.Core.Domain.Loudness.SocialLoudnessLimit
 type VoxClip.Core.Domain.Loudness.SocialLoudnessMeasurement
 type VoxClip.Core.Domain.Loudness.SocialLoudnessMeter
