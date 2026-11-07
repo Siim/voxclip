@@ -116,7 +116,27 @@ internal static class ProjectValidation
         }
         else
         {
-            Object(voice, projectVersion >= 3 ? "assets segments cleanAudio voices videoAssets" : "assets segments", "speakingRateSamples");
+            Object(voice, projectVersion >= 3 ? "assets segments cleanAudio voices videoAssets" : "assets segments",
+                projectVersion >= 3 ? "speakingRateSamples wholeClipRevoices" : "speakingRateSamples");
+            // A whole-clip revoice (ADR-R46): every key present, usd and match may be null; the rules are WholeClipRevoice.Validate's.
+            if (voice.TryGetProperty("wholeClipRevoices", out var revoices))
+                Array(revoices, revoice =>
+                {
+                    Object(revoice, "id clipId segmentIds script consentRecordId videoRetime lipsyncModel usd match createdAt");
+                    String(revoice.GetProperty("id"), Id); String(revoice.GetProperty("clipId"), Id);
+                    Array(revoice.GetProperty("segmentIds"), segment => Text(segment, 1, int.MaxValue));
+                    Text(revoice.GetProperty("script"), 1, int.MaxValue); Text(revoice.GetProperty("consentRecordId"), 1, int.MaxValue);
+                    Number(revoice.GetProperty("videoRetime"), double.MinValue);
+                    Choice(revoice.GetProperty("lipsyncModel"), "fal-ai/sync-lipsync/v2:lipsync-2", "fal-ai/sync-lipsync/v3");
+                    Nullable(revoice.GetProperty("usd"), usd => Number(usd, 0, double.MaxValue));
+                    Nullable(revoice.GetProperty("match"), match =>
+                    {
+                        Object(match, "take anchorBaseline realSpeech"); Number(match.GetProperty("take"), -1, 1);
+                        Nullable(match.GetProperty("anchorBaseline"), score => Number(score, -1, 1));
+                        Nullable(match.GetProperty("realSpeech"), score => Number(score, -1, 1));
+                    });
+                    Timestamp(revoice.GetProperty("createdAt"));
+                });
             Array(voice.GetProperty("assets"), asset => Object(asset, "id kind file sha256 durationSeconds sampleRate createdAt"));
             Array(voice.GetProperty("segments"), segment =>
             {

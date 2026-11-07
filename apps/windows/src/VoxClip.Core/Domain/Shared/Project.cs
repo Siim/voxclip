@@ -126,6 +126,9 @@ public sealed record VoiceLabPlaceholder(IReadOnlyList<VoiceLabSegment> Segments
     /// <summary>Optional per-model measured/estimated speaking-rate ratios (at most ten each); absent in older projects.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyDictionary<string, IReadOnlyList<VoiceLabRateSample>>? SpeakingRateSamples { get; init; }
+    /// <summary>Whole-clip revoices in use (ADR-R46); schema v3 and later, omitted when there are none.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<WholeClipRevoiceRecord>? WholeClipRevoices { get; init; }
     /// <summary>Explicit clean-audio policy for schema v3; absent in older projects.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public VoiceLabCleanAudio? CleanAudio { get; init; }
     /// <summary>Owned voice references and consent identities, without recordings or embeddings.</summary>
