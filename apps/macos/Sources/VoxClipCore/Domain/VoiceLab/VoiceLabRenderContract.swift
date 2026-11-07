@@ -205,7 +205,9 @@ public enum VoiceLabRenderContract {
         let kinds = Set(selected.flatMap { item -> [String] in
             let kind = project.voiceLab.segments.first(where: { $0.id == item.segmentId })!.kind
             if kind == .recorded { return ["lipsync"] }
-            return item.recipe.video.mode == .lipsync ? [kind.rawValue, "lipsync"] : [kind.rawValue]
+            // A whole-clip revoice (ADR-R46): the voice and the lip movement are both generated.
+            let revoice = WholeClipRevoice.record(holding: item.segmentId, in: project) != nil ? [WholeClipRevoice.disclosureKind] : []
+            return (item.recipe.video.mode == .lipsync ? [kind.rawValue, "lipsync"] : [kind.rawValue]) + revoice
         }).sorted()
         let aiSeconds = Double(selected.reduce(Int64(0)) { $0 + $1.piece.outputEndSample - $1.piece.outputStartSample }) / plan.sampleRate
         let voiceSeconds = Double(selected.filter { item in project.voiceLab.segments.first(where: { $0.id == item.segmentId })?.kind == .voiceChanger }
@@ -230,6 +232,10 @@ public enum VoiceLabRenderContract {
     static func disclosurePostText(kinds: [String], ownVoice own: Bool, language: String?) -> String? {
         let estonian = language?.split(separator: "-", omittingEmptySubsequences: false).first?.lowercased() == "et"
         var lines: [String] = []
+        // A whole-clip revoice says it once, in place of the per-phrase lines (ADR-R46).
+        if kinds.contains(WholeClipRevoice.disclosureKind) {
+            return estonian ? "Hääl ja huulte liikumine on loodud tehisintellektiga." : WholeClipRevoice.disclosureLine
+        }
         if kinds.contains("tts") { lines.append(estonian ? "Mõned sõnad selles videos on loetud minu enda hääle tehisintellekti-koopiaga." : "Some words in this video were re-voiced with an AI copy of my own voice.") }
         if kinds.contains("voiceChanger") {
             lines.append(estonian ? (own ? "Selle video hääl on tehisintellektiga muudetud minu enda hääle koopiaks." : "Selle video häält on muudetud tehisintellektiga.") : (own ? "The voice in this video was converted with AI into a copy of my own voice." : "The voice in this video was changed with AI."))

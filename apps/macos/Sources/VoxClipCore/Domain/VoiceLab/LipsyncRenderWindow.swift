@@ -60,10 +60,12 @@ extension VoiceLabVideoRecipe {
         return base
     }
 
-    public func addingLipsync(assetID: String, requestID: String, sourceWindow: LipsyncWindow, syncMode: SyncMode) -> VoiceLabVideoRecipe {
+    /// `model` is the fal model id the job ran: Rewrite's phrases use sync-3, a whole-clip revoice lipsync-2 or sync-3.
+    public func addingLipsync(assetID: String, requestID: String, sourceWindow: LipsyncWindow, syncMode: SyncMode,
+                              model: String = WholeClipRevoice.Lipsync.sync3.rawValue) -> VoiceLabVideoRecipe {
         var recipe = self
         recipe.mode = .lipsync; recipe.assetId = assetID; recipe.provider = "fal"
-        recipe.model = "fal-ai/sync-lipsync/v3"; recipe.requestId = requestID
+        recipe.model = model; recipe.requestId = requestID
         recipe.windowStartSample = sourceWindow.startSample; recipe.windowEndSample = sourceWindow.endSample
         recipe.syncMode = syncMode.rawValue
         return recipe

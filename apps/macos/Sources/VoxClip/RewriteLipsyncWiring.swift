@@ -65,14 +65,15 @@ extension RewriteSession {
             guard let spent = await VoiceLabSpendLedger(locations: app.locations).total(provider: "fal", at: Date()),
                   spent.unknownCount == 0 else { throw ClipTakePlan.Failure.unknownSpend }
             return VoiceLabMonthlyCap(limit: limit, spent: spent.usd)
-        }, run: { request, window, recordID, progress in
+        }, run: { request, window, recordID, model, progress in
             try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             let provider = FalLipsyncProvider(keys: app.secrets, logger: app.log, spend: VoiceLabSpendLedger(locations: app.locations))
             #if DEBUG
             await provider.setDiagnostic(LipsyncDiagnostic())
             #endif
             return try await LipsyncRun(provider: provider, consentStore: VoiceConsentStore(locations: app.locations),
-                paidRoot: paid, scratchRoot: scratch).execute(request: request, window: window, recordID: recordID, onProgress: progress)
+                paidRoot: paid, scratchRoot: scratch).execute(request: request, window: window, recordID: recordID,
+                    model: model.lipsyncModel, onProgress: progress)
         }, changed: { [weak self] in
             await app.refreshMonthlySpend()
             self?.showProposal()

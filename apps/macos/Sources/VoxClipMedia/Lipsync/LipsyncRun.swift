@@ -11,14 +11,14 @@ public struct LipsyncRun: Sendable {
         self.provider = provider; self.consentStore = consentStore; self.paidRoot = paidRoot; self.scratchRoot = scratchRoot
     }
 
-    public func execute(request: RenderRequest, window: LipsyncRenderWindow, recordID: String,
+    public func execute(request: RenderRequest, window: LipsyncRenderWindow, recordID: String, model: LipsyncModel? = nil,
                         onProgress: @escaping @Sendable (Double?) async -> Void = { _ in }) async throws -> ImportedLipsyncResult {
         guard let projectID = request.voiceLab?.project.id else { throw LipsyncError.invalidInput }
         let prepared = try await LipsyncWindowPreparation.prepare(request: request, window: window, scratchRoot: scratchRoot)
         try Task.checkCancellation()
         let (quote, approval) = try await provider.prepareApprovedUpload(video: prepared.video, audio: prepared.audio,
             options: LipsyncOptions(syncMode: window.syncMode), fps: prepared.fps, consentStore: consentStore,
-            recordID: recordID, acceptsPaidJob: true, acceptsMediaTransfer: true)
+            recordID: recordID, acceptsPaidJob: true, acceptsMediaTransfer: true, model: model)
         let job = try await provider.submit(quote, approval: approval)
         do {
             try LipsyncReceiptStore.record(job: job, quote: quote, projectID: projectID, paidRoot: paidRoot)

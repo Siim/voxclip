@@ -1424,7 +1424,7 @@ extension ClipTakePlan {
         })
     }
 
-    func makeLipsyncOffers() async throws -> ([Int: RewriteLipsyncSession.Offer], RewriteLipsyncSession.Offer?) {
+    func makeLipsyncOffers(model: WholeClipRevoice.Lipsync = .sync3) async throws -> ([Int: RewriteLipsyncSession.Offer], RewriteLipsyncSession.Offer?) {
         // A running preparation finishes first, so its render serves the offers instead of a second one being prepared.
         if let running = videoPreparation { await running.value }
         guard stillCurrent, !generating, !preparing, let prepareDurationRender else { throw Failure.stale }
@@ -1455,8 +1455,7 @@ extension ClipTakePlan {
         let catalog = try VoiceLabPriceCatalog.load(shared: SharedResources.locate())
         func offer(_ windows: [LipsyncRenderWindow]) throws -> RewriteLipsyncSession.Offer {
             let estimates = try windows.map {
-                try VoiceLabPricing.estimate(operation: .falLipsync(endpoint: "fal-ai/sync-lipsync/v3"), model: nil,
-                    units: $0.seconds(sampleRate: plan.sampleRate), catalog: catalog)
+                try WholeClipRevoice.lipsyncPrice(videoSeconds: $0.seconds(sampleRate: plan.sampleRate), lipsync: model, catalog: catalog)
             }
             guard estimates.allSatisfy({ $0.usd != nil }) else { throw Failure.unknownSpend }
             let estimate = CostEstimate(provider: "fal", operation: "lipsync", units: estimates.reduce(0) { $0 + $1.units },
@@ -1469,7 +1468,7 @@ extension ClipTakePlan {
                 recordID: recordID, dependencies: dependencies, isCurrent: { [weak self] in
                     guard let self, stillCurrent else { return false }
                     return lipsyncBindings.filter { dependencies.contains($0.key) } == bound
-                })
+                }, model: model)
         }
         var individual: [Int: RewriteLipsyncSession.Offer] = [:]
         for window in windows {
@@ -1488,7 +1487,7 @@ extension ClipTakePlan {
             guard var recipe = segments[index].candidates[selected].recipe else { throw Failure.stale }
             recipe.video = recipe.video.addingLipsync(assetID: applied.result.asset.id,
                 requestID: applied.result.provenance.requestID, sourceWindow: applied.window.source,
-                syncMode: applied.result.provenance.syncMode)
+                syncMode: applied.result.provenance.syncMode, model: applied.result.provenance.model)
             segments[index].candidates[selected].recipe = recipe
             if !videoAssets.contains(where: { $0.id == applied.result.asset.id }) { videoAssets.append(applied.result.asset) }
         }

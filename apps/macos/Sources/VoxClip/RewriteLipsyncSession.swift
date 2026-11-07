@@ -12,6 +12,8 @@ import VoxClipMedia
         let recordID: String
         let dependencies: Set<Int>
         let isCurrent: @MainActor () -> Bool
+        /// Rewrite's phrases use sync-3; a whole-clip revoice lipsync-2 or the sync-3 upgrade (ADR-R46).
+        var model: WholeClipRevoice.Lipsync = .sync3
         var phraseIDs: [Int] { windows.flatMap { $0.source.phraseIDs } }
         var price: String { estimate.usd.map(VoiceLabCostPresentation.format) ?? "Price unavailable" }
     }
@@ -38,7 +40,7 @@ import VoxClipMedia
         let hasConsent: @MainActor () -> Bool
         let acceptConsent: @MainActor () -> Void
         let cap: @MainActor () async throws -> VoiceLabMonthlyCap?
-        let run: @MainActor (RenderRequest, LipsyncRenderWindow, String, @escaping @Sendable (Double?) async -> Void) async throws -> ImportedLipsyncResult
+        let run: @MainActor (RenderRequest, LipsyncRenderWindow, String, WholeClipRevoice.Lipsync, @escaping @Sendable (Double?) async -> Void) async throws -> ImportedLipsyncResult
         let changed: @MainActor () async -> Void
     }
 
@@ -131,7 +133,7 @@ import VoxClipMedia
                 for window in offer.windows {
                     try Task.checkCancellation()
                     guard offer.isCurrent(), !invalidated.contains(offer.id) else { throw CancellationError() }
-                    let run = Task { try await backend.run(offer.request, window, offer.recordID) { [weak self] progress in
+                    let run = Task { try await backend.run(offer.request, window, offer.recordID, offer.model) { [weak self] progress in
                         await self?.progress(progress, phrases: window.source.phraseIDs)
                     } }
                     currentRun = run
@@ -258,7 +260,7 @@ import VoxClipMedia
         monthlyCap = state == "lipsync-first-use" ? VoiceLabMonthlyCap(limit: Decimal(string: "0.1")!, spent: 0) : nil
         let key = keyAvailable, consent = consentAccepted, cap = monthlyCap
         backend = .init(offers: { (individual, all) }, hasKey: { key }, hasConsent: { consent }, acceptConsent: {},
-            cap: { cap }, run: { _, _, _, _ in throw CancellationError() }, changed: {})
+            cap: { cap }, run: { _, _, _, _, _ in throw CancellationError() }, changed: {})
         usingTakes = state == "lipsync-waiting"
         for phrase in phrases {
             let price = individual[phrase.id]?.price ?? "$0.40"

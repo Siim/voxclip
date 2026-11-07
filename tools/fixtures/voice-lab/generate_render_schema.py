@@ -106,6 +106,21 @@ d['voiceLabSpeakingRateSamples'] = {
             'ratio': {'type': 'number', 'exclusiveMinimum': 0}})}}
 for version in ('voiceLabV1', 'voiceLabV2', 'voiceLabV3'):
     d[version]['properties']['speakingRateSamples'] = {'$ref': '#/$defs/voiceLabSpeakingRateSamples'}
+# A whole-clip revoice (ADR-R46): one voice over a clip's segments, its picture retimed within 8% and lip synced.
+d['voiceLabWholeClipRevoice'] = obj({
+    'id': {'type': 'string', 'pattern': '^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$'},
+    'clipId': {'type': 'string', 'pattern': '^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$'},
+    'segmentIds': {'type': 'array', 'minItems': 1, 'uniqueItems': True, 'items': {'type': 'string', 'minLength': 1}},
+    'script': {'type': 'string', 'minLength': 1, 'maxLength': 20000},
+    'consentRecordId': {'type': 'string', 'minLength': 1},
+    'videoRetime': {'type': 'number', 'minimum': 0.92, 'maximum': 1.08},
+    'lipsyncModel': {'enum': ['fal-ai/sync-lipsync/v2:lipsync-2', 'fal-ai/sync-lipsync/v3']},
+    'usd': {'type': ['number', 'null'], 'minimum': 0},
+    'match': {'oneOf': [{'type': 'null'}, obj({'take': {'type': 'number', 'minimum': -1, 'maximum': 1},
+                                                 'anchorBaseline': {'type': ['number', 'null'], 'minimum': -1, 'maximum': 1},
+                                                 'realSpeech': {'type': ['number', 'null'], 'minimum': -1, 'maximum': 1}})]},
+    'createdAt': {'type': 'string', 'format': 'date-time'}})
+d['voiceLabV3']['properties']['wholeClipRevoices'] = {'type': 'array', 'minItems': 1, 'items': {'$ref': '#/$defs/voiceLabWholeClipRevoice'}}
 d['voiceLabMicroPause'] = obj({'wordStartSeconds': {'type': 'number', 'minimum': -290, 'maximum': 290},
                               'wordEndSeconds': {'type': 'number', 'minimum': -290, 'maximum': 290}})
 d['voiceLabEdgeGainWord'] = obj({'gainDb': {'type': 'number', 'minimum': 0, 'maximum': 6},

@@ -62,10 +62,18 @@ enum ProjectValidation {
             for clip in try array(result["clips"]) { _ = try object(clip, required: "title reason score startWordId endWordId") }
         }
         let version = isV4 ? 4 : root["schemaVersion"] == .number(3) ? 3 : root["schemaVersion"] == .number(2) ? 2 : 1
-        let voice = try object(root["voiceLab"], required: version >= 3 ? "segments assets cleanAudio voices videoAssets" : version == 2 ? "segments assets" : "segments", optional: "speakingRateSamples")
+        let voice = try object(root["voiceLab"], required: version >= 3 ? "segments assets cleanAudio voices videoAssets" : version == 2 ? "segments assets" : "segments",
+                               optional: version >= 3 ? "speakingRateSamples wholeClipRevoices" : "speakingRateSamples")
         if let rates = voice["speakingRateSamples"] {
             for samples in try map(rates).values {
                 for sample in try array(samples) { _ = try object(sample, required: "id ratio") }
+            }
+        }
+        // A whole-clip revoice (ADR-R46): every key present, `usd` and `match` may be null.
+        if let revoices = voice["wholeClipRevoices"] {
+            for revoice in try array(revoices) {
+                let item = try object(revoice, required: "id clipId segmentIds script consentRecordId videoRetime lipsyncModel usd match createdAt")
+                if item["match"] != .null { _ = try object(item["match"], required: "take anchorBaseline realSpeech") }
             }
         }
         if version == 1 { try require(try array(voice["segments"]).isEmpty, "Version 1 Voice Lab must be empty") }
