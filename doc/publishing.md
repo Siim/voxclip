@@ -8,6 +8,7 @@ Principles:
 2. **No third-party secret ships in the app**, and VoxClip never holds X or LinkedIn tokens in M1 or M2.
 3. **The final post call is never retried automatically.** A lost response may follow a successful write.
 4. Every exported file already meets the VoxConvo, X and LinkedIn input rules: MP4, H.264 High, 4:2:0 8-bit, AAC-LC 48 kHz, long edge ≤ 1920, ≤ 60 fps, moov first (architecture.md section 4.1).
+5. **Exports land at social loudness** (section 6, ADR-R47): −14 LUFS integrated, true peak at or below −1 dBTP, by one static gain.
 
 Provenance: vox-api and vox-web as read on 2026-10-25 (working trees including uncommitted edits) and current X / LinkedIn developer documentation, from the planning research `vox-integration.md`.
 
@@ -299,3 +300,24 @@ After a VoxConvo publish the clip is already on VoxConvo's S3, so vox-api pushes
 - Routes (bearer-authenticated with the device token): `GET /desktop/v1/connect/:provider/start` → `authorizeUrl` (server-side PKCE + `state` with a short TTL; redirect URIs `https://api.voxconvo.com/oauth/x/callback`, `…/oauth/linkedin/callback`); `GET /oauth/:provider/callback` exchanges the code with the client secret from env (`X_CLIENT_ID` / `X_CLIENT_SECRET`, `LINKEDIN_CLIENT_ID` / `LINKEDIN_CLIENT_SECRET`, illustrative names) and renders "Connected. Return to VoxClip."; the desktop polls `GET /desktop/v1/connections`; `DELETE /desktop/v1/connections/:provider` revokes; `POST /desktop/v1/crosspost { videoJobId | postId, provider, text, captionsSrt? }` enqueues a job (X chunked upload as in 5.1; LinkedIn `rest/videos?action=initializeUpload` → PUT 4 MB parts → `finalizeUpload` → poll `AVAILABLE` → `rest/posts` with `LinkedIn-Version: <current YYYYMM>` and little-text escaping) and reports through the `videoJobs` poll pattern.
 - Controls: per-user daily quotas (X posts are billed to VoxConvo), a monthly spend cap in the X console, no URL in X text unless the user adds one, early-access gating like `canUseClips`. Needs a privacy-policy update (VoxConvo becomes the processor of users' X/LinkedIn tokens).
 - X `made_with_ai` and EU AI Act Article 50 labels apply when M3 Voice Lab features modified the clip; the cross-post request then carries the Voice Lab `aiDisclosure` object (`{ "modified": true, "kinds": [...], "aiSeconds": n }`, voice-lab.md section 11.6) and the user may opt in to the post text line defined by the Voice Lab spec; it is off by default.
+
+---
+
+## 6. Export loudness (ADR-R47)
+
+Feeds normalise near −14 LUFS, and the agents' posted clips were about −16 LUFS, while a VoxClip talking-head export measured −20.7 LUFS (doc/agent-clipping-benchmark.md). Every export on both platforms, from the app and from the CLI, now lands at **social loudness**:
+
+- **−14 LUFS integrated** (ITU-R BS.1770-4 with EBU R128 gating) and a **true peak at or below −1.0 dBTP** (BS.1770-4 Annex 2).
+- **One static gain, never a compressor or limiter.** The gain is −14 minus the measured loudness, kept within −20…+12 dB, then lowered until the true peak sits at −1 dBTP. A clip whose peaks stop the gain short lands quieter than −14 (`capped: true`). A silent clip gets 0 dB.
+- **It measures what is exported:** the mix after Voice Lab, the clip's speed, volume, fades and mute, the music bed, effects and bleeps. The gain applies to the exported audio only. The SRT is unchanged; the CLI's `--audio-out` WAV carries the same gain.
+- **Off switch:** the CLI's `--loudness off` writes the mix as composed. There is no app control. Preview plays the mix as composed, so an export can sound louder than its preview.
+- **Reporting:** the export JSON's `loudness` gives `measuredLufs` (before the gain), `gainDb`, `outputLufs` and `truePeakDbtp` (after it) and `capped`. The app logs the same numbers per export.
+
+How it is measured: before encoding, the exporter reads its own mixed audio once more, offline, through the same composition (Mac) or audio reader (Windows), and measures it. That costs one audio-only decode and no second encode. Measured on the Mac (Apple silicon, release `voxclip-cli`, 1080p30 H.264 sources with AAC, `--style off`, the median of three runs each, with the Mac under other agents' load):
+
+| Clip | `--loudness off` | `social` | Cost of the measuring pass |
+|---|---|---|---|
+| 34 s | 3.35 s | 3.56 s | +0.21 s (+6%) |
+| 3 min | 16.73 s | 17.39 s | +0.66 s (+4%) |
+
+FFmpeg's `ebur128` reads a social export of a −22.1 LUFS source at −14.0 LUFS, true peak −3.3 dBTP. Windows timing is owed to the next run on the VM.
