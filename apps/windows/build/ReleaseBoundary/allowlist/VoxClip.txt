@@ -1710,6 +1710,7 @@ member VoxClip.App.Pages.EditorPage :: field private disposed
 member VoxClip.App.Pages.EditorPage :: field private elevenMusic
 member VoxClip.App.Pages.EditorPage :: field private leave
 member VoxClip.App.Pages.EditorPage :: field private lifetime
+member VoxClip.App.Pages.EditorPage :: field private loadedSnapshot
 member VoxClip.App.Pages.EditorPage :: field private makeItPanel
 member VoxClip.App.Pages.EditorPage :: field private makeItSessions
 member VoxClip.App.Pages.EditorPage :: field private media
@@ -1728,6 +1729,7 @@ member VoxClip.App.Pages.EditorPage :: field private previewChanges
 member VoxClip.App.Pages.EditorPage :: field private previewClipId
 member VoxClip.App.Pages.EditorPage :: field private previewDuration
 member VoxClip.App.Pages.EditorPage :: field private previewSpeed
+member VoxClip.App.Pages.EditorPage :: field private previewStage
 member VoxClip.App.Pages.EditorPage :: field private previewStop
 member VoxClip.App.Pages.EditorPage :: field private projectWrites
 member VoxClip.App.Pages.EditorPage :: field private ready
@@ -1792,6 +1794,7 @@ member VoxClip.App.Pages.EditorPage :: method private AttachRewriteProposal(VoxC
 member VoxClip.App.Pages.EditorPage :: method private AudioStatusChanged(object,VoxClip.Core.Services.Media.PreviewAudioStatus)
 member VoxClip.App.Pages.EditorPage :: method private BackClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private CloseFindClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
+member VoxClip.App.Pages.EditorPage :: method private CompositorFailed(object,VoxClip.Core.Services.Media.PreviewFailureReason)
 member VoxClip.App.Pages.EditorPage :: method private ConfigureRewriteGeneration(VoxClip.App.ViewModels.RewriteSession)
 member VoxClip.App.Pages.EditorPage :: method private ConfigureRewriteMicrophone(VoxClip.App.ViewModels.RewriteSession)
 member VoxClip.App.Pages.EditorPage :: method private CorrectClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
@@ -1813,6 +1816,7 @@ member VoxClip.App.Pages.EditorPage :: method private FindClipsClicked(object,Mi
 member VoxClip.App.Pages.EditorPage :: method private FitViewer(double)
 member VoxClip.App.Pages.EditorPage :: method private ForwardClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private HandleShellAskKeyDown(object,Microsoft.UI.Xaml.Input.KeyRoutedEventArgs)
+member VoxClip.App.Pages.EditorPage :: method private Hook(VoxClip.Core.Services.Media.IPreviewEngine)
 member VoxClip.App.Pages.EditorPage :: method private HookClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private InitializeAskClaude()
 member VoxClip.App.Pages.EditorPage :: method private InitializeClaudeMode()
@@ -1854,11 +1858,14 @@ member VoxClip.App.Pages.EditorPage :: method private PositionChanged(VoxClip.Co
 member VoxClip.App.Pages.EditorPage :: method private PositionStageMessage()
 member VoxClip.App.Pages.EditorPage :: method private PreviewCutAsync()
 member VoxClip.App.Pages.EditorPage :: method private PreviewCutClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
+member VoxClip.App.Pages.EditorPage :: method private PreviewDisplay()
 member VoxClip.App.Pages.EditorPage :: method private PreviewFailed(System.Exception)
 member VoxClip.App.Pages.EditorPage :: method private ReadMakeItVoiceCapAsync(System.Threading.CancellationToken)
 member VoxClip.App.Pages.EditorPage :: method private RediscoverRewriteAsync(VoxClip.App.ViewModels.RewriteSession,System.Collections.Generic.IReadOnlyList`1<VoxClip.App.ViewModels.RewriteGeneration>)
 member VoxClip.App.Pages.EditorPage :: method private RedoClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private RefreshAiStatusAsync()
+member VoxClip.App.Pages.EditorPage :: method private ReloadPreviewAsync()
+member VoxClip.App.Pages.EditorPage :: method private ReloadPreviewClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private RememberRightWidth()
 member VoxClip.App.Pages.EditorPage :: method private RenderUnavailableCaptionsAsync()
 member VoxClip.App.Pages.EditorPage :: method private RequestWaveform()
@@ -1889,6 +1896,7 @@ member VoxClip.App.Pages.EditorPage :: method private ShellRequest(VoxClip.App.V
 member VoxClip.App.Pages.EditorPage :: method private ShortcutsClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private ShowAskClaudePanel()
 member VoxClip.App.Pages.EditorPage :: method private ShowMakeItPanel()
+member VoxClip.App.Pages.EditorPage :: method private ShowPreviewStage()
 member VoxClip.App.Pages.EditorPage :: method private ShowProjectClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private ShowRewriteSession(VoxClip.App.ViewModels.RewriteSession,string)
 member VoxClip.App.Pages.EditorPage :: method private ShowViewer(bool)
@@ -1910,6 +1918,7 @@ member VoxClip.App.Pages.EditorPage :: method private TranscribeAgainClicked(obj
 member VoxClip.App.Pages.EditorPage :: method private TranscribeClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.Pages.EditorPage :: method private TranscriptFits(double)
 member VoxClip.App.Pages.EditorPage :: method private UndoClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
+member VoxClip.App.Pages.EditorPage :: method private Unhook(VoxClip.Core.Services.Media.IPreviewEngine)
 member VoxClip.App.Pages.EditorPage :: method private UpdateAiTag()
 member VoxClip.App.Pages.EditorPage :: method private UpdateExport()
 member VoxClip.App.Pages.EditorPage :: method private UpdateFindClips()
@@ -2201,15 +2210,37 @@ member VoxClip.App.Services.LocalRuntimeFiles :: method private FreeLibrary(nint
 member VoxClip.App.Services.LocalRuntimeFiles :: method private GetModuleFileName(nint,System.Text.StringBuilder,int)
 member VoxClip.App.Services.LocalRuntimeFiles :: method private GetModuleHandle(string)
 member VoxClip.App.Services.LocalRuntimeFiles :: method private LoadLibraryEx(string,nint,uint)
+member VoxClip.App.Services.PreviewDisplayHooks :: method private .ctor(VoxClip.App.Services.PreviewDisplayHooks)
+member VoxClip.App.Services.PreviewDisplayHooks :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.Services.PreviewDisplayHooks :: method private get_EqualityContract()
+member VoxClip.App.Services.PreviewDisplayHooks :: method public .ctor(System.Func`1<bool>,System.Action)
+member VoxClip.App.Services.PreviewDisplayHooks :: method public Deconstruct(System.Func`1<bool>&,System.Action&)
+member VoxClip.App.Services.PreviewDisplayHooks :: method public Equals(VoxClip.App.Services.PreviewDisplayHooks)
+member VoxClip.App.Services.PreviewDisplayHooks :: method public Equals(object)
+member VoxClip.App.Services.PreviewDisplayHooks :: method public GetHashCode()
+member VoxClip.App.Services.PreviewDisplayHooks :: method public ToString()
+member VoxClip.App.Services.PreviewDisplayHooks :: method public get_OnStage()
+member VoxClip.App.Services.PreviewDisplayHooks :: method public get_Stalled()
+member VoxClip.App.Services.PreviewDisplayHooks :: method public op_Equality(VoxClip.App.Services.PreviewDisplayHooks,VoxClip.App.Services.PreviewDisplayHooks)
+member VoxClip.App.Services.PreviewDisplayHooks :: method public op_Inequality(VoxClip.App.Services.PreviewDisplayHooks,VoxClip.App.Services.PreviewDisplayHooks)
+member VoxClip.App.Services.PreviewDisplayHooks :: method public set_OnStage(System.Func`1<bool>)
+member VoxClip.App.Services.PreviewDisplayHooks :: method public set_Stalled(System.Action)
 member VoxClip.App.Services.PreviewPresenter :: field private bitmap
 member VoxClip.App.Services.PreviewPresenter :: field private failed
 member VoxClip.App.Services.PreviewPresenter :: field private frames
 member VoxClip.App.Services.PreviewPresenter :: field private gate
 member VoxClip.App.Services.PreviewPresenter :: field private generation
+member VoxClip.App.Services.PreviewPresenter :: field private item
 member VoxClip.App.Services.PreviewPresenter :: field private lastStill
 member VoxClip.App.Services.PreviewPresenter :: field private lifetime
 member VoxClip.App.Services.PreviewPresenter :: field private reader
+member VoxClip.App.Services.PreviewPresenter :: field private watch
+member VoxClip.App.Services.PreviewPresenter :: field private watchTimer
+member VoxClip.App.Services.PreviewPresenter :: method internal Attach(object)
 member VoxClip.App.Services.PreviewPresenter :: method internal Start()
+member VoxClip.App.Services.PreviewPresenter :: method internal get_Display()
+member VoxClip.App.Services.PreviewPresenter :: method internal set_Display(VoxClip.App.Services.PreviewDisplayHooks)
+member VoxClip.App.Services.PreviewPresenter :: method private CheckDisplay()
 member VoxClip.App.Services.PreviewPresenter :: method private Fail(System.Exception)
 member VoxClip.App.Services.PreviewPresenter :: method private Present(object,object)
 member VoxClip.App.Services.PreviewPresenter :: method private ReadAsync()
@@ -2435,6 +2466,7 @@ member VoxClip.App.Services.VoiceLabBackend :: method public LearningAvailable(s
 member VoxClip.App.Services.VoiceLabBackend :: method public LearningProjects()
 member VoxClip.App.Services.VoiceLabBackend :: method public Log(string)
 member VoxClip.App.Services.VoiceLabBackend :: method public MatchEachVideo()
+member VoxClip.App.Services.VoiceLabBackend :: method public MeasureAnchorBaselineAsync(System.Collections.Generic.IReadOnlyList`1<string>,string,string,System.Threading.CancellationToken)
 member VoxClip.App.Services.VoiceLabBackend :: method public PersistProviderConsentAsync(System.Threading.CancellationToken)
 member VoxClip.App.Services.VoiceLabBackend :: method public PlayRebuildPieceAsync(VoxClip.App.ViewModels.VoiceRebuildFind,int,System.Threading.CancellationToken)
 member VoxClip.App.Services.VoiceLabBackend :: method public PrepareRebuildAsync(VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord,VoxClip.App.ViewModels.VoiceRebuildFind,VoxClip.Core.Domain.VoiceLab.VoiceConsentAttestations,string,System.Threading.CancellationToken)
@@ -2449,6 +2481,7 @@ member VoxClip.App.Services.VoiceLabBackend :: method public ScoreTakeMatchAsync
 member VoxClip.App.Services.VoiceLabBackend :: method public SeedRateCalibration(string,string)
 member VoxClip.App.Services.VoiceLabBackend :: method public SetMatchEachVideoAsync(System.Nullable`1<bool>,System.Threading.CancellationToken)
 member VoxClip.App.Services.VoiceLabBackend :: method public SetRewriteVoiceAsync(string,System.Threading.CancellationToken)
+member VoxClip.App.Services.VoiceLabBackend :: method public SpeakerModel(string)
 member VoxClip.App.Services.VoiceLabBackend :: method public StopLookingAsync(System.Guid,System.Threading.CancellationToken)
 member VoxClip.App.Services.VoiceLabBackend :: method public VideoVoicePrice()
 member VoxClip.App.Services.VoiceLabBackend :: method public WithdrawAsync(string,System.Threading.CancellationToken)
@@ -3962,6 +3995,7 @@ member VoxClip.App.ViewModels.IVoiceLabBackend :: method public LearningAvailabl
 member VoxClip.App.ViewModels.IVoiceLabBackend :: method public LearningProjects()
 member VoxClip.App.ViewModels.IVoiceLabBackend :: method public Log(string)
 member VoxClip.App.ViewModels.IVoiceLabBackend :: method public MatchEachVideo()
+member VoxClip.App.ViewModels.IVoiceLabBackend :: method public MeasureAnchorBaselineAsync(System.Collections.Generic.IReadOnlyList`1<string>,string,string,System.Threading.CancellationToken)
 member VoxClip.App.ViewModels.IVoiceLabBackend :: method public PersistProviderConsentAsync(System.Threading.CancellationToken)
 member VoxClip.App.ViewModels.IVoiceLabBackend :: method public PlayRebuildPieceAsync(VoxClip.App.ViewModels.VoiceRebuildFind,int,System.Threading.CancellationToken)
 member VoxClip.App.ViewModels.IVoiceLabBackend :: method public PrepareRebuildAsync(VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord,VoxClip.App.ViewModels.VoiceRebuildFind,VoxClip.Core.Domain.VoiceLab.VoiceConsentAttestations,string,System.Threading.CancellationToken)
@@ -3976,6 +4010,7 @@ member VoxClip.App.ViewModels.IVoiceLabBackend :: method public ScoreTakeMatchAs
 member VoxClip.App.ViewModels.IVoiceLabBackend :: method public SeedRateCalibration(string,string)
 member VoxClip.App.ViewModels.IVoiceLabBackend :: method public SetMatchEachVideoAsync(System.Nullable`1<bool>,System.Threading.CancellationToken)
 member VoxClip.App.ViewModels.IVoiceLabBackend :: method public SetRewriteVoiceAsync(string,System.Threading.CancellationToken)
+member VoxClip.App.ViewModels.IVoiceLabBackend :: method public SpeakerModel(string)
 member VoxClip.App.ViewModels.IVoiceLabBackend :: method public StopLookingAsync(System.Guid,System.Threading.CancellationToken)
 member VoxClip.App.ViewModels.IVoiceLabBackend :: method public VideoVoicePrice()
 member VoxClip.App.ViewModels.IVoiceLabBackend :: method public WithdrawAsync(string,System.Threading.CancellationToken)
@@ -4746,8 +4781,34 @@ member VoxClip.App.ViewModels.PlaybackToggle :: method internal PausesAsync(VoxC
 member VoxClip.App.ViewModels.PlaybackToggle :: method internal Refreshing(System.Threading.Tasks.Task)
 member VoxClip.App.ViewModels.PlaybackToggle :: method private SettleAsync()
 member VoxClip.App.ViewModels.PlaybackToggle :: method public .ctor()
+member VoxClip.App.ViewModels.PlayerDisplayWatch :: field internal Limit
+member VoxClip.App.ViewModels.PlayerDisplayWatch :: field private counting
+member VoxClip.App.ViewModels.PlayerDisplayWatch :: field private handled
+member VoxClip.App.ViewModels.PlayerDisplayWatch :: method internal Tick(object,bool,bool,bool)
+member VoxClip.App.ViewModels.PlayerDisplayWatch :: method internal get_HandledIsAlive()
+member VoxClip.App.ViewModels.PlayerDisplayWatch :: method internal get_StalledTicks()
+member VoxClip.App.ViewModels.PlayerDisplayWatch :: method private Is(System.WeakReference`1<object>,object)
+member VoxClip.App.ViewModels.PlayerDisplayWatch :: method private set_StalledTicks(int)
 member VoxClip.App.ViewModels.PreviewClockLabel :: method public Format(double,double)
 member VoxClip.App.ViewModels.PreviewClockLabel :: method public Parts(double,double)
+member VoxClip.App.ViewModels.PreviewStageState :: field internal Category
+member VoxClip.App.ViewModels.PreviewStageState :: field internal DisplayStalledLine
+member VoxClip.App.ViewModels.PreviewStageState :: field internal ReloadPreview
+member VoxClip.App.ViewModels.PreviewStageState :: field private Changed
+member VoxClip.App.ViewModels.PreviewStageState :: method internal Cleared()
+member VoxClip.App.ViewModels.PreviewStageState :: method internal CompositorFailed(VoxClip.Core.Services.Media.PreviewFailureReason)
+member VoxClip.App.ViewModels.PreviewStageState :: method internal DisplayStalled()
+member VoxClip.App.ViewModels.PreviewStageState :: method internal LoadFailed(System.Exception,string)
+member VoxClip.App.ViewModels.PreviewStageState :: method internal Message(VoxClip.Core.Services.Media.PreviewFailureReason)
+member VoxClip.App.ViewModels.PreviewStageState :: method internal add_Changed(System.EventHandler)
+member VoxClip.App.ViewModels.PreviewStageState :: method internal get_PreviewError()
+member VoxClip.App.ViewModels.PreviewStageState :: method internal get_ShowsPlayer()
+member VoxClip.App.ViewModels.PreviewStageState :: method internal get_StagePreviewError()
+member VoxClip.App.ViewModels.PreviewStageState :: method internal get_TranscriptPreviewError()
+member VoxClip.App.ViewModels.PreviewStageState :: method internal remove_Changed(System.EventHandler)
+member VoxClip.App.ViewModels.PreviewStageState :: method internal set_ShowsPlayer(bool)
+member VoxClip.App.ViewModels.PreviewStageState :: method private set_PreviewError(string)
+member VoxClip.App.ViewModels.PreviewStageState :: method public .ctor(System.Action`3<VoxClip.Core.Services.Logging.LogLevel,string,string>,System.Action`1<string>)
 member VoxClip.App.ViewModels.PreviewTransportCoordinator :: field private lifetime
 member VoxClip.App.ViewModels.PreviewTransportCoordinator :: field private pending
 member VoxClip.App.ViewModels.PreviewTransportCoordinator :: field private retired
@@ -7527,6 +7588,8 @@ member VoxClip.App.ViewModels.VoiceLabRequestKind :: field public value__
 member VoxClip.App.ViewModels.VoiceLabSession :: field internal RebuildIntro
 member VoxClip.App.ViewModels.VoiceLabSession :: field internal VideoVoiceQuestion
 member VoxClip.App.ViewModels.VoiceLabSession :: field private Changed
+member VoxClip.App.ViewModels.VoiceLabSession :: field private anchorBaselineUnread
+member VoxClip.App.ViewModels.VoiceLabSession :: field private anchorBaselineWork
 member VoxClip.App.ViewModels.VoiceLabSession :: field private clock
 member VoxClip.App.ViewModels.VoiceLabSession :: field private disposed
 member VoxClip.App.ViewModels.VoiceLabSession :: field private forceRecoveryPending
@@ -7543,6 +7606,7 @@ member VoxClip.App.ViewModels.VoiceLabSession :: method internal AnchorName(stri
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal AnchorVoice(string)
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal ApproveAsync(bool)
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal ApproveRebuildAsync(VoxClip.App.ViewModels.VoiceRebuildState)
+member VoxClip.App.ViewModels.VoiceLabSession :: method internal BaselineLine(VoxClip.Core.Domain.VoiceLab.VoicePerVideoBook+AnchorBaselineEntry,bool,string,string)
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal CanForget(VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord)
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal CanLearn(VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord)
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal CanStopLooking(VoxClip.Core.Services.VoiceLab.VoiceOperation)
@@ -7561,6 +7625,7 @@ member VoxClip.App.ViewModels.VoiceLabSession :: method internal LearningProject
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal LoadAsync(bool,bool)
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal MakeVideoVoice(VoxClip.Core.Domain.Shared.Project,string)
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal MatchLine(VoxClip.Core.Domain.VoiceLab.VoicePerVideoBook+Measurement,string)
+member VoxClip.App.ViewModels.VoiceLabSession :: method internal MeasureAnchorBaselineAsync()
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal ModeChoices(string)
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal ModeLine(VoxClip.Core.Domain.VoiceLab.VoicePerVideo+Mode,string)
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal NotEnoughLine(long,int,int)
@@ -7585,6 +7650,7 @@ member VoxClip.App.ViewModels.VoiceLabSession :: method internal ScoreTakeMatchA
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal SetRebuildAttestationAsync(VoxClip.App.ViewModels.VoiceRebuildState,System.Nullable`1<bool>,System.Nullable`1<bool>,System.Nullable`1<bool>)
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal SetVideoVoiceModeAsync(VoxClip.Core.Domain.VoiceLab.VoicePerVideo+Mode)
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal ShortLine(long,string)
+member VoxClip.App.ViewModels.VoiceLabSession :: method internal ShowsComparison(VoxClip.Core.Domain.VoiceLab.VoicePerVideoBook)
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal SpeakerCalibrated(string)
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal StageUnsaved(VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord)
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal UseRebuiltVoiceAsync(VoxClip.App.ViewModels.VoiceRebuildState)
@@ -7593,6 +7659,8 @@ member VoxClip.App.ViewModels.VoiceLabSession :: method internal VideoVoice(stri
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal VoicesUnavailable(string,System.Func`2<string,bool>)
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal WithdrawOperationAsync(string)
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal add_Changed(System.EventHandler)
+member VoxClip.App.ViewModels.VoiceLabSession :: method internal get_AnchorBaselineLine()
+member VoxClip.App.ViewModels.VoiceLabSession :: method internal get_AnchorBaselineProjects()
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal get_Busy()
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal get_Confirmation()
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal get_CreateBlockedReason()
@@ -7601,6 +7669,7 @@ member VoxClip.App.ViewModels.VoiceLabSession :: method internal get_Deleting()
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal get_Enabled()
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal get_IsLearning()
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal get_LearningLines()
+member VoxClip.App.ViewModels.VoiceLabSession :: method internal get_MeasuringAnchorBaseline()
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal get_Message()
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal get_Operations()
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal get_PendingCreations()
@@ -7621,17 +7690,20 @@ member VoxClip.App.ViewModels.VoiceLabSession :: method internal get_VideoVoiceP
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal get_VideoVoices()
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal get_VisibleRecords()
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal remove_Changed(System.EventHandler)
+member VoxClip.App.ViewModels.VoiceLabSession :: method internal set_AnchorBaselineProjects(System.Func`1<System.Collections.Generic.IReadOnlyList`1<string>>)
 member VoxClip.App.ViewModels.VoiceLabSession :: method internal set_PendingTakeVoices(System.Func`1<System.Collections.Generic.IReadOnlySet`1<string>>)
 member VoxClip.App.ViewModels.VoiceLabSession :: method private Current(int)
 member VoxClip.App.ViewModels.VoiceLabSession :: method private Dispatch(System.Action)
 member VoxClip.App.ViewModels.VoiceLabSession :: method private Fail(VoxClip.App.ViewModels.VoiceRebuildState,string)
 member VoxClip.App.ViewModels.VoiceLabSession :: method private LoadPerVideoAsync(int,System.Threading.CancellationToken)
+member VoxClip.App.ViewModels.VoiceLabSession :: method private LogMatchComparison(VoxClip.Core.Domain.VoiceLab.VoicePerVideoBook+Measurement)
 member VoxClip.App.ViewModels.VoiceLabSession :: method private Notify()
 member VoxClip.App.ViewModels.VoiceLabSession :: method private PerformAsync(System.Func`2<System.Threading.CancellationToken,System.Threading.Tasks.Task>)
 member VoxClip.App.ViewModels.VoiceLabSession :: method private RebuildAttestationsChangedAsync(VoxClip.App.ViewModels.VoiceRebuildState)
 member VoxClip.App.ViewModels.VoiceLabSession :: method private RecoverLaterAsync(System.TimeSpan,System.Threading.CancellationToken)
 member VoxClip.App.ViewModels.VoiceLabSession :: method private ReloadAsync(bool,bool,int,System.Threading.CancellationToken)
 member VoxClip.App.ViewModels.VoiceLabSession :: method private RetryRemovalsLaterAsync(System.TimeSpan,System.Threading.CancellationToken)
+member VoxClip.App.ViewModels.VoiceLabSession :: method private RunAnchorBaselineAsync(VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord)
 member VoxClip.App.ViewModels.VoiceLabSession :: method private RunVideoVoiceAsync(VoxClip.App.ViewModels.VideoVoiceState,VoxClip.Core.Domain.Shared.Project,string,VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord)
 member VoxClip.App.ViewModels.VoiceLabSession :: method private Scalars(string,int)
 member VoxClip.App.ViewModels.VoiceLabSession :: method private ScheduleRecovery()
@@ -7646,6 +7718,7 @@ member VoxClip.App.ViewModels.VoiceLabSession :: method private set_Busy(bool)
 member VoxClip.App.ViewModels.VoiceLabSession :: method private set_Confirmation(VoxClip.App.ViewModels.VoiceLabRequest)
 member VoxClip.App.ViewModels.VoiceLabSession :: method private set_CreationRecovery(System.Threading.Tasks.Task)
 member VoxClip.App.ViewModels.VoiceLabSession :: method private set_Deleting(System.Collections.Generic.IReadOnlySet`1<string>)
+member VoxClip.App.ViewModels.VoiceLabSession :: method private set_MeasuringAnchorBaseline(bool)
 member VoxClip.App.ViewModels.VoiceLabSession :: method private set_Message(string)
 member VoxClip.App.ViewModels.VoiceLabSession :: method private set_Operations(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Services.VoiceLab.VoiceOperation>)
 member VoxClip.App.ViewModels.VoiceLabSession :: method private set_PerVideoBook(VoxClip.Core.Domain.VoiceLab.VoicePerVideoBook)
@@ -7928,6 +8001,7 @@ type VoxClip.App.Services.IUpdateRestartSettings
 type VoxClip.App.Services.IUpdateRestartWindow
 type VoxClip.App.Services.IVoiceLabAccount
 type VoxClip.App.Services.LocalRuntimeFiles
+type VoxClip.App.Services.PreviewDisplayHooks
 type VoxClip.App.Services.PreviewPresenter
 type VoxClip.App.Services.ProjectFactory
 type VoxClip.App.Services.ProviderCatalog
@@ -8089,7 +8163,9 @@ type VoxClip.App.ViewModels.PhraseWording
 type VoxClip.App.ViewModels.PhraseWordingCopy
 type VoxClip.App.ViewModels.PlaybackPresentation
 type VoxClip.App.ViewModels.PlaybackToggle
+type VoxClip.App.ViewModels.PlayerDisplayWatch
 type VoxClip.App.ViewModels.PreviewClockLabel
+type VoxClip.App.ViewModels.PreviewStageState
 type VoxClip.App.ViewModels.PreviewTransportCoordinator
 type VoxClip.App.ViewModels.ProjectLeaveBoundary
 type VoxClip.App.ViewModels.ProjectLlmRuns
