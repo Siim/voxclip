@@ -18,6 +18,8 @@ struct EditorRenderSnapshot {
     var findClipsAnchor = FindClipsAnchor.clipBar
     /// The sidebar's "Choose how VoxClip finds clips…" callout (no connector chosen).
     var showAISetup = false
+    /// Each clip's answer to "How should it sound?" this session: true for the whole clip, false for the changed phrases.
+    var wholeClipPicks: [String: Bool] = [:]
     var selectedWordIDs: Set<String> = [] {
         didSet {
             guard selectedWordIDs != oldValue else { return }

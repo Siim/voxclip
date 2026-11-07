@@ -72,6 +72,12 @@ struct MakeItServices {
     var voice: @MainActor (_ rewrite: MakeItRewriteRequest, _ editor: EditorModel) async -> MakeItRewriteOutcome
     /// Whether a voice can be made at all now: Voice Lab on with an ElevenLabs key (no money is involved in the check).
     var voiceAvailable: @MainActor (_ editor: EditorModel) async -> Bool
+    /// ✦ Claude does it all: whether the clip's rewrites would sound stitched and what revoicing the whole clip costs (free).
+    var wholeClipQuote: @MainActor (_ request: WholeClipAutoRequest, _ editor: EditorModel) async -> WholeClipAutoQuote? = { _, _ in nil }
+    /// Revoices the whole clip within the request's budget (ADR-R46).
+    var revoiceWholeClip: @MainActor (_ request: WholeClipAutoRequest, _ editor: EditorModel) async -> WholeClipAutoOutcome = { _, _ in
+        .failed("Revoicing the whole clip isn't available here.", spent: 0)
+    }
 }
 
 /// One rewrite for the voice step.
@@ -116,6 +122,8 @@ enum MakeItInverse {
     case share(clipID: String, previous: String?)
     case music(clipID: String?, previous: ProjectMusic?)
     case voice(segments: [String])
+    /// A whole-clip revoice (ADR-R46): its segments off and its record removed.
+    case wholeClip(WholeClipRevoiceRecord)
     /// The clip's look before Claude's (or the creator's) choice; the speed and the other controls stay.
     case look(clipID: String, previous: ClipLook)
     /// The clip's speed before the choice; the look and the other controls stay.
@@ -133,6 +141,8 @@ enum MakeItChange: Equatable {
     case question(Int)
     /// The clip's look or speed: Change shows the other choices as chips in the row, and a chip applies at once.
     case look, speed
+    /// The over-cap offer: "Revoice the Whole Clip · ≈ $X" revoices the clip on that click (ADR-R46).
+    case wholeClip
     /// The tone its words were written in: Change shows the tones as chips; one re-plans the clip in that tone.
     case tone
 }
@@ -151,6 +161,8 @@ struct MakeItRow: Identifiable, Equatable {
     var undone = false
     /// A question's other answers.
     var options: [String] = []
+    /// The row's action title in place of "Change" (the whole-clip offer's priced chip).
+    var actionTitle: String?
 }
 
 /// Claude mode's per-video spend (design.md §6.7): every run of the video draws on one pool. The cap the creator set is
@@ -223,6 +235,8 @@ struct MakeItRow: Identifiable, Equatable {
     var hook = ""
     var copied = false
     var exported: [URL] = []
+    /// The whole-clip revoice offered over the cap (ADR-R46), until its row is clicked.
+    var wholeClipOffer: WholeClipAutoRequest?
     /// A question row whose options show.
     var openQuestion: Int?
     /// The look or speed row whose other choices show, or the hook row whose text field shows.
@@ -544,15 +558,19 @@ extension EditorModel {
         run.seconds = makeItRenderedSeconds(run.clipID)
         run.postText = project.share.captions[run.clipID] ?? ""
         run.hook = ClipHookTitle.text(plan.hook) ?? ""
-        // Rewrites, in the creator's voice, each through Rewrite's own takes.
+        // Rewrites, in the creator's voice, each through Rewrite's own takes; in Claude mode the whole clip in one voice when
+        // the patch would sound stitched and the price fits the cap (ADR-R46).
         let rewrites = operations.filter { $0.decision == .rewrite }
-        if !rewrites.isEmpty, !makeItStopped(run) {
+        let whole = rewrites.isEmpty || makeItStopped(run) || !style.rewrites ? nil : await makeItWholeClip(rewrites, run: run, services: services)
+        if let row = whole?.row { rows.append(row) }
+        if !rewrites.isEmpty, !makeItStopped(run), whole?.revoiced != true {
             run.line("Voicing \(rewrites.count) \(rewrites.count == 1 ? "fix" : "fixes")…")
             for operation in rewrites where !makeItStopped(run) {
                 guard case .rewrite(let scope, let text) = operation.action, case .selection(let range) = scope else { continue }
                 rows.append(await voiceStep(operation, range: range, text: text, run: run, services: services, allowed: style.rewrites))
             }
         }
+        if let offer = whole?.offer { rows.append(offer) }
         // Music, once the clip's length is final.
         if let operation = operations.first(where: { $0.decision == .music }), case .music(let cue) = operation.action, !makeItStopped(run) {
             if style.music {
@@ -856,6 +874,10 @@ extension EditorModel {
         case .music(let clipID, let previous):
             guard let next = try? MusicProject.setting(previous, clipId: clipID, in: project) else { return false }
             replace(next, name: name); return true
+        case .wholeClip(let record):
+            let next = removingWholeClip(record, from: project)
+            guard next != project else { return false }
+            replace(next, name: name); return true
         case .voice(let segments):
             var next = project
             let output = project.edits.activeClipId.map(VoiceLabOutputScope.clip) ?? .full
@@ -893,6 +915,7 @@ extension EditorModel {
             _ = setScope(run.clipID)
             runRewrite(scope: .selection(range))
         case .question(let index): run.openQuestion = run.openQuestion == index ? nil : index
+        case .wholeClip: makeItRevoiceOffered(run)
         case .look, .speed, .tone:
             guard let row = run.rows.first(where: { $0.change == change }) else { return }
             run.openChoice = run.openChoice == row.id ? nil : row.id
@@ -1120,7 +1143,9 @@ extension MakeItServices {
             voiceAvailable: { editor in
                 guard editor.app.voiceLabRewriteEnabled else { return false }
                 return await editor.app.providerKeyStore.hasKey(for: "elevenlabs")
-            })
+            },
+            wholeClipQuote: { request, editor in await liveWholeClipQuote(request, editor: editor) },
+            revoiceWholeClip: { request, editor in await liveRevoiceWholeClip(request, editor: editor) })
     }
 }
 

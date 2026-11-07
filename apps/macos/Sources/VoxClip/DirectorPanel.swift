@@ -263,6 +263,7 @@ import VoxClipCore
         case .takes: RewriteTakesCard(model: model)
         case .wordingFit: RewriteWordingFitCard(model: model)
         case .nextSteps(let steps): NextStepsCard(task: task, steps: steps, focused: $askFocused)
+        case .wholeClip: WholeClipRevoiceCard(model: model)
         }
     }
 }

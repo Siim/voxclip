@@ -64,7 +64,7 @@ extension RewriteSession {
         takePlan?.invalidate(); takePlan = nil
         takeQuotePhrase = nil; takeRowsShown = true; takePlanFailure = nil
         guard let recordID = generation.selectedVoiceID, let modelID = generation.selectedModelID,
-              let audio = project.media.source.audio else { return }
+              project.media.source.audio != nil else { return }
         let revision = self.revision, ordinals = includedVoice
         let snapshot = editor.project, region = takeRegion
         let commands = localCommands, reviewedChanges = changes, proposalChanges = ownProposal?.changes
@@ -81,44 +81,11 @@ extension RewriteSession {
             if let contextReview, let contextRequest {
                 hunks = try contextReview.replacingHunks(current: contextRequest, envelope: envelope)
             } else { hunks = selected.map { $0.element.hunk } }
-            let sampleRate: Double = Double(audio.sampleRate)
-            let sampleCount: Double = project.media.source.durationSeconds * sampleRate
-            let frames: Int64 = Int64(EditingPrimitives.jsRound(sampleCount))
-            let outputScope = scope, sourceURL = editor.sourceURL
-            let timingInputs = RewriteReview.Inputs(transcript: Self.corrected(final), project: final,
-                scope: scope, envelope: envelope, prices: nil, synthesisModel: modelID)
-            // What every phrase's input shares is measured once per plan; the source's own levels are decoded once, by the
-            // first phrase, so a long take's price doesn't decode the whole movie once per phrase.
-            let timingItems = RewriteReview.timingTranscript(timingInputs)
-            let correctedItems = Self.corrected(final)
-            let speakingRate = try VoiceLabPhraseTiming.speakingRate(transcript: timingItems)
-            let pauseProfile = VoiceLabPauseProfile.measure(items: timingItems, envelope: envelope, start: 0, end: .greatestFiniteMagnitude)
-            let sourceLevels = RewriteSourceLevels()
-            // The plan's own model once the user changes it with paid takes kept (`ClipTakePlan.changeModel`).
             weak var created: ClipTakePlan?
+            let makeInput = try takeInputMaker(final: final, recordID: recordID, modelID: modelID, envelope: envelope,
+                                               model: { created?.modelID ?? modelID })
             let plan = try ClipTakePlan(project: final, scope: scope, envelope: envelope, hunks: hunks,
-                makeInput: { [weak self] phrase in
-                    let modelID = created?.modelID ?? modelID
-                    let silence = try VoiceLabWindowPlanner.lendableSilence(project: final, scope: outputScope, window: phrase.window)
-                    let timing = try VoiceLabPaceMatching.measure(text: phrase.text, rate: speakingRate, window: phrase.window,
-                        incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
-                        sourceSampleRate: audio.sampleRate, supportsPace: modelID != "eleven_v4", hardJoinSmoothing: true,
-                        audioTags: phrase.audioTags, modelID: modelID,
-                        sourceItems: timingItems, sourceEnvelope: envelope,
-                        rateMultiplier: VoiceLabWordingFit.multiplier(self?.rateSamples(modelID) ?? []))
-                    let levels = try await sourceLevels.levels(source: sourceURL, frames: frames, sampleRate: audio.sampleRate)
-                    let source = try await VoiceLabSourceAudio.rewriteSource(source: sourceURL, frames: frames, sampleRate: audio.sampleRate,
-                        window: phrase.window, incomingSilence: silence.incoming, outgoingSilence: silence.outgoing, items: correctedItems,
-                        envelope: levels)
-                    var input = VoiceLabTakeInput(text: phrase.text, modelID: modelID, recordID: recordID,
-                        language: final.transcript?.language ?? "en", seed: UInt32.random(in: 0...UInt32.max),
-                        contentKey: final.media.source.contentKey, source: source.excerpt, sourceEnvelope: source.envelope,
-                        sourceSampleRate: audio.sampleRate, items: correctedItems, cutWordIDs: Set(final.edits.cutWordIds),
-                        window: phrase.window, incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
-                        providerConsent: true, pace: timing.pace, audioTags: phrase.audioTags)
-                    input.pauseProfile = pauseProfile
-                    return input
-                }, readCap: { [weak self] in
+                makeInput: makeInput, readCap: { [weak self] in
                     guard let self else { throw CancellationError() }
                     return try await self.currentGenerationCap()
                 }, isCurrent: { [weak self, weak generation] in
@@ -176,6 +143,50 @@ extension RewriteSession {
             if planRefusal?.earlier != nil { resolveCollision() }
         }
     }
+    /// What every phrase's take input is made from, for a plan over `final` (a Rewrite's phrases, or a whole clip's parts,
+    /// RewriteWholeClip.swift): the speaker's rate, pauses and levels are measured once per plan, the source's own levels
+    /// decoded once, by the first phrase. `model` reads the plan's model at the time each input is made.
+    func takeInputMaker(final: Project, recordID: String, modelID: String, envelope: AudioEnvelope,
+                        model: @escaping @MainActor () -> String) throws -> @MainActor (ClipTakePlan.Phrase) async throws -> VoiceLabTakeInput {
+        guard let audio = project.media.source.audio else { throw RewriteSessionError.noSourceAudio }
+        let sampleRate: Double = Double(audio.sampleRate)
+        let sampleCount: Double = project.media.source.durationSeconds * sampleRate
+        let frames: Int64 = Int64(EditingPrimitives.jsRound(sampleCount))
+        let outputScope = scope, sourceURL = editor.sourceURL
+        let timingInputs = RewriteReview.Inputs(transcript: Self.corrected(final), project: final,
+            scope: scope, envelope: envelope, prices: nil, synthesisModel: modelID)
+        // What every phrase's input shares is measured once per plan; the source's own levels are decoded once, by the
+        // first phrase, so a long take's price doesn't decode the whole movie once per phrase.
+        let timingItems = RewriteReview.timingTranscript(timingInputs)
+        let correctedItems = Self.corrected(final)
+        let speakingRate = try VoiceLabPhraseTiming.speakingRate(transcript: timingItems)
+        let pauseProfile = VoiceLabPauseProfile.measure(items: timingItems, envelope: envelope, start: 0, end: .greatestFiniteMagnitude)
+        let sourceLevels = RewriteSourceLevels()
+        // The plan's own model once the user changes it with paid takes kept (`ClipTakePlan.changeModel`).
+        return { [weak self] phrase in
+            let modelID = model()
+            let silence = try VoiceLabWindowPlanner.lendableSilence(project: final, scope: outputScope, window: phrase.window)
+            let timing = try VoiceLabPaceMatching.measure(text: phrase.text, rate: speakingRate, window: phrase.window,
+                incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
+                sourceSampleRate: audio.sampleRate, supportsPace: modelID != "eleven_v4", hardJoinSmoothing: true,
+                audioTags: phrase.audioTags, modelID: modelID,
+                sourceItems: timingItems, sourceEnvelope: envelope,
+                rateMultiplier: VoiceLabWordingFit.multiplier(self?.rateSamples(modelID) ?? []))
+            let levels = try await sourceLevels.levels(source: sourceURL, frames: frames, sampleRate: audio.sampleRate)
+            let source = try await VoiceLabSourceAudio.rewriteSource(source: sourceURL, frames: frames, sampleRate: audio.sampleRate,
+                window: phrase.window, incomingSilence: silence.incoming, outgoingSilence: silence.outgoing, items: correctedItems,
+                envelope: levels)
+            var input = VoiceLabTakeInput(text: phrase.text, modelID: modelID, recordID: recordID,
+                language: final.transcript?.language ?? "en", seed: UInt32.random(in: 0...UInt32.max),
+                contentKey: final.media.source.contentKey, source: source.excerpt, sourceEnvelope: source.envelope,
+                sourceSampleRate: audio.sampleRate, items: correctedItems, cutWordIDs: Set(final.edits.cutWordIds),
+                window: phrase.window, incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
+                providerConsent: true, pace: timing.pace, audioTags: phrase.audioTags)
+            input.pauseProfile = pauseProfile
+            return input
+        }
+    }
+
     func currentGenerationCap() async throws -> VoiceLabMonthlyCap? {
         let total = await VoiceLabSpendLedger(locations: editor.app.locations).total(provider: "elevenlabs", at: Date())
         guard let limit = Decimal(string: editor.app.string("voiceLab.monthlyCapUsd.elevenlabs"), locale: Locale(identifier: "en_US_POSIX")) else { return nil }

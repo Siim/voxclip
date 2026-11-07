@@ -66,6 +66,8 @@ import VoxClipMedia
     @ObservationIgnored private var refreshAfterUse = false
 
     var running: Bool { operation != nil }
+    /// Waits for the queued jobs to finish (a whole-clip revoice's lip sync, RewriteWholeClip.swift).
+    func waitForRun() async { await operation?.value }
     var enabled: Bool { backend != nil }
     var hasPaidWork: Bool { !applied.isEmpty || running }
     static let firstUse = "fal.ai receives this phrase's video and new audio. VoxClip deletes uploads and results after download where its API allows; inputs expire after one hour. Clicking Lip Sync approves the transfer and charge."
