@@ -1,5 +1,31 @@
 # macOS implementation contracts
 
+### 2026-11-07 — Claude sees the picture, part 1: frames measured on the Mac, the pure decisions, the frame sheet and images through the connectors (track/v2-eyes-1)
+
+ADR-R48, ai.md §19, design.md §6.7.1. The user approved the mockup and the sending of small frames on 2026-11-07. Part 1 builds the parts; nothing in the app calls them yet. It does not touch `MakeItPostable*.swift`, `ClaudeMode*.swift`, `ClipAutopilotService.swift` or `clip-autopilot.json` (track/v2-speed owns them).
+
+- **Core, `Domain/Frames/`.**
+  - `FrameObservation` (time, faceCount, largest `FrameFace`, `textRects`, `screens`; `isClearLook`), `FrameFace` (rect, `captureQuality`, eye ratios, yaw, pitch; `eyes` and `facesCamera` derived at init; `goodQuality` 0.4, `facingLimit` 0.35), `EyeAspect` (`ratio`, `state`, `closedBelow` 0.20), `FrameScreen` and `FrameScreens.detect`, `FrameAnalysis` and `FrameAnalysisTimings`.
+  - `FrameClip` (a clip's kept words, `start`, `end`, `leadInFloor`) and `FrameSampling` (`sentenceSamples` ≤ 24, `openingTimes` 10 fps ± 0.6 s).
+  - `OpeningFrame.choose` → `OpeningFrameChoice` (shift ≤ 0), `FaceFollowCrop.plan` → `FaceFollowPlan` (`cropWidth`, `cropHeight`, static `centerX`/`centerY`, smoothed `path`), `CoverFrame.score`/`pick`, `FrameBlurSpans.merge` → `FrameBlurSpan`.
+  - `FrameSheet` / `FrameSheetFrame`: labelled `LLMImage`s, `summary`, `imageBytes`, `estimatedImageTokens`, `estimatedSummaryTokens`.
+  - `FrameAnalysisCache` (Services/Project): `Cache/<contentKey>/frames/analysis-v1.json` keyed by pass and millisecond asked for, and `sheet-<ms>.jpg`; real folders only, leased writes; eviction's first pass removes it.
+- **Core, LLM.** `LLMRequest.images` (default empty), `LLMImage`, `LLMConnector.supportsImages()` (default false), `LLMCatalog.supportsImages(for:)`, `maximumImages(for:)`, `images(_:for:)`. HTTP wires for Anthropic, OpenAI, xAI and Gemini; Claude Code's stream-json message (gated on `images.requiredFlags`); Codex `--image` files. `shared/catalog/llm-providers.json` gains `images` on every connector and `--input-format`, `--verbose` in Claude Code's optional help flags; the LLM fixtures' catalogue hash is regenerated (no vector changed).
+- **Media, `Frames/`.** `FrameObserving` / `AppleFrameVision`, `FrameDecoding` / `FrameReading` / `AVFoundationFrameDecoder`, `FrameAnalyzer` (`analyze` → `FrameClipAnalysis` {analysis, sheet}; `observations(…tolerance:sheet:)`; `sheet(…)`; 4 lanes, 1,280 px, `sentenceTolerance` 0.25 s, `openingTolerance` 1/30 s), `FrameJPEG`.
+- **CLI.** `voxclip-cli analyze-frames --open <project> --clip <id> [--no-cache] [--sheet-out <folder>] --json`.
+- **Tests.** Core `FrameDecisionTests` (13), `HTTPImageRequestTests`, five image tests in `CLIConnectorTests`; Media `FrameAnalyzerTests` (8: cache hit skips Vision and decode, eviction drops the analysis, passes cached apart, no write through a linked entry, the sheet, summary lines, real Vision on a drawn phone screen, real decode on counter-1080p), `CLIAnalyzeFramesTests`. Faces can't be synthesised for Vision: the face path is stubbed through `FrameObserving`.
+- **Measured** on the user's 52 s 4K 10-bit HEVC file (read-only, debug build): 24 sentence frames + sheet 0.82 s cold, opening scan 0.37 s, 7 ms cached; 314 KB, ≈ 1,850 image tokens, ≈ 900 summary tokens.
+- **Deleted:** nothing; no existing implementation is replaced.
+- **What part 2 needs** (hook points, and the data for each mockup row):
+  - Run `FrameAnalyzer(cache: FrameAnalysisCache(locations:)).analyze(source:contentKey:clip:)` with `FrameClip(transcript:clip:cutWordIds:)` before the plan request; it is cached, so a re-plan costs nothing.
+  - Request: append `sheet.summary` to the clip instruction for every connector, and set `LLMRequest.images = sheet.images` (the connector drops them when it takes none). Gate on `await connector.supportsImages()` only for the send line's wording. The prompt (`clip-autopilot.json`, a v2-speed file) needs the frame section and reply fields (opening, cover, blur ids); its fixtures follow.
+  - "Opens on a clear look at you": `OpeningFrame.choose(clip, scan: analysis.opening)` → move the clip's start by `shift` (≤ 0, silence only); no row when nil or 0 and already clear.
+  - "9:16 follows your face": `FaceFollowCrop.plan(samples: analysis.sentences.map { ($0.time, $0.face?.rect) }, sourceAspect:, targetAspect: 9/16)` → `centerX`/`centerY` as the export's aspect-crop centre. Today `FrameCompositor` centre-crops to the output aspect and uses a face anchor only under a zoom (`CompositionFrameGeometry.faceCrop` with `videoAnchorX/Y`), and `ReframeSettings` has no centre, so part 2 adds one (project field, schema, Windows wire) and feeds `centerCrop`; `path` is for a moving crop later. 1:1 likewise.
+  - "Blurred the phone screen at …": `FrameBlurSpans.merge(analysis.sentences, maxGap:, pad:)` → a `ClipEffect` blur per span Claude keeps (rect, start, end; tracking `.none`).
+  - "Cover frame chosen": `CoverFrame.pick(analysis.opening + analysis.sentences)` (or Claude's pick of a frame label) → decode that time at full size, write `cover.jpg` beside the export and set the MP4 artwork; the export side is not built.
+  - Send line: `sheet.frames.count`, `sheet.estimatedImageTokens`, the connector's label and billing (design.md §6.7.1).
+- **Owed:** part 2 above; Windows (apps/windows/CONTRACTS.md); an evaluation set for the thresholds; live checks of the Claude Code and Codex image sends (only `--help` and the CLI's own argument checks were read; no send was made).
+
 ### 2026-11-07 — Revoice the whole clip: one AI voice for the clip, fitted and lip synced, asked once per clip; Claude mode switches within its cap (track/v2-revoice-whole)
 
 The user asked for a way to generate a whole clip's voice with AI and lip sync the video, because many patched phrases sound stitched. Their decisions (2026-11-07): lipsync-2 by default with a priced sync-3 upgrade on Review, and Claude mode switching automatically within its spend cap. Spec: ADR-R46, voice-lab §8.14 (new) and §9.2, design.md R2 "How should it sound?" and §6.7, ai.md §16.11. Approved mockup: /tmp/clipper-planning/briefs/v2/mockup-revoice-whole-clip.html.
