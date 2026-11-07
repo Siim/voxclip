@@ -274,6 +274,8 @@ import VoxClipCore
         /// 120 Hz (the default) as the consent statement's own voice, 135 Hz at 35° from it (passes) and 150 Hz at 70°
         /// (blocked on its own, but within 35° of a 135 Hz reference).
         var ownerPitches: [Int: Double] = [:]
+        /// One clip over every word, active, so the Rewrite is inside it (the whole-clip revoice's scenes).
+        var wholeClip = false
     }
     nonisolated static let baseScript = "Today I want to show you how cloud tools edit video. First we record a short clip in one take. "
         + "Then we fix the words we got wrong. We keep the pauses that sound natural and remove the ones that drag. "
@@ -298,6 +300,13 @@ import VoxClipCore
         project.transcript?.words = recording.words
         project.transcript?.durationSeconds = recording.duration
         project.transcript?.language = "en"
+        // The clip ends a sentence before the recording does: the voice is levelled against the speech beside it.
+        let ends = recording.words.indices.filter { recording.words[$0].text.hasSuffix(".") }
+        if fixture.wholeClip, let first = recording.words.first, let end = ends.dropLast().last {
+            let last = recording.words[end]
+            project.edits.clips = [ClipRange(id: "clip-whole", startWordId: first.id, endWordId: last.id, title: "Whole")]
+            project.edits.activeClipId = "clip-whole"
+        }
         return (project, recording.envelope)
     }
 
@@ -697,6 +706,10 @@ import VoxClipCore
         /// Tells the scripted ElevenLabs each prepared phrase's fitting length (the plan's windows are known now).
         private func recordFitting() {
             guard let plan = session?.takePlan else { return }
+            recordFitting(plan)
+        }
+        /// The same for `plan` (a whole-clip revoice's, DebugRewriteSmokeWholeClip.swift).
+        func recordFitting(_ plan: ClipTakePlan) {
             var fitting: [String: Double] = [:]
             for phrase in plan.phrases {
                 let window = phrase.window
@@ -1321,7 +1334,8 @@ import VoxClipCore
     ]
         // Built step by step: a long `+` chain of scenario lists strains hosted Xcode 26's type checker.
         let groups: [[Definition]] = [ownTakeScenarios, guardScenarios, fitScenarios, rebuildScenarios, makeItScenarios,
-                                      askClaudeScenarios, clipControlsScenarios, toneScenarios, claudeModeScenarios, videoVoiceScenarios]
+                                      askClaudeScenarios, clipControlsScenarios, toneScenarios, claudeModeScenarios, videoVoiceScenarios,
+                                      wholeClipScenarios]
         for group in groups { all += group }
         return all
     }

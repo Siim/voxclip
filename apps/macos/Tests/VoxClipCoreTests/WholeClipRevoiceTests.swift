@@ -161,6 +161,8 @@ struct WholeClipFitTests {
         let saved = try JSONProjectStore.encode(project)
         let reopened = try JSONProjectStore.decode(saved)
         #expect(reopened.voiceLab.wholeClipRevoices == [record()])
+        #expect(WholeClipRevoice.isRevoiced(clipId: "clip-main", in: reopened) && !WholeClipRevoice.isRevoiced(clipId: "other", in: reopened))
+        #expect(!WholeClipRevoice.isRevoiced(clipId: "clip-main", in: try fixture()))
         #expect(try JSONProjectStore.encode(reopened) == saved)
         let object = try #require(JSONSerialization.jsonObject(with: saved) as? [String: Any])
         let voiceLab = try #require(object["voiceLab"] as? [String: Any])

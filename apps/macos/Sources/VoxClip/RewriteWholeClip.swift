@@ -31,6 +31,9 @@ extension RewriteSession {
         if wholeClip == nil {
             let session = WholeClipRevoiceSession()
             configureWholeClip(session)
+            #if DEBUG
+            editor.wholeClipSmoke?(self, session)
+            #endif
             wholeClip = session
             Task { [weak self, weak session] in
                 await session?.refreshQuote()
@@ -106,7 +109,7 @@ extension RewriteSession {
         }
     }
 
-    func useWholeClip() {
+    @discardableResult func useWholeClip() -> Task<Void, Never> {
         Task { [weak self] in
             await self?.wholeClip?.use()
             self?.refreshWholeClipPanel()
@@ -223,6 +226,10 @@ extension RewriteSession {
     /// The Voice step: a take plan over the script's parts, priced, then made under the click's approval.
     private func wholeClipVoice(_ script: WholeClipScript, progress: @escaping @MainActor (String) -> Void) async throws -> WholeClipRevoiceSession.Voice {
         await ensureVideoVoice()
+        // The patch's own plan was only priced: it lets go of its quotes, so the voice's record has no run in flight.
+        if let patch = takePlan, !hasPaidTakes {
+            await patch.stop(); patch.invalidate(); takePlan = nil
+        }
         guard current, let generation, let recordID = generation.selectedVoiceID, let takeBackend, let envelope else {
             throw WholeClipRevoiceSession.Stop.noVoice("Make your voice in Rewrite first. Nothing was sent.")
         }
@@ -257,6 +264,9 @@ extension RewriteSession {
         wholeClipPlan = plan
         progress("pricing \(plan.phrases.count == 1 ? "one part" : "\(plan.phrases.count) parts")")
         await plan.prepare()
+        #if DEBUG
+        editor.wholeClipPrepared?(plan)
+        #endif
         try Task.checkCancellation()
         if let blocked = plan.phrases.first(where: { $0.blocked != nil }) {
             throw WholeClipRevoiceSession.Stop.noVoice((blocked.blocked ?? "") + " Nothing was sent.")
@@ -300,9 +310,8 @@ extension RewriteSession {
         return WholeClipScript.assemble(words: wholeClipWords(final), cutWordIds: cuts, voiceHunks: hunks)
     }
 
-    /// The Lip sync step: every part's picture matched to its take, then one lip sync over the merged window.
-    private func wholeClipLipsync(_ voice: WholeClipRevoiceSession.Voice, factor: Double, model: WholeClipRevoice.Lipsync,
-                                  progress: @escaping @MainActor (Double?) -> Void) async throws -> WholeClipRevoiceSession.Synced {
+    /// Every part's picture matched to its take through Rewrite's own duration path (Match video), before the lip sync.
+    func wholeClipMatchPicture() async throws -> ClipTakePlan {
         guard let plan = wholeClipPlan else { throw ClipTakePlan.Failure.stale }
         for phrase in plan.phrases where plan.lipsync.applied[phrase.id] != nil { plan.lipsync.undo(phrase.id) }
         for phrase in plan.phrases where phrase.videoChoice != .retimed {
@@ -313,6 +322,13 @@ extension RewriteSession {
         await plan.prepareVideoChoices()
         try Task.checkCancellation()
         guard plan.problem.isEmpty else { throw WholeClipRevoiceSession.Stop.noVoice(plan.problem) }
+        return plan
+    }
+
+    /// The Lip sync step: every part's picture matched to its take, then one lip sync over the merged window.
+    private func wholeClipLipsync(_ voice: WholeClipRevoiceSession.Voice, factor: Double, model: WholeClipRevoice.Lipsync,
+                                  progress: @escaping @MainActor (Double?) -> Void) async throws -> WholeClipRevoiceSession.Synced {
+        let plan = try await wholeClipMatchPicture()
         await plan.lipsync.refresh()
         guard plan.lipsync.keyAvailable else { throw LipsyncError.missingKey }
         let (_, all) = try await plan.makeLipsyncOffers(model: model)
@@ -382,7 +398,8 @@ extension RewriteSession {
         let usd = NSDecimalNumber(decimal: wholeClip?.spent ?? 0).doubleValue
         let record = WholeClipRevoiceRecord(id: "wholeclip-" + UUID().uuidString.lowercased().prefix(13), clipId: clip,
             segmentIds: made.segments.map(\.id), script: voice.key.script, consentRecordId: made.voice?.consentRecordId ?? voice.key.recordId,
-            videoRetime: synced.factor, lipsyncModel: synced.model.rawValue, usd: usd, match: match, createdAt: Date())
+            videoRetime: synced.factor, lipsyncModel: synced.model.rawValue, usd: usd, match: match,
+            createdAt: Date(timeIntervalSince1970: Date().timeIntervalSince1970.rounded(.down)))
         try editor.applyVoiceLab(made.segments, assets: made.assets, voice: made.voice, scope: rewriteScope,
                                  localCommands: localCommands, videoAssets: made.videoAssets, wholeClip: record)
         editor.announce("Whole clip revoiced. Undo takes it back.")

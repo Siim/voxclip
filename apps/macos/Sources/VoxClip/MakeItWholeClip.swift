@@ -136,6 +136,12 @@ extension MakeItServices {
 
     /// Opens Rewrite over the whole clip with the planned words, its voice discovered, and its whole-clip card made.
     @MainActor static func openWholeClip(_ request: WholeClipAutoRequest, editor: EditorModel) async -> RewriteSession? {
+        // The quote's session goes on to the revoice: one Rewrite, one voice plan, nothing quoted twice.
+        if let open = editor.openRewrite, open.isOpen, open.rewriteScope == .selection(request.range), let whole = open.wholeClip,
+           whole.phase == .choose, !open.hasPaidTakes {
+            await whole.refreshQuote()
+            return open
+        }
         if let open = editor.openRewrite, open.isOpen {
             guard !open.hasPaidTakes else { return nil }
             editor.closeRewrite(returnFocus: false)
@@ -151,9 +157,9 @@ extension MakeItServices {
     }
 
     @MainActor static func liveWholeClipQuote(_ request: WholeClipAutoRequest, editor: EditorModel) async -> WholeClipAutoQuote? {
+        // The session stays open for the revoice; the patch's own Rewrite closes it (nothing in it is paid).
         guard editor.app.voiceLabRewriteEnabled, let session = await openWholeClip(request, editor: editor) else { return nil }
-        defer { editor.closeRewrite(returnFocus: false) }
-        guard let quote = session.wholeClip?.quote else { return nil }
+        guard let quote = session.wholeClip?.quote else { editor.closeRewrite(returnFocus: false); return nil }
         return WholeClipAutoQuote(reason: quote.reason, price: quote.wholeUSD)
     }
 

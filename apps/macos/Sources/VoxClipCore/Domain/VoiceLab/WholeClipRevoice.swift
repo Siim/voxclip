@@ -367,6 +367,14 @@ extension WholeClipRevoice {
         }
     }
 
+    /// Whether `clipId` plays a whole-clip revoice: a record for it with an enabled segment. The stage then shows its AI
+    /// voice tag over the whole clip, the pauses between parts included.
+    public static func isRevoiced(clipId: String, in project: Project) -> Bool {
+        guard let records = project.voiceLab.wholeClipRevoices else { return false }
+        let enabled = Set(project.voiceLab.segments.filter(\.enabled).map(\.id))
+        return records.contains { $0.clipId == clipId && $0.segmentIds.contains(where: enabled.contains) }
+    }
+
     /// The record holding `segmentId`, if a whole-clip revoice made it.
     public static func record(holding segmentId: String, in project: Project) -> WholeClipRevoiceRecord? {
         project.voiceLab.wholeClipRevoices?.first { $0.segmentIds.contains(segmentId) }
