@@ -202,9 +202,9 @@ internal static class CliOperations
             result = await prepare(new(snapshot, target, aspect, quality, destination, null) { Loudness = loudness },
                 Progress<ExportProgress>(arguments, value => (value.Phase, value.Fraction)), ct).ConfigureAwait(false);
             ownedPartials.Add(destination);
-            // The edited WAV carries the export's loudness gain (ADR-R47).
+            // The edited WAV carries the export's loudness gain and limiter (ADR-R47); the limiter ran when it reduced anything.
             if (audioPath is not null && result.Loudness is { } applied)
-                WaveGain.Apply(audioPath + ".partial", SocialLoudness.LinearGain(applied.GainDb), ct);
+                WaveLoudness.Apply(audioPath + ".partial", new(applied.GainDb, SocialLoudnessLimit.None, applied.LimiterMaxReductionDb > 0), ct);
             if (snapshot.VoiceLab is { Prepared.OutputPlan.RequiresSyntheticRendering: true })
                 ownedPartials.Add(destination + ".provenance.json");
             ct.ThrowIfCancellationRequested();

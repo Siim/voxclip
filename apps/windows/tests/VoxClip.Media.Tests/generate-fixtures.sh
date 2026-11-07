@@ -33,6 +33,11 @@ ffmpeg -hide_banner -loglevel error -y -i stereo-varying.mkv -map 0 -c:v copy -a
 ffmpeg -hide_banner -loglevel error -y -f lavfi -i 'color=size=160x90:rate=30:duration=6' \
   -f lavfi -i "aevalsrc='0.21*lt(mod(t,0.5),0.3)*(0.5-0.5*cos(2*PI*mod(t,0.5)/0.3))*(0.6*sin(2*PI*180*t)+0.3*sin(2*PI*360*t+0.5)+0.2*sin(2*PI*1100*t+1.3))':s=48000:d=6:c=stereo" \
   -c:v mpeg4 -c:a pcm_f32le speech-bursts.mkv
+# The same bursts, each starting with a 5 ms Hann-shaped 150 Hz plosive at -4.4 dBFS, about 17 dB over the speech's loudness: the
+# limiter takes the plosives and the clip lands at -14 LUFS (ADR-R47 amended; Mac NativeMediaFixtures speech-plosives.mov).
+ffmpeg -hide_banner -loglevel error -y -f lavfi -i 'color=size=160x90:rate=30:duration=6' \
+  -f lavfi -i "aevalsrc='0.21*lt(mod(t,0.5),0.3)*(0.5-0.5*cos(2*PI*mod(t,0.5)/0.3))*(0.6*sin(2*PI*180*t)+0.3*sin(2*PI*360*t+0.5)+0.2*sin(2*PI*1100*t+1.3))+0.6*gte(mod(t,0.5),200/48000)*lt(mod(t,0.5),440/48000)*(0.5-0.5*cos(2*PI*(mod(t,0.5)-200/48000)/0.005))*sin(2*PI*150*(mod(t,0.5)-200/48000))':s=48000:d=6:c=stereo" \
+  -c:v mpeg4 -c:a pcm_f32le speech-plosives.mkv
 # Audio that starts 1.5 s after the video, with a 0.75 s timestamp gap 4 s into it: own-voice training must place it as extraction does.
 ffmpeg -hide_banner -loglevel error -y -f lavfi -i 'color=size=160x90:rate=10:duration=12' \
   -itsoffset 1.5 -f lavfi -i "aevalsrc=0.3*sin(2*PI*(300*t+90*t*t))|0.2*sin(2*PI*510*t):s=48000:n=1024:d=10,asetpts='PTS+gte(T,4)*0.75/TB'" \
