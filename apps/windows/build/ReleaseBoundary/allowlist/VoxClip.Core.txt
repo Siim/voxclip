@@ -5954,6 +5954,88 @@ member VoxClip.Core.Domain.Effects.ClipHookTitle :: method public Existing(strin
 member VoxClip.Core.Domain.Effects.ClipHookTitle :: method public IsHook(System.Text.Json.JsonElement)
 member VoxClip.Core.Domain.Effects.ClipHookTitle :: method public Text(string)
 member VoxClip.Core.Domain.Effects.ClipHookTitle :: method public Timeline(VoxClip.Core.Domain.Shared.Project,string)
+member VoxClip.Core.Domain.Loudness.ExportLoudness :: field public Off
+member VoxClip.Core.Domain.Loudness.ExportLoudness :: field public Social
+member VoxClip.Core.Domain.Loudness.ExportLoudness :: field public value__
+member VoxClip.Core.Domain.Loudness.SocialLoudness :: field internal AbsoluteGateLufs
+member VoxClip.Core.Domain.Loudness.SocialLoudness :: field internal BlockSteps
+member VoxClip.Core.Domain.Loudness.SocialLoudness :: field internal RelativeGateLu
+member VoxClip.Core.Domain.Loudness.SocialLoudness :: field internal StepSeconds
+member VoxClip.Core.Domain.Loudness.SocialLoudness :: field public CeilingDbtp
+member VoxClip.Core.Domain.Loudness.SocialLoudness :: field public MaximumBoostDb
+member VoxClip.Core.Domain.Loudness.SocialLoudness :: field public MaximumCutDb
+member VoxClip.Core.Domain.Loudness.SocialLoudness :: field public TargetLufs
+member VoxClip.Core.Domain.Loudness.SocialLoudness :: method public Decide(System.Nullable`1<double>,System.Nullable`1<double>)
+member VoxClip.Core.Domain.Loudness.SocialLoudness :: method public LinearGain(double)
+member VoxClip.Core.Domain.Loudness.SocialLoudness :: method public Report(VoxClip.Core.Domain.Loudness.SocialLoudnessMeasurement)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method public .ctor(double,VoxClip.Core.Domain.Loudness.SocialLoudnessLimit)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method public Deconstruct(double&,VoxClip.Core.Domain.Loudness.SocialLoudnessLimit&)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method public Equals(VoxClip.Core.Domain.Loudness.SocialLoudnessDecision)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method public Equals(object)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method public GetHashCode()
+member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method public ToString()
+member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method public get_Capped()
+member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method public get_GainDb()
+member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method public get_Limit()
+member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method public op_Equality(VoxClip.Core.Domain.Loudness.SocialLoudnessDecision,VoxClip.Core.Domain.Loudness.SocialLoudnessDecision)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method public op_Inequality(VoxClip.Core.Domain.Loudness.SocialLoudnessDecision,VoxClip.Core.Domain.Loudness.SocialLoudnessDecision)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method public set_GainDb(double)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessDecision :: method public set_Limit(VoxClip.Core.Domain.Loudness.SocialLoudnessLimit)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessLimit :: field public GainLimit
+member VoxClip.Core.Domain.Loudness.SocialLoudnessLimit :: field public None
+member VoxClip.Core.Domain.Loudness.SocialLoudnessLimit :: field public Silent
+member VoxClip.Core.Domain.Loudness.SocialLoudnessLimit :: field public TruePeak
+member VoxClip.Core.Domain.Loudness.SocialLoudnessLimit :: field public value__
+member VoxClip.Core.Domain.Loudness.SocialLoudnessMeasurement :: method internal .ctor(double[],int,double)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessMeasurement :: method private Sum(double[])
+member VoxClip.Core.Domain.Loudness.SocialLoudnessMeasurement :: method public IntegratedLufs(double)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessMeasurement :: method public get_StepEnergies()
+member VoxClip.Core.Domain.Loudness.SocialLoudnessMeasurement :: method public get_StepFrames()
+member VoxClip.Core.Domain.Loudness.SocialLoudnessMeasurement :: method public get_TruePeak()
+member VoxClip.Core.Domain.Loudness.SocialLoudnessMeasurement :: method public get_TruePeakDbtp()
+member VoxClip.Core.Domain.Loudness.SocialLoudnessMeter :: field private PhaseGain
+member VoxClip.Core.Domain.Loudness.SocialLoudnessMeter :: field private filter
+member VoxClip.Core.Domain.Loudness.SocialLoudnessMeter :: field private highPass
+member VoxClip.Core.Domain.Loudness.SocialLoudnessMeter :: field private history
+member VoxClip.Core.Domain.Loudness.SocialLoudnessMeter :: field private lane
+member VoxClip.Core.Domain.Loudness.SocialLoudnessMeter :: field private peak
+member VoxClip.Core.Domain.Loudness.SocialLoudnessMeter :: field private shelf
+member VoxClip.Core.Domain.Loudness.SocialLoudnessMeter :: field private squares
+member VoxClip.Core.Domain.Loudness.SocialLoudnessMeter :: field private stepFilled
+member VoxClip.Core.Domain.Loudness.SocialLoudnessMeter :: field private stepFrames
+member VoxClip.Core.Domain.Loudness.SocialLoudnessMeter :: field private stepSum
+member VoxClip.Core.Domain.Loudness.SocialLoudnessMeter :: field private steps
+member VoxClip.Core.Domain.Loudness.SocialLoudnessMeter :: method private .cctor()
+member VoxClip.Core.Domain.Loudness.SocialLoudnessMeter :: method private Interpolate(System.ReadOnlySpan`1<float>,int,int,int,int)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessMeter :: method private Weigh(System.ReadOnlySpan`1<float>,int,int)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessMeter :: method public .ctor(int,int)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessMeter :: method public Append(System.ReadOnlySpan`1<float>)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessMeter :: method public Finish()
+member VoxClip.Core.Domain.Loudness.SocialLoudnessMeter :: method public get_Channels()
+member VoxClip.Core.Domain.Loudness.SocialLoudnessMeter :: method public get_SampleRate()
+member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method private .ctor(VoxClip.Core.Domain.Loudness.SocialLoudnessReport)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public .ctor(System.Nullable`1<double>,double,System.Nullable`1<double>,System.Nullable`1<double>,bool)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public Deconstruct(System.Nullable`1<double>&,double&,System.Nullable`1<double>&,System.Nullable`1<double>&,bool&)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public Equals(VoxClip.Core.Domain.Loudness.SocialLoudnessReport)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public Equals(object)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public GetHashCode()
+member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public LogLine()
+member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public ToString()
+member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public get_Capped()
+member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public get_GainDb()
+member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public get_MeasuredLufs()
+member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public get_OutputLufs()
+member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public get_TruePeakDbtp()
+member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public op_Equality(VoxClip.Core.Domain.Loudness.SocialLoudnessReport,VoxClip.Core.Domain.Loudness.SocialLoudnessReport)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public op_Inequality(VoxClip.Core.Domain.Loudness.SocialLoudnessReport,VoxClip.Core.Domain.Loudness.SocialLoudnessReport)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public set_Capped(bool)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public set_GainDb(double)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public set_MeasuredLufs(System.Nullable`1<double>)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public set_OutputLufs(System.Nullable`1<double>)
+member VoxClip.Core.Domain.Loudness.SocialLoudnessReport :: method public set_TruePeakDbtp(System.Nullable`1<double>)
 member VoxClip.Core.Domain.Music.MusicAsset :: method private .ctor(VoxClip.Core.Domain.Music.MusicAsset)
 member VoxClip.Core.Domain.Music.MusicAsset :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Music.MusicAsset :: method private get_EqualityContract()
@@ -6395,6 +6477,7 @@ member VoxClip.Core.Domain.Shared.ExportJob :: method public Equals(object)
 member VoxClip.Core.Domain.Shared.ExportJob :: method public GetHashCode()
 member VoxClip.Core.Domain.Shared.ExportJob :: method public ToString()
 member VoxClip.Core.Domain.Shared.ExportJob :: method public get_Aspect()
+member VoxClip.Core.Domain.Shared.ExportJob :: method public get_Loudness()
 member VoxClip.Core.Domain.Shared.ExportJob :: method public get_OutputPath()
 member VoxClip.Core.Domain.Shared.ExportJob :: method public get_Quality()
 member VoxClip.Core.Domain.Shared.ExportJob :: method public get_Snapshot()
@@ -6403,6 +6486,7 @@ member VoxClip.Core.Domain.Shared.ExportJob :: method public get_Target()
 member VoxClip.Core.Domain.Shared.ExportJob :: method public op_Equality(VoxClip.Core.Domain.Shared.ExportJob,VoxClip.Core.Domain.Shared.ExportJob)
 member VoxClip.Core.Domain.Shared.ExportJob :: method public op_Inequality(VoxClip.Core.Domain.Shared.ExportJob,VoxClip.Core.Domain.Shared.ExportJob)
 member VoxClip.Core.Domain.Shared.ExportJob :: method public set_Aspect(VoxClip.Core.Domain.Shared.ExportAspect)
+member VoxClip.Core.Domain.Shared.ExportJob :: method public set_Loudness(VoxClip.Core.Domain.Loudness.ExportLoudness)
 member VoxClip.Core.Domain.Shared.ExportJob :: method public set_OutputPath(string)
 member VoxClip.Core.Domain.Shared.ExportJob :: method public set_Quality(VoxClip.Core.Domain.Shared.ExportQuality)
 member VoxClip.Core.Domain.Shared.ExportJob :: method public set_Snapshot(VoxClip.Core.Domain.Shared.ComposeSnapshot)
@@ -6485,6 +6569,7 @@ member VoxClip.Core.Domain.Shared.ExportResult :: method public get_Encoder()
 member VoxClip.Core.Domain.Shared.ExportResult :: method public get_Fps()
 member VoxClip.Core.Domain.Shared.ExportResult :: method public get_Frames()
 member VoxClip.Core.Domain.Shared.ExportResult :: method public get_Height()
+member VoxClip.Core.Domain.Shared.ExportResult :: method public get_Loudness()
 member VoxClip.Core.Domain.Shared.ExportResult :: method public get_Output()
 member VoxClip.Core.Domain.Shared.ExportResult :: method public get_SoftwareEncoding()
 member VoxClip.Core.Domain.Shared.ExportResult :: method public get_Srt()
@@ -6500,6 +6585,7 @@ member VoxClip.Core.Domain.Shared.ExportResult :: method public set_Encoder(stri
 member VoxClip.Core.Domain.Shared.ExportResult :: method public set_Fps(double)
 member VoxClip.Core.Domain.Shared.ExportResult :: method public set_Frames(long)
 member VoxClip.Core.Domain.Shared.ExportResult :: method public set_Height(int)
+member VoxClip.Core.Domain.Shared.ExportResult :: method public set_Loudness(VoxClip.Core.Domain.Loudness.SocialLoudnessReport)
 member VoxClip.Core.Domain.Shared.ExportResult :: method public set_Output(string)
 member VoxClip.Core.Domain.Shared.ExportResult :: method public set_SoftwareEncoding(bool)
 member VoxClip.Core.Domain.Shared.ExportResult :: method public set_Srt(string)
@@ -9820,9 +9906,9 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabLoudness :: method internal Oversamp
 member VoxClip.Core.Domain.VoiceLab.VoiceLabLoudness :: method internal SampleCount(double,int)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabLoudness :: method internal SeamJumps(System.ReadOnlySpan`1<float>,int,System.Collections.Generic.IReadOnlyList`1<int>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabLoudness :: method internal Validate(System.ReadOnlySpan`1<float>,int)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabLoudness :: method internal get_TruePeakTaps()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabLoudness :: method private .cctor()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabLoudness :: method private VoicedLevel(System.ReadOnlySpan`1<float>,System.ReadOnlySpan`1<float>,int)
-member VoxClip.Core.Domain.VoiceLab.VoiceLabLoudness :: method private get_TruePeakTaps()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabLoudness :: method public Flatness(System.ReadOnlySpan`1<float>,int)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabLoudness :: method public GeneratedPauseLufs(System.ReadOnlySpan`1<float>,int,int,int)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabLoudness :: method public LevelGainDb(System.Nullable`1<double>,System.Nullable`1<double>,double)
@@ -16462,6 +16548,13 @@ type VoxClip.Core.Domain.Effects.ClipEffects
 type VoxClip.Core.Domain.Effects.ClipEffectsRenderInput
 type VoxClip.Core.Domain.Effects.ClipEffectsRendering
 type VoxClip.Core.Domain.Effects.ClipHookTitle
+type VoxClip.Core.Domain.Loudness.ExportLoudness
+type VoxClip.Core.Domain.Loudness.SocialLoudness
+type VoxClip.Core.Domain.Loudness.SocialLoudnessDecision
+type VoxClip.Core.Domain.Loudness.SocialLoudnessLimit
+type VoxClip.Core.Domain.Loudness.SocialLoudnessMeasurement
+type VoxClip.Core.Domain.Loudness.SocialLoudnessMeter
+type VoxClip.Core.Domain.Loudness.SocialLoudnessReport
 type VoxClip.Core.Domain.Music.MusicAsset
 type VoxClip.Core.Domain.Music.MusicBrief
 type VoxClip.Core.Domain.Music.MusicCandidate

@@ -9,6 +9,7 @@ using System.Text.Json.Serialization.Metadata;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
+using VoxClip.Core.Domain.Loudness;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.Transcript;
@@ -197,9 +198,13 @@ internal static class CliOperations
                 await writer.WriteAsync(Exporter.Subtitles(captions, snapshot.Speed.Speed).AsMemory(), ct).ConfigureAwait(false);
             }
             var prepare = prepareExport ?? new Exporter().PrepareAsync;
-            result = await prepare(new(snapshot, target, aspect, quality, destination, null),
+            var loudness = arguments.GetValue<string?>("--loudness") == "off" ? ExportLoudness.Off : ExportLoudness.Social;
+            result = await prepare(new(snapshot, target, aspect, quality, destination, null) { Loudness = loudness },
                 Progress<ExportProgress>(arguments, value => (value.Phase, value.Fraction)), ct).ConfigureAwait(false);
             ownedPartials.Add(destination);
+            // The edited WAV carries the export's loudness gain (ADR-R47).
+            if (audioPath is not null && result.Loudness is { } applied)
+                WaveGain.Apply(audioPath + ".partial", SocialLoudness.LinearGain(applied.GainDb), ct);
             if (snapshot.VoiceLab is { Prepared.OutputPlan.RequiresSyntheticRendering: true })
                 ownedPartials.Add(destination + ".provenance.json");
             ct.ThrowIfCancellationRequested();

@@ -28,6 +28,11 @@ ffmpeg -hide_banner -loglevel error -y -f lavfi -i 'color=size=160x90:rate=30:du
   -f lavfi -i 'aevalsrc=0.4*sin(2*PI*(300*t+400*t*t))|0.3*sin(2*PI*(500*t+200*t*t)):s=48000:d=1' \
   -c:v mpeg4 -c:a pcm_f32le stereo-varying.mkv
 ffmpeg -hide_banner -loglevel error -y -i stereo-varying.mkv -map 0 -c:v copy -ar 44100 -c:a pcm_f32le stereo-varying-44100.mkv
+# Speech-like bursts for social loudness (ADR-R47): 0.3 s on and 0.2 s off under a Hann envelope, a 180 Hz voice with two
+# harmonics and a formant near 1.1 kHz, about -24 LUFS with its true peak about 10 dB higher (Mac NativeMediaFixtures speechBursts).
+ffmpeg -hide_banner -loglevel error -y -f lavfi -i 'color=size=160x90:rate=30:duration=6' \
+  -f lavfi -i "aevalsrc='0.21*lt(mod(t,0.5),0.3)*(0.5-0.5*cos(2*PI*mod(t,0.5)/0.3))*(0.6*sin(2*PI*180*t)+0.3*sin(2*PI*360*t+0.5)+0.2*sin(2*PI*1100*t+1.3))':s=48000:d=6:c=stereo" \
+  -c:v mpeg4 -c:a pcm_f32le speech-bursts.mkv
 # Audio that starts 1.5 s after the video, with a 0.75 s timestamp gap 4 s into it: own-voice training must place it as extraction does.
 ffmpeg -hide_banner -loglevel error -y -f lavfi -i 'color=size=160x90:rate=10:duration=12' \
   -itsoffset 1.5 -f lavfi -i "aevalsrc=0.3*sin(2*PI*(300*t+90*t*t))|0.2*sin(2*PI*510*t):s=48000:n=1024:d=10,asetpts='PTS+gte(T,4)*0.75/TB'" \

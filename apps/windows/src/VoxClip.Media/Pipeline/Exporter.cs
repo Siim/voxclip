@@ -5,6 +5,7 @@ using System.Text;
 using FFmpeg.AutoGen;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Clips;
+using VoxClip.Core.Domain.Loudness;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Media;
 using VoxClip.Media.Audio;
@@ -172,6 +173,7 @@ public sealed class Exporter : IExporter
         var hasSrtPartial = false;
         var hasSidecarPartial = false;
         var ownsXmpStage = false;
+        SocialLoudnessReport? loudness = null;
         try
         {
             if (composer is FrameComposer frameComposer) frameComposer.PrepareSnapshot(snapshot);
@@ -190,6 +192,8 @@ public sealed class Exporter : IExporter
                 lastProgress = timer.Elapsed.TotalSeconds;
             });
             reporter("preparing", 0);
+            // Staged once: the export's reader and the loudness pre-pass mix the same bed.
+            var music = snapshot.Media.Audio is null ? null : MusicBed.Stage(snapshot, 48_000, voiceSession, ct);
             using (var video = new EncoderSession(encoderName, output))
             using (var audio = snapshot.Media.Audio is null ? null : new EncoderSession("aac", output, true))
             using (var mux = CreateMux(partial, video, audio, out var videoStream, out var audioStream))
@@ -198,9 +202,13 @@ public sealed class Exporter : IExporter
             using (var scaling = NativeHandle.Own(ffmpeg.sws_getContext(size.Width, size.Height, AVPixelFormat.AV_PIX_FMT_BGRA,
                 size.Width, size.Height, AVPixelFormat.AV_PIX_FMT_NV12, (int)SwsFlags.SWS_BILINEAR, null, null, null), NativeKind.Scale))
             using (var editedAudio = audio is null ? null : RenderedAudioReader.Open(snapshot, 48_000, session: voiceSession, ct: ct,
-                music: MusicBed.Stage(snapshot, 48_000, voiceSession, ct)))
+                music: music))
             using (var audioFrameHandle = audio is null ? null : CreateAudioFrame(audio))
             {
+                // Social loudness (ADR-R47): measure the mix the encoder will get, then encode it with one static gain.
+                if (audio is not null && job.Loudness == ExportLoudness.Social)
+                    loudness = MeasureLoudness(snapshot, voiceSession, music, samples, audio.Context->frame_size, ct);
+                var audioGain = loudness is null ? 1f : SocialLoudness.LinearGain(loudness.GainDb);
                 var format = (AVFormatContext*)mux.Pointer;
                 var nv12 = (AVFrame*)nv12Handle.Pointer;
                 var bgra = new PixelBuffer(new byte[checked(size.Width * size.Height * 4)], size.Width, size.Height, size.Width * 4);
@@ -235,7 +243,7 @@ public sealed class Exporter : IExporter
                         var until = Math.Min(samples, Native.Round((index + 1) / fps * 48_000));
                         while (audioOffset < until)
                             EncodeAudio(audio, editedAudio!, (AVFrame*)audioFrameHandle!.Pointer, audioBuffer, samples, ref audioOffset,
-                                packet => Mux(format, audio, audioStream, packet), ct);
+                                audioGain, packet => Mux(format, audio, audioStream, packet), ct);
                     }
                     reporter("encoding", index + 1);
                 }
@@ -243,7 +251,7 @@ public sealed class Exporter : IExporter
                 {
                     while (audioOffset < samples)
                         EncodeAudio(audio, editedAudio!, (AVFrame*)audioFrameHandle!.Pointer, audioBuffer, samples, ref audioOffset,
-                            packet => Mux(format, audio, audioStream, packet), ct);
+                            audioGain, packet => Mux(format, audio, audioStream, packet), ct);
                     audio.Send(null, packet => Mux(format, audio, audioStream, packet), ct);
                 }
                 video.Send(null, packet => Mux(format, video, videoStream, packet), ct);
@@ -310,7 +318,7 @@ public sealed class Exporter : IExporter
             if (publish) OutputSafety.Publish(destinations, ct: ct);
             hasPartial = false; hasSrtPartial = false; hasSidecarPartial = false;
             return new(destination, srtDestination, snapshot.RenderedDuration,
-                size.Width, size.Height, fps, frames, 48_000, samples, "h264", encoderName, timer.Elapsed.TotalSeconds);
+                size.Width, size.Height, fps, frames, 48_000, samples, "h264", encoderName, timer.Elapsed.TotalSeconds) { Loudness = loudness };
         }
         finally
         {
@@ -388,8 +396,34 @@ public sealed class Exporter : IExporter
         catch { handle.Dispose(); throw; }
     }
 
+    /// <summary>The social loudness of the mix an export encodes (ADR-R47): a pre-pass through a second reader of the same
+    /// snapshot, session and staged music, in the encoder's frame size, stopping where the encoder stops. Offline, faster than
+    /// real time and without a second encode; the Mac measures its composed mix the same way.</summary>
+    internal static SocialLoudnessReport MeasureLoudness(ComposeSnapshot snapshot, VoiceLabRenderSession? session, MusicBed? music,
+        long total, int frameSize, CancellationToken ct)
+    {
+        using var reader = RenderedAudioReader.Open(snapshot, 48_000, session: session, ct: ct, music: music);
+        return Measure(reader.Read, total, frameSize, ct);
+    }
+
+    internal static SocialLoudnessReport Measure(StereoRead read, long total, int frameSize, CancellationToken ct)
+    {
+        var meter = new SocialLoudnessMeter(48_000, 2);
+        var buffer = new float[2 * Math.Max(1, frameSize)];
+        long offset = 0;
+        while (offset < total)
+        {
+            ct.ThrowIfCancellationRequested();
+            var count = read(buffer, (int)Math.Min(Math.Max(1, frameSize), total - offset), ct);
+            if (count == 0) break;
+            meter.Append(buffer.AsSpan(0, count * 2));
+            offset += count;
+        }
+        return SocialLoudness.Report(meter.Finish()).Report;
+    }
+
     private static unsafe void EncodeAudio(EncoderSession encoder, RenderedAudioReader reader, AVFrame* frame, float[] buffer,
-        long total, ref long offset, PacketSink consume, CancellationToken ct)
+        long total, ref long offset, float gain, PacketSink consume, CancellationToken ct)
     {
         Native.Check(ffmpeg.av_frame_make_writable(frame), "Reuse AAC frame");
         var count = reader.Read(buffer, (int)Math.Min(encoder.Context->frame_size, total - offset), ct);
@@ -397,7 +431,7 @@ public sealed class Exporter : IExporter
         for (var channel = 0; channel < 2; channel++)
         {
             var samples = (float*)frame->extended_data[channel];
-            for (var index = 0; index < count; index++) samples[index] = buffer[index * 2 + channel];
+            for (var index = 0; index < count; index++) samples[index] = buffer[index * 2 + channel] * gain;
         }
         frame->nb_samples = count; frame->pts = offset;
         encoder.Send(frame, consume, ct); offset += count;
