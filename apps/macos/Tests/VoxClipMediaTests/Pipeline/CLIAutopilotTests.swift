@@ -97,6 +97,7 @@ private actor LatencyStub: LLMConnector {
         for (key, value) in numbers { reply[key] = value }
         for (key, value) in texts { reply[key] = value }
         for key in lists { reply[key] = [Any]() }
+        reply["frames"] = ["blur": [Any](), "cover": ["id": "", "reason": ""]]
         return RawCompletion(text: String(decoding: try JSONSerialization.data(withJSONObject: reply), as: UTF8.self), model: model, stop: .complete)
     }
 }

@@ -73,21 +73,41 @@ public enum FrameSampling {
             }
         }
         if !current.isEmpty { sentences.append(current) }
-        let chosen: [[Int]]
-        if sentences.count <= limit { chosen = sentences }
-        else if limit == 1 { chosen = [sentences[0]] }
-        else {
-            let span = Double(sentences.count - 1), steps = Double(limit - 1)
-            chosen = (0..<limit).map { step in
-                let position = (Double(step) * span / steps).rounded()
-                return sentences[Int(position)]
-            }
-        }
-        return chosen.map { sentence in
+        return spread(sentences, limit: limit).map { sentence in
             let middle = clip.words[sentence[sentence.count / 2]]
             let time = (middle.start + middle.end) / 2
             return FrameSample(time: time, firstWord: sentence[0], lastWord: sentence[sentence.count - 1])
         }
+    }
+
+    /// At most `limit` of `items`, evenly spaced, the first and last always among them.
+    static func spread<Item>(_ items: [Item], limit: Int) -> [Item] {
+        guard limit > 0 else { return [] }
+        if items.count <= limit { return items }
+        if limit == 1 { return [items[0]] }
+        let span = Double(items.count - 1), steps = Double(limit - 1)
+        return (0..<limit).map { step in items[Int((Double(step) * span / steps).rounded())] }
+    }
+
+    /// The whole video's sentence frames (ADR-R48 part 2): one per sentence of every spoken word, cut or not, with no
+    /// limit. The pass runs as soon as the transcript exists, while Find Clips runs, so each clip's plan later takes its
+    /// frames from the cache. Empty without a spoken word.
+    public static func videoSamples(_ words: [TimedWord]) -> [FrameSample] {
+        guard !words.isEmpty, let whole = FrameClip(words: words, first: 0, last: words.count - 1, cutWordIds: []) else { return [] }
+        return sentenceSamples(whole, limit: Int.max)
+    }
+
+    /// A clip's frames out of the whole video's (`videoSamples`): those whose time lies inside one of the clip's kept
+    /// words, at most `limit`, evenly spaced with the first and last kept. A clip inside one long sentence whose frame
+    /// falls outside it gets its own samples instead (`sentenceSamples`), so every clip has frames.
+    public static func clipSamples(_ video: [FrameSample], clip: FrameClip, limit: Int = maximumSentences) -> [FrameSample] {
+        let spans = clip.kept.map { (start: clip.words[$0].start, end: clip.words[$0].end) }
+        let inside = video.filter { sample in
+            sample.time >= clip.start - 1e-9 && sample.time <= clip.end + 1e-9
+                && spans.contains { sample.time >= $0.start - 1e-9 && sample.time <= $0.end + 1e-9 }
+        }
+        guard !inside.isEmpty else { return sentenceSamples(clip, limit: limit) }
+        return spread(inside, limit: limit)
     }
 
     /// The opening scan's times around `start`, never before 0, in order.

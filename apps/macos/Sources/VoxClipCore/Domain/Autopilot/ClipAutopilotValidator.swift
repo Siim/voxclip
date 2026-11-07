@@ -35,6 +35,7 @@ public enum ClipAutopilotValidator {
             keepSeconds: context.pauseKeepSeconds) / (speed?.rate ?? 1)
         let lengthReason = text(value[ai: "lengthReason"], limit: limits.maxReasonScalars, field: "lengthReason", log: &log)
         let tone = tone(value, context: context, log: &log)
+        let frames = frames(value, context: context, log: &log)
         return ClipAutopilotPlan(startWord: span.lowerBound, endWord: span.upperBound,
             title: title.isEmpty ? fallbackTitle : title,
             hook: text(value[ai: "hook"], limit: limits.maxHookScalars, field: "hook", log: &log),
@@ -45,7 +46,36 @@ public enum ClipAutopilotValidator {
             scoreReason: text(value[ai: "scoreReason"], limit: limits.maxReasonScalars, field: "scoreReason", log: &log),
             lengthReason: lengthReason, seconds: seconds,
             questions: questions(value[ai: "questions"], context: context, log: &log), repairs: log.repairs,
-            flags: flags(seconds: seconds, lengthReason: lengthReason, limits: limits), tone: tone)
+            flags: flags(seconds: seconds, lengthReason: lengthReason, limits: limits), tone: tone, frames: frames)
+    }
+
+    /// The frame choices (prompt version 8, ai.md §19.6), checked against the candidates the request listed. Nil when the
+    /// request carried no frames. A blur id that names no candidate, or names one twice, is ignored (a repair); a candidate
+    /// the reply leaves out stays sharp. A cover id that names no candidate falls back to the local best, `C1` (a repair
+    /// when the reply named another); a reply without `frames` (one from before version 8) has no blur and that cover.
+    static func frames(_ value: JSONValue, context: ClipAutopilotContext, log: inout Log) -> ClipAutopilotPlan.FrameChoices? {
+        guard let listed = context.frames else { return nil }
+        let reply = value[ai: "frames"]
+        let limit = context.prompt.limits.maxReasonScalars
+        var decided: [String: ClipAutopilotPlan.FrameChoices.Blur] = [:]
+        for (index, item) in reply[ai: "blur"].aiArray.enumerated() {
+            let field = "frames.blur[\(index)]"
+            let id = (item[ai: "id"].aiString ?? "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+            guard listed.blurCandidate(id) != nil, decided[id] == nil, let blur = item[ai: "blur"].aiBool else {
+                log.drop(field, id.isEmpty ? "no screen named" : "“\(id)” is not a listed screen, or was named twice")
+                continue
+            }
+            decided[id] = .init(id: id, blur: blur, reason: text(item[ai: "reason"], limit: limit, field: field + ".reason", log: &log))
+        }
+        let blur = listed.blur.compactMap { decided[$0.id] }
+        guard let best = listed.cover.first else { return .init(blur: blur, cover: nil) }
+        let named = (reply[ai: "cover"][ai: "id"].aiString ?? "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        if listed.coverCandidate(named) != nil {
+            return .init(blur: blur, cover: .init(id: named, reason: text(reply[ai: "cover"][ai: "reason"], limit: limit,
+                                                                           field: "frames.cover.reason", log: &log)))
+        }
+        if reply != .null { log.repair("frames.cover", named.isEmpty ? "no cover named; \(best.id), the best measured" : "“\(named)” is not a candidate; \(best.id)") }
+        return .init(blur: blur, cover: .init(id: best.id, reason: "", fallback: true))
     }
 
     /// The tone the words were written in (prompt version 6, ai.md §16.5). With no tone in the request there is none. A fixed

@@ -56,6 +56,9 @@ EXACT = ['shared/fixtures/voice-lab/pace-cases.json', 'shared/fixtures/voice-lab
          'shared/fixtures/clip-effects/effects-project.voxclip', 'shared/fixtures/clip-effects/effects-wire-cases.json',
          'shared/fixtures/ask-claude/ask-claude-cases.json',
          'shared/fixtures/clip-controls/clip-controls-project.voxclip', 'shared/fixtures/clip-controls/clip-controls-wire-cases.json',
+         'shared/fixtures/clip-frames/clip-frames-project.voxclip', 'shared/fixtures/clip-frames/clip-frames-wire-cases.json',
+         'shared/fixtures/autopilot/plan-frames-cases.json', 'shared/fixtures/autopilot/plan-validation-cases.json',
+         'shared/fixtures/autopilot/plan-v2-cases.json', 'shared/fixtures/autopilot/plan-tone-cases.json',
          'shared/fixtures/clip-render/clip-render-cases.json',
          'shared/fixtures/clips-mode/clips-mode-settings-cases.json',
          'shared/fixtures/clip-style/caption-look-cases.json',
@@ -102,6 +105,9 @@ def main():
     # The clip-controls schema field and its shared vectors (doc/design.md section 6.9).
     subprocess.run([sys.executable, str(root / "tools/schemas/generate_clip_controls_schema.py")], check=True)
     subprocess.run([sys.executable, str(root / "tools/fixtures/clip-controls/generate_clip_controls.py")], check=True)
+    subprocess.run([sys.executable, str(root / "tools/schemas/generate_clip_frames_schema.py")], check=True)
+    subprocess.run([sys.executable, str(root / "tools/fixtures/clip-frames/generate_clip_frames.py")], check=True)
+    subprocess.run([sys.executable, str(root / "tools/fixtures/autopilot/generate_plan_frames.py")], check=True)
     # The clip style's tone (doc/design.md section 6.6) and the Rewrite tone catalog (section 6.3.1).
     subprocess.run([sys.executable, str(root / "tools/schemas/generate_clip_style_tone_schema.py")], check=True)
     subprocess.run([sys.executable, str(root / "tools/fixtures/voice-lab/generate_rewrite_tones.py")], check=True)

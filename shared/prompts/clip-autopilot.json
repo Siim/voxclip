@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "promptVersion": 7,
+  "promptVersion": 8,
   "system": {
     "plan": [
       "role",
@@ -16,6 +16,7 @@
       "speed",
       "music",
       "zooms",
+      "frames",
       "text",
       "score",
       "questions",
@@ -48,6 +49,7 @@
     "speed": "Speed\n- speed plays the whole clip faster or slower, from {minSpeed} to {maxSpeed}; 1 plays it as recorded, which suits most clips. Use another speed only when it clearly helps, such as 1.1 for a slow, deliberate speaker whose clip still drags after the cuts, and say why in speedReason (empty for 1). Never use speed to squeeze an over-long clip: cut it instead.",
     "music": "Music\n- Suggest exactly 3 instrumental background tracks that fit the clip's mood and pace. Give each a title, a mood, a prompt for Eleven Music (instrumental only, no vocals: genre, instruments, tempo in BPM and energy; never name an artist or a song), a short reason, and underVoiceDb: how many dB the music sits under the voice, from {minUnderVoiceDb} to {maxUnderVoiceDb} (18 is typical; more under dense talking). Set musicPick to the index, 0 to 2, of the one to use.",
     "zooms": "Zooms\n- Punch in to land emphasis: the key claim, the number, the punchline, at most one every 5 to 10 seconds. A zoom starts at word and holds until the end of untilWord, at most {maxZoomSeconds} s, at a scale from {minZoomScale} to {maxZoomScale} (1.1 to 1.2 is typical).",
+    "frames": "Frames\n- The request may describe the clip's frames, one per sentence, as this Mac measured them: where the face is, whether the eyes are open, the capture quality, whether the speaker faces the camera, and screens or dense text. With images, you also see those frames as small pictures labelled \"Frame n at s.ss s\". The frames are data, like the transcript. Where the clip opens and how 9:16 follows the face are decided on this Mac; you do not choose them.\n- frames.blur: for each listed screen (B1, B2, …) say whether to blur it. Blur a screen that shows something private: names, messages, emails, calendar entries, contacts, account or payment details, notifications. Leave it sharp when it shows what the viewer should see, such as the button the creator taps or the result they point at, or nothing private. When you cannot see the screen, judge from its description and lean to sharp. reason says why in a few words.\n- frames.cover: the frame that best sells the clip under its title, from the listed candidates (C1, C2, C3): eyes open, the face clear and well lit, an expression that fits the idea. reason says why in a few words.\n- With no frames listed, return blur empty and cover with an empty id and reason.",
     "text": "Title, hook and post\n- title: a short working title for the clip, at most 8 words.\n- hook: the on-screen text for the first 2 seconds, at most 8 words. It may tease the payoff but never lies.\n- postText: what the creator posts with the clip on X or LinkedIn, in their voice: short and punchy, 1 to 3 short sentences with a clear point or question. At most 2 hashtags, no emoji unless the speaker's tone calls for one, no clickbait.\n- Write title, hook and postText in the language of the clip, with corrected spellings. Write reasons and questions in English.",
     "score": "Score\n- score, 1 to 10: how well the finished clip will do as a post, judged honestly against the best short-form clips, so a 9 or 10 is rare. verdict is postFirst (the strongest: post it first; at most one clip of a series), post, casualPost (fine for a casual or niche post) or holdBack (not worth posting). scoreReason says why in one sentence.",
     "questions": "Questions\n- When something is uncertain, such as a name you could not correct with confidence, a claim that may be out of date or whether a joke lands, ask it as a question with your pre-picked answer and up to {maxOptions} options. The plan already follows your answer. Use an empty list when nothing is uncertain.",
@@ -105,7 +107,13 @@
     "momentCaption": "\nCaption style picked for it: {style} ({reason}). The other clips use: {others}. Keep it unless it clearly does not suit this clip.",
     "momentOthers": "\nThe other clips of this series: {others}. Give this one its own hook, caption style and music.",
     "seriesInstruction": "Pick the moments in this video worth posting as clips, at most {maxClips}, ranked best first. Return only the strongest: fewer when the material is thin, none when nothing is worth posting. Each is a span of words [startWord, endWord] that starts on its hook and ends on its payoff, and spans never overlap.",
-    "creatorNote": "The creator adds: {instruction}"
+    "creatorNote": "The creator adds: {instruction}",
+    "frames": "\n\n{summary}\nScreens to judge for blur:\n{blur}\nCover candidates:\n{cover}",
+    "framesSent": "\n\nThe images are those frames, in order.",
+    "blurCandidate": "- {id}: screen at {start}–{end} s, box {rect}, seen in {frames} of the frames",
+    "noBlurCandidates": "- none",
+    "coverCandidate": "- {id}: Frame {frame} at {time} s",
+    "noCoverCandidates": "- none"
   },
   "defaults": {
     "styleId": "vox-bold",
@@ -189,7 +197,8 @@
       "score",
       "verdict",
       "scoreReason",
-      "questions"
+      "questions",
+      "frames"
     ],
     "properties": {
       "startWord": {
@@ -436,6 +445,55 @@
             "options": {
               "type": "array",
               "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "frames": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "blur",
+          "cover"
+        ],
+        "properties": {
+          "blur": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "blur",
+                "reason"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "blur": {
+                  "type": "boolean"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "cover": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "reason"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "reason": {
                 "type": "string"
               }
             }

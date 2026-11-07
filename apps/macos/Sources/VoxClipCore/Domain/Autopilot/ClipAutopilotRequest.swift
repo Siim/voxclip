@@ -108,14 +108,16 @@ public struct ClipAutopilotContext: Sendable {
     public let prompt: ClipAutopilotPrompt
     /// The request's tone: what the plan's `tone` may be.
     public let tone: ClipAutopilotTone?
+    /// The frames the request carried (ADR-R48): the candidates the reply's `frames` may name. Nil without frames.
+    public let frames: ClipAutopilotFrames?
 
     public init(words: [TimedWord], corrections: [String: String] = [:], cutWordIDs: Set<String> = [], pauses: [Pause] = [],
                 cutPauseIDs: Set<String> = [], pauseKeepSeconds: Double = 0.15, scope: ClosedRange<Int>, styleIDs: Set<String>,
                 fonts: [ClipAutopilotPlan.Font: String], preference: ClipAutopilotCaptionPreference? = nil, prompt: ClipAutopilotPrompt,
-                tone: ClipAutopilotTone? = nil) {
+                tone: ClipAutopilotTone? = nil, frames: ClipAutopilotFrames? = nil) {
         self.words = words; self.corrections = corrections; self.cutWordIDs = cutWordIDs; self.pauses = pauses
         self.cutPauseIDs = cutPauseIDs; self.pauseKeepSeconds = pauseKeepSeconds; self.scope = scope; self.styleIDs = styleIDs
-        self.fonts = fonts; self.preference = preference; self.prompt = prompt; self.tone = tone
+        self.fonts = fonts; self.preference = preference; self.prompt = prompt; self.tone = tone; self.frames = frames
     }
 
     /// The word as shown, corrections applied.
@@ -136,7 +138,14 @@ public struct ClipAutopilotContext: Sendable {
         for correction in plan { merged[words[correction.word].id] = correction.text }
         return ClipAutopilotContext(words: words, corrections: merged, cutWordIDs: cutWordIDs, pauses: pauses, cutPauseIDs: cutPauseIDs,
                                     pauseKeepSeconds: pauseKeepSeconds, scope: scope, styleIDs: styleIDs, fonts: fonts,
-                                    preference: preference, prompt: prompt, tone: tone)
+                                    preference: preference, prompt: prompt, tone: tone, frames: frames)
+    }
+
+    /// This context for a request that carried `frames`.
+    func showing(_ frames: ClipAutopilotFrames?) -> ClipAutopilotContext {
+        ClipAutopilotContext(words: words, corrections: corrections, cutWordIDs: cutWordIDs, pauses: pauses, cutPauseIDs: cutPauseIDs,
+                             pauseKeepSeconds: pauseKeepSeconds, scope: scope, styleIDs: styleIDs, fonts: fonts, preference: preference,
+                             prompt: prompt, tone: tone, frames: frames)
     }
 }
 
@@ -180,7 +189,8 @@ public enum ClipAutopilotRequestBuilder {
     }
 
     static func render(_ request: ClipAutopilotRequest, prompt: ClipAutopilotPrompt, styles: [CaptionStyle],
-                       fonts: [ClipAutopilotPlan.Font: String], pauses: [Pause], moment: ClipAutopilotMomentBrief? = nil) throws -> Rendered {
+                       fonts: [ClipAutopilotPlan.Font: String], pauses: [Pause], moment: ClipAutopilotMomentBrief? = nil,
+                       frames: ClipAutopilotFrames? = nil) throws -> Rendered {
         guard let scope = scope(request) else { throw VoiceLabError.invalidInput }
         let words = request.transcript.words
         let cut = Set(request.edits.cutWordIds)
@@ -223,6 +233,7 @@ public enum ClipAutopilotRequestBuilder {
                 "minTargetSeconds": values["minTargetSeconds"]!, "maxTargetSeconds": values["maxTargetSeconds"]!, "lengthHint": lengthHint])
             let elsewhere = names(words: words, outside: scope, corrections: request.edits.corrections)
             if !elsewhere.isEmpty { instruction += try prompt.request("names", ["names": elsewhere.joined(separator: ", ")]) }
+            if let frames { instruction += try framesBlock(frames, prompt: prompt) }
             if let tone = request.tone { instruction += try toneLine(tone, prompt: prompt) }
             if let moment {
                 // Find Clips' moments carry no caption style: the plan picks one, told only the other clips (Claude mode).
@@ -266,6 +277,24 @@ public enum ClipAutopilotRequestBuilder {
     }
 
     static let maxNames = 20
+
+    /// The clip's frames (prompt version 8, ADR-R48): the sheet's summary, the screens to judge for blur (`B1…`) and the
+    /// cover candidates (`C1…`), and a line naming the images when they go too. A request without frames adds nothing, so
+    /// it is the same text as before version 8.
+    static func framesBlock(_ frames: ClipAutopilotFrames, prompt: ClipAutopilotPrompt) throws -> String {
+        let blur = try frames.blur.map {
+            try prompt.request("blurCandidate", ["id": $0.id, "start": FrameSheetFrame.seconds($0.start), "end": FrameSheetFrame.seconds($0.end),
+                                                 "rect": FrameSheetFrame.rect($0.rect), "frames": String($0.frames)])
+        }
+        let cover = try frames.cover.map {
+            try prompt.request("coverCandidate", ["id": $0.id, "frame": String($0.frame), "time": FrameSheetFrame.seconds($0.time)])
+        }
+        let block = try prompt.request("frames", [
+            "summary": frames.summary.isEmpty ? "Frames measured on this Mac: none could be read." : frames.summary,
+            "blur": blur.isEmpty ? try prompt.request("noBlurCandidates", [:]) : blur.joined(separator: "\n"),
+            "cover": cover.isEmpty ? try prompt.request("noCoverCandidates", [:]) : cover.joined(separator: "\n")])
+        return block + (frames.sendsImages ? try prompt.request("framesSent", [:]) : "")
+    }
 
     /// The clip instruction's tone line (prompt version 6): the creator's fixed tone with its instruction, the tones to
     /// choose from under Auto, or the creator's own tone.

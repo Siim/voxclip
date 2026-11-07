@@ -1,0 +1,43 @@
+{
+  "schema": "voxclip-llm-image-prices/1",
+  "description": "List input prices, USD per million input tokens, that price the frames a Make it postable plan sends to an API-key connector (ADR-R48, doc/spec/ai.md section 19.6). The tokens are the frame sheet's estimate (Anthropic's width x height / 750 per image) for every provider. A model not listed takes its connector's highest listed price, so the estimate never reads low; a connector not listed is unpriced and its billed sends carry the text summary only. Read from each provider's public pricing page on the date in checked; prompts of a clip plan stay far below every long-context tier, so the short-context price is listed. Promotional prices are replaced by the regular one where the page names it (gemini-3.8-flash). TODO(lead): gpt-5.6-sol lists promotional pricing until 2026-11-30 without the regular price; re-check it then.",
+  "checked": "2026-11-07",
+  "connectors": {
+    "anthropic": {
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "usdPerMillionInputTokens": {
+        "claude-haiku-5-5": "0.10",
+        "claude-sonnet-5-5": "2",
+        "claude-opus-5-5": "4",
+        "claude-sonnet-5": "2",
+        "claude-opus-5": "5"
+      }
+    },
+    "openai": {
+      "source": "https://developers.openai.com/api/docs/pricing",
+      "usdPerMillionInputTokens": {
+        "gpt-5.6-luna": "0.20",
+        "gpt-5.6-terra": "2",
+        "gpt-5.6-sol": "4",
+        "gpt-6.1-sol": "2"
+      }
+    },
+    "xai": {
+      "source": "https://docs.x.ai/docs/models",
+      "usdPerMillionInputTokens": {
+        "grok-4.3": "1.25",
+        "grok-4.5": "2",
+        "grok-4.6": "2",
+        "grok-4.7": "2"
+      }
+    },
+    "gemini": {
+      "source": "https://aistudio.google.com/docs/pricing",
+      "usdPerMillionInputTokens": {
+        "gemini-3.5-flash-lite": "0.30",
+        "gemini-3.8-flash": "1.50",
+        "gemini-3.1-pro-preview": "2"
+      }
+    }
+  }
+}

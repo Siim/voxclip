@@ -47,7 +47,7 @@ import Testing
                 "Update plan-tone-cases.json sources when the prompt changes")
         let tones = try VoiceLabLLMChecks.readPrompt(shared, RewriteToneCatalog.path)
         #expect(sources[ai: "shared/data/rewrite-tones.json"].aiString == tones.sha256, "Update plan-tone-cases.json when the tones change")
-        #expect(try ClipAutopilotPrompt(shared: shared).promptVersion == 7)
+        #expect(try ClipAutopilotPrompt(shared: shared).promptVersion == 8)
         #expect(try Self.fixture()[ai: "cases"].aiArray.count == 11)
     }
 
@@ -56,7 +56,7 @@ import Testing
     func planVectorsKeepRepairOrDropTheTone(_ id: String) throws {
         let vector = try #require(try Self.fixture()[ai: "cases"].aiArray.first { $0[ai: "id"].aiString == id })
         let plan = try #require(ClipAutopilotValidator.plan(vector[ai: "reply"], context: try Self.context(tone: try Self.tone(vector[ai: "tone"]))))
-        #expect(plan.version == 3)
+        #expect(plan.version == ClipAutopilotPlan.currentVersion)
         let expect = vector[ai: "expect"]
         if expect[ai: "tone"] == .null {
             #expect(plan.tone == nil)
@@ -107,8 +107,8 @@ import Testing
         object.removeValue(forKey: "tone")
         object["version"] = .number(2)
         let old = try JSONDecoder().decode(ClipAutopilotPlan.self, from: JSONEncoder().encode(JSONValue.object(object)))
-        #expect(old.version == 3 && old.tone == nil && old.rewrites == plan.rewrites)
-        object["version"] = .number(4)
+        #expect(old.version == ClipAutopilotPlan.currentVersion && old.tone == nil && old.rewrites == plan.rewrites)
+        object["version"] = .number(5)
         #expect(throws: DecodingError.self) { try JSONDecoder().decode(ClipAutopilotPlan.self, from: JSONEncoder().encode(JSONValue.object(object))) }
     }
 }

@@ -34,6 +34,11 @@ public enum ClipAutopilotProgress: Sendable, Equatable {
     case failed(clip: Int, of: Int)
 }
 
+/// Supplies a clip's frames just before its plan is sent (ADR-R48, ai.md §19.6): `clip` indexes the spans (0 of 1 for a
+/// single clip) and `span` is the clip's transcript span. Each clip asks on its own lane, so one clip's frames never wait
+/// for another's plan. Nil sends the clip as text only, as before prompt version 8.
+public typealias ClipAutopilotFrameSource = @Sendable (_ clip: Int, _ span: ClosedRange<Int>) async -> ClipAutopilotFrames?
+
 /// The "Make it postable" planner (ai.md §16): asks the selected connector for every decision a postable clip needs and
 /// checks the reply item by item. A clip is one send at extra high effort. A series is two stages: the moments worth a clip
 /// at high effort over the whole transcript, then each moment's plan at extra high effort with that clip's words only, at
@@ -54,14 +59,14 @@ public actor ClipAutopilotService {
 
     /// The first request a plan sends, built from the shared prompt file: the clip's plan, the series' moments, or the
     /// first span's plan of a `clips` request. Pure apart from reading the shared files.
-    public func request(_ input: ClipAutopilotRequest, connector: ConnectorID) throws -> LLMRequest {
+    public func request(_ input: ClipAutopilotRequest, connector: ConnectorID, frames: ClipAutopilotFrames? = nil) throws -> LLMRequest {
         let resources = try Resources(shared: shared)
         if case .clips(let spans) = input.mode {
             guard let first = spans.first else { throw VoiceLabError.invalidInput }
             return try Self.prepare(input.clip(first), resources: resources, connector: connector,
-                                    moment: input.moments.count == spans.count ? Self.briefs(input.moments).first : nil).request
+                                    moment: input.moments.count == spans.count ? Self.briefs(input.moments).first : nil, frames: frames).request
         }
-        return try Self.prepare(input, resources: resources, connector: connector).request
+        return try Self.prepare(input, resources: resources, connector: connector, frames: input.isSeries ? nil : frames).request
     }
 
     /// The second stage's requests for a series' checked moments, in their order.
@@ -85,7 +90,9 @@ public actor ClipAutopilotService {
     /// time (a CLI connector runs one process at a time). Without lanes the clip plans of a series go one after another.
     /// A clip plan that fails is left out of the series and listed in its repairs; the run fails only when every clip plan
     /// does, or on cancellation.
+    /// `frames` gives each clip plan its frames when it is about to be sent (never the series' moments stage).
     public func plan(_ input: ClipAutopilotRequest, connector: any LLMConnector, model: String, lanes: [any LLMConnector] = [],
+                     frames: ClipAutopilotFrameSource? = nil,
                      progress: (@Sendable (ClipAutopilotProgress) -> Void)? = nil) async throws -> ClipAutopilotResult {
         guard VoiceLabLLMChecks.isValidModel(model), lanes.allSatisfy({ $0.id == connector.id }) else { throw VoiceLabError.invalidInput }
         let resources = try Resources(shared: shared)
@@ -94,8 +101,9 @@ public actor ClipAutopilotService {
         }
         switch input.mode {
         case .clip:
-            let prepared = try Self.prepare(input, resources: resources, connector: connector.id)
+            let text = try Self.prepare(input, resources: resources, connector: connector.id)
             progress?(.planning(clip: 0, of: 1))
+            let prepared = try await text.showing(frames, clip: 0, resources: resources)
             let reply = try await Self.send(prepared, lane: all[0], model: model, catalog: resources.catalog)
             guard let plan = ClipAutopilotValidator.plan(reply.object, context: prepared.context) else {
                 throw LLMError.invalidOutput(reason: "The plan has no words of the clip.")
@@ -108,7 +116,7 @@ public actor ClipAutopilotService {
             // With Find Clips' moments each plan knows its rank and the other clips, as a series' second stage does.
             let briefs: [ClipAutopilotMomentBrief?] = input.moments.isEmpty ? spans.map { _ in nil } : Self.briefs(input.moments)
             let items = try zip(spans, briefs).map { try Self.prepare(input.clip($0.0), resources: resources, connector: connector.id, moment: $0.1) }
-            let outcome = try await Self.planAll(items, lanes: all, model: model, catalog: resources.catalog, progress: progress)
+            let outcome = try await Self.planAll(items, lanes: all, model: model, resources: resources, frames: frames, progress: progress)
             let series = ClipAutopilotValidator.series(outcome.plans, moments: [], failures: outcome.failures, repairs: [])
             return Self.result(series, replies: outcome.replies, model: outcome.replies.first?.model ?? model, resources: resources)
         case .series:
@@ -123,7 +131,7 @@ public actor ClipAutopilotService {
             let items = try Self.briefs(moments).map {
                 try Self.prepare(input.clip($0.moment.startWord...$0.moment.endWord), resources: resources, connector: connector.id, moment: $0)
             }
-            let outcome = try await Self.planAll(items, lanes: all, model: model, catalog: resources.catalog, progress: progress)
+            let outcome = try await Self.planAll(items, lanes: all, model: model, resources: resources, frames: frames, progress: progress)
             let series = ClipAutopilotValidator.series(outcome.plans, moments: moments, failures: outcome.failures, repairs: repairs)
             return Self.result(series, replies: [reply] + outcome.replies, model: outcome.replies.first?.model ?? reply.model, resources: resources)
         }
@@ -139,6 +147,20 @@ public actor ClipAutopilotService {
     struct Prepared: Sendable {
         let request: LLMRequest
         let context: ClipAutopilotContext
+        /// What it was prepared from, so the clip's frames can be added when they arrive.
+        let input: ClipAutopilotRequest
+        let connector: ConnectorID
+        let moment: ClipAutopilotMomentBrief?
+
+        /// The same send with the clip's frames from `source`: the summary and candidates in the instruction, the images on
+        /// the request. Unchanged without a source, for a series' moments stage, or when the source has none.
+        func showing(_ source: ClipAutopilotFrameSource?, clip: Int, resources: Resources) async throws -> Prepared {
+            guard let source, !input.isSeries else { return self }
+            try Task.checkCancellation()
+            guard let frames = await source(clip, context.scope) else { return self }
+            try Task.checkCancellation()
+            return try ClipAutopilotService.prepare(input, resources: resources, connector: connector, moment: moment, frames: frames)
+        }
     }
 
     /// Every shared file a plan reads, read once per call.
@@ -161,8 +183,10 @@ public actor ClipAutopilotService {
         if lane.connector.id != .appleFoundation {
             let policy = AITokenPolicy(catalog.document[ai: "policy"])
             let context = try await catalog.resolvedContextTokens(connector: lane.connector, model: model)
+            // The frames count too: Anthropic's estimate per image, which only a connector that takes images is sent.
+            let images = await lane.connector.supportsImages() ? request.images.map { FrameSheet.imageTokens(width: $0.width, height: $0.height) }.reduce(0, +) : 0
             let required = VoiceLabLLMChecks.requiredTokens(policy, text: request.system + (request.cachedBlock ?? "") + request.instruction,
-                schema: try request.schema.aiCompact(), maxOutputTokens: request.maxOutputTokens)
+                schema: try request.schema.aiCompact(), maxOutputTokens: request.maxOutputTokens) + images
             guard VoiceLabLLMChecks.contextFits(context: context, required: required, safetyFactor: policy.safetyFactor) else {
                 throw LLMError.contextTooLong
             }
@@ -175,7 +199,7 @@ public actor ClipAutopilotService {
 
     /// The clip plans of `items`, each lane sending one at a time, in item order as lanes free up. A failed plan is nil and
     /// its reason is in `failures`; when every plan fails the first error is thrown. Cancellation always throws.
-    static func planAll(_ items: [Prepared], lanes: [Lane], model: String, catalog: LLMCatalog,
+    static func planAll(_ items: [Prepared], lanes: [Lane], model: String, resources: Resources, frames: ClipAutopilotFrameSource?,
                         progress: (@Sendable (ClipAutopilotProgress) -> Void)?) async throws
         -> (plans: [ClipAutopilotPlan?], replies: [LLMResult], failures: [Int: String]) {
         typealias Finished = (lane: Int, item: Int, outcome: Result<(LLMResult, ClipAutopilotPlan?), any Error>)
@@ -191,8 +215,9 @@ public actor ClipAutopilotService {
                 progress?(.planning(clip: item, of: items.count))
                 group.addTask {
                     do {
-                        let reply = try await send(prepared, lane: chosen, model: model, catalog: catalog)
-                        return (lane, item, .success((reply, ClipAutopilotValidator.plan(reply.object, context: prepared.context))))
+                        let shown = try await prepared.showing(frames, clip: item, resources: resources)
+                        let reply = try await send(shown, lane: chosen, model: model, catalog: resources.catalog)
+                        return (lane, item, .success((reply, ClipAutopilotValidator.plan(reply.object, context: shown.context))))
                     } catch {
                         return (lane, item, .failure(error))
                     }
@@ -248,11 +273,12 @@ public actor ClipAutopilotService {
 
     /// The request and checking context of a clip or series request; a series request is its first stage.
     static func prepare(_ input: ClipAutopilotRequest, resources: Resources, connector: ConnectorID,
-                        moment: ClipAutopilotMomentBrief? = nil) throws -> Prepared {
+                        moment: ClipAutopilotMomentBrief? = nil, frames: ClipAutopilotFrames? = nil) throws -> Prepared {
         let prompt = resources.prompt
         let state = try EditState(transcript: input.transcript, edits: input.edits)
+        let shown = input.isSeries ? nil : frames
         let rendered = try ClipAutopilotRequestBuilder.render(input, prompt: prompt, styles: resources.styles, fonts: resources.fonts,
-                                                              pauses: state.pauses, moment: moment)
+                                                              pauses: state.pauses, moment: moment, frames: shown)
         let moments = input.isSeries
         let system = moments ? prompt.momentsSystem : prompt.system
         guard (system + rendered.cachedBlock + rendered.instruction).utf8.count <= 400_000 else { throw LLMError.contextTooLong }
@@ -264,11 +290,12 @@ public actor ClipAutopilotService {
             schemaName: moments ? prompt.momentsSchemaName : prompt.schemaName, schema: moments ? prompt.momentsSchema : prompt.schema,
             maxOutputTokens: output, effort: moments ? Self.momentsEffort : Self.effort, timeout: timeout,
             language: input.language ?? input.transcript.language,
-            tag: moments ? "clip-autopilot-moments" : moment == nil ? "clip-autopilot" : "clip-autopilot-series-clip")
+            tag: moments ? "clip-autopilot-moments" : moment == nil ? "clip-autopilot" : "clip-autopilot-series-clip",
+            images: shown?.images ?? [])
         let context = ClipAutopilotContext(words: input.transcript.words, corrections: input.edits.corrections,
             cutWordIDs: Set(input.edits.cutWordIds), pauses: state.pauses, cutPauseIDs: Set(input.edits.cutPauseIds),
             pauseKeepSeconds: input.edits.pauseKeepSeconds, scope: rendered.scope, styleIDs: Set(resources.styles.map(\.id)),
-            fonts: resources.fonts, preference: input.captionPreference, prompt: prompt, tone: moments ? nil : input.tone)
-        return Prepared(request: request, context: context)
+            fonts: resources.fonts, preference: input.captionPreference, prompt: prompt, tone: moments ? nil : input.tone, frames: shown)
+        return Prepared(request: request, context: context, input: input, connector: connector, moment: moment)
     }
 }

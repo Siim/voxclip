@@ -56,3 +56,48 @@ public enum ClipAutopilotPricing {
         return ClipAutopilotPrice(voice: voice, music: music, llm: free ? .none : .unknown)
     }
 }
+
+/// The list input prices that price a plan's frames on an API-key connector (`shared/catalog/llm-image-prices.json`,
+/// ADR-R48, ai.md §19.6). The tokens are the frame sheet's estimate; a model not listed takes its connector's highest
+/// listed price, so an estimate never reads low. A connector the file does not list is unpriced: its billed sends carry
+/// the text summary only.
+public struct ClipAutopilotImagePrices: Sendable, Equatable {
+    public static let path = "catalog/llm-image-prices.json"
+    public static let schema = "voxclip-llm-image-prices/1"
+
+    /// USD per million input tokens, by connector and model.
+    public let perMillion: [ConnectorID: [String: Decimal]]
+
+    public init(perMillion: [ConnectorID: [String: Decimal]]) { self.perMillion = perMillion }
+
+    public init(shared: SharedResources) throws {
+        guard let data = try? Data(contentsOf: shared.root.appendingPathComponent(Self.path)) else { throw VoxClipError.sharedResourcesMissing }
+        try self.init(data: data)
+    }
+
+    public init(data: Data) throws {
+        guard let document = try? JSONDecoder().decode(JSONValue.self, from: data), document[ai: "schema"].aiString == Self.schema,
+              let connectors = document[ai: "connectors"].aiObject else { throw VoxClipError.sharedResourcesMissing }
+        var result: [ConnectorID: [String: Decimal]] = [:]
+        for (key, value) in connectors {
+            guard let id = ConnectorID(rawValue: key), let models = value[ai: "usdPerMillionInputTokens"].aiObject, !models.isEmpty else {
+                throw VoxClipError.sharedResourcesMissing
+            }
+            var prices: [String: Decimal] = [:]
+            for (model, price) in models {
+                guard let text = price.aiString, let amount = Decimal(string: text, locale: Locale(identifier: "en_US_POSIX")), amount > 0 else {
+                    throw VoxClipError.sharedResourcesMissing
+                }
+                prices[model] = amount
+            }
+            result[id] = prices
+        }
+        perMillion = result
+    }
+
+    /// The USD price of `tokens` input tokens on `connector`'s `model`; nil when the connector is not priced.
+    public func usd(tokens: Int, connector: ConnectorID, model: String) -> Decimal? {
+        guard let prices = perMillion[connector], let rate = prices[model] ?? prices.values.max() else { return nil }
+        return Decimal(max(0, tokens)) * rate / 1_000_000
+    }
+}
