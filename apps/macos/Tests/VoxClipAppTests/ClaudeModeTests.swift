@@ -138,7 +138,7 @@ private final class ClaudeCalls: Sendable {
         #expect(editor.claudeMode.phase == .running && !editor.claudeMode.armed)
         #expect(editor.claudeMode.clipIDs == ["clip-early", "clip-main"], "best first, top 3 of 2")
         #expect(editor.claudeMode.budget?.cap == 2)
-        #expect(editor.statusClipStyle?.text.hasPrefix("✦ Claude does it all · $") == true)
+        #expect(editor.statusClipStyle?.text.hasPrefix("✦ Claude does it all · 0 of 2 ready · $") == true)
         #expect(editor.claudeClipState("clip-early") != nil)
         await editor.claudeMode.task?.value
         #expect(editor.claudeMode.phase == .done)
@@ -534,6 +534,7 @@ extension ClaudeModeTests {
         #expect(editor.makeIt.run(for: "clip-early")?.phase == .ready, "the best clip is ready before the second plan returns")
         #expect(editor.makeIt.run(for: "clip-main")?.phase == .planning)
         #expect(editor.claudeClipState("clip-early") == .ready && editor.claudeClipState("clip-main") == .making)
+        #expect(editor.statusClipStyle?.text.hasPrefix("✦ Claude does it all · 1 of 2 ready · $") == true, "\(editor.statusClipStyle?.text ?? "")")
         #expect(editor.claudeModeSteps.contains { $0.id == "clip-early" && $0.state == .done } && editor.claudeModeSteps.contains { $0.id == "clip-main" && $0.state == .now })
         #expect(editor.llmRuns.isBusy == false, "the stub planner holds no lease; the voice step ran inside the shared window")
         await gate.open()
@@ -545,6 +546,30 @@ extension ClaudeModeTests {
         // The run's stage times, numbers only.
         let line = try #require(editor.claudeMode.clock?.logLine())
         #expect(line.hasPrefix("claude-mode timings ") && line.contains("apply1=") && line.contains("apply2=") && line.contains(" first=") && !line.contains("Early"))
+    }
+
+    /// design.md §6.7 progress: "Finding clips…" in card C and the status bar while Find Clips runs, then each clip's row
+    /// on its own and "N of M ready".
+    @Test func progressSaysFindingClipsThenCountsReadyClips() async throws {
+        let fixture = try fixture()
+        defer { close(fixture) }
+        let editor = fixture.editor
+        editor.armClaudeMode()
+        editor.finding = true
+        #expect(editor.claudeModeSteps.first { $0.id == "found" } == EditorModel.ClaudeStep(id: "found", state: .now, text: "Finding clips…"))
+        #expect(editor.statusClipStyle?.text == "✦ Claude does it all · Finding clips…")
+        editor.finding = false
+        #expect(editor.statusClipStyle?.text == "✦ Claude does it all · top 3 · ≤$2", "the summary again once it ends")
+        let gate = StreamGate()
+        streamingPlanner(fixture, gate: gate)
+        await editor.makeIt.refreshVoiceReady(editor)
+        editor.claudeModeTranscribed(started: false)
+        #expect(editor.statusClipStyle?.text.hasPrefix("✦ Claude does it all · 0 of 2 ready · $") == true)
+        await until { editor.makeIt.run(for: "clip-early")?.phase == .ready }
+        #expect(editor.statusClipStyle?.text.hasPrefix("✦ Claude does it all · 1 of 2 ready · $") == true, "\(editor.statusClipStyle?.text ?? "")")
+        await gate.open()
+        await editor.claudeMode.task?.value
+        #expect(editor.claudeMode.phase == .done && editor.statusClipStyle?.text == "✦ Claude does it all · top 3 · ≤$2")
     }
 
     @Test func stopCancelsEveryPlanStillInFlight() async throws {

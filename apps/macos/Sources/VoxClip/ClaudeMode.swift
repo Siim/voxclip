@@ -264,7 +264,7 @@ extension EditorModel {
             steps.append(ClaudeStep(id: "transcribed", state: .now, text: transcription.isRunning ? "Transcribing…" : "Waiting for the transcript"))
         }
         if finding {
-            steps.append(ClaudeStep(id: "found", state: .now, text: "Finding the best moments…"))
+            steps.append(ClaudeStep(id: "found", state: .now, text: "Finding clips…"))
         } else if claudeMode.found > 0 {
             steps.append(ClaudeStep(id: "found", state: .done, text: "Found the best moments", detail: "\(claudeMode.found) · top \(claudeMode.clipIDs.count) kept"))
         }
@@ -377,7 +377,10 @@ extension EditorModel {
         case .claude?:
             var text = settings.summary
             if claudeMode.running, let budget = claudeMode.budget {
-                text = "✦ Claude does it all · \(Self.makeItDollars(budget.spent)) / $\(settings.capUSD)"
+                // Each clip is ready on its own (design.md §6.7): "2 of 3 ready" counts them as they come.
+                text = "✦ Claude does it all · \(claudeModeReady.count) of \(claudeMode.clipIDs.count) ready · \(Self.makeItDollars(budget.spent)) / $\(settings.capUSD)"
+            } else if claudeMode.armed, finding {
+                text = "✦ Claude does it all · Finding clips…"
             }
             return StatusItem(kind: .clipStyle, parts: [StatusText(string: text)], dim: false,
                               spoken: text.replacingOccurrences(of: "✦ ", with: "").replacingOccurrences(of: " · ", with: ", ").replacingOccurrences(of: "≤", with: "up to "),
