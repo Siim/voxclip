@@ -701,6 +701,11 @@ import VoxClipCore
             if session.takePlan?.lipsync.usingTakes == true { reasons.append("lipsync") }
             if session.autoFix.work != nil { reasons.append("auto fix") }
             if app.voiceLabSession.videoVoices.values.contains(where: { $0.task != nil }) { reasons.append("video voice") }
+            // The panel offers Stop only while something it started runs (ChangeList.swift, RewriteSession+Task.swift).
+            // A gap between two of the flags above still shows it, and a step must not act there: S11-exact settled in
+            // 0.1 s on a loaded Mac with [Stop] up and its take unused (lead 2026-11-07). A Stop nothing ends is a stuck
+            // panel, which `settle` reports at its limit.
+            if reasons.isEmpty, session.task.headline.stop != nil { reasons.append("stop shown") }
             return reasons.isEmpty ? nil : reasons.joined(separator: "+")
         }
         /// Tells the scripted ElevenLabs each prepared phrase's fitting length (the plan's windows are known now).
