@@ -1,10 +1,34 @@
 # Windows fixed contracts
 
+### 2026-11-07 — Windows: exports land at social loudness, the twin of Mac ADR-R47 (track/v2-loudness)
+
+Every export (App and CLI) measures the mix it encodes and applies one static gain: −14 LUFS integrated, true peak at most −1 dBTP, within −20…+12 dB, 0 dB for a silent mix. The rule and meter are the Mac's, so both platforms land on the same gain (shared vectors within 1e-6 dB; the bound is 0.2 dB).
+
+- **Core** (`Domain/Loudness/SocialLoudness.cs`): `ExportLoudness` (Social, Off), `SocialLoudnessLimit`, `SocialLoudnessDecision`, `SocialLoudnessReport` (`MeasuredLufs`, `GainDb`, `OutputLufs`, `TruePeakDbtp`, `Capped`; `LogLine()`), `SocialLoudness.Decide`/`Report`/`LinearGain`, `SocialLoudnessMeasurement.IntegratedLufs(gainDb)` and the streaming `SocialLoudnessMeter` over `VoiceLabLoudness.KWeighting` and `TruePeakTaps` (now internal). `ExportJob.Loudness` (init, default Social) and `ExportResult.Loudness` (init, null when Off or without audio).
+- **Media.**
+  - `Exporter.Export` stages the music bed once, before the encoder sessions, and shares it with `MeasureLoudness`: a second `RenderedAudioReader` over the same snapshot, Voice Lab session and bed, read in the AAC encoder's frame size up to the export's sample count (`Measure`, stopping where the encoder stops). `EncodeAudio(gain)` multiplies each frame. The native path, not FFmpeg's `ebur128`/`volume` filters: the same meter as the Mac, no filter graph.
+  - `WaveGain.Apply(path, gain, ct)` (`Audio/AudioFiles.cs`): a finished Float32 WAV multiplied in place (RIFF chunk walk; a non-Float32 file is `exportFailed`).
+- **CLI.** `--loudness social|off` (`Choice`, default social; anything else is exit 2). `ExportJob.Loudness` from it; after `PrepareAsync` the `--audio-out` partial gets the gain before publication. The JSON's `loudness` comes from `ExportResult` through `CliDataJson` (null when off).
+- **App.** `ExportDialog` logs `export: loudness measured=… gain=… output=… truePeak=… capped=…` per export. No UI.
+- **Deleted.** None.
+- **Tests.**
+  - Core `SocialLoudnessReplayTests` (5): the shared file's shape and constants, 12 rule cases, 12 signals in uneven chunks, one append against `VoiceLabLoudness.TruePeakDbtp`, invalid input and the log line. The signals render through `tests/Support/SocialLoudnessVectors.cs`, linked into Core and Media tests.
+  - Media `SocialLoudnessExportTests` (10, portable): the pre-pass over four vector signals in a prime frame size with loud audio past the export's end (gain, capped, measured, output and peak), stopping where the reader ends, the WAV gain bit for bit (and 1× leaves the bytes), the CLI passing Social/Off with the five JSON keys or null, and `--loudness loud` exit 2.
+  - Media `SocialLoudnessNativeExportTests` (1, `RequiresFFmpeg` + `RequiresWindows`): a real export of `speech-bursts.mkv` (new in `generate-fixtures.sh`, −24.0 LUFS by FFmpeg) decodes within 0.5 LU of −14 with its true peak at most −1 dBTP, and Off within 0.5 LU of the source. **Owed on the VM.**
+  - Red without each rule (one at a time, each failing at least one test): the true-peak cap, the boost/cut limits, 0 dB for silence, the relative and absolute gates, the interpolated true peak, K-weighting, the pre-pass stopping at the export's end, the WAV gain.
+- **Verification** (macOS host, Release, `-m:1 -nodeReuse:false -p:UseSharedCompilation=false`, `VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`):
+  - Suites: Core 3,274 (3,245 passed, 29 skipped, 0 failed). Portable Media 1,028 (1,023 passed, 5 skipped, 0 failed). win-ui 1,393 (1,388 passed, 5 skipped, 0 failed).
+  - App type-check: 0 warnings. `check-xaml.py`: 0 problems. `*ReleaseSurrogate*` passes.
+  - ReleaseBoundary `update`: Core +94/−1 (the Loudness types, `ExportJob.Loudness`, `ExportResult.Loudness`, `TruePeakTaps` private → internal), Media +7/−1 (`WaveGain`, `Exporter.Measure`, `MeasureLoudness`, `EncodeAudio`'s gain), CLI +1 (literal `--loudness`). `VoxClip.txt` unchanged: the App gains no members.
+  - The Release CLI outside a test host (`env -i … dotnet voxclip-cli.dll --runtime-terms --json`) exits 0; `--loudness loud` exits 2 with the JSON usage error.
+- **Owed.** The native export test and the Windows export cost on the VM; the App's log line in a real export.
+
 ### 2026-11-07 — Mac: Claude sees the picture, part 1; the shared catalogue's `images` (track/v2-eyes-1)
 
 Mac only (ADR-R48, ai.md §19). Shared changes Windows reads: `shared/catalog/llm-providers.json` gains an `images` object on every connector (`supported`, `maxPerRequest`, Claude Code's `requiredFlags`) and `--input-format`, `--verbose` in Claude Code's optional help flags; the LLM fixtures' `sources` hash of the catalogue is regenerated, and no request vector changed. Windows Core Release passes unchanged on the Mac (3,269 tests, 29 skipped).
 
 - **Windows owes** the twin: `LlmRequest.Images` and `SupportsImages` with the same wires (ai.md §19.3), the analyzer (Windows `FaceDetector` has no landmarks or capture quality), the pure decisions with shared vectors, the frame sheet and `analyze-frames`.
+
 
 ### 2026-11-07 — Windows: whole-clip revoice projects, the pure whole-clip rules, a preview that is never silently black, and the anchor's baseline (track/v2-win-whole-clip)
 

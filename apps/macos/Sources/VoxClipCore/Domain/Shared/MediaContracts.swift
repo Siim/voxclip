@@ -275,8 +275,11 @@ public struct ExportJob: Sendable, Equatable {
     public var outputURL: URL
     public var writeSRT: Bool
     public var srtURL: URL?
-    public init(target: ExportTarget = .fullEdit, render: RenderRequest, aspect: AspectRatio = .source, quality: ExportQuality = .standard, outputURL: URL, writeSRT: Bool = false, srtURL: URL? = nil) {
+    /// Social loudness by default for every export (ADR-R47); `off` writes the mix as composed.
+    public var loudness: ExportLoudness
+    public init(target: ExportTarget = .fullEdit, render: RenderRequest, aspect: AspectRatio = .source, quality: ExportQuality = .standard, outputURL: URL, writeSRT: Bool = false, srtURL: URL? = nil, loudness: ExportLoudness = .social) {
         self.target = target; self.render = render; self.aspect = aspect; self.quality = quality; self.outputURL = outputURL; self.writeSRT = writeSRT; self.srtURL = srtURL
+        self.loudness = loudness
     }
 }
 
@@ -345,9 +348,12 @@ public struct ExportResult: Codable, Sendable, Equatable {
     public var encoder: String
     /// elapsedSeconds; Headless export facts; architecture §9.3.
     public var elapsedSeconds: Double
+    /// The social loudness the export applied (ADR-R47); nil with loudness off or without an audio track.
+    public var loudness: SocialLoudnessReport?
 
     /// Creates an explicit value without I/O or generated identifiers.
-    public init(outputURL: URL, srtURL: URL? = nil, durationSeconds: Double, width: Int, height: Int, fps: Double, frames: Int64, audioSampleRate: Int, audioSamples: Int64, videoCodec: String, encoder: String, elapsedSeconds: Double) {
+    public init(outputURL: URL, srtURL: URL? = nil, durationSeconds: Double, width: Int, height: Int, fps: Double, frames: Int64, audioSampleRate: Int, audioSamples: Int64, videoCodec: String, encoder: String, elapsedSeconds: Double, loudness: SocialLoudnessReport? = nil) {
+        self.loudness = loudness
         self.outputURL = outputURL
         self.srtURL = srtURL
         self.durationSeconds = durationSeconds
@@ -375,6 +381,7 @@ public struct ExportResult: Codable, Sendable, Equatable {
         case videoCodec
         case encoder
         case elapsedSeconds
+        case loudness
     }
 
     public init(from decoder: any Decoder) throws {
@@ -391,6 +398,7 @@ public struct ExportResult: Codable, Sendable, Equatable {
         self.videoCodec = try values.decode(String.self, forKey: .videoCodec)
         self.encoder = try values.decode(String.self, forKey: .encoder)
         self.elapsedSeconds = try values.decode(Double.self, forKey: .elapsedSeconds)
+        self.loudness = try values.decodeIfPresent(SocialLoudnessReport.self, forKey: .loudness)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -407,6 +415,8 @@ public struct ExportResult: Codable, Sendable, Equatable {
         try values.encode(self.videoCodec, forKey: .videoCodec)
         try values.encode(self.encoder, forKey: .encoder)
         try values.encode(self.elapsedSeconds, forKey: .elapsedSeconds)
+        // Always written: null says the export left its level as composed.
+        try values.encode(self.loudness, forKey: .loudness)
     }
 
 }

@@ -1,0 +1,1745 @@
+{
+ "format": "voxclip-social-loudness-cases/1",
+ "description": "Social loudness (ADR-R47): BS.1770-4 integrated loudness with EBU R128 gating and the Annex 2 true peak of stereo Float32 signals, and the static export gain: -14 LUFS, true peak at most -1 dBTP, the gain within -20...+12 dB, 0 dB when the loudness is undefined. Floats rounded to 6 decimals; replays compare within 1e-6.",
+ "constants": {
+  "targetLufs": -14.0,
+  "ceilingDbtp": -1.0,
+  "maximumBoostDb": 12.0,
+  "maximumCutDb": -20.0,
+  "absoluteGateLufs": -70.0,
+  "relativeGateLu": -10.0,
+  "blockSeconds": 0.4,
+  "stepSeconds": 0.1
+ },
+ "caseCount": 24,
+ "counts": {
+  "rule": 12,
+  "signal": 12
+ },
+ "cases": [
+  {
+   "id": "rule-at-target",
+   "kind": "rule",
+   "measuredLufs": -14.0,
+   "truePeakDbtp": -6.0,
+   "expected": {
+    "gainDb": 0.0,
+    "limit": "none",
+    "capped": false
+   }
+  },
+  {
+   "id": "rule-quiet-boost",
+   "kind": "rule",
+   "measuredLufs": -20.7,
+   "truePeakDbtp": -9.0,
+   "expected": {
+    "gainDb": 6.7,
+    "limit": "none",
+    "capped": false
+   }
+  },
+  {
+   "id": "rule-boost-limit",
+   "kind": "rule",
+   "measuredLufs": -30.0,
+   "truePeakDbtp": -20.0,
+   "expected": {
+    "gainDb": 12.0,
+    "limit": "gainLimit",
+    "capped": false
+   }
+  },
+  {
+   "id": "rule-boost-limit-edge",
+   "kind": "rule",
+   "measuredLufs": -26.0,
+   "truePeakDbtp": -13.0,
+   "expected": {
+    "gainDb": 12.0,
+    "limit": "none",
+    "capped": false
+   }
+  },
+  {
+   "id": "rule-cut",
+   "kind": "rule",
+   "measuredLufs": -8.5,
+   "truePeakDbtp": -0.2,
+   "expected": {
+    "gainDb": -5.5,
+    "limit": "none",
+    "capped": false
+   }
+  },
+  {
+   "id": "rule-cut-limit",
+   "kind": "rule",
+   "measuredLufs": 10.0,
+   "truePeakDbtp": 12.0,
+   "expected": {
+    "gainDb": -20.0,
+    "limit": "gainLimit",
+    "capped": false
+   }
+  },
+  {
+   "id": "rule-peak-cap",
+   "kind": "rule",
+   "measuredLufs": -20.0,
+   "truePeakDbtp": -3.0,
+   "expected": {
+    "gainDb": 2.0,
+    "limit": "truePeak",
+    "capped": true
+   }
+  },
+  {
+   "id": "rule-peak-cap-edge",
+   "kind": "rule",
+   "measuredLufs": -20.0,
+   "truePeakDbtp": -7.0,
+   "expected": {
+    "gainDb": 6.0,
+    "limit": "none",
+    "capped": false
+   }
+  },
+  {
+   "id": "rule-peak-cap-below-boost-limit",
+   "kind": "rule",
+   "measuredLufs": -40.0,
+   "truePeakDbtp": -5.0,
+   "expected": {
+    "gainDb": 4.0,
+    "limit": "truePeak",
+    "capped": true
+   }
+  },
+  {
+   "id": "rule-peak-cap-negative",
+   "kind": "rule",
+   "measuredLufs": -16.0,
+   "truePeakDbtp": 2.0,
+   "expected": {
+    "gainDb": -3.0,
+    "limit": "truePeak",
+    "capped": true
+   }
+  },
+  {
+   "id": "rule-silent",
+   "kind": "rule",
+   "measuredLufs": null,
+   "truePeakDbtp": null,
+   "expected": {
+    "gainDb": 0.0,
+    "limit": "silent",
+    "capped": false
+   }
+  },
+  {
+   "id": "rule-silent-with-peak",
+   "kind": "rule",
+   "measuredLufs": null,
+   "truePeakDbtp": -75.0,
+   "expected": {
+    "gainDb": 0.0,
+    "limit": "silent",
+    "capped": false
+   }
+  },
+  {
+   "id": "tone-1k-both-minus23",
+   "kind": "signal",
+   "rate": 48000,
+   "frames": 240000,
+   "channels": [
+    [
+     {
+      "type": "sine",
+      "samples": 240000,
+      "frequency": 1000.0,
+      "peakDbfs": -23.0
+     }
+    ],
+    [
+     {
+      "type": "sine",
+      "samples": 240000,
+      "frequency": 1000.0,
+      "peakDbfs": -23.0
+     }
+    ]
+   ],
+   "expected": {
+    "measuredLufs": -22.993302,
+    "truePeakDbtp": -22.993304,
+    "gainDb": 8.993302,
+    "limit": "none",
+    "capped": false,
+    "outputLufs": -14.0,
+    "outputTruePeakDbtp": -14.000003
+   }
+  },
+  {
+   "id": "tone-1k-left-only",
+   "kind": "signal",
+   "rate": 48000,
+   "frames": 192000,
+   "channels": [
+    [
+     {
+      "type": "sine",
+      "samples": 192000,
+      "frequency": 1000.0,
+      "peakDbfs": -20.0
+     }
+    ],
+    [
+     {
+      "type": "silence",
+      "samples": 192000
+     }
+    ]
+   ],
+   "expected": {
+    "measuredLufs": -23.003604,
+    "truePeakDbtp": -19.993304,
+    "gainDb": 9.003604,
+    "limit": "none",
+    "capped": false,
+    "outputLufs": -14.0,
+    "outputTruePeakDbtp": -10.9897
+   }
+  },
+  {
+   "id": "speech-bursts-typical",
+   "kind": "signal",
+   "rate": 48000,
+   "frames": 384000,
+   "channels": [
+    [
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 101,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 102,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 103,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 104,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 105,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 106,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 107,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 108,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 109,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 110,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 111,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 112,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 113,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 114,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 115,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 116,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     }
+    ],
+    [
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 201,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 202,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 203,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 204,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 205,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 206,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 207,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 208,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 209,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 210,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 211,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 212,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 213,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 214,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 215,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 216,
+      "peakDbfs": -10.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     }
+    ]
+   ],
+   "expected": {
+    "measuredLufs": -15.082347,
+    "truePeakDbtp": -5.689268,
+    "gainDb": 1.082347,
+    "limit": "none",
+    "capped": false,
+    "outputLufs": -14.0,
+    "outputTruePeakDbtp": -4.606921
+   }
+  },
+  {
+   "id": "speech-bursts-quiet-boost-limit",
+   "kind": "signal",
+   "rate": 48000,
+   "frames": 384000,
+   "channels": [
+    [
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 101,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 102,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 103,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 104,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 105,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 106,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 107,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 108,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 109,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 110,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 111,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 112,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 113,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 114,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 115,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 116,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     }
+    ],
+    [
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 201,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 202,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 203,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 204,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 205,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 206,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 207,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 208,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 209,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 210,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 211,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 212,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 213,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 214,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 215,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 216,
+      "peakDbfs": -32.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     }
+    ]
+   ],
+   "expected": {
+    "measuredLufs": -37.082347,
+    "truePeakDbtp": -27.689268,
+    "gainDb": 12.0,
+    "limit": "gainLimit",
+    "capped": false,
+    "outputLufs": -25.082347,
+    "outputTruePeakDbtp": -15.689268
+   }
+  },
+  {
+   "id": "speech-clicks-peak-cap",
+   "kind": "signal",
+   "rate": 48000,
+   "frames": 192000,
+   "channels": [
+    [
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 301,
+      "peakDbfs": -24.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     },
+     {
+      "type": "noise",
+      "samples": 96,
+      "seed": 401,
+      "peakDbfs": -2.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4704
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 302,
+      "peakDbfs": -24.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     },
+     {
+      "type": "noise",
+      "samples": 96,
+      "seed": 402,
+      "peakDbfs": -2.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4704
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 303,
+      "peakDbfs": -24.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     },
+     {
+      "type": "noise",
+      "samples": 96,
+      "seed": 403,
+      "peakDbfs": -2.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4704
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 304,
+      "peakDbfs": -24.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     },
+     {
+      "type": "noise",
+      "samples": 96,
+      "seed": 404,
+      "peakDbfs": -2.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4704
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 305,
+      "peakDbfs": -24.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     },
+     {
+      "type": "noise",
+      "samples": 96,
+      "seed": 405,
+      "peakDbfs": -2.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4704
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 306,
+      "peakDbfs": -24.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     },
+     {
+      "type": "noise",
+      "samples": 96,
+      "seed": 406,
+      "peakDbfs": -2.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4704
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 307,
+      "peakDbfs": -24.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     },
+     {
+      "type": "noise",
+      "samples": 96,
+      "seed": 407,
+      "peakDbfs": -2.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4704
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 308,
+      "peakDbfs": -24.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     },
+     {
+      "type": "noise",
+      "samples": 96,
+      "seed": 408,
+      "peakDbfs": -2.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4704
+     }
+    ],
+    [
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 501,
+      "peakDbfs": -24.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 502,
+      "peakDbfs": -24.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 503,
+      "peakDbfs": -24.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 504,
+      "peakDbfs": -24.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 505,
+      "peakDbfs": -24.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 506,
+      "peakDbfs": -24.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 507,
+      "peakDbfs": -24.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 508,
+      "peakDbfs": -24.0,
+      "envelope": "hann"
+     },
+     {
+      "type": "silence",
+      "samples": 9600
+     }
+    ]
+   ],
+   "expected": {
+    "measuredLufs": -25.407208,
+    "truePeakDbtp": 1.145958,
+    "gainDb": -2.145958,
+    "limit": "truePeak",
+    "capped": true,
+    "outputLufs": -27.553165,
+    "outputTruePeakDbtp": -1.0
+   }
+  },
+  {
+   "id": "hot-float-mix-cut-limit",
+   "kind": "signal",
+   "rate": 48000,
+   "frames": 144000,
+   "channels": [
+    [
+     {
+      "type": "sine",
+      "samples": 144000,
+      "frequency": 997.0,
+      "peakDbfs": 12.0
+     }
+    ],
+    [
+     {
+      "type": "sine",
+      "samples": 144000,
+      "frequency": 997.0,
+      "peakDbfs": 12.0
+     }
+    ]
+   ],
+   "expected": {
+    "measuredLufs": 12.000035,
+    "truePeakDbtp": 12.008849,
+    "gainDb": -20.0,
+    "limit": "gainLimit",
+    "capped": false,
+    "outputLufs": -7.999965,
+    "outputTruePeakDbtp": -7.991151
+   }
+  },
+  {
+   "id": "speech-bursts-loud-cut",
+   "kind": "signal",
+   "rate": 48000,
+   "frames": 230400,
+   "channels": [
+    [
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 601,
+      "peakDbfs": 0.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 602,
+      "peakDbfs": 0.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 603,
+      "peakDbfs": 0.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 604,
+      "peakDbfs": 0.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 605,
+      "peakDbfs": 0.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 606,
+      "peakDbfs": 0.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 607,
+      "peakDbfs": 0.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 608,
+      "peakDbfs": 0.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 609,
+      "peakDbfs": 0.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 610,
+      "peakDbfs": 0.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 611,
+      "peakDbfs": 0.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 612,
+      "peakDbfs": 0.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     }
+    ],
+    [
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 701,
+      "peakDbfs": 0.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 702,
+      "peakDbfs": 0.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 703,
+      "peakDbfs": 0.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 704,
+      "peakDbfs": 0.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 705,
+      "peakDbfs": 0.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 706,
+      "peakDbfs": 0.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 707,
+      "peakDbfs": 0.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 708,
+      "peakDbfs": 0.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 709,
+      "peakDbfs": 0.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 710,
+      "peakDbfs": 0.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 711,
+      "peakDbfs": 0.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     },
+     {
+      "type": "noise",
+      "samples": 14400,
+      "seed": 712,
+      "peakDbfs": 0.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "silence",
+      "samples": 4800
+     }
+    ]
+   ],
+   "expected": {
+    "measuredLufs": 0.134928,
+    "truePeakDbtp": 5.075582,
+    "gainDb": -14.134928,
+    "limit": "none",
+    "capped": false,
+    "outputLufs": -14.0,
+    "outputTruePeakDbtp": -9.059346
+   }
+  },
+  {
+   "id": "relative-gate-drops-quiet-tail",
+   "kind": "signal",
+   "rate": 48000,
+   "frames": 240000,
+   "channels": [
+    [
+     {
+      "type": "noise",
+      "samples": 48000,
+      "seed": 801,
+      "peakDbfs": -6.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "noise",
+      "samples": 192000,
+      "seed": 802,
+      "peakDbfs": -36.0,
+      "envelope": "flat"
+     }
+    ],
+    [
+     {
+      "type": "noise",
+      "samples": 48000,
+      "seed": 901,
+      "peakDbfs": -6.0,
+      "envelope": "flat"
+     },
+     {
+      "type": "noise",
+      "samples": 192000,
+      "seed": 902,
+      "peakDbfs": -36.0,
+      "envelope": "flat"
+     }
+    ]
+   ],
+   "expected": {
+    "measuredLufs": -5.306993,
+    "truePeakDbtp": -1.017506,
+    "gainDb": -8.693007,
+    "limit": "none",
+    "capped": false,
+    "outputLufs": -14.0,
+    "outputTruePeakDbtp": -9.710513
+   }
+  },
+  {
+   "id": "digital-silence",
+   "kind": "signal",
+   "rate": 48000,
+   "frames": 144000,
+   "channels": [
+    [
+     {
+      "type": "silence",
+      "samples": 144000
+     }
+    ],
+    [
+     {
+      "type": "silence",
+      "samples": 144000
+     }
+    ]
+   ],
+   "expected": {
+    "measuredLufs": null,
+    "truePeakDbtp": null,
+    "gainDb": 0.0,
+    "limit": "silent",
+    "capped": false,
+    "outputLufs": null,
+    "outputTruePeakDbtp": null
+   }
+  },
+  {
+   "id": "below-absolute-gate",
+   "kind": "signal",
+   "rate": 48000,
+   "frames": 144000,
+   "channels": [
+    [
+     {
+      "type": "noise",
+      "samples": 144000,
+      "seed": 1001,
+      "peakDbfs": -85.0,
+      "envelope": "flat"
+     }
+    ],
+    [
+     {
+      "type": "noise",
+      "samples": 144000,
+      "seed": 1002,
+      "peakDbfs": -85.0,
+      "envelope": "flat"
+     }
+    ]
+   ],
+   "expected": {
+    "measuredLufs": null,
+    "truePeakDbtp": -80.21383,
+    "gainDb": 0.0,
+    "limit": "silent",
+    "capped": false,
+    "outputLufs": null,
+    "outputTruePeakDbtp": -80.21383
+   }
+  },
+  {
+   "id": "shorter-than-a-block",
+   "kind": "signal",
+   "rate": 48000,
+   "frames": 18000,
+   "channels": [
+    [
+     {
+      "type": "sine",
+      "samples": 18000,
+      "frequency": 1000.0,
+      "peakDbfs": -20.0
+     }
+    ],
+    [
+     {
+      "type": "sine",
+      "samples": 18000,
+      "frequency": 1000.0,
+      "peakDbfs": -20.0
+     }
+    ]
+   ],
+   "expected": {
+    "measuredLufs": null,
+    "truePeakDbtp": -19.993304,
+    "gainDb": 0.0,
+    "limit": "silent",
+    "capped": false,
+    "outputLufs": null,
+    "outputTruePeakDbtp": -19.993304
+   }
+  },
+  {
+   "id": "trailing-partial-step",
+   "kind": "signal",
+   "rate": 48000,
+   "frames": 97800,
+   "channels": [
+    [
+     {
+      "type": "sine",
+      "samples": 97800,
+      "frequency": 440.0,
+      "peakDbfs": -18.0
+     }
+    ],
+    [
+     {
+      "type": "sine",
+      "samples": 97800,
+      "frequency": 440.0,
+      "peakDbfs": -18.0
+     }
+    ]
+   ],
+   "expected": {
+    "measuredLufs": -18.682929,
+    "truePeakDbtp": -17.98722,
+    "gainDb": 4.682929,
+    "limit": "none",
+    "capped": false,
+    "outputLufs": -14.0,
+    "outputTruePeakDbtp": -13.304291
+   }
+  }
+ ]
+}

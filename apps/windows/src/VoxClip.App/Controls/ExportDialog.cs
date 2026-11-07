@@ -246,6 +246,7 @@ internal sealed class ExportDialog : InlineEditorJob
                     if (closed) return;
                     exported = result.Output;
                     if (result.SoftwareEncoding) Ui.Show(notice, "Exporting without hardware acceleration");
+                    if (result.Loudness is { } loudness) App.Services.Log.Write(Core.Services.Logging.LogLevel.Info, "export", loudness.LogLine());
                     var fileRow = new Button { Content = Path.GetFileName(result.Output) + " · " + EditorViewModel.Timecode(result.DurationSeconds), CanDrag = true };
                     fileRow.DragStarting += async (_, drag) =>
                     {

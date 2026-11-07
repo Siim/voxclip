@@ -2,6 +2,7 @@ using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Effects;
+using VoxClip.Core.Domain.Loudness;
 using VoxClip.Core.Domain.Music;
 using VoxClip.Core.Domain.VoiceLab;
 namespace VoxClip.Core.Domain.Shared;
@@ -49,7 +50,11 @@ public abstract record ExportTarget
 }
 /// <summary>One sequential export job; architecture §4 and §6.4.</summary>
 public sealed record ExportJob(ComposeSnapshot Snapshot, ExportTarget Target, ExportAspect Aspect,
-    ExportQuality Quality, string OutputPath, string? SrtPath);
+    ExportQuality Quality, string OutputPath, string? SrtPath)
+{
+    /// <summary>Social loudness by default for every export (ADR-R47); Off writes the mix as composed.</summary>
+    public ExportLoudness Loudness { get; init; } = ExportLoudness.Social;
+}
 /// <summary>Export progress with explicit phases; architecture §6.4.</summary>
 public sealed record ExportProgress(string Phase, double? Fraction, long FramesEncoded, long? TotalFrames);
 /// <summary>Successful final output, never a partial path; architecture §9.3.</summary>
@@ -58,6 +63,8 @@ public sealed record ExportResult(string Output, string? Srt, double DurationSec
 {
     /// <summary>Rung 5 used the OS software MFT; show the acceleration notice once per export.</summary>
     public bool SoftwareEncoding { get; init; }
+    /// <summary>The social loudness the export applied (ADR-R47); null with loudness off or without an audio track.</summary>
+    public SocialLoudnessReport? Loudness { get; init; }
 }
 /// <summary>Frame hand-off; caller owns its lifetime. Preview uses a bounded channel of six; architecture §6.3.</summary>
 public sealed record PreviewFrame(PixelBuffer Buffer, double EditedPts, double SourcePts, long Generation);

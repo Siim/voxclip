@@ -376,6 +376,9 @@ extension EditorModel {
                             if after > before, after < 4 { self.announce("Rendering \(self.exportIndex) of \(total) · \(after * 25)%") }
                         } }
                         exports.append(result)
+                        if let loudness = result.loudness {
+                            await app.log.write(LogEntry(level: .info, category: "export", message: loudness.logLine))
+                        }
                         if case .clip(let id) = target, let text = postTexts[id], !text.isEmpty {
                             let note = result.outputURL.deletingPathExtension().appendingPathExtension("txt")
                             do { try Data(text.utf8).write(to: note, options: .atomic) }

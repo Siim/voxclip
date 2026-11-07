@@ -25,6 +25,35 @@ ADR-R48, ai.md §19, design.md §6.7.1. The user approved the mockup and the sen
   - "Cover frame chosen": `CoverFrame.pick(analysis.opening + analysis.sentences)` (or Claude's pick of a frame label) → decode that time at full size, write `cover.jpg` beside the export and set the MP4 artwork; the export side is not built.
   - Send line: `sheet.frames.count`, `sheet.estimatedImageTokens`, the connector's label and billing (design.md §6.7.1).
 - **Owed:** part 2 above; Windows (apps/windows/CONTRACTS.md); an evaluation set for the thresholds; live checks of the Claude Code and Codex image sends (only `--help` and the CLI's own argument checks were read; no send was made).
+### 2026-11-07 — Exports land at social loudness: −14 LUFS, true peak at most −1 dBTP, one static gain (track/v2-loudness, ADR-R47)
+
+doc/agent-clipping-benchmark.md measured a talking-head export at −20.7 LUFS; the agents' posted clips were about −16 and feeds normalise near −14. Every export, from the app and the CLI, now measures the mix it writes and applies one static gain. Windows is the twin in the same package (apps/windows/CONTRACTS.md).
+
+- **Core** (`Domain/Loudness/SocialLoudness.swift`):
+  - `SocialLoudness.decide(measuredLufs:truePeakDbtp:)`: −14 minus measured, clamped to −20…+12 dB, then lowered until the true peak sits at −1 dBTP; a nil (silent) loudness gets 0 dB. `SocialLoudnessDecision.limit` is `none`, `gainLimit`, `truePeak` or `silent`; `capped` is `truePeak`. `report(_:)` gives the decision and the `SocialLoudnessReport`.
+  - `SocialLoudnessMeter`: streams interleaved Float32 frames (1–8 channels, below 96 kHz) through `VoiceLabLoudness.kWeighting` and the Annex 2 true-peak filter (`truePeakTaps`, now internal) with zero state, in O(steps) memory. It skips the FIR only where its bound cannot beat the peak, so the maximum is unchanged. `SocialLoudnessMeasurement.integratedLufs(gainDb:)` gates 400 ms blocks every 100 ms (−70 LUFS absolute, −10 LU relative).
+  - `SocialLoudnessReport` encodes exactly `measuredLufs`, `gainDb`, `outputLufs`, `truePeakDbtp`, `capped` (nulls written), and `logLine` (numbers only).
+  - `ExportLoudness` (`social`, `off`); `ExportJob.loudness` defaults to `.social`; `ExportResult.loudness` (always encoded, null when off or without audio).
+- **Media.**
+  - `AVExporter.perform` runs `socialLoudness(_:graph:timeRange:sampleLimit:)` before the writer: a second `AVAssetReaderAudioMixOutput` over a copy of the export's composition, mixed tracks, audio mix and time range at 48 kHz Float32 stereo, cut to the pump's sample limit and padded with silence to it (`ExportLoudnessPass.append`, `pad`). `pumpAudio(gain:)` writes `ExportLoudnessPass.scaled` copies of each buffer. Chosen over measuring the written MP4 and rewriting its audio, which needs an AAC decode, a second lossy encode and a remux.
+  - `export(_:additionalOutputs:approvals:gainedAudio:progress:)`: staged Float32 WAV partials get the gain in place (`PCMFile.applyGain(_:toFloatWAV:)`, a RIFF chunk walk) after the writer finishes and before anything is published.
+- **CLI.** `--loudness social|off` (default `social`; anything else is exit 2, "--loudness must be social or off"). The `--audio-out` staging is passed as `gainedAudio`. The JSON carries `loudness`.
+- **App.** `ExportJobView` logs `export: loudness measured=… gain=… output=… truePeak=… capped=…` per export. No UI; preview unchanged.
+- **Deleted.** None.
+- **Tests.**
+  - Core `SocialLoudnessReplayTests` (5): file shape and constants, the 12 rule cases, the 12 signals streamed in uneven chunks (measured, true peak, gain, limit, output loudness and peak within 1e-6), one append against `VoiceLabLoudness.truePeakDbtp`, invalid input and the report's keys and log line.
+  - Media `SocialLoudnessExportTests` (3, `HeavyMediaTests`), on new `NativeMediaFixtures` sources `speech-bursts.mov` and `speech-clicks.mov` (`speechBursts`: Hann bursts of a 180 Hz voice with harmonics plus a little low-passed noise): social decodes at −14.00 LUFS (≤ 0.5 LU), −2.6 dBTP (≤ −1), the report −14 exactly, off within 0.5 LU of the source and differing only by the gain; the click is capped, reports −1 dBTP and decodes at −1.01 dBTP (≤ −0.5 allowed for AAC ringing); the CLI's off JSON is null, social has the five keys and its WAV equals off's × the gain within 1e-6; `--loudness loud` exits 2.
+  - Changed meaning: `VoiceLabCompositionTests` pins `loudness: .off` on the five exports whose decoded AAC is compared with the edited WAV (each with a note). These failed without the pin (3 tests, the 0.6–1.4 magnitude check). No other export test changed.
+  - Red without each rule (one at a time): the true-peak cap (Core 2 tests, Media capped), the audio pump's gain (Media 2), the `--audio-out` gain (CLI test); on Windows also the boost/cut limits, silence, both gates, the interpolation, K-weighting, the pre-pass end and the WAV gain.
+- **Verification** (`VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`):
+  - Core 1,398 passed (2 known issues). App 1,010 passed. Media 587 passed (the run before the pins failed only the 3 Voice Lab composition tests). `rewrite-smoke.sh`: PASSED, 77 scenarios.
+  - `-warn-long-expression-type-checking=250`: nothing flagged in a touched file.
+  - FFmpeg `ebur128` agrees with every signal vector's integrated loudness to its 0.1 LU display (the +12 LUFS case is above its histogram) and reads the release CLI's exports at −14.0 LUFS / −3.3 dBTP (a −22.1 LUFS source) and −20.4 LUFS (a −32.4 source, the +12 dB limit).
+  - Cost, release CLI, 1080p30, median of 3 under load: 34 s 3.35 → 3.56 s (+0.21 s), 3 min 16.73 → 17.39 s (+0.66 s). doc/publishing.md §6.
+- **What the next package must know.**
+  - Preview is not normalised: an export is louder than its preview by `gainDb`. Applying the gain to preview would need the measurement of the clip (cache it by the render's fingerprint).
+  - The ceiling is the PCM's; AAC can ring ~0.2 dB past it on a click. Static gain means a peaky clip lands under −14 (`capped`). A limiter would be a new ADR.
+  - Any new export test that compares decoded samples with a unity reference must pass `loudness: .off`.
 
 ### 2026-11-07 — Revoice the whole clip: one AI voice for the clip, fitted and lip synced, asked once per clip; Claude mode switches within its cap (track/v2-revoice-whole)
 

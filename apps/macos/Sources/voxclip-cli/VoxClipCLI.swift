@@ -116,6 +116,7 @@ struct Export: AsyncParsableCommand {
     @Option(parsing: .unconditional, help: "Constant output frame rate.") var fps: String?
     @Option(help: "Destination SRT sidecar.") var srt: String?
     @Option(help: "Also write edited, faded Float32 WAV.") var audioOut: String?
+    @Option(help: "social (-14 LUFS, true peak at most -1 dBTP; the default) or off.") var loudness: String?
     @Flag(help: "Print one final JSON object on stdout.") var json = false
     @Flag(help: "Suppress human-readable progress on stderr.") var quiet = false
 
@@ -123,6 +124,7 @@ struct Export: AsyncParsableCommand {
         if (input == nil) != (output == nil) { throw ValidationError("Primary export requires both --open and --export") }
         if let aspect, AspectRatio(rawValue: aspect) == nil { throw ValidationError("--aspect must be source, 16:9, 9:16 or 1:1") }
         if let quality, ExportQuality(rawValue: quality) == nil { throw ValidationError("--quality must be standard or high") }
+        if let loudness, ExportLoudness(rawValue: loudness) == nil { throw ValidationError("--loudness must be social or off") }
         if let engine { _ = try CLIExecution.engine(engine) }
         if clip != nil && wordRange != nil { throw ValidationError("Use either --clip or --range, not both") }
         if let wordRange {

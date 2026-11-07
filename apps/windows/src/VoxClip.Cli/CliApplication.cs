@@ -145,6 +145,7 @@ internal static class CliApplication
         root.Options.Add(new Option<string?>("--fps") { Description = "Constant output frame rate." });
         Add(root, "--srt", "SRT sidecar path.");
         Add(root, "--audio-out", "Edited faded 32-bit float WAV test hook.");
+        Choice(root, "--loudness", "social (-14 LUFS, true peak at most -1 dBTP; the default) or off.", "social", "off");
         root.Validators.Add(validation =>
         {
             if (validation.GetValue(RuntimeTerms) && validation.GetValue(AcceptRuntimeTerms) is not null)

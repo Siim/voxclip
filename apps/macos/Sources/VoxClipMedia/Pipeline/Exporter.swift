@@ -107,8 +107,10 @@ public actor AVExporter: Exporter {
         try await export(job, additionalOutputs: [], progress: progress)
     }
 
+    /// `gainedAudio` names staged Float32 WAV partials (the CLI's `--audio-out`) that receive the export's loudness
+    /// gain before anything is published (ADR-R47).
     package func export(_ job: ExportJob, additionalOutputs: [(partial: URL, destination: URL)],
-                        approvals: [URL: ExportSafety.DestinationApproval]? = nil,
+                        approvals: [URL: ExportSafety.DestinationApproval]? = nil, gainedAudio: [URL] = [],
                         progress: @escaping @Sendable (ExportProgress) -> Void) async throws -> ExportResult {
         let approved = try approvals ?? transactionPreflight(job, additionalOutputs: additionalOutputs, plannedEditedAudioURL: nil).approvals
         try await acquire()
@@ -118,7 +120,7 @@ public actor AVExporter: Exporter {
         defer { activeID = nil; activePumps = nil }
         do {
             return try await withTaskCancellationHandler {
-                try await perform(job, additionalOutputs: additionalOutputs, approvals: approved, progress: progress)
+                try await perform(job, additionalOutputs: additionalOutputs, approvals: approved, gainedAudio: gainedAudio, progress: progress)
             } onCancel: {
                 ExportInterruptTiming.testOnly?.mark(.cancelRequest)
                 Task { await self.cancelActive(id) }
@@ -236,7 +238,7 @@ public actor AVExporter: Exporter {
     }
 
     private func perform(_ job: ExportJob, additionalOutputs: [(partial: URL, destination: URL)],
-                         approvals: [URL: ExportSafety.DestinationApproval],
+                         approvals: [URL: ExportSafety.DestinationApproval], gainedAudio: [URL],
                          progress: @escaping @Sendable (ExportProgress) -> Void) async throws -> ExportResult {
         try Task.checkCancellation()
         let started = ContinuousClock.now
@@ -276,6 +278,11 @@ public actor AVExporter: Exporter {
         let output = job.render.output
         // The rendered length: the edited length divided by the clip's speed (design.md §6.9).
         let timeRange = CMTimeRange(start: .zero, duration: CMTime(value: job.render.renderedSamples, timescale: Int32(job.render.timeline.sampleRate)))
+        let audioSampleLimit = Int64((job.render.renderedDuration * 48000).rounded())
+        // Social loudness (ADR-R47): measure the mix the pump will write, then write it with one static gain.
+        let loudness = try await socialLoudness(job, graph: graph, timeRange: timeRange, sampleLimit: audioSampleLimit)
+        let audioGain = loudness.map { SocialLoudness.linearGain($0.gainDb) } ?? 1
+        try Task.checkCancellation()
         guard let videoComposition = graph.composition.copy() as? AVComposition,
               videoComposition.track(withTrackID: graph.videoTrack.trackID) != nil else {
             throw VoxClipError.decodeFailed("Cannot copy export video composition")
@@ -352,8 +359,7 @@ public actor AVExporter: Exporter {
                         pumps: pumps, started: started, progress: progress))
                 }
                 group.addTask {
-                    (1, try await self.pumpAudio(audioSource,
-                        sampleLimit: Int64((job.render.renderedDuration * 48000).rounded()), pumps: pumps))
+                    (1, try await self.pumpAudio(audioSource, sampleLimit: audioSampleLimit, gain: audioGain, pumps: pumps))
                 }
                 var counts: [Int64] = [0, 0]
                 do {
@@ -376,6 +382,7 @@ public actor AVExporter: Exporter {
             await writer.finishWriting()
             try Task.checkCancellation()
             guard writer.status == .completed else { throw writer.error ?? VoxClipError.exportFailed("Encoder did not finish") }
+            for wav in gainedAudio { try PCMFile.applyGain(audioGain, toFloatWAV: wav) }
             if let srtPartial, let srtText {
                 let descriptor = Darwin.open(srtPartial.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, S_IRUSR | S_IWUSR)
                 guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
@@ -420,7 +427,7 @@ public actor AVExporter: Exporter {
                                 width: output.size.width, height: output.size.height, fps: output.fps, frames: frames,
                                 audioSampleRate: 48000, audioSamples: audioSampleCount,
                                 videoCodec: "h264", encoder: "h264_videotoolbox",
-                                elapsedSeconds: Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18)
+                                elapsedSeconds: Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18, loudness: loudness)
         } catch {
             ExportInterruptTiming.testOnly?.mark(.teardownStart)
             pumps.stop(error)
@@ -532,7 +539,39 @@ public actor AVExporter: Exporter {
         }
     }
 
-    private nonisolated func pumpAudio(_ source: ExportPumpSource?, sampleLimit: Int64,
+    /// The social loudness of the mix `perform` writes (ADR-R47), or nil with loudness off or without audio.
+    private func socialLoudness(_ job: ExportJob, graph: RenderGraph, timeRange: CMTimeRange,
+                                sampleLimit: Int64) async throws -> SocialLoudnessReport? {
+        guard job.loudness == .social, !graph.mixedAudioTracks.isEmpty else { return nil }
+        guard let composition = graph.composition.copy() as? AVComposition else {
+            throw VoxClipError.decodeFailed("Cannot copy export audio composition")
+        }
+        let tracks = graph.mixedAudioTracks.compactMap { composition.track(withTrackID: $0.trackID) }
+        guard tracks.count == graph.mixedAudioTracks.count else { throw VoxClipError.decodeFailed("Cannot copy export audio composition") }
+        let reader = try AVAssetReader(asset: composition)
+        reader.timeRange = timeRange
+        let output = AVAssetReaderAudioMixOutput(audioTracks: tracks, audioSettings: MediaSupport.pcm(rate: 48000, channels: 2))
+        output.audioMix = graph.audioMix
+        output.alwaysCopiesSampleData = false
+        let provider = reader.outputProvider(for: output)
+        var meter = try SocialLoudnessMeter(sampleRate: 48_000, channels: 2)
+        var scratch: [Float] = []
+        guard reader.startReading() else { throw reader.error ?? VoxClipError.decodeFailed("Cannot measure the export audio") }
+        defer { if reader.status == .reading { reader.cancelReading() } }
+        var frames: Int64 = 0
+        while let sample = try await MediaSupport.nextSample(provider) {
+            try Task.checkCancellation()
+            let count = Int(min(Int64(sample.sampleCount), max(0, sampleLimit - frames)))
+            guard count > 0 else { continue }
+            try ExportLoudnessPass.append(sample, frames: count, to: &meter, scratch: &scratch)
+            frames += Int64(count)
+        }
+        guard reader.status == .completed else { throw reader.error ?? VoxClipError.decodeFailed("The export audio did not finish") }
+        try ExportLoudnessPass.pad(&meter, from: frames, to: sampleLimit)
+        return SocialLoudness.report(meter.finish()).report
+    }
+
+    private nonisolated func pumpAudio(_ source: ExportPumpSource?, sampleLimit: Int64, gain: Float,
                            pumps: ExportPumpState) async throws -> Int64 {
         guard let source else { return 0 }
         let receiver = source.receiver
@@ -549,7 +588,8 @@ public actor AVExporter: Exporter {
                 let count = min(Int64(sample.sampleCount), max(0, sampleLimit - frames))
                 guard count > 0 else { continue }
                 let accepted = count == sample.sampleCount ? [sample] : Array(sample.splitSamples().prefix(Int(count)))
-                for buffer in accepted {
+                for original in accepted {
+                    let buffer = gain == 1 ? original : try ExportLoudnessPass.scaled(original, gain: gain)
                     try appendCheck?(1, frames)
                     try pumps.checkRunning()
                     while try !pumps.append({ try receiver.appendImmediately(buffer) }) {

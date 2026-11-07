@@ -405,7 +405,8 @@ struct VoiceLabCompositionTests {
             output: OutputSpec(size: PixelSize(width: 640, height: 360), fps: 30, videoBitrate: 2_000_000), voiceLab: input)
         let wav = root.appendingPathComponent("fitted.wav"), mp4 = root.appendingPathComponent("fitted.mp4")
         try await AVExporter().writeEditedAudio(request, to: wav)
-        _ = try await AVExporter(appVersion: "0.1.0").export(ExportJob(render: request, outputURL: mp4)) { _ in }
+        // Compared sample for sample with the edited WAV at its own level, so the export keeps the composed level (ADR-R47).
+        _ = try await AVExporter(appVersion: "0.1.0").export(ExportJob(render: request, outputURL: mp4, loudness: .off)) { _ in }
         let piece = try #require(prepared.outputPlan.pieces.first { $0.kind == .synth })
         let markers = [Int(piece.outputStartSample), Int(piece.outputStartSample) + 4800,
                        Int(piece.outputStartSample) + 24_000, Int(piece.outputEndSample)]
@@ -768,7 +769,8 @@ struct VoiceLabCompositionTests {
             let wav = root.appendingPathComponent("\(name).wav")
             let mp4 = root.appendingPathComponent("\(name).mp4")
             try await AVExporter().writeEditedAudio(request, to: wav)
-            _ = try await AVExporter(appVersion: "0.1.0").export(ExportJob(render: request, outputURL: mp4)) { _ in }
+            // Compared sample for sample with the edited WAV at its own level, so the export keeps the composed level (ADR-R47).
+            _ = try await AVExporter(appVersion: "0.1.0").export(ExportJob(render: request, outputURL: mp4, loudness: .off)) { _ in }
             let piece = try #require(input.prepared.outputPlan.pieces.first(where: { $0.kind == .synth }))
             let windows: [(frame: Int, hz: Double)] = name == "full-take-render-v3"
                 ? [(48_000, 880), (4 * 48_000, 880), (6 * 48_000, 880)]
@@ -844,7 +846,8 @@ struct VoiceLabCompositionTests {
         let wav = root.appendingPathComponent("touching.wav")
         let mp4 = root.appendingPathComponent("touching.mp4")
         try await AVExporter().writeEditedAudio(request, to: wav)
-        _ = try await AVExporter(appVersion: "0.1.0").export(ExportJob(render: request, outputURL: mp4)) { _ in }
+        // Compared sample for sample with the edited WAV at its own level, so the export keeps the composed level (ADR-R47).
+        _ = try await AVExporter(appVersion: "0.1.0").export(ExportJob(render: request, outputURL: mp4, loudness: .off)) { _ in }
         _ = try await compareDecodedMP4(mp4, wav: wav,
             windows: [(48_000, 880), (168_000 - 2_048, 880), (168_000 + 1_024, 880), (6 * 48_000, 880)],
             markerCenters: [2_800, 168_000])
@@ -862,7 +865,8 @@ struct VoiceLabCompositionTests {
         let destination = root.appendingPathComponent("marked.mp4")
         let prior = Data("previous video".utf8)
         try prior.write(to: destination)
-        let result = try await AVExporter(appVersion: "0.1.0").export(ExportJob(render: request, outputURL: destination)) { _ in }
+        // Compared sample for sample with the edited WAV at its own level, so the export keeps the composed level (ADR-R47).
+        let result = try await AVExporter(appVersion: "0.1.0").export(ExportJob(render: request, outputURL: destination, loudness: .off)) { _ in }
         #expect(result.frames == 210)
         #expect(result.audioSamples == 336_000)
         let sidecarURL = root.appendingPathComponent("marked.mp4.provenance.json")
@@ -943,7 +947,8 @@ struct VoiceLabCompositionTests {
         let request = RenderRequest(sourceURL: media, plan: try legacyPlan(project),
             output: OutputSpec(size: PixelSize(width: 640, height: 360), fps: 30, videoBitrate: 2_000_000), voiceLab: input)
         let destination = root.appendingPathComponent("three-phrases.mp4")
-        let result = try await AVExporter(appVersion: "0.1.0").export(ExportJob(render: request, outputURL: destination)) { _ in }
+        // Compared sample for sample with the edited WAV at its own level, so the export keeps the composed level (ADR-R47).
+        let result = try await AVExporter(appVersion: "0.1.0").export(ExportJob(render: request, outputURL: destination, loudness: .off)) { _ in }
         #expect(result.frames == 210 && result.audioSamples == 336_000)
         let sidecar = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: root.appendingPathComponent("three-phrases.mp4.provenance.json"))) as? [String: Any])
         #expect((sidecar["aiSegments"] as? [[String: Any]])?.count == 3)

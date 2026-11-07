@@ -84,6 +84,40 @@ actor NativeMediaFixtures {
     }
 
     /// Fixtures need the hardware encoder, as export does; without one every caller fails at once.
+    /// Interleaved stereo speech-like bursts, 0.3 s on and 0.2 s off under a Hann envelope: a 180 Hz voice with two
+    /// harmonics and a formant near 1.1 kHz, plus a little low-passed noise (independent per channel), all well inside
+    /// what AAC keeps. Its true peak sits about 10 dB over its loudness, so the social gain is not capped. With `clicks`
+    /// the bursts are 6 dB lower and each carries a 2 ms Hann-shaped 1 kHz click at −2 dBFS in the left channel, so the
+    /// true peak sets the gain.
+    static func speechBursts(frames: Int, clicks: Bool) -> [Float] {
+        let amplitude: Double = clicks ? 0.105 : 0.21
+        var samples = [Float](repeating: 0, count: frames * 2)
+        var state: UInt64 = 12_345
+        var first = [0.0, 0.0], second = [0.0, 0.0]
+        for frame in 0..<frames {
+            let position = frame % 24_000
+            let time = Double(frame) / 48000
+            let voice: Double = 0.6 * sin(2 * Double.pi * 180 * time) + 0.3 * sin(2 * Double.pi * 360 * time + 0.5)
+                + 0.2 * sin(2 * Double.pi * 1100 * time + 1.3)
+            for channel in 0..<2 {
+                state = (1_664_525 * state + 1_013_904_223) % 4_294_967_296
+                let white: Double = Double(state) / 2_147_483_648 - 1
+                first[channel] += 0.28 * (white - first[channel])
+                second[channel] += 0.28 * (first[channel] - second[channel])
+                guard position < 14_400 else { continue }
+                let window: Double = 0.5 - 0.5 * cos(2 * Double.pi * Double(position) / 14_400)
+                var value: Double = amplitude * window * (voice + 0.3 * second[channel])
+                if clicks, channel == 0, (7_000..<7_096).contains(position) {
+                    let offset = Double(position - 7_000)
+                    let shape: Double = 0.5 - 0.5 * cos(2 * Double.pi * offset / 96)
+                    value += 0.794 * shape * sin(2 * Double.pi * 1000 * offset / 48000)
+                }
+                samples[frame * 2 + channel] = Float(value)
+            }
+        }
+        return samples
+    }
+
     private static func hardwareEncoderAvailable(_ codec: CMVideoCodecType) -> Bool {
         var session: VTCompressionSession?
         let status = VTCompressionSessionCreate(allocator: kCFAllocatorDefault, width: 320, height: 180, codecType: codec,
@@ -101,13 +135,15 @@ actor NativeMediaFixtures {
         let bars = name == "bars.mov"
         let counter = name == "counter.mov"
         let chirp = name == "chirp.mov"
+        // Speech-like noise bursts with gaps for social loudness (ADR-R47); the clicks version is capped by its true peak.
+        let speech = name == "speech-bursts.mov" || name == "speech-clicks.mov"
         let downmix = name == "right-only.mov" || name == "six-channel.mov"
         let channels = name == "six-channel.mov" ? 6 : 2
         let benchmark = name == "benchmark.mov" || name == "interrupt-aac.mov"
         let audioRate = name == "rate-44100.mov" ? 44100 : name == "rate-32000.mov" ? 32000 : 48000
         let frameRate = name == "rate-44100.mov" ? 24 : 30
         let overhang = name == "audio-overhang.mov" ? 0.5 : name == "audio-overhang-short.mov" ? 0.02 : name == "rounded-tail.mov" ? 590.0 / 48000 : 0
-        let duration = pocket ? 1 : name == "joins-tone.mov" ? 12 : chirp ? 30 : benchmark ? 60 : 2
+        let duration = pocket ? 1 : name == "joins-tone.mov" ? 12 : chirp ? 30 : benchmark ? 60 : speech ? 6 : 2
         let fullHD = bars || counter || benchmark
         let size = big ? CGSize(width: 2400, height: 1350) : fullHD ? CGSize(width: 1920, height: 1080) : CGSize(width: 320, height: 180)
         let videoURL = root.appendingPathComponent("video-\(name)")
@@ -169,8 +205,9 @@ actor NativeMediaFixtures {
                 let pcm = try PCMFile(url: audioURL, rate: audioRate, channels: channels, float: true)
                 let frequency = trackIndex == 0 ? 441.0 : 882.0
                 let audioFrames = Int(((Double(duration) + overhang) * Double(audioRate)).rounded())
-                var samples = [Float](repeating: 0, count: audioFrames * channels)
-                for frame in 0..<audioFrames {
+                var samples = speech ? Self.speechBursts(frames: audioFrames, clicks: name == "speech-clicks.mov")
+                    : [Float](repeating: 0, count: audioFrames * channels)
+                for frame in 0..<audioFrames where !speech {
                     let time = Double(frame) / Double(audioRate)
                     let value = Float(chirp ? 0.3 * sin(2 * .pi * (200 * time + 1800 * time * time / 60)) : 0.4 * sin(2 * .pi * frequency * time))
                     if downmix { samples[frame * channels + 1] = time >= 0.5 ? 0.6 : 0 }
