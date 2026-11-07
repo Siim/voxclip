@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import VoxClipCore
+import VoxClipMedia
 
 /// Revoice the whole clip (ADR-R46, design.md R2 "How should it sound?"): one AI voice for every word of the clip,
 /// fitted to its length and lip synced. Choose → Running (Script, Voice, Fit, Lip sync, with Cancel) → Review (Play,
@@ -87,6 +88,19 @@ import VoxClipCore
         var undo: @MainActor (WholeClipRevoiceRecord) -> Void
         /// Drops the unused paid work (Undo on Review): the original audio and video stay.
         var discard: @MainActor () async -> Void
+        /// Writes one `voice-lab` log line (numbers and case names only, never transcript text).
+        var report: @MainActor (String) -> Void = { _ in }
+    }
+    /// Why the last run stopped: the step, the refused part (1-based) of a placement refusal, and whether trying again
+    /// would only stop the same way (a placement refusal, or a stop before anything paid was sent).
+    struct Failure: Equatable {
+        let step: Step
+        let part: Int?
+        let repeats: Bool
+    }
+    /// A stop before anything paid was sent, which trying again would only repeat; `error` says why.
+    struct Unsent: Error {
+        let error: any Error
     }
 
     private(set) var phase: Phase = .choose
@@ -102,6 +116,8 @@ import VoxClipCore
     private(set) var started: Date?
     private(set) var progress: Double?
     private(set) var upgradeUSD: Decimal?
+    /// Set when the last run failed (not when it was cancelled).
+    private(set) var failure: Failure?
     /// The choice on the Choose card: true for the whole clip.
     var wholeSelected = true
     /// Set while a run was started by ✦ Claude does it all, so Review applies on its own.
@@ -133,7 +149,7 @@ import VoxClipCore
     func start(automatic: Bool = false) {
         guard backend != nil, !running, phase != .used else { return }
         self.automatic = automatic
-        phase = .running; started = Date(); progress = nil; rewordRound = 0
+        phase = .running; started = Date(); progress = nil; rewordRound = 0; failure = nil
         steps = Dictionary(uniqueKeysWithValues: Step.allCases.map { ($0, StepState.waiting) })
         run = Task { [weak self] in
             await self?.perform(model: .standard)
@@ -144,7 +160,7 @@ import VoxClipCore
     /// Sharper Lip Sync · sync-3: re-runs only the lip sync, over the voice already paid for.
     func upgrade() {
         guard backend != nil, !running, phase == .review, synced?.model != .sync3, voice != nil else { return }
-        phase = .running; started = Date(); progress = nil
+        phase = .running; started = Date(); progress = nil; failure = nil
         steps[.lipsync] = .waiting
         run = Task { [weak self] in
             await self?.perform(model: .sync3)
@@ -216,8 +232,16 @@ import VoxClipCore
             if automatic { await use() }
         } catch {
             let cancelled = Task.isCancelled || error is CancellationError
-            for step in Step.allCases {
-                if case .running = steps[step] { steps[step] = cancelled ? .waiting : .failed(Self.copy(error)) }
+            // The step it stopped in: the first one not done.
+            let step = Step.allCases.first { if case .done = steps[$0] { false } else { true } } ?? .lipsync
+            for each in Step.allCases {
+                if case .running = steps[each] { steps[each] = cancelled ? .waiting : .failed(Self.copy(error)) }
+            }
+            if !cancelled {
+                if steps[step] == .waiting { steps[step] = .failed(Self.copy(error)) }
+                let part = Self.part(error)
+                failure = Failure(step: step, part: part, repeats: step == .script || Self.repeats(error))
+                backend.report("whole clip failure step=\(step) " + RewriteSession.failureKind(Self.cause(error)) + (part.map { " part=\($0)" } ?? ""))
             }
             phase = .stopped(cancelled ? "Cancelled. Your clip is unchanged." + paidNote : Self.copy(error) + paidNote)
         }
@@ -274,12 +298,45 @@ import VoxClipCore
         case noVoice(String)
     }
 
+    /// What the Voice step and the card say. A part that can't be placed says which part and why; only a lip-sync error uses
+    /// the lip-sync copy; everything else is Rewrite's own copy, which falls back to `UserMessages.message`.
     static func copy(_ error: any Error) -> String {
         switch error {
+        case let unsent as Unsent: return copy(unsent.error)
         case Stop.cannotFit(let voice, let video):
             return "The new voice runs \(clock(voice)) for \(clock(video)) of video, more than one even retime can match."
         case Stop.noVoice(let reason): return reason
-        default: return RewriteLipsyncSession.reason(error)
+        case ClipTakePlan.Failure.placement(let refusal, let index): return placementCopy(refusal, part: index + 1)
+        case is LipsyncError, is LipsyncPreparationError: return RewriteLipsyncSession.reason(error)
+        default: return RewriteSession.refusal(error)
+        }
+    }
+
+    /// "Part 2 can't be joined to the recording there. Nothing was sent."
+    static func placementCopy(_ refusal: VoiceLabWindowRefusal, part: Int) -> String {
+        if let copy = refusal.copy { return "Part \(part): \(copy) Nothing was sent." }
+        if case .geometry(let error) = refusal, let isStart = error.takeEdgeIsStart {
+            return "Part \(part) can't be joined to the recording there: it is too close to the \(isStart ? "start" : "end") of the take. Nothing was sent."
+        }
+        return "Part \(part) can't be joined to the recording there. Nothing was sent."
+    }
+
+    /// The error a wrapper stands for.
+    static func cause(_ error: any Error) -> any Error { (error as? Unsent)?.error ?? error }
+
+    /// The refused part, 1-based, of a placement refusal.
+    static func part(_ error: any Error) -> Int? {
+        if case ClipTakePlan.Failure.placement(_, let index) = cause(error) { return index + 1 }
+        return nil
+    }
+
+    /// Trying again would only stop the same way: the parts can't be placed, nothing is left to voice, too many parts, or
+    /// a stop before anything paid was sent. A network or provider failure can succeed on a retry.
+    static func repeats(_ error: any Error) -> Bool {
+        if error is Unsent { return true }
+        switch error {
+        case ClipTakePlan.Failure.placement, ClipTakePlan.Failure.nothingToVoice, ClipTakePlan.Failure.tooManyPhrases: return true
+        default: return false
         }
     }
 

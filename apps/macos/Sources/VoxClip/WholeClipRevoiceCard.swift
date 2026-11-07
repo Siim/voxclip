@@ -206,8 +206,10 @@ import VoxClipCore
         if !session.steps.isEmpty { stepList }
         Text(line).foregroundStyle(DesignValues.color("status.warning")).fixedSize(horizontal: false, vertical: true)
         HStack(spacing: 8) {
-            if let retry = rewrite.wholeClipPrimary(retry: true) { PanelButton(action: retry, kind: .primary) }
-            PanelButton(action: PanelAction(id: "wholeClipPatch", title: "Voice Only the Changed Phrases") { [weak rewrite] in rewrite?.patchInstead() }, kind: .bordered)
+            let actions = rewrite.wholeClipStoppedActions()
+            ForEach(Array(actions.enumerated()), id: \.element.id) { index, action in
+                PanelButton(action: action, kind: index == 0 ? .primary : .bordered)
+            }
         }
     }
 

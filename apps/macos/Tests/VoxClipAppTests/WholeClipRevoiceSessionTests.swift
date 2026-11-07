@@ -18,6 +18,9 @@ import Testing
         var holdLipsync = false
         var held: CheckedContinuation<Void, Never>?
         var reword: WholeClipScript? = nil
+        /// Thrown by the Voice step before anything is said.
+        var voiceError: (any Error)?
+        var reports: [String] = []
     }
 
     private static let words: [TimedWord] = ["So", "we", "drove", "north.", "It", "was", "cold."].enumerated().map {
@@ -26,12 +29,19 @@ import Testing
 
     private func session(_ stubs: Stubs) -> WholeClipRevoiceSession {
         let session = WholeClipRevoiceSession()
+        session.backend = Self.backend(stubs)
+        return session
+    }
+
+    /// Stub steps that record what they are asked and spend the tables' prices (Claude mode's tests use them too).
+    static func backend(_ stubs: Stubs) -> WholeClipRevoiceSession.Backend {
         let script = WholeClipScript.assemble(words: Self.words, cutWordIds: [], voiceHunks: [])!
-        session.backend = .init(script: { script }, quote: { script, _ in
+        return .init(script: { script }, quote: { script, _ in
             .init(clipNumber: 7, clipSeconds: 31, spokenWords: script.words, reason: .manyWords(revoiced: 4, spoken: 7), patchUSD: Decimal(string: "0.1"),
                   phrases: 2, voiceUSD: Decimal(string: "0.06"), lipsyncUSD: Decimal(string: "1.55"), voiceName: "siim · DJI 0011", voiceNote: "matched to this video")
         }, voice: { script, progress in
             progress("part 1 of 1")
+            if let error = stubs.voiceError { throw error }
             stubs.voices.append(script.text)
             let seconds = stubs.voiceSeconds.count > 1 ? stubs.voiceSeconds.removeFirst() : stubs.voiceSeconds[0]
             return .init(key: .init(script: script.text, recordId: "r1", model: "eleven_v4"), seconds: seconds, parts: 3, usd: Decimal(string: "0.06")!)
@@ -51,8 +61,7 @@ import Testing
             stubs.used += 1
             return WholeClipRevoiceRecord(id: "wholeclip-1", clipId: "clip-7", segmentIds: ["s"], script: voice.key.script, consentRecordId: "r1",
                                           videoRetime: synced.factor, lipsyncModel: synced.model.rawValue, usd: 1.61, match: match, createdAt: Date())
-        }, undo: { _ in stubs.undone += 1 }, discard: { stubs.discarded += 1 })
-        return session
+        }, undo: { _ in stubs.undone += 1 }, discard: { stubs.discarded += 1 }, report: { stubs.reports.append($0) })
     }
 
     @Test func aRunGoesScriptVoiceFitLipSyncThenReviewAndUse() async {
@@ -163,6 +172,86 @@ import Testing
         await session.waitForRun()
         await session.discard()
         #expect(session.phase == .choose && stubs.discarded == 1 && stubs.used == 0)
+    }
+
+    /// The second part of the user's clip (MVP42, 2026-11-08): its seam would sit beside a cut, so placement refuses it.
+    static let refusal = ClipTakePlan.Failure.placement(.geometry(.seamFadeCrossesCut(incoming: true, needed: 288, available: 0)), index: 1)
+
+    @Test func aPartThatCantBePlacedSaysWhichPartLogsOneLineAndWouldOnlyRepeat() async {
+        let stubs = Stubs()
+        stubs.voiceError = WholeClipRevoiceSession.Unsent(error: Self.refusal)
+        let session = session(stubs)
+        await session.refreshQuote()
+        session.start()
+        await session.waitForRun()
+        let copy = "Part 2 can't be joined to the recording there. Nothing was sent."
+        #expect(session.phase == .stopped(copy), "not the lip-sync copy: \(session.phase)")
+        #expect(session.steps[.voice] == .failed(copy))
+        #expect(session.failure == WholeClipRevoiceSession.Failure(step: .voice, part: 2, repeats: true))
+        #expect(stubs.reports == ["whole clip failure step=voice type=ClipTakePlan.Failure case=placement.geometry.seamFadeCrossesCut part=2"])
+        #expect(stubs.voices.isEmpty && stubs.lipsyncs.isEmpty && session.spent == 0)
+        // Unwrapped, the refusal still says which part and would still only repeat.
+        #expect(WholeClipRevoiceSession.copy(Self.refusal) == copy && WholeClipRevoiceSession.repeats(Self.refusal))
+        #expect(WholeClipRevoiceSession.copy(ClipTakePlan.Failure.placement(.collidesWithChange(0), index: 2))
+                == "Part 3: Too close to the change before it to voice separately. Edit them together or leave one out. Nothing was sent.")
+        #expect(WholeClipRevoiceSession.copy(ClipTakePlan.Failure.placement(.geometry(.seamFadeOutsideTake(isStart: true)), index: 0))
+                == "Part 1 can't be joined to the recording there: it is too close to the start of the take. Nothing was sent.")
+    }
+
+    @Test func aNetworkFailureCanSucceedOnARetry() async {
+        let stubs = Stubs()
+        stubs.voiceError = VoiceLabError.network
+        let session = session(stubs)
+        session.start()
+        await session.waitForRun()
+        #expect(session.phase == .stopped(RewriteSession.voiceLabCopy(.network)))
+        #expect(session.failure == WholeClipRevoiceSession.Failure(step: .voice, part: nil, repeats: false))
+        #expect(stubs.reports == ["whole clip failure step=voice type=VoiceLabError case=network"])
+    }
+
+    @Test func onlyLipSyncErrorsUseTheLipSyncCopy() {
+        #expect(WholeClipRevoiceSession.copy(LipsyncError.http(503)) == "fal.ai returned HTTP 503.")
+        #expect(WholeClipRevoiceSession.copy(ClipTakePlan.Failure.nothingToVoice) == ClipTakePlan.copy(ClipTakePlan.Failure.nothingToVoice))
+        #expect(WholeClipRevoiceSession.copy(VoxClipError.offline) == RewriteSession.refusal(VoxClipError.offline))
+        #expect(!WholeClipRevoiceSession.copy(VoxClipError.offline).contains("The job could not be completed"))
+    }
+
+    @Test func aScriptThatFailsStopsAtTheScriptAndWouldOnlyRepeat() async {
+        let stubs = Stubs()
+        let session = session(stubs)
+        session.backend?.script = { throw ClipTakePlan.Failure.nothingToVoice }
+        session.start()
+        await session.waitForRun()
+        #expect(session.failure == WholeClipRevoiceSession.Failure(step: .script, part: nil, repeats: true))
+        #expect(session.steps[.script] == .failed(ClipTakePlan.copy(ClipTakePlan.Failure.nothingToVoice)))
+        #expect(stubs.reports == ["whole clip failure step=script type=ClipTakePlan.Failure case=nothingToVoice"])
+    }
+
+    /// The card's stopped actions in a Rewrite: after a stop that would only repeat, the patch alone, never a priced Try
+    /// Again; after a network failure, Try Again with what is left to pay, then the patch.
+    @Test func theStoppedCardOffersThePatchAndTryAgainOnlyWhenARetryCanSucceed() async throws {
+        let shared = try SharedResources.locate()
+        let project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-whole-clip-" + UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let app = AppModel(settingsStore: RegressionSettingsStore(), locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path]))
+        let editor = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
+        defer { editor.close() }
+        let rewrite = RewriteSession(editor: editor, scope: .clip("clip-main"), envelope: nil, connector: nil)
+        for (error, expected) in [(Self.refusal as any Error, ["wholeClipPatch"]), (VoiceLabError.network, ["wholeClipRetry", "wholeClipPatch"])] {
+            let stubs = Stubs()
+            stubs.voiceError = error
+            let session = session(stubs)
+            rewrite.wholeClip = session
+            await session.refreshQuote()
+            session.start()
+            await session.waitForRun()
+            let actions = rewrite.wholeClipStoppedActions()
+            #expect(actions.map(\.id) == expected, "\(error)")
+            #expect(actions.last?.title == "Voice Only the Changed Phrases" && actions.last?.priced == false)
+            if expected.count == 2 { #expect(actions[0].title == "Try Again · " + VoiceLabCostPresentation.format(Decimal(string: "1.61")!) && actions[0].priced, "\(actions[0].title)") }
+            else { #expect(!actions.contains { $0.priced || $0.title.contains("$") }, "no price for work that can't happen") }
+        }
     }
 
     @Test func anAutomaticRunPutsTheResultInWithNoClick() async {

@@ -276,6 +276,8 @@ import VoxClipCore
         var ownerPitches: [Int: Double] = [:]
         /// One clip over every word, active, so the Rewrite is inside it (the whole-clip revoice's scenes).
         var wholeClip = false
+        /// Every "um" in the script is cut, as Make it postable tightens fillers.
+        var cutFillers = false
     }
     nonisolated static let baseScript = "Today I want to show you how cloud tools edit video. First we record a short clip in one take. "
         + "Then we fix the words we got wrong. We keep the pauses that sound natural and remove the ones that drag. "
@@ -307,6 +309,7 @@ import VoxClipCore
             project.edits.clips = [ClipRange(id: "clip-whole", startWordId: first.id, endWordId: last.id, title: "Whole")]
             project.edits.activeClipId = "clip-whole"
         }
+        if fixture.cutFillers { project.edits.cutWordIds = recording.words.filter { $0.text == "um" }.map(\.id) }
         return (project, recording.envelope)
     }
 

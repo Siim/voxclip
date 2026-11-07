@@ -20,6 +20,20 @@ struct WholeClipAutoQuote: Equatable {
 enum WholeClipAutoOutcome: Equatable {
     case revoiced(WholeClipRevoiceRecord, spent: Decimal)
     case failed(String, spent: Decimal)
+    /// The whole clip can't be done here and nothing was spent (a part that can't be placed, or a stop before anything
+    /// was sent): the changed phrases are voiced instead, with the line saying why.
+    case patchInstead(String)
+
+    /// What a finished automatic run comes to.
+    @MainActor init(_ session: WholeClipRevoiceSession) {
+        switch session.phase {
+        case .used:
+            self = session.record.map { .revoiced($0, spent: session.spent) } ?? .failed("The whole clip couldn't be put in.", spent: session.spent)
+        case .stopped(let line):
+            self = session.failure?.repeats == true && session.spent == 0 ? .patchInstead(line) : .failed(line, spent: session.spent)
+        default: self = .failed("The whole clip didn't finish.", spent: session.spent)
+        }
+    }
 }
 
 extension EditorModel {
@@ -85,6 +99,10 @@ extension EditorModel {
             run.charge(spent)
             run.voiceSpent += spent
             return MakeItRow(id: "wholeClip", kind: .note, text: "Kept your words: the whole clip couldn't be revoiced", detail: line)
+        case .patchInstead(let line):
+            let log = app.log
+            Task { await log.write(LogEntry(level: .info, category: "voice-lab", message: "make-it whole clip fell back to the changed phrases")) }
+            return MakeItRow(id: "wholeClip", kind: .note, text: "Voiced only the changed phrases: the whole clip couldn't be revoiced here", detail: line)
         }
     }
 
@@ -173,12 +191,9 @@ extension MakeItServices {
         }
         session.startWholeClip(automatic: true)
         await whole.waitForRun()
-        switch whole.phase {
-        case .used:
-            if let record = whole.record { return .revoiced(record, spent: whole.spent) }
-            return .failed("The whole clip couldn't be put in.", spent: whole.spent)
-        case .stopped(let line): return .failed(line, spent: whole.spent)
-        default: return .failed("The whole clip didn't finish.", spent: whole.spent)
-        }
+        let outcome = WholeClipAutoOutcome(whole)
+        // The patch goes on: this clip's pick is the patch, so its phrases' Rewrites don't offer the whole clip again.
+        if case .patchInstead = outcome { editor.wholeClipPicks[request.clipID] = false }
+        return outcome
     }
 }

@@ -85,6 +85,16 @@ extension RewriteSession {
         }
     }
 
+    /// The stopped card's actions, the first one primary. Try Again (priced) only when a retry can succeed: after a stop that
+    /// would only repeat, such as a part that can't be placed, the patch is the way forward and nothing is priced for work
+    /// that can't happen.
+    func wholeClipStoppedActions() -> [PanelAction] {
+        guard let session = wholeClip, session.isStopped else { return [] }
+        let patch = PanelAction(id: "wholeClipPatch", title: "Voice Only the Changed Phrases") { [weak self] in self?.patchInstead() }
+        guard session.failure?.repeats != true, let retry = wholeClipPrimary(retry: true) else { return [patch] }
+        return [retry, patch]
+    }
+
     func startWholeClip(automatic: Bool = false) {
         guard let session = wholeClip, let clip = wholeClipID, !session.running else { return }
         editor.wholeClipPicks[clip] = true
@@ -185,6 +195,9 @@ extension RewriteSession {
             editor?.removeWholeClip(record)
         }, discard: { [weak self] in
             self?.wholeClipPlan?.invalidate(); self?.wholeClipPlan = nil
+        }, report: { [weak editor] line in
+            guard let log = editor?.app.log else { return }
+            Task { await log.write(LogEntry(level: .warn, category: "voice-lab", message: line)) }
         })
     }
 
@@ -231,24 +244,32 @@ extension RewriteSession {
             await patch.stop(); patch.invalidate(); takePlan = nil
         }
         guard current, let generation, let recordID = generation.selectedVoiceID, let takeBackend, let envelope else {
-            throw WholeClipRevoiceSession.Stop.noVoice("Make your voice in Rewrite first. Nothing was sent.")
+            throw WholeClipRevoiceSession.Unsent(error: WholeClipRevoiceSession.Stop.noVoice("Make your voice in Rewrite first. Nothing was sent."))
         }
-        let final = try editor.voiceLabReviewProject(localCommands: localCommands)
-        let hunks = script.hunks(words: wholeClipWords(final), cutWordIds: Set(final.edits.cutWordIds), cutPauseIds: Set(final.edits.cutPauseIds))
-        let model = VoiceLabWordingFit.modelID
-        weak var created: ClipTakePlan?
-        let makeInput = try takeInputMaker(final: final, recordID: recordID, modelID: model, envelope: envelope, model: { created?.modelID ?? model })
+        // The plan: free, and the same every time for the same clip, so a stop here is one Try Again would only repeat.
         let snapshot = editor.project
-        let plan = try ClipTakePlan(project: final, scope: scope, envelope: envelope, hunks: hunks, makeInput: makeInput,
-            readCap: { [weak self] in
-                guard let self else { throw CancellationError() }
-                return try await self.currentGenerationCap()
-            }, isCurrent: { [weak self] in
-                guard let self else { return false }
-                var now = editor.project
-                now.voiceLab.speakingRateSamples = snapshot.voiceLab.speakingRateSamples
-                return current && now == snapshot && self.generation?.selectedVoiceID == recordID
-            }, acceptedChargesChanged: { [weak app = editor.app] in await app?.refreshMonthlySpend() })
+        weak var created: ClipTakePlan?
+        let model = VoiceLabWordingFit.modelID
+        let plan: ClipTakePlan
+        do {
+            let final = try editor.voiceLabReviewProject(localCommands: localCommands)
+            let hunks = script.hunks(words: wholeClipWords(final), cutWordIds: Set(final.edits.cutWordIds), cutPauseIds: Set(final.edits.cutPauseIds))
+            let makeInput = try takeInputMaker(final: final, recordID: recordID, modelID: model, envelope: envelope, model: { created?.modelID ?? model })
+            plan = try ClipTakePlan(project: final, scope: scope, envelope: envelope, hunks: hunks, makeInput: makeInput,
+                readCap: { [weak self] in
+                    guard let self else { throw CancellationError() }
+                    return try await self.currentGenerationCap()
+                }, isCurrent: { [weak self] in
+                    guard let self else { return false }
+                    var now = editor.project
+                    now.voiceLab.speakingRateSamples = snapshot.voiceLab.speakingRateSamples
+                    return current && now == snapshot && self.generation?.selectedVoiceID == recordID
+                }, acceptedChargesChanged: { [weak app = editor.app] in await app?.refreshMonthlySpend() })
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw WholeClipRevoiceSession.Unsent(error: error)
+        }
         created = plan
         _ = plan.changeModel(model)
         plan.prepareDurationRender = durationRenderPreparer()
@@ -269,7 +290,7 @@ extension RewriteSession {
         #endif
         try Task.checkCancellation()
         if let blocked = plan.phrases.first(where: { $0.blocked != nil }) {
-            throw WholeClipRevoiceSession.Stop.noVoice((blocked.blocked ?? "") + " Nothing was sent.")
+            throw WholeClipRevoiceSession.Unsent(error: WholeClipRevoiceSession.Stop.noVoice((blocked.blocked ?? "") + " Nothing was sent."))
         }
         guard plan.problem.isEmpty, let approval = plan.approvalID else {
             throw WholeClipRevoiceSession.Stop.noVoice(plan.problem.isEmpty ? "The voice couldn't be priced. Nothing was sent." : plan.problem)
