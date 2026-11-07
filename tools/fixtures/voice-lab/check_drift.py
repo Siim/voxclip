@@ -53,6 +53,7 @@ EXACT = ['shared/fixtures/voice-lab/pace-cases.json', 'shared/fixtures/voice-lab
          'shared/fixtures/music/music-project.voxclip', 'shared/fixtures/music/music-wire-cases.json',
          'shared/fixtures/music/music-mix-cases.json',
          'shared/fixtures/loudness/social-loudness-cases.json',
+         'shared/fixtures/loudness/social-limiter-cases.json',
          'shared/fixtures/clip-effects/effects-project.voxclip', 'shared/fixtures/clip-effects/effects-wire-cases.json',
          'shared/fixtures/ask-claude/ask-claude-cases.json',
          'shared/fixtures/clip-controls/clip-controls-project.voxclip', 'shared/fixtures/clip-controls/clip-controls-wire-cases.json',
@@ -93,7 +94,7 @@ def main():
     subprocess.run([sys.executable, str(root / "tools/fixtures/music/generate_music.py")], check=True)
     # The music bed's levels and timing (doc/spec/music.md section 4), replayed by Windows; the Mac replay is owed.
     subprocess.run([sys.executable, str(root / "tools/fixtures/music/generate_music_mix.py")], check=True)
-    # Social loudness at export (ADR-R47), replayed by both Cores; rounded to 6 decimals, so byte-exact.
+    # Social loudness at export and its true-peak limiter (ADR-R47), replayed by both Cores; rounded to 6 decimals, so byte-exact.
     subprocess.run([sys.executable, str(root / "tools/fixtures/loudness/generate_social_loudness.py")], check=True)
     # The clip-effects schema field and its shared vectors (doc/spec/ai.md section 18.2), after the music field.
     subprocess.run([sys.executable, str(root / "tools/schemas/generate_clip_effects_schema.py")], check=True)
