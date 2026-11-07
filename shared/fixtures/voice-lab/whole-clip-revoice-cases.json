@@ -1,0 +1,4457 @@
+{
+  "format": "voxclip-whole-clip-revoice/1",
+  "constants": {
+    "wordSharePercent": 40,
+    "noFitPhrases": 2,
+    "fitTolerance": 0.08,
+    "maximumRewordRounds": 2,
+    "maximumPartSeconds": 12.0,
+    "maximumPartCharacters": 1000,
+    "maximumClipSeconds": 300.0,
+    "standardLipsync": "fal-ai/sync-lipsync/v2:lipsync-2",
+    "lipsyncModels": [
+      {
+        "rawValue": "fal-ai/sync-lipsync/v2:lipsync-2",
+        "endpoint": "fal-ai/sync-lipsync/v2",
+        "model": "lipsync-2",
+        "name": "lipsync-2"
+      },
+      {
+        "rawValue": "fal-ai/sync-lipsync/v3",
+        "endpoint": "fal-ai/sync-lipsync/v3",
+        "model": null,
+        "name": "sync-3"
+      }
+    ]
+  },
+  "rule": [
+    {
+      "spokenWords": 100,
+      "revoicedWords": 39,
+      "noFitPhrases": 0,
+      "reason": null,
+      "callout": null
+    },
+    {
+      "spokenWords": 100,
+      "revoicedWords": 40,
+      "noFitPhrases": 0,
+      "reason": {
+        "kind": "manyWords",
+        "revoiced": 40,
+        "spoken": 100
+      },
+      "callout": "These changes re-voice 40 words, a lot for a 100-word clip. Long stretches in your voice can sound stitched."
+    },
+    {
+      "spokenWords": 5,
+      "revoicedWords": 2,
+      "noFitPhrases": 0,
+      "reason": {
+        "kind": "manyWords",
+        "revoiced": 2,
+        "spoken": 5
+      },
+      "callout": "These changes re-voice 2 words, a lot for a 5-word clip. Long stretches in your voice can sound stitched."
+    },
+    {
+      "spokenWords": 74,
+      "revoicedWords": 29,
+      "noFitPhrases": 0,
+      "reason": null,
+      "callout": null
+    },
+    {
+      "spokenWords": 74,
+      "revoicedWords": 30,
+      "noFitPhrases": 0,
+      "reason": {
+        "kind": "manyWords",
+        "revoiced": 30,
+        "spoken": 74
+      },
+      "callout": "These changes re-voice 30 words, a lot for a 74-word clip. Long stretches in your voice can sound stitched."
+    },
+    {
+      "spokenWords": 74,
+      "revoicedWords": 58,
+      "noFitPhrases": 0,
+      "reason": {
+        "kind": "manyWords",
+        "revoiced": 58,
+        "spoken": 74
+      },
+      "callout": "These changes re-voice 58 words, a lot for a 74-word clip. Long stretches in your voice can sound stitched."
+    },
+    {
+      "spokenWords": 0,
+      "revoicedWords": 3,
+      "noFitPhrases": 0,
+      "reason": null,
+      "callout": null
+    },
+    {
+      "spokenWords": 10,
+      "revoicedWords": 0,
+      "noFitPhrases": 0,
+      "reason": null,
+      "callout": null
+    },
+    {
+      "spokenWords": 100,
+      "revoicedWords": 10,
+      "noFitPhrases": 1,
+      "reason": null,
+      "callout": null
+    },
+    {
+      "spokenWords": 100,
+      "revoicedWords": 10,
+      "noFitPhrases": 2,
+      "reason": {
+        "kind": "phrasesCantFit",
+        "count": 2
+      },
+      "callout": "2 phrases can't fit their places in the video, so they would keep your original audio. Revoicing the whole clip fits the picture to the voice."
+    },
+    {
+      "spokenWords": 100,
+      "revoicedWords": 0,
+      "noFitPhrases": 3,
+      "reason": {
+        "kind": "phrasesCantFit",
+        "count": 3
+      },
+      "callout": "3 phrases can't fit their places in the video, so they would keep your original audio. Revoicing the whole clip fits the picture to the voice."
+    },
+    {
+      "spokenWords": 0,
+      "revoicedWords": 0,
+      "noFitPhrases": 2,
+      "reason": {
+        "kind": "phrasesCantFit",
+        "count": 2
+      },
+      "callout": "2 phrases can't fit their places in the video, so they would keep your original audio. Revoicing the whole clip fits the picture to the voice."
+    },
+    {
+      "spokenWords": 3,
+      "revoicedWords": 3,
+      "noFitPhrases": 5,
+      "reason": {
+        "kind": "manyWords",
+        "revoiced": 3,
+        "spoken": 3
+      },
+      "callout": "These changes re-voice 3 words, a lot for a 3-word clip. Long stretches in your voice can sound stitched."
+    },
+    {
+      "spokenWords": 1,
+      "revoicedWords": 1,
+      "noFitPhrases": 0,
+      "reason": {
+        "kind": "manyWords",
+        "revoiced": 1,
+        "spoken": 1
+      },
+      "callout": "These changes re-voice 1 words, a lot for a 1-word clip. Long stretches in your voice can sound stitched."
+    },
+    {
+      "spokenWords": 1000,
+      "revoicedWords": 399,
+      "noFitPhrases": 1,
+      "reason": null,
+      "callout": null
+    },
+    {
+      "spokenWords": 1000,
+      "revoicedWords": 400,
+      "noFitPhrases": 9,
+      "reason": {
+        "kind": "manyWords",
+        "revoiced": 400,
+        "spoken": 1000
+      },
+      "callout": "These changes re-voice 400 words, a lot for a 1000-word clip. Long stretches in your voice can sound stitched."
+    }
+  ],
+  "autoChoice": [
+    {
+      "stitched": true,
+      "price": "1.04",
+      "remaining": "2",
+      "expected": {
+        "kind": "revoice",
+        "price": "1.04"
+      }
+    },
+    {
+      "stitched": true,
+      "price": "1.04",
+      "remaining": "1.04",
+      "expected": {
+        "kind": "revoice",
+        "price": "1.04"
+      }
+    },
+    {
+      "stitched": true,
+      "price": "1.04",
+      "remaining": "1.03",
+      "expected": {
+        "kind": "patchAndOffer",
+        "price": "1.04"
+      }
+    },
+    {
+      "stitched": true,
+      "price": "1.04",
+      "remaining": null,
+      "expected": {
+        "kind": "patchAndOffer",
+        "price": "1.04"
+      }
+    },
+    {
+      "stitched": true,
+      "price": null,
+      "remaining": "2",
+      "expected": {
+        "kind": "patch",
+        "price": null
+      }
+    },
+    {
+      "stitched": false,
+      "price": "1.04",
+      "remaining": "2",
+      "expected": {
+        "kind": "patch",
+        "price": null
+      }
+    },
+    {
+      "stitched": true,
+      "price": "0",
+      "remaining": "2",
+      "expected": {
+        "kind": "patch",
+        "price": null
+      }
+    },
+    {
+      "stitched": true,
+      "price": "0.0000000001",
+      "remaining": "0",
+      "expected": {
+        "kind": "patchAndOffer",
+        "price": "0.0000000001"
+      }
+    },
+    {
+      "stitched": true,
+      "price": "12.5",
+      "remaining": "12.50",
+      "expected": {
+        "kind": "revoice",
+        "price": "12.5"
+      }
+    },
+    {
+      "stitched": true,
+      "price": "3",
+      "remaining": "0",
+      "expected": {
+        "kind": "patchAndOffer",
+        "price": "3"
+      }
+    }
+  ],
+  "script": [
+    {
+      "id": "edits-and-a-rewrite-in-order",
+      "words": [
+        {
+          "id": "w0",
+          "text": "So",
+          "kind": "word",
+          "start": 0.0,
+          "end": 0.4
+        },
+        {
+          "id": "w1",
+          "text": "we",
+          "kind": "word",
+          "start": 0.5,
+          "end": 0.9
+        },
+        {
+          "id": "w2",
+          "text": "drove",
+          "kind": "word",
+          "start": 1.0,
+          "end": 1.4
+        },
+        {
+          "id": "w3",
+          "text": "north.",
+          "kind": "word",
+          "start": 1.5,
+          "end": 1.9
+        },
+        {
+          "id": "w4",
+          "text": "It",
+          "kind": "word",
+          "start": 2.0,
+          "end": 2.4
+        },
+        {
+          "id": "w5",
+          "text": "was",
+          "kind": "word",
+          "start": 2.5,
+          "end": 2.9
+        },
+        {
+          "id": "w6",
+          "text": "um",
+          "kind": "word",
+          "start": 3.0,
+          "end": 3.4
+        },
+        {
+          "id": "w7",
+          "text": "cold.",
+          "kind": "word",
+          "start": 3.5,
+          "end": 3.9
+        },
+        {
+          "id": "w8",
+          "text": "Then",
+          "kind": "word",
+          "start": 4.0,
+          "end": 4.4
+        },
+        {
+          "id": "w9",
+          "text": "we",
+          "kind": "word",
+          "start": 4.5,
+          "end": 4.9
+        },
+        {
+          "id": "w10",
+          "text": "stopped.",
+          "kind": "word",
+          "start": 5.0,
+          "end": 5.4
+        },
+        {
+          "id": "w11",
+          "text": "[music]",
+          "kind": "event",
+          "start": 5.5,
+          "end": 5.9
+        }
+      ],
+      "cutWordIds": [
+        "w6"
+      ],
+      "voiceHunks": [
+        {
+          "sourceWordIds": [
+            "w8",
+            "w9",
+            "w10"
+          ],
+          "newText": "Then we finally stopped."
+        }
+      ],
+      "expected": {
+        "text": "So we drove north. It was cold. Then we finally stopped.",
+        "words": 11,
+        "characters": 56,
+        "sentences": [
+          {
+            "text": "So we drove north.",
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3"
+            ],
+            "start": 0.0,
+            "end": 1.9
+          },
+          {
+            "text": "It was cold.",
+            "sourceWordIds": [
+              "w4",
+              "w5",
+              "w7"
+            ],
+            "start": 2.0,
+            "end": 3.9
+          },
+          {
+            "text": "Then we finally stopped.",
+            "sourceWordIds": [
+              "w8",
+              "w9",
+              "w10"
+            ],
+            "start": 4.0,
+            "end": 5.4
+          }
+        ],
+        "parts": [
+          {
+            "text": "So we drove north. It was cold. Then we finally stopped.",
+            "words": 11,
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3",
+              "w4",
+              "w5",
+              "w7",
+              "w8",
+              "w9",
+              "w10"
+            ],
+            "start": 0.0,
+            "end": 5.4
+          }
+        ],
+        "hunks": [
+          {
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3",
+              "w4",
+              "w5",
+              "w7",
+              "w8",
+              "w9",
+              "w10"
+            ],
+            "newTokens": [
+              "So",
+              "we",
+              "drove",
+              "north.",
+              "It",
+              "was",
+              "cold.",
+              "Then",
+              "we",
+              "finally",
+              "stopped."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 0,
+            "sourceEndIndex": 11
+          }
+        ]
+      }
+    },
+    {
+      "id": "plain-clip",
+      "words": [
+        {
+          "id": "w0",
+          "text": "So",
+          "kind": "word",
+          "start": 0.0,
+          "end": 0.4
+        },
+        {
+          "id": "w1",
+          "text": "we",
+          "kind": "word",
+          "start": 0.5,
+          "end": 0.9
+        },
+        {
+          "id": "w2",
+          "text": "drove",
+          "kind": "word",
+          "start": 1.0,
+          "end": 1.4
+        },
+        {
+          "id": "w3",
+          "text": "north.",
+          "kind": "word",
+          "start": 1.5,
+          "end": 1.9
+        },
+        {
+          "id": "w4",
+          "text": "It",
+          "kind": "word",
+          "start": 2.0,
+          "end": 2.4
+        },
+        {
+          "id": "w5",
+          "text": "was",
+          "kind": "word",
+          "start": 2.5,
+          "end": 2.9
+        },
+        {
+          "id": "w6",
+          "text": "um",
+          "kind": "word",
+          "start": 3.0,
+          "end": 3.4
+        },
+        {
+          "id": "w7",
+          "text": "cold.",
+          "kind": "word",
+          "start": 3.5,
+          "end": 3.9
+        },
+        {
+          "id": "w8",
+          "text": "Then",
+          "kind": "word",
+          "start": 4.0,
+          "end": 4.4
+        },
+        {
+          "id": "w9",
+          "text": "we",
+          "kind": "word",
+          "start": 4.5,
+          "end": 4.9
+        },
+        {
+          "id": "w10",
+          "text": "stopped.",
+          "kind": "word",
+          "start": 5.0,
+          "end": 5.4
+        },
+        {
+          "id": "w11",
+          "text": "[music]",
+          "kind": "event",
+          "start": 5.5,
+          "end": 5.9
+        }
+      ],
+      "cutWordIds": [],
+      "voiceHunks": [],
+      "expected": {
+        "text": "So we drove north. It was um cold. Then we stopped.",
+        "words": 11,
+        "characters": 51,
+        "sentences": [
+          {
+            "text": "So we drove north.",
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3"
+            ],
+            "start": 0.0,
+            "end": 1.9
+          },
+          {
+            "text": "It was um cold.",
+            "sourceWordIds": [
+              "w4",
+              "w5",
+              "w6",
+              "w7"
+            ],
+            "start": 2.0,
+            "end": 3.9
+          },
+          {
+            "text": "Then we stopped.",
+            "sourceWordIds": [
+              "w8",
+              "w9",
+              "w10"
+            ],
+            "start": 4.0,
+            "end": 5.4
+          }
+        ],
+        "parts": [
+          {
+            "text": "So we drove north. It was um cold. Then we stopped.",
+            "words": 11,
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3",
+              "w4",
+              "w5",
+              "w6",
+              "w7",
+              "w8",
+              "w9",
+              "w10"
+            ],
+            "start": 0.0,
+            "end": 5.4
+          }
+        ],
+        "hunks": [
+          {
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3",
+              "w4",
+              "w5",
+              "w6",
+              "w7",
+              "w8",
+              "w9",
+              "w10"
+            ],
+            "newTokens": [
+              "So",
+              "we",
+              "drove",
+              "north.",
+              "It",
+              "was",
+              "um",
+              "cold.",
+              "Then",
+              "we",
+              "stopped."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 0,
+            "sourceEndIndex": 11
+          }
+        ]
+      }
+    },
+    {
+      "id": "nothing-said",
+      "words": [
+        {
+          "id": "w0",
+          "text": "[music]",
+          "kind": "event",
+          "start": 0.0,
+          "end": 0.4
+        }
+      ],
+      "cutWordIds": [],
+      "voiceHunks": [],
+      "expected": null
+    },
+    {
+      "id": "a-rewrite-spanning-sentences-keeps-its-place",
+      "words": [
+        {
+          "id": "w0",
+          "text": "So",
+          "kind": "word",
+          "start": 0.0,
+          "end": 0.4
+        },
+        {
+          "id": "w1",
+          "text": "we",
+          "kind": "word",
+          "start": 0.5,
+          "end": 0.9
+        },
+        {
+          "id": "w2",
+          "text": "drove",
+          "kind": "word",
+          "start": 1.0,
+          "end": 1.4
+        },
+        {
+          "id": "w3",
+          "text": "north.",
+          "kind": "word",
+          "start": 1.5,
+          "end": 1.9
+        },
+        {
+          "id": "w4",
+          "text": "It",
+          "kind": "word",
+          "start": 2.0,
+          "end": 2.4
+        },
+        {
+          "id": "w5",
+          "text": "was",
+          "kind": "word",
+          "start": 2.5,
+          "end": 2.9
+        },
+        {
+          "id": "w6",
+          "text": "um",
+          "kind": "word",
+          "start": 3.0,
+          "end": 3.4
+        },
+        {
+          "id": "w7",
+          "text": "cold.",
+          "kind": "word",
+          "start": 3.5,
+          "end": 3.9
+        },
+        {
+          "id": "w8",
+          "text": "Then",
+          "kind": "word",
+          "start": 4.0,
+          "end": 4.4
+        },
+        {
+          "id": "w9",
+          "text": "we",
+          "kind": "word",
+          "start": 4.5,
+          "end": 4.9
+        },
+        {
+          "id": "w10",
+          "text": "stopped.",
+          "kind": "word",
+          "start": 5.0,
+          "end": 5.4
+        },
+        {
+          "id": "w11",
+          "text": "[music]",
+          "kind": "event",
+          "start": 5.5,
+          "end": 5.9
+        }
+      ],
+      "cutWordIds": [],
+      "voiceHunks": [
+        {
+          "sourceWordIds": [
+            "w3",
+            "w4",
+            "w5"
+          ],
+          "newText": "east, and it got"
+        }
+      ],
+      "expected": {
+        "text": "So we drove east, and it got um cold. Then we stopped.",
+        "words": 12,
+        "characters": 54,
+        "sentences": [
+          {
+            "text": "So we drove east, and it got um cold.",
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3",
+              "w4",
+              "w5",
+              "w6",
+              "w7"
+            ],
+            "start": 0.0,
+            "end": 3.9
+          },
+          {
+            "text": "Then we stopped.",
+            "sourceWordIds": [
+              "w8",
+              "w9",
+              "w10"
+            ],
+            "start": 4.0,
+            "end": 5.4
+          }
+        ],
+        "parts": [
+          {
+            "text": "So we drove east, and it got um cold. Then we stopped.",
+            "words": 12,
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3",
+              "w4",
+              "w5",
+              "w6",
+              "w7",
+              "w8",
+              "w9",
+              "w10"
+            ],
+            "start": 0.0,
+            "end": 5.4
+          }
+        ],
+        "hunks": [
+          {
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3",
+              "w4",
+              "w5",
+              "w6",
+              "w7",
+              "w8",
+              "w9",
+              "w10"
+            ],
+            "newTokens": [
+              "So",
+              "we",
+              "drove",
+              "east,",
+              "and",
+              "it",
+              "got",
+              "um",
+              "cold.",
+              "Then",
+              "we",
+              "stopped."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 0,
+            "sourceEndIndex": 11
+          }
+        ]
+      }
+    },
+    {
+      "id": "parts-within-their-seconds",
+      "words": [
+        {
+          "id": "l0",
+          "text": "word",
+          "kind": "word",
+          "start": 0.0,
+          "end": 0.45
+        },
+        {
+          "id": "l1",
+          "text": "word",
+          "kind": "word",
+          "start": 0.5,
+          "end": 0.95
+        },
+        {
+          "id": "l2",
+          "text": "word",
+          "kind": "word",
+          "start": 1.0,
+          "end": 1.45
+        },
+        {
+          "id": "l3",
+          "text": "end.",
+          "kind": "word",
+          "start": 1.5,
+          "end": 1.95
+        },
+        {
+          "id": "l4",
+          "text": "word",
+          "kind": "word",
+          "start": 2.0,
+          "end": 2.45
+        },
+        {
+          "id": "l5",
+          "text": "word",
+          "kind": "word",
+          "start": 2.5,
+          "end": 2.95
+        },
+        {
+          "id": "l6",
+          "text": "word",
+          "kind": "word",
+          "start": 3.0,
+          "end": 3.45
+        },
+        {
+          "id": "l7",
+          "text": "end.",
+          "kind": "word",
+          "start": 3.5,
+          "end": 3.95
+        },
+        {
+          "id": "l8",
+          "text": "word",
+          "kind": "word",
+          "start": 4.0,
+          "end": 4.45
+        },
+        {
+          "id": "l9",
+          "text": "word",
+          "kind": "word",
+          "start": 4.5,
+          "end": 4.95
+        },
+        {
+          "id": "l10",
+          "text": "word",
+          "kind": "word",
+          "start": 5.0,
+          "end": 5.45
+        },
+        {
+          "id": "l11",
+          "text": "end.",
+          "kind": "word",
+          "start": 5.5,
+          "end": 5.95
+        },
+        {
+          "id": "l12",
+          "text": "word",
+          "kind": "word",
+          "start": 6.0,
+          "end": 6.45
+        },
+        {
+          "id": "l13",
+          "text": "word",
+          "kind": "word",
+          "start": 6.5,
+          "end": 6.95
+        },
+        {
+          "id": "l14",
+          "text": "word",
+          "kind": "word",
+          "start": 7.0,
+          "end": 7.45
+        },
+        {
+          "id": "l15",
+          "text": "end.",
+          "kind": "word",
+          "start": 7.5,
+          "end": 7.95
+        },
+        {
+          "id": "l16",
+          "text": "word",
+          "kind": "word",
+          "start": 8.0,
+          "end": 8.45
+        },
+        {
+          "id": "l17",
+          "text": "word",
+          "kind": "word",
+          "start": 8.5,
+          "end": 8.95
+        },
+        {
+          "id": "l18",
+          "text": "word",
+          "kind": "word",
+          "start": 9.0,
+          "end": 9.45
+        },
+        {
+          "id": "l19",
+          "text": "end.",
+          "kind": "word",
+          "start": 9.5,
+          "end": 9.95
+        },
+        {
+          "id": "l20",
+          "text": "word",
+          "kind": "word",
+          "start": 10.0,
+          "end": 10.45
+        },
+        {
+          "id": "l21",
+          "text": "word",
+          "kind": "word",
+          "start": 10.5,
+          "end": 10.95
+        },
+        {
+          "id": "l22",
+          "text": "word",
+          "kind": "word",
+          "start": 11.0,
+          "end": 11.45
+        },
+        {
+          "id": "l23",
+          "text": "end.",
+          "kind": "word",
+          "start": 11.5,
+          "end": 11.95
+        },
+        {
+          "id": "l24",
+          "text": "word",
+          "kind": "word",
+          "start": 12.0,
+          "end": 12.45
+        },
+        {
+          "id": "l25",
+          "text": "word",
+          "kind": "word",
+          "start": 12.5,
+          "end": 12.95
+        },
+        {
+          "id": "l26",
+          "text": "word",
+          "kind": "word",
+          "start": 13.0,
+          "end": 13.45
+        },
+        {
+          "id": "l27",
+          "text": "end.",
+          "kind": "word",
+          "start": 13.5,
+          "end": 13.95
+        },
+        {
+          "id": "l28",
+          "text": "word",
+          "kind": "word",
+          "start": 14.0,
+          "end": 14.45
+        },
+        {
+          "id": "l29",
+          "text": "word",
+          "kind": "word",
+          "start": 14.5,
+          "end": 14.95
+        },
+        {
+          "id": "l30",
+          "text": "word",
+          "kind": "word",
+          "start": 15.0,
+          "end": 15.45
+        },
+        {
+          "id": "l31",
+          "text": "end.",
+          "kind": "word",
+          "start": 15.5,
+          "end": 15.95
+        },
+        {
+          "id": "l32",
+          "text": "word",
+          "kind": "word",
+          "start": 16.0,
+          "end": 16.45
+        },
+        {
+          "id": "l33",
+          "text": "word",
+          "kind": "word",
+          "start": 16.5,
+          "end": 16.95
+        },
+        {
+          "id": "l34",
+          "text": "word",
+          "kind": "word",
+          "start": 17.0,
+          "end": 17.45
+        },
+        {
+          "id": "l35",
+          "text": "end.",
+          "kind": "word",
+          "start": 17.5,
+          "end": 17.95
+        },
+        {
+          "id": "l36",
+          "text": "word",
+          "kind": "word",
+          "start": 18.0,
+          "end": 18.45
+        },
+        {
+          "id": "l37",
+          "text": "word",
+          "kind": "word",
+          "start": 18.5,
+          "end": 18.95
+        },
+        {
+          "id": "l38",
+          "text": "word",
+          "kind": "word",
+          "start": 19.0,
+          "end": 19.45
+        },
+        {
+          "id": "l39",
+          "text": "end.",
+          "kind": "word",
+          "start": 19.5,
+          "end": 19.95
+        },
+        {
+          "id": "l40",
+          "text": "word",
+          "kind": "word",
+          "start": 20.0,
+          "end": 20.45
+        },
+        {
+          "id": "l41",
+          "text": "word",
+          "kind": "word",
+          "start": 20.5,
+          "end": 20.95
+        },
+        {
+          "id": "l42",
+          "text": "word",
+          "kind": "word",
+          "start": 21.0,
+          "end": 21.45
+        },
+        {
+          "id": "l43",
+          "text": "end.",
+          "kind": "word",
+          "start": 21.5,
+          "end": 21.95
+        },
+        {
+          "id": "l44",
+          "text": "word",
+          "kind": "word",
+          "start": 22.0,
+          "end": 22.45
+        },
+        {
+          "id": "l45",
+          "text": "word",
+          "kind": "word",
+          "start": 22.5,
+          "end": 22.95
+        },
+        {
+          "id": "l46",
+          "text": "word",
+          "kind": "word",
+          "start": 23.0,
+          "end": 23.45
+        },
+        {
+          "id": "l47",
+          "text": "end.",
+          "kind": "word",
+          "start": 23.5,
+          "end": 23.95
+        }
+      ],
+      "cutWordIds": [],
+      "voiceHunks": [],
+      "expected": {
+        "text": "word word word end. word word word end. word word word end. word word word end. word word word end. word word word end. word word word end. word word word end. word word word end. word word word end. word word word end. word word word end.",
+        "words": 48,
+        "characters": 239,
+        "sentences": [
+          {
+            "text": "word word word end.",
+            "sourceWordIds": [
+              "l0",
+              "l1",
+              "l2",
+              "l3"
+            ],
+            "start": 0.0,
+            "end": 1.95
+          },
+          {
+            "text": "word word word end.",
+            "sourceWordIds": [
+              "l4",
+              "l5",
+              "l6",
+              "l7"
+            ],
+            "start": 2.0,
+            "end": 3.95
+          },
+          {
+            "text": "word word word end.",
+            "sourceWordIds": [
+              "l8",
+              "l9",
+              "l10",
+              "l11"
+            ],
+            "start": 4.0,
+            "end": 5.95
+          },
+          {
+            "text": "word word word end.",
+            "sourceWordIds": [
+              "l12",
+              "l13",
+              "l14",
+              "l15"
+            ],
+            "start": 6.0,
+            "end": 7.95
+          },
+          {
+            "text": "word word word end.",
+            "sourceWordIds": [
+              "l16",
+              "l17",
+              "l18",
+              "l19"
+            ],
+            "start": 8.0,
+            "end": 9.95
+          },
+          {
+            "text": "word word word end.",
+            "sourceWordIds": [
+              "l20",
+              "l21",
+              "l22",
+              "l23"
+            ],
+            "start": 10.0,
+            "end": 11.95
+          },
+          {
+            "text": "word word word end.",
+            "sourceWordIds": [
+              "l24",
+              "l25",
+              "l26",
+              "l27"
+            ],
+            "start": 12.0,
+            "end": 13.95
+          },
+          {
+            "text": "word word word end.",
+            "sourceWordIds": [
+              "l28",
+              "l29",
+              "l30",
+              "l31"
+            ],
+            "start": 14.0,
+            "end": 15.95
+          },
+          {
+            "text": "word word word end.",
+            "sourceWordIds": [
+              "l32",
+              "l33",
+              "l34",
+              "l35"
+            ],
+            "start": 16.0,
+            "end": 17.95
+          },
+          {
+            "text": "word word word end.",
+            "sourceWordIds": [
+              "l36",
+              "l37",
+              "l38",
+              "l39"
+            ],
+            "start": 18.0,
+            "end": 19.95
+          },
+          {
+            "text": "word word word end.",
+            "sourceWordIds": [
+              "l40",
+              "l41",
+              "l42",
+              "l43"
+            ],
+            "start": 20.0,
+            "end": 21.95
+          },
+          {
+            "text": "word word word end.",
+            "sourceWordIds": [
+              "l44",
+              "l45",
+              "l46",
+              "l47"
+            ],
+            "start": 22.0,
+            "end": 23.95
+          }
+        ],
+        "parts": [
+          {
+            "text": "word word word end. word word word end. word word word end. word word word end. word word word end. word word word end.",
+            "words": 24,
+            "sourceWordIds": [
+              "l0",
+              "l1",
+              "l2",
+              "l3",
+              "l4",
+              "l5",
+              "l6",
+              "l7",
+              "l8",
+              "l9",
+              "l10",
+              "l11",
+              "l12",
+              "l13",
+              "l14",
+              "l15",
+              "l16",
+              "l17",
+              "l18",
+              "l19",
+              "l20",
+              "l21",
+              "l22",
+              "l23"
+            ],
+            "start": 0.0,
+            "end": 11.95
+          },
+          {
+            "text": "word word word end. word word word end. word word word end. word word word end. word word word end. word word word end.",
+            "words": 24,
+            "sourceWordIds": [
+              "l24",
+              "l25",
+              "l26",
+              "l27",
+              "l28",
+              "l29",
+              "l30",
+              "l31",
+              "l32",
+              "l33",
+              "l34",
+              "l35",
+              "l36",
+              "l37",
+              "l38",
+              "l39",
+              "l40",
+              "l41",
+              "l42",
+              "l43",
+              "l44",
+              "l45",
+              "l46",
+              "l47"
+            ],
+            "start": 12.0,
+            "end": 23.95
+          }
+        ],
+        "hunks": [
+          {
+            "sourceWordIds": [
+              "l0",
+              "l1",
+              "l2",
+              "l3",
+              "l4",
+              "l5",
+              "l6",
+              "l7",
+              "l8",
+              "l9",
+              "l10",
+              "l11",
+              "l12",
+              "l13",
+              "l14",
+              "l15",
+              "l16",
+              "l17",
+              "l18",
+              "l19",
+              "l20",
+              "l21",
+              "l22",
+              "l23"
+            ],
+            "newTokens": [
+              "word",
+              "word",
+              "word",
+              "end.",
+              "word",
+              "word",
+              "word",
+              "end.",
+              "word",
+              "word",
+              "word",
+              "end.",
+              "word",
+              "word",
+              "word",
+              "end.",
+              "word",
+              "word",
+              "word",
+              "end.",
+              "word",
+              "word",
+              "word",
+              "end."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 0,
+            "sourceEndIndex": 24
+          },
+          {
+            "sourceWordIds": [
+              "l24",
+              "l25",
+              "l26",
+              "l27",
+              "l28",
+              "l29",
+              "l30",
+              "l31",
+              "l32",
+              "l33",
+              "l34",
+              "l35",
+              "l36",
+              "l37",
+              "l38",
+              "l39",
+              "l40",
+              "l41",
+              "l42",
+              "l43",
+              "l44",
+              "l45",
+              "l46",
+              "l47"
+            ],
+            "newTokens": [
+              "word",
+              "word",
+              "word",
+              "end.",
+              "word",
+              "word",
+              "word",
+              "end.",
+              "word",
+              "word",
+              "word",
+              "end.",
+              "word",
+              "word",
+              "word",
+              "end.",
+              "word",
+              "word",
+              "word",
+              "end.",
+              "word",
+              "word",
+              "word",
+              "end."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 24,
+            "sourceEndIndex": 48
+          }
+        ]
+      }
+    },
+    {
+      "id": "parts-within-their-characters",
+      "words": [
+        {
+          "id": "c0",
+          "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+          "kind": "word",
+          "start": 0.0,
+          "end": 0.05
+        },
+        {
+          "id": "c1",
+          "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+          "kind": "word",
+          "start": 0.1,
+          "end": 0.15000000000000002
+        },
+        {
+          "id": "c2",
+          "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+          "kind": "word",
+          "start": 0.2,
+          "end": 0.25
+        },
+        {
+          "id": "c3",
+          "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+          "kind": "word",
+          "start": 0.30000000000000004,
+          "end": 0.35000000000000003
+        },
+        {
+          "id": "c4",
+          "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+          "kind": "word",
+          "start": 0.4,
+          "end": 0.45
+        },
+        {
+          "id": "c5",
+          "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+          "kind": "word",
+          "start": 0.5,
+          "end": 0.55
+        },
+        {
+          "id": "c6",
+          "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+          "kind": "word",
+          "start": 0.6000000000000001,
+          "end": 0.6500000000000001
+        },
+        {
+          "id": "c7",
+          "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+          "kind": "word",
+          "start": 0.7000000000000001,
+          "end": 0.7500000000000001
+        },
+        {
+          "id": "c8",
+          "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+          "kind": "word",
+          "start": 0.8,
+          "end": 0.8500000000000001
+        },
+        {
+          "id": "c9",
+          "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+          "kind": "word",
+          "start": 0.9,
+          "end": 0.9500000000000001
+        },
+        {
+          "id": "c10",
+          "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+          "kind": "word",
+          "start": 1.0,
+          "end": 1.05
+        },
+        {
+          "id": "c11",
+          "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+          "kind": "word",
+          "start": 1.1,
+          "end": 1.1500000000000001
+        },
+        {
+          "id": "c12",
+          "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+          "kind": "word",
+          "start": 1.2000000000000002,
+          "end": 1.2500000000000002
+        },
+        {
+          "id": "c13",
+          "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+          "kind": "word",
+          "start": 1.3,
+          "end": 1.35
+        },
+        {
+          "id": "c14",
+          "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+          "kind": "word",
+          "start": 1.4000000000000001,
+          "end": 1.4500000000000002
+        },
+        {
+          "id": "c15",
+          "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+          "kind": "word",
+          "start": 1.5,
+          "end": 1.55
+        },
+        {
+          "id": "c16",
+          "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+          "kind": "word",
+          "start": 1.6,
+          "end": 1.6500000000000001
+        },
+        {
+          "id": "c17",
+          "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+          "kind": "word",
+          "start": 1.7000000000000002,
+          "end": 1.7500000000000002
+        },
+        {
+          "id": "c18",
+          "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+          "kind": "word",
+          "start": 1.8,
+          "end": 1.85
+        },
+        {
+          "id": "c19",
+          "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+          "kind": "word",
+          "start": 1.9000000000000001,
+          "end": 1.9500000000000002
+        },
+        {
+          "id": "c20",
+          "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+          "kind": "word",
+          "start": 2.0,
+          "end": 2.05
+        },
+        {
+          "id": "c21",
+          "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+          "kind": "word",
+          "start": 2.1,
+          "end": 2.15
+        },
+        {
+          "id": "c22",
+          "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+          "kind": "word",
+          "start": 2.2,
+          "end": 2.25
+        },
+        {
+          "id": "c23",
+          "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+          "kind": "word",
+          "start": 2.3000000000000003,
+          "end": 2.35
+        },
+        {
+          "id": "c24",
+          "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+          "kind": "word",
+          "start": 2.4000000000000004,
+          "end": 2.45
+        },
+        {
+          "id": "c25",
+          "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+          "kind": "word",
+          "start": 2.5,
+          "end": 2.55
+        },
+        {
+          "id": "c26",
+          "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+          "kind": "word",
+          "start": 2.6,
+          "end": 2.65
+        },
+        {
+          "id": "c27",
+          "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+          "kind": "word",
+          "start": 2.7,
+          "end": 2.75
+        },
+        {
+          "id": "c28",
+          "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+          "kind": "word",
+          "start": 2.8000000000000003,
+          "end": 2.85
+        },
+        {
+          "id": "c29",
+          "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+          "kind": "word",
+          "start": 2.9000000000000004,
+          "end": 2.95
+        },
+        {
+          "id": "c30",
+          "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+          "kind": "word",
+          "start": 3.0,
+          "end": 3.05
+        },
+        {
+          "id": "c31",
+          "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+          "kind": "word",
+          "start": 3.1,
+          "end": 3.15
+        },
+        {
+          "id": "c32",
+          "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+          "kind": "word",
+          "start": 3.2,
+          "end": 3.25
+        },
+        {
+          "id": "c33",
+          "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+          "kind": "word",
+          "start": 3.3000000000000003,
+          "end": 3.35
+        },
+        {
+          "id": "c34",
+          "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+          "kind": "word",
+          "start": 3.4000000000000004,
+          "end": 3.45
+        },
+        {
+          "id": "c35",
+          "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+          "kind": "word",
+          "start": 3.5,
+          "end": 3.55
+        },
+        {
+          "id": "c36",
+          "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+          "kind": "word",
+          "start": 3.6,
+          "end": 3.65
+        },
+        {
+          "id": "c37",
+          "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+          "kind": "word",
+          "start": 3.7,
+          "end": 3.75
+        },
+        {
+          "id": "c38",
+          "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+          "kind": "word",
+          "start": 3.8000000000000003,
+          "end": 3.85
+        },
+        {
+          "id": "c39",
+          "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+          "kind": "word",
+          "start": 3.9000000000000004,
+          "end": 3.95
+        }
+      ],
+      "cutWordIds": [],
+      "voiceHunks": [],
+      "expected": {
+        "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+        "words": 40,
+        "characters": 2459,
+        "sentences": [
+          {
+            "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+            "sourceWordIds": [
+              "c0",
+              "c1"
+            ],
+            "start": 0.0,
+            "end": 0.15000000000000002
+          },
+          {
+            "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+            "sourceWordIds": [
+              "c2",
+              "c3"
+            ],
+            "start": 0.2,
+            "end": 0.35000000000000003
+          },
+          {
+            "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+            "sourceWordIds": [
+              "c4",
+              "c5"
+            ],
+            "start": 0.4,
+            "end": 0.55
+          },
+          {
+            "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+            "sourceWordIds": [
+              "c6",
+              "c7"
+            ],
+            "start": 0.6000000000000001,
+            "end": 0.7500000000000001
+          },
+          {
+            "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+            "sourceWordIds": [
+              "c8",
+              "c9"
+            ],
+            "start": 0.8,
+            "end": 0.9500000000000001
+          },
+          {
+            "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+            "sourceWordIds": [
+              "c10",
+              "c11"
+            ],
+            "start": 1.0,
+            "end": 1.1500000000000001
+          },
+          {
+            "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+            "sourceWordIds": [
+              "c12",
+              "c13"
+            ],
+            "start": 1.2000000000000002,
+            "end": 1.35
+          },
+          {
+            "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+            "sourceWordIds": [
+              "c14",
+              "c15"
+            ],
+            "start": 1.4000000000000001,
+            "end": 1.55
+          },
+          {
+            "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+            "sourceWordIds": [
+              "c16",
+              "c17"
+            ],
+            "start": 1.6,
+            "end": 1.7500000000000002
+          },
+          {
+            "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+            "sourceWordIds": [
+              "c18",
+              "c19"
+            ],
+            "start": 1.8,
+            "end": 1.9500000000000002
+          },
+          {
+            "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+            "sourceWordIds": [
+              "c20",
+              "c21"
+            ],
+            "start": 2.0,
+            "end": 2.15
+          },
+          {
+            "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+            "sourceWordIds": [
+              "c22",
+              "c23"
+            ],
+            "start": 2.2,
+            "end": 2.35
+          },
+          {
+            "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+            "sourceWordIds": [
+              "c24",
+              "c25"
+            ],
+            "start": 2.4000000000000004,
+            "end": 2.55
+          },
+          {
+            "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+            "sourceWordIds": [
+              "c26",
+              "c27"
+            ],
+            "start": 2.6,
+            "end": 2.75
+          },
+          {
+            "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+            "sourceWordIds": [
+              "c28",
+              "c29"
+            ],
+            "start": 2.8000000000000003,
+            "end": 2.95
+          },
+          {
+            "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+            "sourceWordIds": [
+              "c30",
+              "c31"
+            ],
+            "start": 3.0,
+            "end": 3.15
+          },
+          {
+            "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+            "sourceWordIds": [
+              "c32",
+              "c33"
+            ],
+            "start": 3.2,
+            "end": 3.35
+          },
+          {
+            "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+            "sourceWordIds": [
+              "c34",
+              "c35"
+            ],
+            "start": 3.4000000000000004,
+            "end": 3.55
+          },
+          {
+            "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+            "sourceWordIds": [
+              "c36",
+              "c37"
+            ],
+            "start": 3.6,
+            "end": 3.75
+          },
+          {
+            "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+            "sourceWordIds": [
+              "c38",
+              "c39"
+            ],
+            "start": 3.8000000000000003,
+            "end": 3.95
+          }
+        ],
+        "parts": [
+          {
+            "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+            "words": 16,
+            "sourceWordIds": [
+              "c0",
+              "c1",
+              "c2",
+              "c3",
+              "c4",
+              "c5",
+              "c6",
+              "c7",
+              "c8",
+              "c9",
+              "c10",
+              "c11",
+              "c12",
+              "c13",
+              "c14",
+              "c15"
+            ],
+            "start": 0.0,
+            "end": 1.55
+          },
+          {
+            "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+            "words": 16,
+            "sourceWordIds": [
+              "c16",
+              "c17",
+              "c18",
+              "c19",
+              "c20",
+              "c21",
+              "c22",
+              "c23",
+              "c24",
+              "c25",
+              "c26",
+              "c27",
+              "c28",
+              "c29",
+              "c30",
+              "c31"
+            ],
+            "start": 1.6,
+            "end": 3.15
+          },
+          {
+            "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+            "words": 8,
+            "sourceWordIds": [
+              "c32",
+              "c33",
+              "c34",
+              "c35",
+              "c36",
+              "c37",
+              "c38",
+              "c39"
+            ],
+            "start": 3.2,
+            "end": 3.95
+          }
+        ],
+        "hunks": [
+          {
+            "sourceWordIds": [
+              "c0",
+              "c1",
+              "c2",
+              "c3",
+              "c4",
+              "c5",
+              "c6",
+              "c7",
+              "c8",
+              "c9",
+              "c10",
+              "c11",
+              "c12",
+              "c13",
+              "c14",
+              "c15"
+            ],
+            "newTokens": [
+              "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+              "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+              "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+              "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+              "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+              "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+              "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+              "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+              "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+              "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+              "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+              "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+              "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+              "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+              "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+              "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 0,
+            "sourceEndIndex": 16
+          },
+          {
+            "sourceWordIds": [
+              "c16",
+              "c17",
+              "c18",
+              "c19",
+              "c20",
+              "c21",
+              "c22",
+              "c23",
+              "c24",
+              "c25",
+              "c26",
+              "c27",
+              "c28",
+              "c29",
+              "c30",
+              "c31"
+            ],
+            "newTokens": [
+              "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+              "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+              "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+              "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+              "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+              "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+              "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+              "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+              "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+              "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+              "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+              "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+              "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+              "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+              "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+              "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 16,
+            "sourceEndIndex": 32
+          },
+          {
+            "sourceWordIds": [
+              "c32",
+              "c33",
+              "c34",
+              "c35",
+              "c36",
+              "c37",
+              "c38",
+              "c39"
+            ],
+            "newTokens": [
+              "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+              "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+              "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+              "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+              "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+              "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
+              "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+              "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 32,
+            "sourceEndIndex": 40
+          }
+        ]
+      }
+    },
+    {
+      "id": "a-rewrite-with-its-own-full-stop-joins-the-sentence-before",
+      "words": [
+        {
+          "id": "w0",
+          "text": "So",
+          "kind": "word",
+          "start": 0.0,
+          "end": 0.4
+        },
+        {
+          "id": "w1",
+          "text": "we",
+          "kind": "word",
+          "start": 0.5,
+          "end": 0.9
+        },
+        {
+          "id": "w2",
+          "text": "drove",
+          "kind": "word",
+          "start": 1.0,
+          "end": 1.4
+        },
+        {
+          "id": "w3",
+          "text": "north.",
+          "kind": "word",
+          "start": 1.5,
+          "end": 1.9
+        },
+        {
+          "id": "w4",
+          "text": "It",
+          "kind": "word",
+          "start": 2.0,
+          "end": 2.4
+        },
+        {
+          "id": "w5",
+          "text": "was",
+          "kind": "word",
+          "start": 2.5,
+          "end": 2.9
+        },
+        {
+          "id": "w6",
+          "text": "um",
+          "kind": "word",
+          "start": 3.0,
+          "end": 3.4
+        },
+        {
+          "id": "w7",
+          "text": "cold.",
+          "kind": "word",
+          "start": 3.5,
+          "end": 3.9
+        },
+        {
+          "id": "w8",
+          "text": "Then",
+          "kind": "word",
+          "start": 4.0,
+          "end": 4.4
+        },
+        {
+          "id": "w9",
+          "text": "we",
+          "kind": "word",
+          "start": 4.5,
+          "end": 4.9
+        },
+        {
+          "id": "w10",
+          "text": "stopped.",
+          "kind": "word",
+          "start": 5.0,
+          "end": 5.4
+        },
+        {
+          "id": "w11",
+          "text": "[music]",
+          "kind": "event",
+          "start": 5.5,
+          "end": 5.9
+        }
+      ],
+      "cutWordIds": [],
+      "voiceHunks": [
+        {
+          "sourceWordIds": [
+            "w0",
+            "w1",
+            "w2",
+            "w3"
+          ],
+          "newText": "Hello. We headed out"
+        },
+        {
+          "sourceWordIds": [
+            "w4",
+            "w5",
+            "w6",
+            "w7"
+          ],
+          "newText": "today."
+        }
+      ],
+      "expected": {
+        "text": "Hello. We headed out today. Then we stopped.",
+        "words": 8,
+        "characters": 44,
+        "sentences": [
+          {
+            "text": "Hello.",
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3"
+            ],
+            "start": 0.0,
+            "end": 1.9
+          },
+          {
+            "text": "We headed out today.",
+            "sourceWordIds": [
+              "w4",
+              "w5",
+              "w6",
+              "w7"
+            ],
+            "start": 2.0,
+            "end": 3.9
+          },
+          {
+            "text": "Then we stopped.",
+            "sourceWordIds": [
+              "w8",
+              "w9",
+              "w10"
+            ],
+            "start": 4.0,
+            "end": 5.4
+          }
+        ],
+        "parts": [
+          {
+            "text": "Hello. We headed out today. Then we stopped.",
+            "words": 8,
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3",
+              "w4",
+              "w5",
+              "w6",
+              "w7",
+              "w8",
+              "w9",
+              "w10"
+            ],
+            "start": 0.0,
+            "end": 5.4
+          }
+        ],
+        "hunks": [
+          {
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3",
+              "w4",
+              "w5",
+              "w6",
+              "w7",
+              "w8",
+              "w9",
+              "w10"
+            ],
+            "newTokens": [
+              "Hello.",
+              "We",
+              "headed",
+              "out",
+              "today.",
+              "Then",
+              "we",
+              "stopped."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 0,
+            "sourceEndIndex": 11
+          }
+        ]
+      }
+    },
+    {
+      "id": "a-new-sentence-with-no-source-left-joins-the-one-before",
+      "words": [
+        {
+          "id": "w0",
+          "text": "So",
+          "kind": "word",
+          "start": 0.0,
+          "end": 0.4
+        },
+        {
+          "id": "w1",
+          "text": "we",
+          "kind": "word",
+          "start": 0.5,
+          "end": 0.9
+        },
+        {
+          "id": "w2",
+          "text": "drove",
+          "kind": "word",
+          "start": 1.0,
+          "end": 1.4
+        },
+        {
+          "id": "w3",
+          "text": "north.",
+          "kind": "word",
+          "start": 1.5,
+          "end": 1.9
+        },
+        {
+          "id": "w4",
+          "text": "It",
+          "kind": "word",
+          "start": 2.0,
+          "end": 2.4
+        },
+        {
+          "id": "w5",
+          "text": "was",
+          "kind": "word",
+          "start": 2.5,
+          "end": 2.9
+        },
+        {
+          "id": "w6",
+          "text": "um",
+          "kind": "word",
+          "start": 3.0,
+          "end": 3.4
+        },
+        {
+          "id": "w7",
+          "text": "cold.",
+          "kind": "word",
+          "start": 3.5,
+          "end": 3.9
+        },
+        {
+          "id": "w8",
+          "text": "Then",
+          "kind": "word",
+          "start": 4.0,
+          "end": 4.4
+        },
+        {
+          "id": "w9",
+          "text": "we",
+          "kind": "word",
+          "start": 4.5,
+          "end": 4.9
+        },
+        {
+          "id": "w10",
+          "text": "stopped.",
+          "kind": "word",
+          "start": 5.0,
+          "end": 5.4
+        },
+        {
+          "id": "w11",
+          "text": "[music]",
+          "kind": "event",
+          "start": 5.5,
+          "end": 5.9
+        }
+      ],
+      "cutWordIds": [],
+      "voiceHunks": [
+        {
+          "sourceWordIds": [
+            "w8",
+            "w9",
+            "w10"
+          ],
+          "newText": "We stopped. Done. Finally."
+        }
+      ],
+      "expected": {
+        "text": "So we drove north. It was um cold. We stopped. Done. Finally.",
+        "words": 12,
+        "characters": 61,
+        "sentences": [
+          {
+            "text": "So we drove north.",
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3"
+            ],
+            "start": 0.0,
+            "end": 1.9
+          },
+          {
+            "text": "It was um cold.",
+            "sourceWordIds": [
+              "w4",
+              "w5",
+              "w6",
+              "w7"
+            ],
+            "start": 2.0,
+            "end": 3.9
+          },
+          {
+            "text": "We stopped. Done. Finally.",
+            "sourceWordIds": [
+              "w8",
+              "w9",
+              "w10"
+            ],
+            "start": 4.0,
+            "end": 5.4
+          }
+        ],
+        "parts": [
+          {
+            "text": "So we drove north. It was um cold. We stopped. Done. Finally.",
+            "words": 12,
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3",
+              "w4",
+              "w5",
+              "w6",
+              "w7",
+              "w8",
+              "w9",
+              "w10"
+            ],
+            "start": 0.0,
+            "end": 5.4
+          }
+        ],
+        "hunks": [
+          {
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3",
+              "w4",
+              "w5",
+              "w6",
+              "w7",
+              "w8",
+              "w9",
+              "w10"
+            ],
+            "newTokens": [
+              "So",
+              "we",
+              "drove",
+              "north.",
+              "It",
+              "was",
+              "um",
+              "cold.",
+              "We",
+              "stopped.",
+              "Done.",
+              "Finally."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 0,
+            "sourceEndIndex": 11
+          }
+        ]
+      }
+    },
+    {
+      "id": "an-insertion-is-left-out",
+      "words": [
+        {
+          "id": "w0",
+          "text": "So",
+          "kind": "word",
+          "start": 0.0,
+          "end": 0.4
+        },
+        {
+          "id": "w1",
+          "text": "we",
+          "kind": "word",
+          "start": 0.5,
+          "end": 0.9
+        },
+        {
+          "id": "w2",
+          "text": "drove",
+          "kind": "word",
+          "start": 1.0,
+          "end": 1.4
+        },
+        {
+          "id": "w3",
+          "text": "north.",
+          "kind": "word",
+          "start": 1.5,
+          "end": 1.9
+        },
+        {
+          "id": "w4",
+          "text": "It",
+          "kind": "word",
+          "start": 2.0,
+          "end": 2.4
+        },
+        {
+          "id": "w5",
+          "text": "was",
+          "kind": "word",
+          "start": 2.5,
+          "end": 2.9
+        },
+        {
+          "id": "w6",
+          "text": "um",
+          "kind": "word",
+          "start": 3.0,
+          "end": 3.4
+        },
+        {
+          "id": "w7",
+          "text": "cold.",
+          "kind": "word",
+          "start": 3.5,
+          "end": 3.9
+        },
+        {
+          "id": "w8",
+          "text": "Then",
+          "kind": "word",
+          "start": 4.0,
+          "end": 4.4
+        },
+        {
+          "id": "w9",
+          "text": "we",
+          "kind": "word",
+          "start": 4.5,
+          "end": 4.9
+        },
+        {
+          "id": "w10",
+          "text": "stopped.",
+          "kind": "word",
+          "start": 5.0,
+          "end": 5.4
+        },
+        {
+          "id": "w11",
+          "text": "[music]",
+          "kind": "event",
+          "start": 5.5,
+          "end": 5.9
+        }
+      ],
+      "cutWordIds": [],
+      "voiceHunks": [
+        {
+          "sourceWordIds": [],
+          "newText": "Inserted words."
+        },
+        {
+          "sourceWordIds": [
+            "w0"
+          ],
+          "newText": "Well"
+        }
+      ],
+      "expected": {
+        "text": "Well we drove north. It was um cold. Then we stopped.",
+        "words": 11,
+        "characters": 53,
+        "sentences": [
+          {
+            "text": "Well we drove north.",
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3"
+            ],
+            "start": 0.0,
+            "end": 1.9
+          },
+          {
+            "text": "It was um cold.",
+            "sourceWordIds": [
+              "w4",
+              "w5",
+              "w6",
+              "w7"
+            ],
+            "start": 2.0,
+            "end": 3.9
+          },
+          {
+            "text": "Then we stopped.",
+            "sourceWordIds": [
+              "w8",
+              "w9",
+              "w10"
+            ],
+            "start": 4.0,
+            "end": 5.4
+          }
+        ],
+        "parts": [
+          {
+            "text": "Well we drove north. It was um cold. Then we stopped.",
+            "words": 11,
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3",
+              "w4",
+              "w5",
+              "w6",
+              "w7",
+              "w8",
+              "w9",
+              "w10"
+            ],
+            "start": 0.0,
+            "end": 5.4
+          }
+        ],
+        "hunks": [
+          {
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3",
+              "w4",
+              "w5",
+              "w6",
+              "w7",
+              "w8",
+              "w9",
+              "w10"
+            ],
+            "newTokens": [
+              "Well",
+              "we",
+              "drove",
+              "north.",
+              "It",
+              "was",
+              "um",
+              "cold.",
+              "Then",
+              "we",
+              "stopped."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 0,
+            "sourceEndIndex": 11
+          }
+        ]
+      }
+    },
+    {
+      "id": "a-rewrite-over-a-cut-word-still-says-it",
+      "words": [
+        {
+          "id": "w0",
+          "text": "So",
+          "kind": "word",
+          "start": 0.0,
+          "end": 0.4
+        },
+        {
+          "id": "w1",
+          "text": "we",
+          "kind": "word",
+          "start": 0.5,
+          "end": 0.9
+        },
+        {
+          "id": "w2",
+          "text": "drove",
+          "kind": "word",
+          "start": 1.0,
+          "end": 1.4
+        },
+        {
+          "id": "w3",
+          "text": "north.",
+          "kind": "word",
+          "start": 1.5,
+          "end": 1.9
+        },
+        {
+          "id": "w4",
+          "text": "It",
+          "kind": "word",
+          "start": 2.0,
+          "end": 2.4
+        },
+        {
+          "id": "w5",
+          "text": "was",
+          "kind": "word",
+          "start": 2.5,
+          "end": 2.9
+        },
+        {
+          "id": "w6",
+          "text": "um",
+          "kind": "word",
+          "start": 3.0,
+          "end": 3.4
+        },
+        {
+          "id": "w7",
+          "text": "cold.",
+          "kind": "word",
+          "start": 3.5,
+          "end": 3.9
+        },
+        {
+          "id": "w8",
+          "text": "Then",
+          "kind": "word",
+          "start": 4.0,
+          "end": 4.4
+        },
+        {
+          "id": "w9",
+          "text": "we",
+          "kind": "word",
+          "start": 4.5,
+          "end": 4.9
+        },
+        {
+          "id": "w10",
+          "text": "stopped.",
+          "kind": "word",
+          "start": 5.0,
+          "end": 5.4
+        },
+        {
+          "id": "w11",
+          "text": "[music]",
+          "kind": "event",
+          "start": 5.5,
+          "end": 5.9
+        }
+      ],
+      "cutWordIds": [
+        "w6",
+        "w7"
+      ],
+      "voiceHunks": [
+        {
+          "sourceWordIds": [
+            "w6",
+            "w7"
+          ],
+          "newText": "freezing."
+        }
+      ],
+      "expected": {
+        "text": "So we drove north. It was freezing. Then we stopped.",
+        "words": 10,
+        "characters": 52,
+        "sentences": [
+          {
+            "text": "So we drove north.",
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3"
+            ],
+            "start": 0.0,
+            "end": 1.9
+          },
+          {
+            "text": "It was freezing.",
+            "sourceWordIds": [
+              "w4",
+              "w5",
+              "w6",
+              "w7"
+            ],
+            "start": 2.0,
+            "end": 3.9
+          },
+          {
+            "text": "Then we stopped.",
+            "sourceWordIds": [
+              "w8",
+              "w9",
+              "w10"
+            ],
+            "start": 4.0,
+            "end": 5.4
+          }
+        ],
+        "parts": [
+          {
+            "text": "So we drove north. It was freezing. Then we stopped.",
+            "words": 10,
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3",
+              "w4",
+              "w5",
+              "w6",
+              "w7",
+              "w8",
+              "w9",
+              "w10"
+            ],
+            "start": 0.0,
+            "end": 5.4
+          }
+        ],
+        "hunks": [
+          {
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3",
+              "w4",
+              "w5",
+              "w6",
+              "w7",
+              "w8",
+              "w9",
+              "w10"
+            ],
+            "newTokens": [
+              "So",
+              "we",
+              "drove",
+              "north.",
+              "It",
+              "was",
+              "freezing.",
+              "Then",
+              "we",
+              "stopped."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 0,
+            "sourceEndIndex": 11
+          }
+        ]
+      }
+    },
+    {
+      "id": "the-first-change-owns-a-shared-word",
+      "words": [
+        {
+          "id": "w0",
+          "text": "So",
+          "kind": "word",
+          "start": 0.0,
+          "end": 0.4
+        },
+        {
+          "id": "w1",
+          "text": "we",
+          "kind": "word",
+          "start": 0.5,
+          "end": 0.9
+        },
+        {
+          "id": "w2",
+          "text": "drove",
+          "kind": "word",
+          "start": 1.0,
+          "end": 1.4
+        },
+        {
+          "id": "w3",
+          "text": "north.",
+          "kind": "word",
+          "start": 1.5,
+          "end": 1.9
+        },
+        {
+          "id": "w4",
+          "text": "It",
+          "kind": "word",
+          "start": 2.0,
+          "end": 2.4
+        },
+        {
+          "id": "w5",
+          "text": "was",
+          "kind": "word",
+          "start": 2.5,
+          "end": 2.9
+        },
+        {
+          "id": "w6",
+          "text": "um",
+          "kind": "word",
+          "start": 3.0,
+          "end": 3.4
+        },
+        {
+          "id": "w7",
+          "text": "cold.",
+          "kind": "word",
+          "start": 3.5,
+          "end": 3.9
+        },
+        {
+          "id": "w8",
+          "text": "Then",
+          "kind": "word",
+          "start": 4.0,
+          "end": 4.4
+        },
+        {
+          "id": "w9",
+          "text": "we",
+          "kind": "word",
+          "start": 4.5,
+          "end": 4.9
+        },
+        {
+          "id": "w10",
+          "text": "stopped.",
+          "kind": "word",
+          "start": 5.0,
+          "end": 5.4
+        },
+        {
+          "id": "w11",
+          "text": "[music]",
+          "kind": "event",
+          "start": 5.5,
+          "end": 5.9
+        }
+      ],
+      "cutWordIds": [],
+      "voiceHunks": [
+        {
+          "sourceWordIds": [
+            "w1",
+            "w2"
+          ],
+          "newText": "they walked"
+        },
+        {
+          "sourceWordIds": [
+            "w2",
+            "w3"
+          ],
+          "newText": "flew south."
+        }
+      ],
+      "expected": {
+        "text": "So they walked flew south. It was um cold. Then we stopped.",
+        "words": 12,
+        "characters": 59,
+        "sentences": [
+          {
+            "text": "So they walked flew south.",
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3"
+            ],
+            "start": 0.0,
+            "end": 1.9
+          },
+          {
+            "text": "It was um cold.",
+            "sourceWordIds": [
+              "w4",
+              "w5",
+              "w6",
+              "w7"
+            ],
+            "start": 2.0,
+            "end": 3.9
+          },
+          {
+            "text": "Then we stopped.",
+            "sourceWordIds": [
+              "w8",
+              "w9",
+              "w10"
+            ],
+            "start": 4.0,
+            "end": 5.4
+          }
+        ],
+        "parts": [
+          {
+            "text": "So they walked flew south. It was um cold. Then we stopped.",
+            "words": 12,
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3",
+              "w4",
+              "w5",
+              "w6",
+              "w7",
+              "w8",
+              "w9",
+              "w10"
+            ],
+            "start": 0.0,
+            "end": 5.4
+          }
+        ],
+        "hunks": [
+          {
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3",
+              "w4",
+              "w5",
+              "w6",
+              "w7",
+              "w8",
+              "w9",
+              "w10"
+            ],
+            "newTokens": [
+              "So",
+              "they",
+              "walked",
+              "flew",
+              "south.",
+              "It",
+              "was",
+              "um",
+              "cold.",
+              "Then",
+              "we",
+              "stopped."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 0,
+            "sourceEndIndex": 11
+          }
+        ]
+      }
+    },
+    {
+      "id": "unknown-source-words-are-ignored",
+      "words": [
+        {
+          "id": "w0",
+          "text": "So",
+          "kind": "word",
+          "start": 0.0,
+          "end": 0.4
+        },
+        {
+          "id": "w1",
+          "text": "we",
+          "kind": "word",
+          "start": 0.5,
+          "end": 0.9
+        },
+        {
+          "id": "w2",
+          "text": "drove",
+          "kind": "word",
+          "start": 1.0,
+          "end": 1.4
+        },
+        {
+          "id": "w3",
+          "text": "north.",
+          "kind": "word",
+          "start": 1.5,
+          "end": 1.9
+        },
+        {
+          "id": "w4",
+          "text": "It",
+          "kind": "word",
+          "start": 2.0,
+          "end": 2.4
+        },
+        {
+          "id": "w5",
+          "text": "was",
+          "kind": "word",
+          "start": 2.5,
+          "end": 2.9
+        },
+        {
+          "id": "w6",
+          "text": "um",
+          "kind": "word",
+          "start": 3.0,
+          "end": 3.4
+        },
+        {
+          "id": "w7",
+          "text": "cold.",
+          "kind": "word",
+          "start": 3.5,
+          "end": 3.9
+        },
+        {
+          "id": "w8",
+          "text": "Then",
+          "kind": "word",
+          "start": 4.0,
+          "end": 4.4
+        },
+        {
+          "id": "w9",
+          "text": "we",
+          "kind": "word",
+          "start": 4.5,
+          "end": 4.9
+        },
+        {
+          "id": "w10",
+          "text": "stopped.",
+          "kind": "word",
+          "start": 5.0,
+          "end": 5.4
+        },
+        {
+          "id": "w11",
+          "text": "[music]",
+          "kind": "event",
+          "start": 5.5,
+          "end": 5.9
+        }
+      ],
+      "cutWordIds": [],
+      "voiceHunks": [
+        {
+          "sourceWordIds": [
+            "w0",
+            "missing"
+          ],
+          "newText": "Now"
+        }
+      ],
+      "expected": {
+        "text": "Now we drove north. It was um cold. Then we stopped.",
+        "words": 11,
+        "characters": 52,
+        "sentences": [
+          {
+            "text": "Now we drove north.",
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3"
+            ],
+            "start": 0.0,
+            "end": 1.9
+          },
+          {
+            "text": "It was um cold.",
+            "sourceWordIds": [
+              "w4",
+              "w5",
+              "w6",
+              "w7"
+            ],
+            "start": 2.0,
+            "end": 3.9
+          },
+          {
+            "text": "Then we stopped.",
+            "sourceWordIds": [
+              "w8",
+              "w9",
+              "w10"
+            ],
+            "start": 4.0,
+            "end": 5.4
+          }
+        ],
+        "parts": [
+          {
+            "text": "Now we drove north. It was um cold. Then we stopped.",
+            "words": 11,
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3",
+              "w4",
+              "w5",
+              "w6",
+              "w7",
+              "w8",
+              "w9",
+              "w10"
+            ],
+            "start": 0.0,
+            "end": 5.4
+          }
+        ],
+        "hunks": [
+          {
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3",
+              "w4",
+              "w5",
+              "w6",
+              "w7",
+              "w8",
+              "w9",
+              "w10"
+            ],
+            "newTokens": [
+              "Now",
+              "we",
+              "drove",
+              "north.",
+              "It",
+              "was",
+              "um",
+              "cold.",
+              "Then",
+              "we",
+              "stopped."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 0,
+            "sourceEndIndex": 11
+          }
+        ]
+      }
+    },
+    {
+      "id": "a-removed-phrase-says-nothing",
+      "words": [
+        {
+          "id": "w0",
+          "text": "So",
+          "kind": "word",
+          "start": 0.0,
+          "end": 0.4
+        },
+        {
+          "id": "w1",
+          "text": "we",
+          "kind": "word",
+          "start": 0.5,
+          "end": 0.9
+        },
+        {
+          "id": "w2",
+          "text": "drove",
+          "kind": "word",
+          "start": 1.0,
+          "end": 1.4
+        },
+        {
+          "id": "w3",
+          "text": "north.",
+          "kind": "word",
+          "start": 1.5,
+          "end": 1.9
+        },
+        {
+          "id": "w4",
+          "text": "It",
+          "kind": "word",
+          "start": 2.0,
+          "end": 2.4
+        },
+        {
+          "id": "w5",
+          "text": "was",
+          "kind": "word",
+          "start": 2.5,
+          "end": 2.9
+        },
+        {
+          "id": "w6",
+          "text": "um",
+          "kind": "word",
+          "start": 3.0,
+          "end": 3.4
+        },
+        {
+          "id": "w7",
+          "text": "cold.",
+          "kind": "word",
+          "start": 3.5,
+          "end": 3.9
+        },
+        {
+          "id": "w8",
+          "text": "Then",
+          "kind": "word",
+          "start": 4.0,
+          "end": 4.4
+        },
+        {
+          "id": "w9",
+          "text": "we",
+          "kind": "word",
+          "start": 4.5,
+          "end": 4.9
+        },
+        {
+          "id": "w10",
+          "text": "stopped.",
+          "kind": "word",
+          "start": 5.0,
+          "end": 5.4
+        },
+        {
+          "id": "w11",
+          "text": "[music]",
+          "kind": "event",
+          "start": 5.5,
+          "end": 5.9
+        }
+      ],
+      "cutWordIds": [],
+      "voiceHunks": [
+        {
+          "sourceWordIds": [
+            "w4",
+            "w5",
+            "w6",
+            "w7"
+          ],
+          "newText": ""
+        }
+      ],
+      "expected": {
+        "text": "So we drove north. Then we stopped.",
+        "words": 7,
+        "characters": 35,
+        "sentences": [
+          {
+            "text": "So we drove north.",
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3"
+            ],
+            "start": 0.0,
+            "end": 1.9
+          },
+          {
+            "text": "Then we stopped.",
+            "sourceWordIds": [
+              "w4",
+              "w5",
+              "w6",
+              "w7",
+              "w8",
+              "w9",
+              "w10"
+            ],
+            "start": 2.0,
+            "end": 5.4
+          }
+        ],
+        "parts": [
+          {
+            "text": "So we drove north. Then we stopped.",
+            "words": 7,
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3",
+              "w4",
+              "w5",
+              "w6",
+              "w7",
+              "w8",
+              "w9",
+              "w10"
+            ],
+            "start": 0.0,
+            "end": 5.4
+          }
+        ],
+        "hunks": [
+          {
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3",
+              "w4",
+              "w5",
+              "w6",
+              "w7",
+              "w8",
+              "w9",
+              "w10"
+            ],
+            "newTokens": [
+              "So",
+              "we",
+              "drove",
+              "north.",
+              "Then",
+              "we",
+              "stopped."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 0,
+            "sourceEndIndex": 11
+          }
+        ]
+      }
+    },
+    {
+      "id": "events-between-words-are-absorbed",
+      "words": [
+        {
+          "id": "w0",
+          "text": "Hi",
+          "kind": "word",
+          "start": 0.0,
+          "end": 0.4
+        },
+        {
+          "id": "w1",
+          "text": "[laughs]",
+          "kind": "event",
+          "start": 0.5,
+          "end": 0.9
+        },
+        {
+          "id": "w2",
+          "text": "there.",
+          "kind": "word",
+          "start": 1.0,
+          "end": 1.4
+        },
+        {
+          "id": "w3",
+          "text": "[pause]",
+          "kind": "unlabeledSpeech",
+          "start": 1.5,
+          "end": 1.9
+        },
+        {
+          "id": "w4",
+          "text": "Bye",
+          "kind": "word",
+          "start": 2.0,
+          "end": 2.4
+        },
+        {
+          "id": "w5",
+          "text": "now!",
+          "kind": "word",
+          "start": 2.5,
+          "end": 2.9
+        }
+      ],
+      "cutWordIds": [],
+      "voiceHunks": [],
+      "expected": {
+        "text": "Hi there. Bye now!",
+        "words": 4,
+        "characters": 18,
+        "sentences": [
+          {
+            "text": "Hi there.",
+            "sourceWordIds": [
+              "w0",
+              "w2"
+            ],
+            "start": 0.0,
+            "end": 1.4
+          },
+          {
+            "text": "Bye now!",
+            "sourceWordIds": [
+              "w4",
+              "w5"
+            ],
+            "start": 2.0,
+            "end": 2.9
+          }
+        ],
+        "parts": [
+          {
+            "text": "Hi there. Bye now!",
+            "words": 4,
+            "sourceWordIds": [
+              "w0",
+              "w2",
+              "w4",
+              "w5"
+            ],
+            "start": 0.0,
+            "end": 2.9
+          }
+        ],
+        "hunks": [
+          {
+            "sourceWordIds": [
+              "w0",
+              "w2",
+              "w4",
+              "w5"
+            ],
+            "newTokens": [
+              "Hi",
+              "there.",
+              "Bye",
+              "now!"
+            ],
+            "absorbedItemIds": [
+              "w1",
+              "w3"
+            ],
+            "sourceStartIndex": 0,
+            "sourceEndIndex": 4
+          }
+        ]
+      }
+    },
+    {
+      "id": "characters-count-scalars",
+      "words": [
+        {
+          "id": "w0",
+          "text": "Café",
+          "kind": "word",
+          "start": 0.0,
+          "end": 0.4
+        },
+        {
+          "id": "w1",
+          "text": "naïve",
+          "kind": "word",
+          "start": 0.5,
+          "end": 0.9
+        },
+        {
+          "id": "w2",
+          "text": "déjà",
+          "kind": "word",
+          "start": 1.0,
+          "end": 1.4
+        },
+        {
+          "id": "w3",
+          "text": "vu…",
+          "kind": "word",
+          "start": 1.5,
+          "end": 1.9
+        },
+        {
+          "id": "w4",
+          "text": "Olé?",
+          "kind": "word",
+          "start": 2.0,
+          "end": 2.4
+        }
+      ],
+      "cutWordIds": [],
+      "voiceHunks": [],
+      "expected": {
+        "text": "Café naïve déjà vu… Olé?",
+        "words": 5,
+        "characters": 24,
+        "sentences": [
+          {
+            "text": "Café naïve déjà vu…",
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3"
+            ],
+            "start": 0.0,
+            "end": 1.9
+          },
+          {
+            "text": "Olé?",
+            "sourceWordIds": [
+              "w4"
+            ],
+            "start": 2.0,
+            "end": 2.4
+          }
+        ],
+        "parts": [
+          {
+            "text": "Café naïve déjà vu… Olé?",
+            "words": 5,
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3",
+              "w4"
+            ],
+            "start": 0.0,
+            "end": 2.4
+          }
+        ],
+        "hunks": [
+          {
+            "sourceWordIds": [
+              "w0",
+              "w1",
+              "w2",
+              "w3",
+              "w4"
+            ],
+            "newTokens": [
+              "Café",
+              "naïve",
+              "déjà",
+              "vu…",
+              "Olé?"
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 0,
+            "sourceEndIndex": 5
+          }
+        ]
+      }
+    },
+    {
+      "id": "parts-count-scalars-not-utf16-units",
+      "words": [
+        {
+          "id": "e0",
+          "text": "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂.",
+          "kind": "word",
+          "start": 0.0,
+          "end": 0.4
+        },
+        {
+          "id": "e1",
+          "text": "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂.",
+          "kind": "word",
+          "start": 0.5,
+          "end": 0.9
+        }
+      ],
+      "cutWordIds": [],
+      "voiceHunks": [],
+      "expected": {
+        "text": "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂. 🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂.",
+        "words": 2,
+        "characters": 903,
+        "sentences": [
+          {
+            "text": "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂.",
+            "sourceWordIds": [
+              "e0"
+            ],
+            "start": 0.0,
+            "end": 0.4
+          },
+          {
+            "text": "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂.",
+            "sourceWordIds": [
+              "e1"
+            ],
+            "start": 0.5,
+            "end": 0.9
+          }
+        ],
+        "parts": [
+          {
+            "text": "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂. 🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂.",
+            "words": 2,
+            "sourceWordIds": [
+              "e0",
+              "e1"
+            ],
+            "start": 0.0,
+            "end": 0.9
+          }
+        ],
+        "hunks": [
+          {
+            "sourceWordIds": [
+              "e0",
+              "e1"
+            ],
+            "newTokens": [
+              "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂.",
+              "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 0,
+            "sourceEndIndex": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "everything-cut",
+      "words": [
+        {
+          "id": "w0",
+          "text": "So",
+          "kind": "word",
+          "start": 0.0,
+          "end": 0.4
+        },
+        {
+          "id": "w1",
+          "text": "we",
+          "kind": "word",
+          "start": 0.5,
+          "end": 0.9
+        },
+        {
+          "id": "w2",
+          "text": "drove",
+          "kind": "word",
+          "start": 1.0,
+          "end": 1.4
+        },
+        {
+          "id": "w3",
+          "text": "north.",
+          "kind": "word",
+          "start": 1.5,
+          "end": 1.9
+        },
+        {
+          "id": "w4",
+          "text": "It",
+          "kind": "word",
+          "start": 2.0,
+          "end": 2.4
+        },
+        {
+          "id": "w5",
+          "text": "was",
+          "kind": "word",
+          "start": 2.5,
+          "end": 2.9
+        },
+        {
+          "id": "w6",
+          "text": "um",
+          "kind": "word",
+          "start": 3.0,
+          "end": 3.4
+        },
+        {
+          "id": "w7",
+          "text": "cold.",
+          "kind": "word",
+          "start": 3.5,
+          "end": 3.9
+        },
+        {
+          "id": "w8",
+          "text": "Then",
+          "kind": "word",
+          "start": 4.0,
+          "end": 4.4
+        },
+        {
+          "id": "w9",
+          "text": "we",
+          "kind": "word",
+          "start": 4.5,
+          "end": 4.9
+        },
+        {
+          "id": "w10",
+          "text": "stopped.",
+          "kind": "word",
+          "start": 5.0,
+          "end": 5.4
+        },
+        {
+          "id": "w11",
+          "text": "[music]",
+          "kind": "event",
+          "start": 5.5,
+          "end": 5.9
+        }
+      ],
+      "cutWordIds": [
+        "w0",
+        "w1",
+        "w2",
+        "w3",
+        "w4",
+        "w5",
+        "w6",
+        "w7",
+        "w8",
+        "w9",
+        "w10"
+      ],
+      "voiceHunks": [],
+      "expected": null
+    }
+  ],
+  "fit": [
+    {
+      "voiceSeconds": 30.6,
+      "videoSeconds": 31,
+      "words": 74,
+      "round": 0,
+      "expected": {
+        "kind": "matched",
+        "factor": 0.9870967741935485,
+        "copy": "video matched (−1.3%)"
+      }
+    },
+    {
+      "voiceSeconds": 108,
+      "videoSeconds": 100,
+      "words": 74,
+      "round": 0,
+      "expected": {
+        "kind": "matched",
+        "factor": 1.08,
+        "copy": "video matched (+8.0%)"
+      }
+    },
+    {
+      "voiceSeconds": 92,
+      "videoSeconds": 100,
+      "words": 74,
+      "round": 0,
+      "expected": {
+        "kind": "matched",
+        "factor": 0.92,
+        "copy": "video matched (−8.0%)"
+      }
+    },
+    {
+      "voiceSeconds": 108.1,
+      "videoSeconds": 100,
+      "words": 100,
+      "round": 0,
+      "expected": {
+        "kind": "reword",
+        "shorter": true,
+        "targetWords": 93
+      }
+    },
+    {
+      "voiceSeconds": 80,
+      "videoSeconds": 100,
+      "words": 80,
+      "round": 1,
+      "expected": {
+        "kind": "reword",
+        "shorter": false,
+        "targetWords": 100
+      }
+    },
+    {
+      "voiceSeconds": 120,
+      "videoSeconds": 100,
+      "words": 100,
+      "round": 2,
+      "expected": {
+        "kind": "cannotFit"
+      }
+    },
+    {
+      "voiceSeconds": 0,
+      "videoSeconds": 100,
+      "words": 10,
+      "round": 0,
+      "expected": {
+        "kind": "cannotFit"
+      }
+    },
+    {
+      "voiceSeconds": 100,
+      "videoSeconds": 0,
+      "words": 10,
+      "round": 0,
+      "expected": {
+        "kind": "cannotFit"
+      }
+    },
+    {
+      "voiceSeconds": -1,
+      "videoSeconds": 100,
+      "words": 10,
+      "round": 0,
+      "expected": {
+        "kind": "cannotFit"
+      }
+    },
+    {
+      "voiceSeconds": 102,
+      "videoSeconds": 100,
+      "words": 50,
+      "round": 0,
+      "expected": {
+        "kind": "matched",
+        "factor": 1.02,
+        "copy": "video matched (+2.0%)"
+      }
+    },
+    {
+      "voiceSeconds": 100,
+      "videoSeconds": 100,
+      "words": 50,
+      "round": 0,
+      "expected": {
+        "kind": "matched",
+        "factor": 1.0,
+        "copy": "video matched (±0.0%)"
+      }
+    },
+    {
+      "voiceSeconds": 99.96,
+      "videoSeconds": 100,
+      "words": 50,
+      "round": 0,
+      "expected": {
+        "kind": "matched",
+        "factor": 0.9995999999999999,
+        "copy": "video matched (±0.0%)"
+      }
+    },
+    {
+      "voiceSeconds": 2,
+      "videoSeconds": 1,
+      "words": 5,
+      "round": 0,
+      "expected": {
+        "kind": "reword",
+        "shorter": true,
+        "targetWords": 3
+      }
+    },
+    {
+      "voiceSeconds": 1,
+      "videoSeconds": 2,
+      "words": 5,
+      "round": 1,
+      "expected": {
+        "kind": "reword",
+        "shorter": false,
+        "targetWords": 10
+      }
+    },
+    {
+      "voiceSeconds": 91.9,
+      "videoSeconds": 100,
+      "words": 0,
+      "round": 0,
+      "expected": {
+        "kind": "cannotFit"
+      }
+    },
+    {
+      "voiceSeconds": 200,
+      "videoSeconds": 1,
+      "words": 3,
+      "round": 0,
+      "expected": {
+        "kind": "reword",
+        "shorter": true,
+        "targetWords": 1
+      }
+    },
+    {
+      "voiceSeconds": 100.05,
+      "videoSeconds": 100,
+      "words": 9,
+      "round": 0,
+      "expected": {
+        "kind": "matched",
+        "factor": 1.0005,
+        "copy": "video matched (±0.0%)"
+      }
+    },
+    {
+      "voiceSeconds": 99.95,
+      "videoSeconds": 100,
+      "words": 9,
+      "round": 0,
+      "expected": {
+        "kind": "matched",
+        "factor": 0.9995,
+        "copy": "video matched (±0.0%)"
+      }
+    },
+    {
+      "voiceSeconds": 106.25,
+      "videoSeconds": 100,
+      "words": 9,
+      "round": 0,
+      "expected": {
+        "kind": "matched",
+        "factor": 1.0625,
+        "copy": "video matched (+6.3%)"
+      }
+    },
+    {
+      "voiceSeconds": 93.75,
+      "videoSeconds": 100,
+      "words": 9,
+      "round": 0,
+      "expected": {
+        "kind": "matched",
+        "factor": 0.9375,
+        "copy": "video matched (−6.3%)"
+      }
+    }
+  ],
+  "price": [
+    {
+      "characters": 400,
+      "ttsModel": "eleven_v4",
+      "videoSeconds": 31,
+      "lipsync": "fal-ai/sync-lipsync/v2:lipsync-2",
+      "expected": {
+        "voiceUsd": "0.032",
+        "lipsyncUsd": "1.55",
+        "usd": "1.582"
+      }
+    },
+    {
+      "characters": 400,
+      "ttsModel": "eleven_v4",
+      "videoSeconds": 31,
+      "lipsync": "fal-ai/sync-lipsync/v3",
+      "expected": {
+        "voiceUsd": "0.032",
+        "lipsyncUsd": "4.1333333333",
+        "usd": "4.1653333333"
+      }
+    },
+    {
+      "characters": 400,
+      "ttsModel": "no-such-model",
+      "videoSeconds": 31,
+      "lipsync": "fal-ai/sync-lipsync/v2:lipsync-2",
+      "expected": {
+        "voiceUsd": null,
+        "lipsyncUsd": "1.55",
+        "usd": null
+      }
+    },
+    {
+      "characters": 1,
+      "ttsModel": "eleven_v4",
+      "videoSeconds": 0.5,
+      "lipsync": "fal-ai/sync-lipsync/v2:lipsync-2",
+      "expected": {
+        "voiceUsd": "0.00008",
+        "lipsyncUsd": "0.025",
+        "usd": "0.02508"
+      }
+    },
+    {
+      "characters": 12345,
+      "ttsModel": "eleven_v4",
+      "videoSeconds": 299.97,
+      "lipsync": "fal-ai/sync-lipsync/v3",
+      "expected": {
+        "voiceUsd": "0.9876",
+        "lipsyncUsd": "39.996",
+        "usd": "40.9836"
+      }
+    },
+    {
+      "characters": 0,
+      "ttsModel": "eleven_v4",
+      "videoSeconds": 12,
+      "lipsync": "fal-ai/sync-lipsync/v2:lipsync-2",
+      "expected": {
+        "voiceUsd": "0",
+        "lipsyncUsd": "0.6",
+        "usd": "0.6"
+      }
+    },
+    {
+      "characters": 999,
+      "ttsModel": "eleven_v4_turbo",
+      "videoSeconds": 45.5,
+      "lipsync": "fal-ai/sync-lipsync/v2:lipsync-2",
+      "expected": {
+        "voiceUsd": "0.03996",
+        "lipsyncUsd": "2.275",
+        "usd": "2.31496"
+      }
+    },
+    {
+      "characters": 2000,
+      "ttsModel": "eleven_v4",
+      "videoSeconds": 300,
+      "lipsync": "fal-ai/sync-lipsync/v3",
+      "expected": {
+        "voiceUsd": "0.16",
+        "lipsyncUsd": "40",
+        "usd": "40.16"
+      }
+    }
+  ],
+  "ledger": [
+    {
+      "id": "a-paid-step-is-never-paid-again",
+      "steps": [
+        {
+          "total": "0"
+        },
+        {
+          "remaining": {
+            "voice": {
+              "script": "So we drove north.",
+              "recordId": "r1",
+              "model": "eleven_v4"
+            },
+            "voiceUsd": "1",
+            "lipsync": {
+              "voice": {
+                "script": "So we drove north.",
+                "recordId": "r1",
+                "model": "eleven_v4"
+              },
+              "retime": 0.99,
+              "model": "fal-ai/sync-lipsync/v2:lipsync-2"
+            },
+            "lipsyncUsd": "2"
+          },
+          "expected": "3"
+        },
+        {
+          "recordVoice": {
+            "script": "So we drove north.",
+            "recordId": "r1",
+            "model": "eleven_v4"
+          },
+          "usd": "1"
+        },
+        {
+          "paidVoice": {
+            "script": "So we drove north.",
+            "recordId": "r1",
+            "model": "eleven_v4"
+          },
+          "expected": true
+        },
+        {
+          "paidVoice": {
+            "script": "So we drove north.",
+            "recordId": "r2",
+            "model": "eleven_v4"
+          },
+          "expected": false
+        },
+        {
+          "remaining": {
+            "voice": {
+              "script": "So we drove north.",
+              "recordId": "r1",
+              "model": "eleven_v4"
+            },
+            "voiceUsd": "1",
+            "lipsync": {
+              "voice": {
+                "script": "So we drove north.",
+                "recordId": "r1",
+                "model": "eleven_v4"
+              },
+              "retime": 0.99,
+              "model": "fal-ai/sync-lipsync/v2:lipsync-2"
+            },
+            "lipsyncUsd": "2"
+          },
+          "expected": "2"
+        },
+        {
+          "recordLipsync": {
+            "voice": {
+              "script": "So we drove north.",
+              "recordId": "r1",
+              "model": "eleven_v4"
+            },
+            "retime": 0.99,
+            "model": "fal-ai/sync-lipsync/v2:lipsync-2"
+          },
+          "usd": "2"
+        },
+        {
+          "paidLipsync": {
+            "voice": {
+              "script": "So we drove north.",
+              "recordId": "r1",
+              "model": "eleven_v4"
+            },
+            "retime": 0.99,
+            "model": "fal-ai/sync-lipsync/v2:lipsync-2"
+          },
+          "expected": true
+        },
+        {
+          "paidLipsync": {
+            "voice": {
+              "script": "So we drove north.",
+              "recordId": "r1",
+              "model": "eleven_v4"
+            },
+            "retime": 0.99,
+            "model": "fal-ai/sync-lipsync/v3"
+          },
+          "expected": false
+        },
+        {
+          "remaining": {
+            "voice": {
+              "script": "So we drove north.",
+              "recordId": "r1",
+              "model": "eleven_v4"
+            },
+            "voiceUsd": "1",
+            "lipsync": {
+              "voice": {
+                "script": "So we drove north.",
+                "recordId": "r1",
+                "model": "eleven_v4"
+              },
+              "retime": 0.99,
+              "model": "fal-ai/sync-lipsync/v2:lipsync-2"
+            },
+            "lipsyncUsd": "2"
+          },
+          "expected": "0"
+        },
+        {
+          "remaining": {
+            "voice": {
+              "script": "So we drove north.",
+              "recordId": "r1",
+              "model": "eleven_v4"
+            },
+            "voiceUsd": "1",
+            "lipsync": {
+              "voice": {
+                "script": "So we drove north.",
+                "recordId": "r1",
+                "model": "eleven_v4"
+              },
+              "retime": 0.99,
+              "model": "fal-ai/sync-lipsync/v3"
+            },
+            "lipsyncUsd": "4.1333333333"
+          },
+          "expected": "4.1333333333"
+        },
+        {
+          "remaining": {
+            "voice": {
+              "script": "So we drove north.",
+              "recordId": "r1",
+              "model": "eleven_v4"
+            },
+            "voiceUsd": "1",
+            "lipsync": {
+              "voice": {
+                "script": "So we drove north.",
+                "recordId": "r1",
+                "model": "eleven_v4"
+              },
+              "retime": 1.01,
+              "model": "fal-ai/sync-lipsync/v2:lipsync-2"
+            },
+            "lipsyncUsd": "2"
+          },
+          "expected": "2"
+        },
+        {
+          "remaining": {
+            "voice": {
+              "script": "Shorter.",
+              "recordId": "r1",
+              "model": "eleven_v4"
+            },
+            "voiceUsd": "1",
+            "lipsync": null,
+            "lipsyncUsd": "0"
+          },
+          "expected": "1"
+        },
+        {
+          "remaining": {
+            "voice": {
+              "script": "So we drove north.",
+              "recordId": "r1",
+              "model": "eleven_v4"
+            },
+            "voiceUsd": "1",
+            "lipsync": null,
+            "lipsyncUsd": "3"
+          },
+          "expected": "3"
+        },
+        {
+          "recordVoice": {
+            "script": "So we drove north.",
+            "recordId": "r1",
+            "model": "eleven_v4"
+          },
+          "usd": "1.25"
+        },
+        {
+          "recordLipsync": {
+            "voice": {
+              "script": "So we drove north.",
+              "recordId": "r1",
+              "model": "eleven_v4"
+            },
+            "retime": 0.99,
+            "model": "fal-ai/sync-lipsync/v3"
+          },
+          "usd": "4.1333333333"
+        },
+        {
+          "remaining": {
+            "voice": {
+              "script": "So we drove north.",
+              "recordId": "r1",
+              "model": "eleven_v4"
+            },
+            "voiceUsd": "1",
+            "lipsync": {
+              "voice": {
+                "script": "So we drove north.",
+                "recordId": "r1",
+                "model": "eleven_v4"
+              },
+              "retime": 0.99,
+              "model": "fal-ai/sync-lipsync/v3"
+            },
+            "lipsyncUsd": "4.1333333333"
+          },
+          "expected": "0"
+        },
+        {
+          "total": "7.3833333333"
+        }
+      ]
+    }
+  ]
+}
