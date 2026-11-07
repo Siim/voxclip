@@ -13,8 +13,16 @@ namespace VoxClip.Media.Tests;
 /// <summary>Background music under the voice on Windows (doc/spec/music.md §4), through the one audio path preview and export
 /// share. No FFmpeg: the voice is a synthetic edited reader and the track a WAV written by the test. The levels and timing replay
 /// shared/fixtures/music/music-mix-cases.json.</summary>
-public sealed class MusicBedTests(ITestOutputHelper output)
+public sealed class MusicBedTests(ITestOutputHelper output) : IDisposable
 {
+    /// <summary>The temp folders <see cref="Track"/> made for this test, deleted when it ends.</summary>
+    private readonly List<string> tracks = [];
+    public void Dispose()
+    {
+        foreach (var directory in tracks)
+            try { Directory.Delete(directory, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+    }
+
     private const int Rate = 48_000;
     private const double MusicHz = 220;
 
@@ -23,9 +31,10 @@ public sealed class MusicBedTests(ITestOutputHelper output)
         MusicSource.File, "Test", null, MusicLicense.Own, null, null, null, gainDb, ducking, fadeIn, fadeOut, offset);
 
     /// <summary>A float WAV of a <see cref="MusicHz"/> sine, stereo, at <paramref name="rate"/>.</summary>
-    private static string Track(double seconds, float amplitude = 0.4f, int rate = Rate)
+    private string Track(double seconds, float amplitude = 0.4f, int rate = Rate)
     {
         var directory = Directory.CreateTempSubdirectory("voxclip-music-bed-").FullName;
+        tracks.Add(directory);
         var path = Path.Combine(directory, "music-test.wav");
         var frames = (int)Math.Round(seconds * rate);
         using var stream = File.Create(path);

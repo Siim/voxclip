@@ -404,6 +404,33 @@ jobs:
         shell: pwsh
         run: apps/windows/build/Fetch-Ffmpeg.ps1 -RuntimeIdentifier win-x64 -TestTools
 
+      # Native x64 speaker parity (ADR-R37/R41; Windows CONTRACTS W2/A8): the pinned WeSpeaker model and Silero VAD from
+      # shared/catalog/voice-lab-models.json, verified by size and SHA-256 and cached by the catalogue's hash, so the
+      # shared vectors replay on real x64 Windows. The tests never download; this step does, only here.
+      - name: Cache pinned speaker model (test only)
+        if: steps.detect.outputs.media_tests == 'true'
+        uses: actions/cache@v4
+        with:
+          path: apps/windows/build/.cache/speaker-model
+          key: speaker-model-${{ hashFiles('shared/catalog/voice-lab-models.json') }}
+
+      - name: Fetch pinned speaker model (test only)
+        if: steps.detect.outputs.media_tests == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $catalog = Get-Content shared/catalog/voice-lab-models.json -Raw | ConvertFrom-Json
+          $model = $catalog.models | Where-Object { $_.id -eq 'wespeaker-resnet34-lm-voxceleb-f0c48c2' }
+          if (-not $model) { throw 'The pinned speaker model is missing from the catalogue.' }
+          $dir = 'apps/windows/build/.cache/speaker-model'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          foreach ($file in $model.files) {
+            $path = Join-Path $dir $file.name
+            if (-not (Test-Path -LiteralPath $path)) { Invoke-WebRequest -Uri $file.url -OutFile $path }
+            if ((Get-Item -LiteralPath $path).Length -ne [int64]$file.bytes) { throw "$($file.name) size differs from the catalogue." }
+            if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() -ne $file.sha256) { throw "$($file.name) SHA-256 differs from the catalogue." }
+          }
+
       - name: Download prepared Main 10 native fixture
         if: steps.detect.outputs.media_tests == 'true'
         uses: actions/download-artifact@v4
@@ -466,10 +493,15 @@ jobs:
           VOXCLIP_E2E_OUT: ${{ runner.temp }}/voxclip-test-results/e2e
           VOXCLIP_CAPTION_PYTHON: ${{ steps.py.outputs.python-path }}
           VOXCLIP_REQUIRE_CAPTION_PYTHON: "1"
+          VOXCLIP_SPEAKER_MODEL_DIR: ${{ github.workspace }}/apps/windows/build/.cache/speaker-model
         run: |
           set -o pipefail
           mkdir -p "$(cygpath -u "$RUNNER_TEMP")/voxclip-test-results"
           dotnet test --project tests/VoxClip.Media.Tests/VoxClip.Media.Tests.csproj -c Release --no-build 2>&1 | tee "$(cygpath -u "$RUNNER_TEMP")/voxclip-test-results/media-tests.log"
+          # The x64 half of the speaker parity gate must run here, never skip.
+          if grep -q "skipped.*SharedRealModelSpeakerVectorsReplayWhenVerifiedLocalAssetsExist" "$(cygpath -u "$RUNNER_TEMP")/voxclip-test-results/media-tests.log"; then
+            echo "::error::The native x64 speaker parity test was skipped; VOXCLIP_SPEAKER_MODEL_DIR did not reach it."; exit 1
+          fi
           python - "$VOXCLIP_E2E_OUT" <<'PY'
           import json
           from pathlib import Path

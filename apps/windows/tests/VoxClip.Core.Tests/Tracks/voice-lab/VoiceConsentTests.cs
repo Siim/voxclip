@@ -393,6 +393,9 @@ public sealed class VoiceConsentTests
         };
         var path = Path.Combine(store.Root, record.RecordId, "creation.json");
         File.WriteAllText(path, legacy.ToJsonString());
+        // Owned by this user as the store's own writes are: in an elevated session a plain write belongs to Administrators,
+        // and the owner check would refuse it before the injected failure.
+        VoiceConsentPrivacy.ProtectNewFile(path);
         fail = true;
         Assert.Throws<IOException>(() => store.Operations());
         Assert.True(File.Exists(path));
