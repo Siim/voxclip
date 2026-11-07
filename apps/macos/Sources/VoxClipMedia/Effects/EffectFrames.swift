@@ -128,8 +128,10 @@ public final class EffectFrames: Sendable {
     // MARK: Output frame
 
     /// Titles, lower thirds, stickers and the progress bar over the finished frame at source time `time` and output time
-    /// `outputTime`; `mapTime` maps source to output seconds for the progress bar.
-    public func frame(_ image: CIImage, output: CGSize, time: Double, outputTime: Double, mapTime: (Double) -> Double) -> CIImage {
+    /// `outputTime`; `mapTime` maps source to output seconds for the progress bar. An overlay that can't be drawn is left
+    /// out and `overlayFailed` runs (a sticker with no bundled emoji is not a failure).
+    public func frame(_ image: CIImage, output: CGSize, time: Double, outputTime: Double, mapTime: (Double) -> Double,
+                      overlayFailed: () -> Void = {}) -> CIImage {
         var result = image
         for effect in input.picture where effect.kind.usesPosition && time >= effect.start && time < effect.end {
             let opacity = effect.opacity(at: time)
@@ -140,6 +142,8 @@ public final class EffectFrames: Sendable {
                 result = Self.faded(Self.progress(fraction: fraction, position: effect.position ?? .bottom, output: output), opacity).composited(over: result)
             } else if let overlay = overlay(effect, output: output) {
                 result = Self.faded(overlay, opacity).composited(over: result)
+            } else if effect.kind == .title || effect.kind == .lowerThird {
+                overlayFailed()
             }
         }
         return result

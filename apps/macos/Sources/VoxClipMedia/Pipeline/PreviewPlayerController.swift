@@ -24,10 +24,19 @@ final class LeasedPlayerItem: AVPlayerItem {
     private var seeking = false
     private var pendingSeek: (Double, Bool)?
     private var lastCaptionUpdate: ContinuousClock.Instant?
-    private let builder = CompositionBuilder()
+    private let builder: CompositionBuilder
+    /// The current item's compositor failures, kept for caption-only updates of the same item.
+    private var failures: PreviewFrameFailures?
+    /// The current item's status, watched so a failed item is reported even while paused.
+    private var statusObservation: NSKeyValueObservation?
+    /// The item whose failure was reported: one `.failed` per loaded item (design.md §5.4.4 g).
+    private var reportedItem: ObjectIdentifier?
 
-    public init() {
-        let stream = AsyncStream<PreviewEvent>.makeStream(bufferingPolicy: .bufferingNewest(2))
+    public convenience init() { self.init(builder: CompositionBuilder()) }
+    init(builder: CompositionBuilder) {
+        self.builder = builder
+        // A failure must not be pushed out by the clock's ticks before the editor reads it.
+        let stream = AsyncStream<PreviewEvent>.makeStream(bufferingPolicy: .bufferingNewest(8))
         events = stream.stream; continuation = stream.continuation
     }
 
@@ -38,11 +47,22 @@ final class LeasedPlayerItem: AVPlayerItem {
 
     private func apply(_ request: RenderRequest, revision current: UInt64) async throws -> Bool {
         var preview = request; preview.forPreview = true
-        let graph = try await builder.build(preview)
+        let box = WeakItem()
+        let failures = PreviewFrameFailures { [weak self] reason in
+            Task { @MainActor in self?.compositorFailed(reason, item: box) }
+        }
+        let graph = try await builder.build(preview, previewFailures: failures)
         guard current == revision else { return false }
         let item = LeasedPlayerItem(graph: graph)
+        box.item = item
         item.videoComposition = graph.videoComposition; item.audioMix = graph.audioMix
         player.replaceCurrentItem(with: item)
+        // A new item may reuse a freed item's address: its own failure must still be reported.
+        self.failures = failures; reportedItem = nil
+        statusObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
+            guard item.status == .failed else { return }
+            Task { @MainActor in self?.itemFailed(item) }
+        }
         self.request = preview; editedTime = 0
         if observer == nil {
             observer = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 30), queue: .main) { [weak self] time in
@@ -53,7 +73,7 @@ final class LeasedPlayerItem: AVPlayerItem {
                     self.continuation.yield(.time(edited: self.editedTime, source: request.timeline.sourceTime(self.editedTime)))
                     let playing = self.player.rate != 0
                     if self.isPlaying != playing { self.isPlaying = playing; self.continuation.yield(.playing(playing)) }
-                    if self.player.currentItem?.status == .failed { self.continuation.yield(.failed(.decodeFailed(self.player.currentItem?.error?.localizedDescription ?? "Preview failed"))) }
+                    if let item = self.player.currentItem, item.status == .failed { self.itemFailed(item) }
                 }
             }
         }
@@ -75,7 +95,7 @@ final class LeasedPlayerItem: AVPlayerItem {
             var preview = request; preview.forPreview = true
             item.videoComposition = try builder.makeVideoComposition(preview, trackID: instruction.sourceTrackID,
                 duration: CMTime(value: request.timeline.outputSamples, timescale: Int32(request.timeline.sampleRate)),
-                orientation: instruction.orientation)
+                orientation: instruction.orientation, previewFailures: failures)
             self.request = preview
             lastCaptionUpdate = .now
             return
@@ -124,9 +144,34 @@ final class LeasedPlayerItem: AVPlayerItem {
     public func pause() { player.pause(); isPlaying = false; continuation.yield(.playing(false)) }
     public func close() {
         revision &+= 1; pendingSeek = nil
+        statusObservation = nil; failures = nil; reportedItem = nil
         player.pause(); player.replaceCurrentItem(with: nil); request = nil; isPlaying = false; editedTime = 0
         if let observer { player.removeTimeObserver(observer); self.observer = nil }
         lastCaptionUpdate = nil
         continuation.yield(.playing(false))
     }
+
+    /// The current item's compositor could not draw a frame, or drew it without an overlay: reported once per item.
+    private func compositorFailed(_ reason: PreviewFailureReason, item box: WeakItem) {
+        guard let item = box.item, item === player.currentItem else { return }
+        report(item, .failed(.decodeFailed("Preview frames failed"), reason: reason))
+    }
+
+    /// The current item failed as a whole (its status, watched and polled): reported once per item.
+    private func itemFailed(_ item: AVPlayerItem) {
+        guard item === player.currentItem else { return }
+        report(item, .failed(.decodeFailed(item.error?.localizedDescription ?? "Preview failed")))
+    }
+
+    private func report(_ item: AVPlayerItem, _ event: PreviewEvent) {
+        let id = ObjectIdentifier(item)
+        guard reportedItem != id else { return }
+        reportedItem = id
+        continuation.yield(event)
+    }
+}
+
+/// The item a compositor failure belongs to, filled in once the item exists; the compositor never retains it.
+private final class WeakItem: @unchecked Sendable {
+    weak var item: AVPlayerItem?
 }

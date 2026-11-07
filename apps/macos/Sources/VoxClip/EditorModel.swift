@@ -560,7 +560,7 @@ struct EditorRenderSnapshot {
         self.app = app
         self.exporter = exporter ?? ExportQueue(exporter: AVExporter(cleanupRegistry: app.locations.root.appendingPathComponent("Scratch", isDirectory: true)))
         mediaResolved = document.demo
-        if let preview { self.preview = preview; nativePreview = nil }
+        if let preview { self.preview = preview; nativePreview = preview as? PreviewPlayerController }
         else {
             let native = PreviewPlayerController()
             self.preview = native; nativePreview = native
@@ -667,7 +667,8 @@ struct EditorRenderSnapshot {
                     playhead = edited; sourceTime = source
                     if let stop = previewStop, source >= stop { preview.pause(); previewStop = nil }
                 case .playing(let playing): isPlaying = playing
-                case .failed(let error): previewError = await app.safeError(error)
+                case .failed(let error, let reason):
+                    if let reason { await previewFailed(reason) } else { previewError = await app.safeError(error) }
                 case .frame: break
                 }
             }
@@ -1531,6 +1532,36 @@ struct EditorRenderSnapshot {
     func outputSpec() -> OutputSpec {
         ExportFingerprint.output(project, clipID: renderedActiveClipID)
     }
+    /// Whether the stage shows the native player rather than a stand-in (design.md §5.4.4): a resolved, readable video in a
+    /// project that isn't the demo.
+    var stageShowsPlayer: Bool {
+        !document.demo && mediaResolved && !mediaUnreadable && project.media.source.video != nil && nativePreview != nil
+    }
+    /// The preview failure the stage shows over its player, with Reload Preview (design.md §5.4.4 g), so a preview that
+    /// can't draw is never a silent black box. The transcript's notice steps aside while the stage carries it.
+    var stagePreviewError: String? {
+        guard stageShowsPlayer, let previewError, !previewError.isEmpty else { return nil }
+        return previewError
+    }
+    /// The preview's compositor failed a frame or left an overlay out (design.md §5.4.4 g): logged by its fixed tag,
+    /// never user text, and shown on the stage. The item reports once, so this runs once per load.
+    func previewFailed(_ reason: PreviewFailureReason) async {
+        await app.log.write(LogEntry(level: .error, category: "preview", message: "compositor reason=\(reason.rawValue)"))
+        let message = Self.previewFailureMessage(reason)
+        previewError = message
+        announce(message)
+    }
+    /// The stage's line for a compositor failure (design.md §13 "Preview failed").
+    static func previewFailureMessage(_ reason: PreviewFailureReason) -> String {
+        switch reason {
+        case .captionLayout, .captionRaster, .resources: "Captions couldn't be drawn, so the preview plays without them."
+        case .title: "The title couldn't be drawn, so the preview plays without it."
+        case .disclosure: "The AI voice label couldn't be drawn, so the preview stopped."
+        case .sourceFrame, .lipsyncFrame, .demoFrame, .frameBuffer: "The preview couldn't draw the video."
+        }
+    }
+    /// Reload Preview on the stage: builds the preview again; a load that works clears the message.
+    func reloadPreview() async { await updatePreview(load: true) }
     func updatePreview(load: Bool) async {
         guard mediaResolved else { return }
         previewRevision &+= 1

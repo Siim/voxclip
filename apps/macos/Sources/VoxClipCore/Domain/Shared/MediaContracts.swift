@@ -420,7 +420,34 @@ public enum PreviewEvent: Sendable, Equatable {
     case time(edited: Double, source: Double)
     case playing(Bool)
     case frame(PreviewFrame)
-    case failed(VoxClipError)
+    /// The preview failed. `reason` names the compositor step whose frames failed (design.md §5.4.4 g); nil for an item
+    /// that failed as a whole.
+    case failed(VoxClipError, reason: PreviewFailureReason? = nil)
+}
+/// Why the preview's frame compositor could not draw a frame: a fixed, app-authored tag for the log and the stage
+/// message, never user text or a path (design.md §5.4.4 g).
+public enum PreviewFailureReason: String, Sendable, Equatable, CaseIterable {
+    /// The caption layout's band could not be drawn.
+    case captionLayout = "caption-layout"
+    /// A legacy caption raster could not be made or drawn.
+    case captionRaster = "caption-raster"
+    /// The required AI voice disclosure could not be drawn.
+    case disclosure
+    /// The source video frame was missing.
+    case sourceFrame = "source-frame"
+    /// A lip-sync take's frame was missing.
+    case lipsyncFrame = "lipsync-frame"
+    /// A context demo's frame was missing.
+    case demoFrame = "demo-frame"
+    /// The bundled caption resources were missing.
+    case resources
+    /// No output frame could be allocated.
+    case frameBuffer = "frame-buffer"
+    /// A title, lower third or sticker could not be drawn.
+    case title
+
+    /// Captions and titles: preview still shows the picture without them (design.md §5.4.4 g).
+    public var keepsPicture: Bool { [.captionLayout, .captionRaster, .resources, .title].contains(self) }
 }
 /// Optional transport for software frames; native AVPlayer stays in Media on MainActor; architecture §7.1.
 public struct PreviewFrame: Sendable, Equatable {

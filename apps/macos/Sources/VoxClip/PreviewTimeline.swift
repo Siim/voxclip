@@ -140,9 +140,7 @@ enum ViewerTag: Equatable {
         .onAppear { if let initialFocus { focus = initialFocus } }
         #endif
     }
-    private var standIn: Bool {
-        model.document.demo || !model.mediaResolved || model.mediaUnreadable || model.project.media.source.video == nil || model.nativePreview == nil
-    }
+    private var standIn: Bool { !model.stageShowsPlayer }
     private var stageView: some View {
         ZStack {
             Rectangle().fill(DesignValues.color("stage"))
@@ -152,6 +150,9 @@ enum ViewerTag: Equatable {
             }
             if model.askClaude.adjusting != nil {
                 GeometryReader { geometry in AskClaudeRectOverlay(model: model, stage: geometry.size) }
+            }
+            if let message = model.stagePreviewError {
+                PreviewFailureNotice(message: message) { Task { await model.reloadPreview() } }
             }
         }
         .overlay(alignment: .topLeading) {
@@ -249,6 +250,52 @@ enum ViewerTag: Equatable {
         .accessibilityLabel("Playback time")
         .accessibilityIdentifier("voxclip.viewer.time")
         .accessibilityValue("\(timecode(floor(current))) of \(timecode(total))\(model.playbackRate != 1 ? ", \(model.playbackRate.formatted()) times speed" : "")")
+    }
+}
+
+/// The stage's preview-failed state (design.md §5.4.4 g): the §5.4.6 message cluster on a media plate over the player,
+/// centred at 36% of the stage, with the stage's one control, Reload Preview. VoiceOver reads the line inside the stage;
+/// the editor announces it once when it appears (no live region of its own).
+@MainActor struct PreviewFailureNotice: View {
+    let message: String
+    let reload: () -> Void
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    var body: some View {
+        let opaque = reduceTransparency || contrast == .increased
+        GeometryReader { geometry in
+            cluster(opaque: opaque)
+                .frame(maxWidth: max(0, geometry.size.width - 24))
+                .position(x: geometry.size.width / 2, y: geometry.size.height * 0.36)
+        }
+    }
+
+    private func cluster(opaque: Bool) -> some View {
+        VStack(spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "exclamationmark.triangle").font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(MediaChipTokens.warningGlyph)
+                    .accessibilityHidden(true)
+                Text(message).font(.system(size: 13, weight: .semibold)).lineSpacing(2)
+                    .foregroundStyle(DesignValues.color("overlay.foreground"))
+                    .multilineTextAlignment(.leading).lineLimit(3).fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("voxclip.viewer.previewError")
+            }
+            Button("Reload Preview", action: reload)
+                .controlSize(.small)
+                .accessibilityIdentifier("voxclip.viewer.reloadPreview")
+                .columnLayoutEvidence("viewer.reloadPreview")
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(opaque ? MediaChipTokens.backgroundOpaque : MediaChipTokens.background, in: .rect(cornerRadius: 6))
+        .overlay {
+            RoundedRectangle(cornerRadius: 6).strokeBorder(contrast == .increased ? MediaChipTokens.foreground
+                : opaque ? MediaChipTokens.strokeOpaque : MediaChipTokens.stroke, lineWidth: 1)
+        }
+        .environment(\.colorScheme, .dark)
+        .accessibilityElement(children: .contain)
+        .columnLayoutEvidence("viewer.previewError", text: message)
     }
 }
 
