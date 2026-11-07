@@ -47,12 +47,16 @@ public struct ClipAutopilotRequest: Sendable, Equatable {
     public var note: String?
     /// The tone of each clip's words; nil sends no tone line. A series' moments stage never gets one.
     public var tone: ClipAutopilotTone?
+    /// A `clips` request's spans as Find Clips described them, one per span in the same order (Claude mode): each clip's
+    /// plan is told its rank, its title and idea, and the other clips of the series, as a series' second stage is. Empty
+    /// plans each span on its own.
+    public var moments: [ClipAutopilotMoment]
 
     public init(transcript: Transcript, edits: ProjectEdits = ProjectEdits(), mode: Mode,
                 captionPreference: ClipAutopilotCaptionPreference? = nil, language: String? = nil, note: String? = nil,
-                tone: ClipAutopilotTone? = nil) {
+                tone: ClipAutopilotTone? = nil, moments: [ClipAutopilotMoment] = []) {
         self.transcript = transcript; self.edits = edits; self.mode = mode; self.captionPreference = captionPreference
-        self.language = language; self.note = note; self.tone = tone
+        self.language = language; self.note = note; self.tone = tone; self.moments = moments
     }
 
     public var isSeries: Bool { if case .series = mode { true } else { false } }
@@ -65,6 +69,15 @@ public struct ClipAutopilotRequest: Sendable, Equatable {
     }
 }
 
+extension ClipAutopilotMoment {
+    /// A Find Clips suggestion as a moment of Claude mode's series (`ClipAutopilotRequest.moments`): its span, title and
+    /// reason, the score it was given and no caption style, which each clip's plan picks.
+    public static func found(_ span: ClosedRange<Int>, title: String, reason: String, score: Int) -> ClipAutopilotMoment {
+        ClipAutopilotMoment(startWord: span.lowerBound, endWord: span.upperBound, title: title, idea: reason, score: score,
+                            verdict: .implied(by: score), captionStyle: "")
+    }
+}
+
 /// What the second stage of a series tells the clip plan about its moment (ai.md §16.3).
 struct ClipAutopilotMomentBrief: Sendable, Equatable {
     /// 1-based rank among the picked moments.
@@ -73,6 +86,8 @@ struct ClipAutopilotMomentBrief: Sendable, Equatable {
     let moment: ClipAutopilotMoment
     /// The caption styles the other moments use, in rank order.
     let otherStyles: [String]
+    /// The other moments of the series, in rank order: their titles and where they start (prompt version 7).
+    let others: [ClipAutopilotMoment]
 }
 
 /// Everything the validator checks a reply against (ai.md §16.5), built once per request.
@@ -210,12 +225,17 @@ public enum ClipAutopilotRequestBuilder {
             if !elsewhere.isEmpty { instruction += try prompt.request("names", ["names": elsewhere.joined(separator: ", ")]) }
             if let tone = request.tone { instruction += try toneLine(tone, prompt: prompt) }
             if let moment {
-                let fixed = request.captionPreference?.styleId != nil
+                // Find Clips' moments carry no caption style: the plan picks one, told only the other clips (Claude mode).
+                let fixed = request.captionPreference?.styleId != nil || moment.moment.captionStyle.isEmpty
                 let caption = fixed ? "" : try prompt.request("momentCaption", ["style": moment.moment.captionStyle,
                     "reason": moment.moment.captionReason.isEmpty ? "picked for the series" : moment.moment.captionReason,
                     "others": moment.otherStyles.isEmpty ? "none" : moment.otherStyles.joined(separator: ", ")])
+                let others = moment.others.filter { words.indices.contains($0.startWord) }.map {
+                    "“\($0.title)” at \(AIText.formatTime(words[$0.startWord].start))"
+                }
+                let series = others.isEmpty ? "" : try prompt.request("momentOthers", ["others": others.joined(separator: "; ")])
                 instruction = try prompt.request("momentInstruction", ["rank": String(moment.rank), "count": String(moment.count),
-                    "title": moment.moment.title, "idea": moment.moment.idea, "caption": caption]) + "\n\n" + instruction
+                    "title": moment.moment.title, "idea": moment.moment.idea, "caption": caption]) + series + "\n\n" + instruction
             }
         case .series:
             instruction = try prompt.request("seriesInstruction", ["maxClips": String(prompt.limits.maxClips)])

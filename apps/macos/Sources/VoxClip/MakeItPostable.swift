@@ -377,13 +377,18 @@ extension EditorModel {
         run.task = Task { [weak self] in await self?.perform(run) }
     }
 
-    /// "✦ Make top 3 postable": the best three suggestions by score. One request plans all three at once (`.clips`, on
-    /// three lanes), then each is applied as its own run: its own cap, its own undo step, kept first. Claude mode passes
-    /// the video's `budget`: the runs share it instead of each having its own cap.
-    func makeTopPostable(_ count: Int = 3, budget: MakeItBudget? = nil) {
-        let ranked = suggestedClips.prefix(count).compactMap { clip -> (id: String, span: ClosedRange<Int>)? in
+    /// "✦ Make top 3 postable": the best three suggestions by score. One request plans them at once (`.clips`, at most
+    /// three in flight), each told its rank, Find Clips' title and reason, and the other clips, so the series stays varied.
+    /// Each clip is applied as soon as its plan is ready, while the others are still planned: its own cap, its own undo
+    /// step, kept first. Claude mode passes the video's `budget` (the runs share it instead of each having its own cap) and
+    /// its `clock`, which times each clip's plan and apply.
+    func makeTopPostable(_ count: Int = 3, budget: MakeItBudget? = nil, clock: ClaudeModeClock? = nil) {
+        let ranked = suggestedClips.prefix(count).compactMap { clip -> (id: String, span: ClosedRange<Int>, moment: ClipAutopilotMoment)? in
             guard let lower = index(clip.startWordId), let upper = index(clip.endWordId), lower <= upper else { return nil }
-            return (clip.id, lower...upper)
+            let found = foundSuggestion(clip)
+            let moment = ClipAutopilotMoment.found(lower...upper, title: clip.title ?? found?.title ?? "", reason: found?.reason ?? "",
+                                                   score: suggestionScore(clip) ?? found?.score ?? 0)
+            return (clip.id, lower...upper, moment)
         }
         guard !ranked.isEmpty, makeIt.active == nil, capabilities.ai, capabilities.edit, let transcript = project.transcript else { return }
         makeIt.setSeries(ranked.map(\.id), budget: budget)
@@ -391,40 +396,100 @@ extension EditorModel {
         for run in runs.reversed() { makeIt.insert(run); run.line("Waiting for Claude…") }
         onShowMakeIt?()
         let request = ClipAutopilotRequest(transcript: transcript, edits: project.edits, mode: .clips(ranked.map(\.span)),
-                                           captionPreference: makeItStyle.captionPreference, note: makeItNoteText(), tone: makeItPlannerTone())
-        let task = Task { [weak self] () -> Void in await self?.performSeries(runs, spans: ranked.map(\.span), request: request) }
+                                           captionPreference: makeItStyle.captionPreference, note: makeItNoteText(), tone: makeItPlannerTone(),
+                                           moments: ranked.map(\.moment))
+        let task = Task { [weak self] () -> Void in await self?.performSeries(runs, spans: ranked.map(\.span), request: request, clock: clock) }
         for run in runs { run.task = task }
         makeIt.holdQueue(task)
     }
 
-    private func performSeries(_ runs: [MakeItRun], spans: [ClosedRange<Int>], request: ClipAutopilotRequest) async {
+    /// Find Clips' own record of a suggestion: its title, reason and score.
+    func foundSuggestion(_ clip: ClipRange) -> ProjectAIClip? {
+        guard let resultID = clip.aiResultId, let index = clip.aiClipIndex,
+              let result = project.ai.results.first(where: { $0.id == resultID }), result.clips.indices.contains(index) else { return nil }
+        return result.clips[index]
+    }
+
+    /// Plans the series and applies each clip the moment its plan is ready (`ClipAutopilotProgress.ready`), one at a time in
+    /// the order they come. A clip whose plan failed fails on its own; the others go on. Stop (the queue's cancellation)
+    /// stops every plan in flight and the clip being applied at its next safe point.
+    private func performSeries(_ runs: [MakeItRun], spans: [ClosedRange<Int>], request: ClipAutopilotRequest, clock: ClaudeModeClock?) async {
         let services = makeIt.services ?? .live
         defer { makeIt.clearQueue(); for run in runs where run.running { run.phase = .stopped } }
+        let (ready, plans) = AsyncStream.makeStream(of: (Int, ClipAutopilotPlan).self)
+        let lines = progress(runs)
+        let report: @Sendable (ClipAutopilotProgress) -> Void = { event in
+            switch event {
+            case .planning(let clip, _): clock?.begin(.plan, clip: clip + 1)
+            case .ready(let clip, _, let plan): clock?.end(.plan, clip: clip + 1); plans.yield((clip, plan))
+            case .failed(let clip, _): clock?.end(.plan, clip: clip + 1)
+            default: break
+            }
+            lines(event)
+        }
+        let planning = Task { @MainActor [weak self] () -> Result<ClipAutopilotSeries, any Error> in
+            defer { plans.finish() }
+            guard let self else { return .failure(CancellationError()) }
+            do { return .success(try await services.plan(request, self, report)) } catch { return .failure(error) }
+        }
+        var applied: Set<Int> = []
+        var stopped = false
+        await withTaskCancellationHandler {
+            for await (index, plan) in ready where runs.indices.contains(index) && !applied.contains(index) {
+                applied.insert(index)
+                guard !stopped else { continue }
+                stopped = await applyPlanned(runs[index], plan: plan, span: spans[index], services: services, clock: clock, clip: index + 1)
+                if stopped { planning.cancel() }
+            }
+        } onCancel: { planning.cancel() }
+        let outcome = await planning.value
+        guard !stopped else { for later in runs where later.running { later.phase = .stopped }; return }
         let series: ClipAutopilotSeries
-        do {
-            series = try await services.plan(request, self, progress(runs))
-        } catch is CancellationError { for run in runs { run.phase = .stopped }; return }
-        catch LLMError.cancelled { for run in runs { run.phase = .stopped }; return }
-        catch {
+        switch outcome {
+        case .success(let value): series = value
+        case .failure(let error):
+            if error is CancellationError || (error as? LLMError) == .cancelled || Task.isCancelled {
+                for run in runs where run.running { run.phase = .stopped }
+                return
+            }
             let message = await app.safeError(error, context: "ai:make-it")
-            for run in runs { run.phase = .failed(message.isEmpty ? "Claude couldn't plan these clips. Nothing was changed." : message) }
+            for (index, run) in runs.enumerated() where !applied.contains(index) {
+                run.phase = .failed(message.isEmpty ? "Claude couldn't plan these clips. Nothing was changed." : message)
+            }
             return
         }
-        for (index, run) in runs.enumerated() {
-            guard !run.cancelled else { run.phase = .stopped; continue }
-            // A plan may tighten its span; it stays inside the span it was asked for.
+        // A planner that sends no `ready` (a stub) leaves its clips here, applied in rank order as before.
+        for (index, run) in runs.enumerated() where !applied.contains(index) {
+            guard run.running else { continue }
             guard let plan = series.plans.first(where: { spans[index].contains($0.startWord) && spans[index].contains($0.endWord) }) else {
                 run.phase = .failed("Claude couldn't plan this clip. Nothing was changed."); continue
             }
-            guard canEditForMakeIt(run.clipID) else { run.phase = .failed("This clip changed. Nothing was changed."); continue }
-            makeIt.shownClipID = run.clipID
-            beginUndoGroup("Make it postable")
-            if isSuggestion(run.clipID) { _ = keepForRowAction(run.clipID) }
-            _ = setScope(run.clipID)
-            await finish(run, plan: plan, services: services)
-            endUndoGroup()
-            if run.phase == .stopped { for later in runs where later.running { later.phase = .stopped } ; break }
+            if await applyPlanned(run, plan: plan, span: spans[index], services: services, clock: clock, clip: index + 1) {
+                for later in runs where later.running { later.phase = .stopped }
+                break
+            }
         }
+    }
+
+    /// Applies one planned clip of a series as its own undo step, kept first, sharing the planner's AI lease with its own
+    /// Rewrite steps while the other clips are still planned. True when the run was stopped.
+    private func applyPlanned(_ run: MakeItRun, plan: ClipAutopilotPlan, span: ClosedRange<Int>, services: MakeItServices,
+                              clock: ClaudeModeClock?, clip: Int) async -> Bool {
+        guard !run.cancelled else { run.phase = .stopped; return true }
+        // A plan may tighten its span; it stays inside the span it was asked for.
+        guard span.contains(plan.startWord), span.contains(plan.endWord) else {
+            run.phase = .failed("Claude couldn't plan this clip. Nothing was changed."); return false
+        }
+        guard canEditForMakeIt(run.clipID) else { run.phase = .failed("This clip changed. Nothing was changed."); return false }
+        let started = clock?.elapsed
+        makeIt.shownClipID = run.clipID
+        beginUndoGroup("Make it postable")
+        if isSuggestion(run.clipID) { _ = keepForRowAction(run.clipID) }
+        _ = setScope(run.clipID)
+        await llmRuns.sharing { await finish(run, plan: plan, services: services) }
+        endUndoGroup()
+        if let clock, let started { clock.record(.apply, clip: clip, since: started) }
+        return run.phase == .stopped
     }
 
     private func canEditForMakeIt(_ clipID: String) -> Bool {
@@ -447,6 +512,8 @@ extension EditorModel {
                 case .failed(let clip, let total):
                     guard runs.indices.contains(clip) else { return }
                     runs[clip].line(total > 1 ? "Clip \(clip + 1) of \(total) couldn't be planned." : "The clip couldn't be planned.")
+                    if total > 1, runs[clip].phase == .planning { runs[clip].phase = .failed("Claude couldn't plan this clip. Nothing was changed.") }
+                case .ready: break
                 }
             }
         }

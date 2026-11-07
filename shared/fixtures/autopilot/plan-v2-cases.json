@@ -3,7 +3,7 @@
   "id": "autopilot-plan-v2",
   "origin": "voxclip",
   "sources": {
-    "shared/prompts/clip-autopilot.json": "cccb137002aedde5b5cf3fffc473b0ea55cf32643dc0333b96f70e6054131bb5"
+    "shared/prompts/clip-autopilot.json": "7a9bb0641bc47c7b94635d661a13a3cda8f183c7347d45cf6ae64600c1505273"
   },
   "description": "Hand-derived vectors for the Make it postable planner's version 2 fields (doc/spec/ai.md section 16.5): corrections, look, speed, fixed caption choices, the finished length and its flags, and the first stage's moments. A synthetic 150-word transcript of 0.5 s words with no pauses (not user media). 'repairs' lists [field, action] pairs sorted; 'seconds' is the plan's finished length; 'scores' are the moments' scores. Edit this file by hand and replay it in every Core suite that implements the planner.",
   "transcript": {

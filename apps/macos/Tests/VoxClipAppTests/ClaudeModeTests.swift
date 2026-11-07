@@ -480,6 +480,138 @@ private final class ClaudeCalls: Sendable {
 }
 
 /// The Make it postable tests' main plan, shared so the two suites plan the same clip.
+// MARK: Each clip as soon as it is ready (ai.md §16.6)
+
+/// A gate the stub planner waits at until the test opens it; never a sleep.
+private actor StreamGate {
+    private var opened = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private(set) var cancelled = false
+    func wait() async {
+        guard !opened else { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+    func open() { opened = true; let all = waiters; waiters = []; for waiter in all { waiter.resume() } }
+    func cancel() { cancelled = true; open() }
+}
+
+extension ClaudeModeTests {
+    private static var early: ClipAutopilotPlan {
+        ClipAutopilotPlan(startWord: 0, endWord: 1, title: "Early", hook: "", rewrites: [.init(startWord: 0, endWord: 1, text: "so today", reason: "Clearer")],
+                          captions: MakeItPostableTestsPlan.captions, postText: "Early.", score: 9, verdict: .postFirst)
+    }
+
+    /// The planner as the service streams it: clip 1 ("clip-early", the best) is ready at once; clip 2 waits at `gate`.
+    private func streamingPlanner(_ fixture: Fixture, gate: StreamGate, failSecond: Bool = false, failFirst: Bool = false) {
+        fixture.editor.makeIt.services?.plan = { request, _, progress in
+            fixture.calls.record("plan \(request.mode) moments \(request.moments.map(\.title))")
+            guard case .clips(let spans) = request.mode, spans.count == 2 else { return ClipAutopilotSeries(plans: []) }
+            progress(.planning(clip: 0, of: 2)); progress(.planning(clip: 1, of: 2))
+            if failFirst { progress(.failed(clip: 0, of: 2)) } else { progress(.ready(clip: 0, of: 2, Self.early)); progress(.planned(clip: 0, of: 2)) }
+            await withTaskCancellationHandler { await gate.wait() } onCancel: { Task { await gate.cancel() } }
+            if Task.isCancelled { throw CancellationError() }
+            if failSecond { progress(.failed(clip: 1, of: 2)); return ClipAutopilotSeries(plans: failFirst ? [] : [Self.early]) }
+            progress(.ready(clip: 1, of: 2, MakeItPostableTestsPlan.main)); progress(.planned(clip: 1, of: 2))
+            return ClipAutopilotSeries(plans: (failFirst ? [] : [Self.early]) + [MakeItPostableTestsPlan.main])
+        }
+    }
+
+    /// Yields (never sleeps) until `condition` holds or the bound runs out.
+    private func until(_ condition: () -> Bool) async {
+        for _ in 0..<20_000 where !condition() { await Task.yield() }
+    }
+
+    @Test func theFirstClipIsAppliedWhileTheOthersAreStillPlanned() async throws {
+        let fixture = try fixture()
+        defer { close(fixture) }
+        let editor = fixture.editor
+        let gate = StreamGate()
+        streamingPlanner(fixture, gate: gate)
+        await editor.makeIt.refreshVoiceReady(editor)
+        editor.armClaudeMode()
+        editor.claudeModeTranscribed(started: false)
+        await until { editor.makeIt.run(for: "clip-early")?.phase == .ready }
+        #expect(editor.makeIt.run(for: "clip-early")?.phase == .ready, "the best clip is ready before the second plan returns")
+        #expect(editor.makeIt.run(for: "clip-main")?.phase == .planning)
+        #expect(editor.claudeClipState("clip-early") == .ready && editor.claudeClipState("clip-main") == .making)
+        #expect(editor.claudeModeSteps.contains { $0.id == "clip-early" && $0.state == .done } && editor.claudeModeSteps.contains { $0.id == "clip-main" && $0.state == .now })
+        #expect(editor.llmRuns.isBusy == false, "the stub planner holds no lease; the voice step ran inside the shared window")
+        await gate.open()
+        await editor.claudeMode.task?.value
+        #expect(editor.claudeMode.phase == .done && editor.claudeModeReady.count == 2)
+        // One request, told Find Clips' titles so the series stays varied; one undo step per clip.
+        #expect(fixture.calls.all.filter { $0.hasPrefix("plan") } == ["plan clips([ClosedRange(0...1), ClosedRange(2...7)]) moments [\"Early\", \"Suggested\"]"], "\(fixture.calls.all)")
+        #expect(fixture.calls.all.filter { $0.hasPrefix("voice") }.first?.hasPrefix("voice so today") == true, "the best clip voiced first")
+        // The run's stage times, numbers only.
+        let line = try #require(editor.claudeMode.clock?.logLine())
+        #expect(line.hasPrefix("claude-mode timings ") && line.contains("apply1=") && line.contains("apply2=") && line.contains(" first=") && !line.contains("Early"))
+    }
+
+    @Test func stopCancelsEveryPlanStillInFlight() async throws {
+        let fixture = try fixture()
+        defer { close(fixture) }
+        let editor = fixture.editor
+        let gate = StreamGate()
+        streamingPlanner(fixture, gate: gate)
+        await editor.makeIt.refreshVoiceReady(editor)
+        editor.armClaudeMode()
+        editor.claudeModeTranscribed(started: false)
+        await until { editor.makeIt.run(for: "clip-early")?.phase == .ready }
+        editor.stopClaudeMode()
+        await editor.claudeMode.task?.value
+        #expect(await gate.cancelled, "the plan in flight was cancelled")
+        #expect(editor.makeIt.run(for: "clip-early")?.phase == .ready, "what was done is kept")
+        #expect(editor.makeIt.run(for: "clip-main")?.phase == .stopped)
+        #expect(editor.claudeMode.phase == .stopped && editor.makeIt.running.isEmpty)
+    }
+
+    @Test(arguments: [false, true])
+    func aFailedClipDoesNotStopTheOthers(firstFails: Bool) async throws {
+        let fixture = try fixture()
+        defer { close(fixture) }
+        let editor = fixture.editor
+        let gate = StreamGate()
+        streamingPlanner(fixture, gate: gate, failSecond: !firstFails, failFirst: firstFails)
+        await editor.makeIt.refreshVoiceReady(editor)
+        editor.armClaudeMode()
+        editor.claudeModeTranscribed(started: false)
+        if firstFails { await until { if case .failed = editor.makeIt.run(for: "clip-early")?.phase { true } else { false } } }
+        else { await until { editor.makeIt.run(for: "clip-early")?.phase == .ready } }
+        await gate.open()
+        await editor.claudeMode.task?.value
+        let failed = firstFails ? "clip-early" : "clip-main", made = firstFails ? "clip-main" : "clip-early"
+        if case .failed = editor.makeIt.run(for: failed)?.phase {} else { Issue.record("\(failed): \(String(describing: editor.makeIt.run(for: failed)?.phase))") }
+        #expect(editor.makeIt.run(for: made)?.phase == .ready)
+        #expect(editor.claudeMode.phase == .done && editor.claudeModeReady.map(\.clipID) == [made])
+    }
+
+    /// Both plans arrive at once, but clips are applied one at a time on the video's one pool: the second voice step sees
+    /// only what the first left, and waits at the cap instead of spending past it.
+    @Test func theCapCoversClipsPlannedAtOnce() async throws {
+        let fixture = try fixture(cap: 2) { request, _ in
+            let price = Decimal(string: "1.50")!
+            guard let budget = request.budget, budget >= price else { return MakeItRewriteOutcome(result: .overCap(nextUSD: price)) }
+            return MakeItRewriteOutcome(result: .voiced(segments: []), spent: price)
+        }
+        defer { close(fixture) }
+        let editor = fixture.editor
+        let gate = StreamGate()
+        streamingPlanner(fixture, gate: gate)
+        await gate.open()
+        await editor.makeIt.refreshVoiceReady(editor)
+        editor.armClaudeMode()
+        editor.claudeModeTranscribed(started: false)
+        try await waitAtCap(editor)
+        let budget = try #require(editor.claudeMode.budget)
+        #expect(budget.spent == Decimal(string: "1.50") && budget.spent <= budget.approved, "\(budget.spent) of \(budget.approved)")
+        #expect(budget.needed == Decimal(string: "1.00"), "the second clip needs exactly the shortfall")
+        #expect(fixture.calls.all.filter { $0.hasPrefix("voice") } == ["voice so today budget 2", "voice we finally ship budget 0.5"], "\(fixture.calls.all)")
+        editor.stopClaudeMode()
+        await editor.claudeMode.task?.value
+        #expect(budget.spent == Decimal(string: "1.50"))
+    }
+}
+
 enum MakeItPostableTestsPlan {
     static let captions = ClipAutopilotPlan.Captions(styleId: "vox-bold", font: .init(family: "Roboto", weight: 900), textCase: .upper, wordsPerCaption: 3)
     static var main: ClipAutopilotPlan {
