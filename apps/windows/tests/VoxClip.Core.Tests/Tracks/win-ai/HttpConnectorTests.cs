@@ -254,11 +254,11 @@ public sealed class HttpConnectorTests
     [Fact]
     public void ExtractionTracksEscapesAndStructuralValidationDropsOnlyBadItems()
     {
-        var parsed = LlmOutput.Extract("explanation {\"clips\":[{\"title\":\"brace } and \\\" quote\",\"reason\":\"\",\"score\":7,\"start_word\":5.5,\"end_word\":30},{\"title\":42}]} trailing");
+        var parsed = LlmOutput.Extract("explanation {\"clips\":[{\"title\":\"brace } and \\\" quote\",\"reason\":\"\",\"score\":7,\"start_line\":5.5,\"end_line\":30},{\"title\":42}]} trailing");
         Assert.NotNull(parsed);
         var schema = new ClipPrompts(Catalog()).Clips["output"]!["schema"]!.AsObject();
         var validated = LlmOutput.Validate(new(null, parsed, "m", new StopKind.Complete(), null, null), schema);
-        Assert.Equal(1, validated.Dropped); Assert.Equal(5.5, Assert.Single(validated.Object!["clips"]!.AsArray())!["start_word"]!.GetValue<double>());
+        Assert.Equal(1, validated.Dropped); Assert.Equal(5.5, Assert.Single(validated.Object!["clips"]!.AsArray())!["start_line"]!.GetValue<double>());
     }
 
     [Fact]

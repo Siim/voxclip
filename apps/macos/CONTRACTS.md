@@ -54,6 +54,32 @@ doc/agent-clipping-benchmark.md measured a talking-head export at −20.7 LUFS; 
   - Preview is not normalised: an export is louder than its preview by `gainDb`. Applying the gain to preview would need the measurement of the clip (cache it by the render's fingerprint).
   - The ceiling is the PCM's; AAC can ring ~0.2 dB past it on a click. Static gain means a peaky clip lands under −14 (`capped`). A limiter would be a new ADR.
   - Any new export test that compares decoded samples with a unity reference must pass `loudness: .off`.
+### 2026-11-07 — Halve the wait to the first postable clip: a compact Find Clips transcript, clips applied as each is ready, stage timings (track/v2-speed)
+
+Brief: /tmp/clipper-planning/briefs/v2/opus-speed.md. Spec: ai.md §11.3, §11.4, §11.6 and §16.12; design.md §6.7. Every AI decision stays at extra high effort; the speed comes from orchestration and input size.
+
+- **Find Clips sends sentence lines** (clip-finder `promptVersion` 2, shared with Windows):
+  - `ClipRequestBuilder.sentenceBlock`: `formatTranscript`'s lines as "12 0:05 text" (number over the whole transcript, start time, words; `transcriptBlock.line`), with no word range and no pause line. Window packing still costs the full lines, so every window fits.
+  - The reply names `start_line`/`end_line` (`ClipLineCandidate`); `ClipRequestBuilder.wordRange` maps them to the lines' first and last words, and `finalizeClips` runs as before, snapping included. `inputSha256` hashes the sentence block. The topics line counts lines (`lineNumber`).
+  - `ClipRequestBuilder.lineRange(of:words:)` gives the lines a reply names for a word span (stub connectors, the smoke).
+  - 29-minute shape (2,900 synthetic words, 207 lines): 22,066 → 19,925 characters, about 10,030 → 9,057 estimated tokens. The words are 88% of the request.
+- **Claude mode stops waiting for the slowest clip** (`clip-autopilot` `promptVersion` 7):
+  - `ClipAutopilotProgress.ready(clip:of:plan)` is sent the moment a plan is checked, before `planned`.
+  - `ClipAutopilotRequest.moments` (with `.clips`): Find Clips' title, reason and score per span (`ClipAutopilotMoment.found`); each plan gets `momentInstruction` and the new `momentOthers` line (the other clips by title and start). `momentCaption` is skipped when a moment has no caption style.
+  - `makeTopPostable(_:budget:clock:)` sends one `.clips` request with the moments and applies each clip as its `ready` arrives, one at a time, each as its own undo step (`performSeries`/`applyPlanned`). A failed plan fails its clip only; Stop cancels the planning task and every plan in flight. A stub that sends no `ready` is applied in rank order when it returns.
+  - `ProjectLlmRuns.sharing`: while the planner holds the lease, the clip being applied lets its own Rewrite steps take a lease (the free fit round and Keep fixing would otherwise skip silently). Only inside that window.
+- **Timings:** `ClaudeModeClock` (Core) records stage wall times, numbers only. Claude mode logs `claude-mode timings transcribe=… find=… plan1=… apply1=… first=… total=…` when a run ends. `voxclip-cli autopilot --timings` prints them as JSON: probe, audio, transcribe, find, plan/apply/export per clip, `firstClipSeconds`, `totalSeconds`.
+- **`voxclip-cli autopilot`:** Claude mode headless. It runs probe, transcription, Find Clips, the top N (`--count`, default 3) planned at once (two more lanes for Claude Code and Codex), and each applied and, with `--out-dir`, exported (`--aspect`, default 9:16) as soon as it is ready. Rewrites and music are listed as `pending`; nothing paid runs.
+- **Progress, existing rows only:** card C's step and the status bar say "Finding clips…" while Find Clips runs; the status bar then counts "✦ Claude does it all · 1 of 3 ready · $0.42 / $2", and each clip row turns Ready on its own.
+- **Warm connector: skipped.** Start-up measured with no model call: `claude --version` 0.012 s, `claude auth status --json` 0.109 s, `codex --version` 0.010 s, `codex login status` 0.019 s (medians of five). The 4.6 s connection-test median is the model round trip inside `claude -p`. A persistent stream-json process would share one conversation across requests, and its system prompt, schema, model and effort are fixed per process.
+- **Stub benchmark** (`CLIAutopilotTests`, virtual time, no sleeps; 4.6 s per call plus output-token time sized to the measured 77 s Find Clips and 74 s median plan, plans of 74/91/61 s): first postable clip 169.4 s → 139.0 s after Find Clips starts (222 s → 192 s from the video with 53 s local transcription). All three: 171.4 s → 169.4 s. The best clip alone: 152.0 s. With effort fixed, the critical path is Find Clips plus the quickest plan; the 2-minute target needs faster Find Clips.
+- **Deleted:** `ClipRequestBuilder.request`'s full-line block for Find Clips (now `sentenceBlock`); the old wait-for-every-plan apply loop in `performSeries`.
+- **Tests (stubs only):** Core `aiSentenceLinesRoundTrip` (every fixture transcript's line ranges map to the full transcript's word ids, snapped and unsnapped, and a one-word-inside full answer snaps to them), `ClipAutopilotStreamingTests` (≤3 in flight with moments and the others line; cancel reaches all three); App `ClaudeModeTests` +5 (first clip applied while the second plans, Stop cancels in flight, a failed clip doesn't stop the other either way round, the cap across clips planned at once, the progress copy); Media `CLIAutopilotTests` (the benchmark and option validation). Updated: the clip-finder request, integration and runner tests for lines; the series test for `ready` and `momentOthers`; promptVersion 7.
+- **Next package must know:**
+  - The "Snap clip edges to sentence boundaries" setting no longer changes Find Clips (replies are line-aligned). Remove it on both platforms in a later package.
+  - `ClaudeModeClock` begins `transcribe` at `armClaudeMode` (the open), so the app's transcribe time includes the transcription's own start-up.
+  - Windows owes: the streaming `ready` event and per-clip apply, `moments`/`momentOthers` in its planner requests, the stage timings and log line, the "Finding clips…" / "N of M ready" copy, and the CLI `autopilot` command.
+  - Owed live (lead): the timings of a real 29-minute run (commands in the report).
 
 ### 2026-11-07 — Revoice the whole clip: one AI voice for the clip, fitted and lip synced, asked once per clip; Claude mode switches within its cap (track/v2-revoice-whole)
 

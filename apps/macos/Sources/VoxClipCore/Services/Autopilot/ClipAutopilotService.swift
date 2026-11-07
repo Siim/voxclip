@@ -27,6 +27,9 @@ public enum ClipAutopilotProgress: Sendable, Equatable {
     case picked([ClipAutopilotMoment])
     case planning(clip: Int, of: Int)
     case planned(clip: Int, of: Int)
+    /// That clip's checked plan, sent the moment it is ready and before `planned`, while the other clips are still
+    /// planned: Claude mode applies and shows each clip as it comes (ai.md §16.12).
+    case ready(clip: Int, of: Int, ClipAutopilotPlan)
     /// That clip's plan failed; the other clips go on.
     case failed(clip: Int, of: Int)
 }
@@ -55,7 +58,8 @@ public actor ClipAutopilotService {
         let resources = try Resources(shared: shared)
         if case .clips(let spans) = input.mode {
             guard let first = spans.first else { throw VoiceLabError.invalidInput }
-            return try Self.prepare(input.clip(first), resources: resources, connector: connector).request
+            return try Self.prepare(input.clip(first), resources: resources, connector: connector,
+                                    moment: input.moments.count == spans.count ? Self.briefs(input.moments).first : nil).request
         }
         return try Self.prepare(input, resources: resources, connector: connector).request
     }
@@ -99,8 +103,11 @@ public actor ClipAutopilotService {
             progress?(.planned(clip: 0, of: 1))
             return Self.result(ClipAutopilotSeries(plans: [plan]), replies: [reply], model: reply.model, resources: resources)
         case .clips(let spans):
-            guard !spans.isEmpty, spans.count <= resources.prompt.limits.maxClips else { throw VoiceLabError.invalidInput }
-            let items = try spans.map { try Self.prepare(input.clip($0), resources: resources, connector: connector.id) }
+            guard !spans.isEmpty, spans.count <= resources.prompt.limits.maxClips,
+                  input.moments.isEmpty || input.moments.count == spans.count else { throw VoiceLabError.invalidInput }
+            // With Find Clips' moments each plan knows its rank and the other clips, as a series' second stage does.
+            let briefs: [ClipAutopilotMomentBrief?] = input.moments.isEmpty ? spans.map { _ in nil } : Self.briefs(input.moments)
+            let items = try zip(spans, briefs).map { try Self.prepare(input.clip($0.0), resources: resources, connector: connector.id, moment: $0.1) }
             let outcome = try await Self.planAll(items, lanes: all, model: model, catalog: resources.catalog, progress: progress)
             let series = ClipAutopilotValidator.series(outcome.plans, moments: [], failures: outcome.failures, repairs: [])
             return Self.result(series, replies: outcome.replies, model: outcome.replies.first?.model ?? model, resources: resources)
@@ -198,6 +205,7 @@ public actor ClipAutopilotService {
                     replies[finished.item] = reply
                     plans[finished.item] = plan
                     if plan == nil { failures[finished.item] = "the plan has no words of the clip" }
+                    if let plan { progress?(.ready(clip: finished.item, of: items.count, plan)) }
                     progress?(plan == nil ? .failed(clip: finished.item, of: items.count) : .planned(clip: finished.item, of: items.count))
                 case .failure(let error):
                     if Task.isCancelled || error is CancellationError || (error as? LLMError) == .cancelled {
@@ -232,8 +240,9 @@ public actor ClipAutopilotService {
     /// The second stage's briefs: each moment's rank and the caption styles of the others.
     static func briefs(_ moments: [ClipAutopilotMoment]) -> [ClipAutopilotMomentBrief] {
         moments.enumerated().map { index, moment in
-            ClipAutopilotMomentBrief(rank: index + 1, count: moments.count, moment: moment,
-                                     otherStyles: moments.enumerated().filter { $0.offset != index }.map(\.element.captionStyle))
+            let others = moments.enumerated().filter { $0.offset != index }.map(\.element)
+            return ClipAutopilotMomentBrief(rank: index + 1, count: moments.count, moment: moment,
+                                            otherStyles: others.map(\.captionStyle).filter { !$0.isEmpty }, others: others)
         }
     }
 

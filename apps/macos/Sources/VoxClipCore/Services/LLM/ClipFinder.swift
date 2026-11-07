@@ -1,5 +1,26 @@
 import Foundation
 
+/// One reply item of prompt version 2 (ai.md §11.6): the clip as an inclusive 1-based line range, numbers as received.
+struct ClipLineCandidate: Decodable {
+    let title: String
+    let reason: String
+    let score: Double
+    let startLine: Double
+    let endLine: Double
+
+    private enum CodingKeys: String, CodingKey {
+        case title, reason, score
+        case startLine = "start_line"
+        case endLine = "end_line"
+    }
+
+    /// The finalizer's candidate: the lines' first and last words (`ClipRequestBuilder.wordRange`).
+    func candidate(lines: [TranscriptLine]) -> ClipCandidate {
+        let range = ClipRequestBuilder.wordRange(startLine: startLine, endLine: endLine, lines: lines)
+        return ClipCandidate(title: title, reason: reason, score: score, startWord: range.start, endWord: range.end)
+    }
+}
+
 struct ClipFinderRunSummary: Sendable, Equatable {
     let model: String
     let usedFallback: Bool
@@ -82,7 +103,7 @@ extension ClipFinder {
             fallback = fallback || result.usedFallback
             if result.usedFallback { fallbackModel = result.model }
             answeringModel = result.model
-            let items = try JSONDecoder().decode([ClipCandidate].self, from: result.object[ai: "clips"].aiEncoded())
+            let items = try JSONDecoder().decode([ClipLineCandidate].self, from: result.object[ai: "clips"].aiEncoded()).map { $0.candidate(lines: lines.lines) }
             candidates += items
             let valid = try finalizeClips(items, words: request.transcript.words, preset: ClipPreset(id: request.preset.id, label: request.preset.label, instruction: request.preset.instruction, minSeconds: request.preset.minSeconds, maxSeconds: request.preset.maxSeconds, maxClips: Int.max, noOverlap: false), lines: lines.lines, options: FinalizeClipsOptions(snap: request.snap, limits: prompt.document[ai: "limits"]))
             if let end = valid.map(\.endWord).max() { lastTopicEnd = max(lastTopicEnd ?? -1, end) }
@@ -97,7 +118,7 @@ extension ClipFinder {
             if title.utf16.count < ownText.utf16.count, let space = title.lastIndex(of: " ") { title = String(title[..<space]) }
             suggestions[position].title = AIText.trim(title).isEmpty ? "…" : AIText.trim(title)
         }
-        let block = (prompt.document[ai: "transcriptBlock"][ai: "prefix"].aiString ?? "") + lines.rendered + (prompt.document[ai: "transcriptBlock"][ai: "suffix"].aiString ?? "")
+        let block = builder.sentenceBlock(words: words, lines: lines.lines)
         let instructions = builder.instructions(request.instruction)
         let answered = fallbackModel ?? answeringModel
         let resultModel = (1...128).contains(answered.unicodeScalars.count) ? answered : model

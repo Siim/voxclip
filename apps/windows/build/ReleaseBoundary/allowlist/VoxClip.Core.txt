@@ -756,8 +756,8 @@ literal "eleven_v3"
 literal "eleven_v4"
 literal "eleven_v4_turbo"
 literal "empty_image_file"
+literal "end_line"
 literal "end_time_seconds"
-literal "end_word"
 literal "eval_count"
 literal "failed_to_download_image"
 literal "feature_not_available"
@@ -848,8 +848,8 @@ literal "segments_missing_or_empty"
 literal "similarity_boost"
 literal "speaker_id"
 literal "speech_to_speech"
+literal "start_line"
 literal "start_time_seconds"
-literal "start_word"
 literal "stop_details"
 literal "stop_reason"
 literal "structured_output"
@@ -13509,16 +13509,19 @@ member VoxClip.Core.Services.LLM.ClipFinderRequest :: method public set_Preset(V
 member VoxClip.Core.Services.LLM.ClipFinderRequest :: method public set_Snap(bool)
 member VoxClip.Core.Services.LLM.ClipFinderRequest :: method public set_Words(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>)
 member VoxClip.Core.Services.LLM.ClipPrompts :: method internal Block(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.NumberedLine>,bool)
-member VoxClip.Core.Services.LLM.ClipPrompts :: method internal Instruction(VoxClip.Core.Domain.Clips.ClipPreset,string,double,VoxClip.Core.Domain.Clips.ClipWindow,int,int,System.Nullable`1<int>)
+member VoxClip.Core.Services.LLM.ClipPrompts :: method internal Instruction(VoxClip.Core.Domain.Clips.ClipPreset,string,double,VoxClip.Core.Domain.Clips.ClipWindow,int,int,System.Nullable`1<int>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.NumberedLine>)
 member VoxClip.Core.Services.LLM.ClipPrompts :: method internal Instructions(string)
+member VoxClip.Core.Services.LLM.ClipPrompts :: method internal LineNumber(int,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.NumberedLine>)
 member VoxClip.Core.Services.LLM.ClipPrompts :: method internal Plan(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.NumberedLine>,string,string,double,int,int,bool,bool,string)
 member VoxClip.Core.Services.LLM.ClipPrompts :: method internal Preset(VoxClip.Core.Domain.Clips.ClipPreset)
 member VoxClip.Core.Services.LLM.ClipPrompts :: method internal Request(VoxClip.Core.Services.LLM.ClipFinderRequest,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.NumberedLine>,string,int,int,System.Nullable`1<int>)
 member VoxClip.Core.Services.LLM.ClipPrompts :: method internal Rules(VoxClip.Core.Domain.Clips.ClipPreset)
+member VoxClip.Core.Services.LLM.ClipPrompts :: method internal SentenceBlock(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.ClipWord>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.NumberedLine>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.NumberedLine>)
 member VoxClip.Core.Services.LLM.ClipPrompts :: method internal TightenInstruction(string,string,VoxClip.Core.Domain.Clips.ClipWindow,int)
 member VoxClip.Core.Services.LLM.ClipPrompts :: method internal TightenRequest(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.NumberedLine>,string,string,System.Nullable`1<int>)
 member VoxClip.Core.Services.LLM.ClipPrompts :: method internal WindowClips(VoxClip.Core.Domain.Clips.ClipPreset,int)
 member VoxClip.Core.Services.LLM.ClipPrompts :: method internal Windows(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.NumberedLine>,VoxClip.Core.Domain.Clips.ClipPreset,string,double,int,int)
+member VoxClip.Core.Services.LLM.ClipPrompts :: method internal WordRange(double,double,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.NumberedLine>)
 member VoxClip.Core.Services.LLM.ClipPrompts :: method internal get_Clips()
 member VoxClip.Core.Services.LLM.ClipPrompts :: method internal get_Tighten()
 member VoxClip.Core.Services.LLM.ClipPrompts :: method internal get_ValidationLimits()

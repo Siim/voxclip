@@ -3,7 +3,7 @@
   "id": "connector-requests",
   "origin": "voxclip",
   "sources": {
-    "shared/prompts/clip-finder.json": "4b2c46b55d7d6311e7d84909d38e789d1997ca70c4c00ef3c3581aacb8d364e8",
+    "shared/prompts/clip-finder.json": "0f89bd35783ce785195ac22b394104397f77a52600ae88e0172567945372b0f6",
     "shared/prompts/ai-tighten.json": "1cb479c404416b426bedfbbc937c8fa9614a7ae6511d3aeae0335375e88e0f79",
     "shared/catalog/llm-providers.json": "43c1919e1a9405c0efee49881ff559fbf21b491b87aec895a0beadee7c5f6bc4"
   },
@@ -822,8 +822,8 @@
       "input": {
         "request": {
           "feature": "clipFinder",
-          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
-          "cachedBlock": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>",
+          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "cachedBlock": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>",
           "instruction": "The recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
           "schemaName": "clips",
           "schema": {
@@ -840,8 +840,8 @@
                   "additionalProperties": false,
                   "required": [
                     "title",
-                    "start_word",
-                    "end_word",
+                    "start_line",
+                    "end_line",
                     "reason",
                     "score"
                   ],
@@ -849,10 +849,10 @@
                     "title": {
                       "type": "string"
                     },
-                    "start_word": {
+                    "start_line": {
                       "type": "integer"
                     },
-                    "end_word": {
+                    "end_line": {
                       "type": "integer"
                     },
                     "reason": {
@@ -889,14 +889,14 @@
         "body": {
           "model": "claude-opus-5-5",
           "max_tokens": 16000,
-          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
           "messages": [
             {
               "role": "user",
               "content": [
                 {
                   "type": "text",
-                  "text": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>",
+                  "text": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>",
                   "cache_control": {
                     "type": "ephemeral"
                   }
@@ -926,8 +926,8 @@
                       "additionalProperties": false,
                       "required": [
                         "title",
-                        "start_word",
-                        "end_word",
+                        "start_line",
+                        "end_line",
                         "reason",
                         "score"
                       ],
@@ -935,10 +935,10 @@
                         "title": {
                           "type": "string"
                         },
-                        "start_word": {
+                        "start_line": {
                           "type": "integer"
                         },
-                        "end_word": {
+                        "end_line": {
                           "type": "integer"
                         },
                         "reason": {
@@ -965,8 +965,8 @@
       "input": {
         "request": {
           "feature": "clipFinder",
-          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
-          "cachedBlock": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>",
+          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "cachedBlock": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>",
           "instruction": "The recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
           "schemaName": "clips",
           "schema": {
@@ -983,8 +983,8 @@
                   "additionalProperties": false,
                   "required": [
                     "title",
-                    "start_word",
-                    "end_word",
+                    "start_line",
+                    "end_line",
                     "reason",
                     "score"
                   ],
@@ -992,10 +992,10 @@
                     "title": {
                       "type": "string"
                     },
-                    "start_word": {
+                    "start_line": {
                       "type": "integer"
                     },
-                    "end_word": {
+                    "end_line": {
                       "type": "integer"
                     },
                     "reason": {
@@ -1032,14 +1032,14 @@
         "body": {
           "model": "claude-haiku-5-5",
           "max_tokens": 16000,
-          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
           "messages": [
             {
               "role": "user",
               "content": [
                 {
                   "type": "text",
-                  "text": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>",
+                  "text": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>",
                   "cache_control": {
                     "type": "ephemeral"
                   }
@@ -1069,8 +1069,8 @@
                       "additionalProperties": false,
                       "required": [
                         "title",
-                        "start_word",
-                        "end_word",
+                        "start_line",
+                        "end_line",
                         "reason",
                         "score"
                       ],
@@ -1078,10 +1078,10 @@
                         "title": {
                           "type": "string"
                         },
-                        "start_word": {
+                        "start_line": {
                           "type": "integer"
                         },
-                        "end_word": {
+                        "end_line": {
                           "type": "integer"
                         },
                         "reason": {
@@ -1108,8 +1108,8 @@
       "input": {
         "request": {
           "feature": "clipFinder",
-          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
-          "cachedBlock": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>",
+          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "cachedBlock": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>",
           "instruction": "The recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
           "schemaName": "clips",
           "schema": {
@@ -1126,8 +1126,8 @@
                   "additionalProperties": false,
                   "required": [
                     "title",
-                    "start_word",
-                    "end_word",
+                    "start_line",
+                    "end_line",
                     "reason",
                     "score"
                   ],
@@ -1135,10 +1135,10 @@
                     "title": {
                       "type": "string"
                     },
-                    "start_word": {
+                    "start_line": {
                       "type": "integer"
                     },
-                    "end_word": {
+                    "end_line": {
                       "type": "integer"
                     },
                     "reason": {
@@ -1175,14 +1175,14 @@
         "body": {
           "model": "legacy-model",
           "max_tokens": 16000,
-          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
           "messages": [
             {
               "role": "user",
               "content": [
                 {
                   "type": "text",
-                  "text": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>",
+                  "text": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>",
                   "cache_control": {
                     "type": "ephemeral"
                   }
@@ -1211,8 +1211,8 @@
                       "additionalProperties": false,
                       "required": [
                         "title",
-                        "start_word",
-                        "end_word",
+                        "start_line",
+                        "end_line",
                         "reason",
                         "score"
                       ],
@@ -1220,10 +1220,10 @@
                         "title": {
                           "type": "string"
                         },
-                        "start_word": {
+                        "start_line": {
                           "type": "integer"
                         },
-                        "end_word": {
+                        "end_line": {
                           "type": "integer"
                         },
                         "reason": {
@@ -1250,8 +1250,8 @@
       "input": {
         "request": {
           "feature": "clipFinder",
-          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
-          "cachedBlock": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>",
+          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "cachedBlock": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>",
           "instruction": "The recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
           "schemaName": "clips",
           "schema": {
@@ -1268,8 +1268,8 @@
                   "additionalProperties": false,
                   "required": [
                     "title",
-                    "start_word",
-                    "end_word",
+                    "start_line",
+                    "end_line",
                     "reason",
                     "score"
                   ],
@@ -1277,10 +1277,10 @@
                     "title": {
                       "type": "string"
                     },
-                    "start_word": {
+                    "start_line": {
                       "type": "integer"
                     },
-                    "end_word": {
+                    "end_line": {
                       "type": "integer"
                     },
                     "reason": {
@@ -1318,21 +1318,21 @@
         "body": {
           "model": "custom-model",
           "max_tokens": 16000,
-          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
           "messages": [
             {
               "role": "user",
               "content": [
                 {
                   "type": "text",
-                  "text": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>",
+                  "text": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>",
                   "cache_control": {
                     "type": "ephemeral"
                   }
                 },
                 {
                   "type": "text",
-                  "text": "The recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.\n\nReply with only a JSON object that matches this JSON Schema: {\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"clips\"],\"properties\":{\"clips\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"start_word\",\"end_word\",\"reason\",\"score\"],\"properties\":{\"title\":{\"type\":\"string\"},\"start_word\":{\"type\":\"integer\"},\"end_word\":{\"type\":\"integer\"},\"reason\":{\"type\":\"string\"},\"score\":{\"type\":\"integer\"}}}}}}"
+                  "text": "The recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.\n\nReply with only a JSON object that matches this JSON Schema: {\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"clips\"],\"properties\":{\"clips\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"start_line\",\"end_line\",\"reason\",\"score\"],\"properties\":{\"title\":{\"type\":\"string\"},\"start_line\":{\"type\":\"integer\"},\"end_line\":{\"type\":\"integer\"},\"reason\":{\"type\":\"string\"},\"score\":{\"type\":\"integer\"}}}}}}"
                 }
               ]
             }
@@ -1349,8 +1349,8 @@
       "input": {
         "request": {
           "feature": "clipFinder",
-          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
-          "cachedBlock": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>",
+          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "cachedBlock": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>",
           "instruction": "The recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
           "schemaName": "clips",
           "schema": {
@@ -1367,8 +1367,8 @@
                   "additionalProperties": false,
                   "required": [
                     "title",
-                    "start_word",
-                    "end_word",
+                    "start_line",
+                    "end_line",
                     "reason",
                     "score"
                   ],
@@ -1376,10 +1376,10 @@
                     "title": {
                       "type": "string"
                     },
-                    "start_word": {
+                    "start_line": {
                       "type": "integer"
                     },
-                    "end_word": {
+                    "end_line": {
                       "type": "integer"
                     },
                     "reason": {
@@ -1416,14 +1416,14 @@
         "body": {
           "model": "claude-fable-5-custom",
           "max_tokens": 16000,
-          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
           "messages": [
             {
               "role": "user",
               "content": [
                 {
                   "type": "text",
-                  "text": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>",
+                  "text": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>",
                   "cache_control": {
                     "type": "ephemeral"
                   }
@@ -1453,8 +1453,8 @@
                       "additionalProperties": false,
                       "required": [
                         "title",
-                        "start_word",
-                        "end_word",
+                        "start_line",
+                        "end_line",
                         "reason",
                         "score"
                       ],
@@ -1462,10 +1462,10 @@
                         "title": {
                           "type": "string"
                         },
-                        "start_word": {
+                        "start_line": {
                           "type": "integer"
                         },
-                        "end_word": {
+                        "end_line": {
                           "type": "integer"
                         },
                         "reason": {
@@ -1492,8 +1492,8 @@
       "input": {
         "request": {
           "feature": "clipFinder",
-          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
-          "cachedBlock": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>",
+          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "cachedBlock": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>",
           "instruction": "The recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
           "schemaName": "clips",
           "schema": {
@@ -1510,8 +1510,8 @@
                   "additionalProperties": false,
                   "required": [
                     "title",
-                    "start_word",
-                    "end_word",
+                    "start_line",
+                    "end_line",
                     "reason",
                     "score"
                   ],
@@ -1519,10 +1519,10 @@
                     "title": {
                       "type": "string"
                     },
-                    "start_word": {
+                    "start_line": {
                       "type": "integer"
                     },
-                    "end_word": {
+                    "end_line": {
                       "type": "integer"
                     },
                     "reason": {
@@ -1560,14 +1560,14 @@
         "body": {
           "model": "discovered-model",
           "max_tokens": 16000,
-          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
           "messages": [
             {
               "role": "user",
               "content": [
                 {
                   "type": "text",
-                  "text": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>",
+                  "text": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>",
                   "cache_control": {
                     "type": "ephemeral"
                   }
@@ -1597,8 +1597,8 @@
                       "additionalProperties": false,
                       "required": [
                         "title",
-                        "start_word",
-                        "end_word",
+                        "start_line",
+                        "end_line",
                         "reason",
                         "score"
                       ],
@@ -1606,10 +1606,10 @@
                         "title": {
                           "type": "string"
                         },
-                        "start_word": {
+                        "start_line": {
                           "type": "integer"
                         },
-                        "end_word": {
+                        "end_line": {
                           "type": "integer"
                         },
                         "reason": {
@@ -1636,8 +1636,8 @@
       "input": {
         "request": {
           "feature": "clipFinder",
-          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
-          "cachedBlock": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>",
+          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "cachedBlock": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>",
           "instruction": "The recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
           "schemaName": "clips",
           "schema": {
@@ -1654,8 +1654,8 @@
                   "additionalProperties": false,
                   "required": [
                     "title",
-                    "start_word",
-                    "end_word",
+                    "start_line",
+                    "end_line",
                     "reason",
                     "score"
                   ],
@@ -1663,10 +1663,10 @@
                     "title": {
                       "type": "string"
                     },
-                    "start_word": {
+                    "start_line": {
                       "type": "integer"
                     },
-                    "end_word": {
+                    "end_line": {
                       "type": "integer"
                     },
                     "reason": {
@@ -1701,14 +1701,14 @@
         },
         "body": {
           "model": "gpt-4.1",
-          "instructions": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "instructions": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
           "input": [
             {
               "role": "user",
               "content": [
                 {
                   "type": "input_text",
-                  "text": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>"
+                  "text": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>"
                 },
                 {
                   "type": "input_text",
@@ -1736,8 +1736,8 @@
                       "additionalProperties": false,
                       "required": [
                         "title",
-                        "start_word",
-                        "end_word",
+                        "start_line",
+                        "end_line",
                         "reason",
                         "score"
                       ],
@@ -1745,10 +1745,10 @@
                         "title": {
                           "type": "string"
                         },
-                        "start_word": {
+                        "start_line": {
                           "type": "integer"
                         },
-                        "end_word": {
+                        "end_line": {
                           "type": "integer"
                         },
                         "reason": {
@@ -1766,7 +1766,7 @@
           },
           "max_output_tokens": 16000,
           "store": false,
-          "prompt_cache_key": "voxclip-61bc1853ea7b637c"
+          "prompt_cache_key": "voxclip-5f613c68be45fdac"
         }
       }
     },
@@ -1778,8 +1778,8 @@
       "input": {
         "request": {
           "feature": "clipFinder",
-          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
-          "cachedBlock": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>",
+          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "cachedBlock": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>",
           "instruction": "The recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
           "schemaName": "clips",
           "schema": {
@@ -1796,8 +1796,8 @@
                   "additionalProperties": false,
                   "required": [
                     "title",
-                    "start_word",
-                    "end_word",
+                    "start_line",
+                    "end_line",
                     "reason",
                     "score"
                   ],
@@ -1805,10 +1805,10 @@
                     "title": {
                       "type": "string"
                     },
-                    "start_word": {
+                    "start_line": {
                       "type": "integer"
                     },
-                    "end_word": {
+                    "end_line": {
                       "type": "integer"
                     },
                     "reason": {
@@ -1843,14 +1843,14 @@
         },
         "body": {
           "model": "o3-custom",
-          "instructions": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "instructions": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
           "input": [
             {
               "role": "user",
               "content": [
                 {
                   "type": "input_text",
-                  "text": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>"
+                  "text": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>"
                 },
                 {
                   "type": "input_text",
@@ -1878,8 +1878,8 @@
                       "additionalProperties": false,
                       "required": [
                         "title",
-                        "start_word",
-                        "end_word",
+                        "start_line",
+                        "end_line",
                         "reason",
                         "score"
                       ],
@@ -1887,10 +1887,10 @@
                         "title": {
                           "type": "string"
                         },
-                        "start_word": {
+                        "start_line": {
                           "type": "integer"
                         },
-                        "end_word": {
+                        "end_line": {
                           "type": "integer"
                         },
                         "reason": {
@@ -1911,7 +1911,7 @@
             "effort": "high"
           },
           "store": false,
-          "prompt_cache_key": "voxclip-61bc1853ea7b637c"
+          "prompt_cache_key": "voxclip-5f613c68be45fdac"
         }
       }
     },
@@ -1923,8 +1923,8 @@
       "input": {
         "request": {
           "feature": "clipFinder",
-          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
-          "cachedBlock": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>",
+          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "cachedBlock": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>",
           "instruction": "The recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
           "schemaName": "clips",
           "schema": {
@@ -1941,8 +1941,8 @@
                   "additionalProperties": false,
                   "required": [
                     "title",
-                    "start_word",
-                    "end_word",
+                    "start_line",
+                    "end_line",
                     "reason",
                     "score"
                   ],
@@ -1950,10 +1950,10 @@
                     "title": {
                       "type": "string"
                     },
-                    "start_word": {
+                    "start_line": {
                       "type": "integer"
                     },
-                    "end_word": {
+                    "end_line": {
                       "type": "integer"
                     },
                     "reason": {
@@ -1990,7 +1990,7 @@
           "systemInstruction": {
             "parts": [
               {
-                "text": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list."
+                "text": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list."
               }
             ]
           },
@@ -1999,7 +1999,7 @@
               "role": "user",
               "parts": [
                 {
-                  "text": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>"
+                  "text": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>"
                 },
                 {
                   "text": "The recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long."
@@ -2024,8 +2024,8 @@
                     "additionalProperties": false,
                     "required": [
                       "title",
-                      "start_word",
-                      "end_word",
+                      "start_line",
+                      "end_line",
                       "reason",
                       "score"
                     ],
@@ -2033,10 +2033,10 @@
                       "title": {
                         "type": "string"
                       },
-                      "start_word": {
+                      "start_line": {
                         "type": "integer"
                       },
-                      "end_word": {
+                      "end_line": {
                         "type": "integer"
                       },
                       "reason": {
@@ -2062,8 +2062,8 @@
       "input": {
         "request": {
           "feature": "clipFinder",
-          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
-          "cachedBlock": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>",
+          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "cachedBlock": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>",
           "instruction": "The recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
           "schemaName": "clips",
           "schema": {
@@ -2080,8 +2080,8 @@
                   "additionalProperties": false,
                   "required": [
                     "title",
-                    "start_word",
-                    "end_word",
+                    "start_line",
+                    "end_line",
                     "reason",
                     "score"
                   ],
@@ -2089,10 +2089,10 @@
                     "title": {
                       "type": "string"
                     },
-                    "start_word": {
+                    "start_line": {
                       "type": "integer"
                     },
-                    "end_word": {
+                    "end_line": {
                       "type": "integer"
                     },
                     "reason": {
@@ -2129,7 +2129,7 @@
           "systemInstruction": {
             "parts": [
               {
-                "text": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list."
+                "text": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list."
               }
             ]
           },
@@ -2138,7 +2138,7 @@
               "role": "user",
               "parts": [
                 {
-                  "text": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>"
+                  "text": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>"
                 },
                 {
                   "text": "The recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long."
@@ -2163,8 +2163,8 @@
                     "additionalProperties": false,
                     "required": [
                       "title",
-                      "start_word",
-                      "end_word",
+                      "start_line",
+                      "end_line",
                       "reason",
                       "score"
                     ],
@@ -2172,10 +2172,10 @@
                       "title": {
                         "type": "string"
                       },
-                      "start_word": {
+                      "start_line": {
                         "type": "integer"
                       },
-                      "end_word": {
+                      "end_line": {
                         "type": "integer"
                       },
                       "reason": {
@@ -2201,8 +2201,8 @@
       "input": {
         "request": {
           "feature": "clipFinder",
-          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
-          "cachedBlock": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>",
+          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "cachedBlock": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>",
           "instruction": "The recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
           "schemaName": "clips",
           "schema": {
@@ -2219,8 +2219,8 @@
                   "additionalProperties": false,
                   "required": [
                     "title",
-                    "start_word",
-                    "end_word",
+                    "start_line",
+                    "end_line",
                     "reason",
                     "score"
                   ],
@@ -2228,10 +2228,10 @@
                     "title": {
                       "type": "string"
                     },
-                    "start_word": {
+                    "start_line": {
                       "type": "integer"
                     },
-                    "end_word": {
+                    "end_line": {
                       "type": "integer"
                     },
                     "reason": {
@@ -2274,11 +2274,11 @@
           "messages": [
             {
               "role": "system",
-              "content": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list."
+              "content": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list."
             },
             {
               "role": "user",
-              "content": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>\n\nThe recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long."
+              "content": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>\n\nThe recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long."
             }
           ],
           "format": {
@@ -2295,8 +2295,8 @@
                   "additionalProperties": false,
                   "required": [
                     "title",
-                    "start_word",
-                    "end_word",
+                    "start_line",
+                    "end_line",
                     "reason",
                     "score"
                   ],
@@ -2304,10 +2304,10 @@
                     "title": {
                       "type": "string"
                     },
-                    "start_word": {
+                    "start_line": {
                       "type": "integer"
                     },
-                    "end_word": {
+                    "end_line": {
                       "type": "integer"
                     },
                     "reason": {
@@ -2338,8 +2338,8 @@
       "input": {
         "request": {
           "feature": "clipFinder",
-          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
-          "cachedBlock": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>",
+          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "cachedBlock": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>",
           "instruction": "The recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
           "schemaName": "clips",
           "schema": {
@@ -2356,8 +2356,8 @@
                   "additionalProperties": false,
                   "required": [
                     "title",
-                    "start_word",
-                    "end_word",
+                    "start_line",
+                    "end_line",
                     "reason",
                     "score"
                   ],
@@ -2365,10 +2365,10 @@
                     "title": {
                       "type": "string"
                     },
-                    "start_word": {
+                    "start_line": {
                       "type": "integer"
                     },
-                    "end_word": {
+                    "end_line": {
                       "type": "integer"
                     },
                     "reason": {
@@ -2416,11 +2416,11 @@
           "messages": [
             {
               "role": "system",
-              "content": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list."
+              "content": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list."
             },
             {
               "role": "user",
-              "content": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>\n\nThe recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long."
+              "content": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>\n\nThe recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long."
             }
           ],
           "format": {
@@ -2437,8 +2437,8 @@
                   "additionalProperties": false,
                   "required": [
                     "title",
-                    "start_word",
-                    "end_word",
+                    "start_line",
+                    "end_line",
                     "reason",
                     "score"
                   ],
@@ -2446,10 +2446,10 @@
                     "title": {
                       "type": "string"
                     },
-                    "start_word": {
+                    "start_line": {
                       "type": "integer"
                     },
-                    "end_word": {
+                    "end_line": {
                       "type": "integer"
                     },
                     "reason": {
@@ -2481,8 +2481,8 @@
       "input": {
         "request": {
           "feature": "clipFinder",
-          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
-          "cachedBlock": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>",
+          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "cachedBlock": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>",
           "instruction": "The recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
           "schemaName": "clips",
           "schema": {
@@ -2499,8 +2499,8 @@
                   "additionalProperties": false,
                   "required": [
                     "title",
-                    "start_word",
-                    "end_word",
+                    "start_line",
+                    "end_line",
                     "reason",
                     "score"
                   ],
@@ -2508,10 +2508,10 @@
                     "title": {
                       "type": "string"
                     },
-                    "start_word": {
+                    "start_line": {
                       "type": "integer"
                     },
-                    "end_word": {
+                    "end_line": {
                       "type": "integer"
                     },
                     "reason": {
@@ -2558,11 +2558,11 @@
           "messages": [
             {
               "role": "system",
-              "content": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list."
+              "content": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list."
             },
             {
               "role": "user",
-              "content": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>\n\nThe recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long."
+              "content": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>\n\nThe recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long."
             }
           ],
           "format": {
@@ -2579,8 +2579,8 @@
                   "additionalProperties": false,
                   "required": [
                     "title",
-                    "start_word",
-                    "end_word",
+                    "start_line",
+                    "end_line",
                     "reason",
                     "score"
                   ],
@@ -2588,10 +2588,10 @@
                     "title": {
                       "type": "string"
                     },
-                    "start_word": {
+                    "start_line": {
                       "type": "integer"
                     },
-                    "end_word": {
+                    "end_line": {
                       "type": "integer"
                     },
                     "reason": {
@@ -2623,8 +2623,8 @@
       "input": {
         "request": {
           "feature": "clipFinder",
-          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
-          "cachedBlock": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>",
+          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "cachedBlock": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>",
           "instruction": "The recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
           "schemaName": "clips",
           "schema": {
@@ -2641,8 +2641,8 @@
                   "additionalProperties": false,
                   "required": [
                     "title",
-                    "start_word",
-                    "end_word",
+                    "start_line",
+                    "end_line",
                     "reason",
                     "score"
                   ],
@@ -2650,10 +2650,10 @@
                     "title": {
                       "type": "string"
                     },
-                    "start_word": {
+                    "start_line": {
                       "type": "integer"
                     },
-                    "end_word": {
+                    "end_line": {
                       "type": "integer"
                     },
                     "reason": {
@@ -2700,11 +2700,11 @@
           "messages": [
             {
               "role": "system",
-              "content": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list."
+              "content": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list."
             },
             {
               "role": "user",
-              "content": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>\n\nThe recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long."
+              "content": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>\n\nThe recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long."
             }
           ],
           "format": {
@@ -2721,8 +2721,8 @@
                   "additionalProperties": false,
                   "required": [
                     "title",
-                    "start_word",
-                    "end_word",
+                    "start_line",
+                    "end_line",
                     "reason",
                     "score"
                   ],
@@ -2730,10 +2730,10 @@
                     "title": {
                       "type": "string"
                     },
-                    "start_word": {
+                    "start_line": {
                       "type": "integer"
                     },
-                    "end_word": {
+                    "end_line": {
                       "type": "integer"
                     },
                     "reason": {
@@ -2764,8 +2764,8 @@
       "input": {
         "request": {
           "feature": "clipFinder",
-          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
-          "cachedBlock": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>",
+          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "cachedBlock": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>",
           "instruction": "The recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
           "schemaName": "clips",
           "schema": {
@@ -2782,8 +2782,8 @@
                   "additionalProperties": false,
                   "required": [
                     "title",
-                    "start_word",
-                    "end_word",
+                    "start_line",
+                    "end_line",
                     "reason",
                     "score"
                   ],
@@ -2791,10 +2791,10 @@
                     "title": {
                       "type": "string"
                     },
-                    "start_word": {
+                    "start_line": {
                       "type": "integer"
                     },
-                    "end_word": {
+                    "end_line": {
                       "type": "integer"
                     },
                     "reason": {
@@ -2841,11 +2841,11 @@
           "messages": [
             {
               "role": "system",
-              "content": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list."
+              "content": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list."
             },
             {
               "role": "user",
-              "content": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>\n\nThe recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long."
+              "content": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>\n\nThe recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long."
             }
           ],
           "format": {
@@ -2862,8 +2862,8 @@
                   "additionalProperties": false,
                   "required": [
                     "title",
-                    "start_word",
-                    "end_word",
+                    "start_line",
+                    "end_line",
                     "reason",
                     "score"
                   ],
@@ -2871,10 +2871,10 @@
                     "title": {
                       "type": "string"
                     },
-                    "start_word": {
+                    "start_line": {
                       "type": "integer"
                     },
-                    "end_word": {
+                    "end_line": {
                       "type": "integer"
                     },
                     "reason": {
@@ -2906,8 +2906,8 @@
       "input": {
         "request": {
           "feature": "clipFinder",
-          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
-          "cachedBlock": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>",
+          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "cachedBlock": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>",
           "instruction": "The recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
           "schemaName": "clips",
           "schema": {
@@ -2924,8 +2924,8 @@
                   "additionalProperties": false,
                   "required": [
                     "title",
-                    "start_word",
-                    "end_word",
+                    "start_line",
+                    "end_line",
                     "reason",
                     "score"
                   ],
@@ -2933,10 +2933,10 @@
                     "title": {
                       "type": "string"
                     },
-                    "start_word": {
+                    "start_line": {
                       "type": "integer"
                     },
-                    "end_word": {
+                    "end_line": {
                       "type": "integer"
                     },
                     "reason": {
@@ -2976,11 +2976,11 @@
           "messages": [
             {
               "role": "system",
-              "content": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list."
+              "content": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list."
             },
             {
               "role": "user",
-              "content": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>\n\nThe recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long."
+              "content": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>\n\nThe recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long."
             }
           ],
           "response_format": {
@@ -3002,8 +3002,8 @@
                       "additionalProperties": false,
                       "required": [
                         "title",
-                        "start_word",
-                        "end_word",
+                        "start_line",
+                        "end_line",
                         "reason",
                         "score"
                       ],
@@ -3011,10 +3011,10 @@
                         "title": {
                           "type": "string"
                         },
-                        "start_word": {
+                        "start_line": {
                           "type": "integer"
                         },
-                        "end_word": {
+                        "end_line": {
                           "type": "integer"
                         },
                         "reason": {
@@ -3041,8 +3041,8 @@
       "input": {
         "request": {
           "feature": "clipFinder",
-          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
-          "cachedBlock": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>",
+          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "cachedBlock": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>",
           "instruction": "The recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
           "schemaName": "clips",
           "schema": {
@@ -3059,8 +3059,8 @@
                   "additionalProperties": false,
                   "required": [
                     "title",
-                    "start_word",
-                    "end_word",
+                    "start_line",
+                    "end_line",
                     "reason",
                     "score"
                   ],
@@ -3068,10 +3068,10 @@
                     "title": {
                       "type": "string"
                     },
-                    "start_word": {
+                    "start_line": {
                       "type": "integer"
                     },
-                    "end_word": {
+                    "end_line": {
                       "type": "integer"
                     },
                     "reason": {
@@ -3101,9 +3101,9 @@
         "timeoutSeconds": 120,
         "session": {
           "fresh": true,
-          "instructions": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list."
+          "instructions": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list."
         },
-        "prompt": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>\n\nThe recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
+        "prompt": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>\n\nThe recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
         "schema": {
           "root": {
             "name": "clips",
@@ -3122,14 +3122,14 @@
                         "isOptional": false
                       },
                       {
-                        "name": "start_word",
+                        "name": "start_line",
                         "schema": {
                           "type": "Int"
                         },
                         "isOptional": false
                       },
                       {
-                        "name": "end_word",
+                        "name": "end_line",
                         "schema": {
                           "type": "Int"
                         },
@@ -3174,8 +3174,8 @@
       "input": {
         "request": {
           "feature": "clipFinder",
-          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
-          "cachedBlock": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>",
+          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "cachedBlock": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>",
           "instruction": "The recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
           "schemaName": "clips",
           "schema": {
@@ -3192,8 +3192,8 @@
                   "additionalProperties": false,
                   "required": [
                     "title",
-                    "start_word",
-                    "end_word",
+                    "start_line",
+                    "end_line",
                     "reason",
                     "score"
                   ],
@@ -3201,10 +3201,10 @@
                     "title": {
                       "type": "string"
                     },
-                    "start_word": {
+                    "start_line": {
                       "type": "integer"
                     },
-                    "end_word": {
+                    "end_line": {
                       "type": "integer"
                     },
                     "reason": {
@@ -3247,15 +3247,15 @@
           "--output-format",
           "json",
           "--json-schema",
-          "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"clips\"],\"properties\":{\"clips\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"start_word\",\"end_word\",\"reason\",\"score\"],\"properties\":{\"title\":{\"type\":\"string\"},\"start_word\":{\"type\":\"integer\"},\"end_word\":{\"type\":\"integer\"},\"reason\":{\"type\":\"string\"},\"score\":{\"type\":\"integer\"}}}}}}",
+          "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"clips\"],\"properties\":{\"clips\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"start_line\",\"end_line\",\"reason\",\"score\"],\"properties\":{\"title\":{\"type\":\"string\"},\"start_line\":{\"type\":\"integer\"},\"end_line\":{\"type\":\"integer\"},\"reason\":{\"type\":\"string\"},\"score\":{\"type\":\"integer\"}}}}}}",
           "--system-prompt",
-          "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
           "--tools",
           "",
           "--no-session-persistence",
           "--safe-mode"
         ],
-        "stdin": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>\n\nThe recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
+        "stdin": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>\n\nThe recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
         "cwd": "<cwd>",
         "files": {}
       }
@@ -3268,8 +3268,8 @@
       "input": {
         "request": {
           "feature": "clipFinder",
-          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
-          "cachedBlock": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>",
+          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "cachedBlock": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>",
           "instruction": "The recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
           "schemaName": "clips",
           "schema": {
@@ -3286,8 +3286,8 @@
                   "additionalProperties": false,
                   "required": [
                     "title",
-                    "start_word",
-                    "end_word",
+                    "start_line",
+                    "end_line",
                     "reason",
                     "score"
                   ],
@@ -3295,10 +3295,10 @@
                     "title": {
                       "type": "string"
                     },
-                    "start_word": {
+                    "start_line": {
                       "type": "integer"
                     },
-                    "end_word": {
+                    "end_line": {
                       "type": "integer"
                     },
                     "reason": {
@@ -3376,7 +3376,7 @@
           "-c",
           "mcp_servers={}",
           "-c",
-          "developer_instructions=\"You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\\n\\nThe transcript is given as numbered lines. \\\"[12-37] 0:05\\\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \\\"(pause 2.3s)\\\" marks a silence.\\n\\nHow to choose a clip:\\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\\\"so\\\", \\\"and\\\", \\\"that\\\", \\\"like I said\\\") unless the clip still makes sense.\\n- End where the thought lands, normally at the end of a line.\\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\\n- reason: one sentence on why the clip works as a standalone post.\\n- score: 1 to 10, how strong the clip is as a standalone post.\\n- Never invent content. If nothing fits the request, return an empty list.\"",
+          "developer_instructions=\"You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\\n\\nThe transcript is given as numbered lines, one sentence or phrase each. \\\"12 0:05\\\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\\n\\nHow to choose a clip:\\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\\\"so\\\", \\\"and\\\", \\\"that\\\", \\\"like I said\\\") unless the clip still makes sense.\\n- End where the thought lands, at the end of a line.\\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\\n- reason: one sentence on why the clip works as a standalone post.\\n- score: 1 to 10, how strong the clip is as a standalone post.\\n- Never invent content. If nothing fits the request, return an empty list.\"",
           "--disable",
           "shell_tool",
           "--disable",
@@ -3401,10 +3401,10 @@
           "<io>/last.json",
           "-"
         ],
-        "stdin": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>\n\nThe recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
+        "stdin": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>\n\nThe recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
         "cwd": "<cwd>",
         "files": {
-          "<io>/schema.json": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"clips\"],\"properties\":{\"clips\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"start_word\",\"end_word\",\"reason\",\"score\"],\"properties\":{\"title\":{\"type\":\"string\"},\"start_word\":{\"type\":\"integer\"},\"end_word\":{\"type\":\"integer\"},\"reason\":{\"type\":\"string\"},\"score\":{\"type\":\"integer\"}}}}}}"
+          "<io>/schema.json": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"clips\"],\"properties\":{\"clips\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"start_line\",\"end_line\",\"reason\",\"score\"],\"properties\":{\"title\":{\"type\":\"string\"},\"start_line\":{\"type\":\"integer\"},\"end_line\":{\"type\":\"integer\"},\"reason\":{\"type\":\"string\"},\"score\":{\"type\":\"integer\"}}}}}}"
         }
       }
     },
@@ -3416,8 +3416,8 @@
       "input": {
         "request": {
           "feature": "clipFinder",
-          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
-          "cachedBlock": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>",
+          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "cachedBlock": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>",
           "instruction": "The recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
           "schemaName": "clips",
           "schema": {
@@ -3434,8 +3434,8 @@
                   "additionalProperties": false,
                   "required": [
                     "title",
-                    "start_word",
-                    "end_word",
+                    "start_line",
+                    "end_line",
                     "reason",
                     "score"
                   ],
@@ -3443,10 +3443,10 @@
                     "title": {
                       "type": "string"
                     },
-                    "start_word": {
+                    "start_line": {
                       "type": "integer"
                     },
-                    "end_word": {
+                    "end_line": {
                       "type": "integer"
                     },
                     "reason": {
@@ -3522,7 +3522,7 @@
           "-c",
           "mcp_servers={}",
           "-c",
-          "developer_instructions=\"You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\\n\\nThe transcript is given as numbered lines. \\\"[12-37] 0:05\\\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \\\"(pause 2.3s)\\\" marks a silence.\\n\\nHow to choose a clip:\\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\\\"so\\\", \\\"and\\\", \\\"that\\\", \\\"like I said\\\") unless the clip still makes sense.\\n- End where the thought lands, normally at the end of a line.\\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\\n- reason: one sentence on why the clip works as a standalone post.\\n- score: 1 to 10, how strong the clip is as a standalone post.\\n- Never invent content. If nothing fits the request, return an empty list.\"",
+          "developer_instructions=\"You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\\n\\nThe transcript is given as numbered lines, one sentence or phrase each. \\\"12 0:05\\\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\\n\\nHow to choose a clip:\\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\\\"so\\\", \\\"and\\\", \\\"that\\\", \\\"like I said\\\") unless the clip still makes sense.\\n- End where the thought lands, at the end of a line.\\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\\n- reason: one sentence on why the clip works as a standalone post.\\n- score: 1 to 10, how strong the clip is as a standalone post.\\n- Never invent content. If nothing fits the request, return an empty list.\"",
           "--disable",
           "shell_tool",
           "--disable",
@@ -3547,10 +3547,10 @@
           "<io>/last.json",
           "-"
         ],
-        "stdin": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>\n\nThe recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
+        "stdin": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>\n\nThe recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
         "cwd": "<cwd>",
         "files": {
-          "<io>/schema.json": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"clips\"],\"properties\":{\"clips\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"start_word\",\"end_word\",\"reason\",\"score\"],\"properties\":{\"title\":{\"type\":\"string\"},\"start_word\":{\"type\":\"integer\"},\"end_word\":{\"type\":\"integer\"},\"reason\":{\"type\":\"string\"},\"score\":{\"type\":\"integer\"}}}}}}"
+          "<io>/schema.json": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"clips\"],\"properties\":{\"clips\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"start_line\",\"end_line\",\"reason\",\"score\"],\"properties\":{\"title\":{\"type\":\"string\"},\"start_line\":{\"type\":\"integer\"},\"end_line\":{\"type\":\"integer\"},\"reason\":{\"type\":\"string\"},\"score\":{\"type\":\"integer\"}}}}}}"
         }
       }
     },
@@ -3562,8 +3562,8 @@
       "input": {
         "request": {
           "feature": "clipFinder",
-          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines. \"[12-37] 0:05\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \"(pause 2.3s)\" marks a silence.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, normally at the end of a line.\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
-          "cachedBlock": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>",
+          "system": "You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\n\nThe transcript is given as numbered lines, one sentence or phrase each. \"12 0:05\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\n\nHow to choose a clip:\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\"so\", \"and\", \"that\", \"like I said\") unless the clip still makes sense.\n- End where the thought lands, at the end of a line.\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\n- reason: one sentence on why the clip works as a standalone post.\n- score: 1 to 10, how strong the clip is as a standalone post.\n- Never invent content. If nothing fits the request, return an empty list.",
+          "cachedBlock": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>",
           "instruction": "The recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
           "schemaName": "clips",
           "schema": {
@@ -3580,8 +3580,8 @@
                   "additionalProperties": false,
                   "required": [
                     "title",
-                    "start_word",
-                    "end_word",
+                    "start_line",
+                    "end_line",
                     "reason",
                     "score"
                   ],
@@ -3589,10 +3589,10 @@
                     "title": {
                       "type": "string"
                     },
-                    "start_word": {
+                    "start_line": {
                       "type": "integer"
                     },
-                    "end_word": {
+                    "end_line": {
                       "type": "integer"
                     },
                     "reason": {
@@ -3663,7 +3663,7 @@
           "-c",
           "mcp_servers={}",
           "-c",
-          "developer_instructions=\"You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\\n\\nThe transcript is given as numbered lines. \\\"[12-37] 0:05\\\" means the line contains words 12 to 37 and starts 5 seconds into the recording. \\\"(pause 2.3s)\\\" marks a silence.\\n\\nHow to choose a clip:\\n- Start where a thought starts, never mid-sentence, and not on a word that points back to something earlier (\\\"so\\\", \\\"and\\\", \\\"that\\\", \\\"like I said\\\") unless the clip still makes sense.\\n- End where the thought lands, normally at the end of a line.\\n- start_word and end_word are inclusive word numbers from the transcript. Use only numbers that appear in it.\\n- Respect the requested clip length; the times in the transcript tell you how long a range is.\\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\\n- reason: one sentence on why the clip works as a standalone post.\\n- score: 1 to 10, how strong the clip is as a standalone post.\\n- Never invent content. If nothing fits the request, return an empty list.\"",
+          "developer_instructions=\"You choose clips from a spoken recording. Each clip is published as its own post, so it has to make sense to someone who never heard the rest of the recording.\\n\\nThe transcript is given as numbered lines, one sentence or phrase each. \\\"12 0:05\\\" starts line 12, which begins 5 seconds into the recording; a line ends where the next one begins.\\n\\nHow to choose a clip:\\n- Start where a thought starts, never mid-sentence, and not on a line that starts with a word pointing back to something earlier (\\\"so\\\", \\\"and\\\", \\\"that\\\", \\\"like I said\\\") unless the clip still makes sense.\\n- End where the thought lands, at the end of a line.\\n- start_line and end_line are inclusive line numbers from the transcript. Use only numbers that appear in it.\\n- Respect the requested clip length; the start times of the lines tell you how long a range is.\\n- title: a short, plain headline in the speaker's language. No hashtags, no emoji, no quotation marks.\\n- reason: one sentence on why the clip works as a standalone post.\\n- score: 1 to 10, how strong the clip is as a standalone post.\\n- Never invent content. If nothing fits the request, return an empty list.\"",
           "--disable",
           "shell_tool",
           "--output-schema",
@@ -3672,10 +3672,10 @@
           "<io>/last.json",
           "-"
         ],
-        "stdin": "<transcript>\n[0-5] 0:00 So, today I want to talk.\n(pause 2.3s)\n[6-10] 0:03 Um why cut by words?\n[11-12] 0:05 \"It works.\"\n[13-15] 0:07 Fast and clean\n(pause 61.5s)\n[16-16] 1:10 Tere!\n[17-18] 1:10 Mis toimub?\n[19-59] 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n[60-65] 1:23 w60 w61 w62 w63 w64 w65\n(pause 114.5s)\n[66-66] 3:20 end.\n</transcript>\n\nThe recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
+        "stdin": "<transcript>\n1 0:00 So, today I want to talk.\n2 0:03 Um why cut by words?\n3 0:05 \"It works.\"\n4 0:07 Fast and clean\n5 1:10 Tere!\n6 1:10 Mis toimub?\n7 1:11 「本当 です。」 w21 w22 w23 w24 w25 w26 w27 w28 w29 w30 w31 w32 w33 w34 w35 w36 w37 w38 w39 w40 w41 w42 w43 w44 w45 w46 w47 w48 w49 w50 w51 w52 w53 w54 w55 w56 w57 w58 w59\n8 1:23 w60 w61 w62 w63 w64 w65\n9 3:20 end.\n</transcript>\n\nThe recording is 3:20 long.\nFind the 3 to 5 strongest moments. Each clip should be 20 to 60 seconds long.",
         "cwd": "<cwd>",
         "files": {
-          "<io>/schema.json": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"clips\"],\"properties\":{\"clips\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"start_word\",\"end_word\",\"reason\",\"score\"],\"properties\":{\"title\":{\"type\":\"string\"},\"start_word\":{\"type\":\"integer\"},\"end_word\":{\"type\":\"integer\"},\"reason\":{\"type\":\"string\"},\"score\":{\"type\":\"integer\"}}}}}}"
+          "<io>/schema.json": "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"clips\"],\"properties\":{\"clips\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"start_line\",\"end_line\",\"reason\",\"score\"],\"properties\":{\"title\":{\"type\":\"string\"},\"start_line\":{\"type\":\"integer\"},\"end_line\":{\"type\":\"integer\"},\"reason\":{\"type\":\"string\"},\"score\":{\"type\":\"integer\"}}}}}}"
         }
       }
     },

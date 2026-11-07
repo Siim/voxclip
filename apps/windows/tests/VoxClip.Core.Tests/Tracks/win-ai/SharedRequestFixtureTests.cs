@@ -48,7 +48,7 @@ public sealed partial class SharedFixtureTests
         else
         {
             var preset = Enum.Parse<ClipPreset>(choice, true);
-            var instruction = prompts.Instruction(preset, instructions, Entries(source)[^1].End, window, count, windowInfo is null ? 0 : Integer(windowInfo, "maxClips"), windowInfo?["lastEnd"]?.GetValue<int>());
+            var instruction = prompts.Instruction(preset, instructions, Entries(source)[^1].End, window, count, windowInfo is null ? 0 : Integer(windowInfo, "maxClips"), windowInfo?["lastEnd"]?.GetValue<int>(), fullLines);
             request = prompts.Request(new(WordsFrom(source), new Dictionary<string, string>(), new HashSet<string>(), preset, instructions, input["language"]?.GetValue<string>(), ConnectorId.OpenAI, "model"), selected, instruction, windowInfo is null ? 1 : Integer(windowInfo, "index") + 1, count);
         }
         EqualJson(expected["request"], Canonical(request));

@@ -38,6 +38,15 @@ Mac only (ADR-R48, ai.md §19). Shared changes Windows reads: `shared/catalog/ll
 
 - **Windows owes** the twin: `LlmRequest.Images` and `SupportsImages` with the same wires (ai.md §19.3), the analyzer (Windows `FaceDetector` has no landmarks or capture quality), the pure decisions with shared vectors, the frame sheet and `analyze-frames`.
 
+### 2026-11-07 — Windows: Find Clips' compact sentence-line transcript (clip-finder prompt version 2), from the Mac speed package (track/v2-speed)
+
+The shared prompt step only; the rest of the Mac package is owed here.
+
+- **Core:** `ClipPrompts.SentenceBlock` renders the clip finder's lines as "12 0:05 text" (`transcriptBlock.line`, numbered over the whole transcript, no word range or pause line); `Request` builds it from its input's words, so its signature is unchanged. `ClipFinder` reads `start_line`/`end_line` and maps them through `ClipPrompts.WordRange` to the lines' first and last words before `ClipValidation.FinalizeClips`, as before. `Instruction` takes the full lines to say "Topics up to line {lastLine}…" (`LineNumber`). `InputSha256` hashes the sentence block. Window packing still costs the full numbered lines.
+- **ReleaseBoundary:** `VoxClip.Core.txt` regenerated with `update`: the literals `start_line`/`end_line` replace `start_word`/`end_word`, plus `SentenceBlock`, `WordRange`, `LineNumber` and the new `Instruction` signature.
+- **Tests:** `SharedRequestFixtureTests` passes the full lines to `Instruction`; `PipelineTests` and `HttpConnectorTests` reply with lines (`Words(n)` has 41 words a line); `ClipAutopilotTests` expects clip-autopilot `promptVersion` 7. Windows Core Release on the Mac (`dotnet test --project tests/VoxClip.Core.Tests -c Release`): 3269 total, 3240 passed, 29 skipped, 0 failed.
+- **Windows owes** (Mac track/v2-speed): `ClipAutopilotProgress.Ready` and applying each clip of Make top N postable as its plan is ready, at most three in flight, with a failed clip failing alone and Stop cancelling every plan; `moments` on `clips` requests and the `momentOthers` line (clip-autopilot prompt version 7; Windows still renders version 6 requests); a shared lease for the clip's own Rewrite steps while plans are in flight; stage timings and the `claude-mode timings` log line; the "Finding clips…" step and "N of M ready" status copy (`EditorViewModel.ClaudeMode.cs` still says "Finding the best moments…"); the CLI `autopilot --timings` command; removing the now inert "Snap clip edges to sentence boundaries" setting.
+
 
 ### 2026-11-07 — Windows: whole-clip revoice projects, the pure whole-clip rules, a preview that is never silently black, and the anchor's baseline (track/v2-win-whole-clip)
 

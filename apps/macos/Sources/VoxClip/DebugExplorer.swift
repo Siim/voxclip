@@ -559,7 +559,7 @@ import VoxClipCore
         app.settings.values["llm.connector"] = .string("ollama")
         app.settings.values["llm.model.ollama"] = .string("fixture-local")
         app.settings.values["llm.clips.snapToLines"] = .bool(false)
-        app.connectorOverride = { _ in FixtureClipConnector(spans: [(20, 70), (95, 145)]) }
+        app.connectorOverride = { [words = editor.words] _ in FixtureClipConnector(spans: [(20, 70), (95, 145)], words: words) }
         editor.findClips()
         await editor.findTask?.value
         for _ in 0..<40 where window.firstResponder !== list { try await Task.sleep(for: .milliseconds(25)) }
@@ -918,7 +918,7 @@ import VoxClipCore
             try await DebugUISuite.snapshot(FindClipsPopover(model: model).environment(app), name: "find-clips-popover-\(suffix)", size: NSSize(width: 340, height: 300), appearance: appearance, directory: directory, active: true)
         }
 
-        app.connectorOverride = { _ in FixtureClipConnector(spans: [(20, 70), (95, 145), (170, 220)]) }
+        app.connectorOverride = { [words = model.words] _ in FixtureClipConnector(spans: [(20, 70), (95, 145), (170, 220)], words: words) }
         shell.layout.explorerVisible = false
         let steps = model.undoSteps
         let playhead = model.playhead, exportTitle = model.exportTitle, summary = model.statusSummary
@@ -943,7 +943,7 @@ import VoxClipCore
         model.finding = true
         try await capture(shell, "sidebar-finding")
         model.finding = false
-        app.connectorOverride = { _ in FixtureClipConnector(spans: []) }
+        app.connectorOverride = { [words = model.words] _ in FixtureClipConnector(spans: [], words: words) }
         model.findClips()
         await model.findTask?.value
         check("a run with no clips shows the no-match message under Suggested", model.clipError == EditorModel.noClipsMatched && model.suggestedClips.count == 3)
@@ -965,7 +965,7 @@ import VoxClipCore
         await fallbackShell.attachForTesting(VoxClipDocument(project: bare, demo: true), selection: .fullTake)
         guard let fallback = fallbackShell.editor else { throw CocoaError(.coderInvalidValue) }
         defer { fallback.close() }
-        app.connectorOverride = { _ in FixtureClipConnector(spans: [(20, 70), (95, 145), (170, 220)], answeringModel: "fixture-fallback") }
+        app.connectorOverride = { [words = model.words] _ in FixtureClipConnector(spans: [(20, 70), (95, 145), (170, 220)], words: words, answeringModel: "fixture-fallback") }
         fallback.findClips()
         await fallback.findTask?.value
         let note = "Answered by fixture-fallback because fixture-local was busy."
@@ -1044,10 +1044,14 @@ import VoxClipCore
 /// model it reports another model's answer, as a fallback does (ai.md §4.3).
 actor FixtureClipConnector: LLMConnector {
     nonisolated let id: ConnectorID
+    /// The word spans as the lines a reply names (prompt version 2).
     let spans: [(Int, Int)]
     let answeringModel: String?
-    init(spans: [(Int, Int)], answeringModel: String? = nil) {
-        self.spans = spans
+    init(spans: [(Int, Int)], words: [TimedWord], answeringModel: String? = nil) {
+        self.spans = spans.map { span in
+            let lines = ClipRequestBuilder.lineRange(of: span.0...max(span.0, span.1), words: words)
+            return (lines.lowerBound, lines.upperBound)
+        }
         self.answeringModel = answeringModel
         id = answeringModel == nil ? .ollama : .anthropic
     }
@@ -1055,7 +1059,7 @@ actor FixtureClipConnector: LLMConnector {
     func models(refresh: Bool) -> [LLMModel] { [LLMModel(id: "fixture-local", name: "Fixture", contextTokens: 128000, source: .curated)] }
     func contextTokens(model: String) -> Int? { 128000 }
     func send(_ request: LLMRequest, model: String) -> RawCompletion {
-        let clips = spans.enumerated().map { "{\"title\":\"Suggestion \($0.offset + 1)\",\"reason\":\"One idea, cleanly said\",\"score\":\(8 - $0.offset),\"start_word\":\($0.element.0),\"end_word\":\($0.element.1)}" }
+        let clips = spans.enumerated().map { "{\"title\":\"Suggestion \($0.offset + 1)\",\"reason\":\"One idea, cleanly said\",\"score\":\(8 - $0.offset),\"start_line\":\($0.element.0),\"end_line\":\($0.element.1)}" }
         return RawCompletion(text: "{\"clips\":[\(clips.joined(separator: ","))]}", model: answeringModel ?? model, stop: .complete)
     }
 }

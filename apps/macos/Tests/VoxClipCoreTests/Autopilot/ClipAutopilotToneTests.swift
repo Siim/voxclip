@@ -47,7 +47,7 @@ import Testing
                 "Update plan-tone-cases.json sources when the prompt changes")
         let tones = try VoiceLabLLMChecks.readPrompt(shared, RewriteToneCatalog.path)
         #expect(sources[ai: "shared/data/rewrite-tones.json"].aiString == tones.sha256, "Update plan-tone-cases.json when the tones change")
-        #expect(try ClipAutopilotPrompt(shared: shared).promptVersion == 6)
+        #expect(try ClipAutopilotPrompt(shared: shared).promptVersion == 7)
         #expect(try Self.fixture()[ai: "cases"].aiArray.count == 11)
     }
 

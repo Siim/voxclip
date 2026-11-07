@@ -33,7 +33,44 @@ internal sealed class ClipPrompts(LlmCatalog catalog)
         var prompt = tighten ? Tighten : Clips;
         return prompt["transcriptBlock"]!["prefix"]!.GetValue<string>() + ClipText.Render(lines) + prompt["transcriptBlock"]!["suffix"]!.GetValue<string>();
     }
-    internal string Instruction(ClipPreset preset, string instructions, double duration, ClipWindow? window = null, int count = 1, int maxClips = 0, int? lastEnd = null)
+    /// <summary>The clip finder's transcript block (AI §11.3, <c>voxclip-sentence-lines-v1</c>): <paramref name="window"/>, lines of
+    /// <paramref name="all"/>, each as its number over the whole transcript (from 1), its start time and its words, with no word range
+    /// and no pause line.</summary>
+    internal string SentenceBlock(IReadOnlyList<ClipWord> entries, IReadOnlyList<NumberedLine> all, IReadOnlyList<NumberedLine> window)
+    {
+        var block = Clips["transcriptBlock"]!;
+        var template = block["line"]!.GetValue<string>();
+        var numbers = new Dictionary<int, int>();
+        for (var position = 0; position < all.Count; position++) numbers.TryAdd(all[position].Line.FirstIndex, position);
+        var rendered = window.Where(line => numbers.ContainsKey(line.Line.FirstIndex)).Select(line =>
+        {
+            var position = numbers[line.Line.FirstIndex];
+            var own = all[position];
+            var text = string.Join(" ", entries.Skip(own.FirstPosition).Take(own.LastPosition - own.FirstPosition + 1).Select(entry => entry.Text));
+            return System.Text.RegularExpressions.Regex.Replace(template, "\\{(line|time|text)\\}", match => match.Groups[1].Value switch
+            {
+                "line" => (position + 1).ToString(CultureInfo.InvariantCulture),
+                "time" => ClipText.Time(own.Line.Start),
+                _ => text
+            }, System.Text.RegularExpressions.RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+        });
+        return block["prefix"]!.GetValue<string>() + string.Join("\n", rendered) + block["suffix"]!.GetValue<string>();
+    }
+    /// <summary>The inclusive word range of a reply's inclusive 1-based line range over <paramref name="all"/>: the first line's first word
+    /// to the last line's last word; (-1, -1), which finalization drops, when the range names no lines or names them backwards.</summary>
+    internal static (double Start, double End) WordRange(double startLine, double endLine, IReadOnlyList<NumberedLine> all)
+    {
+        if (!double.IsFinite(startLine) || !double.IsFinite(endLine) || startLine != Math.Floor(startLine) || endLine != Math.Floor(endLine) ||
+            startLine < 1 || startLine > endLine || endLine > all.Count) return (-1, -1);
+        return (all[(int)startLine - 1].Line.FirstIndex, all[(int)endLine - 1].Line.LastIndex);
+    }
+    /// <summary>The 1-based number of the line of <paramref name="all"/> that holds word <paramref name="index"/>; the last line past the end.</summary>
+    internal static int LineNumber(int index, IReadOnlyList<NumberedLine> all)
+    {
+        for (var position = 0; position < all.Count; position++) if (all[position].Line.LastIndex >= index) return position + 1;
+        return all.Count;
+    }
+    internal string Instruction(ClipPreset preset, string instructions, double duration, ClipWindow? window = null, int count = 1, int maxClips = 0, int? lastEnd = null, IReadOnlyList<NumberedLine>? all = null)
     {
         var request = Clips["request"]!;
         var parts = new List<string> { request["durationLine"]!.GetValue<string>().Replace("{duration}", ClipText.Time(duration), StringComparison.Ordinal) };
@@ -46,9 +83,13 @@ internal sealed class ClipPrompts(LlmCatalog catalog)
                 .Replace("{windowStart}", ClipText.Time(window.Lines[0].Line.Start), StringComparison.Ordinal)
                 .Replace("{windowEnd}", ClipText.Time(window.Lines[^1].Line.End), StringComparison.Ordinal)
                 .Replace("{maxClips}", maxClips.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal));
-            if (preset == ClipPreset.Topics && lastEnd is not null) parts.Add(request["topicsContinuationLine"]!.GetValue<string>()
-                .Replace("{lastEnd}", lastEnd.Value.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
-                .Replace("{nextWord}", (lastEnd.Value + 1).ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal));
+            if (preset == ClipPreset.Topics && lastEnd is not null)
+            {
+                var lastLine = LineNumber(lastEnd.Value, all ?? []);
+                parts.Add(request["topicsContinuationLine"]!.GetValue<string>()
+                    .Replace("{lastLine}", lastLine.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
+                    .Replace("{nextLine}", (lastLine + 1).ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal));
+            }
         }
         return string.Join("\n", parts);
     }
@@ -64,7 +105,7 @@ internal sealed class ClipPrompts(LlmCatalog catalog)
         var longest = new ClipWindow(new[] { longestStart with { Line = longestStart.Line with { End = longestEnd.Line.End } } }, 0, 0, 0);
         var preset = tighten ? ClipPreset.Best : Enum.Parse<ClipPreset>(choice, true);
         var instruction = tighten ? TightenInstruction(choice, instructions, longest, 2) :
-            Instruction(preset, instructions, duration, longest, 2, 99, preset == ClipPreset.Topics ? lines[^1].Line.LastIndex : null);
+            Instruction(preset, instructions, duration, longest, 2, 99, preset == ClipPreset.Topics ? lines[^1].Line.LastIndex : null, lines);
         var overhead = catalog.Estimate(prompt["system"]!.GetValue<string>()) + catalog.Estimate(instruction) + catalog.Estimate(prompt["output"]!["schema"]!.ToJsonString()) + 64;
         var reserve = Math.Min(prompt["generation"]!["maxOutputTokens"]!.GetValue<int>(), outputCap);
         if (localServer) reserve = Math.Min(reserve, Math.Max(1024, context / 4));
@@ -98,7 +139,8 @@ internal sealed class ClipPrompts(LlmCatalog catalog)
     internal LlmRequest Request(ClipFinderRequest input, IReadOnlyList<NumberedLine> lines, string instruction, int part, int count, int? outputReserve = null)
     {
         var timeout = catalog.Timeout(input.Connector switch { ConnectorId.ClaudeCode or ConnectorId.Codex => "cli", ConnectorId.Ollama or ConnectorId.LmStudio => "localServer", ConnectorId.AppleFoundation => "appleFoundation", _ => "cloud" });
-        return new(LlmFeature.ClipFinder, Clips["system"]!.GetValue<string>(), Block(lines), instruction, Clips["output"]!["name"]!.GetValue<string>(), Clips["output"]!["schema"]!.DeepClone().AsObject(),
+        var entries = ClipText.Entries(input.Words, input.Corrections, Clips["limits"]!["maxWordTextLength"]!.GetValue<int>());
+        return new(LlmFeature.ClipFinder, Clips["system"]!.GetValue<string>(), SentenceBlock(entries, ClipText.Lines(entries), lines), instruction, Clips["output"]!["name"]!.GetValue<string>(), Clips["output"]!["schema"]!.DeepClone().AsObject(),
             outputReserve ?? Clips["generation"]!["maxOutputTokens"]!.GetValue<int>(), GenerationEffort(Clips), timeout, input.Language, $"clips/{input.Preset.ToString().ToLowerInvariant()} part {part} of {count}");
     }
 }

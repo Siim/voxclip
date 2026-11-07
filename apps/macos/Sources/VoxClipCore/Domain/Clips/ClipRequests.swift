@@ -64,13 +64,56 @@ public struct ClipRequestBuilder: Sendable {
 
     public func request(words: [ClipWord], window: ClipWindow, preset: ClipPreset, instruction: String? = nil, windowIndex: Int = 0, windowCount: Int = 1, lastTopicEnd: Int? = nil, timeout: Duration, language: String? = nil) -> LLMRequest {
         let document = prompt.document
-        let block = (document[ai: "transcriptBlock"][ai: "prefix"].aiString ?? "") + window.rendered + (document[ai: "transcriptBlock"][ai: "suffix"].aiString ?? "")
+        let block = sentenceBlock(words: words, lines: window.lines)
         return LLMRequest(feature: .clipFinder, system: document[ai: "system"].aiString ?? "", cachedBlock: block,
                           instruction: renderInstruction(words: words, lines: window.lines, preset: preset, instruction: instruction, windowCount: windowCount, maxClips: window.maxClips, lastTopicEnd: windowIndex > 0 ? lastTopicEnd : nil),
                           schemaName: document[ai: "output"][ai: "name"].aiString ?? "clips", schema: document[ai: "output"][ai: "schema"],
                           maxOutputTokens: window.maxOutputTokens ?? document[ai: "generation"][ai: "maxOutputTokens"].aiInt ?? 16000,
                           effort: Effort(rawValue: document[ai: "generation"][ai: "effort"].aiString ?? Effort.decision.rawValue), timeout: timeout, language: language,
                           tag: "clips/\(preset.id.rawValue)\(windowCount > 1 ? " part \(windowIndex + 1) of \(windowCount)" : "")")
+    }
+
+    /// The clip finder's transcript block (ai.md §11.3, `voxclip-sentence-lines-v1`): `lines`, a window of `formatTranscript`'s
+    /// lines over all of `words`, each as its number over the whole transcript (from 1), its start time and its words. No
+    /// word range and no pause line: the reply names lines, and `wordRange` maps them back to words.
+    public func sentenceBlock(words: [ClipWord], lines: [TranscriptLine]) -> String {
+        let all = (try? formatTranscript(words).lines) ?? []
+        let positions = Dictionary(all.enumerated().map { ($0.element.firstIndex, $0.offset) }, uniquingKeysWith: { first, _ in first })
+        let template = prompt.document[ai: "transcriptBlock"][ai: "line"].aiString ?? "{line} {time} {text}"
+        let rendered = lines.compactMap { line -> String? in
+            guard let position = positions[line.firstIndex] else { return nil }
+            let own = all[position]
+            let text = words[own.firstPos...own.lastPos].map(\.text).joined(separator: " ")
+            let values = ["line": String(position + 1), "time": AIText.formatTime(own.start), "text": text]
+            return template.replacing(#/\{(line|time|text)\}/#) { values[String($0.1)] ?? String($0.0) }
+        }
+        let block = prompt.document[ai: "transcriptBlock"]
+        return (block[ai: "prefix"].aiString ?? "") + rendered.joined(separator: "\n") + (block[ai: "suffix"].aiString ?? "")
+    }
+
+    /// The inclusive word range of a reply's inclusive 1-based line range over `lines` (all of the transcript's lines): the
+    /// first line's first word to the last line's last word. A range that names no lines, or names them backwards, maps to
+    /// (-1, -1), which `finalizeClips` drops.
+    public static func wordRange(startLine: Double, endLine: Double, lines: [TranscriptLine]) -> (start: Double, end: Double) {
+        let count = Double(lines.count)
+        guard startLine.isFinite, endLine.isFinite, startLine == startLine.rounded(.down), endLine == endLine.rounded(.down),
+              startLine >= 1, startLine <= endLine, endLine <= count else { return (-1, -1) }
+        return (Double(lines[Int(startLine) - 1].firstIndex), Double(lines[Int(endLine) - 1].lastIndex))
+    }
+
+    /// The inclusive 1-based line range a reply names for words `span` of `words`: the lines that hold its first and last
+    /// word, over `formatTranscript`'s lines with corrections left out (stub connectors and fixtures).
+    public static func lineRange(of span: ClosedRange<Int>, words: [TimedWord]) -> ClosedRange<Int> {
+        let entries = words.enumerated().map { index, word in
+            ClipWord(index: index, text: word.kind == .unlabeledSpeech ? "…" : word.text, start: word.start, end: word.end)
+        }
+        let lines = (try? formatTranscript(entries).lines) ?? []
+        return lineNumber(of: span.lowerBound, in: lines)...max(lineNumber(of: span.lowerBound, in: lines), lineNumber(of: span.upperBound, in: lines))
+    }
+
+    /// The 1-based number of the line of `lines` that holds word `index`; the last line when it is past the end.
+    static func lineNumber(of index: Int, in lines: [TranscriptLine]) -> Int {
+        (lines.firstIndex { $0.lastIndex >= index } ?? lines.count - 1) + 1
     }
 
     private func renderInstruction(words: [ClipWord], lines: [TranscriptLine], preset: ClipPreset, instruction: String?, windowCount: Int, maxClips: Int, lastTopicEnd: Int?) -> String {
@@ -86,9 +129,10 @@ public struct ClipRequestBuilder: Sendable {
                     .replacingOccurrences(of: "{maxClips}", with: String(maxClips)))
             }
             if preset.id == .topics, let lastTopicEnd {
+                let lastLine = Self.lineNumber(of: lastTopicEnd, in: (try? formatTranscript(words).lines) ?? [])
                 parts.append((templates[ai: "topicsContinuationLine"].aiString ?? "")
-                    .replacingOccurrences(of: "{lastEnd}", with: String(lastTopicEnd))
-                    .replacingOccurrences(of: "{nextWord}", with: String(lastTopicEnd + 1)))
+                    .replacingOccurrences(of: "{lastLine}", with: String(lastLine))
+                    .replacingOccurrences(of: "{nextLine}", with: String(lastLine + 1)))
             }
         }
         return parts.joined(separator: "\n")

@@ -218,8 +218,11 @@ import Testing
         #expect(sent.count == 4 && sent.allSatisfy { $0.effort == .xhigh && $0.schemaName == "clip_autopilot_plan" && $0.tag == "clip-autopilot-series-clip" })
         let first = try #require(sent.first { $0.instruction.contains("from word 0 to word 29") })
         #expect(first.instruction.hasPrefix("This clip is moment 1 of 4 picked from a longer video for a series: “Moment 1”. Idea 1.\n"
-            + "Caption style picked for it: karaoke (fits 1). The other clips use: outline, pill, karaoke. Keep it unless it clearly does not suit this clip.\n\n"
-            + "Plan the clip from word 0 to word 29 as one finished, postable short."))
+            + "Caption style picked for it: karaoke (fits 1). The other clips use: outline, pill, karaoke. Keep it unless it clearly does not suit this clip.\n"
+            + "The other clips of this series: “Moment 2” at "))
+        // Prompt version 7: the other moments by title and start, so the series stays varied.
+        #expect(first.instruction.contains("; “Moment 3” at ") && first.instruction.contains("; “Moment 4” at ")
+            && first.instruction.contains(". Give this one its own hook, caption style and music.\n\nPlan the clip from word 0 to word 29 as one finished, postable short."))
         // Its words only: the clip's own transcript lines.
         #expect(first.cachedBlock?.contains("[29]anyway.") == true && first.cachedBlock?.contains("[30]") == false)
         #expect(result.series.moments.map(\.startWord) == [0, 30, 60, 90])
@@ -229,11 +232,13 @@ import Testing
         #expect(events.first == .pickingMoments)
         if case .picked(let picked) = events.dropFirst().first { #expect(picked.count == 4) } else { Issue.record("no picked event") }
         let later = Array(events.dropFirst(2))
-        #expect(later.count == 8)
+        #expect(later.count == 12)
         for clip in 0..<4 {
             let planning = try #require(later.firstIndex(of: .planning(clip: clip, of: 4)))
             let planned = try #require(later.firstIndex(of: .planned(clip: clip, of: 4)))
-            #expect(planning < planned)
+            // Each checked plan is sent the moment it is ready, before `planned` (ai.md §16.12).
+            let ready = try #require(later.firstIndex { if case .ready(clip, 4, _) = $0 { true } else { false } })
+            #expect(planning < ready && ready < planned)
         }
     }
 

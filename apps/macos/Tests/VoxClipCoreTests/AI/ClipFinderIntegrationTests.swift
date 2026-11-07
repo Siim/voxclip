@@ -55,8 +55,10 @@ private func aiIntegrationRequest(count: Int = 100, preset: ClipPresetID = .best
     return ClipFinderRequest(transcript: transcript, preset: try AIClipTestData.preset(preset), snap: false)
 }
 
+/// A reply naming lines `start...end` (prompt version 2). The fixture's lines hold 15 words each: line n is words
+/// 15(n − 1) to 15n − 1.
 private func aiIntegrationReply(start: Int, end: Int, title: String = "clip") -> JSONValue {
-    .object(["clips": .array([.object(["title": .string(title), "reason": .string("reason"), "score": .number(8), "start_word": .number(Double(start)), "end_word": .number(Double(end))])])])
+    .object(["clips": .array([.object(["title": .string(title), "reason": .string("reason"), "score": .number(8), "start_line": .number(Double(start)), "end_line": .number(Double(end))])])])
 }
 
 @Test("Clip finder fills empty titles and hashes the full corrected input")
@@ -65,7 +67,7 @@ func aiFinderTitleAndProvenance() async throws {
     var request = try aiIntegrationRequest()
     request.corrections["w0"] = "Corrected"
     let before = request.transcript
-    let connector = AIIntegrationConnector(replies: [aiIntegrationReply(start: 0, end: 50, title: "  ")])
+    let connector = AIIntegrationConnector(replies: [aiIntegrationReply(start: 1, end: 4, title: "  ")])
     let started = Date()
     let result = try await finder.find(request, connector: connector, model: "chosen")
     let clips = result.clips
@@ -75,13 +77,14 @@ func aiFinderTitleAndProvenance() async throws {
     #expect(request.transcript == before)
     let words = builder.clipWords(request.transcript, corrections: request.corrections)
     let formatted = try formatTranscript(words)
-    let block = "<transcript>\n" + formatted.rendered + "\n</transcript>"
+    let block = builder.sentenceBlock(words: words, lines: formatted.lines)
+    #expect(block.hasPrefix("<transcript>\n1 0:00 Corrected w1 ") && block.contains("\n2 0:04 w15 ") && !block.contains("[0-14]"))
     #expect(result.inputSha256 == AIHash.sha256(block))
     #expect(result.model == "answered" && result.provider == "openai")
     #expect(result.preset == .best && result.instructions == nil && result.language == "en")
     #expect(result.createdAt >= started && result.createdAt <= Date())
     #expect(result.id.range(of: #"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"#, options: .regularExpression) != nil)
-    #expect(clips.first?.startWordId == "w0" && clips.first?.endWordId == "w50")
+    #expect(clips.first?.startWordId == "w0" && clips.first?.endWordId == "w59")
     #expect(clips.first?.score == 8 && clips.first?.reason == "reason")
 }
 
@@ -89,13 +92,13 @@ func aiFinderTitleAndProvenance() async throws {
 func aiFinderTopicsAcrossWindows() async throws {
     let (finder, _) = try aiIntegrationSetup()
     let request = try aiIntegrationRequest(count: 20000, preset: .topics)
-    let connector = AIIntegrationConnector(replies: [aiIntegrationReply(start: 0, end: 70), aiIntegrationReply(start: 100, end: 180)])
+    let connector = AIIntegrationConnector(replies: [aiIntegrationReply(start: 1, end: 5), aiIntegrationReply(start: 7, end: 12)])
     _ = try await finder.find(request, connector: connector, model: "chosen")
     let requests = await connector.requests
     #expect(requests.count > 1)
-    #expect(!requests[0].instruction.contains("Topics up to word"))
-    #expect(requests[1].instruction.hasSuffix("Topics up to word 70 are already covered. Start at word 71 or later."))
-    if requests.count > 2 { #expect(requests[2].instruction.hasSuffix("Topics up to word 180 are already covered. Start at word 181 or later.")) }
+    #expect(!requests[0].instruction.contains("Topics up to line"))
+    #expect(requests[1].instruction.hasSuffix("Topics up to line 5 are already covered. Start at line 6 or later."))
+    if requests.count > 2 { #expect(requests[2].instruction.hasSuffix("Topics up to line 12 are already covered. Start at line 13 or later.")) }
     #expect(await finder.lastRun?.windowCount == requests.count)
 }
 
@@ -114,7 +117,7 @@ func aiFinderInvalidAnsweringModel(_ answeringModel: String) async throws {
     let (finder, _) = try aiIntegrationSetup()
     var request = try aiIntegrationRequest()
     request.transcript.rawKey = String(repeating: "a", count: 64)
-    let connector = AIIntegrationConnector(replies: [aiIntegrationReply(start: 0, end: 50)], answeringModels: [answeringModel])
+    let connector = AIIntegrationConnector(replies: [aiIntegrationReply(start: 1, end: 4)], answeringModels: [answeringModel])
     let result = try await finder.find(request, connector: connector, model: "chosen")
     #expect(result.model == "chosen")
     let clip = try #require(result.clips.first)
@@ -132,7 +135,7 @@ func aiFinderInvalidAnsweringModel(_ answeringModel: String) async throws {
 func aiFinderAtomicFailure() async throws {
     let (finder, _) = try aiIntegrationSetup()
     let request = try aiIntegrationRequest(count: 20000)
-    let connector = AIIntegrationConnector(failures: [1: .timeout], replies: [aiIntegrationReply(start: 0, end: 70)])
+    let connector = AIIntegrationConnector(failures: [1: .timeout], replies: [aiIntegrationReply(start: 1, end: 5)])
     await #expect(throws: LLMError.timeout) { try await finder.find(request, connector: connector, model: "chosen") }
     #expect(await connector.requests.count == 2)
     #expect(await finder.lastRun == nil)
@@ -147,8 +150,13 @@ func aiFinderActualTokenWindows() async throws {
     let connector = AIIntegrationConnector(id: .appleFoundation, context: 8192, countFactor: 1.8)
     let counted = try await finder.prepare(request, connector: connector, model: "system")
     #expect(counted.count > estimated.count)
-    let allLines = try formatTranscript(ClipRequestBuilder(prompt: AIClipTestData.prompt()).clipWords(request.transcript)).lines
-    for line in allLines { #expect(counted.contains { $0.cachedBlock?.contains(line.text) == true }) }
+    let builder = ClipRequestBuilder(prompt: try AIClipTestData.prompt())
+    let words = builder.clipWords(request.transcript)
+    for line in try formatTranscript(words).lines {
+        // The line as the request numbers it (ai.md §11.3, prompt version 2).
+        let sentence = String(builder.sentenceBlock(words: words, lines: [line]).dropFirst("<transcript>\n".count).dropLast("\n</transcript>".count))
+        #expect(counted.contains { $0.cachedBlock?.contains("\n" + sentence + "\n") == true || $0.cachedBlock?.hasSuffix("\n" + sentence + "\n</transcript>") == true })
+    }
     for canonical in counted {
         let actualCost = await connector.tokenCount(for: canonical.system) + connector.tokenCount(for: aiUserContent(canonical))
         #expect(actualCost + AIText.estimate(try canonical.schema.aiCompact()) + 1500 <= 8192)
@@ -165,7 +173,7 @@ func aiFinderContextShrink() async throws {
     let requests = await connector.requests
     #expect(requests.count >= 3)
     #expect((requests[1].cachedBlock?.utf8.count ?? 0) < (requests[0].cachedBlock?.utf8.count ?? 0))
-    #expect(requests[1].cachedBlock?.hasPrefix("<transcript>\n[0-") == true)
+    #expect(requests[1].cachedBlock?.hasPrefix("<transcript>\n1 0:00 w0 ") == true)
     let repeatFailure = AIIntegrationConnector(id: .appleFoundation, context: 8192, failures: [0: .contextTooLong, 1: .contextTooLong])
     await #expect(throws: LLMError.contextTooLong) { try await finder.find(request, connector: repeatFailure, model: "system") }
     #expect(await repeatFailure.requests.count == 2)
@@ -208,8 +216,8 @@ func aiFinderResultOrderAndFallback() async throws {
     #expect(await finder.lastUsedFallback == nil)
     let request = try aiIntegrationRequest(count: 20000)
     let reply: JSONValue = .object(["clips": .array([
-        aiIntegrationReply(start: 0, end: 50, title: "first")[ai: "clips"].aiArray[0],
-        aiIntegrationReply(start: 60, end: 110, title: "second")[ai: "clips"].aiArray[0]
+        aiIntegrationReply(start: 1, end: 4, title: "first")[ai: "clips"].aiArray[0],
+        aiIntegrationReply(start: 5, end: 8, title: "second")[ai: "clips"].aiArray[0]
     ])])
     let connector = AIIntegrationConnector(failures: [0: .overloaded], replies: [.null, reply], answeringModels: ["", "fallback-answer", "last-answer"])
     let result = try await finder.find(request, connector: connector, model: "chosen")
@@ -218,7 +226,7 @@ func aiFinderResultOrderAndFallback() async throws {
     #expect(await finder.lastUsedFallback == true)
     #expect(result.clips.map(\.title) == ["first", "second"])
     #expect(result.clips.map(\.startWordId) == ["w0", "w60"])
-    #expect(result.clips.map(\.endWordId) == ["w50", "w110"])
+    #expect(result.clips.map(\.endWordId) == ["w59", "w119"])
     _ = try await finder.find(aiIntegrationRequest(), connector: AIIntegrationConnector(), model: "chosen")
     #expect(await finder.lastUsedFallback == false)
     await #expect(throws: LLMError.timeout) {

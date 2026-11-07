@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "promptVersion": 6,
+  "promptVersion": 7,
   "system": {
     "plan": [
       "role",
@@ -103,6 +103,7 @@
     "toneAsSaid": "\nTone: as the creator said it. Keep their own tone and set tone to \"none\".",
     "momentInstruction": "This clip is moment {rank} of {count} picked from a longer video for a series: “{title}”. {idea}{caption}",
     "momentCaption": "\nCaption style picked for it: {style} ({reason}). The other clips use: {others}. Keep it unless it clearly does not suit this clip.",
+    "momentOthers": "\nThe other clips of this series: {others}. Give this one its own hook, caption style and music.",
     "seriesInstruction": "Pick the moments in this video worth posting as clips, at most {maxClips}, ranked best first. Return only the strongest: fewer when the material is thin, none when nothing is worth posting. Each is a span of words [startWord, endWord] that starts on its hook and ends on its payoff, and spans never overlap.",
     "creatorNote": "The creator adds: {instruction}"
   },

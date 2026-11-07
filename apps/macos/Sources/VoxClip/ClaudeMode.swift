@@ -49,6 +49,8 @@ enum ClaudeModeBlocker: Equatable {
     /// How many moments Find Clips offered.
     var found = 0
     var budget: MakeItBudget?
+    /// The run's stage times from the video's open (transcribe, find, then each clip's plan and apply), logged when it ends.
+    @ObservationIgnored var clock: ClaudeModeClock?
     /// The run's queue, from the start to the last clip.
     @ObservationIgnored var task: Task<Void, Never>?
     /// Going on once Find Clips' task has ended.
@@ -100,6 +102,8 @@ extension EditorModel {
     func armClaudeMode() {
         guard claudeMode.phase == .idle, !document.isVersion else { return }
         claudeMode.armed = true
+        claudeMode.clock = ClaudeModeClock()
+        claudeMode.clock?.begin(.transcribe)
         if claudeModeOn { claudeMode.phase = .waiting }
     }
 
@@ -109,7 +113,8 @@ extension EditorModel {
     /// The transcript arrived; `started` says whether Find Clips started by itself.
     func claudeModeTranscribed(started: Bool) {
         guard claudeMode.armed, claudeModeOn else { return }
-        if started || finding { claudeMode.phase = .waiting; return }
+        claudeMode.clock?.end(.transcribe)
+        if started || finding { claudeMode.clock?.begin(.find); claudeMode.phase = .waiting; return }
         claudeModeContinue()
     }
 
@@ -117,6 +122,7 @@ extension EditorModel {
     /// `finding` and the project's AI lease, so Claude goes on once that task has ended.
     func claudeModeFindEnded() {
         guard claudeMode.armed, claudeModeOn else { return }
+        claudeMode.clock?.end(.find)
         let find = findTask
         claudeMode.afterFind = Task { [weak self] in
             await find?.value
@@ -130,7 +136,7 @@ extension EditorModel {
         guard claudeMode.armed, claudeModeOn, capabilities.edit, transcribed || project.transcript != nil else { return }
         if finding { claudeMode.phase = .waiting; return }
         if !suggestedClips.isEmpty { startClaudeMode(); return }
-        if project.ai.results.isEmpty, findClipsIfFree() { claudeMode.phase = .waiting; return }
+        if project.ai.results.isEmpty, findClipsIfFree() { claudeMode.clock?.begin(.find); claudeMode.phase = .waiting; return }
         claudeMode.phase = .blocked(claudeModeBlocker)
     }
 
@@ -161,6 +167,7 @@ extension EditorModel {
         case .approveSend, .findAgain:
             claudeMode.phase = .waiting
             clipError = nil
+            claudeMode.clock?.begin(.find)
             findClips()
         }
     }
@@ -173,7 +180,9 @@ extension EditorModel {
         claudeMode.armed = false
         claudeMode.found = suggestedClips.count
         claudeMode.budget = budget
-        makeTopPostable(settings.count, budget: budget)
+        let clock = claudeMode.clock ?? ClaudeModeClock()
+        claudeMode.clock = clock
+        makeTopPostable(settings.count, budget: budget, clock: clock)
         claudeMode.clipIDs = makeIt.series
         guard !claudeMode.clipIDs.isEmpty else { claudeMode.phase = .blocked(.findAgain("Claude couldn't start on these clips.")); return }
         claudeMode.phase = .running
@@ -189,6 +198,11 @@ extension EditorModel {
         claudeMode.phase = runs.contains { $0.phase == .stopped } ? .stopped : .done
         let ready = claudeModeReady.count
         announce(claudeMode.phase == .done ? "\(ready) \(ready == 1 ? "clip" : "clips") ready. Next: Export all." : "Stopped. What was done is kept.")
+        // Numbers only (ai.md §16.12): each stage's wall time, never a title, word or path.
+        if let clock = claudeMode.clock {
+            let log = app.log
+            Task { await log.write(LogEntry(level: .info, category: "claude-mode", message: clock.logLine())) }
+        }
     }
 
     /// Stop: the clip in progress ends at its next safe point; finished clips stay.
@@ -250,7 +264,7 @@ extension EditorModel {
             steps.append(ClaudeStep(id: "transcribed", state: .now, text: transcription.isRunning ? "Transcribing…" : "Waiting for the transcript"))
         }
         if finding {
-            steps.append(ClaudeStep(id: "found", state: .now, text: "Finding the best moments…"))
+            steps.append(ClaudeStep(id: "found", state: .now, text: "Finding clips…"))
         } else if claudeMode.found > 0 {
             steps.append(ClaudeStep(id: "found", state: .done, text: "Found the best moments", detail: "\(claudeMode.found) · top \(claudeMode.clipIDs.count) kept"))
         }
@@ -363,7 +377,10 @@ extension EditorModel {
         case .claude?:
             var text = settings.summary
             if claudeMode.running, let budget = claudeMode.budget {
-                text = "✦ Claude does it all · \(Self.makeItDollars(budget.spent)) / $\(settings.capUSD)"
+                // Each clip is ready on its own (design.md §6.7): "2 of 3 ready" counts them as they come.
+                text = "✦ Claude does it all · \(claudeModeReady.count) of \(claudeMode.clipIDs.count) ready · \(Self.makeItDollars(budget.spent)) / $\(settings.capUSD)"
+            } else if claudeMode.armed, finding {
+                text = "✦ Claude does it all · Finding clips…"
             }
             return StatusItem(kind: .clipStyle, parts: [StatusText(string: text)], dim: false,
                               spoken: text.replacingOccurrences(of: "✦ ", with: "").replacingOccurrences(of: " · ", with: ", ").replacingOccurrences(of: "≤", with: "up to "),

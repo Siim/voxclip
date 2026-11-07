@@ -100,7 +100,7 @@ public sealed class ClipAutopilotTests
     public void PromptFileFillsItsLimitsAndEveryFixturePinsIt()
     {
         var prompt = ClipAutopilotPrompt.Load(Root);
-        Assert.Equal(6, prompt.PromptVersion);
+        Assert.Equal(7, prompt.PromptVersion);
         foreach (var system in new[] { prompt.System, prompt.MomentsSystem })
         {
             Assert.DoesNotContain("{", system, StringComparison.Ordinal);
@@ -594,7 +594,7 @@ public sealed class ClipAutopilotTests
         var stub = Stub("not json", Sendable(Reply("overlaps")).ToJsonString());
         var result = await Service().PlanAsync(new(Transcript(), Edits(), new ClipAutopilotMode.Clip(new(0, 29))), stub, "fixture", ct: TestContext.Current.CancellationToken);
         Assert.Equal((1, 2), (result.Plan!.Rewrites.Count, result.Plan.Cuts.Count));
-        Assert.Equal((6, 64), (result.PromptVersion, result.PromptSha256.Length));
+        Assert.Equal((7, 64), (result.PromptVersion, result.PromptSha256.Length));
         Assert.Equal(2, stub.Requests.Count);
         Assert.All(stub.Requests, request => Assert.Equal((Effort.XHigh, LlmFeature.ClipAutopilot), (request.Effort!.Value, request.Feature)));
         Assert.Contains("Your previous reply was not valid JSON", stub.Requests[1].Instruction, StringComparison.Ordinal);
