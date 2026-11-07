@@ -52,4 +52,34 @@ struct CLIAnalyzeFramesTests {
         let missing = try runCLI(["analyze-frames", "--open", input.path, "--clip", "nope", "--json"], directory: directory)
         #expect(missing.status != 0)
     }
+
+    /// `--video-pass` (ADR-R48 part 2) times the whole video's sentence pass, the clip's frames from it and its opening; a media
+    /// file opens with fixture words and a word range, without a project.
+    @Test(.timeLimit(.minutes(1)))
+    func timesTheVideoPassOnAMediaFileWithFixtureWords() async throws {
+        let directory = try cliDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = try FixtureLoader.sharedRoot().appendingPathComponent("fixtures/media/counter-1080p.mp4")
+        let transcript = Transcript(words: [
+            TimedWord(id: "w1", text: "One", start: 0.8, end: 1.0), TimedWord(id: "w2", text: "two.", start: 1.1, end: 1.4),
+            TimedWord(id: "w3", text: "Three", start: 2.0, end: 2.3), TimedWord(id: "w4", text: "four.", start: 2.4, end: 2.8)],
+            durationSeconds: 4, engine: EngineRef(id: .elevenlabs, engineVersion: "synthetic-fixture"),
+            rawKey: String(repeating: "0", count: 64), createdAt: Date(timeIntervalSince1970: 0))
+        let words = directory.appendingPathComponent("words.json")
+        try ProjectJSON.encoder().encode(transcript).write(to: words)
+        let result = try runCLI(["analyze-frames", "--open", source.path, "--transcript", words.path, "--words", "2:3", "--video-pass", "--json"],
+                                directory: directory)
+        #expect(result.status == 0, "\(result.stderr)")
+        let output = try result.json
+        let pass = try #require(output["videoPass"] as? [String: Any])
+        #expect(pass["read"] as? Bool == true && pass["frames"] as? Int == 2 && pass["analyzed"] as? Int == 2)
+        #expect(pass["clipFrames"] as? Int == 1 && pass["openingFrames"] as? Int == 13)
+        #expect((pass["seconds"] as? Double ?? -1) >= 0 && (pass["openingSeconds"] as? Double ?? -1) >= 0)
+        // The clip's own analysis then reads the pass's frames from the cache.
+        let timings = try #require((output["analysis"] as? [String: Any])?["timings"] as? [String: Any])
+        #expect(timings["cachedFrames"] as? Int == 14 && timings["analyzedFrames"] as? Int == 0)
+        #expect(output["clipStart"] as? Double ?? 0 > 1.4)
+        let refused = try runCLI(["analyze-frames", "--open", source.path, "--transcript", words.path, "--json"], directory: directory)
+        #expect(refused.status != 0)
+    }
 }
