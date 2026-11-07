@@ -284,7 +284,7 @@ public struct VoiceLabSpeechContextPlan: Sendable, Equatable {
             guard let clip = project.edits.clips.first(where: { $0.id == id }), let range = clipIndices(clip, words: words) else {
                 throw Failure.invalidInput
             }
-            return try clipTimes(words, startIndex: range.lowerBound, endIndex: range.upperBound)
+            return try clipTimes(words, clip: clip, startIndex: range.lowerBound, endIndex: range.upperBound)
         }
     }
 

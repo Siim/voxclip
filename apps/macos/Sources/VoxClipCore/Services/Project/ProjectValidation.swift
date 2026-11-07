@@ -46,7 +46,15 @@ enum ProjectValidation {
             for word in try array(transcript["words"]) { _ = try object(word, required: "id text kind start end rawStart rawEnd conf speaker timing") }
         }
         let edits = try object(root["edits"], required: "pauseThresholdSeconds pauseKeepSeconds cutWordIds cutPauseIds corrections clips activeClipId")
-        for clip in try array(edits["clips"]) { _ = try object(clip, required: "id startWordId endWordId title origin aiResultId aiClipIndex selected") }
+        for clip in try array(edits["clips"]) {
+            let fields = try object(clip, required: "id startWordId endWordId title origin aiResultId aiClipIndex selected", optional: "leadInSeconds")
+            // An opening lead-in (ADR-R48) is schema v4 only: 0 < s ≤ 0.6.
+            if let lead = fields["leadInSeconds"] {
+                guard isV4, case .number(let seconds) = lead, seconds.isFinite, seconds > 0, seconds <= FrameSampling.openingSpan + 1e-9 else {
+                    try fail("Invalid clip lead-in")
+                }
+            }
+        }
         let captions = try object(root["captions"], required: "styleId overrides position positionByAspect")
         _ = try map(captions["overrides"])
         if captions["position"] != .null { _ = try object(captions["position"], required: "x y") }
@@ -267,6 +275,9 @@ enum ProjectValidation {
             try text(clip.id, pattern: idPattern); try text(clip.startWordId, pattern: idPattern); try text(clip.endWordId, pattern: idPattern)
             try text(clip.title, max: EditingLimits.maxClipTitleScalars); try text(clip.aiResultId, pattern: idPattern)
             if let index = clip.aiClipIndex { try require(index >= 0, "Invalid AI clip index") }
+            if let lead = clip.leadInSeconds {
+                try require(project.schemaVersion >= 4 && lead.isFinite && lead > 0 && lead <= FrameSampling.openingSpan + 1e-9, "Invalid clip lead-in")
+            }
         }
         try text(project.captions.styleId, pattern: slugPattern)
         if let clipStyle = project.clipStyle {

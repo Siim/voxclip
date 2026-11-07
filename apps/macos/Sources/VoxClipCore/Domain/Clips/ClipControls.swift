@@ -71,6 +71,12 @@ public struct ProjectClipControls: Codable, Sendable, Equatable {
     public var flipHorizontal: Bool
     /// Clockwise quarter turns: 0, 90, 180 or 270.
     public var rotationDegrees: Int
+    /// "9:16 follows your face" (ADR-R48): the 9:16 and 1:1 crops centre on the measured face instead of the middle of the
+    /// picture; 16:9 ignores it. Omitted for the centre crop.
+    public var reframe: ReframeSettings?
+    /// "Cover frame chosen" (ADR-R48): the source second of the clip's cover, which an export writes beside the video as
+    /// a JPEG and embeds as its cover art. Omitted when the clip has none.
+    public var coverSeconds: Double?
 
     public static let speedRange = 0.5...2.0
     public static let speedPresets: [Double] = [0.75, 1, 1.1, 1.25, 1.5, 2]
@@ -81,14 +87,14 @@ public struct ProjectClipControls: Codable, Sendable, Equatable {
 
     public init(clipId: String, speed: Double = 1, shape: ClipShape? = nil, look: ClipLook = .original, gainDb: Double = 0,
                 fadeInSeconds: Double = 0, fadeOutSeconds: Double = 0, muteSource: Bool = false, flipHorizontal: Bool = false,
-                rotationDegrees: Int = 0) {
+                rotationDegrees: Int = 0, reframe: ReframeSettings? = nil, coverSeconds: Double? = nil) {
         self.clipId = clipId; self.speed = speed; self.shape = shape; self.look = look; self.gainDb = gainDb
         self.fadeInSeconds = fadeInSeconds; self.fadeOutSeconds = fadeOutSeconds; self.muteSource = muteSource
-        self.flipHorizontal = flipHorizontal; self.rotationDegrees = rotationDegrees
+        self.flipHorizontal = flipHorizontal; self.rotationDegrees = rotationDegrees; self.reframe = reframe; self.coverSeconds = coverSeconds
     }
 
     private enum CodingKeys: String, CodingKey {
-        case clipId, speed, shape, look, gainDb, fadeInSeconds, fadeOutSeconds, muteSource, flipHorizontal, rotationDegrees
+        case clipId, speed, shape, look, gainDb, fadeInSeconds, fadeOutSeconds, muteSource, flipHorizontal, rotationDegrees, reframe, coverSeconds
     }
 
     public init(from decoder: any Decoder) throws {
@@ -103,6 +109,8 @@ public struct ProjectClipControls: Codable, Sendable, Equatable {
         muteSource = try values.decode(Bool.self, forKey: .muteSource)
         flipHorizontal = try values.decode(Bool.self, forKey: .flipHorizontal)
         rotationDegrees = try values.decode(Int.self, forKey: .rotationDegrees)
+        reframe = try values.decodeIfPresent(ReframeSettings.self, forKey: .reframe)
+        coverSeconds = try values.decodeIfPresent(Double.self, forKey: .coverSeconds)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -117,6 +125,16 @@ public struct ProjectClipControls: Codable, Sendable, Equatable {
         try values.encode(muteSource, forKey: .muteSource)
         try values.encode(flipHorizontal, forKey: .flipHorizontal)
         try values.encode(rotationDegrees, forKey: .rotationDegrees)
+        try values.encodeIfPresent(reframe, forKey: .reframe)
+        try values.encodeIfPresent(coverSeconds, forKey: .coverSeconds)
+    }
+
+    /// The crop centre for an output of `aspect` (width over height): the face's for a portrait or square frame, nil for a
+    /// landscape one, which crops nothing it could move.
+    public func cropCenter(outputAspect aspect: Double) -> (x: Double, y: Double)? {
+        guard let reframe, reframe.mode == ReframeSettings.faceMode, let x = reframe.centerX, let y = reframe.centerY,
+              aspect.isFinite, aspect <= 1 + 1e-9 else { return nil }
+        return (x, y)
     }
 
     /// Every control at its default: nothing to store or render.
@@ -204,6 +222,11 @@ public enum ClipControlsProject {
         try require(entry.fadeInSeconds.isFinite && ProjectClipControls.fadeRange.contains(entry.fadeInSeconds), "fade-in")
         try require(entry.fadeOutSeconds.isFinite && ProjectClipControls.fadeRange.contains(entry.fadeOutSeconds), "fade-out")
         try require(ProjectClipControls.rotations.contains(entry.rotationDegrees), "rotation")
+        if let reframe = entry.reframe {
+            try require(reframe.mode == ReframeSettings.faceMode && reframe.zoom == 1, "reframe mode")
+            try require([reframe.centerX, reframe.centerY].allSatisfy { $0.map { $0.isFinite && (0...1).contains($0) } == true }, "reframe centre")
+        }
+        if let cover = entry.coverSeconds { try require(cover.isFinite && cover >= 0, "cover") }
         guard !entry.isDefault else { throw ClipControlsProjectError.defaultEntry }
     }
 
@@ -214,9 +237,20 @@ public enum ClipControlsProject {
         }
         let keys: Set<String> = ["clipId", "speed", "shape", "look", "gainDb", "fadeInSeconds", "fadeOutSeconds", "muteSource",
                                  "flipHorizontal", "rotationDegrees"]
+        let optional: Set<String> = ["reframe", "coverSeconds"]
         for entry in entries {
-            guard case .object(let object) = entry, Set(object.keys) == keys else {
+            guard case .object(let object) = entry, Set(object.keys).subtracting(optional) == keys else {
                 throw ClipControlsProjectError.invalidEntry("unknown or missing field")
+            }
+            if let reframe = object["reframe"] {
+                guard case .object(let fields) = reframe, Set(fields.keys) == ["mode", "zoom", "centerX", "centerY"],
+                      case .string = fields["mode"], ["zoom", "centerX", "centerY"].allSatisfy({ key in
+                          if case .number(let value) = fields[key] { return value.isFinite } else { return false } }) else {
+                    throw ClipControlsProjectError.invalidEntry("reframe")
+                }
+            }
+            if let cover = object["coverSeconds"] {
+                guard case .number(let value) = cover, value.isFinite else { throw ClipControlsProjectError.invalidEntry("cover") }
             }
             func number(_ key: String) -> Bool { if case .number(let value) = object[key] { return value.isFinite } else { return false } }
             func bool(_ key: String) -> Bool { if case .bool = object[key] { return true } else { return false } }

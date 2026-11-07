@@ -177,6 +177,14 @@ enum CompositionFrameGeometry {
             y: min(source.maxY - height, max(source.minY, centerY - height / 2)), width: width, height: height)
     }
 
+    /// `crop` moved so its centre sits at `x`, `y` of `source` (normalized, top-left origin), and kept inside it.
+    static func centered(_ crop: CGRect, in source: CGRect, x: Double, y: Double) -> CGRect {
+        let centerX = source.minX + source.width * x, centerY = source.maxY - source.height * y
+        let originX = min(source.maxX - crop.width, max(source.minX, centerX - crop.width / 2))
+        let originY = min(source.maxY - crop.height, max(source.minY, centerY - crop.height / 2))
+        return CGRect(x: originX, y: originY, width: crop.width, height: crop.height)
+    }
+
     static func crop(in frame: CGRect, scale: Double, anchorX: Double, anchorY: Double) -> CGRect {
         let width = frame.width / scale, height = frame.height / scale
         return CGRect(x: frame.minX + (frame.width - width) * anchorX,
