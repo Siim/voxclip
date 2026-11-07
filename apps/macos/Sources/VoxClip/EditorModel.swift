@@ -18,6 +18,14 @@ struct EditorRenderSnapshot {
     var findClipsAnchor = FindClipsAnchor.clipBar
     /// The sidebar's "Choose how VoxClip finds clips…" callout (no connector chosen).
     var showAISetup = false
+    /// Each clip's answer to "How should it sound?" this session: true for the whole clip, false for the changed phrases.
+    var wholeClipPicks: [String: Bool] = [:]
+    #if DEBUG
+    /// The Rewrite smoke's stand-in for fal.ai in a whole-clip revoice (DebugRewriteSmokeWholeClip.swift).
+    @ObservationIgnored var wholeClipSmoke: (@MainActor (RewriteSession, WholeClipRevoiceSession) -> Void)?
+    /// Told when a whole-clip voice plan is priced, so the smoke's scripted voice knows its windows.
+    @ObservationIgnored var wholeClipPrepared: (@MainActor (ClipTakePlan) -> Void)?
+    #endif
     var selectedWordIDs: Set<String> = [] {
         didSet {
             guard selectedWordIDs != oldValue else { return }

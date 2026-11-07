@@ -293,6 +293,8 @@ enum PanelCard: Identifiable, Equatable {
     case wordingFit
     /// A stuck state's chips and free-text field (design.md R2 "Next steps").
     case nextSteps(NextSteps)
+    /// "How should it sound?": the whole-clip revoice's Choose, Running and Review (ADR-R46).
+    case wholeClip
 
     var id: String {
         switch self {
@@ -308,6 +310,7 @@ enum PanelCard: Identifiable, Equatable {
         case .takes: "takes"
         case .wordingFit: "wordingFit"
         case .nextSteps(let steps): "nextSteps:\(steps.id)"
+        case .wholeClip: "wholeClip"
         }
     }
 }

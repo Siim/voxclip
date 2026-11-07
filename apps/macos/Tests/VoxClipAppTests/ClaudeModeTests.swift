@@ -491,4 +491,80 @@ enum MakeItPostableTestsPlan {
             musicPick: 0, postText: "We ship the clipper today.", score: 7, verdict: .post)
     }
 }
+// MARK: Revoice the whole clip (ADR-R46)
+
+private final class Revoiced: Sendable {
+    private let value = Mutex<[Decimal?]>([])
+    var all: [Decimal?] { value.withLock { $0 } }
+    func record(_ budget: Decimal?) { value.withLock { $0.append(budget) } }
+}
+
+extension ClaudeModeTests {
+    private func record() -> WholeClipRevoiceRecord {
+        WholeClipRevoiceRecord(id: "wholeclip-test", clipId: "clip-main", segmentIds: ["seg"], script: "we finally ship", consentRecordId: "r",
+                               videoRetime: 0.99, lipsyncModel: WholeClipRevoice.Lipsync.lipsync2.rawValue, usd: 1.5, match: nil, createdAt: Date())
+    }
+
+    /// Runs Claude mode over the fixture with the whole clip quoted at `price` for `reason`; returns the run of "clip-main".
+    private func runWholeClip(_ fixture: Fixture, reason: WholeClipRevoice.Reason?, price: Decimal, revoiced: Revoiced) async -> MakeItRun? {
+        let editor = fixture.editor
+        let made = record()
+        editor.makeIt.services?.wholeClipQuote = { request, _ in
+            fixture.calls.record("quote \(request.clipID) \(request.rewrites.map(\.text))")
+            return WholeClipAutoQuote(reason: reason, price: price)
+        }
+        editor.makeIt.services?.revoiceWholeClip = { request, _ in
+            revoiced.record(request.budget)
+            return .revoiced(made, spent: price)
+        }
+        await editor.makeIt.refreshVoiceReady(editor)
+        editor.armClaudeMode()
+        editor.claudeModeTranscribed(started: false)
+        await editor.claudeMode.task?.value
+        return editor.claudeModeRuns.first { $0.clipID == "clip-main" }
+    }
+
+    @Test func withinTheCapAStitchedClipIsRevoicedWholeInsteadOfPatched() async throws {
+        let fixture = try fixture()
+        defer { close(fixture) }
+        let revoiced = Revoiced()
+        let run = try #require(await runWholeClip(fixture, reason: .manyWords(revoiced: 3, spoken: 5), price: Decimal(string: "1.5")!, revoiced: revoiced))
+        #expect(revoiced.all == [2], "revoiced once, within the video's cap: \(fixture.calls.all)")
+        #expect(!fixture.calls.all.contains { $0.hasPrefix("voice ") }, "no phrase was patched: \(fixture.calls.all)")
+        let row = try #require(run.rows.first { $0.id == "wholeClip" })
+        #expect(row.text == "Revoiced the whole clip in your voice, lip synced" && row.undoable)
+        if case .wholeClip(let saved)? = run.inverses["wholeClip"] { #expect(saved.id == "wholeclip-test") } else { Issue.record("no whole-clip inverse") }
+        #expect(fixture.editor.claudeMode.budget?.spent == Decimal(string: "1.5"))
+        #expect(!run.rows.contains { $0.id == "wholeClipOffer" })
+    }
+
+    @Test func overTheCapThePatchRunsAndTheOfferWaitsUnpaidUntilClicked() async throws {
+        let fixture = try fixture()
+        defer { close(fixture) }
+        let revoiced = Revoiced()
+        let price = Decimal(string: "2.5")!
+        let run = try #require(await runWholeClip(fixture, reason: .manyWords(revoiced: 3, spoken: 5), price: price, revoiced: revoiced))
+        #expect(revoiced.all.isEmpty, "nothing spent on the whole clip over the cap")
+        #expect(fixture.calls.all.contains("voice we finally ship budget 2"), "the phrase was patched as before")
+        let offer = try #require(run.rows.first { $0.id == "wholeClipOffer" })
+        #expect(offer.actionTitle == "Revoice the Whole Clip · ≈ $2.50" && offer.change == .wholeClip)
+        #expect(fixture.editor.claudeMode.budget?.spent == Decimal(string: "0.10"))
+        // The click is the approval for exactly the offered price.
+        fixture.editor.makeItChange(.wholeClip, run: run)
+        for _ in 0..<10_000 where revoiced.all.isEmpty { await Task.yield() }
+        for _ in 0..<1_000 where !run.rows.contains(where: { $0.id == "wholeClip" }) { await Task.yield() }
+        #expect(revoiced.all == [price])
+        #expect(run.rows.contains { $0.id == "wholeClip" && $0.undoable })
+    }
+
+    @Test func aClipThatWouldNotSoundStitchedIsPatchedWithNoOffer() async throws {
+        let fixture = try fixture()
+        defer { close(fixture) }
+        let revoiced = Revoiced()
+        let run = try #require(await runWholeClip(fixture, reason: nil, price: 1, revoiced: revoiced))
+        #expect(revoiced.all.isEmpty)
+        #expect(fixture.calls.all.contains("voice we finally ship budget 2"))
+        #expect(!run.rows.contains { $0.id == "wholeClipOffer" || $0.id == "wholeClip" })
+    }
+}
 #endif

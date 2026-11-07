@@ -115,6 +115,9 @@ struct RewriteChange: Equatable, Sendable {
     private(set) var revision = 0
     private(set) var generation: RewriteGenerationSession?
     var takePlan: ClipTakePlan?
+    /// "How should it sound?" (ADR-R46): the whole-clip revoice's card and run, and its take plan over the script's parts.
+    var wholeClip: WholeClipRevoiceSession?
+    @ObservationIgnored var wholeClipPlan: ClipTakePlan?
     var speechContextOffer: RewriteSpeechContextReview?
     private var requestedSurroundingSentenceOrdinal: Int?
     var surroundingSentenceOrdinal: Int? {
@@ -312,7 +315,7 @@ struct RewriteChange: Equatable, Sendable {
         return lower...upper
     }
     /// The tab's clip when a selection lies inside it.
-    private static func enclosingClip(_ range: ClosedRange<Int>, in project: Project) -> String? {
+    static func enclosingClip(_ range: ClosedRange<Int>, in project: Project) -> String? {
         guard let id = project.edits.activeClipId, let clip = clipRange(id, in: project),
               clip.contains(range.lowerBound), clip.contains(range.upperBound) else { return nil }
         return id

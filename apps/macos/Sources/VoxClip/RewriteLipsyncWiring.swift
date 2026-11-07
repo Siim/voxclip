@@ -8,16 +8,16 @@ extension RewriteSession {
         guard plan.lipsync.blocksMutation(phrase) else { perform(); return }
         let identity = "discardLipsync-\(phrase)"
         let question = "Changing this phrase discards its lip sync and any shared window. fal.ai charges are not refunded."
-        task.ask(PanelConfirm(question: question,
-            cancel: PanelAction(id: "keepLipsync", title: "Keep Working") { [weak self] in self?.task.dismissConfirm() },
-            confirm: PanelAction(id: identity, title: "Discard Lip Sync") { [weak self, weak plan] in
-                guard let self, let plan, current, takePlan === plan, task.confirm?.confirm.id == identity else { return }
-                task.dismissConfirm()
-                plan.lipsync.invalidate(phrase)
-                perform()
-                Task { await plan.lipsync.refresh() }
-                showProposal()
-            }))
+        let cancel = PanelAction(id: "keepLipsync", title: "Keep Working") { [weak self] in self?.task.dismissConfirm() }
+        let discard = PanelAction(id: identity, title: "Discard Lip Sync") { [weak self, weak plan] in
+            guard let self, let plan, current, takePlan === plan, task.confirm?.confirm.id == identity else { return }
+            task.dismissConfirm()
+            plan.lipsync.invalidate(phrase)
+            perform()
+            Task { await plan.lipsync.refresh() }
+            showProposal()
+        }
+        task.ask(PanelConfirm(question: question, cancel: cancel, confirm: discard))
         editor.announce(question)
     }
 
@@ -65,14 +65,15 @@ extension RewriteSession {
             guard let spent = await VoiceLabSpendLedger(locations: app.locations).total(provider: "fal", at: Date()),
                   spent.unknownCount == 0 else { throw ClipTakePlan.Failure.unknownSpend }
             return VoiceLabMonthlyCap(limit: limit, spent: spent.usd)
-        }, run: { request, window, recordID, progress in
+        }, run: { request, window, recordID, model, progress in
             try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             let provider = FalLipsyncProvider(keys: app.secrets, logger: app.log, spend: VoiceLabSpendLedger(locations: app.locations))
             #if DEBUG
             await provider.setDiagnostic(LipsyncDiagnostic())
             #endif
             return try await LipsyncRun(provider: provider, consentStore: VoiceConsentStore(locations: app.locations),
-                paidRoot: paid, scratchRoot: scratch).execute(request: request, window: window, recordID: recordID, onProgress: progress)
+                paidRoot: paid, scratchRoot: scratch).execute(request: request, window: window, recordID: recordID,
+                    model: model.lipsyncModel, onProgress: progress)
         }, changed: { [weak self] in
             await app.refreshMonthlySpend()
             self?.showProposal()

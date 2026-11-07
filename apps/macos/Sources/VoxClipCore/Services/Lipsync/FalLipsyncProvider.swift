@@ -492,11 +492,15 @@ public actor FalLipsyncProvider: LipsyncProvider {
 extension FalLipsyncProvider {
     public func prepareApprovedUpload(video: LipsyncUploadFile, audio: LipsyncUploadFile, options: LipsyncOptions,
                                       fps: Double, consentStore: VoiceConsentStore, recordID: String,
-                                      acceptsPaidJob: Bool, acceptsMediaTransfer: Bool) async throws -> (LipsyncQuote, LipsyncApproval) {
+                                      acceptsPaidJob: Bool, acceptsMediaTransfer: Bool,
+                                      model chosen: LipsyncModel? = nil) async throws -> (LipsyncQuote, LipsyncApproval) {
         guard acceptsPaidJob, acceptsMediaTransfer, video.contentType == "video/mp4", audio.contentType == "audio/wav" else {
             throw LipsyncError.approvalRequired
         }
-        try validate(rewriteModel, seconds: max(video.durationSeconds, audio.durationSeconds), fps: fps)
+        // Rewrite's phrases use sync-3; a whole-clip revoice picks lipsync-2 or sync-3 (ADR-R46). Only this provider's models.
+        let model = chosen ?? rewriteModel
+        guard models.contains(model) else { throw LipsyncError.invalidInput }
+        try validate(model, seconds: max(video.durationSeconds, audio.durationSeconds), fps: fps)
         let record = try await consentStore.load(recordID)
         try await consentStore.validateUse(record)
         let fingerprint = try await keyFingerprint()
@@ -506,7 +510,7 @@ extension FalLipsyncProvider {
         let uploadedVideo = try await upload(video, key: key, permit: permit)
         let uploadedAudio = try await upload(audio, key: key, permit: permit)
         guard try await keyFingerprint() == fingerprint else { throw LipsyncError.missingKey }
-        let quote = try await quote(model: rewriteModel, video: uploadedVideo, audio: uploadedAudio, options: options, fps: fps)
+        let quote = try await quote(model: model, video: uploadedVideo, audio: uploadedAudio, options: options, fps: fps)
         let approval = try await approve(quote, consentStore: consentStore, recordID: recordID,
                                          acceptsPaidJob: acceptsPaidJob, acceptsMediaTransfer: acceptsMediaTransfer)
         return (quote, approval)

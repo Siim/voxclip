@@ -1928,6 +1928,16 @@ Planner v2 evaluation (Claude Code 2.1.318, Opus, plan sign-in, three prompt rou
 
 ---
 
+### 16.11 Claude mode's whole-clip switch (ADR-R46)
+
+Before a clip's rewrites are voiced one by one, a Claude-mode run (one with the video's spend pool) asks whether patching would sound stitched. `MakeItServices.wholeClipQuote` opens Rewrite over the whole clip with every planned rewrite in place. That gives the rule's reason (`WholeClipRevoice.reason`) and the whole clip's price from the tables. `WholeClipRevoice.autoChoice` then decides:
+
+- **Patch:** no reason, or no price. Nothing is offered.
+- **Revoice:** the price fits what is left of the cap. `revoiceWholeClip` runs the same session's whole-clip revoice with no click, applies it as one undo step and adds its review row with Undo (`MakeItInverse.wholeClip`). The per-phrase voice steps don't run.
+- **Patch and offer:** over the cap, or when no paid step may run. The phrases are patched as before, and the row "Revoice the Whole Clip · ≈ $x" waits. Its click approves exactly that price. Nothing is spent until then.
+
+Claude mode never answers the Rewrite panel's card; outside Claude mode the card asks (design.md R2 "How should it sound?").
+
 ## 17. Caption pick (`captionPick`)
 
 When the clip style's captions are Auto (design.md §6.6), one request asks the connector to choose a caption style

@@ -207,9 +207,11 @@ public enum VoiceLabProject {
         }
         if project.schemaVersion == 1 {
             guard project.voiceLab.segments.isEmpty, project.voiceLab.assets == nil,
-                  project.voiceLab.cleanAudio == nil, project.voiceLab.voices == nil, project.voiceLab.videoAssets == nil else { throw VoiceLabProjectError.invalidSegment }
+                  project.voiceLab.cleanAudio == nil, project.voiceLab.voices == nil, project.voiceLab.videoAssets == nil,
+                  project.voiceLab.wholeClipRevoices == nil else { throw VoiceLabProjectError.invalidSegment }
             return
         }
+        try WholeClipRevoice.validate(project)
         guard (2...4).contains(project.schemaVersion), let assets = project.voiceLab.assets else { throw VoiceLabProjectError.invalidSegment }
         if project.schemaVersion == 2 && (project.voiceLab.cleanAudio != nil || project.voiceLab.voices != nil || project.voiceLab.videoAssets != nil || project.voiceLab.segments.contains(where: { $0.scope != nil || $0.groupId != nil || $0.provenance.region != nil || $0.candidates.contains(where: { $0.recipe != nil }) })) { throw VoiceLabProjectError.invalidSegment }
         guard VoiceLabAssetNaming.isSafeProjectID(project.id) else {

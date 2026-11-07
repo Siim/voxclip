@@ -25,6 +25,12 @@ public final class VoiceLabDisclosureOverlay: @unchecked Sendable {
     private let pixels: [UInt8]
     private let origins: [(Int, Int)]
 
+    /// The chip's words: a whole-clip revoice (ADR-R46), lip movement, or any other AI change.
+    public static func chipText(kinds: [String]) -> String {
+        if kinds.contains(WholeClipRevoice.disclosureKind) { return WholeClipRevoice.disclosureChip }
+        return kinds.contains("lipsync") ? "Lip movement generated with AI" : "AI MODIFIED"
+    }
+
     public init(plan: VoiceLabDisclosurePlan, width: Int, height: Int, fontURL: URL,
                 captionBlocks: [VoiceLabDisclosureCaptionBlock]) throws {
         guard width > 0, height > 0, width <= 16384, height <= 16384 else { throw VoiceLabDisclosureError.invalidFrame }
@@ -41,7 +47,7 @@ public final class VoiceLabDisclosureOverlay: @unchecked Sendable {
         }
         let size = CGFloat(height) * 0.024
         let font = CTFontCreateWithGraphicsFont(graphicsFont, size, nil, nil)
-        let text = NSAttributedString(string: plan.kinds.contains("lipsync") ? "Lip movement generated with AI" : "AI MODIFIED", attributes: [
+        let text = NSAttributedString(string: Self.chipText(kinds: plan.kinds), attributes: [
             NSAttributedString.Key(kCTFontAttributeName as String): font,
             NSAttributedString.Key(kCTKernAttributeName as String): size * 0.06,
             NSAttributedString.Key(kCTForegroundColorAttributeName as String): CGColor(gray: 1, alpha: 1)

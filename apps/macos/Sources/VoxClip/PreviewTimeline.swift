@@ -146,6 +146,8 @@ enum ViewerTag: Equatable {
     static func tag(for model: EditorModel, standIn: Bool) -> ViewerTag? {
         let time = model.sourceTime
         if model.project.voiceLab.segments.contains(where: { $0.enabled && $0.replace.start <= time && time < $0.replace.end }) { return .aiVoice }
+        // A whole-clip revoice (ADR-R46): every frame of the clip plays the AI voice, the pauses between its parts too.
+        if let clip = model.activeClip?.id, WholeClipRevoice.isRevoiced(clipId: clip, in: model.project) { return .aiVoice }
         if model.containsAISpeech(clipID: model.activeClip?.id) { return .aiModified }
         return standIn ? ViewerStandIn.chip(model.mediaStatus).map(ViewerTag.media) : nil
     }

@@ -777,6 +777,8 @@ public struct ProjectVoiceLab: Codable, Sendable, Equatable {
     public var voices: [VoiceLabVoiceReference]?
     public var videoAssets: [VoiceLabVideoAsset]?
     public var speakingRateSamples: [String: [VoiceLabRateSample]]?
+    /// Whole-clip revoices in use (ADR-R46); schema v3 and later, omitted when there are none.
+    public var wholeClipRevoices: [WholeClipRevoiceRecord]?
 
     /// Creates an explicit value without I/O or generated identifiers.
     public init(segments: [VoiceLabSegment] = [], assets: [VoiceLabAsset]? = nil, cleanAudio: VoiceLabCleanAudio? = nil, voices: [VoiceLabVoiceReference]? = nil, videoAssets: [VoiceLabVideoAsset]? = nil) {
@@ -790,7 +792,7 @@ public struct ProjectVoiceLab: Codable, Sendable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case segments
         case assets
-        case cleanAudio, voices, videoAssets, speakingRateSamples
+        case cleanAudio, voices, videoAssets, speakingRateSamples, wholeClipRevoices
     }
 
     public init(from decoder: any Decoder) throws {
@@ -801,6 +803,7 @@ public struct ProjectVoiceLab: Codable, Sendable, Equatable {
         self.voices = try values.decodeIfPresent([VoiceLabVoiceReference].self, forKey: .voices)
         self.videoAssets = try values.decodeIfPresent([VoiceLabVideoAsset].self, forKey: .videoAssets)
         self.speakingRateSamples = try values.decodeIfPresent([String: [VoiceLabRateSample]].self, forKey: .speakingRateSamples)
+        self.wholeClipRevoices = try values.decodeIfPresent([WholeClipRevoiceRecord].self, forKey: .wholeClipRevoices)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -808,6 +811,7 @@ public struct ProjectVoiceLab: Codable, Sendable, Equatable {
         try values.encode(self.segments, forKey: .segments)
         try values.encodeIfPresent(self.assets, forKey: .assets)
         try values.encodeIfPresent(self.speakingRateSamples, forKey: .speakingRateSamples)
+        try values.encodeIfPresent(self.wholeClipRevoices, forKey: .wholeClipRevoices)
         if let voices { try values.encode(cleanAudio, forKey: .cleanAudio); try values.encode(voices, forKey: .voices); try values.encode(videoAssets, forKey: .videoAssets) }
     }
 

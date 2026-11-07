@@ -52,18 +52,18 @@ import VoxClipCore
         var spent = Decimal(0)
         for _ in 0..<32 {
             await settle()
-            spent = max(spent, session.takePlan?.spent.usd ?? 0)
+            spent = max(spent, session.takePlan?.spent.usd ?? Decimal(0))
             #if DEBUG
             if let pressed { await editor.makeItStepObserver?(pressed) }
             #endif
             pressed = nil
             guard session.isOpen else { break }
             if let blocked = await step(session, spent: spent) {
-                spent = max(spent, session.takePlan?.spent.usd ?? 0)
+                spent = max(spent, session.takePlan?.spent.usd ?? Decimal(0))
                 return MakeItRewriteOutcome(result: blocked, spent: spent, joinNotes: joinNotes, keptAsRecorded: keptBlocked.count)
             }
         }
-        spent = max(spent, session.takePlan?.spent.usd ?? 0)
+        spent = max(spent, session.takePlan?.spent.usd ?? Decimal(0))
         let added = editor.project.voiceLab.segments.map(\.id).filter { !before.contains($0) }
         if !added.isEmpty, !session.isOpen {
             return MakeItRewriteOutcome(result: .voiced(segments: added), spent: spent, joinNotes: joinNotes, keptAsRecorded: keptBlocked.count)
@@ -73,7 +73,10 @@ import VoxClipCore
     }
 
     /// Opens Rewrite on the planned words: the session's reply is the planner's text, reviewed as any reply is.
-    private func open() -> RewriteSession? {
+    private func open() -> RewriteSession? { Self.openSession(editor: editor, range: request.range, text: request.text) }
+
+    /// Rewrite over `range` with `text` as its reply, reviewed as any reply is (also a whole clip's, MakeItWholeClip.swift).
+    static func openSession(editor: EditorModel, range: ClosedRange<Int>, text: String) -> RewriteSession? {
         let app = editor.app
         let provider = app.providers.first { $0.id == app.string("llm.connector") }
         let connector = provider.map { provider in
@@ -82,13 +85,13 @@ import VoxClipCore
         }
         let envelope = editor.waveform.map { AudioEnvelope(sampleRate: Double(editor.project.media.source.audio?.sampleRate ?? 48_000), levels: $0.fine) }
         let prices = app.shared.flatMap { try? VoiceLabPriceCatalog.load(shared: $0) }
-        let session = RewriteSession(editor: editor, scope: .selection(request.range), envelope: envelope, connector: connector, prices: prices,
+        let session = RewriteSession(editor: editor, scope: .selection(range), envelope: envelope, connector: connector, prices: prices,
             consent: { [weak editor] in
                 guard let editor, let provider else { return false }
                 return await editor.rewriteConsent(provider: provider)
             })
         editor.openRewrite = session
-        do { try session.receivePassage(request.text) } catch { editor.closeRewrite(returnFocus: false); return nil }
+        do { try session.receivePassage(text) } catch { editor.closeRewrite(returnFocus: false); return nil }
         session.finishRun(seconds: 0)
         guard session.isOpen, session.review != nil else { editor.closeRewrite(returnFocus: false); return nil }
         return session
