@@ -81,8 +81,10 @@ struct WholeClipScriptTests {
     @Test func partsSplitAtSentencesWithinTheirSeconds() throws {
         // Twelve sentences of four words, 2 s each: 24 s of source in parts of at most 12 s, so two parts of six.
         let long = (0..<48).map { index -> TimedWord in
-            TimedWord(id: "l\(index)", text: index % 4 == 3 ? "end." : "word", kind: .word, start: Double(index) * 0.5,
-                      end: Double(index) * 0.5 + 0.45, rawStart: nil, rawEnd: nil, conf: nil, speaker: nil)
+            let start: Double = Double(index) * 0.5
+            let end: Double = start + 0.45
+            let text: String = index % 4 == 3 ? "end." : "word"
+            return TimedWord(id: "l\(index)", text: text, start: start, end: end)
         }
         let script = try #require(WholeClipScript.assemble(words: long, cutWordIds: [], voiceHunks: []))
         let parts = script.parts

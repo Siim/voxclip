@@ -52,18 +52,18 @@ import VoxClipCore
         var spent = Decimal(0)
         for _ in 0..<32 {
             await settle()
-            spent = max(spent, session.takePlan?.spent.usd ?? 0)
+            spent = max(spent, session.takePlan?.spent.usd ?? Decimal(0))
             #if DEBUG
             if let pressed { await editor.makeItStepObserver?(pressed) }
             #endif
             pressed = nil
             guard session.isOpen else { break }
             if let blocked = await step(session, spent: spent) {
-                spent = max(spent, session.takePlan?.spent.usd ?? 0)
+                spent = max(spent, session.takePlan?.spent.usd ?? Decimal(0))
                 return MakeItRewriteOutcome(result: blocked, spent: spent, joinNotes: joinNotes, keptAsRecorded: keptBlocked.count)
             }
         }
-        spent = max(spent, session.takePlan?.spent.usd ?? 0)
+        spent = max(spent, session.takePlan?.spent.usd ?? Decimal(0))
         let added = editor.project.voiceLab.segments.map(\.id).filter { !before.contains($0) }
         if !added.isEmpty, !session.isOpen {
             return MakeItRewriteOutcome(result: .voiced(segments: added), spent: spent, joinNotes: joinNotes, keptAsRecorded: keptBlocked.count)

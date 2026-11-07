@@ -8,16 +8,16 @@ extension RewriteSession {
         guard plan.lipsync.blocksMutation(phrase) else { perform(); return }
         let identity = "discardLipsync-\(phrase)"
         let question = "Changing this phrase discards its lip sync and any shared window. fal.ai charges are not refunded."
-        task.ask(PanelConfirm(question: question,
-            cancel: PanelAction(id: "keepLipsync", title: "Keep Working") { [weak self] in self?.task.dismissConfirm() },
-            confirm: PanelAction(id: identity, title: "Discard Lip Sync") { [weak self, weak plan] in
-                guard let self, let plan, current, takePlan === plan, task.confirm?.confirm.id == identity else { return }
-                task.dismissConfirm()
-                plan.lipsync.invalidate(phrase)
-                perform()
-                Task { await plan.lipsync.refresh() }
-                showProposal()
-            }))
+        let cancel = PanelAction(id: "keepLipsync", title: "Keep Working") { [weak self] in self?.task.dismissConfirm() }
+        let discard = PanelAction(id: identity, title: "Discard Lip Sync") { [weak self, weak plan] in
+            guard let self, let plan, current, takePlan === plan, task.confirm?.confirm.id == identity else { return }
+            task.dismissConfirm()
+            plan.lipsync.invalidate(phrase)
+            perform()
+            Task { await plan.lipsync.refresh() }
+            showProposal()
+        }
+        task.ask(PanelConfirm(question: question, cancel: cancel, confirm: discard))
         editor.announce(question)
     }
 
