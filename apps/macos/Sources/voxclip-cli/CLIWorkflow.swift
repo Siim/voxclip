@@ -272,7 +272,8 @@ enum CLIWorkflow {
         let exporter = AVExporter(appVersion: VoxClipCLI.configuration.version,
                                   cleanupRegistry: DataLocations().root.appendingPathComponent("Scratch"))
         let job = ExportJob(render: render, aspect: aspect, quality: quality, outputURL: URL(fileURLWithPath: options.output!),
-            writeSRT: options.srt != nil, srtURL: options.srt.map { URL(fileURLWithPath: $0) })
+            writeSRT: options.srt != nil, srtURL: options.srt.map { URL(fileURLWithPath: $0) },
+            loudness: options.loudness.flatMap(ExportLoudness.init(rawValue:)) ?? .social)
         let audioDestination = options.audioOut.map { URL(fileURLWithPath: $0).standardizedFileURL.resolvingSymlinksInPath() }
         var audioStaging: URL?
         var approvals: [URL: ExportSafety.DestinationApproval]?
@@ -290,7 +291,9 @@ enum CLIWorkflow {
         let reporter = CLIProgressReporter(quiet: options.quiet)
         try Task.checkCancellation()
         CLIInterruptTiming.testOnly?.exportStarting()
-        let result = try await exporter.export(job, additionalOutputs: additionalOutputs, approvals: approvals) { progress in
+        // The edited WAV carries the export's loudness gain (ADR-R47).
+        let result = try await exporter.export(job, additionalOutputs: additionalOutputs, approvals: approvals,
+                                               gainedAudio: audioStaging.map { [$0] } ?? []) { progress in
             reporter.report(progress)
         }
         guard case .object(var fields) = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(result)) else { throw VoxClipError.exportFailed("Cannot encode result") }
