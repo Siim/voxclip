@@ -187,7 +187,7 @@ import VoxClipCore
             PanelButton(action: PanelAction(id: "wholeClipAB", title: "A / B with your recording") { [weak rewrite] in rewrite?.wholeClip?.backend?.play(true) }, kind: .bordered)
         }
         if let match = session.match {
-            Text(WholeClipRevoiceCardLines.matchLine(match, voice: quote?.voiceName ?? "your voice")).font(VCType.small.font())
+            Text(WholeClipRevoiceCardLines.matchLine(match, voice: rewrite.wholeClipAnchorName)).font(VCType.small.font())
                 .foregroundStyle(DesignValues.color("text.secondary")).fixedSize(horizontal: false, vertical: true)
         }
         if let upgrade = rewrite.wholeClipUpgradeAction() {

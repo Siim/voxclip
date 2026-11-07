@@ -354,6 +354,11 @@ extension RewriteSession {
         return .init(model: model, usd: offer.estimate.usd ?? 0, factor: factor)
     }
 
+    /// The anchor the baseline belongs to, named as Settings › Voices names it ("siim"), never the video's own voice.
+    var wholeClipAnchorName: String {
+        editor.app.voiceLabSession.anchorVoice(language: nil).map { VoiceLabSession.rebuildName($0.voiceName) } ?? "your voice"
+    }
+
     private func wholeClipMatch(_ voice: WholeClipRevoiceSession.Voice) async -> WholeClipRevoiceRecord.Match? {
         guard let plan = wholeClipPlan else { return nil }
         let language = project.transcript?.language ?? "en"
