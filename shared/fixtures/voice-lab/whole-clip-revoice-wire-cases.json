@@ -748,7 +748,7 @@
     },
     {
       "id": "local-time",
-      "schemaValid": false,
+      "schemaValid": true,
       "patches": [
         {
           "path": "/voiceLab/wholeClipRevoices/0/createdAt",

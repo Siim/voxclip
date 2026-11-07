@@ -9,7 +9,7 @@ Swift WholeClipRevoiceWireReplayTests and C# WholeClipRevoiceWireTests.
 Each valid case opens, validates, saves with every record key written (nulls included) and says what the export's
 disclosure reads: its kinds, its post text and the burned-in chip, and whether clip-main shows the AI voice tag.
 `schemaValid: true` on an invalid case marks a rule JSON Schema cannot express (the clip and segments exist, a segment
-belongs to one record, record ids are distinct). Deterministic; run from anywhere.
+belongs to one record, record ids are distinct, a timestamp carries its zone). Deterministic; run from anywhere.
 """
 import copy
 import json
@@ -104,7 +104,7 @@ def generated():
     reject('null-take', [set_value(RECORD + '/match/take', None)])
     reject('baseline-below-minus-one', [set_value(RECORD + '/match/anchorBaseline', -1.01)])
     reject('real-speech-above-one', [set_value(RECORD + '/match/realSpeech', 1.01)])
-    reject('local-time', [set_value(RECORD + '/createdAt', '2026-11-07T09:00:00')])
+    reject('local-time', [set_value(RECORD + '/createdAt', '2026-11-07T09:00:00')], schema_valid=True)
     reject('empty-list', [set_value('/voiceLab/wholeClipRevoices', [])])
     reject('null-list', [set_value('/voiceLab/wholeClipRevoices', None)])
     reject('single-object', [set_value('/voiceLab/wholeClipRevoices', record())])

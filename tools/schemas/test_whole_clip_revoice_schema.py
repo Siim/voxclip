@@ -9,7 +9,7 @@ import unittest
 
 sys.dont_write_bytecode = True
 
-from jsonschema import Draft202012Validator, FormatChecker
+from jsonschema import Draft202012Validator
 from validate import load_registry
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -25,7 +25,9 @@ class WholeClipRevoiceSchemaTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         registry, schemas = load_registry()
-        cls.validator = Draft202012Validator(schemas["project.schema.json"], registry=registry, format_checker=FormatChecker())
+        # No format checker: draft 2020-12 treats "format" as an annotation, and CI's pinned jsonschema asserts none, so a
+        # timestamp without its zone is a runtime rule (schemaValid) wherever this runs.
+        cls.validator = Draft202012Validator(schemas["project.schema.json"], registry=registry)
         cls.project = json.loads((FOLDER / NAMES[0]).read_text())
         cls.cases = json.loads((FOLDER / NAMES[1]).read_text())
 
