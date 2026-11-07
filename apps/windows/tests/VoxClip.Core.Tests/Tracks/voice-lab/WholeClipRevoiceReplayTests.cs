@@ -92,7 +92,7 @@ public sealed class WholeClipRevoiceReplayTests
     [Fact]
     public void TheScriptItsPartsAndTheirVoiceChanges()
     {
-        Assert.Equal(27, Rows("script").Count);
+        Assert.Equal(28, Rows("script").Count);
         foreach (var row in Rows("script"))
         {
             var id = row!["id"]!.GetValue<string>();
@@ -123,7 +123,7 @@ public sealed class WholeClipRevoiceReplayTests
                 Assert.True(want["start"]!.GetValue<double>() == have.Start && want["end"]!.GetValue<double>() == have.End, id);
             }
             var expectedHunks = expected["hunks"]!.AsArray();
-            var made = script.Hunks(words, Strings(row["cutPauseIds"]).ToHashSet(StringComparer.Ordinal));
+            var made = script.Hunks(words, Strings(row["cutWordIds"]).ToHashSet(StringComparer.Ordinal), Strings(row["cutPauseIds"]).ToHashSet(StringComparer.Ordinal));
             Assert.True(expectedHunks.Count == made.Count, id);
             foreach (var (want, have) in expectedHunks.Zip(made))
             {

@@ -171,11 +171,12 @@ def parts_of(sentences):
     return parts
 
 
-def hunks_of(parts, words, cut_pause_ids=()):
+def hunks_of(parts, words, cut_ids=(), cut_pause_ids=()):
     """The parts tile the clip (voice-lab 8.14 item 3): the first starts at the clip's first item, the last ends at its last.
-    The items between two parts' source words go to the side of the widest gap between them (the earliest on a tie; a cut
-    pause counts as no gap); when that gap is narrower than SEAM_MIN_GAP the two parts are one change."""
-    cut_pauses = set(cut_pause_ids)
+    Between two parts, from the last kept source word of one to the first kept source word of the next, the items go to the
+    side of the widest gap (the earliest on a tie; a cut pause counts as no gap); when that gap is narrower than SEAM_MIN_GAP
+    the two parts are one change."""
+    cuts, cut_pauses = set(cut_ids), set(cut_pause_ids)
     items = {}
     for offset, item in enumerate(words):
         items.setdefault(item['id'], offset)
@@ -184,8 +185,10 @@ def hunks_of(parts, words, cut_pause_ids=()):
         positions = [items[identity] for identity in part['sourceWordIds'] if identity in items]
         if not positions:
             continue
+        kept = [position for position in positions if words[position]['kind'] == 'word' and words[position]['id'] not in cuts]
         tiles.append({'sources': list(part['sourceWordIds']), 'tokens': split_words(part['text']), 'first': min(positions),
-                      'last': max(positions), 'lower': min(positions), 'upper': max(positions)})
+                      'last': max(positions), 'keptFirst': min(kept) if kept else min(positions),
+                      'keptLast': max(kept) if kept else max(positions), 'lower': min(positions), 'upper': max(positions)})
     if not tiles:
         return []
     reached = []
@@ -194,25 +197,24 @@ def hunks_of(parts, words, cut_pause_ids=()):
     joined = [tiles[0]]
     for following in tiles[1:]:
         current = joined.pop()
-        if following['first'] > current['last'] + 1:
-            split, widest = current['last'], -math.inf
-            for j in range(current['last'], following['first']):
-                gap = 0.0 if 'pause-after-' + words[j]['id'] in cut_pauses else words[j + 1]['start'] - reached[j]
-                if gap > widest:
-                    widest, split = gap, j
+        left, right = current['keptLast'], following['keptFirst']
+        if current['last'] < following['first'] and right > left:
+            split, widest = left, math.inf
+            if right > left + 1:
+                widest = -math.inf
+                for j in range(left, right):
+                    gap = 0.0 if 'pause-after-' + words[j]['id'] in cut_pauses else words[j + 1]['start'] - reached[j]
+                    if gap > widest:
+                        widest, split = gap, j
             if widest >= SEAM_MIN_GAP:
                 current['upper'] = split
                 joined.append(current)
                 joined.append(dict(following, lower=split + 1))
                 continue
-        elif following['first'] == current['last'] + 1:
-            joined.extend([current, following])
-            continue
         current['sources'] = current['sources'] + [identity for identity in following['sources'] if identity not in current['sources']]
         current['tokens'] = current['tokens'] + following['tokens']
-        current['first'] = min(current['first'], following['first'])
-        current['last'] = max(current['last'], following['last'])
-        current['upper'] = max(current['upper'], following['upper'])
+        for key, pick in (('first', min), ('last', max), ('keptFirst', min), ('keptLast', max), ('upper', max)):
+            current[key] = pick(current[key], following[key])
         joined.append(current)
     joined[0]['lower'] = 0
     joined[-1]['upper'] = len(words) - 1
@@ -221,12 +223,16 @@ def hunks_of(parts, words, cut_pause_ids=()):
         spoken_before.append(spoken_before[-1] + (1 if item['kind'] == 'word' else 0))
     result = []
     for tile in joined:
-        leading = [item['id'] for item in words[tile['lower']:tile['first']]]
-        trailing = [item['id'] for item in words[tile['last'] + 1:tile['upper'] + 1]]
-        span = words[tile['lower']:tile['upper'] + 1]
-        result.append({'sourceWordIds': leading + tile['sources'] + trailing, 'newTokens': tile['tokens'],
-                       'absorbedItemIds': [item['id'] for item in span if item['kind'] != 'word'],
-                       'sourceStartIndex': spoken_before[tile['lower']], 'sourceEndIndex': spoken_before[tile['upper'] + 1]})
+        lower, upper = tile['lower'], tile['upper']
+        sources = [identity for identity in tile['sources'] if identity in items and lower <= items[identity] <= upper]
+        positions = [items[identity] for identity in sources]
+        first = min(positions) if positions else lower
+        last = max(positions) if positions else upper
+        leading = [item['id'] for item in words[lower:first]]
+        trailing = [item['id'] for item in words[last + 1:upper + 1]]
+        result.append({'sourceWordIds': leading + sources + trailing, 'newTokens': tile['tokens'],
+                       'absorbedItemIds': [item['id'] for item in words[lower:upper + 1] if item['kind'] != 'word'],
+                       'sourceStartIndex': spoken_before[lower], 'sourceEndIndex': spoken_before[upper + 1]})
     return result
 
 
@@ -245,7 +251,7 @@ def script_case(name, words, cut_ids=(), hunks=(), cut_pause_ids=()):
         expected = {'text': text, 'words': sum(len(sentence['tokens']) for sentence in sentences), 'characters': len(text),
                     'sentences': [{'text': text_of(sentence), 'sourceWordIds': sentence['sourceWordIds'], 'start': sentence['start'],
                                    'end': sentence['end']} for sentence in sentences],
-                    'parts': parts, 'hunks': hunks_of(parts, words, cut_pause_ids)}
+                    'parts': parts, 'hunks': hunks_of(parts, words, cut_ids, cut_pause_ids)}
     return {'id': name, 'words': words, 'cutWordIds': list(cut_ids), 'cutPauseIds': list(cut_pause_ids), 'voiceHunks': hunks,
             'expected': expected}
 
@@ -284,6 +290,8 @@ def tiling_cases():
         ('keeps-the-split-at-a-tightened-pause-between-sentences', a + ['|1.2'] + b, (), ['pause-after-t4']),
         ('keeps-the-split-of-touching-sentences', a + b, (), ()),
         ('tiles-a-part-made-only-of-new-words', a + ['|0.5', '~um'] + b, [([f't{index}' for index in range(6, 11)], 'Then it all changed.')], ()),
+        ('gives-a-rewrites-trailing-cut-filler-to-the-next-part', a + ['|0.5', '~um'] + b,
+         [([f't{index}' for index in range(0, 6)], 'A whole new start.')], ()),
     ]
     cases = []
     for name, script, hunks, pauses in rows:

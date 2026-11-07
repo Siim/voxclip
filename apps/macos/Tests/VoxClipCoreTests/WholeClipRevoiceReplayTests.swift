@@ -89,7 +89,7 @@ import Testing
 
     @Test func theScriptItsPartsAndTheirVoiceChanges() throws {
         let rows = try cases().script
-        #expect(rows.count == 27)
+        #expect(rows.count == 28)
         for row in rows {
             let words = row.words.map(timed)
             let hunks = row.voiceHunks.map { hunk in
@@ -109,7 +109,7 @@ import Testing
             #expect(parts.map(\.words) == expected.parts.map(\.words), "\(row.id)")
             #expect(parts.map(\.sourceWordIds) == expected.parts.map(\.sourceWordIds), "\(row.id)")
             #expect(parts.map(\.start) == expected.parts.map(\.start) && parts.map(\.end) == expected.parts.map(\.end), "\(row.id)")
-            let voice = made.hunks(words: words, cutPauseIds: Set(row.cutPauseIds))
+            let voice = made.hunks(words: words, cutWordIds: Set(row.cutWordIds), cutPauseIds: Set(row.cutPauseIds))
             #expect(voice.map(\.sourceWordIds) == expected.hunks.map(\.sourceWordIds), "\(row.id)")
             #expect(voice.map(\.newTokens) == expected.hunks.map(\.newTokens), "\(row.id)")
             #expect(voice.map(\.absorbedItemIds) == expected.hunks.map(\.absorbedItemIds), "\(row.id)")

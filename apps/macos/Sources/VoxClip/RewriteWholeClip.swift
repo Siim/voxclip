@@ -234,7 +234,7 @@ extension RewriteSession {
             throw WholeClipRevoiceSession.Stop.noVoice("Make your voice in Rewrite first. Nothing was sent.")
         }
         let final = try editor.voiceLabReviewProject(localCommands: localCommands)
-        let hunks = script.hunks(words: wholeClipWords(final), cutPauseIds: Set(final.edits.cutPauseIds))
+        let hunks = script.hunks(words: wholeClipWords(final), cutWordIds: Set(final.edits.cutWordIds), cutPauseIds: Set(final.edits.cutPauseIds))
         let model = VoiceLabWordingFit.modelID
         weak var created: ClipTakePlan?
         let makeInput = try takeInputMaker(final: final, recordID: recordID, modelID: model, envelope: envelope, model: { created?.modelID ?? model })

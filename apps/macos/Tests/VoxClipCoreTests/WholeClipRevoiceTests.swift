@@ -92,7 +92,7 @@ struct WholeClipScriptTests {
         #expect(parts.allSatisfy { $0.end - $0.start <= WholeClipRevoice.maximumPartSeconds })
         #expect(parts.map(\.words).reduce(0, +) == script.words)
         #expect(parts.flatMap(\.sourceWordIds) == long.map(\.id))
-        let hunks = script.hunks(words: long, cutPauseIds: [])
+        let hunks = script.hunks(words: long, cutWordIds: [], cutPauseIds: [])
         #expect(hunks.count == 2 && hunks.allSatisfy { $0.kind == .voice })
         #expect(hunks.flatMap(\.newTokens).joined(separator: " ") == script.text)
         #expect(hunks.flatMap(\.sourceWordIds) == long.map(\.id))

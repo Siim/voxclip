@@ -60,7 +60,7 @@ import Testing
     static func placeAndCheck(_ take: Take, voiceHunks: [VoiceLabDiffHunk] = [], _ name: String) throws -> ([VoiceLabDiffHunk], [VoiceLabWindow]) {
         let comment = Comment(rawValue: name)
         let script = try #require(WholeClipScript.assemble(words: take.clip, cutWordIds: take.cuts, voiceHunks: voiceHunks), comment)
-        let hunks = script.hunks(words: take.clip, cutPauseIds: Set(take.project.edits.cutPauseIds))
+        let hunks = script.hunks(words: take.clip, cutWordIds: take.cuts, cutPauseIds: Set(take.project.edits.cutPauseIds))
         // The spoken indices tile the clip's spoken words, each word in exactly one hunk.
         let spoken = take.clip.filter { $0.kind == .word }.count
         #expect(hunks.first?.sourceStartIndex == 0 && hunks.last?.sourceEndIndex == spoken, comment)
@@ -143,6 +143,18 @@ import Testing
         let (hunks, _) = try Self.placeAndCheck(take, voiceHunks: [rewrite], "new words")
         #expect(hunks.count == 3 && hunks[1].newTokens == ["Then", "everything", "changed", "for", "good."])
         #expect(hunks[1].sourceWordIds.first == "w20")
+    }
+
+    /// Rewrite's diff folds a cut filler into the change before it, so a part's own last source word is the cut "um" that
+    /// touches the next sentence (the smoke's S-revoice-whole-cuts). The boundary is read from the parts' kept words.
+    @Test func aRewriteThatEndsOnACutFillerGivesItToTheNextPart() throws {
+        let take = try Self.take(Self.sentence("a") + ["|0.5", "~um"] + Self.sentence("b") + ["|0.5"] + Self.sentence("c"))
+        let rewrite = VoiceLabDiffHunk(kind: .voice, sourceWordIds: (0...20).map { "w\($0)" },
+                                       newTokens: EditingPrimitives.splitWords("A whole new first sentence."), correctedTexts: [],
+                                       absorbedItemIds: [], bridgeWordIds: [], sourceStartIndex: 0, sourceEndIndex: 21, anchorSeconds: nil)
+        let (hunks, _) = try Self.placeAndCheck(take, voiceHunks: [rewrite], "rewrite ending on a cut filler")
+        #expect(hunks.count == 3 && hunks[0].sourceWordIds.last == "w19" && hunks[1].sourceWordIds.first == "w20")
+        #expect(hunks[0].newTokens == ["A", "whole", "new", "first", "sentence."])
     }
 
     @Test func partsWithNothingBetweenThemKeepTheirSplit() throws {
