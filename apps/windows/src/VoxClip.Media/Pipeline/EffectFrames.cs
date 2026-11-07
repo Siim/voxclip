@@ -79,8 +79,10 @@ internal sealed class EffectFrames : IDisposable
     }
 
     /// <summary>Titles, lower thirds, stickers and the progress bar over the finished frame at source time <paramref name="time"/>
-    /// and edited output time <paramref name="outputTime"/>; <paramref name="mapTime"/> maps source to edited seconds.</summary>
-    internal unsafe void DrawFrame(PixelBuffer frame, double time, double outputTime, Func<double, double> mapTime, CancellationToken ct)
+    /// and edited output time <paramref name="outputTime"/>; <paramref name="mapTime"/> maps source to edited seconds. A title or lower
+    /// third that can't be drawn is left out and <paramref name="overlayFailed"/> runs (a sticker with no bundled emoji is not a failure).</summary>
+    internal unsafe void DrawFrame(PixelBuffer frame, double time, double outputTime, Func<double, double> mapTime, CancellationToken ct,
+        Action? overlayFailed = null)
     {
         var active = Picture.Where(effect => effect.UsesPosition && time >= effect.Start && time < effect.End).ToArray();
         if (active.Length == 0) return;
@@ -105,6 +107,7 @@ internal sealed class EffectFrames : IDisposable
                 using var paint = new SKPaint { Color = SKColors.White.WithAlpha((byte)Math.Round(Math.Clamp(opacity, 0, 1) * 255)) };
                 canvas.DrawImage(overlay.Image, overlay.Box.Left, overlay.Box.Top, paint);
             }
+            else if (effect.Kind is "title" or "lowerThird") overlayFailed?.Invoke();
         }
         canvas.Flush();
     }

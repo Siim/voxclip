@@ -175,6 +175,20 @@
                                 <TextBlock x:Name="PreviewEmpty" FontSize="14" LineHeight="20" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center" Foreground="{ThemeResource VcChipMediaForegroundBrush}"/>
                                 <TextBlock x:Name="PreviewFile" TextWrapping="Wrap" TextAlignment="Center" FontFamily="{StaticResource VcMonoFontFamily}" FontSize="12" Opacity="{ThemeResource StageMessageFileOpacity}" Foreground="{ThemeResource VcChipMediaForegroundBrush}"/>
                             </StackPanel>
+                            <!-- Preview failed (design §5.4.4 g): over the player, the line naming what failed and Reload Preview, centred at 36%. -->
+                            <Border x:Name="PreviewFailurePlate" Visibility="Collapsed" Margin="12,0" HorizontalAlignment="Center" VerticalAlignment="Top"
+                                Background="{ThemeResource VcChipMediaBackgroundBrush}" BorderBrush="{ThemeResource VcChipMediaStrokeBrush}" BorderThickness="1"
+                                CornerRadius="6" Padding="12,8" AutomationProperties.AutomationId="PreviewError">
+                                <StackPanel Spacing="6" HorizontalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                                        <FontIcon Glyph="&#xE7BA;" FontSize="13" VerticalAlignment="Top" Margin="0,2,0,0" Foreground="{ThemeResource VcChipWarningGlyphBrush}" AutomationProperties.AccessibilityView="Raw"/>
+                                        <TextBlock x:Name="PreviewFailureLine" FontSize="13" LineHeight="17" FontWeight="SemiBold" MaxWidth="360" MaxLines="3" TextWrapping="Wrap"
+                                            TextTrimming="CharacterEllipsis" Foreground="{ThemeResource VcChipMediaForegroundBrush}"/>
+                                    </StackPanel>
+                                    <Button x:Name="ReloadPreview" Content="Reload Preview" HorizontalAlignment="Center" Click="ReloadPreviewClicked"
+                                        AutomationProperties.AutomationId="ReloadPreview"/>
+                                </StackPanel>
+                            </Border>
                             <controls:CaptionPositionOverlay x:Name="CaptionDrag"/>
                             <controls:AskClaudeBoxOverlay x:Name="AskClaudeBox"/>
                         </Grid>

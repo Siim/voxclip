@@ -1,13 +1,18 @@
 using System.Runtime.InteropServices.WindowsRuntime;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Services.Media;
 
 namespace VoxClip.App.Services;
+
+/// <summary>What the display watch needs from the page: whether the stage shows the player now, and what to do after a re-attach.</summary>
+internal sealed record PreviewDisplayHooks(Func<bool> OnStage, Action Stalled);
 
 internal sealed class PreviewPresenter(Image image, IPreviewEngine engine, Action<PreviewPosition> position, Action<Exception> error, Action<PixelBuffer>? still = null) : IAsyncDisposable
 {
@@ -19,11 +24,40 @@ internal sealed class PreviewPresenter(Image image, IPreviewEngine engine, Actio
     private long generation = -1;
     private int failed;
     private long lastStill;
+    private object? item;
+    private PlayerDisplayWatch watch;
+    private DispatcherQueueTimer? watchTimer;
+
+    /// <summary>The display watch's hooks (design.md §5.4.4 g); without them the watch doesn't run.</summary>
+    internal PreviewDisplayHooks? Display { get; init; }
+
+    /// <summary>The preview the engine loaded or swapped in: a new item starts the display watch's own count.</summary>
+    internal void Attach(object? loaded) => item = loaded;
 
     internal void Start()
     {
         CompositionTarget.Rendering += Present;
         reader = ReadAsync();
+        if (Display is null) return;
+        // Once a second while on screen: a ready preview whose image shows no frame is re-attached once and reported.
+        watchTimer = image.DispatcherQueue.CreateTimer();
+        watchTimer.Interval = TimeSpan.FromSeconds(1);
+        watchTimer.Tick += (_, _) => CheckDisplay();
+        watchTimer.Start();
+    }
+
+    /// <summary>Mac PlayerLayerView.checkDisplay: the item is ready (loaded, not failed) but the image holds no presented frame.</summary>
+    private void CheckDisplay()
+    {
+        if (Display is not { } display) return;
+        var inWindow = image.XamlRoot is not null && image.Visibility == Visibility.Visible && image.ActualWidth > 1 && image.ActualHeight > 1 && display.OnStage();
+        var layerReady = bitmap is not null && ReferenceEquals(image.Source, bitmap);
+        if (!watch.Tick(item, Volatile.Read(ref failed) == 0, layerReady, inWindow)) return;
+        // Re-attach: the image takes the presented frame again (or the next frame makes a new one) and frames are presented again.
+        CompositionTarget.Rendering -= Present;
+        CompositionTarget.Rendering += Present;
+        if (bitmap is not null) image.Source = bitmap;
+        display.Stalled();
     }
 
     private async Task ReadAsync()
@@ -91,6 +125,7 @@ internal sealed class PreviewPresenter(Image image, IPreviewEngine engine, Actio
 
     public async ValueTask DisposeAsync()
     {
+        watchTimer?.Stop(); watchTimer = null;
         CompositionTarget.Rendering -= Present;
         await lifetime.CancelAsync();
         if (reader is not null) await reader;

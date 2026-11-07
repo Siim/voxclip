@@ -112,8 +112,9 @@ public sealed partial class EditorPage : Page
         leave = new(ViewModel);
         FindClips = new(ViewModel, lifetime.Token);
         FindClips.Announcement += (_, text) => Transcript.Announce(text);
-        preview.PlaybackFaulted += PlaybackFaulted;
-        preview.AudioStatusChanged += AudioStatusChanged;
+        previewStage = new((level, category, message) => App.Services.Log.Write(level, category, message), text => Transcript.Announce(text));
+        previewStage.Changed += (_, _) => ShowPreviewStage();
+        Hook(preview);
         ViewModel.Changed += ModelChanged;
         ViewModel.SelectionChanged += SelectionChanged;
         ViewModel.SaveRequested += SaveRequested;
@@ -187,17 +188,20 @@ public sealed partial class EditorPage : Page
                 if (!ReferenceEquals(capturedProject, ViewModel.Project)) return;
                 previewDuration = snapshot.Timeline.Duration;
                 previewSpeed = snapshot.Speed;
+                previewStage.Cleared();
                 await preview.LoadAsync(snapshot, null, ct);
+                loadedSnapshot = snapshot;
                 CaptionDrag.Update(snapshot.Captions, 0);
                 Timeline.SetCaptionTrack(snapshot.Captions, snapshot.Timeline, capturedProject);
             }
             catch (Exception exception)
             {
-                preview.PlaybackFaulted -= PlaybackFaulted;
-                preview.AudioStatusChanged -= AudioStatusChanged;
+                Unhook(preview);
                 await preview.DisposeAsync();
                 preview = null;
                 PreviewImage.Source = null;
+                // A compositor failure is the preview's, not the video's: the stage says so, with Reload Preview (design §5.4.4 g).
+                if (PreviewFailureReasons.Of(exception) is not null) { previewStage.LoadFailed(exception, UiError.Message(exception, "Preview")); return; }
                 PreviewStandIn.Visibility = Visibility.Visible;
                 ViewModel.SetMediaUnavailable(true);
                 LocateMedia.Visibility = Visibility.Visible;
@@ -205,7 +209,8 @@ public sealed partial class EditorPage : Page
                 PreviewFailed(exception);
                 return;
             }
-            presenter = new(PreviewImage, preview, PositionChanged, PreviewFailed, demo ? frame => captions?.UpdateStill(frame) : null);
+            presenter = new(PreviewImage, preview, PositionChanged, PreviewFailed, demo ? frame => captions?.UpdateStill(frame) : null) { Display = PreviewDisplay() };
+            presenter.Attach(loadedSnapshot);
             presenter.Start(); PreviewStandIn.Visibility = Visibility.Collapsed;
         }, "Preview");
         RequestWaveform();
@@ -305,11 +310,19 @@ public sealed partial class EditorPage : Page
     }
     private void PlaybackFaulted(object? sender, Exception exception)
     {
-        DispatcherQueue.TryEnqueue(() => { if (!disposed) PreviewFailed(exception); });
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (disposed) return;
+            // A frame the compositor couldn't finish already put its line on the stage; the video itself is fine.
+            if (PreviewFailureReasons.Of(exception) is not null) previewStage.LoadFailed(exception, UiError.Message(exception, "Preview"));
+            else PreviewFailed(exception);
+        });
     }
     private void PreviewFailed(Exception exception)
     {
         if (disposed) return;
+        // The video itself can't be read (§5.4.4 f): the stand-in and the transcript's notice say so, not the preview-failed line.
+        previewStage?.Cleared();
         ViewModel.SetMediaUnavailable(true);
         mediaState = EditorMediaState.Corrupt;
         PreviewImage.Source = null;
@@ -478,8 +491,7 @@ public sealed partial class EditorPage : Page
         LocateMedia.Visibility = Visibility.Collapsed;
         if (preview is not null)
         {
-            preview.PlaybackFaulted -= PlaybackFaulted;
-            preview.AudioStatusChanged -= AudioStatusChanged;
+            Unhook(preview);
             if (presenter is not null) await presenter.DisposeAsync();
             else await preview.DisposeAsync();
         }
@@ -503,28 +515,31 @@ public sealed partial class EditorPage : Page
             previewClipId = state?.ActiveClipId;
             previewDuration = snapshot.Timeline.Duration;
             previewSpeed = snapshot.Speed;
+            // A load or plan swap that works clears the stage's line; a failure while drawing it sets the line again.
+            previewStage.Cleared();
             if (preview is null)
             {
                 preview = new PreviewEngine();
-                preview.PlaybackFaulted += PlaybackFaulted;
-                preview.AudioStatusChanged += AudioStatusChanged;
+                Hook(preview);
                 await preview.LoadAsync(snapshot, null, lifetime.Token);
                 presenter = new(PreviewImage, preview, PositionChanged,
-                    PreviewFailed);
+                    PreviewFailed) { Display = PreviewDisplay() };
+                presenter.Attach(snapshot);
                 presenter.Start(); PreviewStandIn.Visibility = Visibility.Collapsed;
             }
-            else await preview.UpdateSnapshotAsync(snapshot, lifetime.Token);
+            else { await preview.UpdateSnapshotAsync(snapshot, lifetime.Token); presenter?.Attach(snapshot); }
             CaptionDrag.Update(snapshot.Captions, preview.Position.EditedTime);
             Timeline.SetCaptionTrack(snapshot.Captions, snapshot.Timeline, capturedProject);
             if (clipChanged && previewClipId is not null) await SourceTransportAsync(token => preview.SeekAsync(0, true, token));
         }
         catch (Exception exception)
         {
-            if (preview is not null) { preview.PlaybackFaulted -= PlaybackFaulted; preview.AudioStatusChanged -= AudioStatusChanged; }
+            if (preview is not null) Unhook(preview);
             if (presenter is not null) { await presenter.DisposeAsync(); presenter = null; }
             else if (preview is not null) await preview.DisposeAsync();
             preview = null;
-            if (!disposed) { PreviewImage.Source = null; PreviewStandIn.Visibility = Visibility.Visible; PreviewFailed(exception); }
+            if (!disposed && PreviewFailureReasons.Of(exception) is not null) { PreviewImage.Source = null; previewStage.LoadFailed(exception, UiError.Message(exception, "Preview")); }
+            else if (!disposed) { PreviewImage.Source = null; PreviewStandIn.Visibility = Visibility.Visible; PreviewFailed(exception); }
         }
         finally { previewChanges.Release(); }
     }
@@ -549,6 +564,8 @@ public sealed partial class EditorPage : Page
     {
         try { await action(); }
         catch (OperationCanceledException) { }
+        // A preview frame the compositor couldn't finish: the stage already carries its line (design §5.4.4 g).
+        catch (Exception exception) when (PreviewFailureReasons.Of(exception) is not null) { }
         catch (Exception exception) { if (!disposed) ViewModel.Notice = UiError.Message(exception, label); }
     }
     private void FillersClicked(object sender, RoutedEventArgs args) => ViewModel.Apply(new EditOperation.CutFillers());
@@ -560,6 +577,7 @@ public sealed partial class EditorPage : Page
     private void PausesClicked(object sender, RoutedEventArgs args) => ViewModel.Apply(new EditOperation.TightenPauses());
     private void RestoreClicked(object sender, RoutedEventArgs args) => ViewModel.Apply(new EditOperation.RestoreCuts());
     private void UndoClicked(object sender, RoutedEventArgs args) => ViewModel.Undo();
+    private void ReloadPreviewClicked(object sender, RoutedEventArgs args) => _ = RunAsync(ReloadPreviewAsync, "Preview");
     private void RedoClicked(object sender, RoutedEventArgs args) => ViewModel.Redo();
     /// <summary>Make a clip, then select its pane row; the transcript keeps its selection (design §6.2).</summary>
     private void MakeClipAndReveal()
@@ -1127,6 +1145,7 @@ if (insertion ||
         PreviewStateGlyphHost.Visibility = mediaState is EditorMediaState.Missing or EditorMediaState.Corrupt ? Visibility.Visible : Visibility.Collapsed;
         PreviewMissingStrike.Visibility = mediaState == EditorMediaState.Missing ? Visibility.Visible : Visibility.Collapsed;
         PreviewStandIn.Visibility = mediaState is EditorMediaState.Missing or EditorMediaState.Corrupt ? Visibility.Visible : Visibility.Collapsed;
+        if (previewStage is not null) ShowPreviewStage();
         if (PreviewPlay.Parent is Grid playback)
             foreach (var button in playback.Children.OfType<Button>()) button.IsEnabled = !ViewModel.IsReadOnly;
         PositionStageMessage();
@@ -1136,6 +1155,7 @@ if (insertion ||
         if (ViewModel is null) return;
         var fraction = EditorMediaPresentation.MessageFraction(PreviewStage.Width * 10 < PreviewStage.Height * 9);
         PreviewStandIn.Margin = new(20, Math.Max(0, PreviewStage.Height * fraction - PreviewStandIn.ActualHeight / 2), 20, 0);
+        PreviewFailurePlate.Margin = new(12, Math.Max(0, PreviewStage.Height * fraction - PreviewFailurePlate.ActualHeight / 2), 12, 0);
     }
     private void UpdateAiTag()
     {
@@ -1204,7 +1224,7 @@ if (insertion ||
         await previewChanges.WaitAsync();
         try
         {
-            if (preview is not null) { preview.PlaybackFaulted -= PlaybackFaulted; preview.AudioStatusChanged -= AudioStatusChanged; }
+            if (preview is not null) Unhook(preview);
             if (presenter is not null) await presenter.DisposeAsync(); else if (preview is not null) await preview.DisposeAsync();
             presenter = null; preview = null;
         }
