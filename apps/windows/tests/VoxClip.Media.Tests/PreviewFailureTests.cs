@@ -68,6 +68,17 @@ public sealed class PreviewFailureTests
     }
 
     [Fact]
+    public void OnlyAPreviewsFirstReasonReachesItsOwnerAndLaterReasonsAreKept()
+    {
+        var (failures, first) = Sink();
+        failures.Report(PreviewFailureReason.Title);
+        failures.Report(PreviewFailureReason.CaptionLayout);
+        failures.Report(PreviewFailureReason.Title);
+        Assert.Equal([PreviewFailureReason.Title], first);
+        Assert.Equal([PreviewFailureReason.Title, PreviewFailureReason.CaptionLayout], failures.Reasons);
+    }
+
+    [Fact]
     public void MissingCaptionFilesAreReportedAsResources()
     {
         var composer = new FrameComposer(new FailingRasterizer(new FileNotFoundException("font")), FixtureLoader.SharedRoot);
