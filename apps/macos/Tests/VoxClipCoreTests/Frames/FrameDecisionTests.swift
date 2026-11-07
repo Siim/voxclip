@@ -56,6 +56,29 @@ struct FrameDecisionTests {
         #expect(abs(earliest.time - 9.4) < 1e-9)
     }
 
+    /// Dim footage scores 0.30–0.44 throughout: an open-eyed start moves only for a clearly better frame, and a shut-eyed
+    /// one moves to an open look below the absolute floor (lead evaluation 2026-11-08).
+    @Test func openingMovesForAFaultNotForASlightlyBetterDimFrame() throws {
+        let clip = try #require(Self.clip(previousEnd: 7.0, start: 10.0))
+        func look(_ time: Double, quality: Double, eyes: Double = 0.3, yaw: Double = 0) -> FrameObservation {
+            FrameObservation(time: time, faceCount: 1, face: FrameFace(rect: Self.centred, captureQuality: quality,
+                                                                        leftEyeAspect: eyes, rightEyeAspect: eyes, yaw: yaw, pitch: 0))
+        }
+        // The evaluation's false positives: open eyes at 0.386 and 0.385, an earlier frame at 0.438 and 0.416. The start stays.
+        #expect(OpeningFrame.choose(clip, scan: [look(9.6, quality: 0.438), look(10.0, quality: 0.386)]) == nil)
+        #expect(OpeningFrame.choose(clip, scan: [look(9.7, quality: 0.416), look(10.0, quality: 0.385)]) == nil)
+        // Clearly better (at least `qualityMargin` above, and good): it moves.
+        let sharper = try #require(OpeningFrame.choose(clip, scan: [look(9.6, quality: 0.55), look(10.0, quality: 0.3)]))
+        #expect(abs(sharper.time - 9.6) < 1e-9)
+        // Shut eyes at the start move to an open look even on dim footage (0.3 is above the floor less the margin)...
+        let blink = try #require(OpeningFrame.choose(clip, scan: [look(9.6, quality: 0.3), look(10.0, quality: 0.36, eyes: 0.1)]))
+        #expect(abs(blink.time - 9.6) < 1e-9)
+        // ...and so does a face turned away, but never to a frame too poor to use.
+        let turned = try #require(OpeningFrame.choose(clip, scan: [look(9.5, quality: 0.33), look(10.0, quality: 0.5, yaw: 0.8)]))
+        #expect(abs(turned.time - 9.5) < 1e-9)
+        #expect(OpeningFrame.choose(clip, scan: [look(9.6, quality: 0.2), look(10.0, quality: 0.36, eyes: 0.1)]) == nil)
+    }
+
     @Test func clipLeadInFloorIsTheEndOfTheItemBeforeItsFirstKeptWord() throws {
         let words = [TimedWord(id: "a", text: "One.", start: 1, end: 2), TimedWord(id: "b", text: "um", start: 2.2, end: 2.6),
                      TimedWord(id: "c", text: "Two", start: 3, end: 3.4), TimedWord(id: "d", text: "words.", start: 3.5, end: 4)]

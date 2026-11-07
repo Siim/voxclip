@@ -12,24 +12,53 @@ public struct OpeningFrameChoice: Codable, Sendable, Equatable {
 public enum OpeningFrame {
     /// Frames this close to the clip's start count as its current opening frame.
     public static let startTolerance = 0.05
+    /// Capture quality is relative (Apple ranks frames of one person) and dim footage scores 0.30–0.44 throughout. So
+    /// quality alone moves a start only to a frame at least this much better, and a frame with open eyes facing the
+    /// camera counts from `FrameFace.goodQuality` minus this. The lead's evaluation (2026-11-08) moved two open-eyed
+    /// starts between 0.386 and 0.438, and between 0.385 and 0.416, under the absolute floor alone.
+    public static let qualityMargin = 0.15
 
-    /// The opening for `clip` from the opening scan. The clip already opens on a clear look: no shift. Otherwise the
-    /// earliest clear look in the silence before its first word, no earlier than `FrameSampling.openingSpan` before it
-    /// and never inside the transcript item before it (`FrameClip.leadInFloor`): the start moves only through silence,
-    /// so no word is clipped and none is added. Nil when no frame there is a clear look; the start then stays.
+    /// The opening for `clip` from the opening scan. The start moves only for a fault there: no face, eyes shut, a face
+    /// turned away, or (eyes open, facing the camera) a capture clearly worse than one in the silence before it
+    /// (`qualityMargin`). A clear look or an open look of similar quality keeps the start, so a clip never gains dead air
+    /// for nothing. The shift goes to the earliest acceptable frame in the silence before the first word, no earlier than
+    /// `FrameSampling.openingSpan` before it and never inside the transcript item before it (`FrameClip.leadInFloor`): the
+    /// start moves only through silence, so no word is clipped and none is added. Nil when no frame there is acceptable;
+    /// the start then stays.
     public static func choose(_ clip: FrameClip, scan: [FrameObservation]) -> OpeningFrameChoice? {
         let start: Double = clip.start
         let earliest: Double = start - FrameSampling.openingSpan - 1e-9
         let floor: Double = max(clip.leadInFloor, max(0, earliest))
         let ordered = scan.filter { $0.time.isFinite }.sorted { $0.time < $1.time }
-        if let current = ordered.min(by: { abs($0.time - start) < abs($1.time - start) }),
-           abs(current.time - start) <= startTolerance, current.isClearLook {
-            return OpeningFrameChoice(shift: 0, time: start)
+        var current: FrameObservation? = nil
+        for frame in ordered where abs(frame.time - start) <= startTolerance {
+            if let best = current, abs(best.time - start) <= abs(frame.time - start) { continue }
+            current = frame
         }
-        guard let chosen = ordered.first(where: { $0.time >= floor - 1e-9 && $0.time <= start + 1e-9 && $0.isClearLook }) else { return nil }
+        if current?.isClearLook == true { return OpeningFrameChoice(shift: 0, time: start) }
+        // The quality a candidate needs: clearly better than an open look, or merely usable instead of a fault.
+        let needed: Double
+        if let current, isOpenLook(current) {
+            needed = max(FrameFace.goodQuality, quality(current) + qualityMargin)
+        } else {
+            needed = FrameFace.goodQuality - qualityMargin
+        }
+        func acceptable(_ frame: FrameObservation) -> Bool {
+            let inSilence: Bool = frame.time >= floor - 1e-9 && frame.time <= start + 1e-9
+            return inSilence && isOpenLook(frame) && quality(frame) >= needed - 1e-9
+        }
+        guard let chosen = ordered.first(where: acceptable) else { return nil }
         let time = min(start, max(floor, chosen.time))
         return OpeningFrameChoice(shift: time - start, time: time)
     }
+
+    /// A face with open eyes that, when Vision measured it, faces the camera.
+    static func isOpenLook(_ frame: FrameObservation) -> Bool {
+        guard let face = frame.face else { return false }
+        return face.eyes == .open && face.facesCamera != false
+    }
+
+    static func quality(_ frame: FrameObservation) -> Double { frame.face?.captureQuality ?? 0 }
 }
 
 /// The 9:16 or 1:1 crop that follows the face (design.md "9:16 follows your face").

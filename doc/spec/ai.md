@@ -2198,10 +2198,15 @@ leaves the Mac, and nothing it finds is sent unless a request carries the frame 
 
 ### 19.2 The decisions (pure, VoxClipCore)
 
-- **Opening frame** (`OpeningFrame.choose`): no shift when the frame at the clip's start is a clear look (a face, eyes
-  open, good quality, not turned away). Otherwise the earliest clear look between the end of the transcript item before
-  the first kept word (`FrameClip.leadInFloor`, cut words included) and the start, at most 0.6 s back. The shift is 0 or
-  negative: it moves through silence only, so no word is clipped and none added. Nil when there is none.
+- **Opening frame** (`OpeningFrame.choose`): the start moves only for a fault in its frame, so a clip never gains dead
+  air for nothing. No shift when that frame is a clear look (a face, eyes open, quality at least 0.4, not turned away).
+  An open look (eyes open, facing the camera) of lower quality moves only to a frame at least `qualityMargin` (0.15)
+  better and at least 0.4. No face, shut eyes or a turned face move to the earliest open look of quality at least 0.25.
+  Capture quality is relative, and dim 1080p footage scores 0.30–0.44 throughout. Under the absolute 0.4 floor alone, the
+  lead's evaluation (2026-11-08) moved two open-eyed starts between 0.386 and 0.438. The candidates lie between the end
+  of the transcript item before the first kept word (`FrameClip.leadInFloor`, cut words included) and the start, at
+  most 0.6 s back. The shift is 0 or negative: it moves through silence only, so no word is clipped and none added. Nil
+  when there is none.
 - **Face-follow crop** (`FaceFollowCrop.plan`) for 9:16 and 1:1: a static centre (the median face centre, clamped so the
   crop stays inside the picture) for a one-`faceX` renderer, and a path: a 5-sample running median, a dead zone of 15% of
   the crop's size, and pans of at most half the crop's size per second. A sample with no face holds the last centre.
