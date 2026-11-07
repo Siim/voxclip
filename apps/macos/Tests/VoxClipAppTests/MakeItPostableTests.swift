@@ -86,7 +86,7 @@ private final class Calls: Sendable {
         editor.musicPanel.services = MusicPanelServices(suggest: { _, _ in MusicSuggestionResult(candidates: candidates) },
             fetch: { candidate in calls.record("fetch \(candidate.id)"); return bytes }, folder: { nil })
         editor.makeIt.services = MakeItServices(
-            plan: { request, _, _ in
+            plan: { request, _, _, _ in
                 calls.record("plan \(request.mode)")
                 return ClipAutopilotSeries(plans: [plan])
             },
@@ -297,7 +297,7 @@ private final class Calls: Sendable {
         step(fixture.undo) {
             editor.apply(.addClip(ClipRange(id: "clip-two", startWordId: "w8", endWordId: "w9", title: "Two", origin: .manual, selected: true)), name: "Make clip")
         }
-        editor.makeIt.services?.plan = { _, _, _ in
+        editor.makeIt.services?.plan = { _, _, _, _ in
             ClipAutopilotSeries(plans: [ClipAutopilotPlan(startWord: 7, endWord: 8, title: "Two", hook: "", captions: Self.plan().captions,
                 music: Self.plan().music, musicPick: 0, postText: "Two.", score: 6, verdict: .casualPost)])
         }
@@ -474,7 +474,7 @@ private final class Calls: Sendable {
         defer { fixture.editor.close(); try? FileManager.default.removeItem(at: fixture.root) }
         let editor = fixture.editor
         var notes: [String?] = [], preferences: [String?] = []
-        editor.makeIt.services?.plan = { request, _, _ in
+        editor.makeIt.services?.plan = { request, _, _, _ in
             notes.append(request.note); preferences.append(request.captionPreference?.styleId)
             return ClipAutopilotSeries(plans: [Self.plan()])
         }
@@ -510,7 +510,7 @@ private final class Calls: Sendable {
                                              aiResultId: "result-1", aiClipIndex: 1, selected: false))
         step(fixture.undo) { editor.replace(project, name: "Find clips") }
         var modes: [ClipAutopilotRequest.Mode] = []
-        editor.makeIt.services?.plan = { request, _, progress in
+        editor.makeIt.services?.plan = { request, _, _, progress in
             modes.append(request.mode)
             progress(.planning(clip: 0, of: 2)); progress(.planning(clip: 1, of: 2))
             // Ranked by score, as the service returns them.
@@ -582,11 +582,11 @@ private final class Calls: Sendable {
         let editor = fixture.editor
         let tones = Calls()
         let services = try #require(editor.makeIt.services)
-        editor.makeIt.services = MakeItServices(plan: { request, editor, progress in
+        editor.makeIt.services = MakeItServices(plan: { request, editor, _, progress in
             tones.record(request.tone.map { tone -> String in
                 switch tone { case .auto: "auto"; case .asSaid: "as-said"; case .fixed(let tone): tone.id }
             } ?? "none")
-            return try await services.plan(request, editor, progress)
+            return try await services.plan(request, editor, nil, progress)
         }, voice: services.voice, voiceAvailable: services.voiceAvailable)
         var first = try await run(fixture)
         #expect(first.phase == .ready)

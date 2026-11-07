@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import Observation
 import VoxClipCore
+import VoxClipMedia
 
 // ✦ Make it postable (doc/design.md §6.7): one click on a clip lets Claude decide everything at extra high effort (the
 // planner, ai.md §16), applies every decision as one undo step within an upfront spend cap, and shows one review with ▶,
@@ -66,7 +67,8 @@ struct MakeItStyle: Equatable {
 /// The outside world a run talks to. The app builds the real one (`MakeItServices.live`); tests and the smoke pass stubs.
 struct MakeItServices {
     /// The checked plan for a request (a clip, or a series), at extra high effort through the chosen AI.
-    var plan: @MainActor (_ request: ClipAutopilotRequest, _ editor: EditorModel,
+    /// `frames` gives each clip plan its frames just before it is sent (ADR-R48); the planner passes it on.
+    var plan: @MainActor (_ request: ClipAutopilotRequest, _ editor: EditorModel, _ frames: ClipAutopilotFrameSource?,
                           _ progress: @escaping @Sendable (ClipAutopilotProgress) -> Void) async throws -> ClipAutopilotSeries
     /// Voices one rewrite within `budget` (USD); returns what happened. The live one drives Rewrite's own session.
     var voice: @MainActor (_ rewrite: MakeItRewriteRequest, _ editor: EditorModel) async -> MakeItRewriteOutcome
@@ -78,6 +80,11 @@ struct MakeItServices {
     var revoiceWholeClip: @MainActor (_ request: WholeClipAutoRequest, _ editor: EditorModel) async -> WholeClipAutoOutcome = { _, _ in
         .failed("Revoicing the whole clip isn't available here.", spent: 0)
     }
+    /// The whole video's frame pass (ADR-R48): nil when the video can't be looked at (no video, no transcript), and in
+    /// tests and smoke scenes that leave the picture out.
+    var framePass: @MainActor (_ editor: EditorModel) -> VideoFramePass? = { _ in nil }
+    /// The AI the frames go to: its name, whether it takes images, and who pays; nil sends no frames.
+    var frameAI: @MainActor (_ editor: EditorModel) async -> MakeItFrameAI? = { _ in nil }
 }
 
 /// One rewrite for the voice step.
@@ -130,6 +137,12 @@ enum MakeItInverse {
     case speed(clipID: String, previous: Double)
     /// An effect the run added (the hook's title card): removed, or put back as it was when the run replaced one.
     case effect(id: String, previous: ClipEffect?)
+    /// The clip's opening lead-in before "Opens on a clear look at you" (ADR-R48).
+    case leadIn(clipID: String, previous: Double?)
+    /// The clip's crop before "9:16 follows your face".
+    case reframe(clipID: String, previous: ReframeSettings?)
+    /// The clip's cover before "Cover frame chosen".
+    case cover(clipID: String, previous: Double?)
 }
 
 /// Where a decision's Change goes.
@@ -145,6 +158,12 @@ enum MakeItChange: Equatable {
     case wholeClip
     /// The tone its words were written in: Change shows the tones as chips; one re-plans the clip in that tone.
     case tone
+    /// A blurred screen: Change lists the clip's detected screens inline, each with a toggle.
+    case screens
+    /// A screen left sharp: its action blurs it (the row's title says "Blur").
+    case screen(String)
+    /// The cover: Change shows the three candidates inline as small frames to pick from.
+    case cover
 }
 
 /// One line of the review.
@@ -163,6 +182,8 @@ struct MakeItRow: Identifiable, Equatable {
     var options: [String] = []
     /// The row's action title in place of "Change" (the whole-clip offer's priced chip).
     var actionTitle: String?
+    /// Small frames the row shows (the opening's before and after, the cover).
+    var frames: [MakeItRowFrame] = []
 }
 
 /// Claude mode's per-video spend (design.md §6.7): every run of the video draws on one pool. The cap the creator set is
@@ -237,6 +258,8 @@ struct MakeItRow: Identifiable, Equatable {
     var exported: [URL] = []
     /// The whole-clip revoice offered over the cap (ADR-R46), until its row is clicked.
     var wholeClipOffer: WholeClipAutoRequest?
+    /// What the plan request carried of the picture (ADR-R48): the send line and strip read it, the picture rows use it.
+    var frames: MakeItFrameRecord?
     /// A question row whose options show.
     var openQuestion: Int?
     /// The look or speed row whose other choices show, or the hook row whose text field shows.
@@ -276,6 +299,10 @@ struct MakeItRow: Identifiable, Equatable {
     /// The tone a Change on the review's tone row asks for, used by the next request only.
     @ObservationIgnored var toneOverride: ClipTone?
     @ObservationIgnored private var queueTask: Task<Void, Never>?
+    /// The whole video's frame pass (ADR-R48), started when the transcript exists; `framePassKey` is the video and transcript
+    /// it looks at.
+    @ObservationIgnored var framePass: VideoFramePass?
+    @ObservationIgnored var framePassKey: String?
 
     var shown: MakeItRun? { shownClipID.flatMap { runs[$0] } }
     var active: MakeItRun? { runs.values.first { $0.running } }
@@ -331,6 +358,8 @@ extension EditorModel {
             total += usd
             priced = true
         }
+        // The frames an API key bills for (ADR-R48): at most a full sheet, priced before the send.
+        if let images = makeItImageEstimate() { total += images; priced = true }
         return priced && total > 0 ? total : nil
     }
 
@@ -430,7 +459,7 @@ extension EditorModel {
         let planning = Task { @MainActor [weak self] () -> Result<ClipAutopilotSeries, any Error> in
             defer { plans.finish() }
             guard let self else { return .failure(CancellationError()) }
-            do { return .success(try await services.plan(request, self, report)) } catch { return .failure(error) }
+            do { return .success(try await services.plan(request, self, self.makeItFrameSource(runs.map(\.clipID)), report)) } catch { return .failure(error) }
         }
         var applied: Set<Int> = []
         var stopped = false
@@ -538,7 +567,7 @@ extension EditorModel {
         run.line("Reading the clip…")
         guard let request = makeItRequest(run.clipID) else { run.phase = .failed("This clip has no words to plan."); return }
         let series: ClipAutopilotSeries
-        do { series = try await services.plan(request, self, progress([run])) }
+        do { series = try await services.plan(request, self, makeItFrameSource([run.clipID]), progress([run])) }
         catch is CancellationError { run.phase = .stopped; return }
         catch LLMError.cancelled { run.phase = .stopped; return }
         catch {
@@ -622,6 +651,8 @@ extension EditorModel {
             if operation.decision == .hook { hookRow = row } else if let row { rows.append(row) }
         }
         replace(next, name: "Make it postable")
+        // What Claude and this Mac saw in the picture (ADR-R48): the opening, the face-follow crop, blurs and the cover.
+        let pictureRows = makeItStopped(run) ? [] : await makeItPictureRows(plan, run: run)
         run.seconds = makeItRenderedSeconds(run.clipID)
         run.postText = project.share.captions[run.clipID] ?? ""
         run.hook = ClipHookTitle.text(plan.hook) ?? ""
@@ -650,6 +681,7 @@ extension EditorModel {
             rows.append(MakeItRow(id: "question-\(index)", kind: .question, text: question.question, detail: "Claude chose “\(question.answer)”",
                                   change: .question(index), options: question.options.filter { $0 != question.answer }))
         }
+        rows.insert(contentsOf: pictureRows, at: 0)
         if let toneRow = makeItToneRow(plan, run: run, rows: rows) { rows.insert(toneRow, at: 0) }
         run.rows = rows
         run.seconds = makeItRenderedSeconds(run.clipID)
@@ -754,7 +786,7 @@ extension EditorModel {
     }
 
     /// ▶ on a clip-wide decision: just before the clip starts.
-    private func clipPlay(_ clipID: String, in project: Project) -> Double? {
+    func clipPlay(_ clipID: String, in project: Project) -> Double? {
         ClipControlsProject.sourceSpan(of: clipID, in: project).map { max(0, $0.lowerBound - 0.5) }
     }
 
@@ -964,6 +996,18 @@ extension EditorModel {
             guard let next else { return false }
             if next != project { replace(next, name: name) }
             return true
+        case .leadIn(let clipID, let previous):
+            guard let next = makeItSettingLeadIn(previous, clipID: clipID, in: project) else { return false }
+            if next != project { replace(next, name: name) }
+            return true
+        case .reframe(let clipID, let previous):
+            guard let next = makeItSettingControls(clipID, in: project, { $0.reframe = previous }) else { return false }
+            if next != project { replace(next, name: name) }
+            return true
+        case .cover(let clipID, let previous):
+            guard let next = makeItSettingControls(clipID, in: project, { $0.coverSeconds = previous }) else { return false }
+            if next != project { replace(next, name: name) }
+            return true
         }
     }
 
@@ -983,9 +1027,11 @@ extension EditorModel {
             runRewrite(scope: .selection(range))
         case .question(let index): run.openQuestion = run.openQuestion == index ? nil : index
         case .wholeClip: makeItRevoiceOffered(run)
-        case .look, .speed, .tone:
+        case .look, .speed, .tone, .cover:
             guard let row = run.rows.first(where: { $0.change == change }) else { return }
             run.openChoice = run.openChoice == row.id ? nil : row.id
+        case .screens: run.openChoice = run.openChoice == Self.makeItScreensID ? nil : Self.makeItScreensID
+        case .screen(let id): makeItToggleScreen(id, run: run)
         }
     }
 
@@ -1205,20 +1251,23 @@ extension MakeItServices {
     /// voice through Rewrite's session with automatic takes.
     @MainActor static var live: MakeItServices {
         MakeItServices(
-            plan: { request, editor, progress in try await editor.makeItPlanLive(request, progress: progress) },
+            plan: { request, editor, frames, progress in try await editor.makeItPlanLive(request, frames: frames, progress: progress) },
             voice: { rewrite, editor in await MakeItRewriteDriver(editor: editor, request: rewrite).run() },
             voiceAvailable: { editor in
                 guard editor.app.voiceLabRewriteEnabled else { return false }
                 return await editor.app.providerKeyStore.hasKey(for: "elevenlabs")
             },
             wholeClipQuote: { request, editor in await liveWholeClipQuote(request, editor: editor) },
-            revoiceWholeClip: { request, editor in await liveRevoiceWholeClip(request, editor: editor) })
+            revoiceWholeClip: { request, editor in await liveRevoiceWholeClip(request, editor: editor) },
+            framePass: { editor in editor.liveFramePass() },
+            frameAI: { editor in await editor.liveFrameAI() })
     }
 }
 
 extension EditorModel {
     /// The planner through the chosen AI, holding the project's AI lease while it runs.
-    func makeItPlanLive(_ request: ClipAutopilotRequest, progress: @escaping @Sendable (ClipAutopilotProgress) -> Void) async throws -> ClipAutopilotSeries {
+    func makeItPlanLive(_ request: ClipAutopilotRequest, frames: ClipAutopilotFrameSource? = nil,
+                        progress: @escaping @Sendable (ClipAutopilotProgress) -> Void) async throws -> ClipAutopilotSeries {
         guard let shared = app.shared, let provider = app.providers.first(where: { $0.id == app.string("llm.connector") }) else {
             throw LLMError.noConnector
         }
@@ -1233,6 +1282,6 @@ extension EditorModel {
         let service = ClipAutopilotService(runner: LLMRunner(keys: app.secrets, catalog: catalog, log: app.log), shared: shared)
         // Claude Code runs one process per connector: two more lanes plan a series' clips three at once.
         let lanes: [any LLMConnector] = provider.id == ConnectorID.claudeCode.rawValue ? [app.connector(provider.id), app.connector(provider.id)] : []
-        return try await service.plan(request, connector: connector, model: model, lanes: lanes, progress: progress).series
+        return try await service.plan(request, connector: connector, model: model, lanes: lanes, frames: frames, progress: progress).series
     }
 }

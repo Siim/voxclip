@@ -77,6 +77,7 @@ public actor VideoFramePass {
         self.analyzed = analyzed
         self.cached = cached
         ended = clock?.elapsed
+        if let clock, let started, seconds != nil { clock.record(.frames, since: started) }
     }
 
     /// Waits for the pass (starting it if it has not started); false when the source could not be read.
@@ -139,6 +140,14 @@ public actor VideoFramePass {
         let key = FrameAnalysisCache.millisecond(clip.start)
         guard openings[key] == nil else { return }
         Task { _ = await self.opening(for: clip) }
+    }
+
+    /// Small JPEGs of the frames at `times` (the sheet's size, cached), for the review's thumbnails; empty when they can't
+    /// be read.
+    public func thumbnails(_ times: [Double]) async -> [Data] {
+        let frames = times.map { FrameObservation(time: $0) }
+        guard let sheet = try? await analyzer.sheet(source: source, contentKey: contentKey, frames: frames) else { return [] }
+        return sheet.frames.map(\.image.data)
     }
 
     /// Stops the pass and every opening scan.

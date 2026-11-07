@@ -37,7 +37,7 @@ import VoxClipMedia
         let wav = try VoiceTrainingAudio.wav([Float](repeating: 0.05, count: 48_000), rate: 16_000)
         editor.musicPanel.services = MusicPanelServices(suggest: { _, _ in MusicSuggestionResult(candidates: [DebugRewriteSmoke.makeItLibraryTrack]) },
                                                         fetch: { _ in wav }, folder: { nil })
-        editor.makeIt.services = MakeItServices(plan: { request, _, _ in
+        editor.makeIt.services = MakeItServices(plan: { request, _, _, _ in
                 let spans: [ClosedRange<Int>] = switch request.mode { case .clip(let span): [span]; case .clips(let chosen): chosen; case .series: [] }
                 return ClipAutopilotSeries(plans: spans.compactMap { plan($0, words: request.transcript.words) })
             },

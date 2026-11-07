@@ -64,7 +64,7 @@ extension DebugRewriteSmoke.Harness {
         editor.musicPanel.services = MusicPanelServices(suggest: { _, _ in MusicSuggestionResult(candidates: [DebugRewriteSmoke.makeItLibraryTrack]) },
                                                         fetch: { _ in wav }, folder: { nil })
         editor.makeIt.services = MakeItServices(
-            plan: { [weak self] request, _, progress in
+            plan: { [weak self] request, _, _, progress in
                 let spans: [ClosedRange<Int>]
                 switch request.mode {
                 case .clip(let span): spans = [span]
