@@ -157,9 +157,9 @@ struct SpeechStubHTTPTests {
                                  failure: failsAfterWrite ? .networkConnectionLost : nil,
                                  failureAfterWrite: failsAfterWrite ? acknowledgement : nil)
         }
-        let stub = SpeechStubHTTP(request: URLRequest(url: url), cachedResponse: nil, client: client)
-        defer { loop.perform { stub.stopLoading() } }
-        loop.perform { stub.startLoading() }
+        let stub = SpeechStubBox(SpeechStubHTTP(request: URLRequest(url: url), cachedResponse: nil, client: client))
+        defer { loop.perform { stub.value?.stopLoading() } }
+        loop.perform { stub.value?.startLoading() }
         if failsAfterWrite {
             try await SpeechTestWait.until { client.snapshot.events.contains("body") }
             #expect(client.snapshot.events == ["response", "body"])
@@ -179,8 +179,8 @@ struct SpeechStubHTTPTests {
         try await SpeechTestWait.until { loop.ready }
         let client = SpeechStubClient(loop: loop, stopsAtResponse: true)
         let url = SpeechStubHTTP.register { _ in (200, [:], Data("not delivered".utf8)) }
-        let stub = SpeechStubHTTP(request: URLRequest(url: url), cachedResponse: nil, client: client)
-        loop.perform { stub.startLoading() }
+        let stub = SpeechStubBox(SpeechStubHTTP(request: URLRequest(url: url), cachedResponse: nil, client: client))
+        loop.perform { stub.value?.startLoading() }
         try await SpeechTestWait.until { client.stoppedDeliveryDrained.withLock { $0 } }
         let snapshot = client.snapshot
         #expect(snapshot.events == ["response"])
@@ -194,9 +194,9 @@ struct SpeechStubHTTPTests {
         try await SpeechTestWait.until { loop.ready }
         let client = SpeechStubClient(loop: loop)
         let url = SpeechStubHTTP.register { _ in throw URLError(.cannotDecodeRawData) }
-        let stub = SpeechStubHTTP(request: URLRequest(url: url), cachedResponse: nil, client: client)
-        defer { loop.perform { stub.stopLoading() } }
-        loop.perform { stub.startLoading() }
+        let stub = SpeechStubBox(SpeechStubHTTP(request: URLRequest(url: url), cachedResponse: nil, client: client))
+        defer { loop.perform { stub.value?.stopLoading() } }
+        loop.perform { stub.value?.startLoading() }
         try await SpeechTestWait.until { client.snapshot.events.contains("failure") }
         let snapshot = client.snapshot
         #expect(snapshot.events == ["failure"])

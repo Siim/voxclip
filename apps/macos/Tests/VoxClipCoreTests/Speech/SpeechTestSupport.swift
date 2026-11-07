@@ -74,6 +74,19 @@ let speechStubDefaultRunLoopMode: CFRunLoopMode = .defaultMode
 func speechStubSchedulingMode(_ mode: CFRunLoopMode) -> CFString { mode.rawValue }
 
 /// Handler work uses immutable request snapshots; client callbacks stay on the loading run loop and stop state is locked.
+/// Carries a stub into run-loop and write callbacks. Hosted macOS 26 SDKs mark `URLProtocol` non-Sendable, so a subclass's own
+/// `@unchecked Sendable` is ignored there and a direct capture in a `@Sendable` closure fails to compile; the box is Sendable on
+/// every SDK. `weak` holds it as `[weak self]` did.
+final class SpeechStubBox: @unchecked Sendable {
+    private let strong: SpeechStubHTTP?
+    private weak var weakValue: SpeechStubHTTP?
+    init(_ stub: SpeechStubHTTP, weak: Bool = false) {
+        strong = weak ? nil : stub
+        weakValue = stub
+    }
+    var value: SpeechStubHTTP? { strong ?? weakValue }
+}
+
 final class SpeechStubHTTP: URLProtocol, @unchecked Sendable {
     typealias Handler = @Sendable (URLRequest) throws -> (Int, [String: String], Data)
     /// Immutable references used only through Core Foundation's thread-safe run-loop scheduling functions.
@@ -175,8 +188,9 @@ final class SpeechStubHTTP: URLProtocol, @unchecked Sendable {
             if reply.stalls { return }
             if let failure = reply.failure {
                 if let acknowledgement = reply.failureAfterWrite {
-                    acknowledgement.onWrite { [weak self] in
-                        loadingRunLoop.perform { [weak self] in self?.fail(URLError(failure) as NSError) }
+                    let stub = SpeechStubBox(self, weak: true)
+                    acknowledgement.onWrite {
+                        loadingRunLoop.perform { stub.value?.fail(URLError(failure) as NSError) }
                     }
                 } else {
                     fail(URLError(failure) as NSError)
