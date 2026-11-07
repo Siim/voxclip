@@ -1,5 +1,77 @@
 # macOS implementation contracts
 
+### 2026-11-07 — The viewer is never a silent black box: compositor failures carry a fixed reason, captions and titles degrade in preview, the stage says so with Reload Preview (track/v2-preview-black)
+
+User report (signed build 3f6a04a2): after Make it postable ("Claude does it all") on `DJI_20261001164012_0011_D.MP4` (4K HEVC Main 10, 29.97 fps), with the title "My first sale was a scammer" and 1.1× speed, the viewer stayed solid black while the playhead moved, with no message. The project was never saved. The app log had no `[error]` line since Nov 4. Spec: design.md §5.4.4 state g (new), §5.4.6, §5.1 and the §13 row "Stage, preview failed".
+
+- **Root cause: not reproduced.** Every preview below drew real frames (mean luma 88–177, never black), no compositor or item failure fired, and `previewError` stayed nil. The probe built each request the app's way (`EditorModel.renderRequest` → `RenderCallerInputs.prepare`) and read frames through the player's own `AVPlayerItemVideoOutput` at 0.4, 1.2, 2.0 and 3.0 s of edited time, with the compositor's new failure reporting already in place:
+  - **Every caption style.** All 26 styles as Claude's `clipStyle.captionPicks` pick, with the hook title (`ClipHookTitle.effect`), 1.1× (`settingSpeed`), a 1.12× zoom motion cue, in 16:9 and 9:16 (52 cases), on a synthetic 160×90 H.264 clip and, read only, on the user's file (`PROBE_SOURCE`).
+  - **The app's in-place path.** A plain clip loaded and playing, then the postable state applied with `replace(_:name:)` → `schedulePreviewUpdate` → `PreviewPlayerController.update` (rebuild path), then a caption-only change (the composition-reuse path). Five styles × two shapes, on the fixture and on the user's file.
+  - **Looks and Ask Claude effects.** The warm, B&W and Original looks with blur, sticker and lower-third effects added to the postable state, both shapes, on the user's file.
+  - **The player layer.** `PlayerLayerView` resizes its `AVPlayerLayer` after every frame change, including a collapse to 0 height and back.
+  - **Not covered.** Music only adds an audio track; a bed that failed to stage would have failed the build with a logged error, so it can't black out frames. Voiced rewrites (the disclosure's frames) would also have shown the AI tag, which the user didn't see. The `AVPlayerLayer` display itself (several layers on one player, a window's compositing) can't be checked headless.
+  - **Next sighting.** It now carries a reason: the stage shows the line and the log gets `[error] preview: compositor reason=<tag>`. With no line and no log entry, the black comes from the display layer, not from the frames.
+- **Built.**
+  - **Core.** `PreviewFailureReason` (`caption-layout`, `caption-raster`, `disclosure`, `source-frame`, `lipsync-frame`, `demo-frame`, `resources`, `frame-buffer`, `title`; `keepsPicture`). `PreviewEvent.failed(VoxClipError, reason: PreviewFailureReason? = nil)`.
+  - **Media.**
+    - `PreviewFrameFailures`: a per-item sink; `report` keeps each reason once and calls `onFirst` once.
+    - `CompositionBuilder.build(…, previewFailures:)` and `makeVideoComposition(…, previewFailures:)` attach it to every `RenderInstruction`, for `forPreview` requests only.
+    - `FrameCompositor.fail(_:_:_:_:)` reports the reason and finishes with the error.
+    - `drawCaptions`' `captionFailed`: in preview with a sink, it reports and delivers the frame without the caption, still through `finishMarked`, so a required disclosure is still drawn or fails as `disclosure`; an export finishes with the error as before. This applies to the layout draw, the legacy raster (lock, invalid raster, rasterize throw) and a missing rasterizer (`resources`).
+    - `EffectFrames.frame(…, overlayFailed:)` fires for a title or lower third that can't be drawn (`title`); a sticker with no bundled emoji isn't a failure.
+    - `PreviewPlayerController`: a sink per loaded item (kept for caption-only updates of that item); KVO on the item's `status` as well as the periodic check; one `.failed` per item (`reportedItem`); the event buffer grows from 2 to 8, so time ticks can't push a failure out. `init(builder:)` is internal, for tests.
+    - Test seams: `CompositionBuilder(captionDrawHook:)` and `AVExporter(builder:)`, both internal.
+  - **App.**
+    - `EditorModel.previewFailed(_:)` writes `LogEntry(.error, "preview", "compositor reason=<tag>")`, sets `previewError` to `previewFailureMessage(_:)` and announces it once.
+    - `stageShowsPlayer` is the stage's player-versus-stand-in rule, now shared with `ViewerSection`. `stagePreviewError` is `previewError` while the stage shows the player.
+    - `reloadPreview()` is `updatePreview(load: true)`.
+    - An injected `PreviewPlayerController` now becomes `nativePreview`, so tests can drive the real stage.
+    - `PreviewFailureNotice` (PreviewTimeline.swift) is the §5.4.6 message cluster on a media plate at 36%, with Reload Preview. It carries the identifiers `voxclip.viewer.previewError` and `voxclip.viewer.reloadPreview` and the layout markers `viewer.previewError` and `viewer.reloadPreview`.
+    - The transcript's `InlineNotice` for `previewError` steps aside while the stage carries the message.
+- **Deleted.** The periodic observer's own `.failed` yield, now `itemFailed`, reported once. The compositor's direct `request.finish(with:)` on the preview-reportable paths.
+- **Tests.**
+  - **Media `PreviewFramesTests`:**
+    - the reference probe's fixture cases at 1×, 1.1× and 1.25×, with and without cuts (the `PROBE_SOURCE` cases are left out);
+    - a vox-bold caption layout at 1.1× with cuts, non-black and with no failure;
+    - a forced layout-draw failure in preview keeps the picture and yields exactly one `.failed` with `.captionLayout`;
+    - a failing legacy rasterizer in preview keeps the picture and reports `.captionRaster`;
+    - the same layout failure in an export throws and leaves no file.
+  - **App `PreviewFailureStageTests`:**
+    - `previewError` puts the line and Reload Preview on the stage (offscreen `NSHostingView` markers), and not over a stand-in;
+    - Reload Preview after a closed player loads again, clears the message and draws frames;
+    - a compositor event per reason (five) sets the message, announces it and writes `[error] preview: compositor reason=<tag>` with no file name;
+    - every reason has a line;
+    - the Make it postable regression: a plain clip, then the postable state (pick, hook title, 1.1×, zoom) applied in place, draws frames in four styles × two shapes.
+  - **Red** without each rule, one at a time, rebuilt each time:
+    - no preview degrade → both Media keep-the-picture tests;
+    - degrade everywhere and no report → both of those and the export test;
+    - the old `.failed` handling and no stage message → the stage, reload and compositor-event App tests.
+  - The Make it postable regression passes with and without the change: nothing reproduced the bug.
+- **Verification** (`VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`):
+  - Core 1,367 tests in 141 suites passed (2 known issues).
+  - Media 580 in 73 suites passed (`--skip CaptionParityTests`, as CI).
+  - App 997 in 77 suites passed.
+  - `scripts/rewrite-smoke.sh` (both lengths): PASSED, 72 scenarios.
+  - `tools/fixtures/voice-lab/check_drift.py` exit 0.
+  - `swift build --build-tests -Xswiftc -Xfrontend -Xswiftc -warn-long-expression-type-checking=250`, at load average 134: one flagged line in a touched file, `PreviewFailureStageTests.swift:39` (the tone generator, 295 ms), now split into typed lets and not flagged on rebuild. The other flagged lines are in files this package didn't touch.
+  - Windows not touched, not built.
+  - Real-window gates (`-sceneAudit` of the stage state) not run: the user is using the Mac.
+- **Owed.**
+  - **Windows twin.**
+    - Core: `PreviewFailureReason` with the same tags, and a reason on its preview failure event.
+    - The Windows preview compositor reports per-frame failures with those tags, for preview only.
+    - In preview, caption and title overlays degrade; the disclosure and exports still fail.
+    - The player reports once per item and watches the item's state.
+    - The editor writes `preview: compositor reason=<tag>`.
+    - The stage gets state g (the plate and line, Reload Preview, transcript notice suppression, one announcement) with the §13 copy.
+  - **Display-layer blackness.** If the black viewer comes back with no stage line and no log line, the frames are fine and the `AVPlayerLayer` isn't displaying them. A watch on `isReadyForDisplay` would catch that; it isn't built.
+  - **Composition reuse ignores effects.** `PreviewPlayerController.canReuseComposition` doesn't compare `effects`. A change that only adds an audio effect (bleep, sound) or a freeze takes the reuse path, and the preview keeps the old audio and timing until the next full rebuild. It doesn't blacken frames, and Make it postable doesn't plan these effects.
+  - **Real-window audit.** The new stage state in `-sceneAudit`.
+- **Next package must know.**
+  - Any new `request.finish(with:)` in `FrameCompositor` goes through `fail(_:_:_:_:)` with a fixed reason. A new overlay that preview can drop goes through `captionFailed` or `overlayFailed`.
+  - Reasons are app-authored tags only: never user text or paths in them, or in the log line.
+  - `PreviewEvent.failed` now has two payloads. Match it as `.failed(let error, let reason)`.
+
 ### 2026-11-06 — The anchor's baseline from its earlier takes: "siim · 0.54 across n earlier takes" beside a video's own voice, read only, bounded (track/v2-anchor-baseline)
 
 Brief: the per-video voice's "Deviations"/Owed said the anchor's takes already accepted into projects were not re-read, so the first take with a video's voice had nothing to compare with (ADR-R45 step 4 "Measure"). Spec: doc/spec/voice-lab.md §6.13 item 9; design.md Settings › Voices "Each video".

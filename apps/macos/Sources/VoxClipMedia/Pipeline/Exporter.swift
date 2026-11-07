@@ -64,6 +64,11 @@ public actor AVExporter: Exporter {
     private var cleanupRegistry: URL?
     public init(appVersion: String? = nil, cleanupRegistry: URL? = nil) { builder = CompositionBuilder(); appendCheck = nil; pumpObserver = nil; pullCheck = nil; decodeCheck = nil; writerObservation = nil; self.appVersion = appVersion; capacityProvider = DiskCapacity.systemVolume; self.cleanupRegistry = cleanupRegistry }
     public init(rasterizer: any CaptionRasterizer, appVersion: String? = nil) { builder = CompositionBuilder(rasterizer: rasterizer); appendCheck = nil; pumpObserver = nil; pullCheck = nil; decodeCheck = nil; writerObservation = nil; self.appVersion = appVersion; capacityProvider = DiskCapacity.systemVolume }
+    /// Tests: an exporter whose compositions come from `builder` (a forced caption failure).
+    init(builder: CompositionBuilder) {
+        self.builder = builder; appendCheck = nil; pumpObserver = nil; pullCheck = nil; decodeCheck = nil; writerObservation = nil
+        appVersion = nil; capacityProvider = DiskCapacity.systemVolume
+    }
     init(capacityProvider: @escaping DiskCapacity.Provider, scratchRoot: URL = FileManager.default.temporaryDirectory, appVersion: String? = nil) {
         builder = CompositionBuilder(scratchRoot: scratchRoot); appendCheck = nil; pumpObserver = nil; pullCheck = nil
         decodeCheck = nil; writerObservation = nil; self.appVersion = appVersion; self.capacityProvider = capacityProvider

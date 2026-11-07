@@ -7,6 +7,26 @@ import Metal
 import Synchronization
 import VoxClipCore
 
+/// A preview item's compositor failures (design.md §5.4.4 g): the compositor reports each failed or degraded preview frame
+/// with its fixed reason, and the item's owner hears about the first one only. Exports never get one.
+public final class PreviewFrameFailures: Sendable {
+    private let reported = Mutex<[PreviewFailureReason]>([])
+    private let onFirst: @Sendable (PreviewFailureReason) -> Void
+    public init(onFirst: @escaping @Sendable (PreviewFailureReason) -> Void) { self.onFirst = onFirst }
+
+    /// The reasons reported so far, first first; each reason once.
+    public var reasons: [PreviewFailureReason] { reported.withLock { $0 } }
+
+    func report(_ reason: PreviewFailureReason) {
+        let first = reported.withLock { reasons -> Bool in
+            guard !reasons.contains(reason) else { return false }
+            reasons.append(reason)
+            return reasons.count == 1
+        }
+        if first { onFirst(reason) }
+    }
+}
+
 /// Mutable render resources are confined to renderQueue; generation is protected by Mutex.
 public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
     private let renderQueue = DispatchQueue(label: "com.voxclip.frames", qos: .userInitiated)
@@ -60,11 +80,11 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
         autoreleasepool {
             guard generation.withLock({ $0 }) == current else { request.finishCancelledRequest(); return }
             guard let output = request.renderContext.newPixelBuffer() else {
-                request.finish(with: VoxClipError.decodeFailed("Cannot allocate video frame")); return
+                fail(request, instruction, .frameBuffer, VoxClipError.decodeFailed("Cannot allocate video frame")); return
             }
             let size = request.renderContext.size
             guard let source = request.sourceFrame(byTrackID: instruction.sourceTrackID) else {
-                request.finish(with: VoxClipError.decodeFailed("Missing source video frame")); return
+                fail(request, instruction, .sourceFrame, VoxClipError.decodeFailed("Missing source video frame")); return
             }
             let controls = instruction.request.clipControls
             // Captions, motion, effects and Voice Lab layers keep edited times; a clip's speed scales the rendered clock.
@@ -94,7 +114,7 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
                 }
                 guard let (layer, weight) = weighted.max(by: { $0.1 < $1.1 }), weight > 0 else { continue }
                 guard let frame = request.sourceFrame(byTrackID: layer.trackID) else {
-                    request.finish(with: LipsyncError.invalidMedia); return
+                    fail(request, instruction, .lipsyncFrame, LipsyncError.invalidMedia); return
                 }
                 let captured = ClipPicture.orient(CIImage(cvPixelBuffer: frame).oriented(layer.orientation), controls: controls)
                 let replacement = CompositionFrameGeometry.fill(captured,
@@ -107,7 +127,7 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
                 // the camera's picture, and a mirrored or sideways screen would be unreadable (design.md §6.9). It fills the
                 // clip's frame, turned or not, like any other shape.
                 guard let demo = request.sourceFrame(byTrackID: layer.trackID) else {
-                    request.finish(with: VoxClipError.decodeFailed("Missing context-demo video frame")); return
+                    fail(request, instruction, .demoFrame, VoxClipError.decodeFailed("Missing context-demo video frame")); return
                 }
                 let captured = CIImage(cvPixelBuffer: demo).oriented(layer.orientation)
                 image = CompositionFrameGeometry.fill(captured,
@@ -131,7 +151,9 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
             }
             if let effects = instruction.effects {
                 let timeline = instruction.request.timeline
-                image = effects.frame(image, output: size, time: sourceTime, outputTime: editedTime, mapTime: { timeline.mapTime($0) })
+                // A title, lower third or sticker that can't be drawn is left out of the frame; preview says so.
+                image = effects.frame(image, output: size, time: sourceTime, outputTime: editedTime, mapTime: { timeline.mapTime($0) },
+                                      overlayFailed: { instruction.previewFailures?.report(.title) })
             }
             context.render(image, to: output, bounds: CGRect(origin: .zero, size: size), colorSpace: nil)
             CVBufferSetAttachment(output, kCVImageBufferCGColorSpaceKey, videoColorSpace, .shouldPropagate)
@@ -145,20 +167,30 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
     private func drawCaptions(_ request: AVAsynchronousVideoCompositionRequest, instruction: RenderInstruction,
                               into output: CVPixelBuffer, generation current: UInt64) {
         let time = instruction.request.speedTiming.edited(request.compositionTime.seconds)
+        // The disclosure is never left out: a frame that can't carry it fails, in preview with a message.
         @Sendable func finishMarked(_ buffer: CVPixelBuffer) {
             guard generation.withLock({ $0 }) == current else { request.finishCancelledRequest(); return }
             do {
                 try instruction.disclosure?.draw(into: buffer, at: time)
                 request.finish(withComposedVideoFrame: buffer)
-            } catch { request.finish(with: error) }
+            } catch { fail(request, instruction, .disclosure, error) }
+        }
+        // A caption that can't be drawn fails an export; preview shows the frame without it and reports why.
+        @Sendable func captionFailed(_ reason: PreviewFailureReason, _ error: any Error, frame buffer: CVPixelBuffer) {
+            if instruction.request.forPreview, let failures = instruction.previewFailures {
+                failures.report(reason)
+                finishMarked(buffer)
+            } else { request.finish(with: error) }
         }
         if let layout = instruction.request.captionLayout {
             do {
-                guard let rasterizer = instruction.rasterizer else { throw VoxClipError.sharedResourcesMissing }
-                try rasterizer.draw(layout, time: time, into: output,
-                    previewWidth: instruction.request.forPreview ? CVPixelBufferGetWidth(output) : nil)
+                guard let rasterizer = instruction.rasterizer else {
+                    captionFailed(.resources, VoxClipError.sharedResourcesMissing, frame: output); return
+                }
+                try (instruction.captionDrawHook ?? Self.drawLayout)(rasterizer, layout, time, output,
+                    instruction.request.forPreview ? CVPixelBufferGetWidth(output) : nil)
                 finishMarked(output)
-            } catch { request.finish(with: error) }
+            } catch { captionFailed(.captionLayout, error, frame: output) }
             return
         }
         guard let page = instruction.page(at: time), let style = instruction.request.style else {
@@ -166,14 +198,14 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
             return
         }
         guard let rasterizer = instruction.legacyRasterizer ?? instruction.rasterizer else {
-            request.finish(with: VoxClipError.sharedResourcesMissing); return
+            captionFailed(.resources, VoxClipError.sharedResourcesMissing, frame: output); return
         }
         let width = CVPixelBufferGetWidth(output)
         let height = CVPixelBufferGetHeight(output)
         let complete: @Sendable (CaptionRaster, CVPixelBuffer) -> Void = { overlay, buffer in
             guard self.generation.withLock({ $0 }) == current else { request.finishCancelledRequest(); return }
             guard CVPixelBufferLockBaseAddress(buffer, []) == kCVReturnSuccess else {
-                request.finish(with: VoxClipError.decodeFailed("Cannot lock caption frame")); return
+                captionFailed(.captionRaster, VoxClipError.decodeFailed("Cannot lock caption frame"), frame: buffer); return
             }
             guard overlay.width > 0, overlay.height > 0, overlay.bytesPerRow >= overlay.width * 4,
                   overlay.rgba.count >= overlay.bytesPerRow * overlay.height,
@@ -185,7 +217,7 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
                       bitsPerComponent: 8, bytesPerRow: CVPixelBufferGetBytesPerRow(buffer), space: self.colorSpace,
                       bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) else {
                 CVPixelBufferUnlockBaseAddress(buffer, [])
-                request.finish(with: VoxClipError.decodeFailed("Invalid caption raster")); return
+                captionFailed(.captionRaster, VoxClipError.decodeFailed("Invalid caption raster"), frame: buffer); return
             }
             graphics.draw(caption, in: CGRect(x: 0, y: 0, width: width, height: height))
             CVPixelBufferUnlockBaseAddress(buffer, [])
@@ -202,13 +234,25 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
                 }
             } catch {
                 self.renderQueue.async {
-                    guard self.pending.removeValue(forKey: id) != nil else { return }
+                    guard let (_, _, buffer) = self.pending.removeValue(forKey: id) else { return }
                     if self.generation.withLock({ $0 }) != current || error is CancellationError { request.finishCancelledRequest() }
-                    else { request.finish(with: error) }
+                    else { captionFailed(.captionRaster, error, frame: buffer) }
                 }
             }
         }
         pending[id] = (request, task, output)
+    }
+
+    /// Fails the frame; a preview frame also reports `reason` to its item (design.md §5.4.4 g). Exports only fail.
+    private func fail(_ request: AVAsynchronousVideoCompositionRequest, _ instruction: RenderInstruction,
+                      _ reason: PreviewFailureReason, _ error: any Error) {
+        if instruction.request.forPreview { instruction.previewFailures?.report(reason) }
+        request.finish(with: error)
+    }
+
+    /// The shared rasterizer's caption band over `output`; the preview passes its own width.
+    static let drawLayout: CaptionLayoutDraw = { rasterizer, layout, time, output, previewWidth in
+        try rasterizer.draw(layout, time: time, into: output, previewWidth: previewWidth)
     }
 
     static func centerCrop(source: CGRect, output: CGSize) -> CGRect {
@@ -219,6 +263,9 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
                       width: crop.width, height: crop.height)
     }
 }
+
+/// Draws a caption layout's band into a frame: (rasterizer, layout, edited time, frame, preview width).
+typealias CaptionLayoutDraw = @Sendable (CoreTextCaptionRasterizer, CaptionLayoutResult, Double, CVPixelBuffer, Int?) throws -> Void
 
 /// All instruction snapshots are immutable; no AVFoundation object graph is retained.
 public final class RenderInstruction: NSObject, AVVideoCompositionInstructionProtocol, @unchecked Sendable {
@@ -244,6 +291,10 @@ public final class RenderInstruction: NSObject, AVVideoCompositionInstructionPro
     let videoAnchorY: Double
     /// The render's picture effects (ai.md §18.5), shared by every instruction of one composition; nil without effects.
     let effects: EffectFrames?
+    /// Where a preview item hears about failed or degraded frames; nil for exports.
+    let previewFailures: PreviewFrameFailures?
+    /// Tests only: replaces the caption layout's draw, to force a failure.
+    let captionDrawHook: CaptionLayoutDraw?
 
     public convenience init(timeRange: CMTimeRange, sourceTrackID: CMPersistentTrackID, request: RenderRequest) {
         self.init(timeRange: timeRange, sourceTrackID: sourceTrackID, request: request, orientation: .up, rasterizer: nil)
@@ -253,7 +304,8 @@ public final class RenderInstruction: NSObject, AVVideoCompositionInstructionPro
          legacyRasterizer: (any CaptionRasterizer)? = nil, disclosure: VoiceLabDisclosureOverlay? = nil,
          demoLayer: CompositionDemoLayer? = nil, contextDemoLease: ContextDemoCompositionLease? = nil,
          videoZoom: Double = 1, videoAnchorX: Double = 0.5, videoAnchorY: Double = 0.5,
-         lipsyncLayers: [LipsyncVideoLayer] = [], colorCorrection: (scale: Double, bias: Double)? = nil, effects: EffectFrames? = nil) {
+         lipsyncLayers: [LipsyncVideoLayer] = [], colorCorrection: (scale: Double, bias: Double)? = nil, effects: EffectFrames? = nil,
+         previewFailures: PreviewFrameFailures? = nil, captionDrawHook: CaptionLayoutDraw? = nil) {
         self.timeRange = timeRange; self.sourceTrackID = sourceTrackID; self.request = request
         self.orientation = orientation; self.rasterizer = rasterizer; self.legacyRasterizer = legacyRasterizer
         self.disclosure = disclosure; self.demoLayer = demoLayer; self.contextDemoLease = contextDemoLease
@@ -261,6 +313,8 @@ public final class RenderInstruction: NSObject, AVVideoCompositionInstructionPro
         self.lipsyncLayers = lipsyncLayers
         self.colorCorrection = colorCorrection
         self.effects = effects
+        self.previewFailures = previewFailures
+        self.captionDrawHook = captionDrawHook
         super.init()
     }
 

@@ -642,7 +642,7 @@ When the user selects one or more whole words with the pointer or the keyboard a
   - 9:16 and 1:1 are centred, at most 320 high and never wider than the inner width (180×320 for 9:16). A 9:16 or 1:1 frame is a centre crop of the source with no pillar bars, as in export.
   - On macOS the stage keeps these sizes while the column is at least the stage height plus 320 (every frame at 1280×800 and larger). That 320 holds everything below the stage: the viewer bar, the Frame row, their spacing and padding, the hairline and the Captions panel. In a shorter column only the stage height yields, keeping its aspect and centring, so the area below it keeps that budget.
   - While Rewrite is open and the column is shorter than 760, the stage drops to 220×124 (16:9; other frames fit inside a 124-high box). On Windows the time, the AI tag and the transport stack beside it. On macOS the viewer row stays under it.
-- There is no transport pill and no overlay on the stage except the caption overlay and the compositor's AI MODIFIED chip. The one exception: with no video, the stage shows the §5.4.6 overlays (the message, the word rhythm, the audiogram and the status chip). None of them is interactive; Locate… stays in the transcript InfoBar.
+- There is no transport pill and no overlay on the stage except the caption overlay and the compositor's AI MODIFIED chip. The one exception: with no video, the stage shows the §5.4.6 overlays (the message, the word rhythm, the audiogram and the status chip). None of them is interactive; Locate… stays in the transcript InfoBar. A preview that can't load or draw shows the preview-failed state over the player, with Reload Preview (§5.4.4 g).
 - **Caption position.** The caption block on the stage is draggable and snaps to the centre line and the thirds. While dragging, safe-zone guides for the frame appear (9:16: bands over the top 12% and the bottom 22%). This is unchanged.
 
 **Viewer bar.**
@@ -809,9 +809,16 @@ States, per surface. Copy is exact.
 | **f · audio only** (`video == null`) | card and the **"Audio only"** chip | card | card | the **"Audio only"** chip; the live audiogram (§5.4.6); captions | samples on the card backdrop |
 | **f · corrupt file** | card and the **warning chip**; meta "⚠ Can't read video." **Locate…** | card; meta "⚠ Can't read video" | card | warning glyph, **"Can't read this video"** and the file name; transport disabled | as c |
 | **f · black first frame** | the next usable frame (§5.4.7), with no chip | frame | frame | the real (black) video: black is content | the frame band |
+| **g · preview failed** (the video is there and readable, but its preview can't load or draw) | unchanged | unchanged | unchanged | over the player, the §5.4.6 message cluster on a media plate, its line naming what failed (§13 "Stage, preview failed"), and **Reload Preview** | unchanged |
 
 **Notes.**
 
+- **Preview failed (g)** is never a silent black box.
+  - **When.** The preview fails to load, its item fails, or its frame compositor fails a frame or leaves an overlay out. The compositor reports the first failure of each loaded preview with a fixed, app-authored tag: `caption-layout`, `caption-raster`, `resources`, `title`, `disclosure`, `source-frame`, `lipsync-frame`, `demo-frame` or `frame-buffer`. The editor logs `preview: compositor reason=<tag>`, with no user text or path, and shows the tag's line. Exports never report this way, and they keep failing loudly.
+  - **Degrade, don't blank.** In preview only, a caption or title that can't be drawn is left out of the frame, so the picture still plays and the line says so. A required AI voice disclosure is never left out: its frames still fail, and the line says the preview stopped.
+  - **The plate.** It sits centred at 36% of the stage height, inset 12 from each side. It holds a 13 px `exclamationmark.triangle` in `chip.warningGlyph` and the line, 13/17 semibold `overlay.foreground` in at most 3 lines. Under them, 6 below, sits **Reload Preview**, a small button that loads the preview again; a load that works clears the state. The plate is `chip.mediaBackground` with a 1 px `chip.mediaStroke`, radius 6, padded 12 by 8, and switches to the opaque tokens as chips do (§5.4.8).
+  - **Accessibility.** VoiceOver reads the line and the button inside the stage. The editor announces the line once when a compositor failure sets it. The stage keeps its one live region, the time.
+  - **Where the line shows.** While the stage shows this state, the transcript's notice doesn't repeat the line. With a stand-in (c, e, f) the transcript keeps carrying it.
 - **Home (e)** appears only for a project that carries a demo or sample marker. The DEBUG fixtures never enter Recent, so (e) on Home ships only with a sample project.
 - **Locate…** sits in the meta line on Home and in the transcript InfoBar in the editor (§13 "Media missing"). It is never on the stage.
 - **Export** is disabled in the missing (c), corrupt (f) and demo (e) states, with its reason as the tooltip and the accessible description:
@@ -833,7 +840,7 @@ Home's metadata cache (§7) keeps, for each project, the card inputs or both car
 
 #### 5.4.6 Stage overlays with no video
 
-These overlays are the one exception to §5.1's rule of no overlay on the stage. They are non-interactive: **there is no button on the stage**. Locate… lives only in the transcript InfoBar, so there is one tab stop and one name.
+These overlays are the one exception to §5.1's rule of no overlay on the stage. They are non-interactive: **there is no button on the stage**. Locate… lives only in the transcript InfoBar, so there is one tab stop and one name. The one exception is state g (§5.4.4): **Reload Preview** acts on the preview itself, so it sits on the stage, in the message cluster.
 
 **Message cluster** (states c and corrupt f):
 
@@ -2359,6 +2366,7 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 | Stage, missing | stage (non-interactive) | "Video not found" and the file name |
 | Stage, corrupt | stage (non-interactive) | "Can't read this video" and the file name |
 | Stage, loading under Reduce Motion | stage | "Loading video…" |
+| Stage, preview failed (§5.4.4 g) | stage, with [Reload Preview] | Captions (`caption-layout`, `caption-raster`, `resources`): "Captions couldn't be drawn, so the preview plays without them." Title (`title`): "The title couldn't be drawn, so the preview plays without it." Disclosure: "The AI voice label couldn't be drawn, so the preview stopped." Frames (`source-frame`, `lipsync-frame`, `demo-frame`, `frame-buffer`): "The preview couldn't draw the video." A load or item failure shows the safe error line for its code |
 | Placeholder words | Settings → General | "Show transcript words on placeholders" (on); help "When off, placeholders show the project title instead of its first words." |
 | Relinked file differs | Editor | "This file looks different. Use it anyway?" [Use it] [Choose another] |
 | Clips: no connector | callout under the sidebar actions | "Choose how VoxClip finds clips: your API key, a model on this computer, or an installed CLI." [Set Up AI…], plus "You can also select words and press ⌥⌘K to make a clip yourself." (Windows: Ctrl+K) |

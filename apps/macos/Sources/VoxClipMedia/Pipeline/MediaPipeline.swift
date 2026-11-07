@@ -79,19 +79,26 @@ public struct CompositionBuilder: Sendable {
     private let sharedRasterizer: Result<CoreTextCaptionRasterizer, any Error>
     /// Where a Voice Lab render keeps its asset snapshots and mix: the temporary directory, or a test's own folder.
     let scratchRoot: URL
+    /// Tests only: replaces the caption layout's draw in every frame, to force a failure.
+    let captionDrawHook: CaptionLayoutDraw?
     public init() { self.init(legacyRasterizer: nil) }
     public init(rasterizer: any CaptionRasterizer) { self.init(legacyRasterizer: rasterizer) }
     init(scratchRoot: URL) { self.init(legacyRasterizer: nil, scratchRoot: scratchRoot) }
-    private init(legacyRasterizer: (any CaptionRasterizer)?, scratchRoot: URL = FileManager.default.temporaryDirectory) {
+    init(captionDrawHook: @escaping CaptionLayoutDraw) { self.init(legacyRasterizer: nil, captionDrawHook: captionDrawHook) }
+    private init(legacyRasterizer: (any CaptionRasterizer)?, scratchRoot: URL = FileManager.default.temporaryDirectory,
+                 captionDrawHook: CaptionLayoutDraw? = nil) {
         rasterizer = legacyRasterizer
         sharedRasterizer = Result { try CoreTextCaptionRasterizer(shared: SharedResources.locate()) }
         self.scratchRoot = scratchRoot
+        self.captionDrawHook = captionDrawHook
     }
 
     /// `allowsFractionalFrameRate` is only for the lip-sync mezzanine and result conform, which keep the source's own rate
     /// (29.97 fps and similar); exports keep whole frame rates.
+    /// `previewFailures` hears about a preview's failed or degraded frames (design.md §5.4.4 g); exports pass none.
     public func build(_ request: RenderRequest, includeDisclosure: Bool = true,
                       colorCorrection: (scale: Double, bias: Double)? = nil, allowsFractionalFrameRate: Bool = false,
+                      previewFailures: PreviewFrameFailures? = nil,
                       isolation: isolated (any Actor)? = #isolation) async throws -> RenderGraph {
         try Task.checkCancellation()
         let plan = request.plan
@@ -204,7 +211,7 @@ public struct CompositionBuilder: Sendable {
         let videoComposition = try makeVideoComposition(request, trackID: video.trackID, duration: duration,
             orientation: MediaSupport.orientation(transform), videoSpans: videoSpans,
             demoLayers: demos.layers, contextDemoLease: demos.lease, lipsyncLayers: lipsync,
-            includeDisclosure: includeDisclosure, colorCorrection: colorCorrection)
+            includeDisclosure: includeDisclosure, colorCorrection: colorCorrection, previewFailures: previewFailures)
         let size = videoComposition.renderSize
         let frameDuration = videoComposition.frameDuration
         var musicTrack: AVMutableCompositionTrack?
@@ -250,7 +257,8 @@ public struct CompositionBuilder: Sendable {
                               demoLayers: [CompositionDemoLayer] = [],
                               contextDemoLease: ContextDemoCompositionLease? = nil,
                               lipsyncLayers: [LipsyncVideoLayer] = [], includeDisclosure: Bool = true,
-                              colorCorrection: (scale: Double, bias: Double)? = nil) throws -> AVVideoComposition {
+                              colorCorrection: (scale: Double, bias: Double)? = nil,
+                              previewFailures: PreviewFrameFailures? = nil) throws -> AVVideoComposition {
         let size = CGSize(width: request.output.size.width, height: request.output.size.height)
         guard size.width >= 2, size.height >= 2, max(size.width, size.height) <= 1920,
               request.output.fps.isFinite, request.output.fps >= 1, request.output.fps <= 60 else {
@@ -302,7 +310,7 @@ public struct CompositionBuilder: Sendable {
                 contextDemoLease: contextDemoLease, videoZoom: span?.zoom ?? 1,
                 videoAnchorX: span?.anchorX ?? 0.5, videoAnchorY: span?.anchorY ?? 0.5,
                 lipsyncLayers: lipsyncLayers.filter { $0.output.start < end && $0.output.end > start }, colorCorrection: colorCorrection,
-                effects: effects)
+                effects: effects, previewFailures: request.forPreview ? previewFailures : nil, captionDrawHook: captionDrawHook)
         }
         let config = AVVideoComposition.Configuration(colorPrimaries: AVVideoColorPrimaries_ITU_R_709_2,
             colorTransferFunction: AVVideoTransferFunction_ITU_R_709_2, colorYCbCrMatrix: AVVideoYCbCrMatrix_ITU_R_709_2,
