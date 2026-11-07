@@ -78,7 +78,12 @@ public struct LLMRequest: Sendable, Equatable {
     public var timeout: Duration
     public var language: String?
     public var tag: String
-    public init(feature: LLMFeature, system: String, cachedBlock: String? = nil, instruction: String, schemaName: String, schema: JSONValue, maxOutputTokens: Int, effort: Effort? = nil, timeout: Duration, language: String? = nil, tag: String) {
+    /// Small frames for a connector that takes images (ai.md §19.3). A connector whose catalogue entry has no
+    /// `images.supported` sends none; the instruction then carries the frames' text summary alone. Empty by default, and a
+    /// request without images is sent exactly as before.
+    public var images: [LLMImage] = []
+    public init(feature: LLMFeature, system: String, cachedBlock: String? = nil, instruction: String, schemaName: String, schema: JSONValue, maxOutputTokens: Int, effort: Effort? = nil, timeout: Duration, language: String? = nil, tag: String, images: [LLMImage] = []) {
+        self.images = images
         self.feature = feature
         self.system = system
         self.cachedBlock = cachedBlock
@@ -90,6 +95,22 @@ public struct LLMRequest: Sendable, Equatable {
         self.timeout = timeout
         self.language = language
         self.tag = tag
+    }
+}
+
+/// One image a request shows the AI: a JPEG frame with its label, which goes as text just before it (ai.md §19.3).
+public struct LLMImage: Sendable, Equatable {
+    public var label: String
+    public var mediaType: String
+    public var data: Data
+    public var width: Int
+    public var height: Int
+    public init(label: String, mediaType: String, data: Data, width: Int, height: Int) {
+        self.label = label
+        self.mediaType = mediaType
+        self.data = data
+        self.width = width
+        self.height = height
     }
 }
 
@@ -201,9 +222,13 @@ public protocol LLMConnector: Sendable {
     func models(refresh: Bool) async throws -> [LLMModel]
     func contextTokens(model: String) async -> Int?
     func send(_ request: LLMRequest, model: String) async throws -> RawCompletion
+    /// Whether `send` passes a request's images on, as the catalogue declares (`connectors[].images.supported`). A
+    /// connector that does not drops them, so a caller always puts the frames' text summary in the instruction.
+    func supportsImages() async -> Bool
 }
 extension LLMConnector {
     public func knownCLIAuthMethod() async -> String? { nil }
+    public func supportsImages() async -> Bool { false }
 }
 /// Dependency-injected secrets; architecture §2.1, §9.4 and AI §8.1. No persistence requirement.
 public protocol KeyProvider: Sendable { func key(for provider: String) async throws -> String? }
@@ -358,6 +383,10 @@ public actor StubLLMConnector: LLMConnector {
         return await connector.contextTokens(model: model)
     }
     public func send(_ request: LLMRequest, model: String) async throws -> RawCompletion { try await resolve().send(request, model: model) }
+    public func supportsImages() async -> Bool {
+        guard let connector = try? resolve() else { return false }
+        return await connector.supportsImages()
+    }
 
     private func resolve() throws -> any LLMConnector {
         if let implementation { return implementation }

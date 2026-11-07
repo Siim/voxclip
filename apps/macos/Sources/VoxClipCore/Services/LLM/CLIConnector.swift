@@ -136,17 +136,23 @@ public actor CLIConnector: LLMConnector {
         if preflight?.fingerprint != detected.fingerprint || preflight.map({ ContinuousClock.now - $0.at >= .seconds(5) }) != false {
             _ = try await authenticate(detected, configuration: configuration)
         }
+        let images = sendableImages(request, detected: detected)
         return try await workspace { directories in
             let schema = try aiCompactCanonicalSchema(request.schema)
             let arguments: [String]
+            let text = (request.cachedBlock.map { $0 + "\n\n" } ?? "") + request.instruction
+            var stdin = Data(text.utf8)
             if id == .claudeCode {
                 arguments = claudeArguments(request, model: model, schema: schema, detected: detected,
-                                            configuration: configuration)
+                                            configuration: configuration, streamsImages: !images.isEmpty)
+                if !images.isEmpty { stdin = try claudeImageMessage(text: text, images: images) }
             } else {
                 do { try Data(schema.utf8).write(to: directories.io.appendingPathComponent("schema.json"), options: .atomic) }
                 catch { throw LLMError.cliFailed("Unable to write CLI schema file.") }
+                let files = try writeImages(images, to: directories.io)
                 arguments = codexArguments(request, model: model, directories: directories, detected: detected,
-                                           configuration: configuration)
+                                           configuration: configuration, images: files)
+                if !images.isEmpty { stdin = Data(codexImagePrompt(text: text, images: images).utf8) }
             }
             let started = ContinuousClock.now
             var exitCode: Int32 = -1
@@ -154,10 +160,11 @@ public actor CLIConnector: LLMConnector {
                 var processRequest = ProcessRequest(
                 executable: detected.fingerprint.url, arguments: arguments, workingDirectory: directories.cwd,
                 environment: try await resolvedEnvironment(),
-                stdin: Data(((request.cachedBlock.map { $0 + "\n\n" } ?? "") + request.instruction).utf8),
+                stdin: stdin,
                 timeout: request.timeout)
                 processRequest.cliCapturesTimeoutOutput = true
-                let result = try await execute(processRequest)
+                var result = try await execute(processRequest)
+                if id == .claudeCode, !images.isEmpty { result = claudeStreamResult(result) }
                 exitCode = result.exitCode
                 let raw: RawCompletion
                 if id == .claudeCode { raw = try await parseClaude(result, requestedModel: model, configuration: configuration) }
@@ -368,9 +375,63 @@ public actor CLIConnector: LLMConnector {
         catch { throw LLMError.cliFailed("Unable to run CLI process.") }
     }
 
+    public func supportsImages() async -> Bool { catalog.supportsImages(for: id) }
+
+    /// The images a send passes on (ai.md §19.3): the catalogue's, and for Claude Code only when the CLI lists the
+    /// stream-json input flags (`images.requiredFlags`). Otherwise none, and the request goes as text.
+    private func sendableImages(_ request: LLMRequest, detected: CLICapabilities) -> [LLMImage] {
+        let images = catalog.images(request, for: id)
+        guard !images.isEmpty else { return [] }
+        let required = catalog.connector(id)[ai: "images"][ai: "requiredFlags"].aiArray.compactMap(\.aiString)
+        guard required.allSatisfy(detected.flags.contains) else { return [] }
+        return images
+    }
+
+    /// Claude Code's one stream-json user message: each image after its label, then the request's text.
+    private func claudeImageMessage(text: String, images: [LLMImage]) throws -> Data {
+        var content: [JSONValue] = []
+        for image in images {
+            content.append(.object(["type": .string("text"), "text": .string(image.label)]))
+            content.append(.object(["type": .string("image"), "source": .object([
+                "type": .string("base64"), "media_type": .string(image.mediaType), "data": .string(image.data.base64EncodedString())])]))
+        }
+        content.append(.object(["type": .string("text"), "text": .string(text)]))
+        let message: JSONValue = .object(["type": .string("user"), "message": .object(["role": .string("user"), "content": .array(content)])])
+        do { return Data((try cliEncode(message) + "\n").utf8) }
+        catch { throw LLMError.cliFailed("Unable to encode the CLI request.") }
+    }
+
+    /// The stream-json output's last `result` event as the `json` output's single object, so one parser reads both.
+    private func claudeStreamResult(_ result: ProcessResult) -> ProcessResult {
+        let last = cliLines(result.stdout).last { line in
+            CanonicalResponseParser.envelope(line)?.cliObject?["type"]?.cliString == "result"
+        }
+        return ProcessResult(exitCode: result.exitCode, stdout: last.map { Data($0.utf8) } ?? Data(), stderr: result.stderr)
+    }
+
+    /// Codex reads each image from a file in the private io folder, named by its order.
+    private func writeImages(_ images: [LLMImage], to directory: URL) throws -> [URL] {
+        try images.enumerated().map { index, image in
+            let name = String(format: "frame-%02d.%@", index + 1, image.mediaType == "image/png" ? "png" : "jpg")
+            let url = directory.appendingPathComponent(name)
+            do { try image.data.write(to: url, options: .atomic) }
+            catch { throw LLMError.cliFailed("Unable to write a CLI image file.") }
+            return url
+        }
+    }
+
+    /// Codex attaches the images in order before the prompt, so the prompt names them first: "Image 1: Frame 1 at 3.20 s".
+    private func codexImagePrompt(text: String, images: [LLMImage]) -> String {
+        let labels = images.enumerated().map { "Image \($0.offset + 1): \($0.element.label)" }
+        return "The attached images, in order:\n" + labels.joined(separator: "\n") + "\n\n" + text
+    }
+
     private func claudeArguments(_ request: LLMRequest, model: String, schema: String, detected: CLICapabilities,
-                                 configuration: [String: JSONValue]) -> [String] {
-        var arguments = ["-p", "--output-format", "json", "--json-schema", schema, "--system-prompt", request.system,
+                                 configuration: [String: JSONValue], streamsImages: Bool) -> [String] {
+        // ai.md §19.3: images go as one stream-json user message, which the CLI takes only with stream-json output and
+        // --verbose; its last `result` event is the json output's object.
+        let output = streamsImages ? ["--input-format", "stream-json", "--output-format", "stream-json", "--verbose"] : ["--output-format", "json"]
+        var arguments = ["-p"] + output + ["--json-schema", schema, "--system-prompt", request.system,
                          "--tools", "", "--no-session-persistence"]
         if model != "default" { arguments += ["--model", model] }
         // A Voice Lab rewrite is billed for the quoted model only, so it never names a fallback (ai.md §12.8).
@@ -388,7 +449,7 @@ public actor CLIConnector: LLMConnector {
     }
 
     private func codexArguments(_ request: LLMRequest, model: String, directories: CLIWorkspace,
-                                detected: CLICapabilities, configuration: [String: JSONValue]) -> [String] {
+                                detected: CLICapabilities, configuration: [String: JSONValue], images: [URL]) -> [String] {
         var arguments = ["exec", "--json", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config"]
         if detected.flags.contains("--ignore-rules") { arguments.append("--ignore-rules") }
         arguments += ["--sandbox", "read-only", "--cd", directories.cwd.path]
@@ -404,6 +465,8 @@ public actor CLIConnector: LLMConnector {
         for feature in configuration["cli"]?.cliObject?["disableFeatures"]?.cliStrings ?? [] where detected.features.contains(feature) {
             arguments += ["--disable", feature]
         }
+        // ai.md §19.3: `--image` takes one or more files; a flag follows the last one, so none is read as the prompt.
+        if !images.isEmpty { arguments += ["--image"] + images.map(\.path) }
         arguments += ["--output-schema", directories.io.appendingPathComponent("schema.json").path,
                       "--output-last-message", directories.io.appendingPathComponent("last.json").path, "-"]
         return arguments

@@ -44,6 +44,23 @@ extension LLMCatalog {
         connector(id)[ai: "fallbackOrder"].aiArray.compactMap(\.aiString).first { $0 != model }
     }
 
+    /// Whether the connector passes a request's images on (`images.supported`, ai.md §19.3); false when the entry says
+    /// nothing.
+    public func supportsImages(for id: ConnectorID) -> Bool {
+        connector(id)[ai: "images"][ai: "supported"].aiBool == true
+    }
+
+    /// The most images one request may carry (`images.maxPerRequest`); 0 for a connector that takes none.
+    public func maximumImages(for id: ConnectorID) -> Int {
+        guard supportsImages(for: id) else { return 0 }
+        return max(0, connector(id)[ai: "images"][ai: "maxPerRequest"].aiInt ?? 0)
+    }
+
+    /// The images a send to `id` passes on: none for a connector without image support, else at most its maximum.
+    public func images(_ request: LLMRequest, for id: ConnectorID) -> [LLMImage] {
+        Array(request.images.prefix(maximumImages(for: id)))
+    }
+
     /// The connector's catalog effort levels (`effort.values`), lowercased; empty when it takes no effort.
     public func effortLevels(for id: ConnectorID) -> [String] {
         connector(id)[ai: "effort"][ai: "values"].aiArray.compactMap { $0.aiString?.lowercased() }
