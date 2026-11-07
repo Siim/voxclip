@@ -113,7 +113,8 @@ enum CLIWorkflow {
     }
 
     static func transcribed(source: URL, probe: MediaProbeResult, engine: String?, model: String?, language: String?,
-                            options: TranscriptionOptions = TranscriptionOptions(), rawOut: String? = nil) async throws -> Transcript {
+                            options: TranscriptionOptions = TranscriptionOptions(), rawOut: String? = nil,
+                            clock: ClaudeModeClock? = nil) async throws -> Transcript {
         let selected = try CLIExecution.engine(engine ?? "whisper")
         let locations = DataLocations()
         let choice: LanguageChoice = language == nil || language == "auto" ? .auto : .forced(language!)
@@ -133,9 +134,11 @@ enum CLIWorkflow {
             }
             guard model != nil else { throw VoxClipError.modelMissing("whisper (\(language ?? "auto"))") }
         }
+        let audioStart = clock?.elapsed ?? 0
         let key = try JSONProjectStore.contentKey(for: source)
         let extraction = try await CacheStore(locations: locations).extractAudio(sourceURL: source, contentKey: key, durationSeconds: probe.durationSeconds,
             using: AVAudioExtractor()) { _ in }
+        clock?.record(.audio, since: audioStart)
         let plan = TranscriptionPlan(engine: selected, model: model, language: choice, options: options)
         let adapter: any Transcriber
         switch selected {
@@ -152,6 +155,8 @@ enum CLIWorkflow {
             guard destination != source.standardizedFileURL.resolvingSymlinksInPath() else { throw VoxClipError.projectUnreadable("Raw output must not overwrite the source") }
             transcriber = RawOutputTranscriber(base: adapter, destination: destination)
         } else { transcriber = adapter }
+        let transcribeStart = clock?.elapsed ?? 0
+        defer { clock?.record(.transcribe, since: transcribeStart) }
         return try await TranscriptionService().transcribe(request, using: transcriber, envelope: extraction.envelope)
     }
 
