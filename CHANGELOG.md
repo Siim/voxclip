@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Mac, a preview that can't draw no longer leaves a silent black viewer: the stage says what failed and offers Reload Preview, and a caption or title that can't be drawn is left out of the preview instead of blanking the video (export still stops).
 - On Mac, Settings › Voices now compares a video's own voice with your consent voice's earlier takes already in your projects ("siim · 0.54 across 8 earlier takes"), measured on this Mac in the background from up to 12 takes, so the first matching take has something to compare with.
 - On Windows, Rewrite can ask once to make a matching voice for each video, make it before the first price, remove the previous video's voice and show how close takes sound in Settings › Voices; this stays off until the Windows speaker check is verified.
 - On Windows, Get Price checks every phrase is your voice before showing a price, and Settings › Voices can learn your voice from your videos and rebuild it from your clearest speech; these stay off until the Windows speaker check is verified.
