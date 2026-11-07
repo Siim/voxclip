@@ -86,10 +86,12 @@ actor NativeMediaFixtures {
     /// Fixtures need the hardware encoder, as export does; without one every caller fails at once.
     /// Interleaved stereo speech-like bursts, 0.3 s on and 0.2 s off under a Hann envelope: a 180 Hz voice with two
     /// harmonics and a formant near 1.1 kHz, plus a little low-passed noise (independent per channel), all well inside
-    /// what AAC keeps. Its true peak sits about 10 dB over its loudness, so the social gain is not capped. With `clicks`
-    /// the bursts are 6 dB lower and each carries a 2 ms Hann-shaped 1 kHz click at −2 dBFS in the left channel, so the
-    /// true peak sets the gain.
-    static func speechBursts(frames: Int, clicks: Bool) -> [Float] {
+    /// what AAC keeps. Its true peak sits about 10 dB over its loudness, so the gain alone reaches −14 LUFS. With
+    /// `clicks` the bursts are 6 dB lower and each carries a 2 ms Hann-shaped 1 kHz click at −2 dBFS in the left channel,
+    /// so the limiter would need more than 9 dB and the reduction cap sets the gain. With `plosives` (ADR-R47 amended)
+    /// each burst starts with a 5 ms Hann-shaped 150 Hz plosive at −4.4 dBFS in both channels: transients about 17 dB
+    /// over the speech's loudness, as real recordings have, which the limiter takes so the clip lands at −14 LUFS.
+    static func speechBursts(frames: Int, clicks: Bool, plosives: Bool = false) -> [Float] {
         let amplitude: Double = clicks ? 0.105 : 0.21
         var samples = [Float](repeating: 0, count: frames * 2)
         var state: UInt64 = 12_345
@@ -111,6 +113,11 @@ actor NativeMediaFixtures {
                     let offset = Double(position - 7_000)
                     let shape: Double = 0.5 - 0.5 * cos(2 * Double.pi * offset / 96)
                     value += 0.794 * shape * sin(2 * Double.pi * 1000 * offset / 48000)
+                }
+                if plosives, (200..<440).contains(position) {
+                    let offset = Double(position - 200)
+                    let shape: Double = 0.5 - 0.5 * cos(2 * Double.pi * offset / 240)
+                    value += 0.6 * shape * sin(2 * Double.pi * 150 * offset / 48000)
                 }
                 samples[frame * 2 + channel] = Float(value)
             }
@@ -135,8 +142,9 @@ actor NativeMediaFixtures {
         let bars = name == "bars.mov"
         let counter = name == "counter.mov"
         let chirp = name == "chirp.mov"
-        // Speech-like noise bursts with gaps for social loudness (ADR-R47); the clicks version is capped by its true peak.
-        let speech = name == "speech-bursts.mov" || name == "speech-clicks.mov"
+        // Speech-like noise bursts with gaps for social loudness (ADR-R47): plain, with plosives the limiter takes, and with
+        // clicks the reduction cap stops.
+        let speech = name == "speech-bursts.mov" || name == "speech-clicks.mov" || name == "speech-plosives.mov"
         let downmix = name == "right-only.mov" || name == "six-channel.mov"
         let channels = name == "six-channel.mov" ? 6 : 2
         let benchmark = name == "benchmark.mov" || name == "interrupt-aac.mov"
@@ -205,7 +213,8 @@ actor NativeMediaFixtures {
                 let pcm = try PCMFile(url: audioURL, rate: audioRate, channels: channels, float: true)
                 let frequency = trackIndex == 0 ? 441.0 : 882.0
                 let audioFrames = Int(((Double(duration) + overhang) * Double(audioRate)).rounded())
-                var samples = speech ? Self.speechBursts(frames: audioFrames, clicks: name == "speech-clicks.mov")
+                var samples = speech ? Self.speechBursts(frames: audioFrames, clicks: name == "speech-clicks.mov",
+                                                       plosives: name == "speech-plosives.mov")
                     : [Float](repeating: 0, count: audioFrames * channels)
                 for frame in 0..<audioFrames where !speech {
                     let time = Double(frame) / Double(audioRate)

@@ -108,7 +108,7 @@ public actor AVExporter: Exporter {
     }
 
     /// `gainedAudio` names staged Float32 WAV partials (the CLI's `--audio-out`) that receive the export's loudness
-    /// gain before anything is published (ADR-R47).
+    /// gain and limiter before anything is published (ADR-R47).
     package func export(_ job: ExportJob, additionalOutputs: [(partial: URL, destination: URL)],
                         approvals: [URL: ExportSafety.DestinationApproval]? = nil, gainedAudio: [URL] = [],
                         progress: @escaping @Sendable (ExportProgress) -> Void) async throws -> ExportResult {
@@ -279,9 +279,9 @@ public actor AVExporter: Exporter {
         // The rendered length: the edited length divided by the clip's speed (design.md §6.9).
         let timeRange = CMTimeRange(start: .zero, duration: CMTime(value: job.render.renderedSamples, timescale: Int32(job.render.timeline.sampleRate)))
         let audioSampleLimit = Int64((job.render.renderedDuration * 48000).rounded())
-        // Social loudness (ADR-R47): measure the mix the pump will write, then write it with one static gain.
-        let loudness = try await socialLoudness(job, graph: graph, timeRange: timeRange, sampleLimit: audioSampleLimit)
-        let audioGain = loudness.map { SocialLoudness.linearGain($0.gainDb) } ?? 1
+        // Social loudness (ADR-R47): measure the mix the pump will write, simulate the limiter when it has work, then
+        // write it through the same gain and limiter.
+        let loudnessPlan = try await socialLoudness(job, graph: graph, timeRange: timeRange, sampleLimit: audioSampleLimit)
         try Task.checkCancellation()
         guard let videoComposition = graph.composition.copy() as? AVComposition,
               videoComposition.track(withTrackID: graph.videoTrack.trackID) != nil else {
@@ -352,24 +352,30 @@ public actor AVExporter: Exporter {
             if let audioSamples, let audioReceiver {
                 audioSource = ExportPumpSource(samples: audioSamples, receiver: audioReceiver)
             } else { audioSource = nil }
-            let (frames, audioSampleCount) = try await withThrowingTaskGroup(of: (Int, Int64).self) { group in
+            let (frames, audioSampleCount, loudness) = try await withThrowingTaskGroup(of: (Int, Int64, SocialLoudnessReport?).self) { group in
                 group.addTask {
                     (0, try await self.pumpVideo(videoSource, duration: job.render.renderedDuration,
                         frameLimit: Int64((job.render.renderedDuration * output.fps).rounded()),
-                        pumps: pumps, started: started, progress: progress))
+                        pumps: pumps, started: started, progress: progress), nil)
                 }
                 group.addTask {
-                    (1, try await self.pumpAudio(audioSource, sampleLimit: audioSampleLimit, gain: audioGain, pumps: pumps))
+                    let (count, report) = try await self.pumpAudio(audioSource, sampleLimit: audioSampleLimit,
+                                                                   loudness: loudnessPlan, pumps: pumps)
+                    return (1, count, report)
                 }
                 var counts: [Int64] = [0, 0]
+                var report: SocialLoudnessReport?
                 do {
-                    for try await (pump, count) in group { counts[pump] = count }
+                    for try await (pump, count, written) in group {
+                        counts[pump] = count
+                        if let written { report = written }
+                    }
                 } catch {
                     pumps.stop(error)
                     group.cancelAll()
                     throw pumps.failure ?? error
                 }
-                return (counts[0], counts[1])
+                return (counts[0], counts[1], report)
             }
             videoSamples.cancelAfterJoining()
             audioSamples?.cancelAfterJoining()
@@ -382,7 +388,7 @@ public actor AVExporter: Exporter {
             await writer.finishWriting()
             try Task.checkCancellation()
             guard writer.status == .completed else { throw writer.error ?? VoxClipError.exportFailed("Encoder did not finish") }
-            for wav in gainedAudio { try PCMFile.applyGain(audioGain, toFloatWAV: wav) }
+            if let loudnessPlan { for wav in gainedAudio { try PCMFile.applyLoudness(loudnessPlan.decision, toFloatWAV: wav) } }
             if let srtPartial, let srtText {
                 let descriptor = Darwin.open(srtPartial.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, S_IRUSR | S_IWUSR)
                 guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
@@ -539,10 +545,34 @@ public actor AVExporter: Exporter {
         }
     }
 
-    /// The social loudness of the mix `perform` writes (ADR-R47), or nil with loudness off or without audio.
+    /// The social loudness plan of the mix `perform` writes (ADR-R47), or nil with loudness off or without audio:
+    /// one pass measures it; when the gain leaves the limiter work, one or two more run the gain and the limiter
+    /// offline and land the gain on target (`SocialLoudness.landing`).
     private func socialLoudness(_ job: ExportJob, graph: RenderGraph, timeRange: CMTimeRange,
-                                sampleLimit: Int64) async throws -> SocialLoudnessReport? {
+                                sampleLimit: Int64) async throws -> ExportLoudnessPlan? {
         guard job.loudness == .social, !graph.mixedAudioTracks.isEmpty else { return nil }
+        var meter = try SocialLoudnessMeter(sampleRate: 48_000, channels: 2)
+        try await readMix(graph: graph, timeRange: timeRange, sampleLimit: sampleLimit) { try meter.append($0) }
+        let measurement = meter.finish()
+        let plan = SocialLoudness.decide(measuredLufs: measurement.integratedLufs(), truePeakDbtp: measurement.truePeakDbtp)
+        var trials: [(gainDb: Double, lufs: Double?)] = []
+        while true {
+            switch SocialLoudness.landing(plan, truePeakDbtp: measurement.truePeakDbtp, trials: trials) {
+            case .settled(let decision):
+                return ExportLoudnessPlan(measurement: measurement, decision: decision)
+            case .simulate(let gain):
+                var stage = try ExportLoudnessStage(gainDb: gain, limiting: true)
+                try await readMix(graph: graph, timeRange: timeRange, sampleLimit: sampleLimit) { try stage.process($0) { _ in } }
+                try stage.finish { _ in }
+                trials.append((gain, stage.measured()?.integratedLufs()))
+            }
+        }
+    }
+
+    /// The mix `perform` writes, read offline: the export's own composition, mixed tracks, audio mix and time range
+    /// at 48 kHz Float32 stereo, cut to `sampleLimit` frames and padded with silence to it.
+    private func readMix(graph: RenderGraph, timeRange: CMTimeRange, sampleLimit: Int64,
+                         _ body: (UnsafeBufferPointer<Float>) throws -> Void) async throws {
         guard let composition = graph.composition.copy() as? AVComposition else {
             throw VoxClipError.decodeFailed("Cannot copy export audio composition")
         }
@@ -554,7 +584,6 @@ public actor AVExporter: Exporter {
         output.audioMix = graph.audioMix
         output.alwaysCopiesSampleData = false
         let provider = reader.outputProvider(for: output)
-        var meter = try SocialLoudnessMeter(sampleRate: 48_000, channels: 2)
         var scratch: [Float] = []
         guard reader.startReading() else { throw reader.error ?? VoxClipError.decodeFailed("Cannot measure the export audio") }
         defer { if reader.status == .reading { reader.cancelReading() } }
@@ -563,23 +592,43 @@ public actor AVExporter: Exporter {
             try Task.checkCancellation()
             let count = Int(min(Int64(sample.sampleCount), max(0, sampleLimit - frames)))
             guard count > 0 else { continue }
-            try ExportLoudnessPass.append(sample, frames: count, to: &meter, scratch: &scratch)
+            try ExportLoudnessPass.copy(sample, frames: count, into: &scratch)
+            try scratch.withUnsafeBufferPointer { try body(UnsafeBufferPointer(rebasing: $0[0..<(2 * count)])) }
             frames += Int64(count)
         }
         guard reader.status == .completed else { throw reader.error ?? VoxClipError.decodeFailed("The export audio did not finish") }
-        try ExportLoudnessPass.pad(&meter, from: frames, to: sampleLimit)
-        return SocialLoudness.report(meter.finish()).report
+        try ExportLoudnessPass.pad(from: frames, to: sampleLimit, body)
     }
 
-    private nonisolated func pumpAudio(_ source: ExportPumpSource?, sampleLimit: Int64, gain: Float,
-                           pumps: ExportPumpState) async throws -> Int64 {
-        guard let source else { return 0 }
+    /// Feeds the AAC writer: the mix as composed with loudness off, otherwise through the export's gain and limiter
+    /// (`ExportLoudnessStage`), whose lookahead the pump flushes after the last frame. Returns the frames written and,
+    /// with social loudness, the report of what was written.
+    private nonisolated func pumpAudio(_ source: ExportPumpSource?, sampleLimit: Int64, loudness: ExportLoudnessPlan?,
+                                       pumps: ExportPumpState) async throws -> (Int64, SocialLoudnessReport?) {
+        guard let source else { return (0, nil) }
         let receiver = source.receiver
         do {
             try Task.checkCancellation()
             try pumps.checkRunning()
             try source.samples.start()
-            var frames: Int64 = 0
+            var stage = try loudness.map { try ExportLoudnessStage(gainDb: $0.decision.gainDb, limiting: $0.decision.limiting) }
+            var pending: [ExportLoudnessPass.Sample] = []
+            var frames: Int64 = 0, written: Int64 = 0, input: [Float] = []
+            func send(_ buffers: [ExportLoudnessPass.Sample]) async throws {
+                for buffer in buffers {
+                    try appendCheck?(1, written)
+                    try pumps.checkRunning()
+                    while try !pumps.append({ try receiver.appendImmediately(buffer) }) {
+                        try Task.checkCancellation()
+                        try pumps.checkRunning()
+                        try await Task.sleep(for: .milliseconds(1))
+                    }
+                    written += Int64(buffer.sampleCount)
+                }
+            }
+            func staged(_ values: UnsafeBufferPointer<Float>) throws {
+                pending.append(try ExportLoudnessPass.buffer(values, start: written + Int64(pending.reduce(0) { $0 + $1.sampleCount })))
+            }
             while true {
                 try Task.checkCancellation()
                 try pumps.checkRunning()
@@ -587,34 +636,36 @@ public actor AVExporter: Exporter {
                 try pumps.checkRunning()
                 let count = min(Int64(sample.sampleCount), max(0, sampleLimit - frames))
                 guard count > 0 else { continue }
-                let accepted = count == sample.sampleCount ? [sample] : Array(sample.splitSamples().prefix(Int(count)))
-                for original in accepted {
-                    let buffer = gain == 1 ? original : try ExportLoudnessPass.scaled(original, gain: gain)
-                    try appendCheck?(1, frames)
-                    try pumps.checkRunning()
-                    while try !pumps.append({ try receiver.appendImmediately(buffer) }) {
-                        try Task.checkCancellation()
-                        try pumps.checkRunning()
-                        try await Task.sleep(for: .milliseconds(1))
-                    }
+                if stage != nil {
+                    try ExportLoudnessPass.copy(sample, frames: Int(count), into: &input)
+                    try input.withUnsafeBufferPointer { try stage!.process(UnsafeBufferPointer(rebasing: $0[0..<(2 * Int(count))]), staged) }
+                    try await send(pending); pending = []
+                } else {
+                    try await send(count == sample.sampleCount ? [sample] : Array(sample.splitSamples().prefix(Int(count))))
                 }
                 frames += count
             }
             while frames < sampleLimit, !pumps.stopped {
                 try Task.checkCancellation()
                 let count = Int(min(8192, sampleLimit - frames))
-                let silence = try MediaSupport.silentExportAudio(start: frames, count: count)
-                try appendCheck?(1, frames)
-                try pumps.checkRunning()
-                while try !pumps.append({ try receiver.appendImmediately(silence) }) {
-                    try Task.checkCancellation()
-                    try pumps.checkRunning()
-                    try await Task.sleep(for: .milliseconds(1))
+                if stage != nil {
+                    let silence = [Float](repeating: 0, count: 2 * count)
+                    try silence.withUnsafeBufferPointer { try stage!.process($0, staged) }
+                    try await send(pending); pending = []
+                } else {
+                    try await send([try MediaSupport.silentExportAudio(start: frames, count: count)])
                 }
                 frames += Int64(count)
             }
+            if stage != nil, !pumps.stopped {
+                try stage!.finish(staged)
+                try await send(pending); pending = []
+            }
             pumps.finishInput { receiver.finish() }
-            return frames
+            guard let loudness, var finished = stage else { return (written, nil) }
+            let output = finished.measured()
+            return (written, SocialLoudness.report(measurement: loudness.measurement, decision: loudness.decision,
+                                                   limiter: finished.limiter, output: output))
         } catch {
             pumps.stop(error)
             throw error
