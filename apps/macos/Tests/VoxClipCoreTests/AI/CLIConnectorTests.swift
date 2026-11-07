@@ -1096,7 +1096,110 @@ struct CLIConnectorTests {
         let generation = try #require(await runner.requests.last)
         #expect(!FileManager.default.fileExists(atPath: generation.workingDirectory.deletingLastPathComponent().path))
     }
+
+    // MARK: Images (ai.md §19.3)
+
+    @Test func bothCLIsDeclareImageSupport() async throws {
+        let catalog = try cliTestCatalog()
+        for id in [ConnectorID.claudeCode, .codex] {
+            let connector = cliTestConnector(id, runner: CLIFakeRunner(id: id, catalog: catalog), catalog: catalog)
+            #expect(await connector.supportsImages())
+        }
+    }
+
+    @Test func claudeImagesGoAsOneStreamJSONUserMessage() async throws {
+        let catalog = try cliTestCatalog()
+        let stream = [#"{"type":"system","subtype":"init","session_id":"s"}"#,
+                      #"{"type":"assistant","message":{"content":[{"type":"text","text":"{\"ok\":true}"}]}}"#,
+                      cliClaudeSuccess, ""].joined(separator: "\n")
+        let runner = CLIFakeRunner(id: .claudeCode, catalog: catalog) { _ in cliTestResult(stream) }
+        let connector = cliTestConnector(.claudeCode, runner: runner, catalog: catalog)
+        var request = cliTestRequest()
+        request.cachedBlock = "transcript"
+        request.images = cliTestImages
+        let completion = try await connector.send(request, model: "haiku")
+        #expect(completion.object == .object(["ok": .bool(true)]))
+        #expect(completion.usage == LLMUsage(input: 2, output: 68, cacheRead: 0, cacheWrite: 1048))
+        let generation = try #require(await runner.requests.first { $0.arguments.first == "-p" })
+        #expect(generation.arguments == [
+            "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
+            "--json-schema", "{\"type\":\"object\",\"required\":[\"ok\"],\"properties\":{\"ok\":{\"type\":\"boolean\"}}}",
+            "--system-prompt", request.system, "--tools", "", "--no-session-persistence", "--model", "haiku",
+            "--fallback-model", "sonnet", "--effort", "low", "--safe-mode", "--strict-mcp-config", "--disable-slash-commands",
+        ])
+        let first = cliTestImages[0].data.base64EncodedString(), second = cliTestImages[1].data.base64EncodedString()
+        let message = #"{"message":{"content":[{"text":"Frame 1 at 3.20 s","type":"text"},{"source":{"data":""# + first
+            + #"","media_type":"image/jpeg","type":"base64"},"type":"image"},{"text":"Frame 2 at 7.45 s","type":"text"},{"source":{"data":""#
+            + second + #"","media_type":"image/jpeg","type":"base64"},"type":"image"},{"text":"transcript\n\nReply with {\"ok\":true}","type":"text"}],"role":"user"},"type":"user"}"#
+        #expect(String(decoding: generation.stdin, as: UTF8.self) == message + "\n")
+        let forbidden = cliTestProvider(catalog, .claudeCode)["cli"]?.testObject?["forbiddenFlags"]?.testStrings ?? []
+        #expect(Set(generation.arguments).isDisjoint(with: forbidden))
+    }
+
+    @Test func claudeWithoutTheStreamInputFlagsSendsTextAsBefore() async throws {
+        let catalog = try cliTestCatalog()
+        let plainRunner = CLIFakeRunner(id: .claudeCode, catalog: catalog)
+        _ = try await cliTestConnector(.claudeCode, runner: plainRunner, catalog: catalog).send(cliTestRequest(), model: "haiku")
+        let plain = try #require(await plainRunner.requests.last)
+        let runner = CLIFakeRunner(id: .claudeCode, catalog: catalog)
+        await runner.omit(["--input-format"])
+        var request = cliTestRequest()
+        request.images = cliTestImages
+        _ = try await cliTestConnector(.claudeCode, runner: runner, catalog: catalog).send(request, model: "haiku")
+        let generation = try #require(await runner.requests.last)
+        #expect(generation.arguments == plain.arguments)
+        #expect(generation.stdin == plain.stdin)
+        #expect(!plain.arguments.contains("--verbose") && !plain.arguments.contains("--input-format"))
+    }
+
+    @Test func codexAttachesImageFilesFromItsPrivateFolder() async throws {
+        let catalog = try cliTestCatalog()
+        let runner = CLIFakeRunner(id: .codex, catalog: catalog) { request in
+            let index = try #require(request.arguments.firstIndex(of: "--image"))
+            for (offset, image) in cliTestImages.enumerated() {
+                let path = request.arguments[index + 1 + offset]
+                #expect(FileManager.default.contents(atPath: path) == image.data)
+                #expect(!path.hasPrefix(request.workingDirectory.path + "/"))
+            }
+            return cliTestResult(cliCodexSuccess)
+        }
+        let connector = cliTestConnector(.codex, runner: runner, catalog: catalog)
+        var request = cliTestRequest()
+        request.images = cliTestImages
+        let completion = try await connector.send(request, model: "default")
+        #expect(completion.object == .object(["ok": .bool(true)]))
+        let generation = try #require(await runner.requests.last)
+        let io = generation.workingDirectory.deletingLastPathComponent().appendingPathComponent("io")
+        #expect(generation.arguments == [
+            "exec", "--json", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules",
+            "--sandbox", "read-only", "--cd", generation.workingDirectory.path,
+            "-c", "model_reasoning_effort=\"low\"", "-c", "web_search=\"disabled\"", "-c", "approval_policy=\"never\"",
+            "-c", "mcp_servers={}", "-c", "developer_instructions=\"You are a JSON API.\"",
+            "--disable", "shell_tool", "--disable", "browser_use",
+            "--image", io.appendingPathComponent("frame-01.jpg").path, io.appendingPathComponent("frame-02.jpg").path,
+            "--output-schema", io.appendingPathComponent("schema.json").path,
+            "--output-last-message", io.appendingPathComponent("last.json").path, "-",
+        ])
+        #expect(String(decoding: generation.stdin, as: UTF8.self) ==
+            "The attached images, in order:\nImage 1: Frame 1 at 3.20 s\nImage 2: Frame 2 at 7.45 s\n\nReply with {\"ok\":true}")
+        #expect(!FileManager.default.fileExists(atPath: io.path))
+        #expect(await runner.allWorkspacesWereEmpty)
+    }
+
+    @Test func codexWithoutImagesIsUnchanged() async throws {
+        let catalog = try cliTestCatalog()
+        let runner = CLIFakeRunner(id: .codex, catalog: catalog)
+        _ = try await cliTestConnector(.codex, runner: runner, catalog: catalog).send(cliTestRequest(), model: "default")
+        let generation = try #require(await runner.requests.last)
+        #expect(!generation.arguments.contains("--image"))
+        #expect(generation.stdin == Data("Reply with {\"ok\":true}".utf8))
+    }
 }
+
+private let cliTestImages = [
+    LLMImage(label: "Frame 1 at 3.20 s", mediaType: "image/jpeg", data: Data([0xFF, 0xD8, 0xFF, 0x01]), width: 320, height: 180),
+    LLMImage(label: "Frame 2 at 7.45 s", mediaType: "image/jpeg", data: Data([0xFF, 0xD8, 0xFF, 0x02]), width: 320, height: 180),
+]
 
 private struct CLIErrorVector: Sendable {
     let id: ConnectorID

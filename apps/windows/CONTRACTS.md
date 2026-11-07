@@ -1,5 +1,11 @@
 # Windows fixed contracts
 
+### 2026-11-07 — Mac: Claude sees the picture, part 1; the shared catalogue's `images` (track/v2-eyes-1)
+
+Mac only (ADR-R48, ai.md §19). Shared changes Windows reads: `shared/catalog/llm-providers.json` gains an `images` object on every connector (`supported`, `maxPerRequest`, Claude Code's `requiredFlags`) and `--input-format`, `--verbose` in Claude Code's optional help flags; the LLM fixtures' `sources` hash of the catalogue is regenerated, and no request vector changed. Windows Core Release passes unchanged on the Mac (3,269 tests, 29 skipped).
+
+- **Windows owes** the twin: `LlmRequest.Images` and `SupportsImages` with the same wires (ai.md §19.3), the analyzer (Windows `FaceDetector` has no landmarks or capture quality), the pure decisions with shared vectors, the frame sheet and `analyze-frames`.
+
 ### 2026-11-07 — Windows: whole-clip revoice projects, the pure whole-clip rules, a preview that is never silently black, and the anchor's baseline (track/v2-win-whole-clip)
 
 Twin of the Mac ADR-R46 wire and pure parts (voice-lab.md §8.14), design.md §5.4.4 g "Preview failed" and voice-lab.md §6.13 item 9. The references are Mac `WholeClipRevoice.swift`, `WholeClipRevoiceRules.swift`, `PreviewFrameFailures`, `PlayerDisplayWatch`, `VoiceAnchorBaseline` and `VoiceLabSession+AnchorBaseline`. Windows no longer refuses a project holding a whole-clip record.

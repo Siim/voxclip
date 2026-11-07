@@ -112,6 +112,8 @@ public actor HTTPConnector: LLMConnector {
         return cachedModels?.first { $0.id == model }?.contextTokens ?? catalog.curatedModels(for: id).first { $0.id == model }?.contextTokens
     }
 
+    public func supportsImages() async -> Bool { catalog.supportsImages(for: id) }
+
     public func send(_ request: LLMRequest, model: String) async throws -> RawCompletion {
         try catalog.validateKeylessAuth(for: id)
         guard !active else { throw LLMError.unavailable(reason: "An AI request is already running.") }

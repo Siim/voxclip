@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updated": "2026-11-04",
+  "updated": "2026-11-07",
   "curatedAsOf": "2026-10",
   "description": "LLM connectors for VoxClip. Normative behaviour is in doc/spec/ai.md. Curated model ids are an offline fallback: the app refreshes them from each provider's model-list endpoint and always accepts a custom model id.",
   "policy": {
@@ -64,6 +64,7 @@
       "platforms": ["macos", "windows"],
       "privacy": "thirdPartyCloud",
       "wire": "anthropic-messages",
+      "images": { "supported": true, "maxPerRequest": 24, "wire": "image content blocks (base64), each after a text label" },
       "baseUrl": "https://api.anthropic.com",
       "auth": {
         "type": "apiKey",
@@ -123,6 +124,7 @@
       "platforms": ["macos", "windows"],
       "privacy": "thirdPartyCloud",
       "wire": "openai-responses",
+      "images": { "supported": true, "maxPerRequest": 24, "wire": "input_image data URLs at detail low, each after an input_text label" },
       "baseUrl": "https://api.openai.com",
       "auth": {
         "type": "apiKey",
@@ -171,6 +173,7 @@
       "platforms": ["macos", "windows"],
       "privacy": "thirdPartyCloud",
       "wire": "openai-chat-completions",
+      "images": { "supported": true, "maxPerRequest": 24, "wire": "image_url data URLs at detail low, each after a text label" },
       "baseUrl": "https://api.x.ai",
       "auth": {
         "type": "apiKey",
@@ -214,6 +217,7 @@
       "platforms": ["macos", "windows"],
       "privacy": "thirdPartyCloud",
       "wire": "gemini-generate-content",
+      "images": { "supported": true, "maxPerRequest": 24, "wire": "inlineData parts, each after a text part" },
       "baseUrl": "https://generativelanguage.googleapis.com",
       "auth": {
         "type": "apiKey",
@@ -261,6 +265,7 @@
       "platforms": ["macos", "windows"],
       "privacy": "localServer",
       "wire": "ollama-chat",
+      "images": { "supported": false, "note": "Text models: the frames go as their text summary only." },
       "baseUrl": "http://127.0.0.1:11434",
       "baseUrlEditable": true,
       "auth": { "type": "none" },
@@ -301,6 +306,7 @@
       "platforms": ["macos", "windows"],
       "privacy": "localServer",
       "wire": "openai-chat-completions",
+      "images": { "supported": false, "note": "Text models: the frames go as their text summary only." },
       "baseUrl": "http://127.0.0.1:1234",
       "baseUrlEditable": true,
       "auth": { "type": "none" },
@@ -338,6 +344,7 @@
       "platforms": ["macos"],
       "privacy": "onDevice",
       "wire": "apple-foundation-models",
+      "images": { "supported": false, "note": "The on-device model takes text: the frames go as their text summary only." },
       "auth": { "type": "none" },
       "structuredOutput": { "mode": "generable", "mechanism": "DynamicGenerationSchema built from the canonical schema" },
       "contextTokens": "runtime: SystemLanguageModel.default.contextSize",
@@ -364,6 +371,7 @@
       "platforms": ["macos", "windows"],
       "privacy": "thirdPartyCloud",
       "wire": "claude-code-print",
+      "images": { "supported": true, "maxPerRequest": 24, "requiredFlags": ["--input-format", "--verbose"], "wire": "one stream-json user message with base64 image blocks; --input-format stream-json --output-format stream-json --verbose", "verified": { "date": "2026-11-07", "version": "2.1.318", "how": "--help and the CLI's own argument checks; no send" } },
       "enabled": true,
       "verified": { "date": "2026-10-25", "version": "2.1.309", "os": "macOS 27.0.1" },
       "cli": {
@@ -392,7 +400,7 @@
           "help": {
             "args": ["--help"],
             "requiredFlags": ["--print", "--output-format", "--json-schema", "--tools", "--system-prompt", "--model", "--no-session-persistence", "--safe-mode"],
-            "optionalFlags": ["--strict-mcp-config", "--disable-slash-commands", "--effort", "--fallback-model"]
+            "optionalFlags": ["--strict-mcp-config", "--disable-slash-commands", "--effort", "--fallback-model", "--input-format", "--verbose"]
           },
           "auth": { "args": ["auth", "status", "--json"], "signedInField": "loggedIn", "authMethodField": "authMethod", "signedOutExitCode": 1 }
         },
@@ -440,6 +448,7 @@
       "platforms": ["macos", "windows"],
       "privacy": "thirdPartyCloud",
       "wire": "codex-exec",
+      "images": { "supported": true, "maxPerRequest": 24, "wire": "--image <file>… from the private io folder", "verified": { "date": "2026-11-07", "version": "0.164.0", "how": "codex exec --help; no send" } },
       "enabled": true,
       "verified": { "date": "2026-10-25", "version": "0.163.0-alpha.10.2", "os": "macOS 27.0.1", "installedVia": "CLI bundled in the ChatGPT desktop app (not searched by VoxClip)", "standaloneVerified": false, "note": "Re-verify on a standalone Codex release before 0.1.0 (doc/spec/ai.md section 14 item 5)." },
       "cli": {

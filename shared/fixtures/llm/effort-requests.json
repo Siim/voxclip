@@ -5,7 +5,7 @@
   "sources": {
     "shared/prompts/clip-finder.json": "4b2c46b55d7d6311e7d84909d38e789d1997ca70c4c00ef3c3581aacb8d364e8",
     "shared/prompts/ai-tighten.json": "1cb479c404416b426bedfbbc937c8fa9614a7ae6511d3aeae0335375e88e0f79",
-    "shared/catalog/llm-providers.json": "cb31f8df3115d31672e1fa2c976be9cc5a85070b3d078a9853b1eca0028ab1c1"
+    "shared/catalog/llm-providers.json": "43c1919e1a9405c0efee49881ff559fbf21b491b87aec895a0beadee7c5f6bc4"
   },
   "cases": [
     {
@@ -3089,7 +3089,9 @@
             "--strict-mcp-config",
             "--disable-slash-commands",
             "--effort",
-            "--fallback-model"
+            "--fallback-model",
+            "--input-format",
+            "--verbose"
           ]
         }
       },
@@ -3170,7 +3172,9 @@
             "--strict-mcp-config",
             "--disable-slash-commands",
             "--effort",
-            "--fallback-model"
+            "--fallback-model",
+            "--input-format",
+            "--verbose"
           ]
         }
       },
@@ -3251,7 +3255,9 @@
             "--strict-mcp-config",
             "--disable-slash-commands",
             "--effort",
-            "--fallback-model"
+            "--fallback-model",
+            "--input-format",
+            "--verbose"
           ]
         }
       },
@@ -3332,7 +3338,9 @@
             "--strict-mcp-config",
             "--disable-slash-commands",
             "--effort",
-            "--fallback-model"
+            "--fallback-model",
+            "--input-format",
+            "--verbose"
           ]
         }
       },
@@ -3413,7 +3421,9 @@
             "--strict-mcp-config",
             "--disable-slash-commands",
             "--effort",
-            "--fallback-model"
+            "--fallback-model",
+            "--input-format",
+            "--verbose"
           ]
         }
       },

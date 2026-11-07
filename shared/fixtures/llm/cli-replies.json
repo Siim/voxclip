@@ -5,7 +5,7 @@
   "sources": {
     "shared/prompts/voice-rewrite.json": "7364e82dc7090b01ca0853b4f905b6175d17a2d6099498159a9c3b69df8f5b9c",
     "shared/prompts/voice-rewrite-fit.json": "ffd978abc83928ff1b052906d4c45f832cc27503663eb35eda1459f8e5af8ca1",
-    "shared/catalog/llm-providers.json": "cb31f8df3115d31672e1fa2c976be9cc5a85070b3d078a9853b1eca0028ab1c1"
+    "shared/catalog/llm-providers.json": "43c1919e1a9405c0efee49881ff559fbf21b491b87aec895a0beadee7c5f6bc4"
   },
   "cases": [
     {

@@ -1990,7 +1990,8 @@ The creator selects words, a clip or a time range, types what they want, and get
 - **Detections.** Before the request, Vision looks at the selected stretch of the source (`ClipEffectVision.detect`):
   faces (`VNDetectFaceRectanglesRequest`) and text (`VNRecognizeTextRequest`), labelled D1, D2… with their seconds,
   normalized top-left rect and, for text, what it reads (cut to 60 characters). At most `limits.maxDetections` (24)
-  are listed. Connectors take text only, so the detections stand in for frame thumbnails, which are owed.
+  are listed. The detections stand in for frame thumbnails; connectors can take images now (§19.3), but Ask Claude
+  does not send them yet.
 - **Send.** Feature `askClaude`, output `ask_claude_ops` (strict), `maxOutputTokens` 4000, effort `xhigh` (decision,
   §4.4.1), after the inline connector confirmation (verb "Ask Claude", consent action `askClaude`). Refusal and
   truncation have their own `askClaude` messages; other failures use the shared connector errors, inline under the
@@ -2139,3 +2140,86 @@ renders them (design §6.8). The request and validator are a twin of the Mac's (
 (`Tracks/win-ai/AskClaudeTests`). Detections come through `IAskClaudeVision`; the native implementation uses Windows
 `FaceDetector` and `OcrEngine`, and tracking follows faces only (a "subject" track holds the box). The send runs at the
 decision effort (extra high). Zoom cues and music changes validate but stay later rows, since Windows renders neither yet.
+
+## 19. Claude sees the picture: frames measured on the Mac, small frames to the AI (ADR-R48)
+
+Part 1 (track/v2-eyes-1, 2026-11-07) builds the parts below; nothing sends frames yet. Part 2 connects them to Make it
+postable (design.md §6.7, "Claude sees the picture").
+
+### 19.1 What is computed on this Mac
+
+`FrameAnalyzer` (VoxClipMedia) looks at given source times of a clip and returns `FrameObservation`s (VoxClipCore). Nothing
+leaves the Mac, and nothing it finds is sent unless a request carries the frame sheet (§19.3).
+
+- **Frames.** `AVAssetImageGenerator` decodes each frame with a 1,280 px long edge, rotation applied (hardware decode; the
+  user's 4K 10-bit HEVC DJI footage works). Four lanes decode and look in parallel, each forward through its own stretch.
+- **Times.** One frame per sentence of the clip's kept words, at the middle of its middle word, at most 24 (evenly spaced
+  sentences beyond that, the first and last kept; `FrameSampling.sentenceSamples`), decoded within 0.25 s of the time.
+  The opening scan is 10 fps over ±0.6 s at the clip's first kept word, decoded within one frame (1/30 s).
+- **Face.** `VNDetectFaceLandmarksRequest`; the largest face's rect (picture space, top-left origin), yaw and pitch,
+  `VNDetectFaceCaptureQualityRequest` on it, and each eye's aspect ratio: its landmark contour's height over width in
+  pixels (`EyeAspect`). Eyes are closed when the two ratios' mean is below **0.20** (open eyes measure 0.22–0.65 on the
+  user's footage, a half-closed blink 0.17–0.19). Quality **0.4** or more is good (0.3–0.62 measured). A face turned or
+  tilted more than 0.35 rad does not face the camera.
+- **Text and screens.** `VNRecognizeTextRequest` at the fast level, positions only: the recognised strings are dropped
+  where Vision returns them and never stored. `VNDetectRectanglesRequest` finds rectangles; a rectangle of at least 1% of
+  the frame with 3 or more text boxes centred in it, covering at least 4% of it, is a framed screen. A cluster of 8 or
+  more text boxes outside any is a dense-text region (`FrameScreens`).
+- **Cache.** `Cache/<contentKey>/frames/analysis-v1.json` holds each observation under its pass (the decode tolerance) and
+  the millisecond asked for, and `sheet-<ms>.jpg` the sheet frame. A cached time is never decoded or looked at again.
+  Folders are real folders, never links; the key is leased while writing. The cache's first eviction pass removes the
+  folder (it can be made again), so Clear cache drops the analysis (`FrameAnalysisCache`, architecture §8.2).
+- **Measured** on the user's 52 s 4K 10-bit HEVC file, debug build, cold: 24 sentence frames with their sheet 0.82 s, the
+  13-frame opening scan 0.37 s; from the cache 7 ms (ADR-R48).
+
+### 19.2 The decisions (pure, VoxClipCore)
+
+- **Opening frame** (`OpeningFrame.choose`): no shift when the frame at the clip's start is a clear look (a face, eyes
+  open, good quality, not turned away). Otherwise the earliest clear look between the end of the transcript item before
+  the first kept word (`FrameClip.leadInFloor`, cut words included) and the start, at most 0.6 s back. The shift is 0 or
+  negative: it moves through silence only, so no word is clipped and none added. Nil when there is none.
+- **Face-follow crop** (`FaceFollowCrop.plan`) for 9:16 and 1:1: a static centre (the median face centre, clamped so the
+  crop stays inside the picture) for a one-`faceX` renderer, and a path: a 5-sample running median, a dead zone of 15% of
+  the crop's size, and pans of at most half the crop's size per second. A sample with no face holds the last centre.
+- **Cover** (`CoverFrame`): eyes open and no closed-eye frame within 0.25 s (a blink); score 0.4 × quality + 0.3 ×
+  centredness + 0.2 × eye openness + 0.1 × facing; the earlier frame wins a tie.
+- **Blur spans** (`FrameBlurSpans.merge`): a screen seen again within the gap with an overlap (IoU) of 0.2 or more extends
+  its span; the span's rect is the union.
+
+### 19.3 Images in the request
+
+- `LLMRequest.images: [LLMImage]` (label, media type, bytes, size), empty by default. A request without images is built
+  byte for byte as before: every shared request vector is unchanged (only the catalogue hash in `sources` moved).
+- Each connector declares `images` in `shared/catalog/llm-providers.json` and reports it through
+  `LLMConnector.supportsImages()`. `maxPerRequest` is 24; extra images are dropped. A connector without image support
+  ignores the images, so **the caller always puts the frames' text summary in the instruction**; a connector that takes
+  images gets both.
+
+| Connector | `images` | Wire |
+| --- | --- | --- |
+| Anthropic | yes | after the cached block: per image a `text` block with its label, then `{"type":"image","source":{"type":"base64",…}}`; then the instruction |
+| OpenAI | yes | `input_text` label, then `input_image` with a `data:` URL and `detail` `low` |
+| xAI | yes | the user content becomes parts: label `text`, `image_url` (`data:` URL, `detail` `low`) per image, then the text |
+| Gemini | yes | a `text` part with the label, then `inlineData` per image |
+| Claude Code | yes | `-p --input-format stream-json --output-format stream-json --verbose` (the CLI accepts stream-json input only with stream-json output, which needs `--verbose`; checked on 2.1.318), the rest of the arguments unchanged. Stdin is one line, `{"type":"user","message":{"role":"user","content":[…]}}`: label and base64 `image` block per image, then the cached block and instruction as one text block. The last `result` event of the output is read as the `json` output's object. Without `--input-format` and `--verbose` in `--help` (`images.requiredFlags`) the request goes as text |
+| Codex | yes | `--image <file>…` after the `--disable` flags and before `--output-schema` (a flag follows, so no path is read as the prompt). The files are `frame-NN.jpg` in the private io folder, outside the working directory, removed with it. Stdin starts with "The attached images, in order:" and one "Image n: {label}" line each, then a blank line and the prompt |
+| Ollama, LM Studio, Apple Intelligence | no | text summary only |
+
+### 19.4 The frame sheet and what is sent
+
+`FrameSheet` holds one JPEG per sampled sentence, 320 px on the long edge, quality 0.7, sRGB, each labelled "Frame {n} at
+{s.ss} s". Its `summary` is a header line and one line per frame: "F3 12.94 s: face at x,y,w,h, eyes open, quality 0.52,
+facing camera" (plus "(largest of n)", "turned away", "no face", "screen with n text boxes at x,y,w,h", "dense text …"
+or "n text boxes"). No recognised text, file name or path is in it. `imageBytes`, `estimatedImageTokens` (Anthropic's
+width × height / 750 per image; 77 for 320 × 180) and `estimatedSummaryTokens` (2.2 bytes a token) price the send line.
+Measured: 24 frames of the user's 4K clip are 314 KB of JPEG, about 1,850 image tokens and 900 summary tokens.
+
+`voxclip-cli analyze-frames --open <project> --clip <id> [--no-cache] [--sheet-out <folder>] --json` prints the analysis,
+the decisions (`opening`, `cover`, `blurSpans`, `crop9x16`, `crop1x1`), the sheet's numbers and summary, and the timings.
+It changes no project and sends nothing.
+
+### 19.5 Windows
+
+Owed: the `images` capability and image wires in the C# connectors (the catalogue entry is shared and already read), the
+analyzer (Windows `FaceDetector` has no landmarks or capture quality; the eyes and quality need another source), the
+decisions (a twin of §19.2 with shared vectors), and the CLI command.

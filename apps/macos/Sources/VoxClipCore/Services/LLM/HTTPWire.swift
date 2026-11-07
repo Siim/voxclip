@@ -9,7 +9,19 @@ extension HTTPConnector {
         let schema = try JSONSerialization.jsonObject(with: CanonicalResponseParser.strictSchema(canonical.schema).aiEncoded())
         let schemaFormat: [String: Any] = ["type": "json_schema", "json_schema": ["name": canonical.schemaName, "strict": true, "schema": schema]]
         let user = aiUserContent(canonical)
-        let messages: [[String: Any]] = [["role": "system", "content": canonical.system], ["role": "user", "content": user]]
+        // ai.md §19.3: each image follows its label as text, after the cached block and before the instruction. A
+        // request without images builds exactly the body it built before.
+        let images = catalog.images(canonical, for: id)
+        let messages: [[String: Any]]
+        if images.isEmpty || id != .xai {
+            messages = [["role": "system", "content": canonical.system], ["role": "user", "content": user]]
+        } else {
+            let parts: [[String: Any]] = images.flatMap { image -> [[String: Any]] in
+                [["type": "text", "text": image.label],
+                 ["type": "image_url", "image_url": ["url": httpDataURL(image), "detail": "low"]]]
+            }
+            messages = [["role": "system", "content": canonical.system], ["role": "user", "content": parts + [["type": "text", "text": user]]]]
+        }
         var body: [String: Any]
         var path = configuration[ai: "generate"][ai: "path"].aiString ?? ""
         var beta: String?
@@ -21,6 +33,10 @@ extension HTTPConnector {
             if unsupportedSchema { instruction += "\n\nReply with only a JSON object that matches this JSON Schema: \(try aiCompactCanonicalSchema(canonical.schema))" }
             var content: [[String: Any]] = []
             if let cached = canonical.cachedBlock { content.append(["type": "text", "text": cached, "cache_control": ["type": "ephemeral"]]) }
+            for image in images {
+                content.append(["type": "text", "text": image.label])
+                content.append(["type": "image", "source": ["type": "base64", "media_type": image.mediaType, "data": image.data.base64EncodedString()]])
+            }
             content.append(["type": "text", "text": instruction])
             var output: [String: Any] = [:]
             if !unsupportedSchema { output["format"] = ["type": "json_schema", "schema": schema] }
@@ -36,6 +52,10 @@ extension HTTPConnector {
         case .openai:
             var content: [[String: Any]] = []
             if let cached = canonical.cachedBlock { content.append(["type": "input_text", "text": cached]) }
+            for image in images {
+                content.append(["type": "input_text", "text": image.label])
+                content.append(["type": "input_image", "image_url": httpDataURL(image), "detail": "low"])
+            }
             content.append(["type": "input_text", "text": canonical.instruction])
             body = ["model": model, "instructions": canonical.system, "input": [["role": "user", "content": content]],
                     "text": ["format": ["type": "json_schema", "name": canonical.schemaName, "strict": true, "schema": schema]],
@@ -50,6 +70,10 @@ extension HTTPConnector {
             path = path.replacingOccurrences(of: "{model}", with: escapedModel(stripped))
             var parts: [[String: Any]] = []
             if let cached = canonical.cachedBlock { parts.append(["text": cached]) }
+            for image in images {
+                parts.append(["text": image.label])
+                parts.append(["inlineData": ["mimeType": image.mediaType, "data": image.data.base64EncodedString()]])
+            }
             parts.append(["text": canonical.instruction])
             // 2026-10-30: https://ai.google.dev/api/generate-content does not confirm responseFormat GA for every curated model; retain responseJsonSchema.
             var generation: [String: Any] = ["maxOutputTokens": maximum, "responseMimeType": "application/json", "responseJsonSchema": schema]
@@ -82,6 +106,8 @@ extension HTTPConnector {
         if let beta { request.setValue(beta, forHTTPHeaderField: "anthropic-beta") }
         return request
     }
+
+    func httpDataURL(_ image: LLMImage) -> String { "data:\(image.mediaType);base64,\(image.data.base64EncodedString())" }
 
     func parseResponse(_ value: JSONValue, requestedModel: String, response: HTTPURLResponse) throws -> RawCompletion {
         var stop: StopKind = .complete
