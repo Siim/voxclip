@@ -1435,6 +1435,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         let oldQuote = try #require(plan.approvalID)
         ClipTakeHTTP.state.withLock { $0.duration += 2.5; $0.speechMargin = 0.15 }
         await plan.start(approved: true, quoteID: oldQuote)
+        // Takes, automatic steps and the take's publishing finish before each manual step: a busy plan ignores a click.
+        await settle(session)
         let selectedID = try #require(plan.phrases[0].selectedID)
         let selected = try #require(plan.phrases[0].takes.first(where: { $0.id == selectedID }))
         let audio = try #require(selected.row.audio)
@@ -1447,22 +1449,27 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
             window: plan.phrases[0].window, incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
             sourceSampleRate: 24_000, supportsPace: false, hardJoinSmoothing: true)
         #expect(plan.phrasePace(0) == expected.pace)
+        await settle(session)
         await plan.prepareAnother(phrase: 0)
         #expect(plan.phrasePace(0) == expected.pace && (0.9...1.1).contains(expected.pace))
         #expect(plan.approvalID != oldQuote)
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
         let unusedQuote = plan.approvalID
+        await settle(session)
         await plan.prepareAnother(phrase: 0)
         #expect(plan.phrasePace(0) == expected.pace && plan.approvalID != unusedQuote)
+        await settle(session)
         await plan.tryAnother(phrase: 0, approved: true, quoteID: unusedQuote)
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
+        await settle(session)
         await plan.tryAnother(phrase: 0, approved: true, quoteID: plan.approvalID)
-        #expect(ClipTakeHTTP.state.withLock { $0.paces == [originalPace, expected.pace] })
+        #expect(ClipTakeHTTP.state.withLock { $0.paces == [originalPace, expected.pace] }, "\(plan.problem)")
         let generation = try #require(session.generation)
         generation.chooseModel("eleven_v4")
         #expect(plan.phrasePace(0) == 1)
         #expect(session.voiceReview(ordinal)?.timing?.pace == 1)
         #expect(originalReviewPace == 1)
+        await settle(session)
         await plan.prepareAnother(phrase: 0)
         #expect(plan.phrasePace(0) == 1 && plan.approvalID != nil, "\(plan.problem)")
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 2 })
@@ -2695,12 +2702,14 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
     }
     /// Waits until takes, automatic steps and measured rewords are all done.
     private func settle(_ session: RewriteSession) async {
-        for _ in 0..<200 {
+        for _ in 0..<1000 {
             if let task = session.takesTask { await task.value }
             if let work = session.autoFix.work { await work.value; continue }
             if let work = session.wordingFit.measuredWork { await work.value; continue }
             await Task.yield()
             if session.autoFix.work == nil, session.wordingFit.measuredWork == nil, !session.takesBusy { return }
+            // A take still publishing or preparing its video is real work, not a yield away (up to 10 s in all).
+            try? await Task.sleep(for: .milliseconds(10))
         }
     }
 

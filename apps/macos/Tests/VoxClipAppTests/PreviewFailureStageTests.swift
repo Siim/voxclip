@@ -208,7 +208,6 @@ import VoxClipMedia
         #expect(model.previewError == nil)
     }
 }
-#endif
 
 /// The display side of a black stage (design.md §5.4.4 g): a ready item whose layer shows no frame for four ticks in a
 /// window is re-attached once per item; anything else resets the count.
@@ -257,3 +256,4 @@ import VoxClipMedia
         #expect(!answers.contains(true))
     }
 }
+#endif
