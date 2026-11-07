@@ -1,5 +1,14 @@
 # Windows fixed contracts
 
+### 2026-11-07 — Windows: native speaker parity verified on win-arm64 and win-x64; the gate stays closed (lead)
+
+`VoiceConsentMediaTests.SharedRealModelSpeakerVectorsReplayWhenVerifiedLocalAssetsExist` replays `shared/fixtures/voice-lab/speaker/vectors.json` (8 clips: voiced ranges, embeddings and pair scores, absolute tolerance 2e-4) through `ONNXSpeakerEmbedder` with the catalogue's pinned model (`wespeaker-resnet34-lm-voxceleb-f0c48c2`, bytes and SHA-256 checked).
+
+- **win-arm64:** natively on the Windows 11 ARM64 VM at `cf432a5c`; largest embedding difference 5.2e-8.
+- **win-x64:** on every CI run from `adb367f2` on. The Windows job fetches and caches the pinned model ("Fetch pinned speaker model (test only)"), sets `VOXCLIP_SPEAKER_MODEL_DIR` for the media tests and fails if the test skips. The first green run is 42409246013.
+- **The gate stays closed.** `VoiceSpeakerCheck.WindowsNativeParityVerified` is still false. Native parity was one prerequisite (voice-lab.md §6.8); an interactive Windows desktop pass of the consent UI and the paid voice flows (Create a Voice, Make Takes, Make it postable's voice) is still owed before it opens.
+- **Tests fixed alongside.** `VoiceConsentTests.LegacyAdjacentJournalMigratesDurablyBeforeAudioCleanup` protects its hand-written journal as the store does, so an elevated session's default owner (Administrators) no longer fails it; `MusicBedTests` deletes the temp folders it creates.
+
 ### 2026-11-07 — Windows: exports land at social loudness, the twin of Mac ADR-R47 (track/v2-loudness)
 
 Every export (App and CLI) measures the mix it encodes and applies one static gain: −14 LUFS integrated, true peak at most −1 dBTP, within −20…+12 dB, 0 dB for a silent mix. The rule and meter are the Mac's, so both platforms land on the same gain (shared vectors within 1e-6 dB; the bound is 0.2 dB).
