@@ -597,6 +597,19 @@ public sealed class VideoVoiceFlowTests
             Scored++;
             return Task.FromResult(Score);
         }
+        /// <summary>The speaker model behind <see cref="Available"/>; the anchor's baseline is measured only with one.</summary>
+        internal string SpeakerModelId = "speaker-model-1";
+        /// <summary>The anchor's baseline over the given projects; null reads nothing.</summary>
+        internal Func<IReadOnlyList<string>, string, Task<VoiceAnchorBaseline.Result?>>? Baseline;
+        internal readonly List<(IReadOnlyList<string> Projects, string Anchor, string Language)> BaselineMeasured = [];
+        public string? SpeakerModel(string language) => Enabled && Available ? SpeakerModelId : null;
+        public Task<VoiceAnchorBaseline.Result?> MeasureAnchorBaselineAsync(IReadOnlyList<string> projects, string anchorId, string language, CancellationToken ct)
+        {
+            // Recorded even behind the gate, so a session that asks there is caught.
+            BaselineMeasured.Add((projects, anchorId, language));
+            if (!Available) return Task.FromResult<VoiceAnchorBaseline.Result?>(null);
+            return Baseline?.Invoke(projects, anchorId) ?? Task.FromResult<VoiceAnchorBaseline.Result?>(null);
+        }
         internal void Clean() { try { Directory.Delete(root, true); } catch (DirectoryNotFoundException) { } }
     }
 

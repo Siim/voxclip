@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using VoxClip.Core.Domain.Shared;
 
 namespace VoxClip.Core.Domain.VoiceLab;
 
@@ -90,6 +91,25 @@ public static class VoicePerVideo
     public static VoiceLabVoiceCalibration SeededCalibration(VoiceLabVoiceCalibration anchor, string recordId) =>
         new(recordId, anchor.Models, seeded: true);
 
+    /// <summary>The most earlier takes the anchor's baseline reads (voice-lab §6.13), newest first.</summary>
+    public const int MaximumBaselineTakes = 12;
+
+    /// <summary>The anchor's earlier takes in a project, newest first (then by segment id): accepted (enabled) text-to-speech segments made
+    /// with the voice <paramref name="anchorId"/>, each with its asset (Mac <c>anchorTakes</c>). A recorded take, a voice-changed one,
+    /// another voice's take and a take the user turned off are not the anchor's.</summary>
+    public static IReadOnlyList<(VoiceLabSegment Segment, VoiceLabAsset Asset)> AnchorTakes(Project project, string anchorId)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+        var assets = project.VoiceLab.Assets ?? [];
+        return project.VoiceLab.Segments
+            .Where(segment => segment.Kind == VoiceLabSegmentKind.Tts && segment.Enabled && segment.Provenance.ConsentRecordId == anchorId)
+            .Select(segment => (Segment: segment, Asset: assets.FirstOrDefault(asset => asset.Id == segment.Audio.AssetId)))
+            .Where(take => take.Asset is not null)
+            .Select(take => (take.Segment, take.Asset!))
+            .OrderByDescending(take => take.Item1.Provenance.CreatedAt).ThenBy(take => take.Item1.Id, StringComparer.Ordinal)
+            .ToArray();
+    }
+
     /// <summary>"Match this video · free": the creation price from the catalogue's <c>createClone</c> row; null when it has no price, which
     /// the opt-in then says instead of inventing one.</summary>
     public static string? PriceLabel(VoiceLabPriceCatalog? catalog)
@@ -130,6 +150,11 @@ public sealed record VoicePerVideoBook
     /// the first take with the video's own voice; <see cref="Anchor"/> the anchor's takes in this video, pooled.</summary>
     public sealed record Measurement(string ContentKey, string Title, double? VideoVoice, double? Anchor, string MeasuredAt);
 
+    /// <summary>"Did matching help" before the first video's voice (voice-lab §6.13 item 9; Mac <c>AnchorBaseline</c>): the anchor's takes
+    /// already accepted into the owner's projects, each scored against the original speech beside it, with the speaker model that scored
+    /// them. <see cref="Score"/> is the mean over <see cref="Takes"/>; null when no earlier take could be read.</summary>
+    public sealed record AnchorBaselineEntry(string AnchorId, string Model, double? Score, int Takes, string MeasuredAt);
+
     /// <summary>The stored schema; <see cref="Validate"/> requires <see cref="SchemaId"/>.</summary>
     public string Schema { get; init; } = SchemaId;
     /// <summary>The current video's voice (at most one: adding another makes the previous one a removal).</summary>
@@ -140,6 +165,13 @@ public sealed record VoicePerVideoBook
     public IReadOnlyList<string> ShortNoted { get; init; } = [];
     /// <summary>The "did matching help" diagnostics, newest first.</summary>
     public IReadOnlyList<Measurement> Measurements { get; init; } = [];
+    /// <summary>The anchor's baseline from its earlier takes; absent in an older book, which reads with none.</summary>
+    public AnchorBaselineEntry? AnchorBaseline { get; init; }
+
+    /// <summary>The stored baseline when it is <paramref name="anchorId"/>'s and was scored by <paramref name="model"/>; null otherwise, so it
+    /// is measured again.</summary>
+    public AnchorBaselineEntry? Baseline(string anchorId, string model)
+        => AnchorBaseline is { } baseline && baseline.AnchorId == anchorId && baseline.Model == model ? baseline : null;
 
     /// <summary>The voice of the video with <paramref name="contentKey"/>, or null.</summary>
     public Video? VideoFor(string contentKey) => Videos.FirstOrDefault(video => video.ContentKey == contentKey);
@@ -197,11 +229,18 @@ public sealed record VoicePerVideoBook
         foreach (var measurement in Measurements)
             Require(VoiceSpeakerReferences.ContentKeyValid(measurement.ContentKey) && IsScore(measurement.VideoVoice) && IsScore(measurement.Anchor) &&
                 Scalars(measurement.Title) <= 200);
+        if (AnchorBaseline is { } baseline)
+        {
+            Require(IsRecord(baseline.AnchorId) && baseline.Model.Length > 0 && Scalars(baseline.Model) <= 128);
+            Require(baseline.Takes is >= 0 and <= VoicePerVideo.MaximumBaselineTakes && IsScore(baseline.Score));
+            Require(baseline.Takes == 0 == baseline.Score is null);
+        }
     }
 
     /// <summary>Value equality, lists included (Mac <c>VoicePerVideoBook</c> is Equatable).</summary>
     public bool Equals(VoicePerVideoBook? other) => other is not null && Schema == other.Schema && Videos.SequenceEqual(other.Videos) &&
-        Removals.SequenceEqual(other.Removals) && ShortNoted.SequenceEqual(other.ShortNoted) && Measurements.SequenceEqual(other.Measurements);
+        Removals.SequenceEqual(other.Removals) && ShortNoted.SequenceEqual(other.ShortNoted) && Measurements.SequenceEqual(other.Measurements) &&
+        Equals(AnchorBaseline, other.AnchorBaseline);
     /// <inheritdoc/>
     public override int GetHashCode() => HashCode.Combine(Schema, Videos.Count, Removals.Count, ShortNoted.Count, Measurements.Count);
 
@@ -230,7 +269,10 @@ public sealed record VoicePerVideoBook
             ("measurements", new JsonArray(Measurements.Select(measurement => (JsonNode)Sorted(
                 ("contentKey", JsonValue.Create(measurement.ContentKey)), ("title", JsonValue.Create(measurement.Title)),
                 ("videoVoice", Number(measurement.VideoVoice)), ("anchor", Number(measurement.Anchor)),
-                ("measuredAt", JsonValue.Create(measurement.MeasuredAt)))).ToArray())));
+                ("measuredAt", JsonValue.Create(measurement.MeasuredAt)))).ToArray())),
+            ("anchorBaseline", AnchorBaseline is { } baseline ? Sorted(
+                ("anchorId", JsonValue.Create(baseline.AnchorId)), ("model", JsonValue.Create(baseline.Model)), ("score", Number(baseline.Score)),
+                ("takes", JsonValue.Create(baseline.Takes)), ("measuredAt", JsonValue.Create(baseline.MeasuredAt))) : null));
         return root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
     }
 
@@ -254,7 +296,14 @@ public sealed record VoicePerVideoBook
                 ShortNoted = (root["shortNoted"] as JsonArray ?? throw Invalid()).Select(node =>
                     node is JsonValue value && value.TryGetValue<string>(out var key) ? key : throw Invalid()).ToArray(),
                 Measurements = Rows(root, "measurements").Select(row => new Measurement(Text(row, "contentKey"), Text(row, "title"),
-                    OptionalNumber(row, "videoVoice"), OptionalNumber(row, "anchor"), Text(row, "measuredAt"))).ToArray()
+                    OptionalNumber(row, "videoVoice"), OptionalNumber(row, "anchor"), Text(row, "measuredAt"))).ToArray(),
+                AnchorBaseline = root["anchorBaseline"] switch
+                {
+                    null => null,
+                    JsonObject row => new AnchorBaselineEntry(Text(row, "anchorId"), Text(row, "model"), OptionalNumber(row, "score"),
+                        Value<int>(row, "takes"), Text(row, "measuredAt")),
+                    _ => throw Invalid()
+                }
             };
         }
         catch (InvalidOperationException) { throw Invalid(); }

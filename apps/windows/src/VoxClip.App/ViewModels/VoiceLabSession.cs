@@ -76,6 +76,13 @@ internal interface IVoiceLabBackend
     /// <summary>The take-match diagnostic (Media <c>VoicePerVideoMatch.ScoreAsync</c>): null without a speaker check.</summary>
     Task<double?> ScoreTakeMatchAsync(VoiceLabTakeAudio take, VoiceLabTakeInput input, CancellationToken ct) =>
         Task.FromResult<double?>(null);
+    /// <summary>The speaker model that scores takes for a voice in <paramref name="language"/> on this PC; null without a speaker check (the
+    /// closed parity gate), so the anchor's baseline is never measured.</summary>
+    string? SpeakerModel(string language) => null;
+    /// <summary>The anchor's baseline (Media <c>VoiceAnchorBaseline.MeasureAsync</c>): its earlier accepted takes across
+    /// <paramref name="projects"/>, newest 12, one project open at a time, read only; null without a speaker check.</summary>
+    Task<VoxClip.Media.VoiceLab.VoiceAnchorBaseline.Result?> MeasureAnchorBaselineAsync(IReadOnlyList<string> projects, string anchorId, string language,
+        CancellationToken ct) => Task.FromResult<VoxClip.Media.VoiceLab.VoiceAnchorBaseline.Result?>(null);
     /// <summary>Writes one line to the app log (the per-video voice's numbers; no content).</summary>
     void Log(string message) { }
 }

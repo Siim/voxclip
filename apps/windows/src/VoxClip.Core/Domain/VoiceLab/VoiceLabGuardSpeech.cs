@@ -83,6 +83,21 @@ public sealed record VoiceLabGuardSpeech(IReadOnlyList<(long Start, long End)> R
         return new(merged, speaker);
     }
 
+    /// <summary>The speech the use-time guard reads for a take whose window is <paramref name="start"/>..<paramref name="end"/>
+    /// (<paramref name="startSample"/>..<paramref name="endSample"/> on the source grid; Mac <c>forTake</c>): <see cref="Select"/>'s word spans,
+    /// or, when the transcript gives none, the 10 s of source around the window's centre. A take being made and a take already accepted into a
+    /// project read the same speech.</summary>
+    public static VoiceLabGuardSpeech ForTake(IReadOnlyList<TimedWord> items, double start, double end, long startSample, long endSample,
+        int sampleRate, long totalFrames)
+    {
+        var selection = Select(items, start, end, sampleRate, totalFrames);
+        if (selection.Ranges.Count > 0 || sampleRate <= 0 || totalFrames <= 0) return selection;
+        var center = (startSample + endSample) / 2;
+        var lower = Math.Max(0, center - 5L * sampleRate);
+        var upper = Math.Min(totalFrames, lower + 10L * sampleRate);
+        return new(upper > lower ? [(lower, upper)] : [], null);
+    }
+
     /// <summary>The <paramref name="seconds"/> of <paramref name="word"/> nearest the patch: a word before it gives its end, one after it
     /// its start, and one over it the part around the patch.</summary>
     private static (double Start, double End) NearestPart(TimedWord word, double start, double end, double seconds)
