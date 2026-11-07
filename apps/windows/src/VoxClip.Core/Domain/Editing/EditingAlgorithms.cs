@@ -243,13 +243,25 @@ public static partial class EditingAlgorithms
         return result;
     }
 
-    /// <summary>Resolve inclusive clip indices with half-gap lead/tail padding, editing §7.2.</summary>
-    public static TimeRange ClipTimes(IReadOnlyList<TimedWord> words, int startIndex, int endIndex)
+    /// <summary>Resolve inclusive clip indices with half-gap lead/tail padding, editing §7.2. A clip's opening lead-in (ADR-R48
+    /// part 2) moves the start earlier, down to <see cref="ClipLeadInFloor"/>; twin of the Mac <c>clipTimes</c>.</summary>
+    public static TimeRange ClipTimes(IReadOnlyList<TimedWord> words, int startIndex, int endIndex, double? leadIn = null)
     {
         if (startIndex < 0 || endIndex < startIndex || endIndex >= words.Count) throw new ArgumentOutOfRangeException(nameof(startIndex));
         var first = words[startIndex];
         var last = words[endIndex];
-        return new(Math.Max(0, first.Start - Math.Min(0.12, startIndex > 0 ? Math.Max(0, first.Start - words[startIndex - 1].End) / 2 : 0.12)),
-            last.End + Math.Min(0.25, endIndex + 1 < words.Count ? Math.Max(0, words[endIndex + 1].Start - last.End) / 2 : 0.25));
+        var start = Math.Max(0, first.Start - Math.Min(0.12, startIndex > 0 ? Math.Max(0, first.Start - words[startIndex - 1].End) / 2 : 0.12));
+        if (leadIn is { } lead && double.IsFinite(lead) && lead > 0) start = Math.Min(start, Math.Max(ClipLeadInFloor(words, startIndex), first.Start - lead));
+        return new(start, last.End + Math.Min(0.25, endIndex + 1 < words.Count ? Math.Max(0, words[endIndex + 1].Start - last.End) / 2 : 0.25));
+    }
+
+    /// <summary>The earliest a clip may open: after the item before its first one and that item's own 0.1 s cut margin, so a
+    /// lead-in moves only through silence; 0 for the first item. Twin of the Mac <c>clipLeadInFloor</c>.</summary>
+    public static double ClipLeadInFloor(IReadOnlyList<TimedWord> words, int startIndex)
+    {
+        if (startIndex <= 0 || startIndex >= words.Count) return 0;
+        var previous = words[startIndex - 1].End;
+        var first = words[startIndex].Start;
+        return Math.Min(first, previous + Math.Min(0.1, Math.Max(0, first - previous) / 2));
     }
 }

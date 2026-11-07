@@ -47,7 +47,10 @@ enum FrameAnalyzerCLI {
         var decisions: [String: JSONValue] = [
             "opening": try openingChoice.map(value) ?? .null,
             "cover": try CoverFrame.pick(scan).map(value) ?? .null,
-            "blurSpans": try value(FrameBlurSpans.merge(analysis.sentences, maxGap: 4, pad: 0.5)),
+            "blurSpans": try value(FrameBlurSpans.merge(analysis.sentences, maxGap: ClipFrameCandidates.blurMaxGap, pad: ClipFrameCandidates.blurPad)),
+            // What the plan request names (ai.md §19.6): screens B1… and covers C1…C3.
+            "blurCandidates": try value(ClipFrameCandidates.blur(analysis.sentences, clipStart: clip.start, clipEnd: clip.end)),
+            "coverCandidates": try value(ClipFrameCandidates.cover(sheet.frames)),
         ]
         decisions["crop9x16"] = try FaceFollowCrop.plan(samples, sourceAspect: aspect, targetAspect: 9.0 / 16.0).map(value) ?? .null
         decisions["crop1x1"] = try FaceFollowCrop.plan(samples, sourceAspect: aspect, targetAspect: 1).map(value) ?? .null

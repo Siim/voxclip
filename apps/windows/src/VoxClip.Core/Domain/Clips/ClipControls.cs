@@ -36,14 +36,39 @@ public enum ClipShape
 }
 
 /// <summary>One clip's speed, frame, look, source volume, fades, mute, flip and rotation; schema v4, design §6.9.
-/// Every key is written, null included, as the Mac Core writes it. An entry at its defaults is never stored.</summary>
+/// Every key is written, null included, as the Mac Core writes it, except the optional <paramref name="Reframe"/> ("9:16 follows
+/// your face") and <paramref name="CoverSeconds"/> (the cover's source second), ADR-R48 part 2, which are omitted when null.
+/// An entry at its defaults is never stored.</summary>
 public sealed record ProjectClipControls(string ClipId, double Speed, ClipShape? Shape, ClipLook Look, double GainDb,
-    double FadeInSeconds, double FadeOutSeconds, bool MuteSource, bool FlipHorizontal, int RotationDegrees)
+    double FadeInSeconds, double FadeOutSeconds, bool MuteSource, bool FlipHorizontal, int RotationDegrees,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ReframeSettings? Reframe = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? CoverSeconds = null)
 {
     /// <summary>Every control at its default.</summary>
     [JsonIgnore]
     public bool IsDefault => Speed == 1 && Shape is null && Look == ClipLook.Original && GainDb == 0 && FadeInSeconds == 0 &&
-        FadeOutSeconds == 0 && !MuteSource && !FlipHorizontal && RotationDegrees == 0;
+        FadeOutSeconds == 0 && !MuteSource && !FlipHorizontal && RotationDegrees == 0 && Reframe is null && CoverSeconds is null;
+
+    /// <summary>The face-follow centre (0–1 from the top left of the source) for an output of width over height
+    /// <paramref name="outputAspect"/>: only in face mode and for 9:16 and 1:1 (16:9 ignores it). Twin of the Mac <c>cropCenter</c>.</summary>
+    public (double X, double Y)? CropCenter(double outputAspect) =>
+        Reframe is { Mode: ReframeSettings.FaceMode, CenterX: { } x, CenterY: { } y } && double.IsFinite(outputAspect) && outputAspect <= 1 + 1e-9 ? (x, y) : null;
+}
+
+/// <summary>"9:16 follows your face" (ADR-R48 part 2): the frame's crop moved to centre on the clip's measured face, kept inside the
+/// picture. Twin of the Mac <c>FrameCompositor.aspectCrop</c>.</summary>
+public static class ClipFaceCrop
+{
+    /// <summary>The centre crop <paramref name="crop"/> of a <paramref name="width"/>×<paramref name="height"/> oriented source,
+    /// moved to the face (mapped through the clip's flip and turns) for an output of <paramref name="outputAspect"/>.</summary>
+    public static RectD Centered(RectD crop, double width, double height, ProjectClipControls? controls, double outputAspect)
+    {
+        if (controls?.CropCenter(outputAspect) is not { } center) return crop;
+        var (x, y) = controls.MapAnchor(center.X, center.Y);
+        var left = Math.Min(width - crop.Width, Math.Max(0, width * x - crop.Width / 2));
+        var top = Math.Min(height - crop.Height, Math.Max(0, height * y - crop.Height / 2));
+        return new(left, top, crop.Width, crop.Height);
+    }
 }
 
 /// <summary>Validation and pruning for the v4 clipControls field. Windows opens, validates and saves clip controls unchanged,
@@ -68,6 +93,9 @@ public static class ClipControlsProject
             Require(double.IsFinite(entry.FadeInSeconds) && entry.FadeInSeconds is >= 0 and <= 5);
             Require(double.IsFinite(entry.FadeOutSeconds) && entry.FadeOutSeconds is >= 0 and <= 5);
             Require(entry.RotationDegrees is 0 or 90 or 180 or 270 && Enum.IsDefined(entry.Look) && (entry.Shape is null || Enum.IsDefined(entry.Shape.Value)));
+            if (entry.Reframe is { } reframe)
+                Require(reframe.Mode == ReframeSettings.FaceMode && reframe.Zoom == 1 && reframe.CenterX is >= 0 and <= 1 && reframe.CenterY is >= 0 and <= 1);
+            if (entry.CoverSeconds is { } cover) Require(double.IsFinite(cover) && cover >= 0);
             Require(!entry.IsDefault && clips.Contains(entry.ClipId) && seen.Add(entry.ClipId));
         }
     }
@@ -79,8 +107,17 @@ public static class ClipControlsProject
         foreach (var entry in value.EnumerateArray())
         {
             Require(entry.ValueKind == JsonValueKind.Object);
-            Require(entry.EnumerateObject().Select(property => property.Name).ToHashSet(StringComparer.Ordinal).SetEquals(
-                "clipId speed shape look gainDb fadeInSeconds fadeOutSeconds muteSource flipHorizontal rotationDegrees".Split(' ')));
+            var keys = entry.EnumerateObject().Select(property => property.Name).ToHashSet(StringComparer.Ordinal);
+            keys.Remove("reframe"); keys.Remove("coverSeconds");
+            Require(keys.SetEquals("clipId speed shape look gainDb fadeInSeconds fadeOutSeconds muteSource flipHorizontal rotationDegrees".Split(' ')));
+            if (entry.TryGetProperty("reframe", out var reframe))
+            {
+                Require(reframe.ValueKind == JsonValueKind.Object && reframe.EnumerateObject().Select(property => property.Name)
+                    .ToHashSet(StringComparer.Ordinal).SetEquals(["mode", "zoom", "centerX", "centerY"]));
+                Require(reframe.GetProperty("mode").ValueKind == JsonValueKind.String);
+                foreach (var key in new[] { "zoom", "centerX", "centerY" }) Number(reframe.GetProperty(key));
+            }
+            if (entry.TryGetProperty("coverSeconds", out var cover)) Number(cover);
             Require(entry.GetProperty("clipId").ValueKind == JsonValueKind.String && entry.GetProperty("look").ValueKind == JsonValueKind.String);
             Require(entry.GetProperty("shape").ValueKind is JsonValueKind.String or JsonValueKind.Null);
             foreach (var key in new[] { "speed", "gainDb", "fadeInSeconds", "fadeOutSeconds" }) Number(entry.GetProperty(key));

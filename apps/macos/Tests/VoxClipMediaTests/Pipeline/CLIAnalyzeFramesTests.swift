@@ -38,7 +38,7 @@ struct CLIAnalyzeFramesTests {
         let timings = try #require(analysis["timings"] as? [String: Any])
         #expect(timings["analyzedFrames"] as? Int == 15 && timings["cachedFrames"] as? Int == 0)
         let decisions = try #require(output["decisions"] as? [String: Any])
-        #expect(Set(decisions.keys) == ["opening", "cover", "blurSpans", "crop9x16", "crop1x1"])
+        #expect(Set(decisions.keys) == ["opening", "cover", "blurSpans", "blurCandidates", "coverCandidates", "crop9x16", "crop1x1"])
         let sheet = try #require(output["sheet"] as? [String: Any])
         #expect(sheet["frames"] as? Int == 2 && sheet["estimatedImageTokens"] as? Int == 2 * 77)
         let frames = directory.appendingPathComponent("data/Cache/\(contentKey)/frames/analysis-v1.json")
