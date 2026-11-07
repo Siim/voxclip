@@ -198,7 +198,7 @@ extension EditorModel {
         claudeMode.phase = runs.contains { $0.phase == .stopped } ? .stopped : .done
         let ready = claudeModeReady.count
         announce(claudeMode.phase == .done ? "\(ready) \(ready == 1 ? "clip" : "clips") ready. Next: Export all." : "Stopped. What was done is kept.")
-        // Numbers only (ai.md §16.6): each stage's wall time, never a title, word or path.
+        // Numbers only (ai.md §16.12): each stage's wall time, never a title, word or path.
         if let clock = claudeMode.clock {
             let log = app.log
             Task { await log.write(LogEntry(level: .info, category: "claude-mode", message: clock.logLine())) }

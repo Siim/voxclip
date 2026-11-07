@@ -1256,7 +1256,16 @@ Rules the port must follow exactly:
 
   Informative only: an FMA formulation (`p = x·10; e = fma(x, 10, −p); n = floor(p); d = (p − n) − 0.5; if d > 0 or (d == 0 and e ≥ 0): n += 1`) gives the same results (it matched Node's `toFixed(1)` on 400,029 values), but it is not used, because editing §4.3 forbids fused multiply-add in Core.
 
-`cachedBlock = transcriptBlock.prefix + rendered + transcriptBlock.suffix`, which is `"<transcript>\n" + rendered + "\n</transcript>"`.
+`rendered` is the full numbered form: AI tighten (§12.4) and Fix with AI send it, and window packing (§11.5) costs every line by it.
+
+**The clip finder's sentence lines** (`voxclip-sentence-lines-v1`, clip-finder prompt version 2, 2026-11-07). Find Clips sends the same lines more compactly: each line as its number over the whole transcript (from 1), its start time and its words, from `transcriptBlock.line` (`"{line} {time} {text}"`), with no word range and no pause line. A window sends its own lines with their whole-transcript numbers.
+
+```text
+1 0:00 So, today I want to talk.
+2 0:03 Um why cut by words?
+```
+
+`cachedBlock = transcriptBlock.prefix + sentence lines joined with "\n" + transcriptBlock.suffix`, which is `"<transcript>\n" + … + "\n</transcript>"`. The result's `inputSha256` hashes the whole transcript's block in this form. On the 29-minute benchmark shape (2,900 synthetic words, 207 lines) the request drops from 22,066 to 19,925 characters, about 10%: the words are 88% of it.
 
 ### 11.4 Request text
 
@@ -1279,10 +1288,10 @@ With more than one window, append these lines, also joined with `"\n"`:
 For preset `topics`, windows after the first also get, when the previous windows produced a valid candidate:
 
 ```text
-"Topics up to word {lastEnd} are already covered. Start at word {lastEnd + 1} or later."
+"Topics up to line {lastLine} are already covered. Start at line {lastLine + 1} or later."
 ```
 
-`lastEnd` is the largest `endWord` among the valid candidates so far that passed §11.7 steps 1–4.
+`lastEnd` is the largest `endWord` among the valid candidates so far that passed §11.7 steps 1–4; `lastLine` is the number of the line that holds it (the last line when it is past the end).
 
 The duration line always uses the whole take's last word, even in a window.
 
@@ -1328,7 +1337,7 @@ Each window's request sends `maxOutputTokens = outputReserve`, so Ollama's `num_
 
 ### 11.6 Parsing
 
-Each window's `LLMResult.object.clips` items are appended to one candidate list in arrival order (window order, then model order). Each candidate keeps `{title, start_word, end_word, reason, score}` as received.
+Each window's `LLMResult.object.clips` items are appended to one candidate list in arrival order (window order, then model order). Prompt version 2 replies name lines: `{title, start_line, end_line, reason, score}`. A reply's inclusive line range maps to the first word of its first line and the last word of its last line (`ClipRequestBuilder.wordRange`); a range that names no lines (not integral, below 1, past the last line, or backwards) maps to `(-1, -1)`, which step 1 drops. Each candidate then keeps `{title, start_word, end_word, reason, score}` and §11.7 runs as before, snapping included. Snapping no longer moves a line-aligned range, so the "Snap clip edges to sentence boundaries" setting has no effect on Find Clips (its removal is owed on both platforms).
 
 ### 11.7 `finalizeClips` (normative; VoxConvo plus marked VoxClip extensions)
 
@@ -1767,7 +1776,7 @@ Version 2 of the plan (planner v2, 2026-11-05) answers the first live evaluation
 
 | File | Holds |
 | --- | --- |
-| `shared/prompts/clip-autopilot.json` | File format `schemaVersion` 2, `promptVersion` 6 (version 6 adds the tone: the `tone` section, the `toneFixed`, `toneAuto`, `toneLine` and `toneAsSaid` templates, `maxToneSummaryScalars` and the reply's `tone` and `toneSummary`). `sections` of system text and `system.plan` / `system.moments`, the section lists of the two system prompts; `looks`, the colour looks with their descriptions; transcript and request templates; defaults; limits; the plan schema `clip_autopilot_plan` and the moments schema `clip_autopilot_moments`; output-token caps (`clip` 16,000, `moments` 8,000) and the minimum timeout |
+| `shared/prompts/clip-autopilot.json` | File format `schemaVersion` 2, `promptVersion` 7 (version 6 adds the tone: the `tone` section, the `toneFixed`, `toneAuto`, `toneLine` and `toneAsSaid` templates, `maxToneSummaryScalars` and the reply's `tone` and `toneSummary`; version 7 adds `momentOthers`, §16.12). `sections` of system text and `system.plan` / `system.moments`, the section lists of the two system prompts; `looks`, the colour looks with their descriptions; transcript and request templates; defaults; limits; the plan schema `clip_autopilot_plan` and the moments schema `clip_autopilot_moments`; output-token caps (`clip` 16,000, `moments` 8,000) and the minimum timeout |
 | `shared/catalog/music-prices.json` | Eleven Music list price in the Voice Lab price format (`voxclip-voice-lab-prices/1`), read by `VoiceLabPriceCatalog`. It is a separate file because both Core suites pin `voice-lab.json`'s hash and entry count. **TODO (lead):** verify the 0.15 USD per minute row before the music package ships; the pricing page also says music is billed per generation |
 | `shared/fixtures/autopilot/plan-validation-cases.json` | `voxclip-autopilot-validation/1`: a synthetic 30-item transcript, two rendered-transcript vectors and eleven hand-derived validation cases (version 1 fields); its `series` case replays as the moments stage. `sources` pins the prompt's SHA-256 |
 | `shared/fixtures/autopilot/plan-tone-cases.json` | `voxclip-autopilot-tone/1`: eleven hand-derived tone cases on the version 1 fixture's transcript (fixed, saved, Auto, As I said it and no tone; a reply that names another tone, an unknown one or a long summary) and four instruction vectors, the tone line each mode adds. `sources` pins the prompt's and `shared/data/rewrite-tones.json`'s SHA-256 |
@@ -1807,7 +1816,7 @@ Version 2 of the plan (planner v2, 2026-11-05) answers the first live evaluation
 `ClipAutopilotRequest` holds the transcript, the project's edits, a mode, the creator's caption preference, the language (the transcript's when nil), an optional note of at most `maxNoteBytes` and an optional `tone` (v6). The modes:
 
 - `clip(span)`: one send, the clip plan at `effort` `xhigh`.
-- `clips([span])` (v2): spans chosen already, such as the top suggestions ("✦ Make top 3 postable"). Each span is planned as its own clip request, in parallel where the service has lanes, and the result ranks them like a series. At most `maxClips`; an empty list is `invalidInput`.
+- `clips([span])` (v2): spans chosen already, such as the top suggestions ("✦ Make top 3 postable"). Each span is planned as its own clip request, in parallel where the service has lanes, and the result ranks them like a series. At most `maxClips`; an empty list is `invalidInput`. With `moments` (prompt version 7, one per span in the same order: Find Clips' title, reason and score as `ClipAutopilotMoment.found`, with no caption style), each plan is briefed as a series' second stage is (§16.12); a `moments` list of another length is `invalidInput`.
 - `series(range?)`, the whole transcript when nil: two stages (below).
 
 The caption preference's set fields are **fixed** (v2): every plan uses them as they are. A nil field leaves the choice to Claude, per clip. The track/v2-captions-style `ClipStyle` maps onto it: a fixed caption style is `styleId`, Auto leaves it nil.
@@ -1819,9 +1828,9 @@ A request lists the scope's items except words already cut, with corrections app
 **Two stages for a series** (v2):
 
 1. **Moments.** One send over the whole range at `effort` `high` (`ClipAutopilotService.momentsEffort`), with the `system.moments` prompt, the moments schema, output cap `moments` and tag `clip-autopilot-moments`. The reply is checked as §16.5 Moments.
-2. **Clip plans.** Each moment is planned as a clip request over its own span (that clip's words only), at `xhigh`, with tag `clip-autopilot-series-clip`. Its instruction starts with `momentInstruction`: the moment's rank, the count, its title and idea, and, unless the creator fixed the style, `momentCaption`, the caption style picked for it and the styles of the others. At most `ClipAutopilotService.maxParallelPlans` (3) plans are in flight at once.
+2. **Clip plans.** Each moment is planned as a clip request over its own span (that clip's words only), at `xhigh`, with tag `clip-autopilot-series-clip`. Its instruction starts with `momentInstruction`: the moment's rank, the count, its title and idea, and, unless the creator fixed the style, `momentCaption`, the caption style picked for it and the styles of the others; then (version 7) `momentOthers`, the other moments as "“title” at m:ss" joined by "; ". At most `ClipAutopilotService.maxParallelPlans` (3) plans are in flight at once.
 
-`ClipAutopilotService.plan(_:connector:model:lanes:progress:)` sends. `lanes` are extra connectors of the same `ConnectorID`, one per parallel plan (another id is `invalidInput`); the service runs each through its own `LLMRunner` built from the given runner's keys, catalog and log, because a runner and a CLI connector each run one send at a time. Without lanes the clip plans go one after another. A plan that fails is left out and listed in the series' repairs (`plans[N]`, "the plan failed: <case>"); the run fails only when every clip plan fails (with the first error) or on cancellation. A moments reply with no usable moment returns an empty series, not an error. `progress` receives `pickingMoments`, `picked(moments)`, then `planning`, `planned` or `failed` per clip (`clip` indexes the moments or spans; a single clip is 0 of 1).
+`ClipAutopilotService.plan(_:connector:model:lanes:progress:)` sends. `lanes` are extra connectors of the same `ConnectorID`, one per parallel plan (another id is `invalidInput`); the service runs each through its own `LLMRunner` built from the given runner's keys, catalog and log, because a runner and a CLI connector each run one send at a time. Without lanes the clip plans go one after another. A plan that fails is left out and listed in the series' repairs (`plans[N]`, "the plan failed: <case>"); the run fails only when every clip plan fails (with the first error) or on cancellation. A moments reply with no usable moment returns an empty series, not an error. `progress` receives `pickingMoments`, `picked(moments)`, then `planning`, `ready(plan)` and `planned`, or `failed`, per clip (`clip` indexes the moments or spans; a single clip is 0 of 1). `ready` carries the clip's checked plan the moment it is, while the other clips are still planned (§16.12).
 
 `ClipAutopilotService.request` builds the first `LLMRequest` a plan sends (a series' moments, or the first span of `clips`):
 
@@ -1937,6 +1946,21 @@ Before a clip's rewrites are voiced one by one, a Claude-mode run (one with the 
 - **Patch and offer:** over the cap, or when no paid step may run. The phrases are patched as before, and the row "Revoice the Whole Clip · ≈ $x" waits. Its click approves exactly that price. Nothing is spent until then.
 
 Claude mode never answers the Rewrite panel's card; outside Claude mode the card asks (design.md R2 "How should it sound?").
+
+### 16.12 Claude mode's scheduling and timings (2026-11-07)
+
+Claude mode (design.md §6.7) no longer waits for its slowest clip.
+
+- **One request for the top clips.** When Find Clips ends, Make top N postable sends one `clips` request for the top N suggestions by score, with their `moments`: each plan's instruction is `momentInstruction` (rank, count, Find Clips' title and reason) and `momentOthers` (the other clips by title and start), so the series stays varied without the moments stage. As before, the send is authorized once for the series before anything goes (an API key's send asks inline first), each plan is checked against the model's context before it is sent, and every plan runs at extra high effort.
+- **At most three in flight.** The Claude Code connector gets two more lanes, so the best three plan at once; a fourth and later clip starts as a lane frees.
+- **Each clip as soon as it is ready.** `ClipAutopilotProgress.ready` carries a clip's checked plan the moment its reply is checked. The editor applies it at once, one clip at a time in the order they come, each as its own "Make it postable" undo step, while the other plans are still in flight. A planner that sends no `ready` (a stub) has its clips applied in rank order when it returns.
+- **The lease.** The planner holds the project's AI lease until every plan is in. The clip being applied shares it (`ProjectLlmRuns.sharing`) with its own Rewrite steps, so the free fit round and Keep fixing still run; nothing else may take a lease in that window, and the editor's AI actions stay off while the project is busy.
+- **Money.** The video's one pool (`MakeItBudget`) covers the sum: clips apply one at a time, so each paid step sees only what the clips before it left, and a step past the cap waits for Continue as before.
+- **Failure and Stop.** A plan that fails fails only its clip; the others go on. Stop cancels every plan in flight, and the clip being applied stops at its next safe point; what is done is kept.
+- **Timings.** `ClaudeModeClock` records each stage's wall time, numbers only: `transcribe` and `find` from the video's open, then `plan` and `apply` per clip by rank. The app logs one line when a run ends (`claude-mode timings transcribe=… find=… plan1=… apply1=… first=… total=…`). `voxclip-cli autopilot --timings` prints the same as JSON with `probe`, `audio` and `export` per clip.
+- **The connector start-up** was measured on this Mac (2026-11-07, no model call): `claude --version` 0.012 s, `claude auth status --json` 0.109 s, `codex --version` 0.010 s and `codex login status` 0.019 s (medians of five). The rest of the connection test's 4.6 s median is the model round trip inside `claude -p`. A warm process is not used: the Claude CLI's stream-json input is one conversation, so later requests would see earlier ones, and its system prompt, schema, model and effort are fixed per process while Find Clips and the plans differ.
+
+The stub benchmark (`CLIAutopilotTests`, virtual time, 4.6 s per call plus time in proportion to output tokens: Find Clips 77 s, plans of 74, 91 and 61 s) gives the first postable clip at 139.0 s after Find Clips starts, against 169.4 s when every clip waited for the slowest plan; with local transcription (53 s) 192 s against 222 s. With effort fixed at extra high, the critical path is Find Clips plus the quickest plan.
 
 ## 17. Caption pick (`captionPick`)
 

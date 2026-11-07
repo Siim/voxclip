@@ -28,7 +28,7 @@ public enum ClipAutopilotProgress: Sendable, Equatable {
     case planning(clip: Int, of: Int)
     case planned(clip: Int, of: Int)
     /// That clip's checked plan, sent the moment it is ready and before `planned`, while the other clips are still
-    /// planned: Claude mode applies and shows each clip as it comes (ai.md §16.6).
+    /// planned: Claude mode applies and shows each clip as it comes (ai.md §16.12).
     case ready(clip: Int, of: Int, ClipAutopilotPlan)
     /// That clip's plan failed; the other clips go on.
     case failed(clip: Int, of: Int)

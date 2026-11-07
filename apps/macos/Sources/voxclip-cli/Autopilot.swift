@@ -3,7 +3,7 @@ import ArgumentParser
 import VoxClipCore
 import VoxClipMedia
 
-/// ✦ Claude does it all, headless (design.md §6.7, ai.md §16.6): probe, transcribe, Find Clips, then plan the top clips at
+/// ✦ Claude does it all, headless (design.md §6.7, ai.md §16.12): probe, transcribe, Find Clips, then plan the top clips at
 /// once (at most three in flight) and apply and export each one as soon as its plan is ready. Paid steps never run here:
 /// rewrites in the creator's voice and music are left for the app and listed as pending.
 struct Autopilot: AsyncParsableCommand {

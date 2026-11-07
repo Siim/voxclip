@@ -19,7 +19,7 @@ public struct ClaudeModeTiming: Sendable, Equatable, Codable {
     }
 }
 
-/// The wall times of one run from a video to its clips (ai.md §16.6): numbers only, never a title, a word or a path, so
+/// The wall times of one run from a video to its clips (ai.md §16.12): numbers only, never a title, a word or a path, so
 /// they can go to the log and the CLI's JSON as they are. Thread-safe; stages may overlap (clips plan at once).
 public final class ClaudeModeClock: Sendable {
     private let origin: ContinuousClock.Instant

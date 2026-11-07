@@ -236,7 +236,7 @@ import Testing
         for clip in 0..<4 {
             let planning = try #require(later.firstIndex(of: .planning(clip: clip, of: 4)))
             let planned = try #require(later.firstIndex(of: .planned(clip: clip, of: 4)))
-            // Each checked plan is sent the moment it is ready, before `planned` (ai.md §16.6).
+            // Each checked plan is sent the moment it is ready, before `planned` (ai.md §16.12).
             let ready = try #require(later.firstIndex { if case .ready(clip, 4, _) = $0 { true } else { false } })
             #expect(planning < ready && ready < planned)
         }

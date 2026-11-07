@@ -52,10 +52,16 @@ private actor Timeline {
 /// Claude Code's measured latency shape (doc/agent-clipping-benchmark.md): about 4.6 s to start a call, then time in
 /// proportion to the output tokens (thinking included). A plan of 8,000 tokens takes the measured median of 74 s.
 private struct LatencyShape: Sendable {
-    var startup = 4.6
-    var secondsPerToken = (74.0 - 4.6) / 8000
+    static let measuredPlan: Double = 74, measuredFind: Double = 77, measuredStartup: Double = 4.6, planOutput: Double = 8000
+    var startup = Self.measuredStartup
+    var secondsPerToken: Double = (Self.measuredPlan - Self.measuredStartup) / Self.planOutput
     /// Find Clips' output at extra high effort, sized so the call takes the measured 77 s.
-    var findTokens = Int(((77.0 - 4.6) / ((74.0 - 4.6) / 8000)).rounded())
+    var findTokens: Int = {
+        let thinking: Double = Self.measuredFind - Self.measuredStartup
+        let perToken: Double = (Self.measuredPlan - Self.measuredStartup) / Self.planOutput
+        let tokens: Double = (thinking / perToken).rounded()
+        return Int(tokens)
+    }()
     /// Each plan's output by rank: the best clip a median plan, the second slower and the third quicker.
     var planTokens = [8000, 10000, 6500]
     func seconds(_ tokens: Int) -> Double { startup + Double(tokens) * secondsPerToken }
@@ -81,11 +87,16 @@ private actor LatencyStub: LLMConnector {
         }
         await timeline.sleep(shape.seconds(shape.planTokens[(rank - 1) % shape.planTokens.count]), tag: "plan\(rank)")
         if Task.isCancelled { throw LLMError.cancelled }
-        let reply: [String: Any] = ["startWord": start, "endWord": end, "title": "Clip \(rank)", "hook": "Hook \(rank)", "corrections": [] as [Any],
-            "cuts": [] as [Any], "pauseCuts": [] as [Any], "rewrites": [] as [Any], "lengthReason": "", "captionStyle": "vox-bold", "captionReason": "punchy",
-            "captionFont": "Roboto", "captionWeight": 900, "captionCase": "upper", "wordsPerCaption": 3, "look": "original", "lookReason": "",
-            "speed": 1, "speedReason": "", "zooms": [] as [Any], "music": [] as [Any], "musicPick": 0, "postText": "Post \(rank).", "score": 9 - rank,
-            "verdict": "post", "scoreReason": "Clear.", "questions": [] as [Any], "tone": "none", "toneSummary": ""]
+        // A plan with nothing to cut, built in typed parts so it type-checks quickly.
+        var reply: [String: Any] = [:]
+        let numbers: [String: Int] = ["startWord": start, "endWord": end, "captionWeight": 900, "wordsPerCaption": 3, "speed": 1, "musicPick": 0, "score": 9 - rank]
+        let texts: [String: String] = ["title": "Clip \(rank)", "hook": "Hook \(rank)", "lengthReason": "", "captionStyle": "vox-bold", "captionReason": "punchy",
+                                       "captionFont": "Roboto", "captionCase": "upper", "look": "original", "lookReason": "", "speedReason": "",
+                                       "postText": "Post \(rank).", "verdict": "post", "scoreReason": "Clear.", "tone": "none", "toneSummary": ""]
+        let lists = ["corrections", "cuts", "pauseCuts", "rewrites", "zooms", "music", "questions"]
+        for (key, value) in numbers { reply[key] = value }
+        for (key, value) in texts { reply[key] = value }
+        for key in lists { reply[key] = [Any]() }
         return RawCompletion(text: String(decoding: try JSONSerialization.data(withJSONObject: reply), as: UTF8.self), model: model, stop: .complete)
     }
 }

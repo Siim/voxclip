@@ -3,7 +3,7 @@ import Synchronization
 import Testing
 @testable import VoxClipCore
 
-/// Claude mode's planner (ai.md §16.6): Find Clips' moments in a `clips` request, at most three plans in flight, each plan
+/// Claude mode's planner (ai.md §16.12): Find Clips' moments in a `clips` request, at most three plans in flight, each plan
 /// sent to the caller the moment it is ready, and a cancel that reaches every plan in flight. Stub connectors only; nothing
 /// waits on a clock.
 @Suite struct ClipAutopilotStreamingTests {

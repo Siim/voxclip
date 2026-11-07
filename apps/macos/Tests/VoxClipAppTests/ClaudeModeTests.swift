@@ -480,7 +480,7 @@ private final class ClaudeCalls: Sendable {
 }
 
 /// The Make it postable tests' main plan, shared so the two suites plan the same clip.
-// MARK: Each clip as soon as it is ready (ai.md §16.6)
+// MARK: Each clip as soon as it is ready (ai.md §16.12)
 
 /// A gate the stub planner waits at until the test opens it; never a sleep.
 private actor StreamGate {
@@ -521,7 +521,7 @@ extension ClaudeModeTests {
         for _ in 0..<20_000 where !condition() { await Task.yield() }
     }
 
-    @Test func theFirstClipIsAppliedWhileTheOthersAreStillPlanned() async throws {
+    @Test(.timeLimit(.minutes(1))) func theFirstClipIsAppliedWhileTheOthersAreStillPlanned() async throws {
         let fixture = try fixture()
         defer { close(fixture) }
         let editor = fixture.editor
@@ -550,7 +550,7 @@ extension ClaudeModeTests {
 
     /// design.md §6.7 progress: "Finding clips…" in card C and the status bar while Find Clips runs, then each clip's row
     /// on its own and "N of M ready".
-    @Test func progressSaysFindingClipsThenCountsReadyClips() async throws {
+    @Test(.timeLimit(.minutes(1))) func progressSaysFindingClipsThenCountsReadyClips() async throws {
         let fixture = try fixture()
         defer { close(fixture) }
         let editor = fixture.editor
@@ -572,7 +572,7 @@ extension ClaudeModeTests {
         #expect(editor.claudeMode.phase == .done && editor.statusClipStyle?.text == "✦ Claude does it all · top 3 · ≤$2")
     }
 
-    @Test func stopCancelsEveryPlanStillInFlight() async throws {
+    @Test(.timeLimit(.minutes(1))) func stopCancelsEveryPlanStillInFlight() async throws {
         let fixture = try fixture()
         defer { close(fixture) }
         let editor = fixture.editor
@@ -590,7 +590,7 @@ extension ClaudeModeTests {
         #expect(editor.claudeMode.phase == .stopped && editor.makeIt.running.isEmpty)
     }
 
-    @Test(arguments: [false, true])
+    @Test(.timeLimit(.minutes(1)), arguments: [false, true])
     func aFailedClipDoesNotStopTheOthers(firstFails: Bool) async throws {
         let fixture = try fixture()
         defer { close(fixture) }
@@ -612,14 +612,18 @@ extension ClaudeModeTests {
 
     /// Both plans arrive at once, but clips are applied one at a time on the video's one pool: the second voice step sees
     /// only what the first left, and waits at the cap instead of spending past it.
-    @Test func theCapCoversClipsPlannedAtOnce() async throws {
-        let fixture = try fixture(cap: 2) { request, _ in
-            let price = Decimal(string: "1.50")!
+    @Test(.timeLimit(.minutes(1))) func theCapCoversClipsPlannedAtOnce() async throws {
+        let fixture = try fixture(cap: 2)
+        defer { close(fixture) }
+        let editor = fixture.editor
+        // A voice step takes a while (it yields, never sleeps): a second clip applied meanwhile would see the same budget.
+        let price = Decimal(string: "1.50")!
+        editor.makeIt.services?.voice = { request, _ in
+            fixture.calls.record("voice \(request.text) budget \(request.budget.map { "\($0)" } ?? "none")")
+            for _ in 0..<50 { await Task.yield() }
             guard let budget = request.budget, budget >= price else { return MakeItRewriteOutcome(result: .overCap(nextUSD: price)) }
             return MakeItRewriteOutcome(result: .voiced(segments: []), spent: price)
         }
-        defer { close(fixture) }
-        let editor = fixture.editor
         let gate = StreamGate()
         streamingPlanner(fixture, gate: gate)
         await gate.open()
