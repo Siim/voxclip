@@ -55,6 +55,23 @@ public static partial class WholeClipRevoice
         }
     }
 
+    /// <summary>Drops every record whose clip is gone or whose segments are no longer the project's own text-to-speech segments (Mac
+    /// <c>WholeClipRevoice.pruneDangling</c>). Edits that remove a clip or a segment call it in the same step, so the project never stops
+    /// validating, saving or rendering because of a record naming what was removed (ADR-R46). The segments stay as voiced patches; only the
+    /// record that bound them to one clip goes. A file that arrives with such a record is still refused.</summary>
+    public static Project PruneDangling(Project project)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+        if (project.VoiceLab.WholeClipRevoices is not { } records) return project;
+        var clips = project.Edits.Clips.Select(clip => clip.Id).ToHashSet(StringComparer.Ordinal);
+        var tts = project.VoiceLab.Segments.Where(segment => segment.Kind == VoiceLabSegmentKind.Tts).Select(segment => segment.Id)
+            .ToHashSet(StringComparer.Ordinal);
+        var kept = records.Where(record => record is not null && clips.Contains(record.ClipId) && record.SegmentIds is { Count: > 0 } ids &&
+            ids.All(id => id is not null && tts.Contains(id))).ToArray();
+        if (kept.Length == records.Count) return project;
+        return project with { VoiceLab = project.VoiceLab with { WholeClipRevoices = kept.Length == 0 ? null : kept } };
+    }
+
     /// <summary>Whether <paramref name="clipId"/> plays a whole-clip revoice: a record for it with an enabled segment. The stage then
     /// shows its AI voice tag over the whole clip, the pauses between parts included.</summary>
     public static bool IsRevoiced(string clipId, Project project)

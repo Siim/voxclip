@@ -203,6 +203,10 @@ public actor JSONProjectStore: ProjectStore {
         }
         result.share.captions = project.share.captions.filter { $0.key == "full" || clipIDs.contains($0.key) }
         warn("share caption", project.share.captions.count - result.share.captions.count)
+        // A whole-clip revoice whose clip was just dropped goes with it (ADR-R46).
+        let revoices = result.voiceLab.wholeClipRevoices?.count ?? 0
+        WholeClipRevoice.pruneDangling(&result)
+        warn("whole-clip revoice", revoices - (result.voiceLab.wholeClipRevoices?.count ?? 0))
         return (result, warnings)
     }
 }

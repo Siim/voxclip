@@ -1,6 +1,8 @@
 using System.Text.Json.Nodes;
+using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Core.Services.Project;
 using VoxClip.Tests.Support;
 using Xunit;
 
@@ -28,6 +30,42 @@ public sealed class WholeClipRevoiceWireTests
             else target[parts[^1]] = patch["value"]?.DeepClone();
         }
         return document;
+    }
+
+    /// <summary>Mac <c>removingTheClipOrASegmentDropsTheRecordAndTheProjectStillSaves</c>: removing the revoiced clip or one of its
+    /// segments, or replacing the transcript, drops the record in the same step, so the project still validates and saves; removing an
+    /// unrelated clip keeps it; a file that arrives with a dangling record is still refused.</summary>
+    [Fact]
+    public void RemovingTheClipOrASegmentDropsTheRecordAndTheProjectStillSaves()
+    {
+        var baseProject = ProjectSerialization.Deserialize(Fixture().ToJsonString());
+        var record = Assert.Single(baseProject.VoiceLab.WholeClipRevoices!);
+        var word = baseProject.Transcript!.Words[0].Id;
+        var other = new ClipRange("clip-other", word, word, null, ClipOrigin.Manual, null, null, true);
+        baseProject = baseProject with { Edits = baseProject.Edits with { Clips = baseProject.Edits.Clips.Append(other).ToArray() } };
+        VoiceLabProject.Validate(baseProject);
+        Project Remove(string clipId) => EditingEngine.ApplyToProject(baseProject,
+            EditingEngine.Reduce(EditingEngine.FromProject(baseProject)!, new EditOperation.RemoveClip(clipId)));
+
+        var unrelated = Remove("clip-other");
+        Assert.Equal(record, Assert.Single(unrelated.VoiceLab.WholeClipRevoices!));
+
+        var removed = Remove(record.ClipId);
+        Assert.Null(removed.VoiceLab.WholeClipRevoices);
+        Assert.Equal(baseProject.VoiceLab.Segments.Select(segment => segment.Id), removed.VoiceLab.Segments.Select(segment => segment.Id));
+        VoiceLabProject.Validate(removed);
+        _ = ProjectSerialization.Serialize(removed);
+
+        var deleted = VoiceLabProject.Delete(baseProject, record.SegmentIds[^1]);
+        Assert.Null(deleted.VoiceLab.WholeClipRevoices);
+        _ = ProjectSerialization.Serialize(deleted);
+
+        var replaced = ProjectStore.ReplaceTranscript(baseProject, baseProject.Transcript!);
+        Assert.Null(replaced.VoiceLab.WholeClipRevoices);
+        _ = ProjectSerialization.Serialize(replaced);
+
+        var dangling = baseProject with { Edits = baseProject.Edits with { Clips = baseProject.Edits.Clips.Where(clip => clip.Id != record.ClipId).ToArray() } };
+        Assert.ThrowsAny<Exception>(() => ProjectSerialization.Serialize(dangling));
     }
 
     [Fact]

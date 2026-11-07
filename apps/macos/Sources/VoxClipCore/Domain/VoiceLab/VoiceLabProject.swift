@@ -398,6 +398,7 @@ public enum VoiceLabProject {
         var result = project
         guard result.voiceLab.segments.contains(where: { $0.id == id }) else { throw VoiceLabProjectError.missingSegment }
         result.voiceLab.segments.removeAll { $0.id == id }
+        WholeClipRevoice.pruneDangling(&result) // A whole clip missing a part is no longer one revoice.
         try validate(result); return result
     }
     /// Voice status is not checked: accept verified consent for every unrejected candidate, and its stored evidence keeps the take renderable (§10.5).

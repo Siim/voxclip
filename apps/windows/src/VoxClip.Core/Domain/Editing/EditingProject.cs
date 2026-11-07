@@ -76,12 +76,13 @@ internal static class EditingProject
             if (pair.Key == "full" || clipIds.Contains(pair.Key)) share.Add(pair.Key, pair.Value);
             else warnings.Add("Dropped a removed clip's share caption.");
         }
-        return project with { Edits = project.Edits with { CutWordIds = words.Where(word => cutWords.Contains(word.Id)).Select(word => word.Id).ToArray(),
+        // A whole-clip revoice whose clip or segments are gone goes in the same step (ADR-R46).
+        return VoxClip.Core.Domain.VoiceLab.WholeClipRevoice.PruneDangling(project with { Edits = project.Edits with { CutWordIds = words.Where(word => cutWords.Contains(word.Id)).Select(word => word.Id).ToArray(),
             CutPauseIds = pauses.Where(pause => cutPauses.Contains(pause.Id)).Select(pause => pause.Id).ToArray(), Corrections = corrections, Clips = clips, ActiveClipId = active }, Share = new(share),
             MotionCues = project.MotionCues.Where(cue => clipIds.Contains(cue.ClipID)).ToArray(),
             Music = VoxClip.Core.Domain.Music.MusicProject.Pruned(project.Music, clipIds),
             ClipEffects = VoxClip.Core.Domain.Effects.ClipEffects.Pruned(project.ClipEffects, clipIds, words.Select(word => word.Id)),
             ClipControls = VoxClip.Core.Domain.Clips.ClipControlsProject.Pruned(project.ClipControls, clipIds),
-            CaptionTranslations = VoxClip.Core.Domain.Captions.CaptionTranslations.Pruned(project.CaptionTranslations, clipIds, words.Select(word => word.Id)) };
+            CaptionTranslations = VoxClip.Core.Domain.Captions.CaptionTranslations.Pruned(project.CaptionTranslations, clipIds, words.Select(word => word.Id)) });
     }
 }

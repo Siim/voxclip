@@ -367,6 +367,18 @@ extension WholeClipRevoice {
         }
     }
 
+    /// Drops every record whose clip is gone or whose segments are no longer the project's own text-to-speech segments.
+    /// Edits that remove a clip or a segment call it in the same step, so the project never stops validating, saving or
+    /// rendering because of a record that names what was removed (ADR-R46). The segments themselves stay as voiced
+    /// patches; only the record that bound them to one clip goes. A file that arrives with such a record is still refused.
+    public static func pruneDangling(_ project: inout Project) {
+        guard var records = project.voiceLab.wholeClipRevoices else { return }
+        let clips = Set(project.edits.clips.map(\.id))
+        let tts = Set(project.voiceLab.segments.filter { $0.kind == .tts }.map(\.id))
+        records.removeAll { !clips.contains($0.clipId) || $0.segmentIds.isEmpty || !$0.segmentIds.allSatisfy(tts.contains) }
+        project.voiceLab.wholeClipRevoices = records.isEmpty ? nil : records
+    }
+
     /// Whether `clipId` plays a whole-clip revoice: a record for it with an enabled segment. The stage then shows its AI
     /// voice tag over the whole clip, the pauses between parts included.
     public static func isRevoiced(clipId: String, in project: Project) -> Bool {

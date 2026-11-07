@@ -12706,6 +12706,7 @@ member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public IsRevoiced
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public LipsyncPrice(double,VoxClip.Core.Domain.VoiceLab.WholeClipLipsync,VoxClip.Core.Domain.VoiceLab.VoiceLabPriceCatalog)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public MatchedCopy(double)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public PriceFor(int,string,double,VoxClip.Core.Domain.VoiceLab.WholeClipLipsync,VoxClip.Core.Domain.VoiceLab.VoiceLabPriceCatalog)
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public PruneDangling(VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public ReasonFor(VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+RuleInputs)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public RecordHolding(string,VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public Validate(VoxClip.Core.Domain.Shared.Project)

@@ -294,7 +294,8 @@ public static class VoiceLabProject
     public static Project Delete(Project project, string id)
     {
         Require(project.VoiceLab.Segments.Any(item => item.Id == id), VoiceLabProjectErrorCode.MissingSegment);
-        var result = project with { VoiceLab = project.VoiceLab with { Segments = project.VoiceLab.Segments.Where(item => item.Id != id).ToArray() } };
+        // A whole clip missing a part is no longer one revoice (ADR-R46).
+        var result = WholeClipRevoice.PruneDangling(project with { VoiceLab = project.VoiceLab with { Segments = project.VoiceLab.Segments.Where(item => item.Id != id).ToArray() } });
         Validate(result); return result;
     }
     /// <summary>Voice status is not checked: accept verified consent for every unrejected candidate, and its stored evidence keeps the take renderable (§10.5).</summary>

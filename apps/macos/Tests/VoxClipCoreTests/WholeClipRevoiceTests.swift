@@ -199,6 +199,55 @@ struct WholeClipFitTests {
         #expect(try !refused { _ in })
     }
 
+    /// Removing the revoiced clip or one of its segments, or replacing the transcript, drops the record in the same step,
+    /// so the project still validates, saves and plans its render; an unrelated edit keeps it.
+    @Test func removingTheClipOrASegmentDropsTheRecordAndTheProjectStillSaves() throws {
+        var base = try fixture()
+        base.voiceLab.wholeClipRevoices = [record()]
+        let otherClip = ClipRange(id: "clip-other", startWordId: try #require(base.transcript?.words.first?.id),
+                                  endWordId: try #require(base.transcript?.words.first?.id))
+        base.edits.clips.append(otherClip)
+        try VoiceLabProject.validate(base)
+
+        // Removing another clip keeps the record.
+        var unrelated = base
+        try unrelated.applyEditing(.removeClip(id: "clip-other"))
+        #expect(unrelated.voiceLab.wholeClipRevoices == [record()])
+
+        // Removing the revoiced clip drops it; the segments stay as voiced patches.
+        var removed = base
+        try removed.applyEditing(.removeClip(id: "clip-main"))
+        #expect(removed.voiceLab.wholeClipRevoices == nil)
+        #expect(removed.voiceLab.segments.map(\.id) == base.voiceLab.segments.map(\.id))
+        try VoiceLabProject.validate(removed)
+        _ = try JSONProjectStore.encode(removed)
+
+        // Deleting one of its segments drops it too.
+        let deleted = try VoiceLabProject.delete(id: "vl-thanks", in: base)
+        #expect(deleted.voiceLab.wholeClipRevoices == nil)
+        _ = try JSONProjectStore.encode(deleted)
+
+        // New source words drop every record with the segments.
+        var replaced = base
+        replaced.replaceTranscript(try #require(base.transcript))
+        #expect(replaced.voiceLab.wholeClipRevoices == nil)
+        _ = try JSONProjectStore.encode(replaced)
+
+        // Saving cleans a dangling record as it cleans other stale references…
+        var dangling = base
+        dangling.edits.clips.removeAll { $0.id == "clip-main" }
+        let cleaned = try JSONProjectStore.decode(try JSONProjectStore.encode(dangling))
+        #expect(cleaned.voiceLab.wholeClipRevoices == nil)
+        // …but a file that arrives with one is still refused.
+        #expect((try? VoiceLabProject.validate(dangling)) == nil)
+        var object = try #require(JSONSerialization.jsonObject(with: try JSONProjectStore.encode(base)) as? [String: Any])
+        var edits = try #require(object["edits"] as? [String: Any])
+        edits["clips"] = (edits["clips"] as? [[String: Any]])?.filter { $0["id"] as? String != "clip-main" }
+        edits["activeClipId"] = nil
+        object["edits"] = edits
+        #expect((try? JSONProjectStore.decode(try JSONSerialization.data(withJSONObject: object))) == nil)
+    }
+
     @Test func exportsSayVoiceAndLipMovementGeneratedWithAI() throws {
         var project = try fixture()
         let before = try VoiceLabRenderContract.prepare(project, scope: .full, labelPosition: .topRight)

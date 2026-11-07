@@ -129,6 +129,8 @@ extension Project {
             clipControls.removeAll { $0.clipId == id }
             captionTranslations.removeAll { $0.clipId == id }
         }
+        // A whole-clip revoice names its clip: when any command removes that clip, its record goes in the same step.
+        WholeClipRevoice.pruneDangling(&self)
     }
 
     public mutating func replaceTranscript(_ replacement: Transcript) {
@@ -137,6 +139,7 @@ extension Project {
         ai = ProjectAI()
         share = ProjectShare()
         voiceLab.segments = [] // New source words invalidate replacement ranges; retain paid assets.
+        voiceLab.wholeClipRevoices = nil // Their clips and segments are gone with the old words.
         motionCues = []
         music.removeAll { $0.clipId != nil } // Clips are gone; a full-video track stays.
         clipEffects = [] // Effects name the old words and times.
