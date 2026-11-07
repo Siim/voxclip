@@ -99,15 +99,19 @@ public sealed class ClipFinder : IClipFinder
         {
             ct.ThrowIfCancellationRequested();
             var window = windows[index];
-            var instruction = prompts.Instruction(input.Preset, instructions, input.Words[^1].End, window, windows.Count, prompts.WindowClips(input.Preset, windows.Count), index > 0 ? lastEnd : null);
+            var instruction = prompts.Instruction(input.Preset, instructions, input.Words[^1].End, window, windows.Count, prompts.WindowClips(input.Preset, windows.Count), index > 0 ? lastEnd : null, lines);
             var request = prompts.Request(input, window.Lines, instruction, index + 1, windows.Count, plan.OutputReserve);
             if (input.DryRun) { dryRequests.Add(request); continue; }
             progress?.Report(new("Finding clips…", (double)index / windows.Count, index + 1, windows.Count));
             var result = await runner.RunCoreAsync(request, connector, input.Model, ct, reportErrors: false).ConfigureAwait(false);
             model = result.Model;
             if (result.UsedFallback) fallbackModel = result.Model;
-            var current = result.Object["clips"]!.AsArray().OfType<JsonObject>().Select(clip => new RawClip(clip["title"]!.GetValue<string>(), clip["reason"]!.GetValue<string>(),
-                LlmOutput.Number(clip["score"]!), LlmOutput.Number(clip["start_word"]!), LlmOutput.Number(clip["end_word"]!))).ToArray();
+            // Prompt version 2 replies name lines; each maps to its lines' first and last words (AI §11.6).
+            var current = result.Object["clips"]!.AsArray().OfType<JsonObject>().Select(clip =>
+            {
+                var range = ClipPrompts.WordRange(LlmOutput.Number(clip["start_line"]!), LlmOutput.Number(clip["end_line"]!), lines);
+                return new RawClip(clip["title"]!.GetValue<string>(), clip["reason"]!.GetValue<string>(), LlmOutput.Number(clip["score"]!), range.Start, range.End);
+            }).ToArray();
             candidates.AddRange(current);
             foreach (var candidate in current)
             {
@@ -125,7 +129,7 @@ public sealed class ClipFinder : IClipFinder
         var resultModel = answeringModel.EnumerateRunes().Count() is > 0 and <= 128 ? answeringModel : input.Model;
         if (!input.DryRun) LastUsedFallback = fallbackModel is not null;
         return new(Guid.NewGuid().ToString("N"), DateTimeOffset.UtcNow, LlmCatalog.WireId(input.Connector), resultModel, input.Preset, instructions.Length == 0 ? null : instructions, input.Language,
-            Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(prompts.Block(lines)))), clips);
+            Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(prompts.SentenceBlock(entries, lines, lines)))), clips);
     }
 
     private static string FallbackTitle(IEnumerable<ClipWord> entries, int maxLength)

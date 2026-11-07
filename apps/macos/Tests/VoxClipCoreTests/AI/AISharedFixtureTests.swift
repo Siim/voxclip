@@ -321,3 +321,63 @@ private func aiGoldenRequest(_ vector: AIGoldenVector) async throws {
     }
     #expect(try AIGoldenCorpus.canonical(request).aiEncoded() == expected[ai: "request"].aiEncoded(), "\(vector)")
 }
+
+/// ai.md §11.3 (prompt version 2): Find Clips sends sentence lines and the reply names lines. Over every transcript of the
+/// shared fixtures (each format-transcript case, every finalize-clips word list, U100 and W1), a reply naming lines a…b
+/// maps to the same words as the full numbered transcript's range for those lines, and both finalize, snapping included,
+/// to the same word ids; a full-transcript answer one word inside the lines snaps to them too.
+@Test("Sentence lines round-trip every fixture range to the full transcript's word ids", .enabled(if: aiSharedFixturesAvailable, aiSharedFixturesSkipReason))
+func aiSentenceLinesRoundTrip() throws {
+    var transcripts: [(String, JSONValue)] = []
+    for item in try AIGoldenCorpus.document("format-transcript")[ai: "cases"].aiArray { transcripts.append(("format-transcript/\(item[ai: "id"].aiString ?? "?")", item[ai: "input"][ai: "entries"])) }
+    for file in ["finalize-clips", "extensions"] {
+        for item in try AIGoldenCorpus.document(file)[ai: "cases"].aiArray where item[ai: "kind"].aiString == "finalize-clips" {
+            transcripts.append(("\(file)/\(item[ai: "id"].aiString ?? "?")", item[ai: "input"][ai: "words"]))
+        }
+    }
+    transcripts.append(("W1", .object(["generator": .string("W1")])))
+    let builder = ClipRequestBuilder(prompt: try AIClipTestData.prompt())
+    let preset = try AIClipTestData.preset(.custom)
+    let open = ClipPreset(id: preset.id, label: preset.label, instruction: preset.instruction, minSeconds: 0, maxSeconds: 1e9, maxClips: 1, noOverlap: false)
+    var checked = 0
+    for (name, source) in transcripts {
+        let entries = try AIGoldenCorpus.entries(source)
+        let lines = try formatTranscript(entries).lines
+        guard !lines.isEmpty else { continue }
+        let words = AIGoldenCorpus.timed(source, entries: entries)
+        let block = builder.sentenceBlock(words: entries, lines: lines)
+        let expected = lines.enumerated().map { offset, line in
+            "\(offset + 1) \(AIText.formatTime(line.start)) " + entries[line.firstPos...line.lastPos].map(\.text).joined(separator: " ")
+        }
+        #expect(block == "<transcript>\n" + expected.joined(separator: "\n") + "\n</transcript>", "\(name): one numbered sentence line per transcript line")
+        // W1 has 1,334 lines: every start line against a spread of end lines keeps the check quick.
+        let ends = lines.count > 60 ? Array(Set(stride(from: 0, to: lines.count, by: 37)).union([lines.count - 1])).sorted() : Array(lines.indices)
+        for first in lines.indices where lines.count <= 60 || first % 41 == 0 {
+            for last in ends where last >= first {
+                let range = ClipRequestBuilder.wordRange(startLine: Double(first + 1), endLine: Double(last + 1), lines: lines)
+                #expect(range.start == Double(lines[first].firstIndex) && range.end == Double(lines[last].lastIndex), "\(name): lines \(first + 1)…\(last + 1)")
+                guard lines[last].lastIndex < words.count else { continue }
+                let compact = ClipCandidate(title: "c", reason: "r", score: 7, startWord: range.start, endWord: range.end)
+                let inside = ClipCandidate(title: "c", reason: "r", score: 7,
+                    startWord: Double(lines[first].firstIndex + (lines[first].lastIndex > lines[first].firstIndex ? 1 : 0)),
+                    endWord: Double(lines[last].lastIndex - (lines[last].lastIndex > lines[last].firstIndex && last > first ? 1 : 0)))
+                for snap in [true, false] {
+                    let options = FinalizeClipsOptions(snap: snap)
+                    let viaLines = try finalizeClips([compact], words: words, preset: open, lines: lines, options: options)
+                    let viaWords = try finalizeClips([ClipCandidate(title: "c", reason: "r", score: 7, startWord: Double(lines[first].firstIndex), endWord: Double(lines[last].lastIndex))],
+                                                     words: words, preset: open, lines: lines, options: options)
+                    #expect(viaLines == viaWords, "\(name): lines \(first + 1)…\(last + 1) snap \(snap)")
+                    if snap, lines[first].lastIndex - lines[first].firstIndex == lines[first].lastPos - lines[first].firstPos {
+                        #expect(try finalizeClips([inside], words: words, preset: open, lines: lines, options: options) == viaLines, "\(name): snapped full answer for lines \(first + 1)…\(last + 1)")
+                    }
+                }
+                checked += 1
+            }
+        }
+    }
+    #expect(checked > 400, "\(checked) ranges checked")
+    for (start, end) in [(0.0, 1.0), (1.0, 0.0), (2.0, 1.0), (1.5, 2.0), (1.0, .infinity), (1.0, 1e9)] {
+        let range = ClipRequestBuilder.wordRange(startLine: start, endLine: end, lines: try formatTranscript(AIGoldenCorpus.entries(.object(["generator": .string("U100")]))).lines)
+        #expect(range.start == -1 && range.end == -1, "lines \(start)…\(end) name no lines")
+    }
+}

@@ -6,11 +6,14 @@ import VoxClipMedia
 
 actor RegressionClipConnector: LLMConnector {
     nonisolated let id: ConnectorID = .ollama
+    /// Words 10–85 as the lines a reply names (prompt version 2).
+    let lines: ClosedRange<Int>
+    init(words: [TimedWord]) { lines = ClipRequestBuilder.lineRange(of: 10...85, words: words) }
     func status() -> ConnectorStatus { .ready }
     func models(refresh: Bool) -> [LLMModel] { [LLMModel(id: "fixture-local", name: "Fixture", contextTokens: 128000, source: .curated)] }
     func contextTokens(model: String) -> Int? { 128000 }
     func send(_ request: LLMRequest, model: String) -> RawCompletion {
-        RawCompletion(text: "{\"clips\":[{\"title\":\"A clear point\",\"reason\":\"Self-contained fixture section\",\"score\":8,\"start_word\":10,\"end_word\":85}]}",
+        RawCompletion(text: "{\"clips\":[{\"title\":\"A clear point\",\"reason\":\"Self-contained fixture section\",\"score\":8,\"start_line\":\(lines.lowerBound),\"end_line\":\(lines.upperBound)}]}",
             model: model, stop: .complete)
     }
 }
@@ -78,7 +81,7 @@ actor RegressionClipConnector: LLMConnector {
             check("other clip words draw in a synthetic caption frame", frame.rgba.enumerated().contains { $0.offset % 4 == 3 && $0.element > 0 })
         } else { check("other clip words draw in a synthetic caption frame", false) }
         model.apply(.setActiveClip(clipId: nil), name: "Show full take")
-        app.connectorOverride = { _ in RegressionClipConnector() }
+        app.connectorOverride = { [words = model.words] _ in RegressionClipConnector(words: words) }
         app.set("llm.connector", .string("ollama"))
         app.set("llm.model.ollama", .string("fixture-local"))
         app.set("llm.clips.snapToLines", .bool(false))

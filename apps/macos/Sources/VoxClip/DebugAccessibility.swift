@@ -81,7 +81,7 @@ import VoxClipMedia
         app.settings.values["llm.connector"] = .string("ollama")
         app.settings.values["llm.model.ollama"] = .string("fixture-local")
         app.settings.values["llm.clips.snapToLines"] = .bool(false)
-        app.connectorOverride = { _ in FixtureClipConnector(spans: [(20, 70), (95, 145), (170, 220)]) }
+        app.connectorOverride = { [words = editor.words] _ in FixtureClipConnector(spans: [(20, 70), (95, 145), (170, 220)], words: words) }
         editor.findClips(); await editor.findTask?.value
         check("Find Clips announces found exactly once through the real action", editor.announcements.filter { $0.hasPrefix("Found ") }.count == 1 && editor.lastAnnouncement == "Found 3 clips.")
         for contrast in [false, true] {

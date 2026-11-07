@@ -13,8 +13,9 @@ namespace VoxClip.Core.Tests.Tracks.WinAi;
 public sealed class PipelineTests
 {
     private static ClipFinderRequest Input(int count = 100) => new(Words(count), new Dictionary<string, string>(), new HashSet<string>(), ClipPreset.Best, "  Funny bits  ", "en", ConnectorId.OpenAI, "gpt-5.6-terra", Snap: false);
-    private static RawCompletion Clips(string model, int start = 0, int end = 20, string title = "Clip") => new(null,
-        new JsonObject { ["clips"] = new JsonArray(new JsonObject { ["title"] = title, ["reason"] = "A complete thought.", ["score"] = 9, ["start_word"] = start, ["end_word"] = end }) }, model, new StopKind.Complete(), null, null);
+    // Prompt version 2 replies name lines: Words(count) has 41 words a line, so line 1 is w0–w40.
+    private static RawCompletion Clips(string model, int start = 1, int end = 1, string title = "Clip") => new(null,
+        new JsonObject { ["clips"] = new JsonArray(new JsonObject { ["title"] = title, ["reason"] = "A complete thought.", ["score"] = 9, ["start_line"] = start, ["end_line"] = end }) }, model, new StopKind.Complete(), null, null);
 
     [Fact]
     public async Task EarlierFallbackIsRetainedWhenLaterWindowsUseThePrimary()
@@ -68,10 +69,15 @@ public sealed class PipelineTests
         Assert.Equal("Funny bits", result.Instructions);
         Assert.Equal("openai", result.Provider);
         Assert.Equal("w0", Assert.Single(result.Clips).StartWordId);
-        Assert.Equal("w20", result.Clips[0].EndWordId);
+        Assert.Equal("w40", result.Clips[0].EndWordId);
         Assert.StartsWith("w0 w1 corrected", result.Clips[0].Title, StringComparison.Ordinal);
         var prompts = new ClipPrompts(catalog);
-        var block = prompts.Block(ClipText.Lines(ClipText.Entries(input.Words, corrections)));
+        var entries = ClipText.Entries(input.Words, corrections);
+        var lines = ClipText.Lines(entries);
+        var block = prompts.SentenceBlock(entries, lines, lines);
+        Assert.StartsWith("<transcript>\n1 0:00 w0 w1 corrected w3 ", block, StringComparison.Ordinal);
+        Assert.Contains("\n2 0:41 w41 ", block, StringComparison.Ordinal);
+        Assert.DoesNotContain("[0-40]", block, StringComparison.Ordinal);
         Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(block))), result.InputSha256);
         Assert.Equal("corrected", Assert.Single(corrections).Value);
         Assert.Equal("w3", Assert.Single(cuts));
@@ -88,8 +94,9 @@ public sealed class PipelineTests
         Assert.Equal(0, connector.ContextCalls);
         Assert.Empty(connector.Requests);
         Assert.Equal(2, finder.DryRunRequests.Count);
-        Assert.Contains("[0-40]", finder.DryRunRequests[0].CachedBlock!, StringComparison.Ordinal);
-        Assert.DoesNotContain("[0-40]", finder.DryRunRequests[1].CachedBlock!, StringComparison.Ordinal);
+        Assert.StartsWith("<transcript>\n1 0:00 w0 w1 ", finder.DryRunRequests[0].CachedBlock!, StringComparison.Ordinal);
+        Assert.DoesNotContain("\n1 0:00 ", finder.DryRunRequests[1].CachedBlock!, StringComparison.Ordinal);
+        Assert.DoesNotContain("[0-40]", finder.DryRunRequests[0].CachedBlock!, StringComparison.Ordinal);
     }
 
     [Fact]

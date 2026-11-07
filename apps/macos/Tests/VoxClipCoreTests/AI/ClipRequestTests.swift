@@ -7,6 +7,10 @@ import Testing
     let builder = ClipRequestBuilder(prompt: prompt)
     let raw = try FixtureLoader.decode(JSONValue.self, at: "prompts/clip-finder.json")
     let words = AIClipTestData.f1()
+    // Prompt version 2 (ai.md §11.3): F1's nine lines, numbered, without word ranges or pause lines.
+    let f1Sentences = ["1 0:00 So, today I want to talk.", "2 0:03 Um why cut by words?", "3 0:05 \"It works.\"", "4 0:07 Fast and clean", "5 1:10 Tere!",
+                       "6 1:10 Mis toimub?", "7 1:11 「本当 です。」 " + (21...59).map { "w\($0)" }.joined(separator: " "),
+                       "8 1:23 " + (60...65).map { "w\($0)" }.joined(separator: " "), "9 3:20 end."].joined(separator: "\n")
     for preset in prompt.presets {
         for input in ["", "  Funny bits  "] {
             let window = try #require(builder.windows(words:words,preset:preset,instruction:input,contextTokens:128000).first)
@@ -15,7 +19,7 @@ import Testing
             if !preset.instruction.isEmpty { expected.append(preset.instruction) }
             if !input.isEmpty { expected.append((preset.instruction.isEmpty ? "" : "Also: ") + "Funny bits") }
             #expect(request.system == raw[ai:"system"].aiString)
-            #expect(request.cachedBlock == "<transcript>\n" + AIClipTestData.f1Rendered + "\n</transcript>")
+            #expect(request.cachedBlock == "<transcript>\n" + f1Sentences + "\n</transcript>")
             #expect(request.instruction == expected.joined(separator:"\n"))
             #expect(request.schema == raw[ai:"output"][ai:"schema"])
             #expect(request.maxOutputTokens == raw[ai:"generation"][ai:"maxOutputTokens"].aiInt)
@@ -40,19 +44,19 @@ import Testing
     let request = builder.request(words:words,window:windows[1],preset:preset,windowIndex:1,windowCount:3,timeout:.seconds(180))
     #expect(request.instruction.contains("The recording is 99:59 long."))
     #expect(request.instruction.contains("Return at most 3 clips."))
-    #expect(request.cachedBlock?.contains("[7800-7814]") == true)
+    #expect(request.cachedBlock?.contains("\n521 39:00 w7800 w7801 ") == true && request.cachedBlock?.contains("[7800-7814]") == false)
     let small = try builder.windows(words:words,preset:preset,contextTokens:8192,maxOutputTokensCap:1500)
     #expect(small.count > 3)
     #expect(small.allSatisfy { $0.estimatedTokens <= $0.tokenBudget })
 }
 
-@Test("Topics continuation uses covered absolute word numbers") func aiTopicContinuation() throws {
+@Test("Topics continuation names the line that holds the last covered word") func aiTopicContinuation() throws {
     let builder = ClipRequestBuilder(prompt:try AIClipTestData.prompt())
     let words = AIClipTestData.f1()
     let preset = try AIClipTestData.preset(.topics)
     let window = try #require(builder.windows(words:words,preset:preset,contextTokens:128000).first)
     let request = builder.request(words:words,window:window,preset:preset,windowIndex:1,windowCount:2,lastTopicEnd:49,timeout:.seconds(180))
-    #expect(request.instruction.hasSuffix("Topics up to word 49 are already covered. Start at word 50 or later."))
+    #expect(request.instruction.hasSuffix("Topics up to line 7 are already covered. Start at line 8 or later."))
 }
 
 @Test("Clip entries include cuts and events with bounded corrections") func aiClipWordsCorrections() throws {

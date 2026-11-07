@@ -65,6 +65,25 @@ export function formatTranscript(entries) {
 export const renderLines = lines => lines.flatMap(line => line.pauseAfter === null ? [line.text] : [line.text, line.pauseAfter]).join('\n')
 export const cachedTranscript = (lines, prompt) => prompt.transcriptBlock.prefix + renderLines(lines) + prompt.transcriptBlock.suffix
 
+// ai.md §11.3: the clip finder's voxclip-sentence-lines-v1 block. The same lines as formatTranscript, numbered from 1 over
+// the whole transcript, each with its start time and words; no word ranges and no pause lines. `lines` may be a window.
+export function sentenceLines(entries, lines, prompt) {
+  const all = formatTranscript(entries).lines
+  return lines.map(line => {
+    const number = all.findIndex(candidate => candidate.firstIndex === line.firstIndex) + 1
+    assert(number > 0, 'a window line must be a transcript line')
+    const own = all[number - 1]
+    const text = entries.slice(own.firstPos, own.lastPos + 1).map(entry => entry.text).join(' ')
+    return prompt.transcriptBlock.line.replace(/\{(line|time|text)\}/g, (match, name) => name === 'line' ? String(number) : name === 'time' ? formatTime(own.start) : text)
+  })
+}
+export const sentenceTranscript = (entries, lines, prompt) => prompt.transcriptBlock.prefix + sentenceLines(entries, lines, prompt).join('\n') + prompt.transcriptBlock.suffix
+// The 1-based number of the line holding word `index` (the last line when it is past the end).
+export function lineNumberOf(lines, index) {
+  const found = lines.findIndex(line => line.lastIndex >= index)
+  return found < 0 ? lines.length : found + 1
+}
+
 export function prepareEntries(items, { feature = 'clipFinder', cutWordIds = [], scope = null, maxWordTextLength = 100 } = {}) {
   const cuts = new Set(cutWordIds)
   return items.flatMap((item, index) => {

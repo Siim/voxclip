@@ -35,7 +35,7 @@ extension DebugRewriteSmoke {
 }
 
 extension DebugRewriteSmoke {
-    /// Find Clips' reply for `words`: up to four clips the Quotes preset keeps (5–15 s), each from a word on to a sentence's
+    /// Find Clips' reply for `words`, as the lines that hold each span: up to four clips the Quotes preset keeps (5–15 s), each from a word on to a sentence's
     /// end 6–14 s later, one after another, scored 6, 9, 7, 5.
     static func claudeModeFindReply(words: [TimedWord]) throws -> String {
         var clips: [[String: Any]] = []
@@ -46,7 +46,9 @@ extension DebugRewriteSmoke {
             while last + 1 < words.count, words[last].end - words[first].start < 6 { last += 1 }
             while last + 1 < words.count, !words[last].text.hasSuffix("."), words[last + 1].end - words[first].start <= 14 { last += 1 }
             guard words[last].end - words[first].start >= 5 else { break }
-            let clip: [String: Any] = ["title": "Moment \(clips.count + 1)", "start_word": first, "end_word": last, "reason": "Smoke", "score": scores[clips.count]]
+            let lines = ClipRequestBuilder.lineRange(of: first...last, words: words)
+            let clip: [String: Any] = ["title": "Moment \(clips.count + 1)", "start_line": lines.lowerBound, "end_line": lines.upperBound, "reason": "Smoke",
+                                       "score": scores[clips.count]]
             clips.append(clip)
             first = last + 1
         }

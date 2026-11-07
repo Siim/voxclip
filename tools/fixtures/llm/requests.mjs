@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { cachedTranscript, estimateTokens, formatTime, instructionsText } from './reference.mjs'
+import { cachedTranscript, estimateTokens, formatTime, formatTranscript, instructionsText, lineNumberOf, sentenceTranscript } from './reference.mjs'
 
 export const sha256 = text => createHash('sha256').update(text, 'utf8').digest('hex')
 const interpolate = (template, values) => template.replace(/\{([A-Za-z]+)\}/g, (match, name) => {
@@ -17,7 +17,8 @@ export function clipInstruction({ words, preset, instructions = '', window = nul
     const values = { windowStart: formatTime(window.start), windowEnd: formatTime(window.end), maxClips: window.maxClips }
     parts.push(...prompt.request.windowLines.map(template => interpolate(template, values)))
     if (preset.id === 'topics' && window.index > 0 && window.lastEnd !== null && window.lastEnd !== undefined) {
-      parts.push(interpolate(prompt.request.topicsContinuationLine, { lastEnd: window.lastEnd, nextWord: window.lastEnd + 1 }))
+      const lastLine = lineNumberOf(formatTranscript(words).lines, window.lastEnd)
+      parts.push(interpolate(prompt.request.topicsContinuationLine, { lastLine, nextLine: lastLine + 1 }))
     }
   }
   return parts.join('\n')
@@ -42,7 +43,7 @@ export function canonicalRequest({ feature, words, lines, choice, instructions =
     instruction = parts.join('\n')
   }
   return {
-    feature, system: prompt.system, cachedBlock: cachedTranscript(lines, prompt), instruction,
+    feature, system: prompt.system, cachedBlock: feature === 'clipFinder' ? sentenceTranscript(words, lines, prompt) : cachedTranscript(lines, prompt), instruction,
     schemaName: prompt.output.name, schema: prompt.output.schema,
     maxOutputTokens: prompt.generation.maxOutputTokens, effort: prompt.generation.effort, language
   }
@@ -63,7 +64,7 @@ export function windowBudget({ words, lines, preset, context, maxOutputTokensCap
       windowStart: longest(lines.map(line => formatTime(line.start))),
       windowEnd: longest(lines.map(line => formatTime(line.end))), maxClips: 99
     })),
-    ...(preset.id === 'topics' ? [interpolate(prompt.request.topicsContinuationLine, { lastEnd: words.length - 1, nextWord: words.length })] : [])
+    ...(preset.id === 'topics' ? [interpolate(prompt.request.topicsContinuationLine, { lastLine: lines.length, nextLine: lines.length + 1 })] : [])
   ].join('\n')
   const outputReserve = reserveFor(prompt, context, maxOutputTokensCap, localServer)
   const overhead = estimateTokens(prompt.system) + estimateTokens(longestInstruction) + estimateTokens(JSON.stringify(prompt.output.schema)) + 64

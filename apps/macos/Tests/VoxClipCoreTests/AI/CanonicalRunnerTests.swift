@@ -11,10 +11,10 @@ func aiCanonicalExtraction(text:String) throws {
 
 @Test("Canonical validation drops malformed items but retains fractional numbers") func aiCanonicalItems() throws {
     let schema = try AIClipTestData.prompt().document[ai:"output"][ai:"schema"]
-    let text = #"{"clips":[{"title":"ok","reason":"r","score":7,"start_word":5.5,"end_word":30},{"title":"bad","score":7},{"title":true,"reason":"r","score":7,"start_word":0,"end_word":20}]}"#
+    let text = #"{"clips":[{"title":"ok","reason":"r","score":7,"start_line":5.5,"end_line":30},{"title":"bad","score":7},{"title":true,"reason":"r","score":7,"start_line":0,"end_line":20}]}"#
     let result = try CanonicalResponseParser.validate(RawCompletion(text:text,model:"test",stop:.complete),schema:schema)
     #expect(result.droppedItems == 2)
-    #expect(result.object[ai:"clips"].aiArray.first?[ai:"start_word"].aiDouble == 5.5)
+    #expect(result.object[ai:"clips"].aiArray.first?[ai:"start_line"].aiDouble == 5.5)
     #expect(throws:LLMError.truncated) { try CanonicalResponseParser.parse(RawCompletion(text:"{}",model:"test",stop:.truncated),schema:schema) }
     #expect(throws:LLMError.refused(category:"safety")) { try CanonicalResponseParser.parse(RawCompletion(text:"{}",model:"test",stop:.refused(category:"safety")),schema:schema) }
 }
