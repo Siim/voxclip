@@ -609,16 +609,10 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
     internal static float[] GuardSpeech(VoiceLabTakeInput input)
     {
         var rate = input.SourceSampleRate;
-        var selection = VoiceLabGuardSpeech.Select(input.Items, input.Window.Start, input.Window.End, rate, input.Source.TotalFrames);
-        float[] speech;
-        if (selection.Ranges.Count == 0)
-        {
-            var center = (input.Window.StartSample + input.Window.EndSample) / 2;
-            var start = Math.Max(0, center - 5L * rate);
-            var end = Math.Min(input.Source.TotalFrames, start + 10L * rate);
-            speech = (input.Source.Samples(start, end) ?? throw new VoiceLabException(VoiceLabErrorKind.InvalidInput)).ToArray();
-        }
-        else speech = selection.Samples(input.Source) ?? throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
+        // The same selection an accepted take's baseline reads (VoiceAnchorBaseline), with its 10 s fallback around the window.
+        var selection = VoiceLabGuardSpeech.ForTake(input.Items, input.Window.Start, input.Window.End, input.Window.StartSample, input.Window.EndSample,
+            rate, input.Source.TotalFrames);
+        var speech = selection.Samples(input.Source) ?? throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
         return VoiceConsentAudio.Resample(speech, rate, 16000);
     }
 }

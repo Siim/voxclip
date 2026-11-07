@@ -32,7 +32,7 @@ public sealed class VoiceLabDisclosureOverlay : IDisposable
         var size = height * .024f;
         using var font = new SKFont(typeface, size);
         using var textPaint = new SKPaint { Color = SKColors.White, IsAntialias = true };
-        var text = "AI MODIFIED";
+        var text = WholeClipRevoice.ChipText(plan.Kinds);
         var textWidth = text.Sum(ch => font.MeasureText(ch.ToString(), textPaint)) + (text.Length - 1) * size * .06f;
         var metrics = font.Metrics;
         var horizontal = size * .6f; var vertical = size * .35f;

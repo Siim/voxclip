@@ -204,7 +204,9 @@ public static class VoiceLabRenderContract
             var kind = project.VoiceLab.Segments.First(s => s.Id == item.SegmentId).Kind;
             if (kind == VoiceLabSegmentKind.Recorded) return new[] { "lipsync" };
             var wire = VoiceLabRecordedTake.WireKind(kind);
-            return item.Recipe.Video.Mode == VoiceLabVideoMode.Lipsync ? new[] { wire, "lipsync" } : new[] { wire };
+            // A whole-clip revoice (ADR-R46): the voice and the lip movement are both generated.
+            string[] revoice = WholeClipRevoice.RecordHolding(item.SegmentId, project) is not null ? [WholeClipRevoice.DisclosureKind] : [];
+            return (item.Recipe.Video.Mode == VoiceLabVideoMode.Lipsync ? new[] { wire, "lipsync" } : new[] { wire }).Concat(revoice).ToArray();
         }).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
         var aiSeconds = selected.Sum(item => item.Piece.OutputEndSample-item.Piece.OutputStartSample) / plan.SampleRate;
         var voiceSeconds = selected.Where(item => project.VoiceLab.Segments.First(s => s.Id == item.SegmentId).Kind == VoiceLabSegmentKind.VoiceChanger)
@@ -231,6 +233,9 @@ public static class VoiceLabRenderContract
         }
         var et = string.Equals(project.Transcript?.Language?.Split('-')[0], "et", StringComparison.OrdinalIgnoreCase);
         var lines = new List<string>();
+        // A whole-clip revoice says it once, in place of the per-phrase lines (ADR-R46).
+        if (kinds.Contains(WholeClipRevoice.DisclosureKind))
+            return new(required, kinds, aiSeconds, persistent, intervals, .15, position, et ? WholeClipRevoice.DisclosureLineEstonian : WholeClipRevoice.DisclosureLine);
         if (kinds.Contains("tts")) lines.Add(et ? "Mõned sõnad selles videos on loetud minu enda hääle tehisintellekti-koopiaga." : "Some words in this video were re-voiced with an AI copy of my own voice.");
         if (kinds.Contains("voiceChanger"))
         {

@@ -113,9 +113,11 @@ public static class VoiceLabProject
                 samples.All(sample => sample is { Id.Length: > 0 } && double.IsFinite(sample.Ratio) && sample.Ratio > 0)), VoiceLabProjectErrorCode.InvalidSegment);
         if (project.SchemaVersion == 1)
         {
-            Require(project.VoiceLab.Segments.Count == 0 && project.VoiceLab.Assets is null && project.VoiceLab.CleanAudio is null && project.VoiceLab.Voices is null && project.VoiceLab.VideoAssets is null, VoiceLabProjectErrorCode.InvalidSegment);
+            Require(project.VoiceLab.Segments.Count == 0 && project.VoiceLab.Assets is null && project.VoiceLab.CleanAudio is null && project.VoiceLab.Voices is null && project.VoiceLab.VideoAssets is null &&
+                project.VoiceLab.WholeClipRevoices is null, VoiceLabProjectErrorCode.InvalidSegment);
             return;
         }
+        WholeClipRevoice.Validate(project);
         Require(project.SchemaVersion is 2 or 3 or 4 && project.VoiceLab.Assets is not null, VoiceLabProjectErrorCode.InvalidSegment);
         if (project.SchemaVersion == 2) Require(project.VoiceLab.CleanAudio is null && project.VoiceLab.Voices is null && project.VoiceLab.VideoAssets is null &&
             project.VoiceLab.Segments.All(segment => segment.Scope is null && segment.GroupId is null && segment.Provenance.Region is null && segment.Candidates.All(candidate => candidate.Recipe is null)), VoiceLabProjectErrorCode.InvalidSegment);

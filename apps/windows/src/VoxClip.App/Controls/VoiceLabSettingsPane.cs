@@ -515,8 +515,11 @@ internal sealed class VoiceLabSettingsPane : UserControl
             panel.Children.Add(noteRow);
             AnnounceLine(noteText, note, "voice-per-video-note", announceFirst: initialLoadComplete);
         }
-        if (session.PerVideoBook.Measurements.Count > 0)
+        // "Did matching help": each video's scores and, beside them, the anchor's from its earlier takes. Shown once a video has its own
+        // voice or a take was measured; showing it starts the anchor's baseline in the background (voice-lab §6.13 item 9).
+        if (VoiceLabSession.ShowsComparison(session.PerVideoBook))
         {
+            _ = session.MeasureAnchorBaselineAsync();
             panel.Children.Add(Ui.Text("How close takes sound to your speech beside them (1.00 is the same voice):", "HelperText"));
             foreach (var measurement in session.PerVideoBook.Measurements)
             {
@@ -526,6 +529,13 @@ internal sealed class VoiceLabSettingsPane : UserControl
                 AutomationProperties.SetAutomationId(text, "voice-per-video-match-" + key);
                 panel.Children.Add(text);
                 AnnounceLine(text, line, "voice-per-video-match-" + measurement.ContentKey, announceFirst: initialLoadComplete);
+            }
+            if (session.AnchorBaselineLine is { } baseline)
+            {
+                var text = Ui.Text(baseline, "HelperText");
+                AutomationProperties.SetAutomationId(text, "voice-per-video-baseline");
+                panel.Children.Add(text);
+                AnnounceLine(text, baseline, "voice-per-video-baseline", announceFirst: initialLoadComplete);
             }
         }
         AddCard(voices, panel);

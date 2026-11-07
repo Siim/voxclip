@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Windows, projects with a whole clip revoiced on Mac open, save and export with “Voice and lip movement generated with AI.”, a preview that can't draw says what failed with Reload Preview instead of going black (captions and titles are left out of the preview, not the export), and Settings › Voices can compare a video's voice with your earlier takes once the Windows speaker check is verified.
 - On Mac, a heavily rewritten clip can be revoiced whole: Rewrite asks once per clip how it should sound, and the whole clip is said again in your voice, fitted to its length and lip synced (lipsync-2, with a priced sync-3 upgrade), with no seams; Cancel keeps your clip, a paid step is never paid twice, exports say “Voice and lip movement generated with AI.”, and ✦ Claude does it all switches to it by itself when the price fits its cap.
 - On Mac, a preview that can't draw no longer leaves a silent black viewer: the stage says what failed and offers Reload Preview, and a caption or title that can't be drawn is left out of the preview instead of blanking the video (export still stops); a video layer that holds a ready preview without showing it is re-attached once and logged.
 - On Mac, Settings › Voices now compares a video's own voice with your consent voice's earlier takes already in your projects ("siim · 0.54 across 8 earlier takes"), measured on this Mac in the background from up to 12 takes, so the first matching take has something to compare with.

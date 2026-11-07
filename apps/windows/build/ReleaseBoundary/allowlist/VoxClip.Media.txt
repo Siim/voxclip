@@ -1091,7 +1091,7 @@ member VoxClip.Media.Pipeline.EffectFrames :: field private overlays
 member VoxClip.Media.Pipeline.EffectFrames :: field private sharedRoot
 member VoxClip.Media.Pipeline.EffectFrames :: method internal .ctor(VoxClip.Core.Domain.Effects.ClipEffectsRenderInput,string)
 member VoxClip.Media.Pipeline.EffectFrames :: method internal Censor(VoxClip.Core.Domain.Captions.PixelBuffer,SkiaSharp.SKRectI,bool)
-member VoxClip.Media.Pipeline.EffectFrames :: method internal DrawFrame(VoxClip.Core.Domain.Captions.PixelBuffer,double,double,System.Func`2<double,double>,System.Threading.CancellationToken)
+member VoxClip.Media.Pipeline.EffectFrames :: method internal DrawFrame(VoxClip.Core.Domain.Captions.PixelBuffer,double,double,System.Func`2<double,double>,System.Threading.CancellationToken,System.Action)
 member VoxClip.Media.Pipeline.EffectFrames :: method internal DrawPicture(VoxClip.Core.Domain.Captions.PixelBuffer,int,int,VoxClip.Core.Domain.Shared.RectD,double,VoxClip.Core.Domain.Clips.ProjectClipControls,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.EffectFrames :: method internal DrawPointer(SkiaSharp.SKCanvas,string,SkiaSharp.SKRectI,int,int)
 member VoxClip.Media.Pipeline.EffectFrames :: method internal DrawProgress(SkiaSharp.SKCanvas,double,string,int,int)
@@ -1285,8 +1285,10 @@ member VoxClip.Media.Pipeline.FrameComposer :: field private rasterizer
 member VoxClip.Media.Pipeline.FrameComposer :: field private sharedRoot
 member VoxClip.Media.Pipeline.FrameComposer :: field private state
 member VoxClip.Media.Pipeline.FrameComposer :: method internal .ctor(VoxClip.Core.Domain.Captions.ICaptionRasterizer,string,System.Func`2<VoxClip.Core.Domain.ContextDemo.ContextDemoRenderLayers,VoxClip.Media.Pipeline.IContextDemoFrames>)
+member VoxClip.Media.Pipeline.FrameComposer :: method internal Compose(VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Shared.ComposeSnapshot,double,bool,VoxClip.Media.Pipeline.PreviewFrameFailures,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.FrameComposer :: method internal DrawContextDemo(VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Shared.ComposeSnapshot,double,bool,System.Threading.CancellationToken)
-member VoxClip.Media.Pipeline.FrameComposer :: method internal FinishClipFrame(VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Shared.ComposeSnapshot,double,int,int,VoxClip.Core.Domain.Shared.RectD,System.Threading.CancellationToken,bool)
+member VoxClip.Media.Pipeline.FrameComposer :: method internal DrawOverlays(VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Shared.ComposeSnapshot,double,bool,VoxClip.Media.Pipeline.PreviewFrameFailures,System.Threading.CancellationToken)
+member VoxClip.Media.Pipeline.FrameComposer :: method internal FinishClipFrame(VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Shared.ComposeSnapshot,double,int,int,VoxClip.Core.Domain.Shared.RectD,System.Threading.CancellationToken,bool,VoxClip.Media.Pipeline.PreviewFrameFailures)
 member VoxClip.Media.Pipeline.FrameComposer :: method internal PrepareSnapshot(VoxClip.Core.Domain.Shared.ComposeSnapshot)
 member VoxClip.Media.Pipeline.FrameComposer :: method internal ReleaseSnapshot(VoxClip.Core.Domain.Shared.ComposeSnapshot)
 member VoxClip.Media.Pipeline.FrameComposer :: method internal ReleaseThreadResources()
@@ -1331,6 +1333,7 @@ member VoxClip.Media.Pipeline.OutputSafety+FileInformation :: field internal Siz
 member VoxClip.Media.Pipeline.OutputSafety+FileInformation :: field internal Volume
 member VoxClip.Media.Pipeline.OutputSafety+FileInformation :: field internal Written
 member VoxClip.Media.Pipeline.PreviewEngine :: field private AudioStatusChanged
+member VoxClip.Media.Pipeline.PreviewEngine :: field private CompositorFailed
 member VoxClip.Media.Pipeline.PreviewEngine :: field private PlaybackFaulted
 member VoxClip.Media.Pipeline.PreviewEngine :: field private audio
 member VoxClip.Media.Pipeline.PreviewEngine :: field private audioCancellation
@@ -1345,6 +1348,7 @@ member VoxClip.Media.Pipeline.PreviewEngine :: field private current
 member VoxClip.Media.Pipeline.PreviewEngine :: field private currentPart
 member VoxClip.Media.Pipeline.PreviewEngine :: field private cursor
 member VoxClip.Media.Pipeline.PreviewEngine :: field private disposed
+member VoxClip.Media.Pipeline.PreviewEngine :: field private failures
 member VoxClip.Media.Pipeline.PreviewEngine :: field private framePool
 member VoxClip.Media.Pipeline.PreviewEngine :: field private frames
 member VoxClip.Media.Pipeline.PreviewEngine :: field private generation
@@ -1373,10 +1377,12 @@ member VoxClip.Media.Pipeline.PreviewEngine :: method internal .ctor(VoxClip.Cor
 member VoxClip.Media.Pipeline.PreviewEngine :: method private CapPreview(VoxClip.Core.Domain.Shared.ComposeSnapshot)
 member VoxClip.Media.Pipeline.PreviewEngine :: method private ClearPrefetch()
 member VoxClip.Media.Pipeline.PreviewEngine :: method private Clock()
+member VoxClip.Media.Pipeline.PreviewEngine :: method private Compose(VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Shared.ComposeSnapshot,double,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.PreviewEngine :: method private CreateFrames()
 member VoxClip.Media.Pipeline.PreviewEngine :: method private CreateLeases()
 member VoxClip.Media.Pipeline.PreviewEngine :: method private CreateWasapi()
 member VoxClip.Media.Pipeline.PreviewEngine :: method private Invoke(System.Action,System.Threading.CancellationToken)
+member VoxClip.Media.Pipeline.PreviewEngine :: method private NewFailures()
 member VoxClip.Media.Pipeline.PreviewEngine :: method private OpenAudio(double,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.PreviewEngine :: method private Own()
 member VoxClip.Media.Pipeline.PreviewEngine :: method private Pause()
@@ -1405,10 +1411,18 @@ member VoxClip.Media.Pipeline.PreviewEngine :: method public SeekAsync(double,bo
 member VoxClip.Media.Pipeline.PreviewEngine :: method public UpdateCaptionsAsync(VoxClip.Core.Domain.Captions.CaptionTrack,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.PreviewEngine :: method public UpdateSnapshotAsync(VoxClip.Core.Domain.Shared.ComposeSnapshot,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.PreviewEngine :: method public add_AudioStatusChanged(System.EventHandler`1<VoxClip.Core.Services.Media.PreviewAudioStatus>)
+member VoxClip.Media.Pipeline.PreviewEngine :: method public add_CompositorFailed(System.EventHandler`1<VoxClip.Core.Services.Media.PreviewFailureReason>)
 member VoxClip.Media.Pipeline.PreviewEngine :: method public add_PlaybackFaulted(System.EventHandler`1<System.Exception>)
 member VoxClip.Media.Pipeline.PreviewEngine :: method public get_Position()
 member VoxClip.Media.Pipeline.PreviewEngine :: method public remove_AudioStatusChanged(System.EventHandler`1<VoxClip.Core.Services.Media.PreviewAudioStatus>)
+member VoxClip.Media.Pipeline.PreviewEngine :: method public remove_CompositorFailed(System.EventHandler`1<VoxClip.Core.Services.Media.PreviewFailureReason>)
 member VoxClip.Media.Pipeline.PreviewEngine :: method public remove_PlaybackFaulted(System.EventHandler`1<System.Exception>)
+member VoxClip.Media.Pipeline.PreviewFrameFailures :: field private gate
+member VoxClip.Media.Pipeline.PreviewFrameFailures :: field private reported
+member VoxClip.Media.Pipeline.PreviewFrameFailures :: method internal Failed(VoxClip.Media.Pipeline.PreviewFrameFailures,bool,VoxClip.Core.Services.Media.PreviewFailureReason,System.Exception)
+member VoxClip.Media.Pipeline.PreviewFrameFailures :: method public .ctor(System.Action`1<VoxClip.Core.Services.Media.PreviewFailureReason>)
+member VoxClip.Media.Pipeline.PreviewFrameFailures :: method public Report(VoxClip.Core.Services.Media.PreviewFailureReason)
+member VoxClip.Media.Pipeline.PreviewFrameFailures :: method public get_Reasons()
 member VoxClip.Media.Pipeline.PreviewFrameLease :: field private frame
 member VoxClip.Media.Pipeline.PreviewFrameLease :: field private release
 member VoxClip.Media.Pipeline.PreviewFrameLease :: method internal .ctor(VoxClip.Core.Domain.Shared.PreviewFrame,System.Action)
@@ -1576,6 +1590,57 @@ member VoxClip.Media.VoiceLab.PreparedVoiceLabAsset :: method public get_Stretch
 member VoxClip.Media.VoiceLab.PreparedVoiceLabAsset :: method public get_TiltDbPerOctave()
 member VoxClip.Media.VoiceLab.PreparedVoiceLabAsset :: method public get_TrimEndFrame()
 member VoxClip.Media.VoiceLab.PreparedVoiceLabAsset :: method public get_TrimStartFrame()
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline :: method internal MeasureAsync(System.Collections.Generic.IReadOnlyList`1<string>,string,string,VoxClip.Media.VoiceLab.VoiceSpeakerProbe,System.Func`3<string,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Opened>>,System.Func`6<string,long,int,VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<float[]>>,int,string,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline :: method internal ScoreAsync(VoxClip.Core.Domain.VoiceLab.VoiceLabSegment,VoxClip.Core.Domain.VoiceLab.VoiceLabAsset,VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Opened,string,string,VoxClip.Media.VoiceLab.VoiceSpeakerProbe,System.Func`6<string,long,int,VoxClip.Core.Domain.VoiceLab.VoiceLabGuardSpeech,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<float[]>>,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline :: method internal TakeSpeechAsync(VoxClip.Core.Domain.VoiceLab.VoiceLabSegment,VoxClip.Core.Domain.VoiceLab.VoiceLabAsset,string,string,string,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline :: method private JsRound(double)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline :: method public MeasureAsync(System.Collections.Generic.IReadOnlyList`1<string>,string,string,VoxClip.Media.VoiceLab.VoiceSpeakerProbe,System.Func`3<string,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Opened>>,int,string,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Opened :: method private .ctor(VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Opened)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Opened :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Opened :: method private get_EqualityContract()
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Opened :: method public .ctor(VoxClip.Core.Domain.Shared.Project,string)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Opened :: method public Deconstruct(VoxClip.Core.Domain.Shared.Project&,string&)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Opened :: method public Equals(VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Opened)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Opened :: method public Equals(object)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Opened :: method public GetHashCode()
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Opened :: method public ToString()
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Opened :: method public get_Media()
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Opened :: method public get_Project()
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Opened :: method public op_Equality(VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Opened,VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Opened)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Opened :: method public op_Inequality(VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Opened,VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Opened)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Opened :: method public set_Media(string)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Opened :: method public set_Project(VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Pick :: method private .ctor(VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Pick)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Pick :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Pick :: method private get_EqualityContract()
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Pick :: method public .ctor(int,string,System.DateTimeOffset)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Pick :: method public Deconstruct(int&,string&,System.DateTimeOffset&)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Pick :: method public Equals(VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Pick)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Pick :: method public Equals(object)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Pick :: method public GetHashCode()
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Pick :: method public ToString()
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Pick :: method public get_CreatedAt()
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Pick :: method public get_Project()
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Pick :: method public get_Segment()
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Pick :: method public op_Equality(VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Pick,VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Pick)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Pick :: method public op_Inequality(VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Pick,VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Pick)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Pick :: method public set_CreatedAt(System.DateTimeOffset)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Pick :: method public set_Project(int)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Pick :: method public set_Segment(string)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Result :: method private .ctor(VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Result)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Result :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Result :: method private get_EqualityContract()
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Result :: method public .ctor(System.Collections.Generic.IReadOnlyList`1<double>)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Result :: method public Deconstruct(System.Collections.Generic.IReadOnlyList`1<double>&)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Result :: method public Equals(VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Result)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Result :: method public Equals(object)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Result :: method public GetHashCode()
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Result :: method public ToString()
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Result :: method public get_Mean()
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Result :: method public get_Scores()
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Result :: method public op_Equality(VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Result,VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Result)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Result :: method public op_Inequality(VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Result,VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Result)
+member VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Result :: method public set_Scores(System.Collections.Generic.IReadOnlyList`1<double>)
 member VoxClip.Media.VoiceLab.VoiceConsentSaveException :: method public .ctor(VoxClip.Core.Domain.VoiceLab.VoiceConsentRecord)
 member VoxClip.Media.VoiceLab.VoiceConsentSaveException :: method public get_Record()
 member VoxClip.Media.VoiceLab.VoiceEnrollment :: field private attempts
@@ -2417,6 +2482,7 @@ member VoxClip.Media.VoiceLab.VoiceLabWindowsFiles :: method private GetFinalPat
 member VoxClip.Media.VoiceLab.VoiceLabWindowsFiles+AttributeTagInformation :: field internal Attributes
 member VoxClip.Media.VoiceLab.VoiceLabWindowsFiles+AttributeTagInformation :: field internal ReparseTag
 member VoxClip.Media.VoiceLab.VoicePerVideoMatch :: method public ScoreAsync(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput,VoxClip.Media.VoiceLab.VoiceSpeakerProbe,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.VoicePerVideoMatch :: method public ScoreAsync(float[],int,float[],VoxClip.Media.VoiceLab.VoiceSpeakerProbe,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceRebuildFailedException :: method public .ctor(VoxClip.Media.VoiceLab.VoiceRebuildFailureKind,long,int)
 member VoxClip.Media.VoiceLab.VoiceRebuildFailedException :: method public get_Kind()
 member VoxClip.Media.VoiceLab.VoiceRebuildFailedException :: method public get_Milliseconds()
@@ -2684,6 +2750,7 @@ type VoxClip.Media.Pipeline.IPreviewVideoWorker
 type VoxClip.Media.Pipeline.OutputSafety
 type VoxClip.Media.Pipeline.OutputSafety+FileInformation
 type VoxClip.Media.Pipeline.PreviewEngine
+type VoxClip.Media.Pipeline.PreviewFrameFailures
 type VoxClip.Media.Pipeline.PreviewFrameLease
 type VoxClip.Media.Pipeline.PreviewFramePool
 type VoxClip.Media.Pipeline.TimelineCursor
@@ -2706,6 +2773,10 @@ type VoxClip.Media.VoiceLab.MicrophoneTakeMaker
 type VoxClip.Media.VoiceLab.NativeVoiceLabSource
 type VoxClip.Media.VoiceLab.OnDeviceTakeTranscriber
 type VoxClip.Media.VoiceLab.PreparedVoiceLabAsset
+type VoxClip.Media.VoiceLab.VoiceAnchorBaseline
+type VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Opened
+type VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Pick
+type VoxClip.Media.VoiceLab.VoiceAnchorBaseline+Result
 type VoxClip.Media.VoiceLab.VoiceConsentSaveException
 type VoxClip.Media.VoiceLab.VoiceEnrollment
 type VoxClip.Media.VoiceLab.VoiceEnrollment+Pending

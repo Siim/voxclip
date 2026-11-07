@@ -32,6 +32,8 @@ public sealed class PreviewEngine : IPreviewEngine
     private readonly Func<double>? clockOverride;
     private Exception? terminalFailure;
     private Exception? playbackFailure;
+    /// <summary>The loaded preview's compositor failures: a new count per load and plan swap, kept across caption swaps.</summary>
+    private PreviewFrameFailures? failures;
     private readonly Stopwatch videoClock = new();
     private ComposeSnapshot? snapshot;
     private VoiceLabRenderSession? voiceSession;
@@ -77,6 +79,8 @@ public sealed class PreviewEngine : IPreviewEngine
     /// <inheritdoc />
     public event EventHandler<PreviewAudioStatus>? AudioStatusChanged;
     /// <inheritdoc />
+    public event EventHandler<PreviewFailureReason>? CompositorFailed;
+    /// <inheritdoc />
     public Task LoadAsync(ComposeSnapshot snapshot, IProgress<MediaProgress>? progress, CancellationToken ct)
     {
         snapshot = snapshot.VoiceLab?.CaptureSnapshot(snapshot) ?? snapshot;
@@ -85,6 +89,7 @@ public sealed class PreviewEngine : IPreviewEngine
         StopMedia();
         playbackFailure = null;
         this.snapshot = null;
+        failures = NewFailures();
         try
         {
             initialize(ct);
@@ -133,6 +138,7 @@ public sealed class PreviewEngine : IPreviewEngine
             oldInput.Prepared.Disclosure.Position == newInput.Prepared.Disclosure.Position;
         var nextSession = sameVoice ? voiceSession : VoiceLabRenderSession.PrepareAsync(snapshot, ct).GetAwaiter().GetResult();
         var previousSnapshot = this.snapshot;
+        var previousFailures = failures;
         ComposeSnapshot? nextSnapshot = null;
         var swapped = false;
         try
@@ -146,6 +152,7 @@ public sealed class PreviewEngine : IPreviewEngine
             var source = Position.SourceTime;
             if (!sameVoice) { StopAudio(); voiceSession?.Dispose(); voiceSession = nextSession; }
             Interlocked.Exchange(ref this.snapshot, nextSnapshot);
+            failures = NewFailures();
             swapped = true;
             var edited = snapshot.Timeline.MapTime(source);
             Seek(edited, ct);
@@ -154,6 +161,7 @@ public sealed class PreviewEngine : IPreviewEngine
         }
         catch
         {
+            if (!swapped) failures = previousFailures;
             if (composer is FrameComposer used)
             {
                 if (swapped) used.ReleaseSnapshot(previousSnapshot);
@@ -235,6 +243,15 @@ public sealed class PreviewEngine : IPreviewEngine
         }
     }
 
+    /// <summary>A new count for a loaded preview; its first reason raises <see cref="CompositorFailed"/> on the owner thread.</summary>
+    private PreviewFrameFailures NewFailures() => new(reason =>
+    {
+        if (CompositorFailed is { } handlers)
+            foreach (EventHandler<PreviewFailureReason> handler in handlers.GetInvocationList())
+                try { handler(this, reason); }
+                catch (Exception) { }
+    });
+
     private void RecoverPlayback(Exception exception)
     {
         origin = Position.EditedTime;
@@ -285,7 +302,9 @@ public sealed class PreviewEngine : IPreviewEngine
             }
             prepared = null; preparedPart = -1; currentPart = cursor.Part;
         }
-        var decoded = current!.ReadAsync(local.Clip?.Effects?.PictureTime(source) ?? source, exact, ct).GetAwaiter().GetResult();
+        PixelBuffer decoded;
+        try { decoded = current!.ReadAsync(local.Clip?.Effects?.PictureTime(source) ?? source, exact, ct).GetAwaiter().GetResult(); }
+        catch (Exception exception) { PreviewFrameFailures.Failed(failures, true, PreviewFailureReason.SourceFrame, exception); throw; }
         if (useFrameLeases)
         {
             if (framePool is null || framePool.Size != local.Output.Size) framePool = new(local.Output.Size);
@@ -294,7 +313,7 @@ public sealed class PreviewEngine : IPreviewEngine
             {
                 try
                 {
-                    composer.Compose(decoded, lease.Frame.Buffer, local, edited, true, ct);
+                    Compose(decoded, lease.Frame.Buffer, local, edited, ct);
                     if (!leases.Writer.TryWrite(lease)) lease.Dispose();
                 }
                 catch { lease.Dispose(); throw; }
@@ -302,9 +321,14 @@ public sealed class PreviewEngine : IPreviewEngine
         }
         else
         {
-            var pixels = new PixelBuffer(GC.AllocateUninitializedArray<byte>(checked(local.Output.Size.Width * local.Output.Size.Height * 4)),
-                local.Output.Size.Width, local.Output.Size.Height, local.Output.Size.Width * 4);
-            composer.Compose(decoded, pixels, local, edited, true, ct);
+            byte[] bytes;
+            try { bytes = GC.AllocateUninitializedArray<byte>(checked(local.Output.Size.Width * local.Output.Size.Height * 4)); }
+            catch (Exception exception) when (exception is OutOfMemoryException or OverflowException)
+            {
+                PreviewFrameFailures.Failed(failures, true, PreviewFailureReason.FrameBuffer, exception); throw;
+            }
+            var pixels = new PixelBuffer(bytes, local.Output.Size.Width, local.Output.Size.Height, local.Output.Size.Width * 4);
+            Compose(decoded, pixels, local, edited, ct);
             frames.Writer.TryWrite(new(pixels, edited, current.Position, generation));
         }
         if (prepared is null && cursor.NextJoin - edited <= 2 && double.IsFinite(cursor.NextSource))
@@ -313,6 +337,13 @@ public sealed class PreviewEngine : IPreviewEngine
             preparedPart = cursor.Part + 1;
             prepared = lookAhead!.ReadAsync(cursor.NextSource, true, prefetchCancellation.Token);
         }
+    }
+
+    /// <summary>The shared compositor, told about this preview's failures; another composer composes as given.</summary>
+    private void Compose(PixelBuffer decoded, PixelBuffer output, ComposeSnapshot local, double edited, CancellationToken ct)
+    {
+        if (composer is FrameComposer concrete) concrete.Compose(decoded, output, local, edited, true, failures, ct);
+        else composer.Compose(decoded, output, local, edited, true, ct);
     }
 
     /// <summary>Stop at the clock. A device loss or fault seen here is handled exactly as on the owner tick, with the one reopen

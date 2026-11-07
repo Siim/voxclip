@@ -185,6 +185,17 @@ internal sealed class VoiceLabBackend(DataLocations data, IKeyProvider keys, ILo
         RequireEnabled(ct);
         return Speaker(input.Language) is { } probe ? await VoicePerVideoMatch.ScoreAsync(take, input, probe, ct).ConfigureAwait(false) : null;
     }
+    public string? SpeakerModel(string language) => Enabled ? Speaker(language)?.ModelId : null;
+    /// <summary>Behind the closed gate there is no speaker check: this returns before any project, media or paid file is read.</summary>
+    public async Task<VoiceAnchorBaseline.Result?> MeasureAnchorBaselineAsync(IReadOnlyList<string> projects, string anchorId, string language,
+        CancellationToken ct)
+    {
+        RequireEnabled(ct);
+        if (Speaker(language) is not { } probe || readProject is null) return null;
+        return await VoiceAnchorBaseline.MeasureAsync(projects, anchorId, Path.Combine(data.Root, "VoiceLab"), probe,
+            async (path, token) => await readProject(path, token).ConfigureAwait(false) is { } source ? new(source.Project, source.Media) : null,
+            ct: ct).ConfigureAwait(false);
+    }
     public void Log(string message) => log.Write(LogLevel.Info, "voice-lab", message);
     public void Dispose() { rebuildCreation?.Client.Dispose(); rebuildCreation = null; }
     internal static void ReconcileLocalStatements(DataLocations data) => new VoiceConsentStore(data).ReconcileAbandonedEnrollments();

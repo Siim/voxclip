@@ -367,6 +367,10 @@ internal sealed partial class VoiceLabSession
         var measurement = new VoicePerVideoBook.Measurement(contentKey, Scalars(title, 200), isVideoVoice ? score : null, anchorScore, Timestamp(Clock.GetUtcNow()));
         await UpdateBookAsync(book => book.Measuring(measurement));
         Backend.Log($"per-video take match video={contentKey[..Math.Min(8, contentKey.Length)]} voice={(isVideoVoice ? "video" : "anchor")} score={score.ToString("F3", CultureInfo.InvariantCulture)}");
+        if (!isVideoVoice) return;
+        // The first take with the video's own voice: the anchor's earlier takes give it something to compare with.
+        if (PerVideoBook.Measurements.FirstOrDefault(stored => stored.ContentKey == contentKey) is { } recorded) LogMatchComparison(recorded);
+        _ = MeasureAnchorBaselineAsync();
     }
 
     /// <summary>A take's speaker cosine against the speech beside it, on this PC; null without a speaker check (the closed gate).</summary>

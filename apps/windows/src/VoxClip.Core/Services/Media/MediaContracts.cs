@@ -26,6 +26,11 @@ public interface IPreviewEngine : IAsyncDisposable
     event EventHandler<Exception>? PlaybackFaulted { add { } remove { } }
     /// <summary>Non-fatal audio output change, raised on the engine owner thread only when the status changes. Without usable output, video and the clock keep playing; a lost device gets one immediate reopen and every later start retries.</summary>
     event EventHandler<PreviewAudioStatus>? AudioStatusChanged { add { } remove { } }
+    /// <summary>The preview's frame compositor failed a frame or left an overlay out (design.md §5.4.4 g), raised on the engine owner
+    /// thread with the first reason of each loaded preview only: a load and a plan swap start a new count, a caption swap does not.
+    /// A failure that stops the frame also fails its command or playback, with the reason on the exception
+    /// (<see cref="PreviewFailureReasons.Of"/>).</summary>
+    event EventHandler<PreviewFailureReason>? CompositorFailed { add { } remove { } }
     /// <summary>Load media and a plan snapshot.</summary>
     Task LoadAsync(ComposeSnapshot snapshot, IProgress<MediaProgress>? progress, CancellationToken ct);
     /// <summary>Start edited playback.</summary>

@@ -3,6 +3,7 @@ using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.VoiceLab;
+using VoxClip.Media.VoiceLab;
 using Xunit;
 using static VoxClip.Core.Tests.Tracks.WinUi.RewriteAutoFixTests;
 
@@ -247,6 +248,15 @@ public sealed class RewriteSmokeTests
                     !voices.Session.PerVideoBook.Videos.Select(video => video.ContentKey).SequenceEqual(["kitchen-key"]) || voices.Session.PerVideoBook.Removals.Count > 0 ||
                     voices.Backend.Created.Count != 2 || outcome.Result is MakeItRewriteResult.NeedsYou { Reason: var reason } && reason.Contains("voice", StringComparison.OrdinalIgnoreCase))
                     smoke.Failures.Add($"{id} PV3: {(asked ? "asked again" : "not asked")}, video 2's voice {made?.RecordId}, takes with {second.Input?.RecordId}, video 1's {old.Status}, anchor {anchor.Status}, {voices.Backend.Created.Count} made");
+                // PV3, the anchor's baseline (voice-lab §6.13 item 9): siim's earlier take, scored read only, beside the video's own voice.
+                voices.Session.AnchorBaselineProjects = () => ["/videos/car.voxclip"];
+                voices.Backend.Baseline = (_, _) => Task.FromResult<VoiceAnchorBaseline.Result?>(new([1.0]));
+                await voices.Session.MeasureAnchorBaselineAsync();
+                var baselineLine = voices.Session.AnchorBaselineLine;
+                smoke.Log.Add($"{id} PV3: {baselineLine}");
+                if (baselineLine != "siim · 1.00 across 1 earlier take" || voices.Backend.BaselineMeasured.Count != 1 ||
+                    voices.Session.PerVideoBook.AnchorBaseline?.AnchorId != voices.Anchor.RecordId)
+                    smoke.Failures.Add($"{id} PV3: baseline {baselineLine ?? "none"}, {voices.Backend.BaselineMeasured.Count} measured");
                 return smoke;
             }
             case "S-voice-per-video-short":

@@ -125,7 +125,15 @@ public sealed class FrameComposer : IFrameComposer
     }
 
     /// <inheritdoc />
-    public unsafe void Compose(PixelBuffer decoded, PixelBuffer output, ComposeSnapshot snapshot, double editedTime, bool forPreview, CancellationToken ct)
+    public void Compose(PixelBuffer decoded, PixelBuffer output, ComposeSnapshot snapshot, double editedTime, bool forPreview, CancellationToken ct)
+        => Compose(decoded, output, snapshot, editedTime, forPreview, null, ct);
+
+    /// <summary>As <see cref="Compose(PixelBuffer, PixelBuffer, ComposeSnapshot, double, bool, CancellationToken)"/>, reporting a preview's
+    /// failed or degraded frames to <paramref name="failures"/> (design.md §5.4.4 g). In preview, a caption or title that can't be drawn is
+    /// left out of the frame; a missing disclosure, context-demo frame or other failure still fails the frame, marked with its reason. An
+    /// export (<paramref name="forPreview"/> false) fails exactly as before.</summary>
+    internal unsafe void Compose(PixelBuffer decoded, PixelBuffer output, ComposeSnapshot snapshot, double editedTime, bool forPreview,
+        PreviewFrameFailures? failures, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         Validate(decoded); Validate(output);
@@ -174,19 +182,10 @@ public sealed class FrameComposer : IFrameComposer
             var target = new byte_ptrArray4(); target[0] = (byte*)outputMemory.Pointer;
             var targetStride = new int_array4(); targetStride[0] = output.Stride;
             Native.Check(ffmpeg.sws_scale((SwsContext*)scaling.Handle!.Pointer, source, sourceStride, 0, heightCrop, target, targetStride), "Crop and scale video");
-            DrawContextDemo(output, snapshot, editedTime, forPreview, ct);
-            FinishClipFrame(output, snapshot, editedTime, decoded.Width, decoded.Height, new(left, top, widthCrop, heightCrop), ct, forPreview);
-            if (snapshot.Captions is { } captions)
-                rasterizer.Draw(new(captions, editedTime, false, output.Width / (double)captions.Frame.Width), output, ct);
-            if (snapshot.VoiceLab is { Prepared.OutputPlan.RequiresSyntheticRendering: true })
-            {
-                lock (disclosures)
-                {
-                    if (!disclosures.TryGetValue(snapshot, out var overlay))
-                        throw new InvalidOperationException("Prepare the Voice Lab disclosure before composing frames.");
-                    overlay.Draw(output, editedTime, ct);
-                }
-            }
+            try { DrawContextDemo(output, snapshot, editedTime, forPreview, ct); }
+            catch (Exception exception) { PreviewFrameFailures.Failed(failures, forPreview, PreviewFailureReason.DemoFrame, exception); throw; }
+            FinishClipFrame(output, snapshot, editedTime, decoded.Width, decoded.Height, new(left, top, widthCrop, heightCrop), ct, forPreview, failures);
+            DrawOverlays(output, snapshot, editedTime, forPreview, failures, ct);
         }
         finally
         {
@@ -195,14 +194,46 @@ public sealed class FrameComposer : IFrameComposer
         }
     }
 
+    /// <summary>The captions, then the Voice Lab disclosure, over the finished frame. In preview with <paramref name="failures"/>, a caption
+    /// band that can't be drawn is left out and reported (<c>resources</c> when the bundled files are missing, otherwise
+    /// <c>caption-layout</c>); an export fails with it. The disclosure is never left out: a frame that can't carry it fails, reported as
+    /// <c>disclosure</c> in preview.</summary>
+    internal void DrawOverlays(PixelBuffer output, ComposeSnapshot snapshot, double editedTime, bool forPreview, PreviewFrameFailures? failures,
+        CancellationToken ct)
+    {
+        if (snapshot.Captions is { } captions)
+        {
+            try { rasterizer.Draw(new(captions, editedTime, false, output.Width / (double)captions.Frame.Width), output, ct); }
+            catch (Exception exception) when (forPreview && failures is not null && exception is not OperationCanceledException)
+            {
+                failures.Report(exception is FileNotFoundException or DirectoryNotFoundException or VoxClipException { Code: VoxClipErrorCode.SharedResourcesMissing }
+                    ? PreviewFailureReason.Resources : PreviewFailureReason.CaptionLayout);
+            }
+        }
+        if (snapshot.VoiceLab is { Prepared.OutputPlan.RequiresSyntheticRendering: true })
+        {
+            try
+            {
+                lock (disclosures)
+                {
+                    if (!disclosures.TryGetValue(snapshot, out var overlay))
+                        throw new InvalidOperationException("Prepare the Voice Lab disclosure before composing frames.");
+                    overlay.Draw(output, editedTime, ct);
+                }
+            }
+            catch (Exception exception) { PreviewFrameFailures.Failed(failures, forPreview, PreviewFailureReason.Disclosure, exception); throw; }
+        }
+    }
+
     /// <summary>The clip's look, Ask Claude's picture effects and its motion on the scaled frame, before captions (Mac FrameCompositor
     /// order): the look grades the picture first, so censors cover graded pixels and pointers, titles and stickers keep their colours;
     /// then censors and pointers in picture space through <paramref name="crop"/> of the <paramref name="pictureWidth"/> ×
     /// <paramref name="pictureHeight"/> oriented source, at the freeze-held source time; then the clip's motion cue crops the finished
     /// picture (in output coordinates, so a flipped or turned clip zooms where it is seen); then titles, lower thirds, stickers and the
-    /// progress bar in the output frame, unzoomed.</summary>
+    /// progress bar in the output frame, unzoomed. In preview, a title or lower third that can't be drawn is reported to
+    /// <paramref name="failures"/> as <c>title</c>; it is left out of the frame either way.</summary>
     internal void FinishClipFrame(PixelBuffer output, ComposeSnapshot snapshot, double editedTime, int pictureWidth, int pictureHeight, RectD crop,
-        CancellationToken ct, bool forPreview = false)
+        CancellationToken ct, bool forPreview = false, PreviewFrameFailures? failures = null)
     {
         if (snapshot.Clip is not { } clip) return;
         if (clip.Controls is { Look: not ClipLook.Original } controls) ClipPicture.Look(output, controls.Look, ct);
@@ -212,7 +243,9 @@ public sealed class FrameComposer : IFrameComposer
         if (frames is { HasPicture: true }) frames.DrawPicture(output, pictureWidth, pictureHeight, crop, clip.Effects!.PictureTime(sourceTime), clip.Controls, ct);
         if (clip.Motion.Count > 0 && !(forPreview && clip.ReduceMotionInPreview))
             ClipPicture.Motion(output, VoxClip.Core.Domain.ContextDemo.MotionCueRendering.Transform(clip.Motion, sourceTime), forPreview, ct);
-        if (frames is { HasPicture: true }) frames.DrawFrame(output, sourceTime, editedTime, timeline.MapTime, ct);
+        if (frames is { HasPicture: true })
+            frames.DrawFrame(output, sourceTime, editedTime, timeline.MapTime, ct,
+                forPreview && failures is not null ? () => failures.Report(PreviewFailureReason.Title) : null);
     }
 
     /// <summary>The changed-duration crop for this output time: a zoomed span (Match video's 1.12× crop, a cut's 1.06×
