@@ -102,7 +102,7 @@ public enum VoiceLabOutputPlanner {
             guard let clip = edits.clips.first(where: { $0.id == id }),
                   let indices = clipIndices(clip, words: transcript.words) else { throw VoiceLabProjectError.invalidScope }
             activeClip = clip
-            clipRange = try clipTimes(transcript.words, startIndex: indices.lowerBound, endIndex: indices.upperBound)
+            clipRange = try clipTimes(transcript.words, clip: clip, startIndex: indices.lowerBound, endIndex: indices.upperBound)
         }
         let enabled = project.voiceLab.segments.filter { segment in
             guard segment.enabled else { return false }

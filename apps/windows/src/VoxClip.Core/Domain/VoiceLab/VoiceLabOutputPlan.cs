@@ -92,7 +92,7 @@ public static class VoiceLabOutputPlanner
                 if (words[i].Id == clip.EndWordId) last = i;
             }
             if (first < 0 || last < first) throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidScope);
-            clipRange = EditingAlgorithms.ClipTimes(words, first, last);
+            clipRange = EditingAlgorithms.ClipTimes(words, first, last, clip.LeadInSeconds);
         }
         var enabled = project.VoiceLab.Segments.Where(segment => segment.Enabled &&
             (clipRange is null || segment.Replace.End > clipRange.Value.Start && segment.Replace.Start < clipRange.Value.End))

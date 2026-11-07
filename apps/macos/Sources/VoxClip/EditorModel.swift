@@ -610,7 +610,7 @@ struct EditorRenderSnapshot {
     /// "{source} source · {w} words cut in {r} places · {p} pauses cut".
     var summaryDetail: String {
         let cuts = scopeCuts
-        let span = scopeBounds.flatMap { try? clipTimes(words, startIndex: $0.lowerBound, endIndex: $0.upperBound) }
+        let span = scopeBounds.flatMap { try? clipTimes(words, startIndex: $0.lowerBound, endIndex: $0.upperBound, leadIn: scopeLeadIn) }
         let source = span.map { $0.end - $0.start } ?? sourceDuration
         let cutWords = cuts.words == 1 ? "1 word" : "\(cuts.words) words", places = cuts.runs == 1 ? "1 place" : "\(cuts.runs) places"
         let cutPauses = cuts.pauses == 1 ? "1 pause" : "\(cuts.pauses) pauses"

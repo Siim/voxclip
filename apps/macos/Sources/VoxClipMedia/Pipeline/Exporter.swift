@@ -2,6 +2,8 @@ import Foundation
 import AVFoundation
 import VideoToolbox
 import Darwin
+import ImageIO
+import UniformTypeIdentifiers
 import VoxClipCore
 
 private struct ExportPumpSource: @unchecked Sendable {
@@ -134,6 +136,45 @@ public actor AVExporter: Exporter {
         }
     }
 
+    /// A cover JPEG is at most this big.
+    static let coverLimit: Int64 = 8 * 1024 * 1024
+    static let coverQuality = 0.9
+
+    /// The export's frame at `seconds` of its output, rendered by the export's own composition and compositor, as a JPEG.
+    private func coverImage(_ graph: RenderGraph, at seconds: Double) async throws -> Data {
+        guard let composition = graph.composition.copy() as? AVComposition else { throw VoxClipError.exportFailed("Cannot copy the cover's composition") }
+        let generator = AVAssetImageGenerator(asset: composition)
+        generator.videoComposition = graph.videoComposition
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+        let time = CMTime(seconds: max(0, seconds), preferredTimescale: 600)
+        let image: CGImage = try await withCheckedThrowingContinuation { continuation in
+            generator.generateCGImageAsynchronously(for: time) { image, _, error in
+                if let image { continuation.resume(returning: image) }
+                else { continuation.resume(throwing: error ?? VoxClipError.exportFailed("Cannot render the cover")) }
+            }
+        }
+        withExtendedLifetime(generator) {}
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil) else {
+            throw VoxClipError.exportFailed("Cannot encode the cover")
+        }
+        CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: Self.coverQuality] as CFDictionary)
+        guard CGImageDestinationFinalize(destination), data.length > 0, Int64(data.length) <= Self.coverLimit else {
+            throw VoxClipError.exportFailed("Cannot encode the cover")
+        }
+        return data as Data
+    }
+
+    /// The MP4's cover art: iTunes `covr`, a JPEG.
+    static func coverArt(_ jpeg: Data) -> AVMetadataItem {
+        let item = AVMutableMetadataItem()
+        item.identifier = .iTunesMetadataCoverArt
+        item.value = jpeg as NSData
+        item.dataType = kCMMetadataBaseDataType_JPEG as String
+        return item
+    }
+
     private func cancelActive(_ id: UUID) {
         guard activeID == id else { return }
         activePumps?.stop()
@@ -147,6 +188,8 @@ public actor AVExporter: Exporter {
         let provenancePartial: URL?
         let srtURL: URL?
         let srtText: String?
+        /// The cover JPEG beside the video (ADR-R48), when the job has a cover.
+        let coverURL: URL?
         let sidecarLimit: Int64
         let outputNeeds: [DiskCapacity.Need]
         let approvals: [URL: ExportSafety.DestinationApproval]
@@ -184,8 +227,14 @@ public actor AVExporter: Exporter {
                 throw VoxClipError.exportFailed("SRT destination overlaps the video")
             }
         }
+        let coverURL = job.cover.map { _ in ExportCover.url(for: destination) }
+        if let coverURL {
+            try ExportSafety.validateDestination(coverURL)
+            guard coverURL != source, coverURL != srtURL else { throw VoxClipError.exportFailed("The cover overlaps another output") }
+        }
         let primary = [(destination, reservedPartial)] +
             (srtURL.map { [($0, URL(fileURLWithPath: $0.path + ".partial"))] } ?? []) +
+            (coverURL.map { [($0, URL(fileURLWithPath: $0.path + ".partial"))] } ?? []) +
             (provenanceURL.flatMap { url in provenancePartial.map { [(url, $0)] } } ?? [])
         var extras = additionalOutputs
         if let plannedEditedAudioURL {
@@ -222,6 +271,7 @@ public actor AVExporter: Exporter {
         }
         if let srtURL, let srtText { needs.append(.init(directory: srtURL.deletingLastPathComponent(), bytes: Int64(srtText.utf8.count))) }
         if let provenanceURL { needs.append(.init(directory: provenanceURL.deletingLastPathComponent(), bytes: sidecarLimit)) }
+        if let coverURL { needs.append(.init(directory: coverURL.deletingLastPathComponent(), bytes: Self.coverLimit)) }
         if let plannedEditedAudioURL, let plannedWAVBytes {
             needs.append(.init(directory: plannedEditedAudioURL.deletingLastPathComponent(), bytes: plannedWAVBytes))
         }
@@ -233,7 +283,7 @@ public actor AVExporter: Exporter {
         try DiskCapacity.check(needs, provider: capacityProvider)
         let approvals = try ExportSafety.approveDestinations(primary.map(\.0) + extras.map(\.destination))
         return TransactionPreflight(destination: destination, marked: marked, provenanceURL: provenanceURL,
-                                    provenancePartial: provenancePartial, srtURL: srtURL, srtText: srtText,
+                                    provenancePartial: provenancePartial, srtURL: srtURL, srtText: srtText, coverURL: coverURL,
                                     sidecarLimit: sidecarLimit, outputNeeds: outputNeeds, approvals: approvals)
     }
 
@@ -313,10 +363,16 @@ public actor AVExporter: Exporter {
             audioProvider = reader.outputProvider(for: audioOutput)
             audioReader = reader
         }
+        // The cover (ADR-R48): the frame this export renders at its time, through the same compositor (crop, captions,
+        // title), embedded as the MP4's cover art and written beside it.
+        var coverJPEG: Data?
+        if let cover = job.cover { coverJPEG = try await coverImage(graph, at: cover.seconds) }
+        try Task.checkCancellation()
         let writer = try AVAssetWriter(outputURL: partial, fileType: .mp4)
         writer.directoryForTemporaryFiles = workDirectory
         writer.shouldOptimizeForNetworkUse = true
         writer.movieTimeScale = 48000
+        if let coverJPEG { writer.metadata = [Self.coverArt(coverJPEG)] }
         let compression: [String: Any] = [AVVideoAverageBitRateKey: output.videoBitrate,
             AVVideoExpectedSourceFrameRateKey: output.fps, AVVideoMaxKeyFrameIntervalKey: Int(2 * output.fps),
             AVVideoAllowFrameReorderingKey: true, AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
@@ -416,6 +472,11 @@ public actor AVExporter: Exporter {
                 outputs.append((provenancePartial, provenanceURL))
             }
             if let srtPartial, let srtURL { outputs.append((srtPartial, srtURL)) }
+            if let coverJPEG, let coverURL = preflight.coverURL {
+                let coverPartial = scratch.url.appendingPathComponent("cover.jpg.partial")
+                try coverJPEG.write(to: coverPartial, options: .withoutOverwriting)
+                outputs.append((coverPartial, coverURL))
+            }
             let rollbackNeeds = try (outputs + additionalOutputs).map { output in
                 DiskCapacity.Need(directory: output.destination.deletingLastPathComponent(),
                                   bytes: try DiskCapacity.fileBytes(output.destination))
@@ -427,7 +488,8 @@ public actor AVExporter: Exporter {
                                 width: output.size.width, height: output.size.height, fps: output.fps, frames: frames,
                                 audioSampleRate: 48000, audioSamples: audioSampleCount,
                                 videoCodec: "h264", encoder: "h264_videotoolbox",
-                                elapsedSeconds: Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18, loudness: loudness)
+                                elapsedSeconds: Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18, loudness: loudness,
+                                coverURL: coverJPEG == nil ? nil : preflight.coverURL)
         } catch {
             ExportInterruptTiming.testOnly?.mark(.teardownStart)
             pumps.stop(error)

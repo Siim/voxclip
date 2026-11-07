@@ -91,7 +91,8 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
             let editedTime = instruction.request.speedTiming.edited(request.compositionTime.seconds)
             var image = ClipPicture.orient(CIImage(cvPixelBuffer: source).oriented(instruction.orientation), controls: controls)
             let sourceExtent = image.extent
-            var crop = Self.centerCrop(source: image.extent, output: size)
+            let aspectCrop = Self.aspectCrop(source: image.extent, output: size, controls: controls)
+            var crop = aspectCrop
             if instruction.videoZoom > 1 {
                 let anchor = controls?.mapAnchor(x: instruction.videoAnchorX, y: instruction.videoAnchorY)
                     ?? (x: instruction.videoAnchorX, y: instruction.videoAnchorY)
@@ -118,7 +119,7 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
                 }
                 let captured = ClipPicture.orient(CIImage(cvPixelBuffer: frame).oriented(layer.orientation), controls: controls)
                 let replacement = CompositionFrameGeometry.fill(captured,
-                    crop: Self.centerCrop(source: captured.extent, output: size), output: size)
+                    crop: Self.aspectCrop(source: captured.extent, output: size, controls: controls), output: size)
                 image = replacement.applyingFilter("CIDissolveTransition", parameters: [
                     kCIInputTargetImageKey: image, kCIInputTimeKey: 1 - weight])
             }
@@ -253,6 +254,16 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
     /// The shared rasterizer's caption band over `output`; the preview passes its own width.
     static let drawLayout: CaptionLayoutDraw = { rasterizer, layout, time, output, previewWidth in
         try rasterizer.draw(layout, time: time, into: output, previewWidth: previewWidth)
+    }
+
+    /// The output frame's crop of the source: centred, or for a portrait or square frame of a clip that follows the face
+    /// (`ProjectClipControls.reframe`, ADR-R48), centred on the measured face, kept inside the picture. The centre is
+    /// measured on the picture as filmed, so the clip's flip and quarter turns move it with the picture.
+    static func aspectCrop(source: CGRect, output: CGSize, controls: ProjectClipControls?) -> CGRect {
+        let crop = centerCrop(source: source, output: output)
+        guard output.height > 0, let center = controls?.cropCenter(outputAspect: Double(output.width / output.height)) else { return crop }
+        let mapped = controls?.mapAnchor(x: center.x, y: center.y) ?? center
+        return CompositionFrameGeometry.centered(crop, in: source, x: mapped.x, y: mapped.y)
     }
 
     static func centerCrop(source: CGRect, output: CGSize) -> CGRect {

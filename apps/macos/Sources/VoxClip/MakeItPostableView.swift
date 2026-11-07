@@ -44,6 +44,7 @@ import VoxClipCore
                     .font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
                     .fixedSize(horizontal: false, vertical: true)
             }
+            if !run.running, let line = model.makeItSendLine(run) { MakeItSendLine(model: model, run: run, line: line) }
             if case .failed(let message) = run.phase {
                 Text(message).font(VCType.callout.font()).foregroundStyle(DesignValues.color("text.secondary"))
                     .fixedSize(horizontal: false, vertical: true)
@@ -191,6 +192,32 @@ import VoxClipCore
                 }
                 .padding(.leading, 22)
             }
+            if !row.frames.isEmpty, !row.undone, row.change != .cover || run.openChoice != row.id {
+                MakeItFrameRow(model: model, frames: row.frames.filter { row.change != .cover || $0.picked }, arrow: row.id == "frames-opening")
+                    .padding(.leading, 22)
+            }
+            if row.change == .cover, run.openChoice == row.id, !row.undone {
+                // The three candidates as small frames; one click makes it the cover, as one undo step.
+                MakeItFrameRow(model: model, frames: row.frames, arrow: false) { frame in model.makeItChooseCover(frame.time, run: run) }
+                    .padding(.leading, 22)
+            }
+            if row.change == .screens, run.openChoice == EditorModel.makeItScreensID, !row.undone,
+               run.rows.first(where: { $0.change == .screens })?.id == row.id, let record = run.frames {
+                // The clip's detected screens, each with a toggle: blurred or left sharp, one undo step each.
+                VStack(alignment: .leading, spacing: VCTokens.spacing1) {
+                    ForEach(record.sent.blur, id: \.id) { candidate in
+                        Toggle(isOn: Binding(get: { model.makeItScreenBlurred(candidate.id, run: run) },
+                                             set: { _ in model.makeItToggleScreen(candidate.id, run: run) })) {
+                            Text("\(EditorModel.screenName(candidate.rect, video: model.project.media.source.video).capitalizedFirst) at "
+                                 + model.makeItClipTime(candidate.start, clipID: run.clipID) + "–" + model.makeItClipTime(candidate.end, clipID: run.clipID))
+                                .font(VCType.small.font())
+                        }
+                        .toggleStyle(.switch).controlSize(.mini)
+                        .columnLayoutEvidence("makeIt.screen.\(candidate.id)", text: candidate.id)
+                    }
+                }
+                .padding(.leading, 22)
+            }
             if row.change == .tone, run.openChoice == row.id, !row.undone {
                 // The tones as chips; one re-plans this clip in it (one undo step), As I said it takes the rewording back.
                 ClipStyleFlowLayout(spacing: VCTokens.spacingChipGap) {
@@ -333,4 +360,79 @@ import VoxClipCore
         .accessibilityLabel(title.replacingOccurrences(of: "✦ ", with: ""))
         .columnLayoutEvidence("explorer.clipMakeIt", text: title)
     }
+}
+
+/// The send line under the score (design.md §6.7.1): what the AI read of the picture, then up to five of the sent frames
+/// with their times; a click seeks the preview.
+@MainActor struct MakeItSendLine: View {
+    let model: EditorModel
+    let run: MakeItRun
+    let line: (lead: String, emphasis: String, tail: String)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: VCTokens.spacingRowGap) {
+            (Text(line.lead) + Text(line.emphasis).fontWeight(.semibold).foregroundColor(DesignValues.color("text.primary")) + Text(line.tail))
+                .font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, VCTokens.spacingFieldPaddingX).padding(.vertical, VCTokens.spacingFieldPaddingY)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 6).fill(DesignValues.color("bg.input")))
+                .columnLayoutEvidence("makeIt.sendLine", text: line.lead + line.emphasis + line.tail)
+            let strip = model.makeItFrameStrip(run)
+            if !strip.isEmpty {
+                MakeItFrameRow(model: model, frames: strip, arrow: false, times: true)
+                    .columnLayoutEvidence("makeIt.frameStrip", text: "\(strip.count)")
+            }
+        }
+    }
+}
+
+/// Small frames in a row: the opening's before → after, the cover and its candidates, the send line's strip. A click seeks
+/// the preview there, or picks it when `pick` is given.
+@MainActor struct MakeItFrameRow: View {
+    let model: EditorModel
+    let frames: [MakeItRowFrame]
+    let arrow: Bool
+    var times = false
+    var pick: ((MakeItRowFrame) -> Void)?
+
+    var body: some View {
+        HStack(spacing: VCTokens.spacingChipGap) {
+            ForEach(Array(frames.enumerated()), id: \.element.id) { index, frame in
+                if arrow, index > 0 {
+                    Image(systemName: "arrow.right").font(.system(size: 10)).foregroundStyle(DesignValues.color("text.tertiary"))
+                        .accessibilityHidden(true)
+                }
+                Button { if let pick { pick(frame) } else { model.seek(source: frame.time) } } label: { thumbnail(frame) }
+                    .buttonStyle(.plain)
+                    .help(pick == nil ? "Show this frame" : "Use this frame as the cover")
+                    .accessibilityLabel((pick == nil ? "Frame at " : "Cover at ") + AIText.formatTime(frame.time) + (frame.tag.map { ", \($0)" } ?? ""))
+            }
+        }
+    }
+
+    private func thumbnail(_ frame: MakeItRowFrame) -> some View {
+        let image = NSImage(data: frame.jpeg) ?? NSImage()
+        return Image(nsImage: image).resizable().aspectRatio(contentMode: .fill)
+            .frame(width: 64, height: 36).clipped()
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(DesignValues.color(frame.picked ? "ai.tint" : "line.edge"), lineWidth: frame.picked ? 2 : 1))
+            .overlay(alignment: .bottomLeading) {
+                if let tag = frame.tag {
+                    Text(tag).font(.system(size: 8, weight: .semibold)).foregroundStyle(.white)
+                        .padding(.horizontal, 3).background(DesignValues.color("status.error")).clipShape(RoundedRectangle(cornerRadius: 2))
+                        .padding(1)
+                }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if times {
+                    Text(AIText.formatTime(frame.time)).font(DesignValues.mono(8)).foregroundStyle(.white.opacity(0.85)).padding(.trailing, 3)
+                }
+            }
+    }
+}
+
+extension String {
+    /// The string with its first character upper-cased.
+    var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
 }

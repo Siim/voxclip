@@ -1941,24 +1941,36 @@ A suggestion is kept first, in the same undo step as everything the run applies.
 
 The user approved this mockup on 2026-11-07, and agreed that small frames may be sent to the chosen AI. ADR-R48 and
 ai.md §19 hold the rules. Part 1 (track/v2-eyes-1) built the analysis, the decisions, the frame sheet and the image
-wires; **nothing below is shown yet**. Part 2 adds it after track/v2-speed's planner changes land.
+wires; part 2 (track/v2-eyes-2) shows them in Make it postable and Claude mode and writes the cover on export.
 
-- **Review rows,** each with ▶, Undo and Change like every decision row:
-  - "Opens on a clear look at you": the start moved into the silence before the first word (never across a word), or
-    kept when it already opens on open eyes. It reads `OpeningFrame.choose`; no row when there is no clear look.
-  - "9:16 follows your face": the crop centre from the measured faces (`FaceFollowCrop`), static when the face stays in
-    its dead zone. "1:1 follows your face" for a square export.
-  - "Blurred the phone screen at 0:12–0:15": one row per blur span (`FrameBlurSpans`), its box shown on ▶. Claude decides
-    whether a screen is private; the measured spans are what it chooses from.
-  - "Cover frame chosen": the cover's time (`CoverFrame`, or Claude's choice among the frames), shown as a thumbnail.
-    The export saves it as `cover.jpg` next to the MP4 and as the MP4's poster/artwork.
-- **The send line,** beside the price and the button, says what goes to the AI:
-  - Claude Code: "Claude read the clip's words and 24 small frames (one per sentence, 320 px) on your Claude plan. Faces
-    were measured on this Mac."
-  - An API-key connector: the same, with "… 24 small frames (about 1,900 tokens) to Anthropic" and the price.
-  - A connector without images (Apple Intelligence, Ollama, LM Studio): "{Connector} read the clip's words and a description
-    of 24 frames measured on this Mac. No pictures were sent."
-  - The count is the sheet's (fewer for a short clip).
+- **When.** The frames are looked at once per video, on this Mac, as soon as the transcript exists and while Find Clips
+  runs, so they are ready when a clip's plan is sent. A video VoxClip cannot read goes on as text only.
+- **Review rows,** first in the review (after the tone row), in this order, each with ▶ and Undo (each Undo is one step of
+  its own) and saved with the project:
+  - "Opens on a clear look at you", with "Your eyes were shut on the first frame, so the clip starts in the pause 0.4 s
+    earlier" ("You were looking away on the first frame", "The first frame was blurred" or "Your face wasn't in the first
+    frame" when that is why) and the two frames (the first one tagged "eyes shut" when it is). The start
+    moves only inside the silence before the first word, never across a word, and only when the first frame is not a clear
+    look and one there is. No row when the start stays.
+  - "9:16 follows your face" ("1:1 follows your face" for a square clip): the crop centres on the measured face instead of
+    the middle of the picture, for the 9:16 and 1:1 exports; 16:9 is unchanged. No face measured, or no 9:16 or 1:1 in
+    the clip style's shapes, no row.
+  - "Blurred the phone screen at 0:12–0:16" with Claude's reason, one row per screen Claude chose to blur, with Undo ·
+    Change. Change lists every screen it measured with inline Blur toggles. When the AI was text only, nothing is blurred and
+    the row reads "Phone screen at 0:12–0:16 left sharp" with an inline Blur.
+  - "Cover frame chosen" with Claude's reason (or "Eyes open, the clearest look measured on this Mac") and " · saved next
+    to the export as a cover image", and its thumbnail. Change shows the three candidates inline; a click picks one.
+- **The send line,** under the score line, says what went to the AI, the count and phrase in bold:
+  - "{AI} read the clip's words and **24 small frames** (one per sentence, 320 px) on your Claude plan. Faces were measured
+    on this Mac." ("on your ChatGPT plan" for Codex, "billed to your key" for an API key, nothing for a free local model).
+  - A connector without images (Apple Intelligence, Ollama, LM Studio), or a key whose run cap could not cover the images:
+    "{AI} read the clip's words and **a text summary of 24 frames**. Faces were measured on this Mac."
+  - The count is the clip's (fewer for a short clip). Under it, a strip of up to five of the frames sent; a click seeks the
+    preview.
+- **Claude mode** applies all four within its cap, as it applies every other decision.
+- **The cover on export.** The frame at the cover's time, exactly as the export shows it (crop, captions, titles), is
+  saved as `<export name>-cover.jpg` beside the video and embedded as the MP4's cover art; the video's streams are
+  unchanged (doc/publishing.md §7).
 - **Privacy.** Faces, eyes and screens are measured on the Mac. The frames sent are 320 px stills, one per sentence; no
   video, audio, file name or recognised text is sent. Frames go only with a Make it postable send the user started (or
   Claude mode's run), to the connector the user chose; the connector confirmation names them.

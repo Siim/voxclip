@@ -94,6 +94,8 @@ func reduceEditingState(_ state: EditState, command: EditCommand, aiResults: [Pr
         }
     case .updateClip(let id, let start, let end):
         if start >= 0, end >= start, end < words.count, let index = result.clips.firstIndex(where: { $0.id == id }) {
+            // An opening lead-in was chosen for the clip's first word (ADR-R48): a new first word drops it.
+            if result.clips[index].startWordId != words[start].id { result.clips[index].leadInSeconds = nil }
             result.clips[index].startWordId = words[start].id; result.clips[index].endWordId = words[end].id
         }
     case .renameClip(let id, let title):

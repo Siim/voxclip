@@ -1,5 +1,18 @@
 # Windows fixed contracts
 
+### 2026-11-07 — Windows: a clip's lead-in, face-follow centre and cover kept losslessly; the lead-in and the face crop render (track/v2-eyes-2)
+
+The Mac's Claude sees the picture, part 2 (ADR-R48, ai.md §19.6) adds three optional schema-v4 project fields. Windows reads, validates and writes them losslessly and renders two of them; the rest is owed.
+
+- **Core.**
+  - `ClipRange.LeadInSeconds` (optional last parameter, omitted when null): raw validation allows `leadInSeconds` on a v4 clip only, above 0 and at most 0.6. `EditingAlgorithms.ClipTimes(words, start, end, leadIn)` and `ClipLeadInFloor` are twins of the Mac's `clipTimes`/`clipLeadInFloor`; `BuildSegments`, `VoiceLabWindow` and `VoiceLabOutputPlan` pass the clip's lead-in; `UpdateClip` drops it when the first word moves.
+  - `ReframeSettings` gains `CenterX`/`CenterY` (omitted when null) and `FaceMode`. `ProjectClipControls` gains `Reframe` and `CoverSeconds` (optional, omitted when null; `IsDefault` counts them), `CropCenter(outputAspect)`; `ClipControlsProject.Validate` and `ValidateWire` take the Mac's rules (reframe exactly `mode`, `zoom`, `centerX`, `centerY`; face mode, zoom 1, centre in 0…1; cover finite ≥ 0).
+  - `ClipFaceCrop.Centered` (twin of the Mac's `FrameCompositor.aspectCrop`): the centre crop moved to the face through the clip's flip and turns, clamped inside the picture; 9:16 and 1:1 only.
+- **Media.** `FrameComposer` applies `ClipFaceCrop.Centered` after the centre crop (preview and export).
+- **Tests.** Core `ClipFramesProjectWireTests` (7): the shared `clip-frames` vectors (8 valid saved losslessly, 14 invalid refused), the fixture's fields, the lead-in times and floor (the Mac's numbers), the clip's head segment and `UpdateClip`, the face crop for 9:16, 1:1, the edge, a flip, 16:9 and no face. `ClipAutopilotTests` pins promptVersion 8 and its sendable reply carries `frames`.
+- **Verification** (macOS host, Release): Core 3,281 (3,252 passed, 29 skipped, 0 failed); portable Media 1,190 (1,025 passed, 165 skipped, 0 failed); win-ui 1,393 (1,388 passed, 5 skipped). ReleaseBoundary `update`: Core +27/−7 (the new fields, `ClipTimes`'s lead-in, `ClipLeadInFloor`, `CropCenter`, `ClipFaceCrop`); Media, `VoxClip.txt` and `voxclip-cli.txt` unchanged.
+- **Owed (Windows twin of ADR-R48 part 2):** the image capability and wires in the C# connectors, the analyzer (Windows `FaceDetector` has no landmarks or capture quality), the pure decisions with shared vectors, the whole-video pass and the plan request's frames block and reply `frames` handling, the four Make it postable rows and the send line, the cover export (`<name>-cover.jpg` and MP4 `covr` art), the face crop in still frames (`CurrentFrames`), and `analyze-frames`/`autopilot` frames in the CLI.
+
 ### 2026-11-07 — Windows: native speaker parity verified on win-arm64 and win-x64; the gate stays closed (lead)
 
 `VoiceConsentMediaTests.SharedRealModelSpeakerVectorsReplayWhenVerifiedLocalAssetsExist` replays `shared/fixtures/voice-lab/speaker/vectors.json` (8 clips: voiced ranges, embeddings and pair scores, absolute tolerance 2e-4) through `ONNXSpeakerEmbedder` with the catalogue's pinned model (`wespeaker-resnet34-lm-voxceleb-f0c48c2`, bytes and SHA-256 checked).

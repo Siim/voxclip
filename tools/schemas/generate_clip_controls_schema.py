@@ -32,10 +32,23 @@ def clip_controls_definition():
         'muteSource': {'type': 'boolean', 'description': 'Silences the clip\'s own audio; a music bed still plays.'},
         'flipHorizontal': {'type': 'boolean'},
         'rotationDegrees': {'enum': [0, 90, 180, 270], 'description': 'Clockwise quarter turns.'}}
+    required = list(fields)
+    # Optional, omitted when absent (ADR-R48, "Claude sees the picture" part 2).
+    fields['reframe'] = {
+        'type': 'object', 'additionalProperties': False, 'required': ['mode', 'zoom', 'centerX', 'centerY'],
+        'description': '"9:16 follows your face": the 9:16 and 1:1 crops centre on the measured face (picture space as filmed, '
+                       'top-left origin); 16:9 ignores it. Omitted for the centre crop.',
+        'properties': {'mode': {'const': 'face'}, 'zoom': {'const': 1},
+                       'centerX': {'type': 'number', 'minimum': 0, 'maximum': 1},
+                       'centerY': {'type': 'number', 'minimum': 0, 'maximum': 1}}}
+    fields['coverSeconds'] = {'type': 'number', 'minimum': 0,
+                              'description': '"Cover frame chosen": the source second of the clip\'s cover, written beside each '
+                                             'export as <name>-cover.jpg and embedded as its cover art. Omitted when there is none.'}
     return {
-        'description': 'One clip\'s playback controls; doc/design.md section 6.9. Every key is written. Runtime also checks that '
+        'description': 'One clip\'s playback controls; doc/design.md section 6.9. Every required key is written; reframe and '
+                       'coverSeconds are omitted when absent. Runtime also checks that '
                        'the clip exists, that a clip has one entry and that no entry is stored at its defaults.',
-        'type': 'object', 'additionalProperties': False, 'required': list(fields), 'properties': fields}
+        'type': 'object', 'additionalProperties': False, 'required': required, 'properties': fields}
 
 
 def main():

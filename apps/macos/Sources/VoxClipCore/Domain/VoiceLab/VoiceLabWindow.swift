@@ -415,7 +415,7 @@ public enum VoiceLabWindowPlanner {
                     throw VoiceLabGeometryError.invalidInput()
                 }
                 activeClip = clip
-                clipRange = try editing { try clipTimes(words, startIndex: indices.lowerBound, endIndex: indices.upperBound) }
+                clipRange = try editing { try clipTimes(words, clip: clip, startIndex: indices.lowerBound, endIndex: indices.upperBound) }
             }
             self.clipRange = clipRange
             let replacements = try scopeReplacements(project, clipRange: clipRange, rate: take.rate, duration: take.duration)

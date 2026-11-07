@@ -7,9 +7,9 @@ import Foundation
 public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
     /// `version` of this contract. A reader accepts `readableVersions` and upgrades an older plan to this one: version 1
     /// has no corrections, the original look, no speed change, no stated reasons, no length and no flags; versions 1 and 2
-    /// have no tone.
-    public static let currentVersion = 3
-    public static let readableVersions: ClosedRange<Int> = 1...3
+    /// have no tone; versions 1 to 3 have no frame choices.
+    public static let currentVersion = 4
+    public static let readableVersions: ClosedRange<Int> = 1...4
 
     public enum CutKind: String, Codable, Sendable, CaseIterable { case filler, stumble, `repeat`, falseStart, tangent, other }
 
@@ -167,6 +167,32 @@ public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
         public init(id: String, title: String, summary: String = "") { self.id = id; self.title = title; self.summary = summary }
     }
 
+    /// What the reply chose among the frames the request listed (version 4, ai.md §19.6): which detected screens to blur
+    /// and which candidate is the cover. Ids name `ClipAutopilotFrames` candidates; the validator keeps only listed ones.
+    public struct FrameChoices: Codable, Sendable, Equatable {
+        public struct Blur: Codable, Sendable, Equatable {
+            /// A blur candidate's id, `B1`….
+            public var id: String
+            /// True to blur the screen; false leaves it sharp.
+            public var blur: Bool
+            public var reason: String
+            public init(id: String, blur: Bool, reason: String) { self.id = id; self.blur = blur; self.reason = reason }
+        }
+        public struct Cover: Codable, Sendable, Equatable {
+            /// A cover candidate's id, `C1`…`C3`.
+            public var id: String
+            public var reason: String
+            /// True when the reply named no listed candidate and the local best (`C1`) was taken.
+            public var fallback: Bool
+            public init(id: String, reason: String, fallback: Bool = false) { self.id = id; self.reason = reason; self.fallback = fallback }
+        }
+        /// One decision per blur candidate the reply named, in candidate order.
+        public var blur: [Blur]
+        /// Nil when the request listed no cover candidate.
+        public var cover: Cover?
+        public init(blur: [Blur] = [], cover: Cover? = nil) { self.blur = blur; self.cover = cover }
+    }
+
     /// Something the review should show next to the plan; the plan itself is kept as it is (ai.md §16.5).
     public struct Flag: Codable, Sendable, Equatable {
         public enum Kind: String, Codable, Sendable, CaseIterable {
@@ -215,17 +241,19 @@ public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
     public var flags: [Flag]
     /// The tone its words were written in; nil keeps the creator's own (version 3).
     public var tone: Tone?
+    /// The frame choices (version 4); nil when the request carried no frames.
+    public var frames: FrameChoices?
 
     public init(version: Int = ClipAutopilotPlan.currentVersion, startWord: Int, endWord: Int, title: String, hook: String,
                 cuts: [Cut] = [], pauseCuts: [PauseCut] = [], corrections: [Correction] = [], rewrites: [Rewrite] = [], captions: Captions,
                 look: Look = .original, speed: Speed? = nil, music: [Music] = [], musicPick: Int? = nil, zooms: [Zoom] = [], postText: String,
                 score: Int, verdict: Verdict, scoreReason: String = "", lengthReason: String = "", seconds: Double = 0,
-                questions: [Question] = [], repairs: [Repair] = [], flags: [Flag] = [], tone: Tone? = nil) {
+                questions: [Question] = [], repairs: [Repair] = [], flags: [Flag] = [], tone: Tone? = nil, frames: FrameChoices? = nil) {
         self.version = version; self.startWord = startWord; self.endWord = endWord; self.title = title; self.hook = hook
         self.cuts = cuts; self.pauseCuts = pauseCuts; self.corrections = corrections; self.rewrites = rewrites; self.captions = captions
         self.look = look; self.speed = speed; self.music = music; self.musicPick = musicPick; self.zooms = zooms; self.postText = postText
         self.score = score; self.verdict = verdict; self.scoreReason = scoreReason; self.lengthReason = lengthReason; self.seconds = seconds
-        self.questions = questions; self.repairs = repairs; self.flags = flags; self.tone = tone
+        self.questions = questions; self.repairs = repairs; self.flags = flags; self.tone = tone; self.frames = frames
     }
 
     public init(from decoder: any Decoder) throws {
@@ -250,12 +278,13 @@ public struct ClipAutopilotPlan: Codable, Sendable, Equatable {
                   questions: try values.decode([Question].self, forKey: .questions),
                   repairs: try values.decodeIfPresent([Repair].self, forKey: .repairs) ?? [],
                   flags: try values.decodeIfPresent([Flag].self, forKey: .flags) ?? [],
-                  tone: try values.decodeIfPresent(Tone.self, forKey: .tone))
+                  tone: try values.decodeIfPresent(Tone.self, forKey: .tone),
+                  frames: try values.decodeIfPresent(FrameChoices.self, forKey: .frames))
     }
 
     private enum CodingKeys: String, CodingKey {
         case version, startWord, endWord, title, hook, cuts, pauseCuts, corrections, rewrites, captions, look, speed, music, musicPick, zooms,
-             postText, score, verdict, scoreReason, lengthReason, seconds, questions, repairs, flags, tone
+             postText, score, verdict, scoreReason, lengthReason, seconds, questions, repairs, flags, tone, frames
     }
 
     /// The picked music, when there is one.

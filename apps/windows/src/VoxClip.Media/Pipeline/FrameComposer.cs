@@ -160,6 +160,8 @@ public sealed class FrameComposer : IFrameComposer
                 decoded = new(turned.AsMemory(0, width * height * 4), width, height, width * 4);
             }
             var crop = ExportPresets.CenterCrop(new(decoded.Width, decoded.Height), new(output.Width, output.Height), snapshot.Output.PreserveSource);
+            // "9:16 follows your face" (ADR-R48 part 2): the 9:16 and 1:1 crops centre on the clip's measured face.
+            crop = ClipFaceCrop.Centered(crop, decoded.Width, decoded.Height, controls, (double)output.Width / output.Height);
             crop = VideoCrop(snapshot, crop, decoded.Width, decoded.Height, editedTime);
             var left = (int)Math.Floor(crop.X);
             var top = (int)Math.Floor(crop.Y);

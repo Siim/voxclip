@@ -281,7 +281,26 @@
               ]
             }
           ]
-        }
+        },
+        "allOf": [
+          {
+            "properties": {
+              "edits": {
+                "properties": {
+                  "clips": {
+                    "items": {
+                      "not": {
+                        "required": [
+                          "leadInSeconds"
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
       }
     }
   ],
@@ -1096,6 +1115,12 @@
         "selected": {
           "type": "boolean",
           "description": "The checkbox in the Clips list; \"Export N clips\" exports the selected clips. New clips (manual and AI) start selected."
+        },
+        "leadInSeconds": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 0.6,
+          "description": "Schema v4: the clip opens this many seconds before its first word, in the silence before it and never across the item before it (ADR-R48). Omitted when the clip opens as the editor places it."
         }
       }
     },
@@ -4061,7 +4086,7 @@
       ]
     },
     "clipControls": {
-      "description": "One clip's playback controls; doc/design.md section 6.9. Every key is written. Runtime also checks that the clip exists, that a clip has one entry and that no entry is stored at its defaults.",
+      "description": "One clip's playback controls; doc/design.md section 6.9. Every required key is written; reframe and coverSeconds are omitted when absent. Runtime also checks that the clip exists, that a clip has one entry and that no entry is stored at its defaults.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -4144,6 +4169,40 @@
             270
           ],
           "description": "Clockwise quarter turns."
+        },
+        "reframe": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mode",
+            "zoom",
+            "centerX",
+            "centerY"
+          ],
+          "description": "\"9:16 follows your face\": the 9:16 and 1:1 crops centre on the measured face (picture space as filmed, top-left origin); 16:9 ignores it. Omitted for the centre crop.",
+          "properties": {
+            "mode": {
+              "const": "face"
+            },
+            "zoom": {
+              "const": 1
+            },
+            "centerX": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "centerY": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        },
+        "coverSeconds": {
+          "type": "number",
+          "minimum": 0,
+          "description": "\"Cover frame chosen\": the source second of the clip's cover, written beside each export as <name>-cover.jpg and embedded as its cover art. Omitted when there is none."
         }
       }
     },

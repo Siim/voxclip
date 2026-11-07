@@ -321,3 +321,12 @@ How it is measured: before encoding, the exporter reads its own mixed audio once
 | 3 min | 16.73 s | 17.39 s | +0.66 s (+4%) |
 
 FFmpeg's `ebur128` reads a social export of a −22.1 LUFS source at −14.0 LUFS, true peak −3.3 dBTP. Windows timing is owed to the next run on the VM.
+
+## 7. Cover image (ADR-R48)
+
+A clip with a chosen cover ("Cover frame chosen" in Make it postable, design.md §6.7.1; `clipControls.coverSeconds` in the project) exports its cover two ways, so a platform that asks for a thumbnail has one ready:
+
+- **A JPEG beside the video:** `<export base name>-cover.jpg` (for example `Ship day.mp4` and `Ship day-cover.jpg`), so several clips can share a folder. It is the exported frame at the cover's time, at the export's size, exactly as the video shows it: crop, captions and titles included. It is written with the export's transaction, so an export that fails or is cancelled leaves neither file.
+- **Cover art inside the MP4:** the same JPEG as the iTunes `covr` metadata item, which players and file browsers show as the file's artwork. It is metadata, not a stream: `ffprobe` lists the same video and audio streams as without it, plus the art as an `attached_pic`.
+
+The cover's time is a source second; the export maps it through the clip's cuts and speed and keeps it inside the video. A clip without a cover, a full-take export and `voxclip-cli export --cover off` write neither. Windows does not write covers yet (apps/windows/CONTRACTS.md).

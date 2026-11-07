@@ -60,8 +60,16 @@ public sealed class FrameRateJsonConverter : JsonConverter<FrameRate>
 public sealed record ExportPreset(string Id, string Name, ExportAspect Aspect, int Width, int Height,
     FrameRate FrameRate, string VideoCodec, long VideoBitrate, long AudioBitrate, ReframeSettings Reframe, bool BurnCaptions);
 
-/// <summary>M1 runtime centre-crop configuration; architecture §4.1.</summary>
-public sealed record ReframeSettings(string Mode = "center", double Zoom = 1);
+/// <summary>M1 runtime centre-crop configuration; architecture §4.1. In a clip's controls (ADR-R48 part 2) mode <c>face</c> with
+/// <paramref name="CenterX"/>/<paramref name="CenterY"/> (0–1 from the top left of the source picture) centres the 9:16 and 1:1 crops
+/// on the measured face; the centre keys are omitted when null.</summary>
+public sealed record ReframeSettings(string Mode = "center", double Zoom = 1,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] double? CenterX = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] double? CenterY = null)
+{
+    /// <summary>The face-follow mode.</summary>
+    public const string FaceMode = "face";
+}
 
 /// <summary>Pure output-size and bitrate rules; architecture §4.1.</summary>
 public static class ExportPresets
