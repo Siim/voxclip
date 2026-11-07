@@ -277,9 +277,36 @@ public struct ExportJob: Sendable, Equatable {
     public var srtURL: URL?
     /// Social loudness by default for every export (ADR-R47); `off` writes the mix as composed.
     public var loudness: ExportLoudness
-    public init(target: ExportTarget = .fullEdit, render: RenderRequest, aspect: AspectRatio = .source, quality: ExportQuality = .standard, outputURL: URL, writeSRT: Bool = false, srtURL: URL? = nil, loudness: ExportLoudness = .social) {
+    /// The clip's cover (ADR-R48): the exported frame at that time is written beside the video and embedded as its cover
+    /// art. Nil writes neither.
+    public var cover: ExportCover?
+    public init(target: ExportTarget = .fullEdit, render: RenderRequest, aspect: AspectRatio = .source, quality: ExportQuality = .standard, outputURL: URL, writeSRT: Bool = false, srtURL: URL? = nil, loudness: ExportLoudness = .social, cover: ExportCover? = nil) {
         self.target = target; self.render = render; self.aspect = aspect; self.quality = quality; self.outputURL = outputURL; self.writeSRT = writeSRT; self.srtURL = srtURL
-        self.loudness = loudness
+        self.loudness = loudness; self.cover = cover
+    }
+}
+
+/// "Cover frame chosen" on export (ADR-R48, doc/publishing.md): the frame the export renders at `seconds` (output time:
+/// crop, captions and title as they show), saved as `<video base name>-cover.jpg` beside the video (several clips share a
+/// folder) and embedded as the MP4's iTunes `covr` art, not as another track.
+public struct ExportCover: Sendable, Equatable {
+    /// Seconds into the exported video.
+    public var seconds: Double
+    public init(seconds: Double) { self.seconds = seconds }
+
+    /// The JPEG beside `video`: its base name with `-cover.jpg`.
+    public static func url(for video: URL) -> URL {
+        video.deletingPathExtension().deletingLastPathComponent()
+            .appendingPathComponent(video.deletingPathExtension().lastPathComponent + "-cover").appendingPathExtension("jpg")
+    }
+
+    /// The cover of `clipID` in a render of it: the clip's `coverSeconds` (a source second) at its place in the render, its
+    /// speed applied, kept inside the video. Nil when the clip has no cover.
+    public static func forClip(_ clipID: String?, in project: Project, render: RenderRequest) -> ExportCover? {
+        guard let clipID, let source = ClipControlsProject.controls(for: clipID, in: project)?.coverSeconds else { return nil }
+        let rendered = render.speedTiming.rendered(render.timeline.mapTime(source))
+        let last = max(0, render.renderedDuration - 1 / max(1, render.output.fps))
+        return ExportCover(seconds: min(max(0, rendered), last))
     }
 }
 
@@ -350,10 +377,13 @@ public struct ExportResult: Codable, Sendable, Equatable {
     public var elapsedSeconds: Double
     /// The social loudness the export applied (ADR-R47); nil with loudness off or without an audio track.
     public var loudness: SocialLoudnessReport?
+    /// The cover JPEG written beside the video (ADR-R48); nil without a cover. Encoded only when present.
+    public var coverURL: URL?
 
     /// Creates an explicit value without I/O or generated identifiers.
-    public init(outputURL: URL, srtURL: URL? = nil, durationSeconds: Double, width: Int, height: Int, fps: Double, frames: Int64, audioSampleRate: Int, audioSamples: Int64, videoCodec: String, encoder: String, elapsedSeconds: Double, loudness: SocialLoudnessReport? = nil) {
+    public init(outputURL: URL, srtURL: URL? = nil, durationSeconds: Double, width: Int, height: Int, fps: Double, frames: Int64, audioSampleRate: Int, audioSamples: Int64, videoCodec: String, encoder: String, elapsedSeconds: Double, loudness: SocialLoudnessReport? = nil, coverURL: URL? = nil) {
         self.loudness = loudness
+        self.coverURL = coverURL
         self.outputURL = outputURL
         self.srtURL = srtURL
         self.durationSeconds = durationSeconds
@@ -382,6 +412,7 @@ public struct ExportResult: Codable, Sendable, Equatable {
         case encoder
         case elapsedSeconds
         case loudness
+        case coverURL
     }
 
     public init(from decoder: any Decoder) throws {
@@ -399,6 +430,7 @@ public struct ExportResult: Codable, Sendable, Equatable {
         self.encoder = try values.decode(String.self, forKey: .encoder)
         self.elapsedSeconds = try values.decode(Double.self, forKey: .elapsedSeconds)
         self.loudness = try values.decodeIfPresent(SocialLoudnessReport.self, forKey: .loudness)
+        self.coverURL = try values.decodeIfPresent(URL.self, forKey: .coverURL)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -417,6 +449,7 @@ public struct ExportResult: Codable, Sendable, Equatable {
         try values.encode(self.elapsedSeconds, forKey: .elapsedSeconds)
         // Always written: null says the export left its level as composed.
         try values.encode(self.loudness, forKey: .loudness)
+        try values.encodeIfPresent(self.coverURL, forKey: .coverURL)
     }
 
 }
