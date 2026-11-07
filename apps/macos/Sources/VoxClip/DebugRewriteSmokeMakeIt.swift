@@ -64,7 +64,7 @@ extension DebugRewriteSmoke.Harness {
         editor.musicPanel.services = MusicPanelServices(suggest: { _, _ in MusicSuggestionResult(candidates: [DebugRewriteSmoke.makeItLibraryTrack]) },
                                                         fetch: { _ in wav }, folder: { nil })
         editor.makeIt.services = MakeItServices(
-            plan: { [weak self] request, _, _, progress in
+            plan: { [weak self] request, _, frames, progress in
                 let spans: [ClosedRange<Int>]
                 switch request.mode {
                 case .clip(let span): spans = [span]
@@ -73,6 +73,8 @@ extension DebugRewriteSmoke.Harness {
                 }
                 self?.planRequests.append(request.mode)
                 for index in spans.indices { progress(.planning(clip: index, of: spans.count)) }
+                // As the live planner does: each clip asks for its frames as its request is sent (none without a frame pass).
+                for (index, span) in spans.enumerated() { _ = await frames?(index, span) }
                 // A fixed tone comes back as the plan's tone, as the planner reports it (ai.md §16.5).
                 let tone: ClipAutopilotPlan.Tone? = if case .fixed(let tone)? = request.tone {
                     .init(id: tone.id, title: tone.title, summary: "Hook first, one line tightened")
