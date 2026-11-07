@@ -24,6 +24,8 @@ MAXIMUM_REWORD_ROUNDS = 2
 MAXIMUM_PART_SECONDS = 12.0
 MAXIMUM_PART_CHARACTERS = 1000
 MAXIMUM_CLIP_SECONDS = 300.0
+# voice-lab 8.3: the narrowest gap a seam can sit in.
+SEAM_MIN_GAP = 0.12
 MINUS = chr(0x2212)
 PLUS_MINUS = chr(0xB1)
 ELLIPSIS = chr(0x2026)
@@ -169,24 +171,62 @@ def parts_of(sentences):
     return parts
 
 
-def hunks_of(parts, words):
-    spoken = [word for word in words if word['kind'] == 'word']
-    index, items = {}, {}
-    for offset, word in enumerate(spoken):
-        index.setdefault(word['id'], offset)
-    for offset, word in enumerate(words):
-        items.setdefault(word['id'], offset)
-    result = []
+def hunks_of(parts, words, cut_pause_ids=()):
+    """The parts tile the clip (voice-lab 8.14 item 3): the first starts at the clip's first item, the last ends at its last.
+    The items between two parts' source words go to the side of the widest gap between them (the earliest on a tie; a cut
+    pause counts as no gap); when that gap is narrower than SEAM_MIN_GAP the two parts are one change."""
+    cut_pauses = set(cut_pause_ids)
+    items = {}
+    for offset, item in enumerate(words):
+        items.setdefault(item['id'], offset)
+    tiles = []
     for part in parts:
-        positions = [index[identity] for identity in part['sourceWordIds'] if identity in index]
+        positions = [items[identity] for identity in part['sourceWordIds'] if identity in items]
         if not positions:
             continue
-        item_positions = [items[identity] for identity in part['sourceWordIds'] if identity in items]
-        absorbed = []
-        if item_positions and max(item_positions) > min(item_positions):
-            absorbed = [word['id'] for word in words[min(item_positions) + 1:max(item_positions)] if word['kind'] != 'word']
-        result.append({'sourceWordIds': part['sourceWordIds'], 'newTokens': split_words(part['text']), 'absorbedItemIds': absorbed,
-                       'sourceStartIndex': min(positions), 'sourceEndIndex': max(positions) + 1})
+        tiles.append({'sources': list(part['sourceWordIds']), 'tokens': split_words(part['text']), 'first': min(positions),
+                      'last': max(positions), 'lower': min(positions), 'upper': max(positions)})
+    if not tiles:
+        return []
+    reached = []
+    for item in words:
+        reached.append(max(reached[-1] if reached else item['end'], item['end']))
+    joined = [tiles[0]]
+    for following in tiles[1:]:
+        current = joined.pop()
+        if following['first'] > current['last'] + 1:
+            split, widest = current['last'], -math.inf
+            for j in range(current['last'], following['first']):
+                gap = 0.0 if 'pause-after-' + words[j]['id'] in cut_pauses else words[j + 1]['start'] - reached[j]
+                if gap > widest:
+                    widest, split = gap, j
+            if widest >= SEAM_MIN_GAP:
+                current['upper'] = split
+                joined.append(current)
+                joined.append(dict(following, lower=split + 1))
+                continue
+        elif following['first'] == current['last'] + 1:
+            joined.extend([current, following])
+            continue
+        current['sources'] = current['sources'] + [identity for identity in following['sources'] if identity not in current['sources']]
+        current['tokens'] = current['tokens'] + following['tokens']
+        current['first'] = min(current['first'], following['first'])
+        current['last'] = max(current['last'], following['last'])
+        current['upper'] = max(current['upper'], following['upper'])
+        joined.append(current)
+    joined[0]['lower'] = 0
+    joined[-1]['upper'] = len(words) - 1
+    spoken_before = [0]
+    for item in words:
+        spoken_before.append(spoken_before[-1] + (1 if item['kind'] == 'word' else 0))
+    result = []
+    for tile in joined:
+        leading = [item['id'] for item in words[tile['lower']:tile['first']]]
+        trailing = [item['id'] for item in words[tile['last'] + 1:tile['upper'] + 1]]
+        span = words[tile['lower']:tile['upper'] + 1]
+        result.append({'sourceWordIds': leading + tile['sources'] + trailing, 'newTokens': tile['tokens'],
+                       'absorbedItemIds': [item['id'] for item in span if item['kind'] != 'word'],
+                       'sourceStartIndex': spoken_before[tile['lower']], 'sourceEndIndex': spoken_before[tile['upper'] + 1]})
     return result
 
 
@@ -195,7 +235,7 @@ def word(index, text, kind='word', prefix='w', step=0.5, length=0.4):
     return {'id': f'{prefix}{index}', 'text': text, 'kind': kind, 'start': start, 'end': start + length}
 
 
-def script_case(name, words, cut_ids=(), hunks=()):
+def script_case(name, words, cut_ids=(), hunks=(), cut_pause_ids=()):
     hunks = [{'sourceWordIds': list(ids), 'newText': text} for ids, text in hunks]
     sentences = assemble(words, set(cut_ids), hunks)
     expected = None
@@ -205,8 +245,51 @@ def script_case(name, words, cut_ids=(), hunks=()):
         expected = {'text': text, 'words': sum(len(sentence['tokens']) for sentence in sentences), 'characters': len(text),
                     'sentences': [{'text': text_of(sentence), 'sourceWordIds': sentence['sourceWordIds'], 'start': sentence['start'],
                                    'end': sentence['end']} for sentence in sentences],
-                    'parts': parts, 'hunks': hunks_of(parts, words)}
-    return {'id': name, 'words': words, 'cutWordIds': list(cut_ids), 'voiceHunks': hunks, 'expected': expected}
+                    'parts': parts, 'hunks': hunks_of(parts, words, cut_pause_ids)}
+    return {'id': name, 'words': words, 'cutWordIds': list(cut_ids), 'cutPauseIds': list(cut_pause_ids), 'voiceHunks': hunks,
+            'expected': expected}
+
+
+def laid_out(script, prefix='t'):
+    """Items for a tiling case: a plain token is a 1.3 s word touching the one before it (so two five-word sentences never
+    share a 12 s part), '~um' a cut word, '[laughs]' an event, '|0.5' a 0.5 s silence. Returns the items and the cut IDs."""
+    items, cuts, time = [], [], 0.0
+    for token in script:
+        if token.startswith('|'):
+            time += float(token[1:])
+            continue
+        identity = f'{prefix}{len(items)}'
+        kind = 'event' if token.startswith('[') else 'word'
+        text = token[1:] if token.startswith('~') else token
+        items.append({'id': identity, 'text': text, 'kind': kind, 'start': time, 'end': time + 1.3})
+        if token.startswith('~'):
+            cuts.append(identity)
+        time += 1.3
+    return items, cuts
+
+
+def tiling_cases():
+    def sentence(letter):
+        return [f'{letter}{index}' for index in range(4)] + [f'{letter}-end.']
+
+    a, b, c = sentence('a'), sentence('b'), sentence('c')
+    rows = [
+        ('tiles-a-filler-cut-before-a-sentence', a + ['|0.5', '~um'] + b + ['|0.5', '~uh'] + c, (), ()),
+        ('tiles-a-filler-cut-after-a-sentence', a + ['~um', '|0.5'] + b + ['~so', '|0.5'] + c, (), ()),
+        ('tiles-cut-words-at-the-clip-edges', ['~um', '~so'] + a + ['|0.5'] + b + ['~yeah'], (), ()),
+        ('tiles-consecutive-cuts-split-at-the-widest-gap', a + ['~so', '~um', '|0.5', '~like', '~uh'] + b, (), ()),
+        ('tiles-an-event-at-a-boundary', a + ['|0.5', '[laughs]'] + b, (), ()),
+        ('joins-parts-at-a-cut-run-with-no-silence', a + ['~um', '~uh'] + b + ['|0.5'] + c, (), ()),
+        ('joins-parts-at-a-tightened-pause-beside-a-filler', a + ['|1.2', '~um'] + b, (), ['pause-after-t4']),
+        ('keeps-the-split-at-a-tightened-pause-between-sentences', a + ['|1.2'] + b, (), ['pause-after-t4']),
+        ('keeps-the-split-of-touching-sentences', a + b, (), ()),
+        ('tiles-a-part-made-only-of-new-words', a + ['|0.5', '~um'] + b, [([f't{index}' for index in range(6, 11)], 'Then it all changed.')], ()),
+    ]
+    cases = []
+    for name, script, hunks, pauses in rows:
+        items, cuts = laid_out(script)
+        cases.append(script_case(name, items, cuts, hunks, pauses))
+    return cases
 
 
 def script_cases():
@@ -239,7 +322,7 @@ def script_cases():
         script_case('characters-count-scalars', accents),
         script_case('parts-count-scalars-not-utf16-units', smiles),
         script_case('everything-cut', mockup, [f'w{i}' for i in range(11)]),
-    ]
+    ] + tiling_cases()
 
 
 # MARK: - Fit

@@ -245,33 +245,79 @@ public sealed class WholeClipScript
     }
 
     /// <summary>The parts as Rewrite voice changes, so each goes through the existing take path. <paramref name="words"/> are the clip's
-    /// transcript items.</summary>
-    public IReadOnlyList<VoiceLabDiffHunk> Hunks(IReadOnlyList<TimedWord> words)
+    /// transcript items. Every spoken word is replaced, so the parts tile the clip (voice-lab §8.14 item 3): the first starts at the clip's
+    /// first item, the last ends at its last. The cut words and non-word items between two parts' source words go to the side of the widest
+    /// gap between them (the earliest on a tie), so both windows seam in that gap; a pause in <paramref name="cutPauseIds"/> counts as no
+    /// gap. When the widest gap is narrower than <c>SEAM_MIN_GAP</c> the two parts become one change. Two parts with nothing between them
+    /// keep their split. A hunk's source IDs are its parts' source words with the items it takes at its edges; its absorbed IDs are the
+    /// non-word items in its span; its spoken indices tile the clip's spoken words.</summary>
+    public IReadOnlyList<VoiceLabDiffHunk> Hunks(IReadOnlyList<TimedWord> words, IReadOnlySet<string> cutPauseIds)
     {
-        ArgumentNullException.ThrowIfNull(words);
-        var spokenIndex = new Dictionary<string, int>(StringComparer.Ordinal);
-        var spoken = 0;
+        ArgumentNullException.ThrowIfNull(words); ArgumentNullException.ThrowIfNull(cutPauseIds);
         var items = new Dictionary<string, int>(StringComparer.Ordinal);
-        for (var offset = 0; offset < words.Count; offset++)
-        {
-            items.TryAdd(words[offset].Id, offset);
-            if (words[offset].Kind == WordKind.Word) spokenIndex.TryAdd(words[offset].Id, spoken++);
-        }
-        var result = new List<VoiceLabDiffHunk>();
+        for (var offset = 0; offset < words.Count; offset++) items.TryAdd(words[offset].Id, offset);
+        var tiles = new List<Tile>();
         foreach (var part in Parts)
         {
-            var positions = part.SourceWordIds.Where(spokenIndex.ContainsKey).Select(id => spokenIndex[id]).ToArray();
+            var positions = part.SourceWordIds.Where(items.ContainsKey).Select(id => items[id]).ToArray();
             if (positions.Length == 0) continue;
-            var itemPositions = part.SourceWordIds.Where(items.ContainsKey).Select(id => items[id]).ToArray();
-            IReadOnlyList<string> absorbed = [];
-            if (itemPositions.Length > 0 && itemPositions.Max() > itemPositions.Min())
-                absorbed = words.Skip(itemPositions.Min() + 1).Take(itemPositions.Max() - itemPositions.Min() - 1)
-                    .Where(word => word.Kind != WordKind.Word).Select(word => word.Id).ToArray();
-            result.Add(new(VoiceLabDiffHunkKind.Voice, part.SourceWordIds, EditingAlgorithms.SplitWords(part.Text), [], absorbed, [],
-                positions.Min(), positions.Max() + 1, null));
+            tiles.Add(new Tile(part.SourceWordIds.ToList(), EditingAlgorithms.SplitWords(part.Text).ToList(), positions.Min(), positions.Max(),
+                positions.Min(), positions.Max()));
+        }
+        if (tiles.Count == 0) return [];
+        // Where the silence after item j begins: the latest end of the items up to it.
+        var reached = new double[words.Count];
+        for (var index = 0; index < words.Count; index++) reached[index] = index == 0 ? words[0].End : Math.Max(reached[index - 1], words[index].End);
+        var joined = new List<Tile> { tiles[0] };
+        foreach (var next in tiles.Skip(1))
+        {
+            var current = joined[^1];
+            joined.RemoveAt(joined.Count - 1);
+            if (next.First > current.Last + 1)
+            {
+                int split = current.Last; var widest = double.NegativeInfinity;
+                for (var j = current.Last; j < next.First; j++)
+                {
+                    var gap = cutPauseIds.Contains("pause-after-" + words[j].Id) ? 0.0 : words[j + 1].Start - reached[j];
+                    if (gap > widest) { widest = gap; split = j; }
+                }
+                if (widest >= VoiceLabPatchConstants.SEAM_MIN_GAP)
+                {
+                    joined.Add(current with { Upper = split });
+                    joined.Add(next with { Lower = split + 1 });
+                    continue;
+                }
+            }
+            else if (next.First == current.Last + 1)
+            {
+                joined.Add(current); joined.Add(next);
+                continue;
+            }
+            // No seam fits between them, or their sources interleave: one change.
+            var sources = current.Sources.Concat(next.Sources.Where(id => !current.Sources.Contains(id))).ToList();
+            joined.Add(current with
+            {
+                Sources = sources, Tokens = current.Tokens.Concat(next.Tokens).ToList(), First = Math.Min(current.First, next.First),
+                Last = Math.Max(current.Last, next.Last), Upper = Math.Max(current.Upper, next.Upper),
+            });
+        }
+        joined[0] = joined[0] with { Lower = 0 };
+        joined[^1] = joined[^1] with { Upper = words.Count - 1 };
+        var spokenBefore = new int[words.Count + 1];
+        for (var index = 0; index < words.Count; index++) spokenBefore[index + 1] = spokenBefore[index] + (words[index].Kind == WordKind.Word ? 1 : 0);
+        var result = new List<VoiceLabDiffHunk>();
+        foreach (var tile in joined)
+        {
+            var leading = words.Skip(tile.Lower).Take(tile.First - tile.Lower).Select(word => word.Id);
+            var trailing = words.Skip(tile.Last + 1).Take(tile.Upper - tile.Last).Select(word => word.Id);
+            var absorbed = words.Skip(tile.Lower).Take(tile.Upper - tile.Lower + 1).Where(word => word.Kind != WordKind.Word).Select(word => word.Id).ToArray();
+            result.Add(new(VoiceLabDiffHunkKind.Voice, leading.Concat(tile.Sources).Concat(trailing).ToArray(), tile.Tokens.ToArray(), [], absorbed, [],
+                spokenBefore[tile.Lower], spokenBefore[tile.Upper + 1], null));
         }
         return result;
     }
+
+    private sealed record Tile(List<string> Sources, List<string> Tokens, int First, int Last, int Lower, int Upper);
 }
 
 /// <summary>What a whole-clip run has paid for, keyed by what it was paid for. A step whose key matches is reused instead of paid again:

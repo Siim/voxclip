@@ -19,7 +19,9 @@ import Testing
     private struct Script: Decodable {
         let text: String; let words: Int; let characters: Int; let sentences: [Sentence]; let parts: [Part]; let hunks: [MadeHunk]
     }
-    private struct ScriptCase: Decodable { let id: String; let words: [Word]; let cutWordIds: [String]; let voiceHunks: [Hunk]; let expected: Script? }
+    private struct ScriptCase: Decodable {
+        let id: String; let words: [Word]; let cutWordIds: [String]; let cutPauseIds: [String]; let voiceHunks: [Hunk]; let expected: Script?
+    }
     private struct FitResult: Decodable { let kind: String; let factor: Double?; let copy: String?; let shorter: Bool?; let targetWords: Int? }
     private struct FitCase: Decodable { let voiceSeconds: Double; let videoSeconds: Double; let words: Int; let round: Int; let expected: FitResult }
     private struct Prices: Decodable { let voiceUsd: String?; let lipsyncUsd: String?; let usd: String? }
@@ -87,7 +89,7 @@ import Testing
 
     @Test func theScriptItsPartsAndTheirVoiceChanges() throws {
         let rows = try cases().script
-        #expect(rows.count == 17)
+        #expect(rows.count == 27)
         for row in rows {
             let words = row.words.map(timed)
             let hunks = row.voiceHunks.map { hunk in
@@ -107,7 +109,7 @@ import Testing
             #expect(parts.map(\.words) == expected.parts.map(\.words), "\(row.id)")
             #expect(parts.map(\.sourceWordIds) == expected.parts.map(\.sourceWordIds), "\(row.id)")
             #expect(parts.map(\.start) == expected.parts.map(\.start) && parts.map(\.end) == expected.parts.map(\.end), "\(row.id)")
-            let voice = made.hunks(words: words)
+            let voice = made.hunks(words: words, cutPauseIds: Set(row.cutPauseIds))
             #expect(voice.map(\.sourceWordIds) == expected.hunks.map(\.sourceWordIds), "\(row.id)")
             #expect(voice.map(\.newTokens) == expected.hunks.map(\.newTokens), "\(row.id)")
             #expect(voice.map(\.absorbedItemIds) == expected.hunks.map(\.absorbedItemIds), "\(row.id)")

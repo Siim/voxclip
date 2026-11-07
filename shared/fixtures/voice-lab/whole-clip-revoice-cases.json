@@ -359,6 +359,7 @@
       "cutWordIds": [
         "w6"
       ],
+      "cutPauseIds": [],
       "voiceHunks": [
         {
           "sourceWordIds": [
@@ -438,7 +439,8 @@
               "w7",
               "w8",
               "w9",
-              "w10"
+              "w10",
+              "w11"
             ],
             "newTokens": [
               "So",
@@ -453,7 +455,9 @@
               "finally",
               "stopped."
             ],
-            "absorbedItemIds": [],
+            "absorbedItemIds": [
+              "w11"
+            ],
             "sourceStartIndex": 0,
             "sourceEndIndex": 11
           }
@@ -549,6 +553,7 @@
         }
       ],
       "cutWordIds": [],
+      "cutPauseIds": [],
       "voiceHunks": [],
       "expected": {
         "text": "So we drove north. It was um cold. Then we stopped.",
@@ -622,7 +627,8 @@
               "w7",
               "w8",
               "w9",
-              "w10"
+              "w10",
+              "w11"
             ],
             "newTokens": [
               "So",
@@ -637,7 +643,9 @@
               "we",
               "stopped."
             ],
-            "absorbedItemIds": [],
+            "absorbedItemIds": [
+              "w11"
+            ],
             "sourceStartIndex": 0,
             "sourceEndIndex": 11
           }
@@ -656,6 +664,7 @@
         }
       ],
       "cutWordIds": [],
+      "cutPauseIds": [],
       "voiceHunks": [],
       "expected": null
     },
@@ -748,6 +757,7 @@
         }
       ],
       "cutWordIds": [],
+      "cutPauseIds": [],
       "voiceHunks": [
         {
           "sourceWordIds": [
@@ -823,7 +833,8 @@
               "w7",
               "w8",
               "w9",
-              "w10"
+              "w10",
+              "w11"
             ],
             "newTokens": [
               "So",
@@ -839,7 +850,9 @@
               "we",
               "stopped."
             ],
-            "absorbedItemIds": [],
+            "absorbedItemIds": [
+              "w11"
+            ],
             "sourceStartIndex": 0,
             "sourceEndIndex": 11
           }
@@ -1187,6 +1200,7 @@
         }
       ],
       "cutWordIds": [],
+      "cutPauseIds": [],
       "voiceHunks": [],
       "expected": {
         "text": "word word word end. word word word end. word word word end. word word word end. word word word end. word word word end. word word word end. word word word end. word word word end. word word word end. word word word end. word word word end.",
@@ -1795,6 +1809,7 @@
         }
       ],
       "cutWordIds": [],
+      "cutPauseIds": [],
       "voiceHunks": [],
       "expected": {
         "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.",
@@ -2248,6 +2263,7 @@
         }
       ],
       "cutWordIds": [],
+      "cutPauseIds": [],
       "voiceHunks": [
         {
           "sourceWordIds": [
@@ -2340,7 +2356,8 @@
               "w7",
               "w8",
               "w9",
-              "w10"
+              "w10",
+              "w11"
             ],
             "newTokens": [
               "Hello.",
@@ -2352,7 +2369,9 @@
               "we",
               "stopped."
             ],
-            "absorbedItemIds": [],
+            "absorbedItemIds": [
+              "w11"
+            ],
             "sourceStartIndex": 0,
             "sourceEndIndex": 11
           }
@@ -2448,6 +2467,7 @@
         }
       ],
       "cutWordIds": [],
+      "cutPauseIds": [],
       "voiceHunks": [
         {
           "sourceWordIds": [
@@ -2530,7 +2550,8 @@
               "w7",
               "w8",
               "w9",
-              "w10"
+              "w10",
+              "w11"
             ],
             "newTokens": [
               "So",
@@ -2546,7 +2567,9 @@
               "Done.",
               "Finally."
             ],
-            "absorbedItemIds": [],
+            "absorbedItemIds": [
+              "w11"
+            ],
             "sourceStartIndex": 0,
             "sourceEndIndex": 11
           }
@@ -2642,6 +2665,7 @@
         }
       ],
       "cutWordIds": [],
+      "cutPauseIds": [],
       "voiceHunks": [
         {
           "sourceWordIds": [],
@@ -2726,7 +2750,8 @@
               "w7",
               "w8",
               "w9",
-              "w10"
+              "w10",
+              "w11"
             ],
             "newTokens": [
               "Well",
@@ -2741,7 +2766,9 @@
               "we",
               "stopped."
             ],
-            "absorbedItemIds": [],
+            "absorbedItemIds": [
+              "w11"
+            ],
             "sourceStartIndex": 0,
             "sourceEndIndex": 11
           }
@@ -2840,6 +2867,7 @@
         "w6",
         "w7"
       ],
+      "cutPauseIds": [],
       "voiceHunks": [
         {
           "sourceWordIds": [
@@ -2921,7 +2949,8 @@
               "w7",
               "w8",
               "w9",
-              "w10"
+              "w10",
+              "w11"
             ],
             "newTokens": [
               "So",
@@ -2935,7 +2964,9 @@
               "we",
               "stopped."
             ],
-            "absorbedItemIds": [],
+            "absorbedItemIds": [
+              "w11"
+            ],
             "sourceStartIndex": 0,
             "sourceEndIndex": 11
           }
@@ -3031,6 +3062,7 @@
         }
       ],
       "cutWordIds": [],
+      "cutPauseIds": [],
       "voiceHunks": [
         {
           "sourceWordIds": [
@@ -3119,7 +3151,8 @@
               "w7",
               "w8",
               "w9",
-              "w10"
+              "w10",
+              "w11"
             ],
             "newTokens": [
               "So",
@@ -3135,7 +3168,9 @@
               "we",
               "stopped."
             ],
-            "absorbedItemIds": [],
+            "absorbedItemIds": [
+              "w11"
+            ],
             "sourceStartIndex": 0,
             "sourceEndIndex": 11
           }
@@ -3231,6 +3266,7 @@
         }
       ],
       "cutWordIds": [],
+      "cutPauseIds": [],
       "voiceHunks": [
         {
           "sourceWordIds": [
@@ -3312,7 +3348,8 @@
               "w7",
               "w8",
               "w9",
-              "w10"
+              "w10",
+              "w11"
             ],
             "newTokens": [
               "Now",
@@ -3327,7 +3364,9 @@
               "we",
               "stopped."
             ],
-            "absorbedItemIds": [],
+            "absorbedItemIds": [
+              "w11"
+            ],
             "sourceStartIndex": 0,
             "sourceEndIndex": 11
           }
@@ -3423,6 +3462,7 @@
         }
       ],
       "cutWordIds": [],
+      "cutPauseIds": [],
       "voiceHunks": [
         {
           "sourceWordIds": [
@@ -3499,7 +3539,8 @@
               "w7",
               "w8",
               "w9",
-              "w10"
+              "w10",
+              "w11"
             ],
             "newTokens": [
               "So",
@@ -3510,7 +3551,9 @@
               "we",
               "stopped."
             ],
-            "absorbedItemIds": [],
+            "absorbedItemIds": [
+              "w11"
+            ],
             "sourceStartIndex": 0,
             "sourceEndIndex": 11
           }
@@ -3564,6 +3607,7 @@
         }
       ],
       "cutWordIds": [],
+      "cutPauseIds": [],
       "voiceHunks": [],
       "expected": {
         "text": "Hi there. Bye now!",
@@ -3667,6 +3711,7 @@
         }
       ],
       "cutWordIds": [],
+      "cutPauseIds": [],
       "voiceHunks": [],
       "expected": {
         "text": "Café naïve déjà vu… Olé?",
@@ -3750,6 +3795,7 @@
         }
       ],
       "cutWordIds": [],
+      "cutPauseIds": [],
       "voiceHunks": [],
       "expected": {
         "text": "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂. 🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂.",
@@ -3903,8 +3949,2161 @@
         "w9",
         "w10"
       ],
+      "cutPauseIds": [],
       "voiceHunks": [],
       "expected": null
+    },
+    {
+      "id": "tiles-a-filler-cut-before-a-sentence",
+      "words": [
+        {
+          "id": "t0",
+          "text": "a0",
+          "kind": "word",
+          "start": 0.0,
+          "end": 1.3
+        },
+        {
+          "id": "t1",
+          "text": "a1",
+          "kind": "word",
+          "start": 1.3,
+          "end": 2.6
+        },
+        {
+          "id": "t2",
+          "text": "a2",
+          "kind": "word",
+          "start": 2.6,
+          "end": 3.9000000000000004
+        },
+        {
+          "id": "t3",
+          "text": "a3",
+          "kind": "word",
+          "start": 3.9000000000000004,
+          "end": 5.2
+        },
+        {
+          "id": "t4",
+          "text": "a-end.",
+          "kind": "word",
+          "start": 5.2,
+          "end": 6.5
+        },
+        {
+          "id": "t5",
+          "text": "um",
+          "kind": "word",
+          "start": 7.0,
+          "end": 8.3
+        },
+        {
+          "id": "t6",
+          "text": "b0",
+          "kind": "word",
+          "start": 8.3,
+          "end": 9.600000000000001
+        },
+        {
+          "id": "t7",
+          "text": "b1",
+          "kind": "word",
+          "start": 9.600000000000001,
+          "end": 10.900000000000002
+        },
+        {
+          "id": "t8",
+          "text": "b2",
+          "kind": "word",
+          "start": 10.900000000000002,
+          "end": 12.200000000000003
+        },
+        {
+          "id": "t9",
+          "text": "b3",
+          "kind": "word",
+          "start": 12.200000000000003,
+          "end": 13.500000000000004
+        },
+        {
+          "id": "t10",
+          "text": "b-end.",
+          "kind": "word",
+          "start": 13.500000000000004,
+          "end": 14.800000000000004
+        },
+        {
+          "id": "t11",
+          "text": "uh",
+          "kind": "word",
+          "start": 15.300000000000004,
+          "end": 16.600000000000005
+        },
+        {
+          "id": "t12",
+          "text": "c0",
+          "kind": "word",
+          "start": 16.600000000000005,
+          "end": 17.900000000000006
+        },
+        {
+          "id": "t13",
+          "text": "c1",
+          "kind": "word",
+          "start": 17.900000000000006,
+          "end": 19.200000000000006
+        },
+        {
+          "id": "t14",
+          "text": "c2",
+          "kind": "word",
+          "start": 19.200000000000006,
+          "end": 20.500000000000007
+        },
+        {
+          "id": "t15",
+          "text": "c3",
+          "kind": "word",
+          "start": 20.500000000000007,
+          "end": 21.800000000000008
+        },
+        {
+          "id": "t16",
+          "text": "c-end.",
+          "kind": "word",
+          "start": 21.800000000000008,
+          "end": 23.10000000000001
+        }
+      ],
+      "cutWordIds": [
+        "t5",
+        "t11"
+      ],
+      "cutPauseIds": [],
+      "voiceHunks": [],
+      "expected": {
+        "text": "a0 a1 a2 a3 a-end. b0 b1 b2 b3 b-end. c0 c1 c2 c3 c-end.",
+        "words": 15,
+        "characters": 56,
+        "sentences": [
+          {
+            "text": "a0 a1 a2 a3 a-end.",
+            "sourceWordIds": [
+              "t0",
+              "t1",
+              "t2",
+              "t3",
+              "t4"
+            ],
+            "start": 0.0,
+            "end": 6.5
+          },
+          {
+            "text": "b0 b1 b2 b3 b-end.",
+            "sourceWordIds": [
+              "t6",
+              "t7",
+              "t8",
+              "t9",
+              "t10"
+            ],
+            "start": 8.3,
+            "end": 14.800000000000004
+          },
+          {
+            "text": "c0 c1 c2 c3 c-end.",
+            "sourceWordIds": [
+              "t12",
+              "t13",
+              "t14",
+              "t15",
+              "t16"
+            ],
+            "start": 16.600000000000005,
+            "end": 23.10000000000001
+          }
+        ],
+        "parts": [
+          {
+            "text": "a0 a1 a2 a3 a-end.",
+            "words": 5,
+            "sourceWordIds": [
+              "t0",
+              "t1",
+              "t2",
+              "t3",
+              "t4"
+            ],
+            "start": 0.0,
+            "end": 6.5
+          },
+          {
+            "text": "b0 b1 b2 b3 b-end.",
+            "words": 5,
+            "sourceWordIds": [
+              "t6",
+              "t7",
+              "t8",
+              "t9",
+              "t10"
+            ],
+            "start": 8.3,
+            "end": 14.800000000000004
+          },
+          {
+            "text": "c0 c1 c2 c3 c-end.",
+            "words": 5,
+            "sourceWordIds": [
+              "t12",
+              "t13",
+              "t14",
+              "t15",
+              "t16"
+            ],
+            "start": 16.600000000000005,
+            "end": 23.10000000000001
+          }
+        ],
+        "hunks": [
+          {
+            "sourceWordIds": [
+              "t0",
+              "t1",
+              "t2",
+              "t3",
+              "t4"
+            ],
+            "newTokens": [
+              "a0",
+              "a1",
+              "a2",
+              "a3",
+              "a-end."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 0,
+            "sourceEndIndex": 5
+          },
+          {
+            "sourceWordIds": [
+              "t5",
+              "t6",
+              "t7",
+              "t8",
+              "t9",
+              "t10"
+            ],
+            "newTokens": [
+              "b0",
+              "b1",
+              "b2",
+              "b3",
+              "b-end."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 5,
+            "sourceEndIndex": 11
+          },
+          {
+            "sourceWordIds": [
+              "t11",
+              "t12",
+              "t13",
+              "t14",
+              "t15",
+              "t16"
+            ],
+            "newTokens": [
+              "c0",
+              "c1",
+              "c2",
+              "c3",
+              "c-end."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 11,
+            "sourceEndIndex": 17
+          }
+        ]
+      }
+    },
+    {
+      "id": "tiles-a-filler-cut-after-a-sentence",
+      "words": [
+        {
+          "id": "t0",
+          "text": "a0",
+          "kind": "word",
+          "start": 0.0,
+          "end": 1.3
+        },
+        {
+          "id": "t1",
+          "text": "a1",
+          "kind": "word",
+          "start": 1.3,
+          "end": 2.6
+        },
+        {
+          "id": "t2",
+          "text": "a2",
+          "kind": "word",
+          "start": 2.6,
+          "end": 3.9000000000000004
+        },
+        {
+          "id": "t3",
+          "text": "a3",
+          "kind": "word",
+          "start": 3.9000000000000004,
+          "end": 5.2
+        },
+        {
+          "id": "t4",
+          "text": "a-end.",
+          "kind": "word",
+          "start": 5.2,
+          "end": 6.5
+        },
+        {
+          "id": "t5",
+          "text": "um",
+          "kind": "word",
+          "start": 6.5,
+          "end": 7.8
+        },
+        {
+          "id": "t6",
+          "text": "b0",
+          "kind": "word",
+          "start": 8.3,
+          "end": 9.600000000000001
+        },
+        {
+          "id": "t7",
+          "text": "b1",
+          "kind": "word",
+          "start": 9.600000000000001,
+          "end": 10.900000000000002
+        },
+        {
+          "id": "t8",
+          "text": "b2",
+          "kind": "word",
+          "start": 10.900000000000002,
+          "end": 12.200000000000003
+        },
+        {
+          "id": "t9",
+          "text": "b3",
+          "kind": "word",
+          "start": 12.200000000000003,
+          "end": 13.500000000000004
+        },
+        {
+          "id": "t10",
+          "text": "b-end.",
+          "kind": "word",
+          "start": 13.500000000000004,
+          "end": 14.800000000000004
+        },
+        {
+          "id": "t11",
+          "text": "so",
+          "kind": "word",
+          "start": 14.800000000000004,
+          "end": 16.100000000000005
+        },
+        {
+          "id": "t12",
+          "text": "c0",
+          "kind": "word",
+          "start": 16.600000000000005,
+          "end": 17.900000000000006
+        },
+        {
+          "id": "t13",
+          "text": "c1",
+          "kind": "word",
+          "start": 17.900000000000006,
+          "end": 19.200000000000006
+        },
+        {
+          "id": "t14",
+          "text": "c2",
+          "kind": "word",
+          "start": 19.200000000000006,
+          "end": 20.500000000000007
+        },
+        {
+          "id": "t15",
+          "text": "c3",
+          "kind": "word",
+          "start": 20.500000000000007,
+          "end": 21.800000000000008
+        },
+        {
+          "id": "t16",
+          "text": "c-end.",
+          "kind": "word",
+          "start": 21.800000000000008,
+          "end": 23.10000000000001
+        }
+      ],
+      "cutWordIds": [
+        "t5",
+        "t11"
+      ],
+      "cutPauseIds": [],
+      "voiceHunks": [],
+      "expected": {
+        "text": "a0 a1 a2 a3 a-end. b0 b1 b2 b3 b-end. c0 c1 c2 c3 c-end.",
+        "words": 15,
+        "characters": 56,
+        "sentences": [
+          {
+            "text": "a0 a1 a2 a3 a-end.",
+            "sourceWordIds": [
+              "t0",
+              "t1",
+              "t2",
+              "t3",
+              "t4"
+            ],
+            "start": 0.0,
+            "end": 6.5
+          },
+          {
+            "text": "b0 b1 b2 b3 b-end.",
+            "sourceWordIds": [
+              "t6",
+              "t7",
+              "t8",
+              "t9",
+              "t10"
+            ],
+            "start": 8.3,
+            "end": 14.800000000000004
+          },
+          {
+            "text": "c0 c1 c2 c3 c-end.",
+            "sourceWordIds": [
+              "t12",
+              "t13",
+              "t14",
+              "t15",
+              "t16"
+            ],
+            "start": 16.600000000000005,
+            "end": 23.10000000000001
+          }
+        ],
+        "parts": [
+          {
+            "text": "a0 a1 a2 a3 a-end.",
+            "words": 5,
+            "sourceWordIds": [
+              "t0",
+              "t1",
+              "t2",
+              "t3",
+              "t4"
+            ],
+            "start": 0.0,
+            "end": 6.5
+          },
+          {
+            "text": "b0 b1 b2 b3 b-end.",
+            "words": 5,
+            "sourceWordIds": [
+              "t6",
+              "t7",
+              "t8",
+              "t9",
+              "t10"
+            ],
+            "start": 8.3,
+            "end": 14.800000000000004
+          },
+          {
+            "text": "c0 c1 c2 c3 c-end.",
+            "words": 5,
+            "sourceWordIds": [
+              "t12",
+              "t13",
+              "t14",
+              "t15",
+              "t16"
+            ],
+            "start": 16.600000000000005,
+            "end": 23.10000000000001
+          }
+        ],
+        "hunks": [
+          {
+            "sourceWordIds": [
+              "t0",
+              "t1",
+              "t2",
+              "t3",
+              "t4",
+              "t5"
+            ],
+            "newTokens": [
+              "a0",
+              "a1",
+              "a2",
+              "a3",
+              "a-end."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 0,
+            "sourceEndIndex": 6
+          },
+          {
+            "sourceWordIds": [
+              "t6",
+              "t7",
+              "t8",
+              "t9",
+              "t10",
+              "t11"
+            ],
+            "newTokens": [
+              "b0",
+              "b1",
+              "b2",
+              "b3",
+              "b-end."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 6,
+            "sourceEndIndex": 12
+          },
+          {
+            "sourceWordIds": [
+              "t12",
+              "t13",
+              "t14",
+              "t15",
+              "t16"
+            ],
+            "newTokens": [
+              "c0",
+              "c1",
+              "c2",
+              "c3",
+              "c-end."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 12,
+            "sourceEndIndex": 17
+          }
+        ]
+      }
+    },
+    {
+      "id": "tiles-cut-words-at-the-clip-edges",
+      "words": [
+        {
+          "id": "t0",
+          "text": "um",
+          "kind": "word",
+          "start": 0.0,
+          "end": 1.3
+        },
+        {
+          "id": "t1",
+          "text": "so",
+          "kind": "word",
+          "start": 1.3,
+          "end": 2.6
+        },
+        {
+          "id": "t2",
+          "text": "a0",
+          "kind": "word",
+          "start": 2.6,
+          "end": 3.9000000000000004
+        },
+        {
+          "id": "t3",
+          "text": "a1",
+          "kind": "word",
+          "start": 3.9000000000000004,
+          "end": 5.2
+        },
+        {
+          "id": "t4",
+          "text": "a2",
+          "kind": "word",
+          "start": 5.2,
+          "end": 6.5
+        },
+        {
+          "id": "t5",
+          "text": "a3",
+          "kind": "word",
+          "start": 6.5,
+          "end": 7.8
+        },
+        {
+          "id": "t6",
+          "text": "a-end.",
+          "kind": "word",
+          "start": 7.8,
+          "end": 9.1
+        },
+        {
+          "id": "t7",
+          "text": "b0",
+          "kind": "word",
+          "start": 9.6,
+          "end": 10.9
+        },
+        {
+          "id": "t8",
+          "text": "b1",
+          "kind": "word",
+          "start": 10.9,
+          "end": 12.200000000000001
+        },
+        {
+          "id": "t9",
+          "text": "b2",
+          "kind": "word",
+          "start": 12.200000000000001,
+          "end": 13.500000000000002
+        },
+        {
+          "id": "t10",
+          "text": "b3",
+          "kind": "word",
+          "start": 13.500000000000002,
+          "end": 14.800000000000002
+        },
+        {
+          "id": "t11",
+          "text": "b-end.",
+          "kind": "word",
+          "start": 14.800000000000002,
+          "end": 16.1
+        },
+        {
+          "id": "t12",
+          "text": "yeah",
+          "kind": "word",
+          "start": 16.1,
+          "end": 17.400000000000002
+        }
+      ],
+      "cutWordIds": [
+        "t0",
+        "t1",
+        "t12"
+      ],
+      "cutPauseIds": [],
+      "voiceHunks": [],
+      "expected": {
+        "text": "a0 a1 a2 a3 a-end. b0 b1 b2 b3 b-end.",
+        "words": 10,
+        "characters": 37,
+        "sentences": [
+          {
+            "text": "a0 a1 a2 a3 a-end.",
+            "sourceWordIds": [
+              "t2",
+              "t3",
+              "t4",
+              "t5",
+              "t6"
+            ],
+            "start": 2.6,
+            "end": 9.1
+          },
+          {
+            "text": "b0 b1 b2 b3 b-end.",
+            "sourceWordIds": [
+              "t7",
+              "t8",
+              "t9",
+              "t10",
+              "t11"
+            ],
+            "start": 9.6,
+            "end": 16.1
+          }
+        ],
+        "parts": [
+          {
+            "text": "a0 a1 a2 a3 a-end.",
+            "words": 5,
+            "sourceWordIds": [
+              "t2",
+              "t3",
+              "t4",
+              "t5",
+              "t6"
+            ],
+            "start": 2.6,
+            "end": 9.1
+          },
+          {
+            "text": "b0 b1 b2 b3 b-end.",
+            "words": 5,
+            "sourceWordIds": [
+              "t7",
+              "t8",
+              "t9",
+              "t10",
+              "t11"
+            ],
+            "start": 9.6,
+            "end": 16.1
+          }
+        ],
+        "hunks": [
+          {
+            "sourceWordIds": [
+              "t0",
+              "t1",
+              "t2",
+              "t3",
+              "t4",
+              "t5",
+              "t6"
+            ],
+            "newTokens": [
+              "a0",
+              "a1",
+              "a2",
+              "a3",
+              "a-end."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 0,
+            "sourceEndIndex": 7
+          },
+          {
+            "sourceWordIds": [
+              "t7",
+              "t8",
+              "t9",
+              "t10",
+              "t11",
+              "t12"
+            ],
+            "newTokens": [
+              "b0",
+              "b1",
+              "b2",
+              "b3",
+              "b-end."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 7,
+            "sourceEndIndex": 13
+          }
+        ]
+      }
+    },
+    {
+      "id": "tiles-consecutive-cuts-split-at-the-widest-gap",
+      "words": [
+        {
+          "id": "t0",
+          "text": "a0",
+          "kind": "word",
+          "start": 0.0,
+          "end": 1.3
+        },
+        {
+          "id": "t1",
+          "text": "a1",
+          "kind": "word",
+          "start": 1.3,
+          "end": 2.6
+        },
+        {
+          "id": "t2",
+          "text": "a2",
+          "kind": "word",
+          "start": 2.6,
+          "end": 3.9000000000000004
+        },
+        {
+          "id": "t3",
+          "text": "a3",
+          "kind": "word",
+          "start": 3.9000000000000004,
+          "end": 5.2
+        },
+        {
+          "id": "t4",
+          "text": "a-end.",
+          "kind": "word",
+          "start": 5.2,
+          "end": 6.5
+        },
+        {
+          "id": "t5",
+          "text": "so",
+          "kind": "word",
+          "start": 6.5,
+          "end": 7.8
+        },
+        {
+          "id": "t6",
+          "text": "um",
+          "kind": "word",
+          "start": 7.8,
+          "end": 9.1
+        },
+        {
+          "id": "t7",
+          "text": "like",
+          "kind": "word",
+          "start": 9.6,
+          "end": 10.9
+        },
+        {
+          "id": "t8",
+          "text": "uh",
+          "kind": "word",
+          "start": 10.9,
+          "end": 12.200000000000001
+        },
+        {
+          "id": "t9",
+          "text": "b0",
+          "kind": "word",
+          "start": 12.200000000000001,
+          "end": 13.500000000000002
+        },
+        {
+          "id": "t10",
+          "text": "b1",
+          "kind": "word",
+          "start": 13.500000000000002,
+          "end": 14.800000000000002
+        },
+        {
+          "id": "t11",
+          "text": "b2",
+          "kind": "word",
+          "start": 14.800000000000002,
+          "end": 16.1
+        },
+        {
+          "id": "t12",
+          "text": "b3",
+          "kind": "word",
+          "start": 16.1,
+          "end": 17.400000000000002
+        },
+        {
+          "id": "t13",
+          "text": "b-end.",
+          "kind": "word",
+          "start": 17.400000000000002,
+          "end": 18.700000000000003
+        }
+      ],
+      "cutWordIds": [
+        "t5",
+        "t6",
+        "t7",
+        "t8"
+      ],
+      "cutPauseIds": [],
+      "voiceHunks": [],
+      "expected": {
+        "text": "a0 a1 a2 a3 a-end. b0 b1 b2 b3 b-end.",
+        "words": 10,
+        "characters": 37,
+        "sentences": [
+          {
+            "text": "a0 a1 a2 a3 a-end.",
+            "sourceWordIds": [
+              "t0",
+              "t1",
+              "t2",
+              "t3",
+              "t4"
+            ],
+            "start": 0.0,
+            "end": 6.5
+          },
+          {
+            "text": "b0 b1 b2 b3 b-end.",
+            "sourceWordIds": [
+              "t9",
+              "t10",
+              "t11",
+              "t12",
+              "t13"
+            ],
+            "start": 12.200000000000001,
+            "end": 18.700000000000003
+          }
+        ],
+        "parts": [
+          {
+            "text": "a0 a1 a2 a3 a-end.",
+            "words": 5,
+            "sourceWordIds": [
+              "t0",
+              "t1",
+              "t2",
+              "t3",
+              "t4"
+            ],
+            "start": 0.0,
+            "end": 6.5
+          },
+          {
+            "text": "b0 b1 b2 b3 b-end.",
+            "words": 5,
+            "sourceWordIds": [
+              "t9",
+              "t10",
+              "t11",
+              "t12",
+              "t13"
+            ],
+            "start": 12.200000000000001,
+            "end": 18.700000000000003
+          }
+        ],
+        "hunks": [
+          {
+            "sourceWordIds": [
+              "t0",
+              "t1",
+              "t2",
+              "t3",
+              "t4",
+              "t5",
+              "t6"
+            ],
+            "newTokens": [
+              "a0",
+              "a1",
+              "a2",
+              "a3",
+              "a-end."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 0,
+            "sourceEndIndex": 7
+          },
+          {
+            "sourceWordIds": [
+              "t7",
+              "t8",
+              "t9",
+              "t10",
+              "t11",
+              "t12",
+              "t13"
+            ],
+            "newTokens": [
+              "b0",
+              "b1",
+              "b2",
+              "b3",
+              "b-end."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 7,
+            "sourceEndIndex": 14
+          }
+        ]
+      }
+    },
+    {
+      "id": "tiles-an-event-at-a-boundary",
+      "words": [
+        {
+          "id": "t0",
+          "text": "a0",
+          "kind": "word",
+          "start": 0.0,
+          "end": 1.3
+        },
+        {
+          "id": "t1",
+          "text": "a1",
+          "kind": "word",
+          "start": 1.3,
+          "end": 2.6
+        },
+        {
+          "id": "t2",
+          "text": "a2",
+          "kind": "word",
+          "start": 2.6,
+          "end": 3.9000000000000004
+        },
+        {
+          "id": "t3",
+          "text": "a3",
+          "kind": "word",
+          "start": 3.9000000000000004,
+          "end": 5.2
+        },
+        {
+          "id": "t4",
+          "text": "a-end.",
+          "kind": "word",
+          "start": 5.2,
+          "end": 6.5
+        },
+        {
+          "id": "t5",
+          "text": "[laughs]",
+          "kind": "event",
+          "start": 7.0,
+          "end": 8.3
+        },
+        {
+          "id": "t6",
+          "text": "b0",
+          "kind": "word",
+          "start": 8.3,
+          "end": 9.600000000000001
+        },
+        {
+          "id": "t7",
+          "text": "b1",
+          "kind": "word",
+          "start": 9.600000000000001,
+          "end": 10.900000000000002
+        },
+        {
+          "id": "t8",
+          "text": "b2",
+          "kind": "word",
+          "start": 10.900000000000002,
+          "end": 12.200000000000003
+        },
+        {
+          "id": "t9",
+          "text": "b3",
+          "kind": "word",
+          "start": 12.200000000000003,
+          "end": 13.500000000000004
+        },
+        {
+          "id": "t10",
+          "text": "b-end.",
+          "kind": "word",
+          "start": 13.500000000000004,
+          "end": 14.800000000000004
+        }
+      ],
+      "cutWordIds": [],
+      "cutPauseIds": [],
+      "voiceHunks": [],
+      "expected": {
+        "text": "a0 a1 a2 a3 a-end. b0 b1 b2 b3 b-end.",
+        "words": 10,
+        "characters": 37,
+        "sentences": [
+          {
+            "text": "a0 a1 a2 a3 a-end.",
+            "sourceWordIds": [
+              "t0",
+              "t1",
+              "t2",
+              "t3",
+              "t4"
+            ],
+            "start": 0.0,
+            "end": 6.5
+          },
+          {
+            "text": "b0 b1 b2 b3 b-end.",
+            "sourceWordIds": [
+              "t6",
+              "t7",
+              "t8",
+              "t9",
+              "t10"
+            ],
+            "start": 8.3,
+            "end": 14.800000000000004
+          }
+        ],
+        "parts": [
+          {
+            "text": "a0 a1 a2 a3 a-end.",
+            "words": 5,
+            "sourceWordIds": [
+              "t0",
+              "t1",
+              "t2",
+              "t3",
+              "t4"
+            ],
+            "start": 0.0,
+            "end": 6.5
+          },
+          {
+            "text": "b0 b1 b2 b3 b-end.",
+            "words": 5,
+            "sourceWordIds": [
+              "t6",
+              "t7",
+              "t8",
+              "t9",
+              "t10"
+            ],
+            "start": 8.3,
+            "end": 14.800000000000004
+          }
+        ],
+        "hunks": [
+          {
+            "sourceWordIds": [
+              "t0",
+              "t1",
+              "t2",
+              "t3",
+              "t4"
+            ],
+            "newTokens": [
+              "a0",
+              "a1",
+              "a2",
+              "a3",
+              "a-end."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 0,
+            "sourceEndIndex": 5
+          },
+          {
+            "sourceWordIds": [
+              "t5",
+              "t6",
+              "t7",
+              "t8",
+              "t9",
+              "t10"
+            ],
+            "newTokens": [
+              "b0",
+              "b1",
+              "b2",
+              "b3",
+              "b-end."
+            ],
+            "absorbedItemIds": [
+              "t5"
+            ],
+            "sourceStartIndex": 5,
+            "sourceEndIndex": 10
+          }
+        ]
+      }
+    },
+    {
+      "id": "joins-parts-at-a-cut-run-with-no-silence",
+      "words": [
+        {
+          "id": "t0",
+          "text": "a0",
+          "kind": "word",
+          "start": 0.0,
+          "end": 1.3
+        },
+        {
+          "id": "t1",
+          "text": "a1",
+          "kind": "word",
+          "start": 1.3,
+          "end": 2.6
+        },
+        {
+          "id": "t2",
+          "text": "a2",
+          "kind": "word",
+          "start": 2.6,
+          "end": 3.9000000000000004
+        },
+        {
+          "id": "t3",
+          "text": "a3",
+          "kind": "word",
+          "start": 3.9000000000000004,
+          "end": 5.2
+        },
+        {
+          "id": "t4",
+          "text": "a-end.",
+          "kind": "word",
+          "start": 5.2,
+          "end": 6.5
+        },
+        {
+          "id": "t5",
+          "text": "um",
+          "kind": "word",
+          "start": 6.5,
+          "end": 7.8
+        },
+        {
+          "id": "t6",
+          "text": "uh",
+          "kind": "word",
+          "start": 7.8,
+          "end": 9.1
+        },
+        {
+          "id": "t7",
+          "text": "b0",
+          "kind": "word",
+          "start": 9.1,
+          "end": 10.4
+        },
+        {
+          "id": "t8",
+          "text": "b1",
+          "kind": "word",
+          "start": 10.4,
+          "end": 11.700000000000001
+        },
+        {
+          "id": "t9",
+          "text": "b2",
+          "kind": "word",
+          "start": 11.700000000000001,
+          "end": 13.000000000000002
+        },
+        {
+          "id": "t10",
+          "text": "b3",
+          "kind": "word",
+          "start": 13.000000000000002,
+          "end": 14.300000000000002
+        },
+        {
+          "id": "t11",
+          "text": "b-end.",
+          "kind": "word",
+          "start": 14.300000000000002,
+          "end": 15.600000000000003
+        },
+        {
+          "id": "t12",
+          "text": "c0",
+          "kind": "word",
+          "start": 16.1,
+          "end": 17.400000000000002
+        },
+        {
+          "id": "t13",
+          "text": "c1",
+          "kind": "word",
+          "start": 17.400000000000002,
+          "end": 18.700000000000003
+        },
+        {
+          "id": "t14",
+          "text": "c2",
+          "kind": "word",
+          "start": 18.700000000000003,
+          "end": 20.000000000000004
+        },
+        {
+          "id": "t15",
+          "text": "c3",
+          "kind": "word",
+          "start": 20.000000000000004,
+          "end": 21.300000000000004
+        },
+        {
+          "id": "t16",
+          "text": "c-end.",
+          "kind": "word",
+          "start": 21.300000000000004,
+          "end": 22.600000000000005
+        }
+      ],
+      "cutWordIds": [
+        "t5",
+        "t6"
+      ],
+      "cutPauseIds": [],
+      "voiceHunks": [],
+      "expected": {
+        "text": "a0 a1 a2 a3 a-end. b0 b1 b2 b3 b-end. c0 c1 c2 c3 c-end.",
+        "words": 15,
+        "characters": 56,
+        "sentences": [
+          {
+            "text": "a0 a1 a2 a3 a-end.",
+            "sourceWordIds": [
+              "t0",
+              "t1",
+              "t2",
+              "t3",
+              "t4"
+            ],
+            "start": 0.0,
+            "end": 6.5
+          },
+          {
+            "text": "b0 b1 b2 b3 b-end.",
+            "sourceWordIds": [
+              "t7",
+              "t8",
+              "t9",
+              "t10",
+              "t11"
+            ],
+            "start": 9.1,
+            "end": 15.600000000000003
+          },
+          {
+            "text": "c0 c1 c2 c3 c-end.",
+            "sourceWordIds": [
+              "t12",
+              "t13",
+              "t14",
+              "t15",
+              "t16"
+            ],
+            "start": 16.1,
+            "end": 22.600000000000005
+          }
+        ],
+        "parts": [
+          {
+            "text": "a0 a1 a2 a3 a-end.",
+            "words": 5,
+            "sourceWordIds": [
+              "t0",
+              "t1",
+              "t2",
+              "t3",
+              "t4"
+            ],
+            "start": 0.0,
+            "end": 6.5
+          },
+          {
+            "text": "b0 b1 b2 b3 b-end.",
+            "words": 5,
+            "sourceWordIds": [
+              "t7",
+              "t8",
+              "t9",
+              "t10",
+              "t11"
+            ],
+            "start": 9.1,
+            "end": 15.600000000000003
+          },
+          {
+            "text": "c0 c1 c2 c3 c-end.",
+            "words": 5,
+            "sourceWordIds": [
+              "t12",
+              "t13",
+              "t14",
+              "t15",
+              "t16"
+            ],
+            "start": 16.1,
+            "end": 22.600000000000005
+          }
+        ],
+        "hunks": [
+          {
+            "sourceWordIds": [
+              "t0",
+              "t1",
+              "t2",
+              "t3",
+              "t4",
+              "t7",
+              "t8",
+              "t9",
+              "t10",
+              "t11"
+            ],
+            "newTokens": [
+              "a0",
+              "a1",
+              "a2",
+              "a3",
+              "a-end.",
+              "b0",
+              "b1",
+              "b2",
+              "b3",
+              "b-end."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 0,
+            "sourceEndIndex": 12
+          },
+          {
+            "sourceWordIds": [
+              "t12",
+              "t13",
+              "t14",
+              "t15",
+              "t16"
+            ],
+            "newTokens": [
+              "c0",
+              "c1",
+              "c2",
+              "c3",
+              "c-end."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 12,
+            "sourceEndIndex": 17
+          }
+        ]
+      }
+    },
+    {
+      "id": "joins-parts-at-a-tightened-pause-beside-a-filler",
+      "words": [
+        {
+          "id": "t0",
+          "text": "a0",
+          "kind": "word",
+          "start": 0.0,
+          "end": 1.3
+        },
+        {
+          "id": "t1",
+          "text": "a1",
+          "kind": "word",
+          "start": 1.3,
+          "end": 2.6
+        },
+        {
+          "id": "t2",
+          "text": "a2",
+          "kind": "word",
+          "start": 2.6,
+          "end": 3.9000000000000004
+        },
+        {
+          "id": "t3",
+          "text": "a3",
+          "kind": "word",
+          "start": 3.9000000000000004,
+          "end": 5.2
+        },
+        {
+          "id": "t4",
+          "text": "a-end.",
+          "kind": "word",
+          "start": 5.2,
+          "end": 6.5
+        },
+        {
+          "id": "t5",
+          "text": "um",
+          "kind": "word",
+          "start": 7.7,
+          "end": 9.0
+        },
+        {
+          "id": "t6",
+          "text": "b0",
+          "kind": "word",
+          "start": 9.0,
+          "end": 10.3
+        },
+        {
+          "id": "t7",
+          "text": "b1",
+          "kind": "word",
+          "start": 10.3,
+          "end": 11.600000000000001
+        },
+        {
+          "id": "t8",
+          "text": "b2",
+          "kind": "word",
+          "start": 11.600000000000001,
+          "end": 12.900000000000002
+        },
+        {
+          "id": "t9",
+          "text": "b3",
+          "kind": "word",
+          "start": 12.900000000000002,
+          "end": 14.200000000000003
+        },
+        {
+          "id": "t10",
+          "text": "b-end.",
+          "kind": "word",
+          "start": 14.200000000000003,
+          "end": 15.500000000000004
+        }
+      ],
+      "cutWordIds": [
+        "t5"
+      ],
+      "cutPauseIds": [
+        "pause-after-t4"
+      ],
+      "voiceHunks": [],
+      "expected": {
+        "text": "a0 a1 a2 a3 a-end. b0 b1 b2 b3 b-end.",
+        "words": 10,
+        "characters": 37,
+        "sentences": [
+          {
+            "text": "a0 a1 a2 a3 a-end.",
+            "sourceWordIds": [
+              "t0",
+              "t1",
+              "t2",
+              "t3",
+              "t4"
+            ],
+            "start": 0.0,
+            "end": 6.5
+          },
+          {
+            "text": "b0 b1 b2 b3 b-end.",
+            "sourceWordIds": [
+              "t6",
+              "t7",
+              "t8",
+              "t9",
+              "t10"
+            ],
+            "start": 9.0,
+            "end": 15.500000000000004
+          }
+        ],
+        "parts": [
+          {
+            "text": "a0 a1 a2 a3 a-end.",
+            "words": 5,
+            "sourceWordIds": [
+              "t0",
+              "t1",
+              "t2",
+              "t3",
+              "t4"
+            ],
+            "start": 0.0,
+            "end": 6.5
+          },
+          {
+            "text": "b0 b1 b2 b3 b-end.",
+            "words": 5,
+            "sourceWordIds": [
+              "t6",
+              "t7",
+              "t8",
+              "t9",
+              "t10"
+            ],
+            "start": 9.0,
+            "end": 15.500000000000004
+          }
+        ],
+        "hunks": [
+          {
+            "sourceWordIds": [
+              "t0",
+              "t1",
+              "t2",
+              "t3",
+              "t4",
+              "t6",
+              "t7",
+              "t8",
+              "t9",
+              "t10"
+            ],
+            "newTokens": [
+              "a0",
+              "a1",
+              "a2",
+              "a3",
+              "a-end.",
+              "b0",
+              "b1",
+              "b2",
+              "b3",
+              "b-end."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 0,
+            "sourceEndIndex": 11
+          }
+        ]
+      }
+    },
+    {
+      "id": "keeps-the-split-at-a-tightened-pause-between-sentences",
+      "words": [
+        {
+          "id": "t0",
+          "text": "a0",
+          "kind": "word",
+          "start": 0.0,
+          "end": 1.3
+        },
+        {
+          "id": "t1",
+          "text": "a1",
+          "kind": "word",
+          "start": 1.3,
+          "end": 2.6
+        },
+        {
+          "id": "t2",
+          "text": "a2",
+          "kind": "word",
+          "start": 2.6,
+          "end": 3.9000000000000004
+        },
+        {
+          "id": "t3",
+          "text": "a3",
+          "kind": "word",
+          "start": 3.9000000000000004,
+          "end": 5.2
+        },
+        {
+          "id": "t4",
+          "text": "a-end.",
+          "kind": "word",
+          "start": 5.2,
+          "end": 6.5
+        },
+        {
+          "id": "t5",
+          "text": "b0",
+          "kind": "word",
+          "start": 7.7,
+          "end": 9.0
+        },
+        {
+          "id": "t6",
+          "text": "b1",
+          "kind": "word",
+          "start": 9.0,
+          "end": 10.3
+        },
+        {
+          "id": "t7",
+          "text": "b2",
+          "kind": "word",
+          "start": 10.3,
+          "end": 11.600000000000001
+        },
+        {
+          "id": "t8",
+          "text": "b3",
+          "kind": "word",
+          "start": 11.600000000000001,
+          "end": 12.900000000000002
+        },
+        {
+          "id": "t9",
+          "text": "b-end.",
+          "kind": "word",
+          "start": 12.900000000000002,
+          "end": 14.200000000000003
+        }
+      ],
+      "cutWordIds": [],
+      "cutPauseIds": [
+        "pause-after-t4"
+      ],
+      "voiceHunks": [],
+      "expected": {
+        "text": "a0 a1 a2 a3 a-end. b0 b1 b2 b3 b-end.",
+        "words": 10,
+        "characters": 37,
+        "sentences": [
+          {
+            "text": "a0 a1 a2 a3 a-end.",
+            "sourceWordIds": [
+              "t0",
+              "t1",
+              "t2",
+              "t3",
+              "t4"
+            ],
+            "start": 0.0,
+            "end": 6.5
+          },
+          {
+            "text": "b0 b1 b2 b3 b-end.",
+            "sourceWordIds": [
+              "t5",
+              "t6",
+              "t7",
+              "t8",
+              "t9"
+            ],
+            "start": 7.7,
+            "end": 14.200000000000003
+          }
+        ],
+        "parts": [
+          {
+            "text": "a0 a1 a2 a3 a-end.",
+            "words": 5,
+            "sourceWordIds": [
+              "t0",
+              "t1",
+              "t2",
+              "t3",
+              "t4"
+            ],
+            "start": 0.0,
+            "end": 6.5
+          },
+          {
+            "text": "b0 b1 b2 b3 b-end.",
+            "words": 5,
+            "sourceWordIds": [
+              "t5",
+              "t6",
+              "t7",
+              "t8",
+              "t9"
+            ],
+            "start": 7.7,
+            "end": 14.200000000000003
+          }
+        ],
+        "hunks": [
+          {
+            "sourceWordIds": [
+              "t0",
+              "t1",
+              "t2",
+              "t3",
+              "t4"
+            ],
+            "newTokens": [
+              "a0",
+              "a1",
+              "a2",
+              "a3",
+              "a-end."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 0,
+            "sourceEndIndex": 5
+          },
+          {
+            "sourceWordIds": [
+              "t5",
+              "t6",
+              "t7",
+              "t8",
+              "t9"
+            ],
+            "newTokens": [
+              "b0",
+              "b1",
+              "b2",
+              "b3",
+              "b-end."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 5,
+            "sourceEndIndex": 10
+          }
+        ]
+      }
+    },
+    {
+      "id": "keeps-the-split-of-touching-sentences",
+      "words": [
+        {
+          "id": "t0",
+          "text": "a0",
+          "kind": "word",
+          "start": 0.0,
+          "end": 1.3
+        },
+        {
+          "id": "t1",
+          "text": "a1",
+          "kind": "word",
+          "start": 1.3,
+          "end": 2.6
+        },
+        {
+          "id": "t2",
+          "text": "a2",
+          "kind": "word",
+          "start": 2.6,
+          "end": 3.9000000000000004
+        },
+        {
+          "id": "t3",
+          "text": "a3",
+          "kind": "word",
+          "start": 3.9000000000000004,
+          "end": 5.2
+        },
+        {
+          "id": "t4",
+          "text": "a-end.",
+          "kind": "word",
+          "start": 5.2,
+          "end": 6.5
+        },
+        {
+          "id": "t5",
+          "text": "b0",
+          "kind": "word",
+          "start": 6.5,
+          "end": 7.8
+        },
+        {
+          "id": "t6",
+          "text": "b1",
+          "kind": "word",
+          "start": 7.8,
+          "end": 9.1
+        },
+        {
+          "id": "t7",
+          "text": "b2",
+          "kind": "word",
+          "start": 9.1,
+          "end": 10.4
+        },
+        {
+          "id": "t8",
+          "text": "b3",
+          "kind": "word",
+          "start": 10.4,
+          "end": 11.700000000000001
+        },
+        {
+          "id": "t9",
+          "text": "b-end.",
+          "kind": "word",
+          "start": 11.700000000000001,
+          "end": 13.000000000000002
+        }
+      ],
+      "cutWordIds": [],
+      "cutPauseIds": [],
+      "voiceHunks": [],
+      "expected": {
+        "text": "a0 a1 a2 a3 a-end. b0 b1 b2 b3 b-end.",
+        "words": 10,
+        "characters": 37,
+        "sentences": [
+          {
+            "text": "a0 a1 a2 a3 a-end.",
+            "sourceWordIds": [
+              "t0",
+              "t1",
+              "t2",
+              "t3",
+              "t4"
+            ],
+            "start": 0.0,
+            "end": 6.5
+          },
+          {
+            "text": "b0 b1 b2 b3 b-end.",
+            "sourceWordIds": [
+              "t5",
+              "t6",
+              "t7",
+              "t8",
+              "t9"
+            ],
+            "start": 6.5,
+            "end": 13.000000000000002
+          }
+        ],
+        "parts": [
+          {
+            "text": "a0 a1 a2 a3 a-end.",
+            "words": 5,
+            "sourceWordIds": [
+              "t0",
+              "t1",
+              "t2",
+              "t3",
+              "t4"
+            ],
+            "start": 0.0,
+            "end": 6.5
+          },
+          {
+            "text": "b0 b1 b2 b3 b-end.",
+            "words": 5,
+            "sourceWordIds": [
+              "t5",
+              "t6",
+              "t7",
+              "t8",
+              "t9"
+            ],
+            "start": 6.5,
+            "end": 13.000000000000002
+          }
+        ],
+        "hunks": [
+          {
+            "sourceWordIds": [
+              "t0",
+              "t1",
+              "t2",
+              "t3",
+              "t4"
+            ],
+            "newTokens": [
+              "a0",
+              "a1",
+              "a2",
+              "a3",
+              "a-end."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 0,
+            "sourceEndIndex": 5
+          },
+          {
+            "sourceWordIds": [
+              "t5",
+              "t6",
+              "t7",
+              "t8",
+              "t9"
+            ],
+            "newTokens": [
+              "b0",
+              "b1",
+              "b2",
+              "b3",
+              "b-end."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 5,
+            "sourceEndIndex": 10
+          }
+        ]
+      }
+    },
+    {
+      "id": "tiles-a-part-made-only-of-new-words",
+      "words": [
+        {
+          "id": "t0",
+          "text": "a0",
+          "kind": "word",
+          "start": 0.0,
+          "end": 1.3
+        },
+        {
+          "id": "t1",
+          "text": "a1",
+          "kind": "word",
+          "start": 1.3,
+          "end": 2.6
+        },
+        {
+          "id": "t2",
+          "text": "a2",
+          "kind": "word",
+          "start": 2.6,
+          "end": 3.9000000000000004
+        },
+        {
+          "id": "t3",
+          "text": "a3",
+          "kind": "word",
+          "start": 3.9000000000000004,
+          "end": 5.2
+        },
+        {
+          "id": "t4",
+          "text": "a-end.",
+          "kind": "word",
+          "start": 5.2,
+          "end": 6.5
+        },
+        {
+          "id": "t5",
+          "text": "um",
+          "kind": "word",
+          "start": 7.0,
+          "end": 8.3
+        },
+        {
+          "id": "t6",
+          "text": "b0",
+          "kind": "word",
+          "start": 8.3,
+          "end": 9.600000000000001
+        },
+        {
+          "id": "t7",
+          "text": "b1",
+          "kind": "word",
+          "start": 9.600000000000001,
+          "end": 10.900000000000002
+        },
+        {
+          "id": "t8",
+          "text": "b2",
+          "kind": "word",
+          "start": 10.900000000000002,
+          "end": 12.200000000000003
+        },
+        {
+          "id": "t9",
+          "text": "b3",
+          "kind": "word",
+          "start": 12.200000000000003,
+          "end": 13.500000000000004
+        },
+        {
+          "id": "t10",
+          "text": "b-end.",
+          "kind": "word",
+          "start": 13.500000000000004,
+          "end": 14.800000000000004
+        }
+      ],
+      "cutWordIds": [
+        "t5"
+      ],
+      "cutPauseIds": [],
+      "voiceHunks": [
+        {
+          "sourceWordIds": [
+            "t6",
+            "t7",
+            "t8",
+            "t9",
+            "t10"
+          ],
+          "newText": "Then it all changed."
+        }
+      ],
+      "expected": {
+        "text": "a0 a1 a2 a3 a-end. Then it all changed.",
+        "words": 9,
+        "characters": 39,
+        "sentences": [
+          {
+            "text": "a0 a1 a2 a3 a-end.",
+            "sourceWordIds": [
+              "t0",
+              "t1",
+              "t2",
+              "t3",
+              "t4"
+            ],
+            "start": 0.0,
+            "end": 6.5
+          },
+          {
+            "text": "Then it all changed.",
+            "sourceWordIds": [
+              "t6",
+              "t7",
+              "t8",
+              "t9",
+              "t10"
+            ],
+            "start": 8.3,
+            "end": 14.800000000000004
+          }
+        ],
+        "parts": [
+          {
+            "text": "a0 a1 a2 a3 a-end.",
+            "words": 5,
+            "sourceWordIds": [
+              "t0",
+              "t1",
+              "t2",
+              "t3",
+              "t4"
+            ],
+            "start": 0.0,
+            "end": 6.5
+          },
+          {
+            "text": "Then it all changed.",
+            "words": 4,
+            "sourceWordIds": [
+              "t6",
+              "t7",
+              "t8",
+              "t9",
+              "t10"
+            ],
+            "start": 8.3,
+            "end": 14.800000000000004
+          }
+        ],
+        "hunks": [
+          {
+            "sourceWordIds": [
+              "t0",
+              "t1",
+              "t2",
+              "t3",
+              "t4"
+            ],
+            "newTokens": [
+              "a0",
+              "a1",
+              "a2",
+              "a3",
+              "a-end."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 0,
+            "sourceEndIndex": 5
+          },
+          {
+            "sourceWordIds": [
+              "t5",
+              "t6",
+              "t7",
+              "t8",
+              "t9",
+              "t10"
+            ],
+            "newTokens": [
+              "Then",
+              "it",
+              "all",
+              "changed."
+            ],
+            "absorbedItemIds": [],
+            "sourceStartIndex": 5,
+            "sourceEndIndex": 11
+          }
+        ]
+      }
     }
   ],
   "fit": [
