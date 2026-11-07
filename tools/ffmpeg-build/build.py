@@ -37,10 +37,10 @@ MAJORS = {"avcodec": 63, "avformat": 63, "avutil": 61, "avfilter": 12,
 TARGETS = {"win-x64": "x86_64-w64-mingw32", "win-arm64": "aarch64-w64-mingw32"}
 MACHINES = {"win-x64": 0x8664, "win-arm64": 0xAA64}
 TEST_TOOLS = {
-    "win-x64": {"url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-24-13-02/ffmpeg-n9.0.2-35-g9a9b70bb8c-win64-lgpl-shared-9.0.zip",
-                "sha256": "fb771d872989dba5d96621a840194362202426e882814a0d5e7eddd8387908d3"},
-    "win-arm64": {"url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-24-13-02/ffmpeg-n9.0.2-35-g9a9b70bb8c-winarm64-lgpl-shared-9.0.zip",
-                  "sha256": "4bf8f5ff4ec2ec462c50d0c65f77793c2e18303cb343ef376c8c020c7028d248"},
+    "win-x64": {"url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-11-07-12-47/ffmpeg-n9.0.2-48-gd4070a14ce-win64-lgpl-shared-9.0.zip",
+                "sha256": "0cf5bd578e201901f4afff4fee53f4a8e08b899de7e4bb91c357d43e81ba3d54"},
+    "win-arm64": {"url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-11-07-12-47/ffmpeg-n9.0.2-48-gd4070a14ce-winarm64-lgpl-shared-9.0.zip",
+                  "sha256": "f361c006770edc3396254f1865dacf99a1e3df84d77f6504f1febf047247518e"},
 }
 COMPONENTS = {
     "decoder": "h264 hevc vp8 vp9 libdav1d aac opus vorbis mpeg4 h263 ffv1 "

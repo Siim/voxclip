@@ -390,6 +390,15 @@ jobs:
           dotnet build tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj -c Release -m:1 -nodeReuse:false -p:UseSharedCompilation=false
           dotnet test --project tests/VoxClip.Core.Tests/VoxClip.Core.Tests.csproj -c Release --no-build
 
+      # BtbN prunes its dated autobuilds after about two weeks, so the pinned test-only archive is cached by its pin
+      # (Fetch-Ffmpeg.ps1 skips the download when the archive is present and always checks its SHA-256).
+      - name: Cache pinned test-only FFmpeg tools
+        if: steps.detect.outputs.media_tests == 'true'
+        uses: actions/cache@v4
+        with:
+          path: apps/windows/build/.cache/ffmpeg/win-x64/test-tools.zip
+          key: ffmpeg-test-tools-win-x64-${{ hashFiles('apps/windows/build/ffmpeg.json') }}
+
       - name: Fetch pinned test-only FFmpeg tools
         if: steps.detect.outputs.media_tests == 'true'
         shell: pwsh
