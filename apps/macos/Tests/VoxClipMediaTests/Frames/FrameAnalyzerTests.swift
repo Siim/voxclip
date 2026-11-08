@@ -3,6 +3,7 @@ import CoreText
 import Foundation
 import Synchronization
 import Testing
+import Vision
 @testable import VoxClipCore
 @testable import VoxClipMedia
 
@@ -121,6 +122,13 @@ struct FrameAnalyzerTests {
         #expect(screen.rect.midX > 0.5 && screen.rect.midX < 0.8)
         let encoded = String(decoding: try JSONEncoder().encode(observation), as: UTF8.self)
         #expect(!encoded.contains("Invoice") && !encoded.contains("Account"))
+    }
+
+    /// Faces come from the rectangles request at revision 3, the one with continuous yaw, pitch and roll; landmarks alone
+    /// would fall back to Vision's revision-2 detector (yaw 0 or ±π/4, no pitch). No committed or drawn face is detected by
+    /// Vision, so the pose itself was checked on the user's footage (ADR-R48, 2026-11-08).
+    @Test func theFaceRequestIsPinnedToRevisionThree() {
+        #expect(AppleFrameVision.faceRequest().revision == VNDetectFaceRectanglesRequestRevision3)
     }
 
     @Test func realDecodeAndVisionOnTheCounterFixture() async throws {
