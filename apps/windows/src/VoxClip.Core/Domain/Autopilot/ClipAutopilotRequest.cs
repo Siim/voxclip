@@ -51,19 +51,25 @@ public sealed record ClipAutopilotRequest(TranscriptModel Transcript, ProjectEdi
     public string? Note { get; init; }
     /// <summary>The tone of each clip's words; null sends no tone line.</summary>
     public ClipAutopilotTone? Tone { get; init; }
+    /// <summary>A <c>clips</c> request's spans as Find Clips described them, one per span in the same order (Claude mode): each clip's
+    /// plan is told its rank, its title and idea, and the other clips of the series, as a series' second stage is (prompt version 7).
+    /// Empty plans each span on its own.</summary>
+    public IReadOnlyList<ClipAutopilotMoment> Moments { get; init; } = [];
     /// <summary>A series request.</summary>
     public bool IsSeries => Mode is ClipAutopilotMode.Series;
     /// <summary>The same request for one clip span.</summary>
     public ClipAutopilotRequest ForClip(WordSpan span) => this with { Mode = new ClipAutopilotMode.Clip(span) };
 }
 
-/// <summary>What the second stage of a series tells the clip plan about its moment.</summary>
-internal sealed record ClipAutopilotMomentBrief(int Rank, int Count, ClipAutopilotMoment Moment, IReadOnlyList<string> OtherStyles);
+/// <summary>What the second stage of a series tells the clip plan about its moment: its rank, the caption styles of the others, and
+/// the other moments of the series in rank order (their titles and where they start, prompt version 7).</summary>
+internal sealed record ClipAutopilotMomentBrief(int Rank, int Count, ClipAutopilotMoment Moment, IReadOnlyList<string> OtherStyles, IReadOnlyList<ClipAutopilotMoment> Others);
 
 /// <summary>Everything the validator checks a reply against (ai.md §16.5), built once per request.</summary>
 public sealed record ClipAutopilotContext(IReadOnlyList<TimedWord> Words, IReadOnlyDictionary<string, string> Corrections, IReadOnlySet<string> CutWordIds,
     IReadOnlyList<Pause> Pauses, IReadOnlySet<string> CutPauseIds, double PauseKeepSeconds, WordSpan Scope, IReadOnlySet<string> StyleIds,
-    IReadOnlyDictionary<ClipAutopilotFont, string> Fonts, ClipAutopilotCaptionPreference? Preference, ClipAutopilotPrompt Prompt, ClipAutopilotTone? Tone = null)
+    IReadOnlyDictionary<ClipAutopilotFont, string> Fonts, ClipAutopilotCaptionPreference? Preference, ClipAutopilotPrompt Prompt, ClipAutopilotTone? Tone = null,
+    ClipAutopilotFrames? Frames = null)
 {
     /// <summary>The word as shown, corrections applied.</summary>
     public string Text(int index) => Corrections.TryGetValue(Words[index].Id, out var text) ? text : Words[index].Text;
@@ -136,7 +142,7 @@ public static partial class ClipAutopilotRequestBuilder
     private static Dictionary<string, string> Values(params (string Key, string Value)[] pairs) => pairs.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
 
     internal static Rendered Render(ClipAutopilotRequest request, ClipAutopilotPrompt prompt, IReadOnlyList<CaptionStyle> styles,
-        IReadOnlyDictionary<ClipAutopilotFont, string> fonts, IReadOnlyList<Pause> pauses, ClipAutopilotMomentBrief? moment = null)
+        IReadOnlyDictionary<ClipAutopilotFont, string> fonts, IReadOnlyList<Pause> pauses, ClipAutopilotMomentBrief? moment = null, ClipAutopilotFrames? frames = null)
     {
         if (Scope(request) is not { } scope) throw Invalid();
         var words = request.Transcript.Words;
@@ -183,15 +189,21 @@ public static partial class ClipAutopilotRequestBuilder
                 ("lengthHint", lengthHint)));
             var elsewhere = Names(words, scope, request.Edits.Corrections);
             if (elsewhere.Count > 0) instruction += prompt.Request("names", Values(("names", string.Join(", ", elsewhere))));
+            if (frames is not null) instruction += FramesBlock(frames, prompt);
             if (request.Tone is { } tone) instruction += ToneLine(tone, prompt);
             if (moment is not null)
             {
-                var caption = request.CaptionPreference?.StyleId is not null ? "" : prompt.Request("momentCaption", Values(("style", moment.Moment.CaptionStyle),
+                // Find Clips' moments carry no caption style: the plan picks one, told only the other clips (Claude mode).
+                var fixedStyle = request.CaptionPreference?.StyleId is not null || moment.Moment.CaptionStyle.Length == 0;
+                var caption = fixedStyle ? "" : prompt.Request("momentCaption", Values(("style", moment.Moment.CaptionStyle),
                     ("reason", moment.Moment.CaptionReason.Length == 0 ? "picked for the series" : moment.Moment.CaptionReason),
                     ("others", moment.OtherStyles.Count == 0 ? "none" : string.Join(", ", moment.OtherStyles))));
+                var others = moment.Others.Where(other => other.StartWord >= 0 && other.StartWord < words.Count)
+                    .Select(other => $"“{other.Title}” at {ClipText.Time(words[other.StartWord].Start)}").ToArray();
+                var series = others.Length == 0 ? "" : prompt.Request("momentOthers", Values(("others", string.Join("; ", others))));
                 instruction = prompt.Request("momentInstruction", Values(("rank", moment.Rank.ToString(CultureInfo.InvariantCulture)),
                     ("count", moment.Count.ToString(CultureInfo.InvariantCulture)), ("title", moment.Moment.Title), ("idea", moment.Moment.Idea),
-                    ("caption", caption))) + "\n\n" + instruction;
+                    ("caption", caption))) + series + "\n\n" + instruction;
             }
         }
         if (request.Note is { } creatorNote && EditingAlgorithms.JsTrim(creatorNote) is { Length: > 0 } trimmed)
@@ -239,6 +251,23 @@ public static partial class ClipAutopilotRequestBuilder
     }
 
     internal static int TextElements(string text) => new StringInfo(text).LengthInTextElements;
+
+    /// <summary>The clip's frames (prompt version 8, ADR-R48): the sheet's summary, the screens to judge for blur (<c>B1…</c>) and the
+    /// cover candidates (<c>C1…</c>), and a line naming the images when they go too. A request without frames adds nothing, so it is the
+    /// same text as before version 8.</summary>
+    public static string FramesBlock(ClipAutopilotFrames frames, ClipAutopilotPrompt prompt)
+    {
+        var blur = frames.Blur.Select(candidate => prompt.Request("blurCandidate", Values(("id", candidate.Id), ("start", ClipAutopilotFrames.Seconds(candidate.Start)),
+            ("end", ClipAutopilotFrames.Seconds(candidate.End)), ("rect", ClipAutopilotFrames.RectText(candidate.Rect)),
+            ("frames", candidate.Frames.ToString(CultureInfo.InvariantCulture))))).ToArray();
+        var cover = frames.Cover.Select(candidate => prompt.Request("coverCandidate", Values(("id", candidate.Id),
+            ("frame", candidate.Frame.ToString(CultureInfo.InvariantCulture)), ("time", ClipAutopilotFrames.Seconds(candidate.Time))))).ToArray();
+        var block = prompt.Request("frames", Values(
+            ("summary", frames.Summary.Length == 0 ? "Frames measured on this Mac: none could be read." : frames.Summary),
+            ("blur", blur.Length == 0 ? prompt.Request("noBlurCandidates", Values()) : string.Join("\n", blur)),
+            ("cover", cover.Length == 0 ? prompt.Request("noCoverCandidates", Values()) : string.Join("\n", cover))));
+        return block + (frames.SendsImages ? prompt.Request("framesSent", Values()) : "");
+    }
 
     /// <summary>The clip instruction's tone line (prompt version 6).</summary>
     internal static string ToneLine(ClipAutopilotTone tone, ClipAutopilotPrompt prompt) => tone switch

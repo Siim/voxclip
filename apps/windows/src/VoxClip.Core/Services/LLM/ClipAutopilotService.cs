@@ -13,7 +13,8 @@ public sealed record ClipAutopilotResult(ClipAutopilotSeries Series, string Mode
     public ClipAutopilotPlan? Plan => Series.Plans.FirstOrDefault();
 }
 
-/// <summary>What a running plan is doing, for the progress lines (ai.md §16.3).</summary>
+/// <summary>What a running plan is doing, for the progress lines (ai.md §16.3). Sent in order from the service; <c>Clip</c> indexes the
+/// moments of a series or the spans of a <c>clips</c> request, and is 0 of 1 for a single clip.</summary>
 public abstract record ClipAutopilotProgress
 {
     /// <summary>The series' first stage was sent.</summary>
@@ -24,6 +25,9 @@ public abstract record ClipAutopilotProgress
     public sealed record Planning(int Clip, int Of) : ClipAutopilotProgress;
     /// <summary>A clip's plan came back checked.</summary>
     public sealed record Planned(int Clip, int Of) : ClipAutopilotProgress;
+    /// <summary>That clip's checked plan, sent the moment it is ready and before <see cref="Planned"/>, while the other clips are still
+    /// planned: Claude mode applies and shows each clip as it comes (ai.md §16.12).</summary>
+    public sealed record Ready(int Clip, int Of, ClipAutopilotPlan Plan) : ClipAutopilotProgress;
     /// <summary>A clip's plan failed; the others go on.</summary>
     public sealed record Failed(int Clip, int Of) : ClipAutopilotProgress;
 }
@@ -41,7 +45,8 @@ public sealed class ClipAutopilotService(LlmRunner runner, LlmCatalog catalog, s
     /// <summary>Clip plans in flight at once.</summary>
     public const int MaxParallelPlans = 3;
 
-    private sealed record Prepared(LlmRequest Request, ClipAutopilotContext Context);
+    /// <summary>A send and what it was prepared from, so the clip's frames can be added when they arrive.</summary>
+    private sealed record Prepared(LlmRequest Request, ClipAutopilotContext Context, ClipAutopilotRequest Input, ConnectorId Connector, ClipAutopilotMomentBrief? Moment);
 
     private sealed class Resources
     {
@@ -56,25 +61,31 @@ public sealed class ClipAutopilotService(LlmRunner runner, LlmCatalog catalog, s
         internal IReadOnlyDictionary<ClipAutopilotFont, string> Fonts { get; }
     }
 
-    /// <summary>The first request a plan sends: the clip's plan, the series' moments, or the first span's plan of a clips request.</summary>
-    public LlmRequest Request(ClipAutopilotRequest input, ConnectorId connector) => First(input, connector).Request;
+    /// <summary>The first request a plan sends: the clip's plan, the series' moments, or the first span's plan of a clips request, with
+    /// <paramref name="frames"/> when given (never on a series' moments stage).</summary>
+    public LlmRequest Request(ClipAutopilotRequest input, ConnectorId connector, ClipAutopilotFrames? frames = null) => First(input, connector, frames).Request;
 
     /// <summary>What the first reply is checked against.</summary>
-    public ClipAutopilotContext Context(ClipAutopilotRequest input) => First(input, ConnectorId.ClaudeCode).Context;
+    public ClipAutopilotContext Context(ClipAutopilotRequest input, ClipAutopilotFrames? frames = null) => First(input, ConnectorId.ClaudeCode, frames).Context;
 
-    private Prepared First(ClipAutopilotRequest input, ConnectorId connector)
+    private Prepared First(ClipAutopilotRequest input, ConnectorId connector, ClipAutopilotFrames? frames)
     {
         var resources = new Resources(sharedRoot);
         if (input.Mode is ClipAutopilotMode.Clips clips)
-            return Prepare(input.ForClip(clips.Spans.Count > 0 ? clips.Spans[0] : throw ClipAutopilotRequestBuilder.Invalid()), resources, connector);
-        return Prepare(input, resources, connector);
+        {
+            if (clips.Spans.Count == 0) throw ClipAutopilotRequestBuilder.Invalid();
+            var moment = input.Moments.Count == clips.Spans.Count ? Briefs(input.Moments)[0] : null;
+            return Prepare(input.ForClip(clips.Spans[0]), resources, connector, moment, frames);
+        }
+        return Prepare(input, resources, connector, null, input.IsSeries ? null : frames);
     }
 
     /// <summary>Plans <paramref name="input"/>. <paramref name="lanes"/> are extra connectors of the same kind, one per parallel clip
     /// plan; without them the clip plans go one after another. A failed clip plan is left out and listed in the repairs; the run
-    /// fails only when every clip plan does, or on cancellation.</summary>
+    /// fails only when every clip plan does, or on cancellation. <paramref name="frames"/> gives each clip plan its frames when it is
+    /// about to be sent (never the series' moments stage).</summary>
     public async Task<ClipAutopilotResult> PlanAsync(ClipAutopilotRequest input, ILlmConnector connector, string model, IReadOnlyList<ILlmConnector>? lanes = null,
-        Action<ClipAutopilotProgress>? progress = null, CancellationToken ct = default)
+        Action<ClipAutopilotProgress>? progress = null, CancellationToken ct = default, ClipAutopilotFrameSource? frames = null)
     {
         lanes ??= [];
         if (!VoiceLabLlmChecks.IsValidModel(model) || lanes.Any(lane => lane.Id != connector.Id)) throw ClipAutopilotRequestBuilder.Invalid();
@@ -84,8 +95,9 @@ public sealed class ClipAutopilotService(LlmRunner runner, LlmCatalog catalog, s
         {
             case ClipAutopilotMode.Clip:
             {
-                var prepared = Prepare(input, resources, connector.Id);
+                var text = Prepare(input, resources, connector.Id);
                 progress?.Invoke(new ClipAutopilotProgress.Planning(0, 1));
+                var prepared = await ShowingAsync(text, frames, 0, resources, ct).ConfigureAwait(false);
                 var reply = await SendAsync(prepared, all[0], model, ct).ConfigureAwait(false);
                 var plan = ClipAutopilotValidator.Plan(reply.Object, prepared.Context)
                     ?? throw LlmErrors.Create(LlmErrorKind.InvalidOutput, "", model, LlmFeature.ClipAutopilot, detail: "The plan has no words of the clip.");
@@ -94,9 +106,12 @@ public sealed class ClipAutopilotService(LlmRunner runner, LlmCatalog catalog, s
             }
             case ClipAutopilotMode.Clips clips:
             {
-                if (clips.Spans.Count == 0 || clips.Spans.Count > resources.Prompt.Limits.MaxClips) throw ClipAutopilotRequestBuilder.Invalid();
-                var items = clips.Spans.Select(span => Prepare(input.ForClip(span), resources, connector.Id)).ToArray();
-                var outcome = await PlanAllAsync(items, all, model, progress, ct).ConfigureAwait(false);
+                if (clips.Spans.Count == 0 || clips.Spans.Count > resources.Prompt.Limits.MaxClips ||
+                    input.Moments.Count != 0 && input.Moments.Count != clips.Spans.Count) throw ClipAutopilotRequestBuilder.Invalid();
+                // With Find Clips' moments each plan knows its rank and the other clips, as a series' second stage does.
+                var briefs = input.Moments.Count == 0 ? null : Briefs(input.Moments);
+                var items = clips.Spans.Select((span, index) => Prepare(input.ForClip(span), resources, connector.Id, briefs?[index])).ToArray();
+                var outcome = await PlanAllAsync(items, all, model, resources, frames, progress, ct).ConfigureAwait(false);
                 var series = ClipAutopilotValidator.Series(outcome.Plans, [], outcome.Failures, []);
                 return Result(series, outcome.Replies, outcome.Replies.FirstOrDefault()?.Model ?? model, resources);
             }
@@ -109,21 +124,34 @@ public sealed class ClipAutopilotService(LlmRunner runner, LlmCatalog catalog, s
                 progress?.Invoke(new ClipAutopilotProgress.Picked(moments));
                 if (moments.Count == 0) return Result(new ClipAutopilotSeries([], [], repairs), [reply], reply.Model, resources);
                 var items = Briefs(moments).Select(brief => Prepare(input.ForClip(new(brief.Moment.StartWord, brief.Moment.EndWord)), resources, connector.Id, brief)).ToArray();
-                var outcome = await PlanAllAsync(items, all, model, progress, ct).ConfigureAwait(false);
+                var outcome = await PlanAllAsync(items, all, model, resources, frames, progress, ct).ConfigureAwait(false);
                 var series = ClipAutopilotValidator.Series(outcome.Plans, moments, outcome.Failures, repairs);
                 return Result(series, [reply, .. outcome.Replies], outcome.Replies.FirstOrDefault()?.Model ?? reply.Model, resources);
             }
         }
     }
 
-    /// <summary>One send, after the model's context check (ai.md §12.8).</summary>
+    /// <summary>The same send with the clip's frames from <paramref name="source"/>: the summary and candidates in the instruction, the
+    /// images on the request. Unchanged without a source, for a series' moments stage, or when the source has none.</summary>
+    private async Task<Prepared> ShowingAsync(Prepared prepared, ClipAutopilotFrameSource? source, int clip, Resources resources, CancellationToken ct)
+    {
+        if (source is null || prepared.Input.IsSeries) return prepared;
+        ct.ThrowIfCancellationRequested();
+        var frames = await source(clip, prepared.Context.Scope, ct).ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
+        return frames is null ? prepared : Prepare(prepared.Input, resources, prepared.Connector, prepared.Moment, frames);
+    }
+
+    /// <summary>One send, after the model's context check (ai.md §12.8). The frames count too: Anthropic's estimate per image, which
+    /// only a connector that takes images is sent.</summary>
     private async Task<LlmResult> SendAsync(Prepared prepared, ILlmConnector connector, string model, CancellationToken ct)
     {
         if (connector.Id != ConnectorId.AppleFoundation)
         {
             var context = await catalog.ResolveContextTokensAsync(connector, model, ct).ConfigureAwait(false);
             var safety = catalog.Data["policy"]!["tokenEstimate"]!["contextSafetyFactor"]!.GetValue<double>();
-            if (!VoiceLabLlmChecks.ContextFits(context, VoiceLabLlmChecks.RequiredTokens(catalog, prepared.Request), safety))
+            var images = connector.SupportsImages ? prepared.Request.Images.Sum(image => image.EstimatedTokens) : 0;
+            if (!VoiceLabLlmChecks.ContextFits(context, VoiceLabLlmChecks.RequiredTokens(catalog, prepared.Request) + images, safety))
                 throw LlmErrors.Create(LlmErrorKind.ContextTooLong, "", model, LlmFeature.ClipAutopilot);
         }
         ct.ThrowIfCancellationRequested();
@@ -134,7 +162,8 @@ public sealed class ClipAutopilotService(LlmRunner runner, LlmCatalog catalog, s
 
     /// <summary>The clip plans of <paramref name="items"/>, each lane sending one at a time, in item order as lanes free up.</summary>
     private async Task<(ClipAutopilotPlan?[] Plans, IReadOnlyList<LlmResult> Replies, IReadOnlyDictionary<int, string> Failures)> PlanAllAsync(
-        IReadOnlyList<Prepared> items, IReadOnlyList<ILlmConnector> lanes, string model, Action<ClipAutopilotProgress>? progress, CancellationToken ct)
+        IReadOnlyList<Prepared> items, IReadOnlyList<ILlmConnector> lanes, string model, Resources resources, ClipAutopilotFrameSource? frames,
+        Action<ClipAutopilotProgress>? progress, CancellationToken ct)
     {
         var plans = new ClipAutopilotPlan?[items.Count];
         var replies = new LlmResult?[items.Count];
@@ -157,13 +186,16 @@ public sealed class ClipAutopilotService(LlmRunner runner, LlmCatalog catalog, s
                 }
                 try
                 {
-                    var reply = await SendAsync(items[item], connector, model, linked.Token).ConfigureAwait(false);
-                    var plan = ClipAutopilotValidator.Plan(reply.Object, items[item].Context);
+                    var shown = await ShowingAsync(items[item], frames, item, resources, linked.Token).ConfigureAwait(false);
+                    var reply = await SendAsync(shown, connector, model, linked.Token).ConfigureAwait(false);
+                    var plan = ClipAutopilotValidator.Plan(reply.Object, shown.Context);
                     lock (gate)
                     {
+                        if (cancelled) return;
                         replies[item] = reply;
                         plans[item] = plan;
                         if (plan is null) failures[item] = "the plan has no words of the clip";
+                        if (plan is not null) progress?.Invoke(new ClipAutopilotProgress.Ready(item, items.Count, plan));
                         progress?.Invoke(plan is null ? new ClipAutopilotProgress.Failed(item, items.Count) : new ClipAutopilotProgress.Planned(item, items.Count));
                     }
                 }
@@ -202,9 +234,13 @@ public sealed class ClipAutopilotService(LlmRunner runner, LlmCatalog catalog, s
             resources.Prompt.PromptVersion, resources.Prompt.Sha256);
     }
 
+    /// <summary>The second stage's briefs: each moment's rank, the caption styles of the others and the others themselves.</summary>
     private static IReadOnlyList<ClipAutopilotMomentBrief> Briefs(IReadOnlyList<ClipAutopilotMoment> moments) =>
-        moments.Select((moment, index) => new ClipAutopilotMomentBrief(index + 1, moments.Count, moment,
-            moments.Where((_, other) => other != index).Select(item => item.CaptionStyle).ToArray())).ToArray();
+        moments.Select((moment, index) =>
+        {
+            var others = moments.Where((_, other) => other != index).ToArray();
+            return new ClipAutopilotMomentBrief(index + 1, moments.Count, moment, others.Select(item => item.CaptionStyle).Where(style => style.Length > 0).ToArray(), others);
+        }).ToArray();
 
     private static string TimeoutKind(ConnectorId id) => id switch
     {
@@ -212,11 +248,12 @@ public sealed class ClipAutopilotService(LlmRunner runner, LlmCatalog catalog, s
         ConnectorId.AppleFoundation => "appleFoundation", _ => "cloud"
     };
 
-    private Prepared Prepare(ClipAutopilotRequest input, Resources resources, ConnectorId connector, ClipAutopilotMomentBrief? moment = null)
+    private Prepared Prepare(ClipAutopilotRequest input, Resources resources, ConnectorId connector, ClipAutopilotMomentBrief? moment = null, ClipAutopilotFrames? frames = null)
     {
         var prompt = resources.Prompt;
         var pauses = EditingAlgorithms.DetectPauses(input.Transcript.Words, input.Edits.PauseThresholdSeconds);
-        var rendered = ClipAutopilotRequestBuilder.Render(input, prompt, resources.Styles, resources.Fonts, pauses, moment);
+        var shown = input.IsSeries ? null : frames;
+        var rendered = ClipAutopilotRequestBuilder.Render(input, prompt, resources.Styles, resources.Fonts, pauses, moment, shown);
         var moments = input.IsSeries;
         var system = moments ? prompt.MomentsSystem : prompt.System;
         if (System.Text.Encoding.UTF8.GetByteCount(system + rendered.CachedBlock + rendered.Instruction) > 400_000)
@@ -227,10 +264,10 @@ public sealed class ClipAutopilotService(LlmRunner runner, LlmCatalog catalog, s
         var request = new LlmRequest(LlmFeature.ClipAutopilot, system, rendered.CachedBlock, rendered.Instruction,
             moments ? prompt.MomentsSchemaName : prompt.SchemaName, (moments ? prompt.MomentsSchema : prompt.Schema).DeepClone().AsObject(), output,
             moments ? MomentsEffort : PlanEffort, timeout, input.Language ?? input.Transcript.Language,
-            moments ? "clip-autopilot-moments" : moment is null ? "clip-autopilot" : "clip-autopilot-series-clip");
+            moments ? "clip-autopilot-moments" : moment is null ? "clip-autopilot" : "clip-autopilot-series-clip") { Images = shown?.Images ?? [] };
         var context = new ClipAutopilotContext(input.Transcript.Words, input.Edits.Corrections, input.Edits.CutWordIds.ToHashSet(StringComparer.Ordinal),
             pauses, input.Edits.CutPauseIds.ToHashSet(StringComparer.Ordinal), input.Edits.PauseKeepSeconds, rendered.Scope,
-            resources.Styles.Select(style => style.Id).ToHashSet(StringComparer.Ordinal), resources.Fonts, input.CaptionPreference, prompt, moments ? null : input.Tone);
-        return new(request, context);
+            resources.Styles.Select(style => style.Id).ToHashSet(StringComparer.Ordinal), resources.Fonts, input.CaptionPreference, prompt, moments ? null : input.Tone, shown);
+        return new(request, context, input, connector, moment);
     }
 }

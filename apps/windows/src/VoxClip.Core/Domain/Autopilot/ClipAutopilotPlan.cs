@@ -110,11 +110,11 @@ public readonly record struct ClipAutopilotFont(string Family, int Weight);
 
 /// <summary>One clip's complete "Make it postable" plan (ai.md §16): every decision Claude made, already checked against the
 /// transcript, the caption styles and the bundled fonts (<see cref="ClipAutopilotValidator"/>). Word indices are transcript
-/// item positions; every range is inclusive. Twin of the Mac <c>ClipAutopilotPlan</c> (version 3, reads 1 to 3).</summary>
+/// item positions; every range is inclusive. Twin of the Mac <c>ClipAutopilotPlan</c> (version 4, reads 1 to 4).</summary>
 public sealed record ClipAutopilotPlan
 {
     /// <summary>The contract version a plan is written in.</summary>
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 4;
 
     /// <summary>Words to remove, <c>StartWord...EndWord</c>.</summary>
     public sealed record Cut(int StartWord, int EndWord, ClipAutopilotCutKind Kind, string Reason);
@@ -150,6 +150,20 @@ public sealed record ClipAutopilotPlan
     public sealed record Tone(string Id, string Title, string Summary = "");
     /// <summary>Something the review shows next to the plan: "longWithoutReason" or "overLength".</summary>
     public sealed record Flag(string Kind, string Detail);
+    /// <summary>What the reply chose among the frames the request listed (version 4, ai.md §19.6): which detected screens to blur and
+    /// which candidate is the cover. Ids name <see cref="ClipAutopilotFrames"/> candidates; the validator keeps only listed ones.</summary>
+    public sealed record FrameChoices(IReadOnlyList<FrameChoices.Blur> BlurChoices, FrameChoices.Cover? CoverChoice)
+    {
+        /// <summary>A blur candidate's id (<c>B1</c>…); true blurs the screen, false leaves it sharp.</summary>
+        public sealed record Blur(string Id, bool Blurred, string Reason);
+        /// <summary>A cover candidate's id (<c>C1</c>…<c>C3</c>); <c>Fallback</c> when the reply named no listed candidate and the
+        /// local best (<c>C1</c>) was taken.</summary>
+        public sealed record Cover(string Id, string Reason, bool Fallback = false);
+        /// <summary>Equal when the decisions are.</summary>
+        public bool Equals(FrameChoices? other) => other is not null && BlurChoices.SequenceEqual(other.BlurChoices) && Equals(CoverChoice, other.CoverChoice);
+        /// <inheritdoc />
+        public override int GetHashCode() => HashCode.Combine(BlurChoices.Count, CoverChoice);
+    }
 
     /// <summary>Always <see cref="CurrentVersion"/> once read.</summary>
     public int Version { get; init; } = CurrentVersion;
@@ -201,6 +215,8 @@ public sealed record ClipAutopilotPlan
     public IReadOnlyList<Flag> Flags { get; init; } = [];
     /// <summary>The tone the words were written in; null keeps the creator's own.</summary>
     public Tone? ToneChoice { get; init; }
+    /// <summary>The frame choices (version 4); null when the request carried no frames.</summary>
+    public FrameChoices? Frames { get; init; }
 
     /// <summary>The picked music, when there is one.</summary>
     public Music? PickedMusic => MusicPick is { } pick && pick >= 0 && pick < MusicChoices.Count ? MusicChoices[pick] : null;
@@ -234,11 +250,18 @@ public sealed record ClipAutopilotPlan
         if (SpeedChoice is { } speed) json["speed"] = new JsonObject { ["rate"] = speed.Rate, ["reason"] = speed.Reason };
         if (MusicPick is { } pick) json["musicPick"] = pick;
         if (ToneChoice is { } tone) json["tone"] = new JsonObject { ["id"] = tone.Id, ["title"] = tone.Title, ["summary"] = tone.Summary };
+        if (Frames is { } frames)
+        {
+            var choices = new JsonObject { ["blur"] = Array(frames.BlurChoices, item => new JsonObject { ["id"] = item.Id, ["blur"] = item.Blurred, ["reason"] = item.Reason }) };
+            if (frames.CoverChoice is { } cover) choices["cover"] = new JsonObject { ["id"] = cover.Id, ["reason"] = cover.Reason, ["fallback"] = cover.Fallback };
+            json["frames"] = choices;
+        }
         return json;
     }
 
-    /// <summary>Reads a stored plan of version 1 to 3 and upgrades it: version 1 has no corrections, the original look, no speed,
-    /// no stated reasons, no length and no flags; versions 1 and 2 have no tone. Any other version or shape is refused.</summary>
+    /// <summary>Reads a stored plan of version 1 to 4 and upgrades it: version 1 has no corrections, the original look, no speed,
+    /// no stated reasons, no length and no flags; versions 1 and 2 have no tone; versions 1 to 3 have no frame choices. Any other
+    /// version or shape is refused.</summary>
     public static ClipAutopilotPlan FromJson(JsonObject json)
     {
         try
@@ -270,7 +293,9 @@ public sealed record ClipAutopilotPlan
                 Questions = Items(json["questions"]).Select(item => new Question(S(item["question"]), S(item["answer"]), Items(item["options"]).Select(option => option.GetValue<string>()).ToArray())).ToArray(),
                 Repairs = json["repairs"] is null ? [] : Items(json["repairs"]).Select(item => new Repair(S(item["field"]), S(item["action"]) switch { "dropped" => true, "repaired" => false, _ => throw new JsonException() }, S(item["detail"]))).ToArray(),
                 Flags = json["flags"] is null ? [] : Items(json["flags"]).Select(item => new Flag(S(item["kind"]), S(item["detail"]))).ToArray(),
-                ToneChoice = json["tone"] is { } tone ? new(S(tone["id"]), S(tone["title"]), S(tone["summary"])) : null
+                ToneChoice = json["tone"] is { } tone ? new(S(tone["id"]), S(tone["title"]), S(tone["summary"])) : null,
+                Frames = json["frames"] is { } frames ? new(Items(frames["blur"]).Select(item => new FrameChoices.Blur(S(item["id"]), item["blur"]!.GetValue<bool>(), S(item["reason"]))).ToArray(),
+                    frames["cover"] is { } cover ? new FrameChoices.Cover(S(cover["id"]), S(cover["reason"]), cover["fallback"]?.GetValue<bool>() ?? false) : null) : null
             };
         }
         catch (Exception exception) when (exception is InvalidOperationException or NullReferenceException or FormatException or JsonException)
@@ -282,7 +307,13 @@ public sealed record ClipAutopilotPlan
 
 /// <summary>A moment the first stage of a series picked (ai.md §16.3).</summary>
 public sealed record ClipAutopilotMoment(int StartWord, int EndWord, string Title, string Idea, int Score, ClipAutopilotVerdict Verdict,
-    string ScoreReason, string CaptionStyle, string CaptionReason);
+    string ScoreReason, string CaptionStyle, string CaptionReason)
+{
+    /// <summary>A Find Clips suggestion as a moment of Claude mode's series (<see cref="ClipAutopilotRequest.Moments"/>): its span, title
+    /// and reason, the score it was given and no caption style, which each clip's plan picks.</summary>
+    public static ClipAutopilotMoment Found(WordSpan span, string title, string reason, int score) =>
+        new(span.Start, span.End, title, reason, score, ClipAutopilotWire.Implied(score), "", "", "");
+}
 
 /// <summary>A whole video made into a series, or the plans of a <c>clips</c> request: ranked best first, never overlapping.</summary>
 public sealed record ClipAutopilotSeries(IReadOnlyList<ClipAutopilotPlan> Plans, IReadOnlyList<ClipAutopilotMoment> Moments, IReadOnlyList<ClipAutopilotPlan.Repair> Repairs)
