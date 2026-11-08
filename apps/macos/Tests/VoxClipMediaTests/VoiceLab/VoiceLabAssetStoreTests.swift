@@ -206,7 +206,10 @@ import VoxClipCore
         }
         let winners = outcomes.filter { $0.1 != nil }
         #expect(winners.count == 1)
-        #expect(outcomes.filter { $0.2 == .alreadyExists("\(projectId)/race.wav") }.count == 7)
+        // Every loser must see the winner's file; name any other outcome, so a rare one on a slow runner says what it was.
+        let others = outcomes.filter { $0.1 == nil && $0.2 != .alreadyExists("\(projectId)/race.wav") }
+        #expect(outcomes.filter { $0.2 == .alreadyExists("\(projectId)/race.wav") }.count == 7,
+                "other outcomes: \(others.map { "writer \($0.0): \(String(describing: $0.2))" })")
         let winner = try #require(winners.first)
         let published = try Data(contentsOf: paid.appendingPathComponent("\(projectId)/race.wav"))
         let value = VoiceLabAssetStore.pcm16(Float(winner.0 + 1) / 16)

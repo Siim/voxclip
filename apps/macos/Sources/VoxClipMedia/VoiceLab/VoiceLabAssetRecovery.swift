@@ -305,9 +305,12 @@ enum VoiceLabAssetRecovery {
         let descriptor = openat(root, ".asset-write.lock", O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600)
         guard descriptor >= 0 else { throw VoiceLabAssetStoreError.unwritable("VoiceLab") }
         var info = stat()
-        guard fstat(descriptor, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_uid == getuid(),
-              flock(descriptor, LOCK_EX) == 0 else {
+        guard fstat(descriptor, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_uid == getuid() else {
             close(descriptor); throw VoiceLabAssetStoreError.unsafePath("VoiceLab")
+        }
+        // Writers wait here for each other. A signal can interrupt the wait (EINTR): wait again rather than fail the write.
+        while flock(descriptor, LOCK_EX) != 0 {
+            guard errno == EINTR else { close(descriptor); throw VoiceLabAssetStoreError.unsafePath("VoiceLab") }
         }
         return descriptor
     }
