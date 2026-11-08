@@ -183,16 +183,36 @@ public enum VoiceLabTakeQuality {
     }
     public static func transcriptRatio(expected: [String], recognized: [String]) throws -> Double {
         guard !expected.isEmpty, expected.count <= 5_000, recognized.count <= 5_000 else { throw VoiceLabError.invalidInput }
-        var previous = [Int](repeating: 0, count: recognized.count + 1)
-        for expectedToken in expected {
-            var next = [Int](repeating: 0, count: recognized.count + 1)
-            for index in recognized.indices {
-                next[index + 1] = expectedToken.utf8.elementsEqual(recognized[index].utf8)
-                    ? previous[index] + 1 : max(previous[index + 1], next[index])
+        return 2 * Double(alignment(expected: expected, recognized: recognized).count) / Double(expected.count + recognized.count)
+    }
+    /// The tokens `expected` and `recognized` share, in order: a longest common subsequence of byte-equal tokens, as
+    /// index pairs. The take QA's transcript ratio
+    /// counts it; the export check (ADR-R49) reads which words matched and what was heard between them.
+    public static func alignment(expected: [String], recognized: [String]) -> [(expected: Int, recognized: Int)] {
+        let columns = recognized.count + 1
+        guard !expected.isEmpty, !recognized.isEmpty else { return [] }
+        // lengths[(i * columns) + j]: the common subsequence of expected[i...] and recognized[j...].
+        var lengths = [Int32](repeating: 0, count: (expected.count + 1) * columns)
+        for row in stride(from: expected.count - 1, through: 0, by: -1) {
+            for column in stride(from: recognized.count - 1, through: 0, by: -1) {
+                let here = row * columns + column
+                lengths[here] = expected[row].utf8.elementsEqual(recognized[column].utf8)
+                    ? lengths[here + columns + 1] + 1 : max(lengths[here + columns], lengths[here + 1])
             }
-            previous = next
         }
-        return 2 * Double(previous.last ?? 0) / Double(expected.count + recognized.count)
+        var pairs: [(expected: Int, recognized: Int)] = []
+        var row = 0, column = 0
+        while row < expected.count, column < recognized.count {
+            let here = row * columns + column
+            if expected[row].utf8.elementsEqual(recognized[column].utf8), lengths[here] == lengths[here + columns + 1] + 1 {
+                pairs.append((row, column)); row += 1; column += 1
+            } else if lengths[here + 1] >= lengths[here + columns] {
+                column += 1
+            } else {
+                row += 1
+            }
+        }
+        return pairs
     }
     /// `sourceSeamSteps`, one signed step per seam, makes the loudness value how far each join's step lies outside the
     /// source's own step there. A join whose generated side is in a pause compares that pause's level with
