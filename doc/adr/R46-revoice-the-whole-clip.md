@@ -29,6 +29,14 @@ The user decided (2026-11-07):
 7. **Disclosure.** A segment named by a record adds the disclosure kind `revoice`. The burned-in chip reads "Voice and lip movement generated with AI" and the post text "Voice and lip movement generated with AI." The rest of the label plan is unchanged, so a revoiced clip, being over 30% AI, is labelled throughout. Consent is the existing voice consent, plus the lip-sync approval.
 8. **The stage** shows its AI voice tag over the whole revoiced clip, the pauses between parts included (`WholeClipRevoice.isRevoiced`).
 
+### Update 2026-11-08: parts tile the clip
+
+On the user's 0:29.7 clip (61 items, 14 cut fillers and tightened pauses), two of four parts were refused with `seamFadeCrossesCut`: each began right after a cut word, so its left seam's fade had no kept audio before it. The run stopped with the lip-sync copy ("The job could not be completed…"), wrote no log line, and Try Again · ≈ $1.90 failed the same way at once.
+
+- **Parts tile the clip** (voice-lab §8.14 item 3). The first part starts at the clip's first item and the last ends at its last. At each boundary, the items between the last kept source word of one part and the first kept source word of the next go to the side of the widest gap, so both seams sit on kept audio. A cut pause counts as no gap. When no gap of `SEAM_MIN_GAP` exists there, the two parts become one change. Tiling alone was not enough: a tightened pause keeps no breath once both of its neighbours are replaced, and a cut run that touches both sentences leaves no gap at all. Joining is the smallest correct change, because placement already joins touching windows. The patch geometry (§8.4) is unchanged.
+- **A failure says why and is logged.** It names the part and its reason; only lip-sync errors use the lip-sync copy. One `voice-lab` line per failure gives the step, the error case and the part.
+- **Try Again is offered only when it can succeed.** After a stop that would only repeat (placement, or anything before a paid request), the card offers Voice Only the Changed Phrases with no price. Claude mode patches on its own and says so in the review.
+
 ## Consequences
 
 - A heavily rewritten clip can sound like one take, at a lip-sync price: about $1.55 for 31 s with lipsync-2, about $4.13 with sync-3.

@@ -13065,7 +13065,7 @@ member VoxClip.Core.Domain.VoiceLab.WholeClipRevoiceRecord :: method public set_
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoiceRecord :: method public set_VideoRetime(double)
 member VoxClip.Core.Domain.VoiceLab.WholeClipScript :: method private .ctor(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.WholeClipScript+Sentence>)
 member VoxClip.Core.Domain.VoiceLab.WholeClipScript :: method public Assemble(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,System.Collections.Generic.IReadOnlySet`1<string>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabDiffHunk>)
-member VoxClip.Core.Domain.VoiceLab.WholeClipScript :: method public Hunks(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>)
+member VoxClip.Core.Domain.VoiceLab.WholeClipScript :: method public Hunks(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,System.Collections.Generic.IReadOnlySet`1<string>,System.Collections.Generic.IReadOnlySet`1<string>)
 member VoxClip.Core.Domain.VoiceLab.WholeClipScript :: method public get_Characters()
 member VoxClip.Core.Domain.VoiceLab.WholeClipScript :: method public get_Parts()
 member VoxClip.Core.Domain.VoiceLab.WholeClipScript :: method public get_Sentences()
@@ -13112,6 +13112,33 @@ member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Sentence :: method public se
 member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Sentence :: method public set_SourceWordIds(System.Collections.Generic.IReadOnlyList`1<string>)
 member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Sentence :: method public set_Start(double)
 member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Sentence :: method public set_Tokens(System.Collections.Generic.IReadOnlyList`1<string>)
+member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile :: method private .ctor(VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile)
+member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile :: method private get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile :: method public .ctor(System.Collections.Generic.List`1<string>,System.Collections.Generic.List`1<string>,int,int,int,int,int,int)
+member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile :: method public Deconstruct(System.Collections.Generic.List`1<string>&,System.Collections.Generic.List`1<string>&,int&,int&,int&,int&,int&,int&)
+member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile :: method public Equals(VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile)
+member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile :: method public get_First()
+member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile :: method public get_KeptFirst()
+member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile :: method public get_KeptLast()
+member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile :: method public get_Last()
+member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile :: method public get_Lower()
+member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile :: method public get_Sources()
+member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile :: method public get_Tokens()
+member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile :: method public get_Upper()
+member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile,VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile)
+member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile,VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile)
+member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile :: method public set_First(int)
+member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile :: method public set_KeptFirst(int)
+member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile :: method public set_KeptLast(int)
+member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile :: method public set_Last(int)
+member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile :: method public set_Lower(int)
+member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile :: method public set_Sources(System.Collections.Generic.List`1<string>)
+member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile :: method public set_Tokens(System.Collections.Generic.List`1<string>)
+member VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile :: method public set_Upper(int)
 member VoxClip.Core.Services.AppVersion :: method internal Resolve(string)
 member VoxClip.Core.Services.AppVersion :: method internal ResolveProjectWriter(string)
 member VoxClip.Core.Services.AppVersion :: method public get_Current()
@@ -17017,6 +17044,7 @@ type VoxClip.Core.Domain.VoiceLab.WholeClipRevoiceRecord
 type VoxClip.Core.Domain.VoiceLab.WholeClipScript
 type VoxClip.Core.Domain.VoiceLab.WholeClipScript+Part
 type VoxClip.Core.Domain.VoiceLab.WholeClipScript+Sentence
+type VoxClip.Core.Domain.VoiceLab.WholeClipScript+Tile
 type VoxClip.Core.Services.AppVersion
 type VoxClip.Core.Services.Captions.CaptionDataLoader
 type VoxClip.Core.Services.LLM.AskClaudeResult

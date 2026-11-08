@@ -1,5 +1,15 @@
 # Windows fixed contracts
 
+### 2026-11-08 — Windows: whole-clip parts tile the clip, the twin of Mac's fix (track/v2-wholeclip-cuts)
+
+voice-lab §8.14 item 3, ADR-R46 (update 2026-11-08).
+
+- **Core.** `WholeClipScript.Hunks(words, cutWordIds, cutPauseIds)` replaces `Hunks(words)`. Parts tile the clip, and each boundary splits at the widest gap between the parts' kept source words (a cut pause counts as 0). Below `SEAM_MIN_GAP` the two parts join. Spoken indices tile the clip's spoken words. It has a private `Tile` record.
+- **Tests.** `WholeClipRevoiceReplayTests.TheScriptItsPartsAndTheirVoiceChanges` replays 28 script rows (11 new tiling cases), each with its `cutWordIds` and `cutPauseIds`.
+- **ReleaseBoundary.** `VoxClip.Core.txt` is updated: the new `Hunks` signature and `WholeClipScript+Tile`.
+- **Deleted.** `Hunks(words)`.
+- **Verification** (macOS host, Release, `-m:1 -nodeReuse:false -p:UseSharedCompilation=false`, `VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`): Core 3,274 (3,245 passed, 29 skipped, 0 failed). Media is untouched and was not run. Nothing on Windows calls `Hunks` yet; the whole-clip run is still owed in the App.
+
 ### 2026-11-07 — Windows: native speaker parity verified on win-arm64 and win-x64; the gate stays closed (lead)
 
 `VoiceConsentMediaTests.SharedRealModelSpeakerVectorsReplayWhenVerifiedLocalAssetsExist` replays `shared/fixtures/voice-lab/speaker/vectors.json` (8 clips: voiced ranges, embeddings and pair scores, absolute tolerance 2e-4) through `ONNXSpeakerEmbedder` with the catalogue's pinned model (`wespeaker-resnet34-lm-voxceleb-f0c48c2`, bytes and SHA-256 checked).

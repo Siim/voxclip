@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Mac, revoicing a whole clip now works on clips with cut fillers and tightened pauses (its parts cover the clip, so no join sits beside a cut); if a part still can't be joined to the recording, the Voice step says which part and why, offers Voice Only the Changed Phrases instead of a priced Try Again that would only fail again, and Claude mode patches the changed phrases on its own.
 - On Mac, VoxClip can now measure faces, open eyes and phone screens in a clip's frames on the Mac, and every AI connector that takes images (Claude Code, Codex, Anthropic, OpenAI, xAI, Gemini) can be sent small frames; Make it postable will use them next.
 - Exports on Mac and Windows now land at social loudness: one static gain takes the mix to −14 LUFS with its true peak at or below −1 dBTP (never compressed or limited, so the voice doesn't pump; a clip with a sharp peak lands a little quieter), the CLI reports it as `loudness` and takes `--loudness off`, and the app logs the numbers; preview is unchanged.
 - On Mac, Claude mode no longer waits for its slowest clip: the top three are planned at once and each clip is ready as soon as its own plan is, with "1 of 3 ready" in the status bar, and Find Clips sends a shorter transcript; `voxclip-cli autopilot --timings` times each step.
