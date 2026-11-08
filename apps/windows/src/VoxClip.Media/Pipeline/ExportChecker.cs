@@ -158,6 +158,7 @@ public sealed class ExportChecker
         var block = Math.Max(1, file.SampleRate / 10);
         var samples = new float[block * channels];
         var mono = new float[block];
+        var resampled = resampler is null ? [] : new float[resampler.MaximumOutput(block) + 1];
         try
         {
             for (long read = 0; read < total;)
@@ -174,7 +175,7 @@ public sealed class ExportChecker
                         for (var channel = 0; channel < channels; channel++) sum += samples[index * channels + channel];
                         mono[index] = sum / channels;
                     }
-                    writer!.Write(resampler.Process(mono.AsSpan(0, got)));
+                    writer!.Write(resampled.AsSpan(0, resampler.Process(mono.AsSpan(0, got), resampled)));
                 }
                 read += got;
             }
@@ -183,7 +184,7 @@ public sealed class ExportChecker
         {
             throw new VoxClipException(VoxClipErrorCode.DecodeFailed, "The export's audio took too long to decode.");
         }
-        if (resampler is not null) writer!.Write(resampler.Finish());
+        if (resampler is not null) writer!.Write(resampled.AsSpan(0, resampler.Finish(resampled)));
         return new(file.Video, audio, frameSeconds, frame, meter.Finish(), writer?.Samples);
     }
 

@@ -29,8 +29,13 @@ public sealed class SincResamplerTests
             var resampler = new SincResampler(rate, target);
             var output = new List<float>();
             for (var offset = 0; offset < signal.Length; offset += piece)
-                output.AddRange(resampler.Process(signal.AsSpan(offset, Math.Min(piece, signal.Length - offset))).ToArray());
-            output.AddRange(resampler.Finish().ToArray());
+            {
+                var length = Math.Min(piece, signal.Length - offset);
+                var buffer = new float[resampler.MaximumOutput(length)];
+                output.AddRange(buffer.AsSpan(0, resampler.Process(signal.AsSpan(offset, length), buffer)).ToArray());
+            }
+            var tail = new float[resampler.MaximumOutput(0)];
+            output.AddRange(tail.AsSpan(0, resampler.Finish(tail)).ToArray());
             Assert.True(whole.SequenceEqual(output), $"{rate}->{target} in pieces of {piece}");
         }
     }
@@ -39,12 +44,22 @@ public sealed class SincResamplerTests
     public void ShortAndEmptyInputs()
     {
         var empty = new SincResampler(48_000, 16_000);
-        Assert.Equal(0, empty.Process([]).Length);
-        Assert.Equal(0, empty.Finish().Length);
+        Assert.Equal(0, empty.Process([], []));
+        Assert.Equal(0, empty.Finish([]));
         float[] three = [0.5f, -0.5f, 0.25f];
         var resampler = new SincResampler(48_000, 16_000);
-        float[] output = [.. resampler.Process(three).ToArray(), .. resampler.Finish().ToArray()];
-        Assert.Equal(VoiceConsentAudio.Resample(three, 48_000, 16_000), output);
+        var output = new float[resampler.MaximumOutput(3)];
         Assert.Single(output);
+        var written = resampler.Process(three, output);
+        written += resampler.Finish(output.AsSpan(written));
+        Assert.Equal(1, written);
+        Assert.Equal(VoiceConsentAudio.Resample(three, 48_000, 16_000), output);
+        // An output without room for what is ready is refused.
+        Assert.Throws<ArgumentException>(() =>
+        {
+            var up = new SincResampler(16_000, 48_000);
+            Assert.Equal(0, up.Process(three, new float[9]));
+            up.Finish(new float[2]);
+        });
     }
 }

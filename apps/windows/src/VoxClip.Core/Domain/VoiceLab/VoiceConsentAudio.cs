@@ -55,9 +55,8 @@ public static class VoiceConsentAudio
         if (rate == targetRate) return mono.ToArray();
         var resampler = new SincResampler(rate, targetRate);
         var output = new float[checked((int)((long)mono.Length * targetRate / rate))];
-        var head = resampler.Process(mono);
-        head.CopyTo(output);
-        resampler.Finish().CopyTo(output.AsSpan(head.Length));
+        var written = resampler.Process(mono, output);
+        resampler.Finish(output.AsSpan(written));
         return output;
     }
     private static VoiceLabException Invalid() => new(VoiceLabErrorKind.InvalidAudio);

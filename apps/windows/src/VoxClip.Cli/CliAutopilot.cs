@@ -90,7 +90,7 @@ internal static class CliAutopilot
         if (ranked.Length > 0)
         {
             Line($"Found {found.Clips.Count} clips. Planning the top {ranked.Length}…");
-            var exports = new ExportSeams(openExport, prepareExport, checks);
+            var exports = new ClipExportRoute(openExport, prepareExport, checks);
             var (clips, plannedModel, applied) = await PlanAndApplyAsync(project, transcript, ranked, main, lanes, model, catalog, runner, root, clock, Line,
                 async (made, clipId, rank) => outDir is null ? [] : await ExportClipAsync(made, clipId, rank, outDir, aspect, quiet, clock, exports, ct).ConfigureAwait(false), ct).ConfigureAwait(false);
             // Each exported clip's self-check, which ran beside the other clips' work.
@@ -197,13 +197,13 @@ internal static class CliAutopilot
         return char.ToLowerInvariant(name[0]) + name[1..];
     }
 
-    /// <summary>How the autopilot's exports run: the export command's seams and the clip checks.</summary>
-    private sealed record ExportSeams(ExportInputReader? OpenExport, ExportPreparer? PrepareExport, ClipChecks? Checks);
+    /// <summary>How the autopilot's exports run: the export command's input reader and encoder (injected in tests), and the clip checks.</summary>
+    private sealed record ClipExportRoute(ExportInputReader? OpenExport, ExportPreparer? PrepareExport, ClipChecks? Checks);
 
     /// <summary>One clip in the clip style's caption look, through the export command's own path. With checks, its self-check (ADR-R49)
     /// starts as soon as it is written and runs beside the next clips' work.</summary>
     private static async Task<IReadOnlyList<string>> ExportClipAsync(Project project, string clipId, int rank, string outDir, string aspect, bool quiet,
-        ClaudeModeClock clock, ExportSeams seams, CancellationToken ct)
+        ClaudeModeClock clock, ClipExportRoute route, CancellationToken ct)
     {
         var projectPath = Path.Combine(outDir, $"autopilot-{clipId}.voxclip");
         await ServicesMergeAdapter.Projects().SaveAsync(project, projectPath, ct).ConfigureAwait(false);
@@ -212,10 +212,10 @@ internal static class CliAutopilot
             var output = Path.Combine(outDir, $"clip-{rank.ToString(CultureInfo.InvariantCulture)}-{aspect.Replace(':', 'x')}.mp4");
             var parsed = CliApplication.Parse(["--open", projectPath, "--export", output, "--clip", clipId, "--aspect", aspect, .. quiet ? new[] { "--quiet" } : []]);
             var start = clock.Elapsed;
-            var prepared = await CliOperations.PrepareExportAsync(parsed, ct, seams.OpenExport).ConfigureAwait(false);
-            await CliOperations.WriteExportAsync(prepared, parsed, ct, seams.PrepareExport).ConfigureAwait(false);
+            var prepared = await CliOperations.PrepareExportAsync(parsed, ct, route.OpenExport).ConfigureAwait(false);
+            await CliOperations.WriteExportAsync(prepared, parsed, ct, route.PrepareExport).ConfigureAwait(false);
             clock.Record(ClaudeModeStage.Export, rank, start);
-            seams.Checks?.Start(rank, output, prepared);
+            route.Checks?.Start(rank, output, prepared);
             return [output];
         }
         finally { try { File.Delete(projectPath); } catch (IOException) { } catch (UnauthorizedAccessException) { } }
