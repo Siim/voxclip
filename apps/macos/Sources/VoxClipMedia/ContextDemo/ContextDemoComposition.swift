@@ -55,17 +55,24 @@ struct CompositionVideoSpan: Sendable {
                         guard VoiceLabNaturalPacing.validCuts(recipe, sampleRate: timeline.sampleRate), let cuts = recipe.cuts else {
                             throw VoiceLabProjectError.videoModeUnsupported
                         }
+                        // A pause's jump cut punches in after its first span; the clip's own cuts under a whole-clip
+                        // layout (zoom 1) don't, and a cut at either edge leaves no span there.
+                        let punch = recipe.zoom ?? VoiceLabNaturalPacing.CUT_PUNCH_IN
                         var spans: [CompositionVideoSpan] = []
                         var sourceStart = piece.sourceStartSample, outputStart = piece.outputStartSample
                         for cut in cuts {
                             let count = cut.startSample - sourceStart
-                            spans.append(CompositionVideoSpan(source: range(sourceStart, cut.startSample),
-                                output: range(outputStart, outputStart + count), zoom: spans.isEmpty ? 1 : VoiceLabNaturalPacing.CUT_PUNCH_IN,
-                                anchorX: 0.5, anchorY: 0.5))
+                            if count > 0 {
+                                spans.append(CompositionVideoSpan(source: range(sourceStart, cut.startSample),
+                                    output: range(outputStart, outputStart + count), zoom: spans.isEmpty ? 1 : punch,
+                                    anchorX: 0.5, anchorY: 0.5))
+                            }
                             sourceStart = cut.endSample; outputStart += count
                         }
-                        spans.append(CompositionVideoSpan(source: range(sourceStart, piece.sourceEndSample),
-                            output: range(outputStart, piece.outputEndSample), zoom: VoiceLabNaturalPacing.CUT_PUNCH_IN, anchorX: 0.5, anchorY: 0.5))
+                        if piece.sourceEndSample > sourceStart {
+                            spans.append(CompositionVideoSpan(source: range(sourceStart, piece.sourceEndSample),
+                                output: range(outputStart, piece.outputEndSample), zoom: punch, anchorX: 0.5, anchorY: 0.5))
+                        }
                         cursor = piece.outputEndSample
                         return spans
                     case .source:

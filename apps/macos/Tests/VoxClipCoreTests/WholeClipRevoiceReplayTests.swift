@@ -22,7 +22,7 @@ import Testing
     private struct ScriptCase: Decodable {
         let id: String; let words: [Word]; let cutWordIds: [String]; let cutPauseIds: [String]; let voiceHunks: [Hunk]; let expected: Script?
     }
-    private struct FitResult: Decodable { let kind: String; let factor: Double?; let copy: String?; let shorter: Bool?; let targetWords: Int? }
+    private struct FitResult: Decodable { let kind: String; let factor: Double?; let copy: String?; let targetWords: Int? }
     private struct FitCase: Decodable { let voiceSeconds: Double; let videoSeconds: Double; let words: Int; let round: Int; let expected: FitResult }
     private struct Prices: Decodable { let voiceUsd: String?; let lipsyncUsd: String?; let usd: String? }
     private struct PriceCase: Decodable { let characters: Int; let ttsModel: String; let videoSeconds: Double; let lipsync: String; let expected: Prices }
@@ -129,8 +129,10 @@ import Testing
                 let factor: Double = row.expected.factor ?? .nan
                 #expect(fit == .matched(factor: factor))
                 #expect(WholeClipRevoice.matchedCopy(factor: factor) == row.expected.copy)
+            case "laidOut":
+                #expect(fit == .laidOut(factor: row.expected.factor ?? .nan), "a shorter voice is laid out, never reworded longer")
             case "reword":
-                #expect(fit == .reword(shorter: row.expected.shorter ?? false, targetWords: row.expected.targetWords ?? -1))
+                #expect(fit == .reword(targetWords: row.expected.targetWords ?? -1))
             default:
                 #expect(fit == .cannotFit(voiceSeconds: row.voiceSeconds, videoSeconds: row.videoSeconds))
             }

@@ -102,7 +102,7 @@ struct WholeClipScriptTests {
 }
 
 struct WholeClipFitTests {
-    @Test func withinEightPercentTheVideoIsMatched() {
+    @Test func withinEightPercentOfTheClipAsEditedTheVoiceIsMatched() {
         #expect(WholeClipRevoice.fit(voiceSeconds: 30.6, videoSeconds: 31, words: 74, round: 0) == .matched(factor: 30.6 / 31))
         #expect(WholeClipRevoice.fit(voiceSeconds: 108, videoSeconds: 100, words: 74, round: 0) == .matched(factor: 1.08))
         #expect(WholeClipRevoice.fit(voiceSeconds: 92, videoSeconds: 100, words: 74, round: 0) == .matched(factor: 0.92))
@@ -110,12 +110,143 @@ struct WholeClipFitTests {
         #expect(WholeClipRevoice.matchedCopy(factor: 1.02) == "video matched (+2.0%)")
     }
 
-    @Test func outsideItAsksForAMeasuredWordingThenSaysSo() {
-        #expect(WholeClipRevoice.fit(voiceSeconds: 108.1, videoSeconds: 100, words: 100, round: 0) == .reword(shorter: true, targetWords: 93))
-        #expect(WholeClipRevoice.fit(voiceSeconds: 80, videoSeconds: 100, words: 80, round: 1) == .reword(shorter: false, targetWords: 100))
+    @Test func aLongerVoiceAsksForAShorterWordingThenSaysSo() {
+        #expect(WholeClipRevoice.fit(voiceSeconds: 108.1, videoSeconds: 100, words: 100, round: 0) == .reword(targetWords: 93))
         #expect(WholeClipRevoice.fit(voiceSeconds: 120, videoSeconds: 100, words: 100, round: WholeClipRevoice.maximumRewordRounds)
                 == .cannotFit(voiceSeconds: 120, videoSeconds: 100))
         #expect(WholeClipRevoice.fit(voiceSeconds: 0, videoSeconds: 100, words: 10, round: 0) == .cannotFit(voiceSeconds: 0, videoSeconds: 100))
+    }
+
+    /// Never pad: a shorter voice is laid out at any round and never asks for more words.
+    @Test func aShorterVoiceIsLaidOutNeverReworded() {
+        #expect(WholeClipRevoice.fit(voiceSeconds: 80, videoSeconds: 100, words: 80, round: 1) == .laidOut(factor: 0.8))
+        #expect(WholeClipRevoice.fit(voiceSeconds: 91.9, videoSeconds: 100, words: 80, round: 0) == .laidOut(factor: 0.919))
+        #expect(WholeClipRevoice.fit(voiceSeconds: 10, videoSeconds: 100, words: 80, round: WholeClipRevoice.maximumRewordRounds) == .laidOut(factor: 0.1))
+        #expect(WholeClipRevoice.laidOutCopy(factor: 27 / 31.4) == "laid out on the clip's pauses (−14.0%)")
+    }
+
+    /// Check before paying: the measured voice scaled by the estimates' ratio, against the clip plus 8%.
+    @Test func aRewordIsVoicedOnlyWhenItsEstimateFits() {
+        #expect(!WholeClipRevoice.rewordFits(voiceSeconds: 36, estimateSeconds: 10, newEstimateSeconds: 9.8, videoSeconds: 31))
+        #expect(WholeClipRevoice.rewordFits(voiceSeconds: 36, estimateSeconds: 10, newEstimateSeconds: 8.6, videoSeconds: 31))
+        #expect(WholeClipRevoice.rewordFits(voiceSeconds: 36, estimateSeconds: 10, newEstimateSeconds: 9.3, videoSeconds: 31), "33.48 s is the edge")
+        #expect(!WholeClipRevoice.rewordFits(voiceSeconds: 36, estimateSeconds: 10, newEstimateSeconds: 12, videoSeconds: 31), "it came back longer")
+        #expect(!WholeClipRevoice.rewordFits(voiceSeconds: 36, estimateSeconds: 0, newEstimateSeconds: 8, videoSeconds: 31))
+        #expect(WholeClipRevoice.predictedSeconds(voiceSeconds: 36, estimateSeconds: 10, newEstimateSeconds: 9.8) == 36 * 9.8 / 10)
+    }
+
+    /// The pause bound: a sentence-end pause grows to the project's pause threshold at most, and inside a sentence not at all.
+    @Test func thePauseBoundIsTheProjectsPauseThreshold() {
+        let profile = WholeClipRevoice.layoutPauseProfile(pauseThresholdSeconds: 0.8)
+        #expect(profile.betweenSentences.p25 == VoiceLabPatchConstants.PAUSE_FLOOR_PUNCT)
+        #expect(profile.betweenSentences.p75 == 0.8 && profile.betweenSentences.p90 == 0.8)
+        #expect(profile.withinSentence.p75 == VoiceLabPatchConstants.PAUSE_FLOOR_PHRASE)
+        #expect(WholeClipRevoice.layoutPauseBound(0.1) == VoiceLabPatchConstants.PAUSE_FLOOR_PUNCT)
+    }
+}
+
+/// The picture under a laid-out voice (ADR-R46 "One timeline"): the clip's own cuts, trimmed or given back, as a cut recipe
+/// at zoom 1 that validates, renders and maps the clip's edited length.
+struct WholeClipLayoutTests {
+    @Test func theClipsOwnCutsAreTrimmedOrGivenBack() {
+        let cuts = [VoiceLabVideoCut(startSample: 1000, endSample: 1500), VoiceLabVideoCut(startSample: 3000, endSample: 3200)]
+        #expect(WholeClipRevoice.layoutCuts(cuts, startSample: 0, endSample: 5000, removedSamples: 700) == cuts)
+        #expect(WholeClipRevoice.layoutCuts(cuts, startSample: 0, endSample: 5000, removedSamples: 1000)
+                == cuts + [VoiceLabVideoCut(startSample: 4700, endSample: 5000)], "a shorter voice trims the end")
+        #expect(WholeClipRevoice.layoutCuts(cuts, startSample: 0, endSample: 5000, removedSamples: 600)
+                == [cuts[0], VoiceLabVideoCut(startSample: 3100, endSample: 3200)], "a longer voice gives the latest cut back first")
+        #expect(WholeClipRevoice.layoutCuts(cuts, startSample: 0, endSample: 5000, removedSamples: 5000) == nil)
+    }
+
+    @Test func anEditedCutRecipeValidatesAtZoomOneWithManyCuts() {
+        let cuts = (0..<6).map { VoiceLabVideoCut(startSample: Int64($0) * 10_000 + 2_000, endSample: Int64($0) * 10_000 + 6_000) }
+        var video = VoiceLabVideoRecipe(mode: .cut, sourceStartSample: 0, sourceEndSample: 60_000, outputSamples: 36_000, retimeFactor: nil,
+            zoom: VoiceLabNaturalPacing.EDITED_CUT_ZOOM, faceX: 0.5, faceY: 0.5, assetId: nil, provider: nil, model: nil, requestId: nil,
+            windowStartSample: nil, windowEndSample: nil, syncMode: nil)
+        video.cuts = cuts
+        #expect(VoiceLabNaturalPacing.validCuts(video, sampleRate: 48_000))
+        video.zoom = VoiceLabNaturalPacing.CUT_PUNCH_IN
+        #expect(!VoiceLabNaturalPacing.validCuts(video, sampleRate: 48_000), "a punched-in cut keeps its one or two cuts")
+        video.zoom = 1
+        video.outputSamples = 36_001
+        #expect(!VoiceLabNaturalPacing.validCuts(video, sampleRate: 48_000))
+        video.outputSamples = 40_000
+        video.cuts = [VoiceLabVideoCut(startSample: 0, endSample: 20_000)]
+        #expect(VoiceLabNaturalPacing.validCuts(video, sampleRate: 48_000), "a cut at the window's start, with no edge guard")
+        video.cuts = [VoiceLabVideoCut(startSample: 2_000, endSample: 12_000), VoiceLabVideoCut(startSample: 8_000, endSample: 18_000)]
+        video.outputSamples = 40_000
+        #expect(!VoiceLabNaturalPacing.validCuts(video, sampleRate: 48_000), "overlapping cuts")
+    }
+
+    /// A take of three sentences, 4.8 s said, fitted to an 8 s window whose clip as edited is 7 s: its two sentence pauses
+    /// grow to the bound, it ends on the clip's last pause (0.8 s at most), and the picture holds the clip's cut plus the trim.
+    @Test func aShortTakeIsLaidOutOnTheClipAsEdited() throws {
+        let rate = 48_000, assetRate = 24_000
+        let take = Self.take(sentences: [1.6, 1.4, 1.2], pause: 0.3, assetRate: assetRate)
+        let window = try Self.window(start: 10, end: 18, rate: Double(rate))
+        let edited = [VoiceLabVideoCut(startSample: 13 * 48_000, endSample: 14 * 48_000)]
+        let result = try VoiceLabNaturalPacing.layout(window: window, incomingSilence: 0.4, outgoingSilence: 0.4, take: take,
+            sourceSampleRate: rate, hardJoinSmoothing: true, pauseProfile: WholeClipRevoice.layoutPauseProfile(pauseThresholdSeconds: 0.8),
+            audioTags: [], editedCuts: edited, tailSeconds: 0.8)
+        let plan = result.plan
+        #expect(plan.editedTimeline)
+        // Both sentence pauses grew to the bound (the measured 0.28 s pause to 0.8 s), and nothing else was inserted.
+        let inserted = plan.edits.filter { $0.kind == .insert }.map { Double($0.count) / Double(assetRate) }
+        #expect(inserted.count == 2 && inserted.allSatisfy { $0 > 0.45 && $0 <= 0.55 }, "\(plan.edits)")
+        #expect(plan.outgoing.padFrames >= Int64(0.75 * Double(assetRate)) && plan.outgoing.padFrames <= Int64(0.85 * Double(assetRate)),
+                "it ends on the clip's own last pause: \(plan.outgoing.padFrames)")
+        let options = VoiceLabVideoDurationOptions(fit: result, sourceSampleRate: rate, assetSampleRate: assetRate)
+        #expect(options.allows(.cut) && !options.allows(.source))
+        #expect(plan.videoCuts.first == edited[0] && plan.videoCuts.count == 2, "the clip's cut, then the trim: \(plan.videoCuts)")
+        #expect(plan.videoCuts.last?.endSample == plan.windowEndSample, "the trim is the picture's end")
+        let output = Double(options.outputSamples ?? 0) / Double(rate)
+        #expect(abs(output - Double(plan.outputFrames) / Double(assetRate)) < 0.001, "the picture is as long as the voice")
+        #expect(output < 7, "shorter than the clip as edited: it ends on the clip's last pause")
+    }
+
+    /// A take as long as the clip as edited fills it exactly: the picture is the clip's own cut.
+    @Test func aTakeOfTheEditedLengthKeepsTheClipsCuts() throws {
+        let rate = 48_000, assetRate = 24_000
+        let take = Self.take(sentences: [2.4, 2.0, 1.8], pause: 0.35, assetRate: assetRate)
+        let window = try Self.window(start: 10, end: 18, rate: Double(rate))
+        let natural = Double(take.assetFrames) / Double(assetRate)
+        let edited = [VoiceLabVideoCut(startSample: 13 * 48_000, endSample: 13 * 48_000 + Int64((8 - natural - 0.1) * 48_000))]
+        let result = try VoiceLabNaturalPacing.layout(window: window, incomingSilence: 0.4, outgoingSilence: 0.4, take: take,
+            sourceSampleRate: rate, hardJoinSmoothing: true, pauseProfile: WholeClipRevoice.layoutPauseProfile(pauseThresholdSeconds: 0.8),
+            audioTags: [], editedCuts: edited, tailSeconds: 0.8)
+        let options = VoiceLabVideoDurationOptions(fit: result, sourceSampleRate: rate, assetSampleRate: assetRate)
+        #expect(options.allows(.cut), "\(result)")
+        #expect(result.plan.videoCuts == edited, "\(result.plan.videoCuts)")
+    }
+
+    /// The take: silence, then each sentence's voiced span with `pause` of silence between, then silence; one aligned word a
+    /// sentence, each ending its sentence.
+    static func take(sentences: [Double], pause: Double, assetRate: Int) -> VoiceLabFitTake {
+        let lead = 0.05
+        // Every time on the asset's frame grid, so a word's frame span is exactly its aligned span.
+        func frame(_ seconds: Double) -> Double { (seconds * Double(assetRate)).rounded() / Double(assetRate) }
+        var words: [VoiceLabWord] = []
+        var time = lead
+        for (index, seconds) in sentences.enumerated() {
+            words.append(VoiceLabWord(text: "said\(index).", start: frame(time), end: frame(time + seconds), synthetic: true))
+            time = frame(time + seconds + (index == sentences.count - 1 ? 0 : pause))
+        }
+        let total = time + lead
+        let frames = Int64((total * Double(assetRate)).rounded())
+        let size = Int(VoiceLabGeometry.frameSize(Double(assetRate)))
+        let levels: [Float] = (0..<(Int(frames) / size)).map { block in
+            let t = Double(block * size) / Double(assetRate)
+            return words.contains { t >= $0.start - 0.01 && t <= $0.end + 0.01 } ? 0.3 : 0
+        }
+        return VoiceLabFitTake(assetFrames: frames, assetSampleRate: assetRate, trimStart: lead, trimEnd: time,
+                               words: words, envelope: AudioEnvelope(sampleRate: Double(assetRate), frameSeconds: 0.01, levels: levels))
+    }
+
+    static func window(start: Double, end: Double, rate: Double) throws -> VoiceLabWindow {
+        let a = Int64(start * rate), b = Int64(end * rate)
+        return VoiceLabWindow(firstWordId: "w0", lastWordId: "w2", leftBridgeWordIds: [], rightBridgeWordIds: [], start: start, end: end,
+                              startSample: a, endSample: b, leftSeam: .init(kind: .gap, time: start, sample: a, fadeSamples: 960),
+                              rightSeam: .init(kind: .gap, time: end, sample: b, fadeSamples: 960))
     }
 }
 

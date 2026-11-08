@@ -202,6 +202,7 @@ public enum VoiceLabNaturalPacing {
     }
 
     public static func validCuts(_ video: VoiceLabVideoRecipe, sampleRate: Double) -> Bool {
+        if video.zoom == EDITED_CUT_ZOOM { return validEditedCuts(video, sampleRate: sampleRate) }
         guard let cuts = video.cuts, (1...2).contains(cuts.count), sampleRate.isFinite, sampleRate > 0,
               video.outputSamples > 0, video.zoom == CUT_PUNCH_IN, video.faceX == 0.5, video.faceY == 0.5,
               video.retimeFactor == nil, video.assetId == nil, video.provider == nil, video.model == nil,
@@ -215,5 +216,63 @@ public enum VoiceLabNaturalPacing {
             cursor = cut.endSample + 1
         }
         return video.sourceEndSample - video.sourceStartSample - removed == video.outputSamples
+    }
+
+    /// A whole-clip revoice's picture is the clip as edited (ADR-R46, "One timeline"): its window's source with the clip's
+    /// own cuts (cut words and the trimmed part of tightened pauses), plus the trim after the voice's last pause. It is the
+    /// user's own jump cut, so it plays at zoom 1 with no punch-in and no edge guard.
+    public static let EDITED_CUT_ZOOM = 1.0
+    /// The most cuts one edited picture holds (the schema's `cuts.maxItems`).
+    public static let MAXIMUM_EDITED_CUTS = 512
+
+    /// The edited form: 1…`MAXIMUM_EDITED_CUTS` cuts inside the source span, in order, each non-empty and none overlapping,
+    /// zoom 1 centred, and nothing else of a lip sync or retime; the removed samples leave exactly `outputSamples`.
+    static func validEditedCuts(_ video: VoiceLabVideoRecipe, sampleRate: Double) -> Bool {
+        guard let cuts = video.cuts, (1...MAXIMUM_EDITED_CUTS).contains(cuts.count), sampleRate.isFinite, sampleRate > 0,
+              video.outputSamples > 0, video.zoom == EDITED_CUT_ZOOM, video.faceX == 0.5, video.faceY == 0.5,
+              video.retimeFactor == nil, video.assetId == nil, video.provider == nil, video.model == nil,
+              video.requestId == nil, video.windowStartSample == nil, video.windowEndSample == nil, video.syncMode == nil else { return false }
+        var cursor = video.sourceStartSample, removed: Int64 = 0
+        for cut in cuts {
+            guard cut.startSample >= cursor, cut.endSample > cut.startSample, cut.endSample <= video.sourceEndSample else { return false }
+            removed += cut.endSample - cut.startSample
+            cursor = cut.endSample
+        }
+        return video.sourceEndSample - video.sourceStartSample - removed == video.outputSamples
+    }
+
+    /// The whole clip's layout (ADR-R46): the take fitted to the clip as edited, not to its window's source. `editedCuts`
+    /// are the clip's own cuts in the window; the fit's target is the window without them. `pauseProfile` bounds each
+    /// sentence-end pause (`WholeClipRevoice.layoutPauseProfile`); after the pauses the voice may end on the clip's own
+    /// last pause, up to `tailSeconds` of silence. What is still left over moves the picture: a shorter voice trims the
+    /// picture's end, a longer one gives back cut picture, latest first (`WholeClipRevoice.layoutCuts`). The result is a
+    /// changed duration against the window (as any cut is), with the plan's cuts set; none when the window can't hold it.
+    public static func layout(window: VoiceLabWindow, incomingSilence: Double?, outgoingSilence: Double?, take: VoiceLabFitTake,
+                              sourceSampleRate: Int, hardJoinSmoothing: Bool, pauseProfile: VoiceLabPauseProfile,
+                              audioTags: [VoiceLabAudioTag], editedCuts: [VoiceLabVideoCut], tailSeconds: Double) throws -> VoiceLabFitResult {
+        let removed = editedCuts.reduce(Int64(0)) { $0 + max(0, $1.endSample - $1.startSample) }
+        let span = window.endSample - window.startSample
+        guard removed >= 0, removed < span else { throw VoiceLabGeometryError.invalidInput() }
+        let fitted = try VoiceLabFitPlanner.plan(window: window, incomingSilence: incomingSilence, outgoingSilence: outgoingSilence,
+            take: take, tokens: take.words.map(\.text), sourceSampleRate: Double(sourceSampleRate), hardJoinSmoothing: hardJoinSmoothing,
+            pauseProfile: pauseProfile, audioTags: audioTags, allowPauseGrowth: true, targetSamples: span - removed, tailPadSeconds: tailSeconds)
+        var plan = fitted.plan
+        plan.editedTimeline = true
+        let rate = Double(sourceSampleRate), assetRate = Double(take.assetSampleRate)
+        let windowSamples = plan.windowEndSample - plan.windowStartSample
+        let windowFrames = Int64(EditingPrimitives.jsRound(Double(windowSamples) * assetRate / rate))
+        let residual = Double(plan.outputFrames - windowFrames) / assetRate
+        let natural: Double = {
+            if case .changedDuration(_, let natural, _) = fitted { return natural }
+            return Double(plan.trimEndFrame - plan.trimStartFrame) / assetRate
+        }()
+        let duration = plan.windowEnd - plan.windowStart + residual
+        let output = EditingPrimitives.jsRound(duration * rate)
+        guard output.isFinite, output > 0, output < Double(Int64.max) else { return .changedDuration(plan, naturalOut: natural, residualSeconds: residual) }
+        let needed = windowSamples - Int64(output)
+        if needed == 0, plan.outputFrames == windowFrames { return .exact(plan) }
+        plan.videoCuts = WholeClipRevoice.layoutCuts(editedCuts, startSample: plan.windowStartSample, endSample: plan.windowEndSample,
+                                                     removedSamples: needed) ?? []
+        return .changedDuration(plan, naturalOut: natural, residualSeconds: residual)
     }
 }

@@ -9,7 +9,7 @@ public enum WholeClipRevoice {
     public static let wordSharePercent = 40
     /// (b) Revoice when at least this many phrases can't fit their slot (they would keep the original audio).
     public static let noFitPhrases = 2
-    /// The Fit step matches the picture with one uniform retime while the voice is within this share of the video.
+    /// The Fit step lays the voice out on the clip as edited while it is within this share of its length.
     public static let fitTolerance = 0.08
     /// Measured-wording rounds the Fit step may ask for before it says the voice can't fit.
     public static let maximumRewordRounds = 2
@@ -266,38 +266,155 @@ public struct WholeClipScript: Equatable, Sendable {
     }
 }
 
-// MARK: - Fit
+// MARK: - Fit (on the clip as edited)
 
 extension WholeClipRevoice {
-    /// The Fit step's verdict on the voice against the clip's rendered video (which already includes any clip speed).
+    /// The Fit step's verdict on the voice against the clip **as edited**: its cuts and tightened pauses applied, the length
+    /// the user sees and the video the lip sync gets (ADR-R46, "One timeline"). Clip speed scales both alike.
     public enum Fit: Equatable, Sendable {
-        /// Within ±8%: the picture is retimed uniformly by `factor` (voice ÷ video).
+        /// Within ±8%: the voice is laid out on the clip as edited (`factor` = voice ÷ video).
         case matched(factor: Double)
-        /// Outside it: ask for a wording of about `targetWords` through the measured-wording round.
-        case reword(shorter: Bool, targetWords: Int)
+        /// Shorter than that: the voice is still laid out on the clip as edited. Its sentence-end pauses grow within the
+        /// pause bound (`layoutPauseProfile`), it ends on the clip's own last pause, and the picture after that is trimmed.
+        /// A shorter voice never asks for a longer wording, which would pad the script with words nobody said.
+        case laidOut(factor: Double)
+        /// Longer than the clip as edited can hold: ask for a **shorter** wording of about `targetWords`.
+        case reword(targetWords: Int)
         /// No round is left: say so inline and offer a forward action.
         case cannotFit(voiceSeconds: Double, videoSeconds: Double)
     }
 
-    /// `round` counts the reword rounds already asked for.
+    /// `voiceSeconds` is the voice as said, `videoSeconds` the clip as edited, `round` the reword rounds already asked for.
     public static func fit(voiceSeconds: Double, videoSeconds: Double, words: Int, round: Int) -> Fit {
         guard voiceSeconds.isFinite, videoSeconds.isFinite, voiceSeconds > 0, videoSeconds > 0 else {
             return .cannotFit(voiceSeconds: voiceSeconds, videoSeconds: videoSeconds)
         }
         let factor = voiceSeconds / videoSeconds
         if abs(factor - 1) <= fitTolerance + 1e-9 { return .matched(factor: factor) }
+        if factor < 1 { return .laidOut(factor: factor) }
         guard round < maximumRewordRounds, words > 0 else { return .cannotFit(voiceSeconds: voiceSeconds, videoSeconds: videoSeconds) }
-        let target = max(1, Int((Double(words) / factor).rounded()))
-        return .reword(shorter: factor > 1, targetWords: target)
+        return .reword(targetWords: max(1, Int((Double(words) / factor).rounded())))
+    }
+
+    /// Check before paying (ADR-R46): a reworded script is voiced only when the speaking-rate estimate says it now fits.
+    /// The estimate is scaled by the measured voice (`voiceSeconds` for a wording estimated at `estimateSeconds`), so the
+    /// rate's own error cancels; the new wording must come in at or under the clip as edited plus `fitTolerance`.
+    public static func rewordFits(voiceSeconds: Double, estimateSeconds: Double, newEstimateSeconds: Double, videoSeconds: Double) -> Bool {
+        guard let predicted = predictedSeconds(voiceSeconds: voiceSeconds, estimateSeconds: estimateSeconds, newEstimateSeconds: newEstimateSeconds),
+              videoSeconds.isFinite, videoSeconds > 0 else { return false }
+        return predicted <= videoSeconds * (1 + fitTolerance) + 1e-9
+    }
+
+    /// The new wording's predicted voice: the measured voice scaled by the estimates' ratio. Nil without a usable estimate.
+    public static func predictedSeconds(voiceSeconds: Double, estimateSeconds: Double, newEstimateSeconds: Double) -> Double? {
+        guard voiceSeconds.isFinite, voiceSeconds > 0, estimateSeconds.isFinite, estimateSeconds > 0,
+              newEstimateSeconds.isFinite, newEstimateSeconds > 0 else { return nil }
+        return voiceSeconds * newEstimateSeconds / estimateSeconds
     }
 
     /// "video matched (−1.3%)": the voice's length against the video's, signed.
-    public static func matchedCopy(factor: Double) -> String {
+    public static func matchedCopy(factor: Double) -> String { "video matched (" + signedPercent(factor) + ")" }
+
+    /// "laid out on the clip's pauses (−14.0%)": a shorter voice, laid out on the clip as edited.
+    public static func laidOutCopy(factor: Double) -> String { "laid out on the clip's pauses (" + signedPercent(factor) + ")" }
+
+    private static func signedPercent(_ factor: Double) -> String {
         let percent = (factor - 1) * 100
         let rounded = (percent * 10).rounded() / 10
         let magnitude = String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), abs(rounded))
         let sign = rounded < 0 ? "−" : rounded > 0 ? "+" : "±"
-        return "video matched (\(sign)\(magnitude)%)"
+        return sign + magnitude + "%"
+    }
+}
+
+// MARK: - Layout (the voice on the clip as edited)
+
+extension WholeClipRevoice {
+    /// The pause bound (ADR-R46, "Keep the recording's rhythm"). A sentence-end pause of the laid-out voice grows to at most
+    /// `pauseThresholdSeconds`, the project's own pause threshold: a longer pause is one the clip's Tighten would cut. It
+    /// shrinks to no less than the punctuated floor (150 ms). Pauses inside a sentence keep their length (the phrase floor,
+    /// 60 ms, as their only bound). The silence after the voice's last word, the clip's own last pause, holds at most the
+    /// same bound; the picture after it is trimmed.
+    public static func layoutPauseProfile(pauseThresholdSeconds: Double) -> VoiceLabPauseProfile {
+        let bound = layoutPauseBound(pauseThresholdSeconds)
+        return VoiceLabPauseProfile(withinSentence: [VoiceLabPatchConstants.PAUSE_FLOOR_PHRASE],
+                                    betweenSentences: [VoiceLabPatchConstants.PAUSE_FLOOR_PUNCT, bound, bound, bound])
+    }
+
+    /// The bound itself: the threshold, never under the punctuated floor (a project's threshold is at least 0.3 s).
+    public static func layoutPauseBound(_ pauseThresholdSeconds: Double) -> Double {
+        guard pauseThresholdSeconds.isFinite else { return VoiceLabPatchConstants.PAUSE_FLOOR_PUNCT }
+        return max(VoiceLabPatchConstants.PAUSE_FLOOR_PUNCT, pauseThresholdSeconds)
+    }
+
+    /// The clip's own cuts inside a source window: the stretches its edit removes (cut words, a filler's reach, the trimmed
+    /// part of each tightened pause), read off the clip's output plan with no voice in it. Every stretch of the window the
+    /// plan doesn't play is one cut.
+    public static func editedCuts(_ plan: VoiceLabOutputPlan, startSample: Int64, endSample: Int64) -> [VoiceLabVideoCut] {
+        guard endSample > startSample else { return [] }
+        var cuts: [VoiceLabVideoCut] = []
+        var cursor = startSample
+        for piece in plan.pieces.sorted(by: { $0.sourceStartSample < $1.sourceStartSample })
+        where piece.sourceEndSample > startSample && piece.sourceStartSample < endSample {
+            let lower = max(piece.sourceStartSample, startSample)
+            if lower > cursor { cuts.append(VoiceLabVideoCut(startSample: cursor, endSample: lower)) }
+            cursor = max(cursor, min(piece.sourceEndSample, endSample))
+        }
+        if cursor < endSample { cuts.append(VoiceLabVideoCut(startSample: cursor, endSample: endSample)) }
+        return cuts
+    }
+
+    /// The clip as edited inside a source window, in seconds at `sampleRate`: the window without its edited cuts.
+    public static func editedSeconds(_ cuts: [VoiceLabVideoCut], startSample: Int64, endSample: Int64, sampleRate: Double) -> Double {
+        let removed = cuts.reduce(Int64(0)) { $0 + max(0, $1.endSample - $1.startSample) }
+        return Double(max(0, endSample - startSample - removed)) / sampleRate
+    }
+
+    /// The picture under a laid-out voice: the clip's own `cuts` changed so they remove exactly `removedSamples` of the
+    /// window. Removing more trims the picture's end: the voice ended on the clip's last pause, so the frames after it go,
+    /// latest first. Removing less gives cut picture back, from the latest cut, each from its start (the frames right after
+    /// the speech before it). Nil when the window can't do that: nothing would be left, or more than the window is asked for.
+    public static func layoutCuts(_ cuts: [VoiceLabVideoCut], startSample: Int64, endSample: Int64, removedSamples: Int64) -> [VoiceLabVideoCut]? {
+        let span = endSample - startSample
+        guard span > 0, removedSamples >= 0, removedSamples < span,
+              cuts.allSatisfy({ $0.startSample >= startSample && $0.endSample <= endSample && $0.endSample > $0.startSample }) else { return nil }
+        let ordered = cuts.sorted { $0.startSample < $1.startSample }
+        guard zip(ordered, ordered.dropFirst()).allSatisfy({ $0.endSample <= $1.startSample }) else { return nil }
+        let removed = ordered.reduce(Int64(0)) { $0 + $1.endSample - $1.startSample }
+        if removedSamples <= removed {
+            var giveBack = removed - removedSamples
+            var result = ordered
+            for index in result.indices.reversed() where giveBack > 0 {
+                let take = min(giveBack, result[index].endSample - result[index].startSample)
+                result[index] = VoiceLabVideoCut(startSample: result[index].startSample + take, endSample: result[index].endSample)
+                giveBack -= take
+            }
+            return result.filter { $0.endSample > $0.startSample }
+        }
+        // Trim: the kept stretches, latest first, lose their ends until the extra is removed.
+        var kept: [(Int64, Int64)] = []
+        var cursor = startSample
+        for cut in ordered {
+            if cut.startSample > cursor { kept.append((cursor, cut.startSample)) }
+            cursor = cut.endSample
+        }
+        if cursor < endSample { kept.append((cursor, endSample)) }
+        var extra = removedSamples - removed
+        for index in kept.indices.reversed() where extra > 0 {
+            let take = min(extra, kept[index].1 - kept[index].0)
+            kept[index].1 -= take
+            extra -= take
+        }
+        kept.removeAll { $0.1 <= $0.0 }
+        guard extra == 0, !kept.isEmpty else { return nil }
+        var result: [VoiceLabVideoCut] = []
+        cursor = startSample
+        for stretch in kept {
+            if stretch.0 > cursor { result.append(VoiceLabVideoCut(startSample: cursor, endSample: stretch.0)) }
+            cursor = stretch.1
+        }
+        if cursor < endSample { result.append(VoiceLabVideoCut(startSample: cursor, endSample: endSample)) }
+        return result
     }
 }
 
@@ -369,7 +486,8 @@ public struct WholeClipRevoiceRecord: Codable, Sendable, Equatable {
     public var segmentIds: [String]
     public var script: String
     public var consentRecordId: String
-    /// The voice's length ÷ the clip's video length; the picture's uniform retime, within ±`fitTolerance`.
+    /// The picture's uniform retime, within ±`fitTolerance`: 1 for a voice laid out on the clip as edited (ADR-R46 update
+    /// 2026-11-08); an earlier record keeps the retime it ran.
     public var videoRetime: Double
     /// `WholeClipRevoice.Lipsync` raw value.
     public var lipsyncModel: String

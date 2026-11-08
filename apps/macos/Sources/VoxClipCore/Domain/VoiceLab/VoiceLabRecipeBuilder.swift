@@ -56,7 +56,7 @@ public struct VoiceLabVideoDurationOptions: Sendable, Equatable {
         let source = plan.windowEndSample - plan.windowStartSample
         addedPauseSeconds = Double(plan.edits.filter { $0.kind == .insert }.reduce(0) { $0 + $1.count }) / Double(assetSampleRate)
         var cutVideo = VoiceLabVideoRecipe(mode: .cut, sourceStartSample: plan.windowStartSample, sourceEndSample: plan.windowEndSample,
-            outputSamples: output, retimeFactor: nil, zoom: VoiceLabNaturalPacing.CUT_PUNCH_IN, faceX: 0.5, faceY: 0.5,
+            outputSamples: output, retimeFactor: nil, zoom: Self.cutZoom(plan), faceX: 0.5, faceY: 0.5,
             assetId: nil, provider: nil, model: nil, requestId: nil, windowStartSample: nil, windowEndSample: nil, syncMode: nil)
         cutVideo.cuts = plan.videoCuts
         if VoiceLabNaturalPacing.validCuts(cutVideo, sampleRate: Double(sourceSampleRate)) {
@@ -78,6 +78,11 @@ public struct VoiceLabVideoDurationOptions: Sendable, Equatable {
         }
         changedUnavailableReason = Self.retimeRange.contains(factor) ? nil :
             "Matching this take would put source-video speed outside 0.80×–1.25×. Choose another take or re-record the sentence."
+    }
+
+    /// A cut's zoom: the clip's own cuts under a whole-clip layout play at zoom 1, a pause's jump cut punches in.
+    public static func cutZoom(_ plan: VoiceLabFitPlan) -> Double {
+        plan.editedTimeline ? VoiceLabNaturalPacing.EDITED_CUT_ZOOM : VoiceLabNaturalPacing.CUT_PUNCH_IN
     }
 
     /// The seconds the take occupies in the video: the window, plus the residual after a partial fit. Every video choice,
@@ -177,7 +182,7 @@ public enum VoiceLabRecipeBuilder {
         }
         var video = VoiceLabVideoRecipe(mode: mode, sourceStartSample: plan.windowStartSample, sourceEndSample: plan.windowEndSample,
             outputSamples: outputSamples, retimeFactor: mode == .zoomCover ? factor : nil,
-            zoom: mode == .cut ? VoiceLabNaturalPacing.CUT_PUNCH_IN : mode == .zoomCover ? 1.12 : nil,
+            zoom: mode == .cut ? VoiceLabVideoDurationOptions.cutZoom(plan) : mode == .zoomCover ? 1.12 : nil,
             faceX: mode == .zoomCover || mode == .cut ? 0.5 : nil, faceY: mode == .zoomCover || mode == .cut ? 0.5 : nil, assetId: nil, provider: nil, model: nil, requestId: nil,
             windowStartSample: nil, windowEndSample: nil, syncMode: nil)
         video.cuts = mode == .cut ? options.cuts : nil
