@@ -35,3 +35,14 @@ the capture quality with its gates and quantile remap. It echoes `shared/catalog
 constants' one home. Regenerate with `python3 tools/fixtures/clip-frames/generate_face_fields.py` after changing that block
 (check_drift.py runs it, exact: atan2, exp and ln are fixed series there, never libm). C# `FrameFaceFieldsVectorTests` replays
 every case within 1e-9 relative; there is no Mac twin, because the Mac reads Vision.
+
+`frame-quad-cases.json` (`voxclip-frame-quad-cases/1`, ADR-R48 Windows, package W4) holds the Windows stand-in for Vision's
+rectangle request: drawn grey frames (run-length encoded `value*count` tokens, with their SHA-256) and the quads drawn in them.
+The frames are the Mac's drawn phone screen (`FrameAnalyzerTests.phoneScreen()`, words as bars) upright and turned 2.86°, a
+laptop in slight perspective, a face-like frame with no rectangle, clutter, and pairs that pass and fail each of Vision's
+settings (size, aspect, skew, confidence, at most 6). `quads` lists what the finder must find (corners and box within
+`tolerance`, normalized), what it must not, and how many it may return; `scans` sends line boxes and quads through
+`FrameScreens.detect` (from a frame's found quads, or listed quad boxes compared exactly). Regenerate with
+`python3 tools/fixtures/clip-frames/generate_frame_quads.py` (check_drift.py runs it, exact: integers and Fractions only);
+`tools/schemas/validate.py` checks it against `shared/schemas/frame-quad-cases.schema.json`. C# `FrameQuadVectorTests`
+replays every case; there is no Mac twin, because the Mac reads Vision.

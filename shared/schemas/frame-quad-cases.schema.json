@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Siim/voxclip/main/shared/schemas/frame-quad-cases.schema.json",
+  "title": "Windows quad finder and screen scan vectors (ADR-R48 Windows, package W4)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "description", "settings", "tolerance", "coverageTolerance", "caseCount", "counts", "frames", "quads", "scans"],
+  "properties": {
+    "schema": {"const": "voxclip-frame-quad-cases/1"},
+    "description": {"type": "string", "minLength": 1},
+    "settings": {
+      "type": "object", "additionalProperties": false,
+      "required": ["maximumObservations", "minimumAspectRatio", "maximumAspectRatio", "minimumSize", "minimumConfidence",
+                   "quadratureTolerance", "workingLongSide"],
+      "properties": {
+        "maximumObservations": {"type": "integer", "minimum": 1}, "minimumAspectRatio": {"type": "number"},
+        "maximumAspectRatio": {"type": "number"}, "minimumSize": {"type": "number"}, "minimumConfidence": {"type": "number"},
+        "quadratureTolerance": {"type": "number"}, "workingLongSide": {"type": "integer", "minimum": 1}
+      }
+    },
+    "tolerance": {"type": "number", "exclusiveMinimum": 0},
+    "coverageTolerance": {"type": "number", "exclusiveMinimum": 0},
+    "caseCount": {"type": "integer"},
+    "counts": {
+      "type": "object", "additionalProperties": false, "required": ["quads", "scans"],
+      "properties": {"quads": {"type": "integer"}, "scans": {"type": "integer"}}
+    },
+    "frames": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["id", "note", "width", "height", "sha256", "runs"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1}, "note": {"type": "string", "minLength": 1},
+          "width": {"type": "integer", "minimum": 1}, "height": {"type": "integer", "minimum": 1},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "runs": {"type": "string", "pattern": "^[0-9]{1,3}\\*[1-9][0-9]*( [0-9]{1,3}\\*[1-9][0-9]*)*$"}
+        }
+      }
+    },
+    "quads": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["id", "frame", "note", "expected", "rejected", "maximumCount"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1}, "frame": {"type": "string", "minLength": 1}, "note": {"type": "string", "minLength": 1},
+          "expected": {"type": "array", "items": {"$ref": "#/$defs/quad"}},
+          "rejected": {"type": "array", "items": {"$ref": "#/$defs/quad"}},
+          "maximumCount": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "scans": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["id", "note", "lines", "screens"],
+        "oneOf": [{"required": ["frame"]}, {"required": ["quads"]}],
+        "properties": {
+          "id": {"type": "string", "minLength": 1}, "note": {"type": "string", "minLength": 1},
+          "lines": {"type": "array", "items": {"$ref": "#/$defs/rect"}},
+          "frame": {"type": "string", "minLength": 1},
+          "quads": {"type": "array", "items": {"$ref": "#/$defs/rect"}},
+          "screens": {
+            "type": "array",
+            "items": {
+              "type": "object", "additionalProperties": false, "required": ["rect", "textBoxes", "textCoverage", "framed"],
+              "properties": {
+                "rect": {"$ref": "#/$defs/rect"}, "textBoxes": {"type": "integer", "minimum": 0},
+                "textCoverage": {"type": "number", "minimum": 0, "maximum": 1}, "framed": {"type": "boolean"}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "rect": {
+      "type": "object", "additionalProperties": false, "required": ["x", "y", "width", "height"],
+      "properties": {"x": {"type": "number"}, "y": {"type": "number"}, "width": {"type": "number"}, "height": {"type": "number"}}
+    },
+    "quad": {
+      "type": "object", "additionalProperties": false, "required": ["corners", "box"],
+      "properties": {
+        "corners": {"type": "array", "minItems": 4, "maxItems": 4,
+                    "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"}}},
+        "box": {"$ref": "#/$defs/rect"}
+      }
+    }
+  }
+}
