@@ -7897,6 +7897,142 @@ member VoxClip.Core.Domain.Transcript.Readiness+UnsupportedLanguage :: method pu
 member VoxClip.Core.Domain.Transcript.Readiness+UnsupportedLanguage :: method public op_Equality(VoxClip.Core.Domain.Transcript.Readiness+UnsupportedLanguage,VoxClip.Core.Domain.Transcript.Readiness+UnsupportedLanguage)
 member VoxClip.Core.Domain.Transcript.Readiness+UnsupportedLanguage :: method public op_Inequality(VoxClip.Core.Domain.Transcript.Readiness+UnsupportedLanguage,VoxClip.Core.Domain.Transcript.Readiness+UnsupportedLanguage)
 member VoxClip.Core.Domain.Transcript.Readiness+UnsupportedLanguage :: method public set_Code(string)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers :: field private LeadingMarks
+member VoxClip.Core.Domain.Transcript.SpokenNumbers :: field private Lexicon
+member VoxClip.Core.Domain.Transcript.SpokenNumbers :: field private TrailingMarks
+member VoxClip.Core.Domain.Transcript.SpokenNumbers :: field public LongestRun
+member VoxClip.Core.Domain.Transcript.SpokenNumbers :: field public LongestUnverifiedRun
+member VoxClip.Core.Domain.Transcript.SpokenNumbers :: method private .cctor()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers :: method private BuildLexicon()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers :: method private CardinalKey(System.Collections.Generic.IReadOnlyList`1<string>)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers :: method private Currency(char)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers :: method private Digit(string)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers :: method private DigitsKey(System.Collections.Generic.IReadOnlyList`1<string>)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers :: method private Groups(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Transcript.SpokenNumbers+Token>)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers :: method private IsDigit(char)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers :: method private IsNumberWord(string)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers :: method private ReadingKeys(System.Collections.Generic.IReadOnlyList`1<string>)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers :: method private Same(VoxClip.Core.Domain.Transcript.SpokenNumbers+Token,VoxClip.Core.Domain.Transcript.SpokenNumbers+Token)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers :: method private TwoDigits(System.Collections.Generic.IReadOnlyList`1<string>)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers :: method private UnitWord(string)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers :: method private Unverified(System.Collections.Generic.List`1<System.ValueTuple`2<int,int>>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Transcript.SpokenNumbers+Token>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Transcript.SpokenNumbers+Token>)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers :: method private YearKey(System.Collections.Generic.IReadOnlyList`1<string>)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers :: method public Align(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Transcript.SpokenNumbers+Token>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Transcript.SpokenNumbers+Token>)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers :: method public Parse(string)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers :: method public Tokens(string)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment :: method private .ctor(VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment :: method public .ctor(System.Collections.Generic.IReadOnlyList`1<System.ValueTuple`2<int,int>>,System.Collections.Generic.IReadOnlyList`1<int>,System.Collections.Generic.IReadOnlyList`1<int>,int,int,int)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment :: method public Deconstruct(System.Collections.Generic.IReadOnlyList`1<System.ValueTuple`2<int,int>>&,System.Collections.Generic.IReadOnlyList`1<int>&,System.Collections.Generic.IReadOnlyList`1<int>&,int&,int&,int&)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment :: method public Equals(VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment :: method public Equals(object)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment :: method public GetHashCode()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment :: method public ToString()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment :: method public get_Complete()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment :: method public get_ExpectedCount()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment :: method public get_MatchedExpected()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment :: method public get_MatchedRecognized()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment :: method public get_Pairs()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment :: method public get_Ratio()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment :: method public get_RecognizedCount()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment :: method public get_UnverifiedExpected()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment :: method public get_UnverifiedNumbers()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment :: method public get_UnverifiedRecognized()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment :: method public op_Equality(VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment,VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment :: method public op_Inequality(VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment,VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment :: method public set_ExpectedCount(int)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment :: method public set_Pairs(System.Collections.Generic.IReadOnlyList`1<System.ValueTuple`2<int,int>>)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment :: method public set_RecognizedCount(int)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment :: method public set_UnverifiedExpected(System.Collections.Generic.IReadOnlyList`1<int>)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment :: method public set_UnverifiedNumbers(int)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment :: method public set_UnverifiedRecognized(System.Collections.Generic.IReadOnlyList`1<int>)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Group :: method private .ctor(VoxClip.Core.Domain.Transcript.SpokenNumbers+Group)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Group :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Group :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Group :: method public .ctor(int,System.Collections.Generic.IReadOnlyList`1<string>,VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral,System.Nullable`1<VoxClip.Core.Domain.Transcript.SpokenNumbers+Unit>)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Group :: method public Deconstruct(int&,System.Collections.Generic.IReadOnlyList`1<string>&,VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral&,System.Nullable`1<VoxClip.Core.Domain.Transcript.SpokenNumbers+Unit>&)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Group :: method public Equals(VoxClip.Core.Domain.Transcript.SpokenNumbers+Group)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Group :: method public Equals(object)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Group :: method public GetHashCode()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Group :: method public Matches(VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Group :: method public ToString()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Group :: method public get_Keys()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Group :: method public get_Length()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Group :: method public get_Numeral()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Group :: method public get_Unit()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Group :: method public op_Equality(VoxClip.Core.Domain.Transcript.SpokenNumbers+Group,VoxClip.Core.Domain.Transcript.SpokenNumbers+Group)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Group :: method public op_Inequality(VoxClip.Core.Domain.Transcript.SpokenNumbers+Group,VoxClip.Core.Domain.Transcript.SpokenNumbers+Group)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Group :: method public set_Keys(System.Collections.Generic.IReadOnlyList`1<string>)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Group :: method public set_Length(int)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Group :: method public set_Numeral(VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Group :: method public set_Unit(System.Nullable`1<VoxClip.Core.Domain.Transcript.SpokenNumbers+Unit>)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Kind :: field public And
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Kind :: field public Article
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Kind :: field public Compound
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Kind :: field public Oh
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Kind :: field public Point
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Kind :: field public Scale
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Kind :: field public Teen
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Kind :: field public Tens
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Kind :: field public Unit
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Kind :: field public value__
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral :: method internal get_Keys()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral :: method private .ctor(VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral :: method public .ctor(string,string,bool,System.Nullable`1<VoxClip.Core.Domain.Transcript.SpokenNumbers+Unit>)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral :: method public Deconstruct(string&,string&,bool&,System.Nullable`1<VoxClip.Core.Domain.Transcript.SpokenNumbers+Unit>&)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral :: method public Equals(VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral :: method public Equals(object)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral :: method public GetHashCode()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral :: method public ToString()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral :: method public get_Digits()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral :: method public get_Ordinal()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral :: method public get_Unit()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral :: method public get_Value()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral :: method public op_Equality(VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral,VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral :: method public op_Inequality(VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral,VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral :: method public set_Digits(string)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral :: method public set_Ordinal(bool)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral :: method public set_Unit(System.Nullable`1<VoxClip.Core.Domain.Transcript.SpokenNumbers+Unit>)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral :: method public set_Value(string)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Token :: method private .ctor(VoxClip.Core.Domain.Transcript.SpokenNumbers+Token)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Token :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Token :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Token :: method public .ctor(string,VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Token :: method public Deconstruct(string&,VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral&)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Token :: method public Equals(VoxClip.Core.Domain.Transcript.SpokenNumbers+Token)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Token :: method public Equals(object)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Token :: method public FromRaw(string)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Token :: method public GetHashCode()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Token :: method public ToString()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Token :: method public get_Numeral()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Token :: method public get_Text()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Token :: method public op_Equality(VoxClip.Core.Domain.Transcript.SpokenNumbers+Token,VoxClip.Core.Domain.Transcript.SpokenNumbers+Token)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Token :: method public op_Inequality(VoxClip.Core.Domain.Transcript.SpokenNumbers+Token,VoxClip.Core.Domain.Transcript.SpokenNumbers+Token)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Token :: method public set_Numeral(VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Token :: method public set_Text(string)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Unit :: field public Dollar
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Unit :: field public Euro
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Unit :: field public Percent
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Unit :: field public Pound
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Unit :: field public value__
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Word :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Word :: method public .ctor(long,VoxClip.Core.Domain.Transcript.SpokenNumbers+Kind,bool)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Word :: method public Deconstruct(long&,VoxClip.Core.Domain.Transcript.SpokenNumbers+Kind&,bool&)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Word :: method public Equals(VoxClip.Core.Domain.Transcript.SpokenNumbers+Word)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Word :: method public Equals(object)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Word :: method public GetHashCode()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Word :: method public ToString()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Word :: method public get_Kind()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Word :: method public get_Ordinal()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Word :: method public get_Value()
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Word :: method public op_Equality(VoxClip.Core.Domain.Transcript.SpokenNumbers+Word,VoxClip.Core.Domain.Transcript.SpokenNumbers+Word)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Word :: method public op_Inequality(VoxClip.Core.Domain.Transcript.SpokenNumbers+Word,VoxClip.Core.Domain.Transcript.SpokenNumbers+Word)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Word :: method public set_Kind(VoxClip.Core.Domain.Transcript.SpokenNumbers+Kind)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Word :: method public set_Ordinal(bool)
+member VoxClip.Core.Domain.Transcript.SpokenNumbers+Word :: method public set_Value(long)
 member VoxClip.Core.Domain.Transcript.TextRules :: method internal IsPunctuation(string)
 member VoxClip.Core.Domain.Transcript.TextRules :: method internal Trim(string)
 member VoxClip.Core.Domain.Transcript.TimingSource :: field public Detected
@@ -9060,6 +9196,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTags :: method public Allowance
 member VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTags :: method public ExtendEdges(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabWord>,float[],int,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag>,int,string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabCharacterTiming>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTags :: method public FilterScribeEvents(System.Collections.Generic.IReadOnlyList`1<string>,System.Collections.Generic.IReadOnlyList`1<string>,bool)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTags :: method public IsScribeEvent(string)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTags :: method public KeptAfterScribeEvents(System.Collections.Generic.IReadOnlyList`1<string>,System.Collections.Generic.IReadOnlyList`1<string>,bool)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTags :: method public Parse(System.Text.Json.Nodes.JsonNode,string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTags :: method public Reanchored(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag>,string,string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTags :: method public RequestText(string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag>,string)
@@ -11804,6 +11941,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult :: method public get_Pe
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult :: method public get_SpeakerScore()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult :: method public get_SpeakerUnmeasured()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult :: method public get_TranscriptMatch()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult :: method public get_UnverifiedNumbers()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult :: method public get_Verdict()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult)
@@ -11814,6 +11952,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult :: method public set_Pe
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult :: method public set_SpeakerScore(System.Nullable`1<double>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult :: method public set_SpeakerUnmeasured(bool)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult :: method public set_TranscriptMatch(System.Nullable`1<double>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaResult :: method public set_UnverifiedNumbers(int)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaVerdict :: field public Failed
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaVerdict :: field public Passed
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQaVerdict :: field public PassedWithAdvisory
@@ -11826,6 +11965,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuality :: method public SoundKe
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuality :: method public SoundsAlike(string,string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuality :: method public Tokens(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuality :: method public TranscriptRatio(System.Collections.Generic.IReadOnlyList`1<string>,System.Collections.Generic.IReadOnlyList`1<string>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuality :: method public WordMatch(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Transcript.SpokenNumbers+Token>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Transcript.SpokenNumbers+Token>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuote :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuote)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuote :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeQuote :: method private get_EqualityContract()
@@ -17155,6 +17295,14 @@ type VoxClip.Core.Domain.Transcript.Readiness+NeedsSystemAssets
 type VoxClip.Core.Domain.Transcript.Readiness+Ready
 type VoxClip.Core.Domain.Transcript.Readiness+Unavailable
 type VoxClip.Core.Domain.Transcript.Readiness+UnsupportedLanguage
+type VoxClip.Core.Domain.Transcript.SpokenNumbers
+type VoxClip.Core.Domain.Transcript.SpokenNumbers+Alignment
+type VoxClip.Core.Domain.Transcript.SpokenNumbers+Group
+type VoxClip.Core.Domain.Transcript.SpokenNumbers+Kind
+type VoxClip.Core.Domain.Transcript.SpokenNumbers+Numeral
+type VoxClip.Core.Domain.Transcript.SpokenNumbers+Token
+type VoxClip.Core.Domain.Transcript.SpokenNumbers+Unit
+type VoxClip.Core.Domain.Transcript.SpokenNumbers+Word
 type VoxClip.Core.Domain.Transcript.TextRules
 type VoxClip.Core.Domain.Transcript.TimingSource
 type VoxClip.Core.Domain.Transcript.TranscriberCapabilities

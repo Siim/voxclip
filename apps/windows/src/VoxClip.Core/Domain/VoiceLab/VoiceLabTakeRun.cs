@@ -80,6 +80,9 @@ public sealed record VoiceLabTakeQaResult(double? TranscriptMatch, double? LufsJ
     IReadOnlyList<VoiceLabTakeQaFailure> Failures)
 {
     public IReadOnlyList<VoiceLabJoinAdvisorySeam> JoinSeams { get; init; } = [];
+    /// <summary>Numerals the word check could only line up with words of another language (<see cref="SpokenNumbers"/>):
+    /// neither matched nor a mismatch.</summary>
+    public int UnverifiedNumbers { get; init; }
     /// <summary>ADR-R37: the take's voice could not be measured (its pool held under three seconds of voiced speech), so it
     /// carries no speaker score; only the take row's own-clone evidence lets it be chosen, and never automatically.</summary>
     public bool SpeakerUnmeasured { get; init; }
@@ -95,20 +98,16 @@ public sealed record VoiceLabTakeQaResult(double? TranscriptMatch, double? LufsJ
 public sealed record VoiceLabQaTranscript(IReadOnlyList<VoiceLabWord> Words, VoiceLabReceipt Receipt);
 public static class VoiceLabTakeQuality
 {
-    public static string[] Tokens(string text) => text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
-        .Select(token => EditingAlgorithms.NormalizeForMatch(token.Normalize(NormalizationForm.FormC))).Where(token => token.Length > 0).ToArray();
-    public static double TranscriptRatio(IReadOnlyList<string> expected, IReadOnlyList<string> recognized)
+    public static string[] Tokens(string text) => SpokenNumbers.Tokens(text).Select(token => token.Text).ToArray();
+    /// <summary>The share of tokens the take said as asked (<see cref="SpokenNumbers.Alignment.Ratio"/>); each string is
+    /// one raw token.</summary>
+    public static double TranscriptRatio(IReadOnlyList<string> expected, IReadOnlyList<string> recognized) =>
+        WordMatch(expected.Select(SpokenNumbers.Token.FromRaw).ToArray(), recognized.Select(SpokenNumbers.Token.FromRaw).ToArray()).Ratio;
+    /// <summary>The take QA's word alignment: numbers match however they are written (<see cref="SpokenNumbers.Align"/>).</summary>
+    public static SpokenNumbers.Alignment WordMatch(IReadOnlyList<SpokenNumbers.Token> expected, IReadOnlyList<SpokenNumbers.Token> recognized)
     {
         if (expected.Count is < 1 or > 5000 || recognized.Count > 5000) throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
-        var previous = new int[recognized.Count + 1];
-        foreach (var token in expected)
-        {
-            var next = new int[recognized.Count + 1];
-            for (var index = 0; index < recognized.Count; index++)
-                next[index + 1] = token == recognized[index] ? previous[index] + 1 : Math.Max(previous[index + 1], next[index]);
-            previous = next;
-        }
-        return 2.0 * previous[^1] / (expected.Count + recognized.Count);
+        return SpokenNumbers.Align(expected, recognized);
     }
     /// <summary>The Soundex key of a lowercase word of letters only (the first letter, then up to three consonant-class
     /// digits), or null for anything else: digits, apostrophes and words under three letters never sound alike here.</summary>
@@ -178,11 +177,16 @@ public static class VoiceLabTakeQuality
         // A null score: a short take whose voice waits for its run's pooled check (ADR-R37); its words and acoustics are checked now.
         if (speakerScore is { } given && (!double.IsFinite(given) || given is < -1 or > 1) || !double.IsFinite(threshold) || threshold is < 0 or > 1)
             throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
-        var expectedTokens = Tokens(VoiceLabAudioTags.StrippingTags(expected));
-        var filtered = VoiceLabAudioTags.FilterScribeEvents(expectedTokens, recognized.SelectMany(Tokens).ToArray(), hasTags);
+        var expectedWords = SpokenNumbers.Tokens(VoiceLabAudioTags.StrippingTags(expected));
+        var expectedTokens = expectedWords.Select(token => token.Text).ToArray();
+        var heard = recognized.SelectMany(SpokenNumbers.Tokens).ToArray();
+        var kept = VoiceLabAudioTags.KeptAfterScribeEvents(expectedTokens, heard.Select(token => token.Text).ToArray(), hasTags)
+            .Select(index => heard[index]).ToArray();
         // A near-homophone of the user's own new word is that word (§8.11); the stored match is the normalized one.
-        var recognizedTokens = NormalizingHomophones(filtered, expectedTokens, replacementWords ?? new HashSet<string>(StringComparer.Ordinal));
-        var ratio = TranscriptRatio(expectedTokens, recognizedTokens);
+        var recognizedTokens = NormalizingHomophones(kept.Select(token => token.Text).ToArray(), expectedTokens,
+            replacementWords ?? new HashSet<string>(StringComparer.Ordinal));
+        var words = WordMatch(expectedWords, kept.Select((token, index) => token with { Text = recognizedTokens[index] }).ToArray());
+        var ratio = words.Ratio;
         var peak = VoiceLabLoudness.SamplePeakDbfs(mixed);
         if (!double.IsFinite(peak)) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
         if (generatedAfter is not null && generatedAfter.Count != seams.Count) throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
@@ -192,11 +196,15 @@ public static class VoiceLabTakeQuality
         var joinSeams = jumps.Select((excess, index) => new VoiceLabJoinAdvisorySeam(
             (generatedAfter?[index] ?? index == 0) ? "left" : "right", excess)).Where(seam => seam.ExcessLu > 2).ToArray();
         var failures = new List<VoiceLabTakeQaFailure>();
-        if (expectedTokens.Length <= 5 ? !expectedTokens.SequenceEqual(recognizedTokens) : ratio < 0.9) failures.Add(VoiceLabTakeQaFailure.Transcript);
+        // A short phrase must say every word: each token matched, or a number unverified in another language.
+        if (expectedTokens.Length <= 5 ? !words.Complete : ratio < 0.9) failures.Add(VoiceLabTakeQaFailure.Transcript);
         if (peak >= 0) failures.Add(VoiceLabTakeQaFailure.Clipping);
         if (jump > 2) failures.Add(VoiceLabTakeQaFailure.Loudness);
         if (speakerScore is { } measured && measured < threshold) failures.Add(VoiceLabTakeQaFailure.Speaker);
-        return new(ratio, jump, peak, speakerScore, Array.AsReadOnly(failures.ToArray())) { JoinSeams = Array.AsReadOnly(joinSeams) };
+        return new(ratio, jump, peak, speakerScore, Array.AsReadOnly(failures.ToArray()))
+        {
+            JoinSeams = Array.AsReadOnly(joinSeams), UnverifiedNumbers = words.UnverifiedNumbers,
+        };
     }
     public static double Rank(VoiceLabFitResult fit, double windowSeconds, double matchRatio, double flatness)
     {

@@ -99,6 +99,7 @@ public enum SpokenNumbers {
     /// are ignored; a currency sign may come before or after the digits, a percent sign or an ordinal suffix after them.
     /// Thousands separators are commas in groups of three; the decimal mark is a point.
     public static func numeral(_ raw: String) -> Numeral? {
+        func text(_ values: some Sequence<UInt32>) -> String { String(String.UnicodeScalarView(values.compactMap(Unicode.Scalar.init))) }
         var scalars = raw.unicodeScalars.map(\.value)
         while let first = scalars.first, leadingMarks.contains(first) { scalars.removeFirst() }
         while let last = scalars.last, trailingMarks.contains(last) { scalars.removeLast() }
@@ -127,13 +128,13 @@ public enum SpokenNumbers {
         } else if suffix.count == 1, unit == nil, let sign = currency(suffix[0]) {
             unit = sign
         } else if suffix.count == 2, unit == nil, fraction.isEmpty {
-            let letters = String(String.UnicodeScalarView(suffix.compactMap(Unicode.Scalar.init))).lowercased()
+            // ASCII letters only, so both Cores read the suffix alike.
+            let letters = text(suffix.map { $0 >= 0x41 && $0 <= 0x5A ? $0 + 0x20 : $0 })
             guard ["st", "nd", "rd", "th"].contains(letters) else { return nil }
             ordinal = true
         } else if !suffix.isEmpty {
             return nil
         }
-        func text(_ values: some Sequence<UInt32>) -> String { String(String.UnicodeScalarView(values.compactMap(Unicode.Scalar.init))) }
         let digits = text(integer)
         let trimmed = String(digits.drop { $0 == "0" })
         let whole = trimmed.isEmpty ? "0" : trimmed

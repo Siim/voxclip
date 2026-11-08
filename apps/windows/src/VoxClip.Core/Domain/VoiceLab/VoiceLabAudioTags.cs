@@ -78,7 +78,13 @@ public static class VoiceLabAudioTags
     public static IReadOnlyList<string> FilterScribeEvents(IReadOnlyList<string> expected, IReadOnlyList<string> recognized, bool hasTags)
     {
         var tokens = recognized.SelectMany(VoiceLabTakeQuality.Tokens).ToArray();
-        if (!hasTags) return tokens;
+        return KeptAfterScribeEvents(expected, tokens, hasTags).Select(index => tokens[index]).ToArray();
+    }
+    /// <summary>The indices of <paramref name="tokens"/> (normalized recognized tokens, one each) that
+    /// <see cref="FilterScribeEvents"/> keeps, in order.</summary>
+    public static int[] KeptAfterScribeEvents(IReadOnlyList<string> expected, IReadOnlyList<string> tokens, bool hasTags)
+    {
+        if (!hasTags) return Enumerable.Range(0, tokens.Count).ToArray();
         var events = Catalog.Value.GetProperty("scribeEvents").EnumerateArray().SelectMany(value => VoiceLabTakeQuality.Tokens(value.GetString()!))
             .ToHashSet(StringComparer.Ordinal);
         var expectedTokens = expected.SelectMany(VoiceLabTakeQuality.Tokens).ToArray();
@@ -87,13 +93,13 @@ public static class VoiceLabAudioTags
         var extras = tokens.GroupBy(token => token, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.Count() - expectedCounts.GetValueOrDefault(group.Key), StringComparer.Ordinal);
         var matched = new HashSet<int>();
-        if (tokens.Length <= 5000 && expectedTokens.Length <= 5000 &&
+        if (tokens.Count <= 5000 && expectedTokens.Length <= 5000 &&
             extras.Any(pair => pair.Value > 0 && expectedCounts.GetValueOrDefault(pair.Key) > 0 && events.Contains(pair.Key)))
         {
-            var width = tokens.Length + 1;
+            var width = tokens.Count + 1;
             var lengths = new ushort[(expectedTokens.Length + 1) * width];
             for (var expectedIndex = expectedTokens.Length - 1; expectedIndex >= 0; expectedIndex--)
-                for (var recognizedIndex = tokens.Length - 1; recognizedIndex >= 0; recognizedIndex--)
+                for (var recognizedIndex = tokens.Count - 1; recognizedIndex >= 0; recognizedIndex--)
                 {
                     var cell = expectedIndex * width + recognizedIndex;
                     lengths[cell] = (ushort)(expectedTokens[expectedIndex] == tokens[recognizedIndex] ?
@@ -101,15 +107,16 @@ public static class VoiceLabAudioTags
                 }
             var expectedAt = 0;
             var recognizedAt = 0;
-            while (expectedAt < expectedTokens.Length && recognizedAt < tokens.Length)
+            while (expectedAt < expectedTokens.Length && recognizedAt < tokens.Count)
             {
                 if (expectedTokens[expectedAt] == tokens[recognizedAt]) { matched.Add(recognizedAt); expectedAt++; recognizedAt++; }
                 else if (lengths[(expectedAt + 1) * width + recognizedAt] >= lengths[expectedAt * width + recognizedAt + 1]) expectedAt++;
                 else recognizedAt++;
             }
         }
-        return tokens.Where((token, index) =>
+        return Enumerable.Range(0, tokens.Count).Where(index =>
         {
+            var token = tokens[index];
             if (matched.Contains(index) || !events.Contains(token) || extras.GetValueOrDefault(token) <= 0) return true;
             extras[token]--;
             return false;
