@@ -32,9 +32,11 @@ internal delegate Task<ExportResult> ExportPreparer(ExportJob job, IProgress<Exp
 
 internal static class CliOperations
 {
-    internal static async Task<JsonObject> ExecuteAsync(string command, ParseResult arguments, CancellationToken ct, ExportInputReader? openExport = null, ExportPreparer? prepareExport = null) => command switch
+    internal static async Task<JsonObject> ExecuteAsync(string command, ParseResult arguments, CancellationToken ct, ExportInputReader? openExport = null,
+        ExportPreparer? prepareExport = null, ExportCheckerFactory? checkExport = null) => command switch
     {
-        "autopilot" => await CliAutopilot.RunAsync(arguments, ServicesMergeAdapter.Connector, ct).ConfigureAwait(false),
+        "autopilot" => await CliAutopilot.RunAsync(arguments, ServicesMergeAdapter.Connector, ct, openExport, prepareExport, checkExport).ConfigureAwait(false),
+        "check" => await CliCheck.RunAsync(arguments, ct, openExport, checkExport).ConfigureAwait(false),
         "probe" => await ProbeAsync(arguments, ct).ConfigureAwait(false),
         "encoders" => new() { ["encoders"] = Node((await new EncoderProbe().ProbeAsync(WindowsAdapterIdentity.Read(), null, ct).ConfigureAwait(false)).ToArray(), CliDataJson.Default.EncoderInfoArray) },
         "plan" => await PlanAsync(arguments, ct).ConfigureAwait(false),
@@ -83,13 +85,26 @@ internal static class CliOperations
     private static async Task<JsonObject> ExportAsync(ParseResult arguments, CancellationToken ct, ExportInputReader? openExport, ExportPreparer? prepareExport)
     {
         var timer = Stopwatch.StartNew();
+        var prepared = await PrepareExportAsync(arguments, ct, openExport).ConfigureAwait(false);
+        var result = await WriteExportAsync(prepared, arguments, ct, prepareExport).ConfigureAwait(false);
+        var fields = Node(result, CliDataJson.Default.ExportResult)!.AsObject();
+        fields["captionStyle"] = prepared.Style; fields["aspect"] = AspectText(prepared.Aspect); fields["elapsedSeconds"] = timer.Elapsed.TotalSeconds;
+        return fields;
+    }
+
+    /// <summary>What an export run renders, prepared from its arguments: the project with the run's edits, the compose snapshot the
+    /// encoder is handed (captions laid out, Voice Lab captured, the clip's controls and effects) and the destination. The export
+    /// self-check (<c>check</c>, autopilot) reads the same snapshot. <paramref name="checkingOutputs"/> false skips the checks of the
+    /// destination and sidecars, which a check of an existing export doesn't write.</summary>
+    internal static async Task<PreparedExport> PrepareExportAsync(ParseResult arguments, CancellationToken ct, ExportInputReader? openExport, bool checkingOutputs = true)
+    {
         var path = Required(arguments, "--open");
         var destination = Required(arguments, "--export");
         if (Path.GetExtension(path).Equals(".voxclip", StringComparison.OrdinalIgnoreCase) && arguments.GetValue<string?>("--transcript") is not null)
             throw new CliUsageException("--transcript only applies when --open is a media file.");
         var requestedStyle = arguments.GetValue<string?>("--style");
         var requestedCaptionStyle = requestedStyle is null or "off" ? null : CaptionRendering.LoadStyle(requestedStyle);
-        ValidateOutputs(arguments, path, destination);
+        if (checkingOutputs) ValidateOutputs(arguments, path, destination);
         if (!File.Exists(path)) throw new FileNotFoundException();
         destination = OutputSafety.Resolve(destination);
         var (openedProject, media) = await (openExport ?? OpenExportInputAsync)(path, ct).ConfigureAwait(false);
@@ -100,7 +115,7 @@ internal static class CliOperations
         var captionStyle = requestedCaptionStyle ?? (style == "off" ? null : CaptionRendering.LoadStyle(style));
         RequireAudioOutput(media.Audio is not null, arguments.GetValue<string?>("--audio-out"));
         RequireSrtOutput(style, arguments.GetValue<string?>("--srt"));
-        ValidateOutputs(arguments, media.Path, destination, path);
+        if (checkingOutputs) ValidateOutputs(arguments, media.Path, destination, path);
         Project project;
         if (openedProject is not null) project = openedProject;
         else
@@ -161,6 +176,14 @@ internal static class CliOperations
         // Screen recordings placed over this scope replace the picture there, upright (doc/spec/context-demo.md).
         snapshot = snapshot with { ContextDemo = VoxClip.Core.Domain.ContextDemo.ContextDemoRendering.Resolve(project, project.Edits.ActiveClipId, snapshot.Timeline, DataLocations.Resolve().Root) };
         var target = project.Edits.ActiveClipId is { } selectedClip ? (ExportTarget)new ExportTarget.Clip(selectedClip) : new ExportTarget.FullEdit();
+        var loudness = arguments.GetValue<string?>("--loudness") == "off" ? ExportLoudness.Off : ExportLoudness.Social;
+        return new(project, snapshot, target, aspect, quality, captions, style, destination, loudness);
+    }
+
+    /// <summary>Encodes <paramref name="prepared"/> and publishes it with the sidecars the arguments ask for.</summary>
+    internal static async Task<ExportResult> WriteExportAsync(PreparedExport prepared, ParseResult arguments, CancellationToken ct, ExportPreparer? prepareExport)
+    {
+        var (snapshot, target, aspect, quality, captions, destination) = (prepared.Snapshot, prepared.Target, prepared.Aspect, prepared.Quality, prepared.Captions, prepared.Destination);
         var audioPath = arguments.GetValue<string?>("--audio-out") is { } audioDestination ? OutputSafety.Resolve(audioDestination) : null;
         var srtPath = arguments.GetValue<string?>("--srt") is { } srtDestination ? OutputSafety.Resolve(srtDestination) : null;
         var destinations = ExportDestinations(snapshot, destination, srtPath, audioPath);
@@ -199,8 +222,7 @@ internal static class CliOperations
                 await writer.WriteAsync(Exporter.Subtitles(captions, snapshot.Speed.Speed).AsMemory(), ct).ConfigureAwait(false);
             }
             var prepare = prepareExport ?? new Exporter().PrepareAsync;
-            var loudness = arguments.GetValue<string?>("--loudness") == "off" ? ExportLoudness.Off : ExportLoudness.Social;
-            result = await prepare(new(snapshot, target, aspect, quality, destination, null) { Loudness = loudness },
+            result = await prepare(new(snapshot, target, aspect, quality, destination, null) { Loudness = prepared.Loudness },
                 Progress<ExportProgress>(arguments, value => (value.Phase, value.Fraction)), ct).ConfigureAwait(false);
             ownedPartials.Add(destination);
             // The edited WAV carries the export's loudness gain and limiter (ADR-R47); the limiter ran when it reduced anything.
@@ -214,9 +236,7 @@ internal static class CliOperations
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { throw ExportErrors.Map(error, destination); }
         finally { foreach (var outputPath in ownedPartials) OutputSafety.DeletePartial(outputPath + ".partial"); }
-        var fields = Node(result, CliDataJson.Default.ExportResult)!.AsObject();
-        fields["captionStyle"] = style; fields["aspect"] = AspectText(aspect); fields["elapsedSeconds"] = timer.Elapsed.TotalSeconds;
-        return fields;
+        return result;
     }
 
     internal static string[] ExportDestinations(ComposeSnapshot snapshot, string destination, string? srtPath, string? audioPath)
@@ -552,6 +572,15 @@ internal static class CliOperations
             Console.Error.WriteLine(phase + suffix);
         }
     }
+}
+
+/// <summary>One export run as prepared (<see cref="CliOperations.PrepareExportAsync"/>): the project with the run's edits, the snapshot
+/// the encoder is handed, and the run's choices.</summary>
+internal sealed record PreparedExport(Project Project, ComposeSnapshot Snapshot, ExportTarget Target, ExportAspect Aspect, ExportQuality Quality,
+    CaptionTrack? Captions, string Style, string Destination, ExportLoudness Loudness)
+{
+    /// <summary>The project's edit state, null without a transcript.</summary>
+    internal EditState? State => EditingEngine.FromProject(Project);
 }
 
 internal sealed class CliUsageException(string message) : Exception(message);

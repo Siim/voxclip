@@ -23,9 +23,9 @@ internal static class CliApplication
     internal static string Version => AppVersion.Current;
 
     internal static async Task<int> RunAsync(string[] args, CancellationToken ct, ExportInputReader? openExport = null, ExportPreparer? prepareExport = null,
-        WindowsRuntimeAgreement? runtimeAgreement = null, Func<string, bool>? inputExists = null)
+        WindowsRuntimeAgreement? runtimeAgreement = null, Func<string, bool>? inputExists = null, ExportCheckerFactory? checkExport = null)
     {
-        var root = BuildCommand(openExport, prepareExport, inputExists);
+        var root = BuildCommand(openExport, prepareExport, inputExists, checkExport);
         var result = root.Parse(args);
         if (result.Errors.Count > 0)
         {
@@ -125,9 +125,10 @@ internal static class CliApplication
         ? $"VoxClip couldn't decode this video: {exception.Message.TrimEnd('.')}. Your edits are saved." : exception.Message;
 
     /// <summary>The command line parsed as the CLI parses it, so one command can run another's path (autopilot's export).</summary>
-    internal static ParseResult Parse(string[] args) => BuildCommand(null, null, null).Parse(args);
+    internal static ParseResult Parse(string[] args) => BuildCommand(null, null, null, null).Parse(args);
 
-    private static RootCommand BuildCommand(ExportInputReader? openExport, ExportPreparer? prepareExport, Func<string, bool>? inputExists)
+    private static RootCommand BuildCommand(ExportInputReader? openExport, ExportPreparer? prepareExport, Func<string, bool>? inputExists,
+        ExportCheckerFactory? checkExport)
     {
         var root = new RootCommand("VoxClip headless media tool.");
         root.Options.Add(Json);
@@ -166,6 +167,16 @@ internal static class CliApplication
             }
         });
         Stub(root, "export", openExport, prepareExport);
+        // The export self-check (ADR-R49): exit 0 when every check is ok or skipped, 8 when any warns.
+        var check = Command(root, "check", "Check an export against the project clip it came from: words, sync, loudness and captions. Exit 0 when every " +
+            "check is ok or skipped, 8 when any warns. The audio is transcribed with an installed, verified Whisper model only; without one the words are skipped.");
+        Add(check, "--project", "The project the export came from.", true);
+        Add(check, "--clip", "The clip: its number in the project's clip list (1 is the first) or its ID.", true);
+        check.Arguments.Add(new Argument<string>("export") { Description = "The exported MP4." });
+        Choice(check, "--aspect", "16:9, 9:16, 1:1 or source, as exported; read from the export's frame when left out.", "source", "16:9", "9:16", "1:1");
+        Add(check, "--style", "Caption style ID or off, when the export was given --style.");
+        Choice(check, "--loudness", "social (the default) or off: the loudness the export ran with.", "social", "off");
+        Stub(check, "check", openExport, checkExport: checkExport);
 
         var probe = Command(root, "probe", "Print media probe facts.");
         probe.Arguments.Add(new Argument<string>("media"));
@@ -228,13 +239,14 @@ internal static class CliApplication
         Add(autopilot, "--out-dir", "Folder for each clip's MP4 and the project; nothing is exported without it.");
         Choice(autopilot, "--aspect", "16:9, 9:16 (the default) or 1:1.", "16:9", "9:16", "1:1");
         Flag(autopilot, "--timings", "Print each stage's wall time as JSON (in the --json result, else on stdout).");
+        Flag(autopilot, "--no-check", "Don't check each exported clip (words, sync, loudness and captions).");
         autopilot.Validators.Add(validation =>
         {
             if (validation.GetValue<string?>("--count") is { } count &&
                 (!int.TryParse(count, NumberStyles.None, CultureInfo.InvariantCulture, out var value) || value is < 1 or > 12))
                 validation.AddError("--count must be 1 to 12");
         });
-        Stub(autopilot, "autopilot");
+        Stub(autopilot, "autopilot", openExport, prepareExport, checkExport: checkExport);
         var test = Command(root, "llm-test", "Run the connector test.");
         Add(test, "--connector", "Connector catalog id.", true);
         Add(test, "--model", "Model id.");
@@ -286,7 +298,7 @@ internal static class CliApplication
         return option;
     }
     private static void Stub(Command command, string name, ExportInputReader? openExport = null, ExportPreparer? prepareExport = null,
-        Func<string, bool>? inputExists = null) => command.SetAction(async (result, ct) =>
+        Func<string, bool>? inputExists = null, ExportCheckerFactory? checkExport = null) => command.SetAction(async (result, ct) =>
     {
         ct.ThrowIfCancellationRequested();
         if (name == "export" && (result.GetValue<string?>("--open") is null || result.GetValue<string?>("--export") is null))
@@ -294,17 +306,18 @@ internal static class CliApplication
         var path = name == "probe" ? result.GetValue<string>("media") : result.GetValue<string?>("--open");
         if (name != "export" && path is not null && !(inputExists ?? File.Exists)(path))
             return Fail(result, "mediaMissing", "The input file cannot be found.", 3, name);
-        var fields = await CliOperations.ExecuteAsync(name, result, ct, openExport, prepareExport).ConfigureAwait(false);
+        var fields = await CliOperations.ExecuteAsync(name, result, ct, openExport, prepareExport, checkExport).ConfigureAwait(false);
         fields["ok"] = true; fields["command"] = name; fields["version"] = Version;
         if (result.GetValue(Json)) Console.Out.WriteLine(fields.ToJsonString());
         else if (name == "autopilot") { if (CliAutopilot.HumanOutput(fields) is { } timings) Console.Out.WriteLine(timings); }
+        else if (name == "check") Console.Out.WriteLine(CliCheck.Summary(fields["check"]!.AsObject()));
         else if (name == "export")
         {
             Console.Out.WriteLine(fields["output"]?.GetValue<string>());
             Console.Out.WriteLine("encoder: " + fields["encoder"]?.GetValue<string>());
         }
         else Console.Out.WriteLine(fields["output"]?.GetValue<string>() ?? fields.ToJsonString());
-        return 0;
+        return name == "check" && fields["check"]?["passed"]?.GetValue<bool>() == false ? CliCheck.WarningExitCode : 0;
     });
     private static int Fail(ParseResult result, string code, string message, int exitCode, string? command = null, Redactor? redactor = null)
     {
