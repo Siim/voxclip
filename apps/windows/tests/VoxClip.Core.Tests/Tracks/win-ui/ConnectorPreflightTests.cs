@@ -179,9 +179,12 @@ public sealed class ConnectorPreflightTests
         Assert.Contains("internal Task RetryAsync() => Start()", find);
         Assert.Contains("var task = FindAsync();", find);
         Assert.Contains("ConnectorConsentAction.FindClips", find);
-        Assert.Contains("var snap = App.Services.Get(\"llm.clips.snapToLines\", true)", find);
-        Assert.Contains("Snap: snap", find);
-        Assert.Contains("App.Services.Get(\"llm.clips.snapToLines\", true) == snap", find);
+        // Find Clips replies name whole sentence lines (clip-finder prompt version 2), so the old "Snap clip edges to sentence boundaries"
+        // setting changes nothing: Settings no longer shows it and Find Clips never reads it. The key stays readable in settings.json.
+        Assert.DoesNotContain("snapToLines", find);
+        Assert.DoesNotContain("Snap:", find);
+        Assert.DoesNotContain("snapToLines", File.ReadAllText(Path.Combine(root, "SettingsWindow.xaml.cs")));
+        Assert.DoesNotContain("Snap clip edges", File.ReadAllText(Path.Combine(root, "SettingsWindow.xaml.cs")));
         var rewrite = File.ReadAllText(Path.Combine(root, "Pages/EditorPage.xaml.cs"));
         var panel = File.ReadAllText(Path.Combine(root, "Controls/RewritePanel.cs"));
         Assert.Contains("ConnectorConsentAction.Rewrite", panel);
@@ -194,7 +197,6 @@ public sealed class ConnectorPreflightTests
         Assert.Contains("if (generation != pageGeneration) return", settings);
         Assert.Contains("_ = RefreshStatusAsync()", settings);
         Assert.Contains("if (generation == pageGeneration && !lifetime.IsCancellationRequested)", settings);
-        Assert.Contains("Snap clip edges to sentence boundaries", settings);
         Assert.Contains("var connectorStatus = await ProviderCatalog.ProbeAsync(entry, selectedConnector, lifetime.Token)", settings);
         Assert.Contains("var status = await ProviderCatalog.ProbeAsync(chosen, selectedConnector, ct)", find);
         var home = File.ReadAllText(Path.Combine(root, "Pages/HomePage.xaml.cs"));
