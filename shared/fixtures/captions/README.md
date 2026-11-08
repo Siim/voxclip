@@ -10,6 +10,8 @@ The set has 103 layout cases, 616 pages and 3,703 samples, with 302 layout PNGs 
 
 SHA-256: `box-text-colors.json` = `2d8b09af14d66888866db8b8e4fc4c870279acda1ecebf396e24ada2c0ccc53c`; `index.json` = `2903bb47afe795b9d3f9624fa862296007222abb116c9c435005ef978a7a2655`; unchanged `preview-tiles.json` = `dcb1cc253481772b7d53ab4a2623ade3ec6ee238b3ddcb448f34cef392b6cb82`; unchanged `gallery-samples.json` = `db48131175040d2d5949df220d0dd03dabc229ab676afd162b703e35202bfbbf`.
 
+The 9:16 defaults clear of the feed's bands (design §5.1, 2026-11-08) gave nine styles an `aspects.portrait` y: Clean subtitle, Editorial, Lower third, Pill, Typewriter, Bold, Bold+, Highlight and, in set 2, Minimal. Regenerating changed only their portrait layout cases (13 here, `minimal-portrait-en` in `styles-2/`), their 1080×1920 entries in both `preview-tiles.json` files and the matching golden indexes (crop offsets); every PNG, every square and landscape case, `cards.json`, `gallery-samples.json` and `index.json` are byte-identical. `preview-tiles.json` is now `6670d4b2283b7fb657ed2aa33e61049550f56c10f67b62778d443ac6302a2bf5`.
+
 `card-colors.json` pins the design §5.4.3 sidebar key-word contrast rule on both Cores. Regenerate it with `python3 tools/captions/gen_card_colors.py`; do not edit expected values by hand. It covers Paper, Box highlight, exact half-up channels, black/white, the 4.5:1 threshold and different painted backdrops. It is separate so every existing `cards.json` case stays byte-identical.
 
 | File | Format | Contents |
