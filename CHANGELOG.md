@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Windows, `voxclip-cli check` checks an export against its clip on your PC (every word heard again as edited, picture and sound in sync, −14 LUFS loudness, captions and titles clear of the feed's buttons) and exits 8 when something is off; `voxclip-cli autopilot` checks each clip it exports (`--no-check` skips it).
 - Numbers now match however they're written (Mac and Windows): a Voice Lab take whose script says "$300" and whose recognizer hears "three hundred dollars" passes its word check instead of being retaken, and on Mac `voxclip-cli check` no longer reports "three hundred dollar" heard as "$300" as cut off; a wrong number still fails, and a number in another language counts as unverified.
 - Captions and titles now clear the feed's buttons and text by default in every shape (Mac and Windows): caption styles that reached a feed's bottom band sit a little higher in that shape (nine in 9:16, two in 1:1, six in 16:9), and a 9:16 top title starts lower; old projects without a dragged caption position move with the default.
 - On Mac, `voxclip-cli check` checks an export against its clip on the Mac (every word heard again as edited, picture and sound in sync, −14 LUFS loudness, captions clear of the feed's buttons) and exits 8 when something is off; `voxclip-cli autopilot` checks each clip it exports and says so in its JSON.

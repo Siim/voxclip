@@ -360,7 +360,7 @@ The cover's time is a source second; the export maps it through the clip's cuts 
 
 ## 8. Export self-check (ADR-R49)
 
-Every export can be checked on the Mac, in seconds, before it is posted: `voxclip-cli check --project <project> --clip <n> <export.mp4> --json`, and by default after each clip `voxclip-cli autopilot` exports (`--no-check` skips it). The review rows that show it in the app wait for the mockup's approval.
+Every export can be checked on the Mac or on Windows, in seconds, before it is posted: `voxclip-cli check --project <project> --clip <n> <export.mp4> --json`, and by default after each clip `voxclip-cli autopilot` exports (`--no-check` skips it). The review rows that show it in the app wait for the mockup's approval.
 
 **What it measures**, from the exported file:
 
@@ -377,4 +377,4 @@ Every export can be checked on the Mac, in seconds, before it is posted: `voxcli
 - the right-hand button column on 9:16;
 - how the platform will crop or compress the file.
 
-Without a local model, the words and the phrase timings are skipped ("No local transcription model"); nothing is sent to a provider to fill in. A check of a 29 s 9:16 clip takes about 2.3 s on an Apple silicon Mac with whisper-large-v3-turbo installed. `check` exits 8 when any check warns. Windows owes the check (apps/macos/CONTRACTS.md).
+Without a local model, the words and the phrase timings are skipped ("No local transcription model"); nothing is sent to a provider to fill in. A check of a 29 s 9:16 clip takes about 2.3 s on an Apple silicon Mac with whisper-large-v3-turbo installed. `check` exits 8 when any check warns. Windows checks with the same rules and JSON, hearing with an installed, verified Whisper model only (apps/windows/CONTRACTS.md); its check with the real model on x64 and arm64 is owed to the VM.
