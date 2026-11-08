@@ -11586,6 +11586,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method private .ctor(V
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method private get_EqualityContract()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method public .ctor(double,long,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPiece>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.CaptionWord>,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method public CutScale(VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPiece,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabVideoCut>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method public Deconstruct(double&,long&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPiece>&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.CaptionWord>&,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope&)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan :: method public Equals(object)
@@ -14332,6 +14333,7 @@ member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: field public FitToleranc
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: field public MaximumClipSeconds
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: field public MaximumPartCharacters
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: field public MaximumPartSeconds
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: field public MaximumPictureSpeed
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: field public MaximumRewordRounds
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: field public MaximumScriptScalars
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: field public NoFitPhrases
@@ -14350,12 +14352,16 @@ member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public LayoutCuts
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public LayoutPauseBound(double)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public LipsyncPrice(double,VoxClip.Core.Domain.VoiceLab.WholeClipLipsync,VoxClip.Core.Domain.VoiceLab.VoiceLabPriceCatalog)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public MatchedCopy(double)
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public PictureSpeed(double,double)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public PredictedSeconds(double,double,double)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public PriceFor(int,string,double,VoxClip.Core.Domain.VoiceLab.WholeClipLipsync,VoxClip.Core.Domain.VoiceLab.VoiceLabPriceCatalog)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public PruneDangling(VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public ReasonFor(VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+RuleInputs)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public RecordHolding(string,VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public RewordFits(double,double,double,double)
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public SpedCopy(double,bool)
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public SpeedLabel(double)
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public ValidRetime(double)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public Validate(VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+AutoChoice :: method private .ctor()
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+AutoChoice :: method protected .ctor(VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+AutoChoice)

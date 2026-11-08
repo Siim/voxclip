@@ -1,5 +1,42 @@
 # macOS implementation contracts
 
+### 2026-11-08 — Whole-clip revoice gets from Fit through the lip sync: 4K windows, the picture checked at Fit, your own pace by the picture (track/v2-wholeclip-lipsync)
+
+The user's MVP45 run (2026-11-08): "Clip 1 · 0:31.4 · 50 words", a 52-word voice of 0:20.2 for 0:31.3, Fit ✓ "laid out on the clip's pauses (−35.4%)", then "Couldn't lip sync: The job could not be completed." on every Try Again, logged only as `step=lipsync type=WholeClipRevoiceSession.Stop case=noVoice`, with no submission. ADR-R46 "Update 2026-11-08: your own pace, and Fit checks the picture (MVP45)", voice-lab §8.14 items 4–6, design.md "How should it sound?" (Running, Stopped).
+
+- **The real cause.** The source is 3840 × 2160. `LipsyncWindowPreparation.prepare` refused any oriented side over 1920 with `LipsyncPreparationError.unsupportedVideo`; `RewriteLipsyncSession.reason` had no copy for it and `wholeClipLipsync` rethrew it as `Stop.noVoice`. It was reproduced with an uncommitted replay over the user's copied project and read-only source (the refusal before; after the fix the real window prepares at 1920 × 1080 and passes Vision's face check, 8 MB for 3.2 s). Latent too: a failed video preparation kept `videoPreparationFailure`, so the next match skipped preparing and stopped on the old problem at once.
+- **Media.** `LipsyncWindowPreparation.uploadSize` (new, public): the oriented source scaled to the 1920 bound through `OutputSizing` (a source-shaped export). The window request drops `clipControls`, `effects` and `music` as well as captions; the compositor applies the controls once over the lip-synced frames (they were applied twice before, a look or flip included). `CompositionVideoSpan`'s cut case maps a sped piece evenly.
+- **Core.**
+  - `WholeClipRevoice.maximumPictureSpeed` (1.2), `pictureSpeed`, `spedCopy`, `speedLabel`, `validRetime`; record validation uses `validRetime` (0.92–1.2; the schema's `videoRetime.maximum` 1.2).
+  - `VoiceLabNaturalPacing.layout(…, maximumSpeed:)`: a shorter take speeds the picture up first (clip as edited ÷ take, capped), the fit targets the sped length, `VoiceLabFitPlan.pictureSpeed` holds kept ÷ output, and a sped picture with no cut falls back to 1×. `VoiceLabEditedLayout.maximumPictureSpeed` (default 1; only the whole clip passes 1.2).
+  - `validEditedCuts` accepts `retimeFactor` in (1, 1.2] matching kept ÷ output within 1e-6. `VoiceLabVideoDurationOptions.cutRetimeFactor` and the recipe builder write it. `VoiceLabOutputPlan.cutScale` (new) scales `mapTime`, `sourceTime` and `LipsyncRenderWindow`'s source mapping. Unsped pieces map exactly as before.
+  - Vectors: `shared/fixtures/voice-lab/whole-clip-speed-cases.json` (`voxclip-whole-clip-speed/1`, `tools/fixtures/voice-lab/generate_whole_clip_speed.py`, check_drift EXACT): 11 speed, 5 copy, 8 retime, 11 sped-cut and 2 mapping cases. `whole-clip-revoice-wire-cases.json`: fastest-retime 1.2, retime-too-fast 1.21 (same ids and count).
+- **App.**
+  - `WholeClipRevoiceSession`: Backend `picture` (new) runs at Fit after the verdict ("· matching the picture") and returns `Picture(speed:outputSeconds:laidOut:)`; Fit is ✓ only after it. The Fit line names the speed (`spedCopy`, from 1.005×). The lip sync gets the picture's speed; the ledger keys on it; `Synced.factor` is it.
+  - New errors: `Stop.pictureUnmatched(part:)`, `Unmatched(error:part:)`, `LipsyncFailed(error:local:)`; `cause` unwraps them for the log, `repeats` counts them (local only). `Failure` gains `kind` and `again` (the same step and kind as the previous stop); equality ignores `kind`.
+  - `RewriteWholeClip`: `wholeClipMatchPicture` calls `retryVideoPreparation` first, throws the typed stops and checks left-out phrases; `wholeClipPicture` (new) adds the upload size, the fal.ai key, `makeLipsyncOffers` and the weighted speed. `wholeClipLipsync` throws `LipsyncFailed` with `RewriteLipsyncSession.errors[phrase]`, and a lip sync that won't start is `Failure.stale`. `wholeClipLipsyncSeconds` is the picture's output plus 2 once Fit has it. No voice is paid for without a fal.ai key. `wholeClipStoppedActions`: `[patch]` after a repeat stop, `[patch, retry]` after a Fit stop or the same stop twice.
+  - `RewriteLipsyncSession`: `start` returns whether it started; `errors[phrase]` keeps each failure's error; `reason` names `LipsyncPreparationError`s and `invalidInput`.
+  - `MakeItWholeClip`: Claude mode patches after any stop that would only repeat, whatever the voice cost (charged to the run).
+- **Tests.**
+  - Core: `WholeClipPictureSpeedTests` (the rule, the copy, the range, the sped cut, the mapping, and the user's clip as numbers: 31.2 s as edited, a 20.2 s take, 1.20×, 24.1 s of output over 28.9 s of picture, 2.2 s trimmed instead of 7.0 s, lip sync ≈ $1.31 instead of ≈ $1.66) and `WholeClipSpeedReplayTests`.
+  - Media: `LipsyncUploadSizeTests`, and `aFourKSourceIsPreparedAtTheCompositorBound` (a 4K-tagged source prepared at 1920 × 1080 with a look set).
+  - App: `theUsersCaseChecksThePictureAtFitThenLipSyncsTheSpedPicture`, `anInfeasiblePictureStopsAtFitWithNoLipSync`, `aLocalLipSyncFailureSaysWhatFailedAndARetryStartsClean`, `theSameProviderFailureTwiceMakesThePatchPrimary`, `ClaudeModeTests.claudeModesWholeClipChecksThePictureAtFit`, `RewriteLipsyncSessionTests.anUnpreparableWindowSaysWhyAndKeepsItsError`.
+  - Each turns red without its rule (layout speed, the Fit picture call, the error unwrap, `retryVideoPreparation`).
+  - Smoke: new `S-revoice-whole-short` (WS1 Fit at 1.20×, the lip sync priced on the 24.0 s output; WS2 a sped cut that validates and renders, `videoRetime` 1.2) and `S-revoice-whole-retry` (WR1 a failed preparation stops at Fit with `case=staleRenderContract`, no lip sync, no priced Try Again; WR2 the retry prepares again and reaches Review on the paid voice; red without the clean start). W2 accepts the sped Fit line; WT2 accepts a retime within the range. The whole-clip scenarios get a present, never-read fal.ai key (`RewriteSmokeFalKey`), reset after each scenario.
+  - `tools/schemas/test_natural_pacing_schema.py`: its too-many-cuts case is 513 (it still said 3 after the 512-cut schema; it failed at 4d480f22).
+- **Verification** (`VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`, serial under `nice -n 10`):
+  - Core 1,533 tests in 173 suites (the 2 known deadline issues), Media 635 in 82, App 1,040 in 81.
+  - `rewrite-smoke.sh` (DEBUG, no path): PASSED, 86 scenarios.
+  - Long-expression build (250 ms): nothing flagged in the touched files.
+  - Windows Core Release: 3,403 (3,374 passed, 29 skipped); ReleaseBoundary +6 lines, additions only.
+  - Both `check_drift.py`, `validate.py` and the voice-lab and schema unittests: tree clean.
+- **Owed.**
+  - The live check (lead).
+  - A listening and viewing pass of a 1.2× picture with the user.
+  - S1 (`eleven_v4` speed through the TTS endpoint) and "Multilingual v2 when paced", both recorded in ADR-R46 and not built.
+  - The face check still runs only in the paid step's preparation, not at Fit (it renders the window's frames); a clip with no clear face stops there, before fal.ai, with its own reason and no priced Try Again.
+  - Windows: the card, the run and the lip sync, as before.
+
 ### 2026-11-08 — Whole-clip revoice fits the clip as edited and never pads the script (track/v2-wholeclip-fit)
 
 The user's MVP44 run (2026-11-08): "Clip 1 · 0:31.4 · 49 words", a 27 s voice. `configureWholeClip` measured it against the parts' windows in source time (48.6 s, tightened pauses included), the Fit step asked for a longer wording (≈ 88 words, then ≈ 124), and every Try Again paid a ~1–2.5 min `patch-rewrite` call and a new voice until `cannotFit`. It spent ≈ $0.22 and never reached the lip sync. ADR-R46 "Update 2026-11-08: one timeline, never pad", voice-lab §8.14 items 4–6, design.md "How should it sound?" (Running, Stopped).
