@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Siim/voxclip/main/shared/schemas/cover-art-cases.schema.json",
+  "title": "MP4 cover-art writer vectors",
+  "description": "shared/fixtures/cover-art/cover-art-cases.json (ADR-R48, doc/publishing.md section 7), written by tools/fixtures/cover-art/generate_cover_art.py. Each case embeds its image in its input as moov/udta/meta/ilst/covr, or names the refusal that leaves the file untouched.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "description", "coverTypes", "caseCount", "cases"],
+  "properties": {
+    "schema": {"const": "voxclip-cover-art-cases/1"},
+    "description": {"type": "string"},
+    "coverTypes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jpeg", "png"],
+      "properties": {"jpeg": {"const": 13}, "png": {"const": 14}}
+    },
+    "caseCount": {"type": "integer", "minimum": 1},
+    "cases": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/case"}}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "file": {"type": "string", "pattern": "^[a-z0-9-]+\\.(mp4|jpg|png)$"},
+    "table": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["box", "entries"],
+      "properties": {
+        "box": {"enum": ["stco", "co64"]},
+        "entries": {"type": "array", "items": {"type": "integer", "minimum": 0}}
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "input", "inputSize", "inputSha256", "image"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+        "input": {"$ref": "#/$defs/file"},
+        "inputSize": {"type": "integer", "minimum": 0},
+        "inputSha256": {"$ref": "#/$defs/sha256"},
+        "image": {"enum": ["cover.jpg", "cover.png"]},
+        "refusal": {"enum": ["fragmented", "truncated", "unfollowableSize", "noMovie", "malformed", "unsupportedImage"]},
+        "decodes": {"type": "boolean", "description": "False when the case's offsets are synthetic and point past the file."},
+        "growth": {"type": "integer", "description": "The new moov's size minus the old one's; negative when a larger cover is replaced."},
+        "outputSize": {"type": "integer", "minimum": 0},
+        "outputSha256": {"$ref": "#/$defs/sha256"},
+        "inputChunkOffsets": {"type": "array", "items": {"$ref": "#/$defs/table"}},
+        "chunkOffsets": {"type": "array", "items": {"$ref": "#/$defs/table"}},
+        "boxes": {
+          "type": "array",
+          "description": "The output's boxes on the way to the cover and the chunk offsets, as 'path offset size'.",
+          "items": {"type": "string", "pattern": "^[^ ]+ [0-9]+ [0-9]+$"}
+        }
+      },
+      "oneOf": [
+        {"required": ["refusal"], "not": {"anyOf": [{"required": ["outputSha256"]}, {"required": ["growth"]}]}},
+        {"required": ["decodes", "growth", "outputSize", "outputSha256", "inputChunkOffsets", "chunkOffsets", "boxes"],
+         "not": {"required": ["refusal"]}}
+      ]
+    }
+  }
+}

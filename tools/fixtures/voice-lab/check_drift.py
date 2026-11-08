@@ -66,6 +66,11 @@ EXACT = ['shared/fixtures/voice-lab/pace-cases.json', 'shared/fixtures/voice-lab
          'shared/fixtures/clip-style/caption-look-cases.json',
          'shared/fixtures/caption-translations/caption-translation-cases.json',
          'shared/data/rewrite-tones.json',
+         *sorted(f'shared/fixtures/cover-art/{name}' for name in (
+             'cover-art-cases.json', 'cover.jpg', 'cover.png', 'moov-first.mp4', 'moov-last.mp4', 'existing-covr.mp4',
+             'udta-without-meta.mp4', 'co64.mp4', 'stco-overflow.mp4', 'mdat-largesize.mp4', 'mdat-to-end.mp4',
+             'moov-to-end.mp4', 'fragmented-mvex.mp4', 'fragmented-moof.mp4', 'truncated.mp4', 'truncated-header.mp4',
+             'truncated-child.mp4', 'bad-largesize.mp4', 'no-moov.mp4')),
          'shared/schemas/project.schema.json']
 REL_TOL = 1e-10
 ABS_TOL = 1e-12
@@ -125,6 +130,8 @@ def main():
     subprocess.run([sys.executable, str(root / "tools/fixtures/clip-render/generate_clip_render.py")], check=True)
     # Claude mode's settings vectors (doc/design.md section 6.6), replayed by both Cores.
     subprocess.run([sys.executable, str(root / "tools/fixtures/clips-mode/generate_clips_mode.py")], check=True)
+    # The MP4 cover-art writer's vectors (ADR-R48): synthetic MP4 inputs, the images and the expected outputs, replayed by both Cores.
+    subprocess.run([sys.executable, str(root / "tools/fixtures/cover-art/generate_cover_art.py")], check=True)
     # The bundled sound effects (doc/spec/ai.md section 18.5): the committed WAVs must be the generator's bytes.
     sounds = subprocess.run([sys.executable, str(root / "tools/media/sfx/gen_sfx.py"), "--check"])
     failed = sounds.returncode != 0

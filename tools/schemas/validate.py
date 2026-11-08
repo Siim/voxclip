@@ -7,7 +7,8 @@ Usage:
 
 A file ending in .voxclip is checked against project.schema.json; a JSON object whose
 "schema" is "voxclip-settings/1" against settings.schema.json, and one whose "schema" is
-"voxclip-voice-lab-prices/1" against voice-lab-prices.schema.json; *.transcript.json
+"voxclip-voice-lab-prices/1" against voice-lab-prices.schema.json, and one whose "schema" is
+"voxclip-cover-art-cases/1" (the MP4 cover-art vectors) against cover-art-cases.schema.json; *.transcript.json
 against project.schema.json's $defs/transcript. References between the
 schemas (project.schema.json -> timed-word.schema.json) resolve through a local registry,
 never over the network. Needs jsonschema >= 4.18 (tools/captions/requirements.txt).
@@ -55,6 +56,8 @@ def schema_for(path, document, by_name):
         return by_name["voice-statements.schema.json"]
     if isinstance(document, dict) and document.get("schema") == "voxclip-voice-models/1":
         return by_name["voice-models.schema.json"]
+    if isinstance(document, dict) and document.get("schema") == "voxclip-cover-art-cases/1":
+        return by_name["cover-art-cases.schema.json"]
     if isinstance(document, dict) and document.get("format") == "voxclip-context-demo":
         return by_name["context-demo.schema.json"]
     raise SystemExit(f"{path}: no schema applies (expected .voxclip, .transcript.json, voxclip-settings/1 "
@@ -74,6 +77,7 @@ def main(argv):
           fixtures / "voice-lab" / "consent-record.json",
           fixtures / "voice-lab" / "consent-record-creator.json",
           fixtures / "voice-lab" / "consent-record-project.json",
+          fixtures / "cover-art" / "cover-art-cases.json",
           ROOT / "shared" / "catalog" / "voice-lab-models.json"]
     if not files:
         print("no files to validate", file=sys.stderr)
