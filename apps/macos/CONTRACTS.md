@@ -1,5 +1,59 @@
 # macOS implementation contracts
 
+### 2026-11-08 — The cover is written into the MP4 by VoxClip on every macOS (track/v2-cover-box, ADR-R48)
+
+`AVAssetWriter.metadata` embeds the iTunes `covr` on macOS 27 and never on macOS 26: none of the 13 `CoverArtWriteVariantsTests` variants embedded on the hosted 26.7.2 runner (CI 42472116651). VoxClip now writes the box itself, as AtomicParsley does, on every version.
+
+- **Core, `MP4CoverArt`** (new, `Domain/Share/MP4CoverArt.swift`). Pure and byte-level.
+  - `layout(length:read:)` gives the top-level boxes from a read closure, so callers can stream. `movie(in:)` gives the one `moov`. `edit(layout:moov:image:)` returns `Edit` (the new `moov`, `growth`). `embed(_:in:)` handles a whole file in memory, for vectors and small files. `chunkOffsets(moov:)` exposes every track's table.
+  - It writes `moov/udta/meta` (ISO full box; `hdlr` `mdir`/`appl`, empty name) `/ilst/covr/data`, type 13 for JPEG and 14 for PNG (`ImageType` from the magic bytes).
+  - It replaces the first `covr` in place and drops any later one. Every other `ilst` item, `udta` child and box stays byte for byte. A QuickTime-form `meta` (no version/flags) is kept in its form. Box headers keep their form (64-bit stays 64-bit; a `size == 0` `moov` gets its size written out).
+  - It adds the growth (which can be negative) to every `stco`/`co64` entry at or past the old `moov`'s end. With `moov` first, that is all of them; with `moov` last, none. An `stco` that would pass 2^32 − 1 becomes a `co64`, repeated until the size is stable.
+  - `Refusal`: `fragmented` (`moof`, `mfra`, `moov/mvex`), `truncated`, `unfollowableSize` (a size below its header, a largesize past `Int64.max`, a chunk offset past `Int64.max / 2`), `noMovie`, `malformed` (two `moov`s, a table whose count disagrees with its size, a `udta/meta` whose `hdlr` isn't `mdir`) and `unsupportedImage`. Each has a `wire` name for the vectors.
+- **Media.**
+  - `MP4CoverEmbed` (new): `embed(_:into:)` runs `embedNow` on its own dispatch queue, off the cooperative pool. It reads the headers and `moov` (up to 256 MB), writes `<file>.cover` beside the file (`O_EXCL`): bytes before `moov`, the new `moov`, then the rest in 4 MB chunks. It syncs and renames over the file. On any refusal or error the file is untouched and the staged copy is removed.
+  - `AVExporter.embedCover(_:in:log:)` runs it on `video.mp4.partial` after `finishWriting` and before the Voice Lab disclosure copy, hashing and publication. A failure logs one `cover:` line (`os.Logger` `com.voxconvo.voxclip`/`export`) and returns false; the export and its JPEG go on.
+  - Deleted: `AVExporter.coverArt` and the `writer.metadata` item, so there is exactly one cover. Deleted: `CoverArtWriteVariantsTests`, whose question is answered. The test byte reader `coverArt(_:)` stays in `ClipCoverExportTests`. `ffprobeStreams` and `ProbedStream` are now internal for the new tests.
+- **Shared vectors** (new, `shared/fixtures/cover-art/`, `voxclip-cover-art-cases/1`, `shared/schemas/cover-art-cases.schema.json`, `tools/schemas/validate.py`).
+  - `tools/fixtures/cover-art/generate_cover_art.py` lays out 14 synthetic MP4s byte by byte (1.3–3.3 KB): three 64 × 64 black H.264 frames and 16 silent AAC frames, from constants. It also writes `cover.jpg` and `cover.png`.
+  - 17 cases: 10 written and 7 refused (see the folder's README). Each expected output is built from scratch with the cover in place, independent of the writers. Its SHA-256, size, growth, chunk offsets and box tree are recorded.
+  - `tools/fixtures/voice-lab/check_drift.py` runs the generator and checks all 19 files byte for byte (EXACT).
+- **Tests.**
+  - Core `MP4CoverArtTests` (8): keys/types/counts; every vector byte for byte; moov-first moves every entry by the growth (6 cases); moov-last keeps offsets and the bytes before `moov` (3); the existing `covr` replaced in place with the title, encoder and location kept and in order; `stco` overflow → `co64`; embedding again equals embedding the second image; each refusal's reason, plus two `moov`s → malformed.
+  - Media `MP4CoverEmbedTests` (4):
+    - every vector streamed on disk to the generator's SHA-256, or refused with the file untouched and no `.cover` left;
+    - every decodable vector still decodes: AVFoundation reads the same sample bytes on every track, reads the art as `commonIdentifierArtwork`, and ffprobe shows one `attached_pic`;
+    - a network-optimised `AVAssetWriter` movie gets its cover, with every offset moved by the growth;
+    - a failed embed keeps the partial and logs exactly one line.
+  - `ClipCoverExportTests` and `CLIAutopilotPictureTests`: the macOS 26 `withKnownIssue`s are gone; the art check is strict on every version.
+  - Red without each rule:
+    - offsets not moved: 3 tests fail (26 issues);
+    - no `co64` promotion: the suite traps (UInt32 overflow);
+    - `covr` appended instead of replaced: 3 tests fail;
+    - no `mvex` check: 2 tests fail;
+    - no truncation check: the suite traps (index out of range);
+    - exporter without `embedCover`: `clipCoverIsWrittenBesideTheExportAndEmbedded` (art and `attached_pic`) and the autopilot picture test fail on macOS 27 too.
+- **Real check** (the debug CLI; a scratch copy of `clip-frames-project.voxclip` re-pointed at `fillers-chirp.mp4`, 9:16, cover at 1.3 s):
+  - ffprobe: `h264 1080x1920`, `aac`, and `mjpeg 1080x1920 attached_pic=1`;
+  - `AVURLAsset`: `itsk/covr`, JPEG, 43,074 bytes, equal to `Ship day-cover.jpg`;
+  - `qlmanage -t`: the thumbnail is the cover frame (its counter bits and title), not the first frame.
+- **Measured.** Embedding into a 60 s 1080 × 1920 export of 45 MB (`moov` 37,864 bytes, first): 14–60 ms over 5 runs, median 22 ms (debug build, load average about 40).
+- **Verification** (`VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`):
+  - Core 1,474 tests in 163 suites passed (2 known issues, as before). Media 615 in 79 passed. App 1,031 in 81 passed.
+  - `rewrite-smoke.sh`: PASSED, 83 scenarios.
+  - `LIBDISPATCH_COOPERATIVE_POOL_STRICT=1` on `MP4CoverArtTests`, `MP4CoverEmbedTests`, the three `ClipCoverExportTests` and `CLIAutopilotPictureTests`: all passed.
+  - `-warn-long-expression-type-checking=250`: nothing in a file this package touches; 14 untouched files flag at load about 40.
+  - Both `check_drift.py` scripts exit 0 and the tree is clean. `validate.py` passes (15 files). The `tools/voice-lab` and `tools/schemas` unittests pass. The CI secret pattern has no hits.
+  - Windows: see apps/windows/CONTRACTS.md.
+- **Owed.**
+  - The macOS 26 hosted CI run (the lead dispatches it).
+  - The Windows exporter's wiring of `Mp4CoverArt`, with its cover export.
+  - No real-window gate was run; no UI changed.
+- **Next package must know.**
+  - Never add a cover through `AVAssetWriter.metadata` again: the file would carry two `covr`s on macOS 27.
+  - Anything that rewrites the MP4 after `embedCover` (the Voice Lab disclosure appends a top-level `uuid` after `mdat`) must keep `moov` and the offsets intact. The cover is written first, so the disclosure hash covers the final bytes.
+  - A future exporter that writes `moov` last still works; no offset moves.
+
 ### 2026-11-08 — The headless autopilot applies the picture decisions and keeps Claude's reasons; macOS 26 cover art probe; the Snap toggle removed (track/v2-autopilot-picture)
 
 `voxclip-cli autopilot` sent frames but applied nothing Claude decided from them, and kept no reasons (the lead's live run, 2026-11-08). It now applies the picture rows as Make it postable does, and its JSON says what was decided and why.
