@@ -90,7 +90,8 @@ public sealed class ClaudeModeTests
         await fresh.ChooseClipsModeAsync(ClipsMode.Claude);
         Assert.Equal(1, chooser.Finds);
         Assert.Equal(ClaudeModePhase.Waiting, fresh.ClaudeMode.Phase);
-        Assert.Equal("✦ Claude does it all · top 3 · ≤$2", fresh.ClaudeModeStatus);
+        // While Find Clips runs for the new video the status says so (design §6.7).
+        Assert.Equal("✦ Claude does it all · Finding clips…", fresh.ClaudeModeStatus);
         await fresh.SetClaudeClipCountAsync(5);
         await fresh.SetClaudeSpendCapAsync(5);
         await fresh.SetClaudeSpendCapAsync(4);
@@ -104,7 +105,8 @@ public sealed class ClaudeModeTests
         await editor.ClaudeModeContinueAsync();
         Assert.Equal(1, claude.Finds);
         Assert.Equal(ClaudeModePhase.Waiting, editor.ClaudeMode.Phase);
-        Assert.Equal("Finding the best moments…", editor.ClaudeModeSteps[1].Text);
+        Assert.Equal("Finding clips…", editor.ClaudeModeSteps[1].Text);
+        Assert.Equal("✦ Claude does it all · Finding clips…", editor.ClaudeModeStatus);
         // While the find task runs nothing starts, even when Claude is asked to go on again.
         await editor.ClaudeModeContinueAsync();
         Assert.Empty(stub.Requests);
@@ -184,7 +186,7 @@ public sealed class ClaudeModeTests
         await waited.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         Assert.Equal(0.24m, editor.ClaudeMode.Budget!.Needed);
         Assert.EndsWith("Next: Continue, or Stop to keep what's done.", editor.ClaudeModeFooter, StringComparison.Ordinal);
-        Assert.Equal("✦ Claude does it all · $0.00 / $1", editor.ClaudeModeStatus);
+        Assert.Equal("✦ Claude does it all · 0 of 1 ready · $0.00 / $1", editor.ClaudeModeStatus);
         editor.ContinueClaudeMode();
         await editor.ClaudeMode.WaitAsync();
         Assert.Equal(1.24m, editor.ClaudeMode.Budget.Approved);

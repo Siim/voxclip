@@ -235,7 +235,6 @@ internal sealed class FindClipsJob
         var presentation = presentationRevision;
         var chosenModel = App.Services.Get("llm.model." + chosen.WireId, chosen.DefaultModel);
         var address = App.Services.Get("llm.baseUrl." + chosen.WireId, "");
-        var snap = App.Services.Get("llm.clips.snapToLines", true);
         var selectedPreset = (ClipPreset)Math.Max(0, preset.SelectedIndex);
         var instruction = instructions.Text;
         LlmConnector? requestConnector = null;
@@ -243,7 +242,7 @@ internal sealed class FindClipsJob
         bool Current() => !retired && !model.IsLeaving && !model.IsReadOnly && ReferenceEquals(captured, model.Project) &&
             inputs == inputRevision && presentation == presentationRevision && App.Services.Get("llm.connector", "") == chosen.WireId &&
             App.Services.Get("llm.model." + chosen.WireId, chosen.DefaultModel) == chosenModel &&
-            App.Services.Get("llm.baseUrl." + chosen.WireId, "") == address && App.Services.Get("llm.clips.snapToLines", true) == snap &&
+            App.Services.Get("llm.baseUrl." + chosen.WireId, "") == address &&
             (!chosen.Cli || requestConnector is not null && RewriteSession.SignIn(requestConnector.CliDetection) == requestSignIn);
         try
         {
@@ -276,7 +275,7 @@ internal sealed class FindClipsJob
         try
         {
             var request = new ClipFinderRequest(state.Transcript.Words, state.Corrections, state.CutWordIds, selectedPreset,
-                instruction, state.Transcript.Language, chosen.Id, chosenModel, Snap: snap);
+                instruction, state.Transcript.Language, chosen.Id, chosenModel);
             var result = await ConnectorPreflight.FindAsync(App.Services.ClipFinder, request, authorize, search.Token);
             if (result is null || !Current()) return;
             // None found reads the prompt file's message (design §13), under Suggested.

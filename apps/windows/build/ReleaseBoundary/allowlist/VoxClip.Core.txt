@@ -673,6 +673,8 @@ literal "--ephemeral"
 literal "--fallback-model"
 literal "--ignore-rules"
 literal "--ignore-user-config"
+literal "--image"
+literal "--input-format"
 literal "--json"
 literal "--json-schema"
 literal "--model"
@@ -686,6 +688,7 @@ literal "--skip-git-repo-check"
 literal "--strict-mcp-config"
 literal "--system-prompt"
 literal "--tools"
+literal "--verbose"
 literal "-ask-"
 literal "-c"
 literal "-lc"
@@ -776,7 +779,9 @@ literal "image_file_too_large"
 literal "image_parse_error"
 literal "image_too_large"
 literal "image_too_small"
+literal "image_url"
 literal "incomplete_details"
+literal "input_image"
 literal "input_text"
 literal "input_tokens"
 literal "input_tokens_details"
@@ -806,6 +811,7 @@ literal "max_input_tokens"
 literal "max_output_tokens"
 literal "max_tokens"
 literal "maximum_text_length_per_request"
+literal "media_type"
 literal "misalignment_policy_violation"
 literal "missing_permission"
 literal "missing_permissions"
@@ -1147,6 +1153,50 @@ member VoxClip.Core.Domain.Autopilot.AskClaudeVision :: method public Iou(VoxCli
 member VoxClip.Core.Domain.Autopilot.AskClaudeVision :: method public Smoothed(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Effects.ClipEffectTrackSample>)
 member VoxClip.Core.Domain.Autopilot.AskClaudeVision :: method public TrackAsync(VoxClip.Core.Domain.Autopilot.IAskClaudeVision,string,double,double,VoxClip.Core.Domain.Effects.ClipEffectRect,System.Threading.CancellationToken)
 member VoxClip.Core.Domain.Autopilot.AskClaudeVision :: method public TrackTimes(double,double)
+member VoxClip.Core.Domain.Autopilot.ClaudeModeClock :: field private entries
+member VoxClip.Core.Domain.Autopilot.ClaudeModeClock :: field private gate
+member VoxClip.Core.Domain.Autopilot.ClaudeModeClock :: field private now
+member VoxClip.Core.Domain.Autopilot.ClaudeModeClock :: field private open
+member VoxClip.Core.Domain.Autopilot.ClaudeModeClock :: method private get_Total()
+member VoxClip.Core.Domain.Autopilot.ClaudeModeClock :: method public .ctor(System.Func`1<double>)
+member VoxClip.Core.Domain.Autopilot.ClaudeModeClock :: method public Begin(VoxClip.Core.Domain.Autopilot.ClaudeModeStage,System.Nullable`1<int>)
+member VoxClip.Core.Domain.Autopilot.ClaudeModeClock :: method public End(VoxClip.Core.Domain.Autopilot.ClaudeModeStage,System.Nullable`1<int>)
+member VoxClip.Core.Domain.Autopilot.ClaudeModeClock :: method public Json()
+member VoxClip.Core.Domain.Autopilot.ClaudeModeClock :: method public LogLine()
+member VoxClip.Core.Domain.Autopilot.ClaudeModeClock :: method public Name(VoxClip.Core.Domain.Autopilot.ClaudeModeStage)
+member VoxClip.Core.Domain.Autopilot.ClaudeModeClock :: method public Record(VoxClip.Core.Domain.Autopilot.ClaudeModeStage,System.Nullable`1<int>,double)
+member VoxClip.Core.Domain.Autopilot.ClaudeModeClock :: method public TimedAsync`1(VoxClip.Core.Domain.Autopilot.ClaudeModeStage,System.Nullable`1<int>,System.Func`1<System.Threading.Tasks.Task`1<!!0>>)
+member VoxClip.Core.Domain.Autopilot.ClaudeModeClock :: method public get_Elapsed()
+member VoxClip.Core.Domain.Autopilot.ClaudeModeClock :: method public get_FirstReady()
+member VoxClip.Core.Domain.Autopilot.ClaudeModeClock :: method public get_Timings()
+member VoxClip.Core.Domain.Autopilot.ClaudeModeStage :: field public Apply
+member VoxClip.Core.Domain.Autopilot.ClaudeModeStage :: field public Audio
+member VoxClip.Core.Domain.Autopilot.ClaudeModeStage :: field public Export
+member VoxClip.Core.Domain.Autopilot.ClaudeModeStage :: field public Find
+member VoxClip.Core.Domain.Autopilot.ClaudeModeStage :: field public Plan
+member VoxClip.Core.Domain.Autopilot.ClaudeModeStage :: field public Probe
+member VoxClip.Core.Domain.Autopilot.ClaudeModeStage :: field public Transcribe
+member VoxClip.Core.Domain.Autopilot.ClaudeModeStage :: field public value__
+member VoxClip.Core.Domain.Autopilot.ClaudeModeTiming :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClaudeModeTiming)
+member VoxClip.Core.Domain.Autopilot.ClaudeModeTiming :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Autopilot.ClaudeModeTiming :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Autopilot.ClaudeModeTiming :: method public .ctor(VoxClip.Core.Domain.Autopilot.ClaudeModeStage,System.Nullable`1<int>,double,double)
+member VoxClip.Core.Domain.Autopilot.ClaudeModeTiming :: method public Deconstruct(VoxClip.Core.Domain.Autopilot.ClaudeModeStage&,System.Nullable`1<int>&,double&,double&)
+member VoxClip.Core.Domain.Autopilot.ClaudeModeTiming :: method public Equals(VoxClip.Core.Domain.Autopilot.ClaudeModeTiming)
+member VoxClip.Core.Domain.Autopilot.ClaudeModeTiming :: method public Equals(object)
+member VoxClip.Core.Domain.Autopilot.ClaudeModeTiming :: method public GetHashCode()
+member VoxClip.Core.Domain.Autopilot.ClaudeModeTiming :: method public ToString()
+member VoxClip.Core.Domain.Autopilot.ClaudeModeTiming :: method public get_Clip()
+member VoxClip.Core.Domain.Autopilot.ClaudeModeTiming :: method public get_End()
+member VoxClip.Core.Domain.Autopilot.ClaudeModeTiming :: method public get_Seconds()
+member VoxClip.Core.Domain.Autopilot.ClaudeModeTiming :: method public get_Stage()
+member VoxClip.Core.Domain.Autopilot.ClaudeModeTiming :: method public get_Start()
+member VoxClip.Core.Domain.Autopilot.ClaudeModeTiming :: method public op_Equality(VoxClip.Core.Domain.Autopilot.ClaudeModeTiming,VoxClip.Core.Domain.Autopilot.ClaudeModeTiming)
+member VoxClip.Core.Domain.Autopilot.ClaudeModeTiming :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.ClaudeModeTiming,VoxClip.Core.Domain.Autopilot.ClaudeModeTiming)
+member VoxClip.Core.Domain.Autopilot.ClaudeModeTiming :: method public set_Clip(System.Nullable`1<int>)
+member VoxClip.Core.Domain.Autopilot.ClaudeModeTiming :: method public set_End(double)
+member VoxClip.Core.Domain.Autopilot.ClaudeModeTiming :: method public set_Stage(VoxClip.Core.Domain.Autopilot.ClaudeModeStage)
+member VoxClip.Core.Domain.Autopilot.ClaudeModeTiming :: method public set_Start(double)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction :: method protected .ctor()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction :: method protected .ctor(VoxClip.Core.Domain.Autopilot.ClipAutopilotAction)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotAction :: method protected PrintMembers(System.Text.StringBuilder)
@@ -1393,9 +1443,9 @@ member VoxClip.Core.Domain.Autopilot.ClipAutopilotContext :: method internal Cor
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotContext :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClipAutopilotContext)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotContext :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotContext :: method private get_EqualityContract()
-member VoxClip.Core.Domain.Autopilot.ClipAutopilotContext :: method public .ctor(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,System.Collections.Generic.IReadOnlyDictionary`2<string,string>,System.Collections.Generic.IReadOnlySet`1<string>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.Pause>,System.Collections.Generic.IReadOnlySet`1<string>,double,VoxClip.Core.Domain.Autopilot.WordSpan,System.Collections.Generic.IReadOnlySet`1<string>,System.Collections.Generic.IReadOnlyDictionary`2<VoxClip.Core.Domain.Autopilot.ClipAutopilotFont,string>,VoxClip.Core.Domain.Autopilot.ClipAutopilotCaptionPreference,VoxClip.Core.Domain.Autopilot.ClipAutopilotPrompt,VoxClip.Core.Domain.Autopilot.ClipAutopilotTone)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotContext :: method public .ctor(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,System.Collections.Generic.IReadOnlyDictionary`2<string,string>,System.Collections.Generic.IReadOnlySet`1<string>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.Pause>,System.Collections.Generic.IReadOnlySet`1<string>,double,VoxClip.Core.Domain.Autopilot.WordSpan,System.Collections.Generic.IReadOnlySet`1<string>,System.Collections.Generic.IReadOnlyDictionary`2<VoxClip.Core.Domain.Autopilot.ClipAutopilotFont,string>,VoxClip.Core.Domain.Autopilot.ClipAutopilotCaptionPreference,VoxClip.Core.Domain.Autopilot.ClipAutopilotPrompt,VoxClip.Core.Domain.Autopilot.ClipAutopilotTone,VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotContext :: method public Allows(VoxClip.Core.Domain.Autopilot.ClipAutopilotFont)
-member VoxClip.Core.Domain.Autopilot.ClipAutopilotContext :: method public Deconstruct(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>&,System.Collections.Generic.IReadOnlyDictionary`2<string,string>&,System.Collections.Generic.IReadOnlySet`1<string>&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.Pause>&,System.Collections.Generic.IReadOnlySet`1<string>&,double&,VoxClip.Core.Domain.Autopilot.WordSpan&,System.Collections.Generic.IReadOnlySet`1<string>&,System.Collections.Generic.IReadOnlyDictionary`2<VoxClip.Core.Domain.Autopilot.ClipAutopilotFont,string>&,VoxClip.Core.Domain.Autopilot.ClipAutopilotCaptionPreference&,VoxClip.Core.Domain.Autopilot.ClipAutopilotPrompt&,VoxClip.Core.Domain.Autopilot.ClipAutopilotTone&)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotContext :: method public Deconstruct(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>&,System.Collections.Generic.IReadOnlyDictionary`2<string,string>&,System.Collections.Generic.IReadOnlySet`1<string>&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.Pause>&,System.Collections.Generic.IReadOnlySet`1<string>&,double&,VoxClip.Core.Domain.Autopilot.WordSpan&,System.Collections.Generic.IReadOnlySet`1<string>&,System.Collections.Generic.IReadOnlyDictionary`2<VoxClip.Core.Domain.Autopilot.ClipAutopilotFont,string>&,VoxClip.Core.Domain.Autopilot.ClipAutopilotCaptionPreference&,VoxClip.Core.Domain.Autopilot.ClipAutopilotPrompt&,VoxClip.Core.Domain.Autopilot.ClipAutopilotTone&,VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames&)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotContext :: method public Equals(VoxClip.Core.Domain.Autopilot.ClipAutopilotContext)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotContext :: method public Equals(object)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotContext :: method public GetHashCode()
@@ -1408,6 +1458,7 @@ member VoxClip.Core.Domain.Autopilot.ClipAutopilotContext :: method public get_C
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotContext :: method public get_CutWordIds()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotContext :: method public get_FixedStyle()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotContext :: method public get_Fonts()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotContext :: method public get_Frames()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotContext :: method public get_PauseKeepSeconds()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotContext :: method public get_Pauses()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotContext :: method public get_Preference()
@@ -1422,6 +1473,7 @@ member VoxClip.Core.Domain.Autopilot.ClipAutopilotContext :: method public set_C
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotContext :: method public set_CutPauseIds(System.Collections.Generic.IReadOnlySet`1<string>)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotContext :: method public set_CutWordIds(System.Collections.Generic.IReadOnlySet`1<string>)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotContext :: method public set_Fonts(System.Collections.Generic.IReadOnlyDictionary`2<VoxClip.Core.Domain.Autopilot.ClipAutopilotFont,string>)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotContext :: method public set_Frames(VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotContext :: method public set_PauseKeepSeconds(double)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotContext :: method public set_Pauses(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.Pause>)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotContext :: method public set_Preference(VoxClip.Core.Domain.Autopilot.ClipAutopilotCaptionPreference)
@@ -1498,6 +1550,77 @@ member VoxClip.Core.Domain.Autopilot.ClipAutopilotFont :: method public op_Inequ
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotFont :: method public set_Family(string)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotFont :: method public set_Weight(int)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotFonts :: method public Load(string)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrameSource :: method public .ctor(object,nint)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrameSource :: method public BeginInvoke(int,VoxClip.Core.Domain.Autopilot.WordSpan,System.Threading.CancellationToken,System.AsyncCallback,object)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrameSource :: method public EndInvoke(System.IAsyncResult)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrameSource :: method public Invoke(int,VoxClip.Core.Domain.Autopilot.WordSpan,System.Threading.CancellationToken)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames :: method internal RectText(VoxClip.Core.Domain.Effects.ClipEffectRect)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames :: method internal Seconds(double)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames :: method public .ctor(string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Services.LLM.LlmImage>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate>,int)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames :: method public BlurCandidateFor(string)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames :: method public CoverCandidateFor(string)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames :: method public Deconstruct(string&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Services.LLM.LlmImage>&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate>&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate>&,int&)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames :: method public Equals(VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames :: method public Equals(object)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames :: method public GetHashCode()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames :: method public ToString()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames :: method public get_Blur()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames :: method public get_Cover()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames :: method public get_EstimatedImageTokens()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames :: method public get_Images()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames :: method public get_SendsImages()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames :: method public get_Summary()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames :: method public get_TextOnly()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames :: method public op_Equality(VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames,VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames,VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames :: method public set_Blur(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate>)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames :: method public set_Cover(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate>)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames :: method public set_EstimatedImageTokens(int)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames :: method public set_Images(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Services.LLM.LlmImage>)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames :: method public set_Summary(string)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate :: method public .ctor(string,double,double,VoxClip.Core.Domain.Effects.ClipEffectRect,int)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate :: method public Deconstruct(string&,double&,double&,VoxClip.Core.Domain.Effects.ClipEffectRect&,int&)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate :: method public Equals(VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate :: method public Equals(object)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate :: method public GetHashCode()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate :: method public ToString()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate :: method public get_End()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate :: method public get_Frames()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate :: method public get_Id()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate :: method public get_Rect()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate :: method public get_Start()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate :: method public op_Equality(VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate,VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate,VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate :: method public set_End(double)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate :: method public set_Frames(int)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate :: method public set_Id(string)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate :: method public set_Rect(VoxClip.Core.Domain.Effects.ClipEffectRect)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate :: method public set_Start(double)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate :: method public .ctor(string,int,double,double)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate :: method public Deconstruct(string&,int&,double&,double&)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate :: method public Equals(VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate :: method public Equals(object)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate :: method public GetHashCode()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate :: method public ToString()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate :: method public get_Frame()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate :: method public get_Id()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate :: method public get_Score()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate :: method public get_Time()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate :: method public op_Equality(VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate,VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate,VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate :: method public set_Frame(int)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate :: method public set_Id(string)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate :: method public set_Score(double)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate :: method public set_Time(double)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotLimits :: method internal .ctor(System.Text.Json.Nodes.JsonNode)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotLimits :: method internal TemplateValues()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotLimits :: method internal Text(double)
@@ -1611,6 +1734,7 @@ member VoxClip.Core.Domain.Autopilot.ClipAutopilotMoment :: method public .ctor(
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotMoment :: method public Deconstruct(int&,int&,string&,string&,int&,VoxClip.Core.Domain.Autopilot.ClipAutopilotVerdict&,string&,string&,string&)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotMoment :: method public Equals(VoxClip.Core.Domain.Autopilot.ClipAutopilotMoment)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotMoment :: method public Equals(object)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotMoment :: method public Found(VoxClip.Core.Domain.Autopilot.WordSpan,string,string,int)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotMoment :: method public GetHashCode()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotMoment :: method public ToString()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotMoment :: method public get_CaptionReason()
@@ -1636,8 +1760,8 @@ member VoxClip.Core.Domain.Autopilot.ClipAutopilotMoment :: method public set_Ve
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief :: method private get_EqualityContract()
-member VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief :: method public .ctor(int,int,VoxClip.Core.Domain.Autopilot.ClipAutopilotMoment,System.Collections.Generic.IReadOnlyList`1<string>)
-member VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief :: method public Deconstruct(int&,int&,VoxClip.Core.Domain.Autopilot.ClipAutopilotMoment&,System.Collections.Generic.IReadOnlyList`1<string>&)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief :: method public .ctor(int,int,VoxClip.Core.Domain.Autopilot.ClipAutopilotMoment,System.Collections.Generic.IReadOnlyList`1<string>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotMoment>)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief :: method public Deconstruct(int&,int&,VoxClip.Core.Domain.Autopilot.ClipAutopilotMoment&,System.Collections.Generic.IReadOnlyList`1<string>&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotMoment>&)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief :: method public Equals(VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief :: method public Equals(object)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief :: method public GetHashCode()
@@ -1645,12 +1769,14 @@ member VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief :: method public T
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief :: method public get_Count()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief :: method public get_Moment()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief :: method public get_OtherStyles()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief :: method public get_Others()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief :: method public get_Rank()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief :: method public op_Equality(VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief,VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief,VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief :: method public set_Count(int)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief :: method public set_Moment(VoxClip.Core.Domain.Autopilot.ClipAutopilotMoment)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief :: method public set_OtherStyles(System.Collections.Generic.IReadOnlyList`1<string>)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief :: method public set_Others(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotMoment>)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief :: method public set_Rank(int)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotMusicCue :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClipAutopilotMusicCue)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotMusicCue :: method private PrintMembers(System.Text.StringBuilder)
@@ -1707,6 +1833,7 @@ member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan :: method public get_Corr
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan :: method public get_Cuts()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan :: method public get_EndWord()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan :: method public get_Flags()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan :: method public get_Frames()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan :: method public get_Hook()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan :: method public get_LengthReason()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan :: method public get_MusicChoices()
@@ -1736,6 +1863,7 @@ member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan :: method public set_Corr
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan :: method public set_Cuts(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Cut>)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan :: method public set_EndWord(int)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan :: method public set_Flags(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Flag>)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan :: method public set_Frames(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan :: method public set_Hook(string)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan :: method public set_LengthReason(string)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan :: method public set_MusicChoices(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Music>)
@@ -1829,6 +1957,55 @@ member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Flag :: method public op_
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Flag :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Flag,VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Flag)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Flag :: method public set_Detail(string)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Flag :: method public set_Kind(string)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices :: method public .ctor(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Blur>,VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Cover)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices :: method public Deconstruct(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Blur>&,VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Cover&)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices :: method public Equals(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices :: method public Equals(object)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices :: method public GetHashCode()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices :: method public ToString()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices :: method public get_BlurChoices()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices :: method public get_CoverChoice()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices :: method public op_Equality(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices,VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices,VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices :: method public set_BlurChoices(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Blur>)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices :: method public set_CoverChoice(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Cover)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Blur :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Blur)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Blur :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Blur :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Blur :: method public .ctor(string,bool,string)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Blur :: method public Deconstruct(string&,bool&,string&)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Blur :: method public Equals(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Blur)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Blur :: method public Equals(object)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Blur :: method public GetHashCode()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Blur :: method public ToString()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Blur :: method public get_Blurred()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Blur :: method public get_Id()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Blur :: method public get_Reason()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Blur :: method public op_Equality(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Blur,VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Blur)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Blur :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Blur,VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Blur)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Blur :: method public set_Blurred(bool)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Blur :: method public set_Id(string)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Blur :: method public set_Reason(string)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Cover :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Cover)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Cover :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Cover :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Cover :: method public .ctor(string,string,bool)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Cover :: method public Deconstruct(string&,string&,bool&)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Cover :: method public Equals(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Cover)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Cover :: method public Equals(object)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Cover :: method public GetHashCode()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Cover :: method public ToString()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Cover :: method public get_Fallback()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Cover :: method public get_Id()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Cover :: method public get_Reason()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Cover :: method public op_Equality(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Cover,VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Cover)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Cover :: method public op_Inequality(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Cover,VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Cover)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Cover :: method public set_Fallback(bool)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Cover :: method public set_Id(string)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Cover :: method public set_Reason(string)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Look :: field public Original
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Look :: method private .cctor()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Look :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Look)
@@ -2054,6 +2231,7 @@ member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest :: method public get_E
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest :: method public get_IsSeries()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest :: method public get_Language()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest :: method public get_Mode()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest :: method public get_Moments()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest :: method public get_Note()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest :: method public get_Tone()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest :: method public get_Transcript()
@@ -2063,6 +2241,7 @@ member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest :: method public set_C
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest :: method public set_Edits(VoxClip.Core.Domain.Shared.ProjectEdits)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest :: method public set_Language(string)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest :: method public set_Mode(VoxClip.Core.Domain.Autopilot.ClipAutopilotMode)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest :: method public set_Moments(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotMoment>)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest :: method public set_Note(string)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest :: method public set_Tone(VoxClip.Core.Domain.Autopilot.ClipAutopilotTone)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest :: method public set_Transcript(VoxClip.Core.Domain.Transcript.Transcript)
@@ -2072,7 +2251,7 @@ member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequestBuilder :: method inter
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequestBuilder :: method internal IsLetterOrNumber(System.Text.Rune)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequestBuilder :: method internal Names(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,VoxClip.Core.Domain.Autopilot.WordSpan,System.Collections.Generic.IReadOnlyDictionary`2<string,string>)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequestBuilder :: method internal PreferenceLine(VoxClip.Core.Domain.Autopilot.ClipAutopilotCaptionPreference,VoxClip.Core.Domain.Autopilot.ClipAutopilotPrompt)
-member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequestBuilder :: method internal Render(VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest,VoxClip.Core.Domain.Autopilot.ClipAutopilotPrompt,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Captions.CaptionStyle>,System.Collections.Generic.IReadOnlyDictionary`2<VoxClip.Core.Domain.Autopilot.ClipAutopilotFont,string>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.Pause>,VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequestBuilder :: method internal Render(VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest,VoxClip.Core.Domain.Autopilot.ClipAutopilotPrompt,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Captions.CaptionStyle>,System.Collections.Generic.IReadOnlyDictionary`2<VoxClip.Core.Domain.Autopilot.ClipAutopilotFont,string>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.Pause>,VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief,VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequestBuilder :: method internal SpokenTime(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,System.Collections.Generic.IReadOnlyList`1<int>,System.Collections.Generic.IReadOnlyDictionary`2<string,string>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.Pause>,double)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequestBuilder :: method internal TextElements(string)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequestBuilder :: method internal ToneLine(VoxClip.Core.Domain.Autopilot.ClipAutopilotTone,VoxClip.Core.Domain.Autopilot.ClipAutopilotPrompt)
@@ -2082,6 +2261,7 @@ member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequestBuilder :: method priva
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequestBuilder :: method private LanguageTag()
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequestBuilder :: method private Values(System.ValueTuple`2<string,string>[])
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequestBuilder :: method private Whole(double)
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequestBuilder :: method public FramesBlock(VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames,VoxClip.Core.Domain.Autopilot.ClipAutopilotPrompt)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequestBuilder :: method public Scope(VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequestBuilder+Rendered :: method private .ctor(VoxClip.Core.Domain.Autopilot.ClipAutopilotRequestBuilder+Rendered)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotRequestBuilder+Rendered :: method private PrintMembers(System.Text.StringBuilder)
@@ -2178,6 +2358,7 @@ member VoxClip.Core.Domain.Autopilot.ClipAutopilotValidator :: method private Co
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotValidator :: method private Cuts(System.Text.Json.Nodes.JsonNode,VoxClip.Core.Domain.Autopilot.WordSpan,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Rewrite>,VoxClip.Core.Domain.Autopilot.ClipAutopilotContext,VoxClip.Core.Domain.Autopilot.ClipAutopilotValidator+Log)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotValidator :: method private D(double)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotValidator :: method private FamilyWithWeight()
+member VoxClip.Core.Domain.Autopilot.ClipAutopilotValidator :: method private Frames(System.Text.Json.Nodes.JsonNode,VoxClip.Core.Domain.Autopilot.ClipAutopilotContext,VoxClip.Core.Domain.Autopilot.ClipAutopilotValidator+Log)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotValidator :: method private IsSafePhrase(string)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotValidator :: method private LettersAndNumbersLower(string)
 member VoxClip.Core.Domain.Autopilot.ClipAutopilotValidator :: method private LettersLower(string)
@@ -13315,16 +13496,17 @@ member VoxClip.Core.Services.LLM.CliDetectionInfo :: method public set_Path(stri
 member VoxClip.Core.Services.LLM.CliDetectionInfo :: method public set_UsesApiKey(bool)
 member VoxClip.Core.Services.LLM.CliDetectionInfo :: method public set_Version(string)
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: field internal DefaultNetworkErrorMarkers
-member VoxClip.Core.Services.LLM.CliLlmAdapter :: field private ClaudeGate
-member VoxClip.Core.Services.LLM.CliLlmAdapter :: field private CodexGate
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: field private PathGate
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: field private cachedModels
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: field private defaultEfforts
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: field private detected
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: field private efforts
+member VoxClip.Core.Services.LLM.CliLlmAdapter :: field private gate
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: field private loginPath
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: field private provider
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: field private settings
+member VoxClip.Core.Services.LLM.CliLlmAdapter :: method internal ClaudeImageMessage(string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Services.LLM.LlmImage>)
+member VoxClip.Core.Services.LLM.CliLlmAdapter :: method internal CodexImagePrompt(string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Services.LLM.LlmImage>)
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: method internal ModelsAsync(bool,System.Threading.CancellationToken)
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: method internal SendAsync(VoxClip.Core.Services.LLM.LlmRequest,string,System.Threading.CancellationToken)
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: method internal SetRedactor(VoxClip.Core.Domain.Shared.IRedactor)
@@ -13340,6 +13522,7 @@ member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private Candidate(strin
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private CheckOutput(VoxClip.Core.Services.Process.ProcessResult)
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private Classify(string,string,VoxClip.Core.Services.LLM.LlmFeature,System.Nullable`1<long>)
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private ClassifyStderr(string,string,VoxClip.Core.Services.LLM.LlmFeature)
+member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private ClaudeStreamResult(VoxClip.Core.Services.Process.ProcessResult)
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private CommandAsync(VoxClip.Core.Services.LLM.CliLlmAdapter+Detection,System.Collections.Generic.IReadOnlyList`1<string>,string,System.TimeSpan,System.Threading.CancellationToken)
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private Count(System.Text.Json.Nodes.JsonNode,string)
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private DetectAsync(System.Threading.CancellationToken)
@@ -13353,12 +13536,14 @@ member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private ParseClaude(Vox
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private ParseCodexAsync(VoxClip.Core.Services.Process.ProcessResult,string,VoxClip.Core.Services.LLM.LlmRequest,string,System.Threading.CancellationToken)
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private ProbeFailure()
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private RawCommandAsync(string,System.Collections.Generic.IReadOnlyList`1<string>,System.Threading.CancellationToken)
+member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private SendableImages(VoxClip.Core.Services.LLM.LlmRequest,VoxClip.Core.Services.LLM.CliLlmAdapter+Detection)
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private StatusFailure(VoxClip.Core.Services.LLM.LlmException)
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private Strings(System.Text.Json.Nodes.JsonNode)
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private Supports(string,string)
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private Text(System.Text.Json.Nodes.JsonNode)
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private TimeoutClassificationText(VoxClip.Core.Services.Process.CliProcessTimeoutException)
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private WriteDiagnostic(string)
+member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private WriteImagesAsync(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Services.LLM.LlmImage>,string,System.Threading.CancellationToken)
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private get_Label()
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private set_AuthMethod(string)
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private set_IsApiKeyAuth(bool)
@@ -13489,6 +13674,24 @@ member VoxClip.Core.Services.LLM.ClipAutopilotProgress+Planning :: method public
 member VoxClip.Core.Services.LLM.ClipAutopilotProgress+Planning :: method public op_Inequality(VoxClip.Core.Services.LLM.ClipAutopilotProgress+Planning,VoxClip.Core.Services.LLM.ClipAutopilotProgress+Planning)
 member VoxClip.Core.Services.LLM.ClipAutopilotProgress+Planning :: method public set_Clip(int)
 member VoxClip.Core.Services.LLM.ClipAutopilotProgress+Planning :: method public set_Of(int)
+member VoxClip.Core.Services.LLM.ClipAutopilotProgress+Ready :: method private .ctor(VoxClip.Core.Services.LLM.ClipAutopilotProgress+Ready)
+member VoxClip.Core.Services.LLM.ClipAutopilotProgress+Ready :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Services.LLM.ClipAutopilotProgress+Ready :: method protected get_EqualityContract()
+member VoxClip.Core.Services.LLM.ClipAutopilotProgress+Ready :: method public .ctor(int,int,VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan)
+member VoxClip.Core.Services.LLM.ClipAutopilotProgress+Ready :: method public Deconstruct(int&,int&,VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan&)
+member VoxClip.Core.Services.LLM.ClipAutopilotProgress+Ready :: method public Equals(VoxClip.Core.Services.LLM.ClipAutopilotProgress)
+member VoxClip.Core.Services.LLM.ClipAutopilotProgress+Ready :: method public Equals(VoxClip.Core.Services.LLM.ClipAutopilotProgress+Ready)
+member VoxClip.Core.Services.LLM.ClipAutopilotProgress+Ready :: method public Equals(object)
+member VoxClip.Core.Services.LLM.ClipAutopilotProgress+Ready :: method public GetHashCode()
+member VoxClip.Core.Services.LLM.ClipAutopilotProgress+Ready :: method public ToString()
+member VoxClip.Core.Services.LLM.ClipAutopilotProgress+Ready :: method public get_Clip()
+member VoxClip.Core.Services.LLM.ClipAutopilotProgress+Ready :: method public get_Of()
+member VoxClip.Core.Services.LLM.ClipAutopilotProgress+Ready :: method public get_Plan()
+member VoxClip.Core.Services.LLM.ClipAutopilotProgress+Ready :: method public op_Equality(VoxClip.Core.Services.LLM.ClipAutopilotProgress+Ready,VoxClip.Core.Services.LLM.ClipAutopilotProgress+Ready)
+member VoxClip.Core.Services.LLM.ClipAutopilotProgress+Ready :: method public op_Inequality(VoxClip.Core.Services.LLM.ClipAutopilotProgress+Ready,VoxClip.Core.Services.LLM.ClipAutopilotProgress+Ready)
+member VoxClip.Core.Services.LLM.ClipAutopilotProgress+Ready :: method public set_Clip(int)
+member VoxClip.Core.Services.LLM.ClipAutopilotProgress+Ready :: method public set_Of(int)
+member VoxClip.Core.Services.LLM.ClipAutopilotProgress+Ready :: method public set_Plan(VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan)
 member VoxClip.Core.Services.LLM.ClipAutopilotResult :: method private .ctor(VoxClip.Core.Services.LLM.ClipAutopilotResult)
 member VoxClip.Core.Services.LLM.ClipAutopilotResult :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Services.LLM.ClipAutopilotResult :: method private get_EqualityContract()
@@ -13519,30 +13722,37 @@ member VoxClip.Core.Services.LLM.ClipAutopilotService :: field public MaxParalle
 member VoxClip.Core.Services.LLM.ClipAutopilotService :: field public MomentsEffort
 member VoxClip.Core.Services.LLM.ClipAutopilotService :: field public PlanEffort
 member VoxClip.Core.Services.LLM.ClipAutopilotService :: method private Briefs(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Autopilot.ClipAutopilotMoment>)
-member VoxClip.Core.Services.LLM.ClipAutopilotService :: method private First(VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest,VoxClip.Core.Services.LLM.ConnectorId)
-member VoxClip.Core.Services.LLM.ClipAutopilotService :: method private PlanAllAsync(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Services.LLM.ILlmConnector>,string,System.Action`1<VoxClip.Core.Services.LLM.ClipAutopilotProgress>,System.Threading.CancellationToken)
-member VoxClip.Core.Services.LLM.ClipAutopilotService :: method private Prepare(VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest,VoxClip.Core.Services.LLM.ClipAutopilotService+Resources,VoxClip.Core.Services.LLM.ConnectorId,VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief)
+member VoxClip.Core.Services.LLM.ClipAutopilotService :: method private First(VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest,VoxClip.Core.Services.LLM.ConnectorId,VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames)
+member VoxClip.Core.Services.LLM.ClipAutopilotService :: method private PlanAllAsync(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Services.LLM.ILlmConnector>,string,VoxClip.Core.Services.LLM.ClipAutopilotService+Resources,VoxClip.Core.Domain.Autopilot.ClipAutopilotFrameSource,System.Action`1<VoxClip.Core.Services.LLM.ClipAutopilotProgress>,System.Threading.CancellationToken)
+member VoxClip.Core.Services.LLM.ClipAutopilotService :: method private Prepare(VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest,VoxClip.Core.Services.LLM.ClipAutopilotService+Resources,VoxClip.Core.Services.LLM.ConnectorId,VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief,VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames)
 member VoxClip.Core.Services.LLM.ClipAutopilotService :: method private Result(VoxClip.Core.Domain.Autopilot.ClipAutopilotSeries,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Services.LLM.LlmResult>,string,VoxClip.Core.Services.LLM.ClipAutopilotService+Resources)
 member VoxClip.Core.Services.LLM.ClipAutopilotService :: method private SendAsync(VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared,VoxClip.Core.Services.LLM.ILlmConnector,string,System.Threading.CancellationToken)
+member VoxClip.Core.Services.LLM.ClipAutopilotService :: method private ShowingAsync(VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared,VoxClip.Core.Domain.Autopilot.ClipAutopilotFrameSource,int,VoxClip.Core.Services.LLM.ClipAutopilotService+Resources,System.Threading.CancellationToken)
 member VoxClip.Core.Services.LLM.ClipAutopilotService :: method private TimeoutKind(VoxClip.Core.Services.LLM.ConnectorId)
 member VoxClip.Core.Services.LLM.ClipAutopilotService :: method public .ctor(VoxClip.Core.Services.LLM.LlmRunner,VoxClip.Core.Services.LLM.LlmCatalog,string)
-member VoxClip.Core.Services.LLM.ClipAutopilotService :: method public Context(VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest)
-member VoxClip.Core.Services.LLM.ClipAutopilotService :: method public PlanAsync(VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest,VoxClip.Core.Services.LLM.ILlmConnector,string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Services.LLM.ILlmConnector>,System.Action`1<VoxClip.Core.Services.LLM.ClipAutopilotProgress>,System.Threading.CancellationToken)
-member VoxClip.Core.Services.LLM.ClipAutopilotService :: method public Request(VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest,VoxClip.Core.Services.LLM.ConnectorId)
+member VoxClip.Core.Services.LLM.ClipAutopilotService :: method public Context(VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest,VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames)
+member VoxClip.Core.Services.LLM.ClipAutopilotService :: method public PlanAsync(VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest,VoxClip.Core.Services.LLM.ILlmConnector,string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Services.LLM.ILlmConnector>,System.Action`1<VoxClip.Core.Services.LLM.ClipAutopilotProgress>,System.Threading.CancellationToken,VoxClip.Core.Domain.Autopilot.ClipAutopilotFrameSource)
+member VoxClip.Core.Services.LLM.ClipAutopilotService :: method public Request(VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest,VoxClip.Core.Services.LLM.ConnectorId,VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames)
 member VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared :: method private .ctor(VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared)
 member VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared :: method private get_EqualityContract()
-member VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared :: method public .ctor(VoxClip.Core.Services.LLM.LlmRequest,VoxClip.Core.Domain.Autopilot.ClipAutopilotContext)
-member VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared :: method public Deconstruct(VoxClip.Core.Services.LLM.LlmRequest&,VoxClip.Core.Domain.Autopilot.ClipAutopilotContext&)
+member VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared :: method public .ctor(VoxClip.Core.Services.LLM.LlmRequest,VoxClip.Core.Domain.Autopilot.ClipAutopilotContext,VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest,VoxClip.Core.Services.LLM.ConnectorId,VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief)
+member VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared :: method public Deconstruct(VoxClip.Core.Services.LLM.LlmRequest&,VoxClip.Core.Domain.Autopilot.ClipAutopilotContext&,VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest&,VoxClip.Core.Services.LLM.ConnectorId&,VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief&)
 member VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared :: method public Equals(VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared)
 member VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared :: method public Equals(object)
 member VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared :: method public GetHashCode()
 member VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared :: method public ToString()
+member VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared :: method public get_Connector()
 member VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared :: method public get_Context()
+member VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared :: method public get_Input()
+member VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared :: method public get_Moment()
 member VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared :: method public get_Request()
 member VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared :: method public op_Equality(VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared,VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared)
 member VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared :: method public op_Inequality(VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared,VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared)
+member VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared :: method public set_Connector(VoxClip.Core.Services.LLM.ConnectorId)
 member VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared :: method public set_Context(VoxClip.Core.Domain.Autopilot.ClipAutopilotContext)
+member VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared :: method public set_Input(VoxClip.Core.Domain.Autopilot.ClipAutopilotRequest)
+member VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared :: method public set_Moment(VoxClip.Core.Domain.Autopilot.ClipAutopilotMomentBrief)
 member VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared :: method public set_Request(VoxClip.Core.Services.LLM.LlmRequest)
 member VoxClip.Core.Services.LLM.ClipAutopilotService+Resources :: method internal .ctor(string)
 member VoxClip.Core.Services.LLM.ClipAutopilotService+Resources :: method internal get_Fonts()
@@ -13812,6 +14022,7 @@ member VoxClip.Core.Services.LLM.ILlmConnector :: method public GetModelsAsync(b
 member VoxClip.Core.Services.LLM.ILlmConnector :: method public GetStatusAsync(System.Threading.CancellationToken)
 member VoxClip.Core.Services.LLM.ILlmConnector :: method public SendAsync(VoxClip.Core.Services.LLM.LlmRequest,string,System.Threading.CancellationToken)
 member VoxClip.Core.Services.LLM.ILlmConnector :: method public get_Id()
+member VoxClip.Core.Services.LLM.ILlmConnector :: method public get_SupportsImages()
 member VoxClip.Core.Services.LLM.LipsyncJob :: method private .ctor(VoxClip.Core.Services.LLM.LipsyncJob)
 member VoxClip.Core.Services.LLM.LipsyncJob :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Services.LLM.LipsyncJob :: method private get_EqualityContract()
@@ -13951,6 +14162,8 @@ member VoxClip.Core.Services.LLM.LlmCatalog :: method internal EffortLevels(VoxC
 member VoxClip.Core.Services.LLM.LlmCatalog :: method internal Estimate(string)
 member VoxClip.Core.Services.LLM.LlmCatalog :: method internal Fallback(VoxClip.Core.Services.LLM.ConnectorId,string)
 member VoxClip.Core.Services.LLM.LlmCatalog :: method internal FeatureId(VoxClip.Core.Services.LLM.LlmFeature)
+member VoxClip.Core.Services.LLM.LlmCatalog :: method internal ImageRequiredFlags(VoxClip.Core.Services.LLM.ConnectorId)
+member VoxClip.Core.Services.LLM.LlmCatalog :: method internal Images(VoxClip.Core.Services.LLM.LlmRequest,VoxClip.Core.Services.LLM.ConnectorId)
 member VoxClip.Core.Services.LLM.LlmCatalog :: method internal Model(VoxClip.Core.Services.LLM.ConnectorId,string)
 member VoxClip.Core.Services.LLM.LlmCatalog :: method internal Models(VoxClip.Core.Services.LLM.ConnectorId)
 member VoxClip.Core.Services.LLM.LlmCatalog :: method internal Provider(VoxClip.Core.Services.LLM.ConnectorId)
@@ -13967,6 +14180,8 @@ member VoxClip.Core.Services.LLM.LlmCatalog :: method public .ctor()
 member VoxClip.Core.Services.LLM.LlmCatalog :: method public DecisionEffort(VoxClip.Core.Services.LLM.ConnectorId)
 member VoxClip.Core.Services.LLM.LlmCatalog :: method public GetModelsAsync(VoxClip.Core.Services.LLM.ConnectorId,System.Threading.CancellationToken)
 member VoxClip.Core.Services.LLM.LlmCatalog :: method public Load(string)
+member VoxClip.Core.Services.LLM.LlmCatalog :: method public MaximumImages(VoxClip.Core.Services.LLM.ConnectorId)
+member VoxClip.Core.Services.LLM.LlmCatalog :: method public SupportsImages(VoxClip.Core.Services.LLM.ConnectorId)
 member VoxClip.Core.Services.LLM.LlmCatalog :: method public TestRequest(VoxClip.Core.Services.LLM.ConnectorId)
 member VoxClip.Core.Services.LLM.LlmConnectionTestResult :: method private .ctor(VoxClip.Core.Services.LLM.LlmConnectionTestResult)
 member VoxClip.Core.Services.LLM.LlmConnectionTestResult :: method private PrintMembers(System.Text.StringBuilder)
@@ -14057,6 +14272,7 @@ member VoxClip.Core.Services.LLM.LlmConnector :: method public get_Id()
 member VoxClip.Core.Services.LLM.LlmConnector :: method public get_ModelsFetchedAt()
 member VoxClip.Core.Services.LLM.LlmConnector :: method public get_RefreshWarning()
 member VoxClip.Core.Services.LLM.LlmConnector :: method public get_SelectedModel()
+member VoxClip.Core.Services.LLM.LlmConnector :: method public get_SupportsImages()
 member VoxClip.Core.Services.LLM.LlmConnector+KeyDestination :: method private .ctor(VoxClip.Core.Services.LLM.LlmConnector+KeyDestination)
 member VoxClip.Core.Services.LLM.LlmConnector+KeyDestination :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Services.LLM.LlmConnector+KeyDestination :: method private get_EqualityContract()
@@ -14139,6 +14355,29 @@ member VoxClip.Core.Services.LLM.LlmFeature :: field public ClipFinder
 member VoxClip.Core.Services.LLM.LlmFeature :: field public Test
 member VoxClip.Core.Services.LLM.LlmFeature :: field public VoiceRewrite
 member VoxClip.Core.Services.LLM.LlmFeature :: field public value__
+member VoxClip.Core.Services.LLM.LlmImage :: method internal get_DataUrl()
+member VoxClip.Core.Services.LLM.LlmImage :: method private .ctor(VoxClip.Core.Services.LLM.LlmImage)
+member VoxClip.Core.Services.LLM.LlmImage :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Services.LLM.LlmImage :: method private get_EqualityContract()
+member VoxClip.Core.Services.LLM.LlmImage :: method public .ctor(string,string,byte[],int,int)
+member VoxClip.Core.Services.LLM.LlmImage :: method public Deconstruct(string&,string&,byte[]&,int&,int&)
+member VoxClip.Core.Services.LLM.LlmImage :: method public Equals(VoxClip.Core.Services.LLM.LlmImage)
+member VoxClip.Core.Services.LLM.LlmImage :: method public Equals(object)
+member VoxClip.Core.Services.LLM.LlmImage :: method public GetHashCode()
+member VoxClip.Core.Services.LLM.LlmImage :: method public ToString()
+member VoxClip.Core.Services.LLM.LlmImage :: method public get_Data()
+member VoxClip.Core.Services.LLM.LlmImage :: method public get_EstimatedTokens()
+member VoxClip.Core.Services.LLM.LlmImage :: method public get_Height()
+member VoxClip.Core.Services.LLM.LlmImage :: method public get_Label()
+member VoxClip.Core.Services.LLM.LlmImage :: method public get_MediaType()
+member VoxClip.Core.Services.LLM.LlmImage :: method public get_Width()
+member VoxClip.Core.Services.LLM.LlmImage :: method public op_Equality(VoxClip.Core.Services.LLM.LlmImage,VoxClip.Core.Services.LLM.LlmImage)
+member VoxClip.Core.Services.LLM.LlmImage :: method public op_Inequality(VoxClip.Core.Services.LLM.LlmImage,VoxClip.Core.Services.LLM.LlmImage)
+member VoxClip.Core.Services.LLM.LlmImage :: method public set_Data(byte[])
+member VoxClip.Core.Services.LLM.LlmImage :: method public set_Height(int)
+member VoxClip.Core.Services.LLM.LlmImage :: method public set_Label(string)
+member VoxClip.Core.Services.LLM.LlmImage :: method public set_MediaType(string)
+member VoxClip.Core.Services.LLM.LlmImage :: method public set_Width(int)
 member VoxClip.Core.Services.LLM.LlmJsonContext :: field private InstanceMemberBindingFlags
 member VoxClip.Core.Services.LLM.LlmModel :: method private .ctor(VoxClip.Core.Services.LLM.LlmModel)
 member VoxClip.Core.Services.LLM.LlmModel :: method private PrintMembers(System.Text.StringBuilder)
@@ -14183,6 +14422,7 @@ member VoxClip.Core.Services.LLM.LlmRequest :: method public ToString()
 member VoxClip.Core.Services.LLM.LlmRequest :: method public get_CachedBlock()
 member VoxClip.Core.Services.LLM.LlmRequest :: method public get_Effort()
 member VoxClip.Core.Services.LLM.LlmRequest :: method public get_Feature()
+member VoxClip.Core.Services.LLM.LlmRequest :: method public get_Images()
 member VoxClip.Core.Services.LLM.LlmRequest :: method public get_Instruction()
 member VoxClip.Core.Services.LLM.LlmRequest :: method public get_Language()
 member VoxClip.Core.Services.LLM.LlmRequest :: method public get_MaxOutputTokens()
@@ -14196,6 +14436,7 @@ member VoxClip.Core.Services.LLM.LlmRequest :: method public op_Inequality(VoxCl
 member VoxClip.Core.Services.LLM.LlmRequest :: method public set_CachedBlock(string)
 member VoxClip.Core.Services.LLM.LlmRequest :: method public set_Effort(System.Nullable`1<VoxClip.Core.Services.LLM.Effort>)
 member VoxClip.Core.Services.LLM.LlmRequest :: method public set_Feature(VoxClip.Core.Services.LLM.LlmFeature)
+member VoxClip.Core.Services.LLM.LlmRequest :: method public set_Images(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Services.LLM.LlmImage>)
 member VoxClip.Core.Services.LLM.LlmRequest :: method public set_Instruction(string)
 member VoxClip.Core.Services.LLM.LlmRequest :: method public set_Language(string)
 member VoxClip.Core.Services.LLM.LlmRequest :: method public set_MaxOutputTokens(int)
@@ -16350,6 +16591,9 @@ type VoxClip.Core.Domain.Autopilot.AskClaudeTextLine
 type VoxClip.Core.Domain.Autopilot.AskClaudeValidator
 type VoxClip.Core.Domain.Autopilot.AskClaudeValidator+RegionChoice
 type VoxClip.Core.Domain.Autopilot.AskClaudeVision
+type VoxClip.Core.Domain.Autopilot.ClaudeModeClock
+type VoxClip.Core.Domain.Autopilot.ClaudeModeStage
+type VoxClip.Core.Domain.Autopilot.ClaudeModeTiming
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotAction
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Captions
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotAction+Edit
@@ -16372,6 +16616,10 @@ type VoxClip.Core.Domain.Autopilot.ClipAutopilotDecision
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotDefaults
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotFont
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotFonts
+type VoxClip.Core.Domain.Autopilot.ClipAutopilotFrameSource
+type VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames
+type VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate
+type VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotLimits
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotMapping
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotMode
@@ -16387,6 +16635,9 @@ type VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Captions
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Correction
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Cut
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Flag
+type VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices
+type VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Blur
+type VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+FrameChoices+Cover
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Look
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+Music
 type VoxClip.Core.Domain.Autopilot.ClipAutopilotPlan+PauseCut
@@ -17152,6 +17403,7 @@ type VoxClip.Core.Services.LLM.ClipAutopilotProgress+Picked
 type VoxClip.Core.Services.LLM.ClipAutopilotProgress+PickingMoments
 type VoxClip.Core.Services.LLM.ClipAutopilotProgress+Planned
 type VoxClip.Core.Services.LLM.ClipAutopilotProgress+Planning
+type VoxClip.Core.Services.LLM.ClipAutopilotProgress+Ready
 type VoxClip.Core.Services.LLM.ClipAutopilotResult
 type VoxClip.Core.Services.LLM.ClipAutopilotService
 type VoxClip.Core.Services.LLM.ClipAutopilotService+Prepared
@@ -17199,6 +17451,7 @@ type VoxClip.Core.Services.LLM.LlmErrorKind
 type VoxClip.Core.Services.LLM.LlmErrors
 type VoxClip.Core.Services.LLM.LlmException
 type VoxClip.Core.Services.LLM.LlmFeature
+type VoxClip.Core.Services.LLM.LlmImage
 type VoxClip.Core.Services.LLM.LlmJsonContext
 type VoxClip.Core.Services.LLM.LlmModel
 type VoxClip.Core.Services.LLM.LlmOutput

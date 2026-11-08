@@ -1,3 +1,4 @@
+using VoxClip.Core.Domain.Autopilot;
 using VoxClip.Core.Services.Settings;
 
 namespace VoxClip.App.ViewModels;
@@ -63,6 +64,9 @@ public sealed partial class EditorViewModel
     {
         if (ClaudeMode.Phase != ClaudeModePhase.Idle || IsReadOnly) return;
         ClaudeMode.Armed = true;
+        // Numbers only: the transcribe stage runs from the video's arming until its transcript is in.
+        ClaudeMode.Clock = new();
+        if (!HasTranscript) ClaudeMode.Clock.Begin(ClaudeModeStage.Transcribe);
         if (ClaudeModeOn) ClaudeMode.Phase = ClaudeModePhase.Waiting;
         MakeItNotify();
     }
@@ -75,6 +79,8 @@ public sealed partial class EditorViewModel
         ClaudeMode.Searched = true;
         ClaudeMode.Phase = ClaudeModePhase.Waiting;
         ClaudeMode.Blocker = null;
+        ClaudeMode.Clock?.End(ClaudeModeStage.Transcribe);
+        ClaudeMode.Clock?.Begin(ClaudeModeStage.Find);
         MakeItNotify();
         ClaudeMode.AfterFind = AfterFindAsync(find);
     }
@@ -83,6 +89,7 @@ public sealed partial class EditorViewModel
     {
         try { await find; }
         catch (Exception exception) when (exception is not OutOfMemoryException) { }
+        ClaudeMode.Clock?.End(ClaudeModeStage.Find);
         await ClaudeModeContinueAsync();
     }
 
@@ -91,6 +98,7 @@ public sealed partial class EditorViewModel
     public async Task ClaudeModeContinueAsync()
     {
         if (ClaudeMode.Services is not { } services || !ClaudeMode.Armed || !ClaudeModeOn || IsReadOnly || isLeaving || !HasTranscript) return;
+        ClaudeMode.Clock?.End(ClaudeModeStage.Transcribe);
         if (services.Finding()) { ClaudeMode.Phase = ClaudeModePhase.Waiting; MakeItNotify(); return; }
         if (SuggestedClips.Count > 0) { StartClaudeMode(); return; }
         // Claude finds by itself once per video: a find that added nothing (Windows keeps no empty result) is not run again.
@@ -129,7 +137,8 @@ public sealed partial class EditorViewModel
         budget.Changed += (_, _) => MakeItNotify();
         ClaudeMode.Found = SuggestedClips.Count;
         ClaudeMode.Budget = budget;
-        if (!MakeTopPostable(settings.Count, budget))
+        ClaudeMode.Clock ??= new();
+        if (!MakeTopPostable(settings.Count, budget, ClaudeMode.Clock))
         {
             Block(new ClaudeModeBlocker.FindAgain("Claude couldn't start on these clips."));
             return;
@@ -149,6 +158,12 @@ public sealed partial class EditorViewModel
         ClaudeMode.Phase = ClaudeModeRuns.Any(run => run.Phase == MakeItPhase.Stopped) ? ClaudeModePhase.Stopped : ClaudeModePhase.Done;
         var ready = ClaudeModeReady.Count;
         Announcement?.Invoke(this, ClaudeMode.Phase == ClaudeModePhase.Done ? $"{ready} {(ready == 1 ? "clip" : "clips")} ready. Next: Export all." : "Stopped. What was done is kept.");
+        // Numbers only (ai.md §16.12): each stage's wall time, never a title, word or path.
+        if (ClaudeMode.Clock is { } clock)
+        {
+            try { ClaudeMode.Services?.Log?.Invoke(clock.LogLine()); }
+            catch (Exception exception) when (exception is not OutOfMemoryException) { }
+        }
         MakeItNotify();
     }
 
@@ -203,7 +218,7 @@ public sealed partial class EditorViewModel
             if (project.Transcript is { } transcript)
                 steps.Add(new("transcribed", ClaudeModeStepState.Done, "Transcribed " + Duration(transcript.Words.LastOrDefault()?.End ?? 0)));
             else steps.Add(new("transcribed", ClaudeModeStepState.Now, "Waiting for the transcript"));
-            if (ClaudeMode.Services?.Finding() == true) steps.Add(new("found", ClaudeModeStepState.Now, "Finding the best moments…"));
+            if (ClaudeMode.Services?.Finding() == true) steps.Add(new("found", ClaudeModeStepState.Now, "Finding clips…"));
             else if (ClaudeMode.Found > 0) steps.Add(new("found", ClaudeModeStepState.Done, "Found the best moments", $"{ClaudeMode.Found} · top {ClaudeMode.ClipIds.Count} kept"));
             var runs = ClaudeModeRuns;
             for (var index = 0; index < runs.Count; index++)
@@ -334,16 +349,20 @@ public sealed partial class EditorViewModel
 
     // MARK: Status bar
 
-    /// <summary>"✦ Claude does it all · top 3 · ≤$2" (or "· $0.42 / $2" while it runs); "Choose how clips are made" until chosen;
-    /// null in "I'll pick" mode, where the clip style item reads "Style: …".</summary>
+    /// <summary>"✦ Claude does it all · top 3 · ≤$2"; "✦ Claude does it all · Finding clips…" while Find Clips runs for it; "✦ Claude does
+    /// it all · 1 of 3 ready · $0.42 / $2" while it runs, each clip counted as it is ready (design §6.7); "Choose how clips are made" until
+    /// chosen; null in "I'll pick" mode, where the clip style item reads "Style: …".</summary>
     public string? ClaudeModeStatus
     {
         get
         {
             var settings = ClipsAutopilot;
             if (settings.Mode == ClipsMode.Claude)
-                return ClaudeMode.Running && ClaudeMode.Budget is { } budget
-                    ? $"✦ Claude does it all · {MakeItController.Dollars(budget.Spent)} / ${settings.CapUsd}" : settings.Summary;
+            {
+                if (ClaudeMode.Running && ClaudeMode.Budget is { } budget)
+                    return $"✦ Claude does it all · {ClaudeModeReady.Count} of {ClaudeMode.ClipIds.Count} ready · {MakeItController.Dollars(budget.Spent)} / ${settings.CapUsd}";
+                return ClaudeMode.Armed && ClaudeMode.Services?.Finding() == true ? "✦ Claude does it all · Finding clips…" : settings.Summary;
+            }
             return settings.Mode is null && ShowsClipsModeCard ? "Choose how clips are made" : null;
         }
     }

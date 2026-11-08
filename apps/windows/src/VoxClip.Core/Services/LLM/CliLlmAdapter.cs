@@ -10,8 +10,8 @@ namespace VoxClip.Core.Services.LLM;
 
 internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcessRunner processes, IRedactor redactor, Action<string>? onDiagnostic, string? pathOverride)
 {
-    private static readonly SemaphoreSlim ClaudeGate = new(1, 1);
-    private static readonly SemaphoreSlim CodexGate = new(1, 1);
+    // One process at a time per connector, as on the Mac: Claude mode's plans run three at once on three connectors (lanes).
+    private readonly SemaphoreSlim gate = new(1, 1);
     private static readonly SemaphoreSlim PathGate = new(1, 1);
     private static string? loginPath;
     private readonly JsonObject provider = catalog.Provider(id);
@@ -193,7 +193,6 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
 
     internal async Task<RawCompletion> SendAsync(LlmRequest request, string model, CancellationToken ct)
     {
-        var gate = id == ConnectorId.ClaudeCode ? ClaudeGate : CodexGate;
         try { await gate.WaitAsync(ct).ConfigureAwait(false); }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw Failure(LlmErrorKind.Cancelled, model, request.Feature); }
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -210,9 +209,17 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
             var schemaFile = Path.Combine(workspace.Io, "schema.json");
             var outputFile = Path.Combine(workspace.Io, "last.json");
             var args = new List<string>();
+            var images = SendableImages(request, detection);
+            var text = LlmConnector.UserContent(request);
+            var stdin = text;
             if (id == ConnectorId.ClaudeCode)
             {
-                args.AddRange(new[] { "-p", "--output-format", "json", "--json-schema", request.Schema.ToJsonString(LlmRuntime.CompactJson), "--system-prompt", request.System, "--tools", "", "--no-session-persistence" });
+                // ai.md §19.3: images go as one stream-json user message, which the CLI takes only with stream-json output and
+                // --verbose; its last `result` event is the json output's object.
+                args.Add("-p");
+                args.AddRange(images.Count > 0 ? ["--input-format", "stream-json", "--output-format", "stream-json", "--verbose"] : ["--output-format", "json"]);
+                if (images.Count > 0) stdin = ClaudeImageMessage(text, images);
+                args.AddRange(new[] { "--json-schema", request.Schema.ToJsonString(LlmRuntime.CompactJson), "--system-prompt", request.System, "--tools", "", "--no-session-persistence" });
                 if (model != "default") args.AddRange(new[] { "--model", model });
                 if (request.Feature != LlmFeature.VoiceRewrite && catalog.Fallback(id, model) is { } fallback && Supports(detection.Help, "--fallback-model")) args.AddRange(new[] { "--fallback-model", fallback });
                 if (Supports(detection.Help, "--effort") && EffortLevel.Resolve(request.Effort, catalog.EffortLevels(id)) is { } claudeEffort) args.AddRange(new[] { "--effort", claudeEffort.Wire() });
@@ -232,12 +239,20 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
                 if (EffortLevel.Resolve(request.Effort, supported) is { } codexEffort) args.AddRange(new[] { "-c", "model_reasoning_effort=" + Toml(codexEffort.Wire()) });
                 args.AddRange(new[] { "-c", "web_search=\"disabled\"", "-c", "approval_policy=\"never\"", "-c", "mcp_servers={}", "-c", "developer_instructions=" + Toml(request.System) });
                 foreach (var feature in Strings(settings["disableFeatures"]).Where(detection.Features.Contains)) args.AddRange(new[] { "--disable", feature });
+                // ai.md §19.3: `--image` takes one or more files; a flag follows the last one, so none is read as the prompt.
+                if (images.Count > 0)
+                {
+                    args.Add("--image");
+                    args.AddRange(await WriteImagesAsync(images, workspace.Io, ct).ConfigureAwait(false));
+                    stdin = CodexImagePrompt(text, images);
+                }
                 args.AddRange(new[] { "--output-schema", schemaFile, "--output-last-message", outputFile, "-" });
             }
             attempted = true;
             stopwatch.Restart();
             var result = await processes.RunAsync(new(detection.Executable, detection.Prefix.Concat(args).ToArray(), workspace.Cwd,
-                LlmConnector.UserContent(request), request.Timeout, await EnvironmentAsync(ct).ConfigureAwait(false)) { CaptureTimeoutOutput = true }, null, ct).ConfigureAwait(false);
+                stdin, request.Timeout, await EnvironmentAsync(ct).ConfigureAwait(false)) { CaptureTimeoutOutput = true }, null, ct).ConfigureAwait(false);
+            if (id == ConnectorId.ClaudeCode && images.Count > 0) result = ClaudeStreamResult(result);
             outcome = result.ExitCode.ToString(CultureInfo.InvariantCulture);
             if (result.OutputTruncated) throw Failure(LlmErrorKind.CliFailed, model, request.Feature, "CLI output exceeded the 16 MB limit.");
             if ((result.StandardOutput + result.StandardError).Contains("unknown option", StringComparison.OrdinalIgnoreCase)) detected = null;
@@ -261,6 +276,58 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
             gate.Release();
         }
     }
+
+    /// <summary>The images a send passes on (ai.md §19.3): the catalogue's, and for Claude Code only when the CLI lists the stream-json
+    /// input flags (<c>images.requiredFlags</c>). Otherwise none, and the request goes as text.</summary>
+    private IReadOnlyList<LlmImage> SendableImages(LlmRequest request, Detection detection)
+    {
+        var images = catalog.Images(request, id);
+        if (images.Count == 0) return [];
+        return catalog.ImageRequiredFlags(id).All(flag => Supports(detection.Help, flag)) ? images : [];
+    }
+
+    /// <summary>Claude Code's one stream-json user message: each image after its label, then the request's text. Keys sorted and slashes
+    /// unescaped, as the Mac encodes it.</summary>
+    internal static string ClaudeImageMessage(string text, IReadOnlyList<LlmImage> images)
+    {
+        var content = new JsonArray();
+        foreach (var image in images)
+        {
+            content.Add((JsonNode)new JsonObject { ["text"] = image.Label, ["type"] = "text" });
+            content.Add((JsonNode)new JsonObject
+            {
+                ["source"] = new JsonObject { ["data"] = Convert.ToBase64String(image.Data), ["media_type"] = image.MediaType, ["type"] = "base64" },
+                ["type"] = "image"
+            });
+        }
+        content.Add((JsonNode)new JsonObject { ["text"] = text, ["type"] = "text" });
+        var message = new JsonObject { ["message"] = new JsonObject { ["content"] = content, ["role"] = "user" }, ["type"] = "user" };
+        return message.ToJsonString(LlmRuntime.CompactJson) + "\n";
+    }
+
+    /// <summary>The stream-json output's last <c>result</c> event as the <c>json</c> output's single object, so one parser reads both.</summary>
+    private static ProcessResult ClaudeStreamResult(ProcessResult result)
+    {
+        var last = result.StandardOutput.Split('\n').LastOrDefault(line => LlmOutput.Envelope(line) is JsonObject item && Text(item["type"]) == "result");
+        return result with { StandardOutput = last ?? "" };
+    }
+
+    /// <summary>Codex reads each image from a file in the private io folder, named by its order.</summary>
+    private static async Task<IReadOnlyList<string>> WriteImagesAsync(IReadOnlyList<LlmImage> images, string directory, CancellationToken ct)
+    {
+        var paths = new List<string>();
+        for (var index = 0; index < images.Count; index++)
+        {
+            var path = Path.Combine(directory, string.Create(CultureInfo.InvariantCulture, $"frame-{index + 1:00}.{(images[index].MediaType == "image/png" ? "png" : "jpg")}"));
+            await File.WriteAllBytesAsync(path, images[index].Data, ct).ConfigureAwait(false);
+            paths.Add(path);
+        }
+        return paths;
+    }
+
+    /// <summary>Codex attaches the images in order before the prompt, so the prompt names them first: "Image 1: Frame 1 at 3.20 s".</summary>
+    internal static string CodexImagePrompt(string text, IReadOnlyList<LlmImage> images) =>
+        "The attached images, in order:\n" + string.Join("\n", images.Select((image, index) => $"Image {index + 1}: {image.Label}")) + "\n\n" + text;
 
     private RawCompletion ParseClaude(ProcessResult result, LlmRequest request, string model)
     {

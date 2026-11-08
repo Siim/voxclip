@@ -155,65 +155,95 @@ public sealed partial class EditorViewModel
     public IReadOnlyList<ClipRow> RankedSuggestions => SuggestedClips
         .OrderByDescending(clip => MakeIt.Score(clip.Id)?.Score ?? clip.Score ?? 0).ThenBy(clip => clip.Number).ToArray();
 
-    /// <summary>"✦ Make top 3 postable": one request plans the best suggestions at once (on three lanes), then each is applied as its
-    /// own run: its own cap, its own undo step, kept first. Claude mode passes the video's <paramref name="budget"/>, shared by the runs.</summary>
-    public bool MakeTopPostable(int count = 3, MakeItBudget? budget = null)
+    /// <summary>"✦ Make top 3 postable": one request plans the best suggestions at once (at most three in flight), each told its rank,
+    /// Find Clips' title and reason, and the other clips, so the series stays varied. Each clip is applied as soon as its plan is ready,
+    /// while the others are still planned: its own cap, its own undo step, kept first. Claude mode passes the video's
+    /// <paramref name="budget"/> (the runs share it instead of each having its own cap) and its <paramref name="clock"/>, which times
+    /// each clip's plan and apply (ai.md §16.12).</summary>
+    public bool MakeTopPostable(int count = 3, MakeItBudget? budget = null, ClaudeModeClock? clock = null)
     {
         if (!CanMakeTopPostable || MakeIt.Services is not { } services || project.Transcript is not { } transcript) return false;
-        var ranked = RankedSuggestions.Take(count).Select(clip => (clip.Id, Span: ClipSpan(clip.Id))).Where(item => item.Span is not null)
-            .Select(item => (item.Id, Span: new WordSpan(item.Span!.Value.First, item.Span.Value.Last))).ToArray();
+        var ranked = RankedSuggestions.Take(count).Select(clip => (Row: clip, Span: ClipSpan(clip.Id))).Where(item => item.Span is not null)
+            .Select(item => (item.Row.Id, Span: new WordSpan(item.Span!.Value.First, item.Span.Value.Last), item.Row)).ToArray();
         if (ranked.Length == 0) return false;
         MakeIt.SetSeries(ranked.Select(item => item.Id).ToArray(), budget);
         var runs = ranked.Select(item => new MakeItRun(item.Id, budget?.Cap ?? MakeItCap(item.Id), budget)).ToArray();
         foreach (var run in runs.Reverse()) { MakeIt.Insert(run); run.Line("Waiting for Claude…"); }
         MakeItShown?.Invoke(this, EventArgs.Empty);
         MakeItNotify();
+        var moments = ranked.Select(item => ClipAutopilotMoment.Found(item.Span, item.Row.Title, item.Row.Reason, MakeIt.Score(item.Id)?.Score ?? item.Row.Score ?? 0)).ToArray();
         var request = new ClipAutopilotRequest(transcript, project.Edits, new ClipAutopilotMode.Clips(ranked.Select(item => item.Span).ToArray()))
-        { CaptionPreference = MakeItStyle.CaptionPreference, Note = MakeItNoteText(), Tone = MakeItPlannerTone() };
-        var task = PerformSeriesAsync(runs, ranked.Select(item => item.Span).ToArray(), request, services);
+        { CaptionPreference = MakeItStyle.CaptionPreference, Note = MakeItNoteText(), Tone = MakeItPlannerTone(), Moments = moments };
+        var task = PerformSeriesAsync(runs, ranked.Select(item => item.Span).ToArray(), request, services, clock);
         foreach (var run in runs) run.Task = task;
         MakeIt.SeriesTask = task;
         return true;
     }
 
-    private async Task PerformSeriesAsync(MakeItRun[] runs, WordSpan[] spans, ClipAutopilotRequest request, MakeItServices services)
+    /// <summary>Plans the series and applies each clip the moment its plan is ready (<see cref="ClipAutopilotProgress.Ready"/>), one at a
+    /// time in the order they come. A clip whose plan failed fails on its own; the others go on. Stop cancels every plan in flight and the
+    /// clip being applied stops at its next safe point. A planner that sends no Ready (a stub) has its clips applied in rank order when it
+    /// returns.</summary>
+    private async Task PerformSeriesAsync(MakeItRun[] runs, WordSpan[] spans, ClipAutopilotRequest request, MakeItServices services, ClaudeModeClock? clock)
     {
+        var applied = new HashSet<int>();
+        var stopped = false;
         try
         {
-            ClipAutopilotSeries series;
-            using (var linked = CancellationTokenSource.CreateLinkedTokenSource(runs.Select(run => run.Cancellation.Token).ToArray()))
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(runs.Select(run => run.Cancellation.Token).ToArray());
+            // The planner reports from its own threads; the ready plans and failures come back here, on the editor's thread, in order.
+            var events = System.Threading.Channels.Channel.CreateUnbounded<(int Clip, ClipAutopilotPlan? Plan)>();
+            var lines = Progress(runs);
+            var report = new InlineProgress<ClipAutopilotProgress>(progress =>
             {
-                try { series = await services.Plan(request, Progress(runs), linked.Token); }
-                catch (Exception exception) when (Cancelled(exception)) { foreach (var run in runs) run.Phase = MakeItPhase.Stopped; return; }
-                catch (Exception exception) when (exception is not OutOfMemoryException)
+                switch (progress)
                 {
-                    var message = UiError.Message(exception, "Make it postable");
-                    foreach (var run in runs) Fail(run, message.Length == 0 ? "Claude couldn't plan these clips. Nothing was changed." : message);
-                    return;
+                    case ClipAutopilotProgress.Planning planning: clock?.Begin(ClaudeModeStage.Plan, planning.Clip + 1); break;
+                    case ClipAutopilotProgress.Ready ready: clock?.End(ClaudeModeStage.Plan, ready.Clip + 1); events.Writer.TryWrite((ready.Clip, ready.Plan)); break;
+                    case ClipAutopilotProgress.Failed failed:
+                        clock?.End(ClaudeModeStage.Plan, failed.Clip + 1);
+                        if (failed.Of > 1) events.Writer.TryWrite((failed.Clip, null));
+                        break;
                 }
+                lines.Report(progress);
+            });
+            async Task<(ClipAutopilotSeries? Series, Exception? Error)> PlanAsync()
+            {
+                try { return (await services.Plan(request, report, linked.Token), null); }
+                catch (Exception exception) when (exception is not OutOfMemoryException) { return (null, exception); }
+                finally { events.Writer.TryComplete(); }
+            }
+            var planning = PlanAsync();
+            await foreach (var (index, plan) in events.Reader.ReadAllAsync())
+            {
+                if (index < 0 || index >= runs.Length || !applied.Add(index)) continue;
+                if (stopped) continue;
+                if (plan is null)
+                {
+                    if (runs[index].Phase == MakeItPhase.Planning) Fail(runs[index], "Claude couldn't plan this clip. Nothing was changed.");
+                    continue;
+                }
+                stopped = await ApplyPlannedAsync(runs[index], plan, spans[index], services, clock, index + 1);
+                if (stopped) await linked.CancelAsync();
+            }
+            var (series, error) = await planning;
+            if (stopped) return;
+            if (error is not null)
+            {
+                if (Cancelled(error)) return;
+                var message = UiError.Message(error, "Make it postable");
+                foreach (var (run, index) in runs.Select((run, index) => (run, index)).Where(item => !applied.Contains(item.index) && item.run.Running))
+                    Fail(run, message.Length == 0 ? "Claude couldn't plan these clips. Nothing was changed." : message);
+                return;
             }
             for (var index = 0; index < runs.Length; index++)
             {
                 var run = runs[index];
-                if (run.Cancelled) { run.Phase = MakeItPhase.Stopped; continue; }
+                if (applied.Contains(index) || !run.Running) continue;
                 // A plan may tighten its span; it stays inside the span it was asked for.
-                var plan = series.Plans.FirstOrDefault(plan => spans[index].Contains(plan.StartWord) && spans[index].Contains(plan.EndWord));
+                var plan = series!.Plans.FirstOrDefault(plan => spans[index].Contains(plan.StartWord) && spans[index].Contains(plan.EndWord));
                 if (plan is null) { Fail(run, "Claude couldn't plan this clip. Nothing was changed."); continue; }
-                if (IsReadOnly || isLeaving || state?.Clips.Any(clip => clip.Id == run.ClipId) != true) { Fail(run, "This clip changed. Nothing was changed."); continue; }
-                MakeIt.ShownClipId = run.ClipId;
-                BeginUndoGroup("Make it postable");
-                try
-                {
-                    if (Clips.FirstOrDefault(clip => clip.Id == run.ClipId)?.IsSuggested == true) KeepForRowAction(run.ClipId);
-                    SetScope(run.ClipId);
-                    await FinishAsync(run, plan, services);
-                }
-                finally { EndUndoGroup(); }
-                if (run.Phase == MakeItPhase.Stopped)
-                {
-                    foreach (var later in runs.Where(later => later.Running)) later.Phase = MakeItPhase.Stopped;
-                    break;
-                }
+                if (await ApplyPlannedAsync(run, plan, spans[index], services, clock, index + 1)) break;
             }
         }
         finally
@@ -222,6 +252,28 @@ public sealed partial class EditorViewModel
             MakeIt.SeriesTask = null;
             MakeItNotify();
         }
+    }
+
+    /// <summary>Applies one planned clip of a series as its own undo step, kept first, sharing the planner's AI lease with its own Rewrite
+    /// steps while the other clips are still planned. True when the run was stopped.</summary>
+    private async Task<bool> ApplyPlannedAsync(MakeItRun run, ClipAutopilotPlan plan, WordSpan span, MakeItServices services, ClaudeModeClock? clock, int clip)
+    {
+        if (run.Cancelled) { run.Phase = MakeItPhase.Stopped; return true; }
+        // A plan may tighten its span; it stays inside the span it was asked for.
+        if (!span.Contains(plan.StartWord) || !span.Contains(plan.EndWord)) { Fail(run, "Claude couldn't plan this clip. Nothing was changed."); return false; }
+        if (IsReadOnly || isLeaving || state?.Clips.Any(item => item.Id == run.ClipId) != true) { Fail(run, "This clip changed. Nothing was changed."); return false; }
+        var started = clock?.Elapsed;
+        MakeIt.ShownClipId = run.ClipId;
+        BeginUndoGroup("Make it postable");
+        try
+        {
+            if (Clips.FirstOrDefault(item => item.Id == run.ClipId)?.IsSuggested == true) KeepForRowAction(run.ClipId);
+            SetScope(run.ClipId);
+            await LlmRuns.SharingAsync(() => FinishAsync(run, plan, services));
+        }
+        finally { EndUndoGroup(); }
+        if (clock is not null && started is { } since) clock.Record(ClaudeModeStage.Apply, clip, since);
+        return run.Phase == MakeItPhase.Stopped;
     }
 
     private static bool Cancelled(Exception exception) =>

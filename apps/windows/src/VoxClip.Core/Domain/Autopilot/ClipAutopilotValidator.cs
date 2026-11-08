@@ -56,6 +56,7 @@ public static partial class ClipAutopilotValidator
             corrected.CutPauseIds, corrected.PauseKeepSeconds) / (speed?.Rate ?? 1);
         var lengthReason = Text(AiJson.Get(value, "lengthReason"), limits.MaxReasonScalars, "lengthReason", log);
         var tone = Tone(value, corrected, log);
+        var frames = Frames(value, corrected, log);
         var hook = Text(AiJson.Get(value, "hook"), limits.MaxHookScalars, "hook", log);
         var postText = Text(AiJson.Get(value, "postText"), limits.MaxPostScalars, "postText", log);
         var scoreReason = Text(AiJson.Get(value, "scoreReason"), limits.MaxReasonScalars, "scoreReason", log);
@@ -65,8 +66,42 @@ public static partial class ClipAutopilotValidator
             StartWord = span.Start, EndWord = span.End, Title = title.Length == 0 ? fallbackTitle : title, Hook = hook, Cuts = cuts, PauseCuts = pauseCuts,
             Corrections = corrections, Rewrites = rewrites, CaptionChoice = captions, ClipLookChoice = look, SpeedChoice = speed, MusicChoices = music,
             MusicPick = pick, Zooms = zooms, PostText = postText, Score = score, Verdict = verdict, ScoreReason = scoreReason, LengthReason = lengthReason,
-            Seconds = seconds, Questions = questions, Repairs = log.Repairs.ToArray(), Flags = Flags(seconds, lengthReason, limits), ToneChoice = tone
+            Seconds = seconds, Questions = questions, Repairs = log.Repairs.ToArray(), Flags = Flags(seconds, lengthReason, limits), ToneChoice = tone,
+            Frames = frames
         };
+    }
+
+    /// <summary>The frame choices (prompt version 8, ai.md §19.6), checked against the candidates the request listed. Null when the
+    /// request carried no frames. A blur id that names no candidate, or names one twice, is ignored (a repair); a candidate the reply
+    /// leaves out stays sharp. A cover id that names no candidate falls back to the local best, <c>C1</c> (a repair when the reply named
+    /// another); a reply without <c>frames</c> (one from before version 8) has no blur and that cover.</summary>
+    private static ClipAutopilotPlan.FrameChoices? Frames(JsonNode? value, ClipAutopilotContext context, Log log)
+    {
+        if (context.Frames is not { } listed) return null;
+        var reply = AiJson.Get(value, "frames");
+        var limit = context.Prompt.Limits.MaxReasonScalars;
+        var decided = new Dictionary<string, ClipAutopilotPlan.FrameChoices.Blur>(StringComparer.Ordinal);
+        var items = AiJson.Array(AiJson.Get(reply, "blur"));
+        for (var index = 0; index < items.Count; index++)
+        {
+            var item = items[index];
+            var field = $"frames.blur[{N(index)}]";
+            var id = (AiJson.String(AiJson.Get(item, "id")) ?? "").Trim().ToUpperInvariant();
+            if (listed.BlurCandidateFor(id) is null || decided.ContainsKey(id) || AiJson.Get(item, "blur") is not JsonValue flag || !flag.TryGetValue<bool>(out var blur))
+            {
+                log.Drop(field, id.Length == 0 ? "no screen named" : $"“{id}” is not a listed screen, or was named twice");
+                continue;
+            }
+            decided[id] = new(id, blur, Text(AiJson.Get(item, "reason"), limit, field + ".reason", log));
+        }
+        var choices = listed.Blur.Select(candidate => decided.GetValueOrDefault(candidate.Id)).OfType<ClipAutopilotPlan.FrameChoices.Blur>().ToArray();
+        if (listed.Cover.FirstOrDefault() is not { } best) return new(choices, null);
+        var cover = AiJson.Get(reply, "cover");
+        var named = (AiJson.String(AiJson.Get(cover, "id")) ?? "").Trim().ToUpperInvariant();
+        if (listed.CoverCandidateFor(named) is not null)
+            return new(choices, new(named, Text(AiJson.Get(cover, "reason"), limit, "frames.cover.reason", log)));
+        if (reply is not null) log.Repair("frames.cover", named.Length == 0 ? $"no cover named; {best.Id}, the best measured" : $"“{named}” is not a candidate; {best.Id}");
+        return new(choices, new(best.Id, "", true));
     }
 
     /// <summary>The tone the words were written in (prompt version 6, ai.md §16.5).</summary>

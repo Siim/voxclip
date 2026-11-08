@@ -274,7 +274,7 @@ public sealed class ClipAutopilotTests
         var text = plan.ToJson().ToJsonString();
         Assert.Contains("\"case\":\"upper\"", text, StringComparison.Ordinal);
         Assert.Equal(text, ClipAutopilotPlan.FromJson(JsonNode.Parse(text)!.AsObject()).ToJson().ToJsonString());
-        Assert.Throws<VoxClipException>(() => ClipAutopilotPlan.FromJson(JsonNode.Parse(text.Replace("\"version\":3", "\"version\":4", StringComparison.Ordinal))!.AsObject()));
+        Assert.Throws<VoxClipException>(() => ClipAutopilotPlan.FromJson(JsonNode.Parse(text.Replace("\"version\":4", "\"version\":5", StringComparison.Ordinal))!.AsObject()));
     }
 
     [Fact]
@@ -355,7 +355,7 @@ public sealed class ClipAutopilotTests
         Assert.Empty(old.Corrections); Assert.Equal(ClipAutopilotPlan.Look.Original, old.ClipLookChoice); Assert.Null(old.SpeedChoice);
         Assert.Equal(0, old.Seconds); Assert.Empty(old.Flags); Assert.Equal("", old.CaptionChoice.Reason);
         Assert.Equal(plan.Cuts, old.Cuts); Assert.Equal(plan.Rewrites, old.Rewrites);
-        json["version"] = 4;
+        json["version"] = 5;
         Assert.Throws<VoxClipException>(() => ClipAutopilotPlan.FromJson(JsonNode.Parse(json.ToJsonString())!.AsObject()));
     }
 
@@ -392,7 +392,7 @@ public sealed class ClipAutopilotTests
     {
         var vector = Case(Fixture("plan-tone-cases.json"), id);
         var plan = ClipAutopilotValidator.Plan(vector["reply"], Context(Transcript(), new(0, 29), tone: Tone(vector["tone"])))!;
-        Assert.Equal(3, plan.Version);
+        Assert.Equal(ClipAutopilotPlan.CurrentVersion, plan.Version);
         var expect = vector["expect"]!;
         if (expect["tone"] is null) Assert.Null(plan.ToneChoice);
         else
@@ -432,7 +432,7 @@ public sealed class ClipAutopilotTests
         json.Remove("tone");
         json["version"] = 2;
         var old = ClipAutopilotPlan.FromJson(JsonNode.Parse(json.ToJsonString())!.AsObject());
-        Assert.Equal(3, old.Version); Assert.Null(old.ToneChoice); Assert.Equal(plan.Rewrites, old.Rewrites);
+        Assert.Equal(ClipAutopilotPlan.CurrentVersion, old.Version); Assert.Null(old.ToneChoice); Assert.Equal(plan.Rewrites, old.Rewrites);
     }
 
     // MARK: Mapping

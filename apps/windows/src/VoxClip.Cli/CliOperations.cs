@@ -34,6 +34,7 @@ internal static class CliOperations
 {
     internal static async Task<JsonObject> ExecuteAsync(string command, ParseResult arguments, CancellationToken ct, ExportInputReader? openExport = null, ExportPreparer? prepareExport = null) => command switch
     {
+        "autopilot" => await CliAutopilot.RunAsync(arguments, ServicesMergeAdapter.Connector, ct).ConfigureAwait(false),
         "probe" => await ProbeAsync(arguments, ct).ConfigureAwait(false),
         "encoders" => new() { ["encoders"] = Node((await new EncoderProbe().ProbeAsync(WindowsAdapterIdentity.Read(), null, ct).ConfigureAwait(false)).ToArray(), CliDataJson.Default.EncoderInfoArray) },
         "plan" => await PlanAsync(arguments, ct).ConfigureAwait(false),
@@ -321,13 +322,18 @@ internal static class CliOperations
         return new() { ["output"] = Path.GetFullPath(output), ["words"] = project.Transcript!.Words.Count };
     }
 
-    private static async Task<Project> TranscribeMediaAsync(MediaInfo media, ParseResult arguments, CancellationToken ct)
+    private static Task<Project> TranscribeMediaAsync(MediaInfo media, ParseResult arguments, CancellationToken ct) =>
+        TranscribeMediaAsync(media, arguments, arguments.GetValue<string?>("--model"), arguments.GetValue<bool>("--diarize"), !arguments.GetValue<bool>("--no-dtw"), null, ct);
+
+    /// <summary>Extracts the speech audio and transcribes it into a new project. <paramref name="model"/> is the transcription model (the
+    /// <c>autopilot</c> command names it <c>--transcription-model</c>); <paramref name="clock"/> times the audio and transcribe stages.</summary>
+    internal static async Task<Project> TranscribeMediaAsync(MediaInfo media, ParseResult arguments, string? model, bool diarize, bool dtw,
+        Core.Domain.Autopilot.ClaudeModeClock? clock, CancellationToken ct)
     {
         var engineText = arguments.GetValue<string?>("--engine") ?? "whisper";
         if (engineText == "apple") throw new VoxClipException(VoxClipErrorCode.SpeechAssetsUnavailable, "Apple Speech is available only in the native macOS CLI.");
         if (media.Audio is null) throw new VoxClipException(VoxClipErrorCode.NoAudioTrack, "This video has no audio track, so there is nothing to transcribe.");
         var engine = engineText == "elevenlabs" ? TranscriptEngine.Elevenlabs : TranscriptEngine.Whispercpp;
-        var model = arguments.GetValue<string?>("--model");
         var language = arguments.GetValue<string?>("--language") ?? "auto";
         if (engine == TranscriptEngine.Elevenlabs)
         {
@@ -347,17 +353,21 @@ internal static class CliOperations
             if (model is null || !installed.Any(item => item.Id == model && item.Verified))
                 throw new VoxClipException(VoxClipErrorCode.ModelMissing, "The selected Whisper model is not installed and verified.");
         }
+        var audioStart = clock?.Elapsed ?? 0;
         var key = await ServicesMergeAdapter.Projects().ComputeContentKeyAsync(media.Path, null, ct).ConfigureAwait(false);
         var extracted = await new CacheIndex(DataLocations.Resolve().Cache).ExtractAudioAsync(new FfmpegAudioExtractor(), media, key,
             Progress<MediaProgress>(arguments, value => (value.Phase, value.Fraction)), ct).ConfigureAwait(false);
+        clock?.Record(Core.Domain.Autopilot.ClaudeModeStage.Audio, null, audioStart);
         var plan = new TranscriptionPlan(engine, model, language == "auto" ? new LanguageChoice.Auto() : new LanguageChoice.Forced(language),
-            new(arguments.GetValue<bool>("--diarize"), Dtw: !arguments.GetValue<bool>("--no-dtw")));
+            new(diarize, Dtw: dtw));
+        var transcribeStart = clock?.Elapsed ?? 0;
         var transcript = await ServicesMergeAdapter.TranscribeAsync(new(plan, extracted.Audio, key), extracted.Envelope,
             Progress<TranscriptionProgress>(arguments, value => (value.Stage.ToString(), value.Fraction)), ct).ConfigureAwait(false);
+        clock?.Record(Core.Domain.Autopilot.ClaudeModeStage.Transcribe, null, transcribeStart);
         return NewProject(media, transcript, key);
     }
 
-    private static async Task<MediaInfo> ProbeInputAsync(string path, CancellationToken ct)
+    internal static async Task<MediaInfo> ProbeInputAsync(string path, CancellationToken ct)
     {
         try { return await new FfmpegMediaProbe().ProbeAsync(path, ct).ConfigureAwait(false); }
         catch (VoxClipException exception) when (exception.Code == VoxClipErrorCode.DecodeFailed) { throw new CliInputException(exception); }
@@ -424,11 +434,11 @@ internal static class CliOperations
         return new() { ["model"] = result.Model, ["elapsedSeconds"] = timer.Elapsed.TotalSeconds, ["usedFallback"] = result.UsedFallback };
     }
 
-    private static async Task<string> DefaultModelAsync(ConnectorId connector, CancellationToken ct) =>
+    internal static async Task<string> DefaultModelAsync(ConnectorId connector, CancellationToken ct) =>
         (await ServicesMergeAdapter.LlmModels().GetModelsAsync(connector, ct).ConfigureAwait(false)).FirstOrDefault()?.Id ??
         throw new VoxClipException(VoxClipErrorCode.ModelMissing, "Select a model with --model.");
 
-    private static ConnectorId Connector(string name) => name switch
+    internal static ConnectorId Connector(string name) => name switch
     {
         "anthropic" => ConnectorId.Anthropic, "openai" => ConnectorId.OpenAI, "xai" => ConnectorId.Xai, "gemini" => ConnectorId.Gemini,
         "ollama" => ConnectorId.Ollama, "lmstudio" => ConnectorId.LmStudio, "claude-code" => ConnectorId.ClaudeCode, "codex" => ConnectorId.Codex,
@@ -441,7 +451,7 @@ internal static class CliOperations
         catch (IOException exception) { throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, "This project file can't be read: the file could not be opened.", exception); }
     }
 
-    private static async Task<TranscriptModel> ReadTranscriptAsync(string path, CancellationToken ct)
+    internal static async Task<TranscriptModel> ReadTranscriptAsync(string path, CancellationToken ct)
     {
         try
         {
@@ -520,7 +530,7 @@ internal static class CliOperations
     internal static string Required(ParseResult arguments, string option) => arguments.GetValue<string?>(option) ?? throw new CliUsageException("Missing " + option + ".");
     private static JsonNode? Node<T>(T value, JsonTypeInfo<T> metadata) => JsonSerializer.SerializeToNode(value, metadata);
 
-    private static IProgress<T> Progress<T>(ParseResult arguments, Func<T, (string Phase, double? Fraction)> describe)
+    internal static IProgress<T> Progress<T>(ParseResult arguments, Func<T, (string Phase, double? Fraction)> describe)
         => new CliProgress<T>(arguments.GetValue<bool>("--quiet"), describe);
 
     private sealed class CliProgress<T>(bool quiet, Func<T, (string Phase, double? Fraction)> describe) : IProgress<T>

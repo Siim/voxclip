@@ -35,6 +35,7 @@
     <Compile Include="MakeItPostableTests.cs" />
     <Compile Include="MakeItSmokeTests.cs" />
     <Compile Include="ClaudeModeTests.cs" />
+    <Compile Include="ClaudeModeStreamingTests.cs" />
     <Compile Include="RewriteToneEntryTests.cs" />
     <Compile Include="AskClaudeAppTests.cs" />
     <Compile Include="AskClaudeSmokeTests.cs" />

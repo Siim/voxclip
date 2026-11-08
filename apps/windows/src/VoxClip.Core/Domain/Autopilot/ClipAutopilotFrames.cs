@@ -1,0 +1,39 @@
+using System.Globalization;
+using VoxClip.Core.Domain.Effects;
+using VoxClip.Core.Services.LLM;
+
+namespace VoxClip.Core.Domain.Autopilot;
+
+/// <summary>What a clip's plan request shows the AI of its picture (ADR-R48 part 2, ai.md §19.6): the frame sheet's text summary,
+/// always, and its small JPEGs when the connector takes images and the run may send them; plus the candidates the local analysis
+/// names, so the reply can pick among them by id. Blur candidates are <c>B1…</c>, cover candidates <c>C1…C3</c>. Twin of the Mac
+/// <c>ClipAutopilotFrames</c>. Windows has no frame analyzer yet, so the editor and the CLI send none; a caller that has a sheet
+/// passes it to <see cref="Services.LLM.ClipAutopilotService"/>.</summary>
+public sealed record ClipAutopilotFrames(string Summary, IReadOnlyList<LlmImage> Images, IReadOnlyList<ClipAutopilotFrames.BlurCandidate> Blur,
+    IReadOnlyList<ClipAutopilotFrames.CoverCandidate> Cover, int EstimatedImageTokens)
+{
+    /// <summary>A screen with text the reply decides to blur or leave sharp: source seconds, padded and kept inside the clip; the
+    /// union of the screen's rects in picture space (top-left origin); and the sentence frames it was seen in.</summary>
+    public sealed record BlurCandidate(string Id, double Start, double End, ClipEffectRect Rect, int Frames);
+    /// <summary>A frame the reply may pick as the cover: the sheet frame's number ("Frame 3") and its source second.</summary>
+    public sealed record CoverCandidate(string Id, int Frame, double Time, double Score);
+
+    /// <summary>The images go with the request.</summary>
+    public bool SendsImages => Images.Count > 0;
+    /// <summary>The same frames as a text-only send: the summary and the candidates, no images.</summary>
+    public ClipAutopilotFrames TextOnly => this with { Images = [], EstimatedImageTokens = 0 };
+    /// <summary>The candidate a reply's blur id names.</summary>
+    public BlurCandidate? BlurCandidateFor(string id) => Blur.FirstOrDefault(candidate => candidate.Id == id);
+    /// <summary>The candidate a reply's cover id names.</summary>
+    public CoverCandidate? CoverCandidateFor(string id) => Cover.FirstOrDefault(candidate => candidate.Id == id);
+
+    /// <summary>Seconds as the sheet writes them: two decimals.</summary>
+    internal static string Seconds(double value) => value.ToString("0.00", CultureInfo.InvariantCulture);
+    /// <summary>A rect as the sheet writes it: "x,y,w,h" with two decimals each.</summary>
+    internal static string RectText(ClipEffectRect rect) => string.Join(",", new[] { rect.X, rect.Y, rect.Width, rect.Height }.Select(Seconds));
+}
+
+/// <summary>A clip's frames, given just before its plan is sent (ADR-R48, ai.md §19.6): <c>clip</c> indexes the spans (0 of 1 for a
+/// single clip) and <c>span</c> is the clip's transcript span. Each clip asks on its own lane. Null sends the clip as text only, as
+/// before prompt version 8.</summary>
+public delegate Task<ClipAutopilotFrames?> ClipAutopilotFrameSource(int clip, WordSpan span, CancellationToken ct);
