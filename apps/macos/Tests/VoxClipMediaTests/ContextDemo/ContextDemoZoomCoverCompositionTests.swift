@@ -167,6 +167,30 @@ struct ContextDemoZoomCoverContractTests {
 extension HeavyMediaTests {
 @Suite("context-demo-zoom-cover-native", .serialized, .offlineFixtures)
 struct ContextDemoZoomCoverNativeTests {
+    /// MVP45 (2026-11-08): the user's DJI source is 3840 × 2160, and every lip sync stopped here with `unsupportedVideo`
+    /// before anything was sent. A source above the compositor's bound is now sent at that bound, its aspect kept.
+    @Test @MainActor func aFourKSourceIsPreparedAtTheCompositorBound() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("lipsync-4k-tests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = try await NativeMediaFixtures.shared.file("joins-tone.mov")
+        var project = try zoomCoverProject(duration: 0.875, source: source, paidRoot: root)
+        project.media.source.video = MediaVideo(width: 3840, height: 2160, frameRate: 29.970029830932617, rotationDegrees: 0)
+        var request = try zoomCoverRequest(project: project, paidRoot: root)
+        // The clip's look is the compositor's to apply once over the lip-synced frames, never baked into the window.
+        request.clipControls = ProjectClipControls(clipId: "c", look: .bw)
+        let plan = try #require(request.voiceLab).prepared.outputPlan
+        let recipe = try #require(project.voiceLab.segments[0].candidates[0].recipe)
+        let window = try LipsyncRenderWindow(source: LipsyncWindow.make(seamIn: recipe.video.sourceStartSample,
+            seamOut: recipe.video.sourceEndSample, totalSamples: plan.totalSourceSamples, sampleRate: 48_000, phraseID: 0), plan: plan)
+        let prepared = try await LipsyncWindowPreparation.prepare(request: request, window: window, scratchRoot: root, detector: { _ in 0.2 })
+        #expect(prepared.width == 1920 && prepared.height == 1080)
+        let file = root.appendingPathComponent("window.mp4")
+        try prepared.video.data.write(to: file)
+        _ = try await LipsyncResultValidation.validate(file: file, durationSeconds: window.seconds(sampleRate: 48_000),
+            fps: prepared.fps, width: 1920, height: 1080)
+    }
+
     @Test @MainActor func lipsyncPreparationFaceGateAndPreviewExportFrames() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("lipsync-composition-tests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -313,3 +337,4 @@ struct ContextDemoZoomCoverNativeTests {
     }
 }
 }
+
