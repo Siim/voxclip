@@ -84,7 +84,6 @@ actor RegressionClipConnector: LLMConnector {
         app.connectorOverride = { [words = model.words] _ in RegressionClipConnector(words: words) }
         app.set("llm.connector", .string("ollama"))
         app.set("llm.model.ollama", .string("fixture-local"))
-        app.set("llm.clips.snapToLines", .bool(false))
         model.preset = .quotes
         model.findClips()
         await model.findTask?.value
