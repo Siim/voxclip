@@ -73,7 +73,7 @@ public sealed class ClaudeModeStreamingTests
         {
             // The best clip's plan comes first; the others wait until it is applied.
             Ready(progress, plans, 0);
-            await others.Task.WaitAsync(ct);
+            await others.Task.WaitAsync(TimeSpan.FromMinutes(1), ct);
             Ready(progress, plans, 2);
             Ready(progress, plans, 1);
         });
@@ -217,7 +217,7 @@ public sealed class ClaudeModeStreamingTests
             // Outside an applied clip nothing else may take a lease while plans are in flight.
             using (var other = owner.LlmRuns.TryAcquire()) outside = other is not null;
             Ready(progress, plans, 0);
-            await others.Task.WaitAsync(ct);
+            await others.Task.WaitAsync(TimeSpan.FromMinutes(1), ct);
             Ready(progress, plans, 1);
             Ready(progress, plans, 2);
         }, stub: stub);

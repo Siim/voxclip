@@ -139,6 +139,47 @@ public sealed class ClipAutopilotStreamingTests
         Assert.Equal(1, Assert.Single(events.OfType<ClipAutopilotProgress.Failed>()).Clip);
     }
 
+    /// <summary>A connector that takes images, with a fixed context.</summary>
+    private sealed class Seeing(int context) : ILlmConnector
+    {
+        internal int Sent;
+        public ConnectorId Id => ConnectorId.Anthropic;
+        public bool SupportsImages => true;
+        public Task<ConnectorStatus> GetStatusAsync(CancellationToken ct) => Task.FromResult<ConnectorStatus>(new ConnectorStatus.Ready());
+        public Task<IReadOnlyList<LlmModel>> GetModelsAsync(bool refresh, CancellationToken ct) => Task.FromResult<IReadOnlyList<LlmModel>>([]);
+        public Task<int?> GetContextTokensAsync(string model, CancellationToken ct) => Task.FromResult<int?>(context);
+        public Task<RawCompletion> SendAsync(LlmRequest request, string model, CancellationToken ct)
+        {
+            Interlocked.Increment(ref Sent);
+            return Task.FromResult(new RawCompletion(PlanReply(request), null, model, new StopKind.Complete(), null, null));
+        }
+    }
+
+    [Fact]
+    public async Task TheImagesCountInTheContextCheckOfAConnectorThatTakesThem()
+    {
+        // 24 frames of 2,000 × 1,500 px are 4,000 image tokens each (96,000 in all): they fit a text model's 128k context, not this one's
+        // once they count.
+        var large = ClipAutopilotFramesTests.Sheet(images: true) with
+        {
+            Images = Enumerable.Range(1, 24).Select(index => new LlmImage($"Frame {index}", "image/jpeg", [1], 2000, 1500)).ToArray()
+        };
+        Task<ClipAutopilotFrames?> Source(int clip, WordSpan span, CancellationToken token) => Task.FromResult<ClipAutopilotFrames?>(large);
+        var input = Input(Five[..1]) with { Moments = [] };
+        var roomy = new Seeing(200_000);
+        await Service().PlanAsync(input, roomy, "fixture", ct: TestContext.Current.CancellationToken, frames: Source);
+        Assert.Equal(1, roomy.Sent);
+        var tight = new Seeing(100_000);
+        var error = await Assert.ThrowsAsync<LlmException>(() => Service().PlanAsync(input, tight, "fixture", ct: TestContext.Current.CancellationToken, frames: Source));
+        Assert.Equal(LlmErrorKind.ContextTooLong, error.Error.Kind);
+        Assert.Equal(0, tight.Sent);
+        // A connector that takes no images is sent none, so they don't count.
+        var text = new ScriptedConnector(ConnectorId.Ollama, (request, model, _) => Task.FromResult(new RawCompletion(PlanReply(request), null, model, new StopKind.Complete(), null, null)))
+            { ContextTokens = 100_000 };
+        await Service().PlanAsync(input, text, "fixture", ct: TestContext.Current.CancellationToken, frames: Source);
+        Assert.Single(text.Requests);
+    }
+
     [Fact]
     public async Task CancellingThePlanStopsEveryPlanInFlight()
     {
