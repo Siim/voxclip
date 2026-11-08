@@ -60,8 +60,11 @@ def schema_for(path, document, by_name):
         return by_name["cover-art-cases.schema.json"]
     if isinstance(document, dict) and document.get("format") == "voxclip-context-demo":
         return by_name["context-demo.schema.json"]
-    if isinstance(document, dict) and document.get("schema") == "voxclip-export-check-cases/1":
+    if isinstance(document, dict) and document.get("schema") in {"voxclip-export-check-cases/1",
+                                                                 "voxclip-export-check-number-cases/1"}:
         return by_name["export-check-cases.schema.json"]
+    if isinstance(document, dict) and document.get("schema") == "voxclip-spoken-numbers-cases/1":
+        return by_name["spoken-numbers-cases.schema.json"]
     raise SystemExit(f"{path}: no schema applies (expected .voxclip, .transcript.json, voxclip-settings/1 "
                      "or voxclip-voice-lab-prices/1)")
 
@@ -81,6 +84,8 @@ def main(argv):
           fixtures / "voice-lab" / "consent-record-project.json",
           ROOT / "shared" / "catalog" / "voice-lab-models.json",
           fixtures / "export-check" / "check-cases.json",
+          fixtures / "export-check" / "number-check-cases.json",
+          fixtures / "spoken-numbers" / "number-cases.json",
           fixtures / "cover-art" / "cover-art-cases.json"]
     if not files:
         print("no files to validate", file=sys.stderr)

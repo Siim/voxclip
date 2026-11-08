@@ -1,5 +1,29 @@
 # macOS implementation contracts
 
+### 2026-11-08 — Numbers match however they're written, in the take check and the export check (track/v2-spoken-numbers)
+
+The export self-check (ADR-R49) failed the user's real 29.7 s clip: the transcript said "three hundred dollar", Whisper heard the export as "$300", and the check reported "three" cut off and "hundred" and "dollar" as mismatches. The take QA had the same gap (voice-lab §8.11).
+
+- **Core `SpokenNumbers`** (new, Domain/Transcript). `tokens`, `numeral` and `align(expected:recognized:)`.
+  - A numeral token matches a run of English number words (at most 10) that says the same number: cardinals (with "a", "and" and "point"), years read in pairs, digits read one by one, ordinals, and numerals with thousands commas and a decimal point. "$ € £ %" match "dollar(s) euro(s) pound(s) percent / per cent"; the unit word is optional on either side.
+  - The alignment maximizes matched tokens (a plain pair 2, a numeral against n words 1 + n). Without numbers it returns exactly the old LCS pairs. A numeral pairs with each word of its run, so an index may repeat.
+  - Other languages: a numeral alone in a gap facing 1–4 tokens with no numeral or English number word is unverified (`unverifiedExpected`, `unverifiedRecognized`, `unverifiedNumbers`).
+- **Take QA.** `VoiceLabTakeQuality.tokens` comes from `spokenTokens`. `transcriptRatio` and the new `wordMatch` run on the alignment; `alignment(expected:recognized:)` is now a wrapper over it, with no second alignment. `evaluate`'s short-phrase rule is `Alignment.complete`, and the result carries `unverifiedNumbers`. `VoiceLabAudioTags.keptAfterScribeEvents` returns the kept indices, so each token keeps its numeral; `filterScribeEvents` wraps it.
+- **Export check.** `ExportCheck.WordAlignment` runs on `SpokenNumbers.align`. A numeral matched to several words maps each to its first heard word, so items and phrase offsets keep the right output times. A number heard as a numeral is never a cut-off. Unverified words are left out of `matched` and `total`, and `ExportCheckResult.unverified` counts the numbers (nil when there are none).
+- **Vectors.**
+  - shared/fixtures/spoken-numbers/number-cases.json (`voxclip-spoken-numbers-cases/1`, 79 cases: 28 numerals, 45 alignments, 6 take checks), written by tools/fixtures/spoken-numbers/generate_number_cases.py, with schema spoken-numbers-cases.schema.json.
+  - shared/fixtures/export-check/number-check-cases.json (`voxclip-export-check-number-cases/1`, 4 words cases including the lead's), written by generate_check_cases.py beside check-cases.json, which is unchanged. export-check-cases.schema.json accepts both ids and `unverified`.
+  - Both are in check_drift's EXACT list and validate.py.
+- **Tests.** Core `SpokenNumbersReplayTests` (exact keys and count), `SpokenNumbersTests` (each reading both ways, wrong numbers, other language, take QA), and `ExportCheckReplayTests` over both files, now also comparing `unverified`.
+  - Each rule mutated on its own turns tests red: cardinal, year, digits, ordinal, unit words, "per cent", currency signs, numeral value, unverified, the numeral cut-off rule, and the old exact rule.
+- **Verification** (`VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`):
+  - Core 1,488 tests (2 known issues from the base). Media 629. App 1,031.
+  - `rewrite-smoke.sh` (DEBUG, no path): PASSED, 83 scenarios.
+  - Long-expression build (250 ms): nothing flagged in the touched files.
+  - Both `check_drift.py` and `validate.py`: tree clean.
+  - Real check: local `say` speech "…we paid a three hundred dollar bill…", transcribed with whisper-large-v3-turbo (model folder symlinked into a scratch data folder), the transcript spelled out as the lead's was, "a" cut, exported 9:16. Whisper heard "$300". Before: words warning, 17/20, "three" cutOff, "hundred" (heard "300") and "dollar" mismatches, exit 8. After: words ok, 20/20, exit 0.
+- **Owed.** The Windows export-check twin (it now has `SpokenNumbers` to build on). No App UI shows `unverified` yet.
+
 ### 2026-11-08 — The band rule in every shape: 1:1 and 16:9 defaults too, a gate with no known issues (track/v2-safe-zones, follow-up)
 
 Lead decision on the open points of the entry below: one rule in every shape, so the self-check agrees with every default. design.md §5.1 has the rule and the table.

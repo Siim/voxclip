@@ -3,11 +3,13 @@ import Testing
 @testable import VoxClipCore
 
 /// The export self-check's rules (ADR-R49) replayed from shared/fixtures/export-check/check-cases.json, which
-/// tools/fixtures/export-check/generate_check_cases.py writes and the Windows twin replays too.
+/// tools/fixtures/export-check/generate_check_cases.py writes and the Windows twin replays too, and the numbers file
+/// beside it (number-check-cases.json, SpokenNumbers).
 struct ExportCheckReplayTests {
     static let path = "fixtures/export-check/check-cases.json"
+    static let numbersPath = "fixtures/export-check/number-check-cases.json"
 
-    static func document() throws -> [String: JSONValue] {
+    static func document(_ path: String = path) throws -> [String: JSONValue] {
         try #require(JSONDecoder().decode(JSONValue.self, from: FixtureLoader.data(path)).aiObject)
     }
 
@@ -55,8 +57,8 @@ struct ExportCheckReplayTests {
         }
         if result.status.rawValue != expect[ai: "status"].aiString { found.append("status \(result.status) against \(expect[ai: "status"])") }
         if result.reason != expect[ai: "reason"].aiString { found.append("reason \(String(describing: result.reason))") }
-        for key in ["matched", "total"] {
-            let actual = key == "matched" ? result.matched : result.total
+        for key in ["matched", "total", "unverified"] {
+            let actual = key == "matched" ? result.matched : key == "total" ? result.total : result.unverified
             near(expect[ai: key], actual.map(Double.init), key)
         }
         near(expect[ai: "integratedLufs"], result.integratedLufs, "integratedLufs")
@@ -102,8 +104,17 @@ struct ExportCheckReplayTests {
         }
     }
 
-    @Test func everyCaseReplays() throws {
-        let cases = try Self.document()["cases"]?.aiArray ?? []
+    @Test func theNumbersFileHasItsOwnSchemaAndCount() throws {
+        let document = try Self.document(Self.numbersPath)
+        #expect(Set(document.keys) == ["schema", "description", "constants", "caseCount", "counts", "cases"])
+        #expect(document["schema"] == .string("voxclip-export-check-number-cases/1"))
+        let cases = document["cases"]?.aiArray ?? []
+        #expect(cases.count == 4 && document["caseCount"]?.aiDouble == Double(cases.count))
+        #expect(document["constants"]?[ai: "matchFloor"].aiDouble == ExportCheck.matchFloor)
+    }
+
+    @Test(arguments: [path, numbersPath]) func everyCaseReplays(_ path: String) throws {
+        let cases = try Self.document(path)["cases"]?.aiArray ?? []
         #expect(!cases.isEmpty)
         for entry in cases {
             let id = entry[ai: "id"].aiString ?? "?"

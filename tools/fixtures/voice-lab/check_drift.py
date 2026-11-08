@@ -67,6 +67,8 @@ EXACT = ['shared/fixtures/voice-lab/pace-cases.json', 'shared/fixtures/voice-lab
          'shared/fixtures/clip-style/caption-look-cases.json',
          'shared/fixtures/caption-translations/caption-translation-cases.json',
          'shared/fixtures/export-check/check-cases.json',
+         'shared/fixtures/export-check/number-check-cases.json',
+         'shared/fixtures/spoken-numbers/number-cases.json',
          'shared/data/rewrite-tones.json',
          *sorted(f'shared/fixtures/cover-art/{name}' for name in (
              'cover-art-cases.json', 'cover.jpg', 'cover.png', 'moov-first.mp4', 'moov-last.mp4', 'existing-covr.mp4',
@@ -136,6 +138,8 @@ def main():
     subprocess.run([sys.executable, str(root / "tools/fixtures/clips-mode/generate_clips_mode.py")], check=True)
     # The export self-check's rules on measured inputs (ADR-R49), replayed by the Mac Core; the Windows twin is owed.
     subprocess.run([sys.executable, str(root / "tools/fixtures/export-check/generate_check_cases.py")], check=True)
+    # Numbers matched however they are written (voice-lab section 8.11, ADR-R49), replayed by both Cores.
+    subprocess.run([sys.executable, str(root / "tools/fixtures/spoken-numbers/generate_number_cases.py")], check=True)
     # The MP4 cover-art writer's vectors (ADR-R48): synthetic MP4 inputs, the images and the expected outputs, replayed by both Cores.
     subprocess.run([sys.executable, str(root / "tools/fixtures/cover-art/generate_cover_art.py")], check=True)
     # The bundled sound effects (doc/spec/ai.md section 18.5): the committed WAVs must be the generator's bytes.
