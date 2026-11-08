@@ -1,5 +1,14 @@
 # macOS implementation contracts
 
+### 2026-11-08 — Lead: live image sends through Claude Code and Codex; Vision off the cooperative pool; macOS 26 cover art
+
+- **Live image sends (owed by track/v2-eyes-1, done).** The release CLI's `voxclip-cli autopilot --count 1 --timings` ran at `8c2e1221` on a 52 s 4K DJI recording, read-only, through the user's own plans. The scratch was deleted afterwards.
+  - Claude Code (stream-json image blocks): `frames.images: true`, 10 frames sent, 770 image tokens; a valid plan with a cover at 31.0 s; first clip 72.0 s.
+  - Codex (`--image` files): the same 10 frames and a valid plan with a cover at 16.0 s; first clip 95.9 s.
+  - The headless CLI doesn't keep Claude's reasons or apply the picture rows, so neither run proves what the model concluded from the pictures. Both prove the image path: each CLI accepted the images and answered the schema.
+- **Vision off the cooperative pool (75841cb4).** `FrameAnalyzer.look` runs `AppleFrameVision.observe` on a concurrent dispatch queue behind a continuation. Vision's synchronous `perform` on the analyzer's task-group lanes had starved the 3-core CI runner's pool; `LIBDISPATCH_COOPERATIVE_POOL_STRICT=1` reproduces it.
+- **Cover art on macOS 26 (owed).** The `covr` item doesn't reach the MP4 on the macOS 26 CI runner; macOS 27 embeds it, and the JPEG beside the export is written on both. `ClipCoverExportTests` reads the atom from the file's bytes and treats macOS 26 as a known issue (8c2e1221, doc/publishing.md).
+
 ### 2026-11-08 — Exports reach −14 LUFS on real speech: a transparent true-peak limiter, the 9 dB reduction cap, landing on target (track/v2-loudness-limiter, ADR-R47 amended)
 
 ADR-R47's static gain left the lead's benchmark clips at −20.1/−19.8/−20.0 LUFS, all `capped`: plosives reach −1 dBTP first. Now one gain takes the mix to −14 and a lookahead true-peak limiter holds the peaks. Windows is the twin in the same package (apps/windows/CONTRACTS.md). The exact algorithm is doc/publishing.md §6.1.
