@@ -4,9 +4,11 @@ import VoxClipMedia
 
 /// Revoice the whole clip inside Rewrite (ADR-R46): the card's actions and the live steps. The voice is a take plan over the
 /// script's parts (`WholeClipScript.hunks`), so each part goes through the same window placement, R40 guard, R43
-/// calibration, per-video voice (R45), take checks and journals as a phrase; the picture is matched per part through the
-/// same duration path; the lip sync is Rewrite's own over one merged window with the chosen model; Use is Rewrite's own
-/// commit, one undo step, with the project's `wholeClipRevoices` record.
+/// calibration, per-video voice (R45), take checks and journals as a phrase. One timeline (ADR-R46): each take is laid out
+/// on the clip **as edited** (`VoiceLabEditedLayout`), and its picture is the clip's own cuts (`cut` at zoom 1) through the
+/// same duration path, so the fit, the picture, the render and the lip sync all read the clip's edited length; the lip sync
+/// is Rewrite's own over one merged window with the chosen model; Use is Rewrite's own commit, one undo step, with the
+/// project's `wholeClipRevoices` record.
 extension RewriteSession {
     /// The clip this Rewrite is inside, nil for the full take.
     var wholeClipID: String? {
@@ -87,12 +89,13 @@ extension RewriteSession {
 
     /// The stopped card's actions, the first one primary. Try Again (priced) only when a retry can succeed: after a stop that
     /// would only repeat, such as a part that can't be placed, the patch is the way forward and nothing is priced for work
-    /// that can't happen.
+    /// that can't happen. After a voice that can't fit, over the same script, the patch is the primary and Try Again comes
+    /// second: it would meet the same fit (ADR-R46).
     func wholeClipStoppedActions() -> [PanelAction] {
         guard let session = wholeClip, session.isStopped else { return [] }
         let patch = PanelAction(id: "wholeClipPatch", title: "Voice Only the Changed Phrases") { [weak self] in self?.patchInstead() }
         guard session.failure?.repeats != true, let retry = wholeClipPrimary(retry: true) else { return [patch] }
-        return [retry, patch]
+        return session.repeatsFit ? [patch, retry] : [retry, patch]
     }
 
     func startWholeClip(automatic: Bool = false) {
@@ -174,10 +177,12 @@ extension RewriteSession {
             guard let self else { throw CancellationError() }
             return try await wholeClipVoice(script, progress: progress)
         }, videoSeconds: { [weak self] in
-            self?.wholeClipPlan?.phrases.reduce(0) { $0 + $1.originalLength } ?? 0
-        }, reword: { [weak self] script, shorter, target, voice, video in
+            self?.wholeClipEditedSeconds ?? 0
+        }, reword: { [weak self] script, target, voice, video in
             guard let self else { throw CancellationError() }
-            return try await wholeClipReword(script, shorter: shorter, target: target, voiceSeconds: voice, videoSeconds: video)
+            return try await wholeClipReword(script, target: target, voiceSeconds: voice, videoSeconds: video)
+        }, estimate: { [weak self] script in
+            self?.wholeClipEstimate(script)
         }, lipsync: { [weak self] voice, factor, model, progress in
             guard let self else { throw CancellationError() }
             return try await wholeClipLipsync(voice, factor: factor, model: model, progress: progress)
@@ -205,20 +210,46 @@ extension RewriteSession {
         prices ?? editor.app.shared.flatMap { try? VoiceLabPriceCatalog.load(shared: $0) }
     }
 
-    /// The lip-sync window's seconds: the parts' span with Rewrite's one-second handles (voice-lab §9.3).
-    private var wholeClipLipsyncSeconds: Double? {
-        if let phrases = wholeClipPlan?.phrases, let first = phrases.first, let last = phrases.last {
-            return last.window.end - first.window.start + 2
+    /// The clip as edited (its cuts and tightened pauses applied) with no voice in it: the one timeline the whole clip's
+    /// fit, layout, picture and lip sync read (ADR-R46).
+    private func wholeClipEditedPlan(_ final: Project) -> VoiceLabOutputPlan? {
+        guard let id = wholeClipID else { return nil }
+        return try? VoiceLabOutputPlanner.build(final, scope: .clip(id))
+    }
+
+    /// The parts' windows as edited, in seconds: each window without the clip's own cuts inside it. Before the voice's
+    /// plan exists, the script's span on the clip as edited.
+    var wholeClipEditedSeconds: Double? {
+        guard let final = try? editor.voiceLabReviewProject(localCommands: localCommands), let edited = wholeClipEditedPlan(final) else { return nil }
+        if let phrases = wholeClipPlan?.phrases, !phrases.isEmpty {
+            return phrases.reduce(0) { total, phrase in
+                let cuts = WholeClipRevoice.editedCuts(edited, startSample: phrase.window.startSample, endSample: phrase.window.endSample)
+                return total + WholeClipRevoice.editedSeconds(cuts, startSample: phrase.window.startSample, endSample: phrase.window.endSample,
+                                                               sampleRate: edited.sampleRate)
+            }
         }
-        guard let script = wholeClip?.script, let first = script.sentences.first, let last = script.sentences.last else { return nil }
-        return last.end - first.start + 2
+        guard let script = wholeClip?.script ?? (try? wholeClip?.backend?.script()), let first = script.sentences.first,
+              let last = script.sentences.last else { return nil }
+        return edited.mapTime(last.end) - edited.mapTime(first.start)
+    }
+
+    /// The lip-sync window's seconds: the clip as edited with Rewrite's one-second handles (voice-lab §9.3).
+    private var wholeClipLipsyncSeconds: Double? { wholeClipEditedSeconds.map { $0 + 2 } }
+
+    /// The speaking-rate estimate of a script (check before paying): the project's measured rate, else the provider's floor.
+    private func wholeClipEstimate(_ script: WholeClipScript) -> Double? {
+        let rate = (try? VoiceLabLengthBudget.generatedRate(project: project).charactersPerSecond) ?? VoiceLabLengthBudget.providerRateFloor
+        return try? VoiceLabPhraseTiming.estimate(text: script.text, rate: max(rate, VoiceLabLengthBudget.providerRateFloor))
     }
 
     private func wholeClipQuote(_ script: WholeClipScript, model: WholeClipRevoice.Lipsync) throws -> WholeClipRevoiceSession.Quote {
         guard let catalog = wholeClipCatalog, let id = wholeClipID, let first = script.sentences.first, let last = script.sentences.last else {
             throw VoxClipError.sharedResourcesMissing
         }
-        let seconds = last.end - first.start + 2
+        // The lip sync is priced on the clip as edited, the video it gets, with Rewrite's one-second handles.
+        let final = try editor.voiceLabReviewProject(localCommands: localCommands)
+        let edited = wholeClipEditedPlan(final)
+        let seconds = (edited.map { $0.mapTime(last.end) - $0.mapTime(first.start) } ?? (last.end - first.start)) + 2
         let price = try WholeClipRevoice.price(characters: script.characters, ttsModel: VoiceLabWordingFit.modelID,
                                                videoSeconds: seconds, lipsync: model, catalog: catalog)
         let patchCharacters = includedVoiceHunks.reduce(0) { $0 + $1.newTokens.joined(separator: " ").unicodeScalars.count }
@@ -254,7 +285,17 @@ extension RewriteSession {
         do {
             let final = try editor.voiceLabReviewProject(localCommands: localCommands)
             let hunks = script.hunks(words: wholeClipWords(final), cutWordIds: Set(final.edits.cutWordIds), cutPauseIds: Set(final.edits.cutPauseIds))
-            let makeInput = try takeInputMaker(final: final, recordID: recordID, modelID: model, envelope: envelope, model: { created?.modelID ?? model })
+            let phraseInput = try takeInputMaker(final: final, recordID: recordID, modelID: model, envelope: envelope, model: { created?.modelID ?? model })
+            // One timeline: each part's take is laid out on the clip as edited, at its natural pace, its sentence-end pauses
+            // within the project's pause threshold (ADR-R46).
+            guard let edited = wholeClipEditedPlan(final) else { throw ClipTakePlan.Failure.stale }
+            let bound = final.edits.pauseThresholdSeconds
+            let makeInput: @MainActor (ClipTakePlan.Phrase) async throws -> VoiceLabTakeInput = { phrase in
+                var input = try await phraseInput(phrase).replacingPace(nil)
+                input.editedLayout = VoiceLabEditedLayout(cuts: WholeClipRevoice.editedCuts(edited, startSample: phrase.window.startSample,
+                                                                                             endSample: phrase.window.endSample), pauseBoundSeconds: bound)
+                return input
+            }
             plan = try ClipTakePlan(project: final, scope: scope, envelope: envelope, hunks: hunks, makeInput: makeInput,
                 readCap: { [weak self] in
                     guard let self else { throw CancellationError() }
@@ -298,20 +339,22 @@ extension RewriteSession {
         progress("\(plan.phrases.count == 1 ? "one take" : "\(plan.phrases.count) parts, one take")")
         await plan.start(approved: true, quoteID: approval)
         try Task.checkCancellation()
+        // The voice as said: each take's speech between its trims, before any pause of the layout.
         var seconds = 0.0
         for phrase in plan.phrases {
-            guard let take = plan.automaticTake(phrase: phrase.id), let length = take.length, plan.select(take: take.id, phrase: phrase.id) else {
+            guard let take = plan.automaticTake(phrase: phrase.id), let audio = take.row.audio, plan.select(take: take.id, phrase: phrase.id) else {
                 throw WholeClipRevoiceSession.Stop.noVoice("Part \(phrase.id + 1)'s take didn't pass its checks. " + (plan.problem.isEmpty ? "" : plan.problem))
             }
-            seconds += length
+            seconds += Double(audio.fit.plan.trimEndFrame - audio.fit.plan.trimStartFrame) / Double(audio.sampleRate)
         }
         return .init(key: .init(script: script.text, recordId: recordID, model: plan.modelID ?? model), seconds: seconds,
                      parts: plan.phrases.count, usd: plan.spent.usd ?? 0)
     }
 
     /// The Fit step's measured-wording round: Rewrite's own send with its measured feedback (voice-lab §8.2.2), for the
-    /// whole clip as one line (the voice's measured length against the video's), then the reply's changes as the script.
-    private func wholeClipReword(_ script: WholeClipScript, shorter: Bool, target: Int, voiceSeconds: Double,
+    /// whole clip as one line (the voice's measured length against the clip as edited), then the reply's changes as the
+    /// script. It only ever asks for fewer words: a shorter voice is laid out, never padded (ADR-R46).
+    private func wholeClipReword(_ script: WholeClipScript, target: Int, voiceSeconds: Double,
                                  videoSeconds: Double) async throws -> WholeClipScript? {
         guard let connector, let shared = editor.app.shared else { return nil }
         struct Measured: Decodable { let shorterMeasuredFeedbackBlock: String; let shorterMeasuredPhraseLine: String }
@@ -322,7 +365,6 @@ extension RewriteSession {
         let line = template.shorterMeasuredPhraseLine.replacing(#/\{(original|proposed|measuredSeconds|slotSeconds)\}/#) { values[String($0.1)] ?? "" }
         var block = template.shorterMeasuredFeedbackBlock.replacingOccurrences(of: "{phrases}", with: line)
         block += "\nAim at about \(target) words for the whole clip."
-        if !shorter { block = block.replacingOccurrences(of: "Say it in fewer words", with: "Say it in more words") }
         let prepared = try await prepareSend(connector, feedback: block)
         guard await confirmSend(), current else { return nil }
         guard let (checked, _) = try await reply(prepared, connector: connector, accept: { [weak self] in self?.current == true }) else { return nil }
@@ -331,12 +373,14 @@ extension RewriteSession {
         return WholeClipScript.assemble(words: wholeClipWords(final), cutWordIds: cuts, voiceHunks: hunks)
     }
 
-    /// Every part's picture matched to its take through Rewrite's own duration path (Match video), before the lip sync.
+    /// Every part's picture is the clip as edited under its laid-out take, through Rewrite's own duration path: the source
+    /// when the take fills its window exactly, else the clip's own cuts (and the trim after the voice's last pause).
     func wholeClipMatchPicture() async throws -> ClipTakePlan {
         guard let plan = wholeClipPlan else { throw ClipTakePlan.Failure.stale }
         for phrase in plan.phrases where plan.lipsync.applied[phrase.id] != nil { plan.lipsync.undo(phrase.id) }
-        for phrase in plan.phrases where phrase.videoChoice != .retimed {
-            guard plan.chooseVideo(.retimed, phrase: phrase.id) else {
+        for phrase in plan.phrases {
+            let choice: VoiceLabVideoMode = plan.videoAvailability(phrase: phrase.id).allows(.source) ? .source : .cut
+            guard phrase.videoChoice == choice || plan.chooseVideo(choice, phrase: phrase.id) else {
                 throw WholeClipRevoiceSession.Stop.noVoice("Part \(phrase.id + 1)'s picture can't be matched to its voice.")
             }
         }
@@ -372,7 +416,9 @@ extension RewriteSession {
             if case .failed(let reason, _, _) = plan.lipsync.states[phrase] { throw WholeClipRevoiceSession.Stop.noVoice("Couldn't lip sync: " + reason) }
             throw CancellationError()
         }
-        return .init(model: model, usd: offer.estimate.usd ?? 0, factor: factor)
+        // The picture is the clip as edited, not retimed: the record's retime is 1.
+        _ = factor
+        return .init(model: model, usd: offer.estimate.usd ?? 0, factor: 1)
     }
 
     /// The anchor the baseline belongs to, named as Settings › Voices names it ("siim"), never the video's own voice.

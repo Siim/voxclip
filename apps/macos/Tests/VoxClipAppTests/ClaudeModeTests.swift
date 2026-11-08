@@ -748,13 +748,58 @@ extension ClaudeModeTests {
         await editor.claudeMode.task?.value
         let run = try #require(editor.claudeModeRuns.first { $0.clipID == "clip-main" })
         let copy = "Part 2 can't be joined to the recording there. Nothing was sent."
-        #expect(outcomes.all == [.patchInstead(copy)])
+        #expect(outcomes.all == [.patchInstead(copy, spent: 0)])
         #expect(stubs.reports.count == 1 && stubs.voices.isEmpty && stubs.lipsyncs.isEmpty, "\(stubs.reports)")
         #expect(fixture.calls.all.contains("voice we finally ship budget 2"), "the phrase was patched: \(fixture.calls.all)")
         let row = try #require(run.rows.first { $0.id == "wholeClip" })
         #expect(row.text == "Voiced only the changed phrases: the whole clip couldn't be revoiced here" && row.detail == copy)
         #expect(editor.claudeMode.budget?.spent == Decimal(string: "0.10"), "only the patch was paid")
         #expect(!run.rows.contains { $0.id == "wholeClipOffer" })
+    }
+
+    /// Claude mode's whole clip uses the same fit (ADR-R46): a voice shorter than the clip as edited is laid out with no
+    /// longer wording and revoiced; one too long for it, with no shorter wording to be had, falls back to the patch with what
+    /// its voice cost charged to the run, and the changed phrases are voiced.
+    @Test func claudeModesWholeClipFollowsTheSameFit() async throws {
+        for tooLong in [false, true] {
+            let fixture = try fixture()
+            defer { close(fixture) }
+            let editor = fixture.editor
+            let stubs = WholeClipRevoiceSessionTests.Stubs()
+            stubs.voiceSeconds = [tooLong ? 40 : 27]
+            stubs.video = WholeClipUserCase.editedSeconds
+            stubs.reword = nil
+            let outcomes = WholeClipOutcomes()
+            editor.makeIt.services?.wholeClipQuote = { _, _ in WholeClipAutoQuote(reason: .manyWords(revoiced: 3, spoken: 5), price: Decimal(string: "1.5")!) }
+            editor.makeIt.services?.revoiceWholeClip = { _, _ in
+                let session = WholeClipRevoiceSession()
+                session.backend = WholeClipRevoiceSessionTests.backend(stubs)
+                session.start(automatic: true)
+                await session.waitForRun()
+                let outcome = WholeClipAutoOutcome(session)
+                outcomes.all.append(outcome)
+                return outcome
+            }
+            await editor.makeIt.refreshVoiceReady(editor)
+            editor.armClaudeMode()
+            editor.claudeModeTranscribed(started: false)
+            await editor.claudeMode.task?.value
+            let run = try #require(editor.claudeModeRuns.first { $0.clipID == "clip-main" })
+            let row = try #require(run.rows.first { $0.id == "wholeClip" })
+            if tooLong {
+                #expect(stubs.rewords.count == 1 && stubs.voices.count == 1 && stubs.lipsyncs.isEmpty, "one shorter wording asked, no second voice")
+                guard case .patchInstead(let line, let spent)? = outcomes.all.first else { Issue.record("\(outcomes.all)"); continue }
+                #expect(line.hasPrefix("The new voice runs 0:40 for 0:31.4 of video") && spent == Decimal(string: "0.06"))
+                #expect(fixture.calls.all.contains("voice we finally ship budget 1.94"), "the phrase was patched within what is left: \(fixture.calls.all)")
+                #expect(row.text == "Voiced only the changed phrases: the whole clip couldn't be revoiced here")
+                #expect(editor.claudeMode.budget?.spent == Decimal(string: "0.16"), "the patch and the whole clip's voice were paid")
+            } else {
+                #expect(stubs.rewords.isEmpty && stubs.voices.count == 1 && stubs.lipsyncs == [.lipsync2], "laid out, never a longer wording")
+                guard case .revoiced? = outcomes.all.first else { Issue.record("\(outcomes.all)"); continue }
+                #expect(row.text == "Revoiced the whole clip in your voice, lip synced")
+                #expect(!fixture.calls.all.contains { $0.hasPrefix("voice ") }, "no phrase was patched: \(fixture.calls.all)")
+            }
+        }
     }
 
     @Test func aClipThatWouldNotSoundStitchedIsPatchedWithNoOffer() async throws {

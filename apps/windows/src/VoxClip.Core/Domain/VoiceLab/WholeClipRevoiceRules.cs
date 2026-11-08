@@ -75,37 +75,142 @@ public static partial class WholeClipRevoice
         _ => throw new ArgumentOutOfRangeException(nameof(reason))
     };
 
-    /// <summary>The Fit step's verdict on the voice against the clip's rendered video (which already includes any clip speed).</summary>
+    /// <summary>The Fit step's verdict on the voice against the clip <b>as edited</b>: its cuts and tightened pauses applied, the
+    /// length the user sees and the video the lip sync gets (ADR-R46, "One timeline"). Clip speed scales both alike.</summary>
     public abstract record Fit
     {
         private Fit() { }
-        /// <summary>Within ±8%: the picture is retimed uniformly by <c>Factor</c> (voice ÷ video).</summary>
+        /// <summary>Within ±8%: the voice is laid out on the clip as edited (<c>Factor</c> = voice ÷ video).</summary>
         public sealed record Matched(double Factor) : Fit;
-        /// <summary>Outside it: ask for a wording of about <c>TargetWords</c> through the measured-wording round.</summary>
-        public sealed record Reword(bool Shorter, int TargetWords) : Fit;
+        /// <summary>Shorter than that: still laid out on the clip as edited, its sentence-end pauses within the pause bound, ending
+        /// on the clip's own last pause with the picture after it trimmed. Never a longer wording.</summary>
+        public sealed record LaidOut(double Factor) : Fit;
+        /// <summary>Longer than the clip as edited can hold: ask for a <b>shorter</b> wording of about <c>TargetWords</c>.</summary>
+        public sealed record Reword(int TargetWords) : Fit;
         /// <summary>No round is left: say so inline and offer a forward action.</summary>
         public sealed record CannotFit(double VoiceSeconds, double VideoSeconds) : Fit;
     }
 
-    /// <summary><paramref name="round"/> counts the reword rounds already asked for.</summary>
+    /// <summary><paramref name="voiceSeconds"/> is the voice as said, <paramref name="videoSeconds"/> the clip as edited and
+    /// <paramref name="round"/> the reword rounds already asked for.</summary>
     public static Fit FitVoice(double voiceSeconds, double videoSeconds, int words, int round)
     {
         if (!double.IsFinite(voiceSeconds) || !double.IsFinite(videoSeconds) || voiceSeconds <= 0 || videoSeconds <= 0)
             return new Fit.CannotFit(voiceSeconds, videoSeconds);
         var factor = voiceSeconds / videoSeconds;
         if (Math.Abs(factor - 1) <= FitTolerance + 1e-9) return new Fit.Matched(factor);
+        if (factor < 1) return new Fit.LaidOut(factor);
         if (round >= MaximumRewordRounds || words <= 0) return new Fit.CannotFit(voiceSeconds, videoSeconds);
-        var target = Math.Max(1, (int)Math.Round(words / factor, MidpointRounding.AwayFromZero));
-        return new Fit.Reword(factor > 1, target);
+        return new Fit.Reword(Math.Max(1, (int)Math.Round(words / factor, MidpointRounding.AwayFromZero)));
+    }
+
+    /// <summary>Check before paying: a reworded script is voiced only when its speaking-rate estimate, scaled by the measured
+    /// voice, comes in at or under the clip as edited plus <see cref="FitTolerance"/>.</summary>
+    public static bool RewordFits(double voiceSeconds, double estimateSeconds, double newEstimateSeconds, double videoSeconds) =>
+        PredictedSeconds(voiceSeconds, estimateSeconds, newEstimateSeconds) is { } predicted && double.IsFinite(videoSeconds) && videoSeconds > 0 &&
+        predicted <= videoSeconds * (1 + FitTolerance) + 1e-9;
+
+    /// <summary>The new wording's predicted voice: the measured voice scaled by the estimates' ratio; null without a usable estimate.</summary>
+    public static double? PredictedSeconds(double voiceSeconds, double estimateSeconds, double newEstimateSeconds)
+    {
+        if (!double.IsFinite(voiceSeconds) || voiceSeconds <= 0 || !double.IsFinite(estimateSeconds) || estimateSeconds <= 0 ||
+            !double.IsFinite(newEstimateSeconds) || newEstimateSeconds <= 0) return null;
+        return voiceSeconds * newEstimateSeconds / estimateSeconds;
     }
 
     /// <summary>"video matched (−1.3%)": the voice's length against the video's, signed.</summary>
-    public static string MatchedCopy(double factor)
+    public static string MatchedCopy(double factor) => "video matched (" + SignedPercent(factor) + ")";
+
+    /// <summary>"laid out on the clip's pauses (−14.0%)": a shorter voice, laid out on the clip as edited.</summary>
+    public static string LaidOutCopy(double factor) => "laid out on the clip's pauses (" + SignedPercent(factor) + ")";
+
+    private static string SignedPercent(double factor)
     {
         var percent = (factor - 1) * 100;
         var rounded = Math.Round(percent * 10, MidpointRounding.AwayFromZero) / 10;
         var sign = rounded < 0 ? "−" : rounded > 0 ? "+" : "±";
-        return "video matched (" + sign + Math.Abs(rounded).ToString("F1", CultureInfo.InvariantCulture) + "%)";
+        return sign + Math.Abs(rounded).ToString("F1", CultureInfo.InvariantCulture) + "%";
+    }
+
+    /// <summary>The layout's pause bound: a sentence-end pause grows to at most the project's pause threshold (a longer one is a
+    /// pause the clip's own Tighten would cut), never under the punctuated floor; the voice's last pause holds the same.</summary>
+    public static double LayoutPauseBound(double pauseThresholdSeconds) =>
+        double.IsFinite(pauseThresholdSeconds) ? Math.Max(VoiceLabPatchConstants.PAUSE_FLOOR_PUNCT, pauseThresholdSeconds) : VoiceLabPatchConstants.PAUSE_FLOOR_PUNCT;
+
+    /// <summary>The clip's own cuts inside a source window: every stretch of the window the clip's output plan (with no voice in
+    /// it) doesn't play.</summary>
+    public static IReadOnlyList<VoiceLabVideoCut> EditedCuts(VoiceLabOutputPlan plan, long startSample, long endSample)
+    {
+        if (endSample <= startSample) return [];
+        var cuts = new List<VoiceLabVideoCut>();
+        var cursor = startSample;
+        foreach (var piece in plan.Pieces.OrderBy(piece => piece.SourceStartSample))
+        {
+            if (piece.SourceEndSample <= startSample || piece.SourceStartSample >= endSample) continue;
+            var lower = Math.Max(piece.SourceStartSample, startSample);
+            if (lower > cursor) cuts.Add(new(cursor, lower));
+            cursor = Math.Max(cursor, Math.Min(piece.SourceEndSample, endSample));
+        }
+        if (cursor < endSample) cuts.Add(new(cursor, endSample));
+        return cuts;
+    }
+
+    /// <summary>The clip as edited inside a source window, in seconds: the window without its edited cuts.</summary>
+    public static double EditedSeconds(IReadOnlyList<VoiceLabVideoCut> cuts, long startSample, long endSample, double sampleRate)
+    {
+        var removed = cuts.Sum(cut => Math.Max(0, cut.EndSample - cut.StartSample));
+        return Math.Max(0, endSample - startSample - removed) / sampleRate;
+    }
+
+    /// <summary>The picture under a laid-out voice: the clip's own cuts changed to remove exactly <paramref name="removedSamples"/>
+    /// of the window. More trims the picture's end, latest first; less gives cut picture back from the latest cut, each from its
+    /// start. Null when nothing would be left or the cuts are not inside the window and apart (Mac <c>layoutCuts</c>).</summary>
+    public static IReadOnlyList<VoiceLabVideoCut>? LayoutCuts(IReadOnlyList<VoiceLabVideoCut> cuts, long startSample, long endSample, long removedSamples)
+    {
+        var span = endSample - startSample;
+        if (span <= 0 || removedSamples < 0 || removedSamples >= span ||
+            !cuts.All(cut => cut.StartSample >= startSample && cut.EndSample <= endSample && cut.EndSample > cut.StartSample)) return null;
+        var ordered = cuts.OrderBy(cut => cut.StartSample).ToList();
+        for (var index = 1; index < ordered.Count; index++) if (ordered[index - 1].EndSample > ordered[index].StartSample) return null;
+        var removed = ordered.Sum(cut => cut.EndSample - cut.StartSample);
+        if (removedSamples <= removed)
+        {
+            var giveBack = removed - removedSamples;
+            var result = ordered.ToList();
+            for (var index = result.Count - 1; index >= 0 && giveBack > 0; index--)
+            {
+                var take = Math.Min(giveBack, result[index].EndSample - result[index].StartSample);
+                result[index] = new(result[index].StartSample + take, result[index].EndSample);
+                giveBack -= take;
+            }
+            return result.Where(cut => cut.EndSample > cut.StartSample).ToList();
+        }
+        var kept = new List<(long Start, long End)>();
+        var cursor = startSample;
+        foreach (var cut in ordered)
+        {
+            if (cut.StartSample > cursor) kept.Add((cursor, cut.StartSample));
+            cursor = cut.EndSample;
+        }
+        if (cursor < endSample) kept.Add((cursor, endSample));
+        var extra = removedSamples - removed;
+        for (var index = kept.Count - 1; index >= 0 && extra > 0; index--)
+        {
+            var take = Math.Min(extra, kept[index].End - kept[index].Start);
+            kept[index] = (kept[index].Start, kept[index].End - take);
+            extra -= take;
+        }
+        kept.RemoveAll(stretch => stretch.End <= stretch.Start);
+        if (extra != 0 || kept.Count == 0) return null;
+        var trimmed = new List<VoiceLabVideoCut>();
+        cursor = startSample;
+        foreach (var stretch in kept)
+        {
+            if (stretch.Start > cursor) trimmed.Add(new(cursor, stretch.Start));
+            cursor = stretch.End;
+        }
+        if (cursor < endSample) trimmed.Add(new(cursor, endSample));
+        return trimmed;
     }
 
     /// <summary>The whole clip's price before anything is sent: the voice for every script character, and the lip sync for the clip's

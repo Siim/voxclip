@@ -1,0 +1,1299 @@
+{
+  "format": "voxclip-whole-clip-fit/1",
+  "constants": {
+    "fitTolerance": 0.08,
+    "maximumRewordRounds": 2,
+    "editedCutZoom": 1.0,
+    "maximumEditedCuts": 512,
+    "pauseFloorPunct": 0.15,
+    "pauseFloorPhrase": 0.06
+  },
+  "usersClip": {
+    "words": [
+      [
+        0,
+        0.345,
+        0,
+        0
+      ],
+      [
+        0.345,
+        0.595,
+        0,
+        0
+      ],
+      [
+        0.595,
+        1.045,
+        0,
+        0
+      ],
+      [
+        1.045,
+        1.625,
+        0,
+        0
+      ],
+      [
+        1.625,
+        2.32,
+        0,
+        0
+      ],
+      [
+        2.93,
+        3.9,
+        0,
+        0
+      ],
+      [
+        4.03,
+        4.425,
+        0,
+        0
+      ],
+      [
+        4.425,
+        5.015,
+        0,
+        0
+      ],
+      [
+        5.015,
+        5.11,
+        0,
+        0
+      ],
+      [
+        5.12,
+        5.195,
+        0,
+        0
+      ],
+      [
+        5.195,
+        5.54,
+        0,
+        0
+      ],
+      [
+        5.58,
+        6,
+        0,
+        0
+      ],
+      [
+        6.6,
+        6.725,
+        1,
+        0
+      ],
+      [
+        6.725,
+        7.23,
+        1,
+        0
+      ],
+      [
+        7.23,
+        8.16,
+        1,
+        0
+      ],
+      [
+        8.27,
+        8.69,
+        0,
+        0
+      ],
+      [
+        8.75,
+        9.155,
+        0,
+        0
+      ],
+      [
+        9.155,
+        9.83,
+        0,
+        1
+      ],
+      [
+        10.47,
+        11.135,
+        1,
+        0
+      ],
+      [
+        11.135,
+        11.335,
+        0,
+        0
+      ],
+      [
+        11.335,
+        11.51,
+        0,
+        0
+      ],
+      [
+        11.54,
+        11.675,
+        0,
+        0
+      ],
+      [
+        11.675,
+        12.27,
+        0,
+        1
+      ],
+      [
+        12.81,
+        13.11,
+        0,
+        0
+      ],
+      [
+        13.11,
+        13.345,
+        0,
+        0
+      ],
+      [
+        13.345,
+        13.57,
+        0,
+        0
+      ],
+      [
+        13.57,
+        13.99,
+        0,
+        1
+      ],
+      [
+        14.85,
+        15.08,
+        0,
+        0
+      ],
+      [
+        15.12,
+        15.44,
+        0,
+        0
+      ],
+      [
+        15.45,
+        15.655,
+        0,
+        0
+      ],
+      [
+        15.655,
+        15.94,
+        0,
+        0
+      ],
+      [
+        16.8,
+        17.225,
+        0,
+        0
+      ],
+      [
+        17.225,
+        17.61,
+        0,
+        0
+      ],
+      [
+        17.64,
+        17.96,
+        0,
+        0
+      ],
+      [
+        18,
+        18.56,
+        0,
+        1
+      ],
+      [
+        18.91,
+        19.65,
+        1,
+        0
+      ],
+      [
+        21.46,
+        21.545,
+        1,
+        0
+      ],
+      [
+        21.545,
+        22.13,
+        1,
+        1
+      ],
+      [
+        24.02,
+        24.69,
+        0,
+        0
+      ],
+      [
+        25.01,
+        25.98,
+        0,
+        0
+      ],
+      [
+        26.25,
+        27.05,
+        0,
+        0
+      ],
+      [
+        28.28,
+        28.725,
+        0,
+        0
+      ],
+      [
+        28.725,
+        29.32,
+        0,
+        1
+      ],
+      [
+        29.96,
+        30.14,
+        0,
+        0
+      ],
+      [
+        30.14,
+        30.42,
+        0,
+        0
+      ],
+      [
+        30.42,
+        30.68,
+        0,
+        0
+      ],
+      [
+        31.76,
+        32.28,
+        0,
+        1
+      ],
+      [
+        34.14,
+        34.65,
+        1,
+        0
+      ],
+      [
+        34.66,
+        34.865,
+        1,
+        0
+      ],
+      [
+        34.865,
+        35.73,
+        1,
+        0
+      ],
+      [
+        36.13,
+        36.64,
+        1,
+        0
+      ],
+      [
+        37.38,
+        37.45,
+        0,
+        0
+      ],
+      [
+        37.46,
+        37.745,
+        0,
+        0
+      ],
+      [
+        37.745,
+        38.65,
+        0,
+        0
+      ],
+      [
+        40.73,
+        41.11,
+        0,
+        0
+      ],
+      [
+        42.32,
+        42.8,
+        0,
+        0
+      ],
+      [
+        43.66,
+        44.22,
+        0,
+        0
+      ],
+      [
+        44.22,
+        44.565,
+        0,
+        0
+      ],
+      [
+        44.565,
+        44.805,
+        0,
+        0
+      ],
+      [
+        44.805,
+        45.015,
+        0,
+        0
+      ],
+      [
+        45.015,
+        45.68,
+        0,
+        0
+      ],
+      [
+        46.47,
+        47.12,
+        0,
+        0
+      ],
+      [
+        48.6,
+        48.735,
+        0,
+        0
+      ],
+      [
+        48.735,
+        49.16,
+        0,
+        0
+      ],
+      [
+        49.23,
+        50.08,
+        0,
+        1
+      ],
+      [
+        51.11,
+        51.82,
+        0,
+        0
+      ]
+    ],
+    "clipFirstWord": 4,
+    "clipLastWord": 64,
+    "cutPausesAfterWord": [
+      26,
+      30,
+      37,
+      40,
+      45,
+      46,
+      53,
+      54,
+      55,
+      61
+    ],
+    "pauseThresholdSeconds": 0.8,
+    "pauseKeepSeconds": 0.15,
+    "durationSeconds": 52.628,
+    "sampleRate": 48000,
+    "scriptWords": 49,
+    "voiceSeconds": 27.0,
+    "shown": {
+      "editedSeconds": 31.4,
+      "sourceWindowSeconds": 48.6
+    },
+    "expected": {
+      "kind": "laidOut",
+      "factor": 0.8598726114649682,
+      "copy": "laid out on the clip's pauses (−14.0%)"
+    },
+    "before": {
+      "kind": "reword",
+      "shorter": false,
+      "targetWords": 88
+    }
+  },
+  "fit": [
+    {
+      "voiceSeconds": 27,
+      "videoSeconds": 31.4,
+      "words": 49,
+      "round": 0,
+      "expected": {
+        "kind": "laidOut",
+        "factor": 0.8598726114649682,
+        "copy": "laid out on the clip's pauses (−14.0%)"
+      }
+    },
+    {
+      "voiceSeconds": 27,
+      "videoSeconds": 48.6,
+      "words": 49,
+      "round": 0,
+      "expected": {
+        "kind": "laidOut",
+        "factor": 0.5555555555555556,
+        "copy": "laid out on the clip's pauses (−44.4%)"
+      }
+    },
+    {
+      "voiceSeconds": 27,
+      "videoSeconds": 31.4,
+      "words": 49,
+      "round": 2,
+      "expected": {
+        "kind": "laidOut",
+        "factor": 0.8598726114649682,
+        "copy": "laid out on the clip's pauses (−14.0%)"
+      }
+    },
+    {
+      "voiceSeconds": 30.6,
+      "videoSeconds": 31,
+      "words": 74,
+      "round": 0,
+      "expected": {
+        "kind": "matched",
+        "factor": 0.9870967741935485,
+        "copy": "video matched (−1.3%)"
+      }
+    },
+    {
+      "voiceSeconds": 36,
+      "videoSeconds": 31,
+      "words": 7,
+      "round": 0,
+      "expected": {
+        "kind": "reword",
+        "targetWords": 6
+      }
+    },
+    {
+      "voiceSeconds": 36,
+      "videoSeconds": 31,
+      "words": 7,
+      "round": 1,
+      "expected": {
+        "kind": "reword",
+        "targetWords": 6
+      }
+    },
+    {
+      "voiceSeconds": 36,
+      "videoSeconds": 31,
+      "words": 7,
+      "round": 2,
+      "expected": {
+        "kind": "cannotFit"
+      }
+    },
+    {
+      "voiceSeconds": 40,
+      "videoSeconds": 31,
+      "words": 0,
+      "round": 0,
+      "expected": {
+        "kind": "cannotFit"
+      }
+    },
+    {
+      "voiceSeconds": 108,
+      "videoSeconds": 100,
+      "words": 74,
+      "round": 0,
+      "expected": {
+        "kind": "matched",
+        "factor": 1.08,
+        "copy": "video matched (+8.0%)"
+      }
+    },
+    {
+      "voiceSeconds": 108.1,
+      "videoSeconds": 100,
+      "words": 100,
+      "round": 0,
+      "expected": {
+        "kind": "reword",
+        "targetWords": 93
+      }
+    },
+    {
+      "voiceSeconds": 92,
+      "videoSeconds": 100,
+      "words": 74,
+      "round": 0,
+      "expected": {
+        "kind": "matched",
+        "factor": 0.92,
+        "copy": "video matched (−8.0%)"
+      }
+    },
+    {
+      "voiceSeconds": 91.9,
+      "videoSeconds": 100,
+      "words": 74,
+      "round": 0,
+      "expected": {
+        "kind": "laidOut",
+        "factor": 0.919,
+        "copy": "laid out on the clip's pauses (−8.1%)"
+      }
+    },
+    {
+      "voiceSeconds": 10,
+      "videoSeconds": 100,
+      "words": 74,
+      "round": 0,
+      "expected": {
+        "kind": "laidOut",
+        "factor": 0.1,
+        "copy": "laid out on the clip's pauses (−90.0%)"
+      }
+    },
+    {
+      "voiceSeconds": 0.5,
+      "videoSeconds": 100,
+      "words": 3,
+      "round": 2,
+      "expected": {
+        "kind": "laidOut",
+        "factor": 0.005,
+        "copy": "laid out on the clip's pauses (−99.5%)"
+      }
+    },
+    {
+      "voiceSeconds": 0,
+      "videoSeconds": 31,
+      "words": 10,
+      "round": 0,
+      "expected": {
+        "kind": "cannotFit"
+      }
+    },
+    {
+      "voiceSeconds": 31,
+      "videoSeconds": 0,
+      "words": 10,
+      "round": 0,
+      "expected": {
+        "kind": "cannotFit"
+      }
+    },
+    {
+      "voiceSeconds": -1,
+      "videoSeconds": 31,
+      "words": 10,
+      "round": 0,
+      "expected": {
+        "kind": "cannotFit"
+      }
+    },
+    {
+      "voiceSeconds": 100,
+      "videoSeconds": 100,
+      "words": 50,
+      "round": 0,
+      "expected": {
+        "kind": "matched",
+        "factor": 1.0,
+        "copy": "video matched (±0.0%)"
+      }
+    },
+    {
+      "voiceSeconds": 106.25,
+      "videoSeconds": 100,
+      "words": 9,
+      "round": 0,
+      "expected": {
+        "kind": "matched",
+        "factor": 1.0625,
+        "copy": "video matched (+6.3%)"
+      }
+    },
+    {
+      "voiceSeconds": 93.75,
+      "videoSeconds": 100,
+      "words": 9,
+      "round": 0,
+      "expected": {
+        "kind": "matched",
+        "factor": 0.9375,
+        "copy": "video matched (−6.3%)"
+      }
+    }
+  ],
+  "rewordFits": [
+    {
+      "voiceSeconds": 36,
+      "estimateSeconds": 10,
+      "newEstimateSeconds": 9.8,
+      "videoSeconds": 31,
+      "predicted": 35.28,
+      "fits": false
+    },
+    {
+      "voiceSeconds": 36,
+      "estimateSeconds": 10,
+      "newEstimateSeconds": 8.6,
+      "videoSeconds": 31,
+      "predicted": 30.959999999999997,
+      "fits": true
+    },
+    {
+      "voiceSeconds": 36,
+      "estimateSeconds": 10,
+      "newEstimateSeconds": 9.3,
+      "videoSeconds": 31,
+      "predicted": 33.480000000000004,
+      "fits": true
+    },
+    {
+      "voiceSeconds": 36,
+      "estimateSeconds": 10,
+      "newEstimateSeconds": 9.299,
+      "videoSeconds": 31,
+      "predicted": 33.4764,
+      "fits": true
+    },
+    {
+      "voiceSeconds": 36,
+      "estimateSeconds": 10,
+      "newEstimateSeconds": 12,
+      "videoSeconds": 31,
+      "predicted": 43.2,
+      "fits": false
+    },
+    {
+      "voiceSeconds": 36,
+      "estimateSeconds": 0,
+      "newEstimateSeconds": 8,
+      "videoSeconds": 31,
+      "predicted": null,
+      "fits": false
+    },
+    {
+      "voiceSeconds": 36,
+      "estimateSeconds": 10,
+      "newEstimateSeconds": 0,
+      "videoSeconds": 31,
+      "predicted": null,
+      "fits": false
+    },
+    {
+      "voiceSeconds": 0,
+      "estimateSeconds": 10,
+      "newEstimateSeconds": 8,
+      "videoSeconds": 31,
+      "predicted": null,
+      "fits": false
+    },
+    {
+      "voiceSeconds": 36,
+      "estimateSeconds": 10,
+      "newEstimateSeconds": 8,
+      "videoSeconds": 0,
+      "predicted": 28.8,
+      "fits": false
+    },
+    {
+      "voiceSeconds": 40,
+      "estimateSeconds": 20,
+      "newEstimateSeconds": 18.6,
+      "videoSeconds": 34.4,
+      "predicted": 37.2,
+      "fits": false
+    },
+    {
+      "voiceSeconds": 33.48,
+      "estimateSeconds": 10,
+      "newEstimateSeconds": 10,
+      "videoSeconds": 31,
+      "predicted": 33.48,
+      "fits": true
+    }
+  ],
+  "layoutCuts": [
+    {
+      "id": "the clip as edited exactly",
+      "cuts": [
+        {
+          "startSample": 1000,
+          "endSample": 1500
+        },
+        {
+          "startSample": 3000,
+          "endSample": 3200
+        }
+      ],
+      "startSample": 0,
+      "endSample": 5000,
+      "removedSamples": 700,
+      "expected": [
+        {
+          "startSample": 1000,
+          "endSample": 1500
+        },
+        {
+          "startSample": 3000,
+          "endSample": 3200
+        }
+      ]
+    },
+    {
+      "id": "a shorter voice trims the end",
+      "cuts": [
+        {
+          "startSample": 1000,
+          "endSample": 1500
+        },
+        {
+          "startSample": 3000,
+          "endSample": 3200
+        }
+      ],
+      "startSample": 0,
+      "endSample": 5000,
+      "removedSamples": 1000,
+      "expected": [
+        {
+          "startSample": 1000,
+          "endSample": 1500
+        },
+        {
+          "startSample": 3000,
+          "endSample": 3200
+        },
+        {
+          "startSample": 4700,
+          "endSample": 5000
+        }
+      ]
+    },
+    {
+      "id": "the trim reaches past a cut into the stretch before it",
+      "cuts": [
+        {
+          "startSample": 1000,
+          "endSample": 1500
+        },
+        {
+          "startSample": 3000,
+          "endSample": 3200
+        }
+      ],
+      "startSample": 0,
+      "endSample": 5000,
+      "removedSamples": 2700,
+      "expected": [
+        {
+          "startSample": 1000,
+          "endSample": 1500
+        },
+        {
+          "startSample": 2800,
+          "endSample": 5000
+        }
+      ]
+    },
+    {
+      "id": "the trim meets a cut at the end",
+      "cuts": [
+        {
+          "startSample": 1000,
+          "endSample": 1500
+        },
+        {
+          "startSample": 4000,
+          "endSample": 5000
+        }
+      ],
+      "startSample": 0,
+      "endSample": 5000,
+      "removedSamples": 2000,
+      "expected": [
+        {
+          "startSample": 1000,
+          "endSample": 1500
+        },
+        {
+          "startSample": 3500,
+          "endSample": 5000
+        }
+      ]
+    },
+    {
+      "id": "a longer voice gives back the latest cut first",
+      "cuts": [
+        {
+          "startSample": 1000,
+          "endSample": 1500
+        },
+        {
+          "startSample": 3000,
+          "endSample": 3200
+        }
+      ],
+      "startSample": 0,
+      "endSample": 5000,
+      "removedSamples": 600,
+      "expected": [
+        {
+          "startSample": 1000,
+          "endSample": 1500
+        },
+        {
+          "startSample": 3100,
+          "endSample": 3200
+        }
+      ]
+    },
+    {
+      "id": "give back reaches the earlier cut",
+      "cuts": [
+        {
+          "startSample": 1000,
+          "endSample": 1500
+        },
+        {
+          "startSample": 3000,
+          "endSample": 3200
+        }
+      ],
+      "startSample": 0,
+      "endSample": 5000,
+      "removedSamples": 300,
+      "expected": [
+        {
+          "startSample": 1200,
+          "endSample": 1500
+        }
+      ]
+    },
+    {
+      "id": "every cut given back",
+      "cuts": [
+        {
+          "startSample": 1000,
+          "endSample": 1500
+        },
+        {
+          "startSample": 3000,
+          "endSample": 3200
+        }
+      ],
+      "startSample": 0,
+      "endSample": 5000,
+      "removedSamples": 0,
+      "expected": []
+    },
+    {
+      "id": "a window with no cuts trims its end",
+      "cuts": [],
+      "startSample": 0,
+      "endSample": 5000,
+      "removedSamples": 400,
+      "expected": [
+        {
+          "startSample": 4600,
+          "endSample": 5000
+        }
+      ]
+    },
+    {
+      "id": "a window with no cuts and nothing to remove",
+      "cuts": [],
+      "startSample": 0,
+      "endSample": 5000,
+      "removedSamples": 0,
+      "expected": []
+    },
+    {
+      "id": "a cut at the window start stays",
+      "cuts": [
+        {
+          "startSample": 0,
+          "endSample": 400
+        },
+        {
+          "startSample": 2000,
+          "endSample": 2100
+        }
+      ],
+      "startSample": 0,
+      "endSample": 5000,
+      "removedSamples": 600,
+      "expected": [
+        {
+          "startSample": 0,
+          "endSample": 400
+        },
+        {
+          "startSample": 2000,
+          "endSample": 2100
+        },
+        {
+          "startSample": 4900,
+          "endSample": 5000
+        }
+      ]
+    },
+    {
+      "id": "nothing may be left",
+      "cuts": [
+        {
+          "startSample": 1000,
+          "endSample": 1500
+        },
+        {
+          "startSample": 3000,
+          "endSample": 3200
+        }
+      ],
+      "startSample": 0,
+      "endSample": 5000,
+      "removedSamples": 5000,
+      "expected": null
+    },
+    {
+      "id": "a negative removal",
+      "cuts": [
+        {
+          "startSample": 1000,
+          "endSample": 1500
+        },
+        {
+          "startSample": 3000,
+          "endSample": 3200
+        }
+      ],
+      "startSample": 0,
+      "endSample": 5000,
+      "removedSamples": -1,
+      "expected": null
+    },
+    {
+      "id": "a cut outside the window",
+      "cuts": [
+        {
+          "startSample": 4900,
+          "endSample": 5100
+        }
+      ],
+      "startSample": 0,
+      "endSample": 5000,
+      "removedSamples": 300,
+      "expected": null
+    },
+    {
+      "id": "overlapping cuts",
+      "cuts": [
+        {
+          "startSample": 100,
+          "endSample": 300
+        },
+        {
+          "startSample": 200,
+          "endSample": 400
+        }
+      ],
+      "startSample": 0,
+      "endSample": 5000,
+      "removedSamples": 300,
+      "expected": null
+    },
+    {
+      "id": "unordered cuts are ordered",
+      "cuts": [
+        {
+          "startSample": 3000,
+          "endSample": 3200
+        },
+        {
+          "startSample": 1000,
+          "endSample": 1500
+        }
+      ],
+      "startSample": 0,
+      "endSample": 5000,
+      "removedSamples": 900,
+      "expected": [
+        {
+          "startSample": 1000,
+          "endSample": 1500
+        },
+        {
+          "startSample": 3000,
+          "endSample": 3200
+        },
+        {
+          "startSample": 4800,
+          "endSample": 5000
+        }
+      ]
+    },
+    {
+      "id": "an offset window",
+      "cuts": [
+        {
+          "startSample": 12000,
+          "endSample": 12500
+        }
+      ],
+      "startSample": 10000,
+      "endSample": 20000,
+      "removedSamples": 1500,
+      "expected": [
+        {
+          "startSample": 12000,
+          "endSample": 12500
+        },
+        {
+          "startSample": 19000,
+          "endSample": 20000
+        }
+      ]
+    }
+  ],
+  "editedCuts": [
+    {
+      "id": "two cuts inside the window",
+      "pieces": [
+        {
+          "sourceStartSample": 1000,
+          "sourceEndSample": 2000
+        },
+        {
+          "sourceStartSample": 2500,
+          "sourceEndSample": 4000
+        },
+        {
+          "sourceStartSample": 4100,
+          "sourceEndSample": 6000
+        }
+      ],
+      "startSample": 1000,
+      "endSample": 6000,
+      "expected": [
+        {
+          "startSample": 2000,
+          "endSample": 2500
+        },
+        {
+          "startSample": 4000,
+          "endSample": 4100
+        }
+      ]
+    },
+    {
+      "id": "the window starts before the first piece",
+      "pieces": [
+        {
+          "sourceStartSample": 1000,
+          "sourceEndSample": 2000
+        },
+        {
+          "sourceStartSample": 2500,
+          "sourceEndSample": 4000
+        },
+        {
+          "sourceStartSample": 4100,
+          "sourceEndSample": 6000
+        }
+      ],
+      "startSample": 500,
+      "endSample": 6000,
+      "expected": [
+        {
+          "startSample": 500,
+          "endSample": 1000
+        },
+        {
+          "startSample": 2000,
+          "endSample": 2500
+        },
+        {
+          "startSample": 4000,
+          "endSample": 4100
+        }
+      ]
+    },
+    {
+      "id": "the window ends after the last piece",
+      "pieces": [
+        {
+          "sourceStartSample": 1000,
+          "sourceEndSample": 2000
+        },
+        {
+          "sourceStartSample": 2500,
+          "sourceEndSample": 4000
+        },
+        {
+          "sourceStartSample": 4100,
+          "sourceEndSample": 6000
+        }
+      ],
+      "startSample": 1000,
+      "endSample": 6500,
+      "expected": [
+        {
+          "startSample": 2000,
+          "endSample": 2500
+        },
+        {
+          "startSample": 4000,
+          "endSample": 4100
+        },
+        {
+          "startSample": 6000,
+          "endSample": 6500
+        }
+      ]
+    },
+    {
+      "id": "a window inside one piece",
+      "pieces": [
+        {
+          "sourceStartSample": 1000,
+          "sourceEndSample": 2000
+        },
+        {
+          "sourceStartSample": 2500,
+          "sourceEndSample": 4000
+        },
+        {
+          "sourceStartSample": 4100,
+          "sourceEndSample": 6000
+        }
+      ],
+      "startSample": 2600,
+      "endSample": 3900,
+      "expected": []
+    },
+    {
+      "id": "a window over only a cut",
+      "pieces": [
+        {
+          "sourceStartSample": 1000,
+          "sourceEndSample": 2000
+        },
+        {
+          "sourceStartSample": 2500,
+          "sourceEndSample": 4000
+        },
+        {
+          "sourceStartSample": 4100,
+          "sourceEndSample": 6000
+        }
+      ],
+      "startSample": 2100,
+      "endSample": 2400,
+      "expected": [
+        {
+          "startSample": 2100,
+          "endSample": 2400
+        }
+      ]
+    },
+    {
+      "id": "an empty window",
+      "pieces": [
+        {
+          "sourceStartSample": 1000,
+          "sourceEndSample": 2000
+        },
+        {
+          "sourceStartSample": 2500,
+          "sourceEndSample": 4000
+        },
+        {
+          "sourceStartSample": 4100,
+          "sourceEndSample": 6000
+        }
+      ],
+      "startSample": 3000,
+      "endSample": 3000,
+      "expected": []
+    },
+    {
+      "id": "pieces out of order",
+      "pieces": [
+        {
+          "sourceStartSample": 4100,
+          "sourceEndSample": 6000
+        },
+        {
+          "sourceStartSample": 1000,
+          "sourceEndSample": 2000
+        },
+        {
+          "sourceStartSample": 2500,
+          "sourceEndSample": 4000
+        }
+      ],
+      "startSample": 1000,
+      "endSample": 6000,
+      "expected": [
+        {
+          "startSample": 2000,
+          "endSample": 2500
+        },
+        {
+          "startSample": 4000,
+          "endSample": 4100
+        }
+      ]
+    }
+  ],
+  "pauseBound": [
+    {
+      "pauseThresholdSeconds": 0.8,
+      "bound": 0.8
+    },
+    {
+      "pauseThresholdSeconds": 1.0,
+      "bound": 1.0
+    },
+    {
+      "pauseThresholdSeconds": 0.3,
+      "bound": 0.3
+    },
+    {
+      "pauseThresholdSeconds": 0.1,
+      "bound": 0.15
+    },
+    {
+      "pauseThresholdSeconds": 2.5,
+      "bound": 2.5
+    }
+  ]
+}

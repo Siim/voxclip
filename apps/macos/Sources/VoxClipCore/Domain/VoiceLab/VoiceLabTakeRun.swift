@@ -1,5 +1,13 @@
 import Foundation
 
+/// A whole-clip revoice's layout target (ADR-R46): the clip's own cuts inside the take's window and the pause bound, so the
+/// take is fitted to the clip as edited (`VoiceLabNaturalPacing.layout`) instead of to the window's source.
+public struct VoiceLabEditedLayout: Sendable, Equatable {
+    public let cuts: [VoiceLabVideoCut]
+    public let pauseBoundSeconds: Double
+    public init(cuts: [VoiceLabVideoCut], pauseBoundSeconds: Double) { self.cuts = cuts; self.pauseBoundSeconds = pauseBoundSeconds }
+}
+
 public struct VoiceLabTakeInput: Sendable, Equatable {
     public let text: String
     public let audioTags: [VoiceLabAudioTag]
@@ -11,6 +19,8 @@ public struct VoiceLabTakeInput: Sendable, Equatable {
     public let pace: Double?
     public let hardJoinSmoothing: Bool
     public var pauseProfile: VoiceLabPauseProfile? = nil
+    /// Set for a whole-clip revoice's parts: the take is laid out on the clip as edited.
+    public var editedLayout: VoiceLabEditedLayout? = nil
     public let contentKey: String
     /// The source frames the run reads, at `sourceSampleRate`.
     public let source: VoiceLabSourceExcerpt
@@ -54,6 +64,7 @@ public struct VoiceLabTakeInput: Sendable, Equatable {
             window: window, incomingSilence: incomingSilence, outgoingSilence: outgoingSilence, cleanAudioOn: cleanAudioOn,
             providerConsent: providerConsent, pace: pace, hardJoinSmoothing: hardJoinSmoothing, audioTags: audioTags)
         input.pauseProfile = pauseProfile
+        input.editedLayout = editedLayout
         return input
     }
     public func options(take: Int) -> VoiceLabSpeechOptions {
@@ -68,6 +79,7 @@ public struct VoiceLabTakeInput: Sendable, Equatable {
             window: window, incomingSilence: incomingSilence, outgoingSilence: outgoingSilence, cleanAudioOn: cleanAudioOn,
             providerConsent: providerConsent, pace: value, hardJoinSmoothing: hardJoinSmoothing, audioTags: audioTags)
         input.pauseProfile = pauseProfile
+        input.editedLayout = editedLayout
         return input
     }
 }

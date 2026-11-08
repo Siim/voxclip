@@ -11533,8 +11533,11 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabMonthlyCap :: method public set_Spen
 member VoxClip.Core.Domain.VoiceLab.VoiceLabNaturalPacing :: field public CUT_EDGE_GUARD
 member VoxClip.Core.Domain.VoiceLab.VoiceLabNaturalPacing :: field public CUT_PUNCH_IN
 member VoxClip.Core.Domain.VoiceLab.VoiceLabNaturalPacing :: field public CUT_QUIET_RUN
+member VoxClip.Core.Domain.VoiceLab.VoiceLabNaturalPacing :: field public EDITED_CUT_ZOOM
+member VoxClip.Core.Domain.VoiceLab.VoiceLabNaturalPacing :: field public MAXIMUM_EDITED_CUTS
 member VoxClip.Core.Domain.VoiceLab.VoiceLabNaturalPacing :: field public NATURAL_PACE_MAX
 member VoxClip.Core.Domain.VoiceLab.VoiceLabNaturalPacing :: field public NATURAL_PACE_MIN
+member VoxClip.Core.Domain.VoiceLab.VoiceLabNaturalPacing :: method private ValidEditedCuts(VoxClip.Core.Domain.VoiceLab.VoiceLabVideoRecipe,double)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabNaturalPacing :: method public ClauseBoundary(string,string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabNaturalPacing :: method public Cuts(long,long,long,int,VoxClip.Core.Domain.Transcript.AudioEnvelope,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabNaturalPacing :: method public EndsSentence(string)
@@ -14334,17 +14337,25 @@ member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: field public MaximumScri
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: field public NoFitPhrases
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: field public WordSharePercent
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method private IdShape(string)
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method private SignedPercent(double)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public Callout(VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Reason)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public ChipText(System.Collections.Generic.IReadOnlyList`1<string>)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public Choose(VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Reason,System.Nullable`1<System.Decimal>,System.Nullable`1<System.Decimal>)
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public EditedCuts(VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan,long,long)
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public EditedSeconds(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabVideoCut>,long,long,double)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public FitVoice(double,double,int,int)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public IsRevoiced(string,VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public LaidOutCopy(double)
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public LayoutCuts(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabVideoCut>,long,long,long)
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public LayoutPauseBound(double)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public LipsyncPrice(double,VoxClip.Core.Domain.VoiceLab.WholeClipLipsync,VoxClip.Core.Domain.VoiceLab.VoiceLabPriceCatalog)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public MatchedCopy(double)
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public PredictedSeconds(double,double,double)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public PriceFor(int,string,double,VoxClip.Core.Domain.VoiceLab.WholeClipLipsync,VoxClip.Core.Domain.VoiceLab.VoiceLabPriceCatalog)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public PruneDangling(VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public ReasonFor(VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+RuleInputs)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public RecordHolding(string,VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public RewordFits(double,double,double,double)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice :: method public Validate(VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+AutoChoice :: method private .ctor()
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+AutoChoice :: method protected .ctor(VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+AutoChoice)
@@ -14421,6 +14432,20 @@ member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+CannotFit :: method pub
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+CannotFit :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+CannotFit,VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+CannotFit)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+CannotFit :: method public set_VideoSeconds(double)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+CannotFit :: method public set_VoiceSeconds(double)
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+LaidOut :: method private .ctor(VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+LaidOut)
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+LaidOut :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+LaidOut :: method protected get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+LaidOut :: method public .ctor(double)
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+LaidOut :: method public Deconstruct(double&)
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+LaidOut :: method public Equals(VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit)
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+LaidOut :: method public Equals(VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+LaidOut)
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+LaidOut :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+LaidOut :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+LaidOut :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+LaidOut :: method public get_Factor()
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+LaidOut :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+LaidOut,VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+LaidOut)
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+LaidOut :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+LaidOut,VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+LaidOut)
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+LaidOut :: method public set_Factor(double)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Matched :: method private .ctor(VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Matched)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Matched :: method protected PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Matched :: method protected get_EqualityContract()
@@ -14438,18 +14463,16 @@ member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Matched :: method publi
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Reword :: method private .ctor(VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Reword)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Reword :: method protected PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Reword :: method protected get_EqualityContract()
-member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Reword :: method public .ctor(bool,int)
-member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Reword :: method public Deconstruct(bool&,int&)
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Reword :: method public .ctor(int)
+member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Reword :: method public Deconstruct(int&)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Reword :: method public Equals(VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Reword :: method public Equals(VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Reword)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Reword :: method public Equals(object)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Reword :: method public GetHashCode()
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Reword :: method public ToString()
-member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Reword :: method public get_Shorter()
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Reword :: method public get_TargetWords()
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Reword :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Reword,VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Reword)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Reword :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Reword,VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Reword)
-member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Reword :: method public set_Shorter(bool)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Reword :: method public set_TargetWords(int)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Price :: method private .ctor(VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Price)
 member VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Price :: method private PrintMembers(System.Text.StringBuilder)
@@ -18736,6 +18759,7 @@ type VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+AutoChoice+PatchAndOffer
 type VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+AutoChoice+Revoice
 type VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit
 type VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+CannotFit
+type VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+LaidOut
 type VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Matched
 type VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Fit+Reword
 type VoxClip.Core.Domain.VoiceLab.WholeClipRevoice+Price

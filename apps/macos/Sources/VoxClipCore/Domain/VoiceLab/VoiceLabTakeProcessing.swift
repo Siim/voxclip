@@ -134,13 +134,22 @@ public enum VoiceLabTakeProcessing {
             candidateTruePeakDbtp: VoiceLabLoudness.truePeakDbtp(trimmed, sampleRate: rate))
         let take = VoiceLabFitTake(assetFrames: Int64(samples.count), assetSampleRate: rate, trimStart: trim.start, trimEnd: trim.end,
                                   words: words, envelope: envelope(samples, sampleRate: rate))
-        let profile = input.pauseProfile ?? VoiceLabPauseProfile.measure(items: input.items, envelope: input.sourceEnvelope,
-            start: 0, end: .greatestFiniteMagnitude)
-        let fit = try VoiceLabNaturalPacing.fit(window: input.window, incomingSilence: input.incomingSilence,
-            outgoingSilence: input.outgoingSilence, take: take, sourceSampleRate: input.sourceSampleRate,
-            hardJoinSmoothing: input.hardJoinSmoothing, pauseProfile: profile,
-            audioTags: VoiceLabAudioTags.recorded(input.audioTags, modelID: input.modelID) ?? [],
-            sourceEnvelope: input.sourceEnvelope, items: input.items)
+        let tags = VoiceLabAudioTags.recorded(input.audioTags, modelID: input.modelID) ?? []
+        let fit: VoiceLabFitResult
+        if let layout = input.editedLayout {
+            // A whole-clip revoice: fitted to the clip as edited, its pauses within the bound (ADR-R46).
+            fit = try VoiceLabNaturalPacing.layout(window: input.window, incomingSilence: input.incomingSilence,
+                outgoingSilence: input.outgoingSilence, take: take, sourceSampleRate: input.sourceSampleRate,
+                hardJoinSmoothing: input.hardJoinSmoothing, pauseProfile: WholeClipRevoice.layoutPauseProfile(pauseThresholdSeconds: layout.pauseBoundSeconds),
+                audioTags: tags, editedCuts: layout.cuts, tailSeconds: WholeClipRevoice.layoutPauseBound(layout.pauseBoundSeconds))
+        } else {
+            let profile = input.pauseProfile ?? VoiceLabPauseProfile.measure(items: input.items, envelope: input.sourceEnvelope,
+                start: 0, end: .greatestFiniteMagnitude)
+            fit = try VoiceLabNaturalPacing.fit(window: input.window, incomingSilence: input.incomingSilence,
+                outgoingSilence: input.outgoingSilence, take: take, sourceSampleRate: input.sourceSampleRate,
+                hardJoinSmoothing: input.hardJoinSmoothing, pauseProfile: profile, audioTags: tags,
+                sourceEnvelope: input.sourceEnvelope, items: input.items)
+        }
         return VoiceLabTakeAnalysis(sampleRate: rate, trimmed: trimmed, gainDb: gain, roomTone: preflight.roomTone, fit: fit, tiltDbPerOctave: tilt)
     }
     private static func frames(_ seconds: Double, _ rate: Int) -> Int { Int(EditingPrimitives.jsRound(seconds * Double(rate))) }

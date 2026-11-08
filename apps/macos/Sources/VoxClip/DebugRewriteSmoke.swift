@@ -282,6 +282,9 @@ import VoxClipCore
         /// The word (0-based) whose end touches the next word's start with no silence, as Whisper's back-to-back word ends
         /// do (transcription.md §5.5).
         var touchingAfter: Int? = nil
+        /// Every sentence pause in the clip is tightened (a 0.5 s threshold, 0.15 s kept), so the clip as edited is shorter
+        /// than its source span (the whole-clip revoice's S-revoice-whole-tightened).
+        var tightenPauses = false
     }
     nonisolated static let baseScript = "Today I want to show you how cloud tools edit video. First we record a short clip in one take. "
         + "Then we fix the words we got wrong. We keep the pauses that sound natural and remove the ones that drag. "
@@ -315,6 +318,10 @@ import VoxClipCore
             project.edits.activeClipId = "clip-whole"
         }
         if fixture.cutFillers { project.edits.cutWordIds = recording.words.filter { $0.text == "um" }.map(\.id) }
+        if fixture.tightenPauses {
+            project.edits.pauseThresholdSeconds = 0.5
+            project.edits.cutPauseIds = try detectPauses(recording.words, thresholdSeconds: 0.5).map(\.id)
+        }
         return (project, recording.envelope)
     }
 
@@ -722,12 +729,16 @@ import VoxClipCore
             guard let plan = session?.takePlan else { return }
             recordFitting(plan)
         }
-        /// The same for `plan` (a whole-clip revoice's, DebugRewriteSmokeWholeClip.swift).
-        func recordFitting(_ plan: ClipTakePlan) {
+        /// The same for `plan` (a whole-clip revoice's, DebugRewriteSmokeWholeClip.swift). `edited` is a whole clip's: each
+        /// take fills its window as edited (ADR-R46), the window without the clip's own cuts.
+        func recordFitting(_ plan: ClipTakePlan, edited: VoiceLabOutputPlan? = nil) {
             var fitting: [String: Double] = [:]
             for phrase in plan.phrases {
                 let window = phrase.window
-                let duration: Double = window.end - window.start
+                let duration: Double = edited.map { edited in
+                    WholeClipRevoice.editedSeconds(WholeClipRevoice.editedCuts(edited, startSample: window.startSample, endSample: window.endSample),
+                                                   startSample: window.startSample, endSample: window.endSample, sampleRate: edited.sampleRate)
+                } ?? window.end - window.start
                 let reserve: Double = VoiceLabHardJoin.pauseSeconds(windowDuration: duration)
                 let hard: Double = Double([window.leftSeam.kind, window.rightSeam.kind].filter { $0 == .hard }.count)
                 let lead: Double = window.leftSeam.kind == .hard ? 0 : max(0, 0.05 - VoiceLabPatchConstants.TTS_TRIM_LEAD)

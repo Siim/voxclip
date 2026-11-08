@@ -47,8 +47,10 @@ for key in set(video_fields) - {'mode', 'sourceStartSample', 'sourceEndSample', 
     video_fields[key] = nullable(video_fields[key])
 # Every key is written, with null for the fields a mode does not use, so both Cores read every saved recipe.
 d['voiceLabVideoRecipe'] = obj(video_fields)
+# A pause's jump cut holds one or two cuts; a whole-clip revoice's picture holds the clip's own cuts (ADR-R46), up to
+# VoiceLabNaturalPacing.MAXIMUM_EDITED_CUTS. Both Cores check the count per form (validCuts).
 d['voiceLabVideoRecipe']['properties']['cuts'] = {
-    'type': 'array', 'minItems': 1, 'maxItems': 2,
+    'type': 'array', 'minItems': 1, 'maxItems': 512,
     'items': obj({'startSample': integer, 'endSample': {'type': 'integer', 'minimum': 1}})}
 d['voiceLabVideoRecipe']['allOf'] = [
     {'if': {'properties': {'mode': {'const': 'cut'}}}, 'then': {'required': ['cuts', 'zoom', 'faceX', 'faceY']}},

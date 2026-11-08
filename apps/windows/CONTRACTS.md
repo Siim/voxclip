@@ -1,5 +1,14 @@
 # Windows fixed contracts
 
+### 2026-11-08 — Whole-clip revoice: the fit on the clip as edited, ported to Core (track/v2-wholeclip-fit)
+
+Mac ADR-R46 "Update 2026-11-08: one timeline, never pad". Core only; Windows still shows no whole-clip card and runs nothing.
+
+- `WholeClipRevoice.FitVoice` returns `Fit.Matched` within ±8%, `Fit.LaidOut` for a shorter voice (never a longer wording), `Fit.Reword(TargetWords)` only for a longer one, then `CannotFit`. `Reword` lost its `Shorter`. New: `LaidOutCopy`, `RewordFits`, `PredictedSeconds`, `LayoutPauseBound`, `EditedCuts`, `EditedSeconds` and `LayoutCuts`.
+- `VoiceLabNaturalPacing.ValidCuts` accepts Mac's edited picture: zoom 1 (`EDITED_CUT_ZOOM`), up to `MAXIMUM_EDITED_CUTS` = 512 cuts, no edge guard. Windows therefore opens and validates a project whose whole-clip segments carry it. `VoiceLabVideoFraming` uses the recipe's zoom after the first span and skips empty edge spans.
+- Replays `whole-clip-fit-cases.json` (`WholeClipFitReplayTests`, new) and the regenerated `fit` of `whole-clip-revoice-cases.json`. ReleaseBoundary's Core allowlist is updated.
+- **Owed.** The layout fit (`VoiceLabNaturalPacing.layout`, the fit planner's `targetSamples` and `tailPadSeconds`), with the card and the run.
+
 ### 2026-11-08 — Windows: the face models' catalogue and the maths from their outputs to a FrameFace, package W2 of "Windows sees the picture" (track/v2-win-frames-w2)
 
 ADR-R48 (Windows), /tmp/clipper-planning/research/windows-frame-analyzer.md ("How the chosen pair produces each FrameFace field", Question 2). Pure Core and a catalogue only: no model is downloaded or run, and the App, Media and CLI don't call any of it yet.

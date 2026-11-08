@@ -53,16 +53,23 @@ public sealed class VoiceLabVideoFraming
                     case VoiceLabVideoMode.Cut:
                         if (!VoiceLabNaturalPacing.ValidCuts(video, plan.SampleRate) || video.Cuts is not { } cuts)
                             throw new VoiceLabProjectException(VoiceLabProjectErrorCode.VideoModeUnsupported);
+                        // A pause's jump cut punches in after its first span; the clip's own cuts under a whole-clip layout
+                        // (zoom 1, ADR-R46) don't, and a cut at either edge leaves no span there.
+                        var punch = video.Zoom ?? VoiceLabNaturalPacing.CUT_PUNCH_IN;
                         long sourceStart = piece.SourceStartSample, outputStart = piece.OutputStartSample;
                         var first = true;
                         foreach (var cut in cuts)
                         {
                             var count = cut.StartSample - sourceStart;
-                            spans.Add(new(sourceStart, cut.StartSample, outputStart, outputStart + count,
-                                first ? 1 : VoiceLabNaturalPacing.CUT_PUNCH_IN, 0.5, 0.5));
-                            first = false; sourceStart = cut.EndSample; outputStart += count;
+                            if (count > 0)
+                            {
+                                spans.Add(new(sourceStart, cut.StartSample, outputStart, outputStart + count, first ? 1 : punch, 0.5, 0.5));
+                                first = false;
+                            }
+                            sourceStart = cut.EndSample; outputStart += count;
                         }
-                        spans.Add(new(sourceStart, piece.SourceEndSample, outputStart, piece.OutputEndSample, VoiceLabNaturalPacing.CUT_PUNCH_IN, 0.5, 0.5));
+                        if (piece.SourceEndSample > sourceStart)
+                            spans.Add(new(sourceStart, piece.SourceEndSample, outputStart, piece.OutputEndSample, punch, 0.5, 0.5));
                         cursor = piece.OutputEndSample;
                         continue;
                     case VoiceLabVideoMode.Source:

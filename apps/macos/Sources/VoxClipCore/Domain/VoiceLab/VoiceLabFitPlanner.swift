@@ -42,6 +42,9 @@ public struct VoiceLabFitSeam: Sendable, Equatable {
 /// A fit plan (§8.9.2 Output): the incoming pad, the edited take between the final trims and the outgoing pad.
 public struct VoiceLabFitPlan: Sendable, Equatable {
     public var videoCuts: [VoiceLabVideoCut] = []
+    /// Fitted to the clip as edited (a whole-clip revoice, `VoiceLabNaturalPacing.layout`): `videoCuts` are the clip's own
+    /// cuts and its trim, played at zoom 1 (`EDITED_CUT_ZOOM`), not a pause's punched-in jump cut.
+    public var editedTimeline: Bool = false
     public var hardJoinSmoothing: Bool = false
     public var edits: [VoiceLabFitEdit]
     public var incoming: VoiceLabFitSeam
@@ -103,11 +106,15 @@ public enum VoiceLabFitPlanner {
     /// Plans the fit of `take` into `window`. `incomingSilence` and `outgoingSilence` are the §8.9.2 outside silences in
     /// seconds: for a gap seam the silence it can lend, which `VoiceLabWindowPlanner.lendableSilence(project:scope:window:)`
     /// measures, for a take edge (`none`) the silence to the window's nearest word, and nil for a hard seam. `tokens` are
-    /// the patch tokens, one per word.
+    /// the patch tokens, one per word. `targetSamples`, when set, is what the take fills instead of the window's source
+    /// samples (a whole-clip revoice fills the clip as edited), and `tailPadSeconds` the silence the outgoing edge may add
+    /// after the pauses are at their limit (the clip's own last pause). Both default to the patch's fit.
     public static func plan(window: VoiceLabWindow, incomingSilence: Double?, outgoingSilence: Double?, take: VoiceLabFitTake,
                             tokens: [String], sourceSampleRate rate: Double, hardJoinSmoothing: Bool,
                             pauseProfile: VoiceLabPauseProfile? = nil, audioTags: [VoiceLabAudioTag] = [],
-                            allowPauseGrowth: Bool = true) throws -> VoiceLabFitResult {
+                            allowPauseGrowth: Bool = true, targetSamples: Int64? = nil, tailPadSeconds: Double = 0) throws -> VoiceLabFitResult {
+        guard targetSamples.map({ $0 > 0 && $0 <= window.endSample - window.startSample }) ?? true,
+              tailPadSeconds.isFinite, tailPadSeconds >= 0 else { throw VoiceLabGeometryError.invalidInput() }
         // Each hard side reserves min(140 ms, 20%) of the source window the recipe covers, which render validation
         // recomputes from the recipe's video samples. A window that borrows gap silence is wider than the replacement,
         // so the plan repeats with the widened duration until its reserve stops growing (a fifth of the extra each time).
@@ -116,7 +123,7 @@ public enum VoiceLabFitPlanner {
             let result = try plan(window: window, incomingSilence: incomingSilence, outgoingSilence: outgoingSilence,
                 take: take, tokens: tokens, sourceSampleRate: rate, hardJoinSmoothing: hardJoinSmoothing,
                 pauseProfile: pauseProfile, audioTags: audioTags, allowPauseGrowth: allowPauseGrowth,
-                reserveWindow: reserveWindow)
+                reserveWindow: reserveWindow, targetSamples: targetSamples, tailPadSeconds: tailPadSeconds)
             guard hardJoinSmoothing, window.leftSeam.kind == .hard || window.rightSeam.kind == .hard else { return result }
             let widened = result.plan.windowEnd - result.plan.windowStart
             let assetRate = Double(take.assetSampleRate)
@@ -132,7 +139,8 @@ public enum VoiceLabFitPlanner {
     private static func plan(window: VoiceLabWindow, incomingSilence: Double?, outgoingSilence: Double?, take: VoiceLabFitTake,
                              tokens: [String], sourceSampleRate rate: Double, hardJoinSmoothing: Bool,
                              pauseProfile: VoiceLabPauseProfile?, audioTags: [VoiceLabAudioTag],
-                             allowPauseGrowth: Bool, reserveWindow: Double) throws -> VoiceLabFitResult {
+                             allowPauseGrowth: Bool, reserveWindow: Double, targetSamples: Int64?,
+                             tailPadSeconds: Double) throws -> VoiceLabFitResult {
         let kinds: [VoiceLabSeamKind] = [window.leftSeam.kind, window.rightSeam.kind]
         let silences: [Double?] = [incomingSilence, outgoingSilence]
         let reach = try validate(window: window, kinds: kinds, silences: silences, take: take, rate: rate)
@@ -151,7 +159,7 @@ public enum VoiceLabFitPlanner {
             hardJoinSmoothing && kinds[0] == .hard ? max(0, reserve - leadIn) : 0
         let edgeOut: Int64 = kinds[1] == .none ? max(0, VoiceLabGeometry.samples(silences[1] ?? 0, assetRate) - tailOut) :
             hardJoinSmoothing && kinds[1] == .hard ? max(0, reserve - tailOut) : 0
-        let n = window.endSample - window.startSample
+        let n = targetSamples ?? (window.endSample - window.startSample)
         let target = framesOf(n, assetRate: assetRate, rate: rate)
         let natural = edgeIn + edgeOut + t1 - t0
         let rho = natural - target, shorten = rho > 0
@@ -203,7 +211,8 @@ public enum VoiceLabFitPlanner {
         } else if remaining > 0 {
             let gapPad = VoiceLabGeometry.samples(VoiceLabPatchConstants.SEAM_PAD_MAX, assetRate)
             let hardPad = VoiceLabGeometry.samples(VoiceLabPatchConstants.HARD_SEAM_PAD_MAX, assetRate)
-            let caps: [Int64] = kinds.map { pauseProfile != nil || !allowPauseGrowth ? 0 : $0 == .hard ? (hardJoinSmoothing ? 0 : hardPad) : gapPad }
+            var caps: [Int64] = kinds.map { pauseProfile != nil || !allowPauseGrowth ? 0 : $0 == .hard ? (hardJoinSmoothing ? 0 : hardPad) : gapPad }
+            if allowPauseGrowth { caps[1] += VoiceLabGeometry.samples(tailPadSeconds, assetRate) }
             let extra = split(remaining, caps: caps)
             pad = [pad[0] + extra[0], pad[1] + extra[1]]
             exact = extra[0] + extra[1] == remaining
@@ -258,8 +267,10 @@ public enum VoiceLabFitPlanner {
         let residualFrames: Int64 = output - windowFrames
         let residualFrameCount: Double = Double(residualFrames)
         let residualSeconds: Double = residualFrameCount / assetRate
-        // Each word ends inside the output the recipe states (§10.5): the window, plus residualSeconds after a partial fit.
-        let duration: Double = exact ? end - start : end - start + residualSeconds
+        // Each word ends inside the output the recipe states (§10.5): the window (or the target it fills), plus
+        // residualSeconds after a partial fit.
+        let filled: Double = targetSamples == nil ? end - start : Double(n + borrow[0] + borrow[1]) / rate
+        let duration: Double = exact ? filled : filled + residualSeconds
         let lead = pad[0] - t0
         let words: [VoiceLabWord] = take.words.indices.map { (index: Int) -> VoiceLabWord in
             let word = take.words[index]
