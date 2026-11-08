@@ -264,10 +264,10 @@ import Testing
     /// and Lower Third at y 0.9, Vox Highlight at 0.8) sits under the transport; the bar takes
     /// the pointer only on Play and Edited / Source, so the handle keeps a wide strip on the
     /// bar to press, and the bar steps aside while a caption is dragged. The press itself
-    /// needs a real window (DebugViewer's caption drag in -uiSelfTest). The 9:16 defaults sit
-    /// higher, clear of the feed's bands (design.md §5.1), so 9:16 takes the same low place as a
-    /// dragged position.
-    /// The styles' own positions, which 1:1 and 16:9 keep as defaults.
+    /// needs a real window (DebugViewer's caption drag in -uiSelfTest). The defaults now sit
+    /// clear of the feed's bands (design.md §5.1), higher than this, so every shape takes the low
+    /// place as a dragged position.
+    /// The styles' own positions before the band rule (2026-11-08), as dragged positions.
     static let lowCaptions = ["clean-subtitle": CaptionPosition(x: 0.5, y: 0.9), "lower-third": CaptionPosition(x: 0.06, y: 0.9),
                               "vox-highlight": CaptionPosition(x: 0.5, y: 0.8)]
 
@@ -278,7 +278,7 @@ import Testing
                 var project = try project()
                 project.captions.styleId = style
                 project.export.aspect = aspect
-                if aspect == .portrait { project.captions.positionByAspect[aspect.rawValue] = Self.lowCaptions[style] }
+                project.captions.positionByAspect[aspect.rawValue] = Self.lowCaptions[style]
                 // Not a demo, so the caption can move; nothing is edited here.
                 let model = EditorModel(document: VoxClipDocument(project: project, demo: false), app: AppModel(), preview: DemoPreviewEngine())
                 defer { model.close() }

@@ -6,7 +6,8 @@ import Testing
 
 /// The export check's captions rule (ADR-R49) on the renderer's own layout, and the defaults that follow it (design.md §5.1):
 /// every bundled caption style at its default position and the hook title at its default place clear the feed's bands in
-/// each export shape. In 9:16 a style's deepest page and the title keep 1% of the height clear of the bands.
+/// each export shape. A style moved off a band keeps its deepest page 1% of the height clear of it, and so does the 9:16
+/// title.
 @Suite(.offlineFixtures) struct ExportCheckPlacementTests {
     static let shapes: [(aspect: String, size: PixelSize)] = [("9:16", PixelSize(width: 1080, height: 1920)),
                                                               ("1:1", PixelSize(width: 1080, height: 1080)),
@@ -20,7 +21,7 @@ import Testing
                             Self.words("we judged everybody quickly, typography glyphs: happy joyful pyjamas jogging gypsy quietly yelling")]
     /// A hook of the planner's usual length, and the longest the title takes (three lines).
     static let hooks = ["We ship every week", "This is the one change that made our whole team ship a clipper every single week"]
-    /// The bands' margin for VoxClip's own 9:16 defaults (design.md §5.1): 1% of the height.
+    /// The bands' margin for VoxClip's own moved defaults (design.md §5.1): 1% of the height.
     static let margin = 0.01
 
     static func words(_ text: String) -> [CaptionWord] {
@@ -118,58 +119,58 @@ import Testing
         }
     }
 
-    /// Bottom-anchored at y 0.9, these sit in the 1:1 bottom band (0.020 deep) and on the 16:9 one's edge (0.0004). 1:1 and
-    /// 16:9 defaults are unchanged (design.md §5.1), so they stay known issues until the lead moves them.
-    static let inSquareAndLandscapeBands: Set<String> = ["clean-subtitle", "lower-third"]
-
-    /// The gate: every bundled style at its default position clears every band in every shape, and in 9:16 and 1:1 so does
-    /// its deepest page. (Some 16:9 deepest pages end up to 0.016 into the bottom 10% band; 16:9 defaults are unchanged.)
+    /// The gate: every bundled style at its default position clears every band in every shape, and so does its deepest page.
     @Test func everyStyleAtItsDefaultPositionClearsTheBands() async throws {
         for id in try Self.styleIDs() {
             let style = try Self.style(id)
             for shape in Self.shapes {
                 let result = Self.check(try await Self.captionBoxes(style, size: shape.size, words: Self.words), size: shape.size)
-                let deepest = shape.aspect == "16:9" ? nil : try await Self.deepest(style, size: shape.size)
+                #expect(result.status == .ok, "\(id) on \(shape.aspect): \(result.items)")
+                let deepest = try await Self.deepest(style, size: shape.size)
                 let bands = CaptionSafeZones.bands(width: shape.size.width, height: shape.size.height)
                 let topLimit = bands.first { $0.edge == .top }?.fraction ?? 0
                 let bottomLimit = 1 - (bands.first { $0.edge == .bottom }?.fraction ?? 0)
-                if let deepest {
-                    print(String(format: "export-check style %@ %@: deepest page %.4f…%.4f", id, shape.aspect, deepest.top, deepest.bottom))
-                }
-                let expectClear = {
-                    #expect(result.status == .ok, "\(id) on \(shape.aspect): \(result.items)")
-                    if let deepest {
-                        #expect(deepest.top >= topLimit - 1e-9 && deepest.bottom <= bottomLimit + 1e-9,
-                                "\(id) on \(shape.aspect): deepest page \(deepest)")
-                    }
-                }
-                if shape.aspect != "9:16", Self.inSquareAndLandscapeBands.contains(id) {
-                    withKnownIssue("\(id)'s \(shape.aspect) default sits in the bottom band (1:1 and 16:9 unchanged; the lead decides)") { expectClear() }
-                } else {
-                    expectClear()
-                }
+                print(String(format: "export-check style %@ %@: deepest page %.4f…%.4f", id, shape.aspect, deepest.top, deepest.bottom))
+                #expect(deepest.top >= topLimit - 1e-9 && deepest.bottom <= bottomLimit + 1e-9, "\(id) on \(shape.aspect): deepest page \(deepest)")
             }
         }
     }
 
-    /// A style's 9:16 override is the lowest position (in thousandths) that keeps its deepest page the margin clear: one
-    /// thousandth lower reaches past 0.77 of the height. It changes only y, and only for 9:16.
-    @Test func eachPortraitOverrideIsTheLowestClearPosition() async throws {
-        var changed: [String] = []
-        let limit = Self.limits(Self.portrait).bottom
-        #expect(abs(limit - 0.77) < 1e-12)
+    /// The styles whose deepest page reached into a shape's band, and so carry that shape's `aspects` y (design.md §5.1).
+    static let moved: [String: [String]] = [
+        "9:16": ["clean-subtitle", "editorial", "lower-third", "minimal", "pill", "typewriter", "vox-bold", "vox-bold-plus", "vox-highlight"],
+        "1:1": ["clean-subtitle", "lower-third"],
+        "16:9": ["clean-subtitle", "lower-third", "minimal", "pill", "sing-along", "typewriter"],
+    ]
+
+    /// A moved style's override for a shape is the lowest position (in thousandths) that keeps its deepest page the margin
+    /// clear of the band: one thousandth lower ends past the band's start minus 1%. In 9:16 the override changes only y,
+    /// and only the moved styles have one.
+    @Test func eachMovedOverrideIsTheLowestClearPosition() async throws {
+        var portraits: [String] = []
         for id in try Self.styleIDs() {
-            let style = try Self.style(id)
-            guard let portrait = style.aspects?.portrait else { continue }
-            changed.append(id)
-            let y = try #require(portrait.y, "\(id): a 9:16 override moves y")
-            #expect(portrait.x == nil && portrait.sizeSh == nil && portrait.maxWords == nil && portrait.maxLineWidthW == nil, "\(id) changes only y")
-            let at = try await Self.deepest(style, size: Self.portrait)
-            let lower = try await Self.deepest(style, size: Self.portrait, y: (y * 1000 + 1).rounded() / 1000)
-            print(String(format: "export-check 9:16 default %@: y %.3f, deepest page %.4f…%.4f; y+0.001 ends at %.4f", id, y, at.top, at.bottom, lower.bottom))
-            #expect(at.bottom <= limit + 1e-9 && lower.bottom > limit + 1e-9, "\(id): \(y) ends at \(at.bottom), one lower at \(lower.bottom)")
+            if try Self.style(id).aspects?.portrait != nil { portraits.append(id) }
         }
-        #expect(changed == ["clean-subtitle", "editorial", "lower-third", "minimal", "pill", "typewriter", "vox-bold", "vox-bold-plus", "vox-highlight"])
+        #expect(portraits == Self.moved["9:16"])
+        for shape in Self.shapes {
+            let limit = Self.limits(shape.size).bottom
+            for id in Self.moved[shape.aspect] ?? [] {
+                let style = try Self.style(id)
+                let override = switch shape.aspect {
+                case "9:16": style.aspects?.portrait
+                case "1:1": style.aspects?.square
+                default: style.aspects?.landscape
+                }
+                let y = try #require(override?.y, "\(id) on \(shape.aspect): the override moves y")
+                if shape.aspect == "9:16" {
+                    #expect(override?.x == nil && override?.sizeSh == nil && override?.maxWords == nil && override?.maxLineWidthW == nil, "\(id) changes only y")
+                }
+                let at = try await Self.deepest(style, size: shape.size)
+                let lower = try await Self.deepest(style, size: shape.size, y: (y * 1000 + 1).rounded() / 1000)
+                print(String(format: "export-check %@ default %@: y %.3f, deepest page %.4f…%.4f; y+0.001 ends at %.4f", shape.aspect, id, y, at.top, at.bottom, lower.bottom))
+                #expect(at.bottom <= limit + 1e-9 && lower.bottom > limit + 1e-9, "\(id) on \(shape.aspect): \(y) ends at \(at.bottom), one lower at \(lower.bottom)")
+            }
+        }
     }
 
     /// A position the user dragged is the project's, not the style's: a 9:16 project with Highlight at y 0.8 keeps it,
