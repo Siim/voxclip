@@ -153,8 +153,11 @@ public sealed class WholeClipRevoiceReplayTests
                     Assert.Equal(expected["factor"]!.GetValue<double>(), matched.Factor);
                     Assert.Equal(expected["copy"]!.GetValue<string>(), WholeClipRevoice.MatchedCopy(matched.Factor));
                     break;
+                case "laidOut":
+                    Assert.Equal(new WholeClipRevoice.Fit.LaidOut(expected["factor"]!.GetValue<double>()), fit);
+                    break;
                 case "reword":
-                    Assert.Equal(new WholeClipRevoice.Fit.Reword(expected["shorter"]!.GetValue<bool>(), expected["targetWords"]!.GetValue<int>()), fit);
+                    Assert.Equal(new WholeClipRevoice.Fit.Reword(expected["targetWords"]!.GetValue<int>()), fit);
                     break;
                 default:
                     Assert.Equal(new WholeClipRevoice.Fit.CannotFit(voice, video), fit);
