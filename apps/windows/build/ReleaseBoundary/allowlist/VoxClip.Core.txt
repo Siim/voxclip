@@ -6533,6 +6533,136 @@ member VoxClip.Core.Domain.Music.ProjectMusic :: method public set_Source(VoxCli
 member VoxClip.Core.Domain.Music.ProjectMusic :: method public set_SourceUrl(string)
 member VoxClip.Core.Domain.Music.ProjectMusic :: method public set_StartOffsetSeconds(double)
 member VoxClip.Core.Domain.Music.ProjectMusic :: method public set_Title(string)
+member VoxClip.Core.Domain.Share.Mp4Box :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Share.Mp4Box :: method public .ctor(string,ulong,ulong,ulong)
+member VoxClip.Core.Domain.Share.Mp4Box :: method public Deconstruct(string&,ulong&,ulong&,ulong&)
+member VoxClip.Core.Domain.Share.Mp4Box :: method public Equals(VoxClip.Core.Domain.Share.Mp4Box)
+member VoxClip.Core.Domain.Share.Mp4Box :: method public Equals(object)
+member VoxClip.Core.Domain.Share.Mp4Box :: method public GetHashCode()
+member VoxClip.Core.Domain.Share.Mp4Box :: method public ToString()
+member VoxClip.Core.Domain.Share.Mp4Box :: method public get_End()
+member VoxClip.Core.Domain.Share.Mp4Box :: method public get_HeaderSize()
+member VoxClip.Core.Domain.Share.Mp4Box :: method public get_Offset()
+member VoxClip.Core.Domain.Share.Mp4Box :: method public get_Size()
+member VoxClip.Core.Domain.Share.Mp4Box :: method public get_Type()
+member VoxClip.Core.Domain.Share.Mp4Box :: method public op_Equality(VoxClip.Core.Domain.Share.Mp4Box,VoxClip.Core.Domain.Share.Mp4Box)
+member VoxClip.Core.Domain.Share.Mp4Box :: method public op_Inequality(VoxClip.Core.Domain.Share.Mp4Box,VoxClip.Core.Domain.Share.Mp4Box)
+member VoxClip.Core.Domain.Share.Mp4Box :: method public set_HeaderSize(ulong)
+member VoxClip.Core.Domain.Share.Mp4Box :: method public set_Offset(ulong)
+member VoxClip.Core.Domain.Share.Mp4Box :: method public set_Size(ulong)
+member VoxClip.Core.Domain.Share.Mp4Box :: method public set_Type(string)
+member VoxClip.Core.Domain.Share.Mp4ChunkOffsets :: method private .ctor(VoxClip.Core.Domain.Share.Mp4ChunkOffsets)
+member VoxClip.Core.Domain.Share.Mp4ChunkOffsets :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Share.Mp4ChunkOffsets :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Share.Mp4ChunkOffsets :: method public .ctor(string,System.Collections.Generic.IReadOnlyList`1<ulong>)
+member VoxClip.Core.Domain.Share.Mp4ChunkOffsets :: method public Deconstruct(string&,System.Collections.Generic.IReadOnlyList`1<ulong>&)
+member VoxClip.Core.Domain.Share.Mp4ChunkOffsets :: method public Equals(VoxClip.Core.Domain.Share.Mp4ChunkOffsets)
+member VoxClip.Core.Domain.Share.Mp4ChunkOffsets :: method public Equals(object)
+member VoxClip.Core.Domain.Share.Mp4ChunkOffsets :: method public GetHashCode()
+member VoxClip.Core.Domain.Share.Mp4ChunkOffsets :: method public ToString()
+member VoxClip.Core.Domain.Share.Mp4ChunkOffsets :: method public get_Box()
+member VoxClip.Core.Domain.Share.Mp4ChunkOffsets :: method public get_Entries()
+member VoxClip.Core.Domain.Share.Mp4ChunkOffsets :: method public op_Equality(VoxClip.Core.Domain.Share.Mp4ChunkOffsets,VoxClip.Core.Domain.Share.Mp4ChunkOffsets)
+member VoxClip.Core.Domain.Share.Mp4ChunkOffsets :: method public op_Inequality(VoxClip.Core.Domain.Share.Mp4ChunkOffsets,VoxClip.Core.Domain.Share.Mp4ChunkOffsets)
+member VoxClip.Core.Domain.Share.Mp4ChunkOffsets :: method public set_Box(string)
+member VoxClip.Core.Domain.Share.Mp4ChunkOffsets :: method public set_Entries(System.Collections.Generic.IReadOnlyList`1<ulong>)
+member VoxClip.Core.Domain.Share.Mp4CoverArt :: field internal MetadataHandler
+member VoxClip.Core.Domain.Share.Mp4CoverArt :: method internal Be32(uint)
+member VoxClip.Core.Domain.Share.Mp4CoverArt :: method internal Be64(ulong)
+member VoxClip.Core.Domain.Share.Mp4CoverArt :: method internal Box(string,byte[],bool)
+member VoxClip.Core.Domain.Share.Mp4CoverArt :: method internal Children(byte[],VoxClip.Core.Domain.Share.Mp4CoverArt+Node,int)
+member VoxClip.Core.Domain.Share.Mp4CoverArt :: method internal CoverItem(VoxClip.Core.Domain.Share.Mp4CoverImageType,byte[])
+member VoxClip.Core.Domain.Share.Mp4CoverArt :: method internal ParsedHeader(System.ReadOnlySpan`1<byte>,ulong,ulong)
+member VoxClip.Core.Domain.Share.Mp4CoverArt :: method private .cctor()
+member VoxClip.Core.Domain.Share.Mp4CoverArt :: method public ChunkOffsets(byte[])
+member VoxClip.Core.Domain.Share.Mp4CoverArt :: method public Edit(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Share.Mp4Box>,byte[],byte[])
+member VoxClip.Core.Domain.Share.Mp4CoverArt :: method public Embed(byte[],byte[])
+member VoxClip.Core.Domain.Share.Mp4CoverArt :: method public ImageType(System.ReadOnlySpan`1<byte>)
+member VoxClip.Core.Domain.Share.Mp4CoverArt :: method public Layout(ulong,System.Func`3<ulong,int,byte[]>)
+member VoxClip.Core.Domain.Share.Mp4CoverArt :: method public Movie(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Share.Mp4Box>)
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter :: field private _bytes
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter :: field private _children
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter :: field private _cover
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter :: field private _movie
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter :: field private _root
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter :: field private _tables
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter :: method internal Tables(byte[],VoxClip.Core.Domain.Share.Mp4CoverArt+Node)
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter :: method private Container(VoxClip.Core.Domain.Share.Mp4CoverArt+Node,System.Collections.Generic.IEnumerable`1<byte[]>,byte[])
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter :: method private Items(VoxClip.Core.Domain.Share.Mp4CoverArt+Node)
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter :: method private Metadata(VoxClip.Core.Domain.Share.Mp4CoverArt+Node)
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter :: method private Moov(long,System.Collections.Generic.HashSet`1<int>)
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter :: method private Moves(ulong)
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter :: method private NewMetadata()
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter :: method private Offsets(VoxClip.Core.Domain.Share.Mp4CoverArt+Node,long,System.Collections.Generic.HashSet`1<int>,string[])
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter :: method private Raw(VoxClip.Core.Domain.Share.Mp4CoverArt+Node)
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter :: method private Read(byte[],VoxClip.Core.Domain.Share.Mp4CoverArt+Node)
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter :: method private Rewritten(VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter+Table,long,bool)
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter :: method private UserData(VoxClip.Core.Domain.Share.Mp4CoverArt+Node)
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter :: method public .ctor(byte[],VoxClip.Core.Domain.Share.Mp4Box,byte[])
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter :: method public Written()
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter+Table :: method private .ctor(VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter+Table)
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter+Table :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter+Table :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter+Table :: method public .ctor(VoxClip.Core.Domain.Share.Mp4CoverArt+Node,ulong[])
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter+Table :: method public Deconstruct(VoxClip.Core.Domain.Share.Mp4CoverArt+Node&,ulong[]&)
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter+Table :: method public Equals(VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter+Table)
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter+Table :: method public Equals(object)
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter+Table :: method public GetHashCode()
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter+Table :: method public ToString()
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter+Table :: method public get_Entries()
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter+Table :: method public get_Node()
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter+Table :: method public op_Equality(VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter+Table,VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter+Table)
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter+Table :: method public op_Inequality(VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter+Table,VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter+Table)
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter+Table :: method public set_Entries(ulong[])
+member VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter+Table :: method public set_Node(VoxClip.Core.Domain.Share.Mp4CoverArt+Node)
+member VoxClip.Core.Domain.Share.Mp4CoverArt+Node :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Share.Mp4CoverArt+Node :: method public .ctor(string,int,int,int)
+member VoxClip.Core.Domain.Share.Mp4CoverArt+Node :: method public Deconstruct(string&,int&,int&,int&)
+member VoxClip.Core.Domain.Share.Mp4CoverArt+Node :: method public Equals(VoxClip.Core.Domain.Share.Mp4CoverArt+Node)
+member VoxClip.Core.Domain.Share.Mp4CoverArt+Node :: method public Equals(object)
+member VoxClip.Core.Domain.Share.Mp4CoverArt+Node :: method public GetHashCode()
+member VoxClip.Core.Domain.Share.Mp4CoverArt+Node :: method public ToString()
+member VoxClip.Core.Domain.Share.Mp4CoverArt+Node :: method public get_Body()
+member VoxClip.Core.Domain.Share.Mp4CoverArt+Node :: method public get_End()
+member VoxClip.Core.Domain.Share.Mp4CoverArt+Node :: method public get_HeaderSize()
+member VoxClip.Core.Domain.Share.Mp4CoverArt+Node :: method public get_Size()
+member VoxClip.Core.Domain.Share.Mp4CoverArt+Node :: method public get_Start()
+member VoxClip.Core.Domain.Share.Mp4CoverArt+Node :: method public get_Type()
+member VoxClip.Core.Domain.Share.Mp4CoverArt+Node :: method public op_Equality(VoxClip.Core.Domain.Share.Mp4CoverArt+Node,VoxClip.Core.Domain.Share.Mp4CoverArt+Node)
+member VoxClip.Core.Domain.Share.Mp4CoverArt+Node :: method public op_Inequality(VoxClip.Core.Domain.Share.Mp4CoverArt+Node,VoxClip.Core.Domain.Share.Mp4CoverArt+Node)
+member VoxClip.Core.Domain.Share.Mp4CoverArt+Node :: method public set_HeaderSize(int)
+member VoxClip.Core.Domain.Share.Mp4CoverArt+Node :: method public set_Size(int)
+member VoxClip.Core.Domain.Share.Mp4CoverArt+Node :: method public set_Start(int)
+member VoxClip.Core.Domain.Share.Mp4CoverArt+Node :: method public set_Type(string)
+member VoxClip.Core.Domain.Share.Mp4CoverArtException :: method public .ctor(VoxClip.Core.Domain.Share.Mp4CoverArtRefusal)
+member VoxClip.Core.Domain.Share.Mp4CoverArtException :: method public get_Refusal()
+member VoxClip.Core.Domain.Share.Mp4CoverArtException :: method public get_Wire()
+member VoxClip.Core.Domain.Share.Mp4CoverArtRefusal :: field public Fragmented
+member VoxClip.Core.Domain.Share.Mp4CoverArtRefusal :: field public Malformed
+member VoxClip.Core.Domain.Share.Mp4CoverArtRefusal :: field public NoMovie
+member VoxClip.Core.Domain.Share.Mp4CoverArtRefusal :: field public Truncated
+member VoxClip.Core.Domain.Share.Mp4CoverArtRefusal :: field public UnfollowableSize
+member VoxClip.Core.Domain.Share.Mp4CoverArtRefusal :: field public UnsupportedImage
+member VoxClip.Core.Domain.Share.Mp4CoverArtRefusal :: field public value__
+member VoxClip.Core.Domain.Share.Mp4CoverEdit :: method private .ctor(VoxClip.Core.Domain.Share.Mp4CoverEdit)
+member VoxClip.Core.Domain.Share.Mp4CoverEdit :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Share.Mp4CoverEdit :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Share.Mp4CoverEdit :: method public .ctor(VoxClip.Core.Domain.Share.Mp4Box,byte[])
+member VoxClip.Core.Domain.Share.Mp4CoverEdit :: method public Deconstruct(VoxClip.Core.Domain.Share.Mp4Box&,byte[]&)
+member VoxClip.Core.Domain.Share.Mp4CoverEdit :: method public Equals(VoxClip.Core.Domain.Share.Mp4CoverEdit)
+member VoxClip.Core.Domain.Share.Mp4CoverEdit :: method public Equals(object)
+member VoxClip.Core.Domain.Share.Mp4CoverEdit :: method public GetHashCode()
+member VoxClip.Core.Domain.Share.Mp4CoverEdit :: method public ToString()
+member VoxClip.Core.Domain.Share.Mp4CoverEdit :: method public get_Growth()
+member VoxClip.Core.Domain.Share.Mp4CoverEdit :: method public get_Moov()
+member VoxClip.Core.Domain.Share.Mp4CoverEdit :: method public get_Movie()
+member VoxClip.Core.Domain.Share.Mp4CoverEdit :: method public op_Equality(VoxClip.Core.Domain.Share.Mp4CoverEdit,VoxClip.Core.Domain.Share.Mp4CoverEdit)
+member VoxClip.Core.Domain.Share.Mp4CoverEdit :: method public op_Inequality(VoxClip.Core.Domain.Share.Mp4CoverEdit,VoxClip.Core.Domain.Share.Mp4CoverEdit)
+member VoxClip.Core.Domain.Share.Mp4CoverEdit :: method public set_Moov(byte[])
+member VoxClip.Core.Domain.Share.Mp4CoverEdit :: method public set_Movie(VoxClip.Core.Domain.Share.Mp4Box)
+member VoxClip.Core.Domain.Share.Mp4CoverImageType :: field public Jpeg
+member VoxClip.Core.Domain.Share.Mp4CoverImageType :: field public Png
+member VoxClip.Core.Domain.Share.Mp4CoverImageType :: field public value__
 member VoxClip.Core.Domain.Share.ShareDestination :: field public LinkedIn
 member VoxClip.Core.Domain.Share.ShareDestination :: field public VoxConvo
 member VoxClip.Core.Domain.Share.ShareDestination :: field public X
@@ -16938,6 +17068,16 @@ type VoxClip.Core.Domain.Music.MusicSource
 type VoxClip.Core.Domain.Music.MusicSuggestionResult
 type VoxClip.Core.Domain.Music.MusicWords
 type VoxClip.Core.Domain.Music.ProjectMusic
+type VoxClip.Core.Domain.Share.Mp4Box
+type VoxClip.Core.Domain.Share.Mp4ChunkOffsets
+type VoxClip.Core.Domain.Share.Mp4CoverArt
+type VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter
+type VoxClip.Core.Domain.Share.Mp4CoverArt+MovieWriter+Table
+type VoxClip.Core.Domain.Share.Mp4CoverArt+Node
+type VoxClip.Core.Domain.Share.Mp4CoverArtException
+type VoxClip.Core.Domain.Share.Mp4CoverArtRefusal
+type VoxClip.Core.Domain.Share.Mp4CoverEdit
+type VoxClip.Core.Domain.Share.Mp4CoverImageType
 type VoxClip.Core.Domain.Share.ShareDestination
 type VoxClip.Core.Domain.Share.ShareDisclosure
 type VoxClip.Core.Domain.Share.ShareTextRules
