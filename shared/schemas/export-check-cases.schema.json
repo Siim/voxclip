@@ -112,7 +112,8 @@
         "limit": {"type": "number"},
         "band": {"enum": ["top", "bottom"]},
         "phrase": {"type": "string"},
-        "reason": {"type": "string"}
+        "reason": {"type": "string"},
+        "count": {"type": "integer", "minimum": 2}
       }
     },
     "case": {

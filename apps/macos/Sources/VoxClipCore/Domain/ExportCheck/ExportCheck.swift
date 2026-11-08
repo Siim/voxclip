@@ -42,6 +42,8 @@ public struct ExportCheckItem: Codable, Sendable, Equatable {
     /// The phrase (Voice Lab segment) id, for words in a phrase and for sync.
     public var phrase: String?
     public var reason: String?
+    /// How many cards in a row reach the same depth into the band (from `time` on); nil for one.
+    public var count: Int?
 
     public init(kind: Kind, time: Double, expected: String? = nil, heard: String? = nil, value: Double? = nil, limit: Double? = nil,
                 band: CaptionSafeZones.Edge? = nil, phrase: String? = nil, reason: String? = nil) {
@@ -184,8 +186,9 @@ public enum ExportCheck {
     public static let targetLufs = SocialLoudness.targetLufs
     public static let loudnessToleranceLu = 1.0
     public static let ceilingDbtp = SocialLoudness.ceilingDbtp
-    /// AAC rings a few hundredths of a dB past the PCM's ceiling on a limited transient (ADR-R47's amendment).
-    public static let truePeakToleranceDb = 0.1
+    /// AAC rings past the PCM's ceiling on a limited transient: −0.97 dBTP decoded in ADR-R47's test, −0.90 in FFmpeg on
+    /// its benchmark, −0.895 on this check's first real run (ADR-R49).
+    public static let truePeakToleranceDb = 0.2
 
     public static func run(_ input: ExportCheckInput) -> ExportCheckReport {
         let alignment = input.heard.map { WordAlignment(expected: input.expected, heard: $0) }
@@ -257,11 +260,12 @@ public enum ExportCheck {
     }
 
     /// Whether each expected word sits next to a cut or a clip edge: the first and the last word, and any word with a cut
-    /// between it and the word before or after it.
+    /// between it and the word before or after it. The bounds are inclusive: a recognizer's words touch (each ends where
+    /// the next starts), and a cut between touching words falls on that boundary.
     static func atEdges(_ words: [ExportCheckInput.Word], cuts: [Double]) -> [Bool] {
         guard !words.isEmpty else { return [] }
         let sorted = cuts.sorted()
-        func cut(between lower: Double, _ upper: Double) -> Bool { sorted.contains { $0 > lower && $0 < upper } }
+        func cut(between lower: Double, _ upper: Double) -> Bool { sorted.contains { $0 >= lower && $0 <= upper } }
         let last = words.count - 1
         return words.indices.map { index in
             if index == 0 || index == last { return true }
@@ -367,8 +371,13 @@ public enum ExportCheck {
                 let overlap = CaptionSafeZones.overlap(box.rect, band: band)
                 // A millionth of the frame's height is rounding, not a box in the band.
                 guard overlap > 1e-6 else { continue }
-                items.append(ExportCheckItem(kind: box.kind == .title ? .titleBand : .captionBand, time: box.time, value: overlap,
-                                             limit: band.fraction, band: band.edge))
+                let kind: ExportCheckItem.Kind = box.kind == .title ? .titleBand : .captionBand
+                // The cards of a style sit at one place: a run of the same overlap is one finding, with its count.
+                if let last = items.last, last.kind == kind, last.band == band.edge, abs((last.value ?? 0) - overlap) < 1e-9 {
+                    items[items.count - 1].count = (last.count ?? 1) + 1
+                    continue
+                }
+                items.append(ExportCheckItem(kind: kind, time: box.time, value: overlap, limit: band.fraction, band: band.edge))
             }
         }
         return ExportCheckResult(check: .captions, status: items.isEmpty ? .ok : .warning, items: items)

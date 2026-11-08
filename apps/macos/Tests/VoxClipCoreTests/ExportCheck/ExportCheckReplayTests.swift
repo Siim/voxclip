@@ -75,6 +75,7 @@ struct ExportCheckReplayTests {
             if item.band?.rawValue != wanted[ai: "band"].aiString { found.append("item \(index) band \(String(describing: item.band))") }
             if item.phrase != wanted[ai: "phrase"].aiString { found.append("item \(index) phrase \(String(describing: item.phrase))") }
             if item.reason != wanted[ai: "reason"].aiString { found.append("item \(index) reason \(String(describing: item.reason))") }
+            near(wanted[ai: "count"], item.count.map(Double.init), "item \(index) count")
         }
         return found
     }

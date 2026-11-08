@@ -112,6 +112,7 @@ extension CLIWorkflow {
                 if item.kind == .mismatch || item.kind == .cutOff { detail += item.heard.map { " heard \"\($0)\"" } ?? " not heard" }
                 if let value = item.value { detail += String(format: " %.3f", value) }
                 if let band = item.band { detail += " in the \(band.rawValue) band" }
+                if let count = item.count { detail += " (\(count) cards)" }
                 lines.append(detail)
             }
         }
