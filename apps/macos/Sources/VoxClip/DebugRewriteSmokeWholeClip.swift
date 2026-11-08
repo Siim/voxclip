@@ -14,6 +14,8 @@ import VoxClipMedia
 // - S-revoice-whole-over-cap: the price passes the cap: the patch goes on, the offer waits, nothing is sent.
 // - S-revoice-whole-cancel: Cancel during the lip sync keeps the clip; Try Again pays only the lip sync.
 // - S-revoice-whole-upgrade: Review's Sharper Lip Sync · sync-3 re-runs only the lip sync and Use saves sync-3.
+// - S-revoice-whole-cuts: the same clip with a cut "um" before each of its later sentences (voice-lab §8.14 item 3): the
+//   parts tile the clip, so a filler before a part's first word is absorbed and the run reaches Review and Use (WK1).
 
 extension DebugRewriteSmoke {
     /// Five of the eight sentences said differently: well over 40% of the clip's words.
@@ -35,10 +37,25 @@ extension DebugRewriteSmoke {
         return fixture
     }
 
+    /// The whole-clip clip with a cut "um" right before each later sentence, touching its first word: a part that starts
+    /// there would have its seam beside the cut if the parts didn't tile the clip.
+    private static func wholeClipCutsFixture() -> Fixture {
+        var fixture = wholeClipFixture()
+        let starts = ["First we", "Then we", "We keep", "The captions", "Every change", "Finally we"]
+        for start in starts { fixture.script = fixture.script.replacingOccurrences(of: ". " + start, with: ". um " + start) }
+        fixture.lastWord = (fixture.lastWord ?? 0) + starts.count
+        fixture.cutFillers = true
+        return fixture
+    }
+
     static var wholeClipScenarios: [Definition] { [
         Definition(id: "S-revoice-whole", title: "a heavily rewritten clip: How should it sound? → Revoice Whole Clip → Review → Use, one undo step, saved",
                    requiresCompletion: false, fixture: wholeClipFixture()) { harness in
             try await harness.revoiceWholeClip()
+        },
+        Definition(id: "S-revoice-whole-cuts", title: "a rewritten clip with a cut filler before each sentence: the parts tile the clip and reach Review",
+                   requiresCompletion: false, fixture: wholeClipCutsFixture()) { harness in
+            try await harness.revoiceWholeClip(cuts: true)
         },
         Definition(id: "S-revoice-whole-claude", title: "✦ Claude does it all revoices a stitched clip whole within the cap, with no click",
                    requiresCompletion: false, fixture: wholeClipFixture()) { harness in
@@ -188,16 +205,35 @@ extension DebugRewriteSmoke.Harness {
         completed = record != nil; ended = true
     }
 
-    func revoiceWholeClip() async throws {
+    func revoiceWholeClip(cuts: Bool = false) async throws {
         let lipsync = installWholeClipStandIn()
         let (session, whole) = try await openWholeClip()
         let primary = try checkChoose(session, whole)
         let before = editor?.project.voiceLab.segments.count ?? 0
         try await runWholeClip(session, whole, title: primary)
         checkReview(whole, segmentsBefore: before)
+        if cuts { checkCutsAbsorbed(session, whole) }
         makeItAppend([wholeClipCheck("W5", lipsync.calls == [.lipsync2] && whole.voice.map { $0.parts >= 1 } == true,
             "lip sync \(lipsync.calls.map(\.name)) · \(whole.voice?.parts ?? 0) parts · \(speechRequests) speech requests")])
         try await useAndCheck(session, whole, model: .lipsync2)
+    }
+
+    /// WK1: the clip has cut fillers, at least one right before a later part's first word, and every one lies inside a
+    /// placed window, so no seam sits beside a cut.
+    private func checkCutsAbsorbed(_ session: RewriteSession, _ whole: WholeClipRevoiceSession) {
+        guard let project = editor?.project, let words = project.transcript?.words, let script = whole.script else { return }
+        let cuts = Set(project.edits.cutWordIds)
+        let fillers = words.filter { cuts.contains($0.id) }
+        let windows = session.wholeClipPlan?.phrases.map(\.window) ?? []
+        let absorbed = fillers.filter { filler in windows.contains { $0.start <= filler.start && filler.end <= $0.end } }
+        // A part boundary that has a cut filler right before its first source word.
+        let firsts = script.parts.dropFirst().compactMap { $0.sourceWordIds.first }
+        let beside = firsts.filter { id in
+            guard let index = words.firstIndex(where: { $0.id == id }), index > 0 else { return false }
+            return cuts.contains(words[index - 1].id)
+        }
+        makeItAppend([wholeClipCheck("WK1", !fillers.isEmpty && !beside.isEmpty && absorbed.count == fillers.count && whole.phase == .review,
+            "\(fillers.count) cut fillers, \(beside.count) before a part's first word · \(script.parts.count) parts · \(windows.count) windows absorb \(absorbed.count) · \(phaseText(whole))")])
     }
 
     /// Claude mode's live services over this clip: quote, the automatic choice against `budget`, then the revoice.

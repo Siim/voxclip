@@ -190,22 +190,78 @@ public struct WholeClipScript: Equatable, Sendable {
     }
 
     /// The parts as Rewrite voice changes, so each goes through the existing take path (window placement, the R40 guard,
-    /// R43 calibration, the take checks and the lip-sync window). `words` are the clip's transcript items.
-    public func hunks(words: [TimedWord]) -> [VoiceLabDiffHunk] {
-        let spoken = words.filter { $0.kind == .word }
-        let index = Dictionary(spoken.enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { first, _ in first })
+    /// R43 calibration, the take checks and the lip-sync window). `words` are the clip's transcript items; `cutWordIds` and
+    /// `cutPauseIds` the project's cuts.
+    ///
+    /// Every spoken word of the clip is replaced, so the parts tile the clip (voice-lab §8.14 item 3): the first starts at
+    /// the clip's first item, the last ends at its last, and each runs from just after the one before it. Between two parts,
+    /// from the last kept word of one to the first kept word of the next, the items (cut words, a rewrite's cut source words,
+    /// events) go to the side of the widest gap, the earliest on a tie, so both windows seam in that gap, on kept audio, and
+    /// never in the reach of a cut. A cut pause counts as no gap: it keeps its breath only beside kept words, and both of its
+    /// neighbours are replaced. When the widest gap is narrower than `SEAM_MIN_GAP`, no seam can sit there, so the two parts
+    /// become one change (placement joins touching windows anyway). Two parts whose kept words touch keep their split. A
+    /// hunk's `sourceWordIds` are its parts' source words in its span, with the items it takes at its edges;
+    /// `absorbedItemIds` are the non-word items in its span; its spoken indices tile the clip's spoken words.
+    public func hunks(words: [TimedWord], cutWordIds: Set<String>, cutPauseIds: Set<String>) -> [VoiceLabDiffHunk] {
         let items = Dictionary(words.enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { first, _ in first })
-        return parts.compactMap { part in
-            let positions = part.sourceWordIds.compactMap { index[$0] }
-            guard let lower = positions.min(), let upper = positions.max() else { return nil }
-            var absorbed: [String] = []
-            let itemPositions = part.sourceWordIds.compactMap { items[$0] }
-            if let first = itemPositions.min(), let last = itemPositions.max(), last > first {
-                absorbed = words[(first + 1)..<last].filter { $0.kind != .word }.map(\.id)
+        /// `first`/`last` bound a part's source items, `keptFirst`/`keptLast` its kept ones (its source items when it has
+        /// none), and `lower`/`upper` its span.
+        struct Tile { var sources: [String]; var tokens: [String]; var first, last, keptFirst, keptLast, lower, upper: Int }
+        var tiles: [Tile] = []
+        for part in parts {
+            let positions = part.sourceWordIds.compactMap { items[$0] }
+            guard let first = positions.min(), let last = positions.max() else { continue }
+            let kept = positions.filter { words[$0].kind == .word && !cutWordIds.contains(words[$0].id) }
+            tiles.append(Tile(sources: part.sourceWordIds, tokens: EditingPrimitives.splitWords(part.text), first: first, last: last,
+                              keptFirst: kept.min() ?? first, keptLast: kept.max() ?? last, lower: first, upper: last))
+        }
+        guard !tiles.isEmpty else { return [] }
+        // Where the silence after item `j` begins: the latest end of the items up to it.
+        var reached: [Double] = []
+        for word in words { reached.append(max(reached.last ?? word.end, word.end)) }
+        var joined: [Tile] = [tiles[0]]
+        for next in tiles.dropFirst() {
+            var current = joined.removeLast()
+            let left = current.keptLast, right = next.keptFirst
+            if current.last < next.first, right > left {
+                var split = left, widest = Double.infinity
+                if right > left + 1 {
+                    // Split at the widest gap, the earliest on a tie.
+                    widest = -Double.infinity
+                    for j in left..<right {
+                        let gap: Double = cutPauseIds.contains("pause-after-" + words[j].id) ? 0 : words[j + 1].start - reached[j]
+                        if gap > widest { widest = gap; split = j }
+                    }
+                }
+                if widest >= VoiceLabPatchConstants.SEAM_MIN_GAP {
+                    current.upper = split
+                    var following = next
+                    following.lower = split + 1
+                    joined.append(current); joined.append(following)
+                    continue
+                }
             }
-            return VoiceLabDiffHunk(kind: .voice, sourceWordIds: part.sourceWordIds, newTokens: EditingPrimitives.splitWords(part.text),
-                                    correctedTexts: [], absorbedItemIds: absorbed, bridgeWordIds: [],
-                                    sourceStartIndex: lower, sourceEndIndex: upper + 1, anchorSeconds: nil)
+            // No seam fits between them, or their sources interleave: one change.
+            current.sources += next.sources.filter { !current.sources.contains($0) }
+            current.tokens += next.tokens
+            current.first = min(current.first, next.first); current.last = max(current.last, next.last)
+            current.keptFirst = min(current.keptFirst, next.keptFirst); current.keptLast = max(current.keptLast, next.keptLast)
+            current.upper = max(current.upper, next.upper)
+            joined.append(current)
+        }
+        joined[0].lower = 0
+        joined[joined.count - 1].upper = words.count - 1
+        var spokenBefore: [Int] = [0]
+        for word in words { spokenBefore.append((spokenBefore.last ?? 0) + (word.kind == .word ? 1 : 0)) }
+        return joined.map { tile in
+            let span = tile.lower...tile.upper
+            let sources = tile.sources.filter { items[$0].map(span.contains) ?? false }
+            let positions = sources.compactMap { items[$0] }
+            let first = positions.min() ?? tile.lower, last = positions.max() ?? tile.upper
+            let leading = words[tile.lower..<first].map(\.id), trailing = words[(last + 1)..<(tile.upper + 1)].map(\.id)
+            return VoiceLabDiffHunk(kind: .voice, sourceWordIds: leading + sources + trailing, newTokens: tile.tokens,
+                                    correctedTexts: [], absorbedItemIds: words[span].filter { $0.kind != .word }.map(\.id), bridgeWordIds: [],
+                                    sourceStartIndex: spokenBefore[tile.lower], sourceEndIndex: spokenBefore[tile.upper + 1], anchorSeconds: nil)
         }
     }
 }

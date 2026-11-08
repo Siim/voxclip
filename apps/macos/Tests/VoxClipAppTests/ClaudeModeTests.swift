@@ -654,6 +654,10 @@ enum MakeItPostableTestsPlan {
 }
 // MARK: Revoice the whole clip (ADR-R46)
 
+@MainActor private final class WholeClipOutcomes {
+    var all: [WholeClipAutoOutcome] = []
+}
+
 private final class Revoiced: Sendable {
     private let value = Mutex<[Decimal?]>([])
     var all: [Decimal?] { value.withLock { $0 } }
@@ -716,6 +720,41 @@ extension ClaudeModeTests {
         for _ in 0..<1_000 where !run.rows.contains(where: { $0.id == "wholeClip" }) { await Task.yield() }
         #expect(revoiced.all == [price])
         #expect(run.rows.contains { $0.id == "wholeClip" && $0.undoable })
+    }
+
+    /// A whole clip whose parts can't be placed: nothing is spent on it, the changed phrases are patched on their own, and
+    /// the review says so. No card is left waiting.
+    @Test func aWholeClipThatCantBePlacedFallsBackToThePatchOnItsOwn() async throws {
+        let fixture = try fixture()
+        defer { close(fixture) }
+        let editor = fixture.editor
+        let stubs = WholeClipRevoiceSessionTests.Stubs()
+        stubs.voiceError = WholeClipRevoiceSession.Unsent(error: WholeClipRevoiceSessionTests.refusal)
+        let outcomes = WholeClipOutcomes()
+        editor.makeIt.services?.wholeClipQuote = { _, _ in WholeClipAutoQuote(reason: .manyWords(revoiced: 3, spoken: 5), price: Decimal(string: "1.5")!) }
+        editor.makeIt.services?.revoiceWholeClip = { _, _ in
+            // The live service's run and mapping, over stub steps that refuse part 2's placement.
+            let session = WholeClipRevoiceSession()
+            session.backend = WholeClipRevoiceSessionTests.backend(stubs)
+            session.start(automatic: true)
+            await session.waitForRun()
+            let outcome = WholeClipAutoOutcome(session)
+            outcomes.all.append(outcome)
+            return outcome
+        }
+        await editor.makeIt.refreshVoiceReady(editor)
+        editor.armClaudeMode()
+        editor.claudeModeTranscribed(started: false)
+        await editor.claudeMode.task?.value
+        let run = try #require(editor.claudeModeRuns.first { $0.clipID == "clip-main" })
+        let copy = "Part 2 can't be joined to the recording there. Nothing was sent."
+        #expect(outcomes.all == [.patchInstead(copy)])
+        #expect(stubs.reports.count == 1 && stubs.voices.isEmpty && stubs.lipsyncs.isEmpty, "\(stubs.reports)")
+        #expect(fixture.calls.all.contains("voice we finally ship budget 2"), "the phrase was patched: \(fixture.calls.all)")
+        let row = try #require(run.rows.first { $0.id == "wholeClip" })
+        #expect(row.text == "Voiced only the changed phrases: the whole clip couldn't be revoiced here" && row.detail == copy)
+        #expect(editor.claudeMode.budget?.spent == Decimal(string: "0.10"), "only the patch was paid")
+        #expect(!run.rows.contains { $0.id == "wholeClipOffer" })
     }
 
     @Test func aClipThatWouldNotSoundStitchedIsPatchedWithNoOffer() async throws {
