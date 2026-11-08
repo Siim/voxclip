@@ -275,24 +275,32 @@ public sealed class SocialLoudnessNativeExportTests : IAsyncLifetime
     [Fact]
     public async Task TransientsAreLimitedAndTheExportLandsAtMinus14()
     {
-        var info = await new FfmpegMediaProbe().ProbeAsync(NativeTest.Fixture("speech-plosives.mkv"), TestContext.Current.CancellationToken);
-        var total = (long)Math.Round(info.DurationSeconds * 48_000);
-        var snapshot = new ComposeSnapshot(info, TestPlan.FromKept(48_000, total, [new(0, total)]), null, new(new(160, 90), 30, 1_000_000));
+        var outer = TestContext.Current.CancellationToken;
+        using var bounded = CancellationTokenSource.CreateLinkedTokenSource(outer);
+        bounded.CancelAfter(Budget);
+        var ct = bounded.Token;
         var directory = Directory.CreateTempSubdirectory("voxclip-loudness-native-").FullName;
         try
         {
+            var info = await new FfmpegMediaProbe().ProbeAsync(NativeTest.Fixture("speech-plosives.mkv"), ct);
+            var total = (long)Math.Round(info.DurationSeconds * 48_000);
+            var snapshot = new ComposeSnapshot(info, TestPlan.FromKept(48_000, total, [new(0, total)]), null, new(new(160, 90), 30, 1_000_000));
             var limited = Path.Combine(directory, "limited.mp4");
             var result = await new Exporter().ExportAsync(new(snapshot, new ExportTarget.FullEdit(), ExportAspect.Source, ExportQuality.Standard, limited, null),
-                null, TestContext.Current.CancellationToken);
+                null, ct);
             var report = Assert.IsType<SocialLoudnessReport>(result.Loudness);
             Assert.False(report.Capped);
             Assert.InRange(report.LimiterMaxReductionDb, 3, SocialLoudness.MaximumReductionDb);
             Assert.InRange(report.OutputLufs!.Value, SocialLoudness.TargetLufs - 0.5, SocialLoudness.TargetLufs + 0.5);
             Assert.True(report.TruePeakDbtp <= SocialLoudness.CeilingDbtp + 1e-6, $"reported true peak {report.TruePeakDbtp}");
-            var exported = await Measure(limited);
+            var exported = await Measure(limited, result.AudioSamples, ct);
             Assert.InRange(exported.IntegratedLufs()!.Value, SocialLoudness.TargetLufs - 0.5, SocialLoudness.TargetLufs + 0.5);
             // The ceiling is the PCM's: AAC rings a few hundredths of a dB past it on a limited transient (Mac: −0.97 dBTP).
             Assert.True(exported.TruePeakDbtp <= SocialLoudness.CeilingDbtp + 0.1, $"true peak {exported.TruePeakDbtp}");
+        }
+        catch (Exception exception) when (bounded.IsCancellationRequested && !outer.IsCancellationRequested)
+        {
+            Assert.Fail($"The native limited loudness export test did not finish within {Budget.TotalMinutes:0} minutes ({exception.GetType().Name}).");
         }
         finally { Directory.Delete(directory, true); }
     }
