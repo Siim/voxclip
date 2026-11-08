@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- 9:16 captions and titles now clear the feed's buttons and text by default (Mac and Windows): nine caption styles sit a little higher in 9:16 and a top title starts lower; 1:1 and 16:9 are unchanged, and old projects without a dragged caption position move with the default.
 - On Mac, `voxclip-cli check` checks an export against its clip on the Mac (every word heard again as edited, picture and sound in sync, −14 LUFS loudness, captions clear of the feed's buttons) and exits 8 when something is off; `voxclip-cli autopilot` checks each clip it exports and says so in its JSON.
 - On Windows, Claude mode no longer waits for its slowest clip: the top three are planned at once, each clip is applied as soon as its own plan is ready ("1 of 3 ready" in the status bar, "Finding clips…" while it finds them), Settings drops the unused "Snap clip edges" switch, every AI connector that takes images can be sent frames, and `voxclip-cli autopilot` runs Claude mode headless with `--timings`.
 - On Mac, `voxclip-cli autopilot` now applies what Claude decided from the picture (a clearer opening, the 9:16 crop on your face, the screens it blurred and the cover, written beside each export) and its JSON says what was decided and why; Settings no longer shows the "Snap clip edges to sentence boundaries" toggle, which had no effect.

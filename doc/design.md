@@ -644,6 +644,23 @@ When the user selects one or more whole words with the pointer or the keyboard a
   - While Rewrite is open and the column is shorter than 760, the stage drops to 220×124 (16:9; other frames fit inside a 124-high box). On Windows the time, the AI tag and the transport stack beside it. On macOS the viewer row stays under it.
 - There is no transport pill and no overlay on the stage except the caption overlay and the compositor's AI MODIFIED chip. The one exception: with no video, the stage shows the §5.4.6 overlays (the message, the word rhythm, the audiogram and the status chip). None of them is interactive; Locate… stays in the transcript InfoBar. A preview that can't load or draw shows the preview-failed state over the player, with Reload Preview (§5.4.4 g).
 - **Caption position.** The caption block on the stage is draggable and snaps to the centre line and the thirds. While dragging, safe-zone guides for the frame appear (9:16: bands over the top 12% and the bottom 22%, and the right-hand 12% where feeds stack their buttons; 1:1: the bottom 12%; 16:9: the bottom 10%). The export self-check (ADR-R49) warns when a caption card or the title reaches into one of the top or bottom bands (`CaptionSafeZones`); the right-hand column is a guide only.
+- **VoxClip's own defaults clear the bands** (2026-11-08). Every bundled style at its default position, and the hook title at its default place, clear every band in every shape.
+  - **9:16 captions.** A style whose deepest page reached into the bottom band has an `aspects.portrait` y: the lowest position, in thousandths, that keeps its deepest page (the tallest page its layout makes from a long line, at its `maxLines`) ending at or above 0.77 of the height, the band's start minus 1%. Its anchor and look are unchanged. Measured with the renderer's layout:
+
+    | Style | 9:16 y (was) | Deepest page, top–bottom |
+    |---|---|---|
+    | Bold, Bold+ | 0.754 (0.80) | 0.7391–0.7690 |
+    | Highlight | 0.746 (0.80) | 0.7229–0.7695 |
+    | Pill | 0.725 (0.75) | 0.6800–0.7700 |
+    | Typewriter | 0.727 (0.78) | 0.6844–0.7698 |
+    | Editorial | 0.731 (0.76) | 0.6922–0.7698 |
+    | Subtitle (bottom anchor) | 0.769 (0.90) | 0.7069–0.7690 |
+    | Lower third (bottom anchor) | 0.769 (0.90) | 0.6947–0.7690 |
+    | Minimal (bottom anchor) | 0.769 (0.86) | 0.7130–0.7690 |
+
+  - 1:1 and 16:9 defaults are unchanged. Subtitle and Lower third (bottom anchor at 0.90) still reach 0.020 into the 1:1 band and 0.0004 into the 16:9 one; a few 16:9 deepest pages end up to 0.016 into the 16:9 band. Both are open for the lead.
+  - **A dragged position is the user's.** `captions.position` and `positionByAspect` win over the style's default, so a project that set one keeps it. A project without one moves with the default.
+  - **The title in 9:16** (§6.8 Overlays). A top title's box starts at 13% of the height and grows downwards; a bottom title's box ends at or above 77%. Centre, and every 1:1 and 16:9 placement, are unchanged: the single line's edge stays 14% from the top or 24% from the bottom. Mac `EffectFrames.titleClearOfFeedBands` and Windows `EffectTitleLayout.ClearOfFeedBands` apply this rule.
 
 **Viewer bar.**
 
@@ -2026,7 +2043,7 @@ The user points at part of the video and says what they want in plain words ("bl
 |---|---|---|
 | Censor | Bleep (a 1 kHz tone), mute (silence), each with 10 ms ramps at exact word bounds; captions show × for each letter, on the Voice Lab path (a clip with voiced phrases) and in the CLI's export too | Rendered |
 | Censor | Blur, pixelate: a box, held still or tracking a face or the moving subject | Rendered |
-| Overlays | Title (Roboto Black; a title wider than 92 % of the frame wraps into balanced lines, at most three, shrinking from 7.5 % to 5 % of the frame's short side, the box growing inwards from the top or bottom), lower third (DM Sans Bold), emoji (bundled Noto), arrow, circle, progress bar | Rendered |
+| Overlays | Title (Roboto Black; a title wider than 92 % of the frame wraps into balanced lines, at most three, shrinking from 7.5 % to 5 % of the frame's short side, the box growing inwards from the top or bottom; in 9:16 clear of the feed's bands, §5.1), lower third (DM Sans Bold), emoji (bundled Noto), arrow, circle, progress bar | Rendered |
 | Timing | Freeze frame (up to 5 s), zoom (a motion cue), jump cut | Rendered |
 | Timing | Speed: the clip's own speed when the stretch covers the clip; for part of a clip, "Apply 1.25× to the whole clip" | Rendered (clip controls) |
 | Words | Fix a word (correction) | Applied |

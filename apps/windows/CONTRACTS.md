@@ -1,5 +1,23 @@
 # Windows fixed contracts
 
+### 2026-11-08 — Windows: the 9:16 title clear of the feed's bands, the twin of Mac track/v2-safe-zones (track/v2-safe-zones)
+
+design.md §5.1 (VoxClip's own defaults clear the bands) and §6.8 Overlays.
+
+- **Title (Media).** `EffectTitleLayout.ClearOfFeedBands(box, position, width, height)` (new, internal) runs on `Make`'s integer box. In a portrait-class frame (`10·W < 9·H`, the caption resolver's class) a `top` box's top edge is `ceil(0.13·H)` (250 of 1920 px), growing downwards. A `bottom` box's bottom edge is at most `floor(0.77·H)` (1478 of 1920). `center`, 1:1 and 16:9 are unchanged. The rule is the same as the Mac's `EffectFrames.titleClearOfFeedBands`.
+- **Captions.** No code change. The style files' new `aspects.portrait` y values reach Windows through `CaptionStyleResolver`, and the regenerated portrait layout fixtures and golden indexes replay unchanged in `CaptionConformanceTests`.
+- **Tests (portable Media).**
+  - `APortraitTitleSitsClearOfTheFeedsBands`: one and three lines, top at 250, bottom between 0.77·H − 1 and 0.77·H, centre unchanged.
+  - `SquareAndLandscapeTitlesAreUnchanged` (1080×1080, 1920×1080): top, bottom and centre against the old placement.
+  - `OverlayAndPointerGoldensMatchTheMacsWithinTextAntialiasing` reads the title's geometry at rows 88–106, inside the moved box.
+  - Red: with the rule off, the portrait test and both Mac-golden title comparisons fail. With the rule applied to every shape, the 1:1 and 16:9 test fails.
+- **ReleaseBoundary.** `update` on all four: `VoxClip.Media.txt` +1 (`EffectTitleLayout.ClearOfFeedBands`). `VoxClip.Core.txt`, `VoxClip.txt` and `voxclip-cli.txt` are unchanged.
+- **Verification** (macOS host, Release, `-m:1 -nodeReuse:false -p:UseSharedCompilation=false`, `VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`):
+  - Core 3,316 (3,287 passed, 29 skipped, 0 failed).
+  - Portable Media 1,045 (1,040 passed, 5 skipped, 0 failed).
+  - win-ui 1,401 (1,396 passed, 5 skipped, 0 failed). The run straight after the allowlist update had one failure that didn't recur in two reruns.
+  - App type-check: 0 warnings. `check-xaml.py`: 0 problems.
+
 ### 2026-11-08 — Windows: Claude mode's speed and images to the AI, the twin of Mac track/v2-speed and track/v2-eyes-1 (track/v2-win-speed-images)
 
 ai.md §16.12, §19.3, §19.5. Clears both "Windows owes" lists below except the analyzer.

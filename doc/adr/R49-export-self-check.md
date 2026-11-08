@@ -86,13 +86,17 @@ tools/fixtures/export-check/generate_check_cases.py writes. The Mac Core replays
 
 ## Consequences
 
-- **Defaults that fail in 9:16 (reported to the lead, not moved).**
-  - The default caption style, Highlight, at its default position reaches 0.043 of the height into the 9:16 bottom band.
-    So do Bold, Bold+ (0.030), Minimal, Typewriter, Clean subtitle and Lower third.
-  - The hook title's top sits at 0.102 of the height for one line and 0.106 for three lines, inside the top 12% band.
-  - Both defaults clear the bands on 1:1 and 16:9. `ExportCheckPlacementTests` records the two 9:16 defaults as known
-    issues, which fail once the defaults move.
-  - Until they move, a 9:16 export with Highlight or a hook title warns on `captions`, and `check` exits 8 for it.
+- **Defaults that failed in 9:16: resolved (2026-11-08, track/v2-safe-zones).**
+  - The check found that Highlight at its default position reached 0.043 of the height into the 9:16 bottom band, and
+    so did Bold, Bold+ (0.030), Minimal, Typewriter, Clean subtitle and Lower third. Measured on each style's deepest page,
+    Editorial and Pill reached in too. The hook title's top sat at 0.102–0.106 of the height, inside the top band.
+  - The lead moved the 9:16 defaults clear of the bands and left 1:1 and 16:9 as they are. Nine styles have an
+    `aspects.portrait` y that ends their deepest page at or above 0.77 of the height, and a 9:16 title's box starts at
+    13% and a bottom one ends by 77% (design.md §5.1 has the values).
+  - `ExportCheckPlacementTests` is now a gate: every bundled style at its default position clears every band in every
+    shape, its deepest page clears them in 9:16 and 1:1, and each 9:16 override is the lowest clear position.
+  - Still open: bottom-anchored Clean subtitle and Lower third (y 0.90) reach 0.020 into the 1:1 band and 0.0004 into
+    the 16:9 one, which the gate records as known issues, and some 16:9 deepest pages end up to 0.016 into the 16:9 band.
 - **What a cold `check` costs.** It loads the model each time. The autopilot loads it once for all its clips.
 - **Reported but not warned.** A mismatched word next to a cut, heard as a longer word, is a mismatch but not a
   cut-off. For example, "speaking" was heard as "continuing" after "continually" was cut.

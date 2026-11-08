@@ -1,5 +1,43 @@
 # macOS implementation contracts
 
+### 2026-11-08 — 9:16 captions and titles clear of the feed's buttons by default (track/v2-safe-zones)
+
+The export self-check (ADR-R49) found VoxClip's own 9:16 defaults under the feed's buttons and text. The lead moved the 9:16 defaults clear of `CaptionSafeZones`' bands and left 1:1 and 16:9 as they are. design.md §5.1 has the rule and the values.
+
+- **Styles (shared).** Nine styles gain `aspects.portrait.y`, the lowest position in thousandths that ends the style's deepest page (the tallest page from a long line, at its `maxLines`) at or above 0.77 of the height. Anchors, looks, 1:1 and 16:9 are unchanged.
+  - Bold and Bold+ 0.754, Highlight 0.746, Pill 0.725, Typewriter 0.727, Editorial 0.731; Clean subtitle, Lower third and Minimal 0.769 (bottom anchor).
+  - Editorial and Pill weren't in ADR-R49's list: their two-line deepest pages reached 0.799 and 0.795.
+  - A dragged position (`captions.position`, `positionByAspect`) still wins; a project without one moves with the default.
+- **Title (Media).** `EffectFrames.titleClearOfFeedBands(_:position:output:)` (new) runs after `titleLayout`'s integral box. In a portrait-class frame a `.top` box's top edge is at `floor(0.87·H)` from the bottom, which is 13% from the top (250 of 1920 px), and grows downwards. A `.bottom` box's bottom edge is at most 77% from the top (1478 of 1920). `.center`, 1:1 and 16:9 are unchanged. `ExportChecker.titleBoxes` reads the same layout.
+- **Fixtures.** `gen_fixtures.py` rewrote 13 portrait layout cases, `styles-2/layout/minimal-portrait-en.json` and the 1080×1920 entries of both `preview-tiles.json`; only vertical fields changed. `render-caption` left every golden PNG byte-identical; only the moved cases' golden indexes (crop offsets) changed. The effect goldens `title.png` and `hook-portrait.png` were re-recorded (`VOXCLIP_RECORD_EFFECT_GOLDENS=1`). Unchanged: `cards.json`, `gallery-samples.json`, `index.json`, every square and landscape case, and `hook-landscape.png`.
+- **Tests.**
+  - Media `ExportCheckPlacementTests`, now a gate:
+    - the two known issues are gone;
+    - every style at its default position clears every band in every shape, and its deepest page clears them in 9:16 and 1:1;
+    - `eachPortraitOverrideIsTheLowestClearPosition`: y ends at or above 0.77, and y + 0.001 ends below it;
+    - `aDraggedCaptionPositionIsNeverMoved`;
+    - `aPortraitTitleSitsClearOfTheFeedsBands` (top and bottom, one and three lines);
+    - `squareAndLandscapeTitlesAreUnchanged`.
+  - App `aLowCaptionKeepsAPressableStripUnderTheTransport`: 9:16 now uses a dragged position at the old default, because the 9:16 defaults no longer sit under the transport.
+  - Red without each rule:
+    - with the old style files, four caption tests fail: the gate, Highlight's default, the lowest-position test and the dragged-position test;
+    - with the title rule off, the two 9:16 title tests fail;
+    - with the rule applied to every shape, `squareAndLandscapeTitlesAreUnchanged` fails;
+    - the old effect goldens fail `titleEmojiAndArrowGoldens` and `hookTitleGoldens`.
+- **Still open (for the lead).**
+  - Clean subtitle and Lower third (bottom anchor at 0.90) reach 0.020 into the 1:1 bottom band and 0.0004 into the 16:9 one. The gate holds them as known issues.
+  - Deepest pages in 16:9 end up to 0.016 into the 10% band (Typewriter 0.916, Sing-along 0.909, and Pill, Minimal, Clean subtitle and Lower third by 0.0001–0.0004). The gate doesn't check 16:9 deepest pages.
+  - Sing-along's 9:16 deepest page ends at 0.7789: clear of the band, but 0.0011 inside the 1% margin. The brief moves only styles that reached into a band.
+- **Verification** (`VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`, caption Python from the pinned requirements):
+  - Core: 1,471 tests, 2 known issues.
+  - Media, CaptionParity and CaptionStyleSet2 included: 626 tests; the 6 known issues are the gate's.
+  - App: 1,031 tests. The panel-host test failed in 9:16 before its fix and passes after it.
+  - `rewrite-smoke.sh`: PASSED, 83 scenarios.
+  - Long-expression build (250 ms): nothing flagged in the touched files.
+  - Both `check_drift.py`, every caption generator, `check_styles.py` and `validate.py`: tree clean.
+  - `voxclip-cli export --aspect 9:16 --style vox-highlight` with a hook title, then `check --json`: captions ok, passed. The base build warned, with 9 cards 0.043 into the bottom band and the title 0.018 into the top band, and exited 8.
+- **Next package.** Read the 9:16 positions from the style files; don't hard-code 0.8. The stage's "Bottom" position menu entry still means "the style's own position". The real-window caption drag (`-uiSelfTest`'s DebugViewer) is owed by the lead.
+
 ### 2026-11-08 — The export self-check engine: words, sync, loudness and captions, headless and in the CLI (track/v2-export-check)
 
 The agents the user liked checked every export (doc/agent-clipping-benchmark.md, item 6). VoxClip now does too, on the Mac, with no UI yet: the review rows wait for the user's approval of the lead's mockup (frame E). ADR-R49 has the rules and the measurements.
