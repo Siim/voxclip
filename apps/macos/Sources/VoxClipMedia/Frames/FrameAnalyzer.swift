@@ -60,6 +60,26 @@ public struct FrameAnalyzer: Sendable {
     public static let analysisEdge = 1280
     /// Lanes that decode and look at once.
     public static let lanes = 4
+    /// Vision's `perform` is synchronous and needs a free Swift concurrency thread while it runs. Called from the lanes'
+    /// tasks it filled the cooperative pool on a 3-core CI runner and every test stopped. A one-thread pool
+    /// (`LIBDISPATCH_COOPERATIVE_POOL_STRICT=1`) reproduces it (lead, 2026-11-08). Each look runs on this queue instead.
+    static let visionQueue = DispatchQueue(label: "voxclip.frames.vision", qos: .userInitiated, attributes: .concurrent)
+
+    /// One Vision look off the cooperative pool.
+    static func look(_ vision: any FrameObserving, image: CGImage, time: Double) async throws -> FrameObservation {
+        let frame = UncheckedImage(image)
+        return try await withCheckedThrowingContinuation { continuation in
+            visionQueue.async {
+                continuation.resume(with: Result { try vision.observe(frame.image, time: time) })
+            }
+        }
+    }
+
+    /// A decoded frame handed to the Vision queue; the analyzer never touches it again while Vision reads it.
+    private struct UncheckedImage: @unchecked Sendable {
+        let image: CGImage
+        init(_ image: CGImage) { self.image = image }
+    }
     /// Seconds a sentence frame may be from its time: the decoder may then return a nearby frame without decoding a
     /// long run of frames, which on the user's 4K HEVC footage takes the 24 frames from 2.4 s to 0.7 s (ADR-R48).
     public static let sentenceTolerance = 0.25
@@ -173,7 +193,7 @@ public struct FrameAnalyzer: Sendable {
                     for time in run {
                         try Task.checkCancellation()
                         let decoded = try await reader.image(at: time)
-                        let observation = try vision.observe(decoded.image, time: decoded.time)
+                        let observation = try await Self.look(vision, image: decoded.image, time: decoded.time)
                         let jpeg = sheet ? try FrameJPEG.encode(decoded.image, edge: FrameSheet.frameEdge) : nil
                         results.append(Analyzed(requested: time, observation: observation, jpeg: jpeg))
                     }

@@ -168,6 +168,9 @@ jobs:
           VOXCLIP_CAPTION_PYTHON: ${{ steps.py.outputs.python-path }}
           VOXCLIP_SCHEMA_PYTHON: ${{ steps.py.outputs.python-path }}
           VOXCLIP_REQUIRE_SCHEMA_PYTHON: "1"
+        # A test that blocks a cooperative thread can deadlock this 3-core runner's small Swift concurrency pool while
+        # passing on a 10-core Mac. Check new async code with LIBDISPATCH_COOPERATIVE_POOL_STRICT=1 locally (2026-11-08:
+        # Vision's synchronous perform on the frame analyzer's lanes stopped this step at 01:08:29 for 40 min).
         run: swift test --jobs 2 --filter VoxClipMediaTests --skip CaptionParityTests
 
       # The caption golden renders keep all three runner cores busy for minutes, so they run alone instead
@@ -181,7 +184,11 @@ jobs:
           VOXCLIP_CAPTION_PYTHON: ${{ steps.py.outputs.python-path }}
           VOXCLIP_SCHEMA_PYTHON: ${{ steps.py.outputs.python-path }}
           VOXCLIP_REQUIRE_SCHEMA_PYTHON: "1"
-        run: swift test --jobs 2 --filter CaptionParityTests
+        # A step killed at its limit leaves its test process holding SwiftPM's lock; end it so this step doesn't wait it out.
+        run: |
+          pkill -f swiftpm-testing-helper || true
+          pkill -f VoxClipPackageTests || true
+          swift test --jobs 2 --filter CaptionParityTests
 
       # Runs after a Swift test failure too, with the Release CLI built above.
       - name: Canonical macOS CLI E2E (Release)

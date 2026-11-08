@@ -111,9 +111,10 @@ struct FrameAnalyzerTests {
 
     // MARK: Apple Vision and AVFoundation
 
-    @Test func visionFindsAPhoneScreenWithTextAndKeepsNoWords() throws {
+    /// Through the analyzer's own Vision queue: a synchronous `perform` on a test's cooperative thread starves a small pool.
+    @Test(.timeLimit(.minutes(1))) func visionFindsAPhoneScreenWithTextAndKeepsNoWords() async throws {
         let image = try Self.phoneScreen()
-        let observation = try AppleFrameVision().observe(image, time: 3)
+        let observation = try await FrameAnalyzer.look(AppleFrameVision(), image: image, time: 3)
         #expect(observation.face == nil && observation.faceCount == 0)
         #expect(observation.textRects.count >= 3)
         let screen = try #require(observation.screens.first)
