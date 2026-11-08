@@ -36,7 +36,11 @@ public struct VoiceLabOutputPlan: Sendable, Equatable {
             if sample <= piece.sourceEndSample {
                 if let id = piece.segmentId, let cuts = videoCuts[id], !cuts.isEmpty {
                     let removed = cuts.reduce(Int64(0)) { $0 + max(0, min(sample, $1.endSample) - $1.startSample) }
-                    return Double(piece.outputStartSample + sample - piece.sourceStartSample - removed) / sampleRate
+                    let kept: Int64 = sample - piece.sourceStartSample - removed
+                    let scale = Self.cutScale(piece, cuts: cuts)
+                    guard scale.kept != scale.output else { return Double(piece.outputStartSample + kept) / sampleRate }
+                    let output: Double = Double(kept) * Double(scale.output) / Double(scale.kept)
+                    return (Double(piece.outputStartSample) + output) / sampleRate
                 }
                 let fraction = Double(sample - piece.sourceStartSample) / Double(piece.sourceEndSample - piece.sourceStartSample)
                 return (Double(piece.outputStartSample) + fraction * Double(piece.outputEndSample - piece.outputStartSample)) / sampleRate
@@ -49,7 +53,10 @@ public struct VoiceLabOutputPlan: Sendable, Equatable {
         let sample = min(Double(outputSamples), max(0, EditingPrimitives.jsRound(edited.isFinite ? edited * sampleRate : 0)))
         for piece in pieces where sample < Double(piece.outputEndSample) {
             if let id = piece.segmentId, let cuts = videoCuts[id], !cuts.isEmpty {
-                var sourceSample = Double(piece.sourceStartSample) + sample - Double(piece.outputStartSample)
+                let scale = Self.cutScale(piece, cuts: cuts)
+                let offset: Double = sample - Double(piece.outputStartSample)
+                let kept: Double = scale.kept == scale.output ? offset : offset * Double(scale.kept) / Double(scale.output)
+                var sourceSample = Double(piece.sourceStartSample) + kept
                 for cut in cuts where sourceSample >= Double(cut.startSample) {
                     sourceSample += Double(cut.endSample - cut.startSample)
                 }
@@ -60,6 +67,17 @@ public struct VoiceLabOutputPlan: Sendable, Equatable {
         }
         // Match EditPlan's endpoint convention, including when the chosen clip ends earlier.
         return Double(totalSourceSamples) / sampleRate
+    }
+
+    /// A cut piece's kept source samples (its span without `cuts`) and its output samples. A pause's jump cut and the
+    /// clip's own cuts at 1× keep them equal; a whole clip's sped-up picture (ADR-R46, `retimeFactor`) plays `kept` in
+    /// `output`, evenly, so every mapping scales the kept offset by `output ÷ kept`.
+    public static func cutScale(_ piece: VoiceLabOutputPiece, cuts: [VoiceLabVideoCut]) -> (kept: Int64, output: Int64) {
+        let removed = cuts.reduce(Int64(0)) { $0 + max(0, $1.endSample - $1.startSample) }
+        let kept: Int64 = piece.sourceEndSample - piece.sourceStartSample - removed
+        let output: Int64 = piece.outputEndSample - piece.outputStartSample
+        guard kept > 0, output > 0 else { return (output, output) }
+        return (kept, output)
     }
 }
 

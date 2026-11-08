@@ -58,20 +58,28 @@ struct CompositionVideoSpan: Sendable {
                         // A pause's jump cut punches in after its first span; the clip's own cuts under a whole-clip
                         // layout (zoom 1) don't, and a cut at either edge leaves no span there.
                         let punch = recipe.zoom ?? VoiceLabNaturalPacing.CUT_PUNCH_IN
+                        // A whole clip's sped-up picture (ADR-R46) plays its kept source evenly faster: each span's output
+                        // edge is its kept offset scaled by output ÷ kept, and the last ends on the piece's own end.
+                        let scale = VoiceLabOutputPlan.cutScale(piece, cuts: cuts)
+                        func shown(_ kept: Int64) -> Int64 {
+                            guard scale.kept != scale.output else { return kept }
+                            let scaled: Double = Double(kept) * Double(scale.output) / Double(scale.kept)
+                            return Int64(scaled.rounded())
+                        }
                         var spans: [CompositionVideoSpan] = []
-                        var sourceStart = piece.sourceStartSample, outputStart = piece.outputStartSample
+                        var sourceStart = piece.sourceStartSample, kept: Int64 = 0
                         for cut in cuts {
                             let count = cut.startSample - sourceStart
-                            if count > 0 {
+                            if count > 0, shown(kept + count) > shown(kept) {
                                 spans.append(CompositionVideoSpan(source: range(sourceStart, cut.startSample),
-                                    output: range(outputStart, outputStart + count), zoom: spans.isEmpty ? 1 : punch,
-                                    anchorX: 0.5, anchorY: 0.5))
+                                    output: range(piece.outputStartSample + shown(kept), piece.outputStartSample + shown(kept + count)),
+                                    zoom: spans.isEmpty ? 1 : punch, anchorX: 0.5, anchorY: 0.5))
                             }
-                            sourceStart = cut.endSample; outputStart += count
+                            sourceStart = cut.endSample; kept += max(0, count)
                         }
                         if piece.sourceEndSample > sourceStart {
                             spans.append(CompositionVideoSpan(source: range(sourceStart, piece.sourceEndSample),
-                                output: range(outputStart, piece.outputEndSample), zoom: punch, anchorX: 0.5, anchorY: 0.5))
+                                output: range(piece.outputStartSample + shown(kept), piece.outputEndSample), zoom: punch, anchorX: 0.5, anchorY: 0.5))
                         }
                         cursor = piece.outputEndSample
                         return spans

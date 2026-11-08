@@ -147,7 +147,7 @@
       "patches": [
         {
           "path": "/voiceLab/wholeClipRevoices/0/videoRetime",
-          "value": 1.08
+          "value": 1.2
         }
       ],
       "revoiced": true,
@@ -652,7 +652,7 @@
       "patches": [
         {
           "path": "/voiceLab/wholeClipRevoices/0/videoRetime",
-          "value": 1.09
+          "value": 1.21
         }
       ]
     },

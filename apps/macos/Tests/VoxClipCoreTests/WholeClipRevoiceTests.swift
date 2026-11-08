@@ -318,7 +318,7 @@ struct WholeClipLayoutTests {
         #expect(try refused { $0.voiceLab.wholeClipRevoices![0].segmentIds = ["vl-passage", "vl-passage"] })
         #expect(try refused { $0.voiceLab.wholeClipRevoices![0].clipId = "no-clip" })
         #expect(try refused { $0.voiceLab.wholeClipRevoices![0].lipsyncModel = "fal-ai/latentsync" })
-        #expect(try refused { $0.voiceLab.wholeClipRevoices![0].videoRetime = 1.09 })
+        #expect(try refused { $0.voiceLab.wholeClipRevoices![0].videoRetime = 1.21 })
         #expect(try refused { $0.voiceLab.wholeClipRevoices![0].usd = -1 })
         #expect(try refused { $0.voiceLab.wholeClipRevoices![0].match = .init(take: 1.5, anchorBaseline: nil, realSpeech: nil) })
         #expect(try refused { $0.voiceLab.wholeClipRevoices = [] })

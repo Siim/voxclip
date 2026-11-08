@@ -48,6 +48,7 @@ EXACT = ['shared/fixtures/voice-lab/pace-cases.json', 'shared/fixtures/voice-lab
          'shared/fixtures/voice-lab/whole-clip-revoice-wire-cases.json',
          'shared/fixtures/voice-lab/whole-clip-revoice-cases.json',
          'shared/fixtures/voice-lab/whole-clip-fit-cases.json',
+         'shared/fixtures/voice-lab/whole-clip-speed-cases.json',
          'shared/fixtures/voice-lab/accept-all-review-cases.json',
          'shared/fixtures/voice-lab/window-cases.json', 'shared/fixtures/voice-lab/window-all-cases.json',
          'shared/fixtures/voice-lab/window-clip-edge-cases.json',

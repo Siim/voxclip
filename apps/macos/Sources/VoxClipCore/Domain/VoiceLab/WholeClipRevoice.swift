@@ -18,6 +18,10 @@ public enum WholeClipRevoice {
     public static let maximumPartSeconds = 12.0
     /// A script part never exceeds the text-to-speech route's limit.
     public static let maximumPartCharacters = 1_000
+    /// A shorter voice first speeds the clip's picture up evenly, to at most this (the user, 2026-11-08: "keep the voice as
+    /// generated and speed the video 1..1.2 is mostly fine"); the pause layout and the trim take what is left (ADR-R46,
+    /// "Your own pace"). The voice itself is never stretched.
+    public static let maximumPictureSpeed = 1.2
     /// Lip sync takes at most 300 s in one job (voice-lab §9.3).
     public static let maximumClipSeconds = 300.0
     /// The burned-in chip and the post text line of an export holding a whole-clip revoice (voice-lab §11).
@@ -312,6 +316,30 @@ extension WholeClipRevoice {
         return voiceSeconds * newEstimateSeconds / estimateSeconds
     }
 
+    /// The picture's even speed-up for a voice of `voiceSeconds` on `videoSeconds` of the clip as edited: the clip's length
+    /// ÷ the voice's, from 1 (a voice as long or longer keeps the picture's pace) to `maximumPictureSpeed`. 1 for an unusable
+    /// input.
+    public static func pictureSpeed(voiceSeconds: Double, videoSeconds: Double) -> Double {
+        guard voiceSeconds.isFinite, videoSeconds.isFinite, voiceSeconds > 0, videoSeconds > 0 else { return 1 }
+        return min(maximumPictureSpeed, max(1, videoSeconds / voiceSeconds))
+    }
+
+    /// The Fit line's verdict once the picture is sped up: "picture 1.20× and laid out on the clip's pauses" when the pauses
+    /// still take up the rest, "picture 1.12× to fit" when the speed-up alone fills the clip.
+    public static func spedCopy(speed: Double, laidOut: Bool) -> String {
+        "picture " + speedLabel(speed) + (laidOut ? " and laid out on the clip's pauses" : " to fit")
+    }
+
+    /// "1.20×": the factor to two decimals.
+    public static func speedLabel(_ speed: Double) -> String {
+        String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), speed.isFinite ? speed : 1) + "×"
+    }
+
+    /// The record's `videoRetime`: the picture's speed, from the fit tolerance's slowest to `maximumPictureSpeed`.
+    public static func validRetime(_ value: Double) -> Bool {
+        value.isFinite && value >= 1 - fitTolerance - 1e-9 && value <= maximumPictureSpeed + 1e-9
+    }
+
     /// "video matched (−1.3%)": the voice's length against the video's, signed.
     public static func matchedCopy(factor: Double) -> String { "video matched (" + signedPercent(factor) + ")" }
 
@@ -515,8 +543,8 @@ public struct WholeClipRevoiceRecord: Codable, Sendable, Equatable {
 extension WholeClipRevoice {
     /// The record's rules, checked with the rest of the Voice Lab data (`VoiceLabProject.validate`): schema 3 or later;
     /// an `id` and `clipId` of the project's ID shape, the clip existing; at least one segment, each an existing,
-    /// distinct text-to-speech segment in no other record; a lip-sync model this feature uses; the retime within the fit
-    /// tolerance; scores within −1…1 and a finite, non-negative price.
+    /// distinct text-to-speech segment in no other record; a lip-sync model this feature uses; the retime within
+    /// `validRetime`; scores within −1…1 and a finite, non-negative price.
     public static func validate(_ project: Project) throws {
         guard let records = project.voiceLab.wholeClipRevoices else { return }
         guard project.schemaVersion >= 3, !records.isEmpty else { throw VoiceLabProjectError.invalidSegment }
@@ -528,7 +556,7 @@ extension WholeClipRevoice {
                   !record.segmentIds.isEmpty, !record.script.isEmpty, record.script.unicodeScalars.count <= 20_000,
                   !record.consentRecordId.isEmpty,
                   Lipsync(rawValue: record.lipsyncModel) != nil,
-                  record.videoRetime.isFinite, abs(record.videoRetime - 1) <= fitTolerance + 1e-9,
+                  validRetime(record.videoRetime),
                   record.usd.map({ $0.isFinite && $0 >= 0 }) ?? true,
                   record.createdAt.timeIntervalSince1970.isFinite else { throw VoiceLabProjectError.invalidSegment }
             if let match = record.match {

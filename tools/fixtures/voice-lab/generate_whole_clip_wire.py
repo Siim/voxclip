@@ -58,7 +58,7 @@ def generated():
         {'id': 'free', 'patches': [set_value(RECORD + '/usd', 0)], **expect()},
         {'id': 'sync-3-upgrade', 'patches': [set_value(RECORD + '/lipsyncModel', SYNC3)], **expect()},
         {'id': 'slowest-retime', 'patches': [set_value(RECORD + '/videoRetime', 0.92)], **expect()},
-        {'id': 'fastest-retime', 'patches': [set_value(RECORD + '/videoRetime', 1.08)], **expect()},
+        {'id': 'fastest-retime', 'patches': [set_value(RECORD + '/videoRetime', 1.2)], **expect()},
         {'id': 'one-segment', 'patches': [set_value(RECORD + '/segmentIds', ['vl-thanks'])], **expect()},
         {'id': 'two-records', 'patches': [set_value('/voiceLab/wholeClipRevoices',
                                                     [record('wholeclip-1', ['vl-passage']), record('wholeclip-2', ['vl-thanks'])])], **expect()},
@@ -94,7 +94,7 @@ def generated():
     reject('script-too-long', [set_value(RECORD + '/script', 'a' * 20001)])
     reject('empty-consent', [set_value(RECORD + '/consentRecordId', '')])
     reject('retime-too-slow', [set_value(RECORD + '/videoRetime', 0.91)])
-    reject('retime-too-fast', [set_value(RECORD + '/videoRetime', 1.09)])
+    reject('retime-too-fast', [set_value(RECORD + '/videoRetime', 1.21)])
     reject('string-retime', [set_value(RECORD + '/videoRetime', '1')])
     reject('another-lipsync-model', [set_value(RECORD + '/lipsyncModel', 'fal-ai/latentsync')])
     reject('lipsync-2-pro', [set_value(RECORD + '/lipsyncModel', 'fal-ai/sync-lipsync/v2:lipsync-2-pro')])

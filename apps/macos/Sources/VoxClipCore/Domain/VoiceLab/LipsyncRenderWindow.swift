@@ -36,7 +36,11 @@ public struct LipsyncRenderWindow: Sendable, Equatable {
     private static func sourceSample(_ sample: Int64, plan: VoiceLabOutputPlan) -> Int64 {
         for piece in plan.pieces where sample <= piece.outputEndSample {
             if let segment = piece.segmentId, let cuts = plan.videoCuts[segment], !cuts.isEmpty {
-                var source = piece.sourceStartSample + max(0, sample - piece.outputStartSample)
+                let scale = VoiceLabOutputPlan.cutScale(piece, cuts: cuts)
+                let offset: Int64 = max(0, sample - piece.outputStartSample)
+                let kept: Int64 = scale.kept == scale.output ? offset
+                    : Int64((Double(offset) * Double(scale.kept) / Double(scale.output)).rounded())
+                var source = piece.sourceStartSample + kept
                 for cut in cuts where source >= cut.startSample { source += cut.endSample - cut.startSample }
                 return min(source, piece.sourceEndSample)
             }

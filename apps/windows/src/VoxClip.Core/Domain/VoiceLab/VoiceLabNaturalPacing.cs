@@ -219,12 +219,13 @@ public static class VoiceLabNaturalPacing
     }
 
     /// <summary>The edited form: 1…<see cref="MAXIMUM_EDITED_CUTS"/> cuts inside the source span, in order, non-empty and apart, at
-    /// zoom 1 centred with nothing of a retime or lip sync; the removed samples leave exactly the output.</summary>
+    /// zoom 1 centred with nothing of a lip sync; the removed samples leave exactly the output, or, for a picture sped up evenly, the
+    /// kept samples ÷ the output match its <c>RetimeFactor</c> (Mac <c>validEditedCuts</c>).</summary>
     private static bool ValidEditedCuts(VoiceLabVideoRecipe video, double sampleRate)
     {
         if (video.Cuts is not { Count: >= 1 and <= MAXIMUM_EDITED_CUTS } cuts || !double.IsFinite(sampleRate) || sampleRate <= 0 ||
             video.OutputSamples <= 0 || video.Zoom != EDITED_CUT_ZOOM || video.FaceX != 0.5 || video.FaceY != 0.5 ||
-            video.RetimeFactor is not null || video.AssetId is not null || video.Provider is not null || video.Model is not null ||
+            video.AssetId is not null || video.Provider is not null || video.Model is not null ||
             video.RequestId is not null || video.WindowStartSample is not null || video.WindowEndSample is not null || video.SyncMode is not null) return false;
         var cursor = video.SourceStartSample; long removed = 0;
         foreach (var cut in cuts)
@@ -232,6 +233,10 @@ public static class VoiceLabNaturalPacing
             if (cut is null || cut.StartSample < cursor || cut.EndSample <= cut.StartSample || cut.EndSample > video.SourceEndSample) return false;
             removed += cut.EndSample - cut.StartSample; cursor = cut.EndSample;
         }
-        return video.SourceEndSample - video.SourceStartSample - removed == video.OutputSamples;
+        var kept = video.SourceEndSample - video.SourceStartSample - removed;
+        // A whole clip's picture sped up evenly (ADR-R46, "Your own pace"): kept ÷ output within 1e-6 of a factor above 1, at most 1.2.
+        if (video.RetimeFactor is not { } factor) return kept == video.OutputSamples;
+        var measured = (double)kept / video.OutputSamples;
+        return double.IsFinite(factor) && factor > 1 && factor <= WholeClipRevoice.MaximumPictureSpeed && Math.Abs(factor - measured) <= 1e-6;
     }
 }

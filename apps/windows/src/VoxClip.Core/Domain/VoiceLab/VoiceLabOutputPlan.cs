@@ -36,7 +36,10 @@ public sealed record VoiceLabOutputPlan(double SampleRate, long TotalSourceSampl
                 if (piece.SegmentId is { } id && VideoCuts.TryGetValue(id, out var cuts) && cuts.Count > 0)
                 {
                     var removed = cuts.Sum(cut => Math.Max(0, Math.Min(sample, cut.EndSample) - cut.StartSample));
-                    return (piece.OutputStartSample + sample - piece.SourceStartSample - removed) / SampleRate;
+                    var kept = sample - piece.SourceStartSample - removed;
+                    var (total, output) = CutScale(piece, cuts);
+                    if (total == output) return (piece.OutputStartSample + kept) / SampleRate;
+                    return ((double)piece.OutputStartSample + (double)kept * output / total) / SampleRate;
                 }
                 var fraction = (double)(sample - piece.SourceStartSample) / (piece.SourceEndSample - piece.SourceStartSample);
                 return (piece.OutputStartSample + fraction * (piece.OutputEndSample - piece.OutputStartSample)) / SampleRate;
@@ -53,7 +56,10 @@ public sealed record VoiceLabOutputPlan(double SampleRate, long TotalSourceSampl
             if (sample >= piece.OutputEndSample) continue;
             if (piece.SegmentId is { } id && VideoCuts.TryGetValue(id, out var cuts) && cuts.Count > 0)
             {
-                var sourceSample = piece.SourceStartSample + sample - piece.OutputStartSample;
+                var (total, output) = CutScale(piece, cuts);
+                var offset = sample - piece.OutputStartSample;
+                var kept = total == output ? offset : offset * total / output;
+                var sourceSample = piece.SourceStartSample + kept;
                 foreach (var cut in cuts)
                     if (sourceSample >= cut.StartSample) sourceSample += cut.EndSample - cut.StartSample;
                 return sourceSample / SampleRate;
@@ -63,6 +69,19 @@ public sealed record VoiceLabOutputPlan(double SampleRate, long TotalSourceSampl
         }
         // Match EditPlan's endpoint convention, including when the chosen clip ends earlier.
         return TotalSourceSamples / SampleRate;
+    }
+
+    /// <summary>A cut piece's kept source samples (its span without <paramref name="cuts"/>) and its output samples: equal for a pause's
+    /// jump cut and the clip's own cuts at 1×; a whole clip's sped-up picture (ADR-R46) plays the kept samples evenly in the output
+    /// (Mac <c>VoiceLabOutputPlan.cutScale</c>).</summary>
+    public static (long Kept, long Output) CutScale(VoiceLabOutputPiece piece, IReadOnlyList<VoiceLabVideoCut> cuts)
+    {
+        ArgumentNullException.ThrowIfNull(piece);
+        ArgumentNullException.ThrowIfNull(cuts);
+        var removed = cuts.Sum(cut => Math.Max(0, cut.EndSample - cut.StartSample));
+        var kept = piece.SourceEndSample - piece.SourceStartSample - removed;
+        var output = piece.OutputEndSample - piece.OutputStartSample;
+        return kept > 0 && output > 0 ? (kept, output) : (output, output);
     }
 }
 

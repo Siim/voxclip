@@ -226,11 +226,13 @@ public enum VoiceLabNaturalPacing {
     public static let MAXIMUM_EDITED_CUTS = 512
 
     /// The edited form: 1…`MAXIMUM_EDITED_CUTS` cuts inside the source span, in order, each non-empty and none overlapping,
-    /// zoom 1 centred, and nothing else of a lip sync or retime; the removed samples leave exactly `outputSamples`.
+    /// zoom 1 centred, and nothing of a lip sync. The removed samples leave exactly `outputSamples`, or, for a picture sped
+    /// up evenly (`retimeFactor`, ADR-R46 "Your own pace"), kept samples ÷ output samples within 1e-6 of a factor above 1
+    /// and at most `WholeClipRevoice.maximumPictureSpeed`.
     static func validEditedCuts(_ video: VoiceLabVideoRecipe, sampleRate: Double) -> Bool {
         guard let cuts = video.cuts, (1...MAXIMUM_EDITED_CUTS).contains(cuts.count), sampleRate.isFinite, sampleRate > 0,
               video.outputSamples > 0, video.zoom == EDITED_CUT_ZOOM, video.faceX == 0.5, video.faceY == 0.5,
-              video.retimeFactor == nil, video.assetId == nil, video.provider == nil, video.model == nil,
+              video.assetId == nil, video.provider == nil, video.model == nil,
               video.requestId == nil, video.windowStartSample == nil, video.windowEndSample == nil, video.syncMode == nil else { return false }
         var cursor = video.sourceStartSample, removed: Int64 = 0
         for cut in cuts {
@@ -238,7 +240,10 @@ public enum VoiceLabNaturalPacing {
             removed += cut.endSample - cut.startSample
             cursor = cut.endSample
         }
-        return video.sourceEndSample - video.sourceStartSample - removed == video.outputSamples
+        let kept: Int64 = video.sourceEndSample - video.sourceStartSample - removed
+        guard let factor = video.retimeFactor else { return kept == video.outputSamples }
+        let measured: Double = Double(kept) / Double(video.outputSamples)
+        return factor.isFinite && factor > 1 && factor <= WholeClipRevoice.maximumPictureSpeed && abs(factor - measured) <= 1e-6
     }
 
     /// The whole clip's layout (ADR-R46): the take fitted to the clip as edited, not to its window's source. `editedCuts`
@@ -247,18 +252,30 @@ public enum VoiceLabNaturalPacing {
     /// last pause, up to `tailSeconds` of silence. What is still left over moves the picture: a shorter voice trims the
     /// picture's end, a longer one gives back cut picture, latest first (`WholeClipRevoice.layoutCuts`). The result is a
     /// changed duration against the window (as any cut is), with the plan's cuts set; none when the window can't hold it.
+    ///
+    /// `maximumSpeed` above 1 lets a shorter take speed the picture up first, evenly, by the clip as edited ÷ the take's
+    /// natural length, up to that cap (ADR-R46, "Your own pace"): the take is fitted to the picture's sped-up length, so the
+    /// pauses and the trim take only what the speed-up can't. A sped-up picture with nothing to cut (a clip with no cuts
+    /// whose take fills it) is laid out at 1× instead, since the edited form always carries a cut.
     public static func layout(window: VoiceLabWindow, incomingSilence: Double?, outgoingSilence: Double?, take: VoiceLabFitTake,
                               sourceSampleRate: Int, hardJoinSmoothing: Bool, pauseProfile: VoiceLabPauseProfile,
-                              audioTags: [VoiceLabAudioTag], editedCuts: [VoiceLabVideoCut], tailSeconds: Double) throws -> VoiceLabFitResult {
+                              audioTags: [VoiceLabAudioTag], editedCuts: [VoiceLabVideoCut], tailSeconds: Double,
+                              maximumSpeed: Double = 1) throws -> VoiceLabFitResult {
         let removed = editedCuts.reduce(Int64(0)) { $0 + max(0, $1.endSample - $1.startSample) }
         let span = window.endSample - window.startSample
-        guard removed >= 0, removed < span else { throw VoiceLabGeometryError.invalidInput() }
+        guard removed >= 0, removed < span, maximumSpeed.isFinite, maximumSpeed >= 1 else { throw VoiceLabGeometryError.invalidInput() }
+        let rate = Double(sourceSampleRate)
+        let edited: Int64 = span - removed
+        let said: Double = take.trimEnd - take.trimStart
+        let speed: Double = maximumSpeed > 1
+            ? min(maximumSpeed, WholeClipRevoice.pictureSpeed(voiceSeconds: said, videoSeconds: Double(edited) / rate)) : 1
+        let target: Int64 = speed > 1 ? max(1, Int64((Double(edited) / speed).rounded(.down))) : edited
         let fitted = try VoiceLabFitPlanner.plan(window: window, incomingSilence: incomingSilence, outgoingSilence: outgoingSilence,
-            take: take, tokens: take.words.map(\.text), sourceSampleRate: Double(sourceSampleRate), hardJoinSmoothing: hardJoinSmoothing,
-            pauseProfile: pauseProfile, audioTags: audioTags, allowPauseGrowth: true, targetSamples: span - removed, tailPadSeconds: tailSeconds)
+            take: take, tokens: take.words.map(\.text), sourceSampleRate: rate, hardJoinSmoothing: hardJoinSmoothing,
+            pauseProfile: pauseProfile, audioTags: audioTags, allowPauseGrowth: true, targetSamples: target, tailPadSeconds: tailSeconds)
         var plan = fitted.plan
         plan.editedTimeline = true
-        let rate = Double(sourceSampleRate), assetRate = Double(take.assetSampleRate)
+        let assetRate = Double(take.assetSampleRate)
         let windowSamples = plan.windowEndSample - plan.windowStartSample
         let windowFrames = Int64(EditingPrimitives.jsRound(Double(windowSamples) * assetRate / rate))
         let residual = Double(plan.outputFrames - windowFrames) / assetRate
@@ -269,10 +286,19 @@ public enum VoiceLabNaturalPacing {
         let duration = plan.windowEnd - plan.windowStart + residual
         let output = EditingPrimitives.jsRound(duration * rate)
         guard output.isFinite, output > 0, output < Double(Int64.max) else { return .changedDuration(plan, naturalOut: natural, residualSeconds: residual) }
-        let needed = windowSamples - Int64(output)
+        // The picture under the take: the take's output samples at 1×, or that many times the speed, never past the window.
+        let shown = Int64(output)
+        let kept: Int64 = speed > 1 ? min(windowSamples, Int64((Double(shown) * speed).rounded(.down))) : shown
+        if kept > shown { plan.pictureSpeed = Double(kept) / Double(shown) }
+        let needed = windowSamples - kept
         if needed == 0, plan.outputFrames == windowFrames { return .exact(plan) }
         plan.videoCuts = WholeClipRevoice.layoutCuts(editedCuts, startSample: plan.windowStartSample, endSample: plan.windowEndSample,
                                                      removedSamples: needed) ?? []
+        if plan.pictureSpeed > 1, plan.videoCuts.isEmpty {
+            return try layout(window: window, incomingSilence: incomingSilence, outgoingSilence: outgoingSilence, take: take,
+                              sourceSampleRate: sourceSampleRate, hardJoinSmoothing: hardJoinSmoothing, pauseProfile: pauseProfile,
+                              audioTags: audioTags, editedCuts: editedCuts, tailSeconds: tailSeconds)
+        }
         return .changedDuration(plan, naturalOut: natural, residualSeconds: residual)
     }
 }

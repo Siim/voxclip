@@ -56,20 +56,25 @@ public sealed class VoiceLabVideoFraming
                         // A pause's jump cut punches in after its first span; the clip's own cuts under a whole-clip layout
                         // (zoom 1, ADR-R46) don't, and a cut at either edge leaves no span there.
                         var punch = video.Zoom ?? VoiceLabNaturalPacing.CUT_PUNCH_IN;
-                        long sourceStart = piece.SourceStartSample, outputStart = piece.OutputStartSample;
+                        // A whole clip's sped-up picture (ADR-R46) plays its kept source evenly faster: each span's output edge is its
+                        // kept offset scaled by output ÷ kept, and the last ends on the piece's own end (Mac CompositionVideoSpan).
+                        var (keptTotal, outputTotal) = VoiceLabOutputPlan.CutScale(piece, cuts);
+                        long Shown(long kept) => keptTotal == outputTotal ? kept : (long)Math.Round((double)kept * outputTotal / keptTotal, MidpointRounding.AwayFromZero);
+                        long sourceStart = piece.SourceStartSample, keptSoFar = 0;
                         var first = true;
                         foreach (var cut in cuts)
                         {
                             var count = cut.StartSample - sourceStart;
-                            if (count > 0)
+                            if (count > 0 && Shown(keptSoFar + count) > Shown(keptSoFar))
                             {
-                                spans.Add(new(sourceStart, cut.StartSample, outputStart, outputStart + count, first ? 1 : punch, 0.5, 0.5));
+                                spans.Add(new(sourceStart, cut.StartSample, piece.OutputStartSample + Shown(keptSoFar),
+                                    piece.OutputStartSample + Shown(keptSoFar + count), first ? 1 : punch, 0.5, 0.5));
                                 first = false;
                             }
-                            sourceStart = cut.EndSample; outputStart += count;
+                            sourceStart = cut.EndSample; keptSoFar += Math.Max(0, count);
                         }
                         if (piece.SourceEndSample > sourceStart)
-                            spans.Add(new(sourceStart, piece.SourceEndSample, outputStart, piece.OutputEndSample, punch, 0.5, 0.5));
+                            spans.Add(new(sourceStart, piece.SourceEndSample, piece.OutputStartSample + Shown(keptSoFar), piece.OutputEndSample, punch, 0.5, 0.5));
                         cursor = piece.OutputEndSample;
                         continue;
                     case VoiceLabVideoMode.Source:

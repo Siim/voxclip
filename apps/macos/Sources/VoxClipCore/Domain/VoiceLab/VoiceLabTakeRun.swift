@@ -5,7 +5,12 @@ import Foundation
 public struct VoiceLabEditedLayout: Sendable, Equatable {
     public let cuts: [VoiceLabVideoCut]
     public let pauseBoundSeconds: Double
-    public init(cuts: [VoiceLabVideoCut], pauseBoundSeconds: Double) { self.cuts = cuts; self.pauseBoundSeconds = pauseBoundSeconds }
+    /// How far a shorter take may speed the picture up before its pauses grow (`WholeClipRevoice.maximumPictureSpeed` for a
+    /// whole clip, ADR-R46 "Your own pace"); 1 keeps the picture's pace.
+    public let maximumPictureSpeed: Double
+    public init(cuts: [VoiceLabVideoCut], pauseBoundSeconds: Double, maximumPictureSpeed: Double = 1) {
+        self.cuts = cuts; self.pauseBoundSeconds = pauseBoundSeconds; self.maximumPictureSpeed = maximumPictureSpeed
+    }
 }
 
 public struct VoiceLabTakeInput: Sendable, Equatable {

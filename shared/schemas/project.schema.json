@@ -4303,7 +4303,7 @@
         "videoRetime": {
           "type": "number",
           "minimum": 0.92,
-          "maximum": 1.08
+          "maximum": 1.2
         },
         "lipsyncModel": {
           "enum": [
