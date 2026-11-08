@@ -231,6 +231,8 @@ public sealed class FrameDecisionVectorTests
         Assert.Equal(FrameAnalysisFile.Write(frames), FrameAnalysisFile.Write(FrameAnalysisFile.Read(FrameAnalysisFile.Write(frames))));
         // The stored eyes are kept as read, as the Mac's decoder keeps them.
         Assert.Equal(FrameEyes.Closed, frames["0.250:4750"].Face!.Eyes);
+        var stored = FrameJson.ReadFace(JsonNode.Parse("""{"rect":{"x":0.4,"y":0.3,"width":0.2,"height":0.4},"leftEyeAspect":0.1,"rightEyeAspect":0.1,"eyes":"open"}"""));
+        Assert.Equal(FrameEyes.Open, stored!.Eyes);
         Assert.Null(frames["0.250:15250"].Face);
         Assert.Equal("0.250:1250", FrameAnalysisFile.Key(FrameAnalysisFile.Pass(0.25), 1.25));
 

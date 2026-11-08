@@ -236,6 +236,10 @@ import Testing
         let written = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: file))
         #expect(written == sample[ai: "file"], "the cache writes exactly the fixture's keys and values")
 
+        // A decoded face keeps the eyes it was stored with, as the Windows reader does.
+        let stored = try JSONDecoder().decode(FrameFace.self, from: Data(#"{"rect":{"x":0.4,"y":0.3,"width":0.2,"height":0.4},"leftEyeAspect":0.1,"rightEyeAspect":0.1,"eyes":"open"}"#.utf8))
+        #expect(stored.eyes == .open)
+
         let analysis: FrameAnalysis = try Self.decode(sample[ai: "frameAnalysis"])
         #expect(try Self.encoded(analysis) == sample[ai: "frameAnalysis"])
         #expect(analysis.version == FrameAnalysis.version)
