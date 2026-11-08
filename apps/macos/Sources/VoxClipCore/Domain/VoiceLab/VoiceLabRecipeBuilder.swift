@@ -15,6 +15,9 @@ public struct VoiceLabVideoDurationOptions: Sendable, Equatable {
     public private(set) var cuts: [VoiceLabVideoCut] = []
     public private(set) var addedPauseSeconds: Double = 0
     public private(set) var removedVideoSeconds: Double = 0
+    /// A whole clip's sped-up picture (`VoiceLabFitPlan.pictureSpeed`): the cut recipe's `retimeFactor`, its kept source
+    /// samples ÷ its output samples; nil at 1×.
+    public private(set) var cutRetimeFactor: Double?
     public var cutUnavailableReason: String? {
         cuts.isEmpty ? "No pair of quiet source boundaries can make this video cut clear of the window edges." : nil
     }
@@ -59,9 +62,13 @@ public struct VoiceLabVideoDurationOptions: Sendable, Equatable {
             outputSamples: output, retimeFactor: nil, zoom: Self.cutZoom(plan), faceX: 0.5, faceY: 0.5,
             assetId: nil, provider: nil, model: nil, requestId: nil, windowStartSample: nil, windowEndSample: nil, syncMode: nil)
         cutVideo.cuts = plan.videoCuts
+        let removed = plan.videoCuts.reduce(Int64(0)) { $0 + max(0, $1.endSample - $1.startSample) }
+        let sped: Double? = plan.editedTimeline && plan.pictureSpeed > 1 && output > 0 ? Double(source - removed) / Double(output) : nil
+        cutVideo.retimeFactor = sped
         if VoiceLabNaturalPacing.validCuts(cutVideo, sampleRate: Double(sourceSampleRate)) {
             cuts = plan.videoCuts
-            removedVideoSeconds = Double(source - output) / Double(sourceSampleRate)
+            cutRetimeFactor = sped
+            removedVideoSeconds = Double(removed) / Double(sourceSampleRate)
         }
         outputSamples = output
         let factor = Double(source) / Double(output)
@@ -181,7 +188,7 @@ public enum VoiceLabRecipeBuilder {
                 microPause: incoming ? take.microPauseIn : take.microPauseOut)
         }
         var video = VoiceLabVideoRecipe(mode: mode, sourceStartSample: plan.windowStartSample, sourceEndSample: plan.windowEndSample,
-            outputSamples: outputSamples, retimeFactor: mode == .zoomCover ? factor : nil,
+            outputSamples: outputSamples, retimeFactor: mode == .zoomCover ? factor : mode == .cut ? options.cutRetimeFactor : nil,
             zoom: mode == .cut ? VoiceLabVideoDurationOptions.cutZoom(plan) : mode == .zoomCover ? 1.12 : nil,
             faceX: mode == .zoomCover || mode == .cut ? 0.5 : nil, faceY: mode == .zoomCover || mode == .cut ? 0.5 : nil, assetId: nil, provider: nil, model: nil, requestId: nil,
             windowStartSample: nil, windowEndSample: nil, syncMode: nil)

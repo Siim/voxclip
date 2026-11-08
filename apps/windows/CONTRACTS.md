@@ -1,5 +1,17 @@
 # Windows fixed contracts
 
+### 2026-11-08 — Whole-clip revoice: the picture's speed-up, ported to Core (track/v2-wholeclip-lipsync)
+
+Mac ADR-R46 "Update 2026-11-08: your own pace, and Fit checks the picture". The Mac keeps the voice as generated and, when it is shorter than the clip as edited, speeds the picture up evenly to at most 1.2× before its pauses grow. Core only; Windows still shows no whole-clip card and runs nothing.
+
+- `WholeClipRevoice.MaximumPictureSpeed` (1.2), `PictureSpeed`, `SpedCopy`, `SpeedLabel` and `ValidRetime`. The record's `VideoRetime` is the picture's speed and validates from 0.92 to 1.2 (it was ±8%).
+- `ValidCuts`' edited form accepts a `RetimeFactor` above 1 and at most 1.2 that matches kept ÷ output within 1e-6; no factor still means kept == output. A pause's jump cut still refuses any factor.
+- `VoiceLabOutputPlan.CutScale`. `MapTime` and `SourceTime` scale a sped cut piece's kept offset by output ÷ kept, and `VoiceLabVideoFraming` spans it evenly (rounding half away from zero, as the Mac's spans). Unsped pieces map exactly as before.
+- Replays `whole-clip-speed-cases.json` (`WholeClipSpeedReplayTests`, new). In the wire vectors the fastest valid retime is now 1.2 and the too-fast refusal 1.21.
+- **ReleaseBoundary.** `update` on VoxClip.Core: +6 lines, additions only (`CutScale` and the five members above); no literals, friends or seams.
+- **Verification.** Core Release on macOS: 3,403 tests, 3,374 passed, 29 skipped, 0 failed.
+- **Owed.** The card, the run and the lip sync, as before.
+
 ### 2026-11-08 — Whole-clip revoice: the fit on the clip as edited, ported to Core (track/v2-wholeclip-fit)
 
 Mac ADR-R46 "Update 2026-11-08: one timeline, never pad". Core only; Windows still shows no whole-clip card and runs nothing.

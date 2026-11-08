@@ -45,6 +45,9 @@ public struct VoiceLabFitPlan: Sendable, Equatable {
     /// Fitted to the clip as edited (a whole-clip revoice, `VoiceLabNaturalPacing.layout`): `videoCuts` are the clip's own
     /// cuts and its trim, played at zoom 1 (`EDITED_CUT_ZOOM`), not a pause's punched-in jump cut.
     public var editedTimeline: Bool = false
+    /// The picture's even speed-up under an edited timeline (ADR-R46, "Your own pace"): the kept source samples ÷ the output
+    /// samples, above 1 when the picture plays faster; 1 keeps the picture's own pace. The take's audio is never stretched.
+    public var pictureSpeed: Double = 1
     public var hardJoinSmoothing: Bool = false
     public var edits: [VoiceLabFitEdit]
     public var incoming: VoiceLabFitSeam

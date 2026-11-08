@@ -22,6 +22,12 @@ import VoxClipMedia
 // - S-revoice-whole-tightened: the clip's sentence pauses are tightened, so the clip as edited is shorter than its source span
 //   (ADR-R46, "One timeline"): the price, the Fit line and the lip sync read the clip as edited, and Use puts in a picture of
 //   the clip's own cuts at zoom 1 that renders the clip's edited length (WT1, WT2).
+// - S-revoice-whole-short: the voice comes out 35% shorter than the clip (MVP45's 20.2 s for 31.3 s): the Fit step matches
+//   the picture first, plays it 1.2×, lays the rest out on the pauses and trims; the lip sync is priced on that picture and
+//   the record keeps its speed; the segment's sped cut renders at its own output length (WS1, WS2).
+// - S-revoice-whole-retry: the short voice's sped picture fails its preparation once (MVP45's stale stop): Fit stops with what failed, logged
+//   with its real case, no lip-sync call and no priced Try Again; a retry prepares the picture again on the paid voice and
+//   reaches Review (WR1, WR2).
 
 extension DebugRewriteSmoke {
     /// Five of the eight sentences said differently: well over 40% of the clip's words.
@@ -73,6 +79,13 @@ extension DebugRewriteSmoke {
         return fixture
     }
 
+    /// The whole-clip clip with every take 35% shorter than its slot: the user's MVP45 voice (20.2 s for 0:31.3).
+    private static func wholeClipShortFixture() -> Fixture {
+        var fixture = wholeClipFixture()
+        fixture.voice.lengthFactor = 0.65
+        return fixture
+    }
+
     static var wholeClipScenarios: [Definition] { [
         Definition(id: "S-revoice-whole", title: "a heavily rewritten clip: How should it sound? → Revoice Whole Clip → Review → Use, one undo step, saved",
                    requiresCompletion: false, fixture: wholeClipFixture()) { harness in
@@ -89,6 +102,14 @@ extension DebugRewriteSmoke {
         Definition(id: "S-revoice-whole-tightened", title: "a rewritten clip with tightened pauses: the voice is laid out on the clip as edited, priced, fitted and rendered at its edited length",
                    requiresCompletion: false, fixture: wholeClipTightenedFixture()) { harness in
             try await harness.revoiceWholeClip(tightened: true)
+        },
+        Definition(id: "S-revoice-whole-short", title: "a rewritten clip whose voice is 35% short: the picture is matched at Fit and sped up 1.2×, then laid out, lip synced at that speed and rendered",
+                   requiresCompletion: false, fixture: wholeClipShortFixture()) { harness in
+            try await harness.revoiceWholeClip(short: true)
+        },
+        Definition(id: "S-revoice-whole-retry", title: "the picture's preparation fails once: Fit stops with its reason and no lip sync; a retry starts clean and reaches Review",
+                   requiresCompletion: false, fixture: wholeClipShortFixture()) { harness in
+            try await harness.retryWholeClipAfterAPictureFailure()
         },
         Definition(id: "S-revoice-whole-claude", title: "✦ Claude does it all revoices a stitched clip whole within the cap, with no click",
                    requiresCompletion: false, fixture: wholeClipFixture()) { harness in
@@ -118,12 +139,23 @@ extension DebugRewriteSmoke.Harness {
         var waiting: CheckedContinuation<Void, Never>?
         /// Resumed once: when the lip sync starts, or when the run ends without reaching it.
         var started: CheckedContinuation<Void, Never>?
+        /// Fails the picture's first duration render (S-revoice-whole-retry); counts the renders asked for.
+        var failPictureOnce = false
+        var renders = 0
         func reached() { started?.resume(); started = nil }
     }
 
     private func installWholeClipStandIn() -> WholeClipLipsync {
         let lipsync = WholeClipLipsync()
+        if let app = editor?.app { app.providerKeyStoreOverride = RewriteSmokeFalKey(base: app.providerKeyStore) }
         editor?.wholeClipPrepared = { [weak self] plan in
+            if let real = plan.prepareDurationRender {
+                plan.prepareDurationRender = { project, scope in
+                    lipsync.renders += 1
+                    if lipsync.failPictureOnce { lipsync.failPictureOnce = false; throw VoiceLabProjectError.staleRenderContract }
+                    return try await real(project, scope)
+                }
+            }
             guard let self, let project = self.editor?.project else { return }
             self.recordFitting(plan, edited: try? VoiceLabOutputPlanner.build(project, scope: .clip("clip-whole")))
         }
@@ -136,10 +168,9 @@ extension DebugRewriteSmoke.Harness {
                 progress(0.5)
                 if lipsync.hold { await withCheckedContinuation { lipsync.waiting = $0 } }
                 try Task.checkCancellation()
-                let price = try whole.backend?.lipsyncPrice(model) ?? 0
-                // As the live step: the picture is the clip as edited, not retimed (ADR-R46).
-                _ = factor
-                return .init(model: model, usd: price ?? 0, factor: 1)
+                let price = try whole.backend?.lipsyncPrice(model) ?? nil
+                // As the live step: the record's retime is the Fit step's picture speed (ADR-R46).
+                return .init(model: model, usd: price ?? 0, factor: factor)
             }
             whole.backend?.match = { _ in .init(take: 0.81, anchorBaseline: 0.54, realSpeech: nil) }
         }
@@ -215,7 +246,7 @@ extension DebugRewriteSmoke.Harness {
             return "\(step): \(String(describing: whole.steps[step]))"
         }
         let done = WholeClipRevoiceSession.Step.allCases.allSatisfy { if case .done = whole.steps[$0] { true } else { false } }
-        makeItAppend([wholeClipCheck("W2", whole.phase == .review && done && (lines[2].contains("video matched")) && whole.spent > 0
+        makeItAppend([wholeClipCheck("W2", whole.phase == .review && done && (lines[2].contains("video matched") || lines[2].contains("picture 1.")) && whole.spent > 0
                 && (editor?.project.voiceLab.segments.count ?? -1) == segmentsBefore,
             phaseText(whole) + " · " + lines.joined(separator: " | ") + " · spent \(VoiceLabCostPresentation.format(whole.spent))")])
     }
@@ -282,7 +313,7 @@ extension DebugRewriteSmoke.Harness {
         makeItAppend([wholeClipCheck("WM2", (try? prepared.get()) != nil && besideSource, detail)])
     }
 
-    func revoiceWholeClip(cuts: Bool = false, midTake: Bool = false, tightened: Bool = false) async throws {
+    func revoiceWholeClip(cuts: Bool = false, midTake: Bool = false, tightened: Bool = false, short: Bool = false) async throws {
         let lipsync = installWholeClipStandIn()
         let (session, whole) = try await openWholeClip()
         let primary = try checkChoose(session, whole)
@@ -292,9 +323,47 @@ extension DebugRewriteSmoke.Harness {
         if cuts { checkCutsAbsorbed(session, whole) }
         if midTake { checkMidTakeEdge(session, whole) }
         if tightened { checkEditedTimeline(session, whole) }
+        if short { checkSpedPicture(session, whole) }
         makeItAppend([wholeClipCheck("W5", lipsync.calls == [.lipsync2] && whole.voice.map { $0.parts >= 1 } == true,
             "lip sync \(lipsync.calls.map(\.name)) · \(whole.voice?.parts ?? 0) parts · \(speechRequests) speech requests")])
-        try await useAndCheck(session, whole, model: .lipsync2, fullTake: midTake, afterUse: tightened ? { [weak self] in self?.checkEditedRender() } : nil)
+        let after: (() -> Void)? = tightened ? { [weak self] in self?.checkEditedRender() }
+            : short ? { [weak self, weak whole] in self?.checkSpedRender(whole?.picture) } : nil
+        try await useAndCheck(session, whole, model: .lipsync2, fullTake: midTake, afterUse: after)
+    }
+
+    /// WS1: a voice 35% short is checked at Fit: its picture is the clip's own cuts sped up evenly (1.2×, the cap) with the
+    /// rest laid out on the pauses, the Fit line names the speed, and the lip sync is priced on that picture's output.
+    private func checkSpedPicture(_ session: RewriteSession, _ whole: WholeClipRevoiceSession) {
+        guard let picture = whole.picture, let voice = whole.voice, let phrases = session.wholeClipPlan?.phrases, !phrases.isEmpty else {
+            makeItAppend([wholeClipCheck("WS1", false, "no picture at Fit: \(phaseText(whole))")]); return
+        }
+        let fit: String = { if case .done(let line) = whole.steps[.fit] { return line } else { return "\(String(describing: whole.steps[.fit]))" } }()
+        let video = session.wholeClipEditedSeconds ?? 0
+        let sped = phrases.allSatisfy { phrase in phrase.videoChoice == .cut && (phrase.selected?.row.audio?.fit.plan.pictureSpeed ?? 1) > 1 }
+        let catalog = try? VoiceLabPriceCatalog.load(shared: SharedResources.locate())
+        let expected = catalog.flatMap { try? WholeClipRevoice.lipsyncPrice(videoSeconds: picture.outputSeconds + 2, lipsync: .lipsync2, catalog: $0).usd }
+        let priced = (try? whole.backend?.lipsyncPrice(.lipsync2)) ?? nil
+        makeItAppend([wholeClipCheck("WS1", voice.seconds < video * 0.75 && abs(picture.speed - WholeClipRevoice.maximumPictureSpeed) < 0.002
+                && picture.laidOut && fit.contains("picture 1.20× and laid out on the clip's pauses") && sped
+                && picture.outputSeconds < video && priced != nil && priced == expected,
+            "voice \(WholeClipRevoiceSession.clock(voice.seconds)) for \(WholeClipRevoiceSession.clock(video)) · \(fit) · speed \(String(format: "%.4f", picture.speed)) · output \(String(format: "%.2f", picture.outputSeconds)) s · lip sync \(priced.map(VoiceLabCostPresentation.format) ?? "none") (expected \(expected.map(VoiceLabCostPresentation.format) ?? "none"))")])
+    }
+
+    /// WS2: after Use, the record keeps the picture's speed and the clip's segment is a sped cut (zoom 1, its factor) that
+    /// validates and renders at its own output length.
+    private func checkSpedRender(_ picture: WholeClipRevoiceSession.Picture?) {
+        guard let project = editor?.project, let record = project.voiceLab.wholeClipRevoices?.first, let picture else {
+            makeItAppend([wholeClipCheck("WS2", false, "no record or picture")]); return
+        }
+        let videos = project.voiceLab.segments.filter { record.segmentIds.contains($0.id) }.compactMap { $0.candidates[$0.selectedCandidateIndex].recipe?.video }
+        let bases = videos.map { $0.mode == .lipsync ? $0.lipsyncBase : $0 }
+        let rate = Double(project.media.source.audio?.sampleRate ?? 48_000)
+        let sped = !bases.isEmpty && bases.allSatisfy { $0.mode == .cut && ($0.retimeFactor ?? 1) > 1 && VoiceLabNaturalPacing.validCuts($0, sampleRate: rate) }
+        let prepared = try? VoiceLabRenderContract.prepare(project, scope: .clip("clip-whole"), labelPosition: .topRight)
+        let rendered = prepared?.outputPlan.duration ?? 0
+        makeItAppend([wholeClipCheck("WS2", sped && abs(record.videoRetime - picture.speed) < 1e-9 && prepared != nil
+                && rendered >= picture.outputSeconds - 0.05,
+            "\(bases.map { "\($0.mode) zoom \($0.zoom ?? 0) · \($0.cuts?.count ?? 0) cuts · factor \($0.retimeFactor.map { String(format: "%.4f", $0) } ?? "none")" }.joined(separator: ", ")) · record \(String(format: "%.4f", record.videoRetime)) · renders \(String(format: "%.2f", rendered)) s for \(String(format: "%.2f", picture.outputSeconds)) s of picture")])
     }
 
     /// WT1: the clip as edited is shorter than the source under its parts, and the Fit line, the voice's layout and the
@@ -329,7 +398,7 @@ extension DebugRewriteSmoke.Harness {
         let zoomOne = videos.allSatisfy { $0.mode == .cut && $0.zoom == VoiceLabNaturalPacing.EDITED_CUT_ZOOM && ($0.cuts?.count ?? 0) >= 1 }
             || videos.allSatisfy { $0.mode == .source }
         makeItAppend([wholeClipCheck("WT2", !videos.isEmpty && zoomOne && prepared != nil && rendered <= edited + 0.05 && rendered > edited - 1.5
-                && record.videoRetime == 1,
+                && record.videoRetime >= 1 && record.videoRetime <= WholeClipRevoice.maximumPictureSpeed,
             "\(videos.map { "\($0.mode) zoom \($0.zoom ?? 0) · \($0.cuts?.count ?? 0) cuts" }.joined(separator: ", ")) · renders \(String(format: "%.2f", rendered)) s for \(String(format: "%.2f", edited)) s as edited · retime \(record.videoRetime)")])
     }
 
@@ -424,6 +493,29 @@ extension DebugRewriteSmoke.Harness {
         makeItAppend([wholeClipCheck("WX2", whole.phase == .review && speechRequests == speech && lipsync.calls == [.lipsync2, .lipsync2],
             phaseText(whole) + " · \(speechRequests - speech) new speech requests · lip sync \(lipsync.calls.map(\.name)) · requests "
                 + RewriteSmokeHTTP.script.withLock { $0.requests }.dropFirst(logged).joined(separator: ", "))])
+        completed = whole.phase == .review; ended = true
+    }
+
+    func retryWholeClipAfterAPictureFailure() async throws {
+        let lipsync = installWholeClipStandIn()
+        lipsync.failPictureOnce = true
+        let (session, whole) = try await openWholeClip()
+        let primary = try checkChoose(session, whole)
+        try await runWholeClip(session, whole, title: primary)
+        let speech = speechRequests
+        let fit: String = { if case .failed(let line) = whole.steps[.fit] { return line } else { return "\(String(describing: whole.steps[.fit]))" } }()
+        let actions = session.wholeClipStoppedActions()
+        makeItAppend([wholeClipCheck("WR1", whole.isStopped && whole.failure?.step == .fit && fit.hasPrefix("The picture couldn't be matched to the voice:")
+                && !fit.contains("The job could not be completed") && whole.failure?.kind.contains("VoiceLabProjectError") == true
+                && lipsync.calls.isEmpty && actions.map(\.id) == ["wholeClipPatch"] && !actions.contains { $0.priced },
+            "\(phaseText(whole)) · fit \(fit) · kind \(whole.failure?.kind ?? "none") · lip sync \(lipsync.calls.map(\.name)) · [\(actions.map(\.title).joined(separator: "] ["))]")])
+        let renders = lipsync.renders
+        try await act("Try Again over the paid voice") {
+            session.startWholeClip()
+            await whole.waitForRun()
+        }
+        makeItAppend([wholeClipCheck("WR2", whole.phase == .review && speechRequests == speech && lipsync.calls == [.lipsync2] && lipsync.renders > renders,
+            "\(phaseText(whole)) · \(speechRequests - speech) new speech requests · \(lipsync.renders - renders) new renders · lip sync \(lipsync.calls.map(\.name))")])
         completed = whole.phase == .review; ended = true
     }
 

@@ -20,9 +20,9 @@ struct WholeClipAutoQuote: Equatable {
 enum WholeClipAutoOutcome: Equatable {
     case revoiced(WholeClipRevoiceRecord, spent: Decimal)
     case failed(String, spent: Decimal)
-    /// The whole clip can't be done here: a part that can't be placed or a stop before anything was sent (nothing spent),
-    /// or a voice that can't fit the clip as edited within these rules (its voice paid). The changed phrases are voiced
-    /// instead, with the line saying why (ADR-R46).
+    /// The whole clip can't be done here: a part that can't be placed, a stop before anything was sent, a picture that can't
+    /// be matched, a lip sync that failed on this Mac, or a voice that can't fit the clip as edited within these rules (its
+    /// voice paid). The changed phrases are voiced instead, with the line saying why (ADR-R46).
     case patchInstead(String, spent: Decimal)
 
     /// What a finished automatic run comes to.
@@ -31,7 +31,8 @@ enum WholeClipAutoOutcome: Equatable {
         case .used:
             self = session.record.map { .revoiced($0, spent: session.spent) } ?? .failed("The whole clip couldn't be put in.", spent: session.spent)
         case .stopped(let line):
-            let patches = (session.failure?.repeats == true && session.spent == 0) || session.failure?.step == .fit
+            // A stop that would only repeat (whatever was paid for the voice is charged to the run) or a Fit stop patches.
+            let patches = session.failure?.repeats == true || session.failure?.step == .fit
             self = patches ? .patchInstead(line, spent: session.spent) : .failed(line, spent: session.spent)
         default: self = .failed("The whole clip didn't finish.", spent: session.spent)
         }

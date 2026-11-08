@@ -1,0 +1,453 @@
+{
+  "format": "voxclip-whole-clip-speed/1",
+  "constants": {
+    "maximumPictureSpeed": 1.2,
+    "fitTolerance": 0.08,
+    "sampleRate": 48000
+  },
+  "pictureSpeed": [
+    {
+      "voiceSeconds": 20.2,
+      "videoSeconds": 31.3,
+      "speed": 1.2
+    },
+    {
+      "voiceSeconds": 27.0,
+      "videoSeconds": 31.4,
+      "speed": 1.162962962962963
+    },
+    {
+      "voiceSeconds": 28.0,
+      "videoSeconds": 31.3,
+      "speed": 1.1178571428571429
+    },
+    {
+      "voiceSeconds": 31.3,
+      "videoSeconds": 31.3,
+      "speed": 1.0
+    },
+    {
+      "voiceSeconds": 32.0,
+      "videoSeconds": 31.3,
+      "speed": 1.0
+    },
+    {
+      "voiceSeconds": 26.0,
+      "videoSeconds": 31.2,
+      "speed": 1.2
+    },
+    {
+      "voiceSeconds": 26.1,
+      "videoSeconds": 31.3,
+      "speed": 1.1992337164750957
+    },
+    {
+      "voiceSeconds": 10.0,
+      "videoSeconds": 31.3,
+      "speed": 1.2
+    },
+    {
+      "voiceSeconds": 0.0,
+      "videoSeconds": 31.3,
+      "speed": 1.0
+    },
+    {
+      "voiceSeconds": -1.0,
+      "videoSeconds": 31.3,
+      "speed": 1.0
+    },
+    {
+      "voiceSeconds": 20.2,
+      "videoSeconds": 0.0,
+      "speed": 1.0
+    }
+  ],
+  "spedCopy": [
+    {
+      "speed": 1.2,
+      "laidOut": true,
+      "copy": "picture 1.20× and laid out on the clip's pauses"
+    },
+    {
+      "speed": 1.1178571428571429,
+      "laidOut": false,
+      "copy": "picture 1.12× to fit"
+    },
+    {
+      "speed": 1.005,
+      "laidOut": false,
+      "copy": "picture 1.00× to fit"
+    },
+    {
+      "speed": 1.199999,
+      "laidOut": true,
+      "copy": "picture 1.20× and laid out on the clip's pauses"
+    },
+    {
+      "speed": 1.0049,
+      "laidOut": true,
+      "copy": "picture 1.00× and laid out on the clip's pauses"
+    }
+  ],
+  "validRetime": [
+    {
+      "value": 0.92,
+      "valid": true
+    },
+    {
+      "value": 0.919,
+      "valid": false
+    },
+    {
+      "value": 1.0,
+      "valid": true
+    },
+    {
+      "value": 1.08,
+      "valid": true
+    },
+    {
+      "value": 1.1,
+      "valid": true
+    },
+    {
+      "value": 1.2,
+      "valid": true
+    },
+    {
+      "value": 1.2000001,
+      "valid": false
+    },
+    {
+      "value": 1.21,
+      "valid": false
+    }
+  ],
+  "spedCuts": [
+    {
+      "id": "plain",
+      "sourceStartSample": 0,
+      "sourceEndSample": 192000,
+      "outputSamples": 144000,
+      "retimeFactor": null,
+      "zoom": 1.0,
+      "cuts": [
+        [
+          96000,
+          144000
+        ]
+      ],
+      "valid": true
+    },
+    {
+      "id": "sped-cap",
+      "sourceStartSample": 0,
+      "sourceEndSample": 192000,
+      "outputSamples": 120000,
+      "retimeFactor": 1.2,
+      "zoom": 1.0,
+      "cuts": [
+        [
+          96000,
+          144000
+        ]
+      ],
+      "valid": true
+    },
+    {
+      "id": "sped-even",
+      "sourceStartSample": 0,
+      "sourceEndSample": 192000,
+      "outputSamples": 128000,
+      "retimeFactor": 1.125,
+      "zoom": 1.0,
+      "cuts": [
+        [
+          96000,
+          144000
+        ]
+      ],
+      "valid": true
+    },
+    {
+      "id": "missing-factor",
+      "sourceStartSample": 0,
+      "sourceEndSample": 192000,
+      "outputSamples": 120000,
+      "retimeFactor": null,
+      "zoom": 1.0,
+      "cuts": [
+        [
+          96000,
+          144000
+        ]
+      ],
+      "valid": false
+    },
+    {
+      "id": "wrong-factor",
+      "sourceStartSample": 0,
+      "sourceEndSample": 192000,
+      "outputSamples": 120000,
+      "retimeFactor": 1.1,
+      "zoom": 1.0,
+      "cuts": [
+        [
+          96000,
+          144000
+        ]
+      ],
+      "valid": false
+    },
+    {
+      "id": "past-the-cap",
+      "sourceStartSample": 0,
+      "sourceEndSample": 192000,
+      "outputSamples": 117000,
+      "retimeFactor": 1.2307692307692308,
+      "zoom": 1.0,
+      "cuts": [
+        [
+          96000,
+          144000
+        ]
+      ],
+      "valid": false
+    },
+    {
+      "id": "declared-one",
+      "sourceStartSample": 0,
+      "sourceEndSample": 192000,
+      "outputSamples": 144000,
+      "retimeFactor": 1.0,
+      "zoom": 1.0,
+      "cuts": [
+        [
+          96000,
+          144000
+        ]
+      ],
+      "valid": false
+    },
+    {
+      "id": "slower",
+      "sourceStartSample": 0,
+      "sourceEndSample": 192000,
+      "outputSamples": 150000,
+      "retimeFactor": 0.96,
+      "zoom": 1.0,
+      "cuts": [
+        [
+          96000,
+          144000
+        ]
+      ],
+      "valid": false
+    },
+    {
+      "id": "punch-in-zoom",
+      "sourceStartSample": 0,
+      "sourceEndSample": 192000,
+      "outputSamples": 120000,
+      "retimeFactor": 1.2,
+      "zoom": 1.06,
+      "cuts": [
+        [
+          96000,
+          144000
+        ]
+      ],
+      "valid": false
+    },
+    {
+      "id": "two-cuts",
+      "sourceStartSample": 0,
+      "sourceEndSample": 192000,
+      "outputSamples": 100000,
+      "retimeFactor": 1.2,
+      "zoom": 1.0,
+      "cuts": [
+        [
+          24000,
+          48000
+        ],
+        [
+          96000,
+          144000
+        ]
+      ],
+      "valid": true
+    },
+    {
+      "id": "trim-end",
+      "sourceStartSample": 0,
+      "sourceEndSample": 192000,
+      "outputSamples": 110000,
+      "retimeFactor": 1.2,
+      "zoom": 1.0,
+      "cuts": [
+        [
+          132000,
+          192000
+        ]
+      ],
+      "valid": true
+    }
+  ],
+  "mapping": [
+    {
+      "id": "sped",
+      "piece": {
+        "sourceStartSample": 48000,
+        "sourceEndSample": 240000,
+        "outputStartSample": 48000,
+        "outputEndSample": 168000
+      },
+      "cuts": [
+        [
+          144000,
+          192000
+        ]
+      ],
+      "mapTime": [
+        {
+          "source": 1.0,
+          "output": 1.0
+        },
+        {
+          "source": 1.5,
+          "output": 1.4166666666666667
+        },
+        {
+          "source": 2.0,
+          "output": 1.8333333333333333
+        },
+        {
+          "source": 2.75,
+          "output": 2.4583333333333335
+        },
+        {
+          "source": 3.0,
+          "output": 2.6666666666666665
+        },
+        {
+          "source": 3.5,
+          "output": 2.6666666666666665
+        },
+        {
+          "source": 4.0,
+          "output": 2.6666666666666665
+        },
+        {
+          "source": 4.5,
+          "output": 3.0833333333333335
+        },
+        {
+          "source": 4.999,
+          "output": 3.4991666666666665
+        }
+      ],
+      "sourceTime": [
+        {
+          "edited": 1.0,
+          "source": 1.0
+        },
+        {
+          "edited": 1.25,
+          "source": 1.3
+        },
+        {
+          "edited": 1.8,
+          "source": 1.96
+        },
+        {
+          "edited": 2.0,
+          "source": 2.2
+        },
+        {
+          "edited": 2.5,
+          "source": 2.8
+        },
+        {
+          "edited": 3.2,
+          "source": 4.64
+        },
+        {
+          "edited": 3.49,
+          "source": 4.988
+        }
+      ]
+    },
+    {
+      "id": "plain",
+      "piece": {
+        "sourceStartSample": 48000,
+        "sourceEndSample": 240000,
+        "outputStartSample": 48000,
+        "outputEndSample": 120000
+      },
+      "cuts": [
+        [
+          96000,
+          216000
+        ]
+      ],
+      "mapTime": [
+        {
+          "source": 1.0,
+          "output": 1.0
+        },
+        {
+          "source": 1.5,
+          "output": 1.5
+        },
+        {
+          "source": 2.0,
+          "output": 2.0
+        },
+        {
+          "source": 2.75,
+          "output": 2.0
+        },
+        {
+          "source": 3.0,
+          "output": 2.0
+        },
+        {
+          "source": 3.5,
+          "output": 2.0
+        },
+        {
+          "source": 4.0,
+          "output": 2.0
+        },
+        {
+          "source": 4.5,
+          "output": 2.0
+        },
+        {
+          "source": 4.999,
+          "output": 2.499
+        }
+      ],
+      "sourceTime": [
+        {
+          "edited": 1.0,
+          "source": 1.0
+        },
+        {
+          "edited": 1.25,
+          "source": 1.25
+        },
+        {
+          "edited": 1.8,
+          "source": 1.8
+        },
+        {
+          "edited": 2.0,
+          "source": 4.5
+        }
+      ]
+    }
+  ]
+}

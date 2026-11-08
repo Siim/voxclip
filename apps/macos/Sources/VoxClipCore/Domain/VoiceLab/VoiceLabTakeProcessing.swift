@@ -141,7 +141,8 @@ public enum VoiceLabTakeProcessing {
             fit = try VoiceLabNaturalPacing.layout(window: input.window, incomingSilence: input.incomingSilence,
                 outgoingSilence: input.outgoingSilence, take: take, sourceSampleRate: input.sourceSampleRate,
                 hardJoinSmoothing: input.hardJoinSmoothing, pauseProfile: WholeClipRevoice.layoutPauseProfile(pauseThresholdSeconds: layout.pauseBoundSeconds),
-                audioTags: tags, editedCuts: layout.cuts, tailSeconds: WholeClipRevoice.layoutPauseBound(layout.pauseBoundSeconds))
+                audioTags: tags, editedCuts: layout.cuts, tailSeconds: WholeClipRevoice.layoutPauseBound(layout.pauseBoundSeconds),
+                maximumSpeed: layout.maximumPictureSpeed)
         } else {
             let profile = input.pauseProfile ?? VoiceLabPauseProfile.measure(items: input.items, envelope: input.sourceEnvelope,
                 start: 0, end: .greatestFiniteMagnitude)

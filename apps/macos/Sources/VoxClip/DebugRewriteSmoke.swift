@@ -129,6 +129,8 @@ import VoxClipCore
             let id = exact ? definition.id + "-exact" : definition.id
             var scenario = Scenario(id: id, title: definition.title + (exact ? " (takes fill their slots exactly)" : ""))
             let harness = Harness(app: app, directory: directory, scenario: id)
+            let keys = app.providerKeyStoreOverride
+            defer { app.providerKeyStoreOverride = keys }
             var fixture = definition.fixture
             if exact { fixture.voice.exactFit = true }
             do {

@@ -55,6 +55,8 @@ import VoxClipMedia
     private(set) var monthlyCap: VoiceLabMonthlyCap?
     private(set) var problem = ""
     private(set) var usingTakes = false
+    /// The error behind each phrase's `.failed` state, for the whole clip's stop and its log line (its real case).
+    @ObservationIgnored private(set) var errors: [Int: any Error] = [:]
     @ObservationIgnored var backend: Backend?
     @ObservationIgnored private var pending: [Offer] = []
     @ObservationIgnored private var active: Offer?
@@ -113,15 +115,18 @@ import VoxClipMedia
         return VoiceLabCostPresentation.capWarning(cap: cap.limit, providerName: "fal.ai")
     }
 
-    func start(_ offer: Offer) {
+    /// Queues `offer`; false when it can't start (no key, Use running, a stale or already started offer), so a caller
+    /// never reads an earlier attempt's state as this one's.
+    @discardableResult func start(_ offer: Offer) -> Bool {
         guard let backend, keyAvailable, !usingTakes, offer.isCurrent(),
               !receipts.contains(where: { $0.id == offer.id }),
-              offer.phraseIDs.allSatisfy({ !isRunning($0) && applied[$0] == nil }) else { return }
+              offer.phraseIDs.allSatisfy({ !isRunning($0) && applied[$0] == nil }) else { return false }
         backend.acceptConsent(); consentAccepted = true
         receipts.append(Receipt(id: offer.id, phraseIDs: offer.phraseIDs, estimate: offer.estimate))
-        for phrase in offer.phraseIDs { states[phrase] = .running(started: Date(), progress: nil) }
+        for phrase in offer.phraseIDs { states[phrase] = .running(started: Date(), progress: nil); errors[phrase] = nil }
         pending.append(offer)
         if operation == nil { operation = Task { [weak self] in await self?.drain() } }
+        return true
     }
 
     private func drain() async {
@@ -158,6 +163,7 @@ import VoxClipMedia
                         let local = error is LipsyncPreparationError || error as? LipsyncError == .missingKey
                         let reason = Self.reason(error)
                         states[phrase] = .failed(reason: reason, price: offer.price, mayBill: !local)
+                        errors[phrase] = error
                     }
                 }
             }
@@ -227,7 +233,8 @@ import VoxClipMedia
     }
 
     static func reason(_ error: any Error) -> String {
-        if error as? LipsyncPreparationError == .noClearFace { return "No clear face in this part." }
+        if let local = error as? LipsyncPreparationError, let copy = local.errorDescription { return copy }
+        if error as? LipsyncError == .invalidInput { return "This part is outside the lip sync's limits (3 s to 5 min of video). Your original video is unchanged." }
         if error as? LipsyncError == .missingKey { return "Lip sync needs your fal.ai key." }
         if error as? LipsyncError == .submissionUncertain { return "The submission response was lost. Check fal.ai before trying another paid job." }
         if case LipsyncError.http(let status) = error { return "fal.ai returned HTTP \(status)." }

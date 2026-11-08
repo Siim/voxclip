@@ -115,7 +115,7 @@ d['voiceLabWholeClipRevoice'] = obj({
     'segmentIds': {'type': 'array', 'minItems': 1, 'uniqueItems': True, 'items': {'type': 'string', 'minLength': 1}},
     'script': {'type': 'string', 'minLength': 1, 'maxLength': 20000},
     'consentRecordId': {'type': 'string', 'minLength': 1},
-    'videoRetime': {'type': 'number', 'minimum': 0.92, 'maximum': 1.08},
+    'videoRetime': {'type': 'number', 'minimum': 0.92, 'maximum': 1.2},
     'lipsyncModel': {'enum': ['fal-ai/sync-lipsync/v2:lipsync-2', 'fal-ai/sync-lipsync/v3']},
     'usd': {'type': ['number', 'null'], 'minimum': 0},
     'match': {'oneOf': [{'type': 'null'}, obj({'take': {'type': 'number', 'minimum': -1, 'maximum': 1},

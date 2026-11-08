@@ -5,10 +5,12 @@ import VoxClipMedia
 /// Revoice the whole clip inside Rewrite (ADR-R46): the card's actions and the live steps. The voice is a take plan over the
 /// script's parts (`WholeClipScript.hunks`), so each part goes through the same window placement, R40 guard, R43
 /// calibration, per-video voice (R45), take checks and journals as a phrase. One timeline (ADR-R46): each take is laid out
-/// on the clip **as edited** (`VoiceLabEditedLayout`), and its picture is the clip's own cuts (`cut` at zoom 1) through the
-/// same duration path, so the fit, the picture, the render and the lip sync all read the clip's edited length; the lip sync
-/// is Rewrite's own over one merged window with the chosen model; Use is Rewrite's own commit, one undo step, with the
-/// project's `wholeClipRevoices` record.
+/// on the clip **as edited** (`VoiceLabEditedLayout`), as generated; a shorter take speeds the picture up evenly (at most
+/// 1.2×) before its pauses grow. Its picture is the clip's own cuts (`cut` at zoom 1, with that speed) through the same
+/// duration path, so the fit, the picture, the render and the lip sync all read the same timeline. The Fit step checks the
+/// picture match and the lip sync's free preconditions before anything is offered; the lip sync is Rewrite's own over one
+/// merged window with the chosen model; Use is Rewrite's own commit, one undo step, with the project's `wholeClipRevoices`
+/// record.
 extension RewriteSession {
     /// The clip this Rewrite is inside, nil for the full take.
     var wholeClipID: String? {
@@ -88,14 +90,15 @@ extension RewriteSession {
     }
 
     /// The stopped card's actions, the first one primary. Try Again (priced) only when a retry can succeed: after a stop that
-    /// would only repeat, such as a part that can't be placed, the patch is the way forward and nothing is priced for work
-    /// that can't happen. After a voice that can't fit, over the same script, the patch is the primary and Try Again comes
-    /// second: it would meet the same fit (ADR-R46).
+    /// would only repeat, such as a part that can't be placed, a picture that can't be matched or a lip sync that failed on
+    /// this Mac, the patch is the way forward and nothing is priced for work that can't happen. After a voice that can't fit,
+    /// over the same script, or the same stop twice in a row, the patch is the primary and Try Again comes second (ADR-R46).
     func wholeClipStoppedActions() -> [PanelAction] {
         guard let session = wholeClip, session.isStopped else { return [] }
         let patch = PanelAction(id: "wholeClipPatch", title: "Voice Only the Changed Phrases") { [weak self] in self?.patchInstead() }
         guard session.failure?.repeats != true, let retry = wholeClipPrimary(retry: true) else { return [patch] }
-        return session.repeatsFit ? [patch, retry] : [retry, patch]
+        // The same stop twice: the patch leads and Try Again comes second (design.md, Stopped).
+        return session.repeatsFit || session.failure?.again == true ? [patch, retry] : [retry, patch]
     }
 
     func startWholeClip(automatic: Bool = false) {
@@ -183,6 +186,9 @@ extension RewriteSession {
             return try await wholeClipReword(script, target: target, voiceSeconds: voice, videoSeconds: video)
         }, estimate: { [weak self] script in
             self?.wholeClipEstimate(script)
+        }, picture: { [weak self] voice in
+            guard let self else { throw CancellationError() }
+            return try await wholeClipPicture(voice)
         }, lipsync: { [weak self] voice, factor, model, progress in
             guard let self else { throw CancellationError() }
             return try await wholeClipLipsync(voice, factor: factor, model: model, progress: progress)
@@ -233,8 +239,12 @@ extension RewriteSession {
         return edited.mapTime(last.end) - edited.mapTime(first.start)
     }
 
-    /// The lip-sync window's seconds: the clip as edited with Rewrite's one-second handles (voice-lab §9.3).
-    private var wholeClipLipsyncSeconds: Double? { wholeClipEditedSeconds.map { $0 + 2 } }
+    /// The lip-sync window's seconds with Rewrite's one-second handles (voice-lab §9.3): the Fit step's picture as it plays
+    /// (sped up, laid out and trimmed), else the clip as edited.
+    private var wholeClipLipsyncSeconds: Double? {
+        if let output = wholeClip?.picture?.outputSeconds, output > 0 { return output + 2 }
+        return wholeClipEditedSeconds.map { $0 + 2 }
+    }
 
     /// The speaking-rate estimate of a script (check before paying): the project's measured rate, else the provider's floor.
     private func wholeClipEstimate(_ script: WholeClipScript) -> Double? {
@@ -269,6 +279,10 @@ extension RewriteSession {
 
     /// The Voice step: a take plan over the script's parts, priced, then made under the click's approval.
     private func wholeClipVoice(_ script: WholeClipScript, progress: @escaping @MainActor (String) -> Void) async throws -> WholeClipRevoiceSession.Voice {
+        // The lip sync needs a fal.ai key: without one, no voice is paid for that could never be lip synced.
+        guard await editor.app.providerKeyStore.hasKey(for: "fal") else {
+            throw WholeClipRevoiceSession.Unsent(error: WholeClipRevoiceSession.LipsyncFailed(error: LipsyncError.missingKey, local: true))
+        }
         await ensureVideoVoice()
         // The patch's own plan was only priced: it lets go of its quotes, so the voice's record has no run in flight.
         if let patch = takePlan, !hasPaidTakes {
@@ -286,14 +300,16 @@ extension RewriteSession {
             let final = try editor.voiceLabReviewProject(localCommands: localCommands)
             let hunks = script.hunks(words: wholeClipWords(final), cutWordIds: Set(final.edits.cutWordIds), cutPauseIds: Set(final.edits.cutPauseIds))
             let phraseInput = try takeInputMaker(final: final, recordID: recordID, modelID: model, envelope: envelope, model: { created?.modelID ?? model })
-            // One timeline: each part's take is laid out on the clip as edited, at its natural pace, its sentence-end pauses
-            // within the project's pause threshold (ADR-R46).
+            // One timeline: each part's take is laid out on the clip as edited, as generated (provider pace 1.0, never
+            // stretched): a shorter take first speeds the picture up evenly to at most 1.2×, then its sentence-end pauses
+            // grow within the project's pause threshold, then the picture's end is trimmed (ADR-R46, "Your own pace").
             guard let edited = wholeClipEditedPlan(final) else { throw ClipTakePlan.Failure.stale }
             let bound = final.edits.pauseThresholdSeconds
             let makeInput: @MainActor (ClipTakePlan.Phrase) async throws -> VoiceLabTakeInput = { phrase in
                 var input = try await phraseInput(phrase).replacingPace(nil)
                 input.editedLayout = VoiceLabEditedLayout(cuts: WholeClipRevoice.editedCuts(edited, startSample: phrase.window.startSample,
-                                                                                             endSample: phrase.window.endSample), pauseBoundSeconds: bound)
+                                                                                             endSample: phrase.window.endSample), pauseBoundSeconds: bound,
+                                                          maximumPictureSpeed: WholeClipRevoice.maximumPictureSpeed)
                 return input
             }
             plan = try ClipTakePlan(project: final, scope: scope, envelope: envelope, hunks: hunks, makeInput: makeInput,
@@ -374,31 +390,70 @@ extension RewriteSession {
     }
 
     /// Every part's picture is the clip as edited under its laid-out take, through Rewrite's own duration path: the source
-    /// when the take fills its window exactly, else the clip's own cuts (and the trim after the voice's last pause).
+    /// when the take fills its window exactly, else the clip's own cuts, sped up evenly when the take is shorter (to at most
+    /// 1.2×), and the trim after the voice's last pause. Each match starts clean: an earlier attempt's failed preparation is
+    /// forgotten, so a retry prepares the picture again instead of meeting the old problem at once (MVP45). A failure
+    /// throws what actually failed.
     func wholeClipMatchPicture() async throws -> ClipTakePlan {
+        typealias Session = WholeClipRevoiceSession
         guard let plan = wholeClipPlan else { throw ClipTakePlan.Failure.stale }
         for phrase in plan.phrases where plan.lipsync.applied[phrase.id] != nil { plan.lipsync.undo(phrase.id) }
+        plan.retryVideoPreparation()
+        if let left = plan.phrases.first(where: \.leftOut) { throw Session.Stop.pictureUnmatched(part: left.id + 1) }
         for phrase in plan.phrases {
             let choice: VoiceLabVideoMode = plan.videoAvailability(phrase: phrase.id).allows(.source) ? .source : .cut
             guard phrase.videoChoice == choice || plan.chooseVideo(choice, phrase: phrase.id) else {
-                throw WholeClipRevoiceSession.Stop.noVoice("Part \(phrase.id + 1)'s picture can't be matched to its voice.")
+                throw Session.Stop.pictureUnmatched(part: phrase.id + 1)
             }
         }
         await plan.prepareVideoChoices()
         try Task.checkCancellation()
-        guard plan.problem.isEmpty else { throw WholeClipRevoiceSession.Stop.noVoice(plan.problem) }
+        if let left = plan.phrases.first(where: \.leftOut) { throw Session.Stop.pictureUnmatched(part: left.id + 1) }
+        if let error = plan.videoPreparationFailure { throw Session.Unmatched(error: error) }
         return plan
+    }
+
+    /// The Fit step's picture check (ADR-R46): the picture matched to every laid-out take, then the lip sync's own free checks
+    /// on this Mac (the source can be prepared for upload, a fal.ai key is there, the merged window is one job fal.ai takes,
+    /// and it can be priced). Returns the picture's even speed-up and its output length, which the lip sync is priced on.
+    private func wholeClipPicture(_ voice: WholeClipRevoiceSession.Voice) async throws -> WholeClipRevoiceSession.Picture {
+        typealias Session = WholeClipRevoiceSession
+        let plan = try await wholeClipMatchPicture()
+        do {
+            guard let video = project.media.source.video else { throw LipsyncPreparationError.unsupportedVideo }
+            _ = try LipsyncWindowPreparation.uploadSize(video)
+        } catch { throw Session.LipsyncFailed(error: error, local: true) }
+        await plan.lipsync.refresh()
+        guard plan.lipsync.keyAvailable else { throw Session.LipsyncFailed(error: LipsyncError.missingKey, local: true) }
+        do {
+            guard try await plan.makeLipsyncOffers(model: .standard).1 != nil else { throw ClipTakePlan.Failure.stale }
+        } catch let error as LipsyncError {
+            throw Session.LipsyncFailed(error: error, local: true)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch { throw Session.Unmatched(error: error) }
+        let rate = Double(project.media.source.audio?.sampleRate ?? 48_000)
+        var kept = 0.0, shown = 0.0
+        for phrase in plan.phrases {
+            guard let row = phrase.selected?.row else { throw Session.Stop.pictureUnmatched(part: phrase.id + 1) }
+            let options = VoiceLabVideoDurationOptions(row: row, sourceSampleRate: Int(rate))
+            let output = Double(options.outputSamples ?? 0)
+            let speed: Double = phrase.videoChoice == .cut ? options.cutRetimeFactor ?? 1 : 1
+            kept += output * speed; shown += output
+        }
+        let speed: Double = shown > 0 ? kept / shown : 1
+        return .init(speed: speed, outputSeconds: shown / rate, laidOut: speed >= WholeClipRevoice.maximumPictureSpeed - 1e-3)
     }
 
     /// The Lip sync step: every part's picture matched to its take, then one lip sync over the merged window.
     private func wholeClipLipsync(_ voice: WholeClipRevoiceSession.Voice, factor: Double, model: WholeClipRevoice.Lipsync,
                                   progress: @escaping @MainActor (Double?) -> Void) async throws -> WholeClipRevoiceSession.Synced {
+        typealias Session = WholeClipRevoiceSession
         let plan = try await wholeClipMatchPicture()
         await plan.lipsync.refresh()
-        guard plan.lipsync.keyAvailable else { throw LipsyncError.missingKey }
+        guard plan.lipsync.keyAvailable else { throw Session.LipsyncFailed(error: LipsyncError.missingKey, local: true) }
         let (_, all) = try await plan.makeLipsyncOffers(model: model)
-        guard let offer = all else { throw ClipTakePlan.Failure.stale }
-        plan.lipsync.start(offer)
+        guard let offer = all, plan.lipsync.start(offer) else { throw ClipTakePlan.Failure.stale }
         let watcher = Task { [weak plan] in
             while let plan, plan.lipsync.running, !Task.isCancelled {
                 if case .running(_, let value) = plan.lipsync.states[offer.phraseIDs.first ?? 0] { progress(value) }
@@ -413,12 +468,14 @@ extension RewriteSession {
         watcher.cancel()
         try Task.checkCancellation()
         for phrase in offer.phraseIDs where plan.lipsync.applied[phrase] == nil {
-            if case .failed(let reason, _, _) = plan.lipsync.states[phrase] { throw WholeClipRevoiceSession.Stop.noVoice("Couldn't lip sync: " + reason) }
+            // The job's own error, with its real case for the log, and whether it failed on this Mac before fal.ai.
+            if case .failed(_, _, let mayBill) = plan.lipsync.states[phrase] {
+                throw Session.LipsyncFailed(error: plan.lipsync.errors[phrase] ?? LipsyncError.invalidResponse, local: !mayBill)
+            }
             throw CancellationError()
         }
-        // The picture is the clip as edited, not retimed: the record's retime is 1.
-        _ = factor
-        return .init(model: model, usd: offer.estimate.usd ?? 0, factor: 1)
+        // The record's retime is the picture's even speed-up from the Fit step (1 at the clip's own pace).
+        return .init(model: model, usd: offer.estimate.usd ?? 0, factor: factor)
     }
 
     /// The anchor the baseline belongs to, named as Settings › Voices names it ("siim"), never the video's own voice.

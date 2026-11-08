@@ -26,6 +26,19 @@ public struct PreparedLipsyncWindow: Sendable {
 public enum LipsyncWindowPreparation {
     public typealias FaceDetector = @Sendable (CGImage) throws -> Double
 
+    /// The uploaded window's size: the source as oriented, scaled down to the compositor's 1920-pixel bound with its aspect
+    /// kept (`OutputSizing`, as a source-shaped export). A 4K camera file is sent at 1920 × 1080; the compositor fills the
+    /// lip-synced frames into the output from their own size. A frame rate outside 1–60 or a picture under 16 pixels is
+    /// refused before anything renders (MVP45: every 4K source was refused here, voice-lab §9).
+    public static func uploadSize(_ video: MediaVideo) throws -> PixelSize {
+        let oriented = OutputSizing.orientedSize(video)
+        guard oriented.width >= 16, oriented.height >= 16, video.frameRate.isFinite, (1...60).contains(video.frameRate),
+              let size = try? OutputSizing.outputSize(source: oriented, aspect: .source),
+              (16...1920).contains(size.width), (16...1920).contains(size.height),
+              size.width.isMultiple(of: 2), size.height.isMultiple(of: 2) else { throw LipsyncPreparationError.unsupportedVideo }
+        return size
+    }
+
     public static func prepare(request: RenderRequest, window: LipsyncRenderWindow, scratchRoot: URL,
                                detector: FaceDetector? = nil) async throws -> PreparedLipsyncWindow {
         let folder = scratchRoot.appendingPathComponent("lipsync-window-\(UUID().uuidString)", isDirectory: true)
@@ -33,15 +46,16 @@ public enum LipsyncWindowPreparation {
         defer { try? FileManager.default.removeItem(at: folder) }
         var request = request
         guard let sourceVideo = request.voiceLab?.project.media.source.video else { throw LipsyncPreparationError.unsupportedVideo }
-        let rotated = sourceVideo.rotationDegrees == 90 || sourceVideo.rotationDegrees == 270
-        let width = rotated ? sourceVideo.height : sourceVideo.width
-        let height = rotated ? sourceVideo.width : sourceVideo.height
+        let size = try uploadSize(sourceVideo)
+        let width = size.width, height = size.height
         let fps = sourceVideo.frameRate
-        guard (16...1920).contains(width), (16...1920).contains(height), width.isMultiple(of: 2),
-              height.isMultiple(of: 2), (1...60).contains(fps) else { throw LipsyncPreparationError.unsupportedVideo }
-        request.output = OutputSpec(size: PixelSize(width: width, height: height), fps: fps,
+        request.output = OutputSpec(size: size, fps: fps,
             videoBitrate: Int((0.33 * Double(width) * Double(height) * fps).rounded()))
+        // The window is the clean picture: the compositor applies the clip's controls (flip, turn, frame, look, speed), its
+        // effects and captions once over the lip-synced frames, so none of them is baked in here, and fal.ai hears the
+        // voice without the music bed.
         request.captions = CaptionTrack(); request.captionLayout = nil; request.style = nil
+        request.clipControls = nil; request.effects = nil; request.music = nil
         let graph = try await CompositionBuilder().build(request, includeDisclosure: false, allowsFractionalFrameRate: true)
         let rate = request.timeline.sampleRate
         let range = CMTimeRange(start: CMTime(value: window.outputStartSample, timescale: Int32(rate)),

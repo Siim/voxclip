@@ -448,6 +448,14 @@ struct RewriteSmokeKeys: KeyProvider {
     func key(for provider: String) async throws -> String? { "inert-smoke-key" }
 }
 
+/// The whole-clip scenarios' fal.ai key: present, never read (the lip sync is the smoke's stand-in); every other provider
+/// asks the real store as before.
+struct RewriteSmokeFalKey: ProviderKeyStore {
+    let base: any ProviderKeyStore
+    func hasKey(for provider: String) async -> Bool { provider == "fal" ? true : await base.hasKey(for: provider) }
+    func save(_ value: String, for provider: String) async throws { try await base.save(value, for: provider) }
+}
+
 extension ElevenLabsVoiceLab {
     /// The scripted client: every request goes to `RewriteSmokeHTTP`.
     static func rewriteSmoke(prices: VoiceLabPriceCatalog, spend: VoiceLabSpendLedger) -> ElevenLabsVoiceLab {

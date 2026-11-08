@@ -22,7 +22,7 @@ public static partial class WholeClipRevoice
 
     /// <summary>The record's rules, checked with the rest of the Voice Lab data (<see cref="VoiceLabProject.Validate(Project)"/>):
     /// schema 3 or later; an id and clip id of the project's id shape, the clip existing; at least one segment, each an existing,
-    /// distinct text-to-speech segment in no other record; a lip-sync model this feature uses; the retime within the fit tolerance;
+    /// distinct text-to-speech segment in no other record; a lip-sync model this feature uses; the retime within <see cref="ValidRetime"/>;
     /// scores within −1…1 and a finite, non-negative price.</summary>
     public static void Validate(Project project)
     {
@@ -40,7 +40,7 @@ public static partial class WholeClipRevoice
                 record.SegmentIds is not { Count: > 0 } || string.IsNullOrEmpty(record.Script) ||
                 record.Script.EnumerateRunes().Count() > MaximumScriptScalars || string.IsNullOrEmpty(record.ConsentRecordId) ||
                 WholeClipLipsyncValues.FromRawValue(record.LipsyncModel) is null ||
-                !double.IsFinite(record.VideoRetime) || Math.Abs(record.VideoRetime - 1) > FitTolerance + 1e-9 ||
+                !ValidRetime(record.VideoRetime) ||
                 record.Usd is { } usd && (!double.IsFinite(usd) || usd < 0))
                 throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidSegment);
             if (record.Match is { } match)
@@ -146,7 +146,7 @@ public static class WholeClipLipsyncValues
 /// <param name="SegmentIds">The record's text-to-speech segments.</param>
 /// <param name="Script">The script the voice said.</param>
 /// <param name="ConsentRecordId">The voice's consent record.</param>
-/// <param name="VideoRetime">The voice's length ÷ the clip's video length; the picture's uniform retime.</param>
+/// <param name="VideoRetime">The picture's even speed-up under the voice (1 at the clip's own pace, at most 1.2, ADR-R46).</param>
 /// <param name="LipsyncModel">A <see cref="WholeClipLipsync"/> raw value.</param>
 /// <param name="Usd">What it cost, when known.</param>
 /// <param name="Match">The review's match scores, when measured.</param>

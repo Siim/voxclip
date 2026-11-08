@@ -124,6 +124,29 @@ public static partial class WholeClipRevoice
     /// <summary>"laid out on the clip's pauses (−14.0%)": a shorter voice, laid out on the clip as edited.</summary>
     public static string LaidOutCopy(double factor) => "laid out on the clip's pauses (" + SignedPercent(factor) + ")";
 
+    /// <summary>A shorter voice first speeds the clip's picture up evenly, to at most this (the user, 2026-11-08); the pause layout
+    /// and the trim take what is left (ADR-R46, "Your own pace"). The voice itself is never stretched.</summary>
+    public const double MaximumPictureSpeed = 1.2;
+
+    /// <summary>The picture's even speed-up for a voice on the clip as edited: the clip's length ÷ the voice's, from 1 to
+    /// <see cref="MaximumPictureSpeed"/>; 1 for an unusable input.</summary>
+    public static double PictureSpeed(double voiceSeconds, double videoSeconds)
+    {
+        if (!double.IsFinite(voiceSeconds) || !double.IsFinite(videoSeconds) || voiceSeconds <= 0 || videoSeconds <= 0) return 1;
+        return Math.Min(MaximumPictureSpeed, Math.Max(1, videoSeconds / voiceSeconds));
+    }
+
+    /// <summary>"picture 1.20× and laid out on the clip's pauses", or "picture 1.12× to fit" when the speed-up alone fills the clip.</summary>
+    public static string SpedCopy(double speed, bool laidOut) =>
+        "picture " + SpeedLabel(speed) + (laidOut ? " and laid out on the clip's pauses" : " to fit");
+
+    /// <summary>"1.20×": the factor to two decimals.</summary>
+    public static string SpeedLabel(double speed) => (double.IsFinite(speed) ? speed : 1).ToString("F2", CultureInfo.InvariantCulture) + "×";
+
+    /// <summary>The record's <c>videoRetime</c>: the picture's speed, from the fit tolerance's slowest to <see cref="MaximumPictureSpeed"/>.</summary>
+    public static bool ValidRetime(double value) =>
+        double.IsFinite(value) && value >= 1 - FitTolerance - 1e-9 && value <= MaximumPictureSpeed + 1e-9;
+
     private static string SignedPercent(double factor)
     {
         var percent = (factor - 1) * 100;

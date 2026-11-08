@@ -161,7 +161,7 @@ public sealed class WholeClipRevoiceWireTests
         Assert.True(Refused(record => With(record with { SegmentIds = ["vl-passage", "vl-passage"] })));
         Assert.True(Refused(record => With(record with { ClipId = "no-clip" })));
         Assert.True(Refused(record => With(record with { LipsyncModel = "fal-ai/latentsync" })));
-        Assert.True(Refused(record => With(record with { VideoRetime = 1.09 })));
+        Assert.True(Refused(record => With(record with { VideoRetime = 1.21 })));
         Assert.True(Refused(record => With(record with { VideoRetime = double.NaN })));
         Assert.True(Refused(record => With(record with { Usd = -1 })));
         Assert.True(Refused(record => With(record with { Match = new(1.5, null, null) })));

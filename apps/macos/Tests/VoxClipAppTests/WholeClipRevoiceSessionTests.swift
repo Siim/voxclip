@@ -2,6 +2,7 @@
 import Foundation
 import Testing
 @testable import VoxClipCore
+import VoxClipMedia
 @testable import VoxClip
 
 /// The whole-clip revoice's run (ADR-R46) on stubs: Script, Voice, Fit and Lip sync in order, the fit on the clip as
@@ -24,6 +25,15 @@ import Testing
         /// Thrown by the Voice step before anything is said.
         var voiceError: (any Error)?
         var reports: [String] = []
+        /// The Fit step's picture check: what it returns, what it throws, and each voice it was asked for.
+        var picture = WholeClipRevoiceSession.Picture(speed: 1, outputSeconds: 31, laidOut: false)
+        var pictureError: (any Error)?
+        var pictures: [Double] = []
+        /// Thrown by the lip sync itself (a job or its preparation).
+        var lipsyncError: (any Error)?
+        var lipsyncFactors: [Double] = []
+        /// The order the paid and free steps ran in.
+        var order: [String] = []
     }
 
     private static let words: [TimedWord] = ["So", "we", "drove", "north.", "It", "was", "cold."].enumerated().map {
@@ -51,8 +61,13 @@ import Testing
         }, videoSeconds: { stubs.video }, reword: { _, target, _, _ in
             stubs.rewords.append(target)
             return stubs.reword
-        }, estimate: { script in stubs.estimates[script.text] }, lipsync: { _, factor, model, progress in
-            stubs.lipsyncs.append(model)
+        }, estimate: { script in stubs.estimates[script.text] }, picture: { voice in
+            stubs.pictures.append(voice.seconds); stubs.order.append("picture")
+            if let error = stubs.pictureError { throw error }
+            return stubs.picture
+        }, lipsync: { _, factor, model, progress in
+            stubs.lipsyncs.append(model); stubs.lipsyncFactors.append(factor); stubs.order.append("lipsync")
+            if let error = stubs.lipsyncError { throw error }
             progress(0.5)
             if stubs.holdLipsync { await withCheckedContinuation { stubs.held = $0 } }
             try Task.checkCancellation()
@@ -316,6 +331,102 @@ import Testing
         let changed = WholeClipScript.assemble(words: Array(Self.words.prefix(4)), cutWordIds: [], voiceHunks: [])!
         session.backend?.script = { changed }
         #expect(rewrite.wholeClipStoppedActions().map(\.id) == ["wholeClipRetry", "wholeClipPatch"])
+    }
+
+    /// The user's MVP45 run (2026-11-08), as numbers: "Clip 1 · 0:31.4", a 52-word voice of 20.2 s for 0:31.3 of video. It
+    /// read "laid out on the clip's pauses (−35.4%)" and then failed at the lip sync with a reason known at Fit. Now the Fit
+    /// step checks the picture first, the picture plays 1.2× (Core's layout: 24.1 s of output over 28.9 s of picture,
+    /// `WholeClipPictureSpeedTests`), and the lip sync is offered over that picture, at that speed.
+    @Test func theUsersCaseChecksThePictureAtFitThenLipSyncsTheSpedPicture() async {
+        let stubs = Stubs()
+        stubs.voiceSeconds = [20.2]
+        stubs.video = 31.3
+        stubs.picture = .init(speed: 1.2, outputSeconds: 24.12, laidOut: true)
+        let session = session(stubs)
+        session.start()
+        await session.waitForRun()
+        #expect(session.phase == .review, "\(session.phase)")
+        #expect(session.steps[.fit] == .done("Fit · 0:20.2 for 0:31.3 of video, picture 1.20× and laid out on the clip's pauses"))
+        #expect(stubs.order == ["picture", "lipsync"], "the picture is matched at Fit, before the lip sync")
+        #expect(stubs.pictures == [20.2] && stubs.lipsyncFactors == [1.2])
+        await session.use()
+        #expect(session.record?.videoRetime == 1.2, "the record keeps the picture's speed")
+    }
+
+    /// A picture that can't be matched stops at Fit with its reason, makes no lip-sync call, and the patch is the way on.
+    @Test func anInfeasiblePictureStopsAtFitWithNoLipSync() async throws {
+        let stubs = Stubs()
+        stubs.voiceSeconds = [20.2]
+        stubs.pictureError = WholeClipRevoiceSession.Stop.pictureUnmatched(part: 1)
+        let session = session(stubs)
+        session.start()
+        await session.waitForRun()
+        let copy = "Part 1's picture can't be matched to its voice on the clip as edited. Nothing was sent for lip sync."
+        guard case .stopped(let line) = session.phase else { Issue.record("\(session.phase)"); return }
+        #expect(line.hasPrefix(copy) && line.contains("What was paid"), "\(line)")
+        #expect(session.steps[.fit] == .failed(copy) && session.steps[.lipsync] == .waiting)
+        #expect(stubs.lipsyncs.isEmpty, "no lip-sync call")
+        #expect(session.failure == WholeClipRevoiceSession.Failure(step: .fit, part: 1, repeats: true))
+        #expect(stubs.reports == ["whole clip failure step=fit type=WholeClipRevoiceSession.Stop case=pictureUnmatched part=1"])
+        // A preparation failure behind it is named with its own case, and would repeat too.
+        let unmatched = WholeClipRevoiceSession.Unmatched(error: ClipTakePlan.Failure.unknownSpend)
+        #expect(WholeClipRevoiceSession.repeats(unmatched))
+        #expect(RewriteSession.failureKind(WholeClipRevoiceSession.cause(unmatched)) == "type=ClipTakePlan.Failure case=unknownSpend")
+    }
+
+    /// MVP45: the lip sync failed on this Mac (a 4K window that couldn't be prepared), was logged as `noVoice` with the
+    /// generic "The job could not be completed." copy, and every Try Again met the same stop at once. Now the stop names
+    /// what failed with its real case, offers no priced Try Again, and a retry runs the picture check and the lip sync
+    /// again from a clean start, so once the cause is gone it goes through.
+    @Test func aLocalLipSyncFailureSaysWhatFailedAndARetryStartsClean() async {
+        let stubs = Stubs()
+        stubs.lipsyncError = WholeClipRevoiceSession.LipsyncFailed(error: LipsyncPreparationError.unsupportedVideo, local: true)
+        let session = session(stubs)
+        session.start()
+        await session.waitForRun()
+        let copy = "Couldn't lip sync: This part cannot be prepared for lip sync. Your original video is unchanged. Nothing was sent to fal.ai."
+        guard case .stopped(let line) = session.phase else { Issue.record("\(session.phase)"); return }
+        #expect(line.hasPrefix(copy) && !line.contains("The job could not be completed"), "\(line)")
+        #expect(session.failure == WholeClipRevoiceSession.Failure(step: .lipsync, part: nil, repeats: true))
+        #expect(stubs.reports == ["whole clip failure step=lipsync type=LipsyncPreparationError case=unsupportedVideo"])
+        // The same stop again: the second failure knows it repeated.
+        session.start()
+        await session.waitForRun()
+        #expect(session.failure?.again == true && stubs.pictures.count == 2 && stubs.lipsyncs.count == 2, "both checks ran again")
+        // Once the cause is gone, Try Again goes through on the paid voice.
+        stubs.lipsyncError = nil
+        session.start()
+        await session.waitForRun()
+        #expect(session.phase == .review && stubs.voices.count == 1, "the voice was paid once")
+    }
+
+    /// A provider failure that stops the same way twice: Try Again stays offered, priced, but the patch leads.
+    @Test func theSameProviderFailureTwiceMakesThePatchPrimary() async throws {
+        let shared = try SharedResources.locate()
+        let project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-whole-clip-" + UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let app = AppModel(settingsStore: RegressionSettingsStore(), locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path]))
+        let editor = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
+        defer { editor.close() }
+        let rewrite = RewriteSession(editor: editor, scope: .clip("clip-main"), envelope: nil, connector: nil)
+        let stubs = Stubs()
+        stubs.lipsyncError = WholeClipRevoiceSession.LipsyncFailed(error: LipsyncError.http(503), local: false)
+        let session = session(stubs)
+        rewrite.wholeClip = session
+        await session.refreshQuote()
+        session.start()
+        await session.waitForRun()
+        #expect(rewrite.wholeClipStoppedActions().map(\.id) == ["wholeClipRetry", "wholeClipPatch"], "a provider failure can succeed on a retry")
+        session.start()
+        await session.waitForRun()
+        #expect(rewrite.wholeClipStoppedActions().map(\.id) == ["wholeClipPatch", "wholeClipRetry"], "the same stop twice: the patch leads")
+        // A local failure offers no priced Try Again at all.
+        stubs.lipsyncError = WholeClipRevoiceSession.LipsyncFailed(error: LipsyncPreparationError.unsupportedVideo, local: true)
+        session.start()
+        await session.waitForRun()
+        let actions = rewrite.wholeClipStoppedActions()
+        #expect(actions.map(\.id) == ["wholeClipPatch"] && !actions.contains { $0.priced })
     }
 
     @Test func anAutomaticRunPutsTheResultInWithNoClick() async {

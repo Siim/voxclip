@@ -36,7 +36,8 @@ class NaturalPacingSchemaTests(unittest.TestCase):
         for invalid in ([], None, [{'startSample': 2800}],
                         [{'startSample': -1, 'endSample': 2840}],
                         [{'startSample': 2800, 'endSample': 2840, 'unknown': True}],
-                        [{'startSample': 2800, 'endSample': 2840}] * 3):
+                        # A whole clip's edited picture holds up to 512 cuts (ADR-R46, the schema's cuts.maxItems).
+                        [{'startSample': 2800, 'endSample': 2840}] * 513):
             with self.subTest(invalid=invalid):
                 project, video = self.project()
                 video['cuts'] = invalid

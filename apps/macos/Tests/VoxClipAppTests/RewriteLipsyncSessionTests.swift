@@ -110,5 +110,17 @@ struct RewriteLipsyncSessionTests {
         #expect(session.states[0] == .failed(reason: "No clear face in this part.", price: offer.price, mayBill: false))
         #expect(session.applied.isEmpty)
     }
+
+    /// MVP45: a window that couldn't be prepared read "The job could not be completed." and kept no error to log.
+    @Test func anUnpreparableWindowSaysWhyAndKeepsItsError() async throws {
+        let (session, offer, _) = try setup(failure: .unsupportedVideo)
+        await session.refresh()
+        #expect(session.start(offer))
+        try await session.waitForUseTakes(); session.finishUseTakes()
+        #expect(session.states[0] == .failed(reason: "This part cannot be prepared for lip sync. Your original video is unchanged.",
+                                             price: offer.price, mayBill: false))
+        #expect(session.errors[0] as? LipsyncPreparationError == .unsupportedVideo)
+        #expect(!session.start(offer), "the same offer never starts twice")
+    }
 }
 #endif
