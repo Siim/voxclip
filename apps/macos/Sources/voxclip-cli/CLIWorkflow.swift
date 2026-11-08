@@ -182,7 +182,22 @@ enum CLIWorkflow {
         }
     }
 
-    static func export(_ options: Export, input: String) async throws -> JSONValue {
+    /// What an export renders, before anything is written: the project as rendered (the clip's caption look resolved),
+    /// the render request with its captions laid out, and the edit state. The export self-check (ADR-R49) compares a file
+    /// with exactly this.
+    struct PreparedExport: Sendable {
+        let project: Project
+        let render: RenderRequest
+        let state: EditState?
+        let activeClip: ClipRange?
+        let aspect: AspectRatio
+        let quality: ExportQuality
+        let styleID: String
+    }
+
+    /// The export's preparation, up to the exporter: every argument check, the edit plan, the Voice Lab preflight and the
+    /// caption layout. `checkingOutputs` false skips the destination checks, for reading an export that already exists.
+    static func prepare(_ options: Export, input: String, checkingOutputs: Bool = true) async throws -> PreparedExport {
         try Task.checkCancellation()
         let inputURL = URL(fileURLWithPath: input).standardizedFileURL
         if inputURL.pathExtension.lowercased() == "voxclip", options.transcript != nil {
@@ -190,7 +205,7 @@ enum CLIWorkflow {
         }
         let outputs = [options.output, options.srt, options.audioOut].compactMap { $0 }.map { URL(fileURLWithPath: $0) }
         let inputs = [inputURL] + (options.transcript.map { [URL(fileURLWithPath: $0)] } ?? [])
-        try validateOutputs(outputs, inputs: inputs)
+        if checkingOutputs { try validateOutputs(outputs, inputs: inputs) }
         if let id = options.style { _ = try style(id) }
         try Task.checkCancellation()
         var project: Project
@@ -201,7 +216,7 @@ enum CLIWorkflow {
             project = try await store.load(from: inputURL)
             try Task.checkCancellation()
             source = try await store.resolveSource(for: project, projectURL: inputURL)
-            try validateOutputs(outputs, inputs: inputs + [source])
+            if checkingOutputs { try validateOutputs(outputs, inputs: inputs + [source]) }
             try Task.checkCancellation()
             probe = try await AVMediaProbe().probe(source)
             try Task.checkCancellation()
@@ -273,6 +288,14 @@ enum CLIWorkflow {
         case .export(let prepared): render = prepared
         case .render: throw VoxClipError.exportFailed("Invalid caption operation")
         }
+        return PreparedExport(project: project, render: render, state: effectiveState, activeClip: activeClip, aspect: aspect,
+                              quality: quality, styleID: styleID)
+    }
+
+    static func export(_ options: Export, input: String) async throws -> JSONValue {
+        let prepared = try await prepare(options, input: input)
+        let project = prepared.project, render = prepared.render, activeClip = prepared.activeClip
+        let aspect = prepared.aspect, quality = prepared.quality, styleID = prepared.styleID
         try Task.checkCancellation()
         let exporter = AVExporter(appVersion: VoxClipCLI.configuration.version,
                                   cleanupRegistry: DataLocations().root.appendingPathComponent("Scratch"))
