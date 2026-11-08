@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-11-08 — Windows media test hang fixed; nothing changes on the Mac (track/v2-win-media-hang)
+
+The Windows CI hang from the track/v2-loudness merge on was in a Windows test helper, not in the loudness code. It read decoded audio until `AudioDecoder.Read` returned 0, which that decoder never does. Details are in apps/windows/CONTRACTS.md. The Mac's `SocialLoudnessExportTests` read with AVFoundation readers, which end, so nothing is owed here. Two Windows CLI E2E tests now export with `--loudness off` because they assert the composed mix's levels. A Mac test that asserts absolute export levels needs `.off` in the same way, as `VoiceLabCompositionTests` already does.
+
 ### 2026-11-07 — Claude sees the picture, part 2: the whole-video frame pass beside Find Clips, frames in the plan request, the four picture rows, the cover on export (track/v2-eyes-2)
 
 ADR-R48 part 2, ai.md §19.6, design.md §6.7.1, doc/publishing.md §7. Windows keeps the new project fields losslessly and honours the lead-in and crop centre (apps/windows/CONTRACTS.md).
