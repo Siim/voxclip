@@ -646,6 +646,7 @@ Behaviour:
 | `voxclip-cli find-clips --open <project> --preset best\|hooks\|topics\|quotes\|custom [--instruction <text>] --connector <id> [--model <id>] [--no-snap] [--dry-run] --json` | Run the clip finder headless (AI spec section 10.4); never modifies the project; `--dry-run` prints the rendered prompts without sending |
 | `voxclip-cli llm-test --connector <id> [--model <id>] --json` | Run the connector Test (AI spec section 10.2); exit 0 on pass |
 | `voxclip-cli encoders --json` | Windows: run the encoder probe; macOS: report VideoToolbox H.264 availability |
+| `voxclip-cli check --project <project> --clip <n\|id> <export.mp4> [--aspect …] [--style …] [--loudness social\|off] [--json]` | macOS: the export self-check (ADR-R49). It checks the words heard against the clip's edit, the tracks' and phrases' sync, the loudness and the caption and title boxes against the safe-zone bands. Transcription is local only. `--json` adds a `check` object with `passed`, `engine`, `model`, `seconds` and one result per check (`status`, `reason`, `items`). Exit 8 when any check warns |
 | `voxclip-cli --version` / `voxclip-cli version [--json]` | Read the linked plist/assembly version (`unknown` when absent); print the version alone, `VoxClip <version> (<platform>-<arch>)`, or a JSON envelope with `result` and `version` |
 
 ### 9.3 Output and exit codes
@@ -688,6 +689,7 @@ On failure: `{ "ok": false, "command": "export", "error": { "code": "unsupported
 | 5 | Export failed (including `everythingCut`) |
 | 6 | Cancelled (SIGINT / Ctrl+C); partial output deleted |
 | 7 | Missing key, model or connector (`keyMissing`, `modelMissing`, `cliNotInstalled`, `cliNotSignedIn`) |
+| 8 | `check` only: the export was checked and a check warned (ADR-R49). The JSON is printed as on success, with `"ok": true` and `check.passed: false` |
 
 Each error code has one exit status on both platforms, whatever the command:
 

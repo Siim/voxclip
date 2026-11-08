@@ -1,5 +1,43 @@
 # macOS implementation contracts
 
+### 2026-11-08 — The export self-check engine: words, sync, loudness and captions, headless and in the CLI (track/v2-export-check)
+
+The agents the user liked checked every export (doc/agent-clipping-benchmark.md, item 6). VoxClip now does too, on the Mac, with no UI yet: the review rows wait for the user's approval of the lead's mockup (frame E). ADR-R49 has the rules and the measurements.
+
+- **Core.**
+  - `ExportCheck` (new, `Domain/ExportCheck/ExportCheck.swift`): `run(_ ExportCheckInput) -> ExportCheckReport`. The report holds four `ExportCheckResult`s (`words`, `sync`, `loudness`, `captions`), each `ok`, `warning` or `skipped` with a `reason`, with `ExportCheckItem`s at output times.
+    - The constants: `matchFloor` 0.9, `phraseToleranceSeconds` 0.30, ±1 LU about −14 LUFS, and `truePeakToleranceDb` 0.2 over −1 dBTP.
+    - A cut-off is a word at a cut or a clip edge (inclusive bounds) that is missing or heard as one shorter word.
+    - Words warn on a cut-off, on a phrase word heard wrong, or when under 90% of the words match. A lone source mismatch is reported but stays `ok`.
+  - `ExportCheckExpectation` (new): `edit(render:state:)` and `edit(timeline:speed:effects:state:duration:)` give the expected words, phrases, cuts and duration in output seconds.
+    - On the Voice Lab path the words are the output plan's (a Rewrite's new words at their placed times, phrase = segment id). Otherwise they are `captionCopy` of the clip.
+    - Bleeped and muted words are dropped, and kept fillers are optional. `captionBoxes(render:)` gives each page's visual rect with its boxes and emoji.
+  - `CaptionSafeZones` (new): the bands per aspect class. The stage's drag guides (`PreviewTimeline`) now draw from it; no visual change.
+  - `VoiceLabTakeQuality.alignment(expected:recognized:)` (new): the LCS index pairs. `transcriptRatio` now counts it, so the take QA and the check share one alignment.
+  - `ClaudeModeStage.check` (new).
+- **Media.** `ExportChecker` (new, `Pipeline/ExportChecker.swift`).
+  - `localHearing(transcript:locations:shared:)` picks the project's local engine or an installed Whisper model, never ElevenLabs.
+  - `check(export:render:edit:loudness:) -> Outcome` returns the report, `measureSeconds`, `hearSeconds`, `totalSeconds`, `engine` and `model`.
+  - It reads the tracks' `timeRange`s, decodes the audio twice on `decodeQueue` (the shared `SocialLoudnessMeter` at the track's rate, and 16 kHz mono for the engine) and runs the engine with `hearingQueue` as its task executor.
+  - Title boxes come from `EffectFrames.titleLayout`.
+- **CLI.**
+  - `CLIWorkflow.prepare(_:input:checkingOutputs:) -> PreparedExport` is the export's preparation, split out of `export`, which now calls `export(_:prepared:)`.
+  - `check --project --clip <n|id> <export.mp4> [--aspect] [--style] [--loudness] [--json]` reads the aspect from the file when it isn't given. Exit 8 (`Check.warningExitCode`) when any check warns. The JSON adds `check`: `passed`, `seconds`, `hearSeconds`, `engine`, `model` and the four results.
+  - `autopilot` checks each exported clip by default: `ClipChecks` chains the checks beside the other clips' work, and `exportClip(..., checks:)` starts one after each export. Each clip's JSON gets `check`, `--timings` a `check` stage per clip, and `--no-check` drops both.
+- **Shared.**
+  - `shared/fixtures/export-check/check-cases.json` (new, schema `voxclip-export-check-cases/1`, 32 cases: 11 words, 7 sync, 7 loudness, 7 captions) is written by `tools/fixtures/export-check/generate_check_cases.py`.
+  - The fixture is in check_drift's EXACT list and validated by `shared/schemas/export-check-cases.schema.json` through `validate.py`.
+- **Defaults that fail in 9:16 (for the lead; not moved).**
+  - Highlight at its default position reaches 0.043 into the bottom 22% band. So do Bold and Bold+ (0.030), Minimal, Typewriter, Clean subtitle and Lower third.
+  - The hook title's top is at 0.102–0.106 of the height, inside the top 12% band.
+  - Both clear 1:1 and 16:9. `ExportCheckPlacementTests` holds them as known issues.
+- **Tests.** Core: `ExportCheckReplayTests` (every case; each rule was mutated and its case went red), `ExportCheckExpectationTests`. Media: `ExportCheckerTests` (a real export with a stub engine; an audio-overhang file fails sync), `ExportCheckerRealModelTests` (skipped unless `VOXCLIP_TEST_WHISPER_MODELS` names a Models folder), `ExportCheckPlacementTests`, `CLICheckTests` (`check` exit codes and JSON through the binary; autopilot `check` per clip and `--no-check`).
+- **Windows owes.**
+  - The engine (`ExportCheck`, the expectation from its render timeline, `CaptionSafeZones`), replaying `shared/fixtures/export-check/check-cases.json` with its exact keys and caseCount.
+  - A checker on its decoder and meter, local Whisper only.
+  - `voxclip-cli check` with exit 8, and the autopilot's per-clip `check`.
+- **Next package (the review UI).** Show `ExportCheckReport` as it is; don't recompute it. A row per check, items at their times. Use `check.passed` for "verified". Run the check after export with `ExportChecker` and `ExportCheckExpectation.edit(render:state:)` from the render the export used.
+
 ### 2026-11-08 — The headless autopilot applies the picture decisions and keeps Claude's reasons; macOS 26 cover art probe; the Snap toggle removed (track/v2-autopilot-picture)
 
 `voxclip-cli autopilot` sent frames but applied nothing Claude decided from them, and kept no reasons (the lead's live run, 2026-11-08). It now applies the picture rows as Make it postable does, and its JSON says what was decided and why.
