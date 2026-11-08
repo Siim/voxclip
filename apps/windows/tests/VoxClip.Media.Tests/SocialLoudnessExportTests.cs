@@ -165,40 +165,56 @@ public sealed class SocialLoudnessNativeExportTests : IAsyncLifetime
     public async ValueTask InitializeAsync() => await NativeTest.RequireAsync(windows: true);
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
-    private static Task<SocialLoudnessMeasurement> Measure(string path) => MediaThread.Run("vc-test-loudness", () =>
+    // The whole test is bounded: a read or an export that never finishes fails with a message instead of holding the run.
+    private static readonly TimeSpan Budget = TimeSpan.FromMinutes(3);
+
+    // AudioDecoder pads with silence past the end and never returns 0 (it feeds fixed-length readers), so read the known length.
+    private static Task<SocialLoudnessMeasurement> Measure(string path, long frames, CancellationToken ct) => MediaThread.Run("vc-test-loudness", () =>
     {
         using var decoder = new AudioDecoder(path, 2);
         var meter = new SocialLoudnessMeter(48_000, 2);
         var buffer = new float[4096 * 2];
-        int count;
-        while ((count = decoder.Read(buffer, 4096, TestContext.Current.CancellationToken)) > 0) meter.Append(buffer.AsSpan(0, count * 2));
+        for (long read = 0; read < frames;)
+        {
+            var count = decoder.Read(buffer, (int)Math.Min(4096, frames - read), ct);
+            meter.Append(buffer.AsSpan(0, count * 2));
+            read += count;
+        }
         return meter.Finish();
-    }, TestContext.Current.CancellationToken);
+    }, ct);
 
     [Fact]
     public async Task SocialLandsAtMinus14AndOffLeavesTheMix()
     {
-        var info = await new FfmpegMediaProbe().ProbeAsync(NativeTest.Fixture("speech-bursts.mkv"), TestContext.Current.CancellationToken);
-        var total = (long)Math.Round(info.DurationSeconds * 48_000);
-        var snapshot = new ComposeSnapshot(info, TestPlan.FromKept(48_000, total, [new(0, total)]), null, new(new(160, 90), 30, 1_000_000));
-        var source = (await Measure(info.Path)).IntegratedLufs()!.Value;
+        var outer = TestContext.Current.CancellationToken;
+        using var bounded = CancellationTokenSource.CreateLinkedTokenSource(outer);
+        bounded.CancelAfter(Budget);
+        var ct = bounded.Token;
         var directory = Directory.CreateTempSubdirectory("voxclip-loudness-native-").FullName;
         try
         {
+            var info = await new FfmpegMediaProbe().ProbeAsync(NativeTest.Fixture("speech-bursts.mkv"), ct);
+            var total = (long)Math.Round(info.DurationSeconds * 48_000);
+            var snapshot = new ComposeSnapshot(info, TestPlan.FromKept(48_000, total, [new(0, total)]), null, new(new(160, 90), 30, 1_000_000));
+            var source = (await Measure(info.Path, total, ct)).IntegratedLufs()!.Value;
             var social = Path.Combine(directory, "social.mp4");
             var result = await new Exporter().ExportAsync(new(snapshot, new ExportTarget.FullEdit(), ExportAspect.Source, ExportQuality.Standard, social, null),
-                null, TestContext.Current.CancellationToken);
+                null, ct);
             var report = Assert.IsType<SocialLoudnessReport>(result.Loudness);
             Assert.False(report.Capped);
             Assert.Equal(source, report.MeasuredLufs!.Value, 1);
-            var exported = await Measure(social);
+            var exported = await Measure(social, result.AudioSamples, ct);
             Assert.InRange(exported.IntegratedLufs()!.Value, SocialLoudness.TargetLufs - 0.5, SocialLoudness.TargetLufs + 0.5);
             Assert.True(exported.TruePeakDbtp <= SocialLoudness.CeilingDbtp, $"true peak {exported.TruePeakDbtp}");
             var off = Path.Combine(directory, "off.mp4");
             var unchanged = await new Exporter().ExportAsync(new(snapshot, new ExportTarget.FullEdit(), ExportAspect.Source, ExportQuality.Standard, off, null)
-                { Loudness = ExportLoudness.Off }, null, TestContext.Current.CancellationToken);
+                { Loudness = ExportLoudness.Off }, null, ct);
             Assert.Null(unchanged.Loudness);
-            Assert.InRange((await Measure(off)).IntegratedLufs()!.Value, source - 0.5, source + 0.5);
+            Assert.InRange((await Measure(off, unchanged.AudioSamples, ct)).IntegratedLufs()!.Value, source - 0.5, source + 0.5);
+        }
+        catch (Exception exception) when (bounded.IsCancellationRequested && !outer.IsCancellationRequested)
+        {
+            Assert.Fail($"The native social loudness export test did not finish within {Budget.TotalMinutes:0} minutes ({exception.GetType().Name}).");
         }
         finally { Directory.Delete(directory, true); }
     }
