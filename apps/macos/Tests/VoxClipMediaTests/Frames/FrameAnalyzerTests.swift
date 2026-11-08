@@ -3,6 +3,7 @@ import CoreText
 import Foundation
 import Synchronization
 import Testing
+import Vision
 @testable import VoxClipCore
 @testable import VoxClipMedia
 
@@ -52,6 +53,30 @@ struct FrameAnalyzerTests {
         #expect(vision.count == 2 * looked)
     }
 
+    /// Version 1 held Vision's coarse revision-2 pose (yaw 0 or ±π/4, no pitch): its file is ignored, never read, and left
+    /// for the cache's own eviction (ADR-R48, 2026-11-08).
+    @Test func aVersionOneCacheIsIgnoredAndLeftInPlace() async throws {
+        #expect(FrameAnalysis.version == 2 && FrameAnalysisCache.fileName == "analysis-v2.json")
+        let folder = try FrameTestFolder()
+        let store = CacheStore(locations: folder.locations)
+        let cache = FrameAnalysisCache(store: store)
+        let pass = FrameAnalysisCache.pass(tolerance: FrameAnalyzer.sentenceTolerance)
+        let frames = try store.entryDirectory(contentKey: Self.key).appendingPathComponent("frames", isDirectory: true)
+        try FileManager.default.createDirectory(at: frames, withIntermediateDirectories: true)
+        let coarse = #"{"face":{"eyes":"open","facesCamera":true,"rect":{"height":0.4,"width":0.2,"x":0.4,"y":0.3},"yaw":0},"#
+            + #""faceCount":1,"screens":[],"textRects":[],"time":1.2}"#
+        let old = frames.appendingPathComponent("analysis-v1.json")
+        try Data(#"{"frames":{"\#(pass):1200":\#(coarse)},"schema":"voxclip-frames/1"}"#.utf8).write(to: old)
+        #expect(cache.observations(contentKey: Self.key, pass: pass).isEmpty)
+        let vision = CountingVision()
+        let analyzer = FrameAnalyzer(vision: vision, decoder: SyntheticDecoder(), cache: cache)
+        let found = try await analyzer.observations(source: folder.url, contentKey: Self.key, times: [1.2], tolerance: FrameAnalyzer.sentenceTolerance)
+        #expect(found.analyzed == 1 && found.cached == 0 && vision.count == 1)
+        #expect(found.frames.first?.face?.pitch == 0)
+        #expect(FileManager.default.fileExists(atPath: old.path), "the old file is not deleted")
+        #expect(cache.observations(contentKey: Self.key, pass: pass).count == 1)
+    }
+
     @Test func passesWithDifferentTolerancesAreCachedApartAndKeyedByTheTimeAskedFor() async throws {
         let folder = try FrameTestFolder()
         let cache = FrameAnalysisCache(locations: folder.locations)
@@ -93,20 +118,23 @@ struct FrameAnalyzerTests {
         #expect(sheet.images.map(\.label) == ["Frame 1 at 1.20 s", "Frame 2 at 2.70 s", "Frame 3 at 4.20 s"])
         #expect(sheet.estimatedImageTokens == 3 * 77)
         #expect(sheet.imageBytes == sheet.frames.map(\.image.data.count).reduce(0, +))
-        let lines = sheet.summary.components(separatedBy: "\n")
+        let summary = sheet.summary(pitchBaseline: 0)
+        let lines = summary.components(separatedBy: "\n")
         #expect(lines.count == 4)
         #expect(lines[1] == "F1 1.20 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.70, facing camera")
-        #expect(sheet.estimatedSummaryTokens == Int((Double(sheet.summary.utf8.count) / 2.2).rounded(.up)))
+        #expect(sheet.estimatedSummaryTokens(pitchBaseline: 0) == Int((Double(summary.utf8.count) / 2.2).rounded(.up)))
+        // Judged against a baseline far from the faces' pitch, the same frames read as turned away.
+        #expect(sheet.summary(pitchBaseline: 0.5).components(separatedBy: "\n")[1].hasSuffix("quality 0.70, turned away"))
     }
 
     @Test func summaryLinesNameScreensAndMissingFaces() {
         let screen = FrameScreen(rect: ClipEffect.Rect(x: 0.6, y: 0.3, width: 0.2, height: 0.4), textBoxes: 6, textCoverage: 0.3, framed: true)
         let frame = FrameSheetFrame(index: 2, observation: FrameObservation(time: 12.346, faceCount: 0, screens: [screen]),
                                     jpeg: Data([0xFF, 0xD8]), width: 320, height: 180)
-        #expect(frame.summaryLine == "F2 12.35 s: no face, screen with 6 text boxes at 0.60,0.30,0.20,0.40")
+        #expect(frame.summaryLine(pitchBaseline: nil) == "F2 12.35 s: no face, screen with 6 text boxes at 0.60,0.30,0.20,0.40")
         let face = FrameFace(rect: ClipEffect.Rect(x: 0.1, y: 0.1, width: 0.2, height: 0.3), captureQuality: 0.25, leftEyeAspect: 0.1, rightEyeAspect: 0.1, yaw: 0.79)
         let turned = FrameSheetFrame(index: 1, observation: FrameObservation(time: 0, faceCount: 2, face: face), jpeg: Data(), width: 1, height: 1)
-        #expect(turned.summaryLine == "F1 0.00 s: face at 0.10,0.10,0.20,0.30 (largest of 2), eyes closed, quality 0.25, turned away")
+        #expect(turned.summaryLine(pitchBaseline: nil) == "F1 0.00 s: face at 0.10,0.10,0.20,0.30 (largest of 2), eyes closed, quality 0.25, turned away")
     }
 
     // MARK: Apple Vision and AVFoundation
@@ -121,6 +149,13 @@ struct FrameAnalyzerTests {
         #expect(screen.rect.midX > 0.5 && screen.rect.midX < 0.8)
         let encoded = String(decoding: try JSONEncoder().encode(observation), as: UTF8.self)
         #expect(!encoded.contains("Invoice") && !encoded.contains("Account"))
+    }
+
+    /// Faces come from the rectangles request at revision 3, the one with continuous yaw, pitch and roll; landmarks alone
+    /// would fall back to Vision's revision-2 detector (yaw 0 or ±π/4, no pitch). No committed or drawn face is detected by
+    /// Vision, so the pose itself was checked on the user's footage (ADR-R48, 2026-11-08).
+    @Test func theFaceRequestIsPinnedToRevisionThree() {
+        #expect(AppleFrameVision.faceRequest().revision == VNDetectFaceRectanglesRequestRevision3)
     }
 
     @Test func realDecodeAndVisionOnTheCounterFixture() async throws {

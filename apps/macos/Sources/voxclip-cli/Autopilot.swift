@@ -200,7 +200,8 @@ extension CLIWorkflow {
                 if let frames, let shown = sent.record(index) {
                     var scan: [FrameObservation]?
                     if let clip = ClipPicture.openingClip(project, clipID: clipID) { scan = await frames.opening(for: clip) }
-                    let inputs = ClipPicture.Inputs(frames: shown.frames, sentences: shown.sentences, opening: scan, shapes: shapes)
+                    let inputs = ClipPicture.Inputs(frames: shown.frames, sentences: shown.sentences, opening: scan, shapes: shapes,
+                                                    pitchBaseline: await frames.pitchBaseline())
                     let decided = ClipPicture.apply(plan, clipID: clipID, to: project, inputs: inputs)
                     project = decided.project
                     picture = decided.decisions
@@ -248,7 +249,8 @@ extension CLIWorkflow {
                 _ = await pass.opening(for: clip)
                 clock.end(.opening, clip: index + 1)
             }
-            let frames = ClipAutopilotFrames(sheet: found.sheet, clipStart: clip.start, clipEnd: clip.end, images: images)
+            let frames = ClipAutopilotFrames(sheet: found.sheet, clipStart: clip.start, clipEnd: clip.end, images: images,
+                                             pitchBaseline: await pass.pitchBaseline())
             sent.record(index, ClipFramesSent.Record(frames: frames, sentences: found.sentences, opening: opening))
             return frames
         }

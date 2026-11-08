@@ -194,7 +194,7 @@ final class SentFrames: Sendable {
         let edited = try ClipAutopilotMapping.apply(operations, to: original).project
         let clip = try #require(ClipPicture.openingClip(edited, clipID: "clip-main"))
         let inputs = ClipPicture.Inputs(frames: record.sent, sentences: record.sentences, opening: await pass.opening(for: clip),
-                                        shapes: fixture.editor.makeItStyle.shapes)
+                                        shapes: fixture.editor.makeItStyle.shapes, pitchBaseline: await pass.pitchBaseline())
         let headless = ClipPicture.apply(plan, clipID: "clip-main", to: edited, inputs: inputs)
         let url = fixture.root.appendingPathComponent("autopilot.voxclip")
         try await JSONProjectStore().save(headless.project, to: url)

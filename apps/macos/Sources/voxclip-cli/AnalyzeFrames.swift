@@ -61,21 +61,28 @@ struct AnalyzeFrames: AsyncParsableCommand {
             let cache = noCache ? nil : FrameAnalysisCache(locations: DataLocations())
             let analyzer = FrameAnalyzer(cache: cache)
             var extra: [String: JSONValue] = [:]
+            var passBaseline: Double?
             if videoPass {
-                extra["videoPass"] = await FrameAnalyzerCLI.timedPass(analyzer: analyzer, source: source, contentKey: contentKey,
-                                                                      words: transcript.words, clip: frameClip)
+                let pass = await FrameAnalyzerCLI.timedPass(analyzer: analyzer, source: source, contentKey: contentKey,
+                                                            words: transcript.words, clip: frameClip)
+                extra["videoPass"] = pass.json
+                passBaseline = pass.pitchBaseline
             }
             let result = try await analyzer.analyze(source: source, contentKey: contentKey, clip: frameClip)
             if let sheetOut { try FrameAnalyzerCLI.write(result.sheet, to: URL(fileURLWithPath: sheetOut)) }
-            return try FrameAnalyzerCLI.report(analysis: result.analysis, clip: frameClip, project: project, sheet: result.sheet, extra: extra)
+            // Facing is judged against the whole video's typical pitch, or the clip's own without the pass.
+            let baseline = videoPass ? passBaseline : result.analysis.pitchBaseline
+            return try FrameAnalyzerCLI.report(analysis: result.analysis, clip: frameClip, project: project, sheet: result.sheet,
+                                               pitchBaseline: baseline, extra: extra)
         }
     }
 }
 
 enum FrameAnalyzerCLI {
     /// The whole video's pass as Claude mode runs it (ADR-R48 part 2), then the clip's frames from it and its opening scan,
-    /// each timed in wall seconds.
-    static func timedPass(analyzer: FrameAnalyzer, source: URL, contentKey: String, words: [TimedWord], clip: FrameClip) async -> JSONValue {
+    /// each timed in wall seconds, and the recording's typical pitch from the pass (`pitchBaseline`).
+    static func timedPass(analyzer: FrameAnalyzer, source: URL, contentKey: String, words: [TimedWord],
+                          clip: FrameClip) async -> (json: JSONValue, pitchBaseline: Double?) {
         func since(_ start: ContinuousClock.Instant) -> JSONValue {
             let parts = start.duration(to: .now).components
             let seconds = Double(parts.seconds) + Double(parts.attoseconds) / 1e18
@@ -93,27 +100,31 @@ enum FrameAnalyzerCLI {
         let openingBegin = ContinuousClock.now
         let opening = await pass.opening(for: clip)
         let openingSeconds = since(openingBegin)
-        return .object(["read": .bool(read), "frames": .number(Double(pass.frameCount)), "analyzed": .number(Double(await pass.analyzed)),
+        let baseline = await pass.pitchBaseline()
+        let json: JSONValue = .object(["read": .bool(read), "frames": .number(Double(pass.frameCount)), "analyzed": .number(Double(await pass.analyzed)),
                         "cached": .number(Double(await pass.cached)), "seconds": passSeconds,
                         "clipFrames": .number(Double(frames?.sentences.count ?? 0)), "clipSeconds": clipSeconds,
-                        "openingFrames": .number(Double(opening?.count ?? 0)), "openingSeconds": openingSeconds])
+                        "openingFrames": .number(Double(opening?.count ?? 0)), "openingSeconds": openingSeconds,
+                        "pitchBaseline": baseline.map(JSONValue.number) ?? .null])
+        return (json, baseline)
     }
 
-    static func report(analysis: FrameAnalysis, clip: FrameClip, project: Project, sheet: FrameSheet,
+    static func report(analysis: FrameAnalysis, clip: FrameClip, project: Project, sheet: FrameSheet, pitchBaseline: Double?,
                        extra: [String: JSONValue] = [:]) throws -> JSONValue {
         let encoder = ProjectJSON.encoder()
         func value(_ item: some Encodable) throws -> JSONValue { try JSONDecoder().decode(JSONValue.self, from: encoder.encode(item)) }
         let aspect = sourceAspect(project.media.source.video)
         let samples = analysis.sentences.map { (time: $0.time, face: $0.face?.rect) }
         let scan = analysis.opening + analysis.sentences
-        let openingChoice = OpeningFrame.choose(clip, scan: analysis.opening)
+        let openingChoice = OpeningFrame.choose(clip, scan: analysis.opening, pitchBaseline: pitchBaseline)
         var decisions: [String: JSONValue] = [
+            "pitchBaseline": pitchBaseline.map(JSONValue.number) ?? .null,
             "opening": try openingChoice.map(value) ?? .null,
-            "cover": try CoverFrame.pick(scan).map(value) ?? .null,
+            "cover": try CoverFrame.pick(scan, pitchBaseline: pitchBaseline).map(value) ?? .null,
             "blurSpans": try value(FrameBlurSpans.merge(analysis.sentences, maxGap: ClipFrameCandidates.blurMaxGap, pad: ClipFrameCandidates.blurPad)),
             // What the plan request names (ai.md §19.6): screens B1… and covers C1…C3.
             "blurCandidates": try value(ClipFrameCandidates.blur(analysis.sentences, clipStart: clip.start, clipEnd: clip.end)),
-            "coverCandidates": try value(ClipFrameCandidates.cover(sheet.frames)),
+            "coverCandidates": try value(ClipFrameCandidates.cover(sheet.frames, pitchBaseline: pitchBaseline)),
         ]
         decisions["crop9x16"] = try FaceFollowCrop.plan(samples, sourceAspect: aspect, targetAspect: 9.0 / 16.0).map(value) ?? .null
         decisions["crop1x1"] = try FaceFollowCrop.plan(samples, sourceAspect: aspect, targetAspect: 1).map(value) ?? .null
@@ -121,8 +132,8 @@ enum FrameAnalyzerCLI {
             "frames": .number(Double(sheet.frames.count)),
             "imageBytes": .number(Double(sheet.imageBytes)),
             "estimatedImageTokens": .number(Double(sheet.estimatedImageTokens)),
-            "estimatedSummaryTokens": .number(Double(sheet.estimatedSummaryTokens)),
-            "summary": .string(sheet.summary),
+            "estimatedSummaryTokens": .number(Double(sheet.estimatedSummaryTokens(pitchBaseline: pitchBaseline))),
+            "summary": .string(sheet.summary(pitchBaseline: pitchBaseline)),
         ]
         let fields: [String: JSONValue] = [
             "clipStart": .number(clip.start), "clipEnd": .number(clip.end),

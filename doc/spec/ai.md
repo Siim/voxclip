@@ -2183,16 +2183,19 @@ leaves the Mac, and nothing it finds is sent unless a request carries the frame 
 - **Times.** One frame per sentence of the clip's kept words, at the middle of its middle word, at most 24 (evenly spaced
   sentences beyond that, the first and last kept; `FrameSampling.sentenceSamples`), decoded within 0.25 s of the time.
   The opening scan is 10 fps over ±0.6 s at the clip's first kept word, decoded within one frame (1/30 s).
-- **Face.** `VNDetectFaceLandmarksRequest`; the largest face's rect (picture space, top-left origin), yaw and pitch,
-  `VNDetectFaceCaptureQualityRequest` on it, and each eye's aspect ratio: its landmark contour's height over width in
-  pixels (`EyeAspect`). Eyes are closed when the two ratios' mean is below **0.20** (open eyes measure 0.22–0.65 on the
-  user's footage, a half-closed blink 0.17–0.19). Quality **0.4** or more is good (0.3–0.62 measured). A face turned or
-  tilted more than 0.35 rad does not face the camera.
+- **Face.** `VNDetectFaceRectanglesRequest` pinned to revision 3 runs in the same `perform` as the text and rectangle
+  requests. Its largest face gives the rect (picture space, top-left origin) and a continuous yaw and pitch, and is the
+  `inputFaceObservations` of `VNDetectFaceLandmarksRequest` and `VNDetectFaceCaptureQualityRequest`, so all three describe
+  one face box. (Landmarks run alone use Vision's internal revision-2 detector: yaw 0 or ±π/4 and no pitch.) Each eye's
+  aspect ratio is its landmark contour's height over width in pixels (`EyeAspect`). Eyes are closed when the two ratios'
+  mean is below **0.20** (open eyes measure 0.22–0.65 on the user's footage, a half-closed blink 0.17–0.19). Quality
+  **0.4** or more is good (0.3–0.62 measured). Facing the camera: §19.2.
 - **Text and screens.** `VNRecognizeTextRequest` at the fast level, positions only: the recognised strings are dropped
   where Vision returns them and never stored. `VNDetectRectanglesRequest` finds rectangles; a rectangle of at least 1% of
   the frame with 3 or more text boxes centred in it, covering at least 4% of it, is a framed screen. A cluster of 8 or
   more text boxes outside any is a dense-text region (`FrameScreens`).
-- **Cache.** `Cache/<contentKey>/frames/analysis-v1.json` holds each observation under its pass (the decode tolerance) and
+- **Cache.** `Cache/<contentKey>/frames/analysis-v2.json` (version 2 since the revision-3 faces; a version-1 file holds
+  coarse poses and is ignored, never read or deleted) holds each observation under its pass (the decode tolerance) and
   the millisecond asked for, and `sheet-<ms>.jpg` the sheet frame. A cached time is never decoded or looked at again.
   Folders are real folders, never links; the key is leased while writing. The cache's first eviction pass removes the
   folder (it can be made again), so Clear cache drops the analysis (`FrameAnalysisCache`, architecture §8.2).
@@ -2201,8 +2204,16 @@ leaves the Mac, and nothing it finds is sent unless a request carries the frame 
 
 ### 19.2 The decisions (pure, VoxClipCore)
 
+- **Facing the camera** (`FrameFace.facesCamera(pitchBaseline:)`): |yaw| at most **0.35** rad (`yawLimit`) and the pitch
+  within **0.35** rad (`pitchLimit`) of the recording's typical pitch; nil when Vision reported neither angle. The typical
+  pitch (`FrameFace.pitchBaseline`) is the median pitch of the faces in the whole video's sentence pass
+  (`VideoFramePass.pitchBaseline()`), or of the clip's own sentence frames and opening scan when there is no pass
+  (`FrameAnalysis.pitchBaseline`, as `analyze-frames` without `--video-pass` uses). It is where the camera sits: +0.06 to
+  +0.18 rad on the user's footage, so an absolute limit would count camera height as looking away. A nil baseline judges
+  pitch from 0. Every decision below that reads facing takes the baseline as an input, and so does the frame sheet's
+  summary ("facing camera" or "turned away"). Shared vectors: `shared/fixtures/clip-frames/face-facing-cases.json`.
 - **Opening frame** (`OpeningFrame.choose`): the start moves only for a fault in its frame, so a clip never gains dead
-  air for nothing. No shift when that frame is a clear look (a face, eyes open, quality at least 0.4, not turned away).
+  air for nothing. No shift when that frame is a clear look (a face, eyes open, quality at least 0.4, facing the camera).
   An open look (eyes open, facing the camera) of lower quality moves only to a frame at least `qualityMargin` (0.15)
   better and at least 0.4. No face, shut eyes or a turned face move to the earliest open look of quality at least 0.25.
   Capture quality is relative, and dim 1080p footage scores 0.30–0.44 throughout. Under the absolute 0.4 floor alone, the
@@ -2248,8 +2259,9 @@ Measured: 24 frames of the user's 4K clip are 314 KB of JPEG, about 1,850 image 
 
 `voxclip-cli analyze-frames --open <project> --clip <id> [--video-pass] [--no-cache] [--sheet-out <folder>] --json` prints
 the analysis, the decisions (`opening`, `cover`, `blurSpans`, `blurCandidates`, `coverCandidates`, `crop9x16`, `crop1x1`),
-the sheet's numbers and summary, and the timings. `--video-pass` first runs the whole video's pass (§19.6) and adds
-`videoPass` (frames, seconds, the clip's frames from it and its opening scan, timed). `--open <media> --transcript <words
+the sheet's numbers and summary, and the timings. `decisions.pitchBaseline` is the typical pitch facing was judged against
+(null without a measured pitch). `--video-pass` first runs the whole video's pass (§19.6) and adds `videoPass` (frames,
+seconds, the clip's frames from it and its opening scan, timed, and the pass's `pitchBaseline`, which the decisions then use). `--open <media> --transcript <words
 JSON> --words first:last` measures a file without a project. It changes no project and sends nothing.
 
 ### 19.5 Windows

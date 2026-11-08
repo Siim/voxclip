@@ -88,6 +88,14 @@ public actor VideoFramePass {
         return await pass?.value
     }
 
+    /// The recording's typical pitch (`FrameFace.pitchBaseline` over every frame of the pass), which a clip's facing is
+    /// judged against so camera height never counts as looking away. Waits for the pass; nil when the source cannot be read
+    /// or no face had a pitch.
+    public func pitchBaseline() async -> Double? {
+        guard let found = await found() else { return nil }
+        return FrameFace.pitchBaseline(Array(found.frames.values))
+    }
+
     /// A clip's sentence frames, at most 24 evenly spread, from the pass (`FrameSampling.clipSamples`), with their sheet.
     /// Waits for the pass when it is still running. Nil when the source cannot be read.
     public func frames(for clip: FrameClip) async -> ClipFrames? {

@@ -24,8 +24,9 @@ public enum OpeningFrame {
     /// for nothing. The shift goes to the earliest acceptable frame in the silence before the first word, no earlier than
     /// `FrameSampling.openingSpan` before it and never inside the transcript item before it (`FrameClip.leadInFloor`): the
     /// start moves only through silence, so no word is clipped and none is added. Nil when no frame there is acceptable;
-    /// the start then stays.
-    public static func choose(_ clip: FrameClip, scan: [FrameObservation]) -> OpeningFrameChoice? {
+    /// the start then stays. Facing is judged against `pitchBaseline`, the recording's typical pitch
+    /// (`FrameFace.pitchBaseline`).
+    public static func choose(_ clip: FrameClip, scan: [FrameObservation], pitchBaseline: Double?) -> OpeningFrameChoice? {
         let start: Double = clip.start
         let earliest: Double = start - FrameSampling.openingSpan - 1e-9
         let floor: Double = max(clip.leadInFloor, max(0, earliest))
@@ -35,17 +36,17 @@ public enum OpeningFrame {
             if let best = current, abs(best.time - start) <= abs(frame.time - start) { continue }
             current = frame
         }
-        if current?.isClearLook == true { return OpeningFrameChoice(shift: 0, time: start) }
+        if current?.isClearLook(pitchBaseline: pitchBaseline) == true { return OpeningFrameChoice(shift: 0, time: start) }
         // The quality a candidate needs: clearly better than an open look, or merely usable instead of a fault.
         let needed: Double
-        if let current, isOpenLook(current) {
+        if let current, isOpenLook(current, pitchBaseline: pitchBaseline) {
             needed = max(FrameFace.goodQuality, quality(current) + qualityMargin)
         } else {
             needed = FrameFace.goodQuality - qualityMargin
         }
         func acceptable(_ frame: FrameObservation) -> Bool {
             let inSilence: Bool = frame.time >= floor - 1e-9 && frame.time <= start + 1e-9
-            return inSilence && isOpenLook(frame) && quality(frame) >= needed - 1e-9
+            return inSilence && isOpenLook(frame, pitchBaseline: pitchBaseline) && quality(frame) >= needed - 1e-9
         }
         guard let chosen = ordered.first(where: acceptable) else { return nil }
         let time = min(start, max(floor, chosen.time))
@@ -53,9 +54,9 @@ public enum OpeningFrame {
     }
 
     /// A face with open eyes that, when Vision measured it, faces the camera.
-    static func isOpenLook(_ frame: FrameObservation) -> Bool {
+    static func isOpenLook(_ frame: FrameObservation, pitchBaseline: Double?) -> Bool {
         guard let face = frame.face else { return false }
-        return face.eyes == .open && face.facesCamera != false
+        return face.eyes == .open && face.facesCamera(pitchBaseline: pitchBaseline) != false
     }
 
     static func quality(_ frame: FrameObservation) -> Double { frame.face?.captureQuality ?? 0 }
@@ -184,8 +185,8 @@ public enum CoverFrame {
     public static let facingWeight = 0.1
 
     /// The score of a frame, 0–1, or nil when it cannot be a cover: no face, eyes not open, or a closed-eye neighbour
-    /// within `blinkWindow` (`neighbours` are the other frames).
-    public static func score(_ frame: FrameObservation, neighbours: [FrameObservation]) -> Double? {
+    /// within `blinkWindow` (`neighbours` are the other frames). Facing is judged against `pitchBaseline`.
+    public static func score(_ frame: FrameObservation, neighbours: [FrameObservation], pitchBaseline: Double?) -> Double? {
         guard let face = frame.face, face.eyes == .open else { return nil }
         let blinking = neighbours.contains { other in
             other.time != frame.time && abs(other.time - frame.time) <= blinkWindow && other.face?.eyes == .closed
@@ -197,16 +198,16 @@ public enum CoverFrame {
         let ratios = [face.leftEyeAspect, face.rightEyeAspect].compactMap { $0 }
         let mean = ratios.isEmpty ? EyeAspect.closedBelow : ratios.reduce(0, +) / Double(ratios.count)
         let openness = min(1, max(0, (mean - EyeAspect.closedBelow) / 0.15))
-        let facing: Double = face.facesCamera == false ? 0 : 1
+        let facing: Double = face.facesCamera(pitchBaseline: pitchBaseline) == false ? 0 : 1
         let weighted = qualityWeight * quality + centredWeight * centred
         return weighted + eyesWeight * openness + facingWeight * facing
     }
 
     /// The best-scoring frame; the earlier one on a tie. Nil when no frame can be a cover.
-    public static func pick(_ frames: [FrameObservation]) -> CoverFrameChoice? {
+    public static func pick(_ frames: [FrameObservation], pitchBaseline: Double?) -> CoverFrameChoice? {
         var best: CoverFrameChoice?
         for frame in frames.sorted(by: { $0.time < $1.time }) {
-            guard let value = score(frame, neighbours: frames) else { continue }
+            guard let value = score(frame, neighbours: frames, pitchBaseline: pitchBaseline) else { continue }
             if best == nil || value > best!.score + 1e-12 { best = CoverFrameChoice(time: frame.time, score: value) }
         }
         return best

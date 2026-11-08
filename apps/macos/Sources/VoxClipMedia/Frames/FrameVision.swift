@@ -11,11 +11,16 @@ public protocol FrameObserving: Sendable {
 /// Apple Vision, on device (ADR-R48): the largest face's rect, capture quality, eye aspect ratios and head angles; text
 /// boxes from the fast recognizer (positions only: the strings are dropped here); and rectangles, which with dense text
 /// make a screen.
+///
+/// Faces come from `VNDetectFaceRectanglesRequest` revision 3, which reports continuous yaw, pitch and roll. Its largest
+/// face is handed to the landmarks and capture-quality requests (`inputFaceObservations`), so all three describe the
+/// same face box. Landmarks run alone use an internal revision-2 detector instead ("creating VNFaceBBoxAligner from
+/// VNFaceDetectorRevision2"), whose yaw is 0 or ±π/4 and whose pitch is nil (ADR-R48, 2026-11-08).
 public struct AppleFrameVision: FrameObserving {
     public init() {}
 
     public func observe(_ image: CGImage, time: Double) throws -> FrameObservation {
-        let landmarks = VNDetectFaceLandmarksRequest()
+        let faces = Self.faceRequest()
         let text = VNRecognizeTextRequest()
         text.recognitionLevel = .fast
         text.usesLanguageCorrection = false
@@ -27,28 +32,36 @@ public struct AppleFrameVision: FrameObserving {
         rectangles.minimumConfidence = 0.6
         rectangles.quadratureTolerance = 25
         let handler = VNImageRequestHandler(cgImage: image, options: [:])
-        try handler.perform([landmarks, text, rectangles])
-        let faces = landmarks.results ?? []
-        let largest = faces.max { area($0.boundingBox) < area($1.boundingBox) }
-        var quality: Double?
-        if let largest {
-            let request = VNDetectFaceCaptureQualityRequest()
-            request.inputFaceObservations = [largest]
-            try handler.perform([request])
-            quality = (request.results?.first?.faceCaptureQuality).map(Double.init)
-        }
+        try handler.perform([faces, text, rectangles])
+        let found = faces.results ?? []
+        let largest = found.max { area($0.boundingBox) < area($1.boundingBox) }
         let size = CGSize(width: image.width, height: image.height)
-        let face = largest.map { observation in
-            FrameFace(rect: Self.rect(observation.boundingBox), captureQuality: quality,
-                      leftEyeAspect: Self.eyeAspect(observation.landmarks?.leftEye, size: size),
-                      rightEyeAspect: Self.eyeAspect(observation.landmarks?.rightEye, size: size),
-                      yaw: observation.yaw?.doubleValue, pitch: observation.pitch?.doubleValue)
+        var face: FrameFace?
+        if let largest {
+            let landmarks = VNDetectFaceLandmarksRequest()
+            landmarks.inputFaceObservations = [largest]
+            let capture = VNDetectFaceCaptureQualityRequest()
+            capture.inputFaceObservations = [largest]
+            try handler.perform([landmarks, capture])
+            let regions = landmarks.results?.first?.landmarks
+            let quality = (capture.results?.first?.faceCaptureQuality).map(Double.init)
+            face = FrameFace(rect: Self.rect(largest.boundingBox), captureQuality: quality,
+                             leftEyeAspect: Self.eyeAspect(regions?.leftEye, size: size),
+                             rightEyeAspect: Self.eyeAspect(regions?.rightEye, size: size),
+                             yaw: largest.yaw?.doubleValue, pitch: largest.pitch?.doubleValue)
         }
         // Only where text is: the recognised strings never leave this function.
         let texts = (text.results ?? []).map { Self.rect($0.boundingBox) }
         let boxes = (rectangles.results ?? []).map { Self.rect($0.boundingBox) }
-        return FrameObservation(time: time, faceCount: faces.count, face: face, textRects: texts,
+        return FrameObservation(time: time, faceCount: found.count, face: face, textRects: texts,
                                 screens: FrameScreens.detect(rectangles: boxes, texts: texts))
+    }
+
+    /// The face detector, pinned to revision 3: continuous yaw, pitch and roll.
+    static func faceRequest() -> VNDetectFaceRectanglesRequest {
+        let request = VNDetectFaceRectanglesRequest()
+        request.revision = VNDetectFaceRectanglesRequestRevision3
+        return request
     }
 
     /// Vision's bottom-left normalized box as a picture-space rect.

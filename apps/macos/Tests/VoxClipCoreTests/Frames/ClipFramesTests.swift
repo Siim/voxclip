@@ -273,7 +273,7 @@ import Testing
         let frames = [Self.frame(1, time: 1, face: Self.face(0.4, quality: 0.45)), Self.frame(2, time: 1.2, face: Self.face(0.4, eyes: 0.1)),
                       Self.frame(3, time: 5, face: Self.face(0.4, quality: 0.7)), Self.frame(4, time: 9, face: Self.face(0.1, quality: 0.6)),
                       Self.frame(5, time: 13, face: Self.face(0.4, quality: 0.55)), Self.frame(6, time: 17, face: nil)]
-        let covers = ClipFrameCandidates.cover(frames)
+        let covers = ClipFrameCandidates.cover(frames, pitchBaseline: nil)
         #expect(covers.map(\.id) == ["C1", "C2", "C3"])
         #expect(covers.map(\.frame) == [3, 5, 4], "frame 1 sits beside a blink; frame 4 is off centre")
     }
@@ -281,7 +281,7 @@ import Testing
     @Test func aTextOnlySendKeepsTheSummaryAndCandidates() {
         let frames = [Self.frame(1, time: 1, face: Self.face(0.4))]
         let sheet = FrameSheet(frames: frames)
-        let shown = ClipAutopilotFrames(sheet: sheet, clipStart: 0, clipEnd: 10, images: true)
+        let shown = ClipAutopilotFrames(sheet: sheet, clipStart: 0, clipEnd: 10, images: true, pitchBaseline: nil)
         #expect(shown.images.count == 1 && shown.estimatedImageTokens == 77)
         #expect(shown.textOnly.images.isEmpty && shown.textOnly.summary == shown.summary && shown.textOnly.cover == shown.cover)
     }
