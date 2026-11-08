@@ -1,5 +1,26 @@
 # Windows fixed contracts
 
+### 2026-11-08 — Windows: the true-peak limiter, the 9 dB reduction cap and landing on target, the twin of Mac ADR-R47 amended (track/v2-loudness-limiter)
+
+The same definition as the Mac (doc/publishing.md §6.1); both replay the same vectors, so they produce the same gain and the same reduction curve (shared vectors within 1e-6 dB, samples within 2e-6; the bound is 0.2 dB).
+
+- **Core** (`Domain/Loudness/`): `SocialLimiter` (new; `Process(ReadOnlySpan<float>, Span<float>)` → frames written, `Finish(Span<float>)`, `Latency` = 251 at 48 kHz, `MaximumReductionDb`, `LimitedFrames`, `LimitedPercent`). `SocialLoudnessDecision(GainDb, Limit, Limiting)`, `SocialLoudnessLimit.ReductionCap` replaces `TruePeak`, `SocialLoudness.Landing(plan, truePeakDbtp, trials)` → `SocialLoudnessLanding(Settled, GainDb, Decision)`, `Report(measurement, decision, limiter, output)`, `MaximumReductionDb`, `LandingToleranceLu`. `SocialLoudnessReport` gains `LimiterMaxReductionDb` and `LimitedPercent` (7 JSON keys through `CliDataJson`); `LogLine()` adds `maxReduction=… limited=…`.
+- **Media.** `Exporter.PlanLoudness` (replaces `MeasureLoudness`) measures through a second `RenderedAudioReader` and simulates through one more per landing step (`Plan`, `Measure` → `SocialLoudnessMeasurement`, `Simulate`). `ExportLoudnessStage` (new, `Pipeline/ExportLoudnessStage.cs`) wraps the export's reader: it reads at most the export's sample count, runs the limiter, flushes its lookahead when the source ends and meters what it returns, so `EncodeAudio` (now taking a `StereoRead`, no gain) reads the same frames in the same order. `off` reads the reader directly. `WaveLoudness.Apply(path, decision, ct)` replaces `WaveGain` (gain and limiter in place).
+- **CLI.** The `--audio-out` partial gets `WaveLoudness.Apply` with the report's gain, limiting when `LimiterMaxReductionDb > 0`.
+- **App.** No change; the log line carries the two new numbers.
+- **Deleted.** `WaveGain`, `MeasureLoudness`, `SocialLoudnessLimit.TruePeak`, `SocialLoudness.Report(measurement)`.
+- **Tests.**
+  - Core `SocialLoudnessReplayTests` (5, updated to /2) and `SocialLimiterReplayTests` (5, new): the same checks as the Mac. `tests/Support/SocialLoudnessVectors.cs` gains `Stream`, `Measure` and `Export` (the whole rule), linked into Core and Media.
+  - Media `SocialLoudnessExportTests` (15, portable): the pre-pass in a prime frame size with loud audio past the end (plan and gained values), stopping where the reader ends, five export cases through `Plan`/`Simulate` and the stage in the AAC frame size equal to Core's output bit for bit and the same report, the WAV gain alone and gain + limiter bit for bit, the CLI's 7 keys.
+  - Media `SocialLoudnessNativeExportTests.TransientsAreLimitedAndTheExportLandsAtMinus14` (`RequiresFFmpeg` + `RequiresWindows`): `speech-plosives.mkv` (new in `generate-fixtures.sh`; −23.1 LUFS, −5.7 dBTP by FFmpeg here) exports within 0.5 LU of −14, PCM ≤ −1 dBTP, decoded ≤ −0.9 dBTP; it reads the export's `AudioSamples` under the 3-minute bounded token (lead ab96bb1f). **Owed on the VM.**
+  - Red without each rule: 15 single-rule mutations, each failing at least one Core or Media test (list in the Mac entry).
+- **Verification** (macOS host, Release, `-m:1 -nodeReuse:false -p:UseSharedCompilation=false`, `VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`, after merging lead ab96bb1f):
+  - Core 3,286 (3,257 passed, 29 skipped, 0 failed). Portable Media 1,033 (1,028 passed, 5 skipped, 0 failed). win-ui 1,393 (1,388 passed, 5 skipped, 0 failed; one unnamed failure on the first post-merge run did not recur in three reruns).
+  - App type-check build 0 warnings; `check-xaml.py` 0 problems; `*ReleaseSurrogate*` passes.
+  - ReleaseBoundary `update`: Core +68/−6 and Media +40/−6, declarations only, no literals (the limiter, the landing, `ExportLoudnessStage`, `ExportLoudnessPlan`, `WaveLoudness`, `Plan`/`Simulate`/`PlanLoudness`, `EncodeAudio`'s reader). `VoxClip.txt` and `voxclip-cli.txt` unchanged; no new App members. Unchanged again after the merge.
+  - The Release CLI outside a test host (`env -i … dotnet voxclip-cli.dll --runtime-terms --json`) exits 0; `--loudness loud` exits 2.
+- **Owed.** The native export test and the Windows export cost on the VM (the lead's).
+
 ### 2026-11-08 — Windows: the native media tests no longer hang on the social loudness test (track/v2-win-media-hang)
 
 From lead `0f952b0b` on (the track/v2-loudness merge), the Windows job's ".NET media tests (strict native and CLI E2E)" step ran until the job was cancelled at 60 minutes and printed nothing (run 42418707681).

@@ -81,6 +81,7 @@ Release `voxclip-cli autopilot --count 3 --timings` at `0f952b0b` (eyes part 1, 
 
 - **Transcription is now the largest stage.** Apple's on-device `SpeechTranscriber` (`--engine apple`) took **18.2 s** for the same file (96× real time) and found 2,855 words. Within one 5:48 repetition it matched Whisper on 94–96% of words. It writes "um" and "uh", which Whisper drops, and it missed some names ("Opus", "Twilio") but got "telcos" where Whisper wrote "delco's". Its word starts are about 300 ms earlier (median), because Apple's word ranges take in the silence before a word (transcription.md §5.5 already handles both conventions). With Apple transcription the first clip would land at about 105 s.
 - **Loudness did not reach −14 on real speech.** The three exports measured −20.1, −19.8 and −20.0 LUFS (FFmpeg `ebur128`). Clip 1's report: measured −20.9 LUFS, gain +0.74 dB, `capped: true`. Plosives and clicks reach the −1 dBTP ceiling first, so static gain alone barely moves talking-head audio. track/v2-loudness-limiter adds a transparent true-peak limiter.
+  - Follow-up 2026-11-08 (ADR-R47 amended, a true-peak limiter): the same three clips export at −14.04, −14.06 and −14.05 LUFS (FFmpeg −14.1), true peak −1.00 dBTP on the PCM, not capped, with at most 6.9–8.3 dB of limiting.
 
 ## Side by side
 
