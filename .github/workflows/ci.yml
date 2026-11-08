@@ -90,6 +90,18 @@ jobs:
         shell: bash
         run: python -m pip install "jsonschema==4.26.0" "numpy==2.5.4"
 
+      # GitHub release downloads (whisper.cpp's xcframework) returned 504 for over half an hour on 2026-11-08, so
+      # SwiftPM's binary-artifact cache is kept between runs. The prefix restore key reuses an older cache after a
+      # manifest edit; SwiftPM still checks every zip against the checksum pinned in Package.swift.
+      - name: Cache Swift binary artifacts
+        if: steps.detect.outputs.swift == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/org.swift.swiftpm/artifacts
+          key: swiftpm-artifacts-${{ runner.os }}-${{ hashFiles('apps/macos/Package.swift', 'apps/macos/Package.resolved') }}
+          restore-keys: |
+            swiftpm-artifacts-${{ runner.os }}-
+
       # Binary targets such as ONNX Runtime download from vendor hosts that sometimes time out, so
       # resolution is retried before the build instead of failing the job on one slow request.
       - name: Resolve Swift packages
