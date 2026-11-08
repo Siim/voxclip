@@ -1949,7 +1949,10 @@ Claude mode never answers the Rewrite panel's card; outside Claude mode the card
 
 ### 16.12 Claude mode's scheduling and timings (2026-11-07)
 
-Claude mode (design.md §6.7) no longer waits for its slowest clip.
+Claude mode (design.md §6.7) no longer waits for its slowest clip. Windows does the same (track/v2-win-speed-images, 2026-11-08):
+`ClipAutopilotProgress.Ready`, the per-clip apply in `EditorViewModel.MakeTopPostable`, `ProjectLlmRuns.SharingAsync`, Core
+`ClaudeModeClock` with the same log line, and `voxclip-cli autopilot` (no frames, no `frames`/`opening` stages). A Windows CLI
+connector now runs one process per connector instance, not one per process, so the lanes plan at once.
 
 - **One request for the top clips.** When Find Clips ends, Make top N postable sends one `clips` request for the top N suggestions by score, with their `moments`: each plan's instruction is `momentInstruction` (rank, count, Find Clips' title and reason) and `momentOthers` (the other clips by title and start), so the series stays varied without the moments stage. As before, the send is authorized once for the series before anything goes (an API key's send asks inline first), each plan is checked against the model's context before it is sent, and every plan runs at extra high effort.
 - **At most three in flight.** The Claude Code connector gets two more lanes, so the best three plan at once; a fourth and later clip starts as a lane frees.
@@ -2255,8 +2258,14 @@ Part 2 gives Windows the project fields: a clip's `leadInSeconds`, its `clipCont
 and save losslessly (the `shared/fixtures/clip-frames/` vectors replay), the clip opens at its lead-in, and the 9:16 and 1:1
 export crops follow the stored face (`ClipFaceCrop`). The `clip-autopilot` prompt version 8 and its fixtures pass.
 
-Owed: the `images` capability and image wires in the C# connectors (the catalogue entry is shared and already read), the
-analyzer (Windows `FaceDetector` has no landmarks or capture quality; the eyes and quality need another source), the
+Windows Core (track/v2-win-speed-images, 2026-11-08) has `LlmRequest.Images`, `ILlmConnector.SupportsImages` from the catalogue
+and the §19.3 wires (Anthropic, OpenAI, xAI, Gemini; Claude Code's stream-json message when `--help` lists `images.requiredFlags`;
+Codex `--image` files in the private io folder), byte for byte as the Mac's; requests without images are unchanged and the shared
+LLM vectors replay. The planner renders prompt version 8 with `moments`, `momentOthers` and the frame section when the caller gives
+`ClipAutopilotFrames` (plan version 4, `FrameChoices`, the reply's `frames` checked as on the Mac; `plan-frames-cases.json`
+replays). Windows has no analyzer, so the editor and `voxclip-cli autopilot` send no frames.
+
+Owed: the analyzer (Windows `FaceDetector` has no landmarks or capture quality; the eyes and quality need another source), the
 decisions (a twin of §19.2 with shared vectors), the whole-video pass and the plan request's frames, the four review
 rows and the send line, the cover export (`-cover.jpg` and `covr` art), the face crop in still frames (`CurrentFrames`),
 and the CLI command.
