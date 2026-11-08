@@ -8,7 +8,7 @@ Principles:
 2. **No third-party secret ships in the app**, and VoxClip never holds X or LinkedIn tokens in M1 or M2.
 3. **The final post call is never retried automatically.** A lost response may follow a successful write.
 4. Every exported file already meets the VoxConvo, X and LinkedIn input rules: MP4, H.264 High, 4:2:0 8-bit, AAC-LC 48 kHz, long edge ≤ 1920, ≤ 60 fps, moov first (architecture.md section 4.1).
-5. **Exports land at social loudness** (section 6, ADR-R47): −14 LUFS integrated, true peak at or below −1 dBTP, by one static gain.
+5. **Exports land at social loudness** (section 6, ADR-R47): −14 LUFS integrated by one gain, with a true-peak limiter holding the peak at −1 dBTP.
 
 Provenance: vox-api and vox-web as read on 2026-10-25 (working trees including uncommitted edits) and current X / LinkedIn developer documentation, from the planning research `vox-integration.md`.
 
@@ -303,24 +303,46 @@ After a VoxConvo publish the clip is already on VoxConvo's S3, so vox-api pushes
 
 ---
 
-## 6. Export loudness (ADR-R47)
+## 6. Export loudness (ADR-R47, amended 2026-11-08)
 
 Feeds normalise near −14 LUFS, and the agents' posted clips were about −16 LUFS, while a VoxClip talking-head export measured −20.7 LUFS (doc/agent-clipping-benchmark.md). Every export on both platforms, from the app and from the CLI, now lands at **social loudness**:
 
-- **−14 LUFS integrated** (ITU-R BS.1770-4 with EBU R128 gating) and a **true peak at or below −1.0 dBTP** (BS.1770-4 Annex 2).
-- **One static gain, never a compressor or limiter.** The gain is −14 minus the measured loudness, kept within −20…+12 dB, then lowered until the true peak sits at −1 dBTP. A clip whose peaks stop the gain short lands quieter than −14 (`capped: true`). A silent clip gets 0 dB.
-- **It measures what is exported:** the mix after Voice Lab, the clip's speed, volume, fades and mute, the music bed, effects and bleeps. The gain applies to the exported audio only. The SRT is unchanged; the CLI's `--audio-out` WAV carries the same gain.
+- **−14 LUFS integrated** (ITU-R BS.1770-4 with EBU R128 gating) and a **true peak at or below −1.0 dBTP** (BS.1770-4 Annex 2) on the PCM the encoder receives.
+- **One gain and a transparent true-peak limiter.** The gain is −14 minus the measured loudness, kept within −20…+12 dB. After it, a lookahead limiter holds plosives and clicks at −1 dBTP (§6.1); nothing under the ceiling is compressed and there is no makeup gain. If the limiter would have to reduce more than 9 dB anywhere, the gain is lowered until it reduces exactly 9 and the clip lands quieter than −14 (`capped: true`). A silent clip gets 0 dB and no limiting.
+- **Landing on target:** limiting removes a little energy, so offline pre-passes (gain and limiter simulated, no encode) measure what is left and correct the gain: once, or, when the limiter took more than 0.5 LU, once more by a secant step. An uncapped clip lands within 0.5 LU of −14.
+- **It measures what is exported:** the mix after Voice Lab, the clip's speed, volume, fades and mute, the music bed, effects and bleeps. The gain and limiter apply to the exported audio only. The SRT is unchanged; the CLI's `--audio-out` WAV runs through the same gain and limiter.
 - **Off switch:** the CLI's `--loudness off` writes the mix as composed. There is no app control. Preview plays the mix as composed, so an export can sound louder than its preview.
-- **Reporting:** the export JSON's `loudness` gives `measuredLufs` (before the gain), `gainDb`, `outputLufs` and `truePeakDbtp` (after it) and `capped`. The app logs the same numbers per export.
+- **Reporting:** the export JSON's `loudness` gives `measuredLufs` (before the gain), `gainDb`, `outputLufs` and `truePeakDbtp` (after the gain and limiter), `capped`, `limiterMaxReductionDb` and `limitedPercent` (the share of frames under any reduction, the release included; 0 when the gain alone keeps the peak under −1 dBTP). The app logs the same numbers per export.
+- **The ceiling is the PCM's.** AAC rings a few hundredths of a dB past it on a limited transient (decoded −0.97 dBTP in the Mac test).
 
-How it is measured: before encoding, the exporter reads its own mixed audio once more, offline, through the same composition (Mac) or audio reader (Windows), and measures it. That costs one audio-only decode and no second encode. Measured on the Mac (Apple silicon, release `voxclip-cli`, 1080p30 H.264 sources with AAC, `--style off`, the median of three runs each, with the Mac under other agents' load):
+### 6.1 The limiter, exactly
 
-| Clip | `--loudness off` | `social` | Cost of the measuring pass |
-|---|---|---|---|
-| 34 s | 3.35 s | 3.56 s | +0.21 s (+6%) |
-| 3 min | 16.73 s | 17.39 s | +0.66 s (+4%) |
+Both platforms implement this definition (`SocialLimiter`, Mac and Windows Core) and replay `shared/fixtures/loudness/social-limiter-cases.json`; outputs agree within float rounding. Input: interleaved Float32 frames x at rate r (48 kHz at export), gain G dB, ceiling C = −1 dBTP, T = 10^(C/20).
 
-FFmpeg's `ebur128` reads a social export of a −22.1 LUFS source at −14.0 LUFS, true peak −3.3 dBTP. Windows timing is owed to the next run on the VM.
+1. **Gain.** z = (double)x × 10^(G/20) per sample. If TP + G ≤ C (TP: the mix's measured true peak) the limiter does not run: the output is Float(z), with no latency.
+2. **Detection.** For every point n = 0 … N + 10 (N frames; z is 0 outside 0 … N − 1), p(n) is the largest over the channels of |z(n)| and of the four Annex 2 phase outputs Σ_{t=0…11} c_k[t] · z(n − t) (the 48-tap filter of BS.1770-4 Annex 2, summed in tap order). The overshoot is R(n) = 20 log10 p(n) − C when p(n) > T, else 0.
+3. **Hold.** H(m) = max R(m … m + 11): every frame read by an overshooting detection point carries its full reduction.
+4. **Attack.** L = round(0.005 × r) (240 at 48 kHz). A(m) = max over j = 0 … L of H(m + j) · (½ + ½ cos(π j / L)): a raised cosine that starts L frames before the held frames and reaches H at them.
+5. **Release.** E(m) = max(A(m), d) with d = E(m − 1) · e^(−1/(0.08 r)), and d = 0 when d < 0.01 dB; E(−1) = 0. One E for all channels.
+6. **Output.** Float(z × 10^(−E(m)/20)) for every channel, Float(z) where E(m) = 0. The output lags the input by L + 11 frames; the stream is flushed with that many frames of silence, so exactly N frames come out.
+
+The largest E equals the largest R, which is TP + G − C: the 9 dB cap is G ≤ C + 9 − TP. A frame is **limited** when E(m) > 0.
+
+**The plan** (`SocialLoudness.decide`, `landing`): G₀ = clamp(−14 − L, −20, +12), lowered to C + 9 − TP when above it (`reductionCap`). When the limiter runs and G₀ was not limited or capped: simulate G₀ → L₀; G₁ = G₀ + (−14 − L₀), bounded by +12 and the cap. If |−14 − L₀| ≤ 0.5 LU, export at G₁; otherwise simulate G₁ → L₁ and export at G₂ = G₁ + (−14 − L₁) · (G₁ − G₀)/(L₁ − L₀) (a plain step when the slope is under 0.05), bounded the same way.
+
+### 6.2 Cost
+
+The exporter reads its own mixed audio offline, through the same composition (Mac) or audio reader (Windows): once to measure, and once or twice more to simulate when the limiter has work. No second encode. Measured on the Mac (Apple silicon, release `voxclip-cli`, H.264 sources with AAC, `--style off`, medians):
+
+| Clip | Before (static gain): `off` → `social` | After (limiter): `off` → `social` |
+|---|---|---|
+| 34 s range (capped after: no simulation) | 7.05 → 7.08 s (+0.04 s) | 6.94 → 7.34 s (+0.40 s, +6%) |
+| 3 min range (capped after: no simulation) | 33.55 → 34.08 s (+0.53 s) | 34.42 → 36.11 s (+1.70 s, +5%) |
+| Benchmark clip 2, 29.7 s, 9:16 (after: limited, two simulations) | 5.81 → 5.98 s (+0.17 s) | 6.19 → 6.76 s (+0.57 s, +9%) |
+
+The sources are ranges of the 29-minute 1080p59.94 benchmark recording, `--aspect source` (clip 2: `--aspect 9:16`), four interleaved off/social pairs each, with another agent's suite and a VM running; the 3 min after-runs swung by up to 9 s and the figure is the median of eight pairs. The limiter's own work (detection, the lookahead and metering what is written) is most of the added cost; each simulation is one more audio-only read of the mix.
+
+Windows timing is owed to the next run on the VM.
 
 ## 7. Cover image (ADR-R48)
 

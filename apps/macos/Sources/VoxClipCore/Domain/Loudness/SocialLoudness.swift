@@ -1,7 +1,8 @@
 import Foundation
 
-/// How an export sets its level (ADR-R47). `social`, the default for every export, applies one static gain to the
-/// exported mix so it lands at −14 LUFS with its true peak at or below −1 dBTP; `off` writes the mix as composed.
+/// How an export sets its level (ADR-R47, amended 2026-11-08). `social`, the default for every export, gains the
+/// exported mix to −14 LUFS and holds its true peak at −1 dBTP with a transparent true-peak limiter; `off` writes the
+/// mix as composed.
 public enum ExportLoudness: String, Codable, Sendable, CaseIterable {
     case social
     case off
@@ -13,37 +14,56 @@ public enum SocialLoudnessLimit: String, Codable, Sendable, Equatable {
     case none
     /// The gain wanted more than +12 dB or less than −20 dB and stopped there.
     case gainLimit
-    /// The true-peak ceiling (−1 dBTP) stopped the gain short, so the clip lands quieter than −14 LUFS.
-    case truePeak
+    /// The limiter would have reduced more than 9 dB, so the gain stopped where it reduces exactly 9 dB and the clip
+    /// lands quieter than −14 LUFS rather than squashed.
+    case reductionCap
     /// The gated loudness is undefined (digital silence, everything below −70 LUFS, or shorter than one 400 ms
-    /// block), so the gain is 0 dB.
+    /// block), so the gain is 0 dB and nothing is limited.
     case silent
 }
 
-/// The static gain the rule chose and why.
+/// The gain the rule chose, why, and whether the limiter has work: the true peak after the gain is over −1 dBTP.
 public struct SocialLoudnessDecision: Sendable, Equatable {
     public let gainDb: Double
     public let limit: SocialLoudnessLimit
-    public var capped: Bool { limit == .truePeak }
-    public init(gainDb: Double, limit: SocialLoudnessLimit) { self.gainDb = gainDb; self.limit = limit }
+    public let limiting: Bool
+    /// The reduction cap set the gain; it is the only reason a clip is reported capped.
+    public var capped: Bool { limit == .reductionCap }
+    public init(gainDb: Double, limit: SocialLoudnessLimit, limiting: Bool = false) {
+        self.gainDb = gainDb; self.limit = limit; self.limiting = limiting
+    }
 }
 
-/// What an export reports about its loudness (the export JSON's `loudness`, ADR-R47). `truePeakDbtp` and
-/// `outputLufs` are the exported mix's, after the gain; `measuredLufs` is before it. A silent mix has no loudness and
-/// no gain; digital silence has no true peak either.
+/// The next step of landing on target: simulate a gain offline, or export at the settled decision.
+public enum SocialLoudnessLanding: Sendable, Equatable {
+    case simulate(gainDb: Double)
+    case settled(SocialLoudnessDecision)
+}
+
+/// What an export reports about its loudness (the export JSON's `loudness`, ADR-R47). `measuredLufs` is the composed
+/// mix's, before the gain; `outputLufs` and `truePeakDbtp` are the exported PCM's, after the gain and the limiter.
+/// `limiterMaxReductionDb` is the limiter's largest reduction and `limitedPercent` the share of frames under any
+/// reduction, both 0 when the gain alone keeps the true peak under −1 dBTP. A silent mix has no loudness and no gain;
+/// digital silence has no true peak either.
 public struct SocialLoudnessReport: Codable, Sendable, Equatable {
     public var measuredLufs: Double?
     public var gainDb: Double
     public var outputLufs: Double?
     public var truePeakDbtp: Double?
     public var capped: Bool
+    public var limiterMaxReductionDb: Double
+    public var limitedPercent: Double
 
-    public init(measuredLufs: Double?, gainDb: Double, outputLufs: Double?, truePeakDbtp: Double?, capped: Bool) {
+    public init(measuredLufs: Double?, gainDb: Double, outputLufs: Double?, truePeakDbtp: Double?, capped: Bool,
+                limiterMaxReductionDb: Double = 0, limitedPercent: Double = 0) {
         self.measuredLufs = measuredLufs; self.gainDb = gainDb; self.outputLufs = outputLufs
         self.truePeakDbtp = truePeakDbtp; self.capped = capped
+        self.limiterMaxReductionDb = limiterMaxReductionDb; self.limitedPercent = limitedPercent
     }
 
-    private enum CodingKeys: String, CodingKey { case measuredLufs, gainDb, outputLufs, truePeakDbtp, capped }
+    private enum CodingKeys: String, CodingKey {
+        case measuredLufs, gainDb, outputLufs, truePeakDbtp, capped, limiterMaxReductionDb, limitedPercent
+    }
 
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -52,6 +72,8 @@ public struct SocialLoudnessReport: Codable, Sendable, Equatable {
         outputLufs = try values.decodeIfPresent(Double.self, forKey: .outputLufs)
         truePeakDbtp = try values.decodeIfPresent(Double.self, forKey: .truePeakDbtp)
         capped = try values.decode(Bool.self, forKey: .capped)
+        limiterMaxReductionDb = try values.decodeIfPresent(Double.self, forKey: .limiterMaxReductionDb) ?? 0
+        limitedPercent = try values.decodeIfPresent(Double.self, forKey: .limitedPercent) ?? 0
     }
 
     /// Every key is written, a missing value as null.
@@ -62,49 +84,98 @@ public struct SocialLoudnessReport: Codable, Sendable, Equatable {
         try values.encode(outputLufs, forKey: .outputLufs)
         try values.encode(truePeakDbtp, forKey: .truePeakDbtp)
         try values.encode(capped, forKey: .capped)
+        try values.encode(limiterMaxReductionDb, forKey: .limiterMaxReductionDb)
+        try values.encode(limitedPercent, forKey: .limitedPercent)
     }
 
     /// The app log's line: numbers only, no paths or names.
     public var logLine: String {
         func number(_ value: Double?) -> String { value.map { String(format: "%.2f", $0) } ?? "none" }
-        return "loudness measured=\(number(measuredLufs)) gain=\(number(gainDb)) output=\(number(outputLufs)) truePeak=\(number(truePeakDbtp)) capped=\(capped)"
+        let head = "loudness measured=\(number(measuredLufs)) gain=\(number(gainDb)) output=\(number(outputLufs))"
+        return head + " truePeak=\(number(truePeakDbtp)) capped=\(capped) maxReduction=\(number(limiterMaxReductionDb)) limited=\(number(limitedPercent))"
     }
 }
 
-/// Social loudness (ADR-R47): the exported mix lands at −14 LUFS integrated (ITU-R BS.1770-4 with EBU R128 gating),
-/// its true peak at or below −1.0 dBTP, by one static gain and nothing else, so the voice never pumps. The gain is
-/// target minus measured, kept within −20…+12 dB, then lowered until the true peak sits at −1 dBTP. Shared vectors:
-/// shared/fixtures/loudness/social-loudness-cases.json.
+/// Social loudness (ADR-R47, amended 2026-11-08): the exported mix lands at −14 LUFS integrated (ITU-R BS.1770-4 with
+/// EBU R128 gating) by one gain, within −20…+12 dB, and a transparent true-peak limiter (`SocialLimiter`) holds the true
+/// peak at −1.0 dBTP. The limiter's largest reduction is exactly the true peak after the gain minus the ceiling, so the
+/// gain is lowered until that is at most 9 dB. Offline pre-passes simulate the gain and the limiter, and a limited,
+/// uncapped gain is corrected by what the limiter took (`landing`). Shared vectors: shared/fixtures/loudness/
+/// social-loudness-cases.json and social-limiter-cases.json.
 public enum SocialLoudness {
     public static let targetLufs = -14.0
     public static let ceilingDbtp = -1.0
     public static let maximumBoostDb = 12.0
     public static let maximumCutDb = -20.0
+    public static let maximumReductionDb = 9.0
+    /// A first simulation within this of the target lands with one correction; beyond it, a second one is run.
+    public static let landingToleranceLu = 0.5
     static let absoluteGateLufs = -70.0
     static let relativeGateLu = -10.0
     static let stepSeconds = 0.1
     static let blockSteps = 4
 
-    /// The rule alone. A nil loudness (silent) gets 0 dB; a nil true peak never caps.
+    /// The plan from the measured mix alone. A nil loudness (silent) gets 0 dB and no limiting.
     public static func decide(measuredLufs: Double?, truePeakDbtp: Double?) -> SocialLoudnessDecision {
         guard let measured = measuredLufs, measured.isFinite else { return SocialLoudnessDecision(gainDb: 0, limit: .silent) }
         let wanted = targetLufs - measured
-        let clamped = min(max(wanted, maximumCutDb), maximumBoostDb)
-        if let peak = truePeakDbtp, peak.isFinite, ceilingDbtp - peak < clamped {
-            return SocialLoudnessDecision(gainDb: ceilingDbtp - peak, limit: .truePeak)
-        }
-        return SocialLoudnessDecision(gainDb: clamped, limit: clamped == wanted ? .none : .gainLimit)
+        var gain = min(max(wanted, maximumCutDb), maximumBoostDb)
+        var limit: SocialLoudnessLimit = gain == wanted ? .none : .gainLimit
+        guard let peak = truePeakDbtp, peak.isFinite else { return SocialLoudnessDecision(gainDb: gain, limit: limit) }
+        let cap = ceilingDbtp + maximumReductionDb - peak
+        if gain > cap { gain = cap; limit = .reductionCap }
+        return SocialLoudnessDecision(gainDb: gain, limit: limit, limiting: peak + gain > ceilingDbtp)
     }
 
-    /// The decision for a measured mix and what the export reports after applying it.
-    public static func report(_ measurement: SocialLoudnessMeasurement) -> (decision: SocialLoudnessDecision, report: SocialLoudnessReport) {
+    /// Landing on target from offline pre-passes that simulate the gain and the limiter. `trials` are the
+    /// (gain, simulated output LUFS) pairs so far; the answer is the next gain to simulate or the settled decision.
+    /// Only an uncapped, limited plan moves: one simulation and one correction by target minus what it measured; when
+    /// the limiter took more than 0.5 LU, the corrected gain is simulated too and a secant step through the two lands
+    /// it. Every gain stays within −20…+12 dB and the 9 dB reduction cap.
+    public static func landing(_ plan: SocialLoudnessDecision, truePeakDbtp: Double?,
+                               trials: [(gainDb: Double, lufs: Double?)]) -> SocialLoudnessLanding {
+        func settled(_ gain: Double, _ limit: SocialLoudnessLimit) -> SocialLoudnessLanding {
+            .settled(SocialLoudnessDecision(gainDb: gain, limit: limit, limiting: (truePeakDbtp ?? -.infinity) + gain > ceilingDbtp))
+        }
+        guard plan.limiting, plan.limit == .none, let peak = truePeakDbtp else { return .settled(plan) }
+        guard let first = trials.first else { return .simulate(gainDb: plan.gainDb) }
+        guard let firstLufs = first.lufs else { return .settled(plan) }
+        let corrected = bounded(first.gainDb + targetLufs - firstLufs, truePeakDbtp: peak)
+        guard trials.count > 1 else {
+            if abs(targetLufs - firstLufs) <= landingToleranceLu || corrected.gainDb == first.gainDb {
+                return settled(corrected.gainDb, corrected.limit)
+            }
+            return .simulate(gainDb: corrected.gainDb)
+        }
+        let second = trials[1]
+        guard let secondLufs = second.lufs else { return settled(second.gainDb, corrected.limit) }
+        let slope = (secondLufs - firstLufs) / (second.gainDb - first.gainDb)
+        let step = slope > 0.05 ? (targetLufs - secondLufs) / slope : targetLufs - secondLufs
+        let landed = bounded(second.gainDb + step, truePeakDbtp: peak)
+        return settled(landed.gainDb, landed.limit)
+    }
+
+    /// A gain kept within −20 dB, +12 dB and the 9 dB reduction cap, and what stopped it.
+    static func bounded(_ gainDb: Double, truePeakDbtp: Double) -> (gainDb: Double, limit: SocialLoudnessLimit) {
+        let cap = ceilingDbtp + maximumReductionDb - truePeakDbtp
+        let bound = min(maximumBoostDb, cap)
+        if gainDb > bound { return (bound, cap <= maximumBoostDb ? .reductionCap : .gainLimit) }
+        return (max(gainDb, maximumCutDb), .none)
+    }
+
+    /// The report of an export at `decision`. Gain alone (not limiting): the input measurement scaled by the gain.
+    /// Limited: `output`, the meter of the exported PCM, and the limiter's own counts.
+    public static func report(measurement: SocialLoudnessMeasurement, decision: SocialLoudnessDecision,
+                              limiter: SocialLimiter, output: SocialLoudnessMeasurement?) -> SocialLoudnessReport {
         let measured = measurement.integratedLufs()
-        let peak = measurement.truePeakDbtp
-        let decision = decide(measuredLufs: measured, truePeakDbtp: peak)
-        let report = SocialLoudnessReport(measuredLufs: measured, gainDb: decision.gainDb,
-            outputLufs: measurement.integratedLufs(gainDb: decision.gainDb), truePeakDbtp: peak.map { $0 + decision.gainDb },
-            capped: decision.capped)
-        return (decision, report)
+        guard decision.limiting, let output else {
+            return SocialLoudnessReport(measuredLufs: measured, gainDb: decision.gainDb,
+                outputLufs: measurement.integratedLufs(gainDb: decision.gainDb),
+                truePeakDbtp: measurement.truePeakDbtp.map { $0 + decision.gainDb }, capped: decision.capped)
+        }
+        return SocialLoudnessReport(measuredLufs: measured, gainDb: decision.gainDb, outputLufs: output.integratedLufs(),
+            truePeakDbtp: output.truePeakDbtp, capped: decision.capped,
+            limiterMaxReductionDb: limiter.maximumReductionDb, limitedPercent: limiter.limitedPercent)
     }
 
     /// The linear sample factor of a gain in dB.

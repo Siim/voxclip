@@ -1,19 +1,20 @@
 {
- "format": "voxclip-social-loudness-cases/1",
- "description": "Social loudness (ADR-R47): BS.1770-4 integrated loudness with EBU R128 gating and the Annex 2 true peak of stereo Float32 signals, and the static export gain: -14 LUFS, true peak at most -1 dBTP, the gain within -20...+12 dB, 0 dB when the loudness is undefined. Floats rounded to 6 decimals; replays compare within 1e-6.",
+ "format": "voxclip-social-loudness-cases/2",
+ "description": "Social loudness (ADR-R47, amended 2026-11-08): BS.1770-4 integrated loudness with EBU R128 gating and the Annex 2 true peak of stereo Float32 signals, and the plan: -14 LUFS, the gain within -20...+12 dB and lowered until the true-peak limiter would reduce at most 9 dB, 0 dB and no limiting when the loudness is undefined. gainedLufs and gainedTruePeakDbtp are after the plan's gain alone, before the limiter and the landing correction (social-limiter-cases.json). Floats rounded to 6 decimals; replays compare within 1e-6.",
  "constants": {
   "targetLufs": -14.0,
   "ceilingDbtp": -1.0,
   "maximumBoostDb": 12.0,
   "maximumCutDb": -20.0,
+  "maximumReductionDb": 9.0,
   "absoluteGateLufs": -70.0,
   "relativeGateLu": -10.0,
   "blockSeconds": 0.4,
   "stepSeconds": 0.1
  },
- "caseCount": 24,
+ "caseCount": 28,
  "counts": {
-  "rule": 12,
+  "rule": 16,
   "signal": 12
  },
  "cases": [
@@ -25,7 +26,9 @@
    "expected": {
     "gainDb": 0.0,
     "limit": "none",
-    "capped": false
+    "capped": false,
+    "limiting": false,
+    "limiterMaxReductionDb": 0.0
    }
   },
   {
@@ -36,7 +39,9 @@
    "expected": {
     "gainDb": 6.7,
     "limit": "none",
-    "capped": false
+    "capped": false,
+    "limiting": false,
+    "limiterMaxReductionDb": 0.0
    }
   },
   {
@@ -47,7 +52,9 @@
    "expected": {
     "gainDb": 12.0,
     "limit": "gainLimit",
-    "capped": false
+    "capped": false,
+    "limiting": false,
+    "limiterMaxReductionDb": 0.0
    }
   },
   {
@@ -58,7 +65,9 @@
    "expected": {
     "gainDb": 12.0,
     "limit": "none",
-    "capped": false
+    "capped": false,
+    "limiting": false,
+    "limiterMaxReductionDb": 0.0
    }
   },
   {
@@ -69,7 +78,9 @@
    "expected": {
     "gainDb": -5.5,
     "limit": "none",
-    "capped": false
+    "capped": false,
+    "limiting": false,
+    "limiterMaxReductionDb": 0.0
    }
   },
   {
@@ -80,51 +91,100 @@
    "expected": {
     "gainDb": -20.0,
     "limit": "gainLimit",
-    "capped": false
+    "capped": false,
+    "limiting": false,
+    "limiterMaxReductionDb": 0.0
    }
   },
   {
-   "id": "rule-peak-cap",
+   "id": "rule-limited",
    "kind": "rule",
    "measuredLufs": -20.0,
    "truePeakDbtp": -3.0,
    "expected": {
-    "gainDb": 2.0,
-    "limit": "truePeak",
-    "capped": true
+    "gainDb": 6.0,
+    "limit": "none",
+    "capped": false,
+    "limiting": true,
+    "limiterMaxReductionDb": 4.0
    }
   },
   {
-   "id": "rule-peak-cap-edge",
+   "id": "rule-ceiling-edge",
    "kind": "rule",
    "measuredLufs": -20.0,
    "truePeakDbtp": -7.0,
    "expected": {
     "gainDb": 6.0,
     "limit": "none",
-    "capped": false
+    "capped": false,
+    "limiting": false,
+    "limiterMaxReductionDb": 0.0
    }
   },
   {
-   "id": "rule-peak-cap-below-boost-limit",
+   "id": "rule-limited-at-boost-limit",
    "kind": "rule",
    "measuredLufs": -40.0,
    "truePeakDbtp": -5.0,
    "expected": {
-    "gainDb": 4.0,
-    "limit": "truePeak",
-    "capped": true
+    "gainDb": 12.0,
+    "limit": "gainLimit",
+    "capped": false,
+    "limiting": true,
+    "limiterMaxReductionDb": 8.0
    }
   },
   {
-   "id": "rule-peak-cap-negative",
+   "id": "rule-limited-negative-peak-room",
    "kind": "rule",
    "measuredLufs": -16.0,
    "truePeakDbtp": 2.0,
    "expected": {
-    "gainDb": -3.0,
-    "limit": "truePeak",
-    "capped": true
+    "gainDb": 2.0,
+    "limit": "none",
+    "capped": false,
+    "limiting": true,
+    "limiterMaxReductionDb": 5.0
+   }
+  },
+  {
+   "id": "rule-reduction-cap",
+   "kind": "rule",
+   "measuredLufs": -28.0,
+   "truePeakDbtp": 0.0,
+   "expected": {
+    "gainDb": 8.0,
+    "limit": "reductionCap",
+    "capped": true,
+    "limiting": true,
+    "limiterMaxReductionDb": 9.0
+   }
+  },
+  {
+   "id": "rule-reduction-cap-edge",
+   "kind": "rule",
+   "measuredLufs": -24.0,
+   "truePeakDbtp": -2.0,
+   "expected": {
+    "gainDb": 10.0,
+    "limit": "none",
+    "capped": false,
+    "limiting": true,
+    "limiterMaxReductionDb": 9.0
+   }
+  },
+  {
+   "id": "rule-reduction-cap-hot-peak",
+   "kind": "rule",
+   "measuredLufs": -12.0,
+   "truePeakDbtp": 12.0,
+   "expected": {
+    "gainDb": -4.0,
+    "limit": "reductionCap",
+    "capped": true,
+    "limiting": true,
+    "limiterMaxReductionDb": 9.0
    }
   },
   {
@@ -135,7 +195,9 @@
    "expected": {
     "gainDb": 0.0,
     "limit": "silent",
-    "capped": false
+    "capped": false,
+    "limiting": false,
+    "limiterMaxReductionDb": 0.0
    }
   },
   {
@@ -146,7 +208,22 @@
    "expected": {
     "gainDb": 0.0,
     "limit": "silent",
-    "capped": false
+    "capped": false,
+    "limiting": false,
+    "limiterMaxReductionDb": 0.0
+   }
+  },
+  {
+   "id": "rule-silent-with-hot-peak",
+   "kind": "rule",
+   "measuredLufs": null,
+   "truePeakDbtp": 3.0,
+   "expected": {
+    "gainDb": 0.0,
+    "limit": "silent",
+    "capped": false,
+    "limiting": false,
+    "limiterMaxReductionDb": 0.0
    }
   },
   {
@@ -178,8 +255,10 @@
     "gainDb": 8.993302,
     "limit": "none",
     "capped": false,
-    "outputLufs": -14.0,
-    "outputTruePeakDbtp": -14.000003
+    "limiting": false,
+    "limiterMaxReductionDb": 0.0,
+    "gainedLufs": -14.0,
+    "gainedTruePeakDbtp": -14.000003
    }
   },
   {
@@ -209,8 +288,10 @@
     "gainDb": 9.003604,
     "limit": "none",
     "capped": false,
-    "outputLufs": -14.0,
-    "outputTruePeakDbtp": -10.9897
+    "limiting": false,
+    "limiterMaxReductionDb": 0.0,
+    "gainedLufs": -14.0,
+    "gainedTruePeakDbtp": -10.9897
    }
   },
   {
@@ -582,8 +663,10 @@
     "gainDb": 1.082347,
     "limit": "none",
     "capped": false,
-    "outputLufs": -14.0,
-    "outputTruePeakDbtp": -4.606921
+    "limiting": false,
+    "limiterMaxReductionDb": 0.0,
+    "gainedLufs": -14.0,
+    "gainedTruePeakDbtp": -4.606921
    }
   },
   {
@@ -955,12 +1038,14 @@
     "gainDb": 12.0,
     "limit": "gainLimit",
     "capped": false,
-    "outputLufs": -25.082347,
-    "outputTruePeakDbtp": -15.689268
+    "limiting": false,
+    "limiterMaxReductionDb": 0.0,
+    "gainedLufs": -25.082347,
+    "gainedTruePeakDbtp": -15.689268
    }
   },
   {
-   "id": "speech-clicks-peak-cap",
+   "id": "speech-clicks-reduction-cap",
    "kind": "signal",
    "rate": 48000,
    "frames": 192000,
@@ -1237,11 +1322,13 @@
    "expected": {
     "measuredLufs": -25.407208,
     "truePeakDbtp": 1.145958,
-    "gainDb": -2.145958,
-    "limit": "truePeak",
+    "gainDb": 6.854042,
+    "limit": "reductionCap",
     "capped": true,
-    "outputLufs": -27.553165,
-    "outputTruePeakDbtp": -1.0
+    "limiting": true,
+    "limiterMaxReductionDb": 9.0,
+    "gainedLufs": -18.553165,
+    "gainedTruePeakDbtp": 8.0
    }
   },
   {
@@ -1273,8 +1360,10 @@
     "gainDb": -20.0,
     "limit": "gainLimit",
     "capped": false,
-    "outputLufs": -7.999965,
-    "outputTruePeakDbtp": -7.991151
+    "limiting": false,
+    "limiterMaxReductionDb": 0.0,
+    "gainedLufs": -7.999965,
+    "gainedTruePeakDbtp": -7.991151
    }
   },
   {
@@ -1558,8 +1647,10 @@
     "gainDb": -14.134928,
     "limit": "none",
     "capped": false,
-    "outputLufs": -14.0,
-    "outputTruePeakDbtp": -9.059346
+    "limiting": false,
+    "limiterMaxReductionDb": 0.0,
+    "gainedLufs": -14.0,
+    "gainedTruePeakDbtp": -9.059346
    }
   },
   {
@@ -1607,8 +1698,10 @@
     "gainDb": -8.693007,
     "limit": "none",
     "capped": false,
-    "outputLufs": -14.0,
-    "outputTruePeakDbtp": -9.710513
+    "limiting": false,
+    "limiterMaxReductionDb": 0.0,
+    "gainedLufs": -14.0,
+    "gainedTruePeakDbtp": -9.710513
    }
   },
   {
@@ -1636,8 +1729,10 @@
     "gainDb": 0.0,
     "limit": "silent",
     "capped": false,
-    "outputLufs": null,
-    "outputTruePeakDbtp": null
+    "limiting": false,
+    "limiterMaxReductionDb": 0.0,
+    "gainedLufs": null,
+    "gainedTruePeakDbtp": null
    }
   },
   {
@@ -1671,8 +1766,10 @@
     "gainDb": 0.0,
     "limit": "silent",
     "capped": false,
-    "outputLufs": null,
-    "outputTruePeakDbtp": -80.21383
+    "limiting": false,
+    "limiterMaxReductionDb": 0.0,
+    "gainedLufs": null,
+    "gainedTruePeakDbtp": -80.21383
    }
   },
   {
@@ -1704,8 +1801,10 @@
     "gainDb": 0.0,
     "limit": "silent",
     "capped": false,
-    "outputLufs": null,
-    "outputTruePeakDbtp": -19.993304
+    "limiting": false,
+    "limiterMaxReductionDb": 0.0,
+    "gainedLufs": null,
+    "gainedTruePeakDbtp": -19.993304
    }
   },
   {
@@ -1737,8 +1836,10 @@
     "gainDb": 4.682929,
     "limit": "none",
     "capped": false,
-    "outputLufs": -14.0,
-    "outputTruePeakDbtp": -13.304291
+    "limiting": false,
+    "limiterMaxReductionDb": 0.0,
+    "gainedLufs": -14.0,
+    "gainedTruePeakDbtp": -13.304291
    }
   }
  ]

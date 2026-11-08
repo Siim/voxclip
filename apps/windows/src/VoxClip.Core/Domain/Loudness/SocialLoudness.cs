@@ -4,11 +4,12 @@ using VoxClip.Core.Domain.VoiceLab;
 
 namespace VoxClip.Core.Domain.Loudness;
 
-/// <summary>How an export sets its level (ADR-R47). Social, the default for every export, applies one static gain to the
-/// exported mix so it lands at −14 LUFS with its true peak at or below −1 dBTP; Off writes the mix as composed.</summary>
+/// <summary>How an export sets its level (ADR-R47, amended 2026-11-08). Social, the default for every export, gains the
+/// exported mix to −14 LUFS and holds its true peak at −1 dBTP with a transparent true-peak limiter; Off writes the mix as
+/// composed.</summary>
 public enum ExportLoudness
 {
-    /// <summary>−14 LUFS integrated, true peak at most −1 dBTP, by one static gain.</summary>
+    /// <summary>−14 LUFS integrated by one gain, true peak held at −1 dBTP by the limiter.</summary>
     Social,
     /// <summary>The mix as composed.</summary>
     Off
@@ -21,37 +22,48 @@ public enum SocialLoudnessLimit
     None,
     /// <summary>The gain wanted more than +12 dB or less than −20 dB and stopped there.</summary>
     GainLimit,
-    /// <summary>The true-peak ceiling (−1 dBTP) stopped the gain short, so the clip lands quieter than −14 LUFS.</summary>
-    TruePeak,
+    /// <summary>The limiter would have reduced more than 9 dB, so the gain stopped where it reduces exactly 9 dB and the
+    /// clip lands quieter than −14 LUFS rather than squashed.</summary>
+    ReductionCap,
     /// <summary>The gated loudness is undefined (digital silence, everything below −70 LUFS, or shorter than one 400 ms
-    /// block), so the gain is 0 dB.</summary>
+    /// block), so the gain is 0 dB and nothing is limited.</summary>
     Silent
 }
 
-/// <summary>The static gain the rule chose and why.</summary>
-public readonly record struct SocialLoudnessDecision(double GainDb, SocialLoudnessLimit Limit)
+/// <summary>The gain the rule chose, why, and whether the limiter has work: the true peak after the gain is over
+/// −1 dBTP.</summary>
+public readonly record struct SocialLoudnessDecision(double GainDb, SocialLoudnessLimit Limit, bool Limiting = false)
 {
-    /// <summary>The true-peak ceiling set the gain.</summary>
-    public bool Capped => Limit == SocialLoudnessLimit.TruePeak;
+    /// <summary>The reduction cap set the gain; it is the only reason a clip is reported capped.</summary>
+    public bool Capped => Limit == SocialLoudnessLimit.ReductionCap;
 }
 
-/// <summary>What an export reports about its loudness (the export JSON's <c>loudness</c>, ADR-R47). TruePeakDbtp and
-/// OutputLufs are the exported mix's, after the gain; MeasuredLufs is before it. A silent mix has no loudness and no gain;
-/// digital silence has no true peak either.</summary>
-public sealed record SocialLoudnessReport(double? MeasuredLufs, double GainDb, double? OutputLufs, double? TruePeakDbtp, bool Capped)
+/// <summary>The next step of landing on target: simulate <see cref="GainDb"/> offline, or, when <see cref="Settled"/>,
+/// export at <see cref="Decision"/>.</summary>
+public readonly record struct SocialLoudnessLanding(bool Settled, double GainDb, SocialLoudnessDecision Decision);
+
+/// <summary>What an export reports about its loudness (the export JSON's <c>loudness</c>, ADR-R47). MeasuredLufs is the
+/// composed mix's, before the gain; OutputLufs and TruePeakDbtp are the exported PCM's, after the gain and the limiter.
+/// LimiterMaxReductionDb is the limiter's largest reduction and LimitedPercent the share of frames under any reduction, both
+/// 0 when the gain alone keeps the true peak under −1 dBTP. A silent mix has no loudness and no gain; digital silence has no
+/// true peak either.</summary>
+public sealed record SocialLoudnessReport(double? MeasuredLufs, double GainDb, double? OutputLufs, double? TruePeakDbtp, bool Capped,
+    double LimiterMaxReductionDb = 0, double LimitedPercent = 0)
 {
     /// <summary>The app log's line: numbers only, no paths or names (the Mac's <c>logLine</c>).</summary>
     public string LogLine()
     {
         static string Number(double? value) => value is { } number ? number.ToString("0.00", CultureInfo.InvariantCulture) : "none";
-        return $"loudness measured={Number(MeasuredLufs)} gain={Number(GainDb)} output={Number(OutputLufs)} truePeak={Number(TruePeakDbtp)} capped={(Capped ? "true" : "false")}";
+        return $"loudness measured={Number(MeasuredLufs)} gain={Number(GainDb)} output={Number(OutputLufs)} truePeak={Number(TruePeakDbtp)} capped={(Capped ? "true" : "false")} maxReduction={Number(LimiterMaxReductionDb)} limited={Number(LimitedPercent)}";
     }
 }
 
-/// <summary>Social loudness (ADR-R47): the exported mix lands at −14 LUFS integrated (ITU-R BS.1770-4 with EBU R128 gating),
-/// its true peak at or below −1.0 dBTP, by one static gain and nothing else, so the voice never pumps. The gain is target
-/// minus measured, kept within −20…+12 dB, then lowered until the true peak sits at −1 dBTP. Mac Core SocialLoudness;
-/// shared vectors shared/fixtures/loudness/social-loudness-cases.json.</summary>
+/// <summary>Social loudness (ADR-R47, amended 2026-11-08): the exported mix lands at −14 LUFS integrated (ITU-R BS.1770-4 with
+/// EBU R128 gating) by one gain, within −20…+12 dB, and a transparent true-peak limiter (<see cref="SocialLimiter"/>) holds
+/// the true peak at −1.0 dBTP. The limiter's largest reduction is exactly the true peak after the gain minus the ceiling, so
+/// the gain is lowered until that is at most 9 dB. Offline pre-passes simulate the gain and the limiter, and a limited,
+/// uncapped gain is corrected by what the limiter took (<see cref="Landing"/>). Mac Core SocialLoudness; shared vectors
+/// shared/fixtures/loudness/social-loudness-cases.json and social-limiter-cases.json.</summary>
 public static class SocialLoudness
 {
     /// <summary>−14 LUFS.</summary>
@@ -62,31 +74,79 @@ public static class SocialLoudness
     public const double MaximumBoostDb = 12.0;
     /// <summary>−20 dB.</summary>
     public const double MaximumCutDb = -20.0;
+    /// <summary>9 dB: the most the limiter may reduce.</summary>
+    public const double MaximumReductionDb = 9.0;
+    /// <summary>A first simulation within this of the target lands with one correction; beyond it, a second one is run.</summary>
+    public const double LandingToleranceLu = 0.5;
     internal const double AbsoluteGateLufs = -70.0;
     internal const double RelativeGateLu = -10.0;
     internal const double StepSeconds = 0.1;
     internal const int BlockSteps = 4;
 
-    /// <summary>The rule alone. A null loudness (silent) gets 0 dB; a null true peak never caps.</summary>
+    /// <summary>The plan from the measured mix alone. A null loudness (silent) gets 0 dB and no limiting.</summary>
     public static SocialLoudnessDecision Decide(double? measuredLufs, double? truePeakDbtp)
     {
         if (measuredLufs is not { } measured || !double.IsFinite(measured)) return new(0, SocialLoudnessLimit.Silent);
         var wanted = TargetLufs - measured;
-        var clamped = Math.Min(Math.Max(wanted, MaximumCutDb), MaximumBoostDb);
-        if (truePeakDbtp is { } peak && double.IsFinite(peak) && CeilingDbtp - peak < clamped)
-            return new(CeilingDbtp - peak, SocialLoudnessLimit.TruePeak);
-        return new(clamped, clamped == wanted ? SocialLoudnessLimit.None : SocialLoudnessLimit.GainLimit);
+        var gain = Math.Min(Math.Max(wanted, MaximumCutDb), MaximumBoostDb);
+        var limit = gain == wanted ? SocialLoudnessLimit.None : SocialLoudnessLimit.GainLimit;
+        if (truePeakDbtp is not { } peak || !double.IsFinite(peak)) return new(gain, limit);
+        var cap = CeilingDbtp + MaximumReductionDb - peak;
+        if (gain > cap) { gain = cap; limit = SocialLoudnessLimit.ReductionCap; }
+        return new(gain, limit, peak + gain > CeilingDbtp);
     }
 
-    /// <summary>The decision for a measured mix and what the export reports after applying it.</summary>
-    public static (SocialLoudnessDecision Decision, SocialLoudnessReport Report) Report(SocialLoudnessMeasurement measurement)
+    /// <summary>Landing on target from offline pre-passes that simulate the gain and the limiter. <paramref name="trials"/> are
+    /// the (gain, simulated output LUFS) pairs so far; the answer is the next gain to simulate or the settled decision. Only an
+    /// uncapped, limited plan moves: one simulation and one correction by target minus what it measured; when the limiter took
+    /// more than 0.5 LU, the corrected gain is simulated too and a secant step through the two lands it. Every gain stays
+    /// within −20…+12 dB and the 9 dB reduction cap.</summary>
+    public static SocialLoudnessLanding Landing(SocialLoudnessDecision plan, double? truePeakDbtp, IReadOnlyList<(double GainDb, double? Lufs)> trials)
+    {
+        ArgumentNullException.ThrowIfNull(trials);
+        SocialLoudnessLanding Settled(double gain, SocialLoudnessLimit limit) =>
+            new(true, gain, new(gain, limit, (truePeakDbtp ?? double.NegativeInfinity) + gain > CeilingDbtp));
+        if (!plan.Limiting || plan.Limit != SocialLoudnessLimit.None || truePeakDbtp is not { } peak) return new(true, plan.GainDb, plan);
+        if (trials.Count == 0) return new(false, plan.GainDb, plan);
+        var first = trials[0];
+        if (first.Lufs is not { } firstLufs) return new(true, plan.GainDb, plan);
+        var corrected = Bounded(first.GainDb + TargetLufs - firstLufs, peak);
+        if (trials.Count == 1)
+        {
+            if (Math.Abs(TargetLufs - firstLufs) <= LandingToleranceLu || corrected.GainDb == first.GainDb)
+                return Settled(corrected.GainDb, corrected.Limit);
+            return new(false, corrected.GainDb, plan);
+        }
+        var second = trials[1];
+        if (second.Lufs is not { } secondLufs) return Settled(second.GainDb, corrected.Limit);
+        var slope = (secondLufs - firstLufs) / (second.GainDb - first.GainDb);
+        var step = slope > 0.05 ? (TargetLufs - secondLufs) / slope : TargetLufs - secondLufs;
+        var landed = Bounded(second.GainDb + step, peak);
+        return Settled(landed.GainDb, landed.Limit);
+    }
+
+    // A gain kept within −20 dB, +12 dB and the 9 dB reduction cap, and what stopped it.
+    internal static (double GainDb, SocialLoudnessLimit Limit) Bounded(double gainDb, double truePeakDbtp)
+    {
+        var cap = CeilingDbtp + MaximumReductionDb - truePeakDbtp;
+        var bound = Math.Min(MaximumBoostDb, cap);
+        if (gainDb > bound) return (bound, cap <= MaximumBoostDb ? SocialLoudnessLimit.ReductionCap : SocialLoudnessLimit.GainLimit);
+        return (Math.Max(gainDb, MaximumCutDb), SocialLoudnessLimit.None);
+    }
+
+    /// <summary>The report of an export at <paramref name="decision"/>. Gain alone (not limiting): the input measurement scaled
+    /// by the gain. Limited: <paramref name="output"/>, the meter of the exported PCM, and the limiter's own counts.</summary>
+    public static SocialLoudnessReport Report(SocialLoudnessMeasurement measurement, SocialLoudnessDecision decision, SocialLimiter limiter,
+        SocialLoudnessMeasurement? output)
     {
         ArgumentNullException.ThrowIfNull(measurement);
+        ArgumentNullException.ThrowIfNull(limiter);
         var measured = measurement.IntegratedLufs();
-        var peak = measurement.TruePeakDbtp;
-        var decision = Decide(measured, peak);
-        return (decision, new(measured, decision.GainDb, measurement.IntegratedLufs(decision.GainDb),
-            peak is { } value ? value + decision.GainDb : null, decision.Capped));
+        if (!decision.Limiting || output is null)
+            return new(measured, decision.GainDb, measurement.IntegratedLufs(decision.GainDb),
+                measurement.TruePeakDbtp is { } peak ? peak + decision.GainDb : null, decision.Capped);
+        return new(measured, decision.GainDb, output.IntegratedLufs(), output.TruePeakDbtp, decision.Capped,
+            limiter.MaximumReductionDb, limiter.LimitedPercent);
     }
 
     /// <summary>The linear sample factor of a gain in dB.</summary>

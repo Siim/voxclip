@@ -26,26 +26,27 @@ public sealed class SocialLoudnessReplayTests
     {
         var document = Document();
         Assert.Equal(["format", "description", "constants", "caseCount", "counts", "cases"], document.EnumerateObject().Select(property => property.Name));
-        Assert.Equal("voxclip-social-loudness-cases/1", document.GetProperty("format").GetString());
-        Assert.Equal(24, document.GetProperty("caseCount").GetInt32());
-        Assert.Equal(24, document.GetProperty("cases").GetArrayLength());
-        Assert.Equal((12, 12), (document.GetProperty("counts").GetProperty("rule").GetInt32(), document.GetProperty("counts").GetProperty("signal").GetInt32()));
+        Assert.Equal("voxclip-social-loudness-cases/2", document.GetProperty("format").GetString());
+        Assert.Equal(28, document.GetProperty("caseCount").GetInt32());
+        Assert.Equal(28, document.GetProperty("cases").GetArrayLength());
+        Assert.Equal((16, 12), (document.GetProperty("counts").GetProperty("rule").GetInt32(), document.GetProperty("counts").GetProperty("signal").GetInt32()));
         var constants = document.GetProperty("constants");
-        Assert.Equal(["targetLufs", "ceilingDbtp", "maximumBoostDb", "maximumCutDb", "absoluteGateLufs", "relativeGateLu", "blockSeconds", "stepSeconds"],
-            constants.EnumerateObject().Select(property => property.Name));
-        Assert.Equal((SocialLoudness.TargetLufs, SocialLoudness.CeilingDbtp, SocialLoudness.MaximumBoostDb, SocialLoudness.MaximumCutDb),
+        Assert.Equal(["targetLufs", "ceilingDbtp", "maximumBoostDb", "maximumCutDb", "maximumReductionDb", "absoluteGateLufs", "relativeGateLu",
+            "blockSeconds", "stepSeconds"], constants.EnumerateObject().Select(property => property.Name));
+        Assert.Equal((SocialLoudness.TargetLufs, SocialLoudness.CeilingDbtp, SocialLoudness.MaximumBoostDb, SocialLoudness.MaximumCutDb, SocialLoudness.MaximumReductionDb),
             (constants.GetProperty("targetLufs").GetDouble(), constants.GetProperty("ceilingDbtp").GetDouble(),
-             constants.GetProperty("maximumBoostDb").GetDouble(), constants.GetProperty("maximumCutDb").GetDouble()));
+             constants.GetProperty("maximumBoostDb").GetDouble(), constants.GetProperty("maximumCutDb").GetDouble(),
+             constants.GetProperty("maximumReductionDb").GetDouble()));
         Assert.Equal((SocialLoudness.AbsoluteGateLufs, SocialLoudness.RelativeGateLu, SocialLoudness.StepSeconds * SocialLoudness.BlockSteps, SocialLoudness.StepSeconds),
             (constants.GetProperty("absoluteGateLufs").GetDouble(), constants.GetProperty("relativeGateLu").GetDouble(),
              constants.GetProperty("blockSeconds").GetDouble(), constants.GetProperty("stepSeconds").GetDouble()));
     }
 
     [Fact]
-    public void TheRuleTargetLimitsCapAndSilence()
+    public void ThePlanTargetLimitsReductionCapLimitingAndSilence()
     {
         var cases = Cases("rule");
-        Assert.Equal(12, cases.Length);
+        Assert.Equal(16, cases.Length);
         foreach (var item in cases)
         {
             var id = item.GetProperty("id").GetString()!;
@@ -54,11 +55,14 @@ public sealed class SocialLoudnessReplayTests
             Near(expected.GetProperty("gainDb"), decision.GainDb, id + " gain");
             Assert.Equal(expected.GetProperty("limit").GetString(), Wire(decision.Limit));
             Assert.Equal(expected.GetProperty("capped").GetBoolean(), decision.Capped);
+            Assert.Equal(expected.GetProperty("limiting").GetBoolean(), decision.Limiting);
+            var peak = Optional(item.GetProperty("truePeakDbtp")) ?? 0;
+            Near(expected.GetProperty("limiterMaxReductionDb"), decision.Limiting ? peak + decision.GainDb - SocialLoudness.CeilingDbtp : 0, id + " reduction");
         }
     }
 
     [Fact]
-    public void SignalsMeasureGainAndResultStreamedInUnevenChunks()
+    public void SignalsMeasurePlanAndGainAloneStreamedInUnevenChunks()
     {
         var cases = Cases("signal");
         Assert.Equal(12, cases.Length);
@@ -76,22 +80,25 @@ public sealed class SocialLoudnessReplayTests
                 start = end;
             }
             var measurement = meter.Finish();
-            var (decision, report) = SocialLoudness.Report(measurement);
+            var measured = measurement.IntegratedLufs();
+            var decision = SocialLoudness.Decide(measured, measurement.TruePeakDbtp);
             var expected = item.GetProperty("expected");
-            Near(expected.GetProperty("measuredLufs"), report.MeasuredLufs, id + " measured");
+            Near(expected.GetProperty("measuredLufs"), measured, id + " measured");
             Near(expected.GetProperty("truePeakDbtp"), measurement.TruePeakDbtp, id + " true peak");
-            Near(expected.GetProperty("gainDb"), report.GainDb, id + " gain");
+            Near(expected.GetProperty("gainDb"), decision.GainDb, id + " gain");
             Assert.Equal(expected.GetProperty("limit").GetString(), Wire(decision.Limit));
-            Assert.Equal(expected.GetProperty("capped").GetBoolean(), report.Capped);
-            Near(expected.GetProperty("outputLufs"), report.OutputLufs, id + " output");
-            Near(expected.GetProperty("outputTruePeakDbtp"), report.TruePeakDbtp, id + " output peak");
+            Assert.Equal(expected.GetProperty("capped").GetBoolean(), decision.Capped);
+            Assert.Equal(expected.GetProperty("limiting").GetBoolean(), decision.Limiting);
+            // After the plan's gain alone, before the limiter.
+            Near(expected.GetProperty("gainedLufs"), measurement.IntegratedLufs(decision.GainDb), id + " gained");
+            Near(expected.GetProperty("gainedTruePeakDbtp"), measurement.TruePeakDbtp is { } peak ? peak + decision.GainDb : null, id + " gained peak");
         }
     }
 
     [Fact]
     public void OneAppendAndTheWholeBufferVoiceLabPeakAgreeWithTheStream()
     {
-        var item = Cases("signal").Single(value => value.GetProperty("id").GetString() == "speech-clicks-peak-cap");
+        var item = Cases("signal").Single(value => value.GetProperty("id").GetString() == "speech-clicks-reduction-cap");
         var samples = SocialLoudnessVectors.Interleaved(item);
         var meter = new SocialLoudnessMeter(48_000, 2);
         meter.Append(samples);
@@ -109,18 +116,18 @@ public sealed class SocialLoudnessReplayTests
         var meter = new SocialLoudnessMeter(48_000, 2);
         Assert.Equal(VoiceLabAudioMathErrorCode.InvalidInput, Assert.Throws<VoiceLabAudioMathException>(() => meter.Append([0f, float.NaN])).Code);
         Assert.Throws<VoiceLabAudioMathException>(() => new SocialLoudnessMeter(96_000, 2));
-        Assert.Equal("loudness measured=-20.71 gain=6.71 output=-14.00 truePeak=-3.46 capped=false",
-            new SocialLoudnessReport(-20.71, 6.71, -14, -3.456, false).LogLine());
-        Assert.Equal("loudness measured=none gain=0.00 output=none truePeak=none capped=false",
+        Assert.Equal("loudness measured=-20.71 gain=7.12 output=-14.03 truePeak=-1.00 capped=false maxReduction=6.46 limited=3.20",
+            new SocialLoudnessReport(-20.71, 7.12, -14.03, -1.0001, false, 6.456, 3.2).LogLine());
+        Assert.Equal("loudness measured=none gain=0.00 output=none truePeak=none capped=false maxReduction=0.00 limited=0.00",
             new SocialLoudnessReport(null, 0, null, null, false).LogLine());
         Assert.Equal(0.1f, SocialLoudness.LinearGain(-20));
     }
 
-    private static string Wire(SocialLoudnessLimit limit) => limit switch
+    internal static string Wire(SocialLoudnessLimit limit) => limit switch
     {
         SocialLoudnessLimit.None => "none",
         SocialLoudnessLimit.GainLimit => "gainLimit",
-        SocialLoudnessLimit.TruePeak => "truePeak",
+        SocialLoudnessLimit.ReductionCap => "reductionCap",
         _ => "silent"
     };
 }

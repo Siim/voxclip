@@ -661,8 +661,8 @@ Other bad arguments are usage errors (exit 2) before the input is opened, with t
 Every output (video, edited WAV, SRT) is written to `<name>.partial` beside its destination, where the destination path is resolved through symlinks first. An existing regular file at a `.partial` path is a leftover from an earlier run and is replaced; a directory or symlink there is a bad argument. The WAV and SRT are finished before anything is published. Publication is all-or-nothing, in the order MP4, SRT, WAV: before the first rename, each existing destination is kept as a backup beside it (`<name>.rollback-<random>`, a copy-on-write clone where the file system supports one). If any rename fails, every destination already replaced is restored from its backup, or removed if it did not exist before, so a failure at any step leaves every existing destination unchanged. Every restore is attempted even if an earlier one fails. A backup whose restore fails is never deleted: it stays beside the destination, and the error (`exportFailed`) says "Couldn't put back {file name}. The previous version is saved as {backup file name}." Every other backup is deleted on success, failure and cancellation. Partial files are removed on success, failure and cancellation.
 
 - Human-readable progress goes to **stderr**: one line per phase change, percentages at most once per second, nothing with `--quiet`.
-- The edited WAV (`--audio-out`) is written at the plan's sample rate with exactly `plan.outputSamples` samples per channel; it is never resampled. It carries the export's loudness gain (ADR-R47).
-- `--loudness social` (the default) applies one static gain so the exported audio lands at −14 LUFS with its true peak at or below −1 dBTP (ADR-R47); `loudness` in the JSON reports `measuredLufs` (before the gain), `gainDb`, `outputLufs` and `truePeakDbtp` (after it) and `capped` (the true-peak ceiling stopped the gain short). It is null with `--loudness off` or without an audio track.
+- The edited WAV (`--audio-out`) is written at the plan's sample rate with exactly `plan.outputSamples` samples per channel; it is never resampled. It carries the export's loudness gain and limiter, run over its own samples (ADR-R47).
+- `--loudness social` (the default) applies one gain and the true-peak limiter so the exported audio lands at −14 LUFS with its true peak at or below −1 dBTP (ADR-R47); `loudness` in the JSON reports `measuredLufs` (before the gain), `gainDb`, `outputLufs` and `truePeakDbtp` (after the gain and the limiter), `capped` (the 9 dB reduction cap stopped the gain short), `limiterMaxReductionDb` and `limitedPercent` (the share of frames under any reduction, release included). It is null with `--loudness off` or without an audio track.
 - `audioSampleRate` reports the 48,000 Hz export target on both platforms. For video-only output it stays 48,000, `audioSamples` is 0 and no audio track is written.
 - `--json` prints exactly one JSON object on **stdout** at the end:
 
@@ -671,7 +671,8 @@ Every output (video, edited WAV, SRT) is written to `<name>.partial` beside its 
   "durationSeconds": 42.317, "width": 1080, "height": 1920, "fps": 30, "frames": 1270,
   "audioSampleRate": 48000, "audioSamples": 2031216, "videoCodec": "h264", "encoder": "h264_videotoolbox",
   "captionStyle": "vox-highlight", "aspect": "9:16", "elapsedSeconds": 6.4,
-  "loudness": { "measuredLufs": -20.7, "gainDb": 6.7, "outputLufs": -14, "truePeakDbtp": -3.1, "capped": false },
+  "loudness": { "measuredLufs": -21.5, "gainDb": 8.5, "outputLufs": -14.04, "truePeakDbtp": -1, "capped": false,
+                "limiterMaxReductionDb": 6.9, "limitedPercent": 45.7 },
   "version": "0.1.0" }
 ```
 

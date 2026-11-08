@@ -205,10 +205,13 @@ public sealed class Exporter : IExporter
                 music: music))
             using (var audioFrameHandle = audio is null ? null : CreateAudioFrame(audio))
             {
-                // Social loudness (ADR-R47): measure the mix the encoder will get, then encode it with one static gain.
-                if (audio is not null && job.Loudness == ExportLoudness.Social)
-                    loudness = MeasureLoudness(snapshot, voiceSession, music, samples, audio.Context->frame_size, ct);
-                var audioGain = loudness is null ? 1f : SocialLoudness.LinearGain(loudness.GainDb);
+                // Social loudness (ADR-R47): measure the mix the encoder will get, simulate the limiter when it has work, then
+                // encode it through the same gain and limiter.
+                var loudnessPlan = audio is not null && job.Loudness == ExportLoudness.Social
+                    ? PlanLoudness(snapshot, voiceSession, music, samples, audio.Context->frame_size, ct) : null;
+                var loudnessStage = loudnessPlan is null ? null
+                    : new ExportLoudnessStage(editedAudio!.Read, samples, loudnessPlan.Decision.GainDb, loudnessPlan.Decision.Limiting);
+                StereoRead? audioRead = loudnessStage is not null ? loudnessStage.Read : editedAudio is not null ? editedAudio.Read : null;
                 var format = (AVFormatContext*)mux.Pointer;
                 var nv12 = (AVFrame*)nv12Handle.Pointer;
                 var bgra = new PixelBuffer(new byte[checked(size.Width * size.Height * 4)], size.Width, size.Height, size.Width * 4);
@@ -242,18 +245,20 @@ public sealed class Exporter : IExporter
                     {
                         var until = Math.Min(samples, Native.Round((index + 1) / fps * 48_000));
                         while (audioOffset < until)
-                            EncodeAudio(audio, editedAudio!, (AVFrame*)audioFrameHandle!.Pointer, audioBuffer, samples, ref audioOffset,
-                                audioGain, packet => Mux(format, audio, audioStream, packet), ct);
+                            EncodeAudio(audio, audioRead!, (AVFrame*)audioFrameHandle!.Pointer, audioBuffer, samples, ref audioOffset,
+                                packet => Mux(format, audio, audioStream, packet), ct);
                     }
                     reporter("encoding", index + 1);
                 }
                 if (audio is not null)
                 {
                     while (audioOffset < samples)
-                        EncodeAudio(audio, editedAudio!, (AVFrame*)audioFrameHandle!.Pointer, audioBuffer, samples, ref audioOffset,
-                            audioGain, packet => Mux(format, audio, audioStream, packet), ct);
+                        EncodeAudio(audio, audioRead!, (AVFrame*)audioFrameHandle!.Pointer, audioBuffer, samples, ref audioOffset,
+                            packet => Mux(format, audio, audioStream, packet), ct);
                     audio.Send(null, packet => Mux(format, audio, audioStream, packet), ct);
                 }
+                if (loudnessPlan is not null && loudnessStage is not null)
+                    loudness = SocialLoudness.Report(loudnessPlan.Measurement, loudnessPlan.Decision, loudnessStage.Limiter, loudnessStage.Measured());
                 video.Send(null, packet => Mux(format, video, videoStream, packet), ct);
                 reporter("finalizing", frames);
                 ct.ThrowIfCancellationRequested();
@@ -396,17 +401,36 @@ public sealed class Exporter : IExporter
         catch { handle.Dispose(); throw; }
     }
 
-    /// <summary>The social loudness of the mix an export encodes (ADR-R47): a pre-pass through a second reader of the same
-    /// snapshot, session and staged music, in the encoder's frame size, stopping where the encoder stops. Offline, faster than
-    /// real time and without a second encode; the Mac measures its composed mix the same way.</summary>
-    internal static SocialLoudnessReport MeasureLoudness(ComposeSnapshot snapshot, VoiceLabRenderSession? session, MusicBed? music,
+    /// <summary>The social loudness plan of the mix an export encodes (ADR-R47): a pre-pass through a second reader of the same
+    /// snapshot, session and staged music, in the encoder's frame size, stopping where the encoder stops, measures it; when the
+    /// gain leaves the limiter work, one or two more run the gain and the limiter offline and land the gain on target. Offline,
+    /// faster than real time and without a second encode; the Mac plans its composed mix the same way.</summary>
+    internal static ExportLoudnessPlan PlanLoudness(ComposeSnapshot snapshot, VoiceLabRenderSession? session, MusicBed? music,
         long total, int frameSize, CancellationToken ct)
     {
-        using var reader = RenderedAudioReader.Open(snapshot, 48_000, session: session, ct: ct, music: music);
-        return Measure(reader.Read, total, frameSize, ct);
+        SocialLoudnessMeasurement measurement;
+        using (var reader = RenderedAudioReader.Open(snapshot, 48_000, session: session, ct: ct, music: music))
+            measurement = Measure(reader.Read, total, frameSize, ct);
+        return Plan(measurement, gainDb =>
+        {
+            using var reader = RenderedAudioReader.Open(snapshot, 48_000, session: session, ct: ct, music: music);
+            return Simulate(reader.Read, total, frameSize, gainDb, ct);
+        });
     }
 
-    internal static SocialLoudnessReport Measure(StereoRead read, long total, int frameSize, CancellationToken ct)
+    /// <summary>The plan for a measured mix, landed on target by <paramref name="simulate"/>: the output loudness of the gain
+    /// and the limiter at a gain, offline (<see cref="SocialLoudness.Landing"/>).</summary>
+    internal static ExportLoudnessPlan Plan(SocialLoudnessMeasurement measurement, Func<double, double?> simulate)
+    {
+        var plan = SocialLoudness.Decide(measurement.IntegratedLufs(), measurement.TruePeakDbtp);
+        var trials = new List<(double GainDb, double? Lufs)>();
+        SocialLoudnessLanding landing;
+        while (!(landing = SocialLoudness.Landing(plan, measurement.TruePeakDbtp, trials)).Settled)
+            trials.Add((landing.GainDb, simulate(landing.GainDb)));
+        return new(measurement, landing.Decision);
+    }
+
+    internal static SocialLoudnessMeasurement Measure(StereoRead read, long total, int frameSize, CancellationToken ct)
     {
         var meter = new SocialLoudnessMeter(48_000, 2);
         var buffer = new float[2 * Math.Max(1, frameSize)];
@@ -419,19 +443,29 @@ public sealed class Exporter : IExporter
             meter.Append(buffer.AsSpan(0, count * 2));
             offset += count;
         }
-        return SocialLoudness.Report(meter.Finish()).Report;
+        return meter.Finish();
     }
 
-    private static unsafe void EncodeAudio(EncoderSession encoder, RenderedAudioReader reader, AVFrame* frame, float[] buffer,
-        long total, ref long offset, float gain, PacketSink consume, CancellationToken ct)
+    /// <summary>The output loudness of the export's gain and limiter at <paramref name="gainDb"/> over <paramref name="read"/>,
+    /// offline, with no encode.</summary>
+    internal static double? Simulate(StereoRead read, long total, int frameSize, double gainDb, CancellationToken ct)
+    {
+        var stage = new ExportLoudnessStage(read, total, gainDb, true);
+        var buffer = new float[2 * Math.Max(1, frameSize)];
+        while (stage.Read(buffer, Math.Max(1, frameSize), ct) > 0) ct.ThrowIfCancellationRequested();
+        return stage.Measured()?.IntegratedLufs();
+    }
+
+    private static unsafe void EncodeAudio(EncoderSession encoder, StereoRead read, AVFrame* frame, float[] buffer,
+        long total, ref long offset, PacketSink consume, CancellationToken ct)
     {
         Native.Check(ffmpeg.av_frame_make_writable(frame), "Reuse AAC frame");
-        var count = reader.Read(buffer, (int)Math.Min(encoder.Context->frame_size, total - offset), ct);
+        var count = read(buffer, (int)Math.Min(encoder.Context->frame_size, total - offset), ct);
         if (count == 0) throw new VoxClipException(VoxClipErrorCode.ExportFailed, "Export stopped: the edited audio ended unexpectedly. Your edits are saved.");
         for (var channel = 0; channel < 2; channel++)
         {
             var samples = (float*)frame->extended_data[channel];
-            for (var index = 0; index < count; index++) samples[index] = buffer[index * 2 + channel] * gain;
+            for (var index = 0; index < count; index++) samples[index] = buffer[index * 2 + channel];
         }
         frame->nb_samples = count; frame->pts = offset;
         encoder.Send(frame, consume, ct); offset += count;
