@@ -53,7 +53,11 @@ public sealed record ClaudeModeServices(
     Func<bool> Finding,
     Func<string?> FindProblem,
     Func<Task<ClaudeModeBlocker?>> FindIfFree,
-    Action<ClaudeModeBlocker> Fix);
+    Action<ClaudeModeBlocker> Fix)
+{
+    /// <summary>Writes one info line to the app log (category <c>claude-mode</c>): the run's stage timings, numbers only.</summary>
+    public Action<string>? Log { get; init; }
+}
 
 /// <summary>One line of card C: the transcript, Find Clips, then each clip.</summary>
 public sealed record ClaudeModeStep(string Id, ClaudeModeStepState State, string Text, string Detail = "");
@@ -76,6 +80,8 @@ public sealed class ClaudeModeState
     /// <summary>How many moments Find Clips offered.</summary>
     public int Found { get; internal set; }
     public MakeItBudget? Budget { get; internal set; }
+    /// <summary>The run's stage wall times from the video's arming (ai.md §16.12): transcribe, find, then plan and apply per clip.</summary>
+    public Core.Domain.Autopilot.ClaudeModeClock? Clock { get; internal set; }
     /// <summary>A Find Clips ran on this video since it was armed.</summary>
     public bool Searched { get; internal set; }
     public ClaudeModeServices? Services { get; set; }

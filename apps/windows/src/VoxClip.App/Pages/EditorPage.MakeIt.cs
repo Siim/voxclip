@@ -66,7 +66,8 @@ public sealed partial class EditorPage
             {
                 if (blocker is ClaudeModeBlocker.SetUp) App.OpenSettings(SettingsSections.ProvidersAndKeys);
                 else ShowFindClips(null);
-            });
+            })
+        { Log = line => App.Services.Log.Write(Core.Services.Logging.LogLevel.Info, "claude-mode", line) };
         FindClips.Started += (_, find) => ViewModel.ClaudeModeFindStarted(find);
         ViewModel.Transcribed += (_, _) => DispatcherQueue.TryEnqueue(() => _ = ViewModel.ClaudeModeContinueAsync());
         // A video just transcribed teaches each active voice in its language, quietly and on this PC (ADR-R41); nothing where the speaker
