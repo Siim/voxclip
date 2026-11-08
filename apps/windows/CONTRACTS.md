@@ -1,5 +1,36 @@
 # Windows fixed contracts
 
+### 2026-11-08 — Windows: the frame decisions in C#, twin of the Mac's Domain/Frames, package W1 of "Windows sees the picture" (track/v2-win-frames-core)
+
+ADR-R48 and ai.md §19; the post-fix Mac (track/v2-face-pose): facing is |yaw| ≤ 0.35 and |pitch − baseline| ≤ 0.35, the baseline is the recording's median pitch, and every decision takes it as an input. Pure Core only: the App, Media and CLI don't call these yet.
+
+- **Core `Domain/Frames/`** (new):
+  - `FrameAnalysis.cs`: `FrameObservation` (`IsClearLook`), `FrameEyes`, `FrameFace` (eyes from the two ratios, `FacesCamera(pitchBaseline)`, `PitchBaseline` = median), `EyeAspect` (`Ratio`, `State`, 0.20), `FrameScreen`, `FrameScreens.Detect` (3 boxes, 4 %, 1 % area, 8-box clusters), `FrameAnalysis`, `FrameAnalysisTimings`.
+  - `FrameDecisions.cs`: `OpeningFrame.Choose` (the relative rule: `QualityMargin` 0.15 over an open look, else the 0.25 floor; the silence window and `LeadInFloor`; `StartTolerance` 0.05), `FaceFollowCrop.Plan` (9:16 and 1:1: centre, path, dead zone, speed, median), `CoverFrame.Score`/`Pick`, `FrameBlurSpans.Merge`.
+  - `FrameSampling.cs`: `FrameClip` (`Make`, `Start`, `End`, `LeadInFloor`), `FrameSample`, `FrameSampling` (`SentenceSamples`, `VideoSamples`, `ClipSamples`, `OpeningTimes`).
+  - `FrameSheet.cs`: `FrameSheet` (`Summary(pitchBaseline)`, token estimates), `FrameSheetFrame` (`Label`, `SummaryLine`, `Fixed`), `ClipFrameCandidates` (`Blur` B1…, `Cover` C1–C3).
+  - `FrameJson.cs`: every type above in the Mac's JSON shape (a nil optional left out, the stored `eyes` kept on read), and `FrameAnalysisFile` (`analysis-v2.json`, `voxclip-frames/2`, `Read`, `Write`, `Key`, `Pass`).
+- **Numbers as the Mac writes them.** The Mac's `String(format: "%.2f", locale: en_US_POSIX)` rounds the value's shortest decimal half to even, so 0.615 is "0.62", 0.125 "0.12" and 12.345 "12.34" (checked against Swift on macOS 27). printf and .NET "F2" round the exact binary value (0.61), and .NET "0.00" rounds 15 digits half away (0.13). `FrameSheetFrame.Fixed` follows the Mac. `ClipAutopilotFrames.Seconds` and `RectText`, which format the frames block's candidates, now call it (they used "0.00").
+- **Shared vectors.** New `shared/fixtures/clip-frames/decision-cases.json` (`voxclip-frame-decision-cases/1`, 136 cases) from `tools/fixtures/clip-frames/generate_frame_decisions.py`. It holds eyes 11, looks 11, openings 22, covers 11, crops 11, screens 12, blur spans 7, summaries 6, image tokens 6, samplings 9, opening times 6 and decimals 24, plus an `analysis-v2.json` sample. Inputs and answers are in the Mac's JSON shape. It is registered with `tools/schemas/validate.py` (new `frame-decision-cases.schema.json`) and `check_drift.py` (exact; the generator's centring uses a correctly rounded sqrt where the Cores call hypot, so the replays compare numbers within 1e-12).
+- **Replays.** C# `FrameDecisionVectorTests` (14) and Mac `FrameDecisionVectorTests` (14) replay every case with exact keys and counts. Both also rebuild `plan-frames-cases.json`'s summary, blur and cover candidates from the decisions. The Mac's own `FrameAnalysisCache` reads the sample and writes back the same keys and values; C# `FrameAnalysisFile` reads and writes it the same. C# `FaceFacingVectorTests` (3) replays `face-facing-cases.json` (6 baselines, 14 facings), which was owed. `clip-frames-wire-cases.json` was already replayed (`ClipFramesProjectWireTests`).
+- **Red without each rule** (one mutation at a time; every one in C#, and the baseline, opening, cover-tie, `MinimumBoxes` and printf ones on the Mac too):
+  - pitch judged from 0: covers, facing, looks, openings and summaries fail;
+  - the absolute opening rule: openings;
+  - a later frame winning a cover tie (pick or candidates): covers;
+  - `MinimumBoxes` 2 or `ClusterBoxes` 7: screens;
+  - no dead zone: crops;
+  - printf or "F2" decimals: decimals and summaries.
+- **ReleaseBoundary.** `update` on VoxClip.Core: +387 lines, additions only, all in `VoxClip.Core.Domain.Frames` (28 types, 359 members; no literals, attributes, friends or seams). The lead regenerates it after merging track/v2-win-export-check.
+- **Verification** (macOS host, Release, `-m:1 -nodeReuse:false -p:UseSharedCompilation=false`, `VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`): Windows Core 3,353 (3,324 passed, 29 skipped, 0 failed). Mac Core 1,509 tests in 169 suites passed (the 2 expected deadline known issues). Both `check_drift.py` scripts and `tools/schemas/validate.py` pass, and the tree is clean after them.
+- **Still owed (Windows sees the picture, /tmp/clipper-planning/research/windows-frame-analyzer.md):**
+  - W2: `FrameModelCatalog`, `FaceMeshFields`, `YuNetDecoder` and `RotatedCrop`, with `frame-face-fields-cases.json`.
+  - W3: `OnnxFrameFaces` (YuNet + Face Mesh V2 on the pinned ORT), with CC0 golden renders.
+  - W4: `Windows.Media.Ocr` line boxes and a pure `QuadFinder` feeding `FrameScreens.Detect`.
+  - W5: the analyzer (FFmpeg lanes, the per-millisecond cache through `FrameAnalysisFile`, 320 px sheet JPEGs, the whole-video pass, `voxclip-cli analyze-frames`).
+  - W6: the wiring (the plan request's frames from `FrameSheet` and `ClipFrameCandidates`, the four Make it postable rows, the send line, the cover export, the face crop in `CurrentFrames`, `autopilot` frames in the CLI).
+  - W7: the calibration against this Mac.
+  - The summary's header still says "Frames measured on this Mac" on both platforms (the plan-frames vectors pin it); W6 decides whether Windows changes it.
+
 ### 2026-11-08 — Windows: the take QA matches numbers however they're written, the twin of Mac track/v2-spoken-numbers (track/v2-spoken-numbers)
 
 - **Core `SpokenNumbers`** (new, Domain/Transcript), the C# twin of the Mac rules: `Tokens`, `Parse`, `Align`, `Token.FromRaw`, `Alignment` (`Ratio`, `Complete`, `UnverifiedNumbers`).

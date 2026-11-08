@@ -1,0 +1,485 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Siim/voxclip/main/shared/schemas/frame-decision-cases.schema.json",
+  "title": "Frame decision vectors (ADR-R48, ai.md section 19)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "description", "constants", "caseCount", "counts", "transcripts", "eyes", "looks", "openings", "covers", "crops",
+               "screens", "blurSpans", "summaries", "imageTokens", "samplings", "openingTimes", "decimals", "analysis"],
+  "properties": {
+    "schema": {"const": "voxclip-frame-decision-cases/1"},
+    "description": {"type": "string", "minLength": 1},
+    "constants": {
+      "type": "object",
+      "additionalProperties": {"type": "number"},
+      "required": ["closedBelow", "goodQuality", "yawLimit", "pitchLimit", "startTolerance", "qualityMargin", "openingSpan", "openingStep",
+                   "deadZone", "maximumSpeed", "medianWindow", "blinkWindow", "qualityWeight", "centredWeight", "eyesWeight", "facingWeight",
+                   "minimumBoxes", "minimumCoverage", "minimumArea", "clusterBoxes", "minimumOverlap", "blurMaxGap", "blurPad",
+                   "maximumCovers", "maximumSentences", "maximumSentenceWords", "pixelsPerToken"]
+    },
+    "caseCount": {"type": "integer", "minimum": 1},
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eyes", "looks", "openings", "covers", "crops", "screens", "blurSpans", "summaries", "imageTokens", "samplings", "openingTimes",
+                   "decimals"],
+      "properties": {
+        "eyes": {"type": "integer", "minimum": 1}, "looks": {"type": "integer", "minimum": 1}, "openings": {"type": "integer", "minimum": 1},
+        "covers": {"type": "integer", "minimum": 1}, "crops": {"type": "integer", "minimum": 1}, "screens": {"type": "integer", "minimum": 1},
+        "blurSpans": {"type": "integer", "minimum": 1}, "summaries": {"type": "integer", "minimum": 1},
+        "imageTokens": {"type": "integer", "minimum": 1}, "samplings": {"type": "integer", "minimum": 1},
+        "openingTimes": {"type": "integer", "minimum": 1}, "decimals": {"type": "integer", "minimum": 1}
+      }
+    },
+    "transcripts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["words", "video"],
+        "properties": {"words": {"$ref": "#/$defs/words"}, "video": {"$ref": "#/$defs/samples"}}
+      }
+    },
+    "eyes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "kind", "points", "expect"],
+            "properties": {
+              "id": {"$ref": "#/$defs/id"},
+              "kind": {"const": "ratio"},
+              "points": {"type": "array", "items": {"type": "array", "prefixItems": [{"type": "number"}, {"type": "number"}], "items": false, "minItems": 2}},
+              "expect": {"type": ["number", "null"]}
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "kind", "left", "right", "expect"],
+            "properties": {
+              "id": {"$ref": "#/$defs/id"},
+              "kind": {"const": "state"},
+              "left": {"type": ["number", "null"]},
+              "right": {"type": ["number", "null"]},
+              "expect": {"$ref": "#/$defs/eyes"}
+            }
+          }
+        ]
+      }
+    },
+    "looks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "frame", "pitchBaseline", "expect"],
+        "properties": {
+          "id": {"$ref": "#/$defs/id"},
+          "frame": {"$ref": "#/$defs/observation"},
+          "pitchBaseline": {"$ref": "#/$defs/baseline"},
+          "expect": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["clearLook", "facing"],
+            "properties": {"clearLook": {"type": "boolean"}, "facing": {"type": ["boolean", "null"]}}
+          }
+        }
+      }
+    },
+    "openings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "words", "first", "last", "cut", "scan", "pitchBaseline", "expect"],
+        "properties": {
+          "id": {"$ref": "#/$defs/id"},
+          "words": {"$ref": "#/$defs/words"},
+          "first": {"type": "integer", "minimum": 0},
+          "last": {"type": "integer", "minimum": 0},
+          "cut": {"$ref": "#/$defs/ids"},
+          "scan": {"type": "array", "items": {"$ref": "#/$defs/observation"}},
+          "pitchBaseline": {"$ref": "#/$defs/baseline"},
+          "expect": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["clip", "choice"],
+            "properties": {
+              "clip": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["start", "end", "leadInFloor", "kept"],
+                "properties": {
+                  "start": {"type": "number"}, "end": {"type": "number"}, "leadInFloor": {"type": "number", "minimum": 0},
+                  "kept": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 0}}
+                }
+              },
+              "choice": {
+                "oneOf": [
+                  {"type": "null"},
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["shift", "time"],
+                    "properties": {"shift": {"type": "number", "maximum": 0}, "time": {"type": "number", "minimum": 0}}
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "covers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "frames", "pitchBaseline", "expect"],
+        "properties": {
+          "id": {"$ref": "#/$defs/id"},
+          "frames": {"type": "array", "items": {"$ref": "#/$defs/observation"}},
+          "pitchBaseline": {"$ref": "#/$defs/baseline"},
+          "expect": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["scores", "pick", "candidates"],
+            "properties": {
+              "scores": {"type": "array", "items": {"type": ["number", "null"], "minimum": 0, "maximum": 1}},
+              "pick": {
+                "oneOf": [
+                  {"type": "null"},
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["time", "score"],
+                    "properties": {"time": {"type": "number"}, "score": {"type": "number"}}
+                  }
+                ]
+              },
+              "candidates": {
+                "type": "array",
+                "maxItems": 3,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["id", "frame", "time", "score"],
+                  "properties": {
+                    "id": {"type": "string", "pattern": "^C[1-3]$"}, "frame": {"type": "integer", "minimum": 1},
+                    "time": {"type": "number"}, "score": {"type": "number"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "crops": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "samples", "sourceAspect", "targetAspect", "expect"],
+        "properties": {
+          "id": {"$ref": "#/$defs/id"},
+          "samples": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["time", "face"],
+              "properties": {"time": {"type": "number"}, "face": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/rect"}]}}
+            }
+          },
+          "sourceAspect": {"type": "number"},
+          "targetAspect": {"type": "number"},
+          "expect": {
+            "oneOf": [
+              {"type": "null"},
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["cropWidth", "cropHeight", "centerX", "centerY", "path"],
+                "properties": {
+                  "cropWidth": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+                  "cropHeight": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+                  "centerX": {"type": "number", "minimum": 0, "maximum": 1},
+                  "centerY": {"type": "number", "minimum": 0, "maximum": 1},
+                  "path": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["t", "x", "y"],
+                      "properties": {"t": {"type": "number"}, "x": {"type": "number"}, "y": {"type": "number"}}
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "screens": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "rectangles", "texts", "expect"],
+        "properties": {
+          "id": {"$ref": "#/$defs/id"},
+          "rectangles": {"type": "array", "items": {"$ref": "#/$defs/rect"}},
+          "texts": {"type": "array", "items": {"$ref": "#/$defs/rect"}},
+          "expect": {"type": "array", "items": {"$ref": "#/$defs/screen"}}
+        }
+      }
+    },
+    "blurSpans": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "frames", "maxGap", "pad", "clipStart", "clipEnd", "expect"],
+        "properties": {
+          "id": {"$ref": "#/$defs/id"},
+          "frames": {"type": "array", "items": {"$ref": "#/$defs/observation"}},
+          "maxGap": {"type": "number", "minimum": 0},
+          "pad": {"type": "number", "minimum": 0},
+          "clipStart": {"type": "number"},
+          "clipEnd": {"type": "number"},
+          "expect": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["spans", "candidates"],
+            "properties": {
+              "spans": {"type": "array", "items": {"$ref": "#/$defs/span", "unevaluatedProperties": false}},
+              "candidates": {
+                "type": "array",
+                "items": {
+                  "allOf": [{"$ref": "#/$defs/span"}],
+                  "required": ["id"],
+                  "properties": {"id": {"type": "string", "pattern": "^B[1-9][0-9]*$"}},
+                  "unevaluatedProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "summaries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "frames", "pitchBaseline", "expect"],
+        "properties": {
+          "id": {"$ref": "#/$defs/id"},
+          "frames": {"type": "array", "items": {"$ref": "#/$defs/observation"}},
+          "pitchBaseline": {"$ref": "#/$defs/baseline"},
+          "expect": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["summary", "summaryTokens"],
+            "properties": {"summary": {"type": "string"}, "summaryTokens": {"type": "integer", "minimum": 0}}
+          }
+        }
+      }
+    },
+    "imageTokens": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["width", "height", "expect"],
+        "properties": {"width": {"type": "integer"}, "height": {"type": "integer"}, "expect": {"type": "integer", "minimum": 0}}
+      }
+    },
+    "samplings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "transcript", "first", "last", "cut", "limit", "expect"],
+        "properties": {
+          "id": {"$ref": "#/$defs/id"},
+          "transcript": {"type": "string", "minLength": 1},
+          "first": {"type": "integer", "minimum": 0},
+          "last": {"type": "integer", "minimum": 0},
+          "cut": {"$ref": "#/$defs/ids"},
+          "limit": {"type": "integer", "minimum": 0},
+          "expect": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["sentences", "clip"],
+            "properties": {"sentences": {"$ref": "#/$defs/samples"}, "clip": {"$ref": "#/$defs/samples"}}
+          }
+        }
+      }
+    },
+    "openingTimes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["start", "expect"],
+        "properties": {"start": {"type": "number", "minimum": 0}, "expect": {"type": "array", "items": {"type": "number", "minimum": 0}}}
+      }
+    },
+    "decimals": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["value", "expect"],
+        "properties": {"value": {"type": "number"}, "expect": {"type": "string", "pattern": "^-?[0-9]+\\.[0-9]{2}$"}}
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fileName", "file", "frameAnalysis", "pitchBaseline"],
+      "properties": {
+        "fileName": {"const": "analysis-v2.json"},
+        "file": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["frames", "schema"],
+          "properties": {
+            "frames": {
+              "type": "object",
+              "propertyNames": {"pattern": "^[0-9]+\\.[0-9]{3}:-?[0-9]+$"},
+              "additionalProperties": {"$ref": "#/$defs/observation"}
+            },
+            "schema": {"const": "voxclip-frames/2"}
+          }
+        },
+        "frameAnalysis": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["contentKey", "opening", "sentences", "timings", "version"],
+          "properties": {
+            "contentKey": {"type": "string", "minLength": 1},
+            "opening": {"type": "array", "items": {"$ref": "#/$defs/observation"}},
+            "sentences": {"type": "array", "items": {"$ref": "#/$defs/observation"}},
+            "timings": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["analyzedFrames", "cachedFrames", "openingSeconds", "sentenceSeconds"],
+              "properties": {
+                "analyzedFrames": {"type": "integer", "minimum": 0}, "cachedFrames": {"type": "integer", "minimum": 0},
+                "openingSeconds": {"type": "number", "minimum": 0}, "sentenceSeconds": {"type": "number", "minimum": 0}
+              }
+            },
+            "version": {"const": 2}
+          }
+        },
+        "pitchBaseline": {"$ref": "#/$defs/baseline"}
+      }
+    }
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+    "ids": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "baseline": {"type": ["number", "null"]},
+    "eyes": {"enum": ["open", "closed", "unknown"]},
+    "rect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "width", "height"],
+      "properties": {"x": {"type": "number"}, "y": {"type": "number"}, "width": {"type": "number"}, "height": {"type": "number"}}
+    },
+    "face": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rect", "eyes"],
+      "properties": {
+        "rect": {"$ref": "#/$defs/rect"},
+        "captureQuality": {"type": "number"},
+        "leftEyeAspect": {"type": "number"},
+        "rightEyeAspect": {"type": "number"},
+        "yaw": {"type": "number"},
+        "pitch": {"type": "number"},
+        "eyes": {"$ref": "#/$defs/eyes"}
+      }
+    },
+    "screen": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rect", "textBoxes", "textCoverage", "framed"],
+      "properties": {
+        "rect": {"$ref": "#/$defs/rect"},
+        "textBoxes": {"type": "integer", "minimum": 0},
+        "textCoverage": {"type": "number", "minimum": 0, "maximum": 1},
+        "framed": {"type": "boolean"}
+      }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["time", "faceCount", "textRects", "screens"],
+      "properties": {
+        "time": {"type": "number"},
+        "faceCount": {"type": "integer", "minimum": 0},
+        "face": {"$ref": "#/$defs/face"},
+        "textRects": {"type": "array", "items": {"$ref": "#/$defs/rect"}},
+        "screens": {"type": "array", "items": {"$ref": "#/$defs/screen"}}
+      }
+    },
+    "span": {
+      "type": "object",
+      "required": ["start", "end", "rect", "frames"],
+      "properties": {
+        "start": {"type": "number", "minimum": 0},
+        "end": {"type": "number"},
+        "rect": {"$ref": "#/$defs/rect"},
+        "frames": {"type": "integer", "minimum": 1}
+      }
+    },
+    "words": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "text", "kind", "start", "end"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "text": {"type": "string", "minLength": 1},
+          "kind": {"enum": ["word", "event", "unlabeledSpeech"]},
+          "start": {"type": "number", "minimum": 0},
+          "end": {"type": "number", "minimum": 0}
+        }
+      }
+    },
+    "samples": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["time", "firstWord", "lastWord"],
+        "properties": {
+          "time": {"type": "number", "minimum": 0},
+          "firstWord": {"type": "integer", "minimum": 0},
+          "lastWord": {"type": "integer", "minimum": 0}
+        }
+      }
+    }
+  }
+}

@@ -1,5 +1,5 @@
-using System.Globalization;
 using VoxClip.Core.Domain.Effects;
+using VoxClip.Core.Domain.Frames;
 using VoxClip.Core.Services.LLM;
 
 namespace VoxClip.Core.Domain.Autopilot;
@@ -27,10 +27,10 @@ public sealed record ClipAutopilotFrames(string Summary, IReadOnlyList<LlmImage>
     /// <summary>The candidate a reply's cover id names.</summary>
     public CoverCandidate? CoverCandidateFor(string id) => Cover.FirstOrDefault(candidate => candidate.Id == id);
 
-    /// <summary>Seconds as the sheet writes them: two decimals.</summary>
-    internal static string Seconds(double value) => value.ToString("0.00", CultureInfo.InvariantCulture);
+    /// <summary>Seconds as the sheet writes them: two decimals, by the Mac's rule (<see cref="FrameSheetFrame.Fixed"/>).</summary>
+    internal static string Seconds(double value) => FrameSheetFrame.Fixed(value);
     /// <summary>A rect as the sheet writes it: "x,y,w,h" with two decimals each.</summary>
-    internal static string RectText(ClipEffectRect rect) => string.Join(",", new[] { rect.X, rect.Y, rect.Width, rect.Height }.Select(Seconds));
+    internal static string RectText(ClipEffectRect rect) => FrameSheetFrame.RectText(rect);
 }
 
 /// <summary>A clip's frames, given just before its plan is sent (ADR-R48, ai.md §19.6): <c>clip</c> indexes the spans (0 of 1 for a

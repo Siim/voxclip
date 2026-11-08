@@ -124,3 +124,5 @@ small frames may be sent to the chosen AI. The cover is saved as `cover.jpg` nex
 - **Cache.** `analysis-v2.json` replaces `analysis-v1.json`; old files are ignored and go with the cache's own eviction.
 - **Windows** calibrates against this Mac (post-fix): the face request set and the macOS build are in
   apps/windows/CONTRACTS.md.
+- **Windows** has the pure decisions in C# Core `Domain/Frames` (W1, track/v2-win-frames-core), replaying
+  shared/fixtures/clip-frames/decision-cases.json and face-facing-cases.json with the Mac; the analyzer and wiring (W2–W7) are owed.
