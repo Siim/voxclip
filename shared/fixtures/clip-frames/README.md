@@ -14,5 +14,14 @@ case marks a rule only the Cores check.
 `face-facing-cases.json` (`voxclip-face-facing-cases/1`, ADR-R48 and ai.md §19.2) holds the facing rule's vectors: the
 recording's typical pitch (the median pitch of the faces in the whole video's frame pass) and whether a face with a given
 yaw and pitch faces the camera (|yaw| ≤ 0.35 rad and pitch within 0.35 rad of that baseline). Regenerate with
-`python3 tools/fixtures/clip-frames/generate_face_facing.py` (check_drift.py runs it). Swift `FaceFacingVectorTests`
-replays every case; the Windows replay is owed.
+`python3 tools/fixtures/clip-frames/generate_face_facing.py` (check_drift.py runs it). Swift and C# `FaceFacingVectorTests`
+replay every case.
+
+`decision-cases.json` (`voxclip-frame-decision-cases/1`, ADR-R48 and ai.md §19) holds the pure frame decisions on fabricated
+observations: eye states, clear looks, the opening frame (the relative rule against the baseline), the cover and its C1–C3
+candidates, the 9:16 and 1:1 face-follow crop, screens, blur spans and their B1… candidates, the frame sheet's summary
+text, the sampling times, the Mac's two-decimal rule (the shortest decimal rounded half to even, not printf's), and an
+`analysis-v2.json` sample. Inputs and answers are in the Mac's JSON shape. Regenerate with
+`python3 tools/fixtures/clip-frames/generate_frame_decisions.py` (check_drift.py runs it, exact); `tools/schemas/validate.py`
+checks it against `shared/schemas/frame-decision-cases.schema.json`. Swift and C# `FrameDecisionVectorTests` replay every
+case, comparing numbers within 1e-12.

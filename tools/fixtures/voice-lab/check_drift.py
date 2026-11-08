@@ -59,7 +59,7 @@ EXACT = ['shared/fixtures/voice-lab/pace-cases.json', 'shared/fixtures/voice-lab
          'shared/fixtures/ask-claude/ask-claude-cases.json',
          'shared/fixtures/clip-controls/clip-controls-project.voxclip', 'shared/fixtures/clip-controls/clip-controls-wire-cases.json',
          'shared/fixtures/clip-frames/clip-frames-project.voxclip', 'shared/fixtures/clip-frames/clip-frames-wire-cases.json',
-         'shared/fixtures/clip-frames/face-facing-cases.json',
+         'shared/fixtures/clip-frames/face-facing-cases.json', 'shared/fixtures/clip-frames/decision-cases.json',
          'shared/fixtures/autopilot/plan-frames-cases.json', 'shared/fixtures/autopilot/plan-validation-cases.json',
          'shared/fixtures/autopilot/plan-v2-cases.json', 'shared/fixtures/autopilot/plan-tone-cases.json',
          'shared/fixtures/clip-render/clip-render-cases.json',
@@ -120,6 +120,8 @@ def main():
     subprocess.run([sys.executable, str(root / "tools/fixtures/clip-frames/generate_clip_frames.py")], check=True)
     # Facing the camera from Vision's continuous yaw and pitch against the recording's typical pitch (ai.md section 19.2).
     subprocess.run([sys.executable, str(root / "tools/fixtures/clip-frames/generate_face_facing.py")], check=True)
+    # The frame decisions both Cores replay (ADR-R48, ai.md section 19): openings, covers, crops, screens, blur spans, summaries.
+    subprocess.run([sys.executable, str(root / "tools/fixtures/clip-frames/generate_frame_decisions.py")], check=True)
     subprocess.run([sys.executable, str(root / "tools/fixtures/autopilot/generate_plan_frames.py")], check=True)
     # The clip style's tone (doc/design.md section 6.6) and the Rewrite tone catalog (section 6.3.1).
     subprocess.run([sys.executable, str(root / "tools/schemas/generate_clip_style_tone_schema.py")], check=True)

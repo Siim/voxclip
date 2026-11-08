@@ -97,9 +97,19 @@ public sealed class FrameSheetFrame
         return $"F{index.ToString(CultureInfo.InvariantCulture)} {Fixed(frame.Time)} s: " + string.Join(", ", parts);
     }
 
-    /// <summary>Two decimals as the Mac's <c>String(format: "%.2f")</c> writes them: the exact binary value rounded half to even
-    /// ("F2"; the custom "0.00" rounds 1.005 up, printf does not).</summary>
-    internal static string Fixed(double value) => value.ToString("F2", CultureInfo.InvariantCulture);
+    /// <summary><paramref name="places"/> decimals as the Mac writes them (<c>String(format: "%.2f", locale: en_US_POSIX)</c>): the
+    /// shortest round-trip decimal of the value rounded half to even, the sign of zero kept ("-0.00"). Neither printf nor .NET's
+    /// "F2" (the exact binary value: 0.615 is "0.61", the Mac's "0.62") nor "0.00" (15 digits, half away: 0.125 is "0.13", the
+    /// Mac's "0.12") is that rule; shared/fixtures/clip-frames/decision-cases.json pins it.</summary>
+    internal static string Fixed(double value, int places = 2)
+    {
+        var format = "F" + places.ToString(CultureInfo.InvariantCulture);
+        if (!double.IsFinite(value)
+            || !decimal.TryParse(value.ToString("R", CultureInfo.InvariantCulture), NumberStyles.Float, CultureInfo.InvariantCulture, out var shortest))
+            return value.ToString(format, CultureInfo.InvariantCulture);
+        var text = Math.Round(shortest, places, MidpointRounding.ToEven).ToString(format, CultureInfo.InvariantCulture);
+        return double.IsNegative(value) && !text.StartsWith('-') ? "-" + text : text;
+    }
 
     /// <summary>"x,y,w,h", two decimals each.</summary>
     internal static string RectText(ClipEffectRect rect) => string.Join(",", Fixed(rect.X), Fixed(rect.Y), Fixed(rect.Width), Fixed(rect.Height));

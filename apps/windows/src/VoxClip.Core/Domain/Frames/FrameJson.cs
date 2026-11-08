@@ -263,5 +263,5 @@ public static class FrameAnalysisFile
         pass + ":" + ((long)Math.Round(time * 1000, MidpointRounding.AwayFromZero)).ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     /// <summary>The pass name of a decode tolerance: its seconds with three decimals.</summary>
-    public static string Pass(double tolerance) => tolerance.ToString("F3", System.Globalization.CultureInfo.InvariantCulture);
+    public static string Pass(double tolerance) => FrameSheetFrame.Fixed(tolerance, 3);
 }
