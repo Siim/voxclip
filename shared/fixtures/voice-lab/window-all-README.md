@@ -5,7 +5,10 @@
 Regenerate with `python3 -I tools/fixtures/voice-lab/generate_window_all.py`. The standalone
 standard-library generator loads only definitions from `generate_window.py`, never its
 case generation or output. Both files regenerate byte for byte; neither allows float tolerance.
-The legacy `window-cases.json` remains byte-identical to the pre-C3 606-case contract.
+The legacy `window-cases.json` keeps the pre-C3 606-case shape. The clip-edge rule (voice-lab §8.4 step 1, 2026-11-08) changed
+42 of its expectations (40 refusals at a clip's own edge now place, 2 refusals report a later rule) and one multi-segment
+take, whose earlier replacement now places; its own vectors are in
+[window-clip-edge-README.md](window-clip-edge-README.md). This file did not change.
 
 Inputs use the legacy literal take/envelope format plus `hunks`. Results contain `status`,
 original-input `indices`, the resulting `hunk`, and either the complete `window` or a typed

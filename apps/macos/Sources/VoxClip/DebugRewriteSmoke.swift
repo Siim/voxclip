@@ -274,10 +274,14 @@ import VoxClipCore
         /// 120 Hz (the default) as the consent statement's own voice, 135 Hz at 35° from it (passes) and 150 Hz at 70°
         /// (blocked on its own, but within 35° of a 135 Hz reference).
         var ownerPitches: [Int: Double] = [:]
-        /// One clip over every word, active, so the Rewrite is inside it (the whole-clip revoice's scenes).
+        /// One clip from `firstWord` to the last sentence but one, active, so the Rewrite is inside it (the whole-clip revoice's
+        /// scenes).
         var wholeClip = false
         /// Every "um" in the script is cut, as Make it postable tightens fillers.
         var cutFillers = false
+        /// The word (0-based) whose end touches the next word's start with no silence, as Whisper's back-to-back word ends
+        /// do (transcription.md §5.5).
+        var touchingAfter: Int? = nil
     }
     nonisolated static let baseScript = "Today I want to show you how cloud tools edit video. First we record a short clip in one take. "
         + "Then we fix the words we got wrong. We keep the pauses that sound natural and remove the ones that drag. "
@@ -291,7 +295,7 @@ import VoxClipCore
         project.voiceLab.segments = []; project.voiceLab.assets = []
         project.edits = ProjectEdits()
         let recording = try await recording(script: fixture.script, root: root, guestSentence: fixture.guestSentence, roadNoise: fixture.roadNoise,
-                                            ownerPitches: fixture.ownerPitches)
+                                            ownerPitches: fixture.ownerPitches, touchingAfter: fixture.touchingAfter)
         project.media.source.absolutePath = recording.movie.path
         project.media.source.relativePath = recording.movie.lastPathComponent
         project.media.source.sizeBytes = recording.sizeBytes
@@ -304,7 +308,8 @@ import VoxClipCore
         project.transcript?.language = "en"
         // The clip ends a sentence before the recording does: the voice is levelled against the speech beside it.
         let ends = recording.words.indices.filter { recording.words[$0].text.hasSuffix(".") }
-        if fixture.wholeClip, let first = recording.words.first, let end = ends.dropLast().last {
+        if fixture.wholeClip, recording.words.indices.contains(fixture.firstWord), let end = ends.dropLast().last {
+            let first = recording.words[fixture.firstWord]
             let last = recording.words[end]
             project.edits.clips = [ClipRange(id: "clip-whole", startWordId: first.id, endWordId: last.id, title: "Whole")]
             project.edits.activeClipId = "clip-whole"
@@ -328,9 +333,10 @@ import VoxClipCore
     private static var recordings: [String: Recording] = [:]
 
     static func recording(script: String, root: URL, guestSentence: Int? = nil, roadNoise: Bool = false,
-                          ownerPitches: [Int: Double] = [:]) async throws -> Recording {
+                          ownerPitches: [Int: Double] = [:], touchingAfter: Int? = nil) async throws -> Recording {
         let pitchKey = ownerPitches.keys.sorted().map { "\($0):\(ownerPitches[$0] ?? 0)" }.joined(separator: ",")
         let cacheKey = root.standardizedFileURL.path + "\n" + script + "\n\(guestSentence ?? -1)\n\(roadNoise)\n" + pitchKey
+            + "\n\(touchingAfter ?? -1)"
         if let cached = recordings[cacheKey], FileManager.default.fileExists(atPath: cached.movie.path) { return cached }
         var words: [TimedWord] = []
         var guestWords: Set<String> = []
@@ -344,7 +350,7 @@ import VoxClipCore
             words.append(TimedWord(id: "s\(index)", text: String(text), start: time, end: time + length, speaker: speaker))
             if guest { guestWords.insert("s\(index)") }
             if let pitch = ownerPitches[sentence] { pitches["s\(index)"] = pitch }
-            time += length + (text.hasSuffix(".") ? 0.6 : text.hasSuffix(",") ? 0.25 : 0.07)
+            time += length + (index == touchingAfter ? 0 : text.hasSuffix(".") ? 0.6 : text.hasSuffix(",") ? 0.25 : 0.07)
             if text.hasSuffix(".") { sentence += 1 }
         }
         let duration = (time + 1.0).rounded(.up)

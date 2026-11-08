@@ -244,8 +244,17 @@ class SeamLayout:
     """The synth pieces of an output plan in source order, each {'id', 'lo', 'hi', 'in', 'out'} with its seams, and the
     kept source pieces around them, in samples (section 10.5)."""
 
-    def __init__(self, elements, pieces, total):
-        self.elements, self.pieces, self.total = elements, pieces, total
+    def __init__(self, elements, pieces, total, clip_scope=False):
+        self.elements, self.pieces, self.total, self.clip_scope = elements, pieces, total, clip_scope
+
+    def output_edge(self, index, incoming):
+        """Whether element `index`'s seam on that side is a clip's own output edge: in a clip scope nothing renders before
+        it (or after it), so prepare plays a fade seam there as a take edge and needs no source beside it. A take edge keeps
+        seam `none`."""
+        element = self.elements[index]
+        return (self.clip_scope and not self.run(index if incoming else index + 1)
+                and not 0 <= (index - 1 if incoming else index + 1) < len(self.elements)
+                and (element['lo'] > 0 if incoming else element['hi'] < self.total))
 
     def run(self, index):
         """The kept pieces between element `index` - 1 (or the take start) and element `index` (or the take end)."""
@@ -272,7 +281,7 @@ class SeamLayout:
             touching = self.elements[other]['hi'] == element['lo'] if incoming else element['hi'] == self.elements[other]['lo']
             return touching and facing['kind'] == 'synthToSynth' and facing['fadeSamples'] == seam['fadeSamples']
         fade = seam['fadeSamples']
-        return self.beside(index, incoming) >= (fade // 2 if incoming else fade - fade // 2)
+        return self.output_edge(index, incoming) or self.beside(index, incoming) >= (fade // 2 if incoming else fade - fade // 2)
 
     def fades_fit(self, index):
         """Prepare's overlappingFades rule between elements `index` and `index` + 1: the kept source between them holds the
@@ -291,7 +300,7 @@ class SeamLayout:
         is source and holds the fade's outer half, and the fades on either side of the kept source between this element and
         the next one do not overlap."""
         seam = self.elements[index]['in'] if incoming else self.elements[index]['out']
-        if seam['kind'] in ('none', 'synthToSynth'):
+        if seam['kind'] in ('none', 'synthToSynth') or self.output_edge(index, incoming):
             return self.side_ok(index, incoming)
         between, other = self.run(index if incoming else index + 1), index - 1 if incoming else index + 1
         fade = seam['fadeSamples']
@@ -323,6 +332,7 @@ class ScopeSource:
 
     def __init__(self, project, clip_id, rate, duration, items, edits):
         bounds, self.clip_range = resolve_scope(items, edits, clip_id)
+        self.bounds = bounds
         self.scope = scope_replacements(project['segments'], self.clip_range, rate, duration)
         self.segments = edit_segments(items, edits, bounds)
         cut = {segment['id']: segment['cut'] for segment in self.segments if segment['kind'] == 'word'}
@@ -448,6 +458,7 @@ def place(project, clip_id, envelope, first_id, last_id):
         right = hard(end + min(HARD_SEAM_REACH, max(0.0, start - end) / 2))
     if touches_end and not any(blocking[last + 1:]):
         right = edge(total, duration)
+    left, right = move_to_clip_edges(source, a, b, first, last, blocking, left, right)
 
     start, end = left['time'], right['time']
     if right['sample'] <= left['sample']:
@@ -477,10 +488,15 @@ def place(project, clip_id, envelope, first_id, last_id):
     # both outer halves. Seam kinds follow prepare: `none` only with nothing beside it, synthToSynth only between two
     # touching replacements, which `place` never makes.
     window = {'id': None, 'lo': left['sample'], 'hi': right['sample'], 'in': left, 'out': right}
+    clip_scope = clip_range is not None
+    # Only a window inside the clip, holding a passage of the clip, can open or close its output; any other is refused as
+    # before.
+    in_clip = (clip_scope and source.bounds[0] <= a <= source.bounds[1] and source.bounds[0] <= b <= source.bounds[1]
+               and clip_range[0] <= start and end <= clip_range[1])
     layout = SeamLayout(sorted(scope + [window], key=lambda element: element['lo']),
-                        kept_source((start, end), [(left['sample'], right['sample'])]), total)
+                        kept_source((start, end), [(left['sample'], right['sample'])]), total, clip_scope)
     # The scope as it renders without the window. A replacement's check that already fails there is not the window's doing.
-    alone = SeamLayout(scope, kept_source(), total)
+    alone = SeamLayout(scope, kept_source(), total, clip_scope)
     elements, w = layout.elements, layout.elements.index(window)
 
     def judge(index, incoming):
@@ -502,7 +518,9 @@ def place(project, clip_id, envelope, first_id, last_id):
         judge(w - 1, False)
         if not layout.pair_ok(w - 1):
             raise GeometryError('adjacentReplacement', segmentId=elements[w - 1]['id'])
-    if left['kind'] != 'none':
+    if left['kind'] != 'none' and in_clip and layout.output_edge(w, True):
+        holds_in_full_take(project, rate, duration, items, edits, total, window, True)
+    elif left['kind'] != 'none':
         needed, available = left['fadeSamples'] // 2, layout.beside(w, True)
         if available < needed:
             raise GeometryError('seamFadeCrossesCut', incoming=True, needed=needed, available=available)
@@ -512,7 +530,9 @@ def place(project, clip_id, envelope, first_id, last_id):
         judge(w + 1, True)
         if not layout.pair_ok(w):
             raise GeometryError('adjacentReplacement', segmentId=elements[w + 1]['id'])
-    if right['kind'] != 'none':
+    if right['kind'] != 'none' and in_clip and layout.output_edge(w, False):
+        holds_in_full_take(project, rate, duration, items, edits, total, window, False)
+    elif right['kind'] != 'none':
         needed, available = right['fadeSamples'] - right['fadeSamples'] // 2, layout.beside(w, False)
         if available < needed:
             raise GeometryError('seamFadeCrossesCut', incoming=False, needed=needed, available=available)
@@ -534,6 +554,69 @@ def place(project, clip_id, envelope, first_id, last_id):
             'leftBridgeWordIds': ids[first:a], 'rightBridgeWordIds': ids[b + 1:last + 1],
             'start': start, 'end': end, 'startSample': left['sample'], 'endSample': right['sample'],
             'leftSeam': left, 'rightSeam': right}
+
+
+def move_to_clip_edges(source, a, b, first, last, blocking, left, right):
+    """A clip's own edges (section 8.4). In a clip scope, a passage inside the clip with no kept or replaced item of the clip
+    before it opens the clip's output, and one with none after it closes it. Its seam keeps the kind and fade the full take
+    and other clips render it with. When the clip's kept source beside the seam cannot hold the fade's outer half, the seam
+    moves to the clip's own edge: the window absorbs that sliver and any cut items in it, and nothing renders beside the seam
+    in this scope. place then checks the seam against the full take."""
+    clip_range, bounds = source.clip_range, source.bounds
+    if clip_range is None or not (bounds[0] <= a <= bounds[1] and bounds[0] <= b <= bounds[1]):
+        return left, right
+    opens = left['kind'] != 'none' and not any(blocking[:first])
+    closes = right['kind'] != 'none' and not any(blocking[last + 1:])
+    if not (opens or closes):
+        return left, right
+    kept, rate = source.kept_source((left['time'], right['time'])), source.rate
+    if opens:
+        seam = left['sample']
+        beside = next((seam - lo for lo, hi in kept if lo < seam <= hi), 0)
+        edge = samples(clip_range[0], rate)
+        if beside < left['fadeSamples'] // 2 and edge < seam:
+            left = dict(left, time=clip_range[0], sample=edge)
+    if closes:
+        seam = right['sample']
+        beside = next((hi - seam for lo, hi in kept if lo <= seam < hi), 0)
+        edge = samples(clip_range[1], rate)
+        if beside < right['fadeSamples'] - right['fadeSamples'] // 2 and edge > seam:
+            right = dict(right, time=clip_range[1], sample=edge)
+    return left, right
+
+
+def holds_in_full_take(project, rate, duration, items, edits, total, window, incoming):
+    """A seam at a clip's own output edge renders as a take edge in the clip, but the segment renders in the full take too,
+    where the source before (or after) the clip comes out beside it. There the seam must hold as prepare holds it: the output
+    piece beside it is source and holds the fade's outer half, possibly across a cut the full take makes, and a replacement
+    across that source leaves room for both outer halves (section 10.5)."""
+    full = ScopeSource(project, None, rate, duration, items, edits)
+    start, end = window['in']['time'], window['out']['time']
+    elements = sorted(full.scope + [window], key=lambda element: element['lo'])
+    layout = SeamLayout(elements, full.kept_source((start, end), [(window['lo'], window['hi'])]), total)
+    index = elements.index(window)
+    if layout.prepare_ok(index, incoming):
+        return
+    fade = window['in']['fadeSamples'] if incoming else window['out']['fadeSamples']
+    between = layout.run(index if incoming else index + 1)
+    piece = (between[-1] if incoming else between[0]) if between else None
+    needed, available = (fade // 2 if incoming else fade - fade // 2), (piece[1] - piece[0] if piece else 0)
+    if available < needed:
+        raise GeometryError('seamFadeCrossesCut', incoming=incoming, needed=needed, available=available)
+    raise GeometryError('adjacentReplacement', segmentId=elements[index - 1 if incoming else index + 1]['id'])
+
+
+def clip_output_edges(project, clip_id, window):
+    """The sides (True for incoming) on which a window `place` returned for `clip_id` opens or closes the clip's output: a
+    seam with a fade and nothing rendered beside it in the clip."""
+    rate, duration, items, edits, total = checked_take(project)
+    source = ScopeSource(project, clip_id, rate, duration, items, edits)
+    element = {'id': None, 'lo': window['startSample'], 'hi': window['endSample'], 'in': window['leftSeam'], 'out': window['rightSeam']}
+    elements = sorted(source.scope + [element], key=lambda other: other['lo'])
+    layout = SeamLayout(elements, source.kept_source((window['start'], window['end']), [(element['lo'], element['hi'])]), total, True)
+    w = elements.index(element)
+    return [incoming for incoming in (True, False)
+            if element['in' if incoming else 'out']['kind'] != 'none' and layout.output_edge(w, incoming)]
 
 
 def lendable_silence(project, clip_id, window):
@@ -690,8 +773,17 @@ def render_failure(project, clip_id, window):
         if hi > position:
             pieces.append({'kind': 'source', 'lo': position, 'hi': hi, 'start': output, 'length': hi - position})
             output += hi - position
-    # VoiceLabRenderContract.validateSelectedSeams.
+    # VoiceLabRenderContract.validateSelectedSeams. In a clip scope nothing renders before the first piece or after the last,
+    # so a generated piece there plays from its trim, as at a take edge, and the fade seam it keeps for the full take is not
+    # rendered (section 8.4). A take edge keeps seam `none`.
     selected = [index for index, piece in enumerate(pieces) if piece['kind'] == 'synth']
+
+    def output_edge(index, incoming):
+        piece, seam = pieces[index], pieces[index]['window']['leftSeam' if incoming else 'rightSeam']
+        alone = index == 0 if incoming else index + 1 == len(pieces)
+        return (clip_range is not None and alone and seam['kind'] in ('gap', 'hard')
+                and (piece['lo'] > 0 if incoming else piece['hi'] < total))
+
     windows = []
     for index in selected:
         piece = pieces[index]
@@ -699,7 +791,7 @@ def render_failure(project, clip_id, window):
         after = pieces[index + 1] if index + 1 < len(pieces) else None
         incoming, outgoing = piece['window']['leftSeam'], piece['window']['rightSeam']
         if before is None:
-            if incoming['kind'] != 'none':
+            if incoming['kind'] != 'none' and not output_edge(index, True):
                 return 'invalidFadeHandles: incoming neighbour'
         elif before['kind'] == 'synth':
             prior = before['window']['rightSeam']
@@ -709,7 +801,7 @@ def render_failure(project, clip_id, window):
         elif incoming['kind'] in ('none', 'synthToSynth'):
             return 'invalidFadeHandles: incoming neighbour'
         if after is None:
-            if outgoing['kind'] != 'none':
+            if outgoing['kind'] != 'none' and not output_edge(index, False):
                 return 'invalidFadeHandles: outgoing neighbour'
         elif after['kind'] == 'synth':
             following = after['window']['leftSeam']
@@ -718,8 +810,8 @@ def render_failure(project, clip_id, window):
                 return 'invalidFadeHandles: touching replacements'
         elif outgoing['kind'] in ('none', 'synthToSynth'):
             return 'invalidFadeHandles: outgoing neighbour'
-        centres = [(incoming, piece['start'])]
-        if after is None or after['kind'] != 'synth':
+        centres = [] if output_edge(index, True) else [(incoming, piece['start'])]
+        if (after is None or after['kind'] != 'synth') and not output_edge(index, False):
             centres.append((outgoing, piece['start'] + piece['length']))
         for seam, centre in centres:
             if seam['kind'] != 'none':
@@ -733,10 +825,10 @@ def render_failure(project, clip_id, window):
     for index in selected:
         piece = pieces[index]
         incoming, outgoing = piece['window']['leftSeam'], piece['window']['rightSeam']
-        if incoming['kind'] != 'none' and (pieces[index - 1]['length'] < incoming['fadeSamples'] // 2
+        if incoming['kind'] != 'none' and not output_edge(index, True) and (pieces[index - 1]['length'] < incoming['fadeSamples'] // 2
                                            or piece['length'] < incoming['fadeSamples'] - incoming['fadeSamples'] // 2):
             return 'invalidFadeHandles: incoming pieces'
-        if outgoing['kind'] != 'none' and (piece['length'] < outgoing['fadeSamples'] // 2
+        if outgoing['kind'] != 'none' and not output_edge(index, False) and (piece['length'] < outgoing['fadeSamples'] // 2
                                            or pieces[index + 1]['length'] < outgoing['fadeSamples'] - outgoing['fadeSamples'] // 2):
             return 'invalidFadeHandles: outgoing pieces'
     return None
@@ -1394,7 +1486,11 @@ for name in ('cut-filler-at-take-start', 'cut-filler-near-take-start-44100', 'tw
 assert by_name(window, 'cut-word-at-take-end')['rightSeam'] == {'kind': 'none', 'time': 1.5, 'sample': 72000, 'fadeSamples': 0}
 assert by_name(window, 'cut-word-at-take-end')['lastWordId'] == 'w3'
 # A clip whose kept range starts after 0 is not at the take start: the clip head is a cut beside the hard seam.
-assert by_name(window, 'clip-starts-at-hard-seam') == {'error': 'seamFadeCrossesCut', 'incoming': True, 'needed': 288, 'available': 0}
+# The clip opens on w2, which touches w1: nothing renders before the hard seam in the clip, so it is the clip's output edge
+# there, and w1 holds its outer half in the full take (section 8.4).
+assert by_name(window, 'clip-starts-at-hard-seam')['leftSeam'] == {'kind': 'hard', 'time': 0.5, 'sample': 24000, 'fadeSamples': 576}
+assert render_failure(next(case['input'] for case in window if case['name'] == 'clip-starts-at-hard-seam'), None,
+                      by_name(window, 'clip-starts-at-hard-seam')) is None
 # w3's cut ends at 1.5 s (e1 is nested in it, so it reaches no further): frame 150's fade would start 240 samples inside it.
 assert by_name(window, 'nested-event-in-cut-word')['leftSeam']['sample'] == 151 * 480 + 240
 # The cut pause runs from 0.65 s (breath kept after w1) to 1.5 s, because the right search could bridge to w3 and leave the
@@ -1900,6 +1996,10 @@ for index in range(PROPERTY_CASES):
         failure = render_failure(project, clip_id, expected)
         if failure is not None:
             failures.append((index, failure))
+        # A window placed for a clip renders in the full take too, where its segment also plays (section 8.4).
+        failure = render_failure(project, None, expected) if clip_id is not None else None
+        if failure is not None:
+            failures.append((index, 'full take: ' + failure))
         widen_by_lend(project, clip_id, expected, lend_stats, lend_failures)
         fuzz['accepted'] += 1
         fuzz['acceptedInClipScope'] += clip_id is not None
@@ -2014,6 +2114,12 @@ def multi_check(project, clip_id, placed):
     failure = render_failure(project, clip_id, placed)
     if failure is not None:
         multi_failures.append((failure, placed))
+    # A window that opens or closes its clip's output renders in the full take too, where its segment also plays, whenever
+    # the full take rendered before it (section 8.4).
+    if clip_id is not None and clip_output_edges(project, clip_id, placed) and render_failure(project, None, None) is None:
+        failure = render_failure(project, None, placed)
+        if failure is not None:
+            multi_failures.append(('full take: ' + failure, placed))
     return True
 
 

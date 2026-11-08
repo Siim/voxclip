@@ -124,6 +124,49 @@ struct VoiceLabCompositionTests {
         #expect(smooth[start - 960] == legacy[start - 960])
     }
 
+    /// A clip that opens mid-take on a word touching the one before it (voice-lab §8.4, a clip's own edges). The segment's gap
+    /// seam is the clip's output edge, so the clip starts on the generated piece at its trim; the full take renders the same
+    /// seam as a crossfade from the source before it. Neither jumps, and past the fade both carry the same generated samples.
+    @Test func aClipOpeningOnATouchingWordRendersInTheClipAndTheFullTake() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-clip-edge-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let media = try await source(in: root)
+        var (project, _) = try fixture(source: media, root: root)
+        // w3 now ends where the segment and w4 start, as Whisper's back-to-back word ends do; the clip opens on w4.
+        var words = try #require(project.transcript?.words)
+        words[2].end = 2.5; words[3].start = 2.5
+        project.transcript?.words = words
+        project.edits.clips = [ClipRange(id: "edge", startWordId: "w4", endWordId: "w8")]
+        project.edits.activeClipId = "edge"
+        #expect(project.voiceLab.segments[0].replace.start == 2.5)
+        func render(_ scope: VoiceLabOutputScope, name: String) async throws -> (audio: [Float], start: Int) {
+            let prepared = try VoiceLabRenderContract.prepare(project, scope: scope, labelPosition: .topRight)
+            let input = try VoiceLabRenderInput(project: project, scope: scope, labelPosition: .topRight, paidRoot: root, prepared: prepared)
+            let request = RenderRequest(sourceURL: media, plan: try legacyPlan(project, scope: scope),
+                output: OutputSpec(size: PixelSize(width: 640, height: 360), fps: 30, videoBitrate: 2_000_000), voiceLab: input)
+            let url = root.appendingPathComponent(name + ".wav")
+            try await AVExporter().writeEditedAudio(request, to: url)
+            let piece = try #require(prepared.outputPlan.pieces.first { $0.kind == .synth })
+            return (try samples(url, at: 0, count: Int(prepared.outputPlan.outputSamples)), Int(piece.outputStartSample))
+        }
+        let clip = try await render(.clip("edge"), name: "clip")
+        let full = try await render(.full, name: "full")
+        #expect(clip.start == 0 && full.start > 6_000)
+        func largestStep(_ audio: [Float], _ range: Range<Int>) -> Float {
+            zip(audio[range].dropFirst(), audio[range]).map { abs($0 - $1) }.max() ?? .infinity
+        }
+        // The largest sample-to-sample step of the source before the seam and of the generated piece well inside it.
+        let natural = max(largestStep(full.audio, (full.start - 6_000)..<(full.start - 2_000)),
+                          largestStep(full.audio, (full.start + 2_000)..<(full.start + 6_000)))
+        #expect(natural > 0.001)
+        #expect(largestStep(full.audio, (full.start - 1_000)..<(full.start + 1_000)) <= natural * 1.5, "the full take's seam jumps")
+        #expect(largestStep(clip.audio, 0..<2_000) <= natural * 1.5, "the clip's opening jumps")
+        // The full take's crossfade covers 480 samples after the seam; past them the clip and the full take are the same.
+        let after = stride(from: 480, to: 20_000, by: 97).filter { clip.audio[$0] != full.audio[full.start + $0] }
+        #expect(after.isEmpty, "differs at \(after.prefix(5))")
+    }
+
     private func source(in root: URL) async throws -> URL {
         let original = try FixtureLoader.sharedRoot().appendingPathComponent("fixtures/media/joins-tone.mov")
         let asset = AVURLAsset(url: original)

@@ -118,6 +118,12 @@ public static class VoiceLabRenderContract
         return selected;
     }
     private sealed record SeamPiece(string SegmentId, VoiceLabOutputPiece Piece, VoiceLabSeams Seams);
+    /// <summary>A clip's own output edge (voice-lab §8.4): in a clip scope nothing renders before the first piece or after the
+    /// last, so a generated piece there plays from its trim, as at a take edge, and the fade seam it keeps for the full take is
+    /// not rendered. A take edge keeps seam None.</summary>
+    internal static bool ClipOutputEdge(VoiceLabSeam seam, VoiceLabOutputPlan plan, VoiceLabOutputPiece piece, bool incoming) =>
+        plan.Scope.ClipId is not null && seam.Kind is VoiceLabSeamKind.Gap or VoiceLabSeamKind.Hard &&
+        (incoming ? piece.SourceStartSample > 0 : piece.SourceEndSample < plan.TotalSourceSamples);
     static void ValidateSelectedSeams(VoiceLabOutputPlan plan, IReadOnlyList<SeamPiece> selected)
     {
         var windows = new List<(long start, long end)>();
@@ -131,9 +137,11 @@ public static class VoiceLabRenderContract
             var before = index > 0 ? plan.Pieces[index-1] : null;
             var after = index+1 < plan.Pieces.Count ? plan.Pieces[index+1] : null;
             var incoming = item.Seams.In; var outgoing = item.Seams.Out;
+            var edgeIn = before is null && ClipOutputEdge(incoming, plan, piece, true);
+            var edgeOut = after is null && ClipOutputEdge(outgoing, plan, piece, false);
             if (before is null)
             {
-                if (incoming.Kind != VoiceLabSeamKind.None) Fail(VoiceLabProjectErrorCode.InvalidFadeHandles);
+                if (incoming.Kind != VoiceLabSeamKind.None && !edgeIn) Fail(VoiceLabProjectErrorCode.InvalidFadeHandles);
             }
             else if (before.Kind == VoiceLabOutputPieceKind.Synth)
             {
@@ -145,7 +153,7 @@ public static class VoiceLabRenderContract
             else if (incoming.Kind is VoiceLabSeamKind.None or VoiceLabSeamKind.SynthToSynth) Fail(VoiceLabProjectErrorCode.InvalidFadeHandles);
             if (after is null)
             {
-                if (outgoing.Kind != VoiceLabSeamKind.None) Fail(VoiceLabProjectErrorCode.InvalidFadeHandles);
+                if (outgoing.Kind != VoiceLabSeamKind.None && !edgeOut) Fail(VoiceLabProjectErrorCode.InvalidFadeHandles);
             }
             else if (after.Kind == VoiceLabOutputPieceKind.Synth)
             {
@@ -165,8 +173,8 @@ public static class VoiceLabRenderContract
                 if (center < left || right > plan.OutputSamples-center) Fail(VoiceLabProjectErrorCode.InvalidFadeHandles);
                 windows.Add((center-left,center+right));
             }
-            Add(incoming,piece.OutputStartSample, true);
-            if (after?.Kind != VoiceLabOutputPieceKind.Synth) Add(outgoing,piece.OutputEndSample, false);
+            if (!edgeIn) Add(incoming,piece.OutputStartSample, true);
+            if (after?.Kind != VoiceLabOutputPieceKind.Synth && !edgeOut) Add(outgoing,piece.OutputEndSample, false);
         }
         windows.Sort((a,b) => a.start.CompareTo(b.start));
         for (var i = 1; i < windows.Count; i++)
@@ -179,16 +187,16 @@ public static class VoiceLabRenderContract
             var before = index > 0 ? plan.Pieces[index-1] : null;
             var after = index+1 < plan.Pieces.Count ? plan.Pieces[index+1] : null;
             var incoming = item.Seams.In; var outgoing = item.Seams.Out;
-            if (incoming.Kind != VoiceLabSeamKind.None)
+            if (incoming.Kind != VoiceLabSeamKind.None && before is not null)
             {
-                var (left, right) = VoiceLabHardJoin.FadeExtent(incoming, true, plan.SampleRate, before!.OutputEndSample - before.OutputStartSample);
-                if (before!.OutputEndSample-before.OutputStartSample < left || piece.OutputEndSample-piece.OutputStartSample < right)
+                var (left, right) = VoiceLabHardJoin.FadeExtent(incoming, true, plan.SampleRate, before.OutputEndSample - before.OutputStartSample);
+                if (before.OutputEndSample-before.OutputStartSample < left || piece.OutputEndSample-piece.OutputStartSample < right)
                     Fail(VoiceLabProjectErrorCode.InvalidFadeHandles);
             }
-            if (outgoing.Kind != VoiceLabSeamKind.None)
+            if (outgoing.Kind != VoiceLabSeamKind.None && after is not null)
             {
-                var (left, right) = VoiceLabHardJoin.FadeExtent(outgoing, false, plan.SampleRate, after!.OutputEndSample - after.OutputStartSample);
-                if (piece.OutputEndSample-piece.OutputStartSample < left || after!.OutputEndSample-after.OutputStartSample < right)
+                var (left, right) = VoiceLabHardJoin.FadeExtent(outgoing, false, plan.SampleRate, after.OutputEndSample - after.OutputStartSample);
+                if (piece.OutputEndSample-piece.OutputStartSample < left || after.OutputEndSample-after.OutputStartSample < right)
                     Fail(VoiceLabProjectErrorCode.InvalidFadeHandles);
             }
         }

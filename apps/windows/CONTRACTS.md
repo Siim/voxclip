@@ -21,6 +21,21 @@ The same definition as the Mac (doc/publishing.md §6.1); both replay the same v
   - The Release CLI outside a test host (`env -i … dotnet voxclip-cli.dll --runtime-terms --json`) exits 0; `--loudness loud` exits 2.
 - **Owed.** The native export test and the Windows export cost on the VM (the lead's).
 
+### 2026-11-08 — Windows: a clip's own edge, twin of the Mac's (track/v2-clip-edge-seams)
+
+voice-lab §8.4 step 1 and §10.5. The Mac entry has the reasons and the decision. A seam at a clip's own edge is the clip's output edge: it keeps its hard (or gap) fade for the full take, and in the clip prepare plays it as a take edge.
+
+- **Core.**
+  - `VoiceLabWindowPlanner`: `ScopeSource.ClipBounds`; `SeamLayout(…, clipScope)` with `OutputEdge`, which `SideHolds` and `PrepareHolds` accept; private `MoveToClipEdges` and `HoldsInFullTake`. Only a window inside the clip's range takes the edge.
+  - `VoiceLabRenderContract`: internal `ClipOutputEdge`. `ValidateSelectedSeams` accepts a gap or hard seam on a clip scope's first (last) piece away from the take's edges and adds no fade for it.
+  - Media and the mixer are unchanged: `VoiceLabAudioMixer` builds seams only between pieces and reads a first piece from its trim.
+- **Fixtures.** `window-cases.json`: 42 expectations changed and one multi-segment input; the keys and the 606 cases did not. `scope-rewrite-plan-cases.json`: 2 lines now get windows. New `window-clip-edge-cases.json` (113 cases).
+- **Tests.** `VoiceLabWindowTests.ClipEdgeVectors`: every accepted window validates and prepares in its clip and in the full take, and the clip's plan starts or ends on it exactly where `clipOutputEdges` says. Without the fix it fails, and so do `WindowVectors`, `PropertyCases` and `MultiSegmentCases`.
+- **ReleaseBoundary.** `VoxClip.Core.txt` gains `ClipOutputEdge`, `HoldsInFullTake`, `MoveToClipEdges`, `ScopeSource.get_ClipBounds`, `SeamLayout.OutputEdge` and the `SeamLayout` constructor's `bool`. No public member changed.
+- **Verification** (macOS host): Core Release 3,282 tests, 3,253 passed, 29 skipped, 0 failed. Media was not touched. The native VM was not used.
+- **Owed.** A native Windows run of the clip-edge render (the mixer path is unchanged, so this is a check, not a change).
+
+
 ### 2026-11-08 — Windows: the native media tests no longer hang on the social loudness test (track/v2-win-media-hang)
 
 From lead `0f952b0b` on (the track/v2-loudness merge), the Windows job's ".NET media tests (strict native and CLI E2E)" step ran until the job was cancelled at 60 minutes and printed nothing (run 42418707681).

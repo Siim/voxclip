@@ -1458,10 +1458,10 @@
        "w8"
       ],
       "revoicedBefore": [],
-      "minChars": 16,
-      "maxChars": 18,
-      "rangeSource": "lineSpan",
-      "note": "refused: seamFadeCrossesCut"
+      "minChars": 19,
+      "maxChars": 21,
+      "rangeSource": "window",
+      "note": "seams gap/hard, target 1.8250000000000002 s, bridge 0"
      }
     ]
    }
@@ -1867,7 +1867,7 @@
   },
   {
    "name": "suggested-clip",
-   "note": "A suggested clip (origin ai, not selected) is a scope like a kept clip. Its head cuts the event just before \"It\", so the first line's hard seam has no kept source for its fade and takes the advisory span.",
+   "note": "A suggested clip (origin ai, not selected) is a scope like a kept clip. Its head cuts the event just before \"It\", so nothing renders before the first line's hard seam in the clip: the seam is the clip's output edge, and the event holds its fade in the full take (voice-lab section 8.4).",
    "input": {
     "sampleRate": 48000,
     "durationSeconds": 9.6,
@@ -2301,10 +2301,10 @@
        "w14"
       ],
       "revoicedBefore": [],
-      "minChars": 15,
-      "maxChars": 17,
-      "rangeSource": "lineSpan",
-      "note": "refused: seamFadeCrossesCut"
+      "minChars": 23,
+      "maxChars": 25,
+      "rangeSource": "window",
+      "note": "seams hard/gap, target 2.1949999999999994 s, bridge 0"
      },
      {
       "line": "[15-15]",
