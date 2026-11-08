@@ -101,7 +101,10 @@ public struct ExportChecker: Sendable {
         var heard: [ExportCheckInput.Heard]?
         var skipped = ExportCheck.noLocalEngine
         if let hearing, let heardAudio {
-            heard = try await Self.hear(heardAudio, hearing: hearing)
+            // An engine that fails (its assets gone, its model unreadable) leaves the words unchecked, not the export.
+            do { heard = try await Self.hear(heardAudio, hearing: hearing) }
+            catch let error where error is CancellationError || (error as? VoxClipError) == .cancelled || Task.isCancelled { throw error }
+            catch { skipped = "The local transcription failed" }
         } else if hearing != nil {
             skipped = "No audio track"
         }

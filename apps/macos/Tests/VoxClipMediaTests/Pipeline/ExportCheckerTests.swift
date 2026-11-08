@@ -163,3 +163,32 @@ extension HeavyMediaTests {
         #expect(outcome.engine == .whispercpp && outcome.totalSeconds < 5)
     }
 }
+
+/// A local engine whose model can't be read.
+private struct FailingHearing: Transcriber {
+    let engine: TranscriptEngine = .whispercpp
+    func capabilities(model: String?) -> TranscriberCapabilities { TranscriberCapabilities(timing: .tokenGrouped, verbatim: false, autoLanguage: true, onDevice: true) }
+    func supports(_ language: LanguageChoice, model: String?) async -> Bool { true }
+    func readiness(for plan: TranscriptionPlan) async -> Readiness { .ready }
+    func prepare(for plan: TranscriptionPlan, progress: @escaping @Sendable (Double) -> Void) async throws {}
+    func transcribe(_ request: TranscriptionRequest, progress: @escaping @Sendable (TranscriptionProgress) -> Void) async throws -> RawTranscript {
+        throw VoxClipError.transcriptionFailed("Could not load the whisper model")
+    }
+}
+
+extension HeavyMediaTests {
+    /// An engine that fails leaves the words unchecked and the rest of the report standing.
+    @Test(.timeLimit(.minutes(1)))
+    func aFailingEngineSkipsTheWordsOnly() async throws {
+        let directory = try cliDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = try await NativeMediaFixtures.shared.file("speech-bursts.mov")
+        let render = RenderRequest(sourceURL: source, plan: EditPlan(sampleRate: 48_000, totalSamples: 288_000),
+                                   output: OutputSpec(size: PixelSize(width: 320, height: 180), fps: 30, videoBitrate: 1_000_000))
+        let edit = ExportCheckExpectation.Edit(words: [ExportCheckInput.Word(text: "ship", start: 1, end: 1.3)], phrases: [], cuts: [], duration: 6)
+        let hearing = ExportChecker.Hearing(transcriber: FailingHearing(), plan: TranscriptionPlan(engine: .whispercpp, model: "stub"))
+        let outcome = try await ExportChecker(hearing: hearing, scratch: directory).check(export: source, render: render, edit: edit, loudness: .off)
+        #expect(outcome.report[.words]?.status == .skipped && outcome.report[.words]?.reason == "The local transcription failed")
+        #expect(outcome.report[.sync]?.status == .ok && outcome.engine == nil)
+    }
+}
