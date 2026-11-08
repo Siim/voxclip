@@ -23,6 +23,7 @@
   "breakOnGapSec": null
  },
  "position": {"x": 0.5, "y": 0.8},
+ "aspects": {"portrait": {"y": 0.754}},
  "fill": {"type": "solid", "color": "#FFFFFF"},
  "preview": {"text": "Your story", "activeWord": 1, "background": "#3A3C45"}
 }

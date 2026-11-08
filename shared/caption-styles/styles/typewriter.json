@@ -25,7 +25,7 @@
   "maxPageSec": 4.5
  },
  "position": {"x": 0.5, "y": 0.78},
- "aspects": {"landscape": {"y": 0.84}},
+ "aspects": {"portrait": {"y": 0.727}, "landscape": {"y": 0.814}},
  "fill": {"type": "solid", "color": "#FFFFFF"},
  "box": {"scope": "page", "color": "#000000CC", "paddingXEm": 0.5, "paddingYEm": 0.3, "radiusEm": 0.15},
  "reveal": {

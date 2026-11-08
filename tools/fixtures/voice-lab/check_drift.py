@@ -65,6 +65,7 @@ EXACT = ['shared/fixtures/voice-lab/pace-cases.json', 'shared/fixtures/voice-lab
          'shared/fixtures/clips-mode/clips-mode-settings-cases.json',
          'shared/fixtures/clip-style/caption-look-cases.json',
          'shared/fixtures/caption-translations/caption-translation-cases.json',
+         'shared/fixtures/export-check/check-cases.json',
          'shared/data/rewrite-tones.json',
          'shared/schemas/project.schema.json']
 REL_TOL = 1e-10
@@ -125,6 +126,8 @@ def main():
     subprocess.run([sys.executable, str(root / "tools/fixtures/clip-render/generate_clip_render.py")], check=True)
     # Claude mode's settings vectors (doc/design.md section 6.6), replayed by both Cores.
     subprocess.run([sys.executable, str(root / "tools/fixtures/clips-mode/generate_clips_mode.py")], check=True)
+    # The export self-check's rules on measured inputs (ADR-R49), replayed by the Mac Core; the Windows twin is owed.
+    subprocess.run([sys.executable, str(root / "tools/fixtures/export-check/generate_check_cases.py")], check=True)
     # The bundled sound effects (doc/spec/ai.md section 18.5): the committed WAVs must be the generator's bytes.
     sounds = subprocess.run([sys.executable, str(root / "tools/media/sfx/gen_sfx.py"), "--check"])
     failed = sounds.returncode != 0

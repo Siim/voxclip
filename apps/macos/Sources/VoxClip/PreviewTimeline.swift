@@ -501,15 +501,15 @@ enum ViewerTag: Equatable {
             if dragged != nil {
                 Canvas { context, size in
                     let unsafe = DesignValues.color("stage").opacity(0.3), guide = DesignValues.color("overlay.foreground").opacity(0.6)
-                    switch aspectClass {
-                    case "portrait":
-                        context.fill(Path(CGRect(x: 0, y: 0, width: size.width, height: size.height * 0.12)), with: .color(unsafe))
-                        context.fill(Path(CGRect(x: 0, y: size.height * 0.78, width: size.width, height: size.height * 0.22)), with: .color(unsafe))
-                        context.fill(Path(CGRect(x: size.width * 0.88, y: 0, width: size.width * 0.12, height: size.height)), with: .color(unsafe))
-                    case "square", "landscape":
-                        let bottom = aspectClass == "square" ? 0.12 : 0.10
-                        context.fill(Path(CGRect(x: 0, y: size.height * (1 - bottom), width: size.width, height: size.height * bottom)), with: .color(unsafe))
-                    default: break
+                    // The bands the export check measures (CaptionSafeZones), and 9:16's button column.
+                    for band in CaptionSafeZones.bands(aspectClass: aspectClass) {
+                        let depth = size.height * band.fraction
+                        let top = band.edge == .top ? 0 : size.height - depth
+                        context.fill(Path(CGRect(x: 0, y: top, width: size.width, height: depth)), with: .color(unsafe))
+                    }
+                    if aspectClass == "portrait" {
+                        let side = size.width * CaptionSafeZones.portraitSideFraction
+                        context.fill(Path(CGRect(x: size.width - side, y: 0, width: side, height: size.height)), with: .color(unsafe))
                     }
                     for fraction in [1.0 / 3, 0.5, 2.0 / 3] {
                         var line = Path(); line.move(to: CGPoint(x: size.width * fraction, y: 0)); line.addLine(to: CGPoint(x: size.width * fraction, y: size.height))

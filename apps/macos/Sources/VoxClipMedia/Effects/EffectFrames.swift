@@ -253,8 +253,27 @@ public final class EffectFrames: Sendable {
         case .bottom: output.height * 0.24 - single / 2
         default: output.height * 0.86 + single / 2 - height
         }
-        let box = CGRect(x: (output.width - width) / 2, y: minY, width: width, height: height).integral
+        let placed = CGRect(x: (output.width - width) / 2, y: minY, width: width, height: height).integral
+        let box = Self.titleClearOfFeedBands(placed, position: position, output: output)
         return TitleLayout(texts: texts, lines: lines, font: face, size: size, padX: padX, padY: padY, lineHeight: lineHeight, box: box)
+    }
+
+    /// In a 9:16-class frame (design.md §6.7, the feed's bands of §5.1) a `.top` title's top edge sits at 13% of the height
+    /// and the box grows downwards; a `.bottom` title's bottom edge stays at or above 77% (the bottom band's start minus 1%).
+    /// `.center`, and every 1:1 and 16:9 placement, keep `box`. `box` is integral, in output pixels, bottom-left origin.
+    static func titleClearOfFeedBands(_ box: CGRect, position: ClipEffect.Position, output: CGSize) -> CGRect {
+        let width = Int(output.width.rounded()), height = Int(output.height.rounded())
+        guard CaptionStyleResolver.aspect(width: width, height: height) == "portrait" else { return box }
+        var moved = box
+        switch position {
+        case .center: return box
+        case .bottom:
+            let lowest = (output.height * 0.23).rounded(.up)
+            if moved.minY < lowest { moved.origin.y = lowest }
+        default:
+            moved.origin.y = (output.height * 0.87).rounded(.down) - moved.height
+        }
+        return moved
     }
 
     /// Big centred text on a dark rounded box: top, centre or bottom of the frame (`titleLayout`).

@@ -10,7 +10,8 @@ import VoxClipMedia
 /// pass (ADR-R48 part 2) runs beside Find Clips, and each plan request carries its clip's frames: small images to an AI on
 /// your plan that takes them, a text summary otherwise (the CLI has no spend cap, so an API key gets the summary). Each
 /// clip then gets the picture decisions Make it postable applies (`ClipPicture`): the opening, the face-follow crop for
-/// 9:16 and 1:1, the screens Claude chose to blur and the cover, which every export writes beside itself and embeds.
+/// 9:16 and 1:1, the screens Claude chose to blur and the cover, which every export writes beside itself and embeds. Each
+/// exported clip is then checked (ADR-R49) beside the next clips' work, and its JSON gets a `check`; `--no-check` skips it.
 struct Autopilot: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Make the top clips of a video postable, as Claude mode does, and time each stage.",
@@ -27,6 +28,7 @@ struct Autopilot: AsyncParsableCommand {
     @Option(name: .customLong("out-dir"), help: "Folder for each clip's MP4 and the project; nothing is exported without it.") var outDir: String?
     @Option(help: "16:9, 9:16 or 1:1.") var aspect = "9:16"
     @Flag(help: "Print each stage's wall time as JSON (in the --json result, else on stdout).") var timings = false
+    @Flag(name: .customLong("no-check"), help: "Don't check each exported clip (words, sync, loudness and captions).") var noCheck = false
     @Flag(help: "Print one final JSON object on stdout.") var json = false
     @Flag(help: "Suppress human-readable progress on stderr.") var quiet = false
 
@@ -104,11 +106,13 @@ extension CLIWorkflow {
         guard let preset = ClipPresetID(rawValue: options.preset), let aspect = AspectRatio(rawValue: options.aspect) else {
             throw ValidationError("Unknown clip preset or aspect")
         }
+        let checks = outDir != nil && !options.noCheck ? ClipChecks(transcript: project.transcript, clock: clock) : nil
         let made = try await autopilot(project: project, connector: main, lanes: lanes, model: model,
                                        preset: preset, count: options.count, shared: shared, catalog: catalog, clock: clock,
-                                       report: report, frames: frames, images: images, shapes: [aspect]) { project, clip, rank in
+                                       report: report, frames: frames, images: images, shapes: [aspect], checks: checks) { project, clip, rank in
             guard let outDir else { return [] }
-            return try await exportClip(project, clip: clip, rank: rank, outDir: outDir, aspect: options.aspect, quiet: options.quiet, clock: clock)
+            return try await exportClip(project, clip: clip, rank: rank, outDir: outDir, aspect: options.aspect, quiet: options.quiet, clock: clock,
+                                        checks: checks)
         }
         var fields: [String: JSONValue] = ["clips": .array(made.clips), "found": .number(Double(made.found)), "model": .string(made.model)]
         if let outDir {
@@ -131,10 +135,11 @@ extension CLIWorkflow {
     /// `export`) the moment its plan is ready, one at a time. Rewrites and music stay pending. `frames` starts as Find Clips
     /// does and never waits for it; each clip's request takes its frames from the pass (`images` sends them as pictures,
     /// else as a text summary) and starts its opening scan beside the request. A clip whose request carried frames gets
-    /// the picture decisions for `shapes` (`ClipPicture.apply`) after the plan's own edits, and its JSON a `picture`.
+    /// the picture decisions for `shapes` (`ClipPicture.apply`) after the plan's own edits, and its JSON a `picture`. With
+    /// `checks`, each clip's JSON gets the `check` its export started (`exportClip`), awaited once every clip is made.
     static func autopilot(project start: Project, connector: any LLMConnector, lanes: [any LLMConnector], model: String, preset: ClipPresetID,
                           count: Int, shared: SharedResources, catalog: LLMCatalog, clock: ClaudeModeClock, report: AutopilotReport,
-                          frames: VideoFramePass? = nil, images: Bool = false, shapes: [AspectRatio] = [.portrait],
+                          frames: VideoFramePass? = nil, images: Bool = false, shapes: [AspectRatio] = [.portrait], checks: ClipChecks? = nil,
                           export: (_ project: Project, _ clipID: String, _ rank: Int) async throws -> [String]) async throws
         -> (clips: [JSONValue], found: Int, model: String, project: Project) {
         guard let transcript = start.transcript else { throw VoxClipError.noSpeech }
@@ -220,6 +225,14 @@ extension CLIWorkflow {
         for index in ranked.indices where clips[index] == nil {
             clips[index] = .object(["rank": .number(Double(index + 1)), "error": .string("planFailed")])
         }
+        // Each exported clip's self-check, which ran beside the other clips' work.
+        if let checks {
+            for index in clips.keys.sorted() {
+                guard case .object(var fields)? = clips[index], let check = await checks.result(rank: index + 1) else { continue }
+                fields["check"] = check
+                clips[index] = .object(fields)
+            }
+        }
         return (clips.keys.sorted().compactMap { clips[$0] }, found.clips.count, outcome.model, project)
     }
 
@@ -279,16 +292,20 @@ extension CLIWorkflow {
         return .object(["opening": opening, "crop": crop, "blur": .array(blur), "cover": cover])
     }
 
-    /// One clip in the clip style's caption look, through the export command's own path.
-    static func exportClip(_ project: Project, clip: String, rank: Int, outDir: URL, aspect: String, quiet: Bool, clock: ClaudeModeClock) async throws -> [String] {
+    /// One clip in the clip style's caption look, through the export command's own path. With `checks`, its self-check
+    /// (ADR-R49) starts as soon as it is written and runs beside the next clips' work.
+    static func exportClip(_ project: Project, clip: String, rank: Int, outDir: URL, aspect: String, quiet: Bool, clock: ClaudeModeClock,
+                           checks: ClipChecks? = nil) async throws -> [String] {
         let projectURL = outDir.appendingPathComponent("autopilot-\(clip).voxclip")
         try await JSONProjectStore().save(project, to: projectURL)
         defer { try? FileManager.default.removeItem(at: projectURL) }
         let output = outDir.appendingPathComponent("clip-\(rank)-\(aspect.replacingOccurrences(of: ":", with: "x")).mp4")
         let options = try Export.parse(["--open", projectURL.path, "--export", output.path, "--clip", clip, "--aspect", aspect] + (quiet ? ["--quiet"] : []))
         let start = clock.elapsed
-        _ = try await export(options, input: projectURL.path)
+        let prepared = try await prepare(options, input: projectURL.path)
+        _ = try await export(options, prepared: prepared)
         clock.record(.export, clip: rank, since: start)
+        checks?.start(rank: rank, export: output, prepared: prepared, loudness: options.loudness.flatMap(ExportLoudness.init(rawValue:)) ?? .social)
         return [output.path]
     }
 }

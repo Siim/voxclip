@@ -23,6 +23,7 @@
   "breakOnGapSec": null
  },
  "position": {"x": 0.5, "y": 0.8},
+ "aspects": {"portrait": {"y": 0.754}},
  "fill": {"type": "solid", "color": "#FFFFFF"},
  "stroke": {"widthEm": 0.12, "color": "#000000D9"},
  "shadows": [{"dxEm": 0, "dyEm": 0.04, "sigmaEm": 0.06, "color": "#00000099"}],

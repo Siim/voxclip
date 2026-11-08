@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Siim/voxclip/main/shared/schemas/export-check-cases.schema.json",
+  "title": "Export self-check vectors (ADR-R49)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "description", "constants", "caseCount", "counts", "cases"],
+  "properties": {
+    "schema": {"const": "voxclip-export-check-cases/1"},
+    "description": {"type": "string", "minLength": 1},
+    "constants": {"type": "object"},
+    "caseCount": {"type": "integer", "minimum": 1},
+    "counts": {
+      "type": "object",
+      "propertyNames": {"$ref": "#/$defs/check"},
+      "additionalProperties": {"type": "integer", "minimum": 1}
+    },
+    "cases": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/case"}}
+  },
+  "$defs": {
+    "check": {"enum": ["words", "sync", "loudness", "captions"]},
+    "seconds": {"type": "number", "minimum": 0},
+    "track": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {"start": {"$ref": "#/$defs/seconds"}, "end": {"$ref": "#/$defs/seconds"}}
+    },
+    "word": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "start", "end"],
+      "properties": {
+        "text": {"type": "string", "minLength": 1},
+        "start": {"$ref": "#/$defs/seconds"},
+        "end": {"$ref": "#/$defs/seconds"},
+        "optional": {"const": true},
+        "phrase": {"type": "string", "minLength": 1}
+      }
+    },
+    "heard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "start", "end"],
+      "properties": {"text": {"type": "string", "minLength": 1}, "start": {"$ref": "#/$defs/seconds"}, "end": {"$ref": "#/$defs/seconds"}}
+    },
+    "box": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "time", "rect"],
+      "properties": {
+        "kind": {"enum": ["caption", "title"]},
+        "time": {"$ref": "#/$defs/seconds"},
+        "rect": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["x", "y", "width", "height"],
+          "properties": {"x": {"type": "number"}, "y": {"type": "number"}, "width": {"type": "number", "minimum": 0}, "height": {"type": "number", "minimum": 0}}
+        }
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expected", "heard", "cuts", "phrases", "video", "audio", "frameSeconds", "loudness", "boxes", "frame"],
+      "properties": {
+        "expected": {"type": "array", "items": {"$ref": "#/$defs/word"}},
+        "heard": {"type": ["array", "null"], "items": {"$ref": "#/$defs/heard"}},
+        "cuts": {"type": "array", "items": {"$ref": "#/$defs/seconds"}},
+        "phrases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "start", "end"],
+            "properties": {"id": {"type": "string", "minLength": 1}, "start": {"$ref": "#/$defs/seconds"}, "end": {"$ref": "#/$defs/seconds"}}
+          }
+        },
+        "video": {"$ref": "#/$defs/track"},
+        "audio": {"$ref": "#/$defs/track"},
+        "frameSeconds": {"type": "number", "exclusiveMinimum": 0},
+        "loudness": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["setting", "integratedLufs", "truePeakDbtp"],
+          "properties": {
+            "setting": {"enum": ["social", "off"]},
+            "integratedLufs": {"type": ["number", "null"]},
+            "truePeakDbtp": {"type": ["number", "null"]}
+          }
+        },
+        "boxes": {"type": "array", "items": {"$ref": "#/$defs/box"}},
+        "frame": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width", "height"],
+          "properties": {"width": {"type": "integer", "minimum": 1}, "height": {"type": "integer", "minimum": 1}}
+        }
+      }
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "time"],
+      "properties": {
+        "kind": {"enum": ["mismatch", "cutOff", "trackStart", "trackEnd", "phraseOffset", "phraseNotHeard", "phrasesSkipped",
+                          "integratedLoudness", "truePeak", "silent", "captionBand", "titleBand"]},
+        "time": {"$ref": "#/$defs/seconds"},
+        "expected": {"type": "string"},
+        "heard": {"type": "string"},
+        "value": {"type": "number"},
+        "limit": {"type": "number"},
+        "band": {"enum": ["top", "bottom"]},
+        "phrase": {"type": "string"},
+        "reason": {"type": "string"},
+        "count": {"type": "integer", "minimum": 2}
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "check", "derivation", "input", "expect"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+        "check": {"$ref": "#/$defs/check"},
+        "derivation": {"type": "string", "minLength": 1},
+        "input": {"$ref": "#/$defs/input"},
+        "expect": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "items"],
+          "properties": {
+            "status": {"enum": ["ok", "warning", "skipped"]},
+            "items": {"type": "array", "items": {"$ref": "#/$defs/item"}},
+            "reason": {"type": "string"},
+            "matched": {"type": "integer", "minimum": 0},
+            "total": {"type": "integer", "minimum": 0},
+            "integratedLufs": {"type": "number"},
+            "truePeakDbtp": {"type": "number"},
+            "startOffset": {"type": "number"},
+            "endOffset": {"type": "number"}
+          }
+        }
+      }
+    }
+  }
+}

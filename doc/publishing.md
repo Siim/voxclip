@@ -355,3 +355,24 @@ A clip with a chosen cover ("Cover frame chosen" in Make it postable, design.md 
   - Until a macOS 26 run embeds, `ClipCoverExportTests` and `CLIAutopilotPictureTests` hold macOS 27 to the art and record macOS 26 as a known issue; the JPEG beside the video is written on both.
 
 The cover's time is a source second; the export maps it through the clip's cuts and speed and keeps it inside the video. A clip without a cover, a full-take export and `voxclip-cli export --cover off` write neither. Windows does not write covers yet (apps/windows/CONTRACTS.md).
+
+## 8. Export self-check (ADR-R49)
+
+Every export can be checked on the Mac, in seconds, before it is posted: `voxclip-cli check --project <project> --clip <n> <export.mp4> --json`, and by default after each clip `voxclip-cli autopilot` exports (`--no-check` skips it). The review rows that show it in the app wait for the mockup's approval.
+
+**What it measures**, from the exported file:
+
+- **Words.** The export's audio is transcribed again with a local engine: the project's Whisper or Apple speech, or an installed Whisper model. The words are compared with the clip's edit: the kept words, and each Rewrite's or revoiced phrase's new words. The check reports how many match, each word heard wrong (with what was heard, at its time in the export) and each word cut off at a cut or the clip's edge. Kept fillers may be missing, and a name heard as a word that sounds like it ("cloud" for "Claude") matches.
+- **Sync.** The audio and video tracks start and end within one frame of each other. Each revoiced or rewritten phrase is heard within 0.3 s of where the edit placed it.
+- **Loudness.** Integrated loudness and true peak, measured by the same meter that set the export's gain (§6): −14 LUFS within 1 LU, and at most −1 dBTP plus 0.2 dB for AAC's ringing. It is skipped for an export made with loudness off.
+- **Captions.** Every caption card and title box, as the renderer laid it out, against the frame's safe-zone bands. 9:16 has bands over the top 12% and the bottom 22%, 1:1 over the bottom 12% and 16:9 over the bottom 10% (design.md §5.1).
+
+**What it doesn't measure:**
+
+- whether the lips match a revoiced phrase;
+- the picture itself (no frame is read);
+- the music bed and sound effects, which are part of the measured loudness but not checked on their own;
+- the right-hand button column on 9:16;
+- how the platform will crop or compress the file.
+
+Without a local model, the words and the phrase timings are skipped ("No local transcription model"); nothing is sent to a provider to fill in. A check of a 29 s 9:16 clip takes about 2.3 s on an Apple silicon Mac with whisper-large-v3-turbo installed. `check` exits 8 when any check warns. Windows owes the check (apps/macos/CONTRACTS.md).

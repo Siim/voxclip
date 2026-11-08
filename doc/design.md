@@ -643,7 +643,31 @@ When the user selects one or more whole words with the pointer or the keyboard a
   - On macOS the stage keeps these sizes while the column is at least the stage height plus 320 (every frame at 1280×800 and larger). That 320 holds everything below the stage: the viewer bar, the Frame row, their spacing and padding, the hairline and the Captions panel. In a shorter column only the stage height yields, keeping its aspect and centring, so the area below it keeps that budget.
   - While Rewrite is open and the column is shorter than 760, the stage drops to 220×124 (16:9; other frames fit inside a 124-high box). On Windows the time, the AI tag and the transport stack beside it. On macOS the viewer row stays under it.
 - There is no transport pill and no overlay on the stage except the caption overlay and the compositor's AI MODIFIED chip. The one exception: with no video, the stage shows the §5.4.6 overlays (the message, the word rhythm, the audiogram and the status chip). None of them is interactive; Locate… stays in the transcript InfoBar. A preview that can't load or draw shows the preview-failed state over the player, with Reload Preview (§5.4.4 g).
-- **Caption position.** The caption block on the stage is draggable and snaps to the centre line and the thirds. While dragging, safe-zone guides for the frame appear (9:16: bands over the top 12% and the bottom 22%). This is unchanged.
+- **Caption position.** The caption block on the stage is draggable and snaps to the centre line and the thirds. While dragging, safe-zone guides for the frame appear (9:16: bands over the top 12% and the bottom 22%, and the right-hand 12% where feeds stack their buttons; 1:1: the bottom 12%; 16:9: the bottom 10%). The export self-check (ADR-R49) warns when a caption card or the title reaches into one of the top or bottom bands (`CaptionSafeZones`); the right-hand column is a guide only.
+- **VoxClip's own defaults clear the bands** (2026-11-08). Every bundled style at its default position, and the hook title at its default place, clear every band in every shape.
+  - **Captions, one rule in every shape.** A style whose deepest page (the tallest page its layout makes from a long line, at its `maxLines`) reached into a shape's bottom band has that shape's `aspects` y (`portrait`, `square` or `landscape`). It is the lowest position, in thousandths, that ends the deepest page at or above the band's start minus 1%: 0.77 of the height in 9:16, 0.87 in 1:1 and 0.89 in 16:9. Styles that clear a band keep their position there, even when they are within the 1% (Sing-along's 9:16 page ends at 0.779). Only y changes; anchors, looks and an existing override's other fields stay. Measured with the renderer's layout:
+
+    | Style | Shape | y (was) | Deepest page, top–bottom |
+    |---|---|---|---|
+    | Bold, Bold+ | 9:16 | 0.754 (0.80) | 0.7391–0.7690 |
+    | Highlight | 9:16 | 0.746 (0.80) | 0.7229–0.7695 |
+    | Pill | 9:16 | 0.725 (0.75) | 0.6800–0.7700 |
+    | Typewriter | 9:16 | 0.727 (0.78) | 0.6844–0.7698 |
+    | Editorial | 9:16 | 0.731 (0.76) | 0.6922–0.7698 |
+    | Subtitle (bottom anchor) | 9:16 | 0.769 (0.90) | 0.7069–0.7690 |
+    | Lower third (bottom anchor) | 9:16 | 0.769 (0.90) | 0.6947–0.7690 |
+    | Minimal (bottom anchor) | 9:16 | 0.769 (0.86) | 0.7130–0.7690 |
+    | Subtitle (bottom anchor) | 1:1 | 0.870 (0.90) | 0.7595–0.8698 |
+    | Lower third (bottom anchor) | 1:1 | 0.870 (0.90) | 0.7379–0.8699 |
+    | Subtitle (bottom anchor) | 16:9 | 0.889 (0.90) | 0.7790–0.8893 |
+    | Lower third (bottom anchor) | 16:9 | 0.889 (0.90) | 0.7573–0.8893 |
+    | Minimal (bottom anchor) | 16:9 | 0.889 (0.90) | 0.7898–0.8894 |
+    | Pill | 16:9 | 0.809 (0.82) | 0.7292–0.8892 |
+    | Sing-along | 16:9 | 0.820 (0.84) | 0.7513–0.8893 |
+    | Typewriter | 16:9 | 0.814 (0.84) | 0.7380–0.8899 |
+
+  - **A dragged position is the user's.** `captions.position` and `positionByAspect` win over the style's default, so a project that set one keeps it. A project without one moves with the default.
+  - **The title in 9:16** (§6.8 Overlays). A top title's box starts at 13% of the height and grows downwards; a bottom title's box ends at or above 77%. Centre, and every 1:1 and 16:9 placement, are unchanged: the single line's edge stays 14% from the top or 24% from the bottom. Mac `EffectFrames.titleClearOfFeedBands` and Windows `EffectTitleLayout.ClearOfFeedBands` apply this rule.
 
 **Viewer bar.**
 
@@ -2026,7 +2050,7 @@ The user points at part of the video and says what they want in plain words ("bl
 |---|---|---|
 | Censor | Bleep (a 1 kHz tone), mute (silence), each with 10 ms ramps at exact word bounds; captions show × for each letter, on the Voice Lab path (a clip with voiced phrases) and in the CLI's export too | Rendered |
 | Censor | Blur, pixelate: a box, held still or tracking a face or the moving subject | Rendered |
-| Overlays | Title (Roboto Black; a title wider than 92 % of the frame wraps into balanced lines, at most three, shrinking from 7.5 % to 5 % of the frame's short side, the box growing inwards from the top or bottom), lower third (DM Sans Bold), emoji (bundled Noto), arrow, circle, progress bar | Rendered |
+| Overlays | Title (Roboto Black; a title wider than 92 % of the frame wraps into balanced lines, at most three, shrinking from 7.5 % to 5 % of the frame's short side, the box growing inwards from the top or bottom; in 9:16 clear of the feed's bands, §5.1), lower third (DM Sans Bold), emoji (bundled Noto), arrow, circle, progress bar | Rendered |
 | Timing | Freeze frame (up to 5 s), zoom (a motion cue), jump cut | Rendered |
 | Timing | Speed: the clip's own speed when the stretch covers the clip; for part of a clip, "Apply 1.25× to the whole clip" | Rendered (clip controls) |
 | Words | Fix a word (correction) | Applied |

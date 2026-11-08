@@ -25,7 +25,7 @@
   "maxPageSec": 4.0
  },
  "position": {"x": 0.5, "y": 0.76},
- "aspects": {"landscape": {"y": 0.8}},
+ "aspects": {"portrait": {"y": 0.731}, "landscape": {"y": 0.8}},
  "fill": {"type": "solid", "color": "#FFFFFF"},
  "shadows": [{"dxEm": 0, "dyEm": 0.03, "sigmaEm": 0.12, "color": "#000000A6"}],
  "animation": {

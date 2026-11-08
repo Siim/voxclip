@@ -1,5 +1,103 @@
 # macOS implementation contracts
 
+### 2026-11-08 — The band rule in every shape: 1:1 and 16:9 defaults too, a gate with no known issues (track/v2-safe-zones, follow-up)
+
+Lead decision on the open points of the entry below: one rule in every shape, so the self-check agrees with every default. design.md §5.1 has the rule and the table.
+
+- **Styles (shared).** Where a style's deepest page (the same measure: three long lines, at its `maxLines`) reached into the 1:1 or 16:9 bottom band, that shape gets an `aspects` y. It is the lowest y, in thousandths, that ends the page at or above the band's start minus 0.01 (0.87 in 1:1, 0.89 in 16:9).
+  - 1:1 (`aspects.square`, new): Clean subtitle and Lower third 0.87 (were 0.90).
+  - 16:9 (`aspects.landscape`): Clean subtitle and Lower third 0.889 (new y beside their `maxLineWidthW`); Minimal 0.889 (was 0.9), Pill 0.809 (0.82), Sing-along 0.82 (0.84) and Typewriter 0.814 (0.84), changing only y.
+  - Styles that clear a band don't move: Karaoke's 16:9 page ends at 0.871, and Sing-along's 9:16 page at 0.779.
+- **Fixtures.** `gen_fixtures.py` rewrote clean-subtitle and lower-third square and landscape, pill and typewriter landscape, `styles-2` minimal and sing-along landscape, and the 1920×1080 entries of those six styles in both `preview-tiles.json`. Only vertical fields changed. `render-caption` left every PNG byte-identical; only those eight cases' golden indexes and the two `tiles.json` files moved their crop y. Nothing else changed.
+- **Tests.**
+  - Media `ExportCheckPlacementTests`:
+    - `everyStyleAtItsDefaultPositionClearsTheBands` checks the deepest page in every shape, with no known issues;
+    - `eachMovedOverrideIsTheLowestClearPosition` (was `eachPortraitOverrideIsTheLowestClearPosition`) covers the moved styles of every shape, from `moved`. y ends at or above the limit, and y + 0.001 ends below it.
+  - With the 4b9e5efa style files, the gate (12 issues) and the lowest-position test fail.
+  - App `aLowCaptionKeepsAPressableStripUnderTheTransport` drags every shape to the old defaults (the styles' own positions), since no default sits under the transport any more.
+- **Verification** (`VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`, caption Python from the pinned requirements):
+  - Core 1,471 tests, 2 known issues from the base. Media 626 (CaptionParity and CaptionStyleSet2 included), no known issues. App 1,031.
+  - `rewrite-smoke.sh`: PASSED, 83 scenarios.
+  - Long-expression build (250 ms): nothing flagged in the touched files.
+  - Both `check_drift.py`, the caption generators, `check_styles.py` and `validate.py`: tree clean.
+- **Next package.** Read every shape's position from the style files.
+
+### 2026-11-08 — 9:16 captions and titles clear of the feed's buttons by default (track/v2-safe-zones)
+
+The export self-check (ADR-R49) found VoxClip's own 9:16 defaults under the feed's buttons and text. The lead moved the 9:16 defaults clear of `CaptionSafeZones`' bands and left 1:1 and 16:9 as they are. design.md §5.1 has the rule and the values.
+
+- **Styles (shared).** Nine styles gain `aspects.portrait.y`, the lowest position in thousandths that ends the style's deepest page (the tallest page from a long line, at its `maxLines`) at or above 0.77 of the height. Anchors, looks, 1:1 and 16:9 are unchanged.
+  - Bold and Bold+ 0.754, Highlight 0.746, Pill 0.725, Typewriter 0.727, Editorial 0.731; Clean subtitle, Lower third and Minimal 0.769 (bottom anchor).
+  - Editorial and Pill weren't in ADR-R49's list: their two-line deepest pages reached 0.799 and 0.795.
+  - A dragged position (`captions.position`, `positionByAspect`) still wins; a project without one moves with the default.
+- **Title (Media).** `EffectFrames.titleClearOfFeedBands(_:position:output:)` (new) runs after `titleLayout`'s integral box. In a portrait-class frame a `.top` box's top edge is at `floor(0.87·H)` from the bottom, which is 13% from the top (250 of 1920 px), and grows downwards. A `.bottom` box's bottom edge is at most 77% from the top (1478 of 1920). `.center`, 1:1 and 16:9 are unchanged. `ExportChecker.titleBoxes` reads the same layout.
+- **Fixtures.** `gen_fixtures.py` rewrote 13 portrait layout cases, `styles-2/layout/minimal-portrait-en.json` and the 1080×1920 entries of both `preview-tiles.json`; only vertical fields changed. `render-caption` left every golden PNG byte-identical; only the moved cases' golden indexes (crop offsets) changed. The effect goldens `title.png` and `hook-portrait.png` were re-recorded (`VOXCLIP_RECORD_EFFECT_GOLDENS=1`). Unchanged: `cards.json`, `gallery-samples.json`, `index.json`, every square and landscape case, and `hook-landscape.png`.
+- **Tests.**
+  - Media `ExportCheckPlacementTests`, now a gate:
+    - the two known issues are gone;
+    - every style at its default position clears every band in every shape, and its deepest page clears them in 9:16 and 1:1;
+    - `eachPortraitOverrideIsTheLowestClearPosition`: y ends at or above 0.77, and y + 0.001 ends below it;
+    - `aDraggedCaptionPositionIsNeverMoved`;
+    - `aPortraitTitleSitsClearOfTheFeedsBands` (top and bottom, one and three lines);
+    - `squareAndLandscapeTitlesAreUnchanged`.
+  - App `aLowCaptionKeepsAPressableStripUnderTheTransport`: 9:16 now uses a dragged position at the old default, because the 9:16 defaults no longer sit under the transport.
+  - Red without each rule:
+    - with the old style files, four caption tests fail: the gate, Highlight's default, the lowest-position test and the dragged-position test;
+    - with the title rule off, the two 9:16 title tests fail;
+    - with the rule applied to every shape, `squareAndLandscapeTitlesAreUnchanged` fails;
+    - the old effect goldens fail `titleEmojiAndArrowGoldens` and `hookTitleGoldens`.
+- **Still open (for the lead).**
+  - Clean subtitle and Lower third (bottom anchor at 0.90) reach 0.020 into the 1:1 bottom band and 0.0004 into the 16:9 one. The gate holds them as known issues.
+  - Deepest pages in 16:9 end up to 0.016 into the 10% band (Typewriter 0.916, Sing-along 0.909, and Pill, Minimal, Clean subtitle and Lower third by 0.0001–0.0004). The gate doesn't check 16:9 deepest pages.
+  - Sing-along's 9:16 deepest page ends at 0.7789: clear of the band, but 0.0011 inside the 1% margin. The brief moves only styles that reached into a band.
+- **Verification** (`VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`, caption Python from the pinned requirements):
+  - Core: 1,471 tests, 2 known issues.
+  - Media, CaptionParity and CaptionStyleSet2 included: 626 tests; the 6 known issues are the gate's.
+  - App: 1,031 tests. The panel-host test failed in 9:16 before its fix and passes after it.
+  - `rewrite-smoke.sh`: PASSED, 83 scenarios.
+  - Long-expression build (250 ms): nothing flagged in the touched files.
+  - Both `check_drift.py`, every caption generator, `check_styles.py` and `validate.py`: tree clean.
+  - `voxclip-cli export --aspect 9:16 --style vox-highlight` with a hook title, then `check --json`: captions ok, passed. The base build warned, with 9 cards 0.043 into the bottom band and the title 0.018 into the top band, and exited 8.
+- **Next package.** Read the 9:16 positions from the style files; don't hard-code 0.8. The stage's "Bottom" position menu entry still means "the style's own position". The real-window caption drag (`-uiSelfTest`'s DebugViewer) is owed by the lead.
+
+### 2026-11-08 — The export self-check engine: words, sync, loudness and captions, headless and in the CLI (track/v2-export-check)
+
+The agents the user liked checked every export (doc/agent-clipping-benchmark.md, item 6). VoxClip now does too, on the Mac, with no UI yet: the review rows wait for the user's approval of the lead's mockup (frame E). ADR-R49 has the rules and the measurements.
+
+- **Core.**
+  - `ExportCheck` (new, `Domain/ExportCheck/ExportCheck.swift`): `run(_ ExportCheckInput) -> ExportCheckReport`. The report holds four `ExportCheckResult`s (`words`, `sync`, `loudness`, `captions`), each `ok`, `warning` or `skipped` with a `reason`, with `ExportCheckItem`s at output times.
+    - The constants: `matchFloor` 0.9, `phraseToleranceSeconds` 0.30, ±1 LU about −14 LUFS, and `truePeakToleranceDb` 0.2 over −1 dBTP.
+    - A cut-off is a word at a cut or a clip edge (inclusive bounds) that is missing or heard as one shorter word.
+    - Words warn on a cut-off, on a phrase word heard wrong, or when under 90% of the words match. A lone source mismatch is reported but stays `ok`.
+  - `ExportCheckExpectation` (new): `edit(render:state:)` and `edit(timeline:speed:effects:state:duration:)` give the expected words, phrases, cuts and duration in output seconds.
+    - On the Voice Lab path the words are the output plan's (a Rewrite's new words at their placed times, phrase = segment id). Otherwise they are `captionCopy` of the clip.
+    - Bleeped and muted words are dropped, and kept fillers are optional. `captionBoxes(render:)` gives each page's visual rect with its boxes and emoji.
+  - `CaptionSafeZones` (new): the bands per aspect class. The stage's drag guides (`PreviewTimeline`) now draw from it; no visual change.
+  - `VoiceLabTakeQuality.alignment(expected:recognized:)` (new): the LCS index pairs. `transcriptRatio` now counts it, so the take QA and the check share one alignment.
+  - `ClaudeModeStage.check` (new).
+- **Media.** `ExportChecker` (new, `Pipeline/ExportChecker.swift`).
+  - `localHearing(transcript:locations:shared:)` picks the project's local engine or an installed Whisper model, never ElevenLabs.
+  - `check(export:render:edit:loudness:) -> Outcome` returns the report, `measureSeconds`, `hearSeconds`, `totalSeconds`, `engine` and `model`.
+  - It reads the tracks' `timeRange`s, decodes the audio twice on `decodeQueue` (the shared `SocialLoudnessMeter` at the track's rate, and 16 kHz mono for the engine) and runs the engine with `hearingQueue` as its task executor.
+  - Title boxes come from `EffectFrames.titleLayout`.
+- **CLI.**
+  - `CLIWorkflow.prepare(_:input:checkingOutputs:) -> PreparedExport` is the export's preparation, split out of `export`, which now calls `export(_:prepared:)`.
+  - `check --project --clip <n|id> <export.mp4> [--aspect] [--style] [--loudness] [--json]` reads the aspect from the file when it isn't given. Exit 8 (`Check.warningExitCode`) when any check warns. The JSON adds `check`: `passed`, `seconds`, `hearSeconds`, `engine`, `model` and the four results.
+  - `autopilot` checks each exported clip by default: `ClipChecks` chains the checks beside the other clips' work, and `exportClip(..., checks:)` starts one after each export. Each clip's JSON gets `check`, `--timings` a `check` stage per clip, and `--no-check` drops both.
+- **Shared.**
+  - `shared/fixtures/export-check/check-cases.json` (new, schema `voxclip-export-check-cases/1`, 32 cases: 11 words, 7 sync, 7 loudness, 7 captions) is written by `tools/fixtures/export-check/generate_check_cases.py`.
+  - The fixture is in check_drift's EXACT list and validated by `shared/schemas/export-check-cases.schema.json` through `validate.py`.
+- **Defaults that fail in 9:16 (for the lead; not moved).**
+  - Highlight at its default position reaches 0.043 into the bottom 22% band. So do Bold and Bold+ (0.030), Minimal, Typewriter, Clean subtitle and Lower third.
+  - The hook title's top is at 0.102–0.106 of the height, inside the top 12% band.
+  - Both clear 1:1 and 16:9. `ExportCheckPlacementTests` holds them as known issues.
+- **Tests.** Core: `ExportCheckReplayTests` (every case; each rule was mutated and its case went red), `ExportCheckExpectationTests`. Media: `ExportCheckerTests` (a real export with a stub engine; an audio-overhang file fails sync), `ExportCheckerRealModelTests` (skipped unless `VOXCLIP_TEST_WHISPER_MODELS` names a Models folder), `ExportCheckPlacementTests`, `CLICheckTests` (`check` exit codes and JSON through the binary; autopilot `check` per clip and `--no-check`).
+- **Windows owes.**
+  - The engine (`ExportCheck`, the expectation from its render timeline, `CaptionSafeZones`), replaying `shared/fixtures/export-check/check-cases.json` with its exact keys and caseCount.
+  - A checker on its decoder and meter, local Whisper only.
+  - `voxclip-cli check` with exit 8, and the autopilot's per-clip `check`.
+- **Next package (the review UI).** Show `ExportCheckReport` as it is; don't recompute it. A row per check, items at their times. Use `check.passed` for "verified". Run the check after export with `ExportChecker` and `ExportCheckExpectation.edit(render:state:)` from the render the export used.
+
 ### 2026-11-08 — The headless autopilot applies the picture decisions and keeps Claude's reasons; macOS 26 cover art probe; the Snap toggle removed (track/v2-autopilot-picture)
 
 `voxclip-cli autopilot` sent frames but applied nothing Claude decided from them, and kept no reasons (the lead's live run, 2026-11-08). It now applies the picture rows as Make it postable does, and its JSON says what was decided and why.
