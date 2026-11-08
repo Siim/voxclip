@@ -230,7 +230,9 @@ public enum FrameScreens {
 
 /// The analysis of one clip: its sentence frames, its opening scan and how long each took.
 public struct FrameAnalysis: Codable, Sendable, Equatable {
-    public static let version = 1
+    /// 2: faces from `VNDetectFaceRectanglesRequest` revision 3 with continuous yaw and pitch (2026-11-08); a version-1
+    /// cache holds Vision's coarse revision-2 pose and is never read.
+    public static let version = 2
     public var version: Int = FrameAnalysis.version
     public var contentKey: String
     /// One frame per sampled sentence, in time order (`FrameSampling.sentenceSamples`).

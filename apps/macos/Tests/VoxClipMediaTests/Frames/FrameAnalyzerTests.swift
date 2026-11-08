@@ -53,6 +53,30 @@ struct FrameAnalyzerTests {
         #expect(vision.count == 2 * looked)
     }
 
+    /// Version 1 held Vision's coarse revision-2 pose (yaw 0 or ±π/4, no pitch): its file is ignored, never read, and left
+    /// for the cache's own eviction (ADR-R48, 2026-11-08).
+    @Test func aVersionOneCacheIsIgnoredAndLeftInPlace() async throws {
+        #expect(FrameAnalysis.version == 2 && FrameAnalysisCache.fileName == "analysis-v2.json")
+        let folder = try FrameTestFolder()
+        let store = CacheStore(locations: folder.locations)
+        let cache = FrameAnalysisCache(store: store)
+        let pass = FrameAnalysisCache.pass(tolerance: FrameAnalyzer.sentenceTolerance)
+        let frames = try store.entryDirectory(contentKey: Self.key).appendingPathComponent("frames", isDirectory: true)
+        try FileManager.default.createDirectory(at: frames, withIntermediateDirectories: true)
+        let coarse = #"{"face":{"eyes":"open","facesCamera":true,"rect":{"height":0.4,"width":0.2,"x":0.4,"y":0.3},"yaw":0},"#
+            + #""faceCount":1,"screens":[],"textRects":[],"time":1.2}"#
+        let old = frames.appendingPathComponent("analysis-v1.json")
+        try Data(#"{"frames":{"\#(pass):1200":\#(coarse)},"schema":"voxclip-frames/1"}"#.utf8).write(to: old)
+        #expect(cache.observations(contentKey: Self.key, pass: pass).isEmpty)
+        let vision = CountingVision()
+        let analyzer = FrameAnalyzer(vision: vision, decoder: SyntheticDecoder(), cache: cache)
+        let found = try await analyzer.observations(source: folder.url, contentKey: Self.key, times: [1.2], tolerance: FrameAnalyzer.sentenceTolerance)
+        #expect(found.analyzed == 1 && found.cached == 0 && vision.count == 1)
+        #expect(found.frames.first?.face?.pitch == 0)
+        #expect(FileManager.default.fileExists(atPath: old.path), "the old file is not deleted")
+        #expect(cache.observations(contentKey: Self.key, pass: pass).count == 1)
+    }
+
     @Test func passesWithDifferentTolerancesAreCachedApartAndKeyedByTheTimeAskedFor() async throws {
         let folder = try FrameTestFolder()
         let cache = FrameAnalysisCache(locations: folder.locations)

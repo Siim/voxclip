@@ -43,7 +43,7 @@ struct CLIAnalyzeFramesTests {
         #expect(decisions["pitchBaseline"] is NSNull)
         let sheet = try #require(output["sheet"] as? [String: Any])
         #expect(sheet["frames"] as? Int == 2 && sheet["estimatedImageTokens"] as? Int == 2 * 77)
-        let frames = directory.appendingPathComponent("data/Cache/\(contentKey)/frames/analysis-v1.json")
+        let frames = directory.appendingPathComponent("data/Cache/\(contentKey)/frames/analysis-v2.json")
         #expect(FileManager.default.fileExists(atPath: frames.path))
 
         let second = try runCLI(["analyze-frames", "--open", input.path, "--clip", "c", "--json"], directory: directory)
