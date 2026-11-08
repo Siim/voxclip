@@ -802,6 +802,50 @@ extension ClaudeModeTests {
         }
     }
 
+    /// Claude mode's automatic whole clip follows the same Fit (ADR-R46, "Your own pace"): the user's 20.2 s voice for
+    /// 0:31.3 plays the picture 1.2× and is lip synced at that speed; a picture that can't be matched stops at Fit with no
+    /// lip-sync call, and the changed phrases are voiced instead, the voice's cost charged to the run.
+    @Test func claudeModesWholeClipChecksThePictureAtFit() async throws {
+        for unmatched in [false, true] {
+            let fixture = try fixture()
+            defer { close(fixture) }
+            let editor = fixture.editor
+            let stubs = WholeClipRevoiceSessionTests.Stubs()
+            stubs.voiceSeconds = [20.2]
+            stubs.video = 31.3
+            stubs.picture = .init(speed: 1.2, outputSeconds: 24.12, laidOut: true)
+            if unmatched { stubs.pictureError = WholeClipRevoiceSession.Stop.pictureUnmatched(part: 1) }
+            let outcomes = WholeClipOutcomes()
+            editor.makeIt.services?.wholeClipQuote = { _, _ in WholeClipAutoQuote(reason: .manyWords(revoiced: 3, spoken: 5), price: Decimal(string: "1.5")!) }
+            editor.makeIt.services?.revoiceWholeClip = { _, _ in
+                let session = WholeClipRevoiceSession()
+                session.backend = WholeClipRevoiceSessionTests.backend(stubs)
+                session.start(automatic: true)
+                await session.waitForRun()
+                let outcome = WholeClipAutoOutcome(session)
+                outcomes.all.append(outcome)
+                return outcome
+            }
+            await editor.makeIt.refreshVoiceReady(editor)
+            editor.armClaudeMode()
+            editor.claudeModeTranscribed(started: false)
+            await editor.claudeMode.task?.value
+            let run = try #require(editor.claudeModeRuns.first { $0.clipID == "clip-main" })
+            let row = try #require(run.rows.first { $0.id == "wholeClip" })
+            #expect(stubs.pictures == [20.2], "the picture is checked at Fit")
+            if unmatched {
+                #expect(stubs.lipsyncs.isEmpty, "no lip-sync call")
+                guard case .patchInstead(let line, let spent)? = outcomes.all.first else { Issue.record("\(outcomes.all)"); continue }
+                #expect(line.hasPrefix("Part 1's picture can't be matched to its voice") && spent == Decimal(string: "0.06"))
+                #expect(row.text == "Voiced only the changed phrases: the whole clip couldn't be revoiced here")
+            } else {
+                #expect(stubs.lipsyncFactors == [1.2])
+                guard case .revoiced(let record, _)? = outcomes.all.first else { Issue.record("\(outcomes.all)"); continue }
+                #expect(record.videoRetime == 1.2)
+            }
+        }
+    }
+
     @Test func aClipThatWouldNotSoundStitchedIsPatchedWithNoOffer() async throws {
         let fixture = try fixture()
         defer { close(fixture) }

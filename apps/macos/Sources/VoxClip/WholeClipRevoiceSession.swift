@@ -60,7 +60,16 @@ import VoxClipMedia
     struct Synced: Equatable {
         let model: Lipsync
         let usd: Decimal
+        /// The picture's even speed-up under the voice (the record's `videoRetime`), 1 at the clip's own pace.
         let factor: Double
+    }
+    /// The Fit step's picture, checked before the lip sync is offered: the clip as edited under the laid-out voice, sped up
+    /// evenly by `speed` (ADR-R46, "Your own pace"), `outputSeconds` long, and ready to be sent for lip sync.
+    struct Picture: Equatable {
+        let speed: Double
+        let outputSeconds: Double
+        /// The speed-up hit its cap, so the voice's pauses and the trim take the rest.
+        let laidOut: Bool
     }
     struct Backend {
         /// The free script: the clip's words with every edit and rewrite applied.
@@ -78,7 +87,11 @@ import VoxClipMedia
         /// The speaking-rate estimate of a script's seconds, free; nil when there is none. Check before paying compares a
         /// reworded script's estimate with the clip before a new voice is made.
         var estimate: @MainActor (WholeClipScript) -> Double? = { _ in nil }
-        /// The lip sync over the whole clip, the picture retimed by `factor`, paid.
+        /// The picture match and the lip sync's free checks on this Mac, at the Fit step: every part's picture matched to its
+        /// laid-out take (the cut recipe, the speed-up and the trims), and the merged window one fal.ai can take. Throws what
+        /// failed; nothing is sent.
+        var picture: @MainActor (Voice) async throws -> Picture = { _ in Picture(speed: 1, outputSeconds: 0, laidOut: false) }
+        /// The lip sync over the whole clip, the picture sped up by `factor` (the Fit step's), paid.
         var lipsync: @MainActor (Voice, Double, Lipsync, @escaping @MainActor (Double?) -> Void) async throws -> Synced
         /// The lip sync's price for the upgrade, free.
         var lipsyncPrice: @MainActor (Lipsync) throws -> Decimal?
@@ -101,10 +114,30 @@ import VoxClipMedia
         let step: Step
         let part: Int?
         let repeats: Bool
+        /// The log line's kind (`RewriteSession.failureKind`): the real error's type and case.
+        var kind: String = ""
+        /// The run before stopped the same way, at the same step: Try Again is no longer the primary (design.md, Stopped).
+        var again = false
+        /// Two stops are the same stop by where they stopped and what follows; the log kind only says why.
+        static func == (lhs: Failure, rhs: Failure) -> Bool {
+            lhs.step == rhs.step && lhs.part == rhs.part && lhs.repeats == rhs.repeats && lhs.again == rhs.again
+        }
     }
     /// A stop before anything paid was sent, which trying again would only repeat; `error` says why.
     struct Unsent: Error {
         let error: any Error
+    }
+    /// The picture can't be matched to the laid-out voice (the Fit step's check): `error` is what the video preparation
+    /// said, and trying again over the same voice meets it again. Nothing was sent.
+    struct Unmatched: Error {
+        let error: any Error
+        var part: Int?
+    }
+    /// The lip sync failed: `error` is the job's or its preparation's own error. `local` failures (the window couldn't be
+    /// prepared, no key, outside the provider's limits) happened on this Mac before fal.ai and repeat on a retry.
+    struct LipsyncFailed: Error {
+        let error: any Error
+        let local: Bool
     }
 
     private(set) var phase: Phase = .choose
@@ -128,12 +161,16 @@ import VoxClipMedia
     private(set) var automatic = false
     @ObservationIgnored var backend: Backend?
     @ObservationIgnored private var run: Task<Void, Never>?
+    /// The stop the last run ended in, read once by the next run's failure (`Failure.again`).
+    @ObservationIgnored private var previousFailure: Failure?
     @ObservationIgnored private var rewordRound = 0
     /// The clip's own script the last run started from (before any measured wording).
     @ObservationIgnored private var baseScript: String?
     /// The script a run stopped at the Fit step for (the voice can't fit, or a reword came back no shorter): Try Again over
     /// the same script would only meet the same fit, so the patch becomes the primary (ADR-R46).
     @ObservationIgnored private var fitStoppedScript: String?
+    /// The Fit step's picture for the current voice.
+    private(set) var picture: Picture?
 
     var running: Bool { run != nil }
     /// Waits for the run under way, if any.
@@ -156,7 +193,8 @@ import VoxClipMedia
     func start(automatic: Bool = false) {
         guard backend != nil, !running, phase != .used else { return }
         self.automatic = automatic
-        phase = .running; started = Date(); progress = nil; rewordRound = 0; failure = nil; fitStoppedScript = nil
+        previousFailure = failure
+        phase = .running; started = Date(); progress = nil; rewordRound = 0; failure = nil; fitStoppedScript = nil; picture = nil
         steps = Dictionary(uniqueKeysWithValues: Step.allCases.map { ($0, StepState.waiting) })
         run = Task { [weak self] in
             await self?.perform(model: .standard)
@@ -195,17 +233,15 @@ import VoxClipMedia
             var voice = try await voiceStep(script, backend: backend)
             // Fit: free, on the clip as edited. Only a voice too long for it asks for a measured wording, which is checked
             // against the clip before it is said again (a new script, a new voice); a shorter voice is laid out, never padded.
-            var factor: Double
+            var verdict: String
             while true {
                 let video = backend.videoSeconds()
                 let measured = "Fit · \(Self.clock(voice.seconds)) for \(Self.clock(video)) of video"
                 switch WholeClipRevoice.fit(voiceSeconds: voice.seconds, videoSeconds: video, words: script.words, round: rewordRound) {
                 case .matched(let matched):
-                    factor = matched
-                    steps[.fit] = .done(measured + ", " + WholeClipRevoice.matchedCopy(factor: matched))
+                    verdict = measured + ", " + WholeClipRevoice.matchedCopy(factor: matched)
                 case .laidOut(let laid):
-                    factor = laid
-                    steps[.fit] = .done(measured + ", " + WholeClipRevoice.laidOutCopy(factor: laid))
+                    verdict = measured + ", " + WholeClipRevoice.laidOutCopy(factor: laid)
                 case .reword(let target):
                     rewordRound += 1
                     steps[.fit] = .running(measured + " · asking for a shorter wording (≈ \(target) words)")
@@ -229,8 +265,19 @@ import VoxClipMedia
                 }
                 break
             }
+            // The Fit passes only when the picture can be matched to the laid-out voice and sent for lip sync: the same
+            // checks the Lip sync step needs, run here for free, so a reason known now never shows up as a lip-sync stop.
+            steps[.fit] = .running(verdict + " · matching the picture")
+            let picture = try await backend.picture(voice)
             try Task.checkCancellation()
-            // Lip sync: paid once per voice, retime and model.
+            self.picture = picture
+            let video = backend.videoSeconds()
+            let measured = "Fit · \(Self.clock(voice.seconds)) for \(Self.clock(video)) of video"
+            // A speed-up too small to show (under 1.005×) keeps the plain verdict.
+            let sped = WholeClipRevoice.speedLabel(picture.speed) != WholeClipRevoice.speedLabel(1)
+            steps[.fit] = .done(sped ? measured + ", " + WholeClipRevoice.spedCopy(speed: picture.speed, laidOut: picture.laidOut) : verdict)
+            let factor = picture.speed
+            // Lip sync: paid once per voice, picture speed and model.
             let key = WholeClipRevoiceLedger.LipsyncKey(voice: voice.key, retime: factor, model: model)
             let price = (try? backend.lipsyncPrice(model)).flatMap { $0 }
             steps[.lipsync] = .running("Lip sync · fal.ai \(model.name) · usually 1–2 min")
@@ -258,9 +305,11 @@ import VoxClipMedia
             if !cancelled {
                 if steps[step] == .waiting { steps[step] = .failed(Self.copy(error)) }
                 let part = Self.part(error)
-                failure = Failure(step: step, part: part, repeats: step == .script || Self.repeats(error))
+                let kind = RewriteSession.failureKind(Self.cause(error))
+                let again = previousFailure.map { $0.step == step && $0.kind == kind } ?? false
+                failure = Failure(step: step, part: part, repeats: step == .script || Self.repeats(error), kind: kind, again: again)
                 if step == .fit { fitStoppedScript = baseScript }
-                backend.report("whole clip failure step=\(step) " + RewriteSession.failureKind(Self.cause(error)) + (part.map { " part=\($0)" } ?? ""))
+                backend.report("whole clip failure step=\(step) " + kind + (part.map { " part=\($0)" } ?? ""))
             }
             phase = .stopped(cancelled ? "Cancelled. Your clip is unchanged." + paidNote : Self.copy(error) + paidNote)
         }
@@ -279,7 +328,7 @@ import VoxClipMedia
         let made = try await backend.voice(script) { [weak self] line in self?.steps[.voice] = .running("Voice · " + line) }
         ledger.record(made.key, usd: made.usd)
         voice = made
-        synced = nil
+        synced = nil; picture = nil
         steps[.voice] = .done(Self.voiceLine(made, quote: quote))
         return made
     }
@@ -324,6 +373,8 @@ import VoxClipMedia
         /// Check before paying: the shorter wording's estimate still runs `predicted` for `video`, so no voice was made.
         case rewordTooLong(predicted: Double, video: Double)
         case noVoice(String)
+        /// Part `part` (1-based)'s picture allows no cut or kept-source video under its laid-out take.
+        case pictureUnmatched(part: Int)
     }
 
     /// What the Voice step and the card say. A part that can't be placed says which part and why; only a lip-sync error uses
@@ -336,6 +387,13 @@ import VoxClipMedia
         case Stop.rewordTooLong(let predicted, let video):
             return "The shorter wording would still run about \(clock(predicted)) for \(clock(video)) of video, so no new voice was made."
         case Stop.noVoice(let reason): return reason
+        case Stop.pictureUnmatched(let part):
+            return "Part \(part)'s picture can't be matched to its voice on the clip as edited. Nothing was sent for lip sync."
+        case let unmatched as Unmatched:
+            let reason = ClipTakePlan.copy(unmatched.error)
+            return "The picture couldn't be matched to the voice: " + reason + (reason.hasSuffix(".") ? "" : ".") + " Nothing was sent for lip sync."
+        case let failed as LipsyncFailed:
+            return "Couldn't lip sync: " + RewriteLipsyncSession.reason(failed.error) + (failed.local ? " Nothing was sent to fal.ai." : "")
         case ClipTakePlan.Failure.placement(let refusal, let index): return placementCopy(refusal, part: index + 1)
         case is LipsyncError, is LipsyncPreparationError: return RewriteLipsyncSession.reason(error)
         default: return RewriteSession.refusal(error)
@@ -351,11 +409,20 @@ import VoxClipMedia
         return "Part \(part) can't be joined to the recording there. Nothing was sent."
     }
 
-    /// The error a wrapper stands for.
-    static func cause(_ error: any Error) -> any Error { (error as? Unsent)?.error ?? error }
+    /// The error a wrapper stands for: what actually failed, for the log line's type and case.
+    static func cause(_ error: any Error) -> any Error {
+        switch error {
+        case let unsent as Unsent: return cause(unsent.error)
+        case let unmatched as Unmatched: return cause(unmatched.error)
+        case let failed as LipsyncFailed: return cause(failed.error)
+        default: return error
+        }
+    }
 
-    /// The refused part, 1-based, of a placement refusal.
+    /// The refused part, 1-based, of a placement refusal or a picture that can't be matched.
     static func part(_ error: any Error) -> Int? {
+        if case Stop.pictureUnmatched(let part) = error { return part }
+        if let unmatched = error as? Unmatched, let part = unmatched.part { return part }
         if case ClipTakePlan.Failure.placement(_, let index) = cause(error) { return index + 1 }
         return nil
     }
@@ -363,7 +430,9 @@ import VoxClipMedia
     /// Trying again would only stop the same way: the parts can't be placed, nothing is left to voice, too many parts, or
     /// a stop before anything paid was sent. A network or provider failure can succeed on a retry.
     static func repeats(_ error: any Error) -> Bool {
-        if error is Unsent { return true }
+        if error is Unsent || error is Unmatched { return true }
+        if case Stop.pictureUnmatched = error { return true }
+        if let failed = error as? LipsyncFailed { return failed.local }
         switch error {
         case ClipTakePlan.Failure.placement, ClipTakePlan.Failure.nothingToVoice, ClipTakePlan.Failure.tooManyPhrases: return true
         default: return false
