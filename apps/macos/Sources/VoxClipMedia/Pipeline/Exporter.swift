@@ -167,10 +167,14 @@ public actor AVExporter: Exporter {
     }
 
     /// The MP4's cover art: iTunes `covr`, a JPEG, which players and uploaders read as the attached picture. The common
-    /// artwork identifier is written as a QuickTime key instead, which ffprobe doesn't see as a cover (2026-11-08).
+    /// artwork identifier is written as a QuickTime key instead, which ffprobe doesn't see as a cover (2026-11-08). The
+    /// item names the iTunes key space and the `covr` key itself rather than the identifier, and the writer takes it once
+    /// its inputs are added: both embed on macOS 27, and are the likeliest to on macOS 26, whose writer dropped the
+    /// identifier form set before the inputs (doc/publishing.md §7, `CoverArtWriteVariantsTests`).
     static func coverArt(_ jpeg: Data) -> AVMetadataItem {
         let item = AVMutableMetadataItem()
-        item.identifier = .iTunesMetadataCoverArt
+        item.keySpace = .iTunes
+        item.key = AVMetadataKey.iTunesMetadataKeyCoverArt.rawValue as NSString
         item.value = jpeg as NSData
         item.dataType = kCMMetadataBaseDataType_JPEG as String
         return item
@@ -373,7 +377,6 @@ public actor AVExporter: Exporter {
         writer.directoryForTemporaryFiles = workDirectory
         writer.shouldOptimizeForNetworkUse = true
         writer.movieTimeScale = 48000
-        if let coverJPEG { writer.metadata = [Self.coverArt(coverJPEG)] }
         let compression: [String: Any] = [AVVideoAverageBitRateKey: output.videoBitrate,
             AVVideoExpectedSourceFrameRateKey: output.fps, AVVideoMaxKeyFrameIntervalKey: Int(2 * output.fps),
             AVVideoAllowFrameReorderingKey: true, AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
@@ -393,6 +396,8 @@ public actor AVExporter: Exporter {
                 AVSampleRateKey: 48000, AVNumberOfChannelsKey: 2, AVEncoderBitRateKey: 160000])
             audioReceiver = writer.inputReceiver(for: audioInput)
         }
+        // The cover art goes in once the inputs are added (see `coverArt`).
+        if let coverJPEG { writer.metadata = [Self.coverArt(coverJPEG)] }
         let pumps = ExportPumpState(observer: pumpObserver)
         activePumps = pumps
         let videoSamples = ExportSampleReader(reader: videoReader, provider: videoProvider, pump: 0, pumps: pumps, pullCheck: pullCheck, decodeCheck: decodeCheck)
