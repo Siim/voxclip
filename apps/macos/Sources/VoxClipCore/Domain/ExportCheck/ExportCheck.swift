@@ -62,6 +62,9 @@ public struct ExportCheckResult: Codable, Sendable, Equatable {
     public var items: [ExportCheckItem]
     public var matched: Int?
     public var total: Int?
+    /// The words check's numbers lined up only with words of another language (`SpokenNumbers`): neither matched nor
+    /// a mismatch, and left out of `matched` and `total`. nil when there were none.
+    public var unverified: Int?
     public var integratedLufs: Double?
     public var truePeakDbtp: Double?
     public var startOffset: Double?
@@ -198,10 +201,15 @@ public enum ExportCheck {
 
     // MARK: Words
 
-    /// The expected words matched against the heard words, word by word.
+    /// The expected words matched against the heard words, word by word. Numbers match however they are written
+    /// (`SpokenNumbers`): "three hundred dollar" heard as "$300" is three matched words.
     struct WordAlignment {
         /// For each expected word, the heard word it matched, if any.
         var matched: [Int?]
+        /// For each expected word, whether it is a number only lined up with words of another language.
+        var unverified: [Bool]
+        /// How many such numbers there were.
+        var unverifiedNumbers: Int
         /// For each unmatched expected word, the heard words in its place (between the matches around it), joined.
         var heardInstead: [String?]
         /// For each unmatched expected word, whether what was heard in its place is one shorter, different word.
@@ -210,48 +218,63 @@ public enum ExportCheck {
 
         init(expected: [ExportCheckInput.Word], heard: [ExportCheckInput.Heard]) {
             self.heard = heard
-            var expectedTokens: [String] = [], expectedOwner: [Int] = []
+            var expectedTokens: [SpokenNumbers.Token] = [], expectedOwner: [Int] = []
             for (index, word) in expected.enumerated() {
-                for token in VoiceLabTakeQuality.tokens(word.text) { expectedTokens.append(token); expectedOwner.append(index) }
+                for token in VoiceLabTakeQuality.spokenTokens(word.text) { expectedTokens.append(token); expectedOwner.append(index) }
             }
-            var heardTokens: [String] = [], heardOwner: [Int] = []
+            var heardTokens: [SpokenNumbers.Token] = [], heardOwner: [Int] = []
             for (index, word) in heard.enumerated() {
-                for token in VoiceLabTakeQuality.tokens(word.text) { heardTokens.append(token); heardOwner.append(index) }
+                for token in VoiceLabTakeQuality.spokenTokens(word.text) { heardTokens.append(token); heardOwner.append(index) }
             }
             // A recognizer spells a name it does not know as the common word it sounds like ("Claude" as "cloud").
-            let recognized = VoiceLabTakeQuality.normalizingHomophones(heardTokens, expected: expectedTokens,
-                                                                       replacementWords: Set(expectedTokens))
-            let pairs = VoiceLabTakeQuality.alignment(expected: expectedTokens, recognized: recognized)
+            let expectedTexts = expectedTokens.map(\.text)
+            let spelled = VoiceLabTakeQuality.normalizingHomophones(heardTokens.map(\.text), expected: expectedTexts,
+                                                                    replacementWords: Set(expectedTexts))
+            let recognized = zip(heardTokens, spelled).map { SpokenNumbers.Token(text: $1, numeral: $0.numeral) }
+            let alignment = SpokenNumbers.align(expected: expectedTokens, recognized: recognized)
+            // A numeral matched to several heard words maps to the first of them.
             var tokenMatch = [Int?](repeating: nil, count: expectedTokens.count)
-            for pair in pairs { tokenMatch[pair.expected] = pair.recognized }
-            // A word matches when every token of it matched; it is matched to its first token's heard word.
+            for pair in alignment.pairs where tokenMatch[pair.expected] == nil { tokenMatch[pair.expected] = pair.recognized }
+            let unverifiedTokens = Set(alignment.unverifiedExpected)
+            // A word matches when every token of it matched; it is matched to its first token's heard word. A word whose
+            // tokens are matched or unverified, one at least unverified, is unverified.
             var matched = [Int?](repeating: nil, count: expected.count)
             var complete = [Bool](repeating: true, count: expected.count)
+            var unverified = [Bool](repeating: false, count: expected.count)
             for (token, owner) in expectedOwner.enumerated() {
                 if let heardToken = tokenMatch[token] {
                     if matched[owner] == nil { matched[owner] = heardOwner[heardToken] }
+                } else if unverifiedTokens.contains(token) {
+                    unverified[owner] = true
                 } else { complete[owner] = false }
             }
-            for index in expected.indices where !complete[index] { matched[index] = nil }
+            for index in expected.indices where !complete[index] || unverified[index] {
+                matched[index] = nil
+                if !complete[index] { unverified[index] = false }
+            }
             self.matched = matched
+            self.unverified = unverified
+            unverifiedNumbers = alignment.unverifiedNumbers
             // The heard tokens in each gap between matches go to that gap's unmatched expected tokens in order; the last
-            // one takes what remains.
+            // one takes what remains. A numeral heard is never a shorter word: a number heard in digits is not cut off.
             var instead = [[String]](repeating: [], count: expected.count)
             var shorter = [Bool](repeating: false, count: expected.count)
-            let anchors = [(expected: -1, recognized: -1)] + pairs + [(expected: expectedTokens.count, recognized: recognized.count)]
+            let anchors = [(expected: -1, recognized: -1)] + alignment.pairs + [(expected: expectedTokens.count, recognized: recognized.count)]
             for (left, right) in zip(anchors, anchors.dropFirst()) {
-                let missing = Array((left.expected + 1)..<right.expected)
-                let extra = Array((left.recognized + 1)..<right.recognized)
+                let missing = Array((left.expected + 1)..<max(left.expected + 1, right.expected)).filter { !unverifiedTokens.contains($0) }
+                let extra = Array((left.recognized + 1)..<max(left.recognized + 1, right.recognized))
                 for (offset, token) in missing.enumerated() {
                     let owner = expectedOwner[token]
                     let taken: [Int]
                     if offset >= extra.count { taken = [] }
                     else if offset < missing.count - 1 { taken = [extra[offset]] }
                     else { taken = Array(extra[offset...]) }
-                    let words = taken.map { heardTokens[$0] }
+                    let words = taken.map { heardTokens[$0].text }
                     instead[owner] += words
-                    let wanted = expectedTokens[token]
-                    if words.count == 1, let only = words.first, only.count < wanted.count, only != wanted { shorter[owner] = true }
+                    let wanted = expectedTokens[token].text
+                    if taken.count == 1, heardTokens[taken[0]].numeral == nil, let only = words.first, only.count < wanted.count, only != wanted {
+                        shorter[owner] = true
+                    }
                 }
             }
             heardInstead = instead.map { $0.isEmpty ? nil : $0.joined(separator: " ") }
@@ -277,8 +300,10 @@ public enum ExportCheck {
     static func words(_ input: ExportCheckInput, alignment: WordAlignment?) -> ExportCheckResult {
         guard let alignment else { return .skipped(.words, input.hearingSkipped) }
         let expected = input.expected
-        let scored = expected.indices.filter { !expected[$0].optional }
-        guard !scored.isEmpty else { return .skipped(.words, "No words to check") }
+        let all = expected.indices.filter { !expected[$0].optional }
+        guard !all.isEmpty else { return .skipped(.words, "No words to check") }
+        // A number lined up only with another language's words is neither matched nor a mismatch.
+        let scored = all.filter { !alignment.unverified[$0] }
         let edges = atEdges(expected, cuts: input.cuts)
         var items: [ExportCheckItem] = []
         var warn = false
@@ -294,6 +319,7 @@ public enum ExportCheck {
         if Double(matched) < matchFloor * Double(scored.count) { warn = true }
         var result = ExportCheckResult(check: .words, status: warn ? .warning : .ok, items: items)
         result.matched = matched; result.total = scored.count
+        if alignment.unverifiedNumbers > 0 { result.unverified = alignment.unverifiedNumbers }
         return result
     }
 

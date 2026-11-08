@@ -66,6 +66,7 @@ EXACT = ['shared/fixtures/voice-lab/pace-cases.json', 'shared/fixtures/voice-lab
          'shared/fixtures/clip-style/caption-look-cases.json',
          'shared/fixtures/caption-translations/caption-translation-cases.json',
          'shared/fixtures/export-check/check-cases.json',
+         'shared/fixtures/export-check/number-check-cases.json',
          'shared/fixtures/spoken-numbers/number-cases.json',
          'shared/data/rewrite-tones.json',
          *sorted(f'shared/fixtures/cover-art/{name}' for name in (

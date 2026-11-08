@@ -115,20 +115,23 @@ public struct VoiceLabTakeQAResult: Sendable, Equatable {
     public let values: VoiceLabQA
     public let failures: [VoiceLabTakeQAFailure]
     public let joinSeams: [VoiceLabJoinAdvisorySeam]
+    /// Numerals the word check could only line up with words of another language (`SpokenNumbers`): neither matched
+    /// nor a mismatch.
+    public let unverifiedNumbers: Int
     public var passed: Bool { failures.isEmpty }
     public var hardFailures: [VoiceLabTakeQAFailure] { failures.filter { $0 != .loudness } }
     public var verdict: VoiceLabTakeQAVerdict {
         !hardFailures.isEmpty ? .failed : passed ? .passed : .passedWithAdvisory
     }
-    package init(values: VoiceLabQA, failures: [VoiceLabTakeQAFailure], joinSeams: [VoiceLabJoinAdvisorySeam] = []) {
-        self.values = values; self.failures = failures; self.joinSeams = joinSeams
+    package init(values: VoiceLabQA, failures: [VoiceLabTakeQAFailure], joinSeams: [VoiceLabJoinAdvisorySeam] = [], unverifiedNumbers: Int = 0) {
+        self.values = values; self.failures = failures; self.joinSeams = joinSeams; self.unverifiedNumbers = unverifiedNumbers
     }
 }
 
 public enum VoiceLabTakeQuality {
-    public static func tokens(_ text: String) -> [String] {
-        VoiceLabAudioTags.strippingTags(text).split(whereSeparator: \.isWhitespace).map { EditingPrimitives.normalizeForMatch(EditingPrimitives.nfc(String($0))) }.filter { !$0.isEmpty }
-    }
+    public static func tokens(_ text: String) -> [String] { spokenTokens(text).map(\.text) }
+    /// `tokens` with the number each one writes in digits, for the number-aware alignment.
+    public static func spokenTokens(_ text: String) -> [SpokenNumbers.Token] { SpokenNumbers.tokens(VoiceLabAudioTags.strippingTags(text)) }
     /// The Soundex key of a lowercase word of letters only (first letter, then up to three consonant-class digits), nil
     /// for anything else: digits, apostrophes and words under three letters never sound alike here.
     static func soundKey(_ word: String) -> String? {
@@ -181,38 +184,19 @@ public enum VoiceLabTakeQuality {
         let recorded = Set(items[first...last].flatMap { tokens($0.text) })
         return Set(tokens(text)).subtracting(recorded)
     }
+    /// The share of tokens the take said as asked (`SpokenNumbers.Alignment.ratio`); each string is one raw token.
     public static func transcriptRatio(expected: [String], recognized: [String]) throws -> Double {
-        guard !expected.isEmpty, expected.count <= 5_000, recognized.count <= 5_000 else { throw VoiceLabError.invalidInput }
-        return 2 * Double(alignment(expected: expected, recognized: recognized).count) / Double(expected.count + recognized.count)
+        try wordMatch(expected: expected.map(SpokenNumbers.Token.init), recognized: recognized.map(SpokenNumbers.Token.init)).ratio
     }
-    /// The tokens `expected` and `recognized` share, in order: a longest common subsequence of byte-equal tokens, as
-    /// index pairs. The take QA's transcript ratio
-    /// counts it; the export check (ADR-R49) reads which words matched and what was heard between them.
+    /// The take QA's word alignment: numbers match however they are written (`SpokenNumbers.align`).
+    public static func wordMatch(expected: [SpokenNumbers.Token], recognized: [SpokenNumbers.Token]) throws -> SpokenNumbers.Alignment {
+        guard !expected.isEmpty, expected.count <= 5_000, recognized.count <= 5_000 else { throw VoiceLabError.invalidInput }
+        return SpokenNumbers.align(expected: expected, recognized: recognized)
+    }
+    /// The tokens `expected` and `recognized` share, in order, as index pairs (`SpokenNumbers.align`); each string is one
+    /// raw token. Without numbers, a longest common subsequence of byte-equal tokens.
     public static func alignment(expected: [String], recognized: [String]) -> [(expected: Int, recognized: Int)] {
-        let columns = recognized.count + 1
-        guard !expected.isEmpty, !recognized.isEmpty else { return [] }
-        // lengths[(i * columns) + j]: the common subsequence of expected[i...] and recognized[j...].
-        var lengths = [Int32](repeating: 0, count: (expected.count + 1) * columns)
-        for row in stride(from: expected.count - 1, through: 0, by: -1) {
-            for column in stride(from: recognized.count - 1, through: 0, by: -1) {
-                let here = row * columns + column
-                lengths[here] = expected[row].utf8.elementsEqual(recognized[column].utf8)
-                    ? lengths[here + columns + 1] + 1 : max(lengths[here + columns], lengths[here + 1])
-            }
-        }
-        var pairs: [(expected: Int, recognized: Int)] = []
-        var row = 0, column = 0
-        while row < expected.count, column < recognized.count {
-            let here = row * columns + column
-            if expected[row].utf8.elementsEqual(recognized[column].utf8), lengths[here] == lengths[here + columns + 1] + 1 {
-                pairs.append((row, column)); row += 1; column += 1
-            } else if lengths[here + 1] >= lengths[here + columns] {
-                column += 1
-            } else {
-                row += 1
-            }
-        }
-        return pairs
+        SpokenNumbers.align(expected: expected.map(SpokenNumbers.Token.init), recognized: recognized.map(SpokenNumbers.Token.init)).pairs
     }
     /// `sourceSeamSteps`, one signed step per seam, makes the loudness value how far each join's step lies outside the
     /// source's own step there. A join whose generated side is in a pause compares that pause's level with
@@ -223,11 +207,14 @@ public enum VoiceLabTakeQuality {
                                 generatedAfter: [Bool]? = nil, measuredSeamSteps: [Double]? = nil, measuredPauseExcesses: [Double]? = nil, speakerScore: Double?,
                                 threshold: Double, audioTags: [VoiceLabAudioTag] = [], replacementWords: Set<String> = []) throws -> VoiceLabTakeQAResult {
         guard speakerScore.map({ $0.isFinite && (-1...1).contains($0) }) ?? true, threshold.isFinite, (0...1).contains(threshold) else { throw VoiceLabError.invalidInput }
-        let expectedTokens = tokens(expected)
-        let filtered = VoiceLabAudioTags.filterScribeEvents(recognized: recognized, expected: expectedTokens,
-            hasTags: !audioTags.isEmpty || !VoiceLabAudioTags.tagRanges(expected).isEmpty)
-        let recognizedTokens = normalizingHomophones(filtered, expected: expectedTokens, replacementWords: replacementWords)
-        let ratio = try transcriptRatio(expected: expectedTokens, recognized: recognizedTokens)
+        let expectedWords = spokenTokens(expected)
+        let expectedTokens = expectedWords.map(\.text)
+        let heard = recognized.flatMap { SpokenNumbers.tokens($0) }
+        let kept = VoiceLabAudioTags.keptAfterScribeEvents(heard.map(\.text), expected: expectedTokens,
+            hasTags: !audioTags.isEmpty || !VoiceLabAudioTags.tagRanges(expected).isEmpty).map { heard[$0] }
+        let recognizedTokens = normalizingHomophones(kept.map(\.text), expected: expectedTokens, replacementWords: replacementWords)
+        let words = try wordMatch(expected: expectedWords, recognized: zip(kept, recognizedTokens).map { SpokenNumbers.Token(text: $1, numeral: $0.numeral) })
+        let ratio = words.ratio
         let peak = try VoiceLabLoudness.samplePeakDbfs(mixed)
         guard peak.isFinite else { throw VoiceLabError.invalidAudio }
         if let generatedAfter, generatedAfter.count != seams.count { throw VoiceLabAudioMathError.invalidInput }
@@ -256,12 +243,13 @@ public enum VoiceLabTakeQuality {
             VoiceLabJoinAdvisorySeam(side: (generatedAfter?[index] ?? (index == 0)) ? .left : .right, excessLu: excesses[index])
         }
         var failures: [VoiceLabTakeQAFailure] = []
-        let exact = expectedTokens.count == recognizedTokens.count && zip(expectedTokens, recognizedTokens).allSatisfy { $0.utf8.elementsEqual($1.utf8) }
-        if expectedTokens.count <= 5 ? !exact : ratio < 0.9 { failures.append(.transcript) }
+        // A short phrase must say every word: each token matched, or a number unverified in another language.
+        if expectedTokens.count <= 5 ? !words.complete : ratio < 0.9 { failures.append(.transcript) }
         if peak >= 0 { failures.append(.clipping) }
         if jump > 2 { failures.append(.loudness) }
         if let speakerScore, speakerScore < threshold { failures.append(.speaker) }
-        return VoiceLabTakeQAResult(values: VoiceLabQA(transcriptMatch: ratio, lufsJumpLu: jump, peakDbfs: peak, speakerScore: speakerScore), failures: failures, joinSeams: joinSeams)
+        return VoiceLabTakeQAResult(values: VoiceLabQA(transcriptMatch: ratio, lufsJumpLu: jump, peakDbfs: peak, speakerScore: speakerScore), failures: failures, joinSeams: joinSeams,
+                                   unverifiedNumbers: words.unverifiedNumbers)
     }
     public static func rank(fit: VoiceLabFitResult, windowSeconds window: Double, matchRatio: Double, flatness: Double) throws -> Double {
         guard matchRatio.isFinite, flatness.isFinite, (0...1).contains(matchRatio), (0...1).contains(flatness) else { throw VoiceLabError.invalidInput }

@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": ["schema", "description", "constants", "caseCount", "counts", "cases"],
   "properties": {
-    "schema": {"const": "voxclip-export-check-cases/1"},
+    "schema": {"enum": ["voxclip-export-check-cases/1", "voxclip-export-check-number-cases/1"]},
     "description": {"type": "string", "minLength": 1},
     "constants": {"type": "object"},
     "caseCount": {"type": "integer", "minimum": 1},
@@ -135,6 +135,7 @@
             "reason": {"type": "string"},
             "matched": {"type": "integer", "minimum": 0},
             "total": {"type": "integer", "minimum": 0},
+            "unverified": {"type": "integer", "minimum": 1},
             "integratedLufs": {"type": "number"},
             "truePeakDbtp": {"type": "number"},
             "startOffset": {"type": "number"},

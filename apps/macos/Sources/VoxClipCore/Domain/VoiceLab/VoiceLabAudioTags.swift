@@ -94,7 +94,11 @@ public enum VoiceLabAudioTags {
     public static func filterScribeEvents(recognized: [String], expected: [String], hasTags: Bool) -> [String] {
         let tokens = recognized.flatMap { $0.split(whereSeparator: \.isWhitespace) }
             .map { EditingPrimitives.normalizeForMatch(EditingPrimitives.nfc(String($0))) }.filter { !$0.isEmpty }
-        guard hasTags else { return tokens }
+        return keptAfterScribeEvents(tokens, expected: expected, hasTags: hasTags).map { tokens[$0] }
+    }
+    /// The indices of `tokens` (normalized recognized tokens) `filterScribeEvents` keeps, in order.
+    public static func keptAfterScribeEvents(_ tokens: [String], expected: [String], hasTags: Bool) -> [Int] {
+        guard hasTags else { return Array(tokens.indices) }
         let expectedCounts = Dictionary(expected.map { ($0, 1) }, uniquingKeysWith: +)
         var extras = Dictionary(tokens.map { ($0, 1) }, uniquingKeysWith: +)
         for (token, count) in expectedCounts { extras[token, default: 0] -= count }
@@ -120,11 +124,12 @@ public enum VoiceLabAudioTags {
                 } else { recognizedIndex += 1 }
             }
         }
-        return tokens.enumerated().filter { index, token in
+        return tokens.indices.filter { index in
+            let token = tokens[index]
             guard !matched.contains(index), isScribeEvent(token), extras[token, default: 0] > 0 else { return true }
             extras[token, default: 0] -= 1
             return false
-        }.map(\.element)
+        }
     }
     public static func edgeExtent(words: [VoiceLabWord], samples: [Float], sampleRate: Int,
                                   tags: [VoiceLabAudioTag], tokenCount: Int, modelID: String,

@@ -70,6 +70,17 @@ import Testing
             #expect(alignment.complete == row.complete, "\(row.id)")
         }
     }
+
+    @Test func everyTakeCheckReplays() throws {
+        let samples: [Float] = (0..<16_000).map { Float(0.1 * sin(2 * Double.pi * 220 * Double($0) / 16_000)) }
+        for row in try Self.cases().takeChecks {
+            let qa = try VoiceLabTakeQuality.evaluate(expected: row.expected, recognized: row.recognized, mixed: samples, sampleRate: 16_000,
+                                                      seams: [], speakerScore: 0.9, threshold: 0.45)
+            #expect(qa.values.transcriptMatch == row.transcriptMatch, "\(row.id): \(String(describing: qa.values.transcriptMatch))")
+            #expect(!qa.failures.contains(.transcript) == row.passed, "\(row.id)")
+            #expect(qa.unverifiedNumbers == row.unverifiedNumbers, "\(row.id)")
+        }
+    }
 }
 
 /// Each rule on its own, both ways round.
@@ -106,5 +117,16 @@ struct SpokenNumbersTests {
         // English number words in the gap are never another language: "three hundred" for "30" stays a mismatch.
         let english = SpokenNumbers.align(expected: SpokenNumbers.tokens("we had 30 people"), recognized: SpokenNumbers.tokens("we had three hundred people"))
         #expect(english.unverifiedNumbers == 0 && !english.complete)
+    }
+
+    @Test func theTakeQAPassesAShortPhraseThatSaysTheNumber() throws {
+        let samples: [Float] = (0..<16_000).map { Float(0.1 * sin(2 * Double.pi * 220 * Double($0) / 16_000)) }
+        func failures(_ heard: [String]) throws -> [VoiceLabTakeQAFailure] {
+            try VoiceLabTakeQuality.evaluate(expected: "$300 is enough", recognized: heard, mixed: samples, sampleRate: 16_000,
+                                             seams: [], speakerScore: 0.9, threshold: 0.45).failures
+        }
+        #expect(try failures(["three", "hundred", "dollars", "is", "enough"]).isEmpty)
+        #expect(try failures(["$30", "is", "enough"]) == [.transcript])
+        #expect(try VoiceLabTakeQuality.transcriptRatio(expected: ["$300", "is", "enough"], recognized: ["three", "hundred", "dollars", "is", "enough"]) == 1)
     }
 }
