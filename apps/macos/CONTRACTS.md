@@ -1,5 +1,18 @@
 # macOS implementation contracts
 
+### 2026-11-08 — Real yaw and pitch from Vision; facing judged against the recording's camera height; frame cache v2 (track/v2-face-pose)
+
+Vision's face pose was coarse: landmarks run alone used its revision-2 detector (yaw 0 or ±π/4, pitch nil). ADR-R48 "Face pose" has the evaluation.
+
+- **Media, `AppleFrameVision`.** `VNDetectFaceRectanglesRequest` (`faceRequest()`, revision 3) runs in the same `perform` as the text and rectangle requests, which are unchanged. Its largest face gives the rect, yaw and pitch, and is the `inputFaceObservations` of the landmarks and capture-quality requests (one face box for all three). `faceCount` counts the rectangles request's faces. Vision still runs only on `FrameAnalyzer`'s queue.
+- **Core, the facing rule.** `FrameFace.facesCamera` (stored) is gone; `facesCamera(pitchBaseline:)` replaces it: |yaw| ≤ `yawLimit` (0.35) and |pitch − baseline| ≤ `pitchLimit` (0.35); nil baseline judges from 0. `FrameFace.facingLimit` is gone. `FrameFace.pitchBaseline(_:)` is the median face pitch of frames; `FrameAnalysis.pitchBaseline` the clip's own.
+- **The baseline is an input** of every reader of facing: `FrameObservation.isClearLook(pitchBaseline:)`, `OpeningFrame.choose(_:scan:pitchBaseline:)`, `CoverFrame.score(_:neighbours:pitchBaseline:)` and `pick(_:pitchBaseline:)`, `ClipFrameCandidates.cover(_:pitchBaseline:)`, `ClipAutopilotFrames(sheet:clipStart:clipEnd:images:pitchBaseline:)`, `FrameSheet.summary(pitchBaseline:)`, `estimatedSummaryTokens(pitchBaseline:)`, `FrameSheetFrame.summaryLine(pitchBaseline:)`, `ClipPicture.opening(_:clipID:scan:pitchBaseline:)`, `openingReason(_:pitchBaseline:)`, `ClipPicture.Inputs.pitchBaseline`.
+- **Where it comes from.** `VideoFramePass.pitchBaseline()` (waits for the pass; median over all its frames). Make it postable's request and opening row and the CLI autopilot's request and apply use it. `analyze-frames` uses the pass's with `--video-pass`, else the clip's own, and prints `decisions.pitchBaseline` and `videoPass.pitchBaseline`.
+- **Cache.** `FrameAnalysis.version` 2: `analysis-v2.json`, schema `voxclip-frames/2`. A v1 file is ignored and not deleted.
+- **Shared vectors.** New `shared/fixtures/clip-frames/face-facing-cases.json` (`voxclip-face-facing-cases/1`, `tools/fixtures/clip-frames/generate_face_facing.py`, in check_drift's EXACT list), replayed by `FaceFacingVectorTests`. No existing fixture changed.
+- **Thresholds.** Eye line 0.20, quality 0.4, the opening's margin 0.15 and floor 0.25 unchanged (re-checked on the post-fix measurements).
+- **Next package must know.** Capture quality moves up to ±0.07 (one frame 0.27) and the eye ratio −0.008 on average with the landmarks on the rev-3 box. The baseline from a short recording's pass can sit off the per-word median (R2: +0.18 from 13 frames, +0.07 per word). No face fixture works with Vision, so the pose is covered by the revision pin, the stubs and the evaluation, not by a Vision test.
+
 ### 2026-11-08 — The headless autopilot applies the picture decisions and keeps Claude's reasons; macOS 26 cover art probe; the Snap toggle removed (track/v2-autopilot-picture)
 
 `voxclip-cli autopilot` sent frames but applied nothing Claude decided from them, and kept no reasons (the lead's live run, 2026-11-08). It now applies the picture rows as Make it postable does, and its JSON says what was decided and why.

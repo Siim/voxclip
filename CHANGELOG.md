@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Mac, the picture checks now see how far your head is turned or tilted (not just roughly), and judge looking up or down against where your camera sits, so a camera below your eyes no longer counts as looking away while a glance at the ceiling does.
 - On Windows, Claude mode no longer waits for its slowest clip: the top three are planned at once, each clip is applied as soon as its own plan is ready ("1 of 3 ready" in the status bar, "Finding clips…" while it finds them), Settings drops the unused "Snap clip edges" switch, every AI connector that takes images can be sent frames, and `voxclip-cli autopilot` runs Claude mode headless with `--timings`.
 - On Mac, `voxclip-cli autopilot` now applies what Claude decided from the picture (a clearer opening, the 9:16 crop on your face, the screens it blurred and the cover, written beside each export) and its JSON says what was decided and why; Settings no longer shows the "Snap clip edges to sentence boundaries" toggle, which had no effect.
 - A clip that starts or ends mid-take, right against the word before or after it, can now have its first or last word rewritten (Mac and Windows) and be revoiced whole (Mac): the join at the clip's edge plays as the clip's start or end, and the full take still crossfades it into the word beside it.

@@ -1,5 +1,14 @@
 # Windows fixed contracts
 
+### 2026-11-08 — Mac: real yaw and pitch from Vision; facing judged against camera height (track/v2-face-pose)
+
+ADR-R48 "Face pose", ai.md §19.1–§19.2. **Calibrate the Windows face pipeline against this post-fix Mac**, not an earlier one.
+
+- **The Mac reference.** VoxClip 0.1.0 at track/v2-face-pose (implementation 4f4760e4), macOS 27.0.1 (26A434), Xcode 27 SDK 27.2. Request set per frame (1,280 px long edge): one `perform` of `VNDetectFaceRectanglesRequest` revision 3, `VNRecognizeTextRequest` (fast, no language correction) and `VNDetectRectanglesRequest` (as before); then the largest face as `inputFaceObservations` of `VNDetectFaceLandmarksRequest` and `VNDetectFaceCaptureQualityRequest` (default revisions). Yaw and pitch are the rectangles request's: continuous, pitch negative with the head tipped back.
+- **Shifts from the old Mac** (measured on 885 frames of the user's footage): capture quality ±0.07 at the 95th percentile (max 0.27), mean eye ratio −0.008 (max 0.23 on one frame). Earlier Windows calibration notes that matched a coarse yaw (0 or ±π/4) and a nil pitch no longer apply.
+- **The facing rule:** |yaw| ≤ 0.35 rad and |pitch − baseline| ≤ 0.35 rad, the baseline being the median face pitch of the whole video's sentence pass (or the clip's own frames without one).
+- **Windows owes:** the replay of `shared/fixtures/clip-frames/face-facing-cases.json` (`voxclip-face-facing-cases/1`: `baseline` and `facing` cases, `yawLimit`, `pitchLimit`) with the analyzer twin; the decisions taking the baseline as an input, as listed in the macOS CONTRACTS entry.
+
 ### 2026-11-08 — Windows: Claude mode's speed and images to the AI, the twin of Mac track/v2-speed and track/v2-eyes-1 (track/v2-win-speed-images)
 
 ai.md §16.12, §19.3, §19.5. Clears both "Windows owes" lists below except the analyzer.
