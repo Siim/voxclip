@@ -205,7 +205,8 @@ public sealed class ClipAutopilotService(LlmRunner runner, LlmCatalog catalog, s
                     await linked.CancelAsync().ConfigureAwait(false);
                     return;
                 }
-                catch (Exception error) when (error is LlmException or VoxClip.Core.Domain.Shared.VoxClipException)
+                // Any other failure fails its clip only, as on the Mac; the others go on.
+                catch (Exception error) when (error is not OutOfMemoryException)
                 {
                     lock (gate)
                     {

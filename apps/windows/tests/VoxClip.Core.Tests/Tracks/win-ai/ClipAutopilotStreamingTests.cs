@@ -129,6 +129,17 @@ public sealed class ClipAutopilotStreamingTests
     }
 
     [Fact]
+    public async Task AConnectorThatThrowsFailsOnlyItsClip()
+    {
+        var connector = new ScriptedConnector(ConnectorId.Ollama, (request, model, _) => request.Instruction.Contains("from word 15 to word 29", StringComparison.Ordinal)
+            ? throw new InvalidOperationException("the stub broke") : Task.FromResult(new RawCompletion(PlanReply(request), null, model, new StopKind.Complete(), null, null)));
+        var events = new List<ClipAutopilotProgress>();
+        var result = await Service().PlanAsync(Input(Five[..3]), connector, "fixture", progress: item => { lock (events) events.Add(item); }, ct: TestContext.Current.CancellationToken);
+        Assert.Equal([0, 30], result.Series.Plans.Select(plan => plan.StartWord).Order());
+        Assert.Equal(1, Assert.Single(events.OfType<ClipAutopilotProgress.Failed>()).Clip);
+    }
+
+    [Fact]
     public async Task CancellingThePlanStopsEveryPlanInFlight()
     {
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
