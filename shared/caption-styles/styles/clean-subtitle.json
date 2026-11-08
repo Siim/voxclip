@@ -25,7 +25,7 @@
   "maxPageSec": 6.0
  },
  "position": {"x": 0.5, "y": 0.9, "anchorY": "bottom"},
- "aspects": {"portrait": {"y": 0.769}, "landscape": {"maxLineWidthW": 0.7}},
+ "aspects": {"portrait": {"y": 0.769}, "square": {"y": 0.87}, "landscape": {"y": 0.889, "maxLineWidthW": 0.7}},
  "fill": {"type": "solid", "color": "#FFFFFF"},
  "box": {"scope": "line", "color": "#000000B3", "paddingXEm": 0.25, "paddingYEm": 0.06, "radiusEm": 0.08},
  "preview": {"text": "Here is what we learned this week.", "activeWord": 0}
