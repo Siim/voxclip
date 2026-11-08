@@ -22,7 +22,9 @@ public enum ClaudeModeStage
     /// <summary>One clip applied.</summary>
     Apply,
     /// <summary>One clip exported.</summary>
-    Export
+    Export,
+    /// <summary>One clip's export self-check (ADR-R49), after its export and beside the other clips' work.</summary>
+    Check
 }
 
 /// <summary>One stage's wall time: when it started and ended, in seconds from the run's start, and for a clip stage which clip (1 is

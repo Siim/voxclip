@@ -1,7 +1,8 @@
 # ADR-R49: The export self-check — words, sync, loudness and captions, measured on the Mac
 
-Date: 2026-11-08. Status: the engine is accepted (package v2-export-check: Core, Media and the CLI). The review rows that
-show it (the lead's mockup, frame E: "✓ Every word as edited" and three more per clip) wait for the user's approval.
+Date: 2026-11-08. Status: the engine is accepted (package v2-export-check: Core, Media and the CLI), and its Windows twin
+(track/v2-win-export-check, §8). The review rows that show it (the lead's mockup, frame E: "✓ Every word as edited" and
+three more per clip) wait for the user's approval on both platforms.
 
 ## Context
 
@@ -77,6 +78,22 @@ nothing shows it, and a Claude Code or Codex harness driving `voxclip-cli autopi
      engine) beside the other clips' plans and exports, so the first clip is never delayed. Each clip's JSON gets a
      `check` object, `--timings` gains a `check` stage per clip, and `--no-check` turns it off. The autopilot's exit
      status doesn't change: a harness reads `check.passed`.
+8. **Windows (2026-11-08).** The same rules, the same JSON and the same exit codes.
+   - **Core.** `ExportCheck`, `ExportCheckExpectation` and `CaptionSafeZones` (on the caption resolver's aspect class)
+     replay both fixture files with their exact keys and counts. The words align on the C# `SpokenNumbers` and the take
+     QA's homophone rule.
+   - **Media.** `ExportChecker` reads both tracks' ranges, the frame rate and the frame through FFmpeg. It reads the audio
+     for its known length with the Windows decoder under a bounded token, because `AudioDecoder.Read` pads with silence
+     and never returns 0. The decode feeds the ADR-R47 meter and, with an engine, a 16 kHz mono PCM16 copy through the
+     streaming form of the consent resampler (`SincResampler`). Caption boxes come from the render's caption track and
+     title boxes from `EffectTitleLayout`.
+   - **Local only.** Windows has no Apple speech. The engine is Whisper with the project's model when it is installed
+     and verified, otherwise any installed, verified Whisper model, in the transcript's language and then auto. Without
+     one, `words` and phrase sync are skipped. A provider is never called.
+   - **CLI.** `check` and the autopilot's checks prepare the clip's render through the export command's own path
+     (`PrepareExportAsync`).
+   - **Not in the cross-platform E2E.** The ten E2E reports are export runs that `compare_e2e.py` compares, and the Mac
+     E2E has no check case. The Windows command's check on a real file is a native test (`NativeCliCheckTests`).
 
 ## Measured
 
@@ -89,7 +106,7 @@ nothing shows it, and a Claude Code or Codex harness driving `voxclip-cli autopi
 
 The engine's rules are in shared/fixtures/export-check/check-cases.json (schema `voxclip-export-check-cases/1`) and its
 numbers in number-check-cases.json (`voxclip-export-check-number-cases/1`), which
-tools/fixtures/export-check/generate_check_cases.py writes. The Mac Core replays both; the Windows twin owes the replay.
+tools/fixtures/export-check/generate_check_cases.py writes. The Mac Core and the Windows Core replay both.
 
 ## Consequences
 
@@ -111,4 +128,5 @@ tools/fixtures/export-check/generate_check_cases.py writes. The Mac Core replays
   cut-off. For example, "speaking" was heard as "continuing" after "continually" was cut.
 - **Owed.**
   - The review rows, once the user approves the mockup.
-  - The Windows twin: the engine, its replay of the vectors, and the CLI.
+  - Windows on the VM: the FFmpeg reader and the whole `check` command on a real file (`NativeExportCheckerTests`,
+    `NativeCliCheckTests`), and the check with the real local Whisper on x64 and arm64.

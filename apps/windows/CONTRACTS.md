@@ -1,5 +1,49 @@
 # Windows fixed contracts
 
+### 2026-11-08 — Windows: the export self-check, the twin of Mac track/v2-export-check (track/v2-win-export-check)
+
+ADR-R49 §8 and doc/publishing.md §8. No UI: the review rows wait for the user's approval of the mockup on both platforms.
+
+- **Core (Domain/ExportChecks, new).**
+  - `ExportCheck` runs the four checks (words, sync, loudness, captions). It has the results, items, `Passed` and the `unverified` count, and its rules are the Mac's.
+  - Words align on `SpokenNumbers.Align`, with the take QA's `NormalizingHomophones` and audio-tag stripping.
+  - `ExportCheckResult.ToJson` writes the Mac's keys and leaves out empty ones.
+  - `ExportCheckExpectation.Make(snapshot, state)` builds the expected words, phrases and cuts from the render's own timeline: Voice Lab output plan or legacy edit plan, at the clip's speed, with bleeped words left out and kept fillers optional. `CaptionBoxes` reads the caption track's pages (visual, boxes and emoji).
+- **Core (other).**
+  - `CaptionSafeZones` (Domain/Captions) holds the bands per aspect class and reuses `CaptionStyleResolver.Aspect`.
+  - `SincResampler` (Domain/Shared) is the streaming form of the consent resampler. `VoiceConsentAudio.Resample` now runs on it, with output bit for bit the same (checked against the old code at seven rate pairs). It keeps only its kernel's context between calls and writes into the caller's buffer, so the Voice Lab rewrite-source allocation budget holds.
+  - `ClaudeModeStage.Check` is new.
+- **Media `ExportChecker` (Pipeline, new).**
+  - The public `CheckAsync(path, …)` opens the export with `FfmpegExportFile`: track ranges on the file's presentation timeline, frame rate and upright frame. It then runs the internal `CheckAsync(IExportFile, …)`.
+  - The audio is read for its known length under a bounded token (60 s plus twice its length), because `AudioDecoder.Read` pads with silence and never returns 0. It is metered by `SocialLoudnessMeter` at its own rate and channels. With an engine, it is also written as 16 kHz mono PCM16 under `<data>/Scratch/export-check` and removed after.
+  - `LocalHearingAsync` picks the engine: Whisper only, the project's own model when it is installed and verified, otherwise any verified Whisper model, in the transcript's language and then auto.
+  - If the engine fails, words are skipped ("The local transcription failed"). With no engine, words are skipped ("No local transcription model"). Cancellation cancels the check.
+  - Title boxes come from `EffectTitleLayout` through `EffectFrames.TitleLayout`, at the title's mapped output time.
+- **CLI.**
+  - `check --project <path> --clip <n|id> <export.mp4> [--aspect] [--style] [--loudness] [--json]` has the Mac's JSON (`passed`, `seconds`, `hearSeconds`, `engine`, `model` and each check by name), the Mac's human report and exit 8 on a warning. It reads the aspect from the export's frame when `--aspect` is left out.
+  - `CliOperations.ExportAsync` is now `PrepareExportAsync` plus `WriteExportAsync`. `check` and the autopilot read the same `PreparedExport` the encoder gets. `checkingOutputs: false` skips only the checks on the destination and sidecars.
+  - `autopilot` with `--out-dir` queues each clip's check (`ClipChecks`) as its export is written. Checks run one after another, off the clip loop, and add `check` to each clip's JSON and a `check` stage to `--timings`. `--no-check` skips them. A check that throws reports `{"passed": false, "error": …}` (redacted).
+- **No new test seams ship.** Tests call `ExportChecker`'s internal `CheckAsync(IExportFile, …)` with a synthetic export. They also drive the autopilot through the export command's existing injected input reader and encoder, which are now passed through `CliAutopilot.RunAsync`.
+- **Tests.**
+  - Core: `ExportCheckReplayTests` replays check-cases.json (32: words 11, sync 7, loudness 7, captions 7) and number-check-cases.json (4), with exact keys, counts, constants and bands, every case.
+  - Core: `ExportCheckExpectationTests` covers the Rewrite on the Voice Lab path, source words through the plan at 2×, and bleeps. `SincResamplerTests` checks pieces of any size against the whole signal.
+  - Media: `ExportCheckerTests` uses a synthetic export and a stub engine that reads the 16 kHz copy as Whisper does. It covers a mismatch and an edge cut-off, audio 0.5 s past the picture, loudness off and off target, a failing and a cancelled engine, and a picture-only file. It also checks the 9:16 default caption (Highlight) and the hook title clear of the bands, and a caption dragged to y 0.9 warning once with its count.
+  - CLI: `CliCheckTests` covers the prepared check's JSON and report, exit 0 and 8, clip by number or id, usage, missing inputs and `--help`. It also covers `autopilot --json` with a `check` per clip timed after its export, and `--no-check` (stub connector).
+  - Each key rule turns its test red without it: the number rule, cut-offs, the phrase tolerance, caption run grouping, the file's audio range, the loudness setting, exit 8 and `--no-check`.
+- **Plain process** (`env -i`, built `voxclip-cli.dll`): `check --help` and `version` exit 0, and a missing export exits 3 (`mediaMissing`). A check of a real MP4 stops at the FFmpeg loader on macOS (`sharedResourcesMissing`): there are no FFmpeg 9 LGPL libraries here.
+- **Not in the cross-platform CLI E2E.** The ten E2E reports are export runs compared by tools/parity/compare_e2e.py, and the Mac E2E has no check case.
+- **ReleaseBoundary.** `update` on VoxClip.Core, VoxClip.Media and voxclip-cli gives additions only, except the two autopilot method signatures, which changed. New types: Core's ExportChecks types, `CaptionSafeZones` and `SincResampler`; Media's `ExportChecker` (+`Hearing`, `Outcome`, `Measured`), `IExportFile` and `FfmpegExportFile`; the CLI's `CliCheck`, `ClipChecks`, `PreparedExport` and `CliAutopilot+ClipExportRoute`. New literals: `--project` and `--no-check`. VoxClip (the App surrogate) is unchanged.
+- **Verification** (macOS host, Release, `-m:1 -nodeReuse:false -p:UseSharedCompilation=false`, `VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`):
+  - Core 3,349 (3,320 passed, 29 skipped, 0 failed).
+  - Portable Media 1,060 (1,055 passed, 5 skipped, 0 failed).
+  - win-ui 1,401 (1,396 passed, 5 skipped, 0 failed).
+  - App type-check: 0 warnings. `check-xaml.py`: 0 problems. Both `check_drift.py` and `tools/schemas/validate.py` pass with the tree clean.
+- **Owed (the VM).**
+  - `NativeExportCheckerTests`: the FFmpeg reader on unequal-duration.mp4 (track ranges, frame, the decode and the 16 kHz copy).
+  - `NativeCliCheckTests`: the whole command on that file, expecting exit 8 on its sync.
+  - The check with the real local Whisper on x64 and arm64: an installed large-v3-turbo hearing a real export, with its wall time.
+  - `autopilot --out-dir` with real exports and checks.
+
 ### 2026-11-08 — Windows: the frame decisions in C#, twin of the Mac's Domain/Frames, package W1 of "Windows sees the picture" (track/v2-win-frames-core)
 
 ADR-R48 and ai.md §19; the post-fix Mac (track/v2-face-pose): facing is |yaw| ≤ 0.35 and |pitch − baseline| ≤ 0.35, the baseline is the recording's median pitch, and every decision takes it as an input. Pure Core only: the App, Media and CLI don't call these yet.
