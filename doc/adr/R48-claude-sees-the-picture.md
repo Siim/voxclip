@@ -67,3 +67,15 @@ small frames may be sent to the chosen AI. The cover is saved as `cover.jpg` nex
   absolute line on dim 1080p footage (0.30–0.44 throughout): two openings moved 0.4–0.5 s between equally clear frames.
   A relative rule (move only for shut eyes, a turned face or a clearly worse frame) is the next step.
 - **Windows** keeps the fields losslessly, honours the lead-in and the crop centre, and owes the rest (ai.md §19.5).
+
+## The cover's write (track/v2-cover-box, 2026-11-08)
+
+- **VoxClip writes the MP4's cover art itself, on every macOS.** `AVAssetWriter` embeds an iTunes `covr` item on macOS
+  27 and never on macOS 26 (13 variants on the hosted 26.7.2 runner, CI 42472116651), so no AVFoundation setting fixes
+  26. Core `MP4CoverArt` (pure, byte-level) puts the JPEG in `moov/udta/meta/ilst/covr`, as AtomicParsley does: it
+  replaces an existing `covr`, keeps every other box byte for byte, moves every `stco`/`co64` entry by the growth when
+  `moov` comes first (an `stco` that would overflow becomes a `co64`), and refuses fragmented or truncated files
+  untouched. The exporter streams it over its `.partial` before the rename and no longer adds the AVFoundation item.
+- **The cover is extra.** A failed embed keeps the export and the JPEG beside it and logs one line.
+- **One behaviour, two platforms.** The C# Core has the same writer, replaying shared/fixtures/cover-art; Windows wires
+  it into its exporter with its cover export (doc/publishing.md §7).

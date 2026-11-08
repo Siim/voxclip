@@ -2308,8 +2308,8 @@ and the CLI command.
 - **Export.** `ExportCover.forClip` maps the cover into the render (timeline, then the clip's speed, kept inside the
   video). The exporter renders that frame through the export's own composition (crop, captions and titles as they show),
   writes it as `<export base name>-cover.jpg` beside the video (published with the export's transaction) and embeds the same
-  JPEG as the MP4's iTunes `covr` art in the writer's metadata (by key space and key, set once the inputs are added;
-  doc/publishing.md §7 for macOS 26), which adds no stream. `voxclip-cli export --cover off`
+  JPEG as the MP4's iTunes `covr` art, which adds no stream: VoxClip writes the box into the finished file itself
+  (`MP4CoverArt`, on every macOS; doc/publishing.md §7). `voxclip-cli export --cover off`
   writes neither; the JSON names `cover` when written.
 - **CLI.** `voxclip-cli autopilot` runs the pass beside Find Clips and sends each clip's frames (images to Claude Code,
   Codex and an image-capable local server; the summary to an API key, which the CLI has no cap for). `--timings` gains

@@ -7,7 +7,7 @@ import VoxClipCore
 /// copied in chunks into a staged file beside it, which then replaces the file in one rename. A refusal or a failure
 /// leaves the file as it was and removes the staged copy.
 enum MP4CoverEmbed {
-    /// The largest `moov` read into memory: a 60 s 1080p export's is about 30 KB, an hour of 60 fps about 2 MB.
+    /// The largest `moov` read into memory: a 60 s 1080p export's is about 38 KB (2026-11-08), so even hours stay small.
     static let movieLimit: UInt64 = 256 << 20
     /// Bytes copied at a time.
     static let chunk = 4 << 20
