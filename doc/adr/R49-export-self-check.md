@@ -86,17 +86,19 @@ tools/fixtures/export-check/generate_check_cases.py writes. The Mac Core replays
 
 ## Consequences
 
-- **Defaults that failed in 9:16: resolved (2026-11-08, track/v2-safe-zones).**
+- **Defaults that failed the check: resolved (2026-11-08, track/v2-safe-zones).**
   - The check found that Highlight at its default position reached 0.043 of the height into the 9:16 bottom band, and
     so did Bold, Bold+ (0.030), Minimal, Typewriter, Clean subtitle and Lower third. Measured on each style's deepest page,
     Editorial and Pill reached in too. The hook title's top sat at 0.102–0.106 of the height, inside the top band.
-  - The lead moved the 9:16 defaults clear of the bands and left 1:1 and 16:9 as they are. Nine styles have an
-    `aspects.portrait` y that ends their deepest page at or above 0.77 of the height, and a 9:16 title's box starts at
-    13% and a bottom one ends by 77% (design.md §5.1 has the values).
-  - `ExportCheckPlacementTests` is now a gate: every bundled style at its default position clears every band in every
-    shape, its deepest page clears them in 9:16 and 1:1, and each 9:16 override is the lowest clear position.
-  - Still open: bottom-anchored Clean subtitle and Lower third (y 0.90) reach 0.020 into the 1:1 band and 0.0004 into
-    the 16:9 one, which the gate records as known issues, and some 16:9 deepest pages end up to 0.016 into the 16:9 band.
+    Clean subtitle and Lower third also reached 0.020 into the 1:1 band, and six deepest pages reached up to 0.016 into
+    the 16:9 one.
+  - The lead moved the defaults clear of the bands with one rule in every shape, so the check agrees with every default.
+    A style whose deepest page reached into a shape's bottom band has that shape's `aspects` y, ending the page at or
+    above the band's start minus 1%. That is nine styles in 9:16, Clean subtitle and Lower third in 1:1, and those two
+    with Minimal, Pill, Sing-along and Typewriter in 16:9. A 9:16 title's box starts at 13% and a bottom one ends by 77%.
+    design.md §5.1 has the values.
+  - `ExportCheckPlacementTests` is now a gate with no known issues: every bundled style at its default position, and
+    its deepest page, clear every band in every shape, and each moved override is the lowest clear position.
 - **What a cold `check` costs.** It loads the model each time. The autopilot loads it once for all its clips.
 - **Reported but not warned.** A mismatched word next to a cut, heard as a longer word, is a mismatch but not a
   cut-off. For example, "speaking" was heard as "continuing" after "continually" was cut.

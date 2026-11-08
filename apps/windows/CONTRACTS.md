@@ -1,5 +1,15 @@
 # Windows fixed contracts
 
+### 2026-11-08 — Windows: 1:1 and 16:9 caption defaults clear of the bands, the twin of Mac track/v2-safe-zones follow-up (track/v2-safe-zones)
+
+- **No Windows code change.** The new `aspects.square` and `aspects.landscape` y values (design.md §5.1) reach Windows through `CaptionStyleResolver`. `CaptionConformanceTests` replays the regenerated square and landscape layout fixtures, and the golden indexes with their moved crop offsets.
+- **ReleaseBoundary.** `update` on all four assemblies: nothing changed.
+- **Verification** (macOS host, Release, `-m:1 -nodeReuse:false -p:UseSharedCompilation=false`, `VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`):
+  - Core 3,316 (3,287 passed, 29 skipped, 0 failed).
+  - Portable Media 1,045 (1,040 passed, 5 skipped, 0 failed).
+  - win-ui 1,401 (1,396 passed, 5 skipped, 0 failed).
+  - App type-check: 0 warnings. `check-xaml.py`: 0 problems.
+
 ### 2026-11-08 — Windows: the 9:16 title clear of the feed's bands, the twin of Mac track/v2-safe-zones (track/v2-safe-zones)
 
 design.md §5.1 (VoxClip's own defaults clear the bands) and §6.8 Overlays.

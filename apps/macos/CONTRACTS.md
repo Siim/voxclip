@@ -1,5 +1,27 @@
 # macOS implementation contracts
 
+### 2026-11-08 — The band rule in every shape: 1:1 and 16:9 defaults too, a gate with no known issues (track/v2-safe-zones, follow-up)
+
+Lead decision on the open points of the entry below: one rule in every shape, so the self-check agrees with every default. design.md §5.1 has the rule and the table.
+
+- **Styles (shared).** Where a style's deepest page (the same measure: three long lines, at its `maxLines`) reached into the 1:1 or 16:9 bottom band, that shape gets an `aspects` y. It is the lowest y, in thousandths, that ends the page at or above the band's start minus 0.01 (0.87 in 1:1, 0.89 in 16:9).
+  - 1:1 (`aspects.square`, new): Clean subtitle and Lower third 0.87 (were 0.90).
+  - 16:9 (`aspects.landscape`): Clean subtitle and Lower third 0.889 (new y beside their `maxLineWidthW`); Minimal 0.889 (was 0.9), Pill 0.809 (0.82), Sing-along 0.82 (0.84) and Typewriter 0.814 (0.84), changing only y.
+  - Styles that clear a band don't move: Karaoke's 16:9 page ends at 0.871, and Sing-along's 9:16 page at 0.779.
+- **Fixtures.** `gen_fixtures.py` rewrote clean-subtitle and lower-third square and landscape, pill and typewriter landscape, `styles-2` minimal and sing-along landscape, and the 1920×1080 entries of those six styles in both `preview-tiles.json`. Only vertical fields changed. `render-caption` left every PNG byte-identical; only those eight cases' golden indexes and the two `tiles.json` files moved their crop y. Nothing else changed.
+- **Tests.**
+  - Media `ExportCheckPlacementTests`:
+    - `everyStyleAtItsDefaultPositionClearsTheBands` checks the deepest page in every shape, with no known issues;
+    - `eachMovedOverrideIsTheLowestClearPosition` (was `eachPortraitOverrideIsTheLowestClearPosition`) covers the moved styles of every shape, from `moved`. y ends at or above the limit, and y + 0.001 ends below it.
+  - With the 4b9e5efa style files, the gate (12 issues) and the lowest-position test fail.
+  - App `aLowCaptionKeepsAPressableStripUnderTheTransport` drags every shape to the old defaults (the styles' own positions), since no default sits under the transport any more.
+- **Verification** (`VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`, caption Python from the pinned requirements):
+  - Core 1,471 tests, 2 known issues from the base. Media 626 (CaptionParity and CaptionStyleSet2 included), no known issues. App 1,031.
+  - `rewrite-smoke.sh`: PASSED, 83 scenarios.
+  - Long-expression build (250 ms): nothing flagged in the touched files.
+  - Both `check_drift.py`, the caption generators, `check_styles.py` and `validate.py`: tree clean.
+- **Next package.** Read every shape's position from the style files.
+
 ### 2026-11-08 — 9:16 captions and titles clear of the feed's buttons by default (track/v2-safe-zones)
 
 The export self-check (ADR-R49) found VoxClip's own 9:16 defaults under the feed's buttons and text. The lead moved the 9:16 defaults clear of `CaptionSafeZones`' bands and left 1:1 and 16:9 as they are. design.md §5.1 has the rule and the values.
