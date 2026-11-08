@@ -293,7 +293,11 @@ enum CLIWorkflow {
     }
 
     static func export(_ options: Export, input: String) async throws -> JSONValue {
-        let prepared = try await prepare(options, input: input)
+        try await export(options, prepared: try await prepare(options, input: input))
+    }
+
+    /// The export of what `prepare` made of `options`.
+    static func export(_ options: Export, prepared: PreparedExport) async throws -> JSONValue {
         let project = prepared.project, render = prepared.render, activeClip = prepared.activeClip
         let aspect = prepared.aspect, quality = prepared.quality, styleID = prepared.styleID
         try Task.checkCancellation()

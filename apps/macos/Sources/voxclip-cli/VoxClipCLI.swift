@@ -92,7 +92,7 @@ final class CLIInterruptTiming: Sendable {
         commandName: "voxclip-cli", abstract: "Edit video by words. Native, headless VoxClip tools.",
         discussion: "Primary export: voxclip-cli --open <project-or-media> --export <out.mp4> [options]. Use 'voxclip-cli export --help' for export options.",
         version: AppVersion.current,
-        subcommands: [Export.self, Probe.self, Transcribe.self, Models.self, Plan.self, RenderCaption.self, FindClips.self, Autopilot.self, AnalyzeFrames.self, LLMTest.self, Encoders.self, Version.self] + speakerDiagnostics,
+        subcommands: [Export.self, Probe.self, Transcribe.self, Models.self, Plan.self, RenderCaption.self, FindClips.self, Autopilot.self, Check.self, AnalyzeFrames.self, LLMTest.self, Encoders.self, Version.self] + speakerDiagnostics,
         defaultSubcommand: Export.self
     )
 }
