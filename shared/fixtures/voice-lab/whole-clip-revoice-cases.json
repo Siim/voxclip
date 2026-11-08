@@ -6347,7 +6347,6 @@
       "round": 0,
       "expected": {
         "kind": "reword",
-        "shorter": true,
         "targetWords": 93
       }
     },
@@ -6357,9 +6356,8 @@
       "words": 80,
       "round": 1,
       "expected": {
-        "kind": "reword",
-        "shorter": false,
-        "targetWords": 100
+        "kind": "laidOut",
+        "factor": 0.8
       }
     },
     {
@@ -6438,7 +6436,6 @@
       "round": 0,
       "expected": {
         "kind": "reword",
-        "shorter": true,
         "targetWords": 3
       }
     },
@@ -6448,9 +6445,8 @@
       "words": 5,
       "round": 1,
       "expected": {
-        "kind": "reword",
-        "shorter": false,
-        "targetWords": 10
+        "kind": "laidOut",
+        "factor": 0.5
       }
     },
     {
@@ -6459,7 +6455,8 @@
       "words": 0,
       "round": 0,
       "expected": {
-        "kind": "cannotFit"
+        "kind": "laidOut",
+        "factor": 0.919
       }
     },
     {
@@ -6469,7 +6466,6 @@
       "round": 0,
       "expected": {
         "kind": "reword",
-        "shorter": true,
         "targetWords": 1
       }
     },

@@ -3,7 +3,7 @@
 
 Writes shared/fixtures/voice-lab/whole-clip-revoice-cases.json (format voxclip-whole-clip-revoice/1), a file of its own: the
 switch rule and its callout, Claude mode's choice within the cap, the script with cuts and voice changes applied, its parts and
-the voice changes each part becomes, the fit and its "video matched" copy, the price from shared/catalog/voice-lab.json, and the
+the voice changes each part becomes, the fit on the clip as edited and its "video matched" copy, the price from shared/catalog/voice-lab.json, and the
 never-pay-twice ledger. An independent stdlib reference of the Mac WholeClipRevoice.swift; both Cores replay every case (Swift
 WholeClipRevoiceReplayTests, C# WholeClipRevoiceReplayTests). Rounding is half away from zero on the exact binary64 value, as Swift
 `.rounded()` and C# MidpointRounding.AwayFromZero; money is decimal. Byte-exact in check_drift.py. Run from anywhere.
@@ -336,14 +336,17 @@ def script_cases():
 # MARK: - Fit
 
 def fit(voice, video, words, rounds):
+    """The voice against the clip as edited (ADR-R46 update 2026-11-08): a shorter voice is laid out, never reworded longer."""
     if not (math.isfinite(voice) and math.isfinite(video)) or voice <= 0 or video <= 0:
         return {'kind': 'cannotFit'}
     factor = voice / video
     if abs(factor - 1) <= FIT_TOLERANCE + 1e-9:
         return {'kind': 'matched', 'factor': factor, 'copy': matched_copy(factor)}
+    if factor < 1:
+        return {'kind': 'laidOut', 'factor': factor}
     if rounds >= MAXIMUM_REWORD_ROUNDS or words <= 0:
         return {'kind': 'cannotFit'}
-    return {'kind': 'reword', 'shorter': factor > 1, 'targetWords': max(1, away(words / factor))}
+    return {'kind': 'reword', 'targetWords': max(1, away(words / factor))}
 
 
 def matched_copy(factor):
