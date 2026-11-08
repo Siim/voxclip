@@ -1171,6 +1171,7 @@ member VoxClip.Core.Domain.Autopilot.ClaudeModeClock :: method public get_FirstR
 member VoxClip.Core.Domain.Autopilot.ClaudeModeClock :: method public get_Timings()
 member VoxClip.Core.Domain.Autopilot.ClaudeModeStage :: field public Apply
 member VoxClip.Core.Domain.Autopilot.ClaudeModeStage :: field public Audio
+member VoxClip.Core.Domain.Autopilot.ClaudeModeStage :: field public Check
 member VoxClip.Core.Domain.Autopilot.ClaudeModeStage :: field public Export
 member VoxClip.Core.Domain.Autopilot.ClaudeModeStage :: field public Find
 member VoxClip.Core.Domain.Autopilot.ClaudeModeStage :: field public Plan
@@ -3392,6 +3393,29 @@ member VoxClip.Core.Domain.Captions.CaptionRevealUnitValue :: field public Page
 member VoxClip.Core.Domain.Captions.CaptionRevealUnitValue :: field public Wipe
 member VoxClip.Core.Domain.Captions.CaptionRevealUnitValue :: field public Word
 member VoxClip.Core.Domain.Captions.CaptionRevealUnitValue :: field public value__
+member VoxClip.Core.Domain.Captions.CaptionSafeZones :: field public PortraitSideFraction
+member VoxClip.Core.Domain.Captions.CaptionSafeZones :: method public Bands(VoxClip.Core.Domain.Shared.PixelSize)
+member VoxClip.Core.Domain.Captions.CaptionSafeZones :: method public Bands(string)
+member VoxClip.Core.Domain.Captions.CaptionSafeZones :: method public Name(VoxClip.Core.Domain.Captions.CaptionSafeZones+Edge)
+member VoxClip.Core.Domain.Captions.CaptionSafeZones :: method public Overlap(VoxClip.Core.Domain.Shared.RectD,VoxClip.Core.Domain.Captions.CaptionSafeZones+Band)
+member VoxClip.Core.Domain.Captions.CaptionSafeZones+Band :: method private .ctor(VoxClip.Core.Domain.Captions.CaptionSafeZones+Band)
+member VoxClip.Core.Domain.Captions.CaptionSafeZones+Band :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Captions.CaptionSafeZones+Band :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Captions.CaptionSafeZones+Band :: method public .ctor(VoxClip.Core.Domain.Captions.CaptionSafeZones+Edge,double)
+member VoxClip.Core.Domain.Captions.CaptionSafeZones+Band :: method public Deconstruct(VoxClip.Core.Domain.Captions.CaptionSafeZones+Edge&,double&)
+member VoxClip.Core.Domain.Captions.CaptionSafeZones+Band :: method public Equals(VoxClip.Core.Domain.Captions.CaptionSafeZones+Band)
+member VoxClip.Core.Domain.Captions.CaptionSafeZones+Band :: method public Equals(object)
+member VoxClip.Core.Domain.Captions.CaptionSafeZones+Band :: method public GetHashCode()
+member VoxClip.Core.Domain.Captions.CaptionSafeZones+Band :: method public ToString()
+member VoxClip.Core.Domain.Captions.CaptionSafeZones+Band :: method public get_Edge()
+member VoxClip.Core.Domain.Captions.CaptionSafeZones+Band :: method public get_Fraction()
+member VoxClip.Core.Domain.Captions.CaptionSafeZones+Band :: method public op_Equality(VoxClip.Core.Domain.Captions.CaptionSafeZones+Band,VoxClip.Core.Domain.Captions.CaptionSafeZones+Band)
+member VoxClip.Core.Domain.Captions.CaptionSafeZones+Band :: method public op_Inequality(VoxClip.Core.Domain.Captions.CaptionSafeZones+Band,VoxClip.Core.Domain.Captions.CaptionSafeZones+Band)
+member VoxClip.Core.Domain.Captions.CaptionSafeZones+Band :: method public set_Edge(VoxClip.Core.Domain.Captions.CaptionSafeZones+Edge)
+member VoxClip.Core.Domain.Captions.CaptionSafeZones+Band :: method public set_Fraction(double)
+member VoxClip.Core.Domain.Captions.CaptionSafeZones+Edge :: field public Bottom
+member VoxClip.Core.Domain.Captions.CaptionSafeZones+Edge :: field public Top
+member VoxClip.Core.Domain.Captions.CaptionSafeZones+Edge :: field public value__
 member VoxClip.Core.Domain.Captions.CaptionShadow :: method private .ctor(VoxClip.Core.Domain.Captions.CaptionShadow)
 member VoxClip.Core.Domain.Captions.CaptionShadow :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Captions.CaptionShadow :: method private get_EqualityContract()
@@ -6149,6 +6173,299 @@ member VoxClip.Core.Domain.Effects.ClipHookTitle :: method public Existing(strin
 member VoxClip.Core.Domain.Effects.ClipHookTitle :: method public IsHook(System.Text.Json.JsonElement)
 member VoxClip.Core.Domain.Effects.ClipHookTitle :: method public Text(string)
 member VoxClip.Core.Domain.Effects.ClipHookTitle :: method public Timeline(VoxClip.Core.Domain.Shared.Project,string)
+member VoxClip.Core.Domain.ExportChecks.ExportCheck :: field public CeilingDbtp
+member VoxClip.Core.Domain.ExportChecks.ExportCheck :: field public LoudnessToleranceLu
+member VoxClip.Core.Domain.ExportChecks.ExportCheck :: field public MatchFloor
+member VoxClip.Core.Domain.ExportChecks.ExportCheck :: field public NoLocalEngine
+member VoxClip.Core.Domain.ExportChecks.ExportCheck :: field public PhraseToleranceSeconds
+member VoxClip.Core.Domain.ExportChecks.ExportCheck :: field public TargetLufs
+member VoxClip.Core.Domain.ExportChecks.ExportCheck :: field public TruePeakToleranceDb
+member VoxClip.Core.Domain.ExportChecks.ExportCheck :: method internal AtEdges(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ExportChecks.ExportCheckWord>,System.Collections.Generic.IReadOnlyList`1<double>)
+member VoxClip.Core.Domain.ExportChecks.ExportCheck :: method internal Captions(VoxClip.Core.Domain.ExportChecks.ExportCheckInput)
+member VoxClip.Core.Domain.ExportChecks.ExportCheck :: method internal Loudness(VoxClip.Core.Domain.ExportChecks.ExportCheckInput)
+member VoxClip.Core.Domain.ExportChecks.ExportCheck :: method internal Placement(VoxClip.Core.Domain.ExportChecks.ExportCheckPhrase,VoxClip.Core.Domain.ExportChecks.ExportCheckInput,VoxClip.Core.Domain.ExportChecks.ExportCheck+WordAlignment)
+member VoxClip.Core.Domain.ExportChecks.ExportCheck :: method internal SpokenTokens(string)
+member VoxClip.Core.Domain.ExportChecks.ExportCheck :: method internal Sync(VoxClip.Core.Domain.ExportChecks.ExportCheckInput,VoxClip.Core.Domain.ExportChecks.ExportCheck+WordAlignment)
+member VoxClip.Core.Domain.ExportChecks.ExportCheck :: method internal Words(VoxClip.Core.Domain.ExportChecks.ExportCheckInput,VoxClip.Core.Domain.ExportChecks.ExportCheck+WordAlignment)
+member VoxClip.Core.Domain.ExportChecks.ExportCheck :: method private Camel(string)
+member VoxClip.Core.Domain.ExportChecks.ExportCheck :: method public Name(VoxClip.Core.Domain.ExportChecks.ExportCheckItemKind)
+member VoxClip.Core.Domain.ExportChecks.ExportCheck :: method public Name(VoxClip.Core.Domain.ExportChecks.ExportCheckKind)
+member VoxClip.Core.Domain.ExportChecks.ExportCheck :: method public Name(VoxClip.Core.Domain.ExportChecks.ExportCheckStatus)
+member VoxClip.Core.Domain.ExportChecks.ExportCheck :: method public Run(VoxClip.Core.Domain.ExportChecks.ExportCheckInput)
+member VoxClip.Core.Domain.ExportChecks.ExportCheck+WordAlignment :: method internal .ctor(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ExportChecks.ExportCheckWord>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ExportChecks.ExportCheckHeard>)
+member VoxClip.Core.Domain.ExportChecks.ExportCheck+WordAlignment :: method internal get_Heard()
+member VoxClip.Core.Domain.ExportChecks.ExportCheck+WordAlignment :: method internal get_HeardInstead()
+member VoxClip.Core.Domain.ExportChecks.ExportCheck+WordAlignment :: method internal get_HeardShorter()
+member VoxClip.Core.Domain.ExportChecks.ExportCheck+WordAlignment :: method internal get_Matched()
+member VoxClip.Core.Domain.ExportChecks.ExportCheck+WordAlignment :: method internal get_Unverified()
+member VoxClip.Core.Domain.ExportChecks.ExportCheck+WordAlignment :: method internal get_UnverifiedNumbers()
+member VoxClip.Core.Domain.ExportChecks.ExportCheck+WordAlignment :: method private Characters(string)
+member VoxClip.Core.Domain.ExportChecks.ExportCheck+WordAlignment :: method private Range(int,int)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckBox :: method private .ctor(VoxClip.Core.Domain.ExportChecks.ExportCheckBox)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckBox :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckBox :: method private get_EqualityContract()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckBox :: method public .ctor(VoxClip.Core.Domain.ExportChecks.ExportCheckBoxKind,double,VoxClip.Core.Domain.Shared.RectD)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckBox :: method public Deconstruct(VoxClip.Core.Domain.ExportChecks.ExportCheckBoxKind&,double&,VoxClip.Core.Domain.Shared.RectD&)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckBox :: method public Equals(VoxClip.Core.Domain.ExportChecks.ExportCheckBox)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckBox :: method public Equals(object)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckBox :: method public GetHashCode()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckBox :: method public ToString()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckBox :: method public get_Kind()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckBox :: method public get_Rect()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckBox :: method public get_Time()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckBox :: method public op_Equality(VoxClip.Core.Domain.ExportChecks.ExportCheckBox,VoxClip.Core.Domain.ExportChecks.ExportCheckBox)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckBox :: method public op_Inequality(VoxClip.Core.Domain.ExportChecks.ExportCheckBox,VoxClip.Core.Domain.ExportChecks.ExportCheckBox)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckBox :: method public set_Kind(VoxClip.Core.Domain.ExportChecks.ExportCheckBoxKind)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckBox :: method public set_Rect(VoxClip.Core.Domain.Shared.RectD)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckBox :: method public set_Time(double)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckBoxKind :: field public Caption
+member VoxClip.Core.Domain.ExportChecks.ExportCheckBoxKind :: field public Title
+member VoxClip.Core.Domain.ExportChecks.ExportCheckBoxKind :: field public value__
+member VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation :: method public CaptionBoxes(VoxClip.Core.Domain.Captions.CaptionTrack,VoxClip.Core.Domain.Shared.PixelSize,VoxClip.Core.Domain.Clips.ClipSpeedTiming)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation :: method public Make(VoxClip.Core.Domain.Shared.ComposeSnapshot,VoxClip.Core.Domain.Editing.EditState)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation :: method public Make(VoxClip.Core.Domain.VoiceLab.RenderTimeline,VoxClip.Core.Domain.Clips.ClipSpeedTiming,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Effects.ClipEffect>,VoxClip.Core.Domain.Editing.EditState,double)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit :: method private .ctor(VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit :: method private get_EqualityContract()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit :: method public .ctor(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ExportChecks.ExportCheckWord>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ExportChecks.ExportCheckPhrase>,System.Collections.Generic.IReadOnlyList`1<double>,double)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit :: method public Deconstruct(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ExportChecks.ExportCheckWord>&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ExportChecks.ExportCheckPhrase>&,System.Collections.Generic.IReadOnlyList`1<double>&,double&)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit :: method public Equals(VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit :: method public Equals(object)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit :: method public GetHashCode()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit :: method public ToString()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit :: method public get_Cuts()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit :: method public get_Duration()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit :: method public get_Phrases()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit :: method public get_Words()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit :: method public op_Equality(VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit,VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit :: method public op_Inequality(VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit,VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit :: method public set_Cuts(System.Collections.Generic.IReadOnlyList`1<double>)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit :: method public set_Duration(double)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit :: method public set_Phrases(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ExportChecks.ExportCheckPhrase>)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit :: method public set_Words(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ExportChecks.ExportCheckWord>)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckHeard :: method private .ctor(VoxClip.Core.Domain.ExportChecks.ExportCheckHeard)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckHeard :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckHeard :: method private get_EqualityContract()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckHeard :: method public .ctor(string,double,double)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckHeard :: method public Deconstruct(string&,double&,double&)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckHeard :: method public Equals(VoxClip.Core.Domain.ExportChecks.ExportCheckHeard)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckHeard :: method public Equals(object)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckHeard :: method public GetHashCode()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckHeard :: method public ToString()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckHeard :: method public get_End()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckHeard :: method public get_Start()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckHeard :: method public get_Text()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckHeard :: method public op_Equality(VoxClip.Core.Domain.ExportChecks.ExportCheckHeard,VoxClip.Core.Domain.ExportChecks.ExportCheckHeard)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckHeard :: method public op_Inequality(VoxClip.Core.Domain.ExportChecks.ExportCheckHeard,VoxClip.Core.Domain.ExportChecks.ExportCheckHeard)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckHeard :: method public set_End(double)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckHeard :: method public set_Start(double)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckHeard :: method public set_Text(string)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method private .ctor(VoxClip.Core.Domain.ExportChecks.ExportCheckInput)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method private get_EqualityContract()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method public .ctor(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ExportChecks.ExportCheckWord>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ExportChecks.ExportCheckHeard>,VoxClip.Core.Domain.ExportChecks.ExportCheckTrack,VoxClip.Core.Domain.ExportChecks.ExportCheckTrack,double,VoxClip.Core.Domain.ExportChecks.ExportCheckLoudness,VoxClip.Core.Domain.Shared.PixelSize)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method public Deconstruct(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ExportChecks.ExportCheckWord>&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ExportChecks.ExportCheckHeard>&,VoxClip.Core.Domain.ExportChecks.ExportCheckTrack&,VoxClip.Core.Domain.ExportChecks.ExportCheckTrack&,double&,VoxClip.Core.Domain.ExportChecks.ExportCheckLoudness&,VoxClip.Core.Domain.Shared.PixelSize&)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method public Equals(VoxClip.Core.Domain.ExportChecks.ExportCheckInput)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method public Equals(object)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method public GetHashCode()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method public ToString()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method public get_Audio()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method public get_Boxes()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method public get_Cuts()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method public get_Expected()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method public get_Frame()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method public get_FrameSeconds()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method public get_Heard()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method public get_HearingSkipped()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method public get_Loudness()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method public get_Phrases()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method public get_Video()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method public op_Equality(VoxClip.Core.Domain.ExportChecks.ExportCheckInput,VoxClip.Core.Domain.ExportChecks.ExportCheckInput)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method public op_Inequality(VoxClip.Core.Domain.ExportChecks.ExportCheckInput,VoxClip.Core.Domain.ExportChecks.ExportCheckInput)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method public set_Audio(VoxClip.Core.Domain.ExportChecks.ExportCheckTrack)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method public set_Boxes(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ExportChecks.ExportCheckBox>)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method public set_Cuts(System.Collections.Generic.IReadOnlyList`1<double>)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method public set_Expected(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ExportChecks.ExportCheckWord>)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method public set_Frame(VoxClip.Core.Domain.Shared.PixelSize)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method public set_FrameSeconds(double)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method public set_Heard(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ExportChecks.ExportCheckHeard>)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method public set_HearingSkipped(string)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method public set_Loudness(VoxClip.Core.Domain.ExportChecks.ExportCheckLoudness)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method public set_Phrases(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ExportChecks.ExportCheckPhrase>)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckInput :: method public set_Video(VoxClip.Core.Domain.ExportChecks.ExportCheckTrack)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method private .ctor(VoxClip.Core.Domain.ExportChecks.ExportCheckItem)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method private get_EqualityContract()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method public .ctor(VoxClip.Core.Domain.ExportChecks.ExportCheckItemKind,double)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method public Deconstruct(VoxClip.Core.Domain.ExportChecks.ExportCheckItemKind&,double&)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method public Equals(VoxClip.Core.Domain.ExportChecks.ExportCheckItem)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method public Equals(object)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method public GetHashCode()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method public ToString()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method public get_Band()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method public get_Count()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method public get_Expected()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method public get_Heard()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method public get_Kind()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method public get_Limit()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method public get_Phrase()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method public get_Reason()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method public get_Time()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method public get_Value()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method public op_Equality(VoxClip.Core.Domain.ExportChecks.ExportCheckItem,VoxClip.Core.Domain.ExportChecks.ExportCheckItem)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method public op_Inequality(VoxClip.Core.Domain.ExportChecks.ExportCheckItem,VoxClip.Core.Domain.ExportChecks.ExportCheckItem)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method public set_Band(System.Nullable`1<VoxClip.Core.Domain.Captions.CaptionSafeZones+Edge>)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method public set_Count(System.Nullable`1<int>)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method public set_Expected(string)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method public set_Heard(string)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method public set_Kind(VoxClip.Core.Domain.ExportChecks.ExportCheckItemKind)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method public set_Limit(System.Nullable`1<double>)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method public set_Phrase(string)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method public set_Reason(string)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method public set_Time(double)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItem :: method public set_Value(System.Nullable`1<double>)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItemKind :: field public CaptionBand
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItemKind :: field public CutOff
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItemKind :: field public IntegratedLoudness
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItemKind :: field public Mismatch
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItemKind :: field public PhraseNotHeard
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItemKind :: field public PhraseOffset
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItemKind :: field public PhrasesSkipped
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItemKind :: field public Silent
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItemKind :: field public TitleBand
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItemKind :: field public TrackEnd
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItemKind :: field public TrackStart
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItemKind :: field public TruePeak
+member VoxClip.Core.Domain.ExportChecks.ExportCheckItemKind :: field public value__
+member VoxClip.Core.Domain.ExportChecks.ExportCheckKind :: field public Captions
+member VoxClip.Core.Domain.ExportChecks.ExportCheckKind :: field public Loudness
+member VoxClip.Core.Domain.ExportChecks.ExportCheckKind :: field public Sync
+member VoxClip.Core.Domain.ExportChecks.ExportCheckKind :: field public Words
+member VoxClip.Core.Domain.ExportChecks.ExportCheckKind :: field public value__
+member VoxClip.Core.Domain.ExportChecks.ExportCheckLoudness :: method private .ctor(VoxClip.Core.Domain.ExportChecks.ExportCheckLoudness)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckLoudness :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckLoudness :: method private get_EqualityContract()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckLoudness :: method public .ctor(VoxClip.Core.Domain.Loudness.ExportLoudness,System.Nullable`1<double>,System.Nullable`1<double>)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckLoudness :: method public Deconstruct(VoxClip.Core.Domain.Loudness.ExportLoudness&,System.Nullable`1<double>&,System.Nullable`1<double>&)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckLoudness :: method public Equals(VoxClip.Core.Domain.ExportChecks.ExportCheckLoudness)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckLoudness :: method public Equals(object)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckLoudness :: method public GetHashCode()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckLoudness :: method public ToString()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckLoudness :: method public get_IntegratedLufs()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckLoudness :: method public get_Setting()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckLoudness :: method public get_TruePeakDbtp()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckLoudness :: method public op_Equality(VoxClip.Core.Domain.ExportChecks.ExportCheckLoudness,VoxClip.Core.Domain.ExportChecks.ExportCheckLoudness)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckLoudness :: method public op_Inequality(VoxClip.Core.Domain.ExportChecks.ExportCheckLoudness,VoxClip.Core.Domain.ExportChecks.ExportCheckLoudness)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckLoudness :: method public set_IntegratedLufs(System.Nullable`1<double>)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckLoudness :: method public set_Setting(VoxClip.Core.Domain.Loudness.ExportLoudness)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckLoudness :: method public set_TruePeakDbtp(System.Nullable`1<double>)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckPhrase :: method private .ctor(VoxClip.Core.Domain.ExportChecks.ExportCheckPhrase)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckPhrase :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckPhrase :: method private get_EqualityContract()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckPhrase :: method public .ctor(string,double,double)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckPhrase :: method public Deconstruct(string&,double&,double&)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckPhrase :: method public Equals(VoxClip.Core.Domain.ExportChecks.ExportCheckPhrase)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckPhrase :: method public Equals(object)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckPhrase :: method public GetHashCode()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckPhrase :: method public ToString()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckPhrase :: method public get_End()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckPhrase :: method public get_Id()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckPhrase :: method public get_Start()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckPhrase :: method public op_Equality(VoxClip.Core.Domain.ExportChecks.ExportCheckPhrase,VoxClip.Core.Domain.ExportChecks.ExportCheckPhrase)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckPhrase :: method public op_Inequality(VoxClip.Core.Domain.ExportChecks.ExportCheckPhrase,VoxClip.Core.Domain.ExportChecks.ExportCheckPhrase)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckPhrase :: method public set_End(double)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckPhrase :: method public set_Id(string)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckPhrase :: method public set_Start(double)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckReport :: method private .ctor(VoxClip.Core.Domain.ExportChecks.ExportCheckReport)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckReport :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckReport :: method private get_EqualityContract()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckReport :: method public .ctor(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ExportChecks.ExportCheckResult>)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckReport :: method public Deconstruct(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ExportChecks.ExportCheckResult>&)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckReport :: method public Equals(VoxClip.Core.Domain.ExportChecks.ExportCheckReport)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckReport :: method public Equals(object)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckReport :: method public GetHashCode()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckReport :: method public ToString()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckReport :: method public get_Item(VoxClip.Core.Domain.ExportChecks.ExportCheckKind)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckReport :: method public get_Passed()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckReport :: method public get_Results()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckReport :: method public op_Equality(VoxClip.Core.Domain.ExportChecks.ExportCheckReport,VoxClip.Core.Domain.ExportChecks.ExportCheckReport)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckReport :: method public op_Inequality(VoxClip.Core.Domain.ExportChecks.ExportCheckReport,VoxClip.Core.Domain.ExportChecks.ExportCheckReport)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckReport :: method public set_Results(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ExportChecks.ExportCheckResult>)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method internal Skipped(VoxClip.Core.Domain.ExportChecks.ExportCheckKind,string)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method private .ctor(VoxClip.Core.Domain.ExportChecks.ExportCheckResult)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method private get_EqualityContract()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public .ctor(VoxClip.Core.Domain.ExportChecks.ExportCheckKind,VoxClip.Core.Domain.ExportChecks.ExportCheckStatus)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public Deconstruct(VoxClip.Core.Domain.ExportChecks.ExportCheckKind&,VoxClip.Core.Domain.ExportChecks.ExportCheckStatus&)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public Equals(VoxClip.Core.Domain.ExportChecks.ExportCheckResult)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public Equals(object)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public GetHashCode()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public ToJson()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public ToString()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public get_Check()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public get_EndOffset()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public get_IntegratedLufs()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public get_Items()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public get_Matched()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public get_Reason()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public get_StartOffset()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public get_Status()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public get_Total()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public get_TruePeakDbtp()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public get_Unverified()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public op_Equality(VoxClip.Core.Domain.ExportChecks.ExportCheckResult,VoxClip.Core.Domain.ExportChecks.ExportCheckResult)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public op_Inequality(VoxClip.Core.Domain.ExportChecks.ExportCheckResult,VoxClip.Core.Domain.ExportChecks.ExportCheckResult)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public set_Check(VoxClip.Core.Domain.ExportChecks.ExportCheckKind)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public set_EndOffset(System.Nullable`1<double>)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public set_IntegratedLufs(System.Nullable`1<double>)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public set_Items(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.ExportChecks.ExportCheckItem>)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public set_Matched(System.Nullable`1<int>)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public set_Reason(string)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public set_StartOffset(System.Nullable`1<double>)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public set_Status(VoxClip.Core.Domain.ExportChecks.ExportCheckStatus)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public set_Total(System.Nullable`1<int>)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public set_TruePeakDbtp(System.Nullable`1<double>)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckResult :: method public set_Unverified(System.Nullable`1<int>)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckStatus :: field public Ok
+member VoxClip.Core.Domain.ExportChecks.ExportCheckStatus :: field public Skipped
+member VoxClip.Core.Domain.ExportChecks.ExportCheckStatus :: field public Warning
+member VoxClip.Core.Domain.ExportChecks.ExportCheckStatus :: field public value__
+member VoxClip.Core.Domain.ExportChecks.ExportCheckTrack :: method private .ctor(VoxClip.Core.Domain.ExportChecks.ExportCheckTrack)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckTrack :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckTrack :: method private get_EqualityContract()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckTrack :: method public .ctor(double,double)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckTrack :: method public Deconstruct(double&,double&)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckTrack :: method public Equals(VoxClip.Core.Domain.ExportChecks.ExportCheckTrack)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckTrack :: method public Equals(object)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckTrack :: method public GetHashCode()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckTrack :: method public ToString()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckTrack :: method public get_End()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckTrack :: method public get_Start()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckTrack :: method public op_Equality(VoxClip.Core.Domain.ExportChecks.ExportCheckTrack,VoxClip.Core.Domain.ExportChecks.ExportCheckTrack)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckTrack :: method public op_Inequality(VoxClip.Core.Domain.ExportChecks.ExportCheckTrack,VoxClip.Core.Domain.ExportChecks.ExportCheckTrack)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckTrack :: method public set_End(double)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckTrack :: method public set_Start(double)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckWord :: method private .ctor(VoxClip.Core.Domain.ExportChecks.ExportCheckWord)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckWord :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckWord :: method private get_EqualityContract()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckWord :: method public .ctor(string,double,double,bool,string)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckWord :: method public Deconstruct(string&,double&,double&,bool&,string&)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckWord :: method public Equals(VoxClip.Core.Domain.ExportChecks.ExportCheckWord)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckWord :: method public Equals(object)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckWord :: method public GetHashCode()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckWord :: method public ToString()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckWord :: method public get_End()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckWord :: method public get_Optional()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckWord :: method public get_Phrase()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckWord :: method public get_Start()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckWord :: method public get_Text()
+member VoxClip.Core.Domain.ExportChecks.ExportCheckWord :: method public op_Equality(VoxClip.Core.Domain.ExportChecks.ExportCheckWord,VoxClip.Core.Domain.ExportChecks.ExportCheckWord)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckWord :: method public op_Inequality(VoxClip.Core.Domain.ExportChecks.ExportCheckWord,VoxClip.Core.Domain.ExportChecks.ExportCheckWord)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckWord :: method public set_End(double)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckWord :: method public set_Optional(bool)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckWord :: method public set_Phrase(string)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckWord :: method public set_Start(double)
+member VoxClip.Core.Domain.ExportChecks.ExportCheckWord :: method public set_Text(string)
 member VoxClip.Core.Domain.Loudness.ExportLoudness :: field public Off
 member VoxClip.Core.Domain.Loudness.ExportLoudness :: field public Social
 member VoxClip.Core.Domain.Loudness.ExportLoudness :: field public value__
@@ -7450,6 +7767,22 @@ member VoxClip.Core.Domain.Shared.SavedBy :: method public op_Inequality(VoxClip
 member VoxClip.Core.Domain.Shared.SavedBy :: method public set_App(string)
 member VoxClip.Core.Domain.Shared.SavedBy :: method public set_Platform(string)
 member VoxClip.Core.Domain.Shared.SavedBy :: method public set_Version(string)
+member VoxClip.Core.Domain.Shared.SincResampler :: field private held
+member VoxClip.Core.Domain.Shared.SincResampler :: field private kept
+member VoxClip.Core.Domain.Shared.SincResampler :: field private kernels
+member VoxClip.Core.Domain.Shared.SincResampler :: field private phases
+member VoxClip.Core.Domain.Shared.SincResampler :: field private produced
+member VoxClip.Core.Domain.Shared.SincResampler :: field private radius
+member VoxClip.Core.Domain.Shared.SincResampler :: field private rate
+member VoxClip.Core.Domain.Shared.SincResampler :: field private received
+member VoxClip.Core.Domain.Shared.SincResampler :: field private targetRate
+member VoxClip.Core.Domain.Shared.SincResampler :: method private Emit(long,long,System.ReadOnlySpan`1<float>,long,System.Span`1<float>)
+member VoxClip.Core.Domain.Shared.SincResampler :: method private Keep(System.ReadOnlySpan`1<float>,long)
+member VoxClip.Core.Domain.Shared.SincResampler :: method private Source(long)
+member VoxClip.Core.Domain.Shared.SincResampler :: method public .ctor(int,int)
+member VoxClip.Core.Domain.Shared.SincResampler :: method public Finish(System.Span`1<float>)
+member VoxClip.Core.Domain.Shared.SincResampler :: method public MaximumOutput(int)
+member VoxClip.Core.Domain.Shared.SincResampler :: method public Process(System.ReadOnlySpan`1<float>,System.Span`1<float>)
 member VoxClip.Core.Domain.Shared.TimeRange :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Shared.TimeRange :: method public .ctor(double,double)
 member VoxClip.Core.Domain.Shared.TimeRange :: method public Deconstruct(double&,double&)
@@ -16997,6 +17330,9 @@ type VoxClip.Core.Domain.Captions.CaptionResources
 type VoxClip.Core.Domain.Captions.CaptionReveal
 type VoxClip.Core.Domain.Captions.CaptionRevealCursor
 type VoxClip.Core.Domain.Captions.CaptionRevealUnitValue
+type VoxClip.Core.Domain.Captions.CaptionSafeZones
+type VoxClip.Core.Domain.Captions.CaptionSafeZones+Band
+type VoxClip.Core.Domain.Captions.CaptionSafeZones+Edge
 type VoxClip.Core.Domain.Captions.CaptionShadow
 type VoxClip.Core.Domain.Captions.CaptionStroke
 type VoxClip.Core.Domain.Captions.CaptionStyle
@@ -17184,6 +17520,24 @@ type VoxClip.Core.Domain.Effects.ClipEffects
 type VoxClip.Core.Domain.Effects.ClipEffectsRenderInput
 type VoxClip.Core.Domain.Effects.ClipEffectsRendering
 type VoxClip.Core.Domain.Effects.ClipHookTitle
+type VoxClip.Core.Domain.ExportChecks.ExportCheck
+type VoxClip.Core.Domain.ExportChecks.ExportCheck+WordAlignment
+type VoxClip.Core.Domain.ExportChecks.ExportCheckBox
+type VoxClip.Core.Domain.ExportChecks.ExportCheckBoxKind
+type VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation
+type VoxClip.Core.Domain.ExportChecks.ExportCheckExpectation+Edit
+type VoxClip.Core.Domain.ExportChecks.ExportCheckHeard
+type VoxClip.Core.Domain.ExportChecks.ExportCheckInput
+type VoxClip.Core.Domain.ExportChecks.ExportCheckItem
+type VoxClip.Core.Domain.ExportChecks.ExportCheckItemKind
+type VoxClip.Core.Domain.ExportChecks.ExportCheckKind
+type VoxClip.Core.Domain.ExportChecks.ExportCheckLoudness
+type VoxClip.Core.Domain.ExportChecks.ExportCheckPhrase
+type VoxClip.Core.Domain.ExportChecks.ExportCheckReport
+type VoxClip.Core.Domain.ExportChecks.ExportCheckResult
+type VoxClip.Core.Domain.ExportChecks.ExportCheckStatus
+type VoxClip.Core.Domain.ExportChecks.ExportCheckTrack
+type VoxClip.Core.Domain.ExportChecks.ExportCheckWord
 type VoxClip.Core.Domain.Loudness.ExportLoudness
 type VoxClip.Core.Domain.Loudness.SocialLimiter
 type VoxClip.Core.Domain.Loudness.SocialLoudness
@@ -17264,6 +17618,7 @@ type VoxClip.Core.Domain.Shared.RectD
 type VoxClip.Core.Domain.Shared.Redactor
 type VoxClip.Core.Domain.Shared.ReframeSettings
 type VoxClip.Core.Domain.Shared.SavedBy
+type VoxClip.Core.Domain.Shared.SincResampler
 type VoxClip.Core.Domain.Shared.TimeRange
 type VoxClip.Core.Domain.Shared.TimedWord
 type VoxClip.Core.Domain.Shared.UtcTimestamp
