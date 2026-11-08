@@ -3,6 +3,7 @@ import AVFoundation
 import VideoToolbox
 import Darwin
 import ImageIO
+import os
 import UniformTypeIdentifiers
 import VoxClipCore
 
@@ -166,19 +167,24 @@ public actor AVExporter: Exporter {
         return data as Data
     }
 
-    /// The MP4's cover art: iTunes `covr`, a JPEG, which players and uploaders read as the attached picture. The common
-    /// artwork identifier is written as a QuickTime key instead, which ffprobe doesn't see as a cover (2026-11-08). The
-    /// item names the iTunes key space and the `covr` key itself rather than the identifier, and the writer takes it once
-    /// its inputs are added: both embed on macOS 27, and are the likeliest to on macOS 26, whose writer dropped the
-    /// identifier form set before the inputs (doc/publishing.md §7, `CoverArtWriteVariantsTests`).
-    static func coverArt(_ jpeg: Data) -> AVMetadataItem {
-        let item = AVMutableMetadataItem()
-        item.keySpace = .iTunes
-        item.key = AVMetadataKey.iTunesMetadataKeyCoverArt.rawValue as NSString
-        item.value = jpeg as NSData
-        item.dataType = kCMMetadataBaseDataType_JPEG as String
-        return item
+    /// The cover inside the MP4 (ADR-R48): `MP4CoverEmbed` writes the JPEG as its iTunes `covr` art, which players,
+    /// Finder and uploaders read as the attached picture. AVFoundation's writer embeds a `covr` item on macOS 27 and never
+    /// on macOS 26 (13 variants on the hosted 26.7.2 runner, doc/publishing.md §7), so VoxClip writes the box itself on
+    /// every version. The cover is extra: a failure leaves the export and the JPEG beside it, logs one line and returns
+    /// false.
+    @discardableResult
+    static func embedCover(_ jpeg: Data, in partial: URL,
+                           log: @Sendable (String) -> Void = { AVExporter.logger.error("\($0, privacy: .public)") }) async -> Bool {
+        do {
+            try await MP4CoverEmbed.embed(jpeg, into: partial)
+            return true
+        } catch {
+            log("cover: the export keeps its cover beside it but not inside the MP4 (\(String(describing: error)))")
+            return false
+        }
     }
+
+    static let logger = os.Logger(subsystem: "com.voxconvo.voxclip", category: "export")
 
     private func cancelActive(_ id: UUID) {
         guard activeID == id else { return }
@@ -396,8 +402,6 @@ public actor AVExporter: Exporter {
                 AVSampleRateKey: 48000, AVNumberOfChannelsKey: 2, AVEncoderBitRateKey: 160000])
             audioReceiver = writer.inputReceiver(for: audioInput)
         }
-        // The cover art goes in once the inputs are added (see `coverArt`).
-        if let coverJPEG { writer.metadata = [Self.coverArt(coverJPEG)] }
         let pumps = ExportPumpState(observer: pumpObserver)
         activePumps = pumps
         let videoSamples = ExportSampleReader(reader: videoReader, provider: videoProvider, pump: 0, pumps: pumps, pullCheck: pullCheck, decodeCheck: decodeCheck)
@@ -450,6 +454,9 @@ public actor AVExporter: Exporter {
             await writer.finishWriting()
             try Task.checkCancellation()
             guard writer.status == .completed else { throw writer.error ?? VoxClipError.exportFailed("Encoder did not finish") }
+            // The cover art goes into the finished MP4 before anything hashes or publishes it (see `embedCover`).
+            if let coverJPEG { await Self.embedCover(coverJPEG, in: partial) }
+            try Task.checkCancellation()
             if let loudnessPlan { for wav in gainedAudio { try PCMFile.applyLoudness(loudnessPlan.decision, toFloatWAV: wav) } }
             if let srtPartial, let srtText {
                 let descriptor = Darwin.open(srtPartial.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, S_IRUSR | S_IWUSR)

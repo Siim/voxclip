@@ -161,13 +161,7 @@ extension HeavyMediaTests {
         let video = try #require(run.outputs.first)
         let jpeg = try Data(contentsOf: video.deletingLastPathComponent().appendingPathComponent(video.deletingPathExtension().lastPathComponent + "-cover.jpg"))
         #expect(jpeg.starts(with: [0xFF, 0xD8]))
-        let art = try await coverArt(video)
-        if ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 27 {
-            #expect(art == jpeg)
-        } else {
-            // As far as the macOS 26 probe allows (`CoverArtWriteVariantsTests`, doc/publishing.md).
-            withKnownIssue("macOS 26 doesn't embed the covr art", isIntermittent: true) { #expect(art == jpeg) }
-        }
+        #expect(try await coverArt(video) == jpeg)
     }
 
     /// A connector without images gets the text summary: nothing is blurred (it could not see the screen) and the JSON says

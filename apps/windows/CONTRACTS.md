@@ -28,6 +28,18 @@ design.md §5.1 (VoxClip's own defaults clear the bands) and §6.8 Overlays.
   - win-ui 1,401 (1,396 passed, 5 skipped, 0 failed). The run straight after the allowlist update had one failure that didn't recur in two reruns.
   - App type-check: 0 warnings. `check-xaml.py`: 0 problems.
 
+### 2026-11-08 — Windows Core: the MP4 cover-art writer, ported from the Mac (track/v2-cover-box, ADR-R48)
+
+- **Core, `Mp4CoverArt`** (new, `Domain/Share/Mp4CoverArt.cs`). The twin of Mac Core `MP4CoverArt`:
+  - members: `ImageType`, `Layout(length, read)`, `Movie`, `Edit` → `Mp4CoverEdit` (`Moov`, `Growth`), `Embed`, `ChunkOffsets`;
+  - types: `Mp4Box`, `Mp4ChunkOffsets`, `Mp4CoverImageType` (13 JPEG, 14 PNG);
+  - refusals: `Mp4CoverArtException` with `Mp4CoverArtRefusal` and `Wire`.
+  - Same rules as the Mac: `moov/udta/meta(hdlr mdir/appl)/ilst/covr/data`; replace the first `covr` in place and keep every other box byte for byte; move every `stco`/`co64` entry past the old `moov` by the growth; promote an overflowing `stco` to `co64`; refuse fragmented, truncated and unfollowable files.
+- **Not wired.** The Windows exporter doesn't call it yet. The cover export (`<name>-cover.jpg` and the MP4 art) comes with the picture rows, as owed below. When it lands, apply `Edit` to the export's partial before the rename, streaming as the Mac's `MP4CoverEmbed` does (read the headers and `moov`, copy the rest in chunks, rename), and remove nothing else.
+- **Tests.** Core `Mp4CoverArtReplayTests` (15) replays shared/fixtures/cover-art: keys and counts; all 17 vectors byte for byte (SHA-256, size, growth, offsets) or their refusal; moov-first shifts (6); moov-last keeps offsets (3); the existing `covr` replaced with the rest kept; `stco` → `co64`; re-embedding; refusals. Red without the shift rule: 8 tests fail.
+- **Verification** (macOS host, Release, `-m:1 -nodeReuse:false -p:UseSharedCompilation=false`): Core (`Category!=RequiresWindows`) 3,330 tests, 0 failed, 28 skipped. ReleaseBoundary `update` on VoxClip.Core: +140 lines, declarations only (the new types and their members, the private `MovieWriter`, `Node` and `Table`), no literals. Media, App and CLI weren't touched.
+- **Owed.** The writer is ported; the wiring isn't. The cover export in the list below now needs only the JPEG, the render and that wiring.
+
 ### 2026-11-08 — Windows: Claude mode's speed and images to the AI, the twin of Mac track/v2-speed and track/v2-eyes-1 (track/v2-win-speed-images)
 
 ai.md §16.12, §19.3, §19.5. Clears both "Windows owes" lists below except the analyzer.
@@ -107,7 +119,7 @@ The Mac's Claude sees the picture, part 2 (ADR-R48, ai.md §19.6) adds three opt
 - **Media.** `FrameComposer` applies `ClipFaceCrop.Centered` after the centre crop (preview and export).
 - **Tests.** Core `ClipFramesProjectWireTests` (7): the shared `clip-frames` vectors (8 valid saved losslessly, 14 invalid refused), the fixture's fields, the lead-in times and floor (the Mac's numbers), the clip's head segment and `UpdateClip`, the face crop for 9:16, 1:1, the edge, a flip, 16:9 and no face. `ClipAutopilotTests` pins promptVersion 8 and its sendable reply carries `frames`.
 - **Verification** (macOS host, Release): Core 3,281 (3,252 passed, 29 skipped, 0 failed); portable Media 1,190 (1,025 passed, 165 skipped, 0 failed); win-ui 1,393 (1,388 passed, 5 skipped). ReleaseBoundary `update`: Core +27/−7 (the new fields, `ClipTimes`'s lead-in, `ClipLeadInFloor`, `CropCenter`, `ClipFaceCrop`); Media, `VoxClip.txt` and `voxclip-cli.txt` unchanged.
-- **Owed (Windows twin of ADR-R48 part 2):** the image capability and wires in the C# connectors, the analyzer (Windows `FaceDetector` has no landmarks or capture quality), the pure decisions with shared vectors, the whole-video pass and the plan request's frames block and reply `frames` handling, the four Make it postable rows and the send line, the cover export (`<name>-cover.jpg` and MP4 `covr` art), the face crop in still frames (`CurrentFrames`), and `analyze-frames`/`autopilot` frames in the CLI.
+- **Owed (Windows twin of ADR-R48 part 2):** the image capability and wires in the C# connectors, the analyzer (Windows `FaceDetector` has no landmarks or capture quality), the pure decisions with shared vectors, the whole-video pass and the plan request's frames block and reply `frames` handling, the four Make it postable rows and the send line, the cover export (`<name>-cover.jpg` and MP4 `covr` art; the `covr` writer itself is ported, `Mp4CoverArt`), the face crop in still frames (`CurrentFrames`), and `analyze-frames`/`autopilot` frames in the CLI.
 
 ### 2026-11-08 — Windows: whole-clip parts tile the clip, the twin of Mac's fix (track/v2-wholeclip-cuts)
 
