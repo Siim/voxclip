@@ -781,6 +781,7 @@ import VoxClipMedia
                             hardJoinSmoothing: input.hardJoinSmoothing, audioTags: input.audioTags)
                         nextSeeds[index] &+= UInt32(candidates)
                         inputs[index].pauseProfile = input.pauseProfile
+                        inputs[index].editedLayout = input.editedLayout
                     }
                 }
                 try validate(inputs.map(\.window))

@@ -19,6 +19,9 @@ import VoxClipMedia
 // - S-revoice-whole-midtake: the clip opens mid-take on a word touching the one before it, with no silence (voice-lab §8.4,
 //   a clip's own edges): the first part's hard seam is the clip's output edge, the run reaches Review and Use, and the full
 //   take renders the clip's segments too (WM1, WM2).
+// - S-revoice-whole-tightened: the clip's sentence pauses are tightened, so the clip as edited is shorter than its source span
+//   (ADR-R46, "One timeline"): the price, the Fit line and the lip sync read the clip as edited, and Use puts in a picture of
+//   the clip's own cuts at zoom 1 that renders the clip's edited length (WT1, WT2).
 
 extension DebugRewriteSmoke {
     /// Five of the eight sentences said differently: well over 40% of the clip's words.
@@ -62,6 +65,14 @@ extension DebugRewriteSmoke {
         return fixture
     }
 
+    /// The whole-clip clip with every sentence pause tightened to 0.15 s: the clip as edited is about 3 s shorter than the
+    /// source under its parts.
+    private static func wholeClipTightenedFixture() -> Fixture {
+        var fixture = wholeClipFixture()
+        fixture.tightenPauses = true
+        return fixture
+    }
+
     static var wholeClipScenarios: [Definition] { [
         Definition(id: "S-revoice-whole", title: "a heavily rewritten clip: How should it sound? → Revoice Whole Clip → Review → Use, one undo step, saved",
                    requiresCompletion: false, fixture: wholeClipFixture()) { harness in
@@ -74,6 +85,10 @@ extension DebugRewriteSmoke {
         Definition(id: "S-revoice-whole-midtake", title: "a rewritten clip that opens mid-take on a word touching the one before it: Review and Use",
                    requiresCompletion: false, fixture: wholeClipMidTakeFixture()) { harness in
             try await harness.revoiceWholeClip(midTake: true)
+        },
+        Definition(id: "S-revoice-whole-tightened", title: "a rewritten clip with tightened pauses: the voice is laid out on the clip as edited, priced, fitted and rendered at its edited length",
+                   requiresCompletion: false, fixture: wholeClipTightenedFixture()) { harness in
+            try await harness.revoiceWholeClip(tightened: true)
         },
         Definition(id: "S-revoice-whole-claude", title: "✦ Claude does it all revoices a stitched clip whole within the cap, with no click",
                    requiresCompletion: false, fixture: wholeClipFixture()) { harness in
@@ -108,7 +123,10 @@ extension DebugRewriteSmoke.Harness {
 
     private func installWholeClipStandIn() -> WholeClipLipsync {
         let lipsync = WholeClipLipsync()
-        editor?.wholeClipPrepared = { [weak self] plan in self?.recordFitting(plan) }
+        editor?.wholeClipPrepared = { [weak self] plan in
+            guard let self, let project = self.editor?.project else { return }
+            self.recordFitting(plan, edited: try? VoiceLabOutputPlanner.build(project, scope: .clip("clip-whole")))
+        }
         editor?.wholeClipSmoke = { session, whole in
             whole.backend?.lipsync = { [weak session] _, factor, model, progress in
                 guard let session else { throw CancellationError() }
@@ -119,7 +137,9 @@ extension DebugRewriteSmoke.Harness {
                 if lipsync.hold { await withCheckedContinuation { lipsync.waiting = $0 } }
                 try Task.checkCancellation()
                 let price = try whole.backend?.lipsyncPrice(model) ?? 0
-                return .init(model: model, usd: price ?? 0, factor: factor)
+                // As the live step: the picture is the clip as edited, not retimed (ADR-R46).
+                _ = factor
+                return .init(model: model, usd: price ?? 0, factor: 1)
             }
             whole.backend?.match = { _ in .init(take: 0.81, anchorBaseline: 0.54, realSpeech: nil) }
         }
@@ -159,9 +179,13 @@ extension DebugRewriteSmoke.Harness {
 
     /// W1: the card, its callout and chip, and both prices from the tables.
     private func checkChoose(_ session: RewriteSession, _ whole: WholeClipRevoiceSession) throws -> String {
-        guard let shared = app.shared, let quote = whole.quote, let script = whole.script else { throw DebugRewriteSmoke.Failure.setup("no quote") }
+        guard let shared = app.shared, let quote = whole.quote, let script = whole.script, let project = editor?.project else {
+            throw DebugRewriteSmoke.Failure.setup("no quote")
+        }
         let catalog = try VoiceLabPriceCatalog(data: Data(contentsOf: shared.root.appendingPathComponent("catalog/voice-lab.json")))
-        let seconds = (script.sentences.last?.end ?? 0) - (script.sentences.first?.start ?? 0) + 2
+        // The lip sync is priced on the clip as edited, with Rewrite's one-second handles (ADR-R46).
+        let edited = try VoiceLabOutputPlanner.build(project, scope: .clip("clip-whole"))
+        let seconds = edited.mapTime(script.sentences.last?.end ?? 0) - edited.mapTime(script.sentences.first?.start ?? 0) + 2
         let expected = try WholeClipRevoice.price(characters: script.characters, ttsModel: VoiceLabWordingFit.modelID, videoSeconds: seconds,
                                                   lipsync: .lipsync2, catalog: catalog)
         let chip = session.wholeClipChipAction()?.title ?? ""
@@ -198,7 +222,7 @@ extension DebugRewriteSmoke.Harness {
 
     /// W3: Use Whole Clip as one undo step with the record; the stage tag, the disclosure, save and reopen; Undo.
     private func useAndCheck(_ session: RewriteSession, _ whole: WholeClipRevoiceSession, model: WholeClipRevoice.Lipsync,
-                             fullTake: Bool = false) async throws {
+                             fullTake: Bool = false, afterUse: (() -> Void)? = nil) async throws {
         guard let editor else { return }
         let steps = editor.undoSteps
         try await act("click [Use Whole Clip]", clicked: "wholeClipUse") {
@@ -217,6 +241,7 @@ extension DebugRewriteSmoke.Harness {
             phaseText(whole) + " · undo steps +\(editor.undoSteps - steps) · record \(record.map { "\($0.segmentIds.count) segments, \($0.lipsyncModel), retime \($0.videoRetime)" } ?? "none")"
                 + " · reopened \(reopened?.voiceLab.wholeClipRevoices?.count ?? 0) same \(reopenedSame) · stage \(stage) · post text \(prepared?.disclosure.postText ?? "none")")])
         if fullTake { checkFullTake(project, record: record) }
+        afterUse?()
         // The step list's Undo (Claude mode), as one undo step: the record goes and its segments are off.
         if let record { editor.removeWholeClip(record) }
         let undone = editor.project.voiceLab.wholeClipRevoices == nil && record.map { record in
@@ -257,7 +282,7 @@ extension DebugRewriteSmoke.Harness {
         makeItAppend([wholeClipCheck("WM2", (try? prepared.get()) != nil && besideSource, detail)])
     }
 
-    func revoiceWholeClip(cuts: Bool = false, midTake: Bool = false) async throws {
+    func revoiceWholeClip(cuts: Bool = false, midTake: Bool = false, tightened: Bool = false) async throws {
         let lipsync = installWholeClipStandIn()
         let (session, whole) = try await openWholeClip()
         let primary = try checkChoose(session, whole)
@@ -266,9 +291,46 @@ extension DebugRewriteSmoke.Harness {
         checkReview(whole, segmentsBefore: before)
         if cuts { checkCutsAbsorbed(session, whole) }
         if midTake { checkMidTakeEdge(session, whole) }
+        if tightened { checkEditedTimeline(session, whole) }
         makeItAppend([wholeClipCheck("W5", lipsync.calls == [.lipsync2] && whole.voice.map { $0.parts >= 1 } == true,
             "lip sync \(lipsync.calls.map(\.name)) · \(whole.voice?.parts ?? 0) parts · \(speechRequests) speech requests")])
-        try await useAndCheck(session, whole, model: .lipsync2, fullTake: midTake)
+        try await useAndCheck(session, whole, model: .lipsync2, fullTake: midTake, afterUse: tightened ? { [weak self] in self?.checkEditedRender() } : nil)
+    }
+
+    /// WT1: the clip as edited is shorter than the source under its parts, and the Fit line, the voice's layout and the
+    /// picture read the clip as edited, not the source.
+    private func checkEditedTimeline(_ session: RewriteSession, _ whole: WholeClipRevoiceSession) {
+        guard let project = editor?.project, let edited = try? VoiceLabOutputPlanner.build(project, scope: .clip("clip-whole")),
+              let phrases = session.wholeClipPlan?.phrases, !phrases.isEmpty else {
+            makeItAppend([wholeClipCheck("WT1", false, "no plan or edited clip")]); return
+        }
+        let source = phrases.reduce(0.0) { $0 + $1.window.end - $1.window.start }
+        let seconds = session.wholeClipEditedSeconds ?? 0
+        let fit: String = { if case .done(let line) = whole.steps[.fit] { return line } else { return "\(String(describing: whole.steps[.fit]))" } }()
+        let laid = phrases.allSatisfy { phrase in phrase.selected?.row.audio?.fit.plan.editedTimeline == true }
+        let choices = phrases.map { $0.videoChoice.map { "\($0)" } ?? "none" }
+        makeItAppend([wholeClipCheck("WT1", !project.edits.cutPauseIds.isEmpty && seconds < source - 1 && abs(seconds - edited.duration) < 0.5
+                && fit.contains("for \(WholeClipRevoiceSession.clock(seconds)) of video") && laid && phrases.allSatisfy { $0.videoChoice == .cut },
+            "\(project.edits.cutPauseIds.count) tightened pauses · source \(String(format: "%.2f", source)) s · as edited \(String(format: "%.2f", seconds)) s (clip \(String(format: "%.2f", edited.duration)) s) · \(fit) · laid out \(laid) · picture \(choices)")])
+    }
+
+    /// WT2: after Use, the clip's segment holds the clip's own cuts at zoom 1, and the clip renders at its edited length.
+    private func checkEditedRender() {
+        guard let project = editor?.project, let record = project.voiceLab.wholeClipRevoices?.first else {
+            makeItAppend([wholeClipCheck("WT2", false, "no record")]); return
+        }
+        let videos = project.voiceLab.segments.filter { record.segmentIds.contains($0.id) }.compactMap { $0.candidates[$0.selectedCandidateIndex].recipe?.video }
+        let prepared = try? VoiceLabRenderContract.prepare(project, scope: .clip("clip-whole"), labelPosition: .topRight)
+        var plain = project
+        plain.voiceLab.segments = plain.voiceLab.segments.map { var segment = $0; segment.enabled = false; return segment }
+        plain.voiceLab.wholeClipRevoices = nil
+        let edited = (try? VoiceLabOutputPlanner.build(plain, scope: .clip("clip-whole")))?.duration ?? 0
+        let rendered = prepared?.outputPlan.duration ?? 0
+        let zoomOne = videos.allSatisfy { $0.mode == .cut && $0.zoom == VoiceLabNaturalPacing.EDITED_CUT_ZOOM && ($0.cuts?.count ?? 0) >= 1 }
+            || videos.allSatisfy { $0.mode == .source }
+        makeItAppend([wholeClipCheck("WT2", !videos.isEmpty && zoomOne && prepared != nil && rendered <= edited + 0.05 && rendered > edited - 1.5
+                && record.videoRetime == 1,
+            "\(videos.map { "\($0.mode) zoom \($0.zoom ?? 0) · \($0.cuts?.count ?? 0) cuts" }.joined(separator: ", ")) · renders \(String(format: "%.2f", rendered)) s for \(String(format: "%.2f", edited)) s as edited · retime \(record.videoRetime)")])
     }
 
     /// WK1: the clip has cut fillers, at least one right before a later part's first word, and every one lies inside a

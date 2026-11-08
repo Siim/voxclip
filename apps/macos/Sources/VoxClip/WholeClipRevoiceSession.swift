@@ -4,7 +4,7 @@ import VoxClipCore
 import VoxClipMedia
 
 /// Revoice the whole clip (ADR-R46, design.md R2 "How should it sound?"): one AI voice for every word of the clip,
-/// fitted to its length and lip synced. Choose → Running (Script, Voice, Fit, Lip sync, with Cancel) → Review (Play,
+/// laid out on the clip as edited and lip synced. Choose → Running (Script, Voice, Fit, Lip sync, with Cancel) → Review (Play,
 /// A/B, the match line, Undo, Use Whole Clip, the sync-3 upgrade). The paid steps go through Rewrite's own take path and
 /// lip sync (`RewriteWholeClip.swift`); this session owns the order, the prices, the ledger that never pays a step twice,
 /// and what the panel says. Cancel or a failure keeps the clip as it was.
@@ -69,11 +69,15 @@ import VoxClipMedia
         var quote: @MainActor (WholeClipScript, Lipsync) async throws -> Quote
         /// The voice for the script, paid; `progress` gets a line ("part 2 of 3").
         var voice: @MainActor (WholeClipScript, @escaping @MainActor (String) -> Void) async throws -> Voice
-        /// The clip's rendered video seconds (with any clip speed).
+        /// The clip's seconds **as edited** (its cuts and tightened pauses applied): the length the user sees, the timeline
+        /// the voice is laid out on and the video the lip sync gets (ADR-R46, "One timeline").
         var videoSeconds: @MainActor () -> Double
-        /// The measured-wording round: a wording of about `targetWords`, shorter or longer; nil when none came back.
-        /// The voice's and the video's seconds are the round's measured feedback.
-        var reword: @MainActor (WholeClipScript, Bool, Int, Double, Double) async throws -> WholeClipScript?
+        /// The measured-wording round: a **shorter** wording of about `targetWords`; nil when none came back. The voice's and
+        /// the video's seconds are the round's measured feedback. A shorter voice is never reworded longer.
+        var reword: @MainActor (WholeClipScript, Int, Double, Double) async throws -> WholeClipScript?
+        /// The speaking-rate estimate of a script's seconds, free; nil when there is none. Check before paying compares a
+        /// reworded script's estimate with the clip before a new voice is made.
+        var estimate: @MainActor (WholeClipScript) -> Double? = { _ in nil }
         /// The lip sync over the whole clip, the picture retimed by `factor`, paid.
         var lipsync: @MainActor (Voice, Double, Lipsync, @escaping @MainActor (Double?) -> Void) async throws -> Synced
         /// The lip sync's price for the upgrade, free.
@@ -127,6 +131,9 @@ import VoxClipMedia
     @ObservationIgnored private var rewordRound = 0
     /// The clip's own script the last run started from (before any measured wording).
     @ObservationIgnored private var baseScript: String?
+    /// The script a run stopped at the Fit step for (the voice can't fit, or a reword came back no shorter): Try Again over
+    /// the same script would only meet the same fit, so the patch becomes the primary (ADR-R46).
+    @ObservationIgnored private var fitStoppedScript: String?
 
     var running: Bool { run != nil }
     /// Waits for the run under way, if any.
@@ -149,7 +156,7 @@ import VoxClipMedia
     func start(automatic: Bool = false) {
         guard backend != nil, !running, phase != .used else { return }
         self.automatic = automatic
-        phase = .running; started = Date(); progress = nil; rewordRound = 0; failure = nil
+        phase = .running; started = Date(); progress = nil; rewordRound = 0; failure = nil; fitStoppedScript = nil
         steps = Dictionary(uniqueKeysWithValues: Step.allCases.map { ($0, StepState.waiting) })
         run = Task { [weak self] in
             await self?.perform(model: .standard)
@@ -186,21 +193,32 @@ import VoxClipMedia
             steps[.script] = .done("Script · \(script.words) words, your edits applied")
             try Task.checkCancellation()
             var voice = try await voiceStep(script, backend: backend)
-            // Fit: free, unless a measured wording is needed, which says it again (a new script, a new voice).
+            // Fit: free, on the clip as edited. Only a voice too long for it asks for a measured wording, which is checked
+            // against the clip before it is said again (a new script, a new voice); a shorter voice is laid out, never padded.
             var factor: Double
             while true {
                 let video = backend.videoSeconds()
+                let measured = "Fit · \(Self.clock(voice.seconds)) for \(Self.clock(video)) of video"
                 switch WholeClipRevoice.fit(voiceSeconds: voice.seconds, videoSeconds: video, words: script.words, round: rewordRound) {
                 case .matched(let matched):
                     factor = matched
-                    steps[.fit] = .done("Fit · \(Self.clock(voice.seconds)) for \(Self.clock(video)) of video, \(WholeClipRevoice.matchedCopy(factor: matched))")
-                case .reword(let shorter, let target):
+                    steps[.fit] = .done(measured + ", " + WholeClipRevoice.matchedCopy(factor: matched))
+                case .laidOut(let laid):
+                    factor = laid
+                    steps[.fit] = .done(measured + ", " + WholeClipRevoice.laidOutCopy(factor: laid))
+                case .reword(let target):
                     rewordRound += 1
-                    steps[.fit] = .running("Fit · \(Self.clock(voice.seconds)) for \(Self.clock(video)) of video · asking for a \(shorter ? "shorter" : "longer") wording (≈ \(target) words)")
-                    guard let next = try await backend.reword(script, shorter, target, voice.seconds, video) else {
+                    steps[.fit] = .running(measured + " · asking for a shorter wording (≈ \(target) words)")
+                    guard let next = try await backend.reword(script, target, voice.seconds, video) else {
                         throw Stop.cannotFit(voice: voice.seconds, video: video)
                     }
                     try Task.checkCancellation()
+                    // Check before paying: the new wording is voiced only when its estimate fits the clip.
+                    if let before = backend.estimate(script), let after = backend.estimate(next),
+                       !WholeClipRevoice.rewordFits(voiceSeconds: voice.seconds, estimateSeconds: before, newEstimateSeconds: after, videoSeconds: video) {
+                        let predicted = WholeClipRevoice.predictedSeconds(voiceSeconds: voice.seconds, estimateSeconds: before, newEstimateSeconds: after)
+                        throw Stop.rewordTooLong(predicted: predicted ?? voice.seconds, video: video)
+                    }
                     script = next; self.script = next
                     steps[.script] = .done("Script · \(next.words) words, reworded to fit")
                     steps[.voice] = .waiting
@@ -241,6 +259,7 @@ import VoxClipMedia
                 if steps[step] == .waiting { steps[step] = .failed(Self.copy(error)) }
                 let part = Self.part(error)
                 failure = Failure(step: step, part: part, repeats: step == .script || Self.repeats(error))
+                if step == .fit { fitStoppedScript = baseScript }
                 backend.report("whole clip failure step=\(step) " + RewriteSession.failureKind(Self.cause(error)) + (part.map { " part=\($0)" } ?? ""))
             }
             phase = .stopped(cancelled ? "Cancelled. Your clip is unchanged." + paidNote : Self.copy(error) + paidNote)
@@ -293,8 +312,17 @@ import VoxClipMedia
 
     var isStopped: Bool { if case .stopped = phase { true } else { false } }
 
+    /// The last run stopped at the Fit step and the clip's script is still the one it stopped for: Try Again would meet
+    /// the same fit, so the card makes the patch its primary (ADR-R46, "Try Again doesn't repeat a failure").
+    var repeatsFit: Bool {
+        guard isStopped, failure?.step == .fit, let stopped = fitStoppedScript, let backend else { return false }
+        return (try? backend.script().text) == stopped
+    }
+
     enum Stop: Error, Equatable {
         case cannotFit(voice: Double, video: Double)
+        /// Check before paying: the shorter wording's estimate still runs `predicted` for `video`, so no voice was made.
+        case rewordTooLong(predicted: Double, video: Double)
         case noVoice(String)
     }
 
@@ -304,7 +332,9 @@ import VoxClipMedia
         switch error {
         case let unsent as Unsent: return copy(unsent.error)
         case Stop.cannotFit(let voice, let video):
-            return "The new voice runs \(clock(voice)) for \(clock(video)) of video, more than one even retime can match."
+            return "The new voice runs \(clock(voice)) for \(clock(video)) of video, longer than the clip can hold."
+        case Stop.rewordTooLong(let predicted, let video):
+            return "The shorter wording would still run about \(clock(predicted)) for \(clock(video)) of video, so no new voice was made."
         case Stop.noVoice(let reason): return reason
         case ClipTakePlan.Failure.placement(let refusal, let index): return placementCopy(refusal, part: index + 1)
         case is LipsyncError, is LipsyncPreparationError: return RewriteLipsyncSession.reason(error)

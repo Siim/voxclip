@@ -20,9 +20,10 @@ struct WholeClipAutoQuote: Equatable {
 enum WholeClipAutoOutcome: Equatable {
     case revoiced(WholeClipRevoiceRecord, spent: Decimal)
     case failed(String, spent: Decimal)
-    /// The whole clip can't be done here and nothing was spent (a part that can't be placed, or a stop before anything
-    /// was sent): the changed phrases are voiced instead, with the line saying why.
-    case patchInstead(String)
+    /// The whole clip can't be done here: a part that can't be placed or a stop before anything was sent (nothing spent),
+    /// or a voice that can't fit the clip as edited within these rules (its voice paid). The changed phrases are voiced
+    /// instead, with the line saying why (ADR-R46).
+    case patchInstead(String, spent: Decimal)
 
     /// What a finished automatic run comes to.
     @MainActor init(_ session: WholeClipRevoiceSession) {
@@ -30,7 +31,8 @@ enum WholeClipAutoOutcome: Equatable {
         case .used:
             self = session.record.map { .revoiced($0, spent: session.spent) } ?? .failed("The whole clip couldn't be put in.", spent: session.spent)
         case .stopped(let line):
-            self = session.failure?.repeats == true && session.spent == 0 ? .patchInstead(line) : .failed(line, spent: session.spent)
+            let patches = (session.failure?.repeats == true && session.spent == 0) || session.failure?.step == .fit
+            self = patches ? .patchInstead(line, spent: session.spent) : .failed(line, spent: session.spent)
         default: self = .failed("The whole clip didn't finish.", spent: session.spent)
         }
     }
@@ -92,14 +94,16 @@ extension EditorModel {
             run.inverses["wholeClip"] = .wholeClip(record)
             let model = WholeClipRevoice.Lipsync(rawValue: record.lipsyncModel)?.name ?? "lip sync"
             return MakeItRow(id: "wholeClip", text: "Revoiced the whole clip in your voice, lip synced",
-                             detail: (reason.map(WholeClipRevoice.callout) ?? "") + " " + WholeClipRevoice.matchedCopy(factor: record.videoRetime)
+                             detail: (reason.map(WholeClipRevoice.callout) ?? "") + " Laid out on the clip as edited"
                                  + " · \(model) · " + VoiceLabCostPresentation.format(spent),
                              play: nil, undoable: true)
         case .failed(let line, let spent):
             run.charge(spent)
             run.voiceSpent += spent
             return MakeItRow(id: "wholeClip", kind: .note, text: "Kept your words: the whole clip couldn't be revoiced", detail: line)
-        case .patchInstead(let line):
+        case .patchInstead(let line, let spent):
+            run.charge(spent)
+            run.voiceSpent += spent
             let log = app.log
             Task { await log.write(LogEntry(level: .info, category: "voice-lab", message: "make-it whole clip fell back to the changed phrases")) }
             return MakeItRow(id: "wholeClip", kind: .note, text: "Voiced only the changed phrases: the whole clip couldn't be revoiced here", detail: line)
