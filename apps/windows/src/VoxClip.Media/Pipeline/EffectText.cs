@@ -190,7 +190,23 @@ internal sealed record EffectTitleLayout(IReadOnlyList<EffectTextLine> Lines, fl
             _ => height * 0.14f - single / 2
         };
         var left = (width - boxWidth) / 2;
-        var box = new SKRectI((int)Math.Floor(left), (int)Math.Floor(top), (int)Math.Ceiling(left + boxWidth), (int)Math.Ceiling(top + boxHeight));
-        return new(lines, size, padX, padY, lineHeight, box);
+        var placed = new SKRectI((int)Math.Floor(left), (int)Math.Floor(top), (int)Math.Ceiling(left + boxWidth), (int)Math.Ceiling(top + boxHeight));
+        return new(lines, size, padX, padY, lineHeight, ClearOfFeedBands(placed, position, width, height));
+    }
+
+    /// <summary>In a 9:16-class frame (design §6.7, the feed's bands of §5.1) a top title's top edge sits at 13% of the height
+    /// and the box grows downwards; a bottom title's bottom edge stays at or above 77% (the bottom band's start minus 1%).
+    /// Centre, and every 1:1 and 16:9 placement, keep <paramref name="box"/> (output pixels, top-left origin).</summary>
+    internal static SKRectI ClearOfFeedBands(SKRectI box, string position, int width, int height)
+    {
+        // The caption resolver's portrait class (captions §5.1): narrower than 9:10.
+        if (10L * width >= 9L * height || position == "center") return box;
+        if (position == "bottom")
+        {
+            var lowest = (int)Math.Floor(height * 0.77);
+            return box.Bottom > lowest ? new SKRectI(box.Left, lowest - box.Height, box.Right, lowest) : box;
+        }
+        var edge = (int)Math.Ceiling(height * 0.13);
+        return new SKRectI(box.Left, edge, box.Right, edge + box.Height);
     }
 }
