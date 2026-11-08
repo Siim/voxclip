@@ -166,7 +166,8 @@ public actor AVExporter: Exporter {
         return data as Data
     }
 
-    /// The MP4's cover art: iTunes `covr`, a JPEG.
+    /// The MP4's cover art: iTunes `covr`, a JPEG, which players and uploaders read as the attached picture. The common
+    /// artwork identifier is written as a QuickTime key instead, which ffprobe doesn't see as a cover (2026-11-08).
     static func coverArt(_ jpeg: Data) -> AVMetadataItem {
         let item = AVMutableMetadataItem()
         item.identifier = .iTunesMetadataCoverArt
