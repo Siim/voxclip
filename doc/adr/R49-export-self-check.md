@@ -23,8 +23,14 @@ nothing shows it, and a Claude Code or Codex harness driving `voxclip-cli autopi
      it isn't expected. A kept filler is optional, because Whisper drops "um" and "uh".
    - **Matching.** Words are aligned on `VoiceLabTakeQuality.tokens`. A heard word that sounds like an expected word
      (`soundsAlike`) is written as that word: "Claude" heard as "cloud" matches, "deals" heard as "details" does not. The
-     alignment is `VoiceLabTakeQuality.alignment`, the longest common subsequence the take QA's transcript ratio now reads
-     too. No second normaliser or alignment was written.
+     alignment is `SpokenNumbers.align`, the one the take QA's transcript ratio reads too. No second normaliser or
+     alignment was written.
+   - **Numbers (2026-11-08).** A number matches however it is written (voice-lab §8.11): "three hundred dollar" heard as
+     "$300" is three matched words, each mapped to the heard "$300" for its output time. A number heard as a numeral is
+     never a cut-off. A numeral facing only another language's words (no spelled-number table) is unverified: no item,
+     left out of `matched` and `total`, and counted in the result's `unverified`. The lead's first real run on the user's
+     29.7 s clip had failed here (44 of 47, "three" reported cut off as "300", "hundred" and "dollar" as mismatches) on an
+     export that was right.
    - **Mismatches and cut-offs.** Each unmatched word is reported with what was heard in its place. A **cut-off** is a
      word next to a cut, or at a clip edge, that is missing or heard as one shorter, different word. Cut-offs are reported
      separately from mismatches. The edge test is inclusive, because a recognizer's words touch and a cut between them
@@ -81,8 +87,9 @@ nothing shows it, and a Claude Code or Codex harness driving `voxclip-cli autopi
 | A failing run (a quiet source, a cut between "here" and "there", Highlight captions) | `there` cut off (heard "in"); −15.6 LUFS (the +12 dB boost limit stopped the gain short); 78 cards 0.043 into the bottom band |
 | A passing run (the same speech 10 dB louder, "continually" cut, Bounce captions) | 77/78 words, sync ok, −14.01 LUFS and −0.87 dBTP, captions clear |
 
-The engine's rules are in shared/fixtures/export-check/check-cases.json (schema `voxclip-export-check-cases/1`), which
-tools/fixtures/export-check/generate_check_cases.py writes. The Mac Core replays it; the Windows twin owes the replay.
+The engine's rules are in shared/fixtures/export-check/check-cases.json (schema `voxclip-export-check-cases/1`) and its
+numbers in number-check-cases.json (`voxclip-export-check-number-cases/1`), which
+tools/fixtures/export-check/generate_check_cases.py writes. The Mac Core replays both; the Windows twin owes the replay.
 
 ## Consequences
 

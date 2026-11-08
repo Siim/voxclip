@@ -1,5 +1,14 @@
 # Windows fixed contracts
 
+### 2026-11-08 — Windows: the take QA matches numbers however they're written, the twin of Mac track/v2-spoken-numbers (track/v2-spoken-numbers)
+
+- **Core `SpokenNumbers`** (new, Domain/Transcript), the C# twin of the Mac rules: `Tokens`, `Parse`, `Align`, `Token.FromRaw`, `Alignment` (`Ratio`, `Complete`, `UnverifiedNumbers`).
+- **Take QA.** `VoiceLabTakeQuality.Tokens` comes from `SpokenNumbers.Tokens`. `TranscriptRatio` and the new `WordMatch` run on the alignment; `Evaluate`'s short-phrase rule is `Alignment.Complete`, and `VoiceLabTakeQaResult.UnverifiedNumbers` counts numbers lined up only with another language. `VoiceLabAudioTags.KeptAfterScribeEvents` returns kept indices; `FilterScribeEvents` wraps it.
+- **Replay.** `SpokenNumbersReplayTests` replays shared/fixtures/spoken-numbers/number-cases.json (exact keys, counts and caseCount 79): numerals, alignments and take checks, the same as the Mac Core.
+- **ReleaseBoundary.** `update` on VoxClip.Core: additions only (the `SpokenNumbers` types, `KeptAfterScribeEvents`, `WordMatch`, `UnverifiedNumbers`).
+- **Verification** (macOS host, Release, `-m:1 -nodeReuse:false -p:UseSharedCompilation=false`, `VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`): Core 3,336 (3,307 passed, 29 skipped, 0 failed).
+- **Still owed.** The export-check twin (ADR-R49), with shared/fixtures/export-check/check-cases.json and number-check-cases.json to replay. The number rule is in place for it.
+
 ### 2026-11-08 — Windows: 1:1 and 16:9 caption defaults clear of the bands, the twin of Mac track/v2-safe-zones follow-up (track/v2-safe-zones)
 
 - **No Windows code change.** The new `aspects.square` and `aspects.landscape` y values (design.md §5.1) reach Windows through `CaptionStyleResolver`. `CaptionConformanceTests` replays the regenerated square and landscape layout fixtures, and the golden indexes with their moved crop offsets.
