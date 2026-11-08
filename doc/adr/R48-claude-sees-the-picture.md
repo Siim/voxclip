@@ -125,4 +125,8 @@ small frames may be sent to the chosen AI. The cover is saved as `cover.jpg` nex
 - **Windows** calibrates against this Mac (post-fix): the face request set and the macOS build are in
   apps/windows/CONTRACTS.md.
 - **Windows** has the pure decisions in C# Core `Domain/Frames` (W1, track/v2-win-frames-core), replaying
-  shared/fixtures/clip-frames/decision-cases.json and face-facing-cases.json with the Mac; the analyzer and wiring (W2–W7) are owed.
+  shared/fixtures/clip-frames/decision-cases.json and face-facing-cases.json with the Mac; the analyzer and wiring (W3–W7) are owed.
+- **Windows** has the face models' catalogue (`shared/catalog/frame-models.json`: YuNet + Face Mesh V2, hash-pinned, off until the
+  calibration and the licence decision) and the pure maths from their outputs to these fields (W2, track/v2-win-frames-w2):
+  eye ratios mapped to Vision's scale, yaw and pitch mapped to revision 3's (pitch negative with the head tipped back), and a
+  gated capture quality, with provisional constants in the catalogue until W7.

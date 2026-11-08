@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Windows, groundwork for seeing faces on your PC: a pinned, checked list of the two face models (switched off until they're matched to the Mac) and the maths that turns what they see into the same eyes-open, head-turn and quality readings the Mac uses; nothing changes in the app yet.
 - On Windows, the frame summary sent to the AI writes its numbers exactly as the Mac does (0.615 is 0.62 on both), and the picture decisions (opening frame, face-follow crop, cover, screen blurs) follow the Mac's rules case for case, ready for the Windows frame analyzer.
 - Numbers now match however they're written (Mac and Windows): a Voice Lab take whose script says "$300" and whose recognizer hears "three hundred dollars" passes its word check instead of being retaken, and on Mac `voxclip-cli check` no longer reports "three hundred dollar" heard as "$300" as cut off; a wrong number still fails, and a number in another language counts as unverified.
 - Captions and titles now clear the feed's buttons and text by default in every shape (Mac and Windows): caption styles that reached a feed's bottom band sit a little higher in that shape (nine in 9:16, two in 1:1, six in 16:9), and a 9:16 top title starts lower; old projects without a dragged caption position move with the default.
