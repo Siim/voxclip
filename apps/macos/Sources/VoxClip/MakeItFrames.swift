@@ -130,7 +130,8 @@ extension EditorModel {
         guard let ai = await services.frameAI(self), let found = await pass.frames(for: clip) else { return nil }
         // The opening scan runs beside the plan request; the apply waits for it.
         await pass.startOpening(for: clip)
-        var frames = ClipAutopilotFrames(sheet: found.sheet, clipStart: clip.start, clipEnd: clip.end, images: ai.images)
+        var frames = ClipAutopilotFrames(sheet: found.sheet, clipStart: clip.start, clipEnd: clip.end, images: ai.images,
+                                         pitchBaseline: await pass.pitchBaseline())
         var usd: Decimal?
         if frames.sendsImages, case .key(let connector, let model) = ai.billing {
             let price = app.shared.flatMap { try? ClipAutopilotImagePrices(shared: $0) }?
@@ -200,7 +201,8 @@ extension EditorModel {
     /// the first frame is not a clear look and one there is. No row when the start stays.
     private func makeItOpeningRow(run: MakeItRun, pass: VideoFramePass) async -> MakeItRow? {
         guard let clip = ClipPicture.openingClip(project, clipID: run.clipID),
-              let (next, opening) = ClipPicture.opening(project, clipID: run.clipID, scan: await pass.opening(for: clip)) else { return nil }
+              let (next, opening) = ClipPicture.opening(project, clipID: run.clipID, scan: await pass.opening(for: clip),
+                                                        pitchBaseline: await pass.pitchBaseline()) else { return nil }
         run.inverses[ClipPicture.openingRowID] = .leadIn(clipID: run.clipID, previous: opening.previousLeadIn)
         replace(next, name: "Make it postable")
         let earlier = String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), opening.earlier)

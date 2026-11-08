@@ -94,20 +94,23 @@ struct FrameAnalyzerTests {
         #expect(sheet.images.map(\.label) == ["Frame 1 at 1.20 s", "Frame 2 at 2.70 s", "Frame 3 at 4.20 s"])
         #expect(sheet.estimatedImageTokens == 3 * 77)
         #expect(sheet.imageBytes == sheet.frames.map(\.image.data.count).reduce(0, +))
-        let lines = sheet.summary.components(separatedBy: "\n")
+        let summary = sheet.summary(pitchBaseline: 0)
+        let lines = summary.components(separatedBy: "\n")
         #expect(lines.count == 4)
         #expect(lines[1] == "F1 1.20 s: face at 0.40,0.30,0.20,0.40, eyes open, quality 0.70, facing camera")
-        #expect(sheet.estimatedSummaryTokens == Int((Double(sheet.summary.utf8.count) / 2.2).rounded(.up)))
+        #expect(sheet.estimatedSummaryTokens(pitchBaseline: 0) == Int((Double(summary.utf8.count) / 2.2).rounded(.up)))
+        // Judged against a baseline far from the faces' pitch, the same frames read as turned away.
+        #expect(sheet.summary(pitchBaseline: 0.5).components(separatedBy: "\n")[1].hasSuffix("quality 0.70, turned away"))
     }
 
     @Test func summaryLinesNameScreensAndMissingFaces() {
         let screen = FrameScreen(rect: ClipEffect.Rect(x: 0.6, y: 0.3, width: 0.2, height: 0.4), textBoxes: 6, textCoverage: 0.3, framed: true)
         let frame = FrameSheetFrame(index: 2, observation: FrameObservation(time: 12.346, faceCount: 0, screens: [screen]),
                                     jpeg: Data([0xFF, 0xD8]), width: 320, height: 180)
-        #expect(frame.summaryLine == "F2 12.35 s: no face, screen with 6 text boxes at 0.60,0.30,0.20,0.40")
+        #expect(frame.summaryLine(pitchBaseline: nil) == "F2 12.35 s: no face, screen with 6 text boxes at 0.60,0.30,0.20,0.40")
         let face = FrameFace(rect: ClipEffect.Rect(x: 0.1, y: 0.1, width: 0.2, height: 0.3), captureQuality: 0.25, leftEyeAspect: 0.1, rightEyeAspect: 0.1, yaw: 0.79)
         let turned = FrameSheetFrame(index: 1, observation: FrameObservation(time: 0, faceCount: 2, face: face), jpeg: Data(), width: 1, height: 1)
-        #expect(turned.summaryLine == "F1 0.00 s: face at 0.10,0.10,0.20,0.30 (largest of 2), eyes closed, quality 0.25, turned away")
+        #expect(turned.summaryLine(pitchBaseline: nil) == "F1 0.00 s: face at 0.10,0.10,0.20,0.30 (largest of 2), eyes closed, quality 0.25, turned away")
     }
 
     // MARK: Apple Vision and AVFoundation

@@ -23,10 +23,11 @@ public struct FrameObservation: Codable, Sendable, Equatable {
     }
 
     /// A clear look at the speaker: a face with open eyes, good capture quality and, when Vision measured it, facing the
-    /// camera. The opening frame and the cover need it.
-    public var isClearLook: Bool {
+    /// camera (`FrameFace.facesCamera`, judged against the recording's `pitchBaseline`). The opening frame needs it.
+    public func isClearLook(pitchBaseline: Double?) -> Bool {
         guard let face else { return false }
-        return face.eyes == .open && (face.captureQuality ?? 0) >= FrameFace.goodQuality && face.facesCamera != false
+        return face.eyes == .open && (face.captureQuality ?? 0) >= FrameFace.goodQuality
+            && face.facesCamera(pitchBaseline: pitchBaseline) != false
     }
 }
 
@@ -39,8 +40,13 @@ public struct FrameFace: Codable, Sendable, Equatable {
     /// one person); on the user's DJI footage a sharp, lit, frontal face scores about 0.5–0.8, a blurred or turned one
     /// under 0.35 (measured 2026-11-07, ADR-R48).
     public static let goodQuality = 0.4
-    /// A face turned or tilted further than this (radians, about 20°) does not face the camera.
-    public static let facingLimit = 0.35
+    /// A face turned left or right further than this (|yaw|, radians, about 20°) does not face the camera.
+    public static let yawLimit = 0.35
+    /// A face tilted up or down further than this from the recording's typical pitch (radians, about 20°) does not face
+    /// the camera. The typical pitch (`pitchBaseline`) is where the camera sits: on the user's footage Vision's pitch rests
+    /// at +0.06 to +0.17 rad, and on studio footage at +0.1 to +0.2, so an absolute limit would count camera height as
+    /// looking away (ADR-R48, evaluated 2026-11-08).
+    public static let pitchLimit = 0.35
 
     public var rect: ClipEffect.Rect
     /// Vision's capture quality, 0–1, or nil when it was not measured.
@@ -48,13 +54,12 @@ public struct FrameFace: Codable, Sendable, Equatable {
     /// The eye aspect ratio of each eye (`EyeAspect.ratio`), or nil without landmarks.
     public var leftEyeAspect: Double?
     public var rightEyeAspect: Double?
-    /// Head rotation in radians, when Vision reports it.
+    /// Head rotation in radians, when Vision reports it (`VNDetectFaceRectanglesRequest` revision 3: continuous). Pitch is
+    /// negative when the head tilts back (chin up), as from a camera held low.
     public var yaw: Double?
     public var pitch: Double?
     /// Derived from the eye aspect ratios when the face is made, so every reader uses the same threshold.
     public var eyes: FrameEyes
-    /// Derived from yaw and pitch: nil when neither was reported.
-    public var facesCamera: Bool?
 
     public init(rect: ClipEffect.Rect, captureQuality: Double? = nil, leftEyeAspect: Double? = nil, rightEyeAspect: Double? = nil,
                 yaw: Double? = nil, pitch: Double? = nil) {
@@ -65,8 +70,31 @@ public struct FrameFace: Codable, Sendable, Equatable {
         self.yaw = yaw
         self.pitch = pitch
         self.eyes = EyeAspect.state(left: leftEyeAspect, right: rightEyeAspect)
-        let angles = [yaw, pitch].compactMap { $0 }.filter(\.isFinite)
-        self.facesCamera = angles.isEmpty ? nil : angles.allSatisfy { abs($0) <= FrameFace.facingLimit }
+    }
+
+    /// Whether the face faces the camera: |yaw| within `yawLimit`, and pitch within `pitchLimit` of `pitchBaseline`, the
+    /// recording's typical pitch (`FrameFace.pitchBaseline`; 0 when nil). Nil when Vision reported neither angle.
+    public func facesCamera(pitchBaseline: Double?) -> Bool? {
+        var measured = false
+        if let yaw, yaw.isFinite {
+            measured = true
+            if abs(yaw) > Self.yawLimit { return false }
+        }
+        if let pitch, pitch.isFinite {
+            measured = true
+            let baseline = pitchBaseline.flatMap { $0.isFinite ? $0 : nil } ?? 0
+            if abs(pitch - baseline) > Self.pitchLimit { return false }
+        }
+        return measured ? true : nil
+    }
+
+    /// The recording's typical pitch: the median pitch of the faces in `frames` (the whole video's sentence pass, or a
+    /// clip's own frames when there is no pass). Nil when no face has a pitch.
+    public static func pitchBaseline(_ frames: [FrameObservation]) -> Double? {
+        let pitches = frames.compactMap { $0.face?.pitch }.filter(\.isFinite).sorted()
+        guard !pitches.isEmpty else { return nil }
+        let middle = pitches.count / 2
+        return pitches.count % 2 == 1 ? pitches[middle] : (pitches[middle - 1] + pitches[middle]) / 2
     }
 }
 
@@ -210,6 +238,10 @@ public struct FrameAnalysis: Codable, Sendable, Equatable {
     /// 10 fps over ±0.6 s at the clip's start (`FrameSampling.openingTimes`).
     public var opening: [FrameObservation]
     public var timings: FrameAnalysisTimings
+
+    /// The clip's own typical pitch (`FrameFace.pitchBaseline` over its sentence frames and opening scan), for a caller
+    /// without the whole video's pass.
+    public var pitchBaseline: Double? { FrameFace.pitchBaseline(sentences + opening) }
 
     public init(contentKey: String, sentences: [FrameObservation], opening: [FrameObservation], timings: FrameAnalysisTimings) {
         self.contentKey = contentKey

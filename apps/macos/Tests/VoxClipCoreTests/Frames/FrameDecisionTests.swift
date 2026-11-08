@@ -27,9 +27,39 @@ struct FrameDecisionTests {
     }
 
     @Test func facingTheCameraComesFromYawAndPitch() {
-        #expect(FrameFace(rect: Self.centred, yaw: 0, pitch: 0.1).facesCamera == true)
-        #expect(FrameFace(rect: Self.centred, yaw: 0.79).facesCamera == false)
-        #expect(FrameFace(rect: Self.centred).facesCamera == nil)
+        #expect(FrameFace.yawLimit == 0.35 && FrameFace.pitchLimit == 0.35)
+        #expect(FrameFace(rect: Self.centred, yaw: 0, pitch: 0.1).facesCamera(pitchBaseline: 0) == true)
+        #expect(FrameFace(rect: Self.centred, yaw: 0.79).facesCamera(pitchBaseline: nil) == false)
+        #expect(FrameFace(rect: Self.centred).facesCamera(pitchBaseline: 0.2) == nil)
+        // Yaw is continuous now (revision 3): a head turned 0.3 rad faces, 0.4 rad does not, either way.
+        #expect(FrameFace(rect: Self.centred, yaw: 0.3, pitch: 0.15).facesCamera(pitchBaseline: 0.15) == true)
+        #expect(FrameFace(rect: Self.centred, yaw: -0.4, pitch: 0.15).facesCamera(pitchBaseline: 0.15) == false)
+    }
+
+    /// Pitch is judged against the recording's typical pitch, so a camera set below or above the eyes never counts as
+    /// looking away; a head tilted further than the limit from it does (ADR-R48, 2026-11-08).
+    @Test func pitchIsJudgedAgainstTheRecordingsCameraHeight() {
+        // A constant camera-height pitch of 0.45 faces against its own baseline; an absolute rule would call it away.
+        let level = FrameFace(rect: Self.centred, yaw: 0, pitch: 0.45)
+        #expect(level.facesCamera(pitchBaseline: 0.45) == true)
+        #expect(level.facesCamera(pitchBaseline: nil) == false, "without a baseline pitch is judged from 0")
+        // More than the limit from the baseline, either way, does not face.
+        #expect(FrameFace(rect: Self.centred, yaw: 0, pitch: 0.85).facesCamera(pitchBaseline: 0.45) == false)
+        #expect(FrameFace(rect: Self.centred, yaw: 0, pitch: 0.05).facesCamera(pitchBaseline: 0.45) == false)
+        #expect(FrameFace(rect: Self.centred, yaw: 0, pitch: 0.75).facesCamera(pitchBaseline: 0.45) == true)
+        // Yaw over the limit does not face, whatever the pitch.
+        #expect(FrameFace(rect: Self.centred, yaw: 0.5, pitch: 0.45).facesCamera(pitchBaseline: 0.45) == false)
+    }
+
+    @Test func thePitchBaselineIsTheMedianPitchOfTheFaces() {
+        func seen(_ pitch: Double?) -> FrameObservation {
+            FrameObservation(time: 0, faceCount: 1, face: FrameFace(rect: Self.centred, yaw: 0, pitch: pitch))
+        }
+        #expect(FrameFace.pitchBaseline([seen(0.1), seen(0.5), seen(0.2)]) == 0.2)
+        #expect(FrameFace.pitchBaseline([seen(0.1), seen(0.3), FrameObservation(time: 1), seen(nil)]) == 0.2)
+        #expect(FrameFace.pitchBaseline([seen(nil), FrameObservation(time: 1)]) == nil)
+        let analysis = FrameAnalysis(contentKey: "k", sentences: [seen(0.1)], opening: [seen(0.3), seen(0.4)], timings: FrameAnalysisTimings())
+        #expect(analysis.pitchBaseline == 0.3)
     }
 
     // MARK: Opening frame
@@ -38,21 +68,21 @@ struct FrameDecisionTests {
         // "Before." ends at 9.6; the clip's first word starts at 10.0. Clear looks at 9.4 and 9.5 lie inside "Before."
         let clip = try #require(Self.clip(previousEnd: 9.6, start: 10.0))
         var scan = Self.scan(from: 9.4, through: 10.6) { time in time < 9.6 || abs(time - 9.8) < 1e-6 }
-        let choice = try #require(OpeningFrame.choose(clip, scan: scan))
+        let choice = try #require(OpeningFrame.choose(clip, scan: scan, pitchBaseline: nil))
         #expect(abs(choice.shift - -0.2) < 1e-9)
         #expect(abs(choice.time - 9.8) < 1e-9)
         #expect(choice.time >= clip.leadInFloor && choice.time <= clip.start)
         // Only frames after the start, or inside the earlier word, are clear: the start stays.
         scan = Self.scan(from: 9.4, through: 10.6) { time in time < 9.6 || time > 10.05 }
-        #expect(OpeningFrame.choose(clip, scan: scan) == nil)
+        #expect(OpeningFrame.choose(clip, scan: scan, pitchBaseline: nil) == nil)
     }
 
     @Test func openingKeepsAClearStartAndLooksNoFurtherBackThanTheScan() throws {
         let clip = try #require(Self.clip(previousEnd: 7.0, start: 10.0))
-        #expect(OpeningFrame.choose(clip, scan: Self.scan(from: 9.4, through: 10.6) { _ in true }) == OpeningFrameChoice(shift: 0, time: 10.0))
+        #expect(OpeningFrame.choose(clip, scan: Self.scan(from: 9.4, through: 10.6) { _ in true }, pitchBaseline: nil) == OpeningFrameChoice(shift: 0, time: 10.0))
         // A clear look 1 s before the start is outside the ±0.6 s scan, even in silence.
-        #expect(OpeningFrame.choose(clip, scan: [Self.frame(9.0, clear: true), Self.frame(10.0, clear: false)]) == nil)
-        let earliest = try #require(OpeningFrame.choose(clip, scan: Self.scan(from: 9.4, through: 10.6) { $0 < 9.95 }))
+        #expect(OpeningFrame.choose(clip, scan: [Self.frame(9.0, clear: true), Self.frame(10.0, clear: false)], pitchBaseline: nil) == nil)
+        let earliest = try #require(OpeningFrame.choose(clip, scan: Self.scan(from: 9.4, through: 10.6) { $0 < 9.95 }, pitchBaseline: nil))
         #expect(abs(earliest.time - 9.4) < 1e-9)
     }
 
@@ -65,18 +95,36 @@ struct FrameDecisionTests {
                                                                         leftEyeAspect: eyes, rightEyeAspect: eyes, yaw: yaw, pitch: 0))
         }
         // The evaluation's false positives: open eyes at 0.386 and 0.385, an earlier frame at 0.438 and 0.416. The start stays.
-        #expect(OpeningFrame.choose(clip, scan: [look(9.6, quality: 0.438), look(10.0, quality: 0.386)]) == nil)
-        #expect(OpeningFrame.choose(clip, scan: [look(9.7, quality: 0.416), look(10.0, quality: 0.385)]) == nil)
+        #expect(OpeningFrame.choose(clip, scan: [look(9.6, quality: 0.438), look(10.0, quality: 0.386)], pitchBaseline: nil) == nil)
+        #expect(OpeningFrame.choose(clip, scan: [look(9.7, quality: 0.416), look(10.0, quality: 0.385)], pitchBaseline: nil) == nil)
         // Clearly better (at least `qualityMargin` above, and good): it moves.
-        let sharper = try #require(OpeningFrame.choose(clip, scan: [look(9.6, quality: 0.55), look(10.0, quality: 0.3)]))
+        let sharper = try #require(OpeningFrame.choose(clip, scan: [look(9.6, quality: 0.55), look(10.0, quality: 0.3)], pitchBaseline: nil))
         #expect(abs(sharper.time - 9.6) < 1e-9)
         // Shut eyes at the start move to an open look even on dim footage (0.3 is above the floor less the margin)...
-        let blink = try #require(OpeningFrame.choose(clip, scan: [look(9.6, quality: 0.3), look(10.0, quality: 0.36, eyes: 0.1)]))
+        let blink = try #require(OpeningFrame.choose(clip, scan: [look(9.6, quality: 0.3), look(10.0, quality: 0.36, eyes: 0.1)], pitchBaseline: nil))
         #expect(abs(blink.time - 9.6) < 1e-9)
         // ...and so does a face turned away, but never to a frame too poor to use.
-        let turned = try #require(OpeningFrame.choose(clip, scan: [look(9.5, quality: 0.33), look(10.0, quality: 0.5, yaw: 0.8)]))
+        let turned = try #require(OpeningFrame.choose(clip, scan: [look(9.5, quality: 0.33), look(10.0, quality: 0.5, yaw: 0.8)], pitchBaseline: nil))
         #expect(abs(turned.time - 9.5) < 1e-9)
-        #expect(OpeningFrame.choose(clip, scan: [look(9.6, quality: 0.2), look(10.0, quality: 0.36, eyes: 0.1)]) == nil)
+        #expect(OpeningFrame.choose(clip, scan: [look(9.6, quality: 0.2), look(10.0, quality: 0.36, eyes: 0.1)], pitchBaseline: nil) == nil)
+    }
+
+    /// Footage shot from below sits at a constant pitch: against its baseline the start is a clear look and stays; a head
+    /// tilted well past it moves the start to a level look in the pause.
+    @Test func openingJudgesPitchAgainstTheRecordingsBaseline() throws {
+        let clip = try #require(Self.clip(previousEnd: 7.0, start: 10.0))
+        func look(_ time: Double, pitch: Double) -> FrameObservation {
+            FrameObservation(time: time, faceCount: 1, face: FrameFace(rect: Self.centred, captureQuality: 0.6,
+                                                                        leftEyeAspect: 0.3, rightEyeAspect: 0.3, yaw: 0, pitch: pitch))
+        }
+        let level = [look(9.6, pitch: 0.45), look(10.0, pitch: 0.45)]
+        #expect(OpeningFrame.choose(clip, scan: level, pitchBaseline: 0.45) == OpeningFrameChoice(shift: 0, time: 10.0))
+        #expect(OpeningFrame.choose(clip, scan: level, pitchBaseline: nil) == nil, "judged from 0 nothing faces")
+        let tilted = try #require(OpeningFrame.choose(clip, scan: [look(9.6, pitch: 0.45), look(10.0, pitch: 0.9)], pitchBaseline: 0.45))
+        #expect(abs(tilted.time - 9.6) < 1e-9)
+        let away = look(10.0, pitch: 0.9)
+        #expect(ClipPicture.openingReason(away, pitchBaseline: 0.45) == "You were looking away on the first frame")
+        #expect(ClipPicture.openingReason(away, pitchBaseline: 0.9) == "The first frame was blurred")
     }
 
     @Test func clipLeadInFloorIsTheEndOfTheItemBeforeItsFirstKeptWord() throws {
@@ -140,18 +188,27 @@ struct FrameDecisionTests {
         let soft = FrameObservation(time: 6, faceCount: 1, face: FrameFace(rect: Self.centred, captureQuality: 0.3, leftEyeAspect: 0.3, rightEyeAspect: 0.3, yaw: 0, pitch: 0))
         let closed = FrameObservation(time: 8, faceCount: 1, face: FrameFace(rect: Self.centred, captureQuality: 0.9, leftEyeAspect: 0.1, rightEyeAspect: 0.1))
         let frames = [offCentre, soft, sharp, closed]
-        #expect(CoverFrame.pick(frames)?.time == 2)
-        let sharpScore = try #require(CoverFrame.score(sharp, neighbours: frames))
-        let offScore = try #require(CoverFrame.score(offCentre, neighbours: frames))
-        let softScore = try #require(CoverFrame.score(soft, neighbours: frames))
+        #expect(CoverFrame.pick(frames, pitchBaseline: nil)?.time == 2)
+        let sharpScore = try #require(CoverFrame.score(sharp, neighbours: frames, pitchBaseline: nil))
+        let offScore = try #require(CoverFrame.score(offCentre, neighbours: frames, pitchBaseline: nil))
+        let softScore = try #require(CoverFrame.score(soft, neighbours: frames, pitchBaseline: nil))
         #expect(sharpScore > offScore && sharpScore > softScore)
-        #expect(CoverFrame.score(closed, neighbours: frames) == nil)
+        #expect(CoverFrame.score(closed, neighbours: frames, pitchBaseline: nil) == nil)
         // The same sharp frame 0.1 s after a closed-eye frame is mid-blink.
         let blink = FrameObservation(time: 1.9, faceCount: 1, face: FrameFace(rect: Self.centred, leftEyeAspect: 0.05, rightEyeAspect: 0.05))
-        #expect(CoverFrame.score(sharp, neighbours: frames + [blink]) == nil)
+        #expect(CoverFrame.score(sharp, neighbours: frames + [blink], pitchBaseline: nil) == nil)
         // Then the soft centred face (0.65) beats the sharp one at the edge (0.64).
-        #expect(CoverFrame.pick(frames + [blink])?.time == 6)
-        #expect(CoverFrame.pick([closed, FrameObservation(time: 9)]) == nil)
+        #expect(CoverFrame.pick(frames + [blink], pitchBaseline: nil)?.time == 6)
+        #expect(CoverFrame.pick([closed, FrameObservation(time: 9)], pitchBaseline: nil) == nil)
+    }
+
+    /// The cover's facing part reads pitch against the recording's baseline: a level face shot from below scores as facing.
+    @Test func coverFacingUsesThePitchBaseline() throws {
+        let low = FrameObservation(time: 2, faceCount: 1, face: FrameFace(rect: Self.centred, captureQuality: 0.6, leftEyeAspect: 0.3,
+                                                                         rightEyeAspect: 0.3, yaw: 0, pitch: 0.45))
+        let level = try #require(CoverFrame.score(low, neighbours: [low], pitchBaseline: 0.45))
+        let judgedFromZero = try #require(CoverFrame.score(low, neighbours: [low], pitchBaseline: nil))
+        #expect(abs(level - judgedFromZero - CoverFrame.facingWeight) < 1e-12)
     }
 
     // MARK: Screens and blur spans
@@ -236,5 +293,47 @@ struct FrameDecisionTests {
 
     static func screen(_ time: Double, _ rect: ClipEffect.Rect) -> FrameObservation {
         FrameObservation(time: time, screens: [FrameScreen(rect: rect, textBoxes: 5, textCoverage: 0.2, framed: true)])
+    }
+}
+
+/// Replays shared/fixtures/clip-frames/face-facing-cases.json (ADR-R48): the recording's typical pitch and facing the
+/// camera from Vision's continuous yaw and pitch. The Windows twin owes the same replay.
+@Suite(.offlineFixtures) struct FaceFacingVectorTests {
+    struct Cases: Decodable {
+        struct Baseline: Decodable { var id: String; var pitches: [Double?]; var expect: Double? }
+        struct Facing: Decodable { var id: String; var yaw: Double?; var pitch: Double?; var pitchBaseline: Double?; var expect: Bool? }
+        var format: String
+        var yawLimit: Double
+        var pitchLimit: Double
+        var baseline: [Baseline]
+        var facing: [Facing]
+    }
+
+    static func cases() throws -> Cases {
+        try JSONDecoder().decode(Cases.self, from: FixtureLoader.data("fixtures/clip-frames/face-facing-cases.json"))
+    }
+
+    @Test func formatIsItsOwnFileAndTheLimitsMatch() throws {
+        let cases = try Self.cases()
+        #expect(cases.format == "voxclip-face-facing-cases/1")
+        #expect(cases.yawLimit == FrameFace.yawLimit && cases.pitchLimit == FrameFace.pitchLimit)
+    }
+
+    @Test func baselinesReplay() throws {
+        let rect = ClipEffect.Rect(x: 0.4, y: 0.3, width: 0.2, height: 0.4)
+        for vector in try Self.cases().baseline {
+            let frames = vector.pitches.enumerated().map { index, pitch in
+                FrameObservation(time: Double(index), faceCount: 1, face: FrameFace(rect: rect, yaw: 0, pitch: pitch))
+            }
+            #expect(FrameFace.pitchBaseline(frames) == vector.expect, "\(vector.id)")
+        }
+    }
+
+    @Test func facingReplays() throws {
+        let rect = ClipEffect.Rect(x: 0.4, y: 0.3, width: 0.2, height: 0.4)
+        for vector in try Self.cases().facing {
+            let face = FrameFace(rect: rect, yaw: vector.yaw, pitch: vector.pitch)
+            #expect(face.facesCamera(pitchBaseline: vector.pitchBaseline) == vector.expect, "\(vector.id)")
+        }
     }
 }

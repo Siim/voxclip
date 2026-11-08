@@ -38,7 +38,9 @@ struct CLIAnalyzeFramesTests {
         let timings = try #require(analysis["timings"] as? [String: Any])
         #expect(timings["analyzedFrames"] as? Int == 15 && timings["cachedFrames"] as? Int == 0)
         let decisions = try #require(output["decisions"] as? [String: Any])
-        #expect(Set(decisions.keys) == ["opening", "cover", "blurSpans", "blurCandidates", "coverCandidates", "crop9x16", "crop1x1"])
+        #expect(Set(decisions.keys) == ["pitchBaseline", "opening", "cover", "blurSpans", "blurCandidates", "coverCandidates", "crop9x16", "crop1x1"])
+        // The counter fixture has no face, so there is no typical pitch to judge facing by.
+        #expect(decisions["pitchBaseline"] is NSNull)
         let sheet = try #require(output["sheet"] as? [String: Any])
         #expect(sheet["frames"] as? Int == 2 && sheet["estimatedImageTokens"] as? Int == 2 * 77)
         let frames = directory.appendingPathComponent("data/Cache/\(contentKey)/frames/analysis-v1.json")
@@ -73,7 +75,7 @@ struct CLIAnalyzeFramesTests {
         let output = try result.json
         let pass = try #require(output["videoPass"] as? [String: Any])
         #expect(pass["read"] as? Bool == true && pass["frames"] as? Int == 2 && pass["analyzed"] as? Int == 2)
-        #expect(pass["clipFrames"] as? Int == 1 && pass["openingFrames"] as? Int == 13)
+        #expect(pass["clipFrames"] as? Int == 1 && pass["openingFrames"] as? Int == 13 && pass["pitchBaseline"] is NSNull)
         #expect((pass["seconds"] as? Double ?? -1) >= 0 && (pass["openingSeconds"] as? Double ?? -1) >= 0)
         // The clip's own analysis then reads the pass's frames from the cache.
         let timings = try #require((output["analysis"] as? [String: Any])?["timings"] as? [String: Any])

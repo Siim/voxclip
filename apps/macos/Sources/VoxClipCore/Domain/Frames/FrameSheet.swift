@@ -19,11 +19,11 @@ public struct FrameSheet: Sendable, Equatable {
     /// The images as the request carries them.
     public var images: [LLMImage] { frames.map(\.image) }
 
-    /// The summary block: a header line, then one line per frame.
-    public var summary: String {
+    /// The summary block: a header line, then one line per frame, facing judged against `pitchBaseline`.
+    public func summary(pitchBaseline: Double?) -> String {
         guard !frames.isEmpty else { return "" }
         let header = "Frames measured on this Mac (one per sentence; rects are x,y,w,h of the picture, top-left origin):"
-        return ([header] + frames.map(\.summaryLine)).joined(separator: "\n")
+        return ([header] + frames.map { $0.summaryLine(pitchBaseline: pitchBaseline) }).joined(separator: "\n")
     }
 
     /// The JPEG bytes the images add to a request (before base64).
@@ -31,7 +31,9 @@ public struct FrameSheet: Sendable, Equatable {
 
     /// The estimated input tokens of the images and of the summary (`AITokenPolicy`'s bytes per token).
     public var estimatedImageTokens: Int { frames.map { Self.imageTokens(width: $0.image.width, height: $0.image.height) }.reduce(0, +) }
-    public var estimatedSummaryTokens: Int { Int(ceil(Double(summary.utf8.count) / 2.2)) }
+    public func estimatedSummaryTokens(pitchBaseline: Double?) -> Int {
+        Int(ceil(Double(summary(pitchBaseline: pitchBaseline).utf8.count) / 2.2))
+    }
 
     public static func imageTokens(width: Int, height: Int) -> Int {
         let pixels = Double(max(0, width)) * Double(max(0, height))
@@ -55,8 +57,9 @@ public struct FrameSheetFrame: Sendable, Equatable {
     /// "Frame 3 at 12.40 s".
     public static func label(index: Int, time: Double) -> String { "Frame \(index) at \(FrameSheetFrame.seconds(time)) s" }
 
-    /// "F3 12.40 s: face at 0.42,0.18,0.20,0.36, eyes open, quality 0.62, facing camera; screen with text at …".
-    public var summaryLine: String {
+    /// "F3 12.40 s: face at 0.42,0.18,0.20,0.36, eyes open, quality 0.62, facing camera; screen with text at …", facing
+    /// judged against `pitchBaseline`.
+    public func summaryLine(pitchBaseline: Double?) -> String {
         var parts: [String] = []
         let frame = observation
         if let face = frame.face {
@@ -65,7 +68,7 @@ public struct FrameSheetFrame: Sendable, Equatable {
             parts.append(facePart)
             parts.append("eyes \(face.eyes.rawValue)")
             if let quality = face.captureQuality { parts.append("quality \(Self.fixed(quality))") }
-            if let facing = face.facesCamera { parts.append(facing ? "facing camera" : "turned away") }
+            if let facing = face.facesCamera(pitchBaseline: pitchBaseline) { parts.append(facing ? "facing camera" : "turned away") }
         } else {
             parts.append("no face")
         }

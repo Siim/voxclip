@@ -46,9 +46,11 @@ public enum ClipPicture {
 
     /// The start moves back (`OpeningFrame.choose`, never across a word) when the first frame of `scan` is not a clear
     /// look and one in the pause before it is. Nil when the start stays: the frame is clear, no frame there is better, or
-    /// the move is under a frame.
-    public static func opening(_ project: Project, clipID: String, scan: [FrameObservation]?) -> (project: Project, opening: Opening)? {
-        guard let scan, let clip = openingClip(project, clipID: clipID), let choice = OpeningFrame.choose(clip, scan: scan), choice.shift < 0,
+    /// the move is under a frame. Facing is judged against `pitchBaseline`, the recording's typical pitch.
+    public static func opening(_ project: Project, clipID: String, scan: [FrameObservation]?,
+                               pitchBaseline: Double?) -> (project: Project, opening: Opening)? {
+        guard let scan, let clip = openingClip(project, clipID: clipID),
+              let choice = OpeningFrame.choose(clip, scan: scan, pitchBaseline: pitchBaseline), choice.shift < 0,
               let range = project.edits.clips.first(where: { $0.id == clipID }) else { return nil }
         let words = clip.words
         let first = clip.first, last = clip.last
@@ -58,15 +60,16 @@ public enum ClipPicture {
               before.start - after.start >= 1.0 / 30, let next = settingLeadIn(lead, clipID: clipID, in: project) else { return nil }
         let current = scan.min { abs($0.time - clip.start) < abs($1.time - clip.start) }
         let opening = Opening(leadIn: lead, previousLeadIn: range.leadInSeconds, earlier: before.start - after.start, start: after.start,
-                              chosen: choice.time, current: current, reason: openingReason(current))
+                              chosen: choice.time, current: current,
+                              reason: openingReason(current, pitchBaseline: pitchBaseline))
         return (next, opening)
     }
 
     /// Why the frame at the clip's start is not a clear look.
-    public static func openingReason(_ frame: FrameObservation?) -> String {
+    public static func openingReason(_ frame: FrameObservation?, pitchBaseline: Double?) -> String {
         guard let face = frame?.face else { return "Your face wasn't in the first frame" }
         if face.eyes == .closed { return "Your eyes were shut on the first frame" }
-        if face.facesCamera == false { return "You were looking away on the first frame" }
+        if face.facesCamera(pitchBaseline: pitchBaseline) == false { return "You were looking away on the first frame" }
         return "The first frame was blurred"
     }
 
@@ -177,8 +180,12 @@ public enum ClipPicture {
         public var opening: [FrameObservation]?
         /// The shapes the clip exports in.
         public var shapes: [AspectRatio]
-        public init(frames: ClipAutopilotFrames, sentences: [FrameObservation], opening: [FrameObservation]?, shapes: [AspectRatio]) {
+        /// The recording's typical pitch (`FrameFace.pitchBaseline` over the whole video's pass) the opening judges facing by.
+        public var pitchBaseline: Double?
+        public init(frames: ClipAutopilotFrames, sentences: [FrameObservation], opening: [FrameObservation]?, shapes: [AspectRatio],
+                    pitchBaseline: Double?) {
             self.frames = frames; self.sentences = sentences; self.opening = opening; self.shapes = shapes
+            self.pitchBaseline = pitchBaseline
         }
     }
 
@@ -193,7 +200,7 @@ public enum ClipPicture {
     /// The opening, the crop, the screens and the cover applied in turn, each on the project the one before left.
     public static func apply(_ plan: ClipAutopilotPlan, clipID: String, to project: Project, inputs: Inputs) -> (project: Project, decisions: Decisions) {
         var next = project
-        let opening = Self.opening(next, clipID: clipID, scan: inputs.opening)
+        let opening = Self.opening(next, clipID: clipID, scan: inputs.opening, pitchBaseline: inputs.pitchBaseline)
         if let opening { next = opening.project }
         let crop = Self.crop(next, clipID: clipID, sentences: inputs.sentences, shapes: inputs.shapes)
         if let crop { next = crop.project }

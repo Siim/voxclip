@@ -50,11 +50,12 @@ public struct ClipAutopilotFrames: Sendable, Equatable {
     }
 
     /// The frames of `sheet` for a clip that plays `clipStart...clipEnd` (source seconds), with the images when `images`.
-    public init(sheet: FrameSheet, clipStart: Double, clipEnd: Double, images: Bool) {
+    /// Facing is judged against `pitchBaseline`, the recording's typical pitch (`FrameFace.pitchBaseline`).
+    public init(sheet: FrameSheet, clipStart: Double, clipEnd: Double, images: Bool, pitchBaseline: Double?) {
         let observations = sheet.frames.map(\.observation)
-        self.init(summary: sheet.summary, images: images ? sheet.images : [],
+        self.init(summary: sheet.summary(pitchBaseline: pitchBaseline), images: images ? sheet.images : [],
                   blur: ClipFrameCandidates.blur(observations, clipStart: clipStart, clipEnd: clipEnd),
-                  cover: ClipFrameCandidates.cover(sheet.frames), frames: sheet.frames,
+                  cover: ClipFrameCandidates.cover(sheet.frames, pitchBaseline: pitchBaseline), frames: sheet.frames,
                   estimatedImageTokens: images ? sheet.estimatedImageTokens : 0)
     }
 
@@ -92,10 +93,10 @@ public enum ClipFrameCandidates {
     }
 
     /// `C1…C3`: the best frames by `CoverFrame.score`, best first; the earlier frame wins a tie.
-    public static func cover(_ frames: [FrameSheetFrame]) -> [ClipAutopilotFrames.CoverCandidate] {
+    public static func cover(_ frames: [FrameSheetFrame], pitchBaseline: Double?) -> [ClipAutopilotFrames.CoverCandidate] {
         let observations = frames.map(\.observation)
         let scored = frames.compactMap { frame -> (FrameSheetFrame, Double)? in
-            CoverFrame.score(frame.observation, neighbours: observations).map { (frame, $0) }
+            CoverFrame.score(frame.observation, neighbours: observations, pitchBaseline: pitchBaseline).map { (frame, $0) }
         }
         let ranked = scored.enumerated().sorted { left, right in
             abs(left.element.1 - right.element.1) > 1e-12 ? left.element.1 > right.element.1 : left.offset < right.offset
