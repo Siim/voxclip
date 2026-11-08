@@ -72,15 +72,13 @@ import VoxClipMedia
 
         let savedConnector = app.settings.values["llm.connector"]
         let savedModel = app.settings.values["llm.model.ollama"]
-        let savedSnap = app.settings.values["llm.clips.snapToLines"]
         let savedOverride = app.connectorOverride
         defer {
             app.settings.values["llm.connector"] = savedConnector; app.settings.values["llm.model.ollama"] = savedModel
-            app.settings.values["llm.clips.snapToLines"] = savedSnap; app.connectorOverride = savedOverride
+            app.connectorOverride = savedOverride
         }
         app.settings.values["llm.connector"] = .string("ollama")
         app.settings.values["llm.model.ollama"] = .string("fixture-local")
-        app.settings.values["llm.clips.snapToLines"] = .bool(false)
         app.connectorOverride = { [words = editor.words] _ in FixtureClipConnector(spans: [(20, 70), (95, 145), (170, 220)], words: words) }
         editor.findClips(); await editor.findTask?.value
         check("Find Clips announces found exactly once through the real action", editor.announcements.filter { $0.hasPrefix("Found ") }.count == 1 && editor.lastAnnouncement == "Found 3 clips.")

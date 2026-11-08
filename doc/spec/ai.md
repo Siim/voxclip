@@ -1084,7 +1084,7 @@ These keys live in the one settings file of architecture §2 (`<data>/settings.j
 | `llm.baseUrl.ollama`, `llm.baseUrl.lmstudio` | URL | catalog `baseUrl` |
 | `llm.cliPath.claude-code`, `llm.cliPath.codex` | path | empty (auto-detect) |
 | `llm.cloudConsent.<connectorId>` | bool | false |
-| `llm.clips.snapToLines` | bool | true |
+| `llm.clips.snapToLines` | bool | true; retired on the Mac (no toggle, not read: Find Clips replies in whole lines); old files keep it |
 | `llm.clips.lastPreset` | preset id | `best` |
 | `llm.tighten.strength` | `light`, `normal`, `strong` | `normal` |
 
@@ -1136,7 +1136,7 @@ Ollama `suggestedModels` appear only as hints when `noModels` applies: "Try `oll
    - Local server: a base URL field, a status line ("Running · 3 models" / "Not running at …"), and **Test**.
    - Apple: an availability line, "Supports: English, German, …" from `supportedLanguages`, and **Test**.
    - CLI: a status line ("Found claude 2.1.309 at ~/.local/bin/claude · Signed in", "Not signed in", "Not found", "Too old"), a **Choose…** path override, a **Sign-in help** sheet (§6.10), and **Test**.
-4. **Clip-finder defaults:** a "Snap clip edges to sentence boundaries" toggle (`llm.clips.snapToLines`).
+4. **Clip-finder defaults:** none on the Mac. The "Snap clip edges to sentence boundaries" toggle (`llm.clips.snapToLines`) is gone: Find Clips replies in whole lines (§11), so its edges are always on sentence boundaries and the toggle changed nothing. The Windows twin removes its own toggle.
 
 Status lines update on pane open and after **Test**. The catalog `label` is plain text with no icons (§7.1 rule 6).
 
@@ -2293,7 +2293,9 @@ and the CLI command.
   connector's highest price) at Anthropic's width × height / 750 tokens per image. The price is charged to the run before
   the send, so plans in flight at once never pass the cap together; a price that does not fit sends the summary only. The
   CLIs (Claude Code, Codex) send on the creator's plan; local and Apple connectors are free and text only.
-- **What is applied** (one step with the run; each row's Undo is its own step; all saved with the project):
+- **What is applied** (one step with the run; each row's Undo is its own step; all saved with the project). One Core
+  apply, `ClipPicture` (VoxClipCore), does the four in this order, each on the project the one before left and each with
+  what it replaced (the row's Undo); Make it postable's rows and `voxclip-cli autopilot` both call it:
   - **Opening.** `OpeningFrame.choose` on the scan. A negative shift is stored as the clip's `leadInSeconds` (schema v4,
     above 0 and at most 0.6 s); `clipTimes` opens the clip that much earlier but never before `clipLeadInFloor` (the item
     before plus its own 0.1 s cut margin), so no sound of the word before comes back. Moving the clip's first word drops it.
@@ -2306,12 +2308,25 @@ and the CLI command.
 - **Export.** `ExportCover.forClip` maps the cover into the render (timeline, then the clip's speed, kept inside the
   video). The exporter renders that frame through the export's own composition (crop, captions and titles as they show),
   writes it as `<export base name>-cover.jpg` beside the video (published with the export's transaction) and embeds the same
-  JPEG as the MP4's iTunes `covr` art in the writer's metadata, which adds no stream. `voxclip-cli export --cover off`
+  JPEG as the MP4's iTunes `covr` art in the writer's metadata (by key space and key, set once the inputs are added;
+  doc/publishing.md §7 for macOS 26), which adds no stream. `voxclip-cli export --cover off`
   writes neither; the JSON names `cover` when written.
 - **CLI.** `voxclip-cli autopilot` runs the pass beside Find Clips and sends each clip's frames (images to Claude Code,
   Codex and an image-capable local server; the summary to an API key, which the CLI has no cap for). `--timings` gains
   `frames` (the whole pass) and `opening` per clip; each clip's JSON gains `frames` (sent, images, imageTokens, the blurred
-  spans and the cover time). It does not apply the picture decisions yet.
+  spans and the cover time). After the plan's own edits it applies the picture decisions through `ClipPicture` for the
+  `--aspect` it exports (the crop only for 9:16 and 1:1), so the saved `autopilot.voxclip` holds what the app's rows would
+  apply, and every export writes the cover beside itself and embeds it. A text-only connector blurs nothing. Each clip's
+  JSON gains `picture`, with Claude's reasons from the reply (about the creator's own footage; they stay on the Mac):
+  - `opening`: `shift` (seconds, 0 or negative), `reason` (measured on the Mac: "Your eyes were shut on the first
+    frame"…, null when the start stays), and when it moved `leadIn`, `start` and `frame`;
+  - `crop`: `aspect`, `faceFound`, `center` `{x, y}` (null without a face); null for 16:9;
+  - `blur`: per screen `id`, `start`, `end`, `blurred` and Claude's `reason` (null when the reply gave none);
+  - `cover`: `id`, `time`, `fallback` (true when the local best was taken) and Claude's `reason` (null on a fallback);
+    null without cover candidates.
+
+  The project keeps no new fields for the reasons: Make it postable doesn't store them either (only the caption pick's
+  reason is saved), so they live in the JSON and the review rows.
 - **Measured** (release build, the user's files read locally, nothing kept): the whole pass over a 348 s 1080p H.264
   recording, 32 sentence frames, 0.58 s; 202 frames (the 29-minute shape) 2.07 s; a 52.7 s 4K HEVC file, 11 frames 0.43 s,
   115 frames 2.73 s (about 5–8 s for 200 4K frames). A clip's frames from the pass in 1–3 ms; its opening scan 0.08–0.54 s.

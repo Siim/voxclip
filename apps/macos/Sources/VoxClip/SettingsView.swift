@@ -157,7 +157,6 @@ extension AppModel {
                     else { ProviderKeyRow(provider: provider.id, label: provider.label, app: app) }
                     if let result { Text(result).font(.caption).foregroundStyle(.secondary) }
                 }
-                Toggle("Snap clip edges to sentence boundaries", isOn: app.boolBinding("llm.clips.snapToLines", fallback: true))
             }
             Section("Your API keys") {
                 ForEach(app.providers.filter { $0.group == "apiKey" }) { provider in ProviderKeyRow(provider: provider.id, label: provider.label, app: app) }

@@ -476,7 +476,7 @@ import VoxClipCore
     static func sidebarWindow(app: AppModel, project: Project, directory: URL) async throws -> [DebugUISuite.Result] {
         var results: [DebugUISuite.Result] = []
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
-        let keys = ["llm.connector", "llm.model.ollama", "llm.clips.snapToLines"]
+        let keys = ["llm.connector", "llm.model.ollama"]
         let saved = keys.map { app.settings.values[$0] }
         defer { app.connectorOverride = nil; for (key, value) in zip(keys, saved) { app.settings.values[key] = value } }
         let shell = WorkspaceShell(app: app)
@@ -558,7 +558,6 @@ import VoxClipCore
         // Find Clips focuses its first new suggestion; the list takes keyboard focus.
         app.settings.values["llm.connector"] = .string("ollama")
         app.settings.values["llm.model.ollama"] = .string("fixture-local")
-        app.settings.values["llm.clips.snapToLines"] = .bool(false)
         app.connectorOverride = { [words = editor.words] _ in FixtureClipConnector(spans: [(20, 70), (95, 145)], words: words) }
         editor.findClips()
         await editor.findTask?.value
@@ -888,7 +887,7 @@ import VoxClipCore
                 try await DebugUISuite.snapshot(ExplorerRowsPreview(shell: shell).environment(app), name: "\(name)-\(suffix)", size: NSSize(width: 252, height: 520), appearance: appearance, directory: directory, active: true)
             }
         }
-        let keys = ["llm.connector", "llm.model.ollama", "llm.clips.snapToLines"]
+        let keys = ["llm.connector", "llm.model.ollama"]
         let saved = keys.map { app.settings.values[$0] }
         defer { app.connectorOverride = nil; for (key, value) in zip(keys, saved) { app.settings.values[key] = value } }
         var bare = try fiveQuestions(from: fixture)
@@ -910,7 +909,6 @@ import VoxClipCore
 
         app.settings.values["llm.connector"] = .string("ollama")
         app.settings.values["llm.model.ollama"] = .string("fixture-local")
-        app.settings.values["llm.clips.snapToLines"] = .bool(false)
         model.requestFindClips(from: .sidebar)
         check("with a connector, Find Clips opens the popover at the sidebar action", model.showFindClips && model.findClipsAnchor == .sidebar && !model.showAISetup)
         model.showFindClips = false

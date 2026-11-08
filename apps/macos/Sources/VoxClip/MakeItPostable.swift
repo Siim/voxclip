@@ -997,15 +997,15 @@ extension EditorModel {
             if next != project { replace(next, name: name) }
             return true
         case .leadIn(let clipID, let previous):
-            guard let next = makeItSettingLeadIn(previous, clipID: clipID, in: project) else { return false }
+            guard let next = ClipPicture.settingLeadIn(previous, clipID: clipID, in: project) else { return false }
             if next != project { replace(next, name: name) }
             return true
         case .reframe(let clipID, let previous):
-            guard let next = makeItSettingControls(clipID, in: project, { $0.reframe = previous }) else { return false }
+            guard let next = ClipPicture.settingControls(clipID, in: project, { $0.reframe = previous }) else { return false }
             if next != project { replace(next, name: name) }
             return true
         case .cover(let clipID, let previous):
-            guard let next = makeItSettingControls(clipID, in: project, { $0.coverSeconds = previous }) else { return false }
+            guard let next = ClipPicture.settingControls(clipID, in: project, { $0.coverSeconds = previous }) else { return false }
             if next != project { replace(next, name: name) }
             return true
         }

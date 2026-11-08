@@ -8,7 +8,9 @@ import VoxClipMedia
 /// once (at most three in flight) and apply and export each one as soon as its plan is ready. Paid steps never run here:
 /// rewrites in the creator's voice and music are left for the app and listed as pending. The whole video's sentence-frame
 /// pass (ADR-R48 part 2) runs beside Find Clips, and each plan request carries its clip's frames: small images to an AI on
-/// your plan that takes them, a text summary otherwise (the CLI has no spend cap, so an API key gets the summary).
+/// your plan that takes them, a text summary otherwise (the CLI has no spend cap, so an API key gets the summary). Each
+/// clip then gets the picture decisions Make it postable applies (`ClipPicture`): the opening, the face-follow crop for
+/// 9:16 and 1:1, the screens Claude chose to blur and the cover, which every export writes beside itself and embeds.
 struct Autopilot: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Make the top clips of a video postable, as Claude mode does, and time each stage.",
@@ -99,10 +101,12 @@ extension CLIWorkflow {
         let main = connector(id, catalog: catalog)
         let frames = framePass(project: project, source: source, report: report)
         let images = (id == .claudeCode || id == .codex || id == .appleFoundation || id == .ollama || id == .lmstudio) ? await main.supportsImages() : false
-        guard let preset = ClipPresetID(rawValue: options.preset) else { throw ValidationError("Unknown clip preset") }
+        guard let preset = ClipPresetID(rawValue: options.preset), let aspect = AspectRatio(rawValue: options.aspect) else {
+            throw ValidationError("Unknown clip preset or aspect")
+        }
         let made = try await autopilot(project: project, connector: main, lanes: lanes, model: model,
                                        preset: preset, count: options.count, shared: shared, catalog: catalog, clock: clock,
-                                       report: report, frames: frames, images: images) { project, clip, rank in
+                                       report: report, frames: frames, images: images, shapes: [aspect]) { project, clip, rank in
             guard let outDir else { return [] }
             return try await exportClip(project, clip: clip, rank: rank, outDir: outDir, aspect: options.aspect, quiet: options.quiet, clock: clock)
         }
@@ -126,10 +130,11 @@ extension CLIWorkflow {
     /// Find Clips, then the top `count` clips planned at once on `connector` and `lanes`, each applied (and handed to
     /// `export`) the moment its plan is ready, one at a time. Rewrites and music stay pending. `frames` starts as Find Clips
     /// does and never waits for it; each clip's request takes its frames from the pass (`images` sends them as pictures,
-    /// else as a text summary) and starts its opening scan beside the request.
+    /// else as a text summary) and starts its opening scan beside the request. A clip whose request carried frames gets
+    /// the picture decisions for `shapes` (`ClipPicture.apply`) after the plan's own edits, and its JSON a `picture`.
     static func autopilot(project start: Project, connector: any LLMConnector, lanes: [any LLMConnector], model: String, preset: ClipPresetID,
                           count: Int, shared: SharedResources, catalog: LLMCatalog, clock: ClaudeModeClock, report: AutopilotReport,
-                          frames: VideoFramePass? = nil, images: Bool = false,
+                          frames: VideoFramePass? = nil, images: Bool = false, shapes: [AspectRatio] = [.portrait],
                           export: (_ project: Project, _ clipID: String, _ rank: Int) async throws -> [String]) async throws
         -> (clips: [JSONValue], found: Int, model: String, project: Project) {
         guard let transcript = start.transcript else { throw VoxClipError.noSpeech }
@@ -185,6 +190,16 @@ extension CLIWorkflow {
                 let operations = try ClipAutopilotMapping.operations(for: plan, clipID: clipID, project: project, fonts: fonts)
                 let applied = try ClipAutopilotMapping.apply(operations, to: project)
                 project = applied.project
+                // What the picture showed (ADR-R48): the same four decisions as Make it postable's rows.
+                var picture: ClipPicture.Decisions?
+                if let frames, let shown = sent.record(index) {
+                    var scan: [FrameObservation]?
+                    if let clip = ClipPicture.openingClip(project, clipID: clipID) { scan = await frames.opening(for: clip) }
+                    let inputs = ClipPicture.Inputs(frames: shown.frames, sentences: shown.sentences, opening: scan, shapes: shapes)
+                    let decided = ClipPicture.apply(plan, clipID: clipID, to: project, inputs: inputs)
+                    project = decided.project
+                    picture = decided.decisions
+                }
                 clock.record(.apply, clip: index + 1, since: applyStart)
                 report.line("Clip \(index + 1) ready: score \(plan.score)/10.")
                 let outputs = try await export(project, clipID, index + 1)
@@ -192,7 +207,10 @@ extension CLIWorkflow {
                     "score": .number(Double(plan.score)), "verdict": .string(plan.verdict.rawValue),
                     "startWordId": .string(transcript.words[plan.startWord].id), "endWordId": .string(transcript.words[plan.endWord].id),
                     "pending": .array(applied.pending.map { .string($0.decision.rawValue) }), "outputs": .array(outputs.map(JSONValue.string))]
-                if let shown = sent.frames(index) { fields["frames"] = Self.framesJSON(shown, plan: plan) }
+                if let shown = sent.record(index) {
+                    fields["frames"] = Self.framesJSON(shown.frames, plan: plan)
+                    if let picture { fields["picture"] = Self.pictureJSON(picture, sentences: shown.sentences, shapes: shapes) }
+                }
                 clips[index] = .object(fields)
             }
         } onCancel: { planning.cancel() }
@@ -218,7 +236,7 @@ extension CLIWorkflow {
                 clock.end(.opening, clip: index + 1)
             }
             let frames = ClipAutopilotFrames(sheet: found.sheet, clipStart: clip.start, clipEnd: clip.end, images: images)
-            sent.record(index, frames, opening: opening)
+            sent.record(index, ClipFramesSent.Record(frames: frames, sentences: found.sentences, opening: opening))
             return frames
         }
     }
@@ -232,6 +250,33 @@ extension CLIWorkflow {
         return .object(["sent": .number(Double(frames.frames.count)), "images": .bool(frames.sendsImages),
                         "imageTokens": .number(Double(frames.sendsImages ? frames.estimatedImageTokens : 0)),
                         "blur": .array(blurred), "cover": cover.map { .number($0.time) } ?? .null])
+    }
+
+    /// What the picture decisions came to, with Claude's reasons from the reply (about the creator's own footage; they stay
+    /// on this Mac): the opening's shift and why, the crop's centre and whether a face was measured, each screen's span and
+    /// whether it is blurred, and the cover's time. Reasons are null where the reply gave none (or the cover fell back).
+    static func pictureJSON(_ picture: ClipPicture.Decisions, sentences: [FrameObservation], shapes: [AspectRatio]) -> JSONValue {
+        func reason(_ text: String?) -> JSONValue { text.map(JSONValue.string) ?? .null }
+        let opening: JSONValue = picture.opening.map { opening in
+            .object(["shift": .number(-opening.earlier), "leadIn": .number(opening.leadIn), "start": .number(opening.start),
+                     "frame": .number(opening.chosen), "reason": .string(opening.reason)])
+        } ?? .object(["shift": .number(0), "reason": .null])
+        let crop: JSONValue
+        if let shape = shapes.first(where: { $0 == .portrait || $0 == .square }) {
+            let center: JSONValue = picture.crop.map { .object(["x": .number($0.centerX), "y": .number($0.centerY)]) } ?? .null
+            crop = .object(["aspect": .string(shape.rawValue), "faceFound": .bool(sentences.contains { $0.face != nil }), "center": center])
+        } else {
+            crop = .null
+        }
+        let blur: [JSONValue] = picture.blurs.map { screen in
+            .object(["id": .string(screen.candidate.id), "start": .number(screen.candidate.start), "end": .number(screen.candidate.end),
+                     "blurred": .bool(screen.blurred), "reason": reason(screen.reason)])
+        }
+        let cover: JSONValue = picture.cover.map { cover in
+            .object(["id": .string(cover.candidate.id), "time": .number(cover.candidate.time), "fallback": .bool(!cover.named),
+                     "reason": reason(cover.reason)])
+        } ?? .null
+        return .object(["opening": opening, "crop": crop, "blur": .array(blur), "cover": cover])
     }
 
     /// One clip in the clip style's caption look, through the export command's own path.
@@ -250,9 +295,17 @@ extension CLIWorkflow {
 
 /// The frames each clip's request carried, by clip index.
 final class ClipFramesSent: Sendable {
-    private let sent = Mutex<[Int: (frames: ClipAutopilotFrames, opening: Task<Void, Never>)]>([:])
-    func record(_ index: Int, _ frames: ClipAutopilotFrames, opening: Task<Void, Never>) { sent.withLock { $0[index] = (frames, opening) } }
-    func frames(_ index: Int) -> ClipAutopilotFrames? { sent.withLock { $0[index]?.frames } }
+    struct Record: Sendable {
+        /// As sent: with images, or the text summary only.
+        var frames: ClipAutopilotFrames
+        /// The clip's sentence frames (the faces the crop follows).
+        var sentences: [FrameObservation]
+        /// The opening scan started beside the request.
+        var opening: Task<Void, Never>
+    }
+    private let sent = Mutex<[Int: Record]>([:])
+    func record(_ index: Int, _ record: Record) { sent.withLock { $0[index] = record } }
+    func record(_ index: Int) -> Record? { sent.withLock { $0[index] } }
     func opening(_ index: Int) -> Task<Void, Never>? { sent.withLock { $0[index]?.opening } }
 }
 

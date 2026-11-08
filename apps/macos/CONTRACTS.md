@@ -1,5 +1,56 @@
 # macOS implementation contracts
 
+### 2026-11-08 — The headless autopilot applies the picture decisions and keeps Claude's reasons; macOS 26 cover art probe; the Snap toggle removed (track/v2-autopilot-picture)
+
+`voxclip-cli autopilot` sent frames but applied nothing Claude decided from them, and kept no reasons (the lead's live run, 2026-11-08). It now applies the picture rows as Make it postable does, and its JSON says what was decided and why.
+
+- **Core, `ClipPicture`** (new, `Domain/Frames/ClipPicture.swift`). One apply for the four picture decisions, each on the project the one before left and each keeping what it replaced (the row's Undo):
+  - `opening(_:clipID:scan:)` (after `openingClip`), with `Opening` (leadIn, previousLeadIn, earlier, start, chosen, current, reason);
+  - `crop(_:clipID:sentences:shapes:)`, with `Crop` (centre, previous, shape);
+  - `blurs(_:clipID:frames:plan:applying:)`, with `Blur` (candidate, effectID, blurred, applied, decision, reason);
+  - `cover(_:clipID:frames:plan:)`, with `Cover` (candidate, named, reason, previous);
+  - `apply(_:clipID:to:inputs:)` runs all four.
+  - Moved here from the app: `settingLeadIn`, `settingControls`, `blurEffect`, `blurEffectID`, `screenName`, `openingReason`, `sourceAspect`, and the row ids.
+- **App.** `makeItPictureRows` and its four row builders, `makeItToggleScreen` and the undo inverses call `ClipPicture`. Row text, order, Undo and thumbnails are unchanged. Deleted: `EditorModel.makeItSettingLeadIn`, `makeItSettingControls`, `makeItBlurEffect`, `makeItBlurEffectID`, `openingReason` and `screenName`, and `FrameAnalyzerAspect`.
+- **CLI.**
+  - `ClipFramesSent.Record` keeps each clip's sentence frames.
+  - After `ClipAutopilotMapping.apply`, a clip whose request carried frames gets `ClipPicture.apply` for `--aspect` (`shapes:`). The opening scan is of the clip as the plan leaves it, as in the app. The crop applies only for 9:16 and 1:1. A text-only connector blurs nothing.
+  - The cover reaches every export through the export command's own path: the JPEG beside the video and embedded.
+  - Each clip's JSON gains `picture`:
+    - `opening`: shift, reason, and leadIn, start and frame when it moved;
+    - `crop`: aspect, faceFound and center, or null for 16:9;
+    - `blur`: id, start, end, blurred and Claude's reason;
+    - `cover`: id, time, fallback and Claude's reason.
+  - `frames` is unchanged. No project field was added: Make it postable stores no picture reasons (ai.md §19.6).
+- **Cover art on macOS 26 (still open, probe added).**
+  - `AVExporter.coverArt` now names `keySpace = .iTunes` and the `covr` key, and the writer takes the metadata after its inputs are added.
+  - `CoverArtWriteVariantsTests` writes a one-second MP4 per candidate and prints `cover-art-variant: macOS <v>: <variant>: embedded|missing|…`. It fails only when the exporter's write doesn't embed on macOS 27. All 13 variants and the exporter's write embed on macOS 27.0.1.
+  - The candidates: identifier or key form; JPEG, raw-data or no data type; metadata before or after the inputs; network optimisation off; the exporter's timescale and temporary directory; `AVAssetExportSession` passthrough.
+  - `ClipCoverExportTests` is unchanged: strict on 27, a known issue on 26 (doc/publishing.md §7).
+- **Settings.** The "Snap clip edges to sentence boundaries" toggle is gone. Find Clips uses `ClipFinderRequest`'s default `snap: true`. Old settings files with `llm.clips.snapToLines` load without error, and the key is kept on save, as with every key the app doesn't use. Its default and bool check stay because the shared schema and Windows still list it. The debug scenes no longer set it. The Windows twin removes its own toggle; the shared schema was not changed.
+- **Tests.**
+  - Media `CLIAutopilotPictureTests` (3), over speech-bursts.mov with a stub connector and a stub analyzer:
+    - the lead-in 0.6, the crop `.face(0.4, 0.5)`, the B1 blur and the cover, saved and reloaded;
+    - the JSON `picture` with Claude's reasons;
+    - the export's JPEG beside it and the same JPEG as the art (macOS 27; a known issue on 26);
+    - no images, so no blur and `blurred: false`;
+    - no face, so `faceFound: false` and center null;
+    - 16:9, so crop null.
+  - App `theCLIsSavedProjectOpensWithTheSameRows`: the CLI's steps (mapping, then `ClipPicture.apply`), saved and opened in an `EditorModel`, hold the app run's lead-in, crop, cover and blur. The decisions map to the run's row ids in order, and the opened editor's screen row reads as the run's.
+  - Core `SnapToLinesSettingTests` (3) and App `SettingsSnapToggleTests` (1).
+  - Red without each rule: with the CLI's `ClipPicture` result dropped, the picture tests fail (5 issues: lead-in, crop, blur, lead-in and cover in the text-only case). `SettingsSnapToggleTests` fails on the old SettingsView.
+- **Verification** (`VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`):
+  - Core 1,466 passed (2 known issues). App 1,031 passed.
+  - Media 612 tests, 611 passed. `freezeHoldsThePictureAndTheVoicePlaysOn` missed once in the full suite and passed 3 of 3 alone; it's untouched here.
+  - `rewrite-smoke.sh`: PASSED, 83 scenarios.
+  - The strict cooperative-pool runs: `LIBDISPATCH_COOPERATIVE_POOL_STRICT=1` on the three picture tests, `CoverArtWriteVariantsTests`, `CLIAutopilotTests`, the three cover and crop export tests, `MakeItFramesTests` and both settings suites, all passed.
+  - Both `check_drift.py` scripts pass and the tree is clean. The CHANGELOG check passes. `-warn-long-expression-type-checking=250`: nothing flagged in a file this package touches.
+- **Owed.**
+  - The macOS 26 reading of `CoverArtWriteVariantsTests` from hosted CI. Then the lead decides whether `ClipCoverExportTests` (and the picture test's art check) becomes strict on 26.
+  - The live check on a real recording.
+  - No real-window gate was run. Only the Settings page lost a row; its window wasn't opened.
+- **Next package must know.** Apply picture decisions only through `ClipPicture`. The CLI's `picture` reasons exist only in the JSON and the app's review rows, not in the project. `llm.clips.snapToLines` is read by nothing on the Mac.
+
 ### 2026-11-08 — Lead: live image sends through Claude Code and Codex; Vision off the cooperative pool; macOS 26 cover art
 
 - **Live image sends (owed by track/v2-eyes-1, done).** The release CLI's `voxclip-cli autopilot --count 1 --timings` ran at `8c2e1221` on a 52 s 4K DJI recording, read-only, through the user's own plans. The scratch was deleted afterwards.

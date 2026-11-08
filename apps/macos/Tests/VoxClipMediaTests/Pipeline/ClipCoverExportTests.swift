@@ -210,10 +210,9 @@ private func counterFrame(_ image: CGImage) -> Int? {
     return value
 }
 
-/// The MP4's iTunes cover art, or nil.
 /// The JPEG inside the file's iTunes `covr` atom (its `data` atom's payload after the 8-byte type and locale), read from
 /// the bytes: AVFoundation's iTunes metadata read returned nothing on the macOS 26 CI runner for a file macOS 27 reads.
-private func coverArt(_ video: URL) async throws -> Data? {
+func coverArt(_ video: URL) async throws -> Data? {
     let bytes = try Data(contentsOf: video)
     func size(at index: Int) -> Int { bytes[index..<index + 4].reduce(0) { $0 << 8 | Int($1) } }
     // The four letters can occur by chance in coded media, so only a `covr` whose first child is a `data` atom counts.

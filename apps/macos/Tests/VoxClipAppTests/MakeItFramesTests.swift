@@ -178,6 +178,50 @@ final class SentFrames: Sendable {
         #expect(try ProjectJSON.encode(editor.project) == ProjectJSON.encode(before), "the row's Undo is one step of its own")
     }
 
+    /// `voxclip-cli autopilot`'s apply (the plan's edits through `ClipAutopilotMapping`, then `ClipPicture.apply`), saved and
+    /// opened in the App model, holds what Make it postable's picture rows applied, and its rows read the same from it.
+    @Test func theCLIsSavedProjectOpensWithTheSameRows() async throws {
+        let fixture = try fixture()
+        defer { close(fixture) }
+        let original = fixture.editor.project
+        let run = try await run(fixture)
+        let record = try #require(run.frames)
+        let pass = try #require(fixture.editor.makeIt.framePass)
+        // The CLI's steps, on the project as it was before the run.
+        let plan = Self.plan()
+        let fonts = try ClipAutopilotFonts.load(shared: try SharedResources.locate())
+        let operations = try ClipAutopilotMapping.operations(for: plan, clipID: "clip-main", project: original, fonts: fonts)
+        let edited = try ClipAutopilotMapping.apply(operations, to: original).project
+        let clip = try #require(ClipPicture.openingClip(edited, clipID: "clip-main"))
+        let inputs = ClipPicture.Inputs(frames: record.sent, sentences: record.sentences, opening: await pass.opening(for: clip),
+                                        shapes: fixture.editor.makeItStyle.shapes)
+        let headless = ClipPicture.apply(plan, clipID: "clip-main", to: edited, inputs: inputs)
+        let url = fixture.root.appendingPathComponent("autopilot.voxclip")
+        try await JSONProjectStore().save(headless.project, to: url)
+        let opened = EditorModel(document: VoxClipDocument(project: try await JSONProjectStore().load(from: url), demo: true),
+                                 app: fixture.editor.app, preview: DemoPreviewEngine())
+        defer { opened.close() }
+        // The app's project as a save reads it back (an effect's `track` decodes as []), beside the CLI's.
+        let app = try ProjectJSON.decode(ProjectJSON.encode(fixture.editor.project)), cli = opened.project
+        // The four decisions, field by field.
+        #expect(cli.edits.clips.first { $0.id == "clip-main" }?.leadInSeconds == app.edits.clips.first { $0.id == "clip-main" }?.leadInSeconds)
+        let appControls = ClipControlsProject.controls(for: "clip-main", in: app), cliControls = ClipControlsProject.controls(for: "clip-main", in: cli)
+        #expect(cliControls?.reframe == appControls?.reframe && cliControls?.reframe != nil)
+        #expect(cliControls?.coverSeconds == appControls?.coverSeconds && cliControls?.coverSeconds != nil)
+        #expect(cli.clipEffects.filter { $0.kind == .blur } == app.clipEffects.filter { $0.kind == .blur } && cli.clipEffects.contains { $0.kind == .blur })
+        // The same rows, in the same order, and each one undoes the same field (its record keeps what it replaced).
+        let decisions = headless.decisions
+        let rows = [decisions.opening.map { _ in ClipPicture.openingRowID }, decisions.crop.map { _ in ClipPicture.cropRowID }].compactMap { $0 }
+            + decisions.blurs.map { ClipPicture.blurRowID($0.candidate.id) } + [decisions.cover.map { _ in ClipPicture.coverRowID }].compactMap { $0 }
+        #expect(rows == run.rows.prefix(4).map(\.id))
+        #expect(decisions.opening?.previousLeadIn == nil && decisions.crop?.previous == nil && decisions.cover?.previous == nil)
+        #expect(decisions.blurs.allSatisfy { $0.applied })
+        // Opened in the app, the screen's row reads as the run's does: the blurred phone screen at the same time, with Claude's reason.
+        let screens = opened.makeItScreenRows(record, plan: plan, run: MakeItRun(clipID: "clip-main", cap: nil), applying: false)
+        let shown = try #require(run.rows.first { $0.id == ClipPicture.blurRowID("B1") })
+        #expect(screens.map(\.text) == [shown.text] && screens.map(\.detail) == [shown.detail])
+    }
+
     @Test func theOpeningNeverReachesTheWordBefore() async throws {
         // "today" now ends at 2.3 s, inside the opening scan: its frames are clear looks too, but the start stays after it.
         let fixture = try fixture { words in words[2].end = 2.3 }

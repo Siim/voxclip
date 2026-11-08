@@ -33,6 +33,8 @@ extension SettingsDocument {
     /// default: missing is medium.
     public static let layoutChoices: [String: [String]] = ["ui.layout.trackHeight": ["small", "medium", "large"]]
 
+    /// `llm.clips.snapToLines` stays (the shared schema and Windows still list it) so old files keep their bool check, but
+    /// nothing reads it: Find Clips replies in whole lines, so its edges are always on sentence boundaries.
     public static let defaults: [String: JSONValue] = [
         "general.appearance": .string("system"), "general.transcriptTextSize": .null, "ui.rightColumnWidth": .null,
         "general.showLowConfidence": .bool(false), "general.showPlaceholderWords": .bool(true), "general.openLastProject": .bool(false), "general.recentProjects": .array([]),
