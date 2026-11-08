@@ -16,6 +16,9 @@ import VoxClipMedia
 // - S-revoice-whole-upgrade: Review's Sharper Lip Sync · sync-3 re-runs only the lip sync and Use saves sync-3.
 // - S-revoice-whole-cuts: the same clip with a cut "um" before each of its later sentences (voice-lab §8.14 item 3): the
 //   parts tile the clip, so a filler before a part's first word is absorbed and the run reaches Review and Use (WK1).
+// - S-revoice-whole-midtake: the clip opens mid-take on a word touching the one before it, with no silence (voice-lab §8.4,
+//   a clip's own edges): the first part's hard seam is the clip's output edge, the run reaches Review and Use, and the full
+//   take renders the clip's segments too (WM1, WM2).
 
 extension DebugRewriteSmoke {
     /// Five of the eight sentences said differently: well over 40% of the clip's words.
@@ -48,6 +51,17 @@ extension DebugRewriteSmoke {
         return fixture
     }
 
+    /// The whole-clip clip opening mid-take: "And so" comes before it, and "so" ends exactly where the clip's first word
+    /// starts, as Whisper's back-to-back word ends do, so no seam can sit in a silence before the clip.
+    private static func wholeClipMidTakeFixture() -> Fixture {
+        var fixture = wholeClipFixture()
+        fixture.script = "And so " + fixture.script
+        fixture.firstWord = 2
+        fixture.lastWord = (fixture.lastWord ?? 0) + 2
+        fixture.touchingAfter = 1
+        return fixture
+    }
+
     static var wholeClipScenarios: [Definition] { [
         Definition(id: "S-revoice-whole", title: "a heavily rewritten clip: How should it sound? → Revoice Whole Clip → Review → Use, one undo step, saved",
                    requiresCompletion: false, fixture: wholeClipFixture()) { harness in
@@ -56,6 +70,10 @@ extension DebugRewriteSmoke {
         Definition(id: "S-revoice-whole-cuts", title: "a rewritten clip with a cut filler before each sentence: the parts tile the clip and reach Review",
                    requiresCompletion: false, fixture: wholeClipCutsFixture()) { harness in
             try await harness.revoiceWholeClip(cuts: true)
+        },
+        Definition(id: "S-revoice-whole-midtake", title: "a rewritten clip that opens mid-take on a word touching the one before it: Review and Use",
+                   requiresCompletion: false, fixture: wholeClipMidTakeFixture()) { harness in
+            try await harness.revoiceWholeClip(midTake: true)
         },
         Definition(id: "S-revoice-whole-claude", title: "✦ Claude does it all revoices a stitched clip whole within the cap, with no click",
                    requiresCompletion: false, fixture: wholeClipFixture()) { harness in
@@ -179,7 +197,8 @@ extension DebugRewriteSmoke.Harness {
     }
 
     /// W3: Use Whole Clip as one undo step with the record; the stage tag, the disclosure, save and reopen; Undo.
-    private func useAndCheck(_ session: RewriteSession, _ whole: WholeClipRevoiceSession, model: WholeClipRevoice.Lipsync) async throws {
+    private func useAndCheck(_ session: RewriteSession, _ whole: WholeClipRevoiceSession, model: WholeClipRevoice.Lipsync,
+                             fullTake: Bool = false) async throws {
         guard let editor else { return }
         let steps = editor.undoSteps
         try await act("click [Use Whole Clip]", clicked: "wholeClipUse") {
@@ -197,6 +216,7 @@ extension DebugRewriteSmoke.Harness {
                 && prepared?.disclosure.postText == WholeClipRevoice.disclosureLine,
             phaseText(whole) + " · undo steps +\(editor.undoSteps - steps) · record \(record.map { "\($0.segmentIds.count) segments, \($0.lipsyncModel), retime \($0.videoRetime)" } ?? "none")"
                 + " · reopened \(reopened?.voiceLab.wholeClipRevoices?.count ?? 0) same \(reopenedSame) · stage \(stage) · post text \(prepared?.disclosure.postText ?? "none")")])
+        if fullTake { checkFullTake(project, record: record) }
         // The step list's Undo (Claude mode), as one undo step: the record goes and its segments are off.
         if let record { editor.removeWholeClip(record) }
         let undone = editor.project.voiceLab.wholeClipRevoices == nil && record.map { record in
@@ -205,7 +225,39 @@ extension DebugRewriteSmoke.Harness {
         completed = record != nil; ended = true
     }
 
-    func revoiceWholeClip(cuts: Bool = false) async throws {
+    /// WM1: the clip opens on a word that touches the one before it, and the first part's window opens the clip with a hard
+    /// seam at the clip's own start.
+    private func checkMidTakeEdge(_ session: RewriteSession, _ whole: WholeClipRevoiceSession) {
+        guard let project = editor?.project, let words = project.transcript?.words, let clip = project.edits.clips.first,
+              let index = words.firstIndex(where: { $0.id == clip.startWordId }), index > 0 else {
+            makeItAppend([wholeClipCheck("WM1", false, "no clip opening mid-take")])
+            return
+        }
+        let windows = session.wholeClipPlan?.phrases.map(\.window) ?? []
+        let first = windows.min { $0.startSample < $1.startSample }
+        let touching = words[index - 1].end == words[index].start
+        let seam = first.map { "\($0.leftSeam.kind) at \($0.leftSeam.time)" } ?? "none"
+        makeItAppend([wholeClipCheck("WM1", touching && first?.leftSeam.kind == .hard && first?.start == words[index].start
+                && whole.phase == .review,
+            "\(words[index - 1].text) ends \(words[index - 1].end), \(words[index].text) starts \(words[index].start) · \(windows.count) windows · first seam \(seam) · \(phaseText(whole))")])
+    }
+
+    /// WM2: the full take renders the used clip's segments, with the source before the clip beside the opening seam.
+    private func checkFullTake(_ project: Project, record: WholeClipRevoiceRecord?) {
+        let prepared = Result { try VoiceLabRenderContract.prepare(project, scope: .full, labelPosition: .topRight) }
+        let ids = Set(record?.segmentIds ?? [])
+        let pieces = (try? prepared.get())?.outputPlan.pieces ?? []
+        let opening = pieces.firstIndex { ids.contains($0.segmentId ?? "") }
+        let besideSource = opening.map { $0 > 0 && pieces[$0 - 1].kind == .source } ?? false
+        let detail: String
+        switch prepared {
+        case .success: detail = "full take prepares · \(pieces.count) pieces · source before the clip \(besideSource)"
+        case .failure(let error): detail = "full take refused: \(error)"
+        }
+        makeItAppend([wholeClipCheck("WM2", (try? prepared.get()) != nil && besideSource, detail)])
+    }
+
+    func revoiceWholeClip(cuts: Bool = false, midTake: Bool = false) async throws {
         let lipsync = installWholeClipStandIn()
         let (session, whole) = try await openWholeClip()
         let primary = try checkChoose(session, whole)
@@ -213,9 +265,10 @@ extension DebugRewriteSmoke.Harness {
         try await runWholeClip(session, whole, title: primary)
         checkReview(whole, segmentsBefore: before)
         if cuts { checkCutsAbsorbed(session, whole) }
+        if midTake { checkMidTakeEdge(session, whole) }
         makeItAppend([wholeClipCheck("W5", lipsync.calls == [.lipsync2] && whole.voice.map { $0.parts >= 1 } == true,
             "lip sync \(lipsync.calls.map(\.name)) · \(whole.voice?.parts ?? 0) parts · \(speechRequests) speech requests")])
-        try await useAndCheck(session, whole, model: .lipsync2)
+        try await useAndCheck(session, whole, model: .lipsync2, fullTake: midTake)
     }
 
     /// WK1: the clip has cut fillers, at least one right before a later part's first word, and every one lies inside a
