@@ -1512,11 +1512,13 @@ The current connectors return one answer, so nothing streams: R1 waits until the
   - **Running.** "Revoicing the whole clip 0:42" and the step list, each line with its price on the right ("free" for Script and Fit):
     - ✓ Script · 74 words, your edits applied
     - ✓ Voice · 0:30.6 in siim · DJI 0011 · one take
-    - ✓ Fit · 0:30.6 for 0:31 of video, video matched (−1.3%)
+    - ✓ Fit · 0:30.6 for 0:31 of video, video matched (−1.3%). The video is the clip as edited, its cuts and tightened pauses applied (ADR-R46). A shorter voice reads "Fit · 0:27 for 0:31.4 of video, laid out on the clip's pauses (−14.0%)": it is laid out with pauses at sentence ends and never reworded longer. Only a voice too long for the clip reads "· asking for a shorter wording (≈ {n} words)".
     - ◐ Lip sync · fal.ai lipsync-2 · usually 1–2 min, with a progress bar
     The foot reads "You can keep editing other clips." with **[Cancel]**, which keeps the clip.
   - **Review.** "✓ Whole clip revoiced · 0:31 · ≈ {spent} on your keys", then [▶ Play], [A / B with your recording], the match line, [Sharper Lip Sync · sync-3 · {amount}] (re-runs only the lip sync), and the foot "Undo keeps your original audio and video." with [Undo] and the primary **[Use Whole Clip]** (one undo step).
   - **Stopped.** A cancel, a failure or a voice that can't fit shows the steps, the reason, and what was paid, and that Try Again pays only what's left. Its chips are **[Try Again · ≈ $y]** and [Voice Only the Changed Phrases]: never a dead end.
+    - **A voice that can't fit** reads "The new voice runs 0:40 for 0:31 of video, longer than the clip can hold." A shorter wording whose estimate still runs too long is never voiced: "The shorter wording would still run about 0:35.3 for 0:31 of video, so no new voice was made."
+    - After either one, while the clip's words are unchanged, **[Voice Only the Changed Phrases]** is the primary and [Try Again · ≈ $y] comes second, because trying again would meet the same fit (2026-11-08). Once the words change, Try Again leads again.
   - **Mockup line not built.** "Remembered for Claude mode · change in Settings › Voices" is left out: Claude mode decides on its own (§6.7), and Settings has no control for it.
   - **Windows** (2026-11-07). Not built yet: Windows opens, saves and discloses revoiced projects and holds the card's rules, script, fit and prices in Core, but shows no card and runs nothing (voice-lab.md §8.14).
 - **Not your voice here** (2026-11-05, voice-lab §6.9, ADR-R40). The use-time voice check can block a phrase before anything is sent. It blocks when the speech nearest the phrase doesn't sound like the voice owner, or when there is too little of that speaker's speech to check. The phrase is then settled for this Rewrite. No retry changes the result, so nothing loops.

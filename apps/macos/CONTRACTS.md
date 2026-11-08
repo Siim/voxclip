@@ -1,5 +1,37 @@
 # macOS implementation contracts
 
+### 2026-11-08 — Whole-clip revoice fits the clip as edited and never pads the script (track/v2-wholeclip-fit)
+
+The user's MVP44 run (2026-11-08): "Clip 1 · 0:31.4 · 49 words", a 27 s voice. `configureWholeClip` measured it against the parts' windows in source time (48.6 s, tightened pauses included), the Fit step asked for a longer wording (≈ 88 words, then ≈ 124), and every Try Again paid a ~1–2.5 min `patch-rewrite` call and a new voice until `cannotFit`. It spent ≈ $0.22 and never reached the lip sync. ADR-R46 "Update 2026-11-08: one timeline, never pad", voice-lab §8.14 items 4–6, design.md "How should it sound?" (Running, Stopped).
+
+- **One timeline** (Core).
+  - `WholeClipRevoice.editedCuts(_:startSample:endSample:)`: the clip's own cuts in a window, read off its output plan with no voice. `editedSeconds` gives the window as edited.
+  - `layoutCuts` trims the picture's end or gives cut picture back, latest first.
+  - `layoutPauseProfile` and `layoutPauseBound` set the pause bound: sentence-end pauses grow to `edits.pauseThresholdSeconds` at most, the floor is 150 ms, and pauses inside a sentence don't grow.
+  - The fit planner takes `targetSamples` and `tailPadSeconds`, both defaulting to the old fit. `VoiceLabNaturalPacing.layout` fits a take to the clip as edited and sets `VoiceLabFitPlan.editedTimeline` and its `videoCuts`.
+  - `VoiceLabTakeInput.editedLayout` (`VoiceLabEditedLayout`) routes `VoiceLabTakeProcessing` to it.
+  - `validCuts` accepts the edited form: zoom 1 (`EDITED_CUT_ZOOM`), up to `MAXIMUM_EDITED_CUTS` = 512 cuts, no edge guard. A punched-in pause cut is unchanged. `VoiceLabVideoDurationOptions.cutZoom` and the recipe builder write zoom 1 for an edited plan.
+  - `ContextDemoComposition` uses the recipe's zoom for later spans and skips empty edge spans.
+- **Fit** (`WholeClipRevoice.fit`): `.matched` within ±8%, `.laidOut` when shorter (never reworded), `.reword(targetWords:)` only when longer, then `.cannotFit`. The `shorter` flag is gone. Also new: `laidOutCopy`, and `rewordFits` and `predictedSeconds` for check before paying.
+- **App.**
+  - `RewriteWholeClip`: `videoSeconds`, the quote's lip-sync seconds and `wholeClipLipsyncSeconds` read the clip as edited (`wholeClipEditedPlan`, `wholeClipEditedSeconds`).
+  - Each part's take input carries the edited layout at its natural pace.
+  - The voice's seconds are the takes' trimmed speech.
+  - `wholeClipMatchPicture` chooses source or cut, never `retimed`. The lip sync returns retime 1. The reword prompt only ever asks for fewer words.
+  - `WholeClipRevoiceSession`:
+    - Backend `reword` loses its Bool and a new `estimate` is added.
+    - Check before paying stops with `Stop.rewordTooLong`.
+    - `cannotFit`'s copy now ends "longer than the clip can hold."
+    - `repeatsFit` makes the stopped card `[Voice Only the Changed Phrases, Try Again]` after a Fit stop over the same script.
+  - `MakeItWholeClip`: `patchInstead(_, spent:)`. A Fit stop patches, with its voice charged to the run.
+- **Vectors.** New `shared/fixtures/voice-lab/whole-clip-fit-cases.json` (`voxclip-whole-clip-fit/1`, `tools/fixtures/voice-lab/generate_whole_clip_fit.py`, in check_drift's EXACT list). It holds the user's clip as numbers only (66 words' timings, cut and sentence-end flags, the clip, its 10 tightened pauses, threshold and keep, script words, voice seconds), 20 fit, 11 check-before-paying, 16 layout-cut, 7 edited-cut and 5 bound cases. `whole-clip-revoice-cases.json`'s `fit` is regenerated with the new kinds (same keys and count). The project schema's `cuts.maxItems` is now 512.
+- **Tests.**
+  - Core: `WholeClipFitReplayTests`, including the user's clip end to end. It builds the project from the numbers, checks the clip is 31.4 s as edited and the window carries no extra cuts, gets `.laidOut`, lays out a 27 s take and checks the bound, the cut picture at zoom 1 and the lip-sync seconds.
+  - Core: `WholeClipLayoutTests` (cuts, the edited recipe form, a short take laid out with tail and trim, an exact take keeping the clip's cuts) and the updated `WholeClipFitTests`.
+  - App: `WholeClipRevoiceSessionTests` (the user's case, longer-only reword, check before paying, a Fit stop's stopped actions) and `ClaudeModeTests.claudeModesWholeClipFollowsTheSameFit`.
+  - Smoke: new `S-revoice-whole-tightened` (WT1 the Fit line, layout and picture on the clip as edited; WT2 a zoom-1 cut picture rendering the edited length). W1 now prices the edited span, and the whole-clip exact-fit stand-in fills the window as edited.
+- **Owed.** The live check (lead). The sentences of a laid-out take keep the take's own spacing plus bounded growth; they are not anchored to each original sentence's position (ADR-R46). The Windows run and card stay owed, as before.
+
 ### 2026-11-08 — Numbers match however they're written, in the take check and the export check (track/v2-spoken-numbers)
 
 The export self-check (ADR-R49) failed the user's real 29.7 s clip: the transcript said "three hundred dollar", Whisper heard the export as "$300", and the check reported "three" cut off and "hundred" and "dollar" as mismatches. The take QA had the same gap (voice-lab §8.11).
