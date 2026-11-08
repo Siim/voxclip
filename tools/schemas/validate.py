@@ -10,7 +10,8 @@ A file ending in .voxclip is checked against project.schema.json; a JSON object 
 "voxclip-voice-lab-prices/1" against voice-lab-prices.schema.json, and one whose "schema" is
 "voxclip-cover-art-cases/1" (the MP4 cover-art vectors) against cover-art-cases.schema.json, and one whose "schema" is
 "voxclip-frame-decision-cases/1" (the frame decisions' vectors) against frame-decision-cases.schema.json, and one whose "schema" is
-"voxclip-frame-models/1" (the Windows face models) against frame-models.schema.json; *.transcript.json
+"voxclip-frame-models/1" (the Windows face models) against frame-models.schema.json, and one whose "schema" is
+"voxclip-frame-face-fields-cases/1" (the Windows face fields' vectors) against frame-face-fields-cases.schema.json; *.transcript.json
 against project.schema.json's $defs/transcript. References between the
 schemas (project.schema.json -> timed-word.schema.json) resolve through a local registry,
 never over the network. Needs jsonschema >= 4.18 (tools/captions/requirements.txt).
@@ -71,6 +72,8 @@ def schema_for(path, document, by_name):
         return by_name["frame-decision-cases.schema.json"]
     if isinstance(document, dict) and document.get("schema") == "voxclip-frame-models/1":
         return by_name["frame-models.schema.json"]
+    if isinstance(document, dict) and document.get("schema") == "voxclip-frame-face-fields-cases/1":
+        return by_name["frame-face-fields-cases.schema.json"]
     raise SystemExit(f"{path}: no schema applies (expected .voxclip, .transcript.json, voxclip-settings/1 "
                      "or voxclip-voice-lab-prices/1)")
 
@@ -94,6 +97,7 @@ def main(argv):
           fixtures / "export-check" / "number-check-cases.json",
           fixtures / "spoken-numbers" / "number-cases.json",
           fixtures / "clip-frames" / "decision-cases.json",
+          fixtures / "clip-frames" / "frame-face-fields-cases.json",
           fixtures / "cover-art" / "cover-art-cases.json"]
     if not files:
         print("no files to validate", file=sys.stderr)

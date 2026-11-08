@@ -25,3 +25,13 @@ text, the sampling times, the Mac's two-decimal rule (the shortest decimal round
 `python3 tools/fixtures/clip-frames/generate_frame_decisions.py` (check_drift.py runs it, exact); `tools/schemas/validate.py`
 checks it against `shared/schemas/frame-decision-cases.schema.json`. Swift and C# `FrameDecisionVectorTests` replay every
 case, comparing numbers within 1e-12.
+
+`frame-face-fields-cases.json` (`voxclip-frame-face-fields-cases/1`, ADR-R48 Windows, package W2) holds the Windows-only pure steps
+between the two face models and a `FrameFace`, on synthetic inputs: YuNet's input size and output decoding (sparse output
+tensors, the score, NMS and the largest face), the roll-aligned crop (roll, both affines, mapped points, bilinear
+resampling), the crop's Laplacian variance, mean grey and clipped share, the 478 mesh landmarks to `FrameFace` fields (open,
+closed, half-closed and one closed eye, turned, tipped, level, a skewed midline, an unmeasured eye, no pose, a gated face) and
+the capture quality with its gates and quantile remap. It echoes `shared/catalog/frame-models.json`'s calibration block, the
+constants' one home. Regenerate with `python3 tools/fixtures/clip-frames/generate_face_fields.py` after changing that block
+(check_drift.py runs it, exact: atan2, exp and ln are fixed series there, never libm). C# `FrameFaceFieldsVectorTests` replays
+every case within 1e-9 relative; there is no Mac twin, because the Mac reads Vision.
