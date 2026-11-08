@@ -208,7 +208,7 @@ import VoxClipCore
                     ForEach(record.sent.blur, id: \.id) { candidate in
                         Toggle(isOn: Binding(get: { model.makeItScreenBlurred(candidate.id, run: run) },
                                              set: { _ in model.makeItToggleScreen(candidate.id, run: run) })) {
-                            Text("\(EditorModel.screenName(candidate.rect, video: model.project.media.source.video).capitalizedFirst) at "
+                            Text("\(ClipPicture.screenName(candidate.rect, video: model.project.media.source.video).capitalizedFirst) at "
                                  + model.makeItClipTime(candidate.start, clipID: run.clipID) + "–" + model.makeItClipTime(candidate.end, clipID: run.clipID))
                                 .font(VCType.small.font())
                         }

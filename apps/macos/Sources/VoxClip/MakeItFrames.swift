@@ -48,7 +48,7 @@ struct MakeItRowFrame: Equatable, Identifiable {
 
 extension EditorModel {
     static let makeItScreensID = "frames-screens"
-    static let makeItCoverID = "frames-cover"
+    static let makeItCoverID = ClipPicture.coverRowID
 
     // MARK: The pass
 
@@ -183,8 +183,9 @@ extension EditorModel {
 
     // MARK: The rows
 
-    /// The four picture decisions, applied to the project in the run's step: the opening, the face-follow crop, the
-    /// blurred screens and the cover. Empty when the request carried no frames.
+    /// The four picture decisions, applied to the project in the run's step through `ClipPicture` (the CLI autopilot applies
+    /// the same): the opening, the face-follow crop, the blurred screens and the cover. Empty when the request carried no
+    /// frames.
     func makeItPictureRows(_ plan: ClipAutopilotPlan, run: MakeItRun) async -> [MakeItRow] {
         guard let record = run.frames, let pass = makeIt.framePass else { return [] }
         var rows: [MakeItRow] = []
@@ -198,55 +199,31 @@ extension EditorModel {
     /// "Opens on a clear look at you": the start moves back into the pause before the first word (never across a word) when
     /// the first frame is not a clear look and one there is. No row when the start stays.
     private func makeItOpeningRow(run: MakeItRun, pass: VideoFramePass) async -> MakeItRow? {
-        guard let transcript = project.transcript, let range = project.edits.clips.first(where: { $0.id == run.clipID }),
-              let first = transcript.words.firstIndex(where: { $0.id == range.startWordId }),
-              let last = transcript.words.firstIndex(where: { $0.id == range.endWordId }),
-              let clip = FrameClip(transcript: transcript, clip: range, cutWordIds: Set(project.edits.cutWordIds)),
-              clip.kept.first == first, let scan = await pass.opening(for: clip),
-              let choice = OpeningFrame.choose(clip, scan: scan), choice.shift < 0 else { return nil }
-        let words = transcript.words
-        let lead = min(FrameSampling.openingSpan, ((clip.start - choice.time) * 1000).rounded() / 1000)
-        guard lead > 0, let before = try? clipTimes(words, startIndex: first, endIndex: last, leadIn: range.leadInSeconds),
-              let after = try? clipTimes(words, startIndex: first, endIndex: last, leadIn: lead),
-              before.start - after.start >= 1.0 / 30, let next = makeItSettingLeadIn(lead, clipID: run.clipID, in: project) else { return nil }
-        let current = scan.min { abs($0.time - clip.start) < abs($1.time - clip.start) }
-        run.inverses["frames-opening"] = .leadIn(clipID: run.clipID, previous: range.leadInSeconds)
+        guard let clip = ClipPicture.openingClip(project, clipID: run.clipID),
+              let (next, opening) = ClipPicture.opening(project, clipID: run.clipID, scan: await pass.opening(for: clip)) else { return nil }
+        run.inverses[ClipPicture.openingRowID] = .leadIn(clipID: run.clipID, previous: opening.previousLeadIn)
         replace(next, name: "Make it postable")
-        let earlier = String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), before.start - after.start)
-        let thumbs = await pass.thumbnails([current?.time ?? clip.start, choice.time])
+        let earlier = String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), opening.earlier)
+        let currentTime = opening.current?.time ?? clip.start
+        let thumbs = await pass.thumbnails([currentTime, opening.chosen])
         var frames: [MakeItRowFrame] = []
         if thumbs.count == 2 {
-            frames = [MakeItRowFrame(id: "opening-before", jpeg: thumbs[0], time: current?.time ?? clip.start,
-                                     tag: current?.face?.eyes == .closed ? "eyes shut" : nil),
-                      MakeItRowFrame(id: "opening-after", jpeg: thumbs[1], time: choice.time, picked: true)]
+            frames = [MakeItRowFrame(id: "opening-before", jpeg: thumbs[0], time: currentTime,
+                                     tag: opening.current?.face?.eyes == .closed ? "eyes shut" : nil),
+                      MakeItRowFrame(id: "opening-after", jpeg: thumbs[1], time: opening.chosen, picked: true)]
         }
-        return MakeItRow(id: "frames-opening", text: "Opens on a clear look at you",
-                         detail: "\(Self.openingReason(current)), so the clip starts in the pause \(earlier) s earlier",
-                         play: after.start, undoable: true, frames: frames)
+        return MakeItRow(id: ClipPicture.openingRowID, text: "Opens on a clear look at you",
+                         detail: "\(opening.reason), so the clip starts in the pause \(earlier) s earlier",
+                         play: opening.start, undoable: true, frames: frames)
     }
 
-    /// Why the frame at the clip's start is not a clear look.
-    nonisolated static func openingReason(_ frame: FrameObservation?) -> String {
-        guard let face = frame?.face else { return "Your face wasn't in the first frame" }
-        if face.eyes == .closed { return "Your eyes were shut on the first frame" }
-        if face.facesCamera == false { return "You were looking away on the first frame" }
-        return "The first frame was blurred"
-    }
-
-    /// "9:16 follows your face": the crop centred on the median measured face (`FaceFollowCrop`), one static centre for 9:16
-    /// and 1:1. No row without a face or without a portrait or square shape to export.
+    /// "9:16 follows your face": the crop centred on the median measured face, one static centre for 9:16 and 1:1. No row
+    /// without a face or without a portrait or square shape to export.
     private func makeItFaceRow(_ record: MakeItFrameRecord, run: MakeItRun) -> MakeItRow? {
-        let shapes = makeItStyle.shapes
-        guard shapes.contains(.portrait) || shapes.contains(.square), record.sentences.contains(where: { $0.face != nil }),
-              let crop = FaceFollowCrop.plan(record.sentences.map { (time: $0.time, face: $0.face?.rect) },
-                                             sourceAspect: FrameAnalyzerAspect.source(project.media.source.video), targetAspect: 9.0 / 16.0),
-              let controls = ClipControlsProject.controls(for: run.clipID, in: project) else { return nil }
-        let x = (crop.centerX * 1000).rounded() / 1000, y = (crop.centerY * 1000).rounded() / 1000
-        guard let next = makeItSettingControls(run.clipID, in: project, { $0.reframe = .face(x: x, y: y) }) else { return nil }
-        run.inverses["frames-face"] = .reframe(clipID: run.clipID, previous: controls.reframe)
+        guard let (next, crop) = ClipPicture.crop(project, clipID: run.clipID, sentences: record.sentences, shapes: makeItStyle.shapes) else { return nil }
+        run.inverses[ClipPicture.cropRowID] = .reframe(clipID: run.clipID, previous: crop.previous)
         replace(next, name: "Make it postable")
-        let shape = shapes.contains(.portrait) ? "9:16" : "1:1"
-        return MakeItRow(id: "frames-face", text: "\(shape) follows your face",
+        return MakeItRow(id: ClipPicture.cropRowID, text: "\(crop.shape.rawValue) follows your face",
                          detail: "The crop is centred on your measured face position, not the middle of the frame",
                          play: clipPlay(run.clipID, in: project), undoable: true)
     }
@@ -255,63 +232,41 @@ extension EditorModel {
     /// existing blur effect over its span and box), else "Phone screen at 0:12–0:16 left sharp" with an inline Blur. An AI
     /// without images never blurs on its own: it could not see the screen.
     func makeItScreenRows(_ record: MakeItFrameRecord, plan: ClipAutopilotPlan?, run: MakeItRun, applying: Bool) -> [MakeItRow] {
-        var rows: [MakeItRow] = []
-        for candidate in record.sent.blur {
-            let decision = plan?.frames?.blur.first { $0.id == candidate.id }
-            let id = Self.makeItBlurEffectID(clipID: run.clipID, candidate: candidate.id)
-            if applying, record.sent.sendsImages, decision?.blur == true, project.clipEffects.first(where: { $0.id == id }) == nil,
-               let next = try? ClipEffects.adding([makeItBlurEffect(candidate, clipID: run.clipID)], to: project) {
-                replace(next, name: "Make it postable")
-                run.inverses["frames-blur-\(candidate.id)"] = .effect(id: id, previous: nil)
-            }
-            let blurred = project.clipEffects.contains { $0.id == id }
-            let name = Self.screenName(candidate.rect, video: project.media.source.video)
+        let (next, screens) = ClipPicture.blurs(project, clipID: run.clipID, frames: record.sent, plan: plan, applying: applying)
+        if next != project { replace(next, name: "Make it postable") }
+        return screens.map { screen in
+            let candidate = screen.candidate
+            let rowID = ClipPicture.blurRowID(candidate.id)
+            if screen.applied { run.inverses[rowID] = .effect(id: screen.effectID, previous: nil) }
+            let name = ClipPicture.screenName(candidate.rect, video: project.media.source.video)
             let span = makeItClipTime(candidate.start, clipID: run.clipID) + "–" + makeItClipTime(candidate.end, clipID: run.clipID)
-            var row = MakeItRow(id: "frames-blur-\(candidate.id)", kind: .choice, text: "", play: max(0, candidate.start - 0.5))
-            if blurred {
+            var row = MakeItRow(id: rowID, kind: .choice, text: "", play: max(0, candidate.start - 0.5))
+            if screen.blurred {
                 row.text = "Blurred the \(name) at \(span)"
-                row.detail = decision?.reason.isEmpty == false ? decision!.reason : "The action you tap stays sharp"
-                row.undoable = run.inverses[row.id] != nil
+                row.detail = screen.reason ?? "The action you tap stays sharp"
+                row.undoable = run.inverses[rowID] != nil
                 row.change = .screens
             } else {
                 row.text = "\(name.prefix(1).uppercased() + name.dropFirst()) at \(span) left sharp"
                 row.detail = !record.sent.sendsImages ? "\(record.ai.name) takes text only, so it couldn't see this screen."
-                    : decision?.reason.isEmpty == false ? decision!.reason : "Nothing private showed on it."
+                    : screen.reason ?? "Nothing private showed on it."
                 row.change = .screen(candidate.id)
                 row.actionTitle = "Blur"
             }
-            rows.append(row)
+            return row
         }
-        return rows
-    }
-
-    /// The blur effect over a screen candidate: the existing censor, held still over its span and box.
-    func makeItBlurEffect(_ candidate: ClipAutopilotFrames.BlurCandidate, clipID: String) -> ClipEffect {
-        ClipEffect(id: Self.makeItBlurEffectID(clipID: clipID, candidate: candidate.id), clipId: clipID, kind: .blur,
-                   start: candidate.start, end: min(candidate.end, candidate.start + ClipEffect.maximumSeconds), rect: candidate.rect,
-                   tracking: ClipEffect.Tracking.none)
-    }
-
-    nonisolated static func makeItBlurEffectID(clipID: String, candidate: String) -> String {
-        String("fx-screen-\(candidate.lowercased())-\(clipID)".prefix(64))
-    }
-
-    /// "phone screen" for a framed screen taller than wide, "screen" for a wider one, "text" for dense text without a frame.
-    nonisolated static func screenName(_ rect: ClipEffect.Rect, video: MediaVideo?) -> String {
-        let aspect = FrameAnalyzerAspect.source(video)
-        return rect.width * aspect < rect.height ? "phone screen" : "screen"
     }
 
     /// A Blur on a sharp screen, or a toggle in the screens list: blurs or unblurs it as its own undo step.
     func makeItToggleScreen(_ candidateID: String, run: MakeItRun) {
         guard !run.running, let record = run.frames, let candidate = record.sent.blurCandidate(candidateID) else { return }
-        let id = Self.makeItBlurEffectID(clipID: run.clipID, candidate: candidateID)
+        let id = ClipPicture.blurEffectID(clipID: run.clipID, candidate: candidateID)
         let blurred = project.clipEffects.contains { $0.id == id }
         let next = blurred ? try? ClipEffects.removing([id], from: project)
-                           : try? ClipEffects.adding([makeItBlurEffect(candidate, clipID: run.clipID)], to: project)
+                           : try? ClipEffects.adding([ClipPicture.blurEffect(candidate, clipID: run.clipID)], to: project)
         guard let next else { return }
         replace(next, name: blurred ? "Unblur screen" : "Blur screen")
-        let rowID = "frames-blur-\(candidateID)"
+        let rowID = ClipPicture.blurRowID(candidateID)
         // A blur Claude made can still be taken back by its row's Undo; one the creator added is undone with ⌘Z.
         if blurred { run.inverses[rowID] = nil }
         let fresh = makeItScreenRows(record, plan: run.plan, run: run, applying: false)
@@ -321,20 +276,17 @@ extension EditorModel {
 
     /// Whether the screen candidate is blurred now (the Change list's toggles).
     func makeItScreenBlurred(_ candidateID: String, run: MakeItRun) -> Bool {
-        project.clipEffects.contains { $0.id == Self.makeItBlurEffectID(clipID: run.clipID, candidate: candidateID) }
+        project.clipEffects.contains { $0.id == ClipPicture.blurEffectID(clipID: run.clipID, candidate: candidateID) }
     }
 
     /// "Cover frame chosen": Claude's pick among the three best measured frames, or the best when it named none.
     private func makeItCoverRow(_ record: MakeItFrameRecord, plan: ClipAutopilotPlan, run: MakeItRun) -> MakeItRow? {
-        let named = plan.frames?.cover.flatMap { record.sent.coverCandidate($0.id) }
-        guard let candidate = named ?? record.sent.cover.first, let controls = ClipControlsProject.controls(for: run.clipID, in: project),
-              let next = makeItSettingControls(run.clipID, in: project, { $0.coverSeconds = candidate.time }) else { return nil }
-        run.inverses[Self.makeItCoverID] = .cover(clipID: run.clipID, previous: controls.coverSeconds)
+        guard let (next, cover) = ClipPicture.cover(project, clipID: run.clipID, frames: record.sent, plan: plan) else { return nil }
+        run.inverses[Self.makeItCoverID] = .cover(clipID: run.clipID, previous: cover.previous)
         replace(next, name: "Make it postable")
-        let reason = named == nil ? nil : plan.frames?.cover.flatMap { $0.fallback || $0.reason.isEmpty ? nil : $0.reason }
-        let detail = reason ?? "Eyes open, the clearest look measured on this Mac"
+        let detail = cover.reason ?? "Eyes open, the clearest look measured on this Mac"
         return MakeItRow(id: Self.makeItCoverID, text: "Cover frame chosen", detail: detail + " · saved next to the export as a cover image",
-                         play: candidate.time, undoable: true, change: .cover, frames: makeItCoverFrames(record, picked: candidate.time))
+                         play: cover.candidate.time, undoable: true, change: .cover, frames: makeItCoverFrames(record, picked: cover.candidate.time))
     }
 
     /// The cover candidates as small frames, the picked one marked.
@@ -350,39 +302,12 @@ extension EditorModel {
     /// A cover candidate picked in the row's Change: the clip's cover, as one undo step.
     func makeItChooseCover(_ time: Double, run: MakeItRun) {
         guard !run.running, let record = run.frames, let index = run.rows.firstIndex(where: { $0.id == Self.makeItCoverID }),
-              let next = makeItSettingControls(run.clipID, in: project, { $0.coverSeconds = time }) else { return }
+              let next = ClipPicture.settingControls(run.clipID, in: project, { $0.coverSeconds = time }) else { return }
         if next != project { replace(next, name: "Change cover") }
         run.rows[index].frames = makeItCoverFrames(record, picked: time)
         run.rows[index].detail = "You chose the frame at \(makeItClipTime(time, clipID: run.clipID)) · saved next to the export as a cover image"
         run.rows[index].play = time
         run.openChoice = nil
-    }
-
-    // MARK: Project edits
-
-    /// `project` with the clip's opening lead-in set (nil removes it); a lead-in promotes the project to v4.
-    func makeItSettingLeadIn(_ lead: Double?, clipID: String, in project: Project) -> Project? {
-        guard let index = project.edits.clips.firstIndex(where: { $0.id == clipID }) else { return nil }
-        var next = lead == nil ? project : ((try? ContextDemoProject.upgradeToV4(project)) ?? project)
-        guard lead == nil || next.schemaVersion >= 4 else { return nil }
-        next.edits.clips[index].leadInSeconds = lead
-        return next
-    }
-
-    /// `project` with one clip's controls changed by `change`, the others kept.
-    func makeItSettingControls(_ clipID: String, in project: Project, _ change: (inout ProjectClipControls) -> Void) -> Project? {
-        guard var controls = ClipControlsProject.controls(for: clipID, in: project) else { return nil }
-        change(&controls)
-        return try? ClipControlsProject.setting(controls, in: project)
-    }
-}
-
-/// The source picture's display width over height (after its rotation); 16:9 without video facts.
-enum FrameAnalyzerAspect {
-    static func source(_ video: MediaVideo?) -> Double {
-        guard let video, video.width > 0, video.height > 0 else { return 16.0 / 9.0 }
-        let width = Double(video.width), height = Double(video.height)
-        return video.rotationDegrees % 180 == 0 ? width / height : height / width
     }
 }
 
