@@ -7,7 +7,7 @@ namespace VoxClip.Media.Tests;
 internal static class AcceptedCli
 {
     internal static async Task<int> RunAsync(string[] args, CancellationToken ct,
-        ExportInputReader? openExport = null, ExportPreparer? prepareExport = null)
+        ExportInputReader? openExport = null, ExportPreparer? prepareExport = null, Func<VoxClip.Core.Services.LLM.ConnectorId, VoxClip.Core.Services.LLM.ILlmConnector>? connectors = null)
     {
         var directory = Directory.CreateTempSubdirectory("voxclip-cli-accepted-").FullName;
         try
@@ -15,7 +15,7 @@ internal static class AcceptedCli
             var agreement = new WindowsRuntimeAgreement(FindNotices(), Path.Combine(directory, WindowsRuntimeAgreement.StampFileName));
             var terms = agreement.LoadTerms();
             agreement.Accept(terms, terms.Sha256);
-            return await CliApplication.RunAsync(args, ct, openExport, prepareExport, agreement);
+            return await CliApplication.RunAsync(args, ct, openExport, prepareExport, agreement, connectors: connectors);
         }
         finally { Directory.Delete(directory, true); }
     }

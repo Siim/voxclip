@@ -23,9 +23,9 @@ internal static class CliApplication
     internal static string Version => AppVersion.Current;
 
     internal static async Task<int> RunAsync(string[] args, CancellationToken ct, ExportInputReader? openExport = null, ExportPreparer? prepareExport = null,
-        WindowsRuntimeAgreement? runtimeAgreement = null, Func<string, bool>? inputExists = null)
+        WindowsRuntimeAgreement? runtimeAgreement = null, Func<string, bool>? inputExists = null, Func<ConnectorId, ILlmConnector>? connectors = null)
     {
-        var root = BuildCommand(openExport, prepareExport, inputExists);
+        var root = BuildCommand(openExport, prepareExport, inputExists, connectors);
         var result = root.Parse(args);
         if (result.Errors.Count > 0)
         {
@@ -124,7 +124,11 @@ internal static class CliApplication
     internal static string FailureMessage(VoxClipException exception) => exception is MediaException { Code: VoxClipErrorCode.DecodeFailed }
         ? $"VoxClip couldn't decode this video: {exception.Message.TrimEnd('.')}. Your edits are saved." : exception.Message;
 
-    private static RootCommand BuildCommand(ExportInputReader? openExport, ExportPreparer? prepareExport, Func<string, bool>? inputExists)
+    /// <summary>The command line parsed as the CLI parses it, so one command can run another's path (autopilot's export).</summary>
+    internal static ParseResult Parse(string[] args) => BuildCommand(null, null, null, null).Parse(args);
+
+    private static RootCommand BuildCommand(ExportInputReader? openExport, ExportPreparer? prepareExport, Func<string, bool>? inputExists,
+        Func<ConnectorId, ILlmConnector>? connectors)
     {
         var root = new RootCommand("VoxClip headless media tool.");
         root.Options.Add(Json);
@@ -210,6 +214,28 @@ internal static class CliApplication
         Flag(clips, "--no-snap", "Disable line-boundary snapping.");
         Flag(clips, "--dry-run", "Print rendered prompts without sending.");
         Stub(clips, "find-clips");
+        // ✦ Claude does it all, headless (design §6.7, ai.md §16.12): Find Clips, then the top clips planned at once and each applied (and
+        // exported) as soon as its plan is ready. Rewrites and music are left for the app. Windows has no frame analyzer yet: no frames.
+        var autopilot = Command(root, "autopilot", "Make the top clips of a video postable, as Claude mode does, and time each stage.");
+        Add(autopilot, "--open", "Source media, or a project with a transcript.", true);
+        Add(autopilot, "--connector", "Connector catalog id.", true);
+        Add(autopilot, "--model", "LLM model id.");
+        Add(autopilot, "--count", "How many top clips to make (1-12; default 3).");
+        Choice(autopilot, "--preset", "Find Clips preset: best (the default), hooks, topics or quotes.", "best", "hooks", "topics", "quotes");
+        Add(autopilot, "--transcript", "Fixture words JSON instead of transcription.");
+        Choice(autopilot, "--engine", "Transcription engine (apple is macOS-only).", "whisper", "apple", "elevenlabs");
+        Add(autopilot, "--transcription-model", "Installed transcription model catalog id.");
+        Add(autopilot, "--language", "auto or a BCP47 language code.");
+        Add(autopilot, "--out-dir", "Folder for each clip's MP4 and the project; nothing is exported without it.");
+        Choice(autopilot, "--aspect", "16:9, 9:16 (the default) or 1:1.", "16:9", "9:16", "1:1");
+        Flag(autopilot, "--timings", "Print each stage's wall time as JSON (in the --json result, else on stdout).");
+        autopilot.Validators.Add(validation =>
+        {
+            if (validation.GetValue<string?>("--count") is { } count &&
+                (!int.TryParse(count, NumberStyles.None, CultureInfo.InvariantCulture, out var value) || value is < 1 or > 12))
+                validation.AddError("--count must be 1 to 12");
+        });
+        Stub(autopilot, "autopilot", connectors: connectors);
         var test = Command(root, "llm-test", "Run the connector test.");
         Add(test, "--connector", "Connector catalog id.", true);
         Add(test, "--model", "Model id.");
@@ -261,7 +287,7 @@ internal static class CliApplication
         return option;
     }
     private static void Stub(Command command, string name, ExportInputReader? openExport = null, ExportPreparer? prepareExport = null,
-        Func<string, bool>? inputExists = null) => command.SetAction(async (result, ct) =>
+        Func<string, bool>? inputExists = null, Func<ConnectorId, ILlmConnector>? connectors = null) => command.SetAction(async (result, ct) =>
     {
         ct.ThrowIfCancellationRequested();
         if (name == "export" && (result.GetValue<string?>("--open") is null || result.GetValue<string?>("--export") is null))
@@ -269,9 +295,11 @@ internal static class CliApplication
         var path = name == "probe" ? result.GetValue<string>("media") : result.GetValue<string?>("--open");
         if (name != "export" && path is not null && !(inputExists ?? File.Exists)(path))
             return Fail(result, "mediaMissing", "The input file cannot be found.", 3, name);
-        var fields = await CliOperations.ExecuteAsync(name, result, ct, openExport, prepareExport).ConfigureAwait(false);
+        var fields = await CliOperations.ExecuteAsync(name, result, ct, openExport, prepareExport, connectors).ConfigureAwait(false);
         fields["ok"] = true; fields["command"] = name; fields["version"] = Version;
         if (result.GetValue(Json)) Console.Out.WriteLine(fields.ToJsonString());
+        // As on the Mac: the progress lines are on stderr, and without --json only the timings go to stdout.
+        else if (name == "autopilot") { if (fields["timings"] is { } timings) Console.Out.WriteLine(timings.ToJsonString()); }
         else if (name == "export")
         {
             Console.Out.WriteLine(fields["output"]?.GetValue<string>());
