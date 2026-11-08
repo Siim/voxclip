@@ -275,9 +275,20 @@ public static class VoiceLabWindowPlanner
 
     /// <summary>The synth pieces of an output plan in source order and the kept source pieces around them, in samples
     /// (§10.5).</summary>
-    sealed class SeamLayout(SynthPiece[] elements, IReadOnlyList<MediaInterval> pieces, long total)
+    sealed class SeamLayout(SynthPiece[] elements, IReadOnlyList<MediaInterval> pieces, long total, bool clipScope = false)
     {
         public SynthPiece[] Elements { get; } = elements;
+
+        /// <summary>Whether element index's seam on that side is a clip's own output edge: in a clip scope nothing renders
+        /// before it (or after it), so prepare plays a fade seam there as a take edge and needs no source beside it. A take
+        /// edge keeps seam None.</summary>
+        public bool OutputEdge(int index, bool incoming)
+        {
+            var range = Elements[index].Range;
+            var other = incoming ? index - 1 : index + 1;
+            return clipScope && Run(incoming ? index : index + 1).Length == 0 && (other < 0 || other >= Elements.Length) &&
+                (incoming ? range.StartSample > 0 : range.EndSample < total);
+        }
 
         /// <summary>The kept pieces between element index - 1 (or the take start) and element index (or the take end).</summary>
         public MediaInterval[] Run(int index)
@@ -301,7 +312,8 @@ public static class VoiceLabWindowPlanner
             var (kind, fade) = incoming ? (element.InKind, element.InFade) : (element.OutKind, element.OutFade);
             var beside = Run(incoming ? index : index + 1);
             if (kind == VoiceLabSeamKind.None) return beside.Length == 0 && (other < 0 || other >= Elements.Length);
-            if (kind != VoiceLabSeamKind.SynthToSynth) return Beside(index, incoming) >= (incoming ? fade / 2 : fade - fade / 2);
+            if (kind != VoiceLabSeamKind.SynthToSynth)
+                return OutputEdge(index, incoming) || Beside(index, incoming) >= (incoming ? fade / 2 : fade - fade / 2);
             if (beside.Length != 0 || other < 0 || other >= Elements.Length) return false;
             var (facingKind, facingFade) = incoming ? (Elements[other].OutKind, Elements[other].OutFade) : (Elements[other].InKind, Elements[other].InFade);
             var touching = incoming ? Elements[other].Range.EndSample == element.Range.StartSample : element.Range.EndSample == Elements[other].Range.StartSample;
@@ -328,7 +340,7 @@ public static class VoiceLabWindowPlanner
         public bool PrepareHolds(int index, bool incoming)
         {
             var (kind, fade) = incoming ? (Elements[index].InKind, Elements[index].InFade) : (Elements[index].OutKind, Elements[index].OutFade);
-            if (kind is VoiceLabSeamKind.None or VoiceLabSeamKind.SynthToSynth) return SideHolds(index, incoming);
+            if (kind is VoiceLabSeamKind.None or VoiceLabSeamKind.SynthToSynth || OutputEdge(index, incoming)) return SideHolds(index, incoming);
             var between = Run(incoming ? index : index + 1);
             var other = incoming ? index - 1 : index + 1;
             if (between.Length == 0) return false;
@@ -363,6 +375,8 @@ public static class VoiceLabWindowPlanner
         readonly Take take;
         readonly IReadOnlyList<EditSegment> segments;
         public TimeRange? ClipRange { get; }
+        /// <summary>The clip's first and last items, in a clip scope.</summary>
+        public (int Start, int End)? ClipBounds { get; }
         public IReadOnlyList<SynthPiece> Replacements { get; }
         public bool[] KeptItem { get; }
         public bool[] Replaced { get; }
@@ -382,6 +396,7 @@ public static class VoiceLabWindowPlanner
                 var clipEnd = clip is null ? -1 : IndexOf(words, clip.EndWordId);
                 if (clipStart < 0 || clipEnd < clipStart) throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.InvalidInput);
                 ClipRange = EditingAlgorithms.ClipTimes(words, clipStart, clipEnd, clip!.LeadInSeconds);
+                ClipBounds = (clipStart, clipEnd);
             }
             var replacements = ScopeReplacements(project, ClipRange, take.Rate, take.Duration);
             Replacements = replacements;
@@ -566,6 +581,7 @@ public static class VoiceLabWindowPlanner
             (earliest, piece) => Math.Min(earliest, (piece.Range.StartSample - piece.InFade / 2 - (hardFade - hardFade / 2)) / rate));
         var rightSeam = right ?? HardSeam(passageEnd + Math.Min(HardSeamReach, Math.Max(0, silenceEnd - passageEnd) / 2));
         if (touchesEnd && !blocking.Skip(lastIndex + 1).Contains(true)) rightSeam = EdgeSeam(total, duration);
+        (leftSeam, rightSeam) = MoveToClipEdges(source, rate, a, b, firstIndex, lastIndex, blocking, leftSeam, rightSeam);
 
         var start = leftSeam.Time;
         var end = rightSeam.Time;
@@ -593,10 +609,16 @@ public static class VoiceLabWindowPlanner
         // outer halves. Seam kinds follow prepare: None only with nothing beside it, SynthToSynth only between two touching
         // replacements, which Place never makes.
         var windowRange = new MediaInterval(leftSeam.Sample, rightSeam.Sample);
-        var layout = new SeamLayout(replacements.Append(new SynthPiece("", true, start, end, windowRange, leftSeam.Kind, leftSeam.FadeSamples,
-            rightSeam.Kind, rightSeam.FadeSamples)).OrderBy(piece => piece.Range.StartSample).ToArray(), KeptSource((start, end), windowRange), total);
+        var window = new SynthPiece("", true, start, end, windowRange, leftSeam.Kind, leftSeam.FadeSamples, rightSeam.Kind, rightSeam.FadeSamples);
+        var clipScope = clipRange is not null;
+        // Only a window inside the clip, holding a passage of the clip, can open or close its output; any other is refused
+        // as before.
+        var inClip = source.ClipBounds is { } bounds && bounds.Start <= a && b <= bounds.End &&
+            clipRange is { } own && own.Start <= start && end <= own.End;
+        var layout = new SeamLayout(replacements.Append(window).OrderBy(piece => piece.Range.StartSample).ToArray(),
+            KeptSource((start, end), windowRange), total, clipScope);
         // The scope as it renders without the window. A replacement's check that already fails there is not the window's doing.
-        var alone = new SeamLayout(replacements.ToArray(), KeptSource(null), total);
+        var alone = new SeamLayout(replacements.ToArray(), KeptSource(null), total, clipScope);
         var elements = layout.Elements;
         var w = Array.FindIndex(elements, piece => piece.IsWindow);
         static VoiceLabGeometryException Refusal(bool adjacent, string id) =>
@@ -618,7 +640,9 @@ public static class VoiceLabWindowPlanner
             Judge(w - 1, false);
             if (!layout.PairHolds(w - 1)) throw Refusal(true, elements[w - 1].Id);
         }
-        if (leftSeam.Kind != VoiceLabSeamKind.None)
+        if (leftSeam.Kind != VoiceLabSeamKind.None && inClip && layout.OutputEdge(w, true))
+            HoldsInFullTake(project, take, window, true);
+        else if (leftSeam.Kind != VoiceLabSeamKind.None)
         {
             var needed = leftSeam.FadeSamples / 2;
             var available = layout.Beside(w, true);
@@ -631,7 +655,9 @@ public static class VoiceLabWindowPlanner
             Judge(w + 1, true);
             if (!layout.PairHolds(w)) throw Refusal(true, elements[w + 1].Id);
         }
-        if (rightSeam.Kind != VoiceLabSeamKind.None)
+        if (rightSeam.Kind != VoiceLabSeamKind.None && inClip && layout.OutputEdge(w, false))
+            HoldsInFullTake(project, take, window, false);
+        else if (rightSeam.Kind != VoiceLabSeamKind.None)
         {
             var needed = rightSeam.FadeSamples - rightSeam.FadeSamples / 2;
             var available = layout.Beside(w, false);
@@ -654,6 +680,56 @@ public static class VoiceLabWindowPlanner
         }
         return new(words[inside[0]].Id, words[inside[^1]].Id, words.Skip(firstIndex).Take(a - firstIndex).Select(word => word.Id).ToArray(),
             words.Skip(b + 1).Take(lastIndex - b).Select(word => word.Id).ToArray(), start, end, leftSeam.Sample, rightSeam.Sample, leftSeam, rightSeam);
+    }
+
+    /// <summary>A clip's own edges (§8.4). In a clip scope, a passage inside the clip with no kept or replaced item of the clip
+    /// before it opens the clip's output, and one with none after it closes it. Its seam keeps the kind and fade the full take
+    /// and other clips render it with. When the clip's kept source beside the seam cannot hold the fade's outer half, the seam
+    /// moves to the clip's own edge: the window absorbs that sliver and any cut items in it, and nothing renders beside the
+    /// seam in this scope. Place then checks the seam against the full take.</summary>
+    static (VoiceLabSeamPlacement Left, VoiceLabSeamPlacement Right) MoveToClipEdges(ScopeSource source, double rate, int a, int b,
+        int first, int last, bool[] blocking, VoiceLabSeamPlacement left, VoiceLabSeamPlacement right)
+    {
+        if (source.ClipRange is not { } clipRange || source.ClipBounds is not { } bounds || a < bounds.Start || b > bounds.End) return (left, right);
+        var opens = left.Kind != VoiceLabSeamKind.None && !blocking.Take(first).Contains(true);
+        var closes = right.Kind != VoiceLabSeamKind.None && !blocking.Skip(last + 1).Contains(true);
+        if (!opens && !closes) return (left, right);
+        var kept = source.KeptSource((left.Time, right.Time));
+        if (opens)
+        {
+            var seam = left.Sample;
+            var beside = kept.Where(piece => piece.StartSample < seam && seam <= piece.EndSample).Select(piece => seam - piece.StartSample).FirstOrDefault();
+            var edge = VoiceLabGeometry.Samples(clipRange.Start, rate);
+            if (beside < left.FadeSamples / 2 && edge < seam) left = left with { Time = clipRange.Start, Sample = edge };
+        }
+        if (closes)
+        {
+            var seam = right.Sample;
+            var beside = kept.Where(piece => piece.StartSample <= seam && seam < piece.EndSample).Select(piece => piece.EndSample - seam).FirstOrDefault();
+            var edge = VoiceLabGeometry.Samples(clipRange.End, rate);
+            if (beside < right.FadeSamples - right.FadeSamples / 2 && edge > seam) right = right with { Time = clipRange.End, Sample = edge };
+        }
+        return (left, right);
+    }
+
+    /// <summary>A seam at a clip's own output edge renders as a take edge in the clip, but the segment renders in the full take
+    /// too, where the source before (or after) the clip comes out beside it. There the seam must hold as prepare holds it: the
+    /// output piece beside it is source and holds the fade's outer half, possibly across a cut the full take makes, and a
+    /// replacement across that source leaves room for both outer halves (§10.5).</summary>
+    static void HoldsInFullTake(Project project, Take take, SynthPiece window, bool incoming)
+    {
+        var full = new ScopeSource(project, VoiceLabOutputScope.Full, take);
+        var elements = full.Replacements.Append(window).OrderBy(piece => piece.Range.StartSample).ToArray();
+        var layout = new SeamLayout(elements, full.KeptSource((window.Start, window.End), window.Range), take.Total);
+        var index = Array.FindIndex(elements, piece => piece.IsWindow);
+        if (layout.PrepareHolds(index, incoming)) return;
+        var fade = incoming ? window.InFade : window.OutFade;
+        var between = layout.Run(incoming ? index : index + 1);
+        var needed = incoming ? fade / 2 : fade - fade / 2;
+        var available = between.Length == 0 ? 0 : incoming ? between[^1].EndSample - between[^1].StartSample : between[0].EndSample - between[0].StartSample;
+        if (available < needed)
+            throw new VoiceLabGeometryException(VoiceLabGeometryErrorCode.SeamFadeCrossesCut, incoming: incoming, needed: needed, available: available);
+        throw new VoiceLabGeometryException(VoiceLabGeometryErrorCode.AdjacentReplacement, segmentId: elements[incoming ? index - 1 : index + 1].Id);
     }
 
     /// <summary>The §8.9.2 lendable silence of each gap seam of window, a window Place returned for this scope, in seconds

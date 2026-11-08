@@ -323,9 +323,11 @@ result = case('clip-at-take-end', 'A clip whose clipTimes range reaches the take
 assert result['lines'][0]['note'].startswith('seams gap/none,'), result
 
 result = case('suggested-clip', 'A suggested clip (origin ai, not selected) is a scope like a kept clip. Its head cuts the '
-              'event just before "It", so the first line\'s hard seam has no kept source for its fade and takes the advisory span.',
+              'event just before "It", so nothing renders before the first line\'s hard seam in the clip: the seam is the '
+              'clip\'s output edge, and the event holds its fade in the full take (voice-lab section 8.4).',
               TAKE_A, {'kind': 'clip', 'clipId': 'clip-suggested'})
-assert sources(result) == ['lineSpan', 'noSpeech', 'lineSpan'], result
+assert sources(result) == ['window', 'noSpeech', 'lineSpan'], result
+assert result['lines'][0]['note'].startswith('seams hard/'), result
 
 result = case('no-envelope', 'Without the source envelope no window is placed: every line with words takes its advisory span. '
               'The line that starts with "(laughs)" adds its 6 letters to both bounds, because the model echoes the label.',

@@ -312,7 +312,18 @@ public enum VoiceLabWindowPlanner {
         var elements: [SynthPiece]
         var pieces: [MediaInterval]
         var total: Int64
+        /// The layout is a clip's, whose own edges are output edges (§8.4).
+        var clipScope = false
 
+        /// Whether element `index`'s seam on that side is a clip's own output edge: in a clip scope nothing renders before
+        /// it (or after it), so prepare plays a fade seam there as a take edge and needs no source beside it. A take edge
+        /// keeps seam `none`.
+        func outputEdge(_ index: Int, incoming: Bool) -> Bool {
+            let range = elements[index].range
+            return clipScope && run(incoming ? index : index + 1).isEmpty
+                && !elements.indices.contains(incoming ? index - 1 : index + 1)
+                && (incoming ? range.startSample > 0 : range.endSample < total)
+        }
         /// The kept pieces between element `index` - 1 (or the take start) and element `index` (or the take end).
         func run(_ index: Int) -> [MediaInterval] {
             let lo = index > 0 ? elements[index - 1].range.endSample : 0
@@ -339,7 +350,8 @@ public enum VoiceLabWindowPlanner {
                                         : element.range.endSample == elements[other].range.startSample
                 return touching && facing.kind == .synthToSynth && facing.fade == seam.fade
             case .gap, .hard:
-                return beside(index, incoming: incoming) >= (incoming ? seam.fade / 2 : seam.fade - seam.fade / 2)
+                return outputEdge(index, incoming: incoming)
+                    || beside(index, incoming: incoming) >= (incoming ? seam.fade / 2 : seam.fade - seam.fade / 2)
             }
         }
         /// Prepare's `overlappingFades` rule between elements `index` and `index + 1`: the kept source between them holds the
@@ -358,7 +370,9 @@ public enum VoiceLabWindowPlanner {
         /// and the next one do not overlap.
         func prepareHolds(_ index: Int, incoming: Bool) -> Bool {
             let seam = incoming ? elements[index].incoming : elements[index].outgoing
-            if seam.kind == .none || seam.kind == .synthToSynth { return sideHolds(index, incoming: incoming) }
+            if seam.kind == .none || seam.kind == .synthToSynth || outputEdge(index, incoming: incoming) {
+                return sideHolds(index, incoming: incoming)
+            }
             let between = run(incoming ? index : index + 1), other = incoming ? index - 1 : index + 1
             guard let piece = incoming ? between.last : between.first,
                   piece.endSample - piece.startSample >= (incoming ? seam.fade / 2 : seam.fade - seam.fade / 2) else { return false }
@@ -395,6 +409,8 @@ public enum VoiceLabWindowPlanner {
     private struct ScopeSource {
         let take: Take
         let clipRange: TimeRange?
+        /// The clip's first and last items, in a clip scope.
+        let clipBounds: ClosedRange<Int>?
         let replacements: [SynthPiece]
         let segments: [EditSegment]
         let keptItem: [Bool]
@@ -409,15 +425,17 @@ public enum VoiceLabWindowPlanner {
             let state = EditState(transcript: take.transcript, pauses: pauses, pauseThresholdSeconds: edits.pauseThresholdSeconds,
                                   pauseKeepSeconds: edits.pauseKeepSeconds, cutWordIds: Set(edits.cutWordIds),
                                   cutPauseIds: Set(edits.cutPauseIds), corrections: edits.corrections, clips: edits.clips)
-            var activeClip: ClipRange?, clipRange: TimeRange?
+            var activeClip: ClipRange?, clipRange: TimeRange?, clipBounds: ClosedRange<Int>?
             if case .clip(let id) = scope {
                 guard let clip = edits.clips.first(where: { $0.id == id }), let indices = clipIndices(clip, words: words) else {
                     throw VoiceLabGeometryError.invalidInput()
                 }
                 activeClip = clip
+                clipBounds = indices
                 clipRange = try editing { try clipTimes(words, clip: clip, startIndex: indices.lowerBound, endIndex: indices.upperBound) }
             }
             self.clipRange = clipRange
+            self.clipBounds = clipBounds
             let replacements = try scopeReplacements(project, clipRange: clipRange, rate: take.rate, duration: take.duration)
             self.replacements = replacements
             let segments = try editing { try buildSegments(state, activeClip: activeClip) }
@@ -606,6 +624,7 @@ public enum VoiceLabWindowPlanner {
         }
         var rightSeam = right ?? hardSeam(passageEnd + min(hardSeamReach, max(0, silenceEnd - passageEnd) / 2))
         if touchesEnd && !blocking[(last + 1)...].contains(true) { rightSeam = edgeSeam(total, duration) }
+        try moveToClipEdges(source, a: a, b: b, first: first, last: last, blocking: blocking, left: &leftSeam, right: &rightSeam)
 
         let start = leftSeam.time, end = rightSeam.time
         guard rightSeam.sample > leftSeam.sample else { throw VoiceLabGeometryError.invalidInput() }
@@ -641,10 +660,15 @@ public enum VoiceLabWindowPlanner {
         let windowRange = MediaInterval(startSample: leftSeam.sample, endSample: rightSeam.sample)
         let window = SynthPiece(id: "", isWindow: true, start: start, end: end, range: windowRange,
                                 incoming: (leftSeam.kind, leftSeam.fadeSamples), outgoing: (rightSeam.kind, rightSeam.fadeSamples))
+        let clipScope = clipRange != nil
+        // Only a window inside the clip, holding a passage of the clip, can open or close its output; any other is refused
+        // as before.
+        let passageInClip = source.clipBounds.map { $0.contains(a) && $0.contains(b) } ?? false
+        let inClip = passageInClip && clipRange.map { $0.start <= start && end <= $0.end } == true
         let layout = SeamLayout(elements: (replacements + [window]).sorted { $0.range.startSample < $1.range.startSample },
-                                pieces: try keptSource((start, end), window: [windowRange]), total: total)
+                                pieces: try keptSource((start, end), window: [windowRange]), total: total, clipScope: clipScope)
         // The scope as it renders without the window. A replacement's check that already fails there is not the window's doing.
-        let alone = SeamLayout(elements: replacements, pieces: try keptSource(nil), total: total)
+        let alone = SeamLayout(elements: replacements, pieces: try keptSource(nil), total: total, clipScope: clipScope)
         let elements = layout.elements, w = elements.firstIndex(where: \.isWindow)!
         /// Throws unless replacement `index`'s seam on that side still renders beside the window. A check that holds without
         /// the window and fails with it is the window's doing. A check that already fails is judged by prepare's own rule, and
@@ -661,7 +685,9 @@ public enum VoiceLabWindowPlanner {
             try judge(w - 1, incoming: false)
             guard layout.pairHolds(w - 1) else { throw VoiceLabGeometryError.adjacentReplacement(elements[w - 1].id) }
         }
-        if leftSeam.kind != .none {
+        if leftSeam.kind != .none && inClip && layout.outputEdge(w, incoming: true) {
+            try holdsInFullTake(project, take: take, window: window, incoming: true)
+        } else if leftSeam.kind != .none {
             let needed = leftSeam.fadeSamples / 2, available = layout.beside(w, incoming: true)
             if available < needed { throw VoiceLabGeometryError.seamFadeCrossesCut(incoming: true, needed: needed, available: available) }
         }
@@ -670,7 +696,9 @@ public enum VoiceLabWindowPlanner {
             try judge(w + 1, incoming: true)
             guard layout.pairHolds(w) else { throw VoiceLabGeometryError.adjacentReplacement(elements[w + 1].id) }
         }
-        if rightSeam.kind != .none {
+        if rightSeam.kind != .none && inClip && layout.outputEdge(w, incoming: false) {
+            try holdsInFullTake(project, take: take, window: window, incoming: false)
+        } else if rightSeam.kind != .none {
             let needed = rightSeam.fadeSamples - rightSeam.fadeSamples / 2, available = layout.beside(w, incoming: false)
             if available < needed { throw VoiceLabGeometryError.seamFadeCrossesCut(incoming: false, needed: needed, available: available) }
         }
@@ -693,6 +721,60 @@ public enum VoiceLabWindowPlanner {
                               leftBridgeWordIds: words[first..<a].map(\.id), rightBridgeWordIds: words[(b + 1)..<(last + 1)].map(\.id),
                               start: start, end: end, startSample: leftSeam.sample, endSample: rightSeam.sample,
                               leftSeam: leftSeam, rightSeam: rightSeam)
+    }
+}
+
+extension VoiceLabWindowPlanner {
+    /// A clip's own edges (§8.4). In a clip scope, a passage inside the clip with no kept or replaced item of the clip before
+    /// it opens the clip's output, and one with none after it closes it. Its seam keeps the kind and fade the full take and
+    /// other clips render it with. When the clip's kept source beside the seam cannot hold the fade's outer half, the seam
+    /// moves to the clip's own edge: the window absorbs that sliver and any cut items in it, and nothing renders beside the
+    /// seam in this scope. `place` then checks the seam against the full take.
+    private static func moveToClipEdges(_ source: ScopeSource, a: Int, b: Int, first: Int, last: Int, blocking: [Bool],
+                                        left: inout VoiceLabSeamPlacement, right: inout VoiceLabSeamPlacement) throws {
+        guard let clipRange = source.clipRange, let bounds = source.clipBounds, bounds.contains(a), bounds.contains(b) else { return }
+        let opens = left.kind != .none && !blocking[..<first].contains(true)
+        let closes = right.kind != .none && !blocking[(last + 1)...].contains(true)
+        guard opens || closes else { return }
+        let kept = try source.keptSource((left.time, right.time))
+        let rate = source.take.rate
+        if opens {
+            let seam = left.sample
+            let beside = kept.first { $0.startSample < seam && seam <= $0.endSample }.map { seam - $0.startSample } ?? 0
+            let edge = VoiceLabGeometry.samples(clipRange.start, rate)
+            if beside < left.fadeSamples / 2 && edge < seam {
+                left = VoiceLabSeamPlacement(kind: left.kind, time: clipRange.start, sample: edge, fadeSamples: left.fadeSamples)
+            }
+        }
+        if closes {
+            let seam = right.sample
+            let beside = kept.first { $0.startSample <= seam && seam < $0.endSample }.map { $0.endSample - seam } ?? 0
+            let edge = VoiceLabGeometry.samples(clipRange.end, rate)
+            if beside < right.fadeSamples - right.fadeSamples / 2 && edge > seam {
+                right = VoiceLabSeamPlacement(kind: right.kind, time: clipRange.end, sample: edge, fadeSamples: right.fadeSamples)
+            }
+        }
+    }
+
+    /// A seam at a clip's own output edge renders as a take edge in the clip, but the segment renders in the full take too,
+    /// where the source before (or after) the clip comes out beside it. There the seam must hold as prepare holds it: the
+    /// output piece beside it is source and holds the fade's outer half, possibly across a cut the full take makes, and a
+    /// replacement across that source leaves room for both outer halves (§10.5).
+    private static func holdsInFullTake(_ project: Project, take: Take, window: SynthPiece, incoming: Bool) throws {
+        let full = try ScopeSource(project, scope: .full, take: take)
+        let elements = (full.replacements + [window]).sorted { $0.range.startSample < $1.range.startSample }
+        let layout = SeamLayout(elements: elements, pieces: try full.keptSource((window.start, window.end), window: [window.range]),
+                                total: take.total)
+        let index = elements.firstIndex(where: \.isWindow)!
+        if layout.prepareHolds(index, incoming: incoming) { return }
+        let fade = incoming ? window.incoming.fade : window.outgoing.fade
+        let between = layout.run(incoming ? index : index + 1)
+        let piece = incoming ? between.last : between.first
+        let needed = incoming ? fade / 2 : fade - fade / 2, available = piece.map { $0.endSample - $0.startSample } ?? 0
+        if available < needed {
+            throw VoiceLabGeometryError.seamFadeCrossesCut(incoming: incoming, needed: needed, available: available)
+        }
+        throw VoiceLabGeometryError.adjacentReplacement(elements[incoming ? index - 1 : index + 1].id)
     }
 }
 

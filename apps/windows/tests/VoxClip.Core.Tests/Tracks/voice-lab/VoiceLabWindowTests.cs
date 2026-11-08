@@ -191,6 +191,60 @@ public sealed class VoiceLabWindowTests
         Assert.True(passages > 0 && passages < accepted && rendered == accepted, $"{rendered} of {accepted} rendered");
     }
 
+    /// <summary>window-clip-edge-cases.json (generate_window_clip_edges.py): windows at a clip's own edge, where the clip starts or
+    /// ends mid-take on a word touching the one outside it (§8.4). Each replays exactly, names the sides that open or close the
+    /// clip's output, and every accepted window validates and prepares in its clip and in the full take.</summary>
+    [Fact]
+    public void ClipEdgeVectors()
+    {
+        using var file = FixtureLoader.ReadJson("fixtures/voice-lab/window-clip-edge-cases.json");
+        var document = file.RootElement.Clone();
+        Assert.Equal("voxclip-voice-lab-window-clip-edge-cases/1", Text(document, "schema"));
+        Assert.Equal(new[] { "caseCount", "cases", "fuzz", "schema" }, document.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
+        var tests = document.GetProperty("cases").EnumerateArray().ToArray();
+        var fuzz = document.GetProperty("fuzz");
+        Assert.Equal(113, tests.Length);
+        Assert.Equal(tests.Length, document.GetProperty("caseCount").GetInt32());
+        Assert.True(fuzz.GetProperty("renderFailures").GetInt32() == 0 && fuzz.GetProperty("opening").GetInt32() > 0 && fuzz.GetProperty("closing").GetInt32() > 0);
+        var (accepted, passages, rendered) = ReplayWindows(tests);
+        Assert.True(accepted > 0 && passages == accepted && rendered == accepted, $"{rendered} of {accepted} rendered");
+        var opening = 0;
+        var closing = 0;
+        foreach (var test in tests.Where(test => !test.GetProperty("expected").TryGetProperty("error", out _)))
+        {
+            var input = test.GetProperty("input");
+            var name = Text(test, "name");
+            var placed = Window(test.GetProperty("expected"));
+            var project = Take(input, test.GetProperty("roomTone"));
+            var rate = Number(input, "sampleRate");
+            var tone = VoiceLabRoomToneSelection.Select(project.Transcript!.Words, Envelope(input.GetProperty("envelope")), rate,
+                VoiceLabGeometry.Samples(Number(input, "durationSeconds"), rate));
+            VoiceLabWord[] words = [new("patch", 0, (placed.EndSample - placed.StartSample) / rate, true)];
+            foreach (var scope in new[] { Scope(input), VoiceLabOutputScope.Full })
+            {
+                try
+                {
+                    VoiceLabRenderContract.ValidatePlacement(project, scope, placed);
+                    Assemble(project, placed, tone, words, 0.5, "patch", scope);
+                }
+                catch (Exception error) when (error is VoiceLabProjectException or VoiceLabGeometryException)
+                {
+                    Assert.Fail($"{name} does not render in {scope}: {error.Message}");
+                }
+            }
+            // The clip's plan starts (or ends) on the generated piece with a fade seam exactly where the vector says the window
+            // opens (or closes) the clip; a take edge keeps seam None.
+            var pieces = Assemble(project, placed, tone, words, 0.5, "patch", Scope(input)).Prepared.OutputPlan.Pieces;
+            var edges = test.GetProperty("clipOutputEdges");
+            var opens = pieces[0].SegmentId == "segment-window" && placed.LeftSeam.Kind != VoiceLabSeamKind.None;
+            var closes = pieces[^1].SegmentId == "segment-window" && placed.RightSeam.Kind != VoiceLabSeamKind.None;
+            Assert.True(opens == edges.GetProperty("incoming").GetBoolean() && closes == edges.GetProperty("outgoing").GetBoolean(), name);
+            opening += opens ? 1 : 0;
+            closing += closes ? 1 : 0;
+        }
+        Assert.True(opening > 0 && closing > 0);
+    }
+
     /// <summary>The committed sample of the property fuzz: every case replays, and every accepted window validates and prepares.</summary>
     [Fact]
     public void PropertyCases()

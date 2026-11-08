@@ -283,6 +283,47 @@ struct VoiceLabWindowTests {
         }
     }
 
+    /// `window-clip-edge-cases.json` (generate_window_clip_edges.py): windows at a clip's own edge, where the clip starts or
+    /// ends mid-take on a word touching the one outside it (§8.4). Each replays exactly, names the sides that open or close
+    /// the clip's output, and every accepted window validates and prepares in its clip and in the full take.
+    @Test func clipEdgeVectors() throws {
+        let document = try JSONDecoder().decode(JSONValue.self, from: FixtureLoader.data("fixtures/voice-lab/window-clip-edge-cases.json"))
+        #expect(document["schema"].vectorString == "voxclip-voice-lab-window-clip-edge-cases/1")
+        #expect(Set(document.vectorFields.keys) == Set(["schema", "caseCount", "cases", "fuzz"]))
+        let tests = try #require(document["cases"].vectorItems), fuzz = document["fuzz"]
+        #expect(tests.count == 113 && document["caseCount"].vectorInteger == Int64(tests.count))
+        #expect(fuzz["renderFailures"].vectorInteger == 0 && fuzz["opening"].vectorInteger > 0 && fuzz["closing"].vectorInteger > 0)
+        let (accepted, passages, rendered) = try replayWindows(tests)
+        #expect(accepted > 0 && passages == accepted && rendered == accepted)
+        var opening = 0, closing = 0
+        for test in tests where test["expected"]["error"].isVectorNull {
+            let input = test["input"], name = test["name"].vectorString ?? "?", placed = window(test["expected"])
+            let project = try take(input, tone: test["roomTone"]), rate = input["sampleRate"].vectorNumber
+            let tone = try VoiceLabRoomToneSelection.select(items: project.transcript?.words ?? [], envelope: envelope(input["envelope"]),
+                                                            sourceSampleRate: rate,
+                                                            totalSamples: VoiceLabGeometry.samples(input["durationSeconds"].vectorNumber, rate))
+            let outDuration = Double(placed.endSample - placed.startSample) / rate
+            let words = [VoiceLabWord(text: "patch", start: 0, end: outDuration, synthetic: true)]
+            for scope in [self.scope(input), .full] {
+                do {
+                    try VoiceLabRenderContract.validatePlacement(project, scope: scope, window: placed)
+                    _ = try assemble(project, window: placed, tone: tone, words: words, trimStart: 0.5, patch: "patch", scope: scope)
+                } catch { Issue.record("\(name) does not render in \(scope): \(error)") }
+            }
+            // The clip's plan starts (or ends) on the generated piece with a fade seam exactly where the vector says the
+            // window opens (or closes) the clip; a take edge keeps seam `none`.
+            let pieces = try assemble(project, window: placed, tone: tone, words: words, trimStart: 0.5, patch: "patch",
+                                      scope: self.scope(input)).1.outputPlan.pieces
+            let edges = test["clipOutputEdges"]
+            let opens = pieces.first?.segmentId == "segment-window" && placed.leftSeam.kind != .none
+            let closes = pieces.last?.segmentId == "segment-window" && placed.rightSeam.kind != .none
+            #expect(opens == (edges["incoming"].vectorBool == true) && closes == (edges["outgoing"].vectorBool == true), "\(name)")
+            opening += edges["incoming"].vectorBool == true ? 1 : 0
+            closing += edges["outgoing"].vectorBool == true ? 1 : 0
+        }
+        #expect(opening > 0 && closing > 0)
+    }
+
     @Test(arguments: ["hard-fade-outside-take-start", "hard-fade-outside-take-end"])
     func takeEdgeRefusalNamesTheSharedEdge(_ name: String) throws {
         let test = try #require(cases("window").first { $0["name"].vectorString == name })
