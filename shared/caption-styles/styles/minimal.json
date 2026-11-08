@@ -36,6 +36,9 @@
   "anchorY": "bottom"
  },
  "aspects": {
+  "portrait": {
+   "y": 0.769
+  },
   "landscape": {
    "y": 0.9,
    "maxLineWidthW": 0.66

@@ -23,7 +23,7 @@
   "maxPageSec": 5.0
  },
  "position": {"x": 0.06, "y": 0.9, "anchorX": "left", "anchorY": "bottom"},
- "aspects": {"landscape": {"maxLineWidthW": 0.5}},
+ "aspects": {"portrait": {"y": 0.769}, "landscape": {"maxLineWidthW": 0.5}},
  "fill": {"type": "solid", "color": "#FFFFFFF2"},
  "shadows": [{"dxEm": 0, "dyEm": 0.04, "sigmaEm": 0.08, "color": "#00000099"}],
  "box": {"scope": "page", "color": "#0000008C", "paddingXEm": 0.6, "paddingYEm": 0.35, "radiusEm": 0.25},

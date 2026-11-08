@@ -23,7 +23,7 @@
   "lineGapEm": 0.36
  },
  "position": {"x": 0.5, "y": 0.75},
- "aspects": {"landscape": {"y": 0.82}},
+ "aspects": {"portrait": {"y": 0.725}, "landscape": {"y": 0.82}},
  "fill": {"type": "solid", "color": "#111111"},
  "box": {"scope": "line", "color": "#FFFFFFF2", "paddingXEm": 0.5, "paddingYEm": 0.12, "pill": true},
  "animation": {"pageIn": {"type": "pop", "durationSec": 0.12, "fromScale": 0.92}},
