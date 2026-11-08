@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voxclip.app/schemas/frame-models.schema.json",
+  "title": "Windows face models for the frame analyzer (ADR-R48, Windows)",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema", "enabled", "enabledNote", "models"],
+  "properties": {
+    "schema": {"const": "voxclip-frame-models/1"},
+    "enabled": {"type": "boolean"},
+    "enabledNote": {"type": "string", "minLength": 1},
+    "models": {"type": "array", "minItems": 1, "maxItems": 1, "items": {"$ref": "#/$defs/model"}}
+  },
+  "if": {"properties": {"enabled": {"const": true}}},
+  "then": {"properties": {"models": {"items": {"properties": {
+    "files": {"items": {"properties": {"url": {"type": "string"}}}},
+    "calibration": {"properties": {"status": {"const": "calibrated"}}}
+  }}}}},
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "number": {"type": "number"},
+    "pair": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"}},
+    "linear": {
+      "type": "object", "additionalProperties": false, "required": ["a", "b"],
+      "properties": {"a": {"type": "number"}, "b": {"type": "number"}}
+    },
+    "file": {
+      "type": "object", "additionalProperties": false,
+      "required": ["role", "name", "url", "hosting", "bytes", "sha256", "input", "opset", "license", "licenseUrl", "notice", "trainingData"],
+      "properties": {
+        "role": {"enum": ["detector", "landmarks"]},
+        "name": {"type": "string", "pattern": "^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$"},
+        "url": {"oneOf": [{"type": "null"}, {"type": "string", "format": "uri", "pattern": "^https://"}]},
+        "hosting": {"type": "string", "minLength": 1},
+        "bytes": {"type": "integer", "minimum": 1},
+        "sha256": {"$ref": "#/$defs/hash"},
+        "input": {"type": "string", "minLength": 1},
+        "opset": {"type": "integer", "minimum": 1},
+        "license": {"type": "string", "minLength": 1},
+        "licenseUrl": {"type": "string", "format": "uri", "pattern": "^https://"},
+        "notice": {"type": "string", "minLength": 1},
+        "trainingData": {"type": "string", "minLength": 1},
+        "source": {
+          "type": "object", "additionalProperties": false,
+          "required": ["bundle", "bundleSha256", "tfliteSha256", "conversion", "parity"],
+          "properties": {
+            "bundle": {"type": "string", "format": "uri", "pattern": "^https://"},
+            "bundleSha256": {"$ref": "#/$defs/hash"}, "tfliteSha256": {"$ref": "#/$defs/hash"},
+            "conversion": {"type": "string", "minLength": 1}, "parity": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
+    "gates": {
+      "type": "object", "additionalProperties": false,
+      "required": ["minimumFaceWidth", "luma", "clippedBelow", "clippedAbove", "clippedFraction"],
+      "properties": {
+        "minimumFaceWidth": {"type": "number", "minimum": 0},
+        "luma": {"$ref": "#/$defs/pair"},
+        "clippedBelow": {"type": "number", "minimum": 0, "maximum": 255},
+        "clippedAbove": {"type": "number", "minimum": 0, "maximum": 255},
+        "clippedFraction": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "quality": {
+      "type": "object", "additionalProperties": false,
+      "required": ["w0", "w1", "w2", "eyesOpen", "facingSpan", "pitch0", "sharpness", "quantileMap", "gates"],
+      "properties": {
+        "w0": {"type": "number", "minimum": 0}, "w1": {"type": "number", "minimum": 0}, "w2": {"type": "number", "minimum": 0},
+        "eyesOpen": {"$ref": "#/$defs/pair"},
+        "facingSpan": {"type": "number", "exclusiveMinimum": 0},
+        "pitch0": {"type": "number"},
+        "sharpness": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number", "exclusiveMinimum": 0}},
+        "quantileMap": {"type": "array", "items": {"$ref": "#/$defs/pair"}},
+        "gates": {"$ref": "#/$defs/gates"}
+      }
+    },
+    "calibration": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "basis", "date", "reference", "eyeAspect", "yaw", "pitch", "quality", "evaluation"],
+      "properties": {
+        "status": {"enum": ["provisional", "calibrated"]},
+        "basis": {"type": "string", "minLength": 1},
+        "date": {"oneOf": [{"type": "null"}, {"type": "string", "format": "date"}]},
+        "reference": {"type": ["string", "null"]},
+        "eyeAspect": {"$ref": "#/$defs/linear"},
+        "yaw": {"$ref": "#/$defs/linear"},
+        "pitch": {"$ref": "#/$defs/linear"},
+        "quality": {"$ref": "#/$defs/quality"},
+        "evaluation": {"type": ["object", "null"]}
+      }
+    },
+    "model": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "displayName", "ortVersion", "files", "totalBytes", "license", "attribution", "calibration"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+        "displayName": {"type": "string", "minLength": 1},
+        "ortVersion": {"const": "1.19.2"},
+        "files": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/file"}},
+        "totalBytes": {"type": "integer", "minimum": 1},
+        "license": {"type": "string", "minLength": 1},
+        "attribution": {"type": "string", "minLength": 1},
+        "calibration": {"$ref": "#/$defs/calibration"}
+      }
+    }
+  }
+}

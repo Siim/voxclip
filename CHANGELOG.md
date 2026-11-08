@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Windows, groundwork for seeing faces on your PC: a pinned, checked list of the two face models (switched off until they're matched to the Mac) and the maths that turns what they see into the same eyes-open, head-turn and quality readings the Mac uses; nothing changes in the app yet.
 - On Windows, the frame summary sent to the AI writes its numbers exactly as the Mac does (0.615 is 0.62 on both), and the picture decisions (opening frame, face-follow crop, cover, screen blurs) follow the Mac's rules case for case, ready for the Windows frame analyzer.
 - On Windows, `voxclip-cli check` checks an export against its clip on your PC (every word heard again as edited, picture and sound in sync, −14 LUFS loudness, captions and titles clear of the feed's buttons) and exits 8 when something is off; `voxclip-cli autopilot` checks each clip it exports (`--no-check` skips it).
 - Numbers now match however they're written (Mac and Windows): a Voice Lab take whose script says "$300" and whose recognizer hears "three hundred dollars" passes its word check instead of being retaken, and on Mac `voxclip-cli check` no longer reports "three hundred dollar" heard as "$300" as cut off; a wrong number still fails, and a number in another language counts as unverified.

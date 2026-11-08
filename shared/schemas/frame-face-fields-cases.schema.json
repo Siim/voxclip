@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Siim/voxclip/main/shared/schemas/frame-face-fields-cases.schema.json",
+  "title": "Windows face field vectors (ADR-R48 Windows, package W2)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "description", "constants", "calibration", "caseCount", "counts", "inputSizes", "decodes", "crops", "samples",
+               "cropStats", "meshes", "qualities"],
+  "properties": {
+    "schema": {"const": "voxclip-frame-face-fields-cases/1"},
+    "description": {"type": "string", "minLength": 1},
+    "constants": {
+      "type": "object", "additionalProperties": false,
+      "required": ["strides", "scoreThreshold", "nmsThreshold", "longSide", "alignment", "cropSize", "expansion", "landmarkCount",
+                   "rightEyeContour", "leftEyeContour", "rightEyeOuter", "leftEyeOuter", "forehead", "chin"],
+      "properties": {
+        "strides": {"const": [8, 16, 32]}, "scoreThreshold": {"type": "number"}, "nmsThreshold": {"type": "number"},
+        "longSide": {"type": "integer"}, "alignment": {"type": "integer"}, "cropSize": {"type": "integer"}, "expansion": {"type": "number"},
+        "landmarkCount": {"const": 478},
+        "rightEyeContour": {"$ref": "#/$defs/contour"}, "leftEyeContour": {"$ref": "#/$defs/contour"},
+        "rightEyeOuter": {"type": "integer"}, "leftEyeOuter": {"type": "integer"}, "forehead": {"type": "integer"}, "chin": {"type": "integer"}
+      }
+    },
+    "calibration": {"$ref": "https://voxclip.app/schemas/frame-models.schema.json#/$defs/calibration"},
+    "caseCount": {"type": "integer", "minimum": 1},
+    "counts": {
+      "type": "object", "additionalProperties": false,
+      "required": ["inputSizes", "decodes", "crops", "samples", "cropStats", "meshes", "qualities"],
+      "properties": {
+        "inputSizes": {"type": "integer"}, "decodes": {"type": "integer"}, "crops": {"type": "integer"}, "samples": {"type": "integer"},
+        "cropStats": {"type": "integer"}, "meshes": {"type": "integer"}, "qualities": {"type": "integer"}
+      }
+    },
+    "inputSizes": {"type": "array", "minItems": 1, "items": {
+      "type": "object", "additionalProperties": false, "required": ["id", "frameWidth", "frameHeight", "expect"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"}, "frameWidth": {"type": "integer", "minimum": 1}, "frameHeight": {"type": "integer", "minimum": 1},
+        "expect": {"type": "object", "additionalProperties": false, "required": ["width", "height", "contentWidth", "contentHeight", "scale"],
+                   "properties": {"width": {"type": "integer"}, "height": {"type": "integer"}, "contentWidth": {"type": "integer"},
+                                  "contentHeight": {"type": "integer"}, "scale": {"type": "number"}}}
+      }
+    }},
+    "decodes": {"type": "array", "minItems": 1, "items": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "inputWidth", "inputHeight", "contentWidth", "contentHeight", "cells", "truncate", "expect"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"}, "inputWidth": {"type": "integer"}, "inputHeight": {"type": "integer"},
+        "contentWidth": {"type": "number"}, "contentHeight": {"type": "number"},
+        "cells": {"type": "array", "items": {
+          "type": "object", "additionalProperties": false, "required": ["stride", "row", "column", "cls", "obj", "bbox", "kps"],
+          "properties": {"stride": {"enum": [8, 16, 32]}, "row": {"type": "integer", "minimum": 0}, "column": {"type": "integer", "minimum": 0},
+                         "cls": {"type": "number"}, "obj": {"type": "number"},
+                         "bbox": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "number"}},
+                         "kps": {"type": "array", "minItems": 10, "maxItems": 10, "items": {"type": "number"}}}
+        }},
+        "truncate": {"type": ["string", "null"]},
+        "expect": {"type": "object", "required": ["error"], "properties": {
+          "error": {"type": "boolean"},
+          "faces": {"type": "array", "items": {"$ref": "#/$defs/face"}},
+          "largest": {"type": ["integer", "null"]},
+          "largestRect": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/rect"}]}
+        }}
+      }
+    }},
+    "crops": {"type": "array", "minItems": 1, "items": {
+      "type": "object", "additionalProperties": false, "required": ["id", "face", "scale", "expect"],
+      "properties": {"id": {"$ref": "#/$defs/id"}, "face": {"$ref": "#/$defs/face"}, "scale": {"type": "number"},
+                     "expect": {"type": ["object", "null"]}}
+    }},
+    "samples": {"type": "array", "minItems": 1, "items": {
+      "type": "object", "additionalProperties": false, "required": ["id", "face", "scale", "cropSize", "expansion", "image", "expect"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"}, "face": {"$ref": "#/$defs/face"}, "scale": {"type": "number"}, "cropSize": {"type": "integer"},
+        "expansion": {"type": "number"},
+        "image": {"type": "object", "additionalProperties": false, "required": ["width", "height", "rowBytes", "bytes"],
+                  "properties": {"width": {"type": "integer"}, "height": {"type": "integer"}, "rowBytes": {"type": "integer"},
+                                 "bytes": {"type": "array", "items": {"type": "integer", "minimum": 0, "maximum": 255}}}},
+        "expect": {"type": "array", "items": {"type": "number"}}
+      }
+    }},
+    "cropStats": {"type": "array", "minItems": 1, "items": {
+      "type": "object", "additionalProperties": false, "required": ["id", "size", "rgb", "expect"],
+      "properties": {"id": {"$ref": "#/$defs/id"}, "size": {"type": "integer"}, "rgb": {"type": "array", "items": {"type": "number"}},
+                     "expect": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/stats"}]}}
+    }},
+    "meshes": {"type": "array", "minItems": 1, "items": {
+      "type": "object", "additionalProperties": false, "required": ["id", "count", "fill", "points", "rect", "faceWidthPixels", "crop", "expect"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"}, "count": {"type": "integer"}, "fill": {"$ref": "#/$defs/point3"},
+        "points": {"type": "object", "propertyNames": {"pattern": "^[0-9]+$"}, "additionalProperties": {"$ref": "#/$defs/point3"}},
+        "rect": {"$ref": "#/$defs/rect"}, "faceWidthPixels": {"type": "number"}, "crop": {"$ref": "#/$defs/stats"},
+        "expect": {"oneOf": [{"type": "null"}, {
+          "type": "object", "additionalProperties": false,
+          "required": ["rawLeftEye", "rawRightEye", "meshYaw", "meshPitch", "quality", "face", "facesCamera"],
+          "properties": {"rawLeftEye": {"type": ["number", "null"]}, "rawRightEye": {"type": ["number", "null"]},
+                         "meshYaw": {"type": ["number", "null"]}, "meshPitch": {"type": ["number", "null"]},
+                         "quality": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/parts"}]}, "face": {"type": "object"},
+                         "facesCamera": {"type": ["boolean", "null"]}}
+        }]}
+      }
+    }},
+    "qualities": {"type": "array", "minItems": 1, "items": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "eyeAspect", "yaw", "pitch", "faceWidthPixels", "crop", "quantileMap", "expect"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"}, "eyeAspect": {"type": ["number", "null"]}, "yaw": {"type": ["number", "null"]},
+        "pitch": {"type": ["number", "null"]}, "faceWidthPixels": {"type": "number"}, "crop": {"$ref": "#/$defs/stats"},
+        "quantileMap": {"oneOf": [{"type": "null"}, {"type": "array", "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"}}}]},
+        "expect": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/parts"}]}
+      }
+    }}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+    "contour": {"type": "array", "minItems": 16, "maxItems": 16, "items": {"type": "integer", "minimum": 0, "maximum": 477}},
+    "point2": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"}},
+    "point3": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
+    "rect": {"type": "object", "additionalProperties": false, "required": ["height", "width", "x", "y"],
+             "properties": {"height": {"type": "number"}, "width": {"type": "number"}, "x": {"type": "number"}, "y": {"type": "number"}}},
+    "face": {"type": "object", "additionalProperties": false, "required": ["x", "y", "width", "height", "points", "score"],
+             "properties": {"x": {"type": "number"}, "y": {"type": "number"}, "width": {"type": "number"}, "height": {"type": "number"},
+                            "points": {"type": "array", "minItems": 5, "maxItems": 5, "items": {"$ref": "#/$defs/point2"}},
+                            "score": {"type": "number"}}},
+    "stats": {"type": "object", "additionalProperties": false, "required": ["sharpnessVariance", "meanLuma", "clippedFraction"],
+              "properties": {"sharpnessVariance": {"type": "number"}, "meanLuma": {"type": "number"}, "clippedFraction": {"type": "number"}}},
+    "parts": {"type": "object", "additionalProperties": false, "required": ["eyesOpen", "facing", "sharp", "gate", "score", "quality"],
+              "properties": {"eyesOpen": {"type": "number"}, "facing": {"type": "number"}, "sharp": {"type": "number"},
+                             "gate": {"enum": [0, 1]}, "score": {"type": "number"}, "quality": {"type": "number"}}}
+  }
+}
