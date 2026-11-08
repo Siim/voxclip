@@ -44,17 +44,12 @@ func clipCoverIsWrittenBesideTheExportAndEmbedded() async throws {
     // Embedded as the MP4's cover art, the same JPEG; the export keeps its streams.
     let art = try await coverArt(on.video)
     #expect(try await AVURLAsset(url: on.video).load(.tracks).count == AVURLAsset(url: off.video).load(.tracks).count)
-    if ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 27 {
-        #expect(art == jpeg)
-        if let streams = ffprobeStreams(on.video), let plain = ffprobeStreams(off.video) {
-            #expect(streams.filter { !$0.attachedPicture }.map(\.codecType) == plain.filter { !$0.attachedPicture }.map(\.codecType))
-            #expect(streams.filter(\.attachedPicture).count == 1)
-            #expect(plain.filter(\.attachedPicture).isEmpty)
-        }
-    } else {
-        // Owed (doc/publishing.md): on the macOS 26 CI runner the writer's iTunes covr never reaches the file, so the
-        // cover is only the JPEG beside it there.
-        withKnownIssue("macOS 26 doesn't embed the covr art", isIntermittent: true) { #expect(art == jpeg) }
+    // On every macOS: VoxClip writes the covr box itself (`MP4CoverEmbed`), not AVFoundation's writer.
+    #expect(art == jpeg)
+    if let streams = ffprobeStreams(on.video), let plain = ffprobeStreams(off.video) {
+        #expect(streams.filter { !$0.attachedPicture }.map(\.codecType) == plain.filter { !$0.attachedPicture }.map(\.codecType))
+        #expect(streams.filter(\.attachedPicture).count == 1)
+        #expect(plain.filter(\.attachedPicture).isEmpty)
     }
 
     // --cover off: no JPEG, no art.
@@ -211,7 +206,7 @@ private func counterFrame(_ image: CGImage) -> Int? {
 }
 
 /// The JPEG inside the file's iTunes `covr` atom (its `data` atom's payload after the 8-byte type and locale), read from
-/// the bytes: AVFoundation's iTunes metadata read returned nothing on the macOS 26 CI runner for a file macOS 27 reads.
+/// the bytes, so the check doesn't depend on what AVFoundation reads back on each macOS.
 func coverArt(_ video: URL) async throws -> Data? {
     let bytes = try Data(contentsOf: video)
     func size(at index: Int) -> Int { bytes[index..<index + 4].reduce(0) { $0 << 8 | Int($1) } }
@@ -229,13 +224,13 @@ func coverArt(_ video: URL) async throws -> Data? {
     return nil
 }
 
-private struct ProbedStream: Decodable {
+struct ProbedStream: Decodable {
     var codecType: String
     var attachedPicture: Bool
 }
 
 /// The file's streams by ffprobe (codec type, attached picture), or nil when ffprobe is not installed.
-private func ffprobeStreams(_ video: URL) -> [ProbedStream]? {
+func ffprobeStreams(_ video: URL) -> [ProbedStream]? {
     let paths = (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").map(String.init)
         + ["/opt/homebrew/bin", "/usr/local/bin"]
     guard let tool = paths.map({ URL(fileURLWithPath: $0).appendingPathComponent("ffprobe") })
