@@ -158,6 +158,9 @@ public sealed partial class LlmConnector
         var maxOut = catalog.Cap(Id, request.MaxOutputTokens);
         var schema = HttpStructuredSchema(request.Schema);
         var effort = EffortLevel.Resolve(request.Effort, catalog.EffortLevels(Id))?.Wire();
+        // ai.md §19.3: each image follows its label as text, after the cached block and before the instruction. A request
+        // without images builds exactly the body it built before.
+        var images = catalog.Images(request, Id);
         var supportsEffort = catalog.Model(Id, model)?["effort"]?.GetValue<bool>() == true;
         if (Id == ConnectorId.Anthropic)
         {
@@ -167,6 +170,11 @@ public sealed partial class LlmConnector
             var instruction = request.Instruction + (structured ? "" : "\n\nReply with only a JSON object that matches this JSON Schema: " + request.Schema.ToJsonString(LlmRuntime.CompactJson));
             var content = new JsonArray();
             if (request.CachedBlock is not null) content.Add((JsonNode)new JsonObject { ["type"] = "text", ["text"] = request.CachedBlock, ["cache_control"] = new JsonObject { ["type"] = "ephemeral" } });
+            foreach (var image in images)
+            {
+                content.Add((JsonNode)new JsonObject { ["type"] = "text", ["text"] = image.Label });
+                content.Add((JsonNode)new JsonObject { ["type"] = "image", ["source"] = new JsonObject { ["type"] = "base64", ["media_type"] = image.MediaType, ["data"] = Convert.ToBase64String(image.Data) } });
+            }
             content.Add((JsonNode)new JsonObject { ["type"] = "text", ["text"] = instruction });
             var output = new JsonObject();
             if (supportsEffort && effort is not null) output["effort"] = effort;
@@ -180,6 +188,11 @@ public sealed partial class LlmConnector
         {
             var content = new JsonArray();
             if (request.CachedBlock is not null) content.Add((JsonNode)new JsonObject { ["type"] = "input_text", ["text"] = request.CachedBlock });
+            foreach (var image in images)
+            {
+                content.Add((JsonNode)new JsonObject { ["type"] = "input_text", ["text"] = image.Label });
+                content.Add((JsonNode)new JsonObject { ["type"] = "input_image", ["image_url"] = image.DataUrl, ["detail"] = "low" });
+            }
             content.Add((JsonNode)new JsonObject { ["type"] = "input_text", ["text"] = request.Instruction });
             var body = new JsonObject { ["model"] = model, ["instructions"] = request.System,
                 ["input"] = new JsonArray(new JsonObject { ["role"] = "user", ["content"] = content }),
@@ -193,6 +206,11 @@ public sealed partial class LlmConnector
         {
             var parts = new JsonArray();
             if (request.CachedBlock is not null) parts.Add((JsonNode)new JsonObject { ["text"] = request.CachedBlock });
+            foreach (var image in images)
+            {
+                parts.Add((JsonNode)new JsonObject { ["text"] = image.Label });
+                parts.Add((JsonNode)new JsonObject { ["inlineData"] = new JsonObject { ["mimeType"] = image.MediaType, ["data"] = Convert.ToBase64String(image.Data) } });
+            }
             parts.Add((JsonNode)new JsonObject { ["text"] = request.Instruction });
             // 2026-10-30: https://ai.google.dev/api/generate-content does not confirm responseFormat GA for every curated model; retain responseJsonSchema.
             var generation = new JsonObject { ["maxOutputTokens"] = maxOut, ["responseMimeType"] = "application/json", ["responseJsonSchema"] = schema };
@@ -203,7 +221,13 @@ public sealed partial class LlmConnector
                 ["contents"] = new JsonArray(new JsonObject { ["role"] = "user", ["parts"] = parts }),
                 ["generationConfig"] = generation };
         }
-        var messages = new JsonArray(new JsonObject { ["role"] = "system", ["content"] = request.System }, new JsonObject { ["role"] = "user", ["content"] = UserContent(request) });
+        // xAI takes the images as parts of the user message (label text, then a data: URL at detail low), then the text.
+        JsonNode user = images.Count == 0 || Id != ConnectorId.Xai ? JsonValue.Create(UserContent(request))! : new JsonArray(images.SelectMany(image => new JsonNode[]
+        {
+            new JsonObject { ["type"] = "text", ["text"] = image.Label },
+            new JsonObject { ["type"] = "image_url", ["image_url"] = new JsonObject { ["url"] = image.DataUrl, ["detail"] = "low" } }
+        }).Append(new JsonObject { ["type"] = "text", ["text"] = UserContent(request) }).ToArray());
+        var messages = new JsonArray(new JsonObject { ["role"] = "system", ["content"] = request.System }, new JsonObject { ["role"] = "user", ["content"] = user });
         if (Id == ConnectorId.Ollama)
         {
             var details = await OllamaDetailsAsync(model, ct).ConfigureAwait(false);

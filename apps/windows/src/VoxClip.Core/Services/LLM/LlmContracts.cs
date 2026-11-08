@@ -89,7 +89,22 @@ public enum ModelSource
 }
 /// <summary>Canonical request. Never log its text; AI §2.1, §4.9.</summary>
 public sealed record LlmRequest(LlmFeature Feature, string System, string? CachedBlock, string Instruction,
-    string SchemaName, JsonObject Schema, int MaxOutputTokens, Effort? Effort, TimeSpan Timeout, string? Language, string Tag);
+    string SchemaName, JsonObject Schema, int MaxOutputTokens, Effort? Effort, TimeSpan Timeout, string? Language, string Tag)
+{
+    /// <summary>Small frames for a connector that takes images (ai.md §19.3). A connector whose catalogue entry has no
+    /// <c>images.supported</c> sends none; the instruction then carries the frames' text summary alone. Empty by default, and a
+    /// request without images is sent exactly as before.</summary>
+    public IReadOnlyList<LlmImage> Images { get; init; } = [];
+}
+/// <summary>One image a request shows the AI: a JPEG frame with its label, which goes as text just before it (ai.md §19.3).
+/// Twin of the Mac <c>LLMImage</c>.</summary>
+public sealed record LlmImage(string Label, string MediaType, byte[] Data, int Width, int Height)
+{
+    /// <summary>Anthropic's estimate of an image's input tokens: width × height / 750, rounded up (ai.md §19.4).</summary>
+    public int EstimatedTokens => (int)Math.Ceiling((double)Math.Max(0, Width) * Math.Max(0, Height) / 750.0);
+    /// <summary>The image as a <c>data:</c> URL.</summary>
+    internal string DataUrl => "data:" + MediaType + ";base64," + Convert.ToBase64String(Data);
+}
 /// <summary>Provider stop state; AI §3.2.</summary>
 public abstract record StopKind
 {
@@ -141,6 +156,9 @@ public interface ILlmConnector
     Task<int?> GetContextTokensAsync(string model, CancellationToken ct);
     /// <summary>Single-model completion honoring timeout and cancellation.</summary>
     Task<RawCompletion> SendAsync(LlmRequest request, string model, CancellationToken ct);
+    /// <summary>Whether <see cref="SendAsync"/> passes a request's images on, as the catalogue declares (<c>connectors[].images.supported</c>).
+    /// A connector that does not drops them, so a caller always puts the frames' text summary in the instruction (ai.md §19.3).</summary>
+    bool SupportsImages => false;
 }
 /// <summary>Keys are values, never stored by Core; architecture §2.1 and AI §8.1.</summary>
 public interface IKeyProvider
@@ -297,4 +315,6 @@ public sealed partial class LlmConnector : ILlmConnector
     public Task<int?> GetContextTokensAsync(string model, CancellationToken ct) => ContextAsync(model, ct);
     /// <inheritdoc />
     public Task<RawCompletion> SendAsync(LlmRequest request, string model, CancellationToken ct) => SendCoreAsync(request, model, ct);
+    /// <inheritdoc />
+    public bool SupportsImages => catalog.SupportsImages(Id);
 }

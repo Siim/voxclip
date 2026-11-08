@@ -65,6 +65,16 @@ public sealed partial class LlmCatalog
     /// <summary>The level an AI decision feature sends on <paramref name="id"/>, from the catalog alone; null for a connector that ignores
     /// effort (local servers, Apple, xAI). Codex shows its catalog default; a named model may list more (AI §6.9).</summary>
     public Effort? DecisionEffort(ConnectorId id) => EffortLevel.Resolve(EffortLevel.Decision, EffortLevels(id));
+    /// <summary>Whether the connector passes a request's images on (<c>images.supported</c>, ai.md §19.3); false when the entry says
+    /// nothing.</summary>
+    public bool SupportsImages(ConnectorId id) => Provider(id)["images"]?["supported"] is JsonValue supported && supported.TryGetValue<bool>(out var value) && value;
+    /// <summary>The most images one request may carry (<c>images.maxPerRequest</c>); 0 for a connector that takes none.</summary>
+    public int MaximumImages(ConnectorId id) => SupportsImages(id) && Provider(id)["images"]?["maxPerRequest"] is JsonValue maximum && maximum.TryGetValue<int>(out var count) ? Math.Max(0, count) : 0;
+    /// <summary>The images a send to <paramref name="id"/> passes on: none for a connector without image support, else at most its maximum.</summary>
+    internal IReadOnlyList<LlmImage> Images(LlmRequest request, ConnectorId id) => request.Images.Take(MaximumImages(id)).ToArray();
+    /// <summary>The CLI flags Claude Code's <c>--help</c> must list before images go as stream-json (<c>images.requiredFlags</c>).</summary>
+    internal IReadOnlyList<string> ImageRequiredFlags(ConnectorId id) => (Provider(id)["images"]?["requiredFlags"] as JsonArray ?? [])
+        .Select(flag => flag is JsonValue value && value.TryGetValue<string>(out var text) ? text : null).OfType<string>().ToArray();
     internal TimeSpan Timeout(string kind) => TimeSpan.FromSeconds(Data["policy"]!["timeoutsSeconds"]![kind]!.GetValue<double>());
     internal int Cap(ConnectorId id, int requested) => Math.Min(requested, Provider(id)["maxOutputTokensCap"]?.GetValue<int>() ?? requested);
     internal double BytesPerToken => Data["policy"]!["tokenEstimate"]!["utf8BytesPerToken"]!.GetValue<double>();
