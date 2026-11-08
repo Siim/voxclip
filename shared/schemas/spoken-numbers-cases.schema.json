@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Siim/voxclip/main/shared/schemas/spoken-numbers-cases.schema.json",
+  "title": "Spoken-number matching vectors (voice-lab section 8.11, ADR-R49)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "description", "constants", "caseCount", "counts", "numerals", "alignments", "takeChecks"],
+  "properties": {
+    "schema": {"const": "voxclip-spoken-numbers-cases/1"},
+    "description": {"type": "string", "minLength": 1},
+    "constants": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["longestRun", "longestUnverifiedRun"],
+      "properties": {"longestRun": {"type": "integer", "minimum": 1}, "longestUnverifiedRun": {"type": "integer", "minimum": 1}}
+    },
+    "caseCount": {"type": "integer", "minimum": 1},
+    "counts": {
+      "type": "object",
+      "propertyNames": {"$ref": "#/$defs/category"},
+      "additionalProperties": {"type": "integer", "minimum": 1}
+    },
+    "numerals": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/numeral"}},
+    "alignments": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/alignment"}},
+    "takeChecks": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/takeCheck"}}
+  },
+  "$defs": {
+    "category": {"enum": ["cardinal", "yearPair", "digits", "ordinal", "separators", "currency", "percent", "units", "nonMatch",
+                          "otherLanguage", "plain"]},
+    "id": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+    "indices": {"type": "array", "items": {"type": "integer", "minimum": 0}},
+    "tokens": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "numeral": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["raw", "numeral"],
+      "properties": {
+        "raw": {"type": "string", "minLength": 1},
+        "numeral": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["value", "digits", "ordinal", "unit"],
+          "properties": {
+            "value": {"type": "string", "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"},
+            "digits": {"type": "string", "pattern": "^[0-9]+$"},
+            "ordinal": {"type": "boolean"},
+            "unit": {"enum": ["dollar", "euro", "pound", "percent", null]}
+          }
+        }
+      }
+    },
+    "alignment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "category", "derivation", "expected", "recognized", "expectedTokens", "recognizedTokens", "pairs",
+                   "unverifiedExpected", "unverifiedRecognized", "unverifiedNumbers", "ratio", "complete"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "category": {"$ref": "#/$defs/category"},
+        "derivation": {"type": "string", "minLength": 1},
+        "expected": {"type": "string", "minLength": 1},
+        "recognized": {"type": "string", "minLength": 1},
+        "expectedTokens": {"$ref": "#/$defs/tokens"},
+        "recognizedTokens": {"$ref": "#/$defs/tokens"},
+        "pairs": {
+          "type": "array",
+          "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer", "minimum": 0}}
+        },
+        "unverifiedExpected": {"$ref": "#/$defs/indices"},
+        "unverifiedRecognized": {"$ref": "#/$defs/indices"},
+        "unverifiedNumbers": {"type": "integer", "minimum": 0},
+        "ratio": {"type": "number", "minimum": 0, "maximum": 1},
+        "complete": {"type": "boolean"}
+      }
+    },
+    "takeCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "derivation", "expected", "recognized", "transcriptMatch", "passed", "unverifiedNumbers"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "derivation": {"type": "string", "minLength": 1},
+        "expected": {"type": "string", "minLength": 1},
+        "recognized": {"$ref": "#/$defs/tokens"},
+        "transcriptMatch": {"type": "number", "minimum": 0, "maximum": 1},
+        "passed": {"type": "boolean"},
+        "unverifiedNumbers": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}
