@@ -9,7 +9,8 @@ A file ending in .voxclip is checked against project.schema.json; a JSON object 
 "schema" is "voxclip-settings/1" against settings.schema.json, and one whose "schema" is
 "voxclip-voice-lab-prices/1" against voice-lab-prices.schema.json, and one whose "schema" is
 "voxclip-cover-art-cases/1" (the MP4 cover-art vectors) against cover-art-cases.schema.json, and one whose "schema" is
-"voxclip-frame-decision-cases/1" (the frame decisions' vectors) against frame-decision-cases.schema.json; *.transcript.json
+"voxclip-frame-decision-cases/1" (the frame decisions' vectors) against frame-decision-cases.schema.json, and one whose "schema" is
+"voxclip-frame-models/1" (the Windows face models) against frame-models.schema.json; *.transcript.json
 against project.schema.json's $defs/transcript. References between the
 schemas (project.schema.json -> timed-word.schema.json) resolve through a local registry,
 never over the network. Needs jsonschema >= 4.18 (tools/captions/requirements.txt).
@@ -68,6 +69,8 @@ def schema_for(path, document, by_name):
         return by_name["spoken-numbers-cases.schema.json"]
     if isinstance(document, dict) and document.get("schema") == "voxclip-frame-decision-cases/1":
         return by_name["frame-decision-cases.schema.json"]
+    if isinstance(document, dict) and document.get("schema") == "voxclip-frame-models/1":
+        return by_name["frame-models.schema.json"]
     raise SystemExit(f"{path}: no schema applies (expected .voxclip, .transcript.json, voxclip-settings/1 "
                      "or voxclip-voice-lab-prices/1)")
 
@@ -86,6 +89,7 @@ def main(argv):
           fixtures / "voice-lab" / "consent-record-creator.json",
           fixtures / "voice-lab" / "consent-record-project.json",
           ROOT / "shared" / "catalog" / "voice-lab-models.json",
+          ROOT / "shared" / "catalog" / "frame-models.json",
           fixtures / "export-check" / "check-cases.json",
           fixtures / "export-check" / "number-check-cases.json",
           fixtures / "spoken-numbers" / "number-cases.json",

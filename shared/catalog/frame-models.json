@@ -1,0 +1,79 @@
+{
+  "schema": "voxclip-frame-models/1",
+  "enabled": false,
+  "enabledNote": "Off until the calibration against the Mac (W7) passes and the user decides on YuNet's training-data terms (WIDER FACE). While off, nothing installs or loads these models.",
+  "models": [
+    {
+      "id": "yunet2026may-facemeshv2-f16v1",
+      "displayName": "YuNet + MediaPipe Face Mesh V2 · faces and eyes",
+      "ortVersion": "1.19.2",
+      "files": [
+        {
+          "role": "detector",
+          "name": "face_detection_yunet_2026may.onnx",
+          "url": "https://github.com/opencv/opencv_zoo/raw/26cc381e4d2594bb9f47a26eb8fd96c94a13660d/models/face_detection_yunet/face_detection_yunet_2026may.onnx",
+          "hosting": "opencv_zoo, pinned to commit 26cc381e4d2594bb9f47a26eb8fd96c94a13660d",
+          "bytes": 229738,
+          "sha256": "ebafce4e3c118d6554634be5c27ab333b4c047a9a8c3faf1d7cf93101c22f0f0",
+          "input": "1x3xHxW BGR 0-255, H and W multiples of 32",
+          "opset": 11,
+          "license": "MIT",
+          "licenseUrl": "https://github.com/opencv/opencv_zoo/blob/26cc381e4d2594bb9f47a26eb8fd96c94a13660d/models/face_detection_yunet/LICENSE",
+          "notice": "YuNet face detector. Copyright (c) 2020 Shiqi Yu. MIT License.",
+          "trainingData": "WIDER FACE (research-oriented terms; the user decides before Windows ships)"
+        },
+        {
+          "role": "landmarks",
+          "name": "face_mesh_v2.onnx",
+          "url": null,
+          "hosting": "Owed: a VoxClip release asset with the Apache-2.0 LICENSE and this NOTICE, reproduced by a pinned tf2onnx conversion of the bundle below",
+          "bytes": 4921008,
+          "sha256": "336896759881634ebf1121fe161e95abf1eaae697779d02a9eab04f53b1f0784",
+          "input": "1x256x256x3 RGB 0-1",
+          "opset": 17,
+          "license": "Apache-2.0",
+          "licenseUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+          "notice": "MediaPipe Face Mesh V2 by Google LLC, licensed under the Apache License 2.0. Converted from TensorFlow Lite to ONNX (tf2onnx 1.17.0, opset 17); the weights are unchanged apart from the format.",
+          "trainingData": "Google's MediaPipe Face Mesh V2 training data (model card \"Model Card MediaPipe Face Mesh V2\")",
+          "source": {
+            "bundle": "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+            "bundleSha256": "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff",
+            "tfliteSha256": "c7d54204ce0448474c7f3fa9af494787c0965cbdd6f20fc72867e43046bd43d5",
+            "conversion": "tf2onnx 1.17.0, opset 17, batch 1 (byte-identical to entry 'mesh' of huggingface.co/NardoCreations/mediapipe-face-onnx@253c4f079ea8ec964c914ba6de237b7c62762197, pack SHA-256 69f881ea5961e8b8fecc5076ae5c5559e284f7bc22c1859ed19900b9069e3b98)",
+            "parity": "max |onnx - tflite| 5.7e-4 crop px on random inputs (2026-11-08)"
+          }
+        }
+      ],
+      "totalBytes": 5150746,
+      "license": "MIT (YuNet); Apache-2.0 (Face Mesh V2 weights and ONNX conversion)",
+      "attribution": "YuNet by Shiqi Yu et al. (MIT). MediaPipe Face Mesh V2 by Google (Apache-2.0), converted from TFLite to ONNX; weights unchanged apart from the format.",
+      "calibration": {
+        "status": "provisional",
+        "basis": "Seed fit of /tmp/clipper-planning/research/windows-frame-analyzer.md: four public-domain NASA clips, 1,299 frames, against Apple Vision (face rectangles revision 3) on macOS 27. Every number below is provisional until the calibration package (W7) refits it against the post-fix Mac and sets status to calibrated. The gates and pitch0 are not fitted yet.",
+        "date": null,
+        "reference": null,
+        "eyeAspect": {"a": 0.721, "b": 0.058},
+        "yaw": {"a": 1.082, "b": -0.005},
+        "pitch": {"a": -1.466, "b": 0.014},
+        "quality": {
+          "w0": 0.154,
+          "w1": 0.413,
+          "w2": 0.026,
+          "eyesOpen": [0.12, 0.26],
+          "facingSpan": 0.6,
+          "pitch0": 0.0,
+          "sharpness": [30, 400],
+          "quantileMap": [],
+          "gates": {
+            "minimumFaceWidth": 40,
+            "luma": [40, 220],
+            "clippedBelow": 5,
+            "clippedAbove": 250,
+            "clippedFraction": 0.25
+          }
+        },
+        "evaluation": null
+      }
+    }
+  ]
+}
