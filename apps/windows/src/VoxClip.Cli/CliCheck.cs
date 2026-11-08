@@ -2,6 +2,7 @@ using System.CommandLine;
 using System.Globalization;
 using System.Text.Json.Nodes;
 using VoxClip.Core.Domain.Autopilot;
+using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.ExportChecks;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.Transcript;
@@ -10,9 +11,6 @@ using VoxClip.Media.Pipeline;
 using VoxClip.Media.Speech;
 
 namespace VoxClip.Cli;
-
-/// <summary>Makes the checker a check runs with; tests hand in one that reads a synthetic export.</summary>
-internal delegate ExportChecker ExportCheckerFactory(ExportChecker.Hearing? hearing, string scratch);
 
 /// <summary><c>voxclip-cli check</c>: the export self-check (ADR-R49), headless, twin of the Mac command. The export is transcribed
 /// again on this PC and compared word for word with the clip's edit, its tracks and each revoiced or rewritten phrase measured for
@@ -23,10 +21,8 @@ internal static class CliCheck
     /// <summary>The exit status when any check warns (architecture §9.3).</summary>
     internal const int WarningExitCode = 8;
 
-    internal static ExportChecker DefaultChecker(ExportChecker.Hearing? hearing, string scratch) => new(hearing, scratch, SharedResources.ResolveRoot());
-
     /// <summary>The command's result fields: the export, the clip and the <c>check</c> object.</summary>
-    internal static async Task<JsonObject> RunAsync(ParseResult arguments, CancellationToken ct, ExportInputReader? openExport, ExportCheckerFactory? checker)
+    internal static async Task<JsonObject> RunAsync(ParseResult arguments, CancellationToken ct, ExportInputReader? openExport)
     {
         var projectPath = Path.GetFullPath(CliOperations.Required(arguments, "--project"));
         var exportPath = Path.GetFullPath(arguments.GetValue<string>("export")!);
@@ -34,17 +30,24 @@ internal static class CliCheck
         if (!File.Exists(projectPath)) throw new FileNotFoundException();
         var clips = (await ServicesMergeAdapter.Projects().LoadAsync(projectPath, ct).ConfigureAwait(false)).Project.Edits.Clips;
         var wanted = CliOperations.Required(arguments, "--clip");
-        var clip = int.TryParse(wanted, NumberStyles.None, CultureInfo.InvariantCulture, out var number) && number >= 1 && number <= clips.Count
-            ? clips[number - 1] : clips.FirstOrDefault(item => item.Id == wanted) ?? throw new CliUsageException("The requested clip does not exist.");
+        var clip = Clip(clips, wanted) ?? throw new CliUsageException("The requested clip does not exist.");
         var aspect = arguments.GetValue<string?>("--aspect") ?? await ExportedAspectAsync(exportPath, ct).ConfigureAwait(false);
         List<string> export = ["--open", projectPath, "--export", exportPath, "--clip", clip.Id, "--aspect", aspect, "--quiet"];
         if (arguments.GetValue<string?>("--style") is { } style) export.AddRange(["--style", style]);
         if (arguments.GetValue<string?>("--loudness") is { } loudness) export.AddRange(["--loudness", loudness]);
         var prepared = await CliOperations.PrepareExportAsync(CliApplication.Parse([.. export]), ct, openExport, checkingOutputs: false).ConfigureAwait(false);
         var hearing = await LocalHearingAsync(prepared.Project.Transcript, ct).ConfigureAwait(false);
-        var outcome = await CheckExportAsync(exportPath, prepared, hearing, checker, ct).ConfigureAwait(false);
+        var outcome = await CheckExportAsync(exportPath, prepared, hearing, ct).ConfigureAwait(false);
         return new() { ["output"] = exportPath, ["clipId"] = clip.Id, ["check"] = Json(outcome) };
     }
+
+    /// <summary>The clip <paramref name="wanted"/> names: its number in the project's clip list (1 is the first) or its id.</summary>
+    internal static ClipRange? Clip(IReadOnlyList<ClipRange> clips, string wanted) =>
+        int.TryParse(wanted, NumberStyles.None, CultureInfo.InvariantCulture, out var number) && number >= 1 && number <= clips.Count
+            ? clips[number - 1] : clips.FirstOrDefault(item => item.Id == wanted);
+
+    /// <summary>The command's exit status: <see cref="WarningExitCode"/> when its <c>check</c> did not pass, else 0.</summary>
+    internal static int ExitCode(JsonObject fields) => fields["check"]?["passed"]?.GetValue<bool>() == false ? WarningExitCode : 0;
 
     /// <summary>The export's frame as an aspect: 9:16, 16:9 or 1:1 when it is one, else source.</summary>
     internal static async Task<string> ExportedAspectAsync(string path, CancellationToken ct)
@@ -68,12 +71,11 @@ internal static class CliCheck
     }
 
     /// <summary>One export checked against what <see cref="CliOperations.PrepareExportAsync"/> made for it.</summary>
-    internal static Task<ExportChecker.Outcome> CheckExportAsync(string export, PreparedExport prepared, ExportChecker.Hearing? hearing,
-        ExportCheckerFactory? checker, CancellationToken ct)
+    internal static Task<ExportChecker.Outcome> CheckExportAsync(string export, PreparedExport prepared, ExportChecker.Hearing? hearing, CancellationToken ct)
     {
         var edit = ExportCheckExpectation.Make(prepared.Snapshot, prepared.State);
         var scratch = Path.Combine(DataLocations.Resolve().Root, "Scratch", "export-check");
-        return (checker ?? DefaultChecker)(hearing, scratch).CheckAsync(export, prepared.Snapshot, edit, prepared.Loudness, ct);
+        return new ExportChecker(hearing, scratch, SharedResources.ResolveRoot()).CheckAsync(export, prepared.Snapshot, edit, prepared.Loudness, ct);
     }
 
     /// <summary>The <c>check</c> object, the Mac's shape: <c>passed</c>, the wall time, the engine that heard the export, and each
@@ -136,15 +138,14 @@ internal sealed class ClipChecks
 {
     private readonly Lazy<Task<ExportChecker.Hearing?>> hearing;
     private readonly ClaudeModeClock clock;
-    private readonly ExportCheckerFactory? checker;
     private readonly CancellationToken ct;
     private readonly object gate = new();
     private Task last = Task.CompletedTask;
     private readonly Dictionary<int, Task<JsonObject>> results = [];
 
-    internal ClipChecks(Transcript? transcript, ClaudeModeClock clock, ExportCheckerFactory? checker, CancellationToken ct)
+    internal ClipChecks(Transcript? transcript, ClaudeModeClock clock, CancellationToken ct)
     {
-        this.clock = clock; this.checker = checker; this.ct = ct;
+        this.clock = clock; this.ct = ct;
         hearing = new(() => Task.Run(async () =>
         {
             try { return await CliCheck.LocalHearingAsync(transcript, ct).ConfigureAwait(false); }
@@ -164,7 +165,7 @@ internal sealed class ClipChecks
                 clock.Begin(ClaudeModeStage.Check, rank);
                 try
                 {
-                    var outcome = await CliCheck.CheckExportAsync(export, prepared, await hearing.Value.ConfigureAwait(false), checker, ct).ConfigureAwait(false);
+                    var outcome = await CliCheck.CheckExportAsync(export, prepared, await hearing.Value.ConfigureAwait(false), ct).ConfigureAwait(false);
                     return CliCheck.Json(outcome);
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }

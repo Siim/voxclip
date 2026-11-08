@@ -30,15 +30,12 @@ public sealed class ExportChecker
     private readonly Hearing? hearing;
     private readonly string scratch;
     private readonly string? sharedRoot;
-    private readonly Func<string, CancellationToken, IExportFile> open;
 
     /// <summary>A checker that hears with <paramref name="hearing"/> (null skips the words), writes its 16 kHz copy under
     /// <paramref name="scratch"/> while the engine reads it, and lays titles out with the fonts under <paramref name="sharedRoot"/>.</summary>
-    public ExportChecker(Hearing? hearing, string scratch, string? sharedRoot) : this(hearing, scratch, sharedRoot, FfmpegExportFile.Open) { }
-
-    internal ExportChecker(Hearing? hearing, string scratch, string? sharedRoot, Func<string, CancellationToken, IExportFile> open)
+    public ExportChecker(Hearing? hearing, string scratch, string? sharedRoot)
     {
-        this.hearing = hearing; this.scratch = scratch; this.sharedRoot = sharedRoot; this.open = open;
+        this.hearing = hearing; this.scratch = scratch; this.sharedRoot = sharedRoot;
     }
 
     /// <summary>The engine that hears an export of <paramref name="transcript"/>'s project, all local: Whisper with the project's own
@@ -79,11 +76,20 @@ public sealed class ExportChecker
     public async Task<Outcome> CheckAsync(string export, ComposeSnapshot snapshot, ExportCheckExpectation.Edit edit, ExportLoudness loudness, CancellationToken ct)
     {
         var clock = Stopwatch.StartNew();
+        using var file = await MediaThread.Run("vc-export-check-open", () => FfmpegExportFile.Open(export, ct), ct).ConfigureAwait(false);
+        return await CheckAsync(file, snapshot, edit, loudness, clock, ct).ConfigureAwait(false);
+    }
+
+    /// <summary><see cref="CheckAsync(string, ComposeSnapshot, ExportCheckExpectation.Edit, ExportLoudness, CancellationToken)"/> on an
+    /// opened <paramref name="file"/>; the caller disposes it. <paramref name="clock"/> started when the check did.</summary>
+    internal async Task<Outcome> CheckAsync(IExportFile file, ComposeSnapshot snapshot, ExportCheckExpectation.Edit edit, ExportLoudness loudness,
+        Stopwatch clock, CancellationToken ct)
+    {
         Directory.CreateDirectory(scratch);
         var wav = Path.Combine(scratch, "export-check-" + Guid.NewGuid().ToString("N") + "-16k.wav");
         try
         {
-            var measured = await MediaThread.Run("vc-export-check", () => Measure(export, snapshot.Output, hearing is null ? null : wav, ct), ct).ConfigureAwait(false);
+            var measured = await MediaThread.Run("vc-export-check", () => Measure(file, snapshot.Output, hearing is null ? null : wav, ct), ct).ConfigureAwait(false);
             var measureSeconds = clock.Elapsed.TotalSeconds;
             IReadOnlyList<ExportCheckHeard>? heard = null;
             var skipped = ExportCheck.NoLocalEngine;
@@ -136,9 +142,8 @@ public sealed class ExportChecker
     /// <summary>The tracks' ranges and the frame from the file; the audio measured by the shared ADR-R47 meter at its own rate and
     /// channels and, with <paramref name="wav"/>, written there as 16 kHz mono PCM for the engine. The audio is read for its known
     /// length under a bounded token: the decoder pads with silence past the end and never returns 0.</summary>
-    private Measured Measure(string export, OutputSpec output, string? wav, CancellationToken ct)
+    private static Measured Measure(IExportFile file, OutputSpec output, string? wav, CancellationToken ct)
     {
-        using var file = open(export, ct);
         var frameSeconds = file.FrameRate is { } fps && fps > 0 && double.IsFinite(fps) ? 1 / fps : 1 / Math.Max(1, output.FrameRate);
         var frame = file.Frame is { Width: > 0, Height: > 0 } size ? size : output.Size;
         if (file.Audio is not { } audio) return new(file.Video, null, frameSeconds, frame, null, null);

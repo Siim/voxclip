@@ -23,9 +23,9 @@ internal static class CliApplication
     internal static string Version => AppVersion.Current;
 
     internal static async Task<int> RunAsync(string[] args, CancellationToken ct, ExportInputReader? openExport = null, ExportPreparer? prepareExport = null,
-        WindowsRuntimeAgreement? runtimeAgreement = null, Func<string, bool>? inputExists = null, ExportCheckerFactory? checkExport = null)
+        WindowsRuntimeAgreement? runtimeAgreement = null, Func<string, bool>? inputExists = null)
     {
-        var root = BuildCommand(openExport, prepareExport, inputExists, checkExport);
+        var root = BuildCommand(openExport, prepareExport, inputExists);
         var result = root.Parse(args);
         if (result.Errors.Count > 0)
         {
@@ -125,10 +125,9 @@ internal static class CliApplication
         ? $"VoxClip couldn't decode this video: {exception.Message.TrimEnd('.')}. Your edits are saved." : exception.Message;
 
     /// <summary>The command line parsed as the CLI parses it, so one command can run another's path (autopilot's export).</summary>
-    internal static ParseResult Parse(string[] args) => BuildCommand(null, null, null, null).Parse(args);
+    internal static ParseResult Parse(string[] args) => BuildCommand(null, null, null).Parse(args);
 
-    private static RootCommand BuildCommand(ExportInputReader? openExport, ExportPreparer? prepareExport, Func<string, bool>? inputExists,
-        ExportCheckerFactory? checkExport)
+    private static RootCommand BuildCommand(ExportInputReader? openExport, ExportPreparer? prepareExport, Func<string, bool>? inputExists)
     {
         var root = new RootCommand("VoxClip headless media tool.");
         root.Options.Add(Json);
@@ -176,7 +175,7 @@ internal static class CliApplication
         Choice(check, "--aspect", "16:9, 9:16, 1:1 or source, as exported; read from the export's frame when left out.", "source", "16:9", "9:16", "1:1");
         Add(check, "--style", "Caption style ID or off, when the export was given --style.");
         Choice(check, "--loudness", "social (the default) or off: the loudness the export ran with.", "social", "off");
-        Stub(check, "check", openExport, checkExport: checkExport);
+        Stub(check, "check", openExport);
 
         var probe = Command(root, "probe", "Print media probe facts.");
         probe.Arguments.Add(new Argument<string>("media"));
@@ -246,7 +245,7 @@ internal static class CliApplication
                 (!int.TryParse(count, NumberStyles.None, CultureInfo.InvariantCulture, out var value) || value is < 1 or > 12))
                 validation.AddError("--count must be 1 to 12");
         });
-        Stub(autopilot, "autopilot", openExport, prepareExport, checkExport: checkExport);
+        Stub(autopilot, "autopilot", openExport, prepareExport);
         var test = Command(root, "llm-test", "Run the connector test.");
         Add(test, "--connector", "Connector catalog id.", true);
         Add(test, "--model", "Model id.");
@@ -298,7 +297,7 @@ internal static class CliApplication
         return option;
     }
     private static void Stub(Command command, string name, ExportInputReader? openExport = null, ExportPreparer? prepareExport = null,
-        Func<string, bool>? inputExists = null, ExportCheckerFactory? checkExport = null) => command.SetAction(async (result, ct) =>
+        Func<string, bool>? inputExists = null) => command.SetAction(async (result, ct) =>
     {
         ct.ThrowIfCancellationRequested();
         if (name == "export" && (result.GetValue<string?>("--open") is null || result.GetValue<string?>("--export") is null))
@@ -306,7 +305,7 @@ internal static class CliApplication
         var path = name == "probe" ? result.GetValue<string>("media") : result.GetValue<string?>("--open");
         if (name != "export" && path is not null && !(inputExists ?? File.Exists)(path))
             return Fail(result, "mediaMissing", "The input file cannot be found.", 3, name);
-        var fields = await CliOperations.ExecuteAsync(name, result, ct, openExport, prepareExport, checkExport).ConfigureAwait(false);
+        var fields = await CliOperations.ExecuteAsync(name, result, ct, openExport, prepareExport).ConfigureAwait(false);
         fields["ok"] = true; fields["command"] = name; fields["version"] = Version;
         if (result.GetValue(Json)) Console.Out.WriteLine(fields.ToJsonString());
         else if (name == "autopilot") { if (CliAutopilot.HumanOutput(fields) is { } timings) Console.Out.WriteLine(timings); }
@@ -317,7 +316,7 @@ internal static class CliApplication
             Console.Out.WriteLine("encoder: " + fields["encoder"]?.GetValue<string>());
         }
         else Console.Out.WriteLine(fields["output"]?.GetValue<string>() ?? fields.ToJsonString());
-        return name == "check" && fields["check"]?["passed"]?.GetValue<bool>() == false ? CliCheck.WarningExitCode : 0;
+        return name == "check" ? CliCheck.ExitCode(fields) : 0;
     });
     private static int Fail(ParseResult result, string code, string message, int exitCode, string? command = null, Redactor? redactor = null)
     {

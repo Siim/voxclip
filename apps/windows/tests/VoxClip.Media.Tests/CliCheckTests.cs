@@ -1,7 +1,10 @@
+using System.Diagnostics;
 using System.Text.Json.Nodes;
 using VoxClip.Cli;
+using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.ExportChecks;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Services.Project;
 using VoxClip.Media.Pipeline;
@@ -10,9 +13,10 @@ using Xunit;
 
 namespace VoxClip.Media.Tests;
 
-/// <summary><c>voxclip-cli check</c> and the autopilot's per-clip checks (ADR-R49), twin of the Mac CLI's: exit 0 when every check is
-/// ok or skipped, 8 when any warns, and the Mac's JSON. The export command's own preparation runs on an injected probe, and the
-/// checker reads a synthetic export, so nothing needs FFmpeg or a model, and nothing is sent.</summary>
+/// <summary><c>voxclip-cli check</c> and the autopilot's per-clip checks (ADR-R49), twin of the Mac CLI's: the check prepared through
+/// the export command's own path, the Mac's JSON and report, exit 8 when any check warns, and each autopilot clip's <c>check</c>. The
+/// export command's preparation runs on an injected probe; the checker reads a synthetic export, so nothing here needs FFmpeg or a
+/// model, and nothing is sent. The whole command on a real file runs in <see cref="NativeCliCheckTests"/> (VM).</summary>
 [Collection("CLI console")]
 public sealed class CliCheckTests : IDisposable
 {
@@ -37,43 +41,43 @@ public sealed class CliCheckTests : IDisposable
 
     private static ExportInputReader Open(MediaInfo media) => async (path, ct) => ((await new ProjectStore().LoadAsync(path, ct)).Project, media);
 
-    /// <summary>A checker reading <paramref name="file"/> in place of the export, hearing with <paramref name="hearing"/> (none by
-    /// default, as with no installed model).</summary>
-    private static ExportCheckerFactory Checker(Func<IExportFile> file, ExportChecker.Hearing? hearing = null) =>
-        (_, scratch) => new ExportChecker(hearing, scratch, FixtureLoader.SharedRoot, (_, _) => file());
+    /// <summary>The clip's render prepared as <c>check</c> prepares it, then checked on <paramref name="file"/>: the command's
+    /// <c>check</c> object, its exit status and the words expected.</summary>
+    private async Task<(JsonObject Check, int Exit, ExportCheckExpectation.Edit Edit)> CheckAsync(IExportFile file, ExportChecker.Hearing? hearing, params string[] options)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (project, media) = await ProjectAsync();
+        var parsed = CliApplication.Parse(["--open", project, "--export", Path.Combine(directory, "clip.mp4"), "--quiet", .. options]);
+        Assert.Empty(parsed.Errors);
+        var prepared = await CliOperations.PrepareExportAsync(parsed, ct, Open(media), checkingOutputs: false);
+        var edit = ExportCheckExpectation.Make(prepared.Snapshot, prepared.State);
+        var outcome = await new ExportChecker(hearing, directory, FixtureLoader.SharedRoot).CheckAsync(file, prepared.Snapshot, edit, prepared.Loudness, Stopwatch.StartNew(), ct);
+        var check = CliCheck.Json(outcome);
+        return (check, CliCheck.ExitCode(new JsonObject { ["check"] = check.DeepClone() }), edit);
+    }
 
     private static SyntheticExport Export(double audioEnd = 6) =>
         new(new(0, 6), new(0, audioEnd), SyntheticExport.Speech(audioEnd, -14), frame: new PixelSize(1080, 1920));
 
-    private static async Task<(int Exit, string Output, string Errors)> RunAsync(string[] arguments, ExportInputReader? open = null,
-        ExportPreparer? prepare = null, ExportCheckerFactory? checker = null)
+    private static async Task<(int Exit, string Output, string Errors)> RunAsync(string[] arguments, ExportInputReader? open = null)
     {
         var previousOutput = Console.Out; var previousError = Console.Error;
         using var output = new StringWriter(); using var errors = new StringWriter();
         try
         {
             Console.SetOut(output); Console.SetError(errors);
-            var exit = await AcceptedCli.RunAsync(arguments, TestContext.Current.CancellationToken, open, prepare, checker);
+            var exit = await AcceptedCli.RunAsync(arguments, TestContext.Current.CancellationToken, open);
             return (exit, output.ToString(), errors.ToString());
         }
         finally { Console.SetOut(previousOutput); Console.SetError(previousError); }
     }
 
     [Fact]
-    public async Task APassingCheckExitsZeroWithTheMacsJson()
+    public async Task APassingCheckIsTheMacsJsonAndExitsZero()
     {
-        var (project, media) = await ProjectAsync();
-        var export = Path.Combine(directory, "clip.mp4");
-        await File.WriteAllTextAsync(export, "synthetic export", TestContext.Current.CancellationToken);
-        var (exit, output, errors) = await RunAsync(["check", "--project", project, "--clip", "1", export, "--aspect", "9:16", "--json"],
-            Open(media), checker: Checker(() => Export()));
-        Assert.True(exit == 0, $"exit {exit}: {output} {errors}");
-        var json = JsonNode.Parse(output)!.AsObject();
-        Assert.Equal(["check", "clipId", "command", "ok", "output", "version"], json.Select(pair => pair.Key).Order(StringComparer.Ordinal));
-        Assert.Equal((true, "check", "fq-clip-1", export), (json["ok"]!.GetValue<bool>(), json["command"]!.GetValue<string>(),
-            json["clipId"]!.GetValue<string>(), json["output"]!.GetValue<string>()));
-        var check = json["check"]!.AsObject();
-        Assert.Equal(["captions", "engine", "hearSeconds", "loudness", "model", "passed", "seconds", "sync", "words"], check.Select(pair => pair.Key).Order(StringComparer.Ordinal));
+        var (check, exit, edit) = await CheckAsync(Export(), null, "--clip", "fq-clip-1", "--aspect", "9:16");
+        Assert.Equal(0, exit);
+        Assert.Equal(["passed", "seconds", "hearSeconds", "engine", "model", "words", "sync", "loudness", "captions"], check.Select(pair => pair.Key));
         Assert.True(check["passed"]!.GetValue<bool>());
         Assert.Null(check["engine"]); Assert.Null(check["model"]);
         Assert.Equal(0, check["hearSeconds"]!.GetValue<double>());
@@ -81,55 +85,59 @@ public sealed class CliCheckTests : IDisposable
         Assert.Equal("""{"status":"ok","items":[],"startOffset":0,"endOffset":0}""", check["sync"]!.ToJsonString());
         Assert.Equal("ok", check["loudness"]!["status"]!.GetValue<string>());
         Assert.InRange(check["loudness"]!["integratedLufs"]!.GetValue<double>(), -14.05, -13.95);
-        // The clip renders in the project's caption style; its 9:16 cards clear the feed's bands.
+        // The clip renders in the project's caption style (Highlight); its 9:16 cards clear the feed's bands.
         Assert.Equal("""{"status":"ok","items":[]}""", check["captions"]!.ToJsonString());
-        Assert.Equal(1, output.Count(character => character == '\n'));
+        // The words expected are the clip's own, fq-1 to fq-22, without the project's cut fq-2 to fq-9; its "Um," is optional.
+        Assert.Equal(14, edit.Words.Count);
+        Assert.Equal(("Um,", true, "something"), (edit.Words[0].Text, edit.Words[0].Optional, edit.Words[1].Text));
+        // Every join of the plan's kept pieces is a cut: the cut words and the tightened pauses.
+        Assert.NotEmpty(edit.Cuts);
+        var lines = CliCheck.Summary(check).Split('\n');
+        Assert.Equal(5, lines.Length);
+        Assert.Equal(("words: skipped (No local transcription model)", "sync: ok", "captions: ok", "passed"), (lines[0], lines[1], lines[3], lines[4]));
+        Assert.Matches("^loudness: ok, -14\\.0 LUFS, -?\\d+\\.\\d dBTP$", lines[2]);
     }
 
     [Fact]
-    public async Task AWarningExitsEightAndPrintsTheReport()
+    public async Task AWarningExitsEightAndTheReportListsEachFinding()
     {
-        var (project, media) = await ProjectAsync();
-        var export = Path.Combine(directory, "clip.mp4");
-        await File.WriteAllTextAsync(export, "synthetic export", TestContext.Current.CancellationToken);
         var (stub, hearing) = StubHearing.Make([]);
-        var (exit, output, _) = await RunAsync(["check", "--project", project, "--clip", "fq-clip-2", export, "--aspect", "9:16", "--style", "off", "--loudness", "off"],
-            Open(media), checker: Checker(() => Export(6.5), hearing));
+        var (check, exit, edit) = await CheckAsync(Export(6.5), hearing, "--clip", "fq-clip-2", "--aspect", "9:16", "--style", "off", "--loudness", "off");
         Assert.Equal(CliCheck.WarningExitCode, exit);
         Assert.Single(stub.Received);
-        var lines = output.TrimEnd('\n').Split('\n');
-        Assert.StartsWith("words: warning, 0/", lines[0], StringComparison.Ordinal);
-        Assert.Contains("  0:", lines[1], StringComparison.Ordinal);
-        Assert.Contains(lines, line => line == "sync: warning");
-        Assert.Contains(lines, line => line == "  0:06.00 trackEnd 0.500");
-        Assert.Contains(lines, line => line == "loudness: skipped (Loudness is off for this export)");
-        Assert.Contains(lines, line => line == "captions: skipped (No captions or title in this export)");
+        Assert.Equal(("whispercpp", "stub"), (check["engine"]!.GetValue<string>(), check["model"]!.GetValue<string>()));
+        Assert.Equal(0.5, check["sync"]!["endOffset"]!.GetValue<double>(), 9);
+        var lines = CliCheck.Summary(check).Split('\n');
+        // Nothing heard: the words at the clip's edges are cut off, the others mismatches.
+        Assert.Equal($"words: warning, 0/{edit.Words.Count(word => !word.Optional)} words as edited", lines[0]);
+        Assert.Contains(lines, line => System.Text.RegularExpressions.Regex.IsMatch(line, "^  0:\\d\\d\\.\\d\\d cutOff \".+\" not heard$"));
+        Assert.Contains(lines, line => System.Text.RegularExpressions.Regex.IsMatch(line, "^  0:\\d\\d\\.\\d\\d mismatch \".+\" not heard$"));
+        Assert.Contains("sync: warning", lines);
+        Assert.Contains("  0:06.00 trackEnd 0.500", lines);
+        Assert.Contains("loudness: skipped (Loudness is off for this export)", lines);
+        Assert.Contains("captions: skipped (No captions or title in this export)", lines);
         Assert.Equal("warnings", lines[^1]);
-        // With --json the envelope is still ok: the export was checked, and the exit status carries the warning.
-        var (jsonExit, json, _) = await RunAsync(["check", "--project", project, "--clip", "fq-clip-2", export, "--aspect", "9:16", "--json"],
-            Open(media), checker: Checker(() => Export(6.5)));
-        Assert.Equal(8, jsonExit);
-        var result = JsonNode.Parse(json)!;
-        Assert.True(result["ok"]!.GetValue<bool>());
-        Assert.False(result["check"]!["passed"]!.GetValue<bool>());
-        Assert.Equal("trackEnd", result["check"]!["sync"]!["items"]![0]!["kind"]!.GetValue<string>());
-        Assert.Equal(0.5, result["check"]!["sync"]!["endOffset"]!.GetValue<double>(), 9);
+        Assert.Equal(0, CliCheck.ExitCode(new JsonObject { ["output"] = "x" }));
     }
 
     [Fact]
-    public async Task UsageAndMissingInputs()
+    public async Task TheClipIsNamedByNumberOrIdAndBadInputsStopFirst()
     {
         var (project, media) = await ProjectAsync();
+        var clips = ProjectSerialization.Deserialize(await File.ReadAllTextAsync(project, TestContext.Current.CancellationToken)).Edits.Clips;
+        Assert.Equal("fq-clip-1", CliCheck.Clip(clips, "1")!.Id);
+        Assert.Equal("fq-clip-5", CliCheck.Clip(clips, "5")!.Id);
+        Assert.Equal("fq-clip-3", CliCheck.Clip(clips, "fq-clip-3")!.Id);
+        Assert.Null(CliCheck.Clip(clips, "0")); Assert.Null(CliCheck.Clip(clips, "6")); Assert.Null(CliCheck.Clip(clips, "-1"));
         var export = Path.Combine(directory, "clip.mp4");
         await File.WriteAllTextAsync(export, "synthetic export", TestContext.Current.CancellationToken);
-        var unknown = await RunAsync(["check", "--project", project, "--clip", "9", export, "--aspect", "9:16", "--json"], Open(media), checker: Checker(() => Export()));
+        var unknown = await RunAsync(["check", "--project", project, "--clip", "9", export, "--aspect", "9:16", "--json"], Open(media));
         Assert.Equal(2, unknown.Exit);
         Assert.Equal("usageError", JsonNode.Parse(unknown.Output)!["error"]!["code"]!.GetValue<string>());
         var missing = await RunAsync(["check", "--project", project, "--clip", "1", Path.Combine(directory, "missing.mp4"), "--json"], Open(media));
         Assert.Equal(3, missing.Exit);
         Assert.Equal("mediaMissing", JsonNode.Parse(missing.Output)!["error"]!["code"]!.GetValue<string>());
-        var noProject = await RunAsync(["check", "--project", Path.Combine(directory, "missing.voxclip"), "--clip", "1", export, "--json"]);
-        Assert.Equal(3, noProject.Exit);
+        Assert.Equal(3, (await RunAsync(["check", "--project", Path.Combine(directory, "missing.voxclip"), "--clip", "1", export, "--json"])).Exit);
         Assert.Equal(2, (await RunAsync(["check", "--clip", "1", export])).Exit);
         Assert.Equal(2, (await RunAsync(["check", "--project", project, "--clip", "1", export, "--loudness", "loud"])).Exit);
         var help = await RunAsync(["check", "--help"]);
@@ -149,8 +157,8 @@ public sealed class CliCheckTests : IDisposable
         Assert.Equal("source", CliCheck.Aspect(new(0, 0)));
     }
 
-    /// <summary>Find Clips' two clips of the fixture's lines; each clip plan keeps its span with a hook title and the default look (its music
-    /// stays pending).</summary>
+    /// <summary>Find Clips' two clips of the fixture's lines; each clip plan keeps its span with a hook title and the default look (its
+    /// music stays pending).</summary>
     private sealed class Planner : ILlmConnector
     {
         public ConnectorId Id => ConnectorId.Ollama;
@@ -172,9 +180,9 @@ public sealed class CliCheckTests : IDisposable
                     ["startWord"] = start, ["endWord"] = end, ["title"] = "Planned " + start, ["hook"] = "We ship every week", ["cuts"] = new JsonArray(), ["pauseCuts"] = new JsonArray(),
                     ["corrections"] = new JsonArray(), ["rewrites"] = new JsonArray(), ["captionStyle"] = "vox-highlight", ["captionFont"] = "Roboto", ["captionWeight"] = 900,
                     ["captionCase"] = "upper", ["wordsPerCaption"] = 3, ["captionReason"] = "", ["look"] = "original", ["lookReason"] = "", ["speed"] = 1, ["speedReason"] = "",
-                    ["lengthReason"] = "", ["tone"] = "none", ["toneSummary"] = "", ["music"] = new JsonArray(new JsonObject { ["title"] = "Pulse", ["mood"] = "driven", ["prompt"] = "Instrumental, 120 BPM", ["reason"] = "pace", ["underVoiceDb"] = 18 }),
-                    ["musicPick"] = 0, ["zooms"] = new JsonArray(),
-                    ["postText"] = "Post", ["score"] = 8, ["verdict"] = "post", ["scoreReason"] = "", ["questions"] = new JsonArray(),
+                    ["lengthReason"] = "", ["tone"] = "none", ["toneSummary"] = "",
+                    ["music"] = new JsonArray(new JsonObject { ["title"] = "Pulse", ["mood"] = "driven", ["prompt"] = "Instrumental, 120 BPM", ["reason"] = "pace", ["underVoiceDb"] = 18 }),
+                    ["musicPick"] = 0, ["zooms"] = new JsonArray(), ["postText"] = "Post", ["score"] = 8, ["verdict"] = "post", ["scoreReason"] = "", ["questions"] = new JsonArray(),
                     ["frames"] = new JsonObject { ["blur"] = new JsonArray(), ["cover"] = new JsonObject { ["id"] = "", ["reason"] = "" } }
                 }.ToJsonString();
             }
@@ -184,7 +192,7 @@ public sealed class CliCheckTests : IDisposable
             new() { ["title"] = title, ["reason"] = title + " lands.", ["score"] = score, ["start_line"] = first, ["end_line"] = last };
     }
 
-    private async Task<JsonObject> AutopilotAsync(MediaInfo media, string project, string outDir, ExportCheckerFactory checker, params string[] extra)
+    private async Task<JsonObject> AutopilotAsync(MediaInfo media, string project, string outDir, params string[] extra)
     {
         var parsed = CliApplication.Parse(["autopilot", "--open", project, "--connector", "ollama", "--model", "fixture", "--count", "2",
             "--out-dir", outDir, "--quiet", "--timings", "--json", .. extra]);
@@ -195,27 +203,24 @@ public sealed class CliCheckTests : IDisposable
             return Task.FromResult(new ExportResult(job.OutputPath, null, job.Snapshot.RenderedDuration, job.Snapshot.Output.Size.Width,
                 job.Snapshot.Output.Size.Height, 30, 180, 48_000, job.Snapshot.Timeline.OutputSamples, "h264", "test", 0));
         }
-        return await CliAutopilot.RunAsync(parsed, (_, _) => new Planner(), TestContext.Current.CancellationToken, Open(media), Prepare, checker);
+        return await CliAutopilot.RunAsync(parsed, (_, _) => new Planner(), TestContext.Current.CancellationToken, Open(media), Prepare);
     }
 
     [Fact]
-    public async Task TheAutopilotChecksEachExportedClipUnlessToldNotTo()
+    public async Task TheAutopilotChecksEachExportedClipAfterItsExportUnlessToldNotTo()
     {
         var (project, media) = await ProjectAsync();
-        var outDir = Directory.CreateDirectory(Path.Combine(directory, "out")).FullName;
-        var opened = 0;
-        var result = await AutopilotAsync(media, project, outDir, Checker(() => { Interlocked.Increment(ref opened); return Export(); }));
+        var result = await AutopilotAsync(media, project, Directory.CreateDirectory(Path.Combine(directory, "out")).FullName);
         var clips = result["clips"]!.AsArray().Select(clip => clip!.AsObject()).ToArray();
         Assert.Equal(2, clips.Length);
-        Assert.Equal(2, opened);
         foreach (var clip in clips)
         {
-            var output = Assert.Single(clip["outputs"]!.AsArray())!.GetValue<string>();
-            Assert.True(File.Exists(output));
+            Assert.True(File.Exists(Assert.Single(clip["outputs"]!.AsArray())!.GetValue<string>()));
+            // The stand-in export is text, not an MP4: the check reports that on its clip, and the run goes on.
             var check = clip["check"]!.AsObject();
-            Assert.True(check["passed"]!.GetValue<bool>(), check.ToJsonString());
-            Assert.Equal("skipped", check["words"]!["status"]!.GetValue<string>());
-            Assert.Equal("ok", check["sync"]!["status"]!.GetValue<string>());
+            Assert.Equal(["passed", "error"], check.Select(pair => pair.Key));
+            Assert.False(check["passed"]!.GetValue<bool>());
+            Assert.False(string.IsNullOrWhiteSpace(check["error"]!.GetValue<string>()));
         }
         // Each check is timed per clip, after its export.
         var stages = result["timings"]!["stages"]!.AsArray().Select(stage => (Stage: stage!["stage"]!.GetValue<string>(), Clip: stage["clip"]?.GetValue<int>(),
@@ -226,19 +231,53 @@ public sealed class CliCheckTests : IDisposable
             var check = stages.Single(stage => stage.Stage == "check" && stage.Clip == rank);
             Assert.True(check.Start >= export.End - 1e-3, $"clip {rank}: check {check.Start} before export end {export.End}");
         }
-        // A check that fails reports it on its clip and the run goes on.
-        var broken = await AutopilotAsync(media, project, Directory.CreateDirectory(Path.Combine(directory, "broken")).FullName,
-            Checker(() => throw new VoxClipException(VoxClipErrorCode.DecodeFailed, "The export's audio did not decode.")));
-        Assert.All(broken["clips"]!.AsArray(), clip =>
-        {
-            var check = clip!["check"]!.AsObject();
-            Assert.Equal(["passed", "error"], check.Select(pair => pair.Key));
-            Assert.Equal((false, "The export's audio did not decode."), (check["passed"]!.GetValue<bool>(), check["error"]!.GetValue<string>()));
-        });
-
-        var skipped = await AutopilotAsync(media, project, Directory.CreateDirectory(Path.Combine(directory, "unchecked")).FullName,
-            Checker(() => throw new InvalidOperationException("--no-check must not check")), "--no-check");
+        var skipped = await AutopilotAsync(media, project, Directory.CreateDirectory(Path.Combine(directory, "unchecked")).FullName, "--no-check");
         Assert.All(skipped["clips"]!.AsArray(), clip => Assert.Null(clip!["check"]));
         Assert.DoesNotContain(skipped["timings"]!["stages"]!.AsArray(), stage => stage!["stage"]!.GetValue<string>() == "check");
+        // Without --out-dir nothing is exported, so nothing is checked.
+        var parsed = CliApplication.Parse(["autopilot", "--open", project, "--connector", "ollama", "--model", "fixture", "--count", "1", "--timings", "--json"]);
+        var planned = await CliAutopilot.RunAsync(parsed, (_, _) => new Planner(), TestContext.Current.CancellationToken);
+        Assert.Null(planned["clips"]![0]!["check"]);
+    }
+}
+
+/// <summary>The whole <c>check</c> command on a real file (VM): unequal-duration.mp4's audio ends 0.09 s before its picture.</summary>
+[Trait("Category", "RequiresFFmpeg")]
+[Collection("CLI console")]
+public sealed class NativeCliCheckTests : IAsyncLifetime
+{
+    public async ValueTask InitializeAsync() => await NativeTest.RequireAsync();
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+    [Fact]
+    public async Task TheCommandChecksARealFileAndExitsEightOnItsSync()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var source = NativeTest.Fixture("unequal-duration.mp4");
+        var directory = Directory.CreateTempSubdirectory("voxclip-cli-check-native-").FullName;
+        var previousOutput = Console.Out;
+        using var output = new StringWriter();
+        try
+        {
+            var media = await CliOperations.ProbeInputAsync(source, ct);
+            var words = Enumerable.Range(0, 4).Select(index => new TimedWord("w" + index, "word" + index, WordKind.Word, 0.5 + index * 0.8, 0.9 + index * 0.8,
+                null, null, 0.9, null, TimingSource.TokenGrouped)).ToArray();
+            var transcript = new Transcript(1, words, "en", null, media.DurationSeconds, new(TranscriptEngine.Whispercpp, null, null, "fixture", null), false, false, 1,
+                new string('0', 64), DateTimeOffset.UnixEpoch);
+            var key = await new ProjectStore().ComputeContentKeyAsync(source, null, ct);
+            var project = CliOperations.NewProject(media, transcript, key);
+            project = project with { Edits = project.Edits with { Clips = [new ClipRange("clip-1", "w0", "w3", null, ClipOrigin.Manual, null, null, true)] } };
+            var path = Path.Combine(directory, "check.voxclip");
+            await new ProjectStore().SaveAsync(project, path, ct);
+            Console.SetOut(output);
+            var exit = await AcceptedCli.RunAsync(["check", "--project", path, "--clip", "1", source, "--style", "off", "--json"], ct);
+            Console.SetOut(previousOutput);
+            Assert.True(exit == CliCheck.WarningExitCode, $"exit {exit}: {output}");
+            var check = JsonNode.Parse(output.ToString())!["check"]!;
+            Assert.False(check["passed"]!.GetValue<bool>());
+            Assert.Equal("trackEnd", check["sync"]!["items"]![0]!["kind"]!.GetValue<string>());
+            Assert.Equal("skipped", check["captions"]!["status"]!.GetValue<string>());
+        }
+        finally { Console.SetOut(previousOutput); Directory.Delete(directory, true); }
     }
 }

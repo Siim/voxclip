@@ -55,7 +55,6 @@ internal sealed class SyntheticExport(ExportCheckTrack? video, ExportCheckTrack?
     public PixelSize? Frame => video is null ? null : frame ?? new PixelSize(1920, 1080);
     public int SampleRate => rate;
     public int Channels => channels;
-    internal bool Disposed { get; private set; }
 
     public int Read(Span<float> target, int frames, CancellationToken ct)
     {
@@ -68,7 +67,7 @@ internal sealed class SyntheticExport(ExportCheckTrack? video, ExportCheckTrack?
         return frames;
     }
 
-    public void Dispose() => Disposed = true;
+    public void Dispose() { }
 
     /// <summary>Speech-like stereo bursts, <paramref name="seconds"/> long, gained to <paramref name="lufs"/> by the ADR-R47 meter.</summary>
     internal static float[] Speech(double seconds, double lufs, int rate = 48_000)
@@ -112,7 +111,14 @@ public sealed class ExportCheckerTests : IDisposable
         { Clip = effects is null ? null : new ClipRenderInput(null, effects) };
     }
 
-    private ExportChecker Checker(ExportChecker.Hearing? hearing, IExportFile file) => new(hearing, directory, FixtureLoader.SharedRoot, (_, _) => file);
+    /// <summary>The checker on <paramref name="file"/> in place of an exported MP4.</summary>
+    private sealed record Run(ExportChecker Checker, IExportFile File)
+    {
+        internal Task<ExportChecker.Outcome> CheckAsync(string name, ComposeSnapshot snapshot, ExportCheckExpectation.Edit edit, ExportLoudness loudness, CancellationToken ct) =>
+            Checker.CheckAsync(File, snapshot, edit, loudness, System.Diagnostics.Stopwatch.StartNew(), ct);
+    }
+
+    private Run Checker(ExportChecker.Hearing? hearing, IExportFile file) => new(new(hearing, directory, FixtureLoader.SharedRoot), file);
 
     private static IReadOnlyList<ExportCheckHeard> AsHeard(IEnumerable<ExportCheckWord> words) => words.Select(word => new ExportCheckHeard(word.Text, word.Start, word.End)).ToArray();
 
@@ -143,7 +149,6 @@ public sealed class ExportCheckerTests : IDisposable
         Assert.False(File.Exists(audio.Wav16kPath));
         Assert.Empty(Directory.GetFiles(directory));
         Assert.Equal((TranscriptEngine.Whispercpp, "stub"), (outcome.Engine!.Value, outcome.Model));
-        Assert.True(file.Disposed);
     }
 
     [Fact]

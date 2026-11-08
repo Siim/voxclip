@@ -18,7 +18,7 @@ internal static class CliAutopilot
 {
     /// <summary>The command's result fields. <paramref name="connector"/> builds a connector from its id and the environment's keys.</summary>
     internal static async Task<JsonObject> RunAsync(ParseResult arguments, Func<ConnectorId, IKeyProvider, ILlmConnector> connector, CancellationToken ct,
-        ExportInputReader? openExport = null, ExportPreparer? prepareExport = null, ExportCheckerFactory? checkExport = null)
+        ExportInputReader? openExport = null, ExportPreparer? prepareExport = null)
     {
         var clock = new ClaudeModeClock();
         var input = Path.GetFullPath(CliOperations.Required(arguments, "--open"));
@@ -86,7 +86,7 @@ internal static class CliAutopilot
             .ToArray();
         var fields = new JsonObject { ["clips"] = new JsonArray(), ["found"] = found.Clips.Count, ["model"] = found.Model };
         // Each exported clip is checked (ADR-R49) beside the next clips' work; --no-check skips it.
-        var checks = outDir is not null && !arguments.GetValue<bool>("--no-check") ? new ClipChecks(transcript, clock, checkExport, ct) : null;
+        var checks = outDir is not null && !arguments.GetValue<bool>("--no-check") ? new ClipChecks(transcript, clock, ct) : null;
         if (ranked.Length > 0)
         {
             Line($"Found {found.Clips.Count} clips. Planning the top {ranked.Length}…");
