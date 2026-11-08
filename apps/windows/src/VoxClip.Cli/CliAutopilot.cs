@@ -16,7 +16,8 @@ namespace VoxClip.Cli;
 /// voice and music are listed as pending. Windows has no frame analyzer yet, so plans go as text and no clip carries <c>frames</c>.</summary>
 internal static class CliAutopilot
 {
-    internal static async Task<JsonObject> RunAsync(ParseResult arguments, CancellationToken ct, Func<ConnectorId, ILlmConnector>? connectors)
+    /// <summary>The command's result fields. <paramref name="connector"/> builds a connector from its id and the environment's keys.</summary>
+    internal static async Task<JsonObject> RunAsync(ParseResult arguments, Func<ConnectorId, IKeyProvider, ILlmConnector> connector, CancellationToken ct)
     {
         var clock = new ClaudeModeClock();
         var input = Path.GetFullPath(CliOperations.Required(arguments, "--open"));
@@ -64,7 +65,7 @@ internal static class CliAutopilot
         var root = SharedResources.ResolveRoot();
         var keys = new EnvironmentKeyProvider();
         var redactor = await AiMergeAdapter.CreateRedactorAsync(keys, ct).ConfigureAwait(false);
-        ILlmConnector Make(ConnectorId connector) => connectors?.Invoke(connector) ?? ServicesMergeAdapter.Connector(connector, keys);
+        ILlmConnector Make(ConnectorId wanted) => connector(wanted, keys);
         var model = arguments.GetValue<string?>("--model") ?? await CliOperations.DefaultModelAsync(id, ct).ConfigureAwait(false);
         var main = Make(id);
         IReadOnlyList<ILlmConnector> lanes = id is ConnectorId.ClaudeCode or ConnectorId.Codex ? [Make(id), Make(id)] : [];
@@ -73,7 +74,7 @@ internal static class CliAutopilot
 
         // Find Clips.
         Line("Finding clips…");
-        var finder = new ClipFinder(runner, connector => connector == id ? main : Make(connector), root);
+        var finder = new ClipFinder(runner, wanted => wanted == id ? main : Make(wanted), root);
         var found = await clock.TimedAsync(ClaudeModeStage.Find, null, () => finder.FindClipsAsync(new(transcript.Words, project.Edits.Corrections,
             project.Edits.CutWordIds.ToHashSet(StringComparer.Ordinal), preset, null, transcript.Language, id, model), null, ct)).ConfigureAwait(false);
         // Best first by Find Clips' score; equal scores keep transcript order, as the app's Suggested list does.
@@ -101,6 +102,10 @@ internal static class CliAutopilot
         if (arguments.GetValue<bool>("--timings")) fields["timings"] = clock.Json();
         return fields;
     }
+
+    /// <summary>What the command prints without <c>--json</c>, as on the Mac: the progress lines are on stderr, and only the timings
+    /// (with <c>--timings</c>) go to stdout.</summary>
+    internal static string? HumanOutput(JsonObject fields) => fields["timings"]?.ToJsonString();
 
     private static Task<Project> Transcribe(MediaInfo media, ParseResult arguments, ClaudeModeClock clock, CancellationToken ct) =>
         CliOperations.TranscribeMediaAsync(media, arguments, arguments.GetValue<string?>("--transcription-model"), false, true, clock, ct);

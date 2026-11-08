@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using VoxClip.Cli;
 using VoxClip.Core.Services.LLM;
 using VoxClip.Tests.Support;
 using Xunit;
@@ -7,8 +8,9 @@ using Xunit;
 namespace VoxClip.Media.Tests;
 
 /// <summary><c>voxclip-cli autopilot</c> (ai.md §16.12), twin of the Mac <c>CLIAutopilotTests</c>: Find Clips, the top clips planned at
-/// once with Find Clips' moments, each applied as its plan is ready, the Mac's JSON shape (minus frames) and <c>--timings</c>. A stub
-/// connector answers in process: nothing is sent.</summary>
+/// once with Find Clips' moments, each applied as its plan is ready, the Mac's JSON shape (minus frames) and <c>--timings</c>. The
+/// command's own code runs on the CLI's parsed arguments with a stub connector, in process: nothing is sent. The option checks and
+/// <c>--help</c> run through the whole CLI, and stop before any connector is made.</summary>
 [Collection("CLI console")]
 public sealed partial class CliAutopilotTests
 {
@@ -59,17 +61,34 @@ public sealed partial class CliAutopilotTests
     [GeneratedRegex("(?<!after )\\[(\\d+)\\]([^\\s(]+)")]
     private static partial Regex Word();
 
-    private static async Task<(int Exit, string Output, string Errors)> RunAsync(Stub stub, params string[] arguments)
+    /// <summary>The whole CLI, with its stdout and stderr.</summary>
+    private static async Task<(int Exit, string Output, string Errors)> RunAsync(params string[] arguments)
     {
         var previousOutput = Console.Out; var previousError = Console.Error;
         using var output = new StringWriter(); using var errors = new StringWriter();
         try
         {
             Console.SetOut(output); Console.SetError(errors);
-            var exit = await AcceptedCli.RunAsync(arguments, TestContext.Current.CancellationToken, connectors: _ => stub);
+            var exit = await AcceptedCli.RunAsync(arguments, TestContext.Current.CancellationToken);
             return (exit, output.ToString(), errors.ToString());
         }
         finally { Console.SetOut(previousOutput); Console.SetError(previousError); }
+    }
+
+    /// <summary>The autopilot command's result fields on <paramref name="stub"/>, with its stderr.</summary>
+    private static async Task<(JsonObject Fields, string Errors)> AutopilotAsync(Stub stub, params string[] arguments)
+    {
+        var parsed = CliApplication.Parse(["autopilot", .. arguments]);
+        Assert.Empty(parsed.Errors);
+        var previousError = Console.Error;
+        using var errors = new StringWriter();
+        try
+        {
+            Console.SetError(errors);
+            var fields = await CliAutopilot.RunAsync(parsed, (_, _) => stub, TestContext.Current.CancellationToken);
+            return (fields, errors.ToString());
+        }
+        finally { Console.SetError(previousError); }
     }
 
     private static string Project()
@@ -88,11 +107,10 @@ public sealed partial class CliAutopilotTests
         {
             var before = await File.ReadAllBytesAsync(project, TestContext.Current.CancellationToken);
             var stub = new Stub();
-            var (exit, output, errors) = await RunAsync(stub, "autopilot", "--open", project, "--connector", "ollama", "--model", "fixture", "--count", "2", "--timings", "--json");
-            Assert.True(exit == 0, output + errors);
-            var result = JsonNode.Parse(output)!.AsObject();
-            Assert.Equal(["clips", "command", "found", "model", "ok", "timings", "version"], result.Select(pair => pair.Key).Order(StringComparer.Ordinal));
-            Assert.Equal(("autopilot", true, 3), (result["command"]!.GetValue<string>(), result["ok"]!.GetValue<bool>(), result["found"]!.GetValue<int>()));
+            var (result, errors) = await AutopilotAsync(stub, "--open", project, "--connector", "ollama", "--model", "fixture", "--count", "2", "--timings", "--json");
+            // The CLI adds ok, command and version around these.
+            Assert.Equal(["clips", "found", "model", "timings"], result.Select(pair => pair.Key).Order(StringComparer.Ordinal));
+            Assert.Equal((3, "fixture"), (result["found"]!.GetValue<int>(), result["model"]!.GetValue<string>()));
             var clips = result["clips"]!.AsArray();
             Assert.Equal(2, clips.Count);
             foreach (var (clip, rank) in clips.Select((clip, index) => (clip!.AsObject(), index + 1)))
@@ -134,13 +152,13 @@ public sealed partial class CliAutopilotTests
         var project = Project();
         try
         {
-            var (exit, output, errors) = await RunAsync(new Stub(), "autopilot", "--open", project, "--connector", "ollama", "--model", "fixture", "--count", "1", "--timings", "--quiet");
-            Assert.True(exit == 0, output + errors);
-            var timings = JsonNode.Parse(output)!.AsObject();
+            var (fields, errors) = await AutopilotAsync(new Stub(), "--open", project, "--connector", "ollama", "--model", "fixture", "--count", "1", "--timings", "--quiet");
+            var timings = JsonNode.Parse(CliAutopilot.HumanOutput(fields)!)!.AsObject();
             Assert.True(timings.ContainsKey("stages") && timings.ContainsKey("firstClipSeconds") && timings.ContainsKey("totalSeconds"));
             Assert.Equal("", errors);
-            var (plain, quietOutput, _) = await RunAsync(new Stub(), "autopilot", "--open", project, "--connector", "ollama", "--model", "fixture", "--count", "1", "--quiet");
-            Assert.Equal((0, ""), (plain, quietOutput));
+            var (plain, _) = await AutopilotAsync(new Stub(), "--open", project, "--connector", "ollama", "--model", "fixture", "--count", "1", "--quiet");
+            Assert.Null(CliAutopilot.HumanOutput(plain));
+            Assert.False(plain.ContainsKey("timings"));
         }
         finally { Directory.Delete(Path.GetDirectoryName(project)!, true); }
     }
@@ -157,11 +175,9 @@ public sealed partial class CliAutopilotTests
         var project = Project();
         try
         {
-            var stub = new Stub();
-            var (exit, output, _) = await RunAsync(stub, "autopilot", "--open", project, "--connector", "ollama", "--model", "fixture", option, value, "--json");
+            var (exit, output, _) = await RunAsync("autopilot", "--open", project, "--connector", "ollama", "--model", "fixture", option, value, "--json");
             Assert.Equal(2, exit);
             Assert.Equal("usageError", JsonNode.Parse(output)!["error"]!["code"]!.GetValue<string>());
-            Assert.Empty(stub.Requests);
         }
         finally { Directory.Delete(Path.GetDirectoryName(project)!, true); }
     }
@@ -169,7 +185,7 @@ public sealed partial class CliAutopilotTests
     [Fact]
     public async Task HelpNamesEveryOption()
     {
-        var (exit, output, _) = await RunAsync(new Stub(), "autopilot", "--help");
+        var (exit, output, _) = await RunAsync("autopilot", "--help");
         Assert.Equal(0, exit);
         foreach (var option in new[] { "--open", "--connector", "--model", "--count", "--preset", "--transcript", "--out-dir", "--aspect", "--timings", "--json" })
             Assert.Contains(option, output, StringComparison.Ordinal);

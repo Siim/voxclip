@@ -32,10 +32,9 @@ internal delegate Task<ExportResult> ExportPreparer(ExportJob job, IProgress<Exp
 
 internal static class CliOperations
 {
-    internal static async Task<JsonObject> ExecuteAsync(string command, ParseResult arguments, CancellationToken ct, ExportInputReader? openExport = null, ExportPreparer? prepareExport = null,
-        Func<ConnectorId, ILlmConnector>? connectors = null) => command switch
+    internal static async Task<JsonObject> ExecuteAsync(string command, ParseResult arguments, CancellationToken ct, ExportInputReader? openExport = null, ExportPreparer? prepareExport = null) => command switch
     {
-        "autopilot" => await CliAutopilot.RunAsync(arguments, ct, connectors).ConfigureAwait(false),
+        "autopilot" => await CliAutopilot.RunAsync(arguments, ServicesMergeAdapter.Connector, ct).ConfigureAwait(false),
         "probe" => await ProbeAsync(arguments, ct).ConfigureAwait(false),
         "encoders" => new() { ["encoders"] = Node((await new EncoderProbe().ProbeAsync(WindowsAdapterIdentity.Read(), null, ct).ConfigureAwait(false)).ToArray(), CliDataJson.Default.EncoderInfoArray) },
         "plan" => await PlanAsync(arguments, ct).ConfigureAwait(false),

@@ -23,9 +23,9 @@ internal static class CliApplication
     internal static string Version => AppVersion.Current;
 
     internal static async Task<int> RunAsync(string[] args, CancellationToken ct, ExportInputReader? openExport = null, ExportPreparer? prepareExport = null,
-        WindowsRuntimeAgreement? runtimeAgreement = null, Func<string, bool>? inputExists = null, Func<ConnectorId, ILlmConnector>? connectors = null)
+        WindowsRuntimeAgreement? runtimeAgreement = null, Func<string, bool>? inputExists = null)
     {
-        var root = BuildCommand(openExport, prepareExport, inputExists, connectors);
+        var root = BuildCommand(openExport, prepareExport, inputExists);
         var result = root.Parse(args);
         if (result.Errors.Count > 0)
         {
@@ -125,10 +125,9 @@ internal static class CliApplication
         ? $"VoxClip couldn't decode this video: {exception.Message.TrimEnd('.')}. Your edits are saved." : exception.Message;
 
     /// <summary>The command line parsed as the CLI parses it, so one command can run another's path (autopilot's export).</summary>
-    internal static ParseResult Parse(string[] args) => BuildCommand(null, null, null, null).Parse(args);
+    internal static ParseResult Parse(string[] args) => BuildCommand(null, null, null).Parse(args);
 
-    private static RootCommand BuildCommand(ExportInputReader? openExport, ExportPreparer? prepareExport, Func<string, bool>? inputExists,
-        Func<ConnectorId, ILlmConnector>? connectors)
+    private static RootCommand BuildCommand(ExportInputReader? openExport, ExportPreparer? prepareExport, Func<string, bool>? inputExists)
     {
         var root = new RootCommand("VoxClip headless media tool.");
         root.Options.Add(Json);
@@ -235,7 +234,7 @@ internal static class CliApplication
                 (!int.TryParse(count, NumberStyles.None, CultureInfo.InvariantCulture, out var value) || value is < 1 or > 12))
                 validation.AddError("--count must be 1 to 12");
         });
-        Stub(autopilot, "autopilot", connectors: connectors);
+        Stub(autopilot, "autopilot");
         var test = Command(root, "llm-test", "Run the connector test.");
         Add(test, "--connector", "Connector catalog id.", true);
         Add(test, "--model", "Model id.");
@@ -287,7 +286,7 @@ internal static class CliApplication
         return option;
     }
     private static void Stub(Command command, string name, ExportInputReader? openExport = null, ExportPreparer? prepareExport = null,
-        Func<string, bool>? inputExists = null, Func<ConnectorId, ILlmConnector>? connectors = null) => command.SetAction(async (result, ct) =>
+        Func<string, bool>? inputExists = null) => command.SetAction(async (result, ct) =>
     {
         ct.ThrowIfCancellationRequested();
         if (name == "export" && (result.GetValue<string?>("--open") is null || result.GetValue<string?>("--export") is null))
@@ -295,11 +294,10 @@ internal static class CliApplication
         var path = name == "probe" ? result.GetValue<string>("media") : result.GetValue<string?>("--open");
         if (name != "export" && path is not null && !(inputExists ?? File.Exists)(path))
             return Fail(result, "mediaMissing", "The input file cannot be found.", 3, name);
-        var fields = await CliOperations.ExecuteAsync(name, result, ct, openExport, prepareExport, connectors).ConfigureAwait(false);
+        var fields = await CliOperations.ExecuteAsync(name, result, ct, openExport, prepareExport).ConfigureAwait(false);
         fields["ok"] = true; fields["command"] = name; fields["version"] = Version;
         if (result.GetValue(Json)) Console.Out.WriteLine(fields.ToJsonString());
-        // As on the Mac: the progress lines are on stderr, and without --json only the timings go to stdout.
-        else if (name == "autopilot") { if (fields["timings"] is { } timings) Console.Out.WriteLine(timings.ToJsonString()); }
+        else if (name == "autopilot") { if (CliAutopilot.HumanOutput(fields) is { } timings) Console.Out.WriteLine(timings); }
         else if (name == "export")
         {
             Console.Out.WriteLine(fields["output"]?.GetValue<string>());
