@@ -429,8 +429,9 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
         // The title golden is a 9:16 crop of the 16:9 frame, which the Mac upscales with Core Image's Lanczos filter; the test
         // upscales bilinearly, so the checkerboard's phase under the translucent box differs. The title is compared by its
         // geometry instead: the box's edges and the white text's ink bounds, each within 3 px of the golden's.
+        // In 9:16 the box's top sits at 13% of the height (84 of 640 px).
         var title = Render([Effect("title", text: "Day 1", position: "top")], 360, 640);
-        ExpectSameGeometry("title", FrameTitleGeometry(title, (60, 18), (150, 30), 150), GoldenTitleGeometry("title", (60, 18), (150, 30), 150));
+        ExpectSameGeometry("title", FrameTitleGeometry(title, (88, 18), (150, 30), 150), GoldenTitleGeometry("title", (88, 18), (150, 30), 150));
         var cases = new (string Name, PixelBuffer Frame)[]
         {
             ("emoji", Render([Effect("sticker", text: "\U0001F525", position: "topRight")])),
@@ -515,6 +516,52 @@ public sealed class ClipRenderMediaTests(ITestOutputHelper output)
                 var offset = row * shown.Stride + column * 4;
                 if (shown.Pixels.Span[offset] > 235 && shown.Pixels.Span[offset + 1] > 235 && shown.Pixels.Span[offset + 2] > 235)
                     Assert.True(inner.Contains(column, row), $"text pixel {column},{row} outside {inner}");
+            }
+    }
+
+    /// <summary>A short hook (one line) and the longest the title takes (three lines).</summary>
+    private static readonly string[] TitleHooks = ["We ship every week", "This is the one change that made our whole team ship a clipper every single week"];
+
+    [Fact]
+    public void APortraitTitleSitsClearOfTheFeedsBands()
+    {
+        // design §6.7 and the bands of §5.1: in 9:16 a top title's top edge sits at 13% of the height and the box grows
+        // downwards; a bottom title's bottom edge stays at or above 77%. Centre is unchanged.
+        using var frames = new EffectFrames(Effects(), FixtureLoader.SharedRoot);
+        var one = frames.TitleLayout(TitleHooks[0], "top", 1080, 1920)!;
+        var three = frames.TitleLayout(TitleHooks[1], "top", 1080, 1920)!;
+        Assert.Equal((1, 3), (one.Lines.Count, three.Lines.Count));
+        Assert.Equal((250, 250), (one.Box.Top, three.Box.Top));
+        Assert.True(three.Box.Bottom > one.Box.Bottom);
+        foreach (var hook in TitleHooks)
+        {
+            var bottom = frames.TitleLayout(hook, "bottom", 1080, 1920)!.Box;
+            output.WriteLine($"9:16 {hook.Length} chars: top {frames.TitleLayout(hook, "top", 1080, 1920)!.Box}, bottom {bottom}");
+            Assert.InRange(bottom.Bottom, 1920 * 0.77 - 1, 1920 * 0.77);
+        }
+        Assert.InRange(frames.TitleLayout(TitleHooks[1], "center", 1080, 1920)!.Box.MidY, 959, 961);
+    }
+
+    [Theory]
+    [InlineData(1080, 1080)]
+    [InlineData(1920, 1080)]
+    public void SquareAndLandscapeTitlesAreUnchanged(int width, int height)
+    {
+        // 1:1 and 16:9 keep the placement they had: the single line's edge 14% from the top or 24% from the bottom.
+        using var frames = new EffectFrames(Effects(), FixtureLoader.SharedRoot);
+        foreach (var hook in TitleHooks)
+            foreach (var position in new[] { "top", "bottom", "center" })
+            {
+                var layout = frames.TitleLayout(hook, position, width, height)!;
+                var single = layout.LineHeight + layout.PadY * 2;
+                var boxHeight = layout.LineHeight * layout.Lines.Count + layout.PadY * 2;
+                var top = position switch
+                {
+                    "center" => height / 2f - boxHeight / 2,
+                    "bottom" => height * 0.76f + single / 2 - boxHeight,
+                    _ => height * 0.14f - single / 2
+                };
+                Assert.Equal(((int)Math.Floor(top), (int)Math.Ceiling(top + boxHeight)), (layout.Box.Top, layout.Box.Bottom));
             }
     }
 

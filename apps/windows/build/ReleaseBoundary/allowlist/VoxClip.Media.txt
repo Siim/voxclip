@@ -1164,6 +1164,7 @@ member VoxClip.Media.Pipeline.EffectTextLine :: method public set_Positions(Skia
 member VoxClip.Media.Pipeline.EffectTextLine :: method public set_Text(string)
 member VoxClip.Media.Pipeline.EffectTextLine :: method public set_Width(float)
 member VoxClip.Media.Pipeline.EffectTitleLayout :: field internal MaximumLines
+member VoxClip.Media.Pipeline.EffectTitleLayout :: method internal ClearOfFeedBands(SkiaSharp.SKRectI,string,int,int)
 member VoxClip.Media.Pipeline.EffectTitleLayout :: method internal Make(VoxClip.Media.Pipeline.EffectTextFont,string,string,int,int)
 member VoxClip.Media.Pipeline.EffectTitleLayout :: method internal get_TextWidth()
 member VoxClip.Media.Pipeline.EffectTitleLayout :: method internal get_Texts()
