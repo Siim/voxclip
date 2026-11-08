@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using VoxClip.Core.Domain.Shared;
 #pragma warning disable CS1591
 
 namespace VoxClip.Core.Domain.VoiceLab;
@@ -52,40 +53,11 @@ public static class VoiceConsentAudio
         if (rate is < 8000 or > 192000 || targetRate is < 8000 or > 192000) throw Invalid();
         foreach (var sample in mono) if (!float.IsFinite(sample)) throw Invalid();
         if (rate == targetRate) return mono.ToArray();
-        var cutoff = 0.94 * Math.Min(1, targetRate / (double)rate);
-        var radius = (int)Math.Ceiling(32 / cutoff);
-        var divisor = rate;
-        var remainder = targetRate;
-        while (remainder != 0) (divisor, remainder) = (remainder, divisor % remainder);
-        var phases = targetRate / divisor;
-        var kernels = new double[phases][];
-        for (var phase = 0; phase < phases; phase++)
-        {
-            var fraction = (long)phase * rate % targetRate / (double)targetRate;
-            var weights = new double[radius * 2 + 1];
-            for (var tap = -radius; tap <= radius; tap++)
-            {
-                var distance = tap - fraction;
-                if (Math.Abs(distance) > radius) continue;
-                var position = cutoff * distance;
-                var sinc = Math.Abs(position) < 1e-12 ? 1 : Math.Sin(Math.PI * position) / (Math.PI * position);
-                var window = 0.42 + 0.5 * Math.Cos(Math.PI * distance / radius) + 0.08 * Math.Cos(2 * Math.PI * distance / radius);
-                weights[tap + radius] = cutoff * sinc * window;
-            }
-            var sum = weights.Sum();
-            for (var index = 0; index < weights.Length; index++) weights[index] /= sum;
-            kernels[phase] = weights;
-        }
+        var resampler = new SincResampler(rate, targetRate);
         var output = new float[checked((int)((long)mono.Length * targetRate / rate))];
-        for (var index = 0; index < output.Length; index++)
-        {
-            var source = (int)((long)index * rate / targetRate);
-            var weights = kernels[index % phases];
-            var sum = 0.0;
-            for (var tap = Math.Max(-radius, -source); tap <= Math.Min(radius, mono.Length - 1 - source); tap++)
-                sum += (double)mono[source + tap] * weights[tap + radius];
-            output[index] = (float)sum;
-        }
+        var head = resampler.Process(mono);
+        head.CopyTo(output);
+        resampler.Finish().CopyTo(output.AsSpan(head.Length));
         return output;
     }
     private static VoiceLabException Invalid() => new(VoiceLabErrorKind.InvalidAudio);
