@@ -381,7 +381,7 @@ public static class VoiceLabWindowPlanner
                 var clipStart = clip is null ? -1 : IndexOf(words, clip.StartWordId);
                 var clipEnd = clip is null ? -1 : IndexOf(words, clip.EndWordId);
                 if (clipStart < 0 || clipEnd < clipStart) throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.InvalidInput);
-                ClipRange = EditingAlgorithms.ClipTimes(words, clipStart, clipEnd);
+                ClipRange = EditingAlgorithms.ClipTimes(words, clipStart, clipEnd, clip!.LeadInSeconds);
             }
             var replacements = ScopeReplacements(project, ClipRange, take.Rate, take.Duration);
             Replacements = replacements;

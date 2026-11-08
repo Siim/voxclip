@@ -54,7 +54,9 @@ internal static class ProjectValidation
         Dictionary(edits.GetProperty("corrections"), key => Pattern(key, Id), value => WordText(value, normalizeWordText));
         Array(edits.GetProperty("clips"), clip =>
         {
-            Object(clip, "id startWordId endWordId title origin aiResultId aiClipIndex selected");
+            // leadInSeconds: schema v4 only, above 0 and at most the 0.6 s opening scan (ADR-R48 part 2).
+            Object(clip, "id startWordId endWordId title origin aiResultId aiClipIndex selected", supportsContext ? "leadInSeconds" : "");
+            if (clip.TryGetProperty("leadInSeconds", out var leadIn)) { Number(leadIn, double.Epsilon, 0.6 + 1e-9); }
             foreach (var key in new[] { "id", "startWordId", "endWordId" }) String(clip.GetProperty(key), Id);
             Nullable(clip.GetProperty("title"), value => Text(value, 0, 120)); Choice(clip.GetProperty("origin"), "manual", "ai");
             Nullable(clip.GetProperty("aiResultId"), value => String(value, Id)); Nullable(clip.GetProperty("aiClipIndex"), value => Number(value, 0, int.MaxValue, true)); Boolean(clip.GetProperty("selected"));

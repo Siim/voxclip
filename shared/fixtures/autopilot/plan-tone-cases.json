@@ -3,7 +3,7 @@
  "id": "autopilot-plan-tone",
  "origin": "voxclip",
  "sources": {
-  "shared/prompts/clip-autopilot.json": "7a9bb0641bc47c7b94635d661a13a3cda8f183c7347d45cf6ae64600c1505273",
+  "shared/prompts/clip-autopilot.json": "9ae577be03099bd583116401a95605268f9d80a2e3fcd724b344fc44b185c3eb",
   "shared/data/rewrite-tones.json": "0758abddd4cb7127c68fb5248de6e0ae27251972a3df082c89ece33faf54fbaa"
  },
  "description": "Hand-derived vectors for the Make it postable planner's tone (prompt version 6, plan version 3; doc/spec/ai.md sections 16.3 and 16.5). The transcript is plan-validation-cases.json's (30 items); each reply is its valid-clip reply with the version 2 fields neutral and tone/toneSummary set. 'tone' is the request's tone: null (no tone line), {mode: auto} offering every catalogue tone in order, {mode: as-said}, or {mode: fixed, id} naming a catalogue tone or 'savedTones'. 'expect.tone' is [id, title, summary] or null; 'repairs' lists [field, action] pairs sorted. 'instructions' pins the tone line a clip instruction for [0, 29] ends with. Edit by hand and replay it in every Core suite that implements the planner.",

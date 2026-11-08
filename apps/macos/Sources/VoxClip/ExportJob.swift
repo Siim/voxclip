@@ -364,7 +364,10 @@ extension EditorModel {
                         let url = ExportSelection.destination(base: base, folder: folder, writeSRT: shaped.export.srt)
                         guard url.deletingLastPathComponent().standardizedFileURL.path == folder.standardizedFileURL.path else { throw VoxClipError.exportFailed("invalid destination") }
                         let srt = shaped.export.srt ? url.deletingPathExtension().appendingPathExtension("srt") : nil
-                        let job = ExportJob(target: target, render: render, aspect: shaped.export.aspect, quality: shaped.export.quality, outputURL: url, writeSRT: shaped.export.srt, srtURL: srt)
+                        // A clip's cover (ADR-R48) is written beside it as <name>-cover.jpg and embedded as its cover art.
+                        let clipID: String? = if case .clip(let id) = target { id } else { nil }
+                        let job = ExportJob(target: target, render: render, aspect: shaped.export.aspect, quality: shaped.export.quality, outputURL: url,
+                                            writeSRT: shaped.export.srt, srtURL: srt, cover: ExportCover.forClip(clipID, in: shaped, render: render))
                         let result = try await exporter.export(job) { [weak self] value in Task { @MainActor in
                             guard let self, self.activeExportKey == key else { return }
                             let previousFraction: Double = self.exportProgress?.fraction ?? 0

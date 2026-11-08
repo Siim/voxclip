@@ -1,6 +1,9 @@
+import CoreGraphics
 import Foundation
+import Synchronization
 import Testing
 @testable import VoxClipCore
+@testable import VoxClipMedia
 @testable import voxclip_cli
 
 /// Virtual time for the stub connectors: a send waits until the driver reaches its finish time, so no real time passes and
@@ -72,12 +75,17 @@ private actor LatencyStub: LLMConnector {
     let timeline: Timeline
     let shape: LatencyShape
     let findReply: String
+    /// Each plan's request by rank: how many images it carried and whether it named its frames.
+    private(set) var shown: [Int: (images: Int, frames: Bool)] = [:]
+    private(set) var findImages = 0
     init(timeline: Timeline, shape: LatencyShape, findReply: String) { self.timeline = timeline; self.shape = shape; self.findReply = findReply }
     func status() -> ConnectorStatus { .ready }
+    func supportsImages() -> Bool { true }
     func models(refresh: Bool) -> [LLMModel] { [.init(id: "fixture", name: "Fixture", contextTokens: 200_000, source: .curated)] }
     func contextTokens(model: String) -> Int? { 200_000 }
     func send(_ request: LLMRequest, model: String) async throws -> RawCompletion {
         if request.feature == .clipFinder {
+            findImages += request.images.count
             await timeline.sleep(shape.seconds(shape.findTokens), tag: "find")
             return RawCompletion(text: findReply, model: model, stop: .complete)
         }
@@ -85,6 +93,7 @@ private actor LatencyStub: LLMConnector {
               let moment = request.instruction.firstMatch(of: #/moment (\d+) of (\d+)/#), let rank = Int(moment.1) else {
             throw LLMError.invalidOutput(reason: "not a Claude mode clip plan")
         }
+        shown[rank] = (request.images.count, request.instruction.contains("Cover candidates:"))
         await timeline.sleep(shape.seconds(shape.planTokens[(rank - 1) % shape.planTokens.count]), tag: "plan\(rank)")
         if Task.isCancelled { throw LLMError.cancelled }
         // A plan with nothing to cut, built in typed parts so it type-checks quickly.
@@ -97,8 +106,40 @@ private actor LatencyStub: LLMConnector {
         for (key, value) in numbers { reply[key] = value }
         for (key, value) in texts { reply[key] = value }
         for key in lists { reply[key] = [Any]() }
+        reply["frames"] = ["blur": [Any](), "cover": ["id": "", "reason": ""]]
         return RawCompletion(text: String(decoding: try JSONSerialization.data(withJSONObject: reply), as: UTF8.self), model: model, stop: .complete)
     }
+}
+
+/// The frame pass's stand-in decoder on virtual time: the whole-video sentence pass takes `passSeconds` (its first read
+/// waits that long on the timeline, the rest return at once); opening scans and later reads take no time. Grey frames.
+private final class PassDecoder: FrameDecoding {
+    static let passSeconds = 30.0
+    let timeline: Timeline
+    let first = Mutex(true)
+    init(timeline: Timeline) { self.timeline = timeline }
+    func reader(source: URL, maximumEdge: Int, tolerance: Double) -> any FrameReading { PassReader(decoder: self, tolerance: tolerance) }
+}
+
+private struct PassReader: FrameReading {
+    let decoder: PassDecoder
+    let tolerance: Double
+    func image(at time: Double) async throws -> (image: CGImage, time: Double) {
+        if tolerance == FrameAnalyzer.sentenceTolerance, decoder.first.withLock({ first in defer { first = false }; return first }) {
+            await decoder.timeline.sleep(PassDecoder.passSeconds, tag: "frames")
+        }
+        guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(data: nil, width: 640, height: 360, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                                      bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { throw VoxClipError.decodeFailed("context") }
+        context.setFillColor(CGColor(gray: 0.5, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 640, height: 360))
+        guard let image = context.makeImage() else { throw VoxClipError.decodeFailed("image") }
+        return (image, time)
+    }
+}
+
+private struct BlankVision: FrameObserving {
+    func observe(_ image: CGImage, time: Double) throws -> FrameObservation { FrameObservation(time: time) }
 }
 
 /// The 29-minute benchmark's shape, synthetic: 2,900 words of short sentences over 1,740 s, a pause every few sentences.
@@ -157,11 +198,16 @@ struct CLIAutopilotTests {
         let mostPlansAtOnce: Int
         let timings: JSONValue
         let clips: [JSONValue]
+        /// When the frame pass finished, or -1 without one.
+        var frames = -1.0
+        var frameCount = 0
+        var shown: [Int: (images: Int, frames: Bool)] = [:]
+        var findImages = 0
     }
 
     /// The stub benchmark scene: the CLI's own pipeline (Find Clips, the top three planned at once, each applied as it is
     /// ready) over three latency stubs on virtual time.
-    private func benchmark(shape: LatencyShape = LatencyShape()) async throws -> Run {
+    private func benchmark(shape: LatencyShape = LatencyShape(), frames: Bool = false) async throws -> Run {
         let transcript = benchmarkTranscript()
         let timeline = Timeline()
         let reply = try findReply(transcript)
@@ -171,12 +217,21 @@ struct CLIAutopilotTests {
         let catalog = try LLMCatalog(shared: shared)
         let clock = ClaudeModeClock()
         let project = try benchmarkProject(transcript)
+        let pass = frames ? VideoFramePass(analyzer: FrameAnalyzer(vision: BlankVision(), decoder: PassDecoder(timeline: timeline), cache: nil),
+                                           source: URL(fileURLWithPath: project.media.source.absolutePath),
+                                           contentKey: project.media.source.contentKey, words: transcript.words) : nil
         let run = Task {
             try await CLIWorkflow.autopilot(project: project, connector: main, lanes: lanes, model: "fixture", preset: .best, count: 3,
-                                            shared: shared, catalog: catalog, clock: clock, report: AutopilotReport(quiet: true)) { _, _, _ in
+                                            shared: shared, catalog: catalog, clock: clock, report: AutopilotReport(quiet: true),
+                                            frames: pass, images: true) { _, _, _ in
                 await timeline.take()
                 return []
             }
+        }
+        if frames {
+            // Find Clips and the frame pass wait together; the pass is the quicker.
+            await timeline.waitForSends(2)
+            await timeline.advance()
         }
         await timeline.waitForSends(1)
         await timeline.advance()
@@ -189,8 +244,41 @@ struct CLIAutopilotTests {
         let made = try await run.value
         let finished = await timeline.finished
         let plans = (1...3).map { rank in finished.first { $0.tag == "plan\(rank)" }?.at ?? -1 }
+        var shown: [Int: (images: Int, frames: Bool)] = [:]
+        for stub in [main] + lanes { for (rank, value) in await stub.shown { shown[rank] = value } }
+        var findImages = 0
+        for stub in [main] + lanes { findImages += await stub.findImages }
         return Run(find: finished.first { $0.tag == "find" }?.at ?? -1, plans: plans, taken: await timeline.taken,
-                   mostPlansAtOnce: await timeline.mostPlansAtOnce, timings: clock.json(), clips: made.clips)
+                   mostPlansAtOnce: await timeline.mostPlansAtOnce, timings: clock.json(), clips: made.clips,
+                   frames: finished.first { $0.tag == "frames" }?.at ?? -1, frameCount: pass?.frameCount ?? 0, shown: shown, findImages: findImages)
+    }
+
+    /// The whole video's frame pass starts with Find Clips and does not delay it (ADR-R48 part 2): on virtual time it runs
+    /// from 0 beside Find Clips' 77 s, Find Clips still finishes at 77 s and the plans start then, and each plan request
+    /// carries its clip's frames. `--timings` gains `frames` and each clip's `opening`.
+    @Test(.timeLimit(.minutes(1)))
+    func theFramePassRunsBesideFindClipsAndEachPlanCarriesItsFrames() async throws {
+        let shape = LatencyShape()
+        let plain = try await benchmark(shape: shape)
+        let run = try await benchmark(shape: shape, frames: true)
+        #expect(abs(run.frames - PassDecoder.passSeconds) < 1e-9, "the pass started at 0, beside Find Clips")
+        #expect(run.find == plain.find && abs(run.find - 77) < 0.01, "Find Clips is not delayed")
+        #expect(run.plans == plain.plans && run.taken == plain.taken, "\(run.plans) vs \(plain.plans)")
+        // About one frame per sentence of the whole recording; a clip takes at most 24 of them.
+        #expect(run.frameCount > 100, "\(run.frameCount) sentence frames")
+        #expect(run.findImages == 0)
+        #expect((1...3).allSatisfy { rank in
+            guard let shown = run.shown[rank] else { return false }
+            return shown.frames && shown.images > 0 && shown.images <= FrameSampling.maximumSentences
+        }, "\(run.shown)")
+        #expect(plain.shown.values.allSatisfy { $0.images == 0 && !$0.frames })
+        for clip in run.clips {
+            #expect(clip[ai: "frames"][ai: "images"] == .bool(true))
+            #expect((clip[ai: "frames"][ai: "sent"].aiDouble ?? 0) > 0)
+        }
+        let stages = run.timings[ai: "stages"].aiArray.compactMap { $0[ai: "stage"].aiString }
+        #expect(stages.filter { $0 == "frames" }.count == 1 && stages.filter { $0 == "opening" }.count == 3, "\(stages)")
+        #expect(!plain.timings[ai: "stages"].aiArray.contains { $0[ai: "stage"].aiString == "frames" })
     }
 
     @Test(.timeLimit(.minutes(1)))

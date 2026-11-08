@@ -158,7 +158,10 @@ jobs:
 
       - name: Swift test (VoxClipMediaTests)
         if: ${{ !cancelled() && steps.swift_build.outcome == 'success' }}
-        timeout-minutes: 25
+        # 21 min 35 s on 2026-11-07 (adb367f2); loudness, frames and the autopilot benchmark added suites and the export
+        # pre-pass, and 0f952b0b was still running at 25 min. A step killed at its limit leaves SwiftPM's lock held, so
+        # the next step waits it out too. Keep headroom.
+        timeout-minutes: 40
         working-directory: apps/macos
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared

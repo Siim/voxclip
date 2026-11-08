@@ -1,7 +1,7 @@
 # ADR-R48: Claude sees the picture — faces and screens measured on the Mac, small frames to the AI
 
-Date: 2026-11-07. Status: accepted (package v2-eyes-1, part 1 of 2; the user approved the mockup and the sending of
-small frames on 2026-11-07).
+Date: 2026-11-07. Status: accepted (package v2-eyes-1, part 1 of 2, and v2-eyes-2, part 2; the user approved the mockup
+and the sending of small frames on 2026-11-07).
 
 ## Context
 
@@ -50,3 +50,20 @@ small frames may be sent to the chosen AI. The cover is saved as `cover.jpg` nex
   stubs; real Vision is tested on a drawn phone screen and the repository's counter fixture.
 - **Part 2 owes** the planner request with the sheet and summary, the four review rows, the send line, the cover export
   (`cover.jpg` and MP4 artwork) and Claude mode's use; **Windows owes** the twin (ai.md §19.5).
+
+## Part 2 (track/v2-eyes-2)
+
+- **Off the critical path.** One frame per sentence of the whole video is looked at as soon as the transcript exists,
+  beside Find Clips; each clip's plan takes its ≤ 24 frames from that pass and starts its opening scan beside the request.
+  Measured: 202 frames of a 1080p recording in 2.07 s, a clip's frames from the pass in 1–3 ms, an opening scan 0.08–0.54 s.
+- **The request and reply** (ai.md §19.6): the summary always, the 320 px images only to a connector that takes them,
+  screens `B1…` and covers `C1…C3` named; the reply's `frames` choices; unknown ids fall back. API-key images are priced
+  before the send and the run's cap covers them (`shared/catalog/llm-image-prices.json`).
+- **Stored in the project:** the opening as the clip's `leadInSeconds` (never across a word), the face as
+  `clipControls.reframe` (mode `face`, a static centre the 9:16 and 1:1 crops follow), the cover as
+  `clipControls.coverSeconds`; blurs are clip effects. The cover is exported as `<name>-cover.jpg` and MP4 `covr` art
+  (not `cover.jpg`: several clips share a folder).
+- **Thresholds, evaluated** on three of the user's recordings: the eye line 0.20 holds. Quality 0.4 does not hold as an
+  absolute line on dim 1080p footage (0.30–0.44 throughout): two openings moved 0.4–0.5 s between equally clear frames.
+  A relative rule (move only for shut eyes, a turned face or a clearly worse frame) is the next step.
+- **Windows** keeps the fields losslessly, honours the lead-in and the crop centre, and owes the rest (ai.md §19.5).

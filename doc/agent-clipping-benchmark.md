@@ -65,6 +65,23 @@ Clip finding on the 29-minute file returned the same arguments the agent had pic
 
 Every AI step runs at extra high effort (`clip-finder.json`, `ai-tighten.json`, `caption-pick.json`, `ask-claude.json`, `ClipAutopilotService.effort`). Each call also pays the Claude Code CLI's start-up time: the connection test alone has a median of 4.6 s.
 
+## Claude mode live, after the speed package (2026-11-08)
+
+Release `voxclip-cli autopilot --count 3 --timings` at `0f952b0b` (eyes part 1, loudness and speed merged) on the same 29-minute file, Claude Code with Opus 5.5 at extra high effort, local Whisper, an isolated data directory. The Mac was also building another package (load average 9–15).
+
+| Stage | Seconds | Note |
+|---|---|---|
+| Probe and audio | 2.2 | |
+| Transcribe, local Whisper | 51.4 | 2,864 words |
+| Find Clips, compact sentence lines | **32.4** | was 77 s with per-word lines |
+| Plans, three at once | 53.9 / 57.5 / 60.8 | applied as each is ready |
+| First clip applied | **140.0** | target 120 |
+| First clip exported (9:16) | 145.5 | 5.3 s export |
+| All three exported | **158.7** | |
+
+- **Transcription is now the largest stage.** Apple's on-device `SpeechTranscriber` (`--engine apple`) took **18.2 s** for the same file (96× real time) and found 2,855 words. Within one 5:48 repetition it matched Whisper on 94–96% of words. It writes "um" and "uh", which Whisper drops, and it missed some names ("Opus", "Twilio") but got "telcos" where Whisper wrote "delco's". Its word starts are about 300 ms earlier (median), because Apple's word ranges take in the silence before a word (transcription.md §5.5 already handles both conventions). With Apple transcription the first clip would land at about 105 s.
+- **Loudness did not reach −14 on real speech.** The three exports measured −20.1, −19.8 and −20.0 LUFS (FFmpeg `ebur128`). Clip 1's report: measured −20.9 LUFS, gain +0.74 dB, `capped: true`. Plosives and clicks reach the −1 dBTP ceiling first, so static gain alone barely moves talking-head audio. track/v2-loudness-limiter adds a transparent true-peak limiter.
+
 ## Side by side
 
 | | Agent (Codex/Opus, no app) | VoxClip today |

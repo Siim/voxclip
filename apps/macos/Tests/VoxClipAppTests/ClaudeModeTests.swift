@@ -59,7 +59,7 @@ private final class ClaudeCalls: Sendable {
                                                         fetch: { _ in calls.record("fetch"); return Data() }, folder: { nil })
         var voiceCalls = 0
         editor.makeIt.services = MakeItServices(
-            plan: { request, _, _ in
+            plan: { request, _, _, _ in
                 calls.record("plan \(request.mode)")
                 switch request.tone {
                 case .fixed(let tone)?: calls.record("tone \(tone.id)")
@@ -180,7 +180,7 @@ private final class ClaudeCalls: Sendable {
         editor.musicPanel.services = MusicPanelServices(suggest: { _, _ in MusicSuggestionResult(candidates: []) }, fetch: { _ in Data() }, folder: { nil })
         var planned: [ClipAutopilotRequest.Mode] = []
         editor.makeIt.services = MakeItServices(
-            plan: { request, _, _ in
+            plan: { request, _, _, _ in
                 planned.append(request.mode)
                 guard case .clips(let spans) = request.mode else { return ClipAutopilotSeries(plans: []) }
                 return ClipAutopilotSeries(plans: spans.map {
@@ -503,7 +503,7 @@ extension ClaudeModeTests {
 
     /// The planner as the service streams it: clip 1 ("clip-early", the best) is ready at once; clip 2 waits at `gate`.
     private func streamingPlanner(_ fixture: Fixture, gate: StreamGate, failSecond: Bool = false, failFirst: Bool = false) {
-        fixture.editor.makeIt.services?.plan = { request, _, progress in
+        fixture.editor.makeIt.services?.plan = { request, _, _, progress in
             fixture.calls.record("plan \(request.mode) moments \(request.moments.map(\.title))")
             guard case .clips(let spans) = request.mode, spans.count == 2 else { return ClipAutopilotSeries(plans: []) }
             progress(.planning(clip: 0, of: 2)); progress(.planning(clip: 1, of: 2))

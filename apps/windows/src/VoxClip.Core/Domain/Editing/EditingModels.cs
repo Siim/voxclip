@@ -17,9 +17,12 @@ public enum ClipOrigin
     [JsonStringEnumMemberName("ai")] Ai
 }
 
-/// <summary>Inclusive word-id range; editing §2.5 and project schema. A range never rewrites cuts.</summary>
+/// <summary>Inclusive word-id range; editing §2.5 and project schema. A range never rewrites cuts. <paramref name="LeadInSeconds"/>
+/// (schema v4, ADR-R48 part 2) opens the clip up to 0.6 s before its first word, inside the pause before it (never across the
+/// word before); omitted when null. Moving the clip's first word drops it.</summary>
 public sealed record ClipRange(string Id, string StartWordId, string EndWordId, string? Title,
-    ClipOrigin Origin, string? AiResultId, int? AiClipIndex, bool Selected);
+    ClipOrigin Origin, string? AiResultId, int? AiClipIndex, bool Selected,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] double? LeadInSeconds = null);
 
 /// <summary>Immutable editor snapshot; editing §2.5.</summary>
 public sealed record EditState(TranscriptModel Transcript, IReadOnlyList<Pause> Pauses, double PauseThresholdSeconds,

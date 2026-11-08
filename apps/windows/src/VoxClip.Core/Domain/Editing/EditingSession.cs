@@ -40,7 +40,9 @@ internal static class EditingSession
         segments.AddRange(state.Pauses.Where(pause => state.CutPauseIds.Contains(pause.Id)).Select(pause => new EditSegment(pause.Id, EditSegmentKind.Pause, null, null, pause.Start, pause.End, true)));
         if (scope is { } range)
         {
-            var times = EditingAlgorithms.ClipTimes(words, range.Start, range.End);
+            // The clip's opening lead-in (ADR-R48 part 2) opens it earlier, inside the pause before its first word.
+            var leadIn = state.Clips.FirstOrDefault(clip => clip.Id == state.ActiveClipId)?.LeadInSeconds;
+            var times = EditingAlgorithms.ClipTimes(words, range.Start, range.End, leadIn);
             if (times.Start > 0) segments.Add(new("clip-head", EditSegmentKind.Range, null, null, 0, times.Start, true));
             var tailEnd = Math.Max(times.End, words[^1].End) + 3600;
             if (tailEnd > times.End) segments.Add(new("clip-tail", EditSegmentKind.Range, null, null, times.End, tailEnd, true));
@@ -139,7 +141,9 @@ internal static class EditingSession
                 break;
             case EditOperation.UpdateClip update:
                 if (update.StartIndex < 0 || update.EndIndex < update.StartIndex || update.EndIndex >= words.Count) return state;
-                ChangeClip(update.Id, clip => clip with { StartWordId = words[update.StartIndex].Id, EndWordId = words[update.EndIndex].Id });
+                // A new first word drops the opening lead-in, as the Mac's updateClip does.
+                ChangeClip(update.Id, clip => clip with { StartWordId = words[update.StartIndex].Id, EndWordId = words[update.EndIndex].Id,
+                    LeadInSeconds = clip.StartWordId == words[update.StartIndex].Id ? clip.LeadInSeconds : null });
                 break;
             case EditOperation.RenameClip rename:
                 var title = NormalizeTitle(rename.Title);

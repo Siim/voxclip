@@ -4,6 +4,8 @@ import Synchronization
 /// One stage from a video to its clips, as `voxclip-cli autopilot --timings` and the app's Claude mode log line name it.
 public enum ClaudeModeStage: String, Sendable, CaseIterable, Codable {
     case probe, audio, transcribe, find, plan, apply, export
+    /// The whole video's sentence-frame pass (ADR-R48), and a clip's opening scan.
+    case frames, opening
 }
 
 /// One stage's wall time: when it started and ended, in seconds from the run's start, and for a clip stage which clip

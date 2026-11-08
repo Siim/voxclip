@@ -64,9 +64,13 @@ extension EditorModel {
         axis == .edited ? renderTimeline?.mapTime(source) ?? source : source
     }
 
+    /// The open clip's opening lead-in (ADR-R48), if it has one.
+    var scopeLeadIn: Double? { project.edits.clips.first { $0.id == project.edits.activeClipId }?.leadInSeconds }
+
     /// The open clip's take range (its words plus the planner's lead and tail), or nil on Full Take.
     var scopeSourceRange: ClosedRange<Double>? {
-        guard let bounds = scopeBounds, let times = try? clipTimes(words, startIndex: bounds.lowerBound, endIndex: bounds.upperBound) else { return nil }
+        guard let bounds = scopeBounds,
+              let times = try? clipTimes(words, startIndex: bounds.lowerBound, endIndex: bounds.upperBound, leadIn: scopeLeadIn) else { return nil }
         return times.start...max(times.start, times.end)
     }
 

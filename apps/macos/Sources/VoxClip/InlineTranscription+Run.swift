@@ -195,5 +195,7 @@ extension EditorModel {
         var next = project
         next.replaceTranscript(transcript)
         replace(next, name: "Transcribe video")
+        // The whole video's frames are looked at now, while Find Clips runs (ADR-R48); nothing waits for them.
+        startFramePass()
     }
 }

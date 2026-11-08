@@ -70,7 +70,8 @@ public sealed class ClipAutopilotTests
     internal static JsonObject Sendable(JsonObject reply)
     {
         var neutral = new JsonObject { ["corrections"] = new JsonArray(), ["lengthReason"] = "", ["captionReason"] = "", ["look"] = "original", ["lookReason"] = "",
-            ["speed"] = 1, ["speedReason"] = "", ["tone"] = "none", ["toneSummary"] = "" };
+            ["speed"] = 1, ["speedReason"] = "", ["tone"] = "none", ["toneSummary"] = "",
+            ["frames"] = new JsonObject { ["blur"] = new JsonArray(), ["cover"] = new JsonObject { ["id"] = "", ["reason"] = "" } } };
         foreach (var (key, value) in neutral.ToArray()) if (!reply.ContainsKey(key)) reply[key] = value!.DeepClone();
         return reply;
     }
@@ -100,7 +101,7 @@ public sealed class ClipAutopilotTests
     public void PromptFileFillsItsLimitsAndEveryFixturePinsIt()
     {
         var prompt = ClipAutopilotPrompt.Load(Root);
-        Assert.Equal(7, prompt.PromptVersion);
+        Assert.Equal(8, prompt.PromptVersion);
         foreach (var system in new[] { prompt.System, prompt.MomentsSystem })
         {
             Assert.DoesNotContain("{", system, StringComparison.Ordinal);
@@ -594,7 +595,7 @@ public sealed class ClipAutopilotTests
         var stub = Stub("not json", Sendable(Reply("overlaps")).ToJsonString());
         var result = await Service().PlanAsync(new(Transcript(), Edits(), new ClipAutopilotMode.Clip(new(0, 29))), stub, "fixture", ct: TestContext.Current.CancellationToken);
         Assert.Equal((1, 2), (result.Plan!.Rewrites.Count, result.Plan.Cuts.Count));
-        Assert.Equal((7, 64), (result.PromptVersion, result.PromptSha256.Length));
+        Assert.Equal((8, 64), (result.PromptVersion, result.PromptSha256.Length));
         Assert.Equal(2, stub.Requests.Count);
         Assert.All(stub.Requests, request => Assert.Equal((Effort.XHigh, LlmFeature.ClipAutopilot), (request.Effort!.Value, request.Feature)));
         Assert.Contains("Your previous reply was not valid JSON", stub.Requests[1].Instruction, StringComparison.Ordinal);

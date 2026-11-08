@@ -1,5 +1,34 @@
 # Windows fixed contracts
 
+### 2026-11-08 — Windows: the native media tests no longer hang on the social loudness test (track/v2-win-media-hang)
+
+From lead `0f952b0b` on (the track/v2-loudness merge), the Windows job's ".NET media tests (strict native and CLI E2E)" step ran until the job was cancelled at 60 minutes and printed nothing (run 42418707681).
+
+- **What hung.** `SocialLoudnessNativeExportTests.SocialLandsAtMinus14AndOffLeavesTheMix`, the first run of this `RequiresWindows` + `RequiresFFmpeg` test. Its `Measure` helper read the decoded file until `AudioDecoder.Read` returned 0. But `AudioDecoder.Read` pads past the end with silence and always returns the frames asked for, because it feeds fixed-length readers. The loop never ended: one core spun in `ZeroMemory`, and the meter grew on silent blocks (850 MB at 3½ minutes on the ARM64 VM). The exporter was not at fault. Its loudness pre-pass reads a `RenderedAudioReader`, which stops at `TotalFrames`, and it does not wait on a Voice Lab lease.
+- **Fix (tests only).** `Measure(path, frames, ct)` reads the known length: the probed source's frames, then each export's `AudioSamples`. The whole test runs under a linked token with a 3-minute budget. If the budget runs out, the test fails with "did not finish within 3 minutes" instead of holding the run. Natively, the old loop under the new budget fails at 180 s with that message; the fixed test passes in 1.2 s.
+- **Rule for native tests.** Never loop on `AudioDecoder.Read(...) > 0`. Read a known frame count, and bound any native test that can block with a token that fails with a message. A loop on `RenderedAudioReader.Read(...) > 0` is fine, because it stops at `TotalFrames`.
+- **Also fixed: the two CLI E2E level checks behind the hang.** They had never run since the loudness merge. `MediaCliE2ETests.CliExportsAClipAtASpeedWithItsLookAndABleep` and `CliExportsAClipWithItsMusicUnderTheVoice` assert the composed mix's absolute levels. The CLI's default social gain (about −5 dB on the tone fixture) failed them, for example bleep 0.138 against 0.2…0.3 and voice 0.215 against more than 0.25. They now pass `--loudness off`. Social loudness keeps its own native tests.
+- **Verification.** Native win-arm64 VM, Release, test-only FFmpeg pin, Mac-generated fixtures, speaker model:
+  - Before the fix, serial (`-longRunning 120 -parallel none`): hung on the test above.
+  - After the fix, serial: 1,190 tests, 0 failed, 18 skipped, 272 s, with no test reported as long running.
+  - CI-style `dotnet test --no-build`, with the six DLLs beside the CLI and `VOXCLIP_REQUIRE_E2E=1`: 1,190 tests, 1,172 passed, 18 skipped (all opt-in), 0 failed, 251 s, 10 E2E reports.
+  - macOS host: Core 3,281 (3,252 passed, 29 skipped); portable Media 1,190 (1,025 passed, 165 skipped).
+  - No public surface changed.
+- **For the merge with track/v2-loudness-limiter.** Its new `TransientsAreLimitedAndTheExportLandsAtMinus14` calls the old `Measure(limited)` and would hang the same way. Use `Measure(limited, result.AudioSamples, ct)` under the same bounded token.
+
+### 2026-11-07 — Windows: a clip's lead-in, face-follow centre and cover kept losslessly; the lead-in and the face crop render (track/v2-eyes-2)
+
+The Mac's Claude sees the picture, part 2 (ADR-R48, ai.md §19.6) adds three optional schema-v4 project fields. Windows reads, validates and writes them losslessly and renders two of them; the rest is owed.
+
+- **Core.**
+  - `ClipRange.LeadInSeconds` (optional last parameter, omitted when null): raw validation allows `leadInSeconds` on a v4 clip only, above 0 and at most 0.6. `EditingAlgorithms.ClipTimes(words, start, end, leadIn)` and `ClipLeadInFloor` are twins of the Mac's `clipTimes`/`clipLeadInFloor`; `BuildSegments`, `VoiceLabWindow` and `VoiceLabOutputPlan` pass the clip's lead-in; `UpdateClip` drops it when the first word moves.
+  - `ReframeSettings` gains `CenterX`/`CenterY` (omitted when null) and `FaceMode`. `ProjectClipControls` gains `Reframe` and `CoverSeconds` (optional, omitted when null; `IsDefault` counts them), `CropCenter(outputAspect)`; `ClipControlsProject.Validate` and `ValidateWire` take the Mac's rules (reframe exactly `mode`, `zoom`, `centerX`, `centerY`; face mode, zoom 1, centre in 0…1; cover finite ≥ 0).
+  - `ClipFaceCrop.Centered` (twin of the Mac's `FrameCompositor.aspectCrop`): the centre crop moved to the face through the clip's flip and turns, clamped inside the picture; 9:16 and 1:1 only.
+- **Media.** `FrameComposer` applies `ClipFaceCrop.Centered` after the centre crop (preview and export).
+- **Tests.** Core `ClipFramesProjectWireTests` (7): the shared `clip-frames` vectors (8 valid saved losslessly, 14 invalid refused), the fixture's fields, the lead-in times and floor (the Mac's numbers), the clip's head segment and `UpdateClip`, the face crop for 9:16, 1:1, the edge, a flip, 16:9 and no face. `ClipAutopilotTests` pins promptVersion 8 and its sendable reply carries `frames`.
+- **Verification** (macOS host, Release): Core 3,281 (3,252 passed, 29 skipped, 0 failed); portable Media 1,190 (1,025 passed, 165 skipped, 0 failed); win-ui 1,393 (1,388 passed, 5 skipped). ReleaseBoundary `update`: Core +27/−7 (the new fields, `ClipTimes`'s lead-in, `ClipLeadInFloor`, `CropCenter`, `ClipFaceCrop`); Media, `VoxClip.txt` and `voxclip-cli.txt` unchanged.
+- **Owed (Windows twin of ADR-R48 part 2):** the image capability and wires in the C# connectors, the analyzer (Windows `FaceDetector` has no landmarks or capture quality), the pure decisions with shared vectors, the whole-video pass and the plan request's frames block and reply `frames` handling, the four Make it postable rows and the send line, the cover export (`<name>-cover.jpg` and MP4 `covr` art), the face crop in still frames (`CurrentFrames`), and `analyze-frames`/`autopilot` frames in the CLI.
+
 ### 2026-11-07 — Windows: native speaker parity verified on win-arm64 and win-x64; the gate stays closed (lead)
 
 `VoiceConsentMediaTests.SharedRealModelSpeakerVectorsReplayWhenVerifiedLocalAssetsExist` replays `shared/fixtures/voice-lab/speaker/vectors.json` (8 clips: voiced ranges, embeddings and pair scores, absolute tolerance 2e-4) through `ONNXSpeakerEmbedder` with the catalogue's pinned model (`wespeaker-resnet34-lm-voxceleb-f0c48c2`, bytes and SHA-256 checked).

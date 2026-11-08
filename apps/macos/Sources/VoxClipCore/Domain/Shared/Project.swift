@@ -267,9 +267,13 @@ public struct ClipRange: Codable, Sendable, Equatable {
     public var aiClipIndex: Int?
     /// Export-list checkbox; editing §2.4 and project schema. New clips start selected.
     public var selected: Bool
+    /// Schema v4 only, omitted when nil: the clip opens this many seconds before its first word, in the silence before it
+    /// (0 < s ≤ 0.6), never across the item before it ("Opens on a clear look at you", ADR-R48). `clipTimes` honours it.
+    public var leadInSeconds: Double?
 
     /// Creates an explicit value without I/O or generated identifiers.
-    public init(id: String, startWordId: String, endWordId: String, title: String? = nil, origin: ClipOrigin = .manual, aiResultId: String? = nil, aiClipIndex: Int? = nil, selected: Bool = true) {
+    public init(id: String, startWordId: String, endWordId: String, title: String? = nil, origin: ClipOrigin = .manual, aiResultId: String? = nil, aiClipIndex: Int? = nil, selected: Bool = true, leadInSeconds: Double? = nil) {
+        self.leadInSeconds = leadInSeconds
         self.id = id
         self.startWordId = startWordId
         self.endWordId = endWordId
@@ -289,10 +293,12 @@ public struct ClipRange: Codable, Sendable, Equatable {
         case aiResultId
         case aiClipIndex
         case selected
+        case leadInSeconds
     }
 
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.leadInSeconds = try values.decodeIfPresent(Double.self, forKey: .leadInSeconds)
         self.id = try values.decode(String.self, forKey: .id)
         self.startWordId = try values.decode(String.self, forKey: .startWordId)
         self.endWordId = try values.decode(String.self, forKey: .endWordId)
@@ -313,6 +319,7 @@ public struct ClipRange: Codable, Sendable, Equatable {
         try values.encode(self.aiResultId, forKey: .aiResultId)
         try values.encode(self.aiClipIndex, forKey: .aiClipIndex)
         try values.encode(self.selected, forKey: .selected)
+        try values.encodeIfPresent(self.leadInSeconds, forKey: .leadInSeconds)
     }
 
 }
@@ -461,28 +468,46 @@ public struct ReframeSettings: Codable, Sendable, Equatable {
     public var mode: String
     /// zoom; doc/architecture.md §3; shared/schemas/project.schema.json
     public var zoom: Double
+    /// Mode `face` (a clip's "9:16 follows your face", ADR-R48): the crop's centre in picture space, top-left origin, the
+    /// median measured face centre (`FaceFollowCrop.plan`). Omitted for the centre crop.
+    public var centerX: Double?
+    public var centerY: Double?
+
+    /// The mode of a crop centred on the measured face.
+    public static let faceMode = "face"
 
     /// Creates an explicit value without I/O or generated identifiers.
-    public init(mode: String = "center", zoom: Double = 1) {
+    public init(mode: String = "center", zoom: Double = 1, centerX: Double? = nil, centerY: Double? = nil) {
         self.mode = mode
         self.zoom = zoom
+        self.centerX = centerX
+        self.centerY = centerY
     }
+
+    /// A static crop centred on `x`, `y` of the picture.
+    public static func face(x: Double, y: Double) -> ReframeSettings { ReframeSettings(mode: faceMode, zoom: 1, centerX: x, centerY: y) }
 
     private enum CodingKeys: String, CodingKey {
         case mode
         case zoom
+        case centerX
+        case centerY
     }
 
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         self.mode = try values.decode(String.self, forKey: .mode)
         self.zoom = try values.decode(Double.self, forKey: .zoom)
+        self.centerX = try values.decodeIfPresent(Double.self, forKey: .centerX)
+        self.centerY = try values.decodeIfPresent(Double.self, forKey: .centerY)
     }
 
     public func encode(to encoder: any Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(self.mode, forKey: .mode)
         try values.encode(self.zoom, forKey: .zoom)
+        try values.encodeIfPresent(self.centerX, forKey: .centerX)
+        try values.encodeIfPresent(self.centerY, forKey: .centerY)
     }
 
 }

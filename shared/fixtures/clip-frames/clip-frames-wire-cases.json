@@ -1,0 +1,260 @@
+{
+  "format": "voxclip-clip-frames-wire-cases/1",
+  "project": "fixtures/clip-frames/clip-frames-project.voxclip",
+  "valid": [
+    {
+      "id": "every-field",
+      "patches": []
+    },
+    {
+      "id": "lead-in-only",
+      "patches": [
+        {
+          "path": "/clipControls",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "longest-lead-in",
+      "patches": [
+        {
+          "path": "/edits/clips/0/leadInSeconds",
+          "value": 0.6
+        }
+      ]
+    },
+    {
+      "id": "no-lead-in-is-omitted",
+      "patches": [
+        {
+          "path": "/edits/clips/0/leadInSeconds",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "face-follow-only",
+      "patches": [
+        {
+          "path": "/clipControls",
+          "value": [
+            {
+              "clipId": "clip-main",
+              "speed": 1,
+              "shape": null,
+              "look": "original",
+              "gainDb": 0,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 0,
+              "muteSource": false,
+              "flipHorizontal": false,
+              "rotationDegrees": 0,
+              "reframe": {
+                "mode": "face",
+                "zoom": 1,
+                "centerX": 0.42,
+                "centerY": 0.38
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cover-only",
+      "patches": [
+        {
+          "path": "/clipControls",
+          "value": [
+            {
+              "clipId": "clip-main",
+              "speed": 1,
+              "shape": null,
+              "look": "original",
+              "gainDb": 0,
+              "fadeInSeconds": 0,
+              "fadeOutSeconds": 0,
+              "muteSource": false,
+              "flipHorizontal": false,
+              "rotationDegrees": 0,
+              "coverSeconds": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "face-at-the-edge",
+      "patches": [
+        {
+          "path": "/clipControls/0/reframe/centerX",
+          "value": 1
+        },
+        {
+          "path": "/clipControls/0/reframe/centerY",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "no-reframe-or-cover-is-omitted",
+      "patches": [
+        {
+          "path": "/clipControls/0/reframe",
+          "remove": true
+        },
+        {
+          "path": "/clipControls/0/coverSeconds",
+          "remove": true
+        }
+      ]
+    }
+  ],
+  "invalid": [
+    {
+      "id": "zero-lead-in",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/edits/clips/0/leadInSeconds",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "lead-in-too-long",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/edits/clips/0/leadInSeconds",
+          "value": 0.61
+        }
+      ]
+    },
+    {
+      "id": "negative-lead-in",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/edits/clips/0/leadInSeconds",
+          "value": -0.1
+        }
+      ]
+    },
+    {
+      "id": "string-lead-in",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/edits/clips/0/leadInSeconds",
+          "value": "0.25"
+        }
+      ]
+    },
+    {
+      "id": "null-lead-in",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/edits/clips/0/leadInSeconds",
+          "value": null
+        }
+      ]
+    },
+    {
+      "id": "v3-lead-in",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipControls",
+          "remove": true
+        },
+        {
+          "path": "/schemaVersion",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "id": "centre-mode",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipControls/0/reframe/mode",
+          "value": "center"
+        }
+      ]
+    },
+    {
+      "id": "zoomed-reframe",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipControls/0/reframe/zoom",
+          "value": 1.5
+        }
+      ]
+    },
+    {
+      "id": "missing-centre",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipControls/0/reframe/centerY",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "centre-outside",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipControls/0/reframe/centerX",
+          "value": 1.2
+        }
+      ]
+    },
+    {
+      "id": "unknown-reframe-field",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipControls/0/reframe/path",
+          "value": []
+        }
+      ]
+    },
+    {
+      "id": "null-reframe",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipControls/0/reframe",
+          "value": null
+        }
+      ]
+    },
+    {
+      "id": "negative-cover",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipControls/0/coverSeconds",
+          "value": -0.5
+        }
+      ]
+    },
+    {
+      "id": "string-cover",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/clipControls/0/coverSeconds",
+          "value": "1.3"
+        }
+      ]
+    }
+  ]
+}

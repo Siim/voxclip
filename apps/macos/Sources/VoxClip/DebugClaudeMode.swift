@@ -55,7 +55,7 @@ import VoxClipMedia
                                                         fetch: { _ in wav }, folder: { nil })
         let gate = Gate()
         var calls = 0
-        editor.makeIt.services = MakeItServices(plan: { request, _, _ in
+        editor.makeIt.services = MakeItServices(plan: { request, _, _, _ in
                 let spans: [ClosedRange<Int>] = switch request.mode { case .clip(let span): [span]; case .clips(let chosen): chosen; case .series: [] }
                 return ClipAutopilotSeries(plans: spans.map { plan($0, title: titles[$0.lowerBound] ?? "Clip") })
             },

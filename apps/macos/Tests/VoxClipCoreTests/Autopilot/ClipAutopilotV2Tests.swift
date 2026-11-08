@@ -104,7 +104,7 @@ import Testing
         let old = try JSONDecoder().decode(ClipAutopilotPlan.self, from: JSONEncoder().encode(JSONValue.object(object)))
         #expect(old.version == ClipAutopilotPlan.currentVersion && old.corrections.isEmpty && old.look == .original && old.speed == nil && old.seconds == 0 && old.flags.isEmpty)
         #expect(old.captions.reason.isEmpty && old.cuts == plan.cuts && old.rewrites == plan.rewrites)
-        object["version"] = .number(4)
+        object["version"] = .number(5)
         #expect(throws: DecodingError.self) { try JSONDecoder().decode(ClipAutopilotPlan.self, from: JSONEncoder().encode(JSONValue.object(object))) }
         let series = ClipAutopilotSeries(plans: [plan], moments: [.init(startWord: 0, endWord: 29, title: "T", idea: "I", score: 7, verdict: .post,
                                                                          captionStyle: "karaoke")])
@@ -192,6 +192,8 @@ import Testing
         reply["score"] = .number(Double(score(start))); reply["verdict"] = .string("postFirst")
         // Prompt version 6 requires the tone fields in every reply.
         reply["tone"] = .string("none"); reply["toneSummary"] = .string("")
+        // Prompt version 8 requires the frames object.
+        reply["frames"] = .object(["blur": .array([]), "cover": .object(["id": .string(""), "reason": .string("")])])
         return try JSONValue.object(reply).aiCompact()
     }
 

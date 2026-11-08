@@ -278,7 +278,8 @@ enum CLIWorkflow {
                                   cleanupRegistry: DataLocations().root.appendingPathComponent("Scratch"))
         let job = ExportJob(render: render, aspect: aspect, quality: quality, outputURL: URL(fileURLWithPath: options.output!),
             writeSRT: options.srt != nil, srtURL: options.srt.map { URL(fileURLWithPath: $0) },
-            loudness: options.loudness.flatMap(ExportLoudness.init(rawValue:)) ?? .social)
+            loudness: options.loudness.flatMap(ExportLoudness.init(rawValue:)) ?? .social,
+            cover: options.cover == "off" ? nil : ExportCover.forClip(activeClip?.id, in: project, render: render))
         let audioDestination = options.audioOut.map { URL(fileURLWithPath: $0).standardizedFileURL.resolvingSymlinksInPath() }
         var audioStaging: URL?
         var approvals: [URL: ExportSafety.DestinationApproval]?
@@ -302,7 +303,8 @@ enum CLIWorkflow {
             reporter.report(progress)
         }
         guard case .object(var fields) = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(result)) else { throw VoxClipError.exportFailed("Cannot encode result") }
-        fields.removeValue(forKey: "outputURL"); fields.removeValue(forKey: "srtURL")
+        fields.removeValue(forKey: "outputURL"); fields.removeValue(forKey: "srtURL"); fields.removeValue(forKey: "coverURL")
+        if let cover = result.coverURL { fields["cover"] = .string(cover.path) }
         fields["output"] = .string(result.outputURL.path); fields["srt"] = result.srtURL.map { .string($0.path) } ?? .null
         fields["captionStyle"] = .string(styleID); fields["aspect"] = .string(aspect.rawValue)
         return success("export", fields: fields)

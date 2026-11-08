@@ -46,12 +46,30 @@ extension EditPlan {
 
 func validSegment(_ segment: EditSegment) -> Bool { segment.start.isFinite && segment.end.isFinite && segment.end > segment.start }
 
-public func clipTimes(_ words: [TimedWord], startIndex: Int, endIndex: Int) throws -> TimeRange {
+public func clipTimes(_ words: [TimedWord], startIndex: Int, endIndex: Int, leadIn: Double? = nil) throws -> TimeRange {
     guard startIndex >= 0, endIndex >= startIndex, endIndex < words.count else { throw VoxClipError.projectUnreadable("Invalid clip bounds") }
     let first = words[startIndex], last = words[endIndex]
     let lead = startIndex > 0 ? max(0, first.start - words[startIndex - 1].end) / 2 : 0.12
     let tail = endIndex + 1 < words.count ? max(0, words[endIndex + 1].start - last.end) / 2 : 0.25
-    return TimeRange(start: max(0, first.start - min(0.12, lead)), end: last.end + min(0.25, tail))
+    var start = max(0, first.start - min(0.12, lead))
+    if let leadIn, leadIn.isFinite, leadIn > 0 {
+        start = min(start, max(clipLeadInFloor(words, startIndex: startIndex), first.start - leadIn))
+    }
+    return TimeRange(start: start, end: last.end + min(0.25, tail))
+}
+
+/// The earliest a clip may open (ADR-R48): after the item before its first one and that item's own cut margin (`rawCutRange`
+/// keeps up to 0.1 s after a cut word), so an opening lead-in moves only through silence and never brings back a sound of
+/// the item before; 0 for the first item.
+public func clipLeadInFloor(_ words: [TimedWord], startIndex: Int) -> Double {
+    guard startIndex > 0, startIndex < words.count else { return 0 }
+    let previous = words[startIndex - 1].end, first = words[startIndex].start
+    return min(first, previous + min(0.1, max(0, first - previous) / 2))
+}
+
+/// The clip's own edges, its opening lead-in honoured.
+public func clipTimes(_ words: [TimedWord], clip: ClipRange, startIndex: Int, endIndex: Int) throws -> TimeRange {
+    try clipTimes(words, startIndex: startIndex, endIndex: endIndex, leadIn: clip.leadInSeconds)
 }
 
 func clipIndices(_ clip: ClipRange?, words: [TimedWord]) -> ClosedRange<Int>? {
@@ -72,7 +90,7 @@ public func buildSegments(_ state: EditState, activeClip: ClipRange?) throws -> 
         EditSegment(id: $0.id, kind: .pause, start: $0.start, end: $0.end, cut: true)
     }
     if let bounds {
-        let times = try clipTimes(words, startIndex: bounds.lowerBound, endIndex: bounds.upperBound)
+        let times = try clipTimes(words, startIndex: bounds.lowerBound, endIndex: bounds.upperBound, leadIn: activeClip?.leadInSeconds)
         if times.start > 0 { segments.append(EditSegment(id: "clip-head", kind: .range, start: 0, end: times.start, cut: true)) }
         let end = max(times.end, words.last?.end ?? times.end) + 3600
         if end > times.end { segments.append(EditSegment(id: "clip-tail", kind: .range, start: times.end, end: end, cut: true)) }

@@ -143,8 +143,9 @@ public sealed class MediaCliE2ETests
             File.WriteAllText(projectPath, ProjectSerialization.Serialize(project));
             var output = Path.Combine(directory, "clip.mp4");
             var wave = Path.Combine(directory, "clip.wav");
+            // The levels below are the composed mix's; social loudness has its own native tests (SocialLoudnessNativeExportTests).
             var (exit, result) = await RunCli(["--open", projectPath, "--clip", "clip-speed", "--export", output, "--audio-out", wave,
-                "--json", "--quiet", "--style", "off"], directory, "e2e-clip-speed", ct);
+                "--json", "--quiet", "--style", "off", "--loudness", "off"], directory, "e2e-clip-speed", ct);
             // No parity report: VOXCLIP_E2E_OUT holds the ten canonical cases CI compares with the Mac's, and this one is Windows'.
             Assert.True(exit == 0, result.ToJsonString());
             var plan = CliOperations.BuildPlan(project with { Edits = project.Edits with { ActiveClipId = "clip-speed" } }, true);
@@ -229,8 +230,9 @@ public sealed class MediaCliE2ETests
             File.WriteAllText(projectPath, ProjectSerialization.Serialize(project));
             var output = Path.Combine(directory, "music.mp4");
             var wave = Path.Combine(directory, "music.wav");
+            // The levels below are the composed mix's; social loudness has its own native tests (SocialLoudnessNativeExportTests).
             var (exit, result) = await RunCli(["--open", projectPath, "--clip", "clip-music", "--export", output, "--audio-out", wave,
-                "--json", "--quiet", "--style", "off"], directory, "e2e-clip-music", ct);
+                "--json", "--quiet", "--style", "off", "--loudness", "off"], directory, "e2e-clip-music", ct);
             // No parity report: VOXCLIP_E2E_OUT holds the ten canonical cases CI compares with the Mac's, and this one is Windows'.
             Assert.True(exit == 0, result.ToJsonString());
             var plan = CliOperations.BuildPlan(project with { Edits = project.Edits with { ActiveClipId = "clip-music" } }, true);

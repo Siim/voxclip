@@ -2167,8 +2167,8 @@ decision effort (extra high). Zoom cues and music changes validate but stay late
 
 ## 19. Claude sees the picture: frames measured on the Mac, small frames to the AI (ADR-R48)
 
-Part 1 (track/v2-eyes-1, 2026-11-07) builds the parts below; nothing sends frames yet. Part 2 connects them to Make it
-postable (design.md §6.7, "Claude sees the picture").
+Part 1 (track/v2-eyes-1, 2026-11-07) builds the parts below. Part 2 (track/v2-eyes-2, 2026-11-07) connects them to Make it
+postable, Claude mode, the export and the CLI (§19.6; design.md §6.7.1).
 
 ### 19.1 What is computed on this Mac
 
@@ -2198,10 +2198,15 @@ leaves the Mac, and nothing it finds is sent unless a request carries the frame 
 
 ### 19.2 The decisions (pure, VoxClipCore)
 
-- **Opening frame** (`OpeningFrame.choose`): no shift when the frame at the clip's start is a clear look (a face, eyes
-  open, good quality, not turned away). Otherwise the earliest clear look between the end of the transcript item before
-  the first kept word (`FrameClip.leadInFloor`, cut words included) and the start, at most 0.6 s back. The shift is 0 or
-  negative: it moves through silence only, so no word is clipped and none added. Nil when there is none.
+- **Opening frame** (`OpeningFrame.choose`): the start moves only for a fault in its frame, so a clip never gains dead
+  air for nothing. No shift when that frame is a clear look (a face, eyes open, quality at least 0.4, not turned away).
+  An open look (eyes open, facing the camera) of lower quality moves only to a frame at least `qualityMargin` (0.15)
+  better and at least 0.4. No face, shut eyes or a turned face move to the earliest open look of quality at least 0.25.
+  Capture quality is relative, and dim 1080p footage scores 0.30–0.44 throughout. Under the absolute 0.4 floor alone, the
+  lead's evaluation (2026-11-08) moved two open-eyed starts between 0.386 and 0.438. The candidates lie between the end
+  of the transcript item before the first kept word (`FrameClip.leadInFloor`, cut words included) and the start, at
+  most 0.6 s back. The shift is 0 or negative: it moves through silence only, so no word is clipped and none added. Nil
+  when there is none.
 - **Face-follow crop** (`FaceFollowCrop.plan`) for 9:16 and 1:1: a static centre (the median face centre, clamped so the
   crop stays inside the picture) for a one-`faceX` renderer, and a path: a 5-sample running median, a dead zone of 15% of
   the crop's size, and pans of at most half the crop's size per second. A sample with no face holds the last centre.
@@ -2238,12 +2243,71 @@ or "n text boxes"). No recognised text, file name or path is in it. `imageBytes`
 width × height / 750 per image; 77 for 320 × 180) and `estimatedSummaryTokens` (2.2 bytes a token) price the send line.
 Measured: 24 frames of the user's 4K clip are 314 KB of JPEG, about 1,850 image tokens and 900 summary tokens.
 
-`voxclip-cli analyze-frames --open <project> --clip <id> [--no-cache] [--sheet-out <folder>] --json` prints the analysis,
-the decisions (`opening`, `cover`, `blurSpans`, `crop9x16`, `crop1x1`), the sheet's numbers and summary, and the timings.
-It changes no project and sends nothing.
+`voxclip-cli analyze-frames --open <project> --clip <id> [--video-pass] [--no-cache] [--sheet-out <folder>] --json` prints
+the analysis, the decisions (`opening`, `cover`, `blurSpans`, `blurCandidates`, `coverCandidates`, `crop9x16`, `crop1x1`),
+the sheet's numbers and summary, and the timings. `--video-pass` first runs the whole video's pass (§19.6) and adds
+`videoPass` (frames, seconds, the clip's frames from it and its opening scan, timed). `--open <media> --transcript <words
+JSON> --words first:last` measures a file without a project. It changes no project and sends nothing.
 
 ### 19.5 Windows
 
+Part 2 gives Windows the project fields: a clip's `leadInSeconds`, its `clipControls.reframe` and `coverSeconds` open, validate
+and save losslessly (the `shared/fixtures/clip-frames/` vectors replay), the clip opens at its lead-in, and the 9:16 and 1:1
+export crops follow the stored face (`ClipFaceCrop`). The `clip-autopilot` prompt version 8 and its fixtures pass.
+
 Owed: the `images` capability and image wires in the C# connectors (the catalogue entry is shared and already read), the
 analyzer (Windows `FaceDetector` has no landmarks or capture quality; the eyes and quality need another source), the
-decisions (a twin of §19.2 with shared vectors), and the CLI command.
+decisions (a twin of §19.2 with shared vectors), the whole-video pass and the plan request's frames, the four review
+rows and the send line, the cover export (`-cover.jpg` and `covr` art), the face crop in still frames (`CurrentFrames`),
+and the CLI command.
+
+### 19.6 Part 2: the frames in Make it postable, Claude mode and the export
+
+- **Off the critical path.** `VideoFramePass` (VoxClipMedia) starts as soon as the transcript exists (the app starts it
+  from `replaceTranscript`; `voxclip-cli autopilot` before Find Clips) and runs beside Find Clips at utility priority. It
+  looks at one frame per sentence of the whole recording (`FrameSampling.videoSamples`, no cuts, no limit) through
+  `FrameAnalyzer` and its cache. A clip's plan request takes at most 24 of them, evenly spread over its kept words
+  (`FrameSampling.clipSamples`; a clip inside one long sentence decodes its own), with their sheet, and starts that clip's
+  opening scan (±0.6 s at 10 fps) beside the request; the apply waits for it. A source the analyzer cannot read logs one
+  line ("frames: the video's frames can't be read, so plans go as text only (…)") and every clip goes as text.
+- **The request** (`clip-autopilot.json` promptVersion 8, plan version 4; the `frames` section). `ClipAutopilotFrames`
+  carries the sheet's summary, which the instruction always holds after the names line, and the 320 px images, which
+  only a connector that takes images gets (`LLMRequest.images`, labelled "Frame n at s.ss s"). It lists screens to judge,
+  `B1…` (`ClipFrameCandidates.blur`: `FrameBlurSpans.merge` with an 8 s gap and 1 s pad, cut to the clip; "screen at
+  a–b s, box x,y,w,h, seen in n of the frames"), and cover candidates `C1…C3` (the best sheet frames by `CoverFrame.score`).
+  A request without frames is built byte for byte as before; series moments never get frames.
+- **The reply** adds `frames: {blur: [{id, blur, reason}], cover: {id, reason}}` (required by the strict schema).
+  `ClipAutopilotValidator.frames` trims and upper-cases ids; an unknown or repeated blur id is dropped with a repair; an
+  unknown cover id falls back to the local best (`C1`); a plan version 1–3 reply has no frames and is read as before.
+- **Price and cap.** An API-key connector's images are priced before the send from `shared/catalog/llm-image-prices.json`
+  (`ClipAutopilotImagePrices`, USD per million input tokens, list prices read 2026-11-07; an unlisted model takes its
+  connector's highest price) at Anthropic's width × height / 750 tokens per image. The price is charged to the run before
+  the send, so plans in flight at once never pass the cap together; a price that does not fit sends the summary only. The
+  CLIs (Claude Code, Codex) send on the creator's plan; local and Apple connectors are free and text only.
+- **What is applied** (one step with the run; each row's Undo is its own step; all saved with the project):
+  - **Opening.** `OpeningFrame.choose` on the scan. A negative shift is stored as the clip's `leadInSeconds` (schema v4,
+    above 0 and at most 0.6 s); `clipTimes` opens the clip that much earlier but never before `clipLeadInFloor` (the item
+    before plus its own 0.1 s cut margin), so no sound of the word before comes back. Moving the clip's first word drops it.
+  - **Face-follow.** `FaceFollowCrop.plan`'s static centre, stored as `clipControls.reframe` `{mode: "face", zoom: 1,
+    centerX, centerY}` (0–1 from the top left of the source). `FrameCompositor.aspectCrop` centres the 9:16 and 1:1 crops on
+    it (through the clip's flip and turns), clamped inside the picture; 16:9 ignores it. No face measured, no row.
+  - **Blur.** A blur `ClipEffect` (no tracking) per screen the reply blurs, over the candidate's span and box. A text-only
+    connector could not see the screens: nothing is blurred and the row offers Blur.
+  - **Cover.** The reply's candidate (or the local best) as `clipControls.coverSeconds`, a source second.
+- **Export.** `ExportCover.forClip` maps the cover into the render (timeline, then the clip's speed, kept inside the
+  video). The exporter renders that frame through the export's own composition (crop, captions and titles as they show),
+  writes it as `<export base name>-cover.jpg` beside the video (published with the export's transaction) and embeds the same
+  JPEG as the MP4's iTunes `covr` art in the writer's metadata, which adds no stream. `voxclip-cli export --cover off`
+  writes neither; the JSON names `cover` when written.
+- **CLI.** `voxclip-cli autopilot` runs the pass beside Find Clips and sends each clip's frames (images to Claude Code,
+  Codex and an image-capable local server; the summary to an API key, which the CLI has no cap for). `--timings` gains
+  `frames` (the whole pass) and `opening` per clip; each clip's JSON gains `frames` (sent, images, imageTokens, the blurred
+  spans and the cover time). It does not apply the picture decisions yet.
+- **Measured** (release build, the user's files read locally, nothing kept): the whole pass over a 348 s 1080p H.264
+  recording, 32 sentence frames, 0.58 s; 202 frames (the 29-minute shape) 2.07 s; a 52.7 s 4K HEVC file, 11 frames 0.43 s,
+  115 frames 2.73 s (about 5–8 s for 200 4K frames). A clip's frames from the pass in 1–3 ms; its opening scan 0.08–0.54 s.
+- **Thresholds on the user's recordings** (three recordings, seven clips): the eye line 0.20 holds (the one real blink
+  measured 0.188 and was skipped; no open-eye frame read as closed, though one clip's lowered eyes measured 0.195–0.223).
+  Quality 0.4 does not hold as an absolute line: a 1080p night car recording scores 0.30–0.44 throughout, so two openings
+  moved 0.4–0.5 s between frames that both show open eyes (0.386 → 0.438, 0.385 → 0.416), while daylight footage scores
+  0.49–0.61 and keeps its start. Face centres sat at 0.46–0.53 of the width; no screens, so no blur candidates.
