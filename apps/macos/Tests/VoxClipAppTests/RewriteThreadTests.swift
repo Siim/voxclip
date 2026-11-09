@@ -274,9 +274,78 @@ import Testing
         #expect(editor.proposal?[ordinal]?.state == .kept)
     }
 
+    /// The open Rewrite's own AI answers (no stand-in): `stub` behind a session that owns the scene's proposal.
+    private func live(_ editor: EditorModel, _ stub: FollowupStub) throws {
+        let proposal = try #require(editor.proposal)
+        let session = RewriteSession(editor: editor, scope: .clip("r2-clip"), envelope: nil,
+                                     connector: RewriteConnector(connector: stub, model: "sonnet", name: "Claude Code", group: "cli", plan: "Claude plan"))
+        editor.openRewrite = session
+        session.adopt(proposal)
+        editor.rewriteThreadBackend = nil
+    }
+    private func until(_ done: () -> Bool) async {
+        for _ in 0..<2_000 where !done() { await Task.yield() }
+    }
+
+    @Test func theLiveSendAsksInPlaceOnceWithTheRewriteConsentThenSends() async throws {
+        let (editor, _, _, scenes) = try scene()
+        defer { scenes.forEach { $0.editor?.close() } }
+        let stub = FollowupStub(reply: #"{"text":"much fresher words","note":"Fresher now.","nextSteps":["End on the bill"]}"#)
+        try live(editor, stub)
+        let ordinal = try voiceOrdinal(editor)
+        editor.focusChange(ordinal)
+        #expect(editor.app.bool("llm.cloudConsent.claude-code") == false)
+        editor.sendRewriteThread("Make it fresher")
+        await until { editor.rewriteThread.confirmation.isPresented }
+        let prompt = try #require(editor.rewriteThread.confirmation.prompt, "the confirmation shows in the thread, not a sheet")
+        #expect(prompt.message.contains("Claude Code") && editor.rewriteThreadDisplay?.sending == true && editor.sendConfirmation.prompt == nil)
+        let early = await stub.sent
+        #expect(early.isEmpty, "nothing is sent before the click")
+        editor.rewriteThread.confirmation.approve()
+        await editor.rewriteThread.task?.value
+        let sent = await stub.sent
+        #expect(sent.count == 1 && sent.first?.tag == "rewrite-followup" && sent.first?.instruction.contains("Make it fresher") == true)
+        #expect(editor.changeText(ordinal) == "much fresher words" && editor.rewriteThreadDisplay?.steps == ["End on the bill"])
+        #expect(editor.app.bool("llm.cloudConsent.claude-code"), "asked once")
+    }
+
+    @Test func aReadinessProblemShowsRewritesCopyInPlace() async throws {
+        let (editor, _, _, scenes) = try scene()
+        defer { scenes.forEach { $0.editor?.close() } }
+        let stub = FollowupStub(reply: "{}", status: .cliSignedOut)
+        try live(editor, stub)
+        let ordinal = try voiceOrdinal(editor)
+        editor.focusChange(ordinal)
+        let text = editor.changeText(ordinal)
+        editor.rewriteThread.follow(try #require(editor.rewriteThreadDisplay?.key))
+        editor.rewriteThread.text = "Make it fresher"
+        editor.sendRewriteThread("Make it fresher", fromInput: true)
+        await editor.rewriteThread.task?.value
+        let sent = await stub.sent
+        #expect(editor.rewriteThreadDisplay?.error == "Claude Code isn't signed in. Run `claude` in Terminal and sign in, then choose Try Again.")
+        #expect(editor.rewriteThread.text == "Make it fresher" && editor.changeText(ordinal) == text && sent.isEmpty)
+    }
+
     private func key(_ code: UInt16, _ flags: NSEvent.ModifierFlags = [], _ characters: String = "") -> NSEvent {
         NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0, windowNumber: 0, context: nil, characters: characters,
                          charactersIgnoringModifiers: characters, isARepeat: false, keyCode: code)!
+    }
+}
+
+/// Claude Code on a plan, answering every thread request with `reply`, or not ready.
+private actor FollowupStub: LLMConnector {
+    nonisolated let id: ConnectorID = .claudeCode
+    let reply: String
+    let readiness: ConnectorStatus
+    private(set) var sent: [LLMRequest] = []
+    init(reply: String, status: ConnectorStatus = .ready) { self.reply = reply; readiness = status }
+    func status() -> ConnectorStatus { readiness }
+    func knownCLIAuthMethod() async -> String? { "claude.ai" }
+    func models(refresh: Bool) -> [LLMModel] { [LLMModel(id: "sonnet", name: "Sonnet", contextTokens: 200_000, source: .curated)] }
+    func contextTokens(model: String) -> Int? { 200_000 }
+    func send(_ request: LLMRequest, model: String) -> RawCompletion {
+        sent.append(request)
+        return RawCompletion(text: reply, model: model, stop: .complete)
     }
 }
 #endif
