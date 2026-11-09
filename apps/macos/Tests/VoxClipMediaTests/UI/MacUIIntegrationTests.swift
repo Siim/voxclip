@@ -48,8 +48,9 @@ extension HeavyMediaTests {
     /// One app process per take-length pass, each with its own deadline: realistic take lengths (S1–S15), and every
     /// scenario but S13 with takes that fill their slots exactly ("S4-exact"). S-own-typed, S-own-mic and S-own-mic-misfit
     /// drive My words and Say it myself with a scripted microphone. S-clip-controls (realistic pass only) exports a clip at
-    /// 1.25× with the Muted look and checks its length and caption alignment. Hosted runners take about 110 s and 70 s
-    /// (locally about 57 s and 33 s); the app's progress lines are relayed to stderr, also when a pass hits its deadline.
+    /// 1.25× with the Muted look and checks its length and caption alignment. The two passes took 396 s together on a hosted
+    /// runner (CI 42568682456, 2026-11-09), and the realistic pass alone ran past 300 s on a slower one, so it gets 480 s; the
+    /// app's progress lines are relayed to stderr, also when a pass hits its deadline.
     /// S16, the long full take, runs in its own process and deadline below.
     @Test("The Rewrite smoke completes every stuck scenario without a dead end", arguments: ["realistic", "exact"])
     func rewriteSmoke(lengths: String) throws {
@@ -72,7 +73,7 @@ extension HeavyMediaTests {
         for group in [own, guardScenarios, fitScenarios, makeIt, realisticOnly] { names += group }
         let directory = try UIProcessHarness.run(mode: "-rewriteSmoke", name: "rewrite-smoke-\(lengths)",
             arguments: ["-rewriteSmokeLengths", lengths, "-rewriteSmokeOnly", names.joined(separator: ",")],
-            acceptNonzeroWithReport: "results.json", deadline: 300)
+            acceptNonzeroWithReport: "results.json", deadline: lengths == "realistic" ? 480 : 300)
         defer { UIProcessHarness.cleanTemporary(directory) }
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
         var scenarios = Set<String>()
