@@ -19,8 +19,9 @@ public sealed class OnnxFrameFacesTests
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
     private static readonly Lazy<OnnxFrameFaces> Shared = new(() => OnnxFrameFaces.Load(new FrameModelCatalog().Entry, OnnxFrameFaces.BundledDirectory()));
 
-    /// <summary>What a golden must measure: the reference is tools-independent (numpy, onnxruntime 1.19.2 in Python and W2's generator
-    /// maths, run on the Mac), and the tolerances leave room for ORT's CPU differences across x64, arm64 and the Mac.</summary>
+    /// <summary>What a golden must measure, from tools/models/face_golden_reference.py (the same path built independently: numpy,
+    /// onnxruntime 1.19.2 in Python and W2's generator maths, run on the Mac). The tolerances leave room for ORT's CPU differences
+    /// across x64, arm64 and the Mac. Re-pin from the tool when the calibration changes (W7).</summary>
     public sealed record Golden(string File, int FaceCount, double X, double Y, double Width, double Height, double LeftEye, double RightEye,
         double Yaw, double Pitch, double Quality);
 
@@ -186,8 +187,8 @@ public sealed class OnnxFrameFacesTests
             Assert.Equal(file.Bundled, "apps/windows/models/frames/" + Path.GetFileName(Path.Combine(directory, file.Name)));
     }
 
-    /// <summary>The full face path's speed on a 1,280 × 720 frame (two goldens on it), printed for the CI log; the bound only catches a
-    /// pathological slowdown.</summary>
+    /// <summary>The full face path's speed on a 1,280 × 720 frame (a golden face on it), printed and, on hosted CI, written to the
+    /// uploaded test evidence; the bound only catches a pathological slowdown.</summary>
     [Fact]
     public void TheFacePathSpeedIsPrinted()
     {
@@ -209,6 +210,13 @@ public sealed class OnnxFrameFacesTests
             $"({System.Runtime.InteropServices.RuntimeInformation.OSDescription}, {System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture})";
         Console.WriteLine(line);
         TestContext.Current.SendDiagnosticMessage(line);
+        // Hosted CI uploads the folder above VOXCLIP_E2E_OUT (windows-native-test-evidence), as the Voice Lab native tests use it.
+        if (Environment.GetEnvironmentVariable("VOXCLIP_E2E_OUT") is { Length: > 0 } evidence)
+        {
+            var folder = Path.GetDirectoryName(Path.GetFullPath(evidence))!;
+            Directory.CreateDirectory(folder);
+            File.AppendAllText(Path.Combine(folder, "frame-faces-speed.txt"), line + Environment.NewLine);
+        }
         Assert.True(milliseconds < 2000, $"{milliseconds} ms per frame");
     }
 
