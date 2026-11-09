@@ -55,6 +55,35 @@ public sealed class FrameAnalyzerTests
         finally { Directory.Delete(root, true); }
     }
 
+    /// <summary>A version-1 file is ignored and left in place; a linked entry is never written through.</summary>
+    [Fact]
+    public async Task AnOlderVersionsFileIsIgnoredAndALinkedEntryIsNeverWrittenThrough()
+    {
+        var root = FrameFixtures.TempRoot("versions");
+        try
+        {
+            var folder = Path.Combine(root, FrameFixtures.ContentKey, "frames");
+            Directory.CreateDirectory(folder);
+            var stale = Path.Combine(folder, "analysis-v1.json");
+            const string version1 = "{\"frames\":{\"0.250:1000\":{\"faceCount\":0,\"screens\":[],\"textRects\":[],\"time\":1}},\"schema\":\"voxclip-frames/1\"}\n";
+            await File.WriteAllTextAsync(stale, version1, Ct);
+            var decoder = new StubFrameDecoder();
+            await FrameFixtures.Analyzer(decoder, new FrameAnalysisCache(root)).ObservationsAsync("in.mp4", FrameFixtures.ContentKey, [1.0], FrameScanKind.Sentence, Ct);
+            Assert.Single(decoder.Reads);
+            Assert.Equal(version1, await File.ReadAllTextAsync(stale, Ct));
+
+            const string linkedKey = "b1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90";
+            var elsewhere = Path.Combine(root, "elsewhere");
+            Directory.CreateDirectory(elsewhere);
+            Directory.CreateSymbolicLink(Path.Combine(root, linkedKey), elsewhere);
+            var linked = new StubFrameDecoder();
+            var found = await FrameFixtures.Analyzer(linked, new FrameAnalysisCache(root)).ObservationsAsync("in.mp4", linkedKey, [1.0], FrameScanKind.Sentence, Ct);
+            Assert.Single(found.Frames);
+            Assert.Empty(Directory.EnumerateFileSystemEntries(elsewhere));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     /// <summary>Without a cache, every time is decoded each time.</summary>
     [Fact]
     public async Task WithoutACacheEveryTimeIsLookedAtAgain()

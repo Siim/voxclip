@@ -21,6 +21,9 @@ internal sealed class StubFrameDecoder(int width = 1280, int height = 720) : IFr
     internal Barrier? Together { get; init; }
     internal bool TogetherTimedOut { get; private set; }
     internal Func<double, Exception?>? Failure { get; init; }
+    /// <summary>Set when a read starts; with <see cref="Hold"/>, the read then waits for it (or for its token).</summary>
+    internal ManualResetEventSlim Reading { get; } = new();
+    internal ManualResetEventSlim? Hold { get; init; }
 
     public IFrameReader Open(string source, int maximumEdge, double tolerance, CancellationToken ct)
     {
@@ -35,6 +38,8 @@ internal sealed class StubFrameDecoder(int width = 1280, int height = 720) : IFr
         public DecodedFrame Read(double time, CancellationToken ct)
         {
             owner.Reads.Enqueue((Environment.CurrentManagedThreadId, time));
+            owner.Reading.Set();
+            owner.Hold?.Wait(ct);
             if (first && owner.Together is { } together && !together.SignalAndWait(20_000, ct)) owner.TogetherTimedOut = true;
             first = false;
             if (owner.Failure?.Invoke(time) is { } failure) throw failure;
