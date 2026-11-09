@@ -13,6 +13,8 @@ using VoxClip.Core.Services.Models;
 using VoxClip.Core.Services.Speech;
 using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Services.Updates;
+using VoxClip.Core.Domain.Frames;
+using VoxClip.Media.Frames;
 using VoxClip.Media.Pipeline;
 using VoxClip.Media.Speech;
 using Microsoft.UI.Dispatching;
@@ -40,6 +42,11 @@ internal sealed class AppServices : IAsyncDisposable
     internal LocalRuntimeGuard LocalRuntime { get; } = new(LocalRuntimeFiles.ReadVersion);
     internal IClipFinder ClipFinder { get; private set; } = null!;
     internal IEncoderProbe Encoders { get; } = new EncoderProbe();
+    private readonly Lazy<OnnxFrameFaces?> frameFaces = new(() => OnnxFrameFaces.Installed(), LazyThreadSafetyMode.ExecutionAndPublication);
+    /// <summary>The face source (ADR-R48 Windows): the bundled models once they verify and the catalogue is enabled, else null, which
+    /// is faces unavailable. Loaded on first use. W6 builds the frame analyzer from it and hides the rows that need faces when it is
+    /// null.</summary>
+    internal IFrameFaces? FrameFaces => frameFaces.Value;
     internal IUpdateChecker Updates { get; }
     /// <summary>Home and sidebar poster frames in each source's content-key cache entry (design §5.4.7).</summary>
     internal Thumbnails Thumbnails { get; }
@@ -325,6 +332,7 @@ internal sealed class AppServices : IAsyncDisposable
         try { await SettingsStore.FlushAsync(CancellationToken.None); }
         catch (Exception) { Log.Write(LogLevel.Warn, "settings", "flush failed"); }
         if (localSpeech is not null) await localSpeech.DisposeAsync();
+        if (frameFaces.IsValueCreated) frameFaces.Value?.Dispose();
         foreach (var instance in cloudSpeechInstances) instance.Dispose();
         await Log.DisposeAsync();
     }
