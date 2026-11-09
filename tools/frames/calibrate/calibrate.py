@@ -20,6 +20,7 @@ import math
 import os
 import pathlib
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -361,7 +362,7 @@ def fit_constants(rows):
         'eyeAspect': rounded(eye_map), 'yaw': rounded(yaw_map), 'pitch': rounded(pitch_map),
         'quality': {'w0': round(w0, 4), 'w1': round(w1, 4), 'w2': round(w2, 4), 'eyesOpen': EYES_OPEN, 'facingSpan': FACING_SPAN,
                     'pitch0': pitch0, 'sharpness': sharpness, 'quantileMap': quantile_map, 'gates': gates},
-        'gateNotes': notes, 'faces': len(both),
+        'gateNotes': notes, 'gateEvidence': evidence, 'faces': len(both),
     }
 
 
@@ -565,6 +566,31 @@ def print_report(report):
 
 # MARK: The catalogue
 
+def block(value, indent):
+    """JSON in the catalogue's style: an object of objects spreads one key per line; a short object or array stays on one line."""
+    inline = json.dumps(value, ensure_ascii=False, separators=(', ', ': '))
+    if not isinstance(value, dict) or len(inline) + indent <= 120 or indent >= 12:
+        return inline
+    pad = ' ' * (indent + 2)
+    items = [f'{pad}{json.dumps(key)}: {block(item, indent + 2)}' for key, item in value.items()]
+    return '{\n' + ',\n'.join(items) + '\n' + ' ' * indent + '}'
+
+
+def gates_sentence(constants):
+    names = {'minimumFaceWidth': 'narrower than the size gate', 'lumaLow': 'darker than the low luma gate',
+             'lumaHigh': 'brighter than the high luma gate', 'clippedFraction': 'more clipped than the clipping gate'}
+    fixed = [name for name, note in constants['gateNotes'].items() if note.startswith('kept fixed')]
+    fitted = [name for name in constants['gateNotes'] if name not in fixed]
+    parts = []
+    if fixed:
+        parts.append('The study\'s fixed gates stay for ' + ', '.join(f"{name} ({constants['gateEvidence'][name]} fit faces {names[name]})"
+                                                                     for name in fixed) + f': a gate is fitted only from {GATE_EVIDENCE} faces past it.')
+    if fitted:
+        parts.append('Fitted gates: ' + ', '.join(fitted) + '.')
+    parts.append('The sharpness range, eyes-open span and facing span are the study\'s; pitch0 and the weights are fitted.')
+    return ' '.join(parts)
+
+
 def write(args):
     report = json.loads((WORK / 'report.json').read_text())
     reference = json.loads((WORK / 'reference.json').read_text())
@@ -585,11 +611,14 @@ def write(args):
         'qualityMae': None if n['qualityMae'] is None else round(n['qualityMae'], 4)}
     model = catalogue['models'][0]
     model['calibration'] = {
-        'status': 'calibrated',
-        'basis': (f"Fitted by tools/frames/calibrate (W7) on {sum(1 for s in subjects if s['split'] == 'fit')} subjects of US federal "
+        # Only a passing calibration is "calibrated": the schema and FrameModelCatalog refuse to enable a provisional one, so a
+        # failed run keeps its fitted constants and numbers but can't be switched on by the enabled flag alone.
+        'status': 'calibrated' if passed else 'provisional',
+        'basis': ('' if passed else 'Provisional: the acceptance against the Mac failed (see evaluation.failed), so this calibration '
+                  'cannot be enabled. ') + (f"Fitted by tools/frames/calibrate (W7) on {sum(1 for s in subjects if s['split'] == 'fit')} subjects of US federal "
                   f"public-domain NASA video and checked on {sum(1 for s in subjects if s['split'] == 'validation')} held-out subjects "
-                  f"(split by subject; manifest tools/frames/calibrate/manifest.json, SHA-256 {manifest_sha256()}). No frames are kept. "
-                  + ' '.join(f'{name}: {note}.' for name, note in c['gateNotes'].items())),
+                  f"(split by subject; manifest tools/frames/calibrate/manifest.json, SHA-256 {manifest_sha256()}); no frames are kept. "
+                  + gates_sentence(c)),
         'date': date.today().isoformat(),
         'reference': (f"Apple Vision, {reference['macos']}, AppleFrameVision request set with M1: VNDetectFaceRectanglesRequest revision 3, "
                       'then VNDetectFaceLandmarksRequest and VNDetectFaceCaptureQualityRequest on its largest face, beside VNRecognizeTextRequest '
@@ -603,10 +632,10 @@ def write(args):
             'fit': numbers(report['fit']),
             'validation': numbers(report['validation']),
             'perSubject': {subject: numbers(n) for subject, n in sorted(report['perSubject'].items())},
+            'diagnostics': {name: numbers(n) for name, n in report['diagnostics'].items()},
         },
     }
-    catalogue['enabled'] = passed
-    catalogue['enabledNote'] = (
+    enabled_note = (
         'On: the calibration against the Mac (W7) passed every acceptance line on the held-out subjects. The licence decision is made: '
         'the user accepted YuNet\'s training-data terms (WIDER FACE) on 2026-11-09, and both files are bundled in the Windows app.'
         if passed else
@@ -614,7 +643,15 @@ def write(args):
         'calibration.evaluation). The licence decision is made: the user accepted YuNet\'s training-data terms (WIDER FACE) on '
         '2026-11-09, and both files are bundled in the Windows app. While off, nothing loads these models outside tests and the '
         'developer override (VOXCLIP_FRAME_FACES=1).')
-    CATALOGUE.write_text(json.dumps(catalogue, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+    # Only enabled, enabledNote and the calibration block change; the rest of the file keeps its bytes.
+    text = re.sub(r'^  "enabled": (true|false),\n', lambda _: f'  "enabled": {json.dumps(passed)},\n', text, count=1, flags=re.M)
+    text = re.sub(r'^  "enabledNote": .*,\n', lambda _: f'  "enabledNote": {json.dumps(enabled_note, ensure_ascii=False)},\n', text, count=1, flags=re.M)
+    start = text.index('      "calibration": {')
+    end = text.index('\n      }\n', start) + len('\n      }')
+    text = text[:start] + '      "calibration": ' + block(model['calibration'], 6) + text[end:]
+    if json.loads(text)['models'][0]['calibration'] != model['calibration']:
+        raise SystemExit('The calibration block did not round-trip.')
+    CATALOGUE.write_text(text, encoding='utf-8')
     print('enabled' if passed else 'not enabled: ' + ', '.join(report['failed']))
 
 

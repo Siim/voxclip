@@ -38,14 +38,14 @@ public sealed class FrameModelCatalogTests
         Assert.Contains("WIDER FACE", model.Detector.TrainingData);
         var calibration = model.Calibration;
         Assert.True(calibration.Provisional);
-        Assert.Equal((0.721, 0.058), (calibration.EyeAspect.A, calibration.EyeAspect.B));
-        Assert.Equal((1.082, -0.005), (calibration.Yaw.A, calibration.Yaw.B));
-        Assert.Equal((-1.466, 0.014), (calibration.Pitch.A, calibration.Pitch.B));
-        Assert.Equal((0.154, 0.413, 0.026), (calibration.W0, calibration.W1, calibration.W2));
-        Assert.Equal((0.12, 0.26, 0.6, 0.0, 30.0, 400.0), (calibration.EyesClosedAt, calibration.EyesOpenAt, calibration.FacingSpan, calibration.Pitch0,
+        Assert.Equal((0.7446, 0.069), (calibration.EyeAspect.A, calibration.EyeAspect.B));
+        Assert.Equal((1.1694, -0.0004), (calibration.Yaw.A, calibration.Yaw.B));
+        Assert.Equal((-0.9019, 0.0263), (calibration.Pitch.A, calibration.Pitch.B));
+        Assert.Equal((0.2739, 0.1218, 0.2468), (calibration.W0, calibration.W1, calibration.W2));
+        Assert.Equal((0.12, 0.26, 0.6, 0.11, 30.0, 400.0), (calibration.EyesClosedAt, calibration.EyesOpenAt, calibration.FacingSpan, calibration.Pitch0,
             calibration.SharpLow, calibration.SharpHigh));
         Assert.Equal(new FrameQualityGates(40, 40, 220, 5, 250, 0.25), calibration.Gates);
-        Assert.Empty(calibration.QuantileMap);
+        Assert.Equal([(0.372, 0.2759), (0.4416, 0.429), (0.5025, 0.5232), (0.558, 0.6069), (0.6088, 0.6543)], calibration.QuantileMap);
     }
 
     [Fact]
