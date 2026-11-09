@@ -459,6 +459,7 @@ def place(project, clip_id, envelope, first_id, last_id):
     if touches_end and not any(blocking[last + 1:]):
         right = edge(total, duration)
     left, right = move_to_clip_edges(source, a, b, first, last, blocking, left, right)
+    left, right = move_to_cut_edges(source, a, b, first, last, blocking, left, right)
 
     start, end = left['time'], right['time']
     if right['sample'] <= left['sample']:
@@ -520,10 +521,9 @@ def place(project, clip_id, envelope, first_id, last_id):
             raise GeometryError('adjacentReplacement', segmentId=elements[w - 1]['id'])
     if left['kind'] != 'none' and in_clip and layout.output_edge(w, True):
         holds_in_full_take(project, rate, duration, items, edits, total, window, True)
-    elif left['kind'] != 'none':
-        needed, available = left['fadeSamples'] // 2, layout.beside(w, True)
-        if available < needed:
-            raise GeometryError('seamFadeCrossesCut', incoming=True, needed=needed, available=available)
+    elif left['kind'] != 'none' and layout.beside(w, True) < left['fadeSamples'] // 2:
+        holds_across_cut(layout, w, True)
+        stored_at_cut(items, left, rate)
     if w + 1 < len(elements):
         if not layout.run(w + 1):
             raise GeometryError('adjacentReplacement', segmentId=elements[w + 1]['id'])
@@ -532,10 +532,9 @@ def place(project, clip_id, envelope, first_id, last_id):
             raise GeometryError('adjacentReplacement', segmentId=elements[w + 1]['id'])
     if right['kind'] != 'none' and in_clip and layout.output_edge(w, False):
         holds_in_full_take(project, rate, duration, items, edits, total, window, False)
-    elif right['kind'] != 'none':
-        needed, available = right['fadeSamples'] - right['fadeSamples'] // 2, layout.beside(w, False)
-        if available < needed:
-            raise GeometryError('seamFadeCrossesCut', incoming=False, needed=needed, available=available)
+    elif right['kind'] != 'none' and layout.beside(w, False) < right['fadeSamples'] - right['fadeSamples'] // 2:
+        holds_across_cut(layout, w, False)
+        stored_at_cut(items, right, rate)
     # The validator's overlappingFades condition: the inner halves of both fades must fit inside the window.
     needed = left['fadeSamples'] - left['fadeSamples'] // 2 + right['fadeSamples'] // 2
     if needed > right['sample'] - left['sample']:
@@ -562,11 +561,8 @@ def move_to_clip_edges(source, a, b, first, last, blocking, left, right):
     and other clips render it with. When the clip's kept source beside the seam cannot hold the fade's outer half, the seam
     moves to the clip's own edge: the window absorbs that sliver and any cut items in it, and nothing renders beside the seam
     in this scope. place then checks the seam against the full take."""
-    clip_range, bounds = source.clip_range, source.bounds
-    if clip_range is None or not (bounds[0] <= a <= bounds[1] and bounds[0] <= b <= bounds[1]):
-        return left, right
-    opens = left['kind'] != 'none' and not any(blocking[:first])
-    closes = right['kind'] != 'none' and not any(blocking[last + 1:])
+    clip_range = source.clip_range
+    opens, closes = clip_edge_sides(source, a, b, first, last, blocking, left, right)
     if not (opens or closes):
         return left, right
     kept, rate = source.kept_source((left['time'], right['time'])), source.rate
@@ -594,10 +590,64 @@ def holds_in_full_take(project, rate, duration, items, edits, total, window, inc
     start, end = window['in']['time'], window['out']['time']
     elements = sorted(full.scope + [window], key=lambda element: element['lo'])
     layout = SeamLayout(elements, full.kept_source((start, end), [(window['lo'], window['hi'])]), total)
-    index = elements.index(window)
-    if layout.prepare_ok(index, incoming):
+    holds_across_cut(layout, elements.index(window), incoming)
+
+
+def clip_edge_sides(source, a, b, first, last, blocking, left, right):
+    """Whether the passage opens (closes) its clip's output on that side: a clip scope, a passage inside the clip, a seam with
+    a fade and no kept or replaced item of the clip before (after) the window."""
+    bounds = source.bounds
+    if source.clip_range is None or not (bounds[0] <= a <= bounds[1] and bounds[0] <= b <= bounds[1]):
+        return False, False
+    return left['kind'] != 'none' and not any(blocking[:first]), right['kind'] != 'none' and not any(blocking[last + 1:])
+
+
+def move_to_cut_edges(source, a, b, first, last, blocking, left, right):
+    """A seam at a cut (section 8.4 step 5, 2026-11-09). A hard seam often lands where a cut ends: the cut word touches the
+    passage, or the cut's reach takes the whole gap once the passage's words are dropped. Then no kept source, or a sliver
+    shorter than the fade's outer half, lies between the cut and the seam. The seam moves to the cut's edge: the window
+    absorbs that sliver of the gap (never a cut item), so the generated piece starts exactly where the user's cut ends and the
+    output keeps the cut's timing. place then checks the seam by prepare's rule (holds_across_cut): the output piece on the
+    far side of the cut holds the outer half, as it already plays beside the cut. A side that opens or closes the clip keeps
+    the clip-edge rule."""
+    opens, closes = clip_edge_sides(source, a, b, first, last, blocking, left, right)
+    incoming, outgoing = left['kind'] != 'none' and not opens, right['kind'] != 'none' and not closes
+    if not (incoming or outgoing):
+        return left, right
+    kept, rate = source.kept_source((left['time'], right['time'])), source.rate
+    if incoming:
+        seam = left['sample']
+        piece = next(((lo, hi) for lo, hi in kept if lo < seam <= hi), None)
+        if piece is not None and seam - piece[0] < left['fadeSamples'] // 2:
+            left = dict(left, time=piece[0] / rate, sample=piece[0])
+    if outgoing:
+        seam = right['sample']
+        piece = next(((lo, hi) for lo, hi in kept if lo <= seam < hi), None)
+        if piece is not None and piece[1] - seam < right['fadeSamples'] - right['fadeSamples'] // 2:
+            right = dict(right, time=piece[1] / rate, sample=piece[1])
+    return left, right
+
+
+def stored_at_cut(items, seam, rate):
+    """A seam at a cut often lies where the cut word touches the passage. The fit plan and the recipe store a window's edge
+    as its sample over the rate (section 8.9.2), so that stored edge must not cut into an item either: at a touching boundary
+    off the source grid it would by under a sample, and the hunk is refused with windowCrossesWord."""
+    stored = seam['sample'] / rate
+    crossing = next((item for item in items if item['start'] < stored < item['end']), None)
+    if crossing is not None:
+        raise GeometryError('windowCrossesWord', wordId=crossing['id'])
+
+
+def holds_across_cut(layout, index, incoming):
+    """Prepare's rule for the window's seam at `index` when no kept source lies right beside it (section 10.5): the output
+    piece beside the seam is source and holds the fade's outer half, possibly across a cut, and a replacement across that
+    source leaves room for both outer halves. Otherwise seamFadeCrossesCut with that piece's numbers, or adjacentReplacement
+    and the replacement's ID. A clip's output edge is not a cut: only a window inside the clip opens or closes its output
+    (move_to_clip_edges), so one outside it with nothing rendered beside the seam is refused."""
+    if not layout.output_edge(index, incoming) and layout.prepare_ok(index, incoming):
         return
-    fade = window['in']['fadeSamples'] if incoming else window['out']['fadeSamples']
+    elements = layout.elements
+    fade = elements[index]['in' if incoming else 'out']['fadeSamples']
     between = layout.run(index if incoming else index + 1)
     piece = (between[-1] if incoming else between[0]) if between else None
     needed, available = (fade // 2 if incoming else fade - fade // 2), (piece[1] - piece[0] if piece else 0)
@@ -1427,8 +1477,10 @@ assert samples(34559 / 48000, 48000) - samples(0.60, 48000) == samples(SEAM_MIN_
 assert by_name(window, 'gap-one-sample-below-min')['leftSeam']['kind'] == 'hard'
 assert by_name(window, 'gap-three-words-away')['leftBridgeWordIds'] == ['w2', 'w3', 'w4']
 assert by_name(window, 'gap-four-words-away')['leftSeam']['kind'] == 'hard'
-# The bridge stops at the cut word, and the hard seam then lies inside that word's 0.1 s reach: nothing kept before it.
-assert by_name(window, 'cut-word-blocks-left') == {'error': 'seamFadeCrossesCut', 'incoming': True, 'needed': 288, 'available': 0}
+# The bridge stops at the cut word, and the hard seam then lies inside that word's 0.1 s reach: nothing kept before it. The
+# seam sits at the cut (section 8.4 step 5, 2026-11-09): prepare fades from the source piece before the cut, which plays
+# beside the cut anyway, so the window places with its hard seam where it was.
+assert by_name(window, 'cut-word-blocks-left')['leftSeam'] == {'kind': 'hard', 'time': 0.975, 'sample': 46800, 'fadeSamples': 576}
 assert by_name(window, 'event-blocks-right')['rightSeam']['kind'] == 'hard'
 assert by_name(window, 'unlabeled-speech-blocks-left')['leftSeam']['kind'] == 'hard'
 assert by_name(window, 'first-word-at-take-start')['leftSeam'] == {'kind': 'none', 'time': 0.0, 'sample': 0, 'fadeSamples': 0}
@@ -1503,6 +1555,7 @@ assert by_name(window, 'clip-start-limits-gap-seam')['leftSeam']['sample'] == 85
 assert by_name(window, 'clip-start-limits-gap-seam')['rightSeam']['sample'] == 173 * 480 + 240
 assert by_name(window, 'clip-take-in-full-scope')['leftSeam']['sample'] == 70 * 480 + 240
 assert by_name(window, 'clip-take-in-full-scope')['rightSeam']['sample'] == 180 * 480 + 240
+# A clip's edge is not a cut: only a passage inside the clip opens or closes its output, so this one is still refused.
 assert by_name(window, 'passage-outside-clip') == {'error': 'seamFadeCrossesCut', 'incoming': False, 'needed': 288, 'available': 0}
 assert by_name(window, 'clip-touching-take-start')['leftSeam'] == {'kind': 'none', 'time': 0.0, 'sample': 0, 'fadeSamples': 0}
 # The clip starts at 0.000005 s: sample 0, so nothing is cut before it, but the output plan refuses a replacement that starts
@@ -1519,10 +1572,13 @@ assert by_name(window, 'cut-reach-beyond-right-bridge')['rightBridgeWordIds'] ==
 assert by_name(window, 'cut-reach-beyond-left-bridge')['leftBridgeWordIds'] == ['w2']
 assert by_name(window, 'cut-reach-beyond-absorbed-end')['rightSeam']['kind'] == 'none'
 assert by_name(window, 'cut-reach-beyond-absorbed-start')['leftSeam']['kind'] == 'none'
-# With w1 kept, prepare would join the source before w2's cut to the synth inside the fade; the fade would cross the cut.
-assert by_name(window, 'cut-hard-seam-inside-reach') == {'error': 'seamFadeCrossesCut', 'incoming': True, 'needed': 288, 'available': 0}
-# w2's cut reaches 0.0675 s past 0.5 s (half the gap to w4, which stays), to sample 27240: 120 samples before the seam.
-assert by_name(window, 'cut-hard-seam-sliver') == {'error': 'seamFadeCrossesCut', 'incoming': True, 'needed': 288, 'available': 120}
+# With w1 kept, prepare joins the source before w2's cut to the synth: the fade's outer half is that piece's tail, which the
+# cut join already plays, so the seam at the cut places (section 8.4 step 5, 2026-11-09).
+assert by_name(window, 'cut-hard-seam-inside-reach')['leftSeam'] == {'kind': 'hard', 'time': 0.57, 'sample': 27360, 'fadeSamples': 576}
+# w2's cut reaches 0.0675 s past 0.5 s (half the gap to w4, which stays), to sample 27240: 120 samples before the seam. The
+# seam moves to the cut's edge and the window absorbs that sliver of silence, never the cut word (2026-11-09).
+assert by_name(window, 'cut-hard-seam-sliver')['leftSeam'] == {'kind': 'hard', 'time': 0.5675, 'sample': 27240, 'fadeSamples': 576}
+assert by_name(window, 'cut-hard-seam-sliver')['firstWordId'] == 'w3'
 # Round 4. At 22.05 kHz a gap seam's fade reaches floor(441 / 2) = 220 samples back and ceil(441 / 2) = 221 forward: frame
 # 50 (or 140) qualifies only when the cut edge lies exactly that far away, not one sample closer.
 for name, seam, edge in (('gap-fade-back-half-fits-22050', 50, -220), ('gap-fade-back-half-short-22050', 60, -219)):

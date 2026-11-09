@@ -84,8 +84,9 @@ replays the same file in `EveryPlanVectorReplaysExactly`.
 
 ### Coverage
 
-A kept clip with a cut repeat inside a line and corrections; Full take with an event-only line and a line refused
-because a cut filler touches it; a clip at the take start (`none` incoming seam, so the edge pad shortens the target)
+A kept clip with a cut repeat inside a line and corrections; Full take with an event-only line and a line whose hard
+seam sits at the cut filler that touches it (a seam at a cut, voice-lab §8.4 step 5; refused, with a `lineSpan`, until
+2026-11-09); a clip at the take start (`none` incoming seam, so the edge pad shortens the target)
 and at the take end (`none` outgoing seam); a suggested clip whose head cuts the event before it (its first line's hard seam is the clip's output edge, voice-lab §8.4 step 1, so the line gets a window); no envelope; an
 all-cut clip, an unknown clip, a selection and an envelope on the wrong rate; event labels at the start and the end of a
 line; an enabled replacement inside a clip line and one beside other lines, with the items their runs precede, the

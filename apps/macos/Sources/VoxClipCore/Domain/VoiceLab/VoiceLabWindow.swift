@@ -625,6 +625,7 @@ public enum VoiceLabWindowPlanner {
         var rightSeam = right ?? hardSeam(passageEnd + min(hardSeamReach, max(0, silenceEnd - passageEnd) / 2))
         if touchesEnd && !blocking[(last + 1)...].contains(true) { rightSeam = edgeSeam(total, duration) }
         try moveToClipEdges(source, a: a, b: b, first: first, last: last, blocking: blocking, left: &leftSeam, right: &rightSeam)
+        try moveToCutEdges(source, a: a, b: b, first: first, last: last, blocking: blocking, left: &leftSeam, right: &rightSeam)
 
         let start = leftSeam.time, end = rightSeam.time
         guard rightSeam.sample > leftSeam.sample else { throw VoiceLabGeometryError.invalidInput() }
@@ -670,6 +671,15 @@ public enum VoiceLabWindowPlanner {
         // The scope as it renders without the window. A replacement's check that already fails there is not the window's doing.
         let alone = SeamLayout(elements: replacements, pieces: try keptSource(nil), total: total, clipScope: clipScope)
         let elements = layout.elements, w = elements.firstIndex(where: \.isWindow)!
+        /// A seam at a cut often lies where the cut word touches the passage. The fit plan and the recipe store a window's
+        /// edge as its sample over the rate (§8.9.2), so that stored edge must not cut into an item either: at a touching
+        /// boundary off the source grid it would by under a sample, and the hunk is refused with `windowCrossesWord`.
+        func storedAtCut(_ seam: VoiceLabSeamPlacement) throws {
+            let stored: Double = Double(seam.sample) / rate
+            if let crossing = words.first(where: { $0.start < stored && stored < $0.end }) {
+                throw VoiceLabGeometryError.windowCrossesWord(crossing.id)
+            }
+        }
         /// Throws unless replacement `index`'s seam on that side still renders beside the window. A check that holds without
         /// the window and fails with it is the window's doing. A check that already fails is judged by prepare's own rule, and
         /// when that fails without the window too, the scope was unrenderable before the window.
@@ -687,9 +697,9 @@ public enum VoiceLabWindowPlanner {
         }
         if leftSeam.kind != .none && inClip && layout.outputEdge(w, incoming: true) {
             try holdsInFullTake(project, take: take, window: window, incoming: true)
-        } else if leftSeam.kind != .none {
-            let needed = leftSeam.fadeSamples / 2, available = layout.beside(w, incoming: true)
-            if available < needed { throw VoiceLabGeometryError.seamFadeCrossesCut(incoming: true, needed: needed, available: available) }
+        } else if leftSeam.kind != .none && layout.beside(w, incoming: true) < leftSeam.fadeSamples / 2 {
+            try holdsAcrossCut(layout, window: w, incoming: true)
+            try storedAtCut(leftSeam)
         }
         if w + 1 < elements.count {
             guard !layout.run(w + 1).isEmpty else { throw VoiceLabGeometryError.adjacentReplacement(elements[w + 1].id) }
@@ -698,9 +708,9 @@ public enum VoiceLabWindowPlanner {
         }
         if rightSeam.kind != .none && inClip && layout.outputEdge(w, incoming: false) {
             try holdsInFullTake(project, take: take, window: window, incoming: false)
-        } else if rightSeam.kind != .none {
-            let needed = rightSeam.fadeSamples - rightSeam.fadeSamples / 2, available = layout.beside(w, incoming: false)
-            if available < needed { throw VoiceLabGeometryError.seamFadeCrossesCut(incoming: false, needed: needed, available: available) }
+        } else if rightSeam.kind != .none && layout.beside(w, incoming: false) < rightSeam.fadeSamples - rightSeam.fadeSamples / 2 {
+            try holdsAcrossCut(layout, window: w, incoming: false)
+            try storedAtCut(rightSeam)
         }
         // The validator's overlappingFades condition: the inner halves of both fades must fit inside the window.
         let inner = leftSeam.fadeSamples - leftSeam.fadeSamples / 2 + rightSeam.fadeSamples / 2
@@ -732,9 +742,8 @@ extension VoiceLabWindowPlanner {
     /// seam in this scope. `place` then checks the seam against the full take.
     private static func moveToClipEdges(_ source: ScopeSource, a: Int, b: Int, first: Int, last: Int, blocking: [Bool],
                                         left: inout VoiceLabSeamPlacement, right: inout VoiceLabSeamPlacement) throws {
-        guard let clipRange = source.clipRange, let bounds = source.clipBounds, bounds.contains(a), bounds.contains(b) else { return }
-        let opens = left.kind != .none && !blocking[..<first].contains(true)
-        let closes = right.kind != .none && !blocking[(last + 1)...].contains(true)
+        guard let clipRange = source.clipRange else { return }
+        let (opens, closes) = clipEdgeSides(source, a: a, b: b, first: first, last: last, blocking: blocking, left: left, right: right)
         guard opens || closes else { return }
         let kept = try source.keptSource((left.time, right.time))
         let rate = source.take.rate
@@ -765,16 +774,59 @@ extension VoiceLabWindowPlanner {
         let elements = (full.replacements + [window]).sorted { $0.range.startSample < $1.range.startSample }
         let layout = SeamLayout(elements: elements, pieces: try full.keptSource((window.start, window.end), window: [window.range]),
                                 total: take.total)
-        let index = elements.firstIndex(where: \.isWindow)!
-        if layout.prepareHolds(index, incoming: incoming) { return }
-        let fade = incoming ? window.incoming.fade : window.outgoing.fade
+        try holdsAcrossCut(layout, window: elements.firstIndex(where: \.isWindow)!, incoming: incoming)
+    }
+
+    /// Whether the passage opens (closes) its clip's output on that side: a clip scope, a passage inside the clip, a seam
+    /// with a fade and no kept or replaced item of the clip before (after) the window.
+    private static func clipEdgeSides(_ source: ScopeSource, a: Int, b: Int, first: Int, last: Int, blocking: [Bool],
+                                      left: VoiceLabSeamPlacement, right: VoiceLabSeamPlacement) -> (opens: Bool, closes: Bool) {
+        guard source.clipRange != nil, let bounds = source.clipBounds, bounds.contains(a), bounds.contains(b) else { return (false, false) }
+        return (left.kind != .none && !blocking[..<first].contains(true), right.kind != .none && !blocking[(last + 1)...].contains(true))
+    }
+
+    /// A seam at a cut (§8.4 step 5, 2026-11-09). A hard seam often lands where a cut ends: the cut word touches the
+    /// passage, or the cut's reach takes the whole gap once the passage's words are dropped. Then no kept source, or a
+    /// sliver shorter than the fade's outer half, lies between the cut and the seam. The seam moves to the cut's edge: the
+    /// window absorbs that sliver of the gap (never a cut item), so the generated piece starts exactly where the user's cut
+    /// ends and the output keeps the cut's timing. `place` then checks the seam by prepare's rule (`holdsAcrossCut`): the
+    /// output piece on the far side of the cut holds the outer half, as it already plays beside the cut. A side that opens
+    /// or closes the clip keeps the clip-edge rule.
+    private static func moveToCutEdges(_ source: ScopeSource, a: Int, b: Int, first: Int, last: Int, blocking: [Bool],
+                                       left: inout VoiceLabSeamPlacement, right: inout VoiceLabSeamPlacement) throws {
+        let (opens, closes) = clipEdgeSides(source, a: a, b: b, first: first, last: last, blocking: blocking, left: left, right: right)
+        let incoming = left.kind != .none && !opens, outgoing = right.kind != .none && !closes
+        guard incoming || outgoing else { return }
+        let kept = try source.keptSource((left.time, right.time))
+        let rate = source.take.rate
+        if incoming, let piece = kept.first(where: { $0.startSample < left.sample && left.sample <= $0.endSample }),
+           left.sample - piece.startSample < left.fadeSamples / 2 {
+            let time: Double = Double(piece.startSample) / rate
+            left = VoiceLabSeamPlacement(kind: left.kind, time: time, sample: piece.startSample, fadeSamples: left.fadeSamples)
+        }
+        if outgoing, let piece = kept.first(where: { $0.startSample <= right.sample && right.sample < $0.endSample }),
+           piece.endSample - right.sample < right.fadeSamples - right.fadeSamples / 2 {
+            let time: Double = Double(piece.endSample) / rate
+            right = VoiceLabSeamPlacement(kind: right.kind, time: time, sample: piece.endSample, fadeSamples: right.fadeSamples)
+        }
+    }
+
+    /// Prepare's rule for the window's seam at `index` when no kept source lies right beside it (§10.5): the output piece
+    /// beside the seam is source and holds the fade's outer half, possibly across a cut, and a replacement across that
+    /// source leaves room for both outer halves. Otherwise `seamFadeCrossesCut` with that piece's numbers, or
+    /// `adjacentReplacement` and the replacement's ID. A clip's output edge is not a cut: only a window inside the clip
+    /// opens or closes its output (`moveToClipEdges`), so one outside it with nothing rendered beside the seam is refused.
+    private static func holdsAcrossCut(_ layout: SeamLayout, window index: Int, incoming: Bool) throws {
+        if !layout.outputEdge(index, incoming: incoming) && layout.prepareHolds(index, incoming: incoming) { return }
+        let element = layout.elements[index]
+        let fade = incoming ? element.incoming.fade : element.outgoing.fade
         let between = layout.run(incoming ? index : index + 1)
         let piece = incoming ? between.last : between.first
         let needed = incoming ? fade / 2 : fade - fade / 2, available = piece.map { $0.endSample - $0.startSample } ?? 0
         if available < needed {
             throw VoiceLabGeometryError.seamFadeCrossesCut(incoming: incoming, needed: needed, available: available)
         }
-        throw VoiceLabGeometryError.adjacentReplacement(elements[incoming ? index - 1 : index + 1].id)
+        throw VoiceLabGeometryError.adjacentReplacement(layout.elements[incoming ? index - 1 : index + 1].id)
     }
 }
 

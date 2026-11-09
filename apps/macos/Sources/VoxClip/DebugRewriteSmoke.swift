@@ -286,6 +286,8 @@ import VoxClipCore
         /// The word (0-based) whose end touches the next word's start with no silence, as Whisper's back-to-back word ends
         /// do (transcription.md §5.5).
         var touchingAfter: Int? = nil
+        /// Words (0-based) the user cut before the Rewrite, as the user's own tightening (S-seam-cut).
+        var cutWords: [Int] = []
         /// Every sentence pause in the clip is tightened (a 0.5 s threshold, 0.15 s kept), so the clip as edited is shorter
         /// than its source span (the whole-clip revoice's S-revoice-whole-tightened).
         var tightenPauses = false
@@ -310,7 +312,15 @@ import VoxClipCore
         project.media.source.video = MediaVideo(width: sourceVideoSize.width, height: sourceVideoSize.height, frameRate: 30, rotationDegrees: 0)
         project.media.source.durationSeconds = recording.duration
         project.media.source.audio?.sampleRate = recording.rate
-        project.transcript?.words = recording.words
+        var words = recording.words
+        // A transcript's times are decimals on the source grid; the fixture's are sums of floats. A cut word that touches the
+        // next one has their shared boundary put on the grid, as the user's Whisper times are (S-seam-cut).
+        for index in fixture.cutWords where index == fixture.touchingAfter && words.indices.contains(index + 1) {
+            let rate = Double(recording.rate)
+            let boundary: Double = EditingPrimitives.jsRound(words[index].end * rate) / rate
+            words[index].end = boundary; words[index + 1].start = boundary
+        }
+        project.transcript?.words = words
         project.transcript?.durationSeconds = recording.duration
         project.transcript?.language = "en"
         // The clip ends a sentence before the recording does: the voice is levelled against the speech beside it.
@@ -322,6 +332,7 @@ import VoxClipCore
             project.edits.activeClipId = "clip-whole"
         }
         if fixture.cutFillers { project.edits.cutWordIds = recording.words.filter { $0.text == "um" }.map(\.id) }
+        project.edits.cutWordIds += fixture.cutWords.filter(recording.words.indices.contains).map { recording.words[$0].id }
         if fixture.tightenPauses {
             project.edits.pauseThresholdSeconds = 0.5
             project.edits.cutPauseIds = try detectPauses(recording.words, thresholdSeconds: 0.5).map(\.id)

@@ -1,5 +1,13 @@
 # Windows fixed contracts
 
+### 2026-11-09 — Windows window placement: a seam at a cut, the twin of the Mac rule (track/v2-seam-fade-cut)
+
+The Mac package fixed "Voice Only the Changed Phrases" stopping at `seamFadeCrossesCut` on the user's heavily cut clip (MVP48; apps/macos/CONTRACTS.md has the cause and numbers). The rule is shared geometry, so the C# twin landed with it and both Cores replay the same regenerated vectors.
+
+- **Core `VoiceLabWindowPlanner`** (`Domain/VoiceLab/VoiceLabWindow.cs`): `ClipEdgeSides` (shared with `MoveToClipEdges`), `MoveToCutEdges` (a seam with less kept source beside it than its outer half moves to the cut's edge, absorbing only that sliver), `HoldsAcrossCut` (prepare's rule across the cut, refusing a clip's output edge outside the clip; `HoldsInFullTake` now calls it) and the local `StoredAtCut` (the stored edge, sample over rate, must not cut into an item, else `WindowCrossesWord`). No public API changed; the ReleaseBoundary allowlist gains the three private methods.
+- **Vectors:** `window-cases.json`, `window-all-cases.json` (two cases renamed `all-cut-word-between-collides` and `all-cut-hunk-between-collides`, keys and counts unchanged), `window-clip-edge-cases.json` and `scope-rewrite-plan-cases.json`. Before the twin, 7 Windows replays failed on them; after, `VoiceLabWindowTests`, `VoiceLabWindowAllTests` and `ScopeRewriteTests` pass 64 of 64.
+- **Owes (App, not touched here):** the Mac's per-phrase keep (`RewriteSession.keepUnplaceable`: a geometry refusal keeps that change's original words with the note "Change {n} keeps your original words: it can't be joined to the recording there." and prices the rest). Windows places its review with `PlaceAll` (`ViewModels/RewriteReview.cs`); how it shows a refused hunk there was not checked against the Mac rule. Also shared and owed: the sample-grid range check the Mac entry describes (`VoiceLabProject` validation and the output planner in both Cores, plus the reference render model).
+
 ### 2026-11-09 — Owed: talk back to Claude about a change (Mac track/v2-rewrite-thread, ADR-R50)
 
 The Mac has a Rewrite thread under the focused change (design.md §6.3 "Talk back to Claude"). Windows owes its twin.

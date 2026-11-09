@@ -573,6 +573,31 @@ extension RewriteSession {
         editor.sendRewriteAgain(self, reask: request)
     }
 
+    /// A takes plan refused because one phrase can't be placed in the recording (a geometry refusal; a collision goes to
+    /// the AI instead): that change keeps its original words and audio, the summary says why in one line, and the other
+    /// changes are priced again, so one phrase never stops the plan after Claude's rewrite (MVP48, voice-lab §8.4). Each
+    /// round leaves out one more change, so it ends within the review's voice changes. Nothing is paid before the plan, so
+    /// nothing is lost. Returns false, leaving the stop and its chips, after Stop or with paid takes.
+    func keepUnplaceable(_ error: any Error) -> Bool {
+        guard case ClipTakePlan.Failure.placement(.geometry(let geometry), _) = error, let refusal = planRefusal,
+              refusal.earlier == nil, !autoFix.stopped, !hasPaidTakes, includedVoice.contains(refusal.phrase) else { return false }
+        let copy = "\(Self.changeNames([refusal.phrase])) keeps your original words: \(Self.unplaceableReason(geometry))"
+        if !autoFix.notes.contains(copy) {
+            autoFix.notes.append(copy)
+            editor.announce(copy)
+        }
+        takePlanFailure = nil
+        leaveOutChange(refusal.phrase)
+        if includedVoice.isEmpty { showProposal() } else { makeTakes() }
+        return true
+    }
+    /// Why a change can't be placed, in plain words.
+    nonisolated static func unplaceableReason(_ error: VoiceLabGeometryError) -> String {
+        if let isStart = error.takeEdgeIsStart { return "it is too close to the \(isStart ? "start" : "end") of the take to blend in." }
+        if case .insertionUnsupported = error { return "it adds words where you said nothing, and the video has no time for them." }
+        return "it can't be joined to the recording there."
+    }
+
     /// A re-ask that failed or came back stale is sent once more on its own.
     func retryReaskOnce(_ request: RewriteReask) {
         guard !autoFix.stopped, autoFix.retried.insert(request.label + "\u{1F}" + request.instruction).inserted else { return }

@@ -19,6 +19,10 @@ import VoxClipCore
 //   duration to choose.
 // - S-duration-claude: ✦ Make it postable (the driver ✦ Claude does it all runs too) makes the same 0.41 s take; the run keeps
 //   that phrase as recorded with no click, says why, and is ready to export (DC1).
+// - S-seam-cut (MVP48, 2026-11-09): the user cut "Then", which touches "we" as Whisper's word ends do, and the rewrite
+//   changes the phrase that starts right after it. Its hard seam sits at the cut: it is voiced and Use applies it. Before,
+//   the review left the change out ("This change can't be placed in this take.") and, beside a cut the rewrite itself
+//   proposed, the whole plan stopped at seamFadeCrossesCut.
 
 extension DebugRewriteSmoke {
     /// Change 1 padded the way the user's Viral YouTuber reply was ("or, put differently", "and then, in addition to that").
@@ -37,6 +41,12 @@ extension DebugRewriteSmoke {
         Definition(id: "S-make-it-long", title: "✦ Make it postable with a padded line still long after its fit: kept as recorded, no click, finished",
             requiresCompletion: false, fixture: Fixture(rewrites: [], fits: [.sameWords], voice: RewriteSmokeVoiceScript(offset: -0.2))) { harness in
             try await harness.makeItLongLine()
+        },
+        Definition(id: "S-seam-cut", title: "a changed phrase right after a cut word that touches it: voiced at the cut, Use",
+            voiced: 1, fixture: Fixture(rewrites: [.passage(replace([("Then we fix the words we got wrong.", "Then I correct every word I got wrong.")]))],
+                                        voice: RewriteSmokeVoiceScript(offset: -0.2), touchingAfter: 20, cutWords: [20])) { harness in
+            try await harness.start()
+            try await harness.finish()
         },
         Definition(id: "S-render-recipe", title: "phrase 1's take has no valid render recipe: it keeps your audio, phrase 2 is used",
             voiced: 1, fixture: Fixture(rewrites: [.passage(replace(twoChanges))], voice: RewriteSmokeVoiceScript(offset: -0.2))) { harness in

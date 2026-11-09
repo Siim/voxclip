@@ -115,7 +115,7 @@ private final class WorkThreads: Sendable {
     /// 10–45 and clip 2 over 50–70, open on `tab`. Each word lasts 0.4 s, or the whole second when `contiguous`, as in
     /// speech with no pause between words.
     private func editor(_ app: AppModel, words count: Int = 80, tab: String? = "c1", waveform: Bool = true, events: Set<Int> = [],
-                        contiguous: Bool = false) throws -> (EditorModel, UndoManager) {
+                        contiguous: Bool = false, adjust: (inout [TimedWord]) -> Void = { _ in }) throws -> (EditorModel, UndoManager) {
         let shared = try SharedResources.locate()
         var project = try DemoEditing.loadFixture(shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip"))
         project.id = UUID().uuidString.lowercased()
@@ -124,6 +124,7 @@ private final class WorkThreads: Sendable {
             TimedWord(id: "w\(index)", text: index % 20 == 19 ? "word\(index)." : "word\(index)", start: Double(index) + 1, end: Double(index) + (contiguous ? 2 : 1.4))
         }
         for index in events { project.transcript?.words[index].kind = .event; project.transcript?.words[index].text = "[laughter]" }
+        if var words = project.transcript?.words { adjust(&words); project.transcript?.words = words }
         project.transcript?.durationSeconds = Double(count) + 2
         project.media.source.durationSeconds = Double(count) + 2
         if count > 70 {
@@ -587,8 +588,8 @@ private final class WorkThreads: Sendable {
     }
 
     /// With Voice Lab off, a selection beside a cut still rewrites (design.md §8). In speech with no pause between words
-    /// the placement refuses its window, as a seam's fade would cross the cut; that only stops its phrase in your voice,
-    /// and the request takes the selection's span as its length, as C1's lines do. With no waveform the same holds, and the
+    /// its window starts at the cut (a seam at a cut, voice-lab §8.4 step 5, 2026-11-09; it was refused until then), and
+    /// the request takes the selection's span as its length, as C1's lines do. With no waveform the same holds, and the
     /// phrase says what it needs.
     @Test func aSelectionNeedsNoVoicePlacement() async throws {
         let stub = ScopeStub()
@@ -601,7 +602,8 @@ private final class WorkThreads: Sendable {
         let session = try await rewrite(editor)
         #expect(proposal(session) != nil && session.problem.isEmpty)
         #expect(await stub.requests.map(\.tag) == ["voice-rewrite"])
-        #expect(session.review?.voiceHunks.first?.refusal == "This change can't be placed in this take. Your edits are saved.")
+        let placed = session.review?.voiceHunks.first
+        #expect(placed?.refusal == nil && placed?.window?.leftSeam.kind == .hard && placed?.window?.start == 42, "\(String(describing: placed?.refusal))")
 
         editor.closeRewrite(returnFocus: false)
         editor.selectedWordIDs = ["w12", "w13", "w14"]
@@ -967,7 +969,8 @@ private final class WorkThreads: Sendable {
 
     /// A voice change's window reads the words beside the passage, so a cut there, outside the scope, can move it: the
     /// review built again says so, and the takes made for the old window can no longer be used. Use Takes waits for that
-    /// review; a cut far away leaves the takes ready.
+    /// review; a cut far away leaves the takes ready. In connected speech the cut word touches the passage, so the window
+    /// stays where it was, its seam now at the cut (voice-lab §8.4 step 5, 2026-11-09), and the takes stay ready.
     @Test func aCutBesideThePassageRetiresItsTakes() async throws {
         let stub = ScopeStub()
         let (app, _) = app("ollama", stub: stub)
@@ -983,11 +986,29 @@ private final class WorkThreads: Sendable {
         step(undo) { editor.apply(.cutSelection(ids: ["w20"]), name: "Cut selection") }
         await session.reviewing?.value
         #expect(generation.readyToAccept && session.review?.voiceHunks.first?.window != nil)
+        let before = session.review?.voiceHunks.first?.window
         step(undo) { editor.apply(.cutSelection(ids: ["w61"]), name: "Cut selection") }
-        #expect(session.reviewing != nil && proposal(session) != nil && session.current)
-        #expect(await session.acceptTakes() == false)
-        #expect(published == 0 && !generation.readyToAccept && !generation.rows.isEmpty)
-        #expect(session.review?.voiceHunks.first?.window == nil && session.review?.voiceHunks.first?.refusal == "This change can't be placed in this take. Your edits are saved.")
+        await session.reviewing?.value
+        #expect(session.review?.voiceHunks.first?.window == before && generation.readyToAccept)
+        // Where the touching boundary lies off the source grid, the stored edge of a seam at the cut would cut into the cut
+        // word, so the cut refuses the window: the review built again says so and the takes for the old window retire.
+        editor.closeRewrite(returnFocus: false)
+        let (offGrid, offGridUndo) = try self.editor(app, tab: nil, contiguous: true) { words in
+            words[61].end += 1e-9; words[62].start += 1e-9
+        }
+        defer { offGrid.close() }
+        offGrid.selectedWordIDs = ["w62", "w63", "w64"]
+        let touching = try await rewrite(offGrid)
+        #expect(touching.review?.voiceHunks.first?.window != nil)
+        let takes = try giveTake(touching, editor: offGrid)
+        var publishedOffGrid = 0
+        takes.publishForTests = { _, _, _ in publishedOffGrid += 1; throw CancellationError() }
+        step(offGridUndo) { offGrid.apply(.cutSelection(ids: ["w61"]), name: "Cut selection") }
+        #expect(touching.reviewing != nil && proposal(touching) != nil && touching.current)
+        #expect(await touching.acceptTakes() == false)
+        #expect(publishedOffGrid == 0 && !takes.readyToAccept && !takes.rows.isEmpty)
+        #expect(touching.review?.voiceHunks.first?.window == nil && touching.review?.voiceHunks.first?.refusal == "This change can't be placed in this take. Your edits are saved.")
+        #expect(published == 0)
     }
 
     /// A phrase in your voice with Voice Lab off shows no Beta tag, and R2 offers Turn On Voice Lab…, which opens the

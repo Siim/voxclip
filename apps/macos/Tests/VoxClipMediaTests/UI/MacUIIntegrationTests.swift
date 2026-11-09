@@ -63,8 +63,9 @@ extension HeavyMediaTests {
         let guardScenarios = ["S-guard-blocked", "S-guard-noisy", "S-guard-claude", "S-guard-learns", "S-guard-guest"]
         // MVP32 Clip 7: a padded line still long after one fit keeps its words; a take with no valid render recipe keeps its
         // phrase's audio and Use goes on; a take no video duration carries keeps its phrase's audio with no click, also in
-        // Make it postable (DebugRewriteSmokeFit.swift). Both passes.
-        let fitScenarios = ["S-viral-fit", "S-make-it-long", "S-render-recipe", "S-duration-short", "S-duration-claude"]
+        // Make it postable (DebugRewriteSmokeFit.swift). MVP48: a changed phrase right after a cut word is voiced at the cut
+        // (S-seam-cut). Both passes.
+        let fitScenarios = ["S-viral-fit", "S-make-it-long", "S-seam-cut", "S-render-recipe", "S-duration-short", "S-duration-claude"]
         // The realistic pass only: ✦ Ask Claude on a selection (DebugRewriteSmokeAskClaude.swift) makes no takes, and
         // S-clip-controls exports a clip at 1.25× with the Muted look and checks its length and caption alignment.
         // S-claude-does-it-all drops a video and waits, then Export all (DebugRewriteSmokeClaudeMode.swift); it makes no takes.

@@ -284,7 +284,8 @@ def sources(expected):
 
 # One take for the clip and Full take cases, at 48 kHz. "today" is corrected to end a sentence, two words are cut (a
 # filler and a repeat), an event and unlabeled speech sit inside lines, the applause stands alone after a long pause,
-# and the filler "uh" before "Thanks" is cut and touches it, so that line's window is refused.
+# and the filler "uh" before "Thanks" is cut and touches it, so that line's window starts at the cut (voice-lab section 8.4
+# step 5, a seam at a cut).
 TAKE_A_WORDS = [
     word('w0', 'So', 0.05, 0.30), word('w1', 'um', 0.45, 0.60), word('w2', 'today', 0.62, 0.95),
     word('w3', 'we', 1.30, 1.45), word('w4', 'ship', 1.50, 1.80), word('w5', 'the', 1.85, 1.95),
@@ -308,10 +309,10 @@ assert sources(result) == ['window', 'window'], result
 CLIP_MID = result
 
 result = case('full-take', 'Full take: cut items left out, a correction ending a sentence, an event-only line (its '
-              'label\'s length on both bounds) and a line whose window is refused because the cut filler touches it (advisory span).',
+              'label\'s length on both bounds) and a line whose hard seam sits at the cut filler that touches it (a seam at a cut).',
               TAKE_A, {'kind': 'fullTake'}, instruction='Make it clearer. Keep my words where they work; change as little as possible.')
-assert sources(result) == ['window', 'window', 'window', 'noSpeech', 'lineSpan'], result
-assert result['lines'][-1]['note'] == 'refused: seamFadeCrossesCut', result
+assert sources(result) == ['window', 'window', 'window', 'noSpeech', 'window'], result
+assert result['lines'][-1]['note'].startswith('seams hard/none,'), result
 assert (result['lines'][3]['minChars'], result['lines'][3]['maxChars']) == (8, 8), result
 
 result = case('clip-at-take-start', 'A clip whose clipTimes range starts at 0: its first line window reaches the take start '
@@ -326,7 +327,7 @@ result = case('suggested-clip', 'A suggested clip (origin ai, not selected) is a
               'event just before "It", so nothing renders before the first line\'s hard seam in the clip: the seam is the '
               'clip\'s output edge, and the event holds its fade in the full take (voice-lab section 8.4).',
               TAKE_A, {'kind': 'clip', 'clipId': 'clip-suggested'})
-assert sources(result) == ['window', 'noSpeech', 'lineSpan'], result
+assert sources(result) == ['window', 'noSpeech', 'window'], result
 assert result['lines'][0]['note'].startswith('seams hard/'), result
 
 result = case('no-envelope', 'Without the source envelope no window is placed: every line with words takes its advisory span. '

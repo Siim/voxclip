@@ -482,7 +482,7 @@
   },
   {
    "name": "full-take",
-   "note": "Full take: cut items left out, a correction ending a sentence, an event-only line (its label's length on both bounds) and a line whose window is refused because the cut filler touches it (advisory span).",
+   "note": "Full take: cut items left out, a correction ending a sentence, an event-only line (its label's length on both bounds) and a line whose hard seam sits at the cut filler that touches it (a seam at a cut).",
    "input": {
     "sampleRate": 48000,
     "durationSeconds": 9.6,
@@ -1014,10 +1014,10 @@
        "w19"
       ],
       "revoicedBefore": [],
-      "minChars": 10,
+      "minChars": 11,
       "maxChars": 12,
-      "rangeSource": "lineSpan",
-      "note": "refused: seamFadeCrossesCut"
+      "rangeSource": "window",
+      "note": "seams hard/none, target 1.109999999999999 s, bridge 0"
      }
     ]
    }
@@ -2324,10 +2324,10 @@
        "w19"
       ],
       "revoicedBefore": [],
-      "minChars": 10,
+      "minChars": 11,
       "maxChars": 12,
-      "rangeSource": "lineSpan",
-      "note": "refused: seamFadeCrossesCut"
+      "rangeSource": "window",
+      "note": "seams hard/none, target 1.109999999999999 s, bridge 0"
      }
     ]
    }
@@ -5530,10 +5530,10 @@
        "w19"
       ],
       "revoicedBefore": [],
-      "minChars": 10,
+      "minChars": 11,
       "maxChars": 12,
-      "rangeSource": "lineSpan",
-      "note": "refused: seamFadeCrossesCut"
+      "rangeSource": "window",
+      "note": "seams hard/none, target 1.109999999999999 s, bridge 0"
      }
     ]
    }

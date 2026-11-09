@@ -23,9 +23,11 @@ without a later voice hunk, so the deleted word never becomes a re-voiced bridge
 windows across a 1 ms intervening item. Their windows do not touch, but their outer fade
 halves cannot share that source run: reservation placement triggers a merge, which the
 non-word barrier refuses. Allowing that kind through the merge guard changes both the
-Python and Swift result. The `all-cut-word-refuses-seam-before-merge` and
-`all-cut-hunk-refuses-seam-before-merge` cases instead pin the earlier `seamFadeCrossesCut`
-refusal; they do not claim to test the merge guard. `all-real-review-like-id-overlap` pins
+Python and Swift result. In `all-cut-word-between-collides` and `all-cut-hunk-between-collides`
+the later hunk's hard seam sits at the cut word before it (a seam at a cut, voice-lab section 8.4
+step 5): it places, but the cut leaves no kept source between the two windows, so it touches the
+earlier one, and the merge guard refuses to re-voice the cut word, giving `collidesWithChange`.
+Until 2026-11-09 both pinned the earlier `seamFadeCrossesCut`. `all-real-review-like-id-overlap` pins
 an existing segment's original ID in the geometry error, not the reservation alias guard.
 
 This file is replayed by both Cores: Swift `VoiceLabWindowTests.placeAllVectors` and C#
