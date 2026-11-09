@@ -6803,6 +6803,22 @@ member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public set_W0(d
 member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public set_W1(double)
 member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public set_W2(double)
 member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public set_Yaw(VoxClip.Core.Domain.Frames.FrameLinearMap)
+member VoxClip.Core.Domain.Frames.FrameFaceFindings :: method private .ctor(VoxClip.Core.Domain.Frames.FrameFaceFindings)
+member VoxClip.Core.Domain.Frames.FrameFaceFindings :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Frames.FrameFaceFindings :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Frames.FrameFaceFindings :: method public .ctor(int,VoxClip.Core.Domain.Frames.FrameFace)
+member VoxClip.Core.Domain.Frames.FrameFaceFindings :: method public ApplyTo(VoxClip.Core.Domain.Frames.FrameObservation)
+member VoxClip.Core.Domain.Frames.FrameFaceFindings :: method public Equals(VoxClip.Core.Domain.Frames.FrameFaceFindings)
+member VoxClip.Core.Domain.Frames.FrameFaceFindings :: method public Equals(object)
+member VoxClip.Core.Domain.Frames.FrameFaceFindings :: method public GetHashCode()
+member VoxClip.Core.Domain.Frames.FrameFaceFindings :: method public ToString()
+member VoxClip.Core.Domain.Frames.FrameFaceFindings :: method public get_FaceCount()
+member VoxClip.Core.Domain.Frames.FrameFaceFindings :: method public get_Largest()
+member VoxClip.Core.Domain.Frames.FrameFaceFindings :: method public op_Equality(VoxClip.Core.Domain.Frames.FrameFaceFindings,VoxClip.Core.Domain.Frames.FrameFaceFindings)
+member VoxClip.Core.Domain.Frames.FrameFaceFindings :: method public op_Inequality(VoxClip.Core.Domain.Frames.FrameFaceFindings,VoxClip.Core.Domain.Frames.FrameFaceFindings)
+member VoxClip.Core.Domain.Frames.FrameFaces :: field public UnavailableMessage
+member VoxClip.Core.Domain.Frames.FrameFaces :: method public Require(VoxClip.Core.Domain.Frames.IFrameFaces)
+member VoxClip.Core.Domain.Frames.FrameFacesUnavailableException :: method public .ctor()
 member VoxClip.Core.Domain.Frames.FrameJson :: method internal AsDouble(System.Text.Json.Nodes.JsonValue)
 member VoxClip.Core.Domain.Frames.FrameJson :: method private Eyes(System.Text.Json.Nodes.JsonNode)
 member VoxClip.Core.Domain.Frames.FrameJson :: method private Integer(System.Text.Json.Nodes.JsonNode)
@@ -6810,13 +6826,17 @@ member VoxClip.Core.Domain.Frames.FrameJson :: method private Number(System.Text
 member VoxClip.Core.Domain.Frames.FrameJson :: method private Optional(System.Text.Json.Nodes.JsonObject,string,System.Nullable`1<double>&)
 member VoxClip.Core.Domain.Frames.FrameJson :: method private ReadList`1(System.Text.Json.Nodes.JsonNode,System.Func`2<System.Text.Json.Nodes.JsonNode,!!0>)
 member VoxClip.Core.Domain.Frames.FrameJson :: method private ReadRects(System.Text.Json.Nodes.JsonNode)
+member VoxClip.Core.Domain.Frames.FrameJson :: method private WriteMac(System.Text.StringBuilder,System.Text.Json.Nodes.JsonNode)
+member VoxClip.Core.Domain.Frames.FrameJson :: method private WriteMacString(System.Text.StringBuilder,string)
 member VoxClip.Core.Domain.Frames.FrameJson :: method public Array(System.Collections.Generic.IEnumerable`1<System.Text.Json.Nodes.JsonNode>)
 member VoxClip.Core.Domain.Frames.FrameJson :: method public EyesName(VoxClip.Core.Domain.Frames.FrameEyes)
+member VoxClip.Core.Domain.Frames.FrameJson :: method public MacText(System.Text.Json.Nodes.JsonNode)
 member VoxClip.Core.Domain.Frames.FrameJson :: method public ReadAnalysis(System.Text.Json.Nodes.JsonNode)
 member VoxClip.Core.Domain.Frames.FrameJson :: method public ReadFace(System.Text.Json.Nodes.JsonNode)
 member VoxClip.Core.Domain.Frames.FrameJson :: method public ReadObservation(System.Text.Json.Nodes.JsonNode)
 member VoxClip.Core.Domain.Frames.FrameJson :: method public ReadRect(System.Text.Json.Nodes.JsonNode)
 member VoxClip.Core.Domain.Frames.FrameJson :: method public ReadScreen(System.Text.Json.Nodes.JsonNode)
+member VoxClip.Core.Domain.Frames.FrameJson :: method public SwiftNumber(double)
 member VoxClip.Core.Domain.Frames.FrameJson :: method public Write(VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+BlurCandidate)
 member VoxClip.Core.Domain.Frames.FrameJson :: method public Write(VoxClip.Core.Domain.Autopilot.ClipAutopilotFrames+CoverCandidate)
 member VoxClip.Core.Domain.Frames.FrameJson :: method public Write(VoxClip.Core.Domain.Effects.ClipEffectRect)
@@ -7074,6 +7094,7 @@ member VoxClip.Core.Domain.Frames.FrameSheetFrame :: method public get_Image()
 member VoxClip.Core.Domain.Frames.FrameSheetFrame :: method public get_Index()
 member VoxClip.Core.Domain.Frames.FrameSheetFrame :: method public get_Observation()
 member VoxClip.Core.Domain.Frames.FrameTextLines :: method public LineBox(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Frames.OcrWordBox>,int,int)
+member VoxClip.Core.Domain.Frames.IFrameFaces :: method public FacesAsync(VoxClip.Core.Domain.Captions.PixelBuffer,System.Threading.CancellationToken)
 member VoxClip.Core.Domain.Frames.IFrameTextLines :: method public LinesAsync(VoxClip.Core.Domain.Captions.PixelBuffer,System.Threading.CancellationToken)
 member VoxClip.Core.Domain.Frames.MeshPoint :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Frames.MeshPoint :: method public .ctor(double,double,double)
@@ -18408,6 +18429,9 @@ type VoxClip.Core.Domain.Frames.FrameClip
 type VoxClip.Core.Domain.Frames.FrameEyes
 type VoxClip.Core.Domain.Frames.FrameFace
 type VoxClip.Core.Domain.Frames.FrameFaceCalibration
+type VoxClip.Core.Domain.Frames.FrameFaceFindings
+type VoxClip.Core.Domain.Frames.FrameFaces
+type VoxClip.Core.Domain.Frames.FrameFacesUnavailableException
 type VoxClip.Core.Domain.Frames.FrameJson
 type VoxClip.Core.Domain.Frames.FrameLinearMap
 type VoxClip.Core.Domain.Frames.FrameModel
@@ -18427,6 +18451,7 @@ type VoxClip.Core.Domain.Frames.FrameScreens
 type VoxClip.Core.Domain.Frames.FrameSheet
 type VoxClip.Core.Domain.Frames.FrameSheetFrame
 type VoxClip.Core.Domain.Frames.FrameTextLines
+type VoxClip.Core.Domain.Frames.IFrameFaces
 type VoxClip.Core.Domain.Frames.IFrameTextLines
 type VoxClip.Core.Domain.Frames.MeshPoint
 type VoxClip.Core.Domain.Frames.OcrWordBox
