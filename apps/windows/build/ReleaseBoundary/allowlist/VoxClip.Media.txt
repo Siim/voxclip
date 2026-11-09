@@ -22,14 +22,17 @@ attribute assembly @ System.Runtime.CompilerServices.InternalsVisibleToAttribute
 literal "--enable-gpl"
 literal "--enable-nonfree"
 literal "BASE_EN"
+literal "Identity_1"
 literal "LARGE_V3_TURBO"
 literal "SMALL_EN"
+literal "VOXCLIP_FRAME_FACES"
 literal "emoji_u"
 literal "h264_amf"
 literal "h264_mf"
 literal "h264_nvenc"
 literal "h264_qsv"
 literal "hw_encoding"
+literal "input_12"
 literal "pc_vbr"
 literal "protocol_whitelist"
 literal "rate_control"
@@ -1159,6 +1162,34 @@ member VoxClip.Media.Frames.FrameScanKind :: field public Sentence
 member VoxClip.Media.Frames.FrameScanKind :: field public value__
 member VoxClip.Media.Frames.IFrameDecoding :: method public Open(string,int,double,System.Threading.CancellationToken)
 member VoxClip.Media.Frames.IFrameReader :: method public Read(double,System.Threading.CancellationToken)
+member VoxClip.Media.Frames.OnnxFrameFaces :: field private DetectorOutputs
+member VoxClip.Media.Frames.OnnxFrameFaces :: field private MeshOutputs
+member VoxClip.Media.Frames.OnnxFrameFaces :: field private calibration
+member VoxClip.Media.Frames.OnnxFrameFaces :: field private detector
+member VoxClip.Media.Frames.OnnxFrameFaces :: field private disposed
+member VoxClip.Media.Frames.OnnxFrameFaces :: field private life
+member VoxClip.Media.Frames.OnnxFrameFaces :: field private mesh
+member VoxClip.Media.Frames.OnnxFrameFaces :: field public DetectorInput
+member VoxClip.Media.Frames.OnnxFrameFaces :: field public IntraOpThreads
+member VoxClip.Media.Frames.OnnxFrameFaces :: field public MeshInput
+member VoxClip.Media.Frames.OnnxFrameFaces :: field public MeshLandmarks
+member VoxClip.Media.Frames.OnnxFrameFaces :: field public MeshPresence
+member VoxClip.Media.Frames.OnnxFrameFaces :: field public OverrideVariable
+member VoxClip.Media.Frames.OnnxFrameFaces :: method private .cctor()
+member VoxClip.Media.Frames.OnnxFrameFaces :: method private .ctor(Microsoft.ML.OnnxRuntime.InferenceSession,Microsoft.ML.OnnxRuntime.InferenceSession,VoxClip.Core.Domain.Frames.FrameFaceCalibration)
+member VoxClip.Media.Frames.OnnxFrameFaces :: method private Detect(VoxClip.Core.Domain.Captions.PixelBuffer,VoxClip.Core.Domain.Frames.YuNetInput)
+member VoxClip.Media.Frames.OnnxFrameFaces :: method private Measure(VoxClip.Core.Domain.Frames.YuNetFace,VoxClip.Core.Domain.Frames.YuNetInput,System.ReadOnlySpan`1<byte>,int,int)
+member VoxClip.Media.Frames.OnnxFrameFaces :: method private Rgb(VoxClip.Core.Domain.Captions.PixelBuffer,System.Span`1<byte>)
+member VoxClip.Media.Frames.OnnxFrameFaces :: method private Taps(int,int)
+member VoxClip.Media.Frames.OnnxFrameFaces :: method private Values(Microsoft.ML.OnnxRuntime.DisposableNamedOnnxValue)
+member VoxClip.Media.Frames.OnnxFrameFaces :: method private Verified(string,VoxClip.Core.Domain.Frames.FrameModelFile)
+member VoxClip.Media.Frames.OnnxFrameFaces :: method public BundledDirectory(string)
+member VoxClip.Media.Frames.OnnxFrameFaces :: method public Dispose()
+member VoxClip.Media.Frames.OnnxFrameFaces :: method public Faces(VoxClip.Core.Domain.Captions.PixelBuffer,System.Threading.CancellationToken)
+member VoxClip.Media.Frames.OnnxFrameFaces :: method public FacesAsync(VoxClip.Core.Domain.Captions.PixelBuffer,System.Threading.CancellationToken)
+member VoxClip.Media.Frames.OnnxFrameFaces :: method public Installed(VoxClip.Core.Domain.Frames.FrameModelCatalog,string,System.Nullable`1<bool>)
+member VoxClip.Media.Frames.OnnxFrameFaces :: method public Load(VoxClip.Core.Domain.Frames.FrameModel,string)
+member VoxClip.Media.Frames.OnnxFrameFaces :: method public Overridden()
 member VoxClip.Media.Frames.VideoFramePass :: field private analyzer
 member VoxClip.Media.Frames.VideoFramePass :: field private cancellation
 member VoxClip.Media.Frames.VideoFramePass :: field private contentKey
@@ -3045,6 +3076,7 @@ type VoxClip.Media.Frames.FrameObservationsFound
 type VoxClip.Media.Frames.FrameScanKind
 type VoxClip.Media.Frames.IFrameDecoding
 type VoxClip.Media.Frames.IFrameReader
+type VoxClip.Media.Frames.OnnxFrameFaces
 type VoxClip.Media.Frames.VideoFramePass
 type VoxClip.Media.Frames.VideoFramePass+ClipFrames
 type VoxClip.Media.Frames.VideoFramePass+Found
