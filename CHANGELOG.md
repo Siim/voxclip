@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Lip sync now keeps fal.ai's results, which come back a few frames short: each upload carries a short margin that the result is cut back from, fal.ai's own audio is never used, a paid result that still can't be used is kept so Try Again re-imports it for free, and a failed attempt says what fal.ai charged for it.
 - Revoice the Whole Clip now lip syncs 4K clips (they used to stop with "The job could not be completed" on every Try Again), keeps your new voice exactly as generated and plays the picture up to 1.2× faster when the voice is shorter, checks the picture can be matched before it says Fit, and says what actually failed when it stops.
 - Revoice the Whole Clip now fits the new voice to your clip as you edited it, with its cuts and tightened pauses, so a shorter voice gets natural pauses instead of padded words, and a reworded script is never voiced before it's checked to fit.
 - On Windows, groundwork for seeing faces on your PC: a pinned, checked list of the two face models (switched off until they're matched to the Mac) and the maths that turns what they see into the same eyes-open, head-turn and quality readings the Mac uses; nothing changes in the app yet.
