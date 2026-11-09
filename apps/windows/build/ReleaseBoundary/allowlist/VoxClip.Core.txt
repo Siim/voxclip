@@ -6927,6 +6927,28 @@ member VoxClip.Core.Domain.Frames.FramePoint :: method public op_Equality(VoxCli
 member VoxClip.Core.Domain.Frames.FramePoint :: method public op_Inequality(VoxClip.Core.Domain.Frames.FramePoint,VoxClip.Core.Domain.Frames.FramePoint)
 member VoxClip.Core.Domain.Frames.FramePoint :: method public set_X(double)
 member VoxClip.Core.Domain.Frames.FramePoint :: method public set_Y(double)
+member VoxClip.Core.Domain.Frames.FrameQuad :: method private .ctor(VoxClip.Core.Domain.Frames.FrameQuad)
+member VoxClip.Core.Domain.Frames.FrameQuad :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Frames.FrameQuad :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Frames.FrameQuad :: method public .ctor(VoxClip.Core.Domain.Frames.FramePoint,VoxClip.Core.Domain.Frames.FramePoint,VoxClip.Core.Domain.Frames.FramePoint,VoxClip.Core.Domain.Frames.FramePoint,double)
+member VoxClip.Core.Domain.Frames.FrameQuad :: method public Deconstruct(VoxClip.Core.Domain.Frames.FramePoint&,VoxClip.Core.Domain.Frames.FramePoint&,VoxClip.Core.Domain.Frames.FramePoint&,VoxClip.Core.Domain.Frames.FramePoint&,double&)
+member VoxClip.Core.Domain.Frames.FrameQuad :: method public Equals(VoxClip.Core.Domain.Frames.FrameQuad)
+member VoxClip.Core.Domain.Frames.FrameQuad :: method public Equals(object)
+member VoxClip.Core.Domain.Frames.FrameQuad :: method public GetHashCode()
+member VoxClip.Core.Domain.Frames.FrameQuad :: method public ToString()
+member VoxClip.Core.Domain.Frames.FrameQuad :: method public get_BottomLeft()
+member VoxClip.Core.Domain.Frames.FrameQuad :: method public get_BottomRight()
+member VoxClip.Core.Domain.Frames.FrameQuad :: method public get_BoundingBox()
+member VoxClip.Core.Domain.Frames.FrameQuad :: method public get_Confidence()
+member VoxClip.Core.Domain.Frames.FrameQuad :: method public get_TopLeft()
+member VoxClip.Core.Domain.Frames.FrameQuad :: method public get_TopRight()
+member VoxClip.Core.Domain.Frames.FrameQuad :: method public op_Equality(VoxClip.Core.Domain.Frames.FrameQuad,VoxClip.Core.Domain.Frames.FrameQuad)
+member VoxClip.Core.Domain.Frames.FrameQuad :: method public op_Inequality(VoxClip.Core.Domain.Frames.FrameQuad,VoxClip.Core.Domain.Frames.FrameQuad)
+member VoxClip.Core.Domain.Frames.FrameQuad :: method public set_BottomLeft(VoxClip.Core.Domain.Frames.FramePoint)
+member VoxClip.Core.Domain.Frames.FrameQuad :: method public set_BottomRight(VoxClip.Core.Domain.Frames.FramePoint)
+member VoxClip.Core.Domain.Frames.FrameQuad :: method public set_Confidence(double)
+member VoxClip.Core.Domain.Frames.FrameQuad :: method public set_TopLeft(VoxClip.Core.Domain.Frames.FramePoint)
+member VoxClip.Core.Domain.Frames.FrameQuad :: method public set_TopRight(VoxClip.Core.Domain.Frames.FramePoint)
 member VoxClip.Core.Domain.Frames.FrameQualityGates :: method private .ctor(VoxClip.Core.Domain.Frames.FrameQualityGates)
 member VoxClip.Core.Domain.Frames.FrameQualityGates :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Frames.FrameQualityGates :: method private get_EqualityContract()
@@ -7000,6 +7022,27 @@ member VoxClip.Core.Domain.Frames.FrameScreen :: method public set_Framed(bool)
 member VoxClip.Core.Domain.Frames.FrameScreen :: method public set_Rect(VoxClip.Core.Domain.Effects.ClipEffectRect)
 member VoxClip.Core.Domain.Frames.FrameScreen :: method public set_TextBoxes(int)
 member VoxClip.Core.Domain.Frames.FrameScreen :: method public set_TextCoverage(double)
+member VoxClip.Core.Domain.Frames.FrameScreenFindings :: method private .cctor()
+member VoxClip.Core.Domain.Frames.FrameScreenFindings :: method private .ctor(VoxClip.Core.Domain.Frames.FrameScreenFindings)
+member VoxClip.Core.Domain.Frames.FrameScreenFindings :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Frames.FrameScreenFindings :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Frames.FrameScreenFindings :: method public .ctor(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Effects.ClipEffectRect>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Frames.FrameScreen>)
+member VoxClip.Core.Domain.Frames.FrameScreenFindings :: method public ApplyTo(VoxClip.Core.Domain.Frames.FrameObservation)
+member VoxClip.Core.Domain.Frames.FrameScreenFindings :: method public Deconstruct(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Effects.ClipEffectRect>&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Frames.FrameScreen>&)
+member VoxClip.Core.Domain.Frames.FrameScreenFindings :: method public Equals(VoxClip.Core.Domain.Frames.FrameScreenFindings)
+member VoxClip.Core.Domain.Frames.FrameScreenFindings :: method public Equals(object)
+member VoxClip.Core.Domain.Frames.FrameScreenFindings :: method public GetHashCode()
+member VoxClip.Core.Domain.Frames.FrameScreenFindings :: method public ToString()
+member VoxClip.Core.Domain.Frames.FrameScreenFindings :: method public get_None()
+member VoxClip.Core.Domain.Frames.FrameScreenFindings :: method public get_Screens()
+member VoxClip.Core.Domain.Frames.FrameScreenFindings :: method public get_TextRects()
+member VoxClip.Core.Domain.Frames.FrameScreenFindings :: method public op_Equality(VoxClip.Core.Domain.Frames.FrameScreenFindings,VoxClip.Core.Domain.Frames.FrameScreenFindings)
+member VoxClip.Core.Domain.Frames.FrameScreenFindings :: method public op_Inequality(VoxClip.Core.Domain.Frames.FrameScreenFindings,VoxClip.Core.Domain.Frames.FrameScreenFindings)
+member VoxClip.Core.Domain.Frames.FrameScreenFindings :: method public set_Screens(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Frames.FrameScreen>)
+member VoxClip.Core.Domain.Frames.FrameScreenFindings :: method public set_TextRects(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Effects.ClipEffectRect>)
+member VoxClip.Core.Domain.Frames.FrameScreenScan :: method public .ctor(VoxClip.Core.Domain.Frames.IFrameTextLines,VoxClip.Core.Domain.Frames.QuadFinder)
+member VoxClip.Core.Domain.Frames.FrameScreenScan :: method public Detect(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Effects.ClipEffectRect>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Frames.FrameQuad>)
+member VoxClip.Core.Domain.Frames.FrameScreenScan :: method public ScanAsync(VoxClip.Core.Domain.Captions.PixelBuffer,bool,System.Threading.CancellationToken)
 member VoxClip.Core.Domain.Frames.FrameScreens :: field public ClusterBoxes
 member VoxClip.Core.Domain.Frames.FrameScreens :: field public MinimumArea
 member VoxClip.Core.Domain.Frames.FrameScreens :: field public MinimumBoxes
@@ -7030,6 +7073,8 @@ member VoxClip.Core.Domain.Frames.FrameSheetFrame :: method public SummaryLine(S
 member VoxClip.Core.Domain.Frames.FrameSheetFrame :: method public get_Image()
 member VoxClip.Core.Domain.Frames.FrameSheetFrame :: method public get_Index()
 member VoxClip.Core.Domain.Frames.FrameSheetFrame :: method public get_Observation()
+member VoxClip.Core.Domain.Frames.FrameTextLines :: method public LineBox(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Frames.OcrWordBox>,int,int)
+member VoxClip.Core.Domain.Frames.IFrameTextLines :: method public LinesAsync(VoxClip.Core.Domain.Captions.PixelBuffer,System.Threading.CancellationToken)
 member VoxClip.Core.Domain.Frames.MeshPoint :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Frames.MeshPoint :: method public .ctor(double,double,double)
 member VoxClip.Core.Domain.Frames.MeshPoint :: method public Deconstruct(double&,double&,double&)
@@ -7045,6 +7090,23 @@ member VoxClip.Core.Domain.Frames.MeshPoint :: method public op_Inequality(VoxCl
 member VoxClip.Core.Domain.Frames.MeshPoint :: method public set_X(double)
 member VoxClip.Core.Domain.Frames.MeshPoint :: method public set_Y(double)
 member VoxClip.Core.Domain.Frames.MeshPoint :: method public set_Z(double)
+member VoxClip.Core.Domain.Frames.OcrWordBox :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Frames.OcrWordBox :: method public .ctor(double,double,double,double)
+member VoxClip.Core.Domain.Frames.OcrWordBox :: method public Deconstruct(double&,double&,double&,double&)
+member VoxClip.Core.Domain.Frames.OcrWordBox :: method public Equals(VoxClip.Core.Domain.Frames.OcrWordBox)
+member VoxClip.Core.Domain.Frames.OcrWordBox :: method public Equals(object)
+member VoxClip.Core.Domain.Frames.OcrWordBox :: method public GetHashCode()
+member VoxClip.Core.Domain.Frames.OcrWordBox :: method public ToString()
+member VoxClip.Core.Domain.Frames.OcrWordBox :: method public get_Height()
+member VoxClip.Core.Domain.Frames.OcrWordBox :: method public get_Width()
+member VoxClip.Core.Domain.Frames.OcrWordBox :: method public get_X()
+member VoxClip.Core.Domain.Frames.OcrWordBox :: method public get_Y()
+member VoxClip.Core.Domain.Frames.OcrWordBox :: method public op_Equality(VoxClip.Core.Domain.Frames.OcrWordBox,VoxClip.Core.Domain.Frames.OcrWordBox)
+member VoxClip.Core.Domain.Frames.OcrWordBox :: method public op_Inequality(VoxClip.Core.Domain.Frames.OcrWordBox,VoxClip.Core.Domain.Frames.OcrWordBox)
+member VoxClip.Core.Domain.Frames.OcrWordBox :: method public set_Height(double)
+member VoxClip.Core.Domain.Frames.OcrWordBox :: method public set_Width(double)
+member VoxClip.Core.Domain.Frames.OcrWordBox :: method public set_X(double)
+member VoxClip.Core.Domain.Frames.OcrWordBox :: method public set_Y(double)
 member VoxClip.Core.Domain.Frames.OpeningFrame :: field public QualityMargin
 member VoxClip.Core.Domain.Frames.OpeningFrame :: field public StartTolerance
 member VoxClip.Core.Domain.Frames.OpeningFrame :: method internal IsOpenLook(VoxClip.Core.Domain.Frames.FrameObservation,System.Nullable`1<double>)
@@ -7065,6 +7127,81 @@ member VoxClip.Core.Domain.Frames.OpeningFrameChoice :: method public op_Equalit
 member VoxClip.Core.Domain.Frames.OpeningFrameChoice :: method public op_Inequality(VoxClip.Core.Domain.Frames.OpeningFrameChoice,VoxClip.Core.Domain.Frames.OpeningFrameChoice)
 member VoxClip.Core.Domain.Frames.OpeningFrameChoice :: method public set_Shift(double)
 member VoxClip.Core.Domain.Frames.OpeningFrameChoice :: method public set_Time(double)
+member VoxClip.Core.Domain.Frames.QuadFinder :: field private Ignored
+member VoxClip.Core.Domain.Frames.QuadFinder :: field private classes
+member VoxClip.Core.Domain.Frames.QuadFinder :: field private compact
+member VoxClip.Core.Domain.Frames.QuadFinder :: field private counts
+member VoxClip.Core.Domain.Frames.QuadFinder :: field private gradientX
+member VoxClip.Core.Domain.Frames.QuadFinder :: field private gradientY
+member VoxClip.Core.Domain.Frames.QuadFinder :: field private grey
+member VoxClip.Core.Domain.Frames.QuadFinder :: field private height
+member VoxClip.Core.Domain.Frames.QuadFinder :: field private labels
+member VoxClip.Core.Domain.Frames.QuadFinder :: field private parent
+member VoxClip.Core.Domain.Frames.QuadFinder :: field private points
+member VoxClip.Core.Domain.Frames.QuadFinder :: field private regionBoxes
+member VoxClip.Core.Domain.Frames.QuadFinder :: field private rowMax
+member VoxClip.Core.Domain.Frames.QuadFinder :: field private rowMin
+member VoxClip.Core.Domain.Frames.QuadFinder :: field private slots
+member VoxClip.Core.Domain.Frames.QuadFinder :: field private smooth
+member VoxClip.Core.Domain.Frames.QuadFinder :: field private sums
+member VoxClip.Core.Domain.Frames.QuadFinder :: field private width
+member VoxClip.Core.Domain.Frames.QuadFinder :: method internal Enclosing(System.Collections.Generic.IReadOnlyList`1<System.ValueTuple`2<long,long>>)
+member VoxClip.Core.Domain.Frames.QuadFinder :: method internal Rectangular(System.Collections.Generic.IReadOnlyList`1<System.ValueTuple`2<double,double>>)
+member VoxClip.Core.Domain.Frames.QuadFinder :: method private Area(System.Collections.Generic.IReadOnlyList`1<System.ValueTuple`2<double,double>>)
+member VoxClip.Core.Domain.Frames.QuadFinder :: method private Area(System.Collections.Generic.List`1<System.ValueTuple`2<long,long>>)
+member VoxClip.Core.Domain.Frames.QuadFinder :: method private Cross(System.ValueTuple`2<long,long>,System.ValueTuple`2<long,long>,System.ValueTuple`2<long,long>)
+member VoxClip.Core.Domain.Frames.QuadFinder :: method private Gradients()
+member VoxClip.Core.Domain.Frames.QuadFinder :: method private Hull(System.Span`1<long>)
+member VoxClip.Core.Domain.Frames.QuadFinder :: method private IsClockwise(System.Collections.Generic.IReadOnlyList`1<System.ValueTuple`2<double,double>>)
+member VoxClip.Core.Domain.Frames.QuadFinder :: method private IsEdge(int)
+member VoxClip.Core.Domain.Frames.QuadFinder :: method private Label()
+member VoxClip.Core.Domain.Frames.QuadFinder :: method private Length(System.ValueTuple`2<double,double>,System.ValueTuple`2<double,double>)
+member VoxClip.Core.Domain.Frames.QuadFinder :: method private Normalised(VoxClip.Core.Domain.Frames.QuadFinder+Candidate)
+member VoxClip.Core.Domain.Frames.QuadFinder :: method private Outlines(System.Collections.Generic.List`1<VoxClip.Core.Domain.Frames.QuadFinder+Candidate>)
+member VoxClip.Core.Domain.Frames.QuadFinder :: method private Prepare(int,int)
+member VoxClip.Core.Domain.Frames.QuadFinder :: method private Quad(int)
+member VoxClip.Core.Domain.Frames.QuadFinder :: method private Root(int)
+member VoxClip.Core.Domain.Frames.QuadFinder :: method private Run()
+member VoxClip.Core.Domain.Frames.QuadFinder :: method private Same(VoxClip.Core.Domain.Effects.ClipEffectRect,VoxClip.Core.Domain.Effects.ClipEffectRect)
+member VoxClip.Core.Domain.Frames.QuadFinder :: method private Smooth()
+member VoxClip.Core.Domain.Frames.QuadFinder :: method private Support(System.ValueTuple`2<double,double>,System.ValueTuple`2<double,double>)
+member VoxClip.Core.Domain.Frames.QuadFinder :: method public .ctor()
+member VoxClip.Core.Domain.Frames.QuadFinder :: method public Find(System.ReadOnlySpan`1<byte>,int,int)
+member VoxClip.Core.Domain.Frames.QuadFinder :: method public Find(VoxClip.Core.Domain.Captions.PixelBuffer)
+member VoxClip.Core.Domain.Frames.QuadFinder+Candidate :: method private .ctor(VoxClip.Core.Domain.Frames.QuadFinder+Candidate)
+member VoxClip.Core.Domain.Frames.QuadFinder+Candidate :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Frames.QuadFinder+Candidate :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Frames.QuadFinder+Candidate :: method public .ctor(System.ValueTuple`2<double,double>[],double,double,VoxClip.Core.Domain.Effects.ClipEffectRect)
+member VoxClip.Core.Domain.Frames.QuadFinder+Candidate :: method public Deconstruct(System.ValueTuple`2<double,double>[]&,double&,double&,VoxClip.Core.Domain.Effects.ClipEffectRect&)
+member VoxClip.Core.Domain.Frames.QuadFinder+Candidate :: method public Equals(VoxClip.Core.Domain.Frames.QuadFinder+Candidate)
+member VoxClip.Core.Domain.Frames.QuadFinder+Candidate :: method public Equals(object)
+member VoxClip.Core.Domain.Frames.QuadFinder+Candidate :: method public GetHashCode()
+member VoxClip.Core.Domain.Frames.QuadFinder+Candidate :: method public ToString()
+member VoxClip.Core.Domain.Frames.QuadFinder+Candidate :: method public get_Area()
+member VoxClip.Core.Domain.Frames.QuadFinder+Candidate :: method public get_Box()
+member VoxClip.Core.Domain.Frames.QuadFinder+Candidate :: method public get_Confidence()
+member VoxClip.Core.Domain.Frames.QuadFinder+Candidate :: method public get_Corners()
+member VoxClip.Core.Domain.Frames.QuadFinder+Candidate :: method public op_Equality(VoxClip.Core.Domain.Frames.QuadFinder+Candidate,VoxClip.Core.Domain.Frames.QuadFinder+Candidate)
+member VoxClip.Core.Domain.Frames.QuadFinder+Candidate :: method public op_Inequality(VoxClip.Core.Domain.Frames.QuadFinder+Candidate,VoxClip.Core.Domain.Frames.QuadFinder+Candidate)
+member VoxClip.Core.Domain.Frames.QuadFinder+Candidate :: method public set_Area(double)
+member VoxClip.Core.Domain.Frames.QuadFinder+Candidate :: method public set_Box(VoxClip.Core.Domain.Effects.ClipEffectRect)
+member VoxClip.Core.Domain.Frames.QuadFinder+Candidate :: method public set_Confidence(double)
+member VoxClip.Core.Domain.Frames.QuadFinder+Candidate :: method public set_Corners(System.ValueTuple`2<double,double>[])
+member VoxClip.Core.Domain.Frames.QuadFinderSettings :: field public DuplicateReach
+member VoxClip.Core.Domain.Frames.QuadFinderSettings :: field public EdgeThreshold
+member VoxClip.Core.Domain.Frames.QuadFinderSettings :: field public MaximumAspectRatio
+member VoxClip.Core.Domain.Frames.QuadFinderSettings :: field public MaximumCandidates
+member VoxClip.Core.Domain.Frames.QuadFinderSettings :: field public MaximumObservations
+member VoxClip.Core.Domain.Frames.QuadFinderSettings :: field public MinimumAspectRatio
+member VoxClip.Core.Domain.Frames.QuadFinderSettings :: field public MinimumConfidence
+member VoxClip.Core.Domain.Frames.QuadFinderSettings :: field public MinimumFill
+member VoxClip.Core.Domain.Frames.QuadFinderSettings :: field public MinimumSize
+member VoxClip.Core.Domain.Frames.QuadFinderSettings :: field public QuadratureTolerance
+member VoxClip.Core.Domain.Frames.QuadFinderSettings :: field public SupportDirection
+member VoxClip.Core.Domain.Frames.QuadFinderSettings :: field public SupportReach
+member VoxClip.Core.Domain.Frames.QuadFinderSettings :: field public WorkingLongSide
+member VoxClip.Core.Domain.Frames.QuadFinderSettings :: method private .cctor()
+member VoxClip.Core.Domain.Frames.QuadFinderSettings :: method public get_Levels()
 member VoxClip.Core.Domain.Frames.RotatedCrop :: field public Expansion
 member VoxClip.Core.Domain.Frames.RotatedCrop :: field public Size
 member VoxClip.Core.Domain.Frames.RotatedCrop :: method private .ctor(VoxClip.Core.Domain.Frames.RotatedCrop)
@@ -18278,17 +18415,26 @@ type VoxClip.Core.Domain.Frames.FrameModelCatalog
 type VoxClip.Core.Domain.Frames.FrameModelFile
 type VoxClip.Core.Domain.Frames.FrameObservation
 type VoxClip.Core.Domain.Frames.FramePoint
+type VoxClip.Core.Domain.Frames.FrameQuad
 type VoxClip.Core.Domain.Frames.FrameQualityGates
 type VoxClip.Core.Domain.Frames.FrameRect
 type VoxClip.Core.Domain.Frames.FrameSample
 type VoxClip.Core.Domain.Frames.FrameSampling
 type VoxClip.Core.Domain.Frames.FrameScreen
+type VoxClip.Core.Domain.Frames.FrameScreenFindings
+type VoxClip.Core.Domain.Frames.FrameScreenScan
 type VoxClip.Core.Domain.Frames.FrameScreens
 type VoxClip.Core.Domain.Frames.FrameSheet
 type VoxClip.Core.Domain.Frames.FrameSheetFrame
+type VoxClip.Core.Domain.Frames.FrameTextLines
+type VoxClip.Core.Domain.Frames.IFrameTextLines
 type VoxClip.Core.Domain.Frames.MeshPoint
+type VoxClip.Core.Domain.Frames.OcrWordBox
 type VoxClip.Core.Domain.Frames.OpeningFrame
 type VoxClip.Core.Domain.Frames.OpeningFrameChoice
+type VoxClip.Core.Domain.Frames.QuadFinder
+type VoxClip.Core.Domain.Frames.QuadFinder+Candidate
+type VoxClip.Core.Domain.Frames.QuadFinderSettings
 type VoxClip.Core.Domain.Frames.RotatedCrop
 type VoxClip.Core.Domain.Frames.YuNetDecoder
 type VoxClip.Core.Domain.Frames.YuNetFace

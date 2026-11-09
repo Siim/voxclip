@@ -2550,10 +2550,17 @@ member VoxClip.App.Services.WindowEffects :: method public Dispose()
 member VoxClip.App.Services.WindowsAskClaudeVision :: field private LongSide
 member VoxClip.App.Services.WindowsAskClaudeVision :: field private faces
 member VoxClip.App.Services.WindowsAskClaudeVision :: field private reader
-member VoxClip.App.Services.WindowsAskClaudeVision :: method private Packed(VoxClip.Core.Domain.Captions.PixelBuffer)
 member VoxClip.App.Services.WindowsAskClaudeVision :: method private Rect(double,double,double,double,int,int)
 member VoxClip.App.Services.WindowsAskClaudeVision :: method public .ctor(System.Func`1<System.Nullable`1<System.ValueTuple`3<string,int,VoxClip.Core.Domain.Shared.PixelSize>>>)
 member VoxClip.App.Services.WindowsAskClaudeVision :: method public ObserveAsync(double,bool,System.Threading.CancellationToken)
+member VoxClip.App.Services.WindowsFrameText :: field private created
+member VoxClip.App.Services.WindowsFrameText :: field private engine
+member VoxClip.App.Services.WindowsFrameText :: field private gate
+member VoxClip.App.Services.WindowsFrameText :: method internal LineBox(Windows.Media.Ocr.OcrLine,int,int)
+member VoxClip.App.Services.WindowsFrameText :: method internal Packed(VoxClip.Core.Domain.Captions.PixelBuffer)
+member VoxClip.App.Services.WindowsFrameText :: method public .ctor()
+member VoxClip.App.Services.WindowsFrameText :: method public Dispose()
+member VoxClip.App.Services.WindowsFrameText :: method public LinesAsync(VoxClip.Core.Domain.Captions.PixelBuffer,System.Threading.CancellationToken)
 member VoxClip.App.Services.WorkflowSpendCache :: field private Changed
 member VoxClip.App.Services.WorkflowSpendCache :: field private serial
 member VoxClip.App.Services.WorkflowSpendCache :: method internal RefreshAsync(VoxClip.Core.Services.Project.DataLocations)
@@ -8040,6 +8047,7 @@ type VoxClip.App.Services.VoiceStatementCapture
 type VoxClip.App.Services.Waveform
 type VoxClip.App.Services.WindowEffects
 type VoxClip.App.Services.WindowsAskClaudeVision
+type VoxClip.App.Services.WindowsFrameText
 type VoxClip.App.Services.WorkflowSpendCache
 type VoxClip.App.SettingsWindow
 type VoxClip.App.ViewModels.AccessibilityEffects

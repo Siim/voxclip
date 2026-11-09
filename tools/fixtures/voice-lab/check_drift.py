@@ -63,6 +63,7 @@ EXACT = ['shared/fixtures/voice-lab/pace-cases.json', 'shared/fixtures/voice-lab
          'shared/fixtures/clip-frames/clip-frames-project.voxclip', 'shared/fixtures/clip-frames/clip-frames-wire-cases.json',
          'shared/fixtures/clip-frames/face-facing-cases.json', 'shared/fixtures/clip-frames/decision-cases.json',
          'shared/fixtures/clip-frames/frame-face-fields-cases.json',
+         'shared/fixtures/clip-frames/frame-quad-cases.json',
          'shared/fixtures/autopilot/plan-frames-cases.json', 'shared/fixtures/autopilot/plan-validation-cases.json',
          'shared/fixtures/autopilot/plan-v2-cases.json', 'shared/fixtures/autopilot/plan-tone-cases.json',
          'shared/fixtures/clip-render/clip-render-cases.json',
@@ -127,6 +128,8 @@ def main():
     subprocess.run([sys.executable, str(root / "tools/fixtures/clip-frames/generate_frame_decisions.py")], check=True)
     # The Windows face fields from the two face models' outputs (ADR-R48 Windows), replayed by the C# Core; pure IEEE, so byte-exact.
     subprocess.run([sys.executable, str(root / "tools/fixtures/clip-frames/generate_face_fields.py")], check=True)
+    # The Windows quad finder's drawn frames and screen scans (ADR-R48 Windows, W4); integers and Fractions only, so byte-exact.
+    subprocess.run([sys.executable, str(root / "tools/fixtures/clip-frames/generate_frame_quads.py")], check=True)
     subprocess.run([sys.executable, str(root / "tools/fixtures/autopilot/generate_plan_frames.py")], check=True)
     # The clip style's tone (doc/design.md section 6.6) and the Rewrite tone catalog (section 6.3.1).
     subprocess.run([sys.executable, str(root / "tools/schemas/generate_clip_style_tone_schema.py")], check=True)

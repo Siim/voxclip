@@ -130,3 +130,5 @@ small frames may be sent to the chosen AI. The cover is saved as `cover.jpg` nex
   calibration and the licence decision) and the pure maths from their outputs to these fields (W2, track/v2-win-frames-w2):
   eye ratios mapped to Vision's scale, yaw and pitch mapped to revision 3's (pitch negative with the head tipped back), and a
   gated capture quality, with provisional constants in the catalogue until W7.
+- **Windows** sees text and screens with `Windows.Media.Ocr` line boxes plus a pure quad finder on Vision's rectangle settings, into
+  `FrameScreens.detect`, and skips both on opening-scan frames (W4, track/v2-win-frames-w4); the PP-OCRv4 fallback waits for W7's screen evaluation.
