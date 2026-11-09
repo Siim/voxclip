@@ -38,6 +38,9 @@ import Testing
         let shared = try SharedResources.locate()
         let fixture = try DemoEditing.loadFixture(shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip"))
         let all = DebugRewrite.proposalScenes(app: app, fixture: fixture)
+        // As the scenes were made: Voice Lab on, so the phrase in your voice can be reviewed and voiced at Keep.
+        app.settings.values["voiceLab.enabled"] = .bool(true)
+        app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
         let scene = try #require(all.first { $0.name == name })
         let editor = try #require(scene.editor)
         let session = try #require(editor.openRewrite)
@@ -69,6 +72,34 @@ import Testing
         editor.focusNextChange(1)
         let next = try #require(editor.proposalDisplay?.focused)
         #expect(next != focused && editor.rewriteThreadDisplay?.ordinal == next && editor.rewriteThreadSlot(editor.proposalDisplay)?.ordinal == next)
+    }
+
+    /// The thread is in the text's flow: the paragraph keeps its height free under the change, at the text column, also
+    /// when it is the last paragraph (the document grows), and Esc gives the room back.
+    @Test func theThreadTakesRoomInTheTranscriptsFlowAndFoldingGivesItBack() throws {
+        let (editor, _, _, scenes) = try scene()
+        defer { scenes.forEach { $0.editor?.close() } }
+        let pane = try TranscriptPane(model: editor, size: NSSize(width: 652, height: 900))
+        defer { pane.close() }
+        func used() -> Double { Double(pane.text.textLayoutManager?.usageBoundsForTextContainer.height ?? 0) }
+        // The transcript as it reads with the thread folded, then with it open.
+        let ordinal = try #require(editor.proposalDisplay?.focused)
+        editor.foldRewriteThread()
+        pane.update()
+        let bare = used()
+        editor.focusChange(ordinal)
+        pane.update()
+        pane.text.layoutThreadNow()
+        pane.layout()
+        let thread = try #require(pane.text.threadAuditView)
+        let anchor = try #require(pane.renderer.threadAnchor)
+        let line = try #require(pane.text.lineBox(atCharacter: anchor))
+        #expect(thread.frame.minY >= line.maxY && abs(thread.frame.minX - pane.text.textContainerOrigin.x) < 0.5 && thread.frame.height > 60)
+        #expect(used() >= bare + Double(thread.frame.height) - 1 && Double(pane.text.textContainerOrigin.y) + used() >= Double(thread.frame.maxY) - 1,
+                "the text grows by the thread's height (\(bare) -> \(used()), thread \(thread.frame))")
+        editor.foldRewriteThread()
+        pane.update()
+        #expect(!pane.text.threadVisible && pane.renderer.threadAnchor == nil && abs(used() - bare) < 1, "Esc gives the room back (\(used()))")
     }
 
     @Test func theRequestCarriesTheRecordedWordsEveryVersionAndEveryMessageInOrder() async throws {

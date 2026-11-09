@@ -265,6 +265,8 @@ import VoxClipCore
         var lastWord: Int? = nil
         var rewrites: [RewriteSmokeReply]
         var fits: [RewriteSmokeFit] = []
+        /// The Rewrite thread's scripted replies, JSON objects in order (DebugRewriteSmokeThread.swift).
+        var followups: [String] = []
         var voice = RewriteSmokeVoiceScript()
         /// The sentence (0-based) a guest speaks, in a 200 Hz voice the scripted voice check hears as someone else; the
         /// transcript then labels every word's speaker.
@@ -590,7 +592,7 @@ import VoxClipCore
             editor.mediaResolved = true; editor.refresh()
             editor.waveform = WaveformData(fine: envelope.levels)
             self.editor = editor
-            let connector = RewriteSmokeConnector(rewrites: fixture.rewrites, fits: fixture.fits)
+            let connector = RewriteSmokeConnector(rewrites: fixture.rewrites, fits: fixture.fits, followups: fixture.followups)
             self.connector = connector
             let prices = try VoiceLabPriceCatalog(data: Data(contentsOf: shared.root.appendingPathComponent("catalog/voice-lab.json")))
             let last = fixture.lastWord ?? (project.transcript?.words.count ?? 1) - 1
@@ -1362,7 +1364,7 @@ import VoxClipCore
         // Built step by step: a long `+` chain of scenario lists strains hosted Xcode 26's type checker.
         let groups: [[Definition]] = [ownTakeScenarios, lipsyncScenarios, guardScenarios, fitScenarios, rebuildScenarios, makeItScenarios, framesScenarios,
                                       askClaudeScenarios, clipControlsScenarios, toneScenarios, claudeModeScenarios, videoVoiceScenarios,
-                                      wholeClipScenarios]
+                                      wholeClipScenarios, threadScenarios]
         for group in groups { all += group }
         return all
     }

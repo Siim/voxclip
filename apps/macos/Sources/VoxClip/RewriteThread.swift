@@ -258,6 +258,8 @@ extension EditorModel {
                 rewriteThread.error = "The new words couldn't be put in the text. Your edits are saved."
                 return
             }
+            // Claude's words, not a hand edit: the Rewrite reviews and voices them at Keep.
+            try? openRewrite?.acceptThreadWords(key.ordinal, text: thread.versions[target].text)
             thread.current = target
         }
         thread.turns += [.init(speaker: .you, text: message), .init(speaker: .claude, text: note)]
@@ -277,6 +279,7 @@ extension EditorModel {
         guard let target = rewriteThreadTarget, var thread = rewriteThread(target.key.ordinal) else { return false }
         let next = thread.current + step
         guard thread.versions.indices.contains(next), editChange(target.key.ordinal, text: thread.versions[next].text) else { return false }
+        try? openRewrite?.acceptThreadWords(target.key.ordinal, text: thread.versions[next].text)
         thread.current = next
         // Words equal to the recorded ones leave nothing to change: the edit left the change out, and its thread goes with it.
         guard var proposal, proposal.id == target.key.proposal, proposal[target.key.ordinal]?.state == .pending else { return true }

@@ -104,6 +104,7 @@ import VoxClipCore
     static func showProposal(_ model: EditorModel, coordinator: Coordinator, in text: TranscriptNSTextView) {
         text.updateRotors(proposal: coordinator.content?.proposal != nil)
         text.updateProposalButtons()
+        text.updateThread()
         guard let proposal = model.proposal, coordinator.revealRevision != proposal.revealRevision else { return }
         coordinator.revealRevision = proposal.revealRevision
         if let focused = coordinator.content?.proposal?.focused, let range = coordinator.renderer.changeRange(focused) {

@@ -26,6 +26,15 @@ public struct VoiceLabDiffHunk: Sendable, Equatable {
     public let sourceEndIndex: Int
     public let anchorSeconds: Double?
     public var audioTags: [VoiceLabAudioTag] = []
+
+    /// The memberwise initializer, public: the App builds a change's hunk from its Rewrite thread's words
+    /// (`RewriteSession.acceptThreadWords`, design.md §6.3 "Talk back to Claude").
+    public init(kind: VoiceLabDiffHunkKind, sourceWordIds: [String], newTokens: [String], correctedTexts: [String], absorbedItemIds: [String],
+                bridgeWordIds: [String], sourceStartIndex: Int, sourceEndIndex: Int, anchorSeconds: Double?, audioTags: [VoiceLabAudioTag] = []) {
+        self.kind = kind; self.sourceWordIds = sourceWordIds; self.newTokens = newTokens; self.correctedTexts = correctedTexts
+        self.absorbedItemIds = absorbedItemIds; self.bridgeWordIds = bridgeWordIds; self.sourceStartIndex = sourceStartIndex
+        self.sourceEndIndex = sourceEndIndex; self.anchorSeconds = anchorSeconds; self.audioTags = audioTags
+    }
 }
 
 public struct VoiceLabWordDiffResult: Sendable, Equatable {

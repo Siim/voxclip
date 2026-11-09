@@ -125,6 +125,9 @@ struct TranscriptParagraphContent: Equatable {
     /// The room under the paragraph for the focused change's Rewrite thread (design.md §6.3): added to its paragraph
     /// spacing, so the thread sits in the transcript's flow and the paragraphs after it move down.
     var threadGap: Double = 0
+    /// The thread's paragraph is the take's last: it ends with a line break, since TextKit 2 adds no paragraph spacing
+    /// after a document's last paragraph.
+    var threadEndsDocument = false
 }
 
 /// The transcript's spans by display paragraph (impl-plan §3.1). Each paragraph keeps its
@@ -363,7 +366,9 @@ struct TranscriptAppearance: Equatable {
     /// The last character of the paragraph the thread stands under, whose line it is placed from.
     var threadAnchor: Int? {
         guard let index = threadParagraph, paragraphs.indices.contains(index), blocks.indices.contains(index) else { return nil }
-        return paragraphs[index].offset + max(0, blocks[index].length - 1)
+        // Before the line break a last paragraph ends with, which TextKit lays out on the line after it.
+        let trailing = blocks[index].content.threadEndsDocument ? 2 : 1
+        return paragraphs[index].offset + max(0, blocks[index].length - trailing)
     }
     /// One paragraph style per text size for every transcript in the process. Foundation
     /// shares equal attribute dictionaries between attributed strings, so with a new, equal
@@ -634,6 +639,7 @@ struct TranscriptAppearance: Equatable {
         if let slot = model.rewriteThreadSlot(proposal),
            let index = result.indices.last(where: { result[$0].pieces.contains { $0.change?.ordinal == slot.ordinal && $0.kind != .spacer } }) {
             result[index].threadGap = slot.height + Self.threadTop
+            result[index].threadEndsDocument = index == result.count - 1
             threadParagraph = index
         }
         changeEnds = [:]
@@ -724,6 +730,7 @@ struct TranscriptAppearance: Equatable {
             }
             if let toolTip = piece.toolTip { value.addAttribute(.toolTip, value: toolTip, range: range) }
         }
+        if content.threadEndsDocument { value.append(NSAttributedString(string: "\n", attributes: styles.body)) }
         if content.threadGap > 0, let base = styles.body[.paragraphStyle] as? NSParagraphStyle,
            let style = base.mutableCopy() as? NSMutableParagraphStyle {
             // One style over the whole paragraph, so the storage's paragraph-style fixing has nothing to set again.
