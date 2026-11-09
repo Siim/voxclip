@@ -1137,6 +1137,7 @@ member VoxClip.Media.Frames.FrameClipAnalysis :: method public set_Sheet(VoxClip
 member VoxClip.Media.Frames.FrameJpeg :: field public Quality
 member VoxClip.Media.Frames.FrameJpeg :: method private Failed()
 member VoxClip.Media.Frames.FrameJpeg :: method public Encode(VoxClip.Core.Domain.Captions.PixelBuffer,int)
+member VoxClip.Media.Frames.FrameJpeg :: method public Encode(VoxClip.Core.Domain.Captions.PixelBuffer,int,int)
 member VoxClip.Media.Frames.FrameJpeg :: method public Size(byte[])
 member VoxClip.Media.Frames.FrameObservationsFound :: method private .ctor(VoxClip.Media.Frames.FrameObservationsFound)
 member VoxClip.Media.Frames.FrameObservationsFound :: method private PrintMembers(System.Text.StringBuilder)
@@ -1570,7 +1571,9 @@ member VoxClip.Media.Pipeline.Exporter :: field private frameObserver
 member VoxClip.Media.Pipeline.Exporter :: field private recordFailure
 member VoxClip.Media.Pipeline.Exporter :: field private runExport
 member VoxClip.Media.Pipeline.Exporter :: method internal .ctor(VoxClip.Core.Services.Media.IFrameComposer,VoxClip.Core.Services.Media.IEncoderProbe,System.Func`5<VoxClip.Core.Domain.Shared.ExportJob,string,System.IProgress`1<VoxClip.Core.Domain.Shared.ExportProgress>,System.Threading.CancellationToken,VoxClip.Core.Domain.Shared.ExportResult>,System.Action`2<VoxClip.Core.Domain.Shared.EncoderCacheKey,string>,VoxClip.Media.Pipeline.ExportFrameObserver)
+member VoxClip.Media.Pipeline.Exporter :: method internal CoverImage(VoxClip.Core.Domain.Captions.PixelBuffer)
 member VoxClip.Media.Pipeline.Exporter :: method internal EditedTime(VoxClip.Core.Domain.Shared.ComposeSnapshot,long,double)
+member VoxClip.Media.Pipeline.Exporter :: method internal EmbedCover(byte[],string,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.Exporter :: method internal Measure(VoxClip.Media.Audio.StereoRead,long,int,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.Exporter :: method internal Plan(VoxClip.Core.Domain.Loudness.SocialLoudnessMeasurement,System.Func`2<double,System.Nullable`1<double>>)
 member VoxClip.Media.Pipeline.Exporter :: method internal PlanLoudness(VoxClip.Core.Domain.Shared.ComposeSnapshot,VoxClip.Media.VoiceLab.VoiceLabRenderSession,VoxClip.Media.Audio.MusicBed,long,int,System.Threading.CancellationToken)
@@ -1647,6 +1650,10 @@ member VoxClip.Media.Pipeline.IExportFile :: method public get_Video()
 member VoxClip.Media.Pipeline.IPreviewVideoWorker :: method public ReadAsync(double,bool,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.IPreviewVideoWorker :: method public get_Position()
 member VoxClip.Media.Pipeline.IPreviewVideoWorker :: method public get_Ready()
+member VoxClip.Media.Pipeline.Mp4CoverEmbed :: field internal Chunk
+member VoxClip.Media.Pipeline.Mp4CoverEmbed :: field internal MovieLimit
+member VoxClip.Media.Pipeline.Mp4CoverEmbed :: method internal Embed(byte[],string,System.Threading.CancellationToken)
+member VoxClip.Media.Pipeline.Mp4CoverEmbed :: method private Copy(System.IO.FileStream,ulong,ulong,System.IO.FileStream,System.Threading.CancellationToken)
 member VoxClip.Media.Pipeline.OutputSafety :: field internal BeforePartialOpen
 member VoxClip.Media.Pipeline.OutputSafety :: method internal CreatePartial(string)
 member VoxClip.Media.Pipeline.OutputSafety :: method internal DeletePartial(string)
@@ -1886,8 +1893,8 @@ member VoxClip.Media.Speech.WhisperRunMetrics :: method public set_DetectionSeco
 member VoxClip.Media.Speech.WhisperRunMetrics :: method public set_ModelLoadSeconds(double)
 member VoxClip.Media.Speech.WhisperRunMetrics :: method public set_VadSeconds(double)
 member VoxClip.Media.Speech.WhisperTokens :: method internal Map(Whisper.net.SegmentData,double,double,int,bool,bool,VoxClip.Core.Services.Logging.ILog,System.Action)
-member VoxClip.Media.Thumbnails.CurrentFrames :: method public ReadAsync(string,double,int,VoxClip.Core.Domain.Shared.PixelSize,VoxClip.Core.Domain.Shared.PixelSize,System.Threading.CancellationToken,bool)
-member VoxClip.Media.Thumbnails.CurrentFrames :: method public Transform(VoxClip.Core.Domain.Captions.PixelBuffer,int,VoxClip.Core.Domain.Shared.PixelSize,System.Nullable`1<VoxClip.Core.Domain.Shared.PixelSize>,bool)
+member VoxClip.Media.Thumbnails.CurrentFrames :: method public ReadAsync(string,double,int,VoxClip.Core.Domain.Shared.PixelSize,VoxClip.Core.Domain.Shared.PixelSize,System.Threading.CancellationToken,bool,VoxClip.Core.Domain.Clips.ProjectClipControls)
+member VoxClip.Media.Thumbnails.CurrentFrames :: method public Transform(VoxClip.Core.Domain.Captions.PixelBuffer,int,VoxClip.Core.Domain.Shared.PixelSize,System.Nullable`1<VoxClip.Core.Domain.Shared.PixelSize>,bool,VoxClip.Core.Domain.Clips.ProjectClipControls)
 member VoxClip.Media.Thumbnails.PosterFrames :: method private Encode(VoxClip.Core.Domain.Captions.PixelBuffer,int,int,int)
 member VoxClip.Media.Thumbnails.PosterFrames :: method private Failed()
 member VoxClip.Media.Thumbnails.PosterFrames :: method private Read(string,System.Collections.Generic.IReadOnlyList`1<double>,int,int,int,System.Threading.CancellationToken)
@@ -3111,6 +3118,7 @@ type VoxClip.Media.Pipeline.FrameComposer+ScaleState
 type VoxClip.Media.Pipeline.IContextDemoFrames
 type VoxClip.Media.Pipeline.IExportFile
 type VoxClip.Media.Pipeline.IPreviewVideoWorker
+type VoxClip.Media.Pipeline.Mp4CoverEmbed
 type VoxClip.Media.Pipeline.OutputSafety
 type VoxClip.Media.Pipeline.OutputSafety+FileInformation
 type VoxClip.Media.Pipeline.PreviewEngine
