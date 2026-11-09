@@ -48,26 +48,35 @@ extension DebugRewriteSmoke.Harness {
         let fal = FalShortResult(http: http)
         let app = self.app
         editor.lipsyncSmoke = { request, window, recordID, model, mayPay, progress in
-            let paid = app.locations.root.appendingPathComponent("VoiceLab", isDirectory: true)
-            let scratch = app.locations.root.appendingPathComponent("VoiceLabScratch", isDirectory: true)
-            try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-            let provider = FalLipsyncProvider(keys: RewriteSmokeFalSecret(), prices: catalog, http: http, logger: app.log,
-                                              spend: VoiceLabSpendLedger(locations: app.locations), now: { Date() },
-                                              monotonic: VoiceLabQuoteClock.continuousSource(), sleep: { _ in })
-            var run = LipsyncRun(provider: provider, consentStore: VoiceConsentStore(locations: app.locations), paidRoot: paid, scratchRoot: scratch)
-            // The fixture's picture is synthetic: the face check is the one stand-in on this Mac.
-            run.detector = { _ in 0.2 }
-            do {
-                let result = try await run.execute(request: request, window: window, recordID: recordID, model: model.lipsyncModel,
-                                                   mayPay: mayPay, onProgress: progress)
-                fal.imports.append((window.seconds(sampleRate: request.timeline.sampleRate), result.asset.durationSeconds, result.recovered))
-                return result
-            } catch {
-                fal.failures.append(RewriteSession.failureKind(WholeClipRevoiceSession.cause(error)))
-                throw error
-            }
+            try await Self.smokeLipsync(app: app, catalog: catalog, fal: fal, request: request, window: window, recordID: recordID,
+                                        model: model, mayPay: mayPay, progress: progress)
         }
         return fal
+    }
+
+    /// One lip sync through the real run over the stood-in fal.ai, recorded in `fal`.
+    private static func smokeLipsync(app: AppModel, catalog: VoiceLabPriceCatalog, fal: FalShortResult, request: RenderRequest,
+                                     window: LipsyncRenderWindow, recordID: String, model: WholeClipRevoice.Lipsync, mayPay: Bool,
+                                     progress: @escaping @Sendable (Double?) async -> Void) async throws -> ImportedLipsyncResult {
+        let paid: URL = app.locations.root.appendingPathComponent("VoiceLab", isDirectory: true)
+        let scratch: URL = app.locations.root.appendingPathComponent("VoiceLabScratch", isDirectory: true)
+        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let spend = VoiceLabSpendLedger(locations: app.locations)
+        let provider = FalLipsyncProvider(keys: RewriteSmokeFalSecret(), prices: catalog, http: fal.http, logger: app.log, spend: spend,
+                                          now: { Date() }, monotonic: VoiceLabQuoteClock.continuousSource(), sleep: { _ in })
+        var run = LipsyncRun(provider: provider, consentStore: VoiceConsentStore(locations: app.locations), paidRoot: paid, scratchRoot: scratch)
+        // The fixture's picture is synthetic: the face check is the one stand-in on this Mac.
+        run.detector = { _ in 0.2 }
+        do {
+            let result = try await run.execute(request: request, window: window, recordID: recordID, model: model.lipsyncModel,
+                                               mayPay: mayPay, onProgress: progress)
+            let needed: Double = window.seconds(sampleRate: request.timeline.sampleRate)
+            fal.imports.append((needed, result.asset.durationSeconds, result.recovered))
+            return result
+        } catch {
+            fal.failures.append(RewriteSession.failureKind(WholeClipRevoiceSession.cause(error)))
+            throw error
+        }
     }
 }
 
