@@ -47,21 +47,41 @@ internal sealed unsafe class VideoDecoder : IDisposable
     internal PixelBuffer ReadAt(double sourceTime, bool exact, CancellationToken ct)
     {
         if (hasCurrent && (sourceTime < Position || sourceTime - Position > 2)) Seek(sourceTime);
-        if (!hasCurrent)
-        {
-            if (sourceTime > 2) decoder.Seek(sourceTime);
-            if (!Read(current, out var pts, ct)) throw new VoxClipException(VoxClipErrorCode.DecodeFailed, "VoxClip couldn't decode this video: the video contains no decoded frames. Your edits are saved.");
-            Position = pts; hasCurrent = true;
-            hasNext = Read(next, out nextPts, ct);
-        }
+        Prime(sourceTime, ct);
         var halfFrame = exact ? 0.5 / Math.Max(1, ffmpeg.av_q2d(decoder.Stream->avg_frame_rate)) : 0;
-        while (hasNext && (exact ? Position < sourceTime - halfFrame : nextPts <= sourceTime + 1e-9))
-        {
-            (current, next) = (next, current);
-            Position = nextPts;
-            hasNext = Read(next, out nextPts, ct);
-        }
-        return new(current.AsMemory(0, Width * Height * 4), Width, Height, Width * 4);
+        while (hasNext && (exact ? Position < sourceTime - halfFrame : nextPts <= sourceTime + 1e-9)) Advance(ct);
+        return Current;
+    }
+
+    /// <summary>The first frame from <paramref name="tolerance"/> seconds before <paramref name="sourceTime"/> on, as the Mac's
+    /// image generator returns a frame within its tolerance without decoding up to the time itself (the frame analyzer, ADR-R48).
+    /// The frame already decoded is kept while it lies within the tolerance; <see cref="Position"/> is the frame's own time.</summary>
+    internal PixelBuffer ReadNear(double sourceTime, double tolerance, CancellationToken ct)
+    {
+        tolerance = Math.Max(0, tolerance);
+        var earliest = sourceTime - tolerance;
+        if (hasCurrent && (sourceTime + tolerance < Position || earliest - Position > 2)) Seek(sourceTime);
+        Prime(sourceTime, ct);
+        while (hasNext && Position < earliest) Advance(ct);
+        return Current;
+    }
+
+    private PixelBuffer Current => new(current.AsMemory(0, Width * Height * 4), Width, Height, Width * 4);
+
+    private void Prime(double sourceTime, CancellationToken ct)
+    {
+        if (hasCurrent) return;
+        if (sourceTime > 2) decoder.Seek(sourceTime);
+        if (!Read(current, out var pts, ct)) throw new VoxClipException(VoxClipErrorCode.DecodeFailed, "VoxClip couldn't decode this video: the video contains no decoded frames. Your edits are saved.");
+        Position = pts; hasCurrent = true;
+        hasNext = Read(next, out nextPts, ct);
+    }
+
+    private void Advance(CancellationToken ct)
+    {
+        (current, next) = (next, current);
+        Position = nextPts;
+        hasNext = Read(next, out nextPts, ct);
     }
 
     internal void Seek(double sourceTime)

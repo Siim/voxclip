@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Windows, groundwork for VoxClip looking at your video's frames on your PC as the Mac does (faces, eyes, screens and small frames for Claude), with `voxclip-cli analyze-frames`; until the face models are installed it measures nothing and says so.
 - On Windows, groundwork for spotting phone and laptop screens in your video on your PC: text lines from Windows' own text recognition and a rectangle finder with the Mac's settings, so a phone showing only a few lines of text is found as a screen, as on the Mac (not switched on yet).
 - Revoice the Whole Clip now lip syncs 4K clips (they used to stop with "The job could not be completed" on every Try Again), keeps your new voice exactly as generated and plays the picture up to 1.2× faster when the voice is shorter, checks the picture can be matched before it says Fit, and says what actually failed when it stops.
 - Revoice the Whole Clip now fits the new voice to your clip as you edited it, with its cuts and tightened pauses, so a shorter voice gets natural pauses instead of padded words, and a reworded script is never voiced before it's checked to fit.

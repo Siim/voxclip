@@ -46,3 +46,14 @@ settings (size, aspect, skew, confidence, at most 6). `quads` lists what the fin
 `python3 tools/fixtures/clip-frames/generate_frame_quads.py` (check_drift.py runs it, exact: integers and Fractions only);
 `tools/schemas/validate.py` checks it against `shared/schemas/frame-quad-cases.schema.json`. C# `FrameQuadVectorTests`
 replays every case; there is no Mac twin, because the Mac reads Vision.
+
+`analyze-frames-cli-cases.json` (`voxclip-analyze-frames-cli-cases/1`, ADR-R48, Windows package W5) pins `voxclip-cli
+analyze-frames --json` across the twins. Each report case is a fabricated clip analysis (its words and word range, the source's
+video facts, the sentence frames and opening scan in the Mac's JSON shape, the sheet's image sizes and byte counts, and the
+whole-video pass's fields when it ran) and the exact bytes the command prints for it: sorted keys, unescaped slashes, Swift's
+number text (`1` for 1.0, `1.234e-05` below 1e-4) and one final LF. `numbers` pins that number text on its own. The decisions
+come from `generate_frame_decisions.py`, imported as it is; every face's centre has x = 0.5, so the cover's centring is exact
+whether a Core calls hypot or sqrt. Regenerate with `python3 tools/fixtures/clip-frames/generate_analyze_frames.py`
+(check_drift.py runs it, exact); `tools/schemas/validate.py` checks it against `shared/schemas/analyze-frames-cli-cases.schema.json`.
+Swift `CLIAnalyzeFramesVectorTests` (through `FrameAnalyzerCLI.report` and `CLIExecution.printed`) and C# `AnalyzeFramesVectorTests`
+(through `CliAnalyzeFrames.Report` and `FrameJson.MacText`) replay every case byte for byte.

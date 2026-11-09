@@ -224,7 +224,7 @@ internal static class CliApplication
         Flag(clips, "--dry-run", "Print rendered prompts without sending.");
         Stub(clips, "find-clips");
         // ✦ Claude does it all, headless (design §6.7, ai.md §16.12): Find Clips, then the top clips planned at once and each applied (and
-        // exported) as soon as its plan is ready. Rewrites and music are left for the app. Windows has no frame analyzer yet: no frames.
+        // exported) as soon as its plan is ready. Rewrites and music are left for the app. The frame analyzer isn't wired in yet (W6): no frames.
         var autopilot = Command(root, "autopilot", "Make the top clips of a video postable, as Claude mode does, and time each stage.");
         Add(autopilot, "--open", "Source media, or a project with a transcript.", true);
         Add(autopilot, "--connector", "Connector catalog id.", true);
@@ -246,6 +246,23 @@ internal static class CliApplication
                 validation.AddError("--count must be 1 to 12");
         });
         Stub(autopilot, "autopilot", openExport, prepareExport);
+        // The on-device frame analysis of one clip (ADR-R48), with the Mac's flags, JSON and exit codes. Without the face models it measures
+        // nothing and exits 7 (modelMissing).
+        var frames = Command(root, "analyze-frames", "Measure a clip's frames on this PC (faces, eyes, screens) without modifying the project.");
+        Add(frames, "--open", "Project file, or a media file with --transcript and --words.", true);
+        Add(frames, "--clip", "Saved clip ID (with a project).");
+        Add(frames, "--transcript", "Transcript JSON (fixture words) when --open is a media file.");
+        Add(frames, "--words", "With --transcript: the clip as first:last word indices.");
+        Flag(frames, "--video-pass", "First run the whole video's sentence-frame pass, as Claude mode does beside Find Clips, and time it, the clip's frames from it and its opening scan.");
+        Flag(frames, "--no-cache", "Analyze every frame again and leave the cache untouched.");
+        Add(frames, "--sheet-out", "Folder to write the frame sheet's JPEGs to.");
+        frames.Validators.Add(validation =>
+        {
+            if (CliAnalyzeFrames.UsageError(validation.GetValue<string?>("--clip"), validation.GetValue<string?>("--transcript"),
+                    validation.GetValue<string?>("--words")) is { } error)
+                validation.AddError(error);
+        });
+        Stub(frames, "analyze-frames");
         var test = Command(root, "llm-test", "Run the connector test.");
         Add(test, "--connector", "Connector catalog id.", true);
         Add(test, "--model", "Model id.");
@@ -307,7 +324,9 @@ internal static class CliApplication
             return Fail(result, "mediaMissing", "The input file cannot be found.", 3, name);
         var fields = await CliOperations.ExecuteAsync(name, result, ct, openExport, prepareExport).ConfigureAwait(false);
         fields["ok"] = true; fields["command"] = name; fields["version"] = Version;
-        if (result.GetValue(Json)) Console.Out.WriteLine(fields.ToJsonString());
+        // analyze-frames prints the Mac's bytes (sorted keys, Swift's numbers, one LF), and nothing without --json, as the Mac does.
+        if (name == "analyze-frames") { if (result.GetValue(Json)) Console.Out.Write(VoxClip.Core.Domain.Frames.FrameJson.MacText(fields) + "\n"); }
+        else if (result.GetValue(Json)) Console.Out.WriteLine(fields.ToJsonString());
         else if (name == "autopilot") { if (CliAutopilot.HumanOutput(fields) is { } timings) Console.Out.WriteLine(timings); }
         else if (name == "check") Console.Out.WriteLine(CliCheck.Summary(fields["check"]!.AsObject()));
         else if (name == "export")

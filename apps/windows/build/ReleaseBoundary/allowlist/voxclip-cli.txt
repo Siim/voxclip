@@ -38,6 +38,7 @@ literal "--json"
 literal "--language"
 literal "--loudness"
 literal "--model"
+literal "--no-cache"
 literal "--no-check"
 literal "--no-dtw"
 literal "--no-snap"
@@ -52,6 +53,7 @@ literal "--range"
 literal "--raw-out"
 literal "--runtime-terms"
 literal "--sample"
+literal "--sheet-out"
 literal "--srt"
 literal "--style"
 literal "--tighten-pauses"
@@ -59,6 +61,8 @@ literal "--tiles"
 literal "--timings"
 literal "--transcript"
 literal "--transcription-model"
+literal "--video-pass"
+literal "--words"
 literal "Set VOXCLIP_ELEVENLABS_API_KEY to use ElevenLabs."
 literal "VOXCLIP_ANTHROPIC_API_KEY"
 literal "VOXCLIP_ELEVENLABS_API_KEY"
@@ -82,6 +86,14 @@ member VoxClip.Cli.CaptionRendering :: method private BuildAsync(VoxClip.Core.Do
 member VoxClip.Cli.CaptionRendering :: method private Size(System.Text.Json.Nodes.JsonNode)
 member VoxClip.Cli.CaptionRendering :: method private WriteImageAsync(VoxClip.Core.Domain.Captions.ICaptionRasterizer,VoxClip.Core.Domain.Captions.CaptionTrack,double,bool,string,System.Nullable`1<int>,string,System.Threading.CancellationToken)
 member VoxClip.Cli.CaptionRendering :: method private WriteIndexAsync(string,System.Text.Json.Nodes.JsonArray,System.Threading.CancellationToken)
+member VoxClip.Cli.CliAnalyzeFrames :: field internal TextUnavailableMessage
+member VoxClip.Cli.CliAnalyzeFrames :: method internal Report(VoxClip.Core.Domain.Frames.FrameAnalysis,VoxClip.Core.Domain.Frames.FrameClip,VoxClip.Core.Domain.Shared.VideoTrackInfo,VoxClip.Core.Domain.Frames.FrameSheet,System.Nullable`1<double>,System.Text.Json.Nodes.JsonObject)
+member VoxClip.Cli.CliAnalyzeFrames :: method internal RunAsync(System.CommandLine.ParseResult,VoxClip.Cli.CliFrameSources,System.Threading.CancellationToken)
+member VoxClip.Cli.CliAnalyzeFrames :: method internal SourceAspect(VoxClip.Core.Domain.Shared.VideoTrackInfo)
+member VoxClip.Cli.CliAnalyzeFrames :: method internal TimedPassAsync(VoxClip.Media.Frames.FrameAnalyzer,string,string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,VoxClip.Core.Domain.Frames.FrameClip,System.Threading.CancellationToken)
+member VoxClip.Cli.CliAnalyzeFrames :: method internal UsageError(string,string,string)
+member VoxClip.Cli.CliAnalyzeFrames :: method internal Write(VoxClip.Core.Domain.Frames.FrameSheet,string)
+member VoxClip.Cli.CliAnalyzeFrames :: method private Bounds(string)
 member VoxClip.Cli.CliApplication :: field private AcceptRuntimeTerms
 member VoxClip.Cli.CliApplication :: field private BasicRedactor
 member VoxClip.Cli.CliApplication :: field private DiagnosticRedactor
@@ -176,6 +188,24 @@ member VoxClip.Cli.CliError :: method public op_Equality(VoxClip.Cli.CliError,Vo
 member VoxClip.Cli.CliError :: method public op_Inequality(VoxClip.Cli.CliError,VoxClip.Cli.CliError)
 member VoxClip.Cli.CliError :: method public set_Code(string)
 member VoxClip.Cli.CliError :: method public set_Message(string)
+member VoxClip.Cli.CliFrameSources :: method internal Installed()
+member VoxClip.Cli.CliFrameSources :: method private .ctor(VoxClip.Cli.CliFrameSources)
+member VoxClip.Cli.CliFrameSources :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Cli.CliFrameSources :: method private get_EqualityContract()
+member VoxClip.Cli.CliFrameSources :: method public .ctor(VoxClip.Core.Domain.Frames.IFrameFaces,VoxClip.Core.Domain.Frames.IFrameTextLines,VoxClip.Media.Frames.IFrameDecoding)
+member VoxClip.Cli.CliFrameSources :: method public Deconstruct(VoxClip.Core.Domain.Frames.IFrameFaces&,VoxClip.Core.Domain.Frames.IFrameTextLines&,VoxClip.Media.Frames.IFrameDecoding&)
+member VoxClip.Cli.CliFrameSources :: method public Equals(VoxClip.Cli.CliFrameSources)
+member VoxClip.Cli.CliFrameSources :: method public Equals(object)
+member VoxClip.Cli.CliFrameSources :: method public GetHashCode()
+member VoxClip.Cli.CliFrameSources :: method public ToString()
+member VoxClip.Cli.CliFrameSources :: method public get_Decoder()
+member VoxClip.Cli.CliFrameSources :: method public get_Faces()
+member VoxClip.Cli.CliFrameSources :: method public get_Text()
+member VoxClip.Cli.CliFrameSources :: method public op_Equality(VoxClip.Cli.CliFrameSources,VoxClip.Cli.CliFrameSources)
+member VoxClip.Cli.CliFrameSources :: method public op_Inequality(VoxClip.Cli.CliFrameSources,VoxClip.Cli.CliFrameSources)
+member VoxClip.Cli.CliFrameSources :: method public set_Decoder(VoxClip.Media.Frames.IFrameDecoding)
+member VoxClip.Cli.CliFrameSources :: method public set_Faces(VoxClip.Core.Domain.Frames.IFrameFaces)
+member VoxClip.Cli.CliFrameSources :: method public set_Text(VoxClip.Core.Domain.Frames.IFrameTextLines)
 member VoxClip.Cli.CliInputException :: method internal get_Failure()
 member VoxClip.Cli.CliInputException :: method public .ctor(VoxClip.Core.Domain.Shared.VoxClipException)
 member VoxClip.Cli.CliJsonContext :: field private InstanceMemberBindingFlags
@@ -310,6 +340,7 @@ type Program
 type VoxClip.Cli.AiMergeAdapter
 type VoxClip.Cli.CaptionCliJson
 type VoxClip.Cli.CaptionRendering
+type VoxClip.Cli.CliAnalyzeFrames
 type VoxClip.Cli.CliApplication
 type VoxClip.Cli.CliAutopilot
 type VoxClip.Cli.CliAutopilot+ClipExportRoute
@@ -317,6 +348,7 @@ type VoxClip.Cli.CliCheck
 type VoxClip.Cli.CliDataJson
 type VoxClip.Cli.CliEnvelope
 type VoxClip.Cli.CliError
+type VoxClip.Cli.CliFrameSources
 type VoxClip.Cli.CliInputException
 type VoxClip.Cli.CliJsonContext
 type VoxClip.Cli.CliOperations

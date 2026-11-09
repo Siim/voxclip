@@ -1033,14 +1033,195 @@ member VoxClip.Media.Ffmpeg.VideoDecoder :: field private toneWidth
 member VoxClip.Media.Ffmpeg.VideoDecoder :: field private transfer
 member VoxClip.Media.Ffmpeg.VideoDecoder :: method internal .ctor(string,bool)
 member VoxClip.Media.Ffmpeg.VideoDecoder :: method internal ReadAt(double,bool,System.Threading.CancellationToken)
+member VoxClip.Media.Ffmpeg.VideoDecoder :: method internal ReadNear(double,double,System.Threading.CancellationToken)
 member VoxClip.Media.Ffmpeg.VideoDecoder :: method internal Seek(double)
 member VoxClip.Media.Ffmpeg.VideoDecoder :: method internal get_Height()
 member VoxClip.Media.Ffmpeg.VideoDecoder :: method internal get_Position()
 member VoxClip.Media.Ffmpeg.VideoDecoder :: method internal get_RotationDegrees()
 member VoxClip.Media.Ffmpeg.VideoDecoder :: method internal get_Width()
+member VoxClip.Media.Ffmpeg.VideoDecoder :: method private Advance(System.Threading.CancellationToken)
+member VoxClip.Media.Ffmpeg.VideoDecoder :: method private Prime(double,System.Threading.CancellationToken)
 member VoxClip.Media.Ffmpeg.VideoDecoder :: method private Read(byte[],double&,System.Threading.CancellationToken)
+member VoxClip.Media.Ffmpeg.VideoDecoder :: method private get_Current()
 member VoxClip.Media.Ffmpeg.VideoDecoder :: method private set_Position(double)
 member VoxClip.Media.Ffmpeg.VideoDecoder :: method public Dispose()
+member VoxClip.Media.Frames.DecodedFrame :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Media.Frames.DecodedFrame :: method public .ctor(VoxClip.Core.Domain.Captions.PixelBuffer,double)
+member VoxClip.Media.Frames.DecodedFrame :: method public Deconstruct(VoxClip.Core.Domain.Captions.PixelBuffer&,double&)
+member VoxClip.Media.Frames.DecodedFrame :: method public Equals(VoxClip.Media.Frames.DecodedFrame)
+member VoxClip.Media.Frames.DecodedFrame :: method public Equals(object)
+member VoxClip.Media.Frames.DecodedFrame :: method public GetHashCode()
+member VoxClip.Media.Frames.DecodedFrame :: method public ToString()
+member VoxClip.Media.Frames.DecodedFrame :: method public get_Pixels()
+member VoxClip.Media.Frames.DecodedFrame :: method public get_Time()
+member VoxClip.Media.Frames.DecodedFrame :: method public op_Equality(VoxClip.Media.Frames.DecodedFrame,VoxClip.Media.Frames.DecodedFrame)
+member VoxClip.Media.Frames.DecodedFrame :: method public op_Inequality(VoxClip.Media.Frames.DecodedFrame,VoxClip.Media.Frames.DecodedFrame)
+member VoxClip.Media.Frames.DecodedFrame :: method public set_Pixels(VoxClip.Core.Domain.Captions.PixelBuffer)
+member VoxClip.Media.Frames.DecodedFrame :: method public set_Time(double)
+member VoxClip.Media.Frames.FfmpegFrameDecoder :: method public .ctor()
+member VoxClip.Media.Frames.FfmpegFrameDecoder :: method public Fit(int,int,int)
+member VoxClip.Media.Frames.FfmpegFrameDecoder :: method public Open(string,int,double,System.Threading.CancellationToken)
+member VoxClip.Media.Frames.FfmpegFrameDecoder+Reader :: field private decoder
+member VoxClip.Media.Frames.FfmpegFrameDecoder+Reader :: field private output
+member VoxClip.Media.Frames.FfmpegFrameDecoder+Reader :: field private rotation
+member VoxClip.Media.Frames.FfmpegFrameDecoder+Reader :: field private tolerance
+member VoxClip.Media.Frames.FfmpegFrameDecoder+Reader :: method internal .ctor(string,int,double)
+member VoxClip.Media.Frames.FfmpegFrameDecoder+Reader :: method public Dispose()
+member VoxClip.Media.Frames.FfmpegFrameDecoder+Reader :: method public Read(double,System.Threading.CancellationToken)
+member VoxClip.Media.Frames.FrameAnalysisCache :: field private gate
+member VoxClip.Media.Frames.FrameAnalysisCache :: field private index
+member VoxClip.Media.Frames.FrameAnalysisCache :: field public Folder
+member VoxClip.Media.Frames.FrameAnalysisCache :: method private AllFrames(string)
+member VoxClip.Media.Frames.FrameAnalysisCache :: method private FolderOf(string,bool)
+member VoxClip.Media.Frames.FrameAnalysisCache :: method private IsRealDirectory(string)
+member VoxClip.Media.Frames.FrameAnalysisCache :: method private ReadRegularFile(string)
+member VoxClip.Media.Frames.FrameAnalysisCache :: method private SheetName(double)
+member VoxClip.Media.Frames.FrameAnalysisCache :: method private WriteAsync(string,byte[],System.Threading.CancellationToken)
+member VoxClip.Media.Frames.FrameAnalysisCache :: method public .ctor(string)
+member VoxClip.Media.Frames.FrameAnalysisCache :: method public Millisecond(double)
+member VoxClip.Media.Frames.FrameAnalysisCache :: method public Observations(string,string)
+member VoxClip.Media.Frames.FrameAnalysisCache :: method public SheetImage(string,double)
+member VoxClip.Media.Frames.FrameAnalysisCache :: method public StoreAsync(System.Collections.Generic.IReadOnlyList`1<System.ValueTuple`2<double,VoxClip.Core.Domain.Frames.FrameObservation>>,string,string,System.Threading.CancellationToken)
+member VoxClip.Media.Frames.FrameAnalysisCache :: method public StoreSheetImageAsync(byte[],string,double,System.Threading.CancellationToken)
+member VoxClip.Media.Frames.FrameAnalyzer :: field private cache
+member VoxClip.Media.Frames.FrameAnalyzer :: field private decoder
+member VoxClip.Media.Frames.FrameAnalyzer :: field private faces
+member VoxClip.Media.Frames.FrameAnalyzer :: field private laneScreens
+member VoxClip.Media.Frames.FrameAnalyzer :: field public AnalysisEdge
+member VoxClip.Media.Frames.FrameAnalyzer :: field public Lanes
+member VoxClip.Media.Frames.FrameAnalyzer :: field public OpeningTolerance
+member VoxClip.Media.Frames.FrameAnalyzer :: field public SentenceTolerance
+member VoxClip.Media.Frames.FrameAnalyzer :: method private AnalyzeMissingAsync(string,System.Collections.Generic.IReadOnlyList`1<double>,VoxClip.Media.Frames.FrameScanKind,System.Threading.CancellationToken)
+member VoxClip.Media.Frames.FrameAnalyzer :: method private LaneAsync(string,double[],VoxClip.Media.Frames.FrameScanKind,System.Threading.CancellationTokenSource)
+member VoxClip.Media.Frames.FrameAnalyzer :: method public .ctor(VoxClip.Core.Domain.Frames.IFrameFaces,System.Func`1<VoxClip.Core.Domain.Frames.FrameScreenScan>,VoxClip.Media.Frames.IFrameDecoding,VoxClip.Media.Frames.FrameAnalysisCache)
+member VoxClip.Media.Frames.FrameAnalyzer :: method public AnalyzeAsync(string,string,VoxClip.Core.Domain.Frames.FrameClip,System.Threading.CancellationToken)
+member VoxClip.Media.Frames.FrameAnalyzer :: method public ObservationsAsync(string,string,System.Collections.Generic.IReadOnlyList`1<double>,VoxClip.Media.Frames.FrameScanKind,System.Threading.CancellationToken)
+member VoxClip.Media.Frames.FrameAnalyzer :: method public ScreensWith(VoxClip.Core.Domain.Frames.IFrameTextLines)
+member VoxClip.Media.Frames.FrameAnalyzer :: method public SheetAsync(string,string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Frames.FrameObservation>,System.Collections.Generic.IReadOnlyDictionary`2<long,byte[]>,System.Threading.CancellationToken)
+member VoxClip.Media.Frames.FrameAnalyzer :: method public Tolerance(VoxClip.Media.Frames.FrameScanKind)
+member VoxClip.Media.Frames.FrameAnalyzer+Analyzed :: method private .ctor(VoxClip.Media.Frames.FrameAnalyzer+Analyzed)
+member VoxClip.Media.Frames.FrameAnalyzer+Analyzed :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Media.Frames.FrameAnalyzer+Analyzed :: method private get_EqualityContract()
+member VoxClip.Media.Frames.FrameAnalyzer+Analyzed :: method public .ctor(double,VoxClip.Core.Domain.Frames.FrameObservation,byte[])
+member VoxClip.Media.Frames.FrameAnalyzer+Analyzed :: method public Deconstruct(double&,VoxClip.Core.Domain.Frames.FrameObservation&,byte[]&)
+member VoxClip.Media.Frames.FrameAnalyzer+Analyzed :: method public Equals(VoxClip.Media.Frames.FrameAnalyzer+Analyzed)
+member VoxClip.Media.Frames.FrameAnalyzer+Analyzed :: method public Equals(object)
+member VoxClip.Media.Frames.FrameAnalyzer+Analyzed :: method public GetHashCode()
+member VoxClip.Media.Frames.FrameAnalyzer+Analyzed :: method public ToString()
+member VoxClip.Media.Frames.FrameAnalyzer+Analyzed :: method public get_Jpeg()
+member VoxClip.Media.Frames.FrameAnalyzer+Analyzed :: method public get_Observation()
+member VoxClip.Media.Frames.FrameAnalyzer+Analyzed :: method public get_Requested()
+member VoxClip.Media.Frames.FrameAnalyzer+Analyzed :: method public op_Equality(VoxClip.Media.Frames.FrameAnalyzer+Analyzed,VoxClip.Media.Frames.FrameAnalyzer+Analyzed)
+member VoxClip.Media.Frames.FrameAnalyzer+Analyzed :: method public op_Inequality(VoxClip.Media.Frames.FrameAnalyzer+Analyzed,VoxClip.Media.Frames.FrameAnalyzer+Analyzed)
+member VoxClip.Media.Frames.FrameAnalyzer+Analyzed :: method public set_Jpeg(byte[])
+member VoxClip.Media.Frames.FrameAnalyzer+Analyzed :: method public set_Observation(VoxClip.Core.Domain.Frames.FrameObservation)
+member VoxClip.Media.Frames.FrameAnalyzer+Analyzed :: method public set_Requested(double)
+member VoxClip.Media.Frames.FrameClipAnalysis :: method private .ctor(VoxClip.Media.Frames.FrameClipAnalysis)
+member VoxClip.Media.Frames.FrameClipAnalysis :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Media.Frames.FrameClipAnalysis :: method private get_EqualityContract()
+member VoxClip.Media.Frames.FrameClipAnalysis :: method public .ctor(VoxClip.Core.Domain.Frames.FrameAnalysis,VoxClip.Core.Domain.Frames.FrameSheet)
+member VoxClip.Media.Frames.FrameClipAnalysis :: method public Deconstruct(VoxClip.Core.Domain.Frames.FrameAnalysis&,VoxClip.Core.Domain.Frames.FrameSheet&)
+member VoxClip.Media.Frames.FrameClipAnalysis :: method public Equals(VoxClip.Media.Frames.FrameClipAnalysis)
+member VoxClip.Media.Frames.FrameClipAnalysis :: method public Equals(object)
+member VoxClip.Media.Frames.FrameClipAnalysis :: method public GetHashCode()
+member VoxClip.Media.Frames.FrameClipAnalysis :: method public ToString()
+member VoxClip.Media.Frames.FrameClipAnalysis :: method public get_Analysis()
+member VoxClip.Media.Frames.FrameClipAnalysis :: method public get_Sheet()
+member VoxClip.Media.Frames.FrameClipAnalysis :: method public op_Equality(VoxClip.Media.Frames.FrameClipAnalysis,VoxClip.Media.Frames.FrameClipAnalysis)
+member VoxClip.Media.Frames.FrameClipAnalysis :: method public op_Inequality(VoxClip.Media.Frames.FrameClipAnalysis,VoxClip.Media.Frames.FrameClipAnalysis)
+member VoxClip.Media.Frames.FrameClipAnalysis :: method public set_Analysis(VoxClip.Core.Domain.Frames.FrameAnalysis)
+member VoxClip.Media.Frames.FrameClipAnalysis :: method public set_Sheet(VoxClip.Core.Domain.Frames.FrameSheet)
+member VoxClip.Media.Frames.FrameJpeg :: field public Quality
+member VoxClip.Media.Frames.FrameJpeg :: method private Failed()
+member VoxClip.Media.Frames.FrameJpeg :: method public Encode(VoxClip.Core.Domain.Captions.PixelBuffer,int)
+member VoxClip.Media.Frames.FrameJpeg :: method public Size(byte[])
+member VoxClip.Media.Frames.FrameObservationsFound :: method private .ctor(VoxClip.Media.Frames.FrameObservationsFound)
+member VoxClip.Media.Frames.FrameObservationsFound :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Media.Frames.FrameObservationsFound :: method private get_EqualityContract()
+member VoxClip.Media.Frames.FrameObservationsFound :: method public .ctor(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Frames.FrameObservation>,int,int,System.Collections.Generic.IReadOnlyDictionary`2<long,byte[]>)
+member VoxClip.Media.Frames.FrameObservationsFound :: method public Deconstruct(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Frames.FrameObservation>&,int&,int&,System.Collections.Generic.IReadOnlyDictionary`2<long,byte[]>&)
+member VoxClip.Media.Frames.FrameObservationsFound :: method public Equals(VoxClip.Media.Frames.FrameObservationsFound)
+member VoxClip.Media.Frames.FrameObservationsFound :: method public Equals(object)
+member VoxClip.Media.Frames.FrameObservationsFound :: method public GetHashCode()
+member VoxClip.Media.Frames.FrameObservationsFound :: method public ToString()
+member VoxClip.Media.Frames.FrameObservationsFound :: method public get_Analyzed()
+member VoxClip.Media.Frames.FrameObservationsFound :: method public get_Cached()
+member VoxClip.Media.Frames.FrameObservationsFound :: method public get_Frames()
+member VoxClip.Media.Frames.FrameObservationsFound :: method public get_Jpegs()
+member VoxClip.Media.Frames.FrameObservationsFound :: method public op_Equality(VoxClip.Media.Frames.FrameObservationsFound,VoxClip.Media.Frames.FrameObservationsFound)
+member VoxClip.Media.Frames.FrameObservationsFound :: method public op_Inequality(VoxClip.Media.Frames.FrameObservationsFound,VoxClip.Media.Frames.FrameObservationsFound)
+member VoxClip.Media.Frames.FrameObservationsFound :: method public set_Analyzed(int)
+member VoxClip.Media.Frames.FrameObservationsFound :: method public set_Cached(int)
+member VoxClip.Media.Frames.FrameObservationsFound :: method public set_Frames(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Frames.FrameObservation>)
+member VoxClip.Media.Frames.FrameObservationsFound :: method public set_Jpegs(System.Collections.Generic.IReadOnlyDictionary`2<long,byte[]>)
+member VoxClip.Media.Frames.FrameScanKind :: field public Opening
+member VoxClip.Media.Frames.FrameScanKind :: field public Sentence
+member VoxClip.Media.Frames.FrameScanKind :: field public value__
+member VoxClip.Media.Frames.IFrameDecoding :: method public Open(string,int,double,System.Threading.CancellationToken)
+member VoxClip.Media.Frames.IFrameReader :: method public Read(double,System.Threading.CancellationToken)
+member VoxClip.Media.Frames.VideoFramePass :: field private analyzer
+member VoxClip.Media.Frames.VideoFramePass :: field private cancellation
+member VoxClip.Media.Frames.VideoFramePass :: field private contentKey
+member VoxClip.Media.Frames.VideoFramePass :: field private gate
+member VoxClip.Media.Frames.VideoFramePass :: field private log
+member VoxClip.Media.Frames.VideoFramePass :: field private openings
+member VoxClip.Media.Frames.VideoFramePass :: field private pass
+member VoxClip.Media.Frames.VideoFramePass :: field private samples
+member VoxClip.Media.Frames.VideoFramePass :: field private source
+member VoxClip.Media.Frames.VideoFramePass :: method private Finished(System.Nullable`1<double>,VoxClip.Core.Domain.Autopilot.ClaudeModeClock,int,int)
+member VoxClip.Media.Frames.VideoFramePass :: method private FoundAsync(System.Threading.CancellationToken)
+member VoxClip.Media.Frames.VideoFramePass :: method private RunAsync(VoxClip.Core.Domain.Autopilot.ClaudeModeClock)
+member VoxClip.Media.Frames.VideoFramePass :: method private ScanOpeningAsync(System.Collections.Generic.IReadOnlyList`1<double>)
+member VoxClip.Media.Frames.VideoFramePass :: method private set_Analyzed(int)
+member VoxClip.Media.Frames.VideoFramePass :: method private set_Cached(int)
+member VoxClip.Media.Frames.VideoFramePass :: method private set_Ended(System.Nullable`1<double>)
+member VoxClip.Media.Frames.VideoFramePass :: method private set_Seconds(System.Nullable`1<double>)
+member VoxClip.Media.Frames.VideoFramePass :: method private set_Started(System.Nullable`1<double>)
+member VoxClip.Media.Frames.VideoFramePass :: method public .ctor(VoxClip.Media.Frames.FrameAnalyzer,string,string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,System.Action`1<string>)
+member VoxClip.Media.Frames.VideoFramePass :: method public Cancel()
+member VoxClip.Media.Frames.VideoFramePass :: method public FinishAsync(System.Threading.CancellationToken)
+member VoxClip.Media.Frames.VideoFramePass :: method public FramesAsync(VoxClip.Core.Domain.Frames.FrameClip,System.Threading.CancellationToken)
+member VoxClip.Media.Frames.VideoFramePass :: method public OpeningAsync(VoxClip.Core.Domain.Frames.FrameClip,System.Threading.CancellationToken)
+member VoxClip.Media.Frames.VideoFramePass :: method public PitchBaselineAsync(System.Threading.CancellationToken)
+member VoxClip.Media.Frames.VideoFramePass :: method public Start(VoxClip.Core.Domain.Autopilot.ClaudeModeClock)
+member VoxClip.Media.Frames.VideoFramePass :: method public StartOpening(VoxClip.Core.Domain.Frames.FrameClip)
+member VoxClip.Media.Frames.VideoFramePass :: method public ThumbnailsAsync(System.Collections.Generic.IReadOnlyList`1<double>,System.Threading.CancellationToken)
+member VoxClip.Media.Frames.VideoFramePass :: method public get_Analyzed()
+member VoxClip.Media.Frames.VideoFramePass :: method public get_Cached()
+member VoxClip.Media.Frames.VideoFramePass :: method public get_Ended()
+member VoxClip.Media.Frames.VideoFramePass :: method public get_FrameCount()
+member VoxClip.Media.Frames.VideoFramePass :: method public get_Seconds()
+member VoxClip.Media.Frames.VideoFramePass :: method public get_Started()
+member VoxClip.Media.Frames.VideoFramePass+ClipFrames :: method private .ctor(VoxClip.Media.Frames.VideoFramePass+ClipFrames)
+member VoxClip.Media.Frames.VideoFramePass+ClipFrames :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Media.Frames.VideoFramePass+ClipFrames :: method private get_EqualityContract()
+member VoxClip.Media.Frames.VideoFramePass+ClipFrames :: method public .ctor(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Frames.FrameObservation>,VoxClip.Core.Domain.Frames.FrameSheet)
+member VoxClip.Media.Frames.VideoFramePass+ClipFrames :: method public Deconstruct(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Frames.FrameObservation>&,VoxClip.Core.Domain.Frames.FrameSheet&)
+member VoxClip.Media.Frames.VideoFramePass+ClipFrames :: method public Equals(VoxClip.Media.Frames.VideoFramePass+ClipFrames)
+member VoxClip.Media.Frames.VideoFramePass+ClipFrames :: method public Equals(object)
+member VoxClip.Media.Frames.VideoFramePass+ClipFrames :: method public GetHashCode()
+member VoxClip.Media.Frames.VideoFramePass+ClipFrames :: method public ToString()
+member VoxClip.Media.Frames.VideoFramePass+ClipFrames :: method public get_Sentences()
+member VoxClip.Media.Frames.VideoFramePass+ClipFrames :: method public get_Sheet()
+member VoxClip.Media.Frames.VideoFramePass+ClipFrames :: method public op_Equality(VoxClip.Media.Frames.VideoFramePass+ClipFrames,VoxClip.Media.Frames.VideoFramePass+ClipFrames)
+member VoxClip.Media.Frames.VideoFramePass+ClipFrames :: method public op_Inequality(VoxClip.Media.Frames.VideoFramePass+ClipFrames,VoxClip.Media.Frames.VideoFramePass+ClipFrames)
+member VoxClip.Media.Frames.VideoFramePass+ClipFrames :: method public set_Sentences(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Frames.FrameObservation>)
+member VoxClip.Media.Frames.VideoFramePass+ClipFrames :: method public set_Sheet(VoxClip.Core.Domain.Frames.FrameSheet)
+member VoxClip.Media.Frames.VideoFramePass+Found :: method private .ctor(VoxClip.Media.Frames.VideoFramePass+Found)
+member VoxClip.Media.Frames.VideoFramePass+Found :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Media.Frames.VideoFramePass+Found :: method private get_EqualityContract()
+member VoxClip.Media.Frames.VideoFramePass+Found :: method public .ctor(System.Collections.Generic.IReadOnlyDictionary`2<long,VoxClip.Core.Domain.Frames.FrameObservation>,System.Collections.Generic.IReadOnlyDictionary`2<long,byte[]>)
+member VoxClip.Media.Frames.VideoFramePass+Found :: method public Deconstruct(System.Collections.Generic.IReadOnlyDictionary`2<long,VoxClip.Core.Domain.Frames.FrameObservation>&,System.Collections.Generic.IReadOnlyDictionary`2<long,byte[]>&)
+member VoxClip.Media.Frames.VideoFramePass+Found :: method public Equals(VoxClip.Media.Frames.VideoFramePass+Found)
+member VoxClip.Media.Frames.VideoFramePass+Found :: method public Equals(object)
+member VoxClip.Media.Frames.VideoFramePass+Found :: method public GetHashCode()
+member VoxClip.Media.Frames.VideoFramePass+Found :: method public ToString()
+member VoxClip.Media.Frames.VideoFramePass+Found :: method public get_Frames()
+member VoxClip.Media.Frames.VideoFramePass+Found :: method public get_Jpegs()
+member VoxClip.Media.Frames.VideoFramePass+Found :: method public op_Equality(VoxClip.Media.Frames.VideoFramePass+Found,VoxClip.Media.Frames.VideoFramePass+Found)
+member VoxClip.Media.Frames.VideoFramePass+Found :: method public op_Inequality(VoxClip.Media.Frames.VideoFramePass+Found,VoxClip.Media.Frames.VideoFramePass+Found)
+member VoxClip.Media.Frames.VideoFramePass+Found :: method public set_Frames(System.Collections.Generic.IReadOnlyDictionary`2<long,VoxClip.Core.Domain.Frames.FrameObservation>)
+member VoxClip.Media.Frames.VideoFramePass+Found :: method public set_Jpegs(System.Collections.Generic.IReadOnlyDictionary`2<long,byte[]>)
 member VoxClip.Media.Pipeline.AudioCacheJson :: field private InstanceMemberBindingFlags
 member VoxClip.Media.Pipeline.AudioCacheMetadata :: method private .ctor(VoxClip.Media.Pipeline.AudioCacheMetadata)
 member VoxClip.Media.Pipeline.AudioCacheMetadata :: method private PrintMembers(System.Text.StringBuilder)
@@ -2852,6 +3033,21 @@ type VoxClip.Media.Ffmpeg.OwnerCommand`1
 type VoxClip.Media.Ffmpeg.PacketSink
 type VoxClip.Media.Ffmpeg.ToneMapper
 type VoxClip.Media.Ffmpeg.VideoDecoder
+type VoxClip.Media.Frames.DecodedFrame
+type VoxClip.Media.Frames.FfmpegFrameDecoder
+type VoxClip.Media.Frames.FfmpegFrameDecoder+Reader
+type VoxClip.Media.Frames.FrameAnalysisCache
+type VoxClip.Media.Frames.FrameAnalyzer
+type VoxClip.Media.Frames.FrameAnalyzer+Analyzed
+type VoxClip.Media.Frames.FrameClipAnalysis
+type VoxClip.Media.Frames.FrameJpeg
+type VoxClip.Media.Frames.FrameObservationsFound
+type VoxClip.Media.Frames.FrameScanKind
+type VoxClip.Media.Frames.IFrameDecoding
+type VoxClip.Media.Frames.IFrameReader
+type VoxClip.Media.Frames.VideoFramePass
+type VoxClip.Media.Frames.VideoFramePass+ClipFrames
+type VoxClip.Media.Frames.VideoFramePass+Found
 type VoxClip.Media.Pipeline.AudioCacheJson
 type VoxClip.Media.Pipeline.AudioCacheMetadata
 type VoxClip.Media.Pipeline.ClipPicture

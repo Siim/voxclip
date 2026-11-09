@@ -45,6 +45,7 @@ internal static class CliOperations
         "render-caption" => await CaptionRendering.RunAsync(arguments, ct).ConfigureAwait(false),
         "find-clips" => await FindClipsAsync(arguments, ct).ConfigureAwait(false),
         "llm-test" => await TestLlmAsync(arguments, ct).ConfigureAwait(false),
+        "analyze-frames" => await CliAnalyzeFrames.RunAsync(arguments, CliFrameSources.Installed(), ct).ConfigureAwait(false),
         _ when command.StartsWith("models ", StringComparison.Ordinal) => await ModelsAsync(command[7..], arguments, ct).ConfigureAwait(false),
         _ => throw new CliUsageException("Specify a models subcommand.")
     };
