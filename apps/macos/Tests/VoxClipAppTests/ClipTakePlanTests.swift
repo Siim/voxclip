@@ -1621,15 +1621,50 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         ClipTakeHTTP.state.withLock { $0.duration = length + 1.5; $0.speechMargin = 0.15 }
         await plan.start(approved: true, quoteID: plan.approvalID)
         // The measured round starts after the take lands and the reworded phrase's fresh quote after that; slow hosted
-        // runners reach both later (CI 41967010628 read the wording before its round had started), so wait for both.
-        for _ in 0..<3000 where session.wordingFit.measured?.text == nil || plan.approvalID == nil {
+        // runners reach both later (CI 41967010628 read the wording before its round had started), so wait for both,
+        // bounded in time rather than in polls (a 3-core runner stretched 3,000 short sleeps past the suite's limit).
+        await TestDeadline.until(timeout: .seconds(30)) {
             if let work = session.wordingFit.measuredWork { await work.value }
-            try await Task.sleep(for: .milliseconds(10))
+            return session.wordingFit.measured?.text != nil && plan.approvalID != nil
+                || session.wordingFit.measured?.problem.isEmpty == false
         }
         let availability = plan.videoAvailability(phrase: 0)
         #expect(!availability.allows(.source) && !availability.allows(.cut) && availability.allows(.retimed))
         #expect(session.wordingFit.measured?.text != nil && plan.approvalID != nil,
                 "measured \(String(describing: session.wordingFit.measured)) left out \(plan.phrases[0].leftOut) \(plan.problem) \(session.wordingFit.problem)")
+        #expect(await connector.requests.count == 1)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
+    }
+
+    /// The take that just landed starts its own video preparation (Match, the only duration it allows) while the measured
+    /// round asks for a shorter wording. A hosted runner, or a single-thread cooperative pool, let that preparation run
+    /// into the round's price, which was refused as busy: "The new wording couldn't be priced." Here the preparation is
+    /// held at its render until the round has its wording, so the two always overlap: the price waits for it, then runs.
+    @Test func measuredRewordingWaitsForTheTakesOwnVideoPreparation() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let connector = MeasuredFitConnector()
+        let (editor, session) = try await productionSession(fixture, rewriteConnector: connector); defer { editor.close() }
+        let plan = try #require(session.takePlan)
+        let render = try #require(plan.prepareDurationRender)
+        let barrier = ClipTakeBarrier()
+        plan.prepareDurationRender = { project, scope in
+            await barrier.pause()
+            return try await render(project, scope)
+        }
+        ClipTakeHTTP.state.withLock { $0.duration = plan.phrases[0].originalLength + 1.5; $0.speechMargin = 0.15 }
+        await plan.start(approved: true, quoteID: plan.approvalID)
+        await barrier.wait()
+        #expect(plan.preparingVideo && plan.phrases[0].videoChoice == .retimed)
+        await TestDeadline.until {
+            session.wordingFit.measured?.text != nil || session.wordingFit.measured?.problem.isEmpty == false
+        }
+        let waiting = try #require(session.wordingFit.measured)
+        #expect(waiting.text == "Corrected Welcome today" && waiting.preparing && waiting.problem.isEmpty, "\(waiting)")
+        barrier.resume()
+        await session.wordingFit.measuredWork?.value
+        let suggestion = try #require(session.wordingFit.measured)
+        #expect(suggestion.text == "Corrected Welcome today" && !suggestion.preparing && suggestion.problem.isEmpty, "\(suggestion)")
+        #expect(plan.phrases[0].text == suggestion.text && plan.approvalID != nil, "\(plan.problem)")
         #expect(await connector.requests.count == 1)
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
     }
