@@ -382,7 +382,10 @@ extension RewriteSession {
                 }
                 wordingFit.measured?.text = update.text
                 takeQuotePhrase = suggestion.phrase
-                guard await plan.prepareRewording(update.text, phrase: suggestion.phrase) else {
+                guard await plan.prepareRewording(update.text, phrase: suggestion.phrase, stillAsked: stillAsked) else {
+                    // A round the plan's settling superseded (another take chosen, or the phrase kept as recorded) ends
+                    // quietly, as the replies above do; its successor says what happens next.
+                    guard stillAsked() else { return }
                     wordingFit.measured?.text = nil
                     wordingFit.measured?.preparing = false
                     wordingFit.measured?.problem = "The new wording couldn't be priced."
