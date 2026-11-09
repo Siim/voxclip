@@ -83,13 +83,15 @@ public sealed record MakeItStyle
 }
 
 /// <summary>The outside world a run talks to. The editor page builds the live one; tests and the smoke pass stubs.</summary>
-/// <param name="Plan">The checked plan for a request (a clip, or several), at extra high effort through the chosen AI.</param>
+/// <param name="Plan">The checked plan for a request (a clip, or several), at extra high effort through the chosen AI. With frames (null:
+/// the plan goes as text only, as before), the planner names the AI they go to and each clip asks the source for its frames just before
+/// its send.</param>
 /// <param name="Voice">Voices one rewrite within its budget; the live one drives Rewrite's own session (<see cref="MakeItRewriteDriver"/>).</param>
 /// <param name="VoiceAvailable">Whether a voice can be made at all now: Voice Lab on with an ElevenLabs key. Nothing is sent.</param>
 /// <param name="Export">Exports one clip in the given shapes without a dialog and returns the files written.</param>
 /// <param name="Copy">Puts text on the clipboard.</param>
 public sealed record MakeItServices(
-    Func<ClipAutopilotRequest, IProgress<ClipAutopilotProgress>, CancellationToken, Task<ClipAutopilotSeries>> Plan,
+    Func<ClipAutopilotRequest, IProgress<ClipAutopilotProgress>, MakeItFrameSources?, CancellationToken, Task<ClipAutopilotSeries>> Plan,
     Func<MakeItRewriteRequest, CancellationToken, Task<MakeItRewriteOutcome>> Voice,
     Func<bool> VoiceAvailable,
     Func<string, IReadOnlyList<ExportAspect>, CancellationToken, Task<IReadOnlyList<string>>>? Export = null,
@@ -103,7 +105,43 @@ public sealed record MakeItServices(
     public RewriteToneCatalog? Tones { get; init; }
     /// <summary>The creator's saved tones.</summary>
     public IReadOnlyList<RewriteTone> SavedTones { get; init; } = [];
+    /// <summary>The whole video's frame pass for a project (ADR-R48), on this PC's face models. Null when faces are unavailable
+    /// (<c>AppServices.FrameFaces</c> is null): no pass starts, the review has no picture rows and no send line, and plans go as text
+    /// only. The factory returns null for a project it can't look at (no video, no words).</summary>
+    public Func<Project, Media.Frames.VideoFramePass?>? FramePass { get; init; }
 }
+
+/// <summary>A plan's frames once the planner knows the AI they go to (ADR-R48): each clip's source, from the whole video's pass.</summary>
+public delegate ClipAutopilotFrameSource MakeItFrameSources(MakeItFrameAi ai);
+
+/// <summary>Who a clip's frames go to (ADR-R48): the AI's name, whether it takes images, and who pays for them.</summary>
+/// <param name="Name">"Claude", "ChatGPT", "Gemini", "Grok", or the connector's label.</param>
+/// <param name="Images">The connector takes images.</param>
+/// <param name="Billing">Who pays.</param>
+public sealed record MakeItFrameAi(string Name, bool Images, MakeItFrameBilling Billing)
+{
+    /// <summary>The frames go as images: an AI that takes them, on a plan or free. An API key gets the text summary, because this PC
+    /// has no image price list to cap them by (the Mac prices them first).</summary>
+    public bool SendsImages => Images && Billing is not MakeItFrameBilling.Key;
+}
+
+/// <summary>Who pays for a clip's frames.</summary>
+public abstract record MakeItFrameBilling
+{
+    private MakeItFrameBilling() { }
+    /// <summary>A CLI on the creator's plan: "on your Claude plan".</summary>
+    public sealed record Plan(string Name) : MakeItFrameBilling;
+    /// <summary>An API key.</summary>
+    public sealed record Key : MakeItFrameBilling;
+    /// <summary>A local server: nothing to pay.</summary>
+    public sealed record Free : MakeItFrameBilling;
+}
+
+/// <summary>What a clip's plan request carried of the picture.</summary>
+/// <param name="Ai">Who the frames went to.</param>
+/// <param name="Sent">The frames as sent: with images, or the text summary only.</param>
+/// <param name="Sentences">The clip's sentence frames (the faces the crop follows).</param>
+public sealed record MakeItFrameRecord(MakeItFrameAi Ai, ClipAutopilotFrames Sent, IReadOnlyList<Core.Domain.Frames.FrameObservation> Sentences);
 
 /// <summary>One rewrite for the voice step.</summary>
 /// <param name="First">The first word index of the words to replace.</param>
@@ -162,10 +200,17 @@ public abstract record MakeItInverse
     public sealed record Music(string ClipId, Core.Domain.Music.ProjectMusic? Previous) : MakeItInverse;
     /// <summary>A zoom the run set: removed, or the cue with its id put back as it was.</summary>
     public sealed record Motion(string Id, Core.Domain.ContextDemo.MotionCue? Previous) : MakeItInverse;
+    /// <summary>The clip's opening lead-in before "Opens on a clear look at you" (ADR-R48).</summary>
+    public sealed record LeadIn(string ClipId, double? Previous) : MakeItInverse;
+    /// <summary>The clip's crop before "9:16 follows your face".</summary>
+    public sealed record Reframe(string ClipId, ReframeSettings? Previous) : MakeItInverse;
+    /// <summary>The clip's cover before "Cover frame chosen".</summary>
+    public sealed record Cover(string ClipId, double? Previous) : MakeItInverse;
 }
 
-/// <summary>Where a decision's Change goes.</summary>
-public enum MakeItChange { None, Captions, Rename, Hook, Phrase, Question, Look, Speed, Tone, Music }
+/// <summary>Where a decision's Change goes. <see cref="Screens"/>: a blurred screen lists the clip's screens inline, each a toggle;
+/// <see cref="Screen"/>: a screen left sharp, whose action blurs it; <see cref="Cover"/>: the cover candidates inline.</summary>
+public enum MakeItChange { None, Captions, Rename, Hook, Phrase, Question, Look, Speed, Tone, Music, Screens, Screen, Cover }
 
 /// <summary>What a review row is.</summary>
 public enum MakeItRowKind { Decision, Choice, Question, Note }
@@ -188,6 +233,10 @@ public sealed record MakeItRow(string Id, string Text)
     public string? Planned { get; init; }
     /// <summary>A question row's index in the plan.</summary>
     public int Question { get; init; } = -1;
+    /// <summary>The row's own action in place of Change ("Blur" on a screen left sharp); null for none.</summary>
+    public string? Action { get; init; }
+    /// <summary>The frame candidate a screen row is about (<c>B1</c>…).</summary>
+    public string? Candidate { get; init; }
 }
 
 /// <summary>Claude mode's per-video spend (design §6.7): every run of the video draws on one pool. The cap is the approval for
@@ -256,6 +305,8 @@ public sealed class MakeItRun(string clipId, decimal? cap, MakeItBudget? budget 
     /// <summary>Progress lines, newest last: "Reading the clip…", "Cutting 6 fillers…", "Voicing 2 fixes…".</summary>
     public List<string> Lines { get; } = [];
     public ClipAutopilotPlan? Plan { get; internal set; }
+    /// <summary>What the clip's plan request carried of the picture; null when it went as text only without frames.</summary>
+    public MakeItFrameRecord? Frames { get; internal set; }
     public List<MakeItRow> Rows { get; } = [];
     public decimal Spent { get; private set; }
     /// <summary>What voicing the rewrites spent.</summary>

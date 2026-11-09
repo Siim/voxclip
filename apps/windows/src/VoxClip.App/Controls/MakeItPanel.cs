@@ -94,6 +94,8 @@ internal sealed class MakeItPanel : InlineEditorJob
             body.Children.Add(wait);
         }
         foreach (var row in run.Rows) body.Children.Add(Row(run, row));
+        // What went to the AI of the picture (ADR-R48), once the run is done: "Claude read the clip's words and 24 small frames …".
+        if (!run.Running && Editor.MakeItSendLine(run) is { } sent) body.Children.Add(SendLine(sent));
         if (!run.Running && run.Rows.Count > 0)
         {
             var post = Editor.MakeItPost(run);
@@ -158,7 +160,8 @@ internal sealed class MakeItPanel : InlineEditorJob
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Top };
         if (row.Play is not null && !run.Running) actions.Children.Add(Small("▶", "Play " + row.Text, () => Editor.MakeItPlay(row)));
         if (row.Undoable && !row.Undone && !run.Running) actions.Children.Add(Small("Undo", "Undo " + row.Text, () => Editor.MakeItUndo(row.Id, run)));
-        if (row.Change != MakeItChange.None && !row.Undone && !run.Running) actions.Children.Add(Small("Change", "Change " + row.Text, () => Editor.MakeItChangeRow(row.Id, run)));
+        if (row.Action is { } action && !row.Undone && !run.Running) actions.Children.Add(Small(action, action + " " + row.Text, () => Editor.MakeItRowAction(row.Id, run)));
+        else if (row.Change != MakeItChange.None && !row.Undone && !run.Running) actions.Children.Add(Small("Change", "Change " + row.Text, () => Editor.MakeItChangeRow(row.Id, run)));
         Grid.SetColumn(actions, 1);
         line.Children.Add(actions);
         panel.Children.Add(line);
@@ -192,6 +195,21 @@ internal sealed class MakeItPanel : InlineEditorJob
             chips.Children.Add(chip);
         }
         return chips;
+    }
+
+    /// <summary>The send line, its count in bold.</summary>
+    private static TextBlock SendLine((string Lead, string Emphasis, string Tail) line)
+    {
+        var block = Ui.Text("", "CaptionTextBlockStyle");
+        block.TextWrapping = TextWrapping.Wrap;
+        block.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = line.Lead });
+        var bold = new Microsoft.UI.Xaml.Documents.Bold();
+        bold.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = line.Emphasis });
+        block.Inlines.Add(bold);
+        block.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = line.Tail });
+        AutomationProperties.SetAutomationId(block, "MakeIt.SendLine");
+        AutomationProperties.SetName(block, line.Lead + line.Emphasis + line.Tail);
+        return block;
     }
 
     private static Button Small(string label, string name, Action action)

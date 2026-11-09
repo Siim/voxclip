@@ -66,10 +66,24 @@ public sealed class MakeItPostableTests
         internal List<(string Clip, IReadOnlyList<ExportAspect> Shapes)> Exports { get; } = [];
         internal string ExportFolder { get; } = Path.Combine(Path.GetTempPath(), "voxclip-make-it-" + Guid.NewGuid().ToString("N"));
 
+        /// <summary>The frames each plan was handed (null: text only, as before the picture).</summary>
+        internal List<MakeItFrameSources?> FrameSources { get; } = [];
+        /// <summary>Who the planner says the frames go to; with frames, each clip asks for its own, as the live planner does.</summary>
+        internal MakeItFrameAi? Ai { get; set; }
+        /// <summary>The frames each clip's send carried.</summary>
+        internal List<ClipAutopilotFrames?> Sent { get; } = [];
+
         internal MakeItServices Services() => new(
-            async (request, progress, ct) =>
+            async (request, progress, frames, ct) =>
             {
                 Requests.Add(request);
+                FrameSources.Add(frames);
+                if (frames is not null && Ai is { } ai)
+                {
+                    var source = frames(ai);
+                    IReadOnlyList<WordSpan> spans = request.Mode switch { ClipAutopilotMode.Clip clip => [clip.Span], ClipAutopilotMode.Clips clips => clips.Spans, _ => [] };
+                    for (var index = 0; index < spans.Count; index++) Sent.Add(await source(index, spans[index], ct));
+                }
                 progress.Report(new ClipAutopilotProgress.Planning(0, 1));
                 if (Gate is { } gate) await gate.Task.WaitAsync(ct);
                 ct.ThrowIfCancellationRequested();

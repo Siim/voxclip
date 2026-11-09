@@ -188,6 +188,8 @@ public sealed partial class EditorViewModel
     {
         var applied = new HashSet<int>();
         var stopped = false;
+        // Each clip's frames, from the whole video's pass, just before its send (null without faces: text only, as before).
+        var frames = MakeItFrameSource(runs.Select(run => run.ClipId).ToArray());
         try
         {
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(runs.Select(run => run.Cancellation.Token).ToArray());
@@ -209,7 +211,7 @@ public sealed partial class EditorViewModel
             });
             async Task<(ClipAutopilotSeries? Series, Exception? Error)> PlanAsync()
             {
-                try { return (await services.Plan(request, report, linked.Token), null); }
+                try { return (await services.Plan(request, report, frames, linked.Token), null); }
                 catch (Exception exception) when (exception is not OutOfMemoryException) { return (null, exception); }
                 finally { events.Writer.TryComplete(); }
             }
@@ -324,7 +326,7 @@ public sealed partial class EditorViewModel
             MakeItNotify();
             if (MakeItRequest(run.ClipId) is not { } request) { Fail(run, "This clip has no words to plan."); return; }
             ClipAutopilotSeries series;
-            try { series = await services.Plan(request, Progress([run]), run.Cancellation.Token); }
+            try { series = await services.Plan(request, Progress([run]), MakeItFrameSource([run.ClipId]), run.Cancellation.Token); }
             catch (Exception exception) when (Cancelled(exception)) { run.Phase = MakeItPhase.Stopped; return; }
             catch (Exception exception) when (exception is not OutOfMemoryException)
             {
@@ -438,6 +440,8 @@ public sealed partial class EditorViewModel
             else if (row is not null) rows.Add(row);
         }
         ReplaceProject(next, "Make it postable");
+        // What Claude and this PC saw in the picture (ADR-R48): the opening, the face-follow crop, blurs and the cover, in the run's step.
+        var pictureRows = MakeItStopped(run) ? [] : await MakeItPictureRowsAsync(plan, run);
         run.PostText = project.Share.Captions.GetValueOrDefault(run.ClipId) ?? "";
         run.Hook = ClipHookTitle.Text(plan.Hook) ?? "";
         run.Seconds = MakeItRenderedSeconds(run.ClipId);
@@ -474,6 +478,7 @@ public sealed partial class EditorViewModel
                 Options = question.Options.Where(option => option != question.Answer).ToArray()
             });
         }
+        rows.InsertRange(0, pictureRows);
         if (MakeItToneRow(plan, run, rows) is { } toneRow) rows.Insert(0, toneRow);
         run.Rows.Clear();
         run.Rows.AddRange(rows);
@@ -825,6 +830,9 @@ public sealed partial class EditorViewModel
                     var kept = project.MotionCues.Where(cue => cue.Id != motion.Id).Concat(motion.Previous is { } previous ? [previous] : []).ToArray();
                     return ReplaceProject(Core.Domain.ContextDemo.ContextDemoProject.SettingMotionCues(kept, project), "Undo zoom") || true;
                 }
+                case MakeItInverse.LeadIn: return UndoPicture(inverse, "Undo opening");
+                case MakeItInverse.Reframe: return UndoPicture(inverse, "Undo crop");
+                case MakeItInverse.Cover: return UndoPicture(inverse, "Undo cover");
                 default: return false;
             }
         }
@@ -841,9 +849,12 @@ public sealed partial class EditorViewModel
         if (run.Running || run.Rows.FirstOrDefault(row => row.Id == rowId) is not { } row) return;
         switch (row.Change)
         {
-            case MakeItChange.Look or MakeItChange.Speed or MakeItChange.Hook or MakeItChange.Question or MakeItChange.Tone:
+            case MakeItChange.Look or MakeItChange.Speed or MakeItChange.Hook or MakeItChange.Question or MakeItChange.Tone or MakeItChange.Cover or MakeItChange.Screens:
                 run.OpenChoice = run.OpenChoice == row.Id ? null : row.Id;
                 MakeItNotify();
+                break;
+            case MakeItChange.Screen:
+                MakeItRowAction(row.Id, run);
                 break;
             case MakeItChange.Captions or MakeItChange.Rename or MakeItChange.Phrase:
                 SetScope(run.ClipId);
@@ -864,6 +875,8 @@ public sealed partial class EditorViewModel
         {
             case MakeItChange.Tone:
                 return MakeItToneChoices.FirstOrDefault(choice => choice.Title == option) is { Id: { } toneId } && MakeItChooseTone(toneId, run);
+            case MakeItChange.Cover or MakeItChange.Screens:
+                return MakeItChoosePicture(option, row, run);
             case MakeItChange.Look:
             {
                 if (Enum.GetValues<ClipLook>().Where(look => MakeItController.LookName(look) == option).Cast<ClipLook?>().FirstOrDefault() is not { } look) return false;
