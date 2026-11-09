@@ -71,7 +71,7 @@ as a bubble.
      more; otherwise they still move by sentence.
 8. **The edit popover is gone** (`ChangeEditPopover`). Return, F2, a click on a change's new words and VoiceOver's action
    ("Talk to Claude about change N") open the thread and put the keys in its input. Retyping a change's words by hand is
-   no longer offered on the Mac; telling Claude replaces it.
+   no longer offered on the Mac; telling Claude replaces it. (Superseded the same day: see "Update: your own words".)
 
 ## Consequences
 
@@ -80,3 +80,29 @@ as a bubble.
 - A long thread pushes the transcript down. Only two turns show.
 - While the wording fit runs, the thread steps aside, because the fit owns the change's words then.
 - Windows still has its inline correction row. The thread, the prompt and the vector replay are its twin's work.
+
+## Update 2026-11-09: your own words (package v2-thread-own-words)
+
+**Context.** Item 8 left no way to type a change's words by hand: only Claude could change them. design.md §6.3 still promised "Each change can be edited before anything is paid for". The user approved restoring hand edits inside the thread.
+
+**Decision.**
+
+1. **A bubble, "✎ My own words"**, last after the steady bubbles, always there while the thread shows. A click, or ⌥E on the focused change in the transcript, switches the input to your own words:
+   - it fills with the shown version's words, the cursor at the end;
+   - the placeholder reads "Your exact words · ↵ applies · Esc cancels";
+   - the cost line reads "Free · nothing is sent";
+   - the bubble shows as selected.
+
+   Return and F2 still open the thread for Claude.
+2. **↵ applies the text locally** as a new version, through `editChange` as a Claude version goes, with no request. The version row reads "‹ n of n › · your words", and the turn reads "You · your own words: “…”". As the popover did, an empty text makes the change a cut, and the recorded words leave nothing to change, so the change is left out. Esc or the bubble again goes back to Claude with nothing changed.
+3. **Your words are takes-eligible.** They go through `acceptThreadWords` like Claude's versions, so Keep reviews, prices and voices them, and the voice is made from your text.
+   - The popover's hand edits were not takes-eligible: the footer said "Takes are made from the AI's words. Rewrite again to make takes of an edited change."
+   - That rule had no product reason in the plan, the ADRs or the contracts. It was a limit of the code: the session's review, guard input and take plan were built from the reply's hunks, and a hand edit changed only the proposal's parts, so the take would not have matched the text. `acceptThreadWords` (Decision 3) now rebuilds the hunk, `replyParts` and the review from the edited change, which removes the limit for any words.
+   - Matching the old rule would also strand the user. Keep, then nothing to press but Rewrite again, is the dead end the Rewrite smoke's I10 invariant fails on, and the smoke shows exactly that when `acceptThreadWords` is left out.
+   - Nothing about consent changes. The voice guard (ADR-R40) still judges the patch speech per phrase, the export still says AI MODIFIED for a cloned voice, and the takes are still priced and approved inline.
+4. **Your words are a version, never a message.** A later request carries them in the versions. Claude's ✦ next steps are cleared, because they were for its own words.
+
+**Consequences.**
+- The Mac again lets a change be edited by hand before anything is paid for, inline, with no pop-up.
+- The Windows twin owes the bubble with the thread (apps/windows/CONTRACTS.md).
+

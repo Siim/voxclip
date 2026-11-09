@@ -1151,7 +1151,7 @@ The clip-first interface below is planned work specified on 2026-10-31. It does 
 
 - **One composer per scope.** The scope bar (§6.3.1) holds the scope's name, one instruction field, one verb (**Rewrite**) and the AI picker. An empty field means the default task, Fix mistakes. A kept or suggested sidebar row repeats **Rewrite** as **✦**, beside **⋯** More, while selected or hovered (also while keyboard-focused on macOS), replacing its duration (§3.4). A suggestion is kept first, in one undo step.
 - **One result surface.** While a task is open, the Rewrite panel replaces Captions in the right column (§3.6). Captions return when it closes. The panel only shows work and results.
-- **The text change is the hero.** The result shows as tracked changes in the transcript and as a checklist in the panel, with the same ordinals. Each change can be edited before anything is paid for.
+- **The text change is the hero.** The result shows as tracked changes in the transcript and as a checklist in the panel, with the same ordinals. Each change can be edited before anything is paid for: by Claude in its thread, or in your own words (§6.3 "Talk back to Claude").
 - **The voice comes from the clip.** When a change needs a voice and none exists, the panel continues into "Make your voice from this clip" (§6.3.7). There is no separate sheet and no Settings detour. Settings → Voice Lab only manages voices.
 - **One primary action per state.** Each state has a headline, at most one note, at most one secondary link and exactly one primary button. A control that cannot act is not shown. A hint appears once. The send line sits next to the button that sends. AI MODIFIED is stated once, at Use.
 - **Free work is not beta.** Cuts and text fixes from Rewrite need no voice and work with Voice Lab off. Only phrases in your voice, making your voice and takes carry the Beta tag and need Voice Lab (voice-lab.md §5).
@@ -1317,7 +1317,7 @@ Selection snapping skips them. Hit-testing an inserted run focuses its change.
 
 **Change editor.** Click a change, or press Return on a focused change or change row. The 1 November 2026 inline-action decision supersedes the older popup wording; it does not create a new editor window or popup.
 
-- macOS (ADR-R50): Return, F2, a click on a change's new words, Return on its change row and VoiceOver's "Talk to Claude about change {i}" open the change's thread ("Talk back to Claude" below), whose input takes the keys. The edit popover is removed, and new words come from Claude's versions.
+- macOS (ADR-R50): Return, F2, a click on a change's new words, Return on its change row and VoiceOver's "Talk to Claude about change {i}" open the change's thread ("Talk back to Claude" below), whose input takes the keys; ⌥E opens it with the input taking your own words. The edit popover is removed: new words come from Claude's versions or from "✎ My own words" in the thread.
 - Windows, until its thread twin: F2 opens the paragraph's existing inline correction row.
   - It sits under the affected paragraph, in the transcript's scroll flow. The shell owns the proposal's Keep, Undo, rediff/fit/cost and history operations; the transcript publishes ordinal-based callbacks and renders the returned real review snapshot. No rendering callback authorizes a provider request or synthesis.
   - Content:
@@ -1349,7 +1349,8 @@ The user, 9 November 2026: "the bubbles that help me to pick, if this text satis
 3. The bubbles, 24 pt capsules, in this order:
    - **✓ That's it, keep it**, on `change.add`: exactly Keep ⌘↩;
    - up to two **✦** bubbles, Claude's own next steps for this text from its last reply (at most six words each, such as "More suspense before the scammer"), outlined in the AI accent;
-   - the steady ones: **Shorter**, **Closer to my words**, **3 more versions**.
+   - the steady ones: **Shorter**, **Closer to my words**, **3 more versions**;
+   - **✎ My own words**, last, always there while the thread shows. It is drawn as a steady bubble, and selected (`bg.selectedRow`, a `line.strong` edge, semibold) while the input takes your words.
 4. Rewrite's inline connector confirmation, when the provider needs one: the Rewrite consent, once per AI, as Ask Claude's (§6.8).
 5. The input, "Tell Claude what to change…", 1 to 4 lines, with ↵ at its end. Beside it in `text.tertiary` is the cost line as Ask Claude's footer says it: "Free on your Claude plan", "Billed to your {provider} key" or "Free on this Mac".
 6. An error, in place: the connector's readiness copy (the same words as R1x) and **Try Again**.
@@ -1363,6 +1364,21 @@ The user, 9 November 2026: "the bubbles that help me to pick, if this text satis
 - While Claude works, the input shows a one-line spinner, "Claude is working on it", with **Stop**. Stop cancels the request and nothing changes. An error keeps the input's text.
 - Nothing is voiced or paid in the thread. Only the version that is kept goes on to the voice and price steps.
 
+**Your own words.** The user approved hand edits back inside the thread on 9 November 2026, after the edit popover went (ADR-R50, "Update: your own words").
+
+- A click on **✎ My own words**, or ⌥E on the focused change in the transcript, switches the input to your own words:
+  - it fills with the change's words as the text shows them (the version shown), with the cursor at the end;
+  - its placeholder reads "Your exact words · ↵ applies · Esc cancels";
+  - the cost line beside it reads "Free · nothing is sent";
+  - the bubble shows as selected.
+- **↵** puts the words in the change's place as a new version, through the same local edit as Claude's versions, with no request. The version row reads "‹ 3 of 3 › · your words". The turn line reads "You · your own words: “…”", with no Claude line after it. Claude's ✦ bubbles go, because they were for its own words.
+  - An empty text turns the change into a cut, as the edit popover did.
+  - The recorded words leave nothing to change, so the change is left out, as before.
+  - The words already in the text change nothing. A version's exact words show that version.
+- **Esc**, or the bubble again, returns the input to Claude with nothing changed, and gives back what it held for Claude. A second Esc folds the thread. A bubble that talks to Claude also leaves your own words first.
+- **Takes.** Your words are this Rewrite's words for the change, as Claude's versions are. Keep prices and voices them like any change, and the voice is made from your text. "✓ That's it, keep it" then Use works, with no "Takes are made from the AI's words" stop.
+- A later message to Claude carries your words as a version. They are never a message (ai.md §12.10).
+
 **Keys.**
 
 | Key | Does |
@@ -1373,8 +1389,10 @@ The user, 9 November 2026: "the bubbles that help me to pick, if this text satis
 | ⌥← / ⌥→ | The previous or next version, while the input is empty. In the transcript, once the thread has two versions or more; otherwise they move by sentence as before |
 | ⌘↩ / ⌘⌫ | Keep and Undo, also with the input focused |
 | Return, F2, a click on the new words | Open the thread and put the keys in its input |
+| ⌥E | In the transcript: open the thread with the input taking your own words |
+| ↵ / Esc, with your own words | Put them in place / back to Claude with nothing changed |
 
-**VoiceOver.** The thread is a group, "Talk to Claude about change {i}". Each turn reads "You: …" or "Claude: …"; the arrows are "Previous version" and "Next version" beside "Version 2 of 3"; a ✦ bubble reads "{words}, suggested by Claude"; the input is "Tell Claude what to change about change {i}".
+**VoiceOver.** The thread is a group, "Talk to Claude about change {i}". Each turn reads "You: …" or "Claude: …"; the arrows are "Previous version" and "Next version" beside "Version 2 of 3"; a ✦ bubble reads "{words}, suggested by Claude"; the input is "Tell Claude what to change about change {i}". "✎ My own words" reads "My own words", selected while it is on; the input then reads "Your own words for change {i}". The transcript adds the custom action "Type your own words for change {i}" beside "Talk to Claude about change {i}".
 
 #### 6.3.6 Rewrite flow
 

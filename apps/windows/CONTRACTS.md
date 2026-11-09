@@ -1,5 +1,24 @@
 # Windows fixed contracts
 
+### 2026-11-09 — Owed: "✎ My own words" in the Rewrite thread (Mac track/v2-thread-own-words, ADR-R50 "Update: your own words")
+
+The Mac thread got hand edits back (design.md §6.3 "Talk back to Claude", "Your own words"). Windows owes them with its thread twin (the entry below).
+
+- **Bubble.** "✎ My own words", last after the steady bubbles, always there while the thread shows. Selected while the input takes your words. It is app copy, not part of `rewrite-followup.json`.
+- **Edit mode.**
+  - A click on the bubble, or the shortcut, fills the input with the shown version's words, the cursor at the end.
+  - Placeholder "Your exact words · ↵ applies · Esc cancels"; cost line "Free · nothing is sent".
+  - The bubble again, or Esc, returns to Claude with nothing changed and gives back the Claude draft. A bubble that talks to Claude leaves edit mode first.
+  - The Mac shortcut is ⌥E on the focused change; Windows picks its own (Alt+E collides with menu access keys) and says it.
+- **Apply.** Enter applies the text through the same local rediff as a Claude version, with no request.
+  - A new version marked "your words" ("‹ 3 of 3 › · your words"), and a turn "You · your own words: “…”" with no Claude turn.
+  - Claude's next steps are cleared.
+  - Empty → a cut. The recorded words → nothing to change (left out). The words in the text → nothing changes. A version's exact words show that version.
+- **Takes.** Your words become the session's reply words for the change (the Mac's `acceptThreadWords`), so Keep prices and voices them, the voice made from the typed text. No "Takes are made from the AI's words" dead end.
+- **Requests.** Your words are a version in later requests, never a message.
+- **VoiceOver/Narrator.** The bubble reads "My own words" (selected state exposed). The field reads "Your own words for change {i}". The transcript's actions add "Type your own words for change {i}".
+- **Popover.** This replaces Windows' inline correction row (F2) when the thread lands: F2 then opens the thread for Claude, as on the Mac.
+
 ### 2026-11-09 — Owed: talk back to Claude about a change (Mac track/v2-rewrite-thread, ADR-R50)
 
 The Mac has a Rewrite thread under the focused change (design.md §6.3 "Talk back to Claude"). Windows owes its twin.

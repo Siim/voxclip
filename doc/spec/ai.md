@@ -1544,6 +1544,7 @@ The Rewrite thread under a change (design.md §6.3 "Talk back to Claude") sends 
   - `nextSteps` keeps at most `maxNextSteps` (2) steps of 1 to `maxNextStepWords` (6) words that are not a steady or keep bubble.
 - **Refused before sending.** A request with no version or message, a blank message, or more than the limits allow.
 - **Why one request for "3 more versions".** One call costs one send on a key and one use of a plan, and three versions of one change's words are a few hundred tokens, well inside `maxOutputTokens` 4000. Three calls would triple the cost and the wait for no better answer.
+- **Your own words.** Words the user types with "✎ My own words" (design.md §6.3) are applied locally and sent nowhere. They become a version like any other, so a later request carries them in `versionsBlock`; they are never a message.
 - **Nothing else.** The reply is never voiced, priced or applied by the service. The app puts a version in the change's place through its local edit, and only a kept change goes on to takes.
 - **Vectors.** `shared/fixtures/rewrite-thread/request-cases.json` (`voxclip-rewrite-thread-cases/1`, strings only) from `tools/fixtures/rewrite-thread/generate_request_cases.py`. It holds 5 request cases, among them the user's Clip 1 messages, an insertion and a message holding placeholder names, and 6 reply cases. Swift `RewriteFollowupReplayTests` replays them and checks the keys and counts. Windows is owed.
 
