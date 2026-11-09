@@ -1320,9 +1320,12 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
     }
 
     private func productionSession(_ fixture: Fixture, touchingVoices: Bool = false, exactSourceEnvelope: Bool = false,
-                                   rewriteConnector: (any LLMConnector)? = nil, v4Available: Bool = true) async throws -> (EditorModel, RewriteSession) {
+                                   rewriteConnector: (any LLMConnector)? = nil, v4Available: Bool = true,
+                                   voices: [Int]? = nil, extraHunks: [VoiceLabDiffHunk] = [], prepare: Bool = true,
+                                   edit: (inout Project) -> Void = { _ in }) async throws -> (EditorModel, RewriteSession) {
         ClipTakeHTTP.state.withLock { $0.listsDialogue = v4Available }
         var source = fixture.source
+        edit(&source)
         let (_, pcm, _) = try project()
         let audio = fixture.root.appendingPathComponent("source.wav")
         try VoiceTrainingAudio.wav(Array(pcm.prefix(120 * 24_000)), rate: 24_000).write(to: audio)
@@ -1352,7 +1355,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         editor.rewrite = session
         let fix = VoiceLabDiffHunk(kind: .textOnly, sourceWordIds: ["w9"], newTokens: ["Corrected"], correctedTexts: ["Corrected"],
             absorbedItemIds: [], bridgeWordIds: [], sourceStartIndex: 9, sourceEndIndex: 10, anchorSeconds: nil)
-        session.receive(([fix] + hunks(touchingVoices ? [10, 11] : [10])).map { RewriteChange(hunk: $0) })
+        let received = ([fix] + hunks(voices ?? (touchingVoices ? [10, 11] : [10])) + extraHunks).sorted { $0.sourceStartIndex < $1.sourceStartIndex }
+        session.receive(received.map { RewriteChange(hunk: $0) })
         session.finishRun(seconds: 1); session.showProposal()
         for ordinal in session.blockedVoiceOrdinals { session.pricedAnyway.insert(ordinal) }
         session.showProposal()
@@ -1373,7 +1377,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         let generation = try #require(session.generation)
         generation.prepareQuote = {}
         await generation.discover(language: "en"); await generation.finishQuotePreparationForTests()
-        if !v4Available { return (editor, session) }
+        if !v4Available || !prepare { return (editor, session) }
         await session.prepareTakes()
         let plan = try #require(session.takePlan)
         #expect(plan.problem.isEmpty, "\(plan.problem), \(generation.problem)")
@@ -1382,6 +1386,31 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(plan.approvalID != nil && plan.stillCurrent)
         ClipTakeHTTP.state.withLock { $0.duration = fittingSyntheticDuration(plan.phrases[0].window); $0.echoQA = true }
         return (editor, session)
+    }
+
+    /// MVP48: one phrase that can't be placed stopped the whole plan after Claude's rewrite, with "This change can't be
+    /// placed in this take." The review places each voice change without the rewrite's own cuts, so a change beside a
+    /// cut the rewrite proposes passes the review and is refused only by the plan. Now that change keeps its original
+    /// words, the summary says why in one line, and the other change is priced. Here the rewrite cuts w16 and w17 starts
+    /// inside it (overlapping items): the review bridges w17 to w16, but once w16 is cut w17's hard seam crosses it even
+    /// as a seam at a cut (`windowCrossesWord`).
+    @Test func unplaceablePhraseKeepsItsWordsAndTheOthersArePriced() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let cut = VoiceLabDiffHunk(kind: .cut, sourceWordIds: ["w16"], newTokens: [], correctedTexts: [], absorbedItemIds: [],
+                                   bridgeWordIds: [], sourceStartIndex: 16, sourceEndIndex: 17, anchorSeconds: nil)
+        let (editor, session) = try await productionSession(fixture, voices: [10, 17], extraHunks: [cut], prepare: false) { source in
+            if let end = source.transcript?.words[16].end { source.transcript?.words[17].start = end - 0.1 }
+        }
+        defer { editor.close() }
+        #expect(session.includedVoice == [2, 4], "\(session.includedVoice) \(session.ownProposal?.changes.map { ($0.ordinal, $0.kind, $0.state) } ?? [])")
+        await session.prepareTakes()
+        await session.takesTask?.value
+        #expect(session.takePlanFailure == nil && session.problem.isEmpty)
+        #expect(session.ownProposal?[4]?.state == .excluded && session.includedVoice == [2])
+        #expect(session.autoFix.notes == ["Change 4 keeps your original words: it can't be joined to the recording there."], "\(session.autoFix.notes)")
+        let plan = try #require(session.takePlan)
+        #expect(plan.phrases.count == 1 && plan.phrases[0].text.contains("Corrected"), "\(plan.phrases.map(\.text))")
+        #expect(plan.problem.isEmpty && plan.approvalID != nil && plan.stillCurrent, "\(plan.problem)")
     }
 
     @Test func timingShortSurroundingReviewDoesNotOverridePriceOrExcludedWords() async throws {

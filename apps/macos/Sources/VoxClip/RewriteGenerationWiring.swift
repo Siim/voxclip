@@ -137,6 +137,8 @@ extension RewriteSession {
             // The next-steps card shows it with its chips (RewriteNextSteps.swift); the footer names the blocker.
             takePlanFailure = error
             logFailure(error, stage: "plan")
+            // One phrase that can't be joined to the recording keeps its words, and the others are priced (MVP48).
+            if keepUnplaceable(error) { return }
             generation.fail("")
             showProposal()
             // A collision goes to the AI once as one sentence, with no click (RewriteAutoFix.swift).
