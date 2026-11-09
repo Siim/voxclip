@@ -582,6 +582,7 @@ public static class VoiceLabWindowPlanner
         var rightSeam = right ?? HardSeam(passageEnd + Math.Min(HardSeamReach, Math.Max(0, silenceEnd - passageEnd) / 2));
         if (touchesEnd && !blocking.Skip(lastIndex + 1).Contains(true)) rightSeam = EdgeSeam(total, duration);
         (leftSeam, rightSeam) = MoveToClipEdges(source, rate, a, b, firstIndex, lastIndex, blocking, leftSeam, rightSeam);
+        (leftSeam, rightSeam) = MoveToCutEdges(source, rate, a, b, firstIndex, lastIndex, blocking, leftSeam, rightSeam);
 
         var start = leftSeam.Time;
         var end = rightSeam.Time;
@@ -642,13 +643,8 @@ public static class VoiceLabWindowPlanner
         }
         if (leftSeam.Kind != VoiceLabSeamKind.None && inClip && layout.OutputEdge(w, true))
             HoldsInFullTake(project, take, window, true);
-        else if (leftSeam.Kind != VoiceLabSeamKind.None)
-        {
-            var needed = leftSeam.FadeSamples / 2;
-            var available = layout.Beside(w, true);
-            if (available < needed)
-                throw new VoiceLabGeometryException(VoiceLabGeometryErrorCode.SeamFadeCrossesCut, incoming: true, needed: needed, available: available);
-        }
+        else if (leftSeam.Kind != VoiceLabSeamKind.None && layout.Beside(w, true) < leftSeam.FadeSamples / 2)
+            HoldsAcrossCut(layout, w, true);
         if (w + 1 < elements.Length)
         {
             if (layout.Run(w + 1).Length == 0) throw Refusal(true, elements[w + 1].Id);
@@ -657,13 +653,8 @@ public static class VoiceLabWindowPlanner
         }
         if (rightSeam.Kind != VoiceLabSeamKind.None && inClip && layout.OutputEdge(w, false))
             HoldsInFullTake(project, take, window, false);
-        else if (rightSeam.Kind != VoiceLabSeamKind.None)
-        {
-            var needed = rightSeam.FadeSamples - rightSeam.FadeSamples / 2;
-            var available = layout.Beside(w, false);
-            if (available < needed)
-                throw new VoiceLabGeometryException(VoiceLabGeometryErrorCode.SeamFadeCrossesCut, incoming: false, needed: needed, available: available);
-        }
+        else if (rightSeam.Kind != VoiceLabSeamKind.None && layout.Beside(w, false) < rightSeam.FadeSamples - rightSeam.FadeSamples / 2)
+            HoldsAcrossCut(layout, w, false);
         // The validator's overlappingFades condition: the inner halves of both fades must fit inside the window.
         var inner = leftSeam.FadeSamples - leftSeam.FadeSamples / 2 + rightSeam.FadeSamples / 2;
         if (inner > rightSeam.Sample - leftSeam.Sample)
@@ -690,9 +681,8 @@ public static class VoiceLabWindowPlanner
     static (VoiceLabSeamPlacement Left, VoiceLabSeamPlacement Right) MoveToClipEdges(ScopeSource source, double rate, int a, int b,
         int first, int last, bool[] blocking, VoiceLabSeamPlacement left, VoiceLabSeamPlacement right)
     {
-        if (source.ClipRange is not { } clipRange || source.ClipBounds is not { } bounds || a < bounds.Start || b > bounds.End) return (left, right);
-        var opens = left.Kind != VoiceLabSeamKind.None && !blocking.Take(first).Contains(true);
-        var closes = right.Kind != VoiceLabSeamKind.None && !blocking.Skip(last + 1).Contains(true);
+        if (source.ClipRange is not { } clipRange) return (left, right);
+        var (opens, closes) = ClipEdgeSides(source, a, b, first, last, blocking, left, right);
         if (!opens && !closes) return (left, right);
         var kept = source.KeptSource((left.Time, right.Time));
         if (opens)
@@ -721,9 +711,69 @@ public static class VoiceLabWindowPlanner
         var full = new ScopeSource(project, VoiceLabOutputScope.Full, take);
         var elements = full.Replacements.Append(window).OrderBy(piece => piece.Range.StartSample).ToArray();
         var layout = new SeamLayout(elements, full.KeptSource((window.Start, window.End), window.Range), take.Total);
-        var index = Array.FindIndex(elements, piece => piece.IsWindow);
-        if (layout.PrepareHolds(index, incoming)) return;
-        var fade = incoming ? window.InFade : window.OutFade;
+        HoldsAcrossCut(layout, Array.FindIndex(elements, piece => piece.IsWindow), incoming);
+    }
+
+    /// <summary>Whether the passage opens (closes) its clip's output on that side: a clip scope, a passage inside the clip, a
+    /// seam with a fade and no kept or replaced item of the clip before (after) the window.</summary>
+    static (bool Opens, bool Closes) ClipEdgeSides(ScopeSource source, int a, int b, int first, int last, bool[] blocking,
+        VoiceLabSeamPlacement left, VoiceLabSeamPlacement right)
+    {
+        if (source.ClipRange is null || source.ClipBounds is not { } bounds || a < bounds.Start || b > bounds.End) return (false, false);
+        return (left.Kind != VoiceLabSeamKind.None && !blocking.Take(first).Contains(true),
+            right.Kind != VoiceLabSeamKind.None && !blocking.Skip(last + 1).Contains(true));
+    }
+
+    /// <summary>A seam at a cut (§8.4 step 5, 2026-11-09). A hard seam often lands where a cut ends: the cut word touches the
+    /// passage, or the cut's reach takes the whole gap once the passage's words are dropped. Then no kept source, or a sliver
+    /// shorter than the fade's outer half, lies between the cut and the seam. The seam moves to the cut's edge: the window
+    /// absorbs that sliver of the gap (never a cut item), so the generated piece starts exactly where the user's cut ends and
+    /// the output keeps the cut's timing. Place then checks the seam by prepare's rule (HoldsAcrossCut): the output piece on
+    /// the far side of the cut holds the outer half, as it already plays beside the cut. A side that opens or closes the clip
+    /// keeps the clip-edge rule.</summary>
+    static (VoiceLabSeamPlacement Left, VoiceLabSeamPlacement Right) MoveToCutEdges(ScopeSource source, double rate, int a, int b,
+        int first, int last, bool[] blocking, VoiceLabSeamPlacement left, VoiceLabSeamPlacement right)
+    {
+        var (opens, closes) = ClipEdgeSides(source, a, b, first, last, blocking, left, right);
+        var incoming = left.Kind != VoiceLabSeamKind.None && !opens;
+        var outgoing = right.Kind != VoiceLabSeamKind.None && !closes;
+        if (!incoming && !outgoing) return (left, right);
+        var kept = source.KeptSource((left.Time, right.Time));
+        if (incoming)
+        {
+            var seam = left.Sample;
+            foreach (var piece in kept)
+            {
+                if (piece.StartSample >= seam || seam > piece.EndSample) continue;
+                if (seam - piece.StartSample < left.FadeSamples / 2)
+                    left = left with { Time = piece.StartSample / rate, Sample = piece.StartSample };
+                break;
+            }
+        }
+        if (outgoing)
+        {
+            var seam = right.Sample;
+            foreach (var piece in kept)
+            {
+                if (piece.StartSample > seam || seam >= piece.EndSample) continue;
+                if (piece.EndSample - seam < right.FadeSamples - right.FadeSamples / 2)
+                    right = right with { Time = piece.EndSample / rate, Sample = piece.EndSample };
+                break;
+            }
+        }
+        return (left, right);
+    }
+
+    /// <summary>Prepare's rule for the window's seam at index when no kept source lies right beside it (§10.5): the output
+    /// piece beside the seam is source and holds the fade's outer half, possibly across a cut, and a replacement across that
+    /// source leaves room for both outer halves. Otherwise SeamFadeCrossesCut with that piece's numbers, or
+    /// AdjacentReplacement and the replacement's ID. A clip's output edge is not a cut: only a window inside the clip opens or
+    /// closes its output (MoveToClipEdges), so one outside it with nothing rendered beside the seam is refused.</summary>
+    static void HoldsAcrossCut(SeamLayout layout, int index, bool incoming)
+    {
+        if (!layout.OutputEdge(index, incoming) && layout.PrepareHolds(index, incoming)) return;
+        var elements = layout.Elements;
+        var fade = incoming ? elements[index].InFade : elements[index].OutFade;
         var between = layout.Run(incoming ? index : index + 1);
         var needed = incoming ? fade / 2 : fade - fade / 2;
         var available = between.Length == 0 ? 0 : incoming ? between[^1].EndSample - between[^1].StartSample : between[0].EndSample - between[0].StartSample;

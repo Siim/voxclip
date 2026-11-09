@@ -143,7 +143,7 @@ def generate(reference):
               case('all-bridges-cross-budget', [2, 4], total=20, timing=timing),
               case('all-merge-over-budget-keeps-earlier', [2, 4, 12], total=40, timing=timing, counts={4: 6}),
               case('all-three-widened-transitive', [6, 2, 4], timing=timing),
-              case('all-cut-word-refuses-seam-before-merge', [2, 4], timing=timing, cut=['w3'])]
+              case('all-cut-word-between-collides', [2, 4], timing=timing, cut=['w3'])]
     correction = case('all-corrected-bridges-and-text-only', [2, 4], timing=timing)
     correction['input']['edits']['corrections'] = {'w1': 'corrected words'}
     correction['input']['hunks'].insert(1, make_hunk(correction['input']['words'], 3, kind='textOnly', text='W3!'))
@@ -162,7 +162,7 @@ def generate(reference):
         blocked = case(name, [2, 4], timing=dense)
         blocked['input']['words'][3]['kind'] = kind
         cases.append(blocked)
-    cut_hunk = case('all-cut-hunk-refuses-seam-before-merge', [2, 4], timing=timing)
+    cut_hunk = case('all-cut-hunk-between-collides', [2, 4], timing=timing)
     cut_hunk['input']['hunks'].insert(1, make_hunk(cut_hunk['input']['words'], 3, kind='cut', count=0))
     cases.append(cut_hunk)
     review_timing = [(0.2, 0.5), (0.7, 0.9), (0.95, 1.05), (1.1, 1.4),
