@@ -6772,6 +6772,7 @@ member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public Remap(do
 member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public ToString()
 member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public get_EyeAspect()
 member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public get_EyesClosedAt()
+member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public get_EyesFromWidth()
 member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public get_EyesOpenAt()
 member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public get_FacingSpan()
 member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public get_Gates()
@@ -6781,6 +6782,7 @@ member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public get_Prov
 member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public get_QuantileMap()
 member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public get_SharpHigh()
 member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public get_SharpLow()
+member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public get_SpeakerScore()
 member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public get_Status()
 member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public get_W0()
 member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public get_W1()
@@ -6790,6 +6792,7 @@ member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public op_Equal
 member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public op_Inequality(VoxClip.Core.Domain.Frames.FrameFaceCalibration,VoxClip.Core.Domain.Frames.FrameFaceCalibration)
 member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public set_EyeAspect(VoxClip.Core.Domain.Frames.FrameLinearMap)
 member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public set_EyesClosedAt(double)
+member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public set_EyesFromWidth(double)
 member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public set_EyesOpenAt(double)
 member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public set_FacingSpan(double)
 member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public set_Gates(VoxClip.Core.Domain.Frames.FrameQualityGates)
@@ -6798,6 +6801,7 @@ member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public set_Pitc
 member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public set_QuantileMap(System.Collections.Generic.IReadOnlyList`1<System.ValueTuple`2<double,double>>)
 member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public set_SharpHigh(double)
 member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public set_SharpLow(double)
+member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public set_SpeakerScore(double)
 member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public set_Status(string)
 member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public set_W0(double)
 member VoxClip.Core.Domain.Frames.FrameFaceCalibration :: method public set_W1(double)
@@ -7097,7 +7101,7 @@ member VoxClip.Core.Domain.Frames.FrameSheetFrame :: method public get_Image()
 member VoxClip.Core.Domain.Frames.FrameSheetFrame :: method public get_Index()
 member VoxClip.Core.Domain.Frames.FrameSheetFrame :: method public get_Observation()
 member VoxClip.Core.Domain.Frames.FrameTextLines :: method public LineBox(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Frames.OcrWordBox>,int,int)
-member VoxClip.Core.Domain.Frames.IFrameFaces :: method public FacesAsync(VoxClip.Core.Domain.Captions.PixelBuffer,System.Threading.CancellationToken)
+member VoxClip.Core.Domain.Frames.IFrameFaces :: method public FacesAsync(VoxClip.Core.Domain.Captions.PixelBuffer,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Effects.ClipEffectRect>,System.Threading.CancellationToken)
 member VoxClip.Core.Domain.Frames.IFrameTextLines :: method public LinesAsync(VoxClip.Core.Domain.Captions.PixelBuffer,System.Threading.CancellationToken)
 member VoxClip.Core.Domain.Frames.MeshPoint :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Frames.MeshPoint :: method public .ctor(double,double,double)
@@ -7253,6 +7257,10 @@ member VoxClip.Core.Domain.Frames.RotatedCrop :: method public get_Side()
 member VoxClip.Core.Domain.Frames.RotatedCrop :: method public get_Sin()
 member VoxClip.Core.Domain.Frames.RotatedCrop :: method public op_Equality(VoxClip.Core.Domain.Frames.RotatedCrop,VoxClip.Core.Domain.Frames.RotatedCrop)
 member VoxClip.Core.Domain.Frames.RotatedCrop :: method public op_Inequality(VoxClip.Core.Domain.Frames.RotatedCrop,VoxClip.Core.Domain.Frames.RotatedCrop)
+member VoxClip.Core.Domain.Frames.SpeakerFace :: field public InsideScreenShare
+member VoxClip.Core.Domain.Frames.SpeakerFace :: method public FaceCount(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Frames.YuNetFace>,int,double)
+member VoxClip.Core.Domain.Frames.SpeakerFace :: method public InsideScreen(VoxClip.Core.Domain.Effects.ClipEffectRect,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Effects.ClipEffectRect>)
+member VoxClip.Core.Domain.Frames.SpeakerFace :: method public ReadingOrder(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Frames.YuNetFace>,VoxClip.Core.Domain.Frames.YuNetInput,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Effects.ClipEffectRect>,double)
 member VoxClip.Core.Domain.Frames.YuNetDecoder :: field public Alignment
 member VoxClip.Core.Domain.Frames.YuNetDecoder :: field public LongSide
 member VoxClip.Core.Domain.Frames.YuNetDecoder :: field public NmsThreshold
@@ -18464,6 +18472,7 @@ type VoxClip.Core.Domain.Frames.QuadFinder
 type VoxClip.Core.Domain.Frames.QuadFinder+Candidate
 type VoxClip.Core.Domain.Frames.QuadFinderSettings
 type VoxClip.Core.Domain.Frames.RotatedCrop
+type VoxClip.Core.Domain.Frames.SpeakerFace
 type VoxClip.Core.Domain.Frames.YuNetDecoder
 type VoxClip.Core.Domain.Frames.YuNetFace
 type VoxClip.Core.Domain.Frames.YuNetInput
