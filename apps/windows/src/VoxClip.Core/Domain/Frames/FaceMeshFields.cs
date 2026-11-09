@@ -63,7 +63,8 @@ public sealed record FaceMeshMeasure(double? RawLeftEye, double? RawRightEye, do
 
 /// <summary>The <see cref="FrameFace"/> fields from Face Mesh V2's 478 landmarks on the upright crop (ADR-R48, Windows; the study's
 /// "How the chosen pair produces each FrameFace field"). They mean what the post-fix Mac's mean: the rect is the detector box,
-/// the eye ratios are the Mac's bounding-box height over width mapped onto Vision's scale, yaw and pitch are mapped onto
+/// the eye ratios are the Mac's bounding-box height over width mapped onto Vision's scale (null on a face narrower than
+/// <see cref="FrameFaceCalibration.EyesFromWidth"/>), yaw and pitch are mapped onto
 /// Vision revision 3's (pitch negative with the head tipped back), and the capture quality is the catalogued formula. Every
 /// fitted constant comes from <see cref="FrameFaceCalibration"/>. Pure.</summary>
 public static class FaceMeshFields
@@ -104,8 +105,11 @@ public static class FaceMeshFields
         double? yaw = pose is { } angles ? calibration.Yaw.Apply(angles.Yaw) : null;
         double? pitch = pose is { } tilt ? calibration.Pitch.Apply(tilt.Pitch) : null;
         var parts = Quality(Mean(left, right), yaw, pitch, faceWidthPixels, crop, calibration);
+        // A face narrower than EyesFromWidth reads its eyes too unsteadily to call: the face reports them unknown (null ratios), as the
+        // Mac reports a face without eye landmarks. The quality above still uses the measured ratios.
+        var readable = faceWidthPixels >= calibration.EyesFromWidth;
         return new FaceMeshMeasure(rawLeft, rawRight, pose?.Yaw, pose?.Pitch, parts,
-            new FrameFace(rect, parts?.Quality, left, right, yaw, pitch));
+            new FrameFace(rect, parts?.Quality, readable ? left : null, readable ? right : null, yaw, pitch));
     }
 
     /// <summary>The mesh's yaw and pitch, radians, from its face axes: x̂ = p263 − p33 (eye corners), ŷ = p152 − p10 (forehead to chin)

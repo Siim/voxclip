@@ -3,13 +3,14 @@ using System.Security.Cryptography;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using VoxClip.Core.Domain.Captions;
+using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Frames;
 using VoxClip.Core.Domain.Shared;
 
 namespace VoxClip.Media.Frames;
 
 /// <summary>Faces in a frame on Windows (ADR-R48 Windows, W3): YuNet finds the faces on the frame scaled to a 640 px long side,
-/// the largest one's roll-aligned 256 px crop is cut from the frame itself, Face Mesh V2 reads it, and <see cref="FaceMeshFields"/>
+/// the speaker's (<see cref="SpeakerFace"/>; usually the largest) roll-aligned 256 px crop is cut from the frame itself, Face Mesh V2 reads it, and <see cref="FaceMeshFields"/>
 /// turns the 478 landmarks into the Mac's <see cref="FrameFace"/> fields with the catalogue's calibration. The two bundled models
 /// load only after <see cref="FrameModel.VerifiedFiles"/> has checked their sizes and hashes, and the bytes handed to ONNX Runtime
 /// are hashed again, so a file swapped between the check and the load is refused too.</summary>
@@ -105,11 +106,11 @@ public sealed class OnnxFrameFaces : IFrameFaces, IDisposable
     }
 
     /// <inheritdoc/>
-    public Task<FrameFaceFindings> FacesAsync(PixelBuffer frame, CancellationToken ct)
+    public Task<FrameFaceFindings> FacesAsync(PixelBuffer frame, IReadOnlyList<ClipEffectRect> screens, CancellationToken ct)
     {
         try
         {
-            return Task.FromResult(Faces(frame, ct));
+            return Task.FromResult(Faces(frame, screens, ct));
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -121,12 +122,19 @@ public sealed class OnnxFrameFaces : IFrameFaces, IDisposable
         }
     }
 
+    /// <summary>The faces in a frame without a screen scan: <see cref="Faces(PixelBuffer, IReadOnlyList{ClipEffectRect}, CancellationToken)"/>
+    /// with no screens.</summary>
+    public FrameFaceFindings Faces(PixelBuffer frame, CancellationToken ct = default) => Faces(frame, [], ct);
+
     /// <summary>The faces in <paramref name="frame"/> (premultiplied BGRA, upright, as <c>CurrentFrames</c> decodes it): how many YuNet
-    /// kept and the largest one's fields. When the mesh finds no face in the largest box (presence below 0.5), that box is not a
-    /// face: it is not counted and the next largest is read instead.</summary>
-    public FrameFaceFindings Faces(PixelBuffer frame, CancellationToken ct = default)
+    /// kept and the speaker's fields. The boxes are read in <see cref="SpeakerFace.ReadingOrder"/> (outside <paramref name="screens"/>
+    /// first, then confident detections, then the larger); when the mesh finds no face in a box (presence below 0.5), that box is not
+    /// a face: it is not counted and the next one is read instead. The count is <see cref="SpeakerFace.FaceCount"/>: the speaker and
+    /// the confident boxes not read.</summary>
+    public FrameFaceFindings Faces(PixelBuffer frame, IReadOnlyList<ClipEffectRect> screens, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(frame);
+        ArgumentNullException.ThrowIfNull(screens);
         if (frame.Width <= 0 || frame.Height <= 0 || frame.Stride < frame.Width * 4 ||
             frame.Pixels.Length < (long)frame.Stride * (frame.Height - 1) + frame.Width * 4)
             throw new ArgumentException("The frame buffer is smaller than its size.", nameof(frame));
@@ -143,14 +151,12 @@ public sealed class OnnxFrameFaces : IFrameFaces, IDisposable
             try
             {
                 Rgb(frame, rgb);
-                var rejected = 0;
-                // Largest first; equal boxes keep the decoder's best-score-first order, as YuNetDecoder.Largest picks.
-                foreach (var face in found.OrderByDescending(face => face.Area))
+                var order = SpeakerFace.ReadingOrder(found, input, screens, calibration.SpeakerScore);
+                for (var index = 0; index < order.Count; index++)
                 {
                     ct.ThrowIfCancellationRequested();
-                    if (Measure(face, input, rgb.AsSpan(0, rgbLength), frame.Width, frame.Height) is { } measured)
-                        return new FrameFaceFindings(found.Count - rejected, measured);
-                    rejected++;
+                    if (Measure(order[index], input, rgb.AsSpan(0, rgbLength), frame.Width, frame.Height) is { } measured)
+                        return new FrameFaceFindings(SpeakerFace.FaceCount(order, index, calibration.SpeakerScore), measured);
                 }
                 return new FrameFaceFindings(0, null);
             }

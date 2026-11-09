@@ -1,4 +1,5 @@
 using VoxClip.Core.Domain.Captions;
+using VoxClip.Core.Domain.Effects;
 using VoxClip.Core.Domain.Shared;
 
 namespace VoxClip.Core.Domain.Frames;
@@ -21,7 +22,8 @@ public sealed record FrameFaceFindings
 
     /// <summary>How many faces were found.</summary>
     public int FaceCount { get; }
-    /// <summary>The largest face, or null when there is none.</summary>
+    /// <summary>The face the frame's observation carries, or null when there is none: the largest, as on the Mac, except that on
+    /// Windows a face inside a screen or a weak detection gives way to the speaker's (<see cref="SpeakerFace"/>).</summary>
     public FrameFace? Largest { get; }
 
     /// <summary><paramref name="observation"/> with these faces (its text and screens are the screen scan's).</summary>
@@ -38,9 +40,11 @@ public sealed record FrameFaceFindings
 public interface IFrameFaces
 {
     /// <summary>The faces in <paramref name="frame"/>: premultiplied BGRA as <c>CurrentFrames</c> decodes it, upright, at most
-    /// 1,280 px on the long side. The largest face's rect is in picture space (normalized, top-left origin), its yaw and pitch in
-    /// radians as the post-fix Mac reports them.</summary>
-    Task<FrameFaceFindings> FacesAsync(PixelBuffer frame, CancellationToken ct);
+    /// 1,280 px on the long side. The speaker's face (<see cref="SpeakerFace"/>: the largest, unless it is inside one of
+    /// <paramref name="screens"/> or a weak detection beside a confident one) has its rect in picture space (normalized, top-left
+    /// origin), its yaw and pitch in radians as the post-fix Mac reports them. <paramref name="screens"/> are the frame's screen rects
+    /// in picture space, empty when the frame had no screen scan.</summary>
+    Task<FrameFaceFindings> FacesAsync(PixelBuffer frame, IReadOnlyList<ClipEffectRect> screens, CancellationToken ct);
 }
 
 /// <summary>Whether faces can be measured on this PC. The face source is nullable where the App and the CLI are put together:

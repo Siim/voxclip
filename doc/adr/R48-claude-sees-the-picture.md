@@ -180,3 +180,61 @@ small frames may be sent to the chosen AI. The cover is saved as `cover.jpg` nex
   face size and person; and a check that the measured face is the speaker. Each is a code change to the Windows face path,
   which is outside this package. Rerun with `tools/frames/calibrate` (its README) after any of them, or when macOS or the
   request set changes.
+
+## Windows calibration, second pass (W8, track/v2-win-frames-w8, 2026-11-09)
+
+The W7 set, split and reference, rerun after three Windows-side changes. The shared decisions are unchanged.
+
+- **The speaker's face, not the largest (`SpeakerFace`).** The face path reads YuNet's boxes in this order: outside the frame's
+  screens (the screen scan's text-dense rectangles and clusters) first, then confident detections (YuNet score ≥ `speakerScore`),
+  then the larger. A weak box counts as a face only once the mesh confirms it. `speakerScore` 0.85 is the fit split's lowest
+  speaker score (0.864) rounded down to 0.05. No other fit box reaches it; the non-speakers in the whole set score 0.60–0.79.
+  The analyzer now scans screens before faces and passes them on; the calibration has no OCR, so only the score rule acts here.
+  - W7's "face in a graphic" is the first segment of the Demo-2 subject (s25, 97–112 s): the interview's title card. YuNet's
+    largest box is the dark helmet face behind its text (score 0.77). Vision, and now Windows, take the portrait photo beside it.
+    That segment is a still card, which the manifest's own rules exclude; it stays, because the split is W7's.
+  - Raw quads can't serve as the screen rule: 14 % of fit speakers sit inside a larger quad (a window, a door, a poster).
+  - Face counts now agree with the Mac on 5,610 of 5,620 frames.
+- **Small faces report their eyes unknown.** Below `eyesFromWidth`, at 1,280 px, the face has null eye ratios, as the Mac reports a
+  face without eye landmarks. The capture quality still uses the measured eyes. Fit: the top of the highest 20 px band of fit faces,
+  with at least 30 faces, whose eye agreement is below the fit split's overall 0.948. That is 40–60 px (439 faces, 0.781) and
+  60–80 px (61 faces, 0.918), so 80 px. The fit split has one face from 80 to 100 px, so it can't place the cut there; held out,
+  that band agrees 0.885.
+  - **Vision is unreliable there too.** On fit faces under 60 px, Vision calls the eyes closed in 40.5 % of frames; on faces of
+    100 px or more, it does so in 4–11 %. The Mac should probably treat faces under about 80 px as unknown as well; this package
+    doesn't change the Mac.
+  - **How the acceptance counts an unknown.** The eyes line counts the frames where both platforms state open or closed. A frame
+    where Windows says unknown and Vision gives a value is left out of it and reported as `eyesUnknown`. `eyesStrict` counts such
+    a frame as the decisions read it: not an open look, so it agrees with Vision's "closed" and disagrees with Vision's "open".
+    The opening and cover lines run on every frame, so they carry what an unknown costs.
+- **Quality per recording: tried, not applied.** Per-recording offsets (the recording's median moved toward a fixed level by a
+  strength 0–1), a per-recording quantile remap and a recording-relative sharpness term were tried. Each lowered the agreement on
+  the fit split as well as held out, so the fit chose strength 0 and the app applies none. The reason: Windows' per-recording level
+  tracks Vision's (correlation 0.54 fit, 0.70 held out), so pinning it removes information. The misses that remain are recordings
+  whose whole level sits on a line on both platforms (s17 and s19, in-station mid shots: Vision medians 0.31 and 0.22).
+- **Result on the 13 held-out people** (needs → W7 → speaker → speaker and small faces):
+
+  | Line | Needs | W7 | Speaker | Shipped (both) |
+  |---|---|---|---|---|
+  | eyes | ≥ 0.98 | 0.960 | 0.960 | 0.968 (260 unknown) |
+  | facing | ≥ 0.95 | 0.980 | 0.980 | 0.980 |
+  | quality at 0.25 | ≥ 0.95 | 0.817 | 0.900 | 0.900 |
+  | quality at 0.40 | ≥ 0.85 | 0.823 | 0.906 | 0.906 |
+  | opening | ≥ 0.95 | 0.794 | 0.890 | 0.887 |
+  | cover regret p90 | ≤ 0.06 | 0.074 | 0.074 | 0.455 |
+
+  Quality at 0.40 now passes, as does facing. Eyes, quality at 0.25, the opening and the cover still fail, so the catalogue stays
+  `enabled: false` and `provisional`.
+- **Why the rest fails.**
+  - **Cover:** with eyes unknown under 80 px, a wide shot has no open-eyed Windows frame, so `CoverFrame.pick` has nothing to
+    choose, and the line counts the Mac's whole score as regret. That is a real loss (no cover from frames on such footage), not an
+    artefact. Without the small-face rule, p90 is 0.074.
+  - **Eyes:** 0.968 even with small faces out, and 0.978 on faces from 100 px. Away from the line (Vision's ratio more than 0.02
+    from 0.20), eyes agree 0.983. Half of the misses are within 0.02 of the line. There, Vision's state flips between consecutive
+    frames (100 ms apart) in 25–33 % of pairs, and its ratio moves a median 0.009 (p90 0.03) between frames even with the eyes
+    clearly open. The mesh-to-Vision offset also varies by person (±0.05).
+  - **Quality at 0.25 and the opening:** the in-station mid shots (s15, s17, s19), whose whole level sits near 0.25 on both
+    platforms. From 100 px, held out, quality at 0.25 agrees 0.965, at 0.40 0.913, and the opening 0.936.
+- **Constants** in the calibration block: `speakerScore` 0.85 and `eyesFromWidth` 80. The W7 maps and weights are refitted
+  unchanged. `evaluation` adds `steps` (the table above, fit and held out), `eyeBands`, `speaker`, `recordingOffset` and the eyes
+  counts. Setting `eyesFromWidth` to 0 turns the small-face rule off.

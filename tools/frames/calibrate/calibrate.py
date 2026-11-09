@@ -68,6 +68,21 @@ GATE_EVIDENCE = 30
 # Acceptance on the validation split (study, "Calibration so 0.4, 0.25 and the 0.15 margin mean the same").
 ACCEPTANCE = {'eyes': 0.98, 'opening': 0.95, 'facing': 0.95, 'quality025': 0.95, 'quality040': 0.85, 'coverRegretP90': 0.06}
 COVER_WINDOW = 24
+# The speaker rule (W8, SpeakerFace): a box scoring at least speakerScore is a confident detection, which goes before a weak one.
+# Fitted as the fit split's lowest speaker score (the box the Mac's face overlaps) rounded down to SPEAKER_STEP.
+SPEAKER_STEP = 0.05
+# Small faces (W8): the eyes are reported unknown below eyesFromWidth. Fitted on the fit split in bands of EYE_BAND px (from
+# EYE_BANDS_FROM): the cut is the top of the highest band, with at least GATE_EVIDENCE faces, whose eye agreement with Vision is
+# below the fit split's agreement over all its faces; 0 when none is.
+EYE_BAND = 20
+EYE_BANDS_FROM = 20
+EYE_BANDS_TO = 200
+# Eyes "near the line": Vision's mean ratio within this of the 0.20 closed line, where Vision's own consecutive frames disagree
+# (a diagnostic only).
+EYE_LINE_BAND = 0.02
+# The per-recording quality offset tried (W8): q' = q - lambda * (the recording's median q - the fit split's mean Vision median).
+# lambda is fitted on the fit split over this grid (the best mean of the two quality lines; ties: the smaller lambda).
+RECORDING_OFFSETS = [0.0, 0.25, 0.5, 0.75, 1.0]
 
 
 # MARK: Manifest, decoding and hashing
@@ -91,10 +106,11 @@ def frame_size(video, edge):
 
 def decode(video, segment, decoding):
     """Every frame of one segment, as raw RGB24 bytes at the manifest's size: ffmpeg seeks to the start (accurate seek), takes
-    the duration at the segment's fps and scales with the pinned, bit-exact swscale flags."""
+    the duration at the segment's fps and scales with the pinned, bit-exact swscale flags. Four decoding threads at most, so a
+    run leaves the machine usable; the hashes show the bytes don't depend on it."""
     width, height = frame_size(video, decoding['edge'])
     duration = segment['end'] - segment['start']
-    command = ['ffmpeg', '-v', 'error', '-nostdin', '-ss', f"{segment['start']:.3f}", '-i', video['url'], '-t', f'{duration:.3f}',
+    command = ['ffmpeg', '-v', 'error', '-nostdin', '-threads', '4', '-ss', f"{segment['start']:.3f}", '-i', video['url'], '-t', f'{duration:.3f}',
                '-an', '-sn', '-vf', f"fps={segment['fps']},scale={width}:{height}:flags={decoding['scaler']}",
                '-sws_flags', decoding['swsFlags'], '-pix_fmt', 'rgb24', '-f', 'rawvideo', '-']
     data = subprocess.run(command, capture_output=True, check=True, timeout=1800).stdout
@@ -366,10 +382,128 @@ def fit_constants(rows):
     }
 
 
+# MARK: The speaker, small faces and the per-recording offset (W8)
+
+def speaker_face(row, speaker_score):
+    """The Windows face SpeakerFace's reading order picks from the frame's boxes without screens (the calibration has no OCR): the
+    confident boxes (score >= speaker_score) before the weak, the larger first, equal areas in the decoder's order (which the
+    runner's largest-first dump keeps), the first the mesh measured. The count is SpeakerFace.FaceCount: the speaker and the confident
+    boxes after it. Returns (face count, face or None)."""
+    boxes = row['windows'].get('candidates', [])
+    order = sorted(range(len(boxes)), key=lambda i: (boxes[i]['detectorScore'] < speaker_score, i))
+    for position, index in enumerate(order):
+        if boxes[index]['measured']:
+            return 1 + sum(1 for later in order[position + 1:] if boxes[later]['detectorScore'] >= speaker_score), boxes[index]['measured']
+    return 0, None
+
+
+def with_speaker(rows, speaker_score):
+    """rows with each Windows face replaced by speaker_face's pick (a copy; the rows themselves are left alone)."""
+    out = []
+    for row in rows:
+        count, face = speaker_face(row, speaker_score)
+        windows = {key: value for key, value in row['windows'].items() if key != 'face'}
+        windows['faceCount'] = count
+        if face is not None:
+            windows['face'] = face
+        out.append({**row, 'windows': windows})
+    return out
+
+
+def check_speaker(rows, speaker_score):
+    """The frames whose recorded Windows face (the shipped path's, measured with the catalogue's speakerScore) is not
+    speaker_face's pick: the twin and SpeakerFace must agree on every frame."""
+    return [row['sha256'] for row in rows
+            if (row['windows']['faceCount'], row['windows'].get('face')) != speaker_face(row, speaker_score)]
+
+
+def fit_speaker_score(rows):
+    """The fit split's lowest speaker score (the measured box the Mac's face overlaps), rounded down to SPEAKER_STEP, with the
+    evidence: how many speakers and other measured boxes the fit split has, and how many of the others score at least the cut."""
+    speakers, others = [], []
+    for row in rows:
+        mac = row['mac'].get('face')
+        for box in row['windows'].get('candidates', []):
+            if not box['measured']:
+                continue
+            (speakers if mac and iou(box['rect'], mac['rect']) >= SAME_FACE_IOU else others).append(box['detectorScore'])
+    if not speakers:
+        raise ValueError('No speaker boxes to fit the speaker score from.')
+    cut = math.floor(min(speakers) / SPEAKER_STEP + 1e-9) * SPEAKER_STEP
+    return round(cut, 4), {'speakers': len(speakers), 'lowestSpeaker': round(min(speakers), 4), 'others': len(others),
+                           'othersFromCut': sum(1 for score in others if score >= cut)}
+
+
+def eye_states(row, calibration):
+    """Vision's and Windows' eye state (closed below 0.20) on the same face, with Windows' face width, or None."""
+    mac, win = row['mac'].get('face'), row['windows'].get('face')
+    if not mac or not win or iou(mac['rect'], win['rect']) < SAME_FACE_IOU:
+        return None
+    vision = mean_of(mac.get('leftEyeAspect'), mac.get('rightEyeAspect'))
+    mesh = mean_of(*(None if win.get(key) is None else FIELDS.linear(calibration['eyeAspect'], win[key]) for key in ('rawLeftEye', 'rawRightEye')))
+    if vision is None or mesh is None:
+        return None
+    return vision < DECISIONS.CLOSED_BELOW, mesh < DECISIONS.CLOSED_BELOW, win['faceWidthPixels']
+
+
+def fit_eyes_from_width(rows, calibration):
+    """The width below which Windows reports the eyes unknown, from the fit split's eye agreement in EYE_BAND px bands, and the bands."""
+    states = [state for state in (eye_states(row, calibration) for row in rows) if state is not None]
+    overall = sum(1 for a, b, _ in states if a == b) / len(states)
+    bands, cut = [], 0
+    for low in range(EYE_BANDS_FROM, EYE_BANDS_TO, EYE_BAND):
+        inside = [(a, b) for a, b, width in states if low <= width < low + EYE_BAND]
+        share = sum(1 for a, b in inside if a == b) / len(inside) if inside else None
+        bands.append({'from': low, 'faces': len(inside), 'eyes': None if share is None else round(share, 4)})
+        if len(inside) >= GATE_EVIDENCE and share < overall:
+            cut = low + EYE_BAND
+    return cut, {'overall': round(overall, 4), 'bands': bands}
+
+
+def recording_key(row):
+    return row['subject'], row['video']
+
+
+def recording_offset(rows, calibration, strength, target):
+    """The Windows observations of rows with the per-recording offset of the given strength: each recording's own measured
+    qualities give its median (only that recording's frames), and every quality moves by strength x (target - median)."""
+    observations = {row['sha256'] + str(row['time']): windows_observation(row, calibration) for row in rows}
+    qualities = {}
+    for row in rows:
+        face = observations[row['sha256'] + str(row['time'])].get('face')
+        if face and face.get('captureQuality') is not None:
+            qualities.setdefault(recording_key(row), []).append(face['captureQuality'])
+    medians = {key: float(np.median(values)) for key, values in qualities.items()}
+    for row in rows:
+        face = observations[row['sha256'] + str(row['time'])].get('face')
+        if face and face.get('captureQuality') is not None and strength:
+            face['captureQuality'] = min(1.0, max(0.0, face['captureQuality'] - strength * (medians[recording_key(row)] - target)))
+    return observations
+
+
+def fit_recording_offset(rows, calibration):
+    """The offset's strength on the fit split: the target is the mean of the fit recordings' Vision medians; each strength on the
+    grid is scored by the mean of the two quality lines on the fit split (ties: the smaller). Returns (strength, target, tried)."""
+    medians = {}
+    for row in rows:
+        face = row['mac'].get('face')
+        if face and face.get('captureQuality') is not None:
+            medians.setdefault(recording_key(row), []).append(face['captureQuality'])
+    target = round(float(np.mean([np.median(values) for values in medians.values()])), 4)
+    tried = []
+    for strength in RECORDING_OFFSETS:
+        numbers = evaluate(rows, calibration, recording_offset(rows, calibration, strength, target))
+        tried.append({'strength': strength, 'quality025': round(numbers['quality025']['share'], 4),
+                      'quality040': round(numbers['quality040']['share'], 4), 'opening': round(numbers['opening']['share'], 4)})
+    best = max(tried, key=lambda t: (round((t['quality025'] + t['quality040']) / 2, 9), -t['strength']))
+    return best['strength'], target, tried
+
+
 # MARK: Observations and the shared decisions
 
 def calibration_from(constants):
-    return {'eyeAspect': constants['eyeAspect'], 'yaw': constants['yaw'], 'pitch': constants['pitch'], 'quality': constants['quality']}
+    return {'eyeAspect': constants['eyeAspect'], 'yaw': constants['yaw'], 'pitch': constants['pitch'], 'quality': constants['quality'],
+            'speakerScore': constants.get('speakerScore', 0.0), 'eyesFromWidth': constants.get('eyesFromWidth', 0)}
 
 
 def mac_observation(row):
@@ -392,6 +526,9 @@ def windows_observation(row, calibration):
         pitch = None if face.get('meshPitch') is None else FIELDS.linear(calibration['pitch'], face['meshPitch'])
         crop = {key: face[key] for key in ('sharpnessVariance', 'meanLuma', 'clippedFraction')}
         parts = FIELDS.quality_parts(FIELDS.mean(left, right), yaw, pitch, face['faceWidthPixels'], crop, calibration)
+        # A face narrower than eyesFromWidth reports its eyes unknown; its quality still uses the measured eyes (FaceMeshFields).
+        if face['faceWidthPixels'] < calibration.get('eyesFromWidth', 0):
+            left = right = None
         value = DECISIONS.face(face['rect'], None if parts is None else parts['quality'], left, right, yaw, pitch)
     return DECISIONS.observation(row['time'], value, row['windows']['faceCount'])
 
@@ -411,10 +548,16 @@ def agreement(pairs):
     return {'agree': sum(1 for a, b in pairs if a == b), 'of': len(pairs), 'share': (sum(1 for a, b in pairs if a == b) / len(pairs)) if pairs else None}
 
 
-def evaluate(rows, calibration):
-    """Every acceptance number for rows through the shared decisions, on both platforms' observations."""
+def evaluate(rows, calibration, windows=None):
+    """Every acceptance number for rows through the shared decisions, on both platforms' observations (windows: the Windows
+    observations by frame key, when not windows_observation's).
+
+    The eyes line counts the frames where both platforms state open or closed. A frame where Windows says unknown and Vision
+    states a value is not in it: it is reported as eyesUnknown, and eyesStrict counts it the way the decisions read it (unknown is
+    not an open look: it agrees with Vision's closed and disagrees with Vision's open). The opening and cover lines run on every
+    frame, so they carry what an unknown costs."""
     mac = {row['sha256'] + str(row['time']): mac_observation(row) for row in rows}
-    win = {row['sha256'] + str(row['time']): windows_observation(row, calibration) for row in rows}
+    win = windows if windows is not None else {row['sha256'] + str(row['time']): windows_observation(row, calibration) for row in rows}
     key = lambda row: row['sha256'] + str(row['time'])
     baselines = {}
     for group, members in by_video(rows).items():
@@ -422,14 +565,22 @@ def evaluate(rows, calibration):
         baselines.setdefault(video, (DECISIONS.pitch_baseline([mac[key(r)] for r in rows if (r['subject'], r['video']) == video]),
                                      DECISIONS.pitch_baseline([win[key(r)] for r in rows if (r['subject'], r['video']) == video])))
     presence, eyes, facing, q25, q40, quality_pairs = [], [], [], [], [], []
+    strict, away_from_line, unknown = [], [], 0
     for row in rows:
         m, w = mac[key(row)], win[key(row)]
         mac_base, win_base = baselines[(row['subject'], row['video'])]
         presence.append((m.get('face') is not None, w.get('face') is not None))
         if not m.get('face') or not w.get('face'):
             continue
-        if m['face']['eyes'] != 'unknown' and w['face']['eyes'] != 'unknown':
-            eyes.append((m['face']['eyes'], w['face']['eyes']))
+        if m['face']['eyes'] != 'unknown':
+            stated = w['face']['eyes'] != 'unknown'
+            unknown += not stated
+            strict.append((m['face']['eyes'] == 'open', w['face']['eyes'] == 'open'))
+            if stated:
+                eyes.append((m['face']['eyes'], w['face']['eyes']))
+                vision = mean_of(m['face'].get('leftEyeAspect'), m['face'].get('rightEyeAspect'))
+                if abs(vision - DECISIONS.CLOSED_BELOW) > EYE_LINE_BAND:
+                    away_from_line.append((m['face']['eyes'], w['face']['eyes']))
         mf, wf = DECISIONS.faces_camera(m['face'], mac_base), DECISIONS.faces_camera(w['face'], win_base)
         if mf is not None and wf is not None:
             facing.append((mf, wf))
@@ -482,6 +633,9 @@ def evaluate(rows, calibration):
         'facesInBoth': len(quality_pairs),
         'visionClosed': sum(1 for a, _ in eyes if a == 'closed'),
         'eyes': agreement(eyes),
+        'eyesUnknown': unknown,
+        'eyesStrict': agreement(strict),
+        'eyesAwayFromLine': agreement(away_from_line),
         'facing': agreement(facing),
         'quality025': agreement(q25),
         'quality040': agreement(q40),
@@ -525,13 +679,34 @@ def split_rows(rows, split):
 
 def fit(args):
     rows = paired_rows()
-    constants = fit_constants(split_rows(rows, 'fit'))
+    measured_with = json.loads(CATALOGUE.read_text(encoding='utf-8'))['models'][0]['calibration'].get('speakerScore', 0.0)
+    differing = check_speaker(rows, measured_with)
+    if differing:
+        raise SystemExit(f'{len(differing)} frame(s) were measured with a face speaker_face does not pick at speakerScore {measured_with}, '
+                         f'e.g. {differing[0]}: the twin and SpeakerFace differ. Fix the twin.')
+    # (W8) The speaker score from the fit split's boxes; then every row's Windows face is the speaker rule's pick at that score.
+    speaker_score, speaker_evidence = fit_speaker_score(split_rows(rows, 'fit'))
+    largest = with_speaker(rows, 0.0)
+    rows = with_speaker(rows, speaker_score)
+    fit_rows, validation = split_rows(rows, 'fit'), split_rows(rows, 'validation')
+    constants = fit_constants(fit_rows)
+    constants['speakerScore'], constants['speakerEvidence'] = speaker_score, speaker_evidence
+    eyes_from, eye_bands = fit_eyes_from_width(fit_rows, calibration_from(constants))
+    constants['eyesFromWidth'], constants['eyeBands'] = eyes_from, eye_bands
     calibration = calibration_from(constants)
-    validation = split_rows(rows, 'validation')
-    report = {'constants': constants, 'fit': evaluate(split_rows(rows, 'fit'), calibration),
-              'validation': evaluate(validation, calibration), 'perSubject': {}}
+    strength, target, tried = fit_recording_offset(fit_rows, calibration)
+    constants['recordingOffset'] = {'strength': strength, 'target': target, 'tried': tried}
+    report = {'constants': constants, 'fit': evaluate(fit_rows, calibration), 'validation': evaluate(validation, calibration), 'perSubject': {}}
     for subject in sorted({row['subject'] for row in validation}):
         report['perSubject'][subject] = evaluate([row for row in validation if row['subject'] == subject], calibration)
+    # The acceptance after each W8 change, from W7's path (the largest face, eyes at every size) on (validation and fit).
+    w7 = calibration | {'speakerScore': 0.0, 'eyesFromWidth': 0}
+    speaker_only = calibration | {'eyesFromWidth': 0}
+    report['steps'] = {
+        'w7': {split: evaluate(split_rows(largest, split), w7) for split in ('fit', 'validation')},
+        'speaker': {split: evaluate(split_rows(rows, split), speaker_only) for split in ('fit', 'validation')},
+        'smallFaces': {split: evaluate(split_rows(rows, split), calibration) for split in ('fit', 'validation')},
+    }
     # Diagnostics only (the acceptance is on every validation frame): the same split without faces under 100 px wide at 1,280,
     # and without frames where the two pipelines measured different faces.
     report['diagnostics'] = {
@@ -549,18 +724,25 @@ def share(row):
 
 def print_report(report):
     c = report['constants']
-    print('constants:', json.dumps({k: c[k] for k in ('eyeAspect', 'yaw', 'pitch', 'quality')}))
+    print('constants:', json.dumps({k: c[k] for k in ('eyeAspect', 'yaw', 'pitch', 'quality', 'speakerScore', 'eyesFromWidth')}))
     print('gates:', json.dumps(c['gateNotes']))
+    print('speaker:', json.dumps(c['speakerEvidence']))
+    print('eye bands (fit):', json.dumps(c['eyeBands']))
+    print('recording offset (fit):', json.dumps(c['recordingOffset']))
     header = f"{'set':12s} {'frames':>6s} {'faces':>6s} {'closed':>6s} {'eyes':>18s} {'facing':>18s} {'q>=0.25':>18s} " \
              f"{'q>=0.40':>18s} {'opening':>18s} {'regret p90':>10s} {'pearson':>7s}"
     print(header)
-    rows = [('fit', report['fit']), ('validation', report['validation'])] + sorted(report['perSubject'].items()) + \
+    steps = [(f'{name[:6]} {split[:3]}', numbers) for name, by in report['steps'].items() for split, numbers in by.items()]
+    rows = steps + [('fit', report['fit']), ('validation', report['validation'])] + sorted(report['perSubject'].items()) + \
         [('val >=100px', report['diagnostics']['validationFacesFrom100px']), ('val same', report['diagnostics']['validationSameFace'])]
     for name, n in rows:
         pearson = '—' if n['qualityPearson'] is None else f"{n['qualityPearson']:.2f}"
         regret = '—' if n['coverRegretP90'] is None else f"{n['coverRegretP90']:.3f}"
         print(f"{name:12s} {n['frames']:6d} {n['facesInBoth']:6d} {n['visionClosed']:6d} {share(n['eyes']):>18s} {share(n['facing']):>18s} "
               f"{share(n['quality025']):>18s} {share(n['quality040']):>18s} {share(n['opening']):>18s} {regret:>10s} {pearson:>7s}")
+    for name in ('fit', 'validation'):
+        n = report[name]
+        print(f"{name} eyes: unknown {n['eyesUnknown']}, strict {share(n['eyesStrict'])}, away from the line {share(n['eyesAwayFromLine'])}")
     print('failed:', report['failed'] or 'none')
 
 
@@ -588,6 +770,10 @@ def gates_sentence(constants):
     if fitted:
         parts.append('Fitted gates: ' + ', '.join(fitted) + '.')
     parts.append('The sharpness range, eyes-open span and facing span are the study\'s; pitch0 and the weights are fitted.')
+    parts.append(f"speakerScore is the fit split's lowest speaker score ({constants['speakerEvidence']['lowestSpeaker']}) rounded down to "
+                 f"{SPEAKER_STEP}; eyesFromWidth is the top of the highest {EYE_BAND} px band of fit faces, with at least {GATE_EVIDENCE} "
+                 "faces, whose eye agreement is below the fit split's overall (evaluation.eyeBands). The per-recording quality offset "
+                 f"was fitted too and chose strength {constants['recordingOffset']['strength']} (evaluation.recordingOffset), so none is applied.")
     return ' '.join(parts)
 
 
@@ -601,21 +787,26 @@ def write(args):
     passed = not report['failed']
     subjects = data['subjects']
     rounded = lambda n: {key: (round(value, 4) if isinstance(value, float) else value) for key, value in n.items()}
+    share4 = lambda line: None if line['share'] is None else round(line['share'], 4)
     numbers = lambda n: {
         'frames': n['frames'], 'facesInBoth': n['facesInBoth'], 'visionClosed': n['visionClosed'],
-        'facePresence': round(n['facePresence']['share'], 4), 'eyes': round(n['eyes']['share'], 4), 'facing': round(n['facing']['share'], 4),
-        'quality025': round(n['quality025']['share'], 4), 'quality040': round(n['quality040']['share'], 4),
-        'opening': round(n['opening']['share'], 4), 'openingScans': n['opening']['of'], 'openingMoves': n['openingMoves'],
+        'facePresence': share4(n['facePresence']), 'eyes': share4(n['eyes']), 'facing': share4(n['facing']),
+        'quality025': share4(n['quality025']), 'quality040': share4(n['quality040']),
+        'opening': share4(n['opening']), 'openingScans': n['opening']['of'], 'openingMoves': n['openingMoves'],
         'coverWindows': n['coverWindows'], 'coverRegretMedian': round(n['coverRegretMedian'], 4), 'coverRegretP90': round(n['coverRegretP90'], 4),
         'qualityPearson': None if n['qualityPearson'] is None else round(n['qualityPearson'], 4),
-        'qualityMae': None if n['qualityMae'] is None else round(n['qualityMae'], 4)}
+        'qualityMae': None if n['qualityMae'] is None else round(n['qualityMae'], 4),
+        'eyesUnknown': n['eyesUnknown'], 'eyesStrict': share4(n['eyesStrict']),
+        'eyesAwayFromLine': share4(n['eyesAwayFromLine'])}
+    if c['recordingOffset']['strength']:
+        raise SystemExit('The fit chose a per-recording quality offset, which the Windows app does not apply yet: add it first.')
     model = catalogue['models'][0]
     model['calibration'] = {
         # Only a passing calibration is "calibrated": the schema and FrameModelCatalog refuse to enable a provisional one, so a
         # failed run keeps its fitted constants and numbers but can't be switched on by the enabled flag alone.
         'status': 'calibrated' if passed else 'provisional',
         'basis': ('' if passed else 'Provisional: the acceptance against the Mac failed (see evaluation.failed), so this calibration '
-                  'cannot be enabled. ') + (f"Fitted by tools/frames/calibrate (W7) on {sum(1 for s in subjects if s['split'] == 'fit')} subjects of US federal "
+                  'cannot be enabled. ') + (f"Fitted by tools/frames/calibrate (W7, W8) on {sum(1 for s in subjects if s['split'] == 'fit')} subjects of US federal "
                   f"public-domain NASA video and checked on {sum(1 for s in subjects if s['split'] == 'validation')} held-out subjects "
                   f"(split by subject; manifest tools/frames/calibrate/manifest.json, SHA-256 {manifest_sha256()}); no frames are kept. "
                   + gates_sentence(c)),
@@ -624,11 +815,20 @@ def write(args):
                       'then VNDetectFaceLandmarksRequest and VNDetectFaceCaptureQualityRequest on its largest face, beside VNRecognizeTextRequest '
                       '(fast) and VNDetectRectanglesRequest'),
         'eyeAspect': c['eyeAspect'], 'yaw': c['yaw'], 'pitch': c['pitch'], 'quality': c['quality'],
+        'speakerScore': c['speakerScore'], 'eyesFromWidth': c['eyesFromWidth'],
         'evaluation': {
             'manifestSha256': manifest_sha256(),
             'acceptance': ACCEPTANCE,
             'passed': passed,
             'failed': report['failed'],
+            'eyesCounting': ('eyes counts the frames where both platforms state open or closed; eyesUnknown is how many Vision-stated '
+                             'frames Windows reports unknown (faces under eyesFromWidth), eyesStrict counts those as the decisions read '
+                             'them (not an open look), and eyesAwayFromLine leaves out frames whose Vision ratio is within '
+                             f'{EYE_LINE_BAND} of the 0.20 line. The opening and cover lines run on every frame.'),
+            'speaker': c['speakerEvidence'],
+            'eyeBands': c['eyeBands'],
+            'recordingOffset': c['recordingOffset'],
+            'steps': {name: {split: numbers(n) for split, n in by.items()} for name, by in report['steps'].items()},
             'fit': numbers(report['fit']),
             'validation': numbers(report['validation']),
             'perSubject': {subject: numbers(n) for subject, n in sorted(report['perSubject'].items())},
@@ -636,10 +836,10 @@ def write(args):
         },
     }
     enabled_note = (
-        'On: the calibration against the Mac (W7) passed every acceptance line on the held-out subjects. The licence decision is made: '
+        'On: the calibration against the Mac (W7, W8) passed every acceptance line on the held-out subjects. The licence decision is made: '
         'the user accepted YuNet\'s training-data terms (WIDER FACE) on 2026-11-09, and both files are bundled in the Windows app.'
         if passed else
-        'Off: the calibration against the Mac (W7) failed ' + ', '.join(report['failed']) + ' on the held-out subjects (see '
+        'Off: the calibration against the Mac (W7, W8) failed ' + ', '.join(report['failed']) + ' on the held-out subjects (see '
         'calibration.evaluation). The licence decision is made: the user accepted YuNet\'s training-data terms (WIDER FACE) on '
         '2026-11-09, and both files are bundled in the Windows app. While off, nothing loads these models outside tests and the '
         'developer override (VOXCLIP_FRAME_FACES=1).')

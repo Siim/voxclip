@@ -4,10 +4,10 @@ independently of the C# code, from numpy, onnxruntime and the pure maths of tool
 
   python3 tools/models/face_golden_reference.py shared/fixtures/frame-faces/*.png
 
-prints, per image, the face count and the largest real face's fields (rect, eye ratios, yaw, pitch, capture quality and its
+prints, per image, the face count and the speaker's face's fields (rect, eye ratios, yaw, pitch, capture quality and its
 parts) with the catalogue's calibration. Re-pin OnnxFrameFacesTests' Goldens from it whenever the calibration changes (W7).
 Steps, as OnnxFrameFaces: the image scaled bilinearly at pixel centres (edges repeated) to YuNet's input (640 px long side,
-padded black to multiples of 32), BGR 0-255 NCHW; YuNet decoded; largest box first (a box the mesh rejects is not counted);
+padded black to multiples of 32), BGR 0-255 NCHW; YuNet decoded; the boxes in SpeakerFace's order (a box the mesh rejects is not counted);
 the roll-aligned 256 px crop sampled from the image itself; Face Mesh V2; the fields. Needs numpy, pillow and onnxruntime
 1.19.2 in a throwaway venv.
 """
@@ -65,17 +65,17 @@ def faces(path):
     outputs = {name: value.reshape(-1).tolist() for name, value in zip(names, DETECTOR.run(None, {"input": tensor}))}
     found = gen.decode(outputs, size["width"], size["height"])
     flat = np.asarray(image).reshape(-1).tolist()
-    rejected = 0
-    for face in sorted(found, key=lambda item: -gen.area(item)):  # stable: best score first among equals
+    # SpeakerFace's reading order without screens (W8): confident boxes before weak ones, then the larger (stable: best score first
+    # among equals); the count is the speaker and the confident boxes after it.
+    order = [found[index] for index in gen.speaker_order(found, size["contentWidth"], size["contentHeight"], [], CALIBRATION["speakerScore"])]
+    for position, face in enumerate(order):
         crop = gen.crop_from_face(face, 1 / size["scale"])
         if crop is None:
-            rejected += 1
             continue
         sample = gen.sample(crop, flat, width, height, width * 3)
         landmarks, presence = MESH.run(["Identity", "Identity_1"], {"input_12": np.asarray(sample, np.float32).reshape(1, 256, 256, 3)})
         logit = float(presence.reshape(-1)[0])
         if logit < 0:
-            rejected += 1
             continue
         points = landmarks.reshape(478, 3).astype(np.float64).tolist()
         case = {"count": 478, "fill": [0.0, 0.0, 0.0], "points": {str(index): point for index, point in enumerate(points)},
@@ -83,7 +83,8 @@ def faces(path):
                 "crop": gen.crop_stats(sample, gen.CROP_SIZE, CALIBRATION["quality"]["gates"]),
                 "rect": gen.picture_rect(face, size["contentWidth"], size["contentHeight"])}
         fields = gen.mesh_fields(case, CALIBRATION)
-        return {"faceCount": len(found) - rejected, "detectorScore": face["score"], "presenceLogit": logit, "roll": crop["roll"],
+        count = 1 + sum(1 for later in order[position + 1:] if later["score"] >= CALIBRATION["speakerScore"])
+        return {"faceCount": count, "detectorScore": face["score"], "presenceLogit": logit, "roll": crop["roll"],
                 "face": fields["face"], "quality": fields["quality"], "meshYaw": fields["meshYaw"], "meshPitch": fields["meshPitch"]}
     return {"faceCount": 0, "boxes": len(found)}
 

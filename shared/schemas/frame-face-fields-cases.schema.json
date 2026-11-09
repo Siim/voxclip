@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/Siim/voxclip/main/shared/schemas/frame-face-fields-cases.schema.json",
-  "title": "Windows face field vectors (ADR-R48 Windows, package W2)",
+  "title": "Windows face field vectors (ADR-R48 Windows, packages W2 and W8)",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "description", "constants", "calibration", "caseCount", "counts", "inputSizes", "decodes", "crops", "samples",
-               "cropStats", "meshes", "qualities"],
+               "cropStats", "meshes", "qualities", "speakers"],
   "properties": {
     "schema": {"const": "voxclip-frame-face-fields-cases/1"},
     "description": {"type": "string", "minLength": 1},
@@ -25,10 +25,10 @@
     "caseCount": {"type": "integer", "minimum": 1},
     "counts": {
       "type": "object", "additionalProperties": false,
-      "required": ["inputSizes", "decodes", "crops", "samples", "cropStats", "meshes", "qualities"],
+      "required": ["inputSizes", "decodes", "crops", "samples", "cropStats", "meshes", "qualities", "speakers"],
       "properties": {
         "inputSizes": {"type": "integer"}, "decodes": {"type": "integer"}, "crops": {"type": "integer"}, "samples": {"type": "integer"},
-        "cropStats": {"type": "integer"}, "meshes": {"type": "integer"}, "qualities": {"type": "integer"}
+        "cropStats": {"type": "integer"}, "meshes": {"type": "integer"}, "qualities": {"type": "integer"}, "speakers": {"type": "integer"}
       }
     },
     "inputSizes": {"type": "array", "minItems": 1, "items": {
@@ -107,6 +107,23 @@
         "pitch": {"type": ["number", "null"]}, "faceWidthPixels": {"type": "number"}, "crop": {"$ref": "#/$defs/stats"},
         "quantileMap": {"oneOf": [{"type": "null"}, {"type": "array", "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"}}}]},
         "expect": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/parts"}]}
+      }
+    }},
+    "speakers": {"type": "array", "minItems": 1, "items": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "faces", "contentWidth", "contentHeight", "screens", "speakerScore", "expect", "expectCount"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "faces": {"type": "array", "minItems": 1, "items": {
+          "type": "object", "additionalProperties": false, "required": ["x", "y", "width", "height", "score"],
+          "properties": {"x": {"type": "number"}, "y": {"type": "number"}, "width": {"type": "number"}, "height": {"type": "number"},
+                         "score": {"type": "number"}}
+        }},
+        "contentWidth": {"type": "integer"}, "contentHeight": {"type": "integer"},
+        "screens": {"type": "array", "items": {"$ref": "#/$defs/rect"}},
+        "speakerScore": {"type": "number"},
+        "expect": {"type": "array", "items": {"type": "integer", "minimum": 0}},
+        "expectCount": {"type": "integer", "minimum": 1}
       }
     }}
   },

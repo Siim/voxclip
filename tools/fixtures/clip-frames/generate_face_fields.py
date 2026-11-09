@@ -580,6 +580,9 @@ def mesh_fields(case, calibration):
     yaw = None if angles is None else linear(calibration['yaw'], angles[0])
     pitch = None if angles is None else linear(calibration['pitch'], angles[1])
     parts = quality_parts(mean(left, right), yaw, pitch, case['faceWidthPixels'], case['crop'], calibration)
+    # A face narrower than eyesFromWidth reports its eyes unknown (W8); the quality above keeps the measured eyes.
+    if case['faceWidthPixels'] < calibration['eyesFromWidth']:
+        left = right = None
     return {'rawLeftEye': raw_left, 'rawRightEye': raw_right, 'meshYaw': None if angles is None else angles[0],
             'meshPitch': None if angles is None else angles[1], 'quality': parts,
             'face': face_json(case['rect'], None if parts is None else parts['quality'], left, right, yaw, pitch),
@@ -649,6 +652,10 @@ def mesh_cases(calibration):
     no_pose[str(CHIN)] = list(no_pose[str(FOREHEAD)])
     rows.append({'id': 'no-pose', 'count': LANDMARK_COUNT, 'fill': [128.0, 128.0, 0.0], 'points': no_pose, 'rect': rect,
                  'faceWidthPixels': 180.0, 'crop': crop})
+    rows.append({'id': 'small-face-eyes-unknown', 'count': LANDMARK_COUNT, 'fill': [128.0, 128.0, 0.0], 'points': synthetic_mesh(0.30, 0.30),
+                 'rect': rect, 'faceWidthPixels': calibration['eyesFromWidth'] - 0.5, 'crop': crop})
+    rows.append({'id': 'eyes-at-the-width', 'count': LANDMARK_COUNT, 'fill': [128.0, 128.0, 0.0], 'points': synthetic_mesh(0.30, 0.30),
+                 'rect': rect, 'faceWidthPixels': calibration['eyesFromWidth'], 'crop': crop})
     small = synthetic_mesh(0.30, 0.30)
     rows.append({'id': 'small-face-gated', 'count': LANDMARK_COUNT, 'fill': [128.0, 128.0, 0.0], 'points': small, 'rect': rect,
                  'faceWidthPixels': 32.0, 'crop': crop})
@@ -656,6 +663,59 @@ def mesh_cases(calibration):
         row['expect'] = mesh_fields(row, calibration)
     rows.append({'id': 'wrong-count', 'count': LANDMARK_COUNT - 1, 'fill': [128.0, 128.0, 0.0], 'points': {}, 'rect': rect,
                  'faceWidthPixels': 180.0, 'crop': crop, 'expect': None})
+    return rows
+
+
+INSIDE_SCREEN_SHARE = 0.5
+
+
+def inside_screen(face, screens):
+    area = max(0.0, face['width']) * max(0.0, face['height'])
+    if not area > 0:
+        return False
+    for screen in screens:
+        width = min(face['x'] + face['width'], screen['x'] + screen['width']) - max(face['x'], screen['x'])
+        height = min(face['y'] + face['height'], screen['y'] + screen['height']) - max(face['y'], screen['y'])
+        if width > 0 and height > 0 and width * height >= INSIDE_SCREEN_SHARE * area:
+            return True
+    return False
+
+
+def speaker_order(faces, content_width, content_height, screens, speaker_score):
+    """SpeakerFace.ReadingOrder: outside every screen first, then confident (score >= speaker_score), then the larger, then the
+    given order. Returns the faces' indices."""
+    keyed = [(inside_screen(picture_rect(face, content_width, content_height), screens), face['score'] < speaker_score, -area(face), index)
+             for index, face in enumerate(faces)]
+    return [index for *_, index in sorted(keyed)]
+
+
+def speaker_cases(calibration):
+    """The speaker's reading order on boxes in a 640 x 384 detector input (content 640 x 360), with the catalogue's speakerScore."""
+    def box(x, y, width, height, score):
+        return {'x': x, 'y': y, 'width': width, 'height': height, 'score': score}
+    confident = calibration['speakerScore'] + 0.05
+    weak = calibration['speakerScore'] - 0.05
+    slide = {'x': 0.5, 'y': 0.0, 'width': 0.5, 'height': 0.6}
+    cases = [
+        ('one-face', [box(100, 80, 120, 150, confident)], []),
+        ('largest-first', [box(100, 80, 60, 75, confident), box(300, 60, 120, 150, confident)], []),
+        ('equal-boxes-keep-the-decoders-order', [box(100, 80, 100, 120, confident + 0.01), box(400, 80, 100, 120, confident)], []),
+        ('weak-graphic-face-behind-a-title', [box(40, 20, 280, 300, weak), box(420, 60, 95, 130, confident)], []),
+        ('at-the-speaker-score', [box(40, 20, 280, 300, calibration['speakerScore']), box(420, 60, 95, 130, 0.99)], []),
+        ('only-weak-faces', [box(40, 20, 90, 100, weak), box(420, 60, 140, 160, weak - 0.1)], []),
+        ('face-on-a-screen', [box(360, 40, 180, 170, confident), box(60, 120, 90, 110, confident)], [slide]),
+        ('mostly-on-a-screen', [box(260, 40, 160, 170, confident), box(60, 120, 90, 110, confident)], [slide]),
+        ('partly-on-a-screen', [box(200, 40, 160, 170, confident), box(60, 120, 90, 110, confident)], [slide]),
+        ('screen-and-weak', [box(360, 40, 180, 170, confident), box(60, 120, 90, 110, weak), box(200, 200, 40, 50, confident)], [slide]),
+        ('every-face-on-a-screen', [box(340, 20, 60, 70, confident), box(420, 60, 120, 150, confident)], [slide]),
+    ]
+    rows = []
+    for case_id, faces, screens in cases:
+        order = speaker_order(faces, 640, 360, screens, calibration['speakerScore'])
+        # The face count when the mesh confirms the first box read: it and every later confident box (SpeakerFace.FaceCount).
+        count = 1 + sum(1 for index in order[1:] if faces[index]['score'] >= calibration['speakerScore'])
+        rows.append({'id': case_id, 'faces': faces, 'contentWidth': 640, 'contentHeight': 360, 'screens': screens,
+                     'speakerScore': calibration['speakerScore'], 'expect': order, 'expectCount': count})
     return rows
 
 
@@ -712,11 +772,12 @@ def generated():
         'cropStats': crop_stat_cases(calibration['quality']['gates']),
         'meshes': mesh_cases(calibration),
         'qualities': quality_cases(calibration),
+        'speakers': speaker_cases(calibration),
     }
     return {
         'schema': 'voxclip-frame-face-fields-cases/1',
-        'description': 'The pure steps from YuNet\'s and Face Mesh V2\'s outputs to a FrameFace on Windows (ADR-R48 Windows, package '
-                       'W2), on synthetic tensors and landmark sets, with the calibration of shared/catalog/frame-models.json. '
+        'description': 'The pure steps from YuNet\'s and Face Mesh V2\'s outputs to a FrameFace on Windows (ADR-R48 Windows, packages '
+                       'W2 and W8: the speaker\'s reading order and the small-face eyes), on synthetic tensors and landmark sets, with the calibration of shared/catalog/frame-models.json. '
                        'Generated by tools/fixtures/clip-frames/generate_face_fields.py; C# FrameFaceFieldsVectorTests replays every '
                        'case, comparing numbers within 1e-9 relative.',
         'constants': {

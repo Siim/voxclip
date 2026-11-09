@@ -198,7 +198,8 @@ public sealed class FrameAnalyzer
     }
 
     /// <summary>One lane on its own thread (FFmpeg's contexts belong to the thread that made them): its reader, its own screen scan, and
-    /// for each time the decode, the faces, the text and screens (sentence frames only) and the sheet JPEG (sentence frames only).</summary>
+    /// for each time the decode, the text and screens (sentence frames only), the faces (given the screens) and the sheet JPEG
+    /// (sentence frames only).</summary>
     private async Task<IReadOnlyList<Analyzed>> LaneAsync(string source, double[] run, FrameScanKind kind, CancellationTokenSource lanes)
     {
         var ct = lanes.Token;
@@ -214,8 +215,9 @@ public sealed class FrameAnalyzer
                 {
                     ct.ThrowIfCancellationRequested();
                     var frame = reader.Read(time, ct);
-                    var found = faces.FacesAsync(frame.Pixels, ct).GetAwaiter().GetResult();
+                    // Screens first, so the face path can pass over a face shown on a screen (SpeakerFace).
                     var text = screens.ScanAsync(frame.Pixels, opening, ct).GetAwaiter().GetResult();
+                    var found = faces.FacesAsync(frame.Pixels, [.. text.Screens.Select(screen => screen.Rect)], ct).GetAwaiter().GetResult();
                     var observation = text.ApplyTo(found.ApplyTo(new FrameObservation(frame.Time)));
                     var jpeg = opening ? null : FrameJpeg.Encode(frame.Pixels, FrameSheet.FrameEdge);
                     results.Add(new(time, observation, jpeg));
