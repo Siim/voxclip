@@ -62,7 +62,7 @@ public sealed class MakeItFramesTests : IDisposable
     /// <summary>A face left of centre, eyes shut in the first frame (around 2.6 s) and open elsewhere, or none at all.</summary>
     internal sealed class TimedFaces(bool face = true) : IFrameFaces
     {
-        public Task<FrameFaceFindings> FacesAsync(PixelBuffer frame, CancellationToken ct)
+        public Task<FrameFaceFindings> FacesAsync(PixelBuffer frame, IReadOnlyList<ClipEffectRect> screens, CancellationToken ct)
         {
             if (!face) return Task.FromResult(new FrameFaceFindings(0, null));
             var time = TimeOf(frame);
