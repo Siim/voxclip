@@ -56,6 +56,19 @@ import Testing
         for scope in [Self.scope, .full] { try VoiceLabRenderContract.validatePlacement(project, scope: scope, window: window) }
     }
 
+    /// The fit plan and the recipe store a window's edge as its sample over the rate. The user's touching boundary lies on
+    /// the 48 kHz grid; half a sample later it doesn't, and the stored edge would cut into the phrase's first word, so the
+    /// hunk is refused before any paid take (the Rewrite then keeps that phrase's words).
+    @Test func touchingCutOffTheSourceGridIsRefused() throws {
+        var (project, envelope) = try Self.take()
+        let boundary: Double = 11.135 + 0.5 / 48_000
+        project.transcript?.words[18].end = boundary
+        project.transcript?.words[19].start = boundary
+        #expect(throws: VoiceLabGeometryError.windowCrossesWord("w20")) {
+            try VoiceLabWindowPlanner.place(project: project, scope: Self.scope, envelope: envelope, firstWordId: "w20", lastWordId: "w23")
+        }
+    }
+
     /// The whole review places: the phrases at the cuts and one elsewhere, each its own window.
     @Test func everyPhraseOfTheReviewPlaces() throws {
         let (project, envelope) = try Self.take()

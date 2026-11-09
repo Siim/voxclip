@@ -622,6 +622,15 @@ public static class VoiceLabWindowPlanner
         var alone = new SeamLayout(replacements.ToArray(), KeptSource(null), total, clipScope);
         var elements = layout.Elements;
         var w = Array.FindIndex(elements, piece => piece.IsWindow);
+        // A seam at a cut often lies where the cut word touches the passage. The fit plan and the recipe store a window's
+        // edge as its sample over the rate (§8.9.2), so that stored edge must not cut into an item either: at a touching
+        // boundary off the source grid it would by under a sample, and the hunk is refused with WindowCrossesWord.
+        void StoredAtCut(VoiceLabSeamPlacement seam)
+        {
+            var stored = seam.Sample / rate;
+            foreach (var word in words)
+                if (word.Start < stored && stored < word.End) throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.WindowCrossesWord, word.Id);
+        }
         static VoiceLabGeometryException Refusal(bool adjacent, string id) =>
             new(adjacent ? VoiceLabGeometryErrorCode.AdjacentReplacement : VoiceLabGeometryErrorCode.InvalidInput, segmentId: id);
         // Throws unless replacement index's seam on that side still renders beside the window. A check that holds without the
@@ -644,7 +653,10 @@ public static class VoiceLabWindowPlanner
         if (leftSeam.Kind != VoiceLabSeamKind.None && inClip && layout.OutputEdge(w, true))
             HoldsInFullTake(project, take, window, true);
         else if (leftSeam.Kind != VoiceLabSeamKind.None && layout.Beside(w, true) < leftSeam.FadeSamples / 2)
+        {
             HoldsAcrossCut(layout, w, true);
+            StoredAtCut(leftSeam);
+        }
         if (w + 1 < elements.Length)
         {
             if (layout.Run(w + 1).Length == 0) throw Refusal(true, elements[w + 1].Id);
@@ -654,7 +666,10 @@ public static class VoiceLabWindowPlanner
         if (rightSeam.Kind != VoiceLabSeamKind.None && inClip && layout.OutputEdge(w, false))
             HoldsInFullTake(project, take, window, false);
         else if (rightSeam.Kind != VoiceLabSeamKind.None && layout.Beside(w, false) < rightSeam.FadeSamples - rightSeam.FadeSamples / 2)
+        {
             HoldsAcrossCut(layout, w, false);
+            StoredAtCut(rightSeam);
+        }
         // The validator's overlappingFades condition: the inner halves of both fades must fit inside the window.
         var inner = leftSeam.FadeSamples - leftSeam.FadeSamples / 2 + rightSeam.FadeSamples / 2;
         if (inner > rightSeam.Sample - leftSeam.Sample)

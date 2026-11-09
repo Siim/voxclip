@@ -671,6 +671,15 @@ public enum VoiceLabWindowPlanner {
         // The scope as it renders without the window. A replacement's check that already fails there is not the window's doing.
         let alone = SeamLayout(elements: replacements, pieces: try keptSource(nil), total: total, clipScope: clipScope)
         let elements = layout.elements, w = elements.firstIndex(where: \.isWindow)!
+        /// A seam at a cut often lies where the cut word touches the passage. The fit plan and the recipe store a window's
+        /// edge as its sample over the rate (§8.9.2), so that stored edge must not cut into an item either: at a touching
+        /// boundary off the source grid it would by under a sample, and the hunk is refused with `windowCrossesWord`.
+        func storedAtCut(_ seam: VoiceLabSeamPlacement) throws {
+            let stored: Double = Double(seam.sample) / rate
+            if let crossing = words.first(where: { $0.start < stored && stored < $0.end }) {
+                throw VoiceLabGeometryError.windowCrossesWord(crossing.id)
+            }
+        }
         /// Throws unless replacement `index`'s seam on that side still renders beside the window. A check that holds without
         /// the window and fails with it is the window's doing. A check that already fails is judged by prepare's own rule, and
         /// when that fails without the window too, the scope was unrenderable before the window.
@@ -690,6 +699,7 @@ public enum VoiceLabWindowPlanner {
             try holdsInFullTake(project, take: take, window: window, incoming: true)
         } else if leftSeam.kind != .none && layout.beside(w, incoming: true) < leftSeam.fadeSamples / 2 {
             try holdsAcrossCut(layout, window: w, incoming: true)
+            try storedAtCut(leftSeam)
         }
         if w + 1 < elements.count {
             guard !layout.run(w + 1).isEmpty else { throw VoiceLabGeometryError.adjacentReplacement(elements[w + 1].id) }
@@ -700,6 +710,7 @@ public enum VoiceLabWindowPlanner {
             try holdsInFullTake(project, take: take, window: window, incoming: false)
         } else if rightSeam.kind != .none && layout.beside(w, incoming: false) < rightSeam.fadeSamples - rightSeam.fadeSamples / 2 {
             try holdsAcrossCut(layout, window: w, incoming: false)
+            try storedAtCut(rightSeam)
         }
         // The validator's overlappingFades condition: the inner halves of both fades must fit inside the window.
         let inner = leftSeam.fadeSamples - leftSeam.fadeSamples / 2 + rightSeam.fadeSamples / 2

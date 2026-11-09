@@ -523,6 +523,7 @@ def place(project, clip_id, envelope, first_id, last_id):
         holds_in_full_take(project, rate, duration, items, edits, total, window, True)
     elif left['kind'] != 'none' and layout.beside(w, True) < left['fadeSamples'] // 2:
         holds_across_cut(layout, w, True)
+        stored_at_cut(items, left, rate)
     if w + 1 < len(elements):
         if not layout.run(w + 1):
             raise GeometryError('adjacentReplacement', segmentId=elements[w + 1]['id'])
@@ -533,6 +534,7 @@ def place(project, clip_id, envelope, first_id, last_id):
         holds_in_full_take(project, rate, duration, items, edits, total, window, False)
     elif right['kind'] != 'none' and layout.beside(w, False) < right['fadeSamples'] - right['fadeSamples'] // 2:
         holds_across_cut(layout, w, False)
+        stored_at_cut(items, right, rate)
     # The validator's overlappingFades condition: the inner halves of both fades must fit inside the window.
     needed = left['fadeSamples'] - left['fadeSamples'] // 2 + right['fadeSamples'] // 2
     if needed > right['sample'] - left['sample']:
@@ -624,6 +626,16 @@ def move_to_cut_edges(source, a, b, first, last, blocking, left, right):
         if piece is not None and piece[1] - seam < right['fadeSamples'] - right['fadeSamples'] // 2:
             right = dict(right, time=piece[1] / rate, sample=piece[1])
     return left, right
+
+
+def stored_at_cut(items, seam, rate):
+    """A seam at a cut often lies where the cut word touches the passage. The fit plan and the recipe store a window's edge
+    as its sample over the rate (section 8.9.2), so that stored edge must not cut into an item either: at a touching boundary
+    off the source grid it would by under a sample, and the hunk is refused with windowCrossesWord."""
+    stored = seam['sample'] / rate
+    crossing = next((item for item in items if item['start'] < stored < item['end']), None)
+    if crossing is not None:
+        raise GeometryError('windowCrossesWord', wordId=crossing['id'])
 
 
 def holds_across_cut(layout, index, incoming):
