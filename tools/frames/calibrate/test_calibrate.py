@@ -63,6 +63,7 @@ class FitTests(unittest.TestCase):
         self.assertEqual(constants['pitch'], {'a': PITCH[0], 'b': PITCH[1]})
         quality = constants['quality']
         self.assertEqual((quality['w0'], quality['w1'], quality['w2'], quality['pitch0']), (W0, W1, W2, PITCH0))
+        self.assertEqual(quality['sharpness'], [30, 400])
         # No face is past a fixed gate, so every gate stays the study's.
         self.assertEqual(quality['gates'], calibrate.FIXED_GATES)
         self.assertTrue(all(note.startswith('kept fixed') for note in constants['gateNotes'].values()))

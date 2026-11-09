@@ -54,7 +54,12 @@ FIELDS = load('generate_face_fields', ROOT / 'tools' / 'fixtures' / 'clip-frames
 # The study's fixed parts of the formula (windows-frame-analyzer.md, "Proposed Windows score"); the fit leaves them alone.
 EYES_OPEN = [0.12, 0.26]
 FACING_SPAN = 0.6
-SHARPNESS = [30, 400]
+# The study's sharpness range, kept fixed. A 16-point grid (low 5-30, high 200-3000) chosen by the NNLS residual was tried on
+# 2026-11-09: it raised the fit split's agreement but lowered the held-out subjects' (quality >= 0.25: 0.817 to 0.791), so the fit
+# keeps the study's range. The code takes a grid so a later set can try again.
+SHARPNESS_GRID = [[30, 400]]
+# Frames whose two face boxes overlap less than this are two different faces (a detector picked another face) and stay out of the fit.
+SAME_FACE_IOU = 0.3
 FIXED_GATES = {'minimumFaceWidth': 40, 'luma': [40, 220], 'clippedBelow': 5, 'clippedAbove': 250, 'clippedFraction': 0.25}
 QUANTILES = [10, 25, 50, 75, 90]
 # A gate is fitted only when at least this many fit-split faces fall past its fixed value (study, step d).
@@ -223,12 +228,22 @@ def mean_of(*values):
     return sum(present) / len(present) if present else None
 
 
+def iou(a, b):
+    width = min(a['x'] + a['width'], b['x'] + b['width']) - max(a['x'], b['x'])
+    height = min(a['y'] + a['height'], b['y'] + b['height']) - max(a['y'], b['y'])
+    inside = max(0.0, width) * max(0.0, height)
+    union = a['width'] * a['height'] + b['width'] * b['height'] - inside
+    return inside / union if union > 0 else 0.0
+
+
 def faces_in_both(rows):
-    """Frames where both pipelines found a face whose eyes and pose were measured."""
+    """Frames where both pipelines found the same face (boxes overlapping at least SAME_FACE_IOU) with its eyes and pose measured."""
     both = []
     for row in rows:
         mac, win = row['mac'].get('face'), row['windows'].get('face')
         if not mac or not win or mac.get('captureQuality') is None or mac.get('yaw') is None or mac.get('pitch') is None:
+            continue
+        if iou(mac['rect'], win['rect']) < SAME_FACE_IOU:
             continue
         mac_eyes = mean_of(mac.get('leftEyeAspect'), mac.get('rightEyeAspect'))
         win_eyes = mean_of(win.get('rawLeftEye'), win.get('rawRightEye'))
@@ -248,12 +263,12 @@ def gate_mask(width, luma, clipped, gates):
            (clipped <= gates['clippedFraction'])
 
 
-def quality_terms(eyes, yaw, pitch, sharp_variance, pitch0):
+def quality_terms(eyes, yaw, pitch, sharp_variance, pitch0, sharpness):
     eyes_open = np.clip((eyes - EYES_OPEN[0]) / (EYES_OPEN[1] - EYES_OPEN[0]), 0, 1)
     facing = np.clip(1 - np.maximum(np.abs(yaw), np.abs(pitch - pitch0)) / FACING_SPAN, 0, 1)
     with np.errstate(divide='ignore'):
-        sharp = np.clip((np.log(np.maximum(sharp_variance, 1e-300)) - math.log(SHARPNESS[0])) /
-                        (math.log(SHARPNESS[1]) - math.log(SHARPNESS[0])), 0, 1)
+        sharp = np.clip((np.log(np.maximum(sharp_variance, 1e-300)) - math.log(sharpness[0])) /
+                        (math.log(sharpness[1]) - math.log(sharpness[0])), 0, 1)
     sharp = np.where(sharp_variance > 0, sharp, 0.0)
     return eyes_open, facing, sharp
 
@@ -280,21 +295,23 @@ def fit_constants(rows):
     luma = np.array([w['meanLuma'] for w in win])
     clipped = np.array([w['clippedFraction'] for w in win])
 
-    def weights_for(pitch0, inside):
-        eyes_open, facing, sharp = quality_terms(eyes, yaw, pitch, variance, pitch0)
+    def weights_for(pitch0, sharpness, inside):
+        eyes_open, facing, sharp = quality_terms(eyes, yaw, pitch, variance, pitch0, sharpness)
         design = np.column_stack([np.ones_like(eyes_open), eyes_open * facing, sharp])[inside]
         solution, residual = nnls(design, target[inside])
         return solution, residual
 
-    # (b, c) pitch0, the camera-height offset of the facing term, on a fixed 0.01 rad grid, with the NNLS weights at each.
+    # (b, c) pitch0, the camera-height offset of the facing term, on a fixed 0.01 rad grid, and the sharpness range on its grid,
+    # with the NNLS weights at each; the least residual wins (ties: the smaller |pitch0|, then the grid's order).
     inside = gate_mask(width, luma, clipped, FIXED_GATES)
     grid = [round(value, 2) for value in np.arange(-0.30, 0.3001, 0.01)]
-    pitch0 = min(grid, key=lambda value: (round(weights_for(value, inside)[1], 12), abs(value)))
-    weights, _ = weights_for(pitch0, inside)
+    candidates = [(p0, number, sharpness) for number, sharpness in enumerate(SHARPNESS_GRID) for p0 in grid]
+    pitch0, _, sharpness = min(candidates, key=lambda c: (round(weights_for(c[0], c[2], inside)[1], 9), abs(c[0]), c[1]))
+    weights, _ = weights_for(pitch0, sharpness, inside)
     w0, w1, w2 = (float(value) for value in weights)
 
     # (d) the gates: fitted only where the set has faces past the fixed gate; else the study's fixed gate stays.
-    eyes_open, facing, sharp = quality_terms(eyes, yaw, pitch, variance, pitch0)
+    eyes_open, facing, sharp = quality_terms(eyes, yaw, pitch, variance, pitch0, sharpness)
     ungated = np.clip(w0 + w1 * eyes_open * facing + w2 * sharp, 0, 1)
     gates = json.loads(json.dumps(FIXED_GATES))
     notes = {}
@@ -343,7 +360,7 @@ def fit_constants(rows):
     return {
         'eyeAspect': rounded(eye_map), 'yaw': rounded(yaw_map), 'pitch': rounded(pitch_map),
         'quality': {'w0': round(w0, 4), 'w1': round(w1, 4), 'w2': round(w2, 4), 'eyesOpen': EYES_OPEN, 'facingSpan': FACING_SPAN,
-                    'pitch0': pitch0, 'sharpness': SHARPNESS, 'quantileMap': quantile_map, 'gates': gates},
+                    'pitch0': pitch0, 'sharpness': sharpness, 'quantileMap': quantile_map, 'gates': gates},
         'gateNotes': notes, 'faces': len(both),
     }
 
@@ -490,6 +507,16 @@ def passes(numbers):
     return failed
 
 
+def wide(row, pixels=100):
+    face = row['windows'].get('face')
+    return face is None or face['faceWidthPixels'] >= pixels
+
+
+def same_face(row):
+    mac, win = row['mac'].get('face'), row['windows'].get('face')
+    return mac is None or win is None or iou(mac['rect'], win['rect']) >= SAME_FACE_IOU
+
+
 def split_rows(rows, split):
     subjects = {s['id'] for s in manifest()['subjects'] if s['split'] == split}
     return [row for row in rows if row['subject'] in subjects]
@@ -504,6 +531,12 @@ def fit(args):
               'validation': evaluate(validation, calibration), 'perSubject': {}}
     for subject in sorted({row['subject'] for row in validation}):
         report['perSubject'][subject] = evaluate([row for row in validation if row['subject'] == subject], calibration)
+    # Diagnostics only (the acceptance is on every validation frame): the same split without faces under 100 px wide at 1,280,
+    # and without frames where the two pipelines measured different faces.
+    report['diagnostics'] = {
+        'validationFacesFrom100px': evaluate([row for row in validation if wide(row)], calibration),
+        'validationSameFace': evaluate([row for row in validation if same_face(row)], calibration),
+    }
     report['failed'] = passes(report['validation'])
     (WORK / 'report.json').write_text(json.dumps(report, indent=1))
     print_report(report)
@@ -520,7 +553,8 @@ def print_report(report):
     header = f"{'set':12s} {'frames':>6s} {'faces':>6s} {'closed':>6s} {'eyes':>18s} {'facing':>18s} {'q>=0.25':>18s} " \
              f"{'q>=0.40':>18s} {'opening':>18s} {'regret p90':>10s} {'pearson':>7s}"
     print(header)
-    rows = [('fit', report['fit']), ('validation', report['validation'])] + sorted(report['perSubject'].items())
+    rows = [('fit', report['fit']), ('validation', report['validation'])] + sorted(report['perSubject'].items()) + \
+        [('val >=100px', report['diagnostics']['validationFacesFrom100px']), ('val same', report['diagnostics']['validationSameFace'])]
     for name, n in rows:
         pearson = '—' if n['qualityPearson'] is None else f"{n['qualityPearson']:.2f}"
         regret = '—' if n['coverRegretP90'] is None else f"{n['coverRegretP90']:.3f}"
