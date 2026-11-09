@@ -53,7 +53,8 @@ public sealed class VideoFramePass
     /// <summary>Frames taken from the cache.</summary>
     public int Cached { get; private set; }
 
-    /// <summary>Starts the pass; later calls do nothing. <paramref name="clock"/> stamps <see cref="Started"/> and <see cref="Ended"/>.</summary>
+    /// <summary>Starts the pass; later calls do nothing. <paramref name="clock"/> stamps <see cref="Started"/> and <see cref="Ended"/> and
+    /// records the pass as its <see cref="ClaudeModeStage.Frames"/> stage, as the Mac's <c>start(clock:)</c> does.</summary>
     public void Start(ClaudeModeClock? clock = null)
     {
         lock (gate)
@@ -90,13 +91,16 @@ public sealed class VideoFramePass
 
     private void Finished(double? seconds, ClaudeModeClock? clock, int analyzed, int cached)
     {
+        double? started;
         lock (gate)
         {
             Seconds = seconds;
             Analyzed = analyzed;
             Cached = cached;
             Ended = clock?.Elapsed;
+            started = Started;
         }
+        if (clock is not null && started is { } start) clock.Record(ClaudeModeStage.Frames, null, start);
     }
 
     /// <summary>Waits for the pass (starting it if it has not started); false when the source could not be read.</summary>

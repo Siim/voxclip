@@ -1,5 +1,6 @@
 using SkiaSharp;
 using VoxClip.Core.Domain.Captions;
+using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Media.Ffmpeg;
 
@@ -8,18 +9,23 @@ namespace VoxClip.Media.Thumbnails;
 /// <summary>Undecorated current frames, preserving black content and export framing.</summary>
 public static class CurrentFrames
 {
-    /// <summary>Decode one frame without the poster-selection black-frame heuristic.</summary>
-    public static Task<PixelBuffer> ReadAsync(string mediaPath, double time, int rotation, PixelSize output, PixelSize exportFrame, CancellationToken ct, bool preserveSource = false) =>
+    /// <summary>Decode one frame without the poster-selection black-frame heuristic. With a clip's <paramref name="controls"/>, its
+    /// 9:16 or 1:1 crop follows the clip's face as preview and export do ("9:16 follows your face", ADR-R48 part 2).</summary>
+    public static Task<PixelBuffer> ReadAsync(string mediaPath, double time, int rotation, PixelSize output, PixelSize exportFrame, CancellationToken ct, bool preserveSource = false,
+        ProjectClipControls? controls = null) =>
         MediaThread.Run("vc-current-frame", () =>
         {
             FfmpegLoader.InitializeAsync(ct).GetAwaiter().GetResult();
             using var decoder = new VideoDecoder(mediaPath, hardware: false);
             var frame = decoder.ReadAt(time, false, ct);
-            return Transform(frame, rotation, output, exportFrame, preserveSource);
+            return Transform(frame, rotation, output, exportFrame, preserveSource, controls);
         }, ct);
 
-    /// <summary>Orient and centre-crop using the preview/export source rectangle.</summary>
-    public static unsafe PixelBuffer Transform(PixelBuffer frame, int rotation, PixelSize output, PixelSize? exportFrame = null, bool preserveSource = false)
+    /// <summary>Orient and centre-crop using the preview/export source rectangle; with a clip's face-follow centre in
+    /// <paramref name="controls"/>, the 9:16 and 1:1 crop is moved to the face and kept inside the picture (<see cref="ClipFaceCrop"/>).
+    /// A still frame is not flipped or turned, so the centre is read in the source picture as it is.</summary>
+    public static unsafe PixelBuffer Transform(PixelBuffer frame, int rotation, PixelSize output, PixelSize? exportFrame = null, bool preserveSource = false,
+        ProjectClipControls? controls = null)
     {
         rotation = ((rotation % 360) + 360) % 360;
         var quarter = rotation is 90 or 270;
@@ -35,7 +41,10 @@ public static class CurrentFrames
             canvas.RotateDegrees(rotation);
             canvas.DrawImage(source, -frame.Width / 2f, -frame.Height / 2f);
         }
-        var crop = ExportPresets.CenterCrop(new(orientedWidth, orientedHeight), exportFrame ?? output, preserveSource);
+        var target = exportFrame ?? output;
+        var crop = ExportPresets.CenterCrop(new(orientedWidth, orientedHeight), target, preserveSource);
+        crop = ClipFaceCrop.Centered(crop, orientedWidth, orientedHeight, controls is null ? null : controls with { FlipHorizontal = false, RotationDegrees = 0 },
+            (double)target.Width / Math.Max(1, target.Height));
         var left = (int)Math.Floor(crop.X); var top = (int)Math.Floor(crop.Y);
         var width = Math.Clamp((int)Math.Round(crop.Width), 1, orientedWidth - left);
         var height = Math.Clamp((int)Math.Round(crop.Height), 1, orientedHeight - top);

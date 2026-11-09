@@ -165,6 +165,36 @@ public sealed class CliAnalyzeFramesTests : IDisposable
         Assert.Empty(decoder.Reads);
     }
 
+    /// <summary><c>--faces-only</c> (W6): this CLI's text-source decision. Faces are measured with no text source: no text box, no screen,
+    /// the Mac's keys, and nothing cached, so the App never reads a textless frame as one without screens.</summary>
+    [Fact]
+    public async Task FacesOnlyMeasuresFacesWithNoTextAndCachesNothing()
+    {
+        var (project, key) = await ProjectAsync();
+        var cacheFolder = Path.Combine(DataLocations.Resolve().Cache, key, "frames");
+        var decoder = new StubFrameDecoder();
+        var result = await AnalyzeAsync(new CliFrameSources(new StubFrameFaces(), null, decoder), "--open", project, "--clip", "fq-clip-1", CliAnalyzeFrames.FacesOnly, "--json");
+        Assert.Equal(["analysis", "clipEnd", "clipStart", "decisions", "sheet"], result.Select(pair => pair.Key).Order(StringComparer.Ordinal));
+        var sentences = result["analysis"]!["sentences"]!.AsArray();
+        Assert.NotEmpty(sentences);
+        Assert.All(sentences, frame =>
+        {
+            Assert.Equal(1, frame!["faceCount"]!.GetValue<int>());
+            Assert.Empty(frame["textRects"]!.AsArray());
+            Assert.Empty(frame["screens"]!.AsArray());
+        });
+        Assert.Empty(result["decisions"]!["blurCandidates"]!.AsArray());
+        Assert.NotEmpty(decoder.Reads);
+        Assert.False(Directory.Exists(cacheFolder), "nothing is cached for faces only");
+        Assert.Contains(CliAnalyzeFrames.FacesOnly, CliAnalyzeFrames.TextUnavailableMessage, StringComparison.Ordinal);
+        // Faces only means faces only, even where a text source exists: no text is read and nothing cached.
+        var text = new StubFrameText();
+        var faces = await AnalyzeAsync(Stubs(new StubFrameDecoder(), text), "--open", project, "--clip", "fq-clip-1", CliAnalyzeFrames.FacesOnly, "--json");
+        Assert.All(faces["analysis"]!["sentences"]!.AsArray(), frame => Assert.Empty(frame!["textRects"]!.AsArray()));
+        Assert.Empty(text.Threads);
+        Assert.False(Directory.Exists(cacheFolder));
+    }
+
     [Fact]
     public async Task AMissingClipOrWordRangeIsAUsageError()
     {

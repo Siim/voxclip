@@ -1212,6 +1212,8 @@ if (insertion ||
         }
         Transcript.Detach(); Timeline.Detach(); captions?.Detach();
         FindClips.Close();
+        ViewModel?.CancelFramePass();
+        frameText?.Dispose();
         CaptionDrag.Cancel();
         RetireRewrite();
         TranscriptionSpendState.Shared.Changed -= WorkflowStatusChanged;

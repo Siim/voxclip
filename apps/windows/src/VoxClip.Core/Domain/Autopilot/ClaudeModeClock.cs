@@ -23,6 +23,10 @@ public enum ClaudeModeStage
     Apply,
     /// <summary>One clip exported.</summary>
     Export,
+    /// <summary>The whole video's sentence-frame pass (ADR-R48), beside Find Clips.</summary>
+    Frames,
+    /// <summary>One clip's opening scan, beside its plan request.</summary>
+    Opening,
     /// <summary>One clip's export self-check (ADR-R49), after its export and beside the other clips' work.</summary>
     Check
 }

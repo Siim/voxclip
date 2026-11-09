@@ -110,6 +110,8 @@ public sealed class Exporter : IExporter
         if (job.SrtPath is { } srt) destinations.Add(srt);
         if (snapshot.VoiceLab is { Prepared.OutputPlan.RequiresSyntheticRendering: true })
             destinations.Add(job.OutputPath + ".provenance.json");
+        // A clip's cover (ADR-R48) is written beside it: it must not land on the source or another output.
+        if (snapshot.Clip?.Controls?.CoverSeconds is not null) destinations.Add(Core.Domain.Share.ExportCover.PathFor(job.OutputPath));
         OutputSafety.Validate(protectedPaths, destinations);
     }
 
@@ -136,11 +138,14 @@ public sealed class Exporter : IExporter
         };
         if (srt is not null)
             allocations.Add(new(srt, System.Text.Encoding.UTF8.GetByteCount(Subtitles(snapshot.Captions, snapshot.Speed.Speed))));
+        var cover = snapshot.Clip?.Controls?.CoverSeconds is null ? null : Core.Domain.Share.ExportCover.PathFor(destination);
+        if (cover is not null) allocations.Add(new(cover, Core.Domain.Share.ExportCover.Limit));
         if (publish)
         {
             allocations.Add(VoiceLabCapacity.Rollback(destination));
             allocations.Add(VoiceLabCapacity.Rollback(sidecar));
             if (srt is not null) allocations.Add(VoiceLabCapacity.Rollback(srt));
+            if (cover is not null) allocations.Add(VoiceLabCapacity.Rollback(cover));
         }
         return allocations.ToArray();
     }
@@ -167,6 +172,14 @@ public sealed class Exporter : IExporter
             ? destination + ".provenance.json" : null;
         var sidecarPartial = sidecarDestination is null ? null : sidecarDestination + ".partial";
         var xmpStage = sidecarDestination is null ? null : partial + ".xmp-" + Guid.NewGuid().ToString("N");
+        // The cover (ADR-R48): the frame this export renders at its time, through the same composer (crop, look, captions, title),
+        // embedded as the MP4's cover art and written beside it.
+        var coverFrame = Core.Domain.Share.ExportCover.Frame(snapshot, fps, frames);
+        var coverDestination = coverFrame is null ? null : Core.Domain.Share.ExportCover.PathFor(destination);
+        var coverPartial = coverDestination is null ? null : coverDestination + ".partial";
+        byte[]? coverJpeg = null;
+        var coverEmbedded = false;
+        var hasCoverPartial = false;
         var lastProgress = -1.0;
         string? lastPhase = null;
         var hasPartial = false;
@@ -226,6 +239,7 @@ public sealed class Exporter : IExporter
                     var sourceTime = cursor.Source(editedTime);
                     var decoded = decoder.ReadAt(freezes?.PictureTime(sourceTime) ?? sourceTime, false, ct);
                     composer.Compose(decoded, bgra, snapshot, editedTime, false, ct);
+                    if (index == coverFrame) coverJpeg = CoverImage(bgra);
                     Native.Check(ffmpeg.av_frame_make_writable(nv12), "Reuse export video frame", VoxClipErrorCode.ExportFailed);
                     using (var memory = bgra.Pixels.Pin())
                     {
@@ -265,6 +279,18 @@ public sealed class Exporter : IExporter
                 Native.Check(ffmpeg.av_write_trailer(format), "Finalize MP4", VoxClipErrorCode.ExportFailed);
             }
             ct.ThrowIfCancellationRequested();
+            if (coverJpeg is not null && coverPartial is not null)
+            {
+                // The cover art goes into the finished MP4 before anything hashes or publishes it, then the JPEG beside it.
+                coverEmbedded = EmbedCover(coverJpeg, partial, ct);
+                using (var cover = OutputSafety.CreatePartial(coverPartial))
+                {
+                    hasCoverPartial = true;
+                    cover.Write(coverJpeg);
+                    cover.Flush(true);
+                }
+                ct.ThrowIfCancellationRequested();
+            }
             if (sidecarPartial is not null)
             {
                 var remaining = new List<VoiceLabCapacity.Allocation>
@@ -320,14 +346,17 @@ public sealed class Exporter : IExporter
             var destinations = new List<string> { destination };
             if (srtDestination is not null) destinations.Add(srtDestination);
             if (sidecarDestination is not null) destinations.Add(sidecarDestination);
+            if (hasCoverPartial) destinations.Add(coverDestination!);
             if (publish) OutputSafety.Publish(destinations, ct: ct);
-            hasPartial = false; hasSrtPartial = false; hasSidecarPartial = false;
+            hasPartial = false; hasSrtPartial = false; hasSidecarPartial = false; hasCoverPartial = false;
             return new(destination, srtDestination, snapshot.RenderedDuration,
-                size.Width, size.Height, fps, frames, 48_000, samples, "h264", encoderName, timer.Elapsed.TotalSeconds) { Loudness = loudness };
+                size.Width, size.Height, fps, frames, 48_000, samples, "h264", encoderName, timer.Elapsed.TotalSeconds)
+            { Loudness = loudness, Cover = coverJpeg is null ? null : coverDestination, CoverEmbedded = coverEmbedded };
         }
         finally
         {
             if (hasPartial) DeletePartial(partial);
+            if (hasCoverPartial && coverPartial is not null) DeletePartial(coverPartial);
             if (hasSrtPartial && srtPartial is not null) DeletePartial(srtPartial);
             if (hasSidecarPartial && sidecarPartial is not null) DeletePartial(sidecarPartial);
             if (ownsXmpStage && xmpStage is not null) DeletePartial(xmpStage);
@@ -345,6 +374,33 @@ public sealed class Exporter : IExporter
 
     /// <summary>The edited time export frame <paramref name="index"/> shows: its rendered time × the clip's speed.</summary>
     internal static double EditedTime(ComposeSnapshot snapshot, long index, double fps) => snapshot.Speed.Edited(index / fps);
+
+    /// <summary>The cover JPEG of a composed export frame, full size at the Mac's 0.9 quality; null when it can't be encoded within
+    /// <see cref="Core.Domain.Share.ExportCover.Limit"/>. The cover is extra: the export goes on without it.</summary>
+    internal static byte[]? CoverImage(PixelBuffer composed)
+    {
+        if (composed.Width <= 0 || composed.Height <= 0) return null;
+        try
+        {
+            var jpeg = Frames.FrameJpeg.Encode(composed, Math.Max(composed.Width, composed.Height), Core.Domain.Share.ExportCover.Quality);
+            return jpeg.Length is > 0 and <= (int)Core.Domain.Share.ExportCover.Limit ? jpeg : null;
+        }
+        catch (VoxClipException) { return null; }
+    }
+
+    /// <summary>The cover inside the MP4 (ADR-R48): <see cref="Mp4CoverEmbed"/> writes the JPEG as its iTunes <c>covr</c> art, which
+    /// players, Explorer and uploaders read as the attached picture; FFmpeg's MP4 muxer writes none for a video stream. A refusal or a
+    /// failure leaves the export and the JPEG beside it and returns false.</summary>
+    internal static bool EmbedCover(byte[] jpeg, string partial, CancellationToken ct)
+    {
+        try
+        {
+            Mp4CoverEmbed.Embed(jpeg, partial, ct);
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException or
+            Core.Domain.Share.Mp4CoverArtException or OverflowException) { return false; }
+    }
 
     private static void DeletePartial(string path)
     {

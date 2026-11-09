@@ -4,11 +4,13 @@ using VoxClip.App.Services;
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Autopilot;
 using VoxClip.Core.Domain.Clips;
+using VoxClip.Core.Domain.Frames;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Services.Settings;
 using VoxClip.Core.Services.VoiceLab;
+using VoxClip.Media.Frames;
 
 namespace VoxClip.App.Pages;
 
@@ -31,10 +33,14 @@ public sealed partial class EditorPage
             try { tones = RewriteToneCatalog.Load(root); } catch (Exception exception) when (exception is IOException or VoxClipException) { }
             try { prices = VoiceLabPrices.Load(root); } catch (VoxClipException) { }
         }
+        // The picture (ADR-R48) only where this PC can measure faces: without the face models there is no pass, no picture row and
+        // no send line, and plans go as text only.
+        var faces = App.Services.FrameFaces;
         ViewModel.MakeIt.Services = new MakeItServices(MakeItPlanAsync, MakeItVoiceAsync, MakeItVoiceAvailable, MakeItExportAsync, ShareHelpers.Copy)
         {
             SharedRoot = root, Prices = prices, Tones = tones,
-            SavedTones = MyRewriteTones.Decode(App.Services.Settings.Values.TryGetValue(RewriteToneCatalog.SettingsKey, out var saved) ? saved : null)
+            SavedTones = MyRewriteTones.Decode(App.Services.Settings.Values.TryGetValue(RewriteToneCatalog.SettingsKey, out var saved) ? saved : null),
+            FramePass = faces is null ? null : project => MakeItFramePass(faces, project)
         };
         ViewModel.CaptionStyleNames = id => captions?.Styles.FirstOrDefault(style => style.Id == id)?.Name;
         ViewModel.MakeItShown += (_, _) => ShowMakeItPanel();
@@ -160,7 +166,40 @@ public sealed partial class EditorPage
 
     private bool MakeItVoiceAvailable() => !demo && App.Services.VoiceLabEnabled && VoiceSpeakerCheck.WindowsNativeParityVerified;
 
-    private async Task<ClipAutopilotSeries> MakeItPlanAsync(ClipAutopilotRequest request, IProgress<ClipAutopilotProgress> progress, CancellationToken ct)
+    /// <summary>The whole video's frame pass on this PC (ADR-R48): the bundled face models, Windows OCR for text and screens, the shipped
+    /// FFmpeg, cached under the video's content key. Null for a demo, a video that isn't found, audio only or a transcript without words.</summary>
+    private VideoFramePass? MakeItFramePass(IFrameFaces faces, Project project)
+    {
+        if (demo || MediaPath is not { Length: > 0 } path || project.Media.Source.Video is null ||
+            project.Transcript?.Words is not { } words || !words.Any(word => word.Kind == WordKind.Word)) return null;
+        frameText ??= new WindowsFrameText();
+        var analyzer = new FrameAnalyzer(faces, FrameAnalyzer.ScreensWith(frameText), new FfmpegFrameDecoder(), new FrameAnalysisCache());
+        return new VideoFramePass(analyzer, path, project.Media.Source.ContentKey, words,
+            line => App.Services.Log.Write(Core.Services.Logging.LogLevel.Info, "frames", line));
+    }
+
+    /// <summary>One OCR engine for every pass this page starts; it serialises its own recognitions.</summary>
+    private WindowsFrameText? frameText;
+
+    /// <summary>Who the frames go to: the AI's name, whether its connector takes images, and who pays (a CLI on the creator's plan, an API
+    /// key, or a local server).</summary>
+    private static MakeItFrameAi FrameAi(ProviderEntry chosen, LlmConnector connector, VoiceLabCostPresentationKind billing)
+    {
+        var name = chosen.Id switch
+        {
+            ConnectorId.ClaudeCode or ConnectorId.Anthropic => "Claude",
+            ConnectorId.Codex or ConnectorId.OpenAI => "ChatGPT",
+            ConnectorId.Gemini => "Gemini",
+            ConnectorId.Xai => "Grok",
+            _ => chosen.ShortName
+        };
+        MakeItFrameBilling who = billing == VoiceLabCostPresentationKind.Confirm ? new MakeItFrameBilling.Key()
+            : chosen.Cli ? new MakeItFrameBilling.Plan(chosen.Id == ConnectorId.ClaudeCode ? "Claude" : "ChatGPT") : new MakeItFrameBilling.Free();
+        return new(name, connector.SupportsImages, who);
+    }
+
+    private async Task<ClipAutopilotSeries> MakeItPlanAsync(ClipAutopilotRequest request, IProgress<ClipAutopilotProgress> progress, MakeItFrameSources? frames,
+        CancellationToken ct)
     {
         if (App.Services.SharedRoot is not { } root) throw new VoxClipException(VoxClipErrorCode.SharedResourcesMissing, "VoxClip is missing some of its files. Reinstall VoxClip.");
         var selected = App.Services.Get("llm.connector", "");
@@ -181,8 +220,15 @@ public sealed partial class EditorPage
             var more = new[] { App.Services.Connector(chosen.Id), App.Services.Connector(chosen.Id) };
             if (more.All(lane => !ReferenceEquals(lane, connector)) && !ReferenceEquals(more[0], more[1])) lanes = more;
         }
-        return (await service.PlanAsync(request, connector, model, lanes, progress.Report, ct)).Series;
+        // Each clip's frames, from the whole video's pass, as its plan is sent (none without faces).
+        var source = frames?.Invoke(FrameAi(chosen, connector, MakeItBilling(chosen, connector)));
+        return (await service.PlanAsync(request, connector, model, lanes, progress.Report, ct, source)).Series;
     }
+
+    /// <summary>How a send to <paramref name="chosen"/> is billed: confirmed on an API key, inline on a plan or a local server.</summary>
+    private static VoiceLabCostPresentationKind MakeItBilling(ProviderEntry chosen, LlmConnector connector) =>
+        VoiceLabCostPresentation.KindForLlmSend(chosen.Id, RewriteSession.SignIn(connector.CliDetection),
+            chosen.Cli ? chosen.Id == ConnectorId.ClaudeCode ? "Anthropic" : "OpenAI" : chosen.ShortName).Kind;
 
     /// <summary>A first send to a cloud or CLI connector, or one billed to an API key, asks inline in the Make it postable panel.</summary>
     private async Task<bool> ApproveMakeItSendAsync(ProviderEntry chosen, LlmConnector connector, ClipAutopilotRequest request, CancellationToken ct)

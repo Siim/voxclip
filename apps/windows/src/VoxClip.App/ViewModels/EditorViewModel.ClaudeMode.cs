@@ -75,6 +75,8 @@ public sealed partial class EditorViewModel
     /// the project's AI lease).</summary>
     public void ClaudeModeFindStarted(Task find)
     {
+        // The whole video's frames are looked at beside Find Clips (ADR-R48), never before or in its way; nothing without faces.
+        StartFramePass();
         if (!ClaudeMode.Armed || !ClaudeModeOn) return;
         ClaudeMode.Searched = true;
         ClaudeMode.Phase = ClaudeModePhase.Waiting;

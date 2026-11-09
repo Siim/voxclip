@@ -31,7 +31,7 @@ public sealed class ClaudeModeStreamingTests
         var (editor, mode, made) = Video(claude, stub);
         editor.MakeIt.Services = editor.MakeIt.Services! with
         {
-            Plan = async (request, progress, ct) =>
+            Plan = async (request, progress, _, ct) =>
             {
                 made.Requests.Add(request);
                 var plans = ((ClipAutopilotMode.Clips)request.Mode).Spans.Select(PlanFor).ToArray();

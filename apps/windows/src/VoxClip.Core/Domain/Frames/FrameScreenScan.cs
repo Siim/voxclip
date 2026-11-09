@@ -43,6 +43,7 @@ public sealed class FrameScreenScan(IFrameTextLines text, QuadFinder quads)
         if (openingScan) return FrameScreenFindings.None;
         var lines = await text.LinesAsync(frame, ct).ConfigureAwait(false);
         ct.ThrowIfCancellationRequested();
-        return Detect(lines, quads.Find(frame));
+        // A screen needs text boxes inside it (FrameScreens.MinimumBoxes): without a line there is none, so the quads aren't looked for.
+        return lines.Count == 0 ? FrameScreenFindings.None : Detect(lines, quads.Find(frame));
     }
 }

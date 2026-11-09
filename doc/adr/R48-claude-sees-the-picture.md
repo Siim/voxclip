@@ -136,6 +136,7 @@ small frames may be sent to the chosen AI. The cover is saved as `cover.jpg` nex
   tolerances, the per-millisecond cache, 320 px sheet JPEGs, the whole-video pass and `voxclip-cli analyze-frames` with the Mac's bytes; with
   no face models installed nothing is measured (exit 7), never an invented "no face". W3, W6 and W7 are owed.
 - **Windows** bundles both face models in the app, pinned and hash-checked with their LICENSE and NOTICE (the user's decision, 2026-11-09, accepting YuNet's WIDER FACE training-data risk), and measures faces with them (W3, track/v2-win-frames-w3); they stay off until W7's calibration passes.
+- **Windows** wires the picture end to end behind `FrameFaces` (W6, track/v2-win-frames-w6): the pass beside Find Clips, each plan's frames (images to a plan CLI, else the text summary), Make it postable's four rows and send line, the cover JPEG and MP4 `covr` on every export, and `voxclip-cli autopilot`'s `frames` and `picture`; the CLI reads no text, so it measures faces only (`analyze-frames --faces-only`).
 
 ## Windows calibration (W7, track/v2-win-frames-w7, 2026-11-09)
 
