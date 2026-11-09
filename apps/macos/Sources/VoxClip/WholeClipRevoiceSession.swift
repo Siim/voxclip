@@ -342,8 +342,9 @@ import VoxClipMedia
         }
     }
 
+    /// What was paid, fal.ai's charges for failed lip syncs included (MVP46 showed only the voice's ≈ $0.04).
     private var paidNote: String {
-        ledger.total > 0 ? " What was paid (\(VoiceLabCostPresentation.format(ledger.total))) is kept, so trying again pays only what's left." : ""
+        spent > 0 ? " What was paid (\(VoiceLabCostPresentation.format(spent))) is kept, so trying again pays only what's left." : ""
     }
 
     private func voiceStep(_ script: WholeClipScript, backend: Backend) async throws -> Voice {

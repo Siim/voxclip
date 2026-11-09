@@ -55,6 +55,59 @@ struct RewriteLipsyncSessionTests {
         return (session, offer, gate)
     }
 
+    @MainActor private final class PayLog {
+        var pays: [Bool] = []
+        var fail = true
+    }
+
+    /// MVP46: a billed attempt whose result failed its checks but is kept. The row says fal.ai charged for it, Try Again
+    /// reads "free" and runs without paying (`mayPay` false), and the kept result then applies.
+    @Test func aKeptPaidResultMakesTryAgainFreeAndItNeverPays() async throws {
+        let (session, offer, _) = try setup()
+        let log = PayLog()
+        let json = """
+            {"requestID":"11111111-2222-4333-8444-555555555555","provider":"fal","model":"fal-ai/sync-lipsync/v3",
+             "quoteID":"\(offer.id.uuidString)","syncMode":"cut_off","estimate":{"provider":"fal","operation":"lipsync","units":3.4,
+             "unit":"second","usd":0.45,"basis":"fixture"},"submittedAt":"2026-11-08T22:49:22Z",
+             "videoSHA256":"\(String(repeating: "a", count: 64))","audioSHA256":"\(String(repeating: "b", count: 64))",
+             "neededSeconds":3,"uploadedSeconds":3.4,"fps":30,"keptResult":true}
+            """
+        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+        let attempt = try decoder.decode(LipsyncAttempt.self, from: Data(json.utf8))
+        let check = LipsyncResultCheck.duration(LipsyncResultLength(got: 2.8, needed: 3, uploaded: 3.4, fps: 30))
+        let asset = VoiceLabVideoAsset(id: UUID().uuidString.lowercased(), file: "fixture.mp4", sha256: String(repeating: "a", count: 64),
+            durationSeconds: 3, frameRate: 30, width: 320, height: 180)
+        let provenance = LipsyncResultProvenance(provider: "fal", model: attempt.model, requestID: attempt.requestID, quoteID: offer.id,
+            videoInputSHA256: attempt.videoSHA256, audioInputSHA256: attempt.audioSHA256, outputSHA256: asset.sha256,
+            syncMode: .cutOff, seed: nil, submittedAt: attempt.submittedAt, importedAt: Date(), estimate: attempt.estimate)
+        session.backend = .init(offers: {
+            let fresh = RewriteLipsyncSession.Offer(id: UUID(), request: offer.request, windows: offer.windows, estimate: offer.estimate,
+                                                    recordID: offer.recordID, dependencies: offer.dependencies, isCurrent: { true })
+            return ([0: fresh], fresh)
+        }, hasKey: { true }, hasConsent: { true }, acceptConsent: {}, cap: { nil }, run: { _, _, _, _, mayPay, _ in
+            log.pays.append(mayPay)
+            if log.fail { log.fail = false; throw LipsyncAttemptFailure(error: check, attempt: attempt, freeRetry: true) }
+            var result = ImportedLipsyncResult(asset: asset, url: URL(fileURLWithPath: "/synthetic/result.mp4"), provenance: provenance)
+            result.recovered = !mayPay
+            return result
+        }, changed: {})
+        await session.refresh()
+        session.start(try #require(session.offers[0]))
+        await session.waitForRun()
+        guard case .failed(let reason, let price, let mayBill) = session.states[0] else { Issue.record("not failed"); return }
+        #expect(reason == "fal.ai's video came back 0.2 s shorter than the voice." && mayBill)
+        #expect(price == VoiceLabCostPresentation.format(Decimal(string: "0.45")!))
+        #expect(session.freeRetries == [0])
+        #expect(RewriteLipsyncSession.failureLine(phrase: 0, reason: reason, price: price, mayBill: mayBill, free: true)
+            == "Couldn't lip sync phrase 1: fal.ai's video came back 0.2 s shorter than the voice. fal.ai charged for the attempt (≈ $0.45). Its result is kept, so Try Again is free.")
+        let retry = try #require(session.offers[0])
+        #expect(RewriteLipsyncControls.price(retry, free: session.freeRetries.contains(0)) == "free")
+        session.start(retry)
+        await session.waitForRun()
+        #expect(log.pays == [true, false], "Try Again · free never pays")
+        #expect(session.applied[0]?.result.recovered == true && session.freeRetries.isEmpty)
+    }
+
     @Test func approvalKeyCapAndUndoKeepReceipt() async throws {
         let (session, offer, gate) = try setup()
         await session.refresh()
