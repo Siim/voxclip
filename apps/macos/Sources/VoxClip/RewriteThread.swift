@@ -9,11 +9,14 @@ import VoxClipCore
 struct RewriteThread: Equatable {
     struct Version: Equatable {
         var text: String
-        /// Claude's note when a reply made it; nil for the Rewrite's own first version.
+        /// Claude's note when a reply made it; nil for the Rewrite's own first version and for your own words.
         var note: String?
+        /// Your own words ("✎ My own words"), typed and applied here with no request: "‹ 3 of 3 › · your words".
+        var yours = false
     }
     struct Turn: Equatable {
-        enum Speaker: Equatable { case you, claude }
+        /// `yours` is your own words put in place, "You · your own words: “…”": a turn of the thread, not a message to Claude.
+        enum Speaker: Equatable { case you, claude, yours }
         let speaker: Speaker
         let text: String
     }
@@ -65,6 +68,11 @@ struct RewriteThreadBackend {
     @ObservationIgnored var prompt: RewriteFollowupPrompt?
     /// Moves when Return, F2 or a click on the change's new words asks the input to take the keys.
     var focusRequest = 0
+    /// The change whose input takes your own words ("✎ My own words", ⌥E): ↵ puts them in place as a version, and nothing
+    /// is sent. Nil is Claude mode.
+    var ownWords: Key?
+    /// What the input held for Claude when your own words took it, given back when they leave.
+    @ObservationIgnored var draft = ""
     /// The inline connector confirmation, as Ask Claude's (consent action `rewrite`).
     let confirmation = ConnectorConfirmation()
     @ObservationIgnored var task: Task<Void, Never>?
@@ -73,7 +81,7 @@ struct RewriteThreadBackend {
     /// Moves the input to `key`, keeping what it holds when the key is the same.
     func follow(_ key: Key) {
         guard self.key != key else { return }
-        self.key = key; text = ""; error = nil; failed = nil
+        self.key = key; text = ""; error = nil; failed = nil; ownWords = nil; draft = ""
     }
 }
 
@@ -96,7 +104,20 @@ struct RewriteThreadDisplay: Equatable {
     let costLine: String
     let sending: Bool
     let error: String?
+    /// The failed message Try Again sends; false for an error with nothing to send again.
+    var retry = false
+    /// The version in the text is your own words.
+    var yours = false
+    /// The input takes your own words, not a message to Claude.
+    var ownWords = false
+    static let ownWordsBubble = "\u{270E} My own words"
+    static let ownWordsPlaceholder = "Your exact words \u{00B7} \u{21B5} applies \u{00B7} Esc cancels"
+    static let ownWordsCostLine = "Free \u{00B7} nothing is sent"
     var versionLine: String { "\(version) of \(versions)" }
+    /// "· your words" after the arrows when the version in the text is yours.
+    var yoursLine: String? { yours ? "\u{00B7} your words" : nil }
+    /// Beside the input: the AI's cost line, or "Free · nothing is sent" for your own words.
+    var inputCostLine: String { ownWords ? Self.ownWordsCostLine : costLine }
     /// "· 3 phrases to voice at Keep" or "· text only, free".
     var phrasesLine: String {
         voicePhrases == 0 ? "\u{00B7} text only, free" : "\u{00B7} \(voicePhrases) phrase\(voicePhrases == 1 ? "" : "s") to voice at Keep"
@@ -164,7 +185,8 @@ extension EditorModel {
                                     versions: thread.versions.count, voicePhrases: target.change.parts.filter { $0.kind == .voice }.count,
                                     steps: Array(thread.nextSteps.prefix(prompt?.maxNextSteps ?? 2)), keep: prompt?.keepBubble ?? "",
                                     steady: prompt?.steadyBubbles ?? [], costLine: Self.costLine(target.session.provider),
-                                    sending: state.sending == target.key, error: mine ? state.error : nil)
+                                    sending: state.sending == target.key, error: mine ? state.error : nil, retry: mine && state.failed != nil,
+                                    yours: thread.versions[thread.current].yours, ownWords: state.ownWords == target.key)
     }
 
     /// The change's recorded words: its span as the take reads it, corrected spelling included.
@@ -188,6 +210,8 @@ extension EditorModel {
                                              messages: thread.messages + [words])
         let state = rewriteThread
         state.follow(key)
+        // A bubble or Try Again talks to Claude: the input leaves your own words first, with nothing put in place.
+        if state.ownWords != nil { leaveRewriteThreadOwnWords(focus: false) }
         state.error = nil; state.failed = nil
         let backend = rewriteThreadBackend ?? liveRewriteThreadBackend
         announce(kind == .versions ? "Asking Claude for 3 more versions" : "Asking Claude")
@@ -214,11 +238,12 @@ extension EditorModel {
         sendRewriteThread(failed.message, kind: failed.kind, fromInput: AIText.trim(rewriteThread.text) == failed.message)
     }
 
-    /// A bubble: "✓ That's it, keep it" is exactly Keep; "3 more versions" asks for alternatives; any other bubble, ✦ or
-    /// steady, sends its words as your message.
+    /// A bubble: "✓ That's it, keep it" is exactly Keep; "✎ My own words" switches the input to your own words and back;
+    /// "3 more versions" asks for alternatives; any other bubble, ✦ or steady, sends its words as your message.
     func pressRewriteThreadBubble(_ title: String) {
         guard let display = rewriteThreadDisplay else { return }
         if title == display.keep { keepChange(display.ordinal); return }
+        if title == RewriteThreadDisplay.ownWordsBubble { toggleRewriteThreadOwnWords(); return }
         let more = rewriteFollowupPrompt?.steadyBubbles.last
         sendRewriteThread(title, kind: title == more ? .versions : .reply)
     }
@@ -302,6 +327,86 @@ extension EditorModel {
         guard let display = rewriteThreadDisplay else { return false }
         rewriteThread.follow(display.key)
         rewriteThread.focusRequest += 1
+        return true
+    }
+
+    // MARK: Your own words
+
+    /// "✎ My own words" and ⌥E: the bubble switches the input to your own words, and again back to Claude.
+    func toggleRewriteThreadOwnWords() {
+        if let own = rewriteThread.ownWords, own == rewriteThreadDisplay?.key { leaveRewriteThreadOwnWords(); return }
+        openRewriteThreadOwnWords()
+    }
+
+    /// The input takes the change's words as the text shows them, the cursor at their end, for you to type over. What it
+    /// held for Claude comes back when your own words leave. False where no thread shows or Claude is working.
+    @discardableResult func openRewriteThreadOwnWords() -> Bool {
+        if let folded = rewriteThread.folded, folded.ordinal == proposal?.focused { rewriteThread.folded = nil }
+        guard let display = rewriteThreadDisplay, !display.sending else { return false }
+        let state = rewriteThread
+        state.follow(display.key)
+        if state.ownWords != display.key {
+            state.draft = state.text
+            state.text = changeText(display.ordinal)
+            state.ownWords = display.key
+        }
+        state.focusRequest += 1
+        announce("Your own words for change \(display.ordinal). Return puts them in place, Escape cancels. Nothing is sent.")
+        return true
+    }
+
+    /// Esc, or the bubble again: back to Claude with nothing changed; the input holds what it held for Claude.
+    func leaveRewriteThreadOwnWords(focus: Bool = true) {
+        let state = rewriteThread
+        guard state.ownWords != nil else { return }
+        state.ownWords = nil
+        state.text = state.draft
+        state.draft = ""
+        guard focus else { return }
+        state.focusRequest += 1
+        announce("Back to talking to Claude. Nothing changed.")
+    }
+
+    /// ↵ with your own words: they go into the change's place as a new version, "your words", through the local edit
+    /// Claude's versions take, and nothing is sent. They are this Rewrite's words for the change (`acceptThreadWords`), so
+    /// Keep prices and voices them as any change, the voice made from your text. An empty text makes the change a cut; the
+    /// recorded words leave nothing to change, so it is left out; the words already in the text change nothing; a
+    /// version's words show that version.
+    @discardableResult func applyRewriteThreadOwnWords(_ typed: String) -> Bool {
+        guard let target = rewriteThreadTarget, rewriteThread.ownWords == target.key, rewriteThread.sending == nil,
+              var thread = rewriteThread(target.key.ordinal) else { return false }
+        let key = target.key, text = EditingPrimitives.jsTrim(typed), state = rewriteThread
+        guard text != EditingPrimitives.jsTrim(thread.versions[thread.current].text) else {
+            leaveRewriteThreadOwnWords(focus: false)
+            announce("Nothing changed: those are the words in the text.")
+            return true
+        }
+        guard editChange(key.ordinal, text: text) else {
+            state.error = "Your words couldn't be put in the text. Your edits are saved."
+            state.failed = nil
+            return false
+        }
+        // The recorded words (or none for added words): the edit left the change out, and its thread went with it.
+        guard proposal?.id == key.proposal, proposal?[key.ordinal]?.state == .pending else {
+            leaveRewriteThreadOwnWords(focus: false)
+            return true
+        }
+        try? openRewrite?.acceptThreadWords(key.ordinal, text: text)
+        guard var proposal else { return true }
+        let shown = changeText(key.ordinal)
+        if let found = thread.versions.firstIndex(where: { $0.text == shown }) { thread.current = found } else {
+            thread.versions.append(.init(text: shown, note: nil, yours: true))
+            thread.current = thread.versions.count - 1
+        }
+        thread.turns.append(.init(speaker: .yours, text: text))
+        // Claude's next steps were for its own words.
+        thread.nextSteps = []
+        proposal.threads[key.ordinal] = thread
+        self.proposal = proposal
+        leaveRewriteThreadOwnWords(focus: false)
+        state.error = nil
+        announce((text.isEmpty ? "Change \(key.ordinal) cuts its words now." : "Your words are in change \(key.ordinal).")
+                 + " Version \(thread.current + 1) of \(thread.versions.count). Nothing was sent.")
         return true
     }
 

@@ -361,6 +361,140 @@ import Testing
         #expect(editor.rewriteThread.text == "Make it fresher" && editor.changeText(ordinal) == text && sent.isEmpty)
     }
 
+    // MARK: Your own words
+
+    private func input(_ editor: EditorModel, _ text: String) -> RewriteThreadInputTextView {
+        let input = RewriteThreadInputTextView(frame: NSRect(x: 0, y: 0, width: 300, height: 30))
+        input.model = editor
+        input.string = text
+        editor.rewriteThread.text = text
+        return input
+    }
+
+    /// "✎ My own words" fills the input with the version in the text; ↵ puts your words in place as a version, "your words",
+    /// with no request, and they are this Rewrite's words: reviewed, priced and voiced at Keep (not a hand edit).
+    @Test func myOwnWordsFillTheShownVersionAndReturnAddsAYourWordsVersionWithNoRequest() async throws {
+        let (editor, session, script, scenes) = try scene()
+        defer { scenes.forEach { $0.editor?.close() } }
+        let ordinal = try voiceOrdinal(editor)
+        editor.focusChange(ordinal)
+        script.replies = [reply("much fresher words", steps: ["More suspense"])]
+        await send(editor, "Make it fresher")
+        let display = try #require(editor.rewriteThreadDisplay)
+        #expect(display.ownWords == false && display.inputCostLine == "Free on your Claude plan")
+        editor.rewriteThread.text = "a draft for Claude"
+        let focus = editor.rewriteThread.focusRequest
+        editor.pressRewriteThreadBubble("\u{270E} My own words")
+        let own = try #require(editor.rewriteThreadDisplay)
+        #expect(editor.rewriteThread.text == "much fresher words" && editor.rewriteThread.focusRequest == focus + 1, "the shown version, the keys in the input")
+        #expect(own.ownWords && own.inputCostLine == "Free \u{00B7} nothing is sent")
+        #expect(RewriteThreadInputField.placeholder(ownWords: true) == "Your exact words \u{00B7} \u{21B5} applies \u{00B7} Esc cancels")
+        input(editor, "my very own sentence").keyDown(with: key(36, [], "\r"))
+        #expect(script.requests.count == 1, "nothing is sent")
+        #expect(editor.changeText(ordinal) == "my very own sentence")
+        let after = try #require(editor.rewriteThreadDisplay)
+        #expect(after.versionLine == "3 of 3" && after.yoursLine == "\u{00B7} your words" && !after.ownWords && after.steps.isEmpty)
+        #expect(after.turns.last == RewriteThread.Turn(speaker: .yours, text: "my very own sentence"))
+        #expect(editor.rewriteThread.text == "a draft for Claude", "Claude's draft comes back")
+        #expect(session.reviewedVoiceOrdinals.contains(ordinal) && !session.hasEditedChanges, "your words are voiced at Keep, not a hand edit")
+        #expect(session.changes[ordinal - 1].hunk.newTokens == ["my", "very", "own", "sentence"], "the voice is made from your text")
+        // The arrows still reach Claude's versions, and the next request carries your words as a version, not a message.
+        #expect(editor.switchRewriteThreadVersion(by: -1) && editor.rewriteThreadDisplay?.yoursLine == nil)
+        #expect(editor.switchRewriteThreadVersion(by: 1) && editor.changeText(ordinal) == "my very own sentence")
+        script.replies = [reply("their words, tightened")]
+        await send(editor, "Tighter")
+        let last = try #require(script.requests.last)
+        #expect(last.versions.last == "my very own sentence" && last.messages == ["Make it fresher", "Tighter"])
+        // Keep includes it for takes: no "Takes are made from the AI's words" dead end.
+        #expect(editor.switchRewriteThreadVersion(by: -1) && editor.keepChange(ordinal))
+        session.showProposal()
+        let footer = session.task.footer
+        #expect(session.reviewedVoiceOrdinals.contains(ordinal) && !session.hasEditedChanges)
+        #expect(footer.note?.contains("Takes are made from the AI's words") != true && footer.primary != nil,
+                "a step forward: \(footer.primary?.title ?? "none"), \(footer.note ?? "no note")")
+    }
+
+    /// Esc, or the bubble again, goes back to Claude with nothing changed; a second Esc folds the thread as before.
+    @Test func escLeavesYourOwnWordsWithNothingChanged() throws {
+        let (editor, _, script, scenes) = try scene()
+        defer { scenes.forEach { $0.editor?.close() } }
+        let ordinal = try voiceOrdinal(editor)
+        editor.focusChange(ordinal)
+        let before = editor.proposal, text = editor.changeText(ordinal)
+        #expect(editor.openRewriteThreadOwnWords() && editor.rewriteThread.text == text)
+        let field = input(editor, "words I will not keep")
+        field.keyDown(with: key(53))
+        #expect(editor.rewriteThread.ownWords == nil && editor.rewriteThread.text.isEmpty && editor.proposal == before && editor.changeText(ordinal) == text)
+        #expect(editor.rewriteThreadDisplay?.ordinal == ordinal, "Esc leaves your words, not the thread")
+        editor.pressRewriteThreadBubble("\u{270E} My own words")
+        editor.rewriteThread.text = "other words"
+        editor.pressRewriteThreadBubble("\u{270E} My own words")
+        #expect(editor.rewriteThread.ownWords == nil && editor.proposal == before, "the bubble again leaves them too")
+        field.keyDown(with: key(53))
+        #expect(editor.rewriteThreadDisplay == nil && script.requests.isEmpty, "then Esc folds the thread")
+    }
+
+    /// As the edit popover did: an empty text makes the change a cut, and the recorded words leave nothing to change.
+    @Test func emptyOwnWordsCutAndTheRecordedWordsLeaveNothingToChange() throws {
+        let (editor, session, script, scenes) = try scene()
+        defer { scenes.forEach { $0.editor?.close() } }
+        let ordinal = try voiceOrdinal(editor)
+        editor.focusChange(ordinal)
+        #expect(editor.openRewriteThreadOwnWords())
+        #expect(editor.applyRewriteThreadOwnWords(""))
+        let change = try #require(editor.proposal?[ordinal])
+        #expect(change.state == .pending && change.parts.allSatisfy { $0.kind == .cut } && !change.parts.isEmpty, "a cut of its words")
+        #expect(editor.rewriteThreadDisplay?.turns.last == RewriteThread.Turn(speaker: .yours, text: "") && editor.rewriteThreadDisplay?.yoursLine != nil)
+        #expect(session.changes[ordinal - 1].hunk.kind == .cut && !session.hasEditedChanges)
+        // The recorded words: the change is left out, its thread with it.
+        #expect(editor.openRewriteThreadOwnWords())
+        #expect(editor.applyRewriteThreadOwnWords(editor.recordedText(ordinal)))
+        #expect(editor.proposal?[ordinal]?.state == .excluded && editor.proposal?.threads[ordinal] == nil && editor.rewriteThread.ownWords == nil)
+        #expect(script.requests.isEmpty)
+    }
+
+    @Test func theWordsAlreadyInTheTextChangeNothing() throws {
+        let (editor, _, _, scenes) = try scene()
+        defer { scenes.forEach { $0.editor?.close() } }
+        let ordinal = try voiceOrdinal(editor)
+        editor.focusChange(ordinal)
+        let before = editor.proposal
+        #expect(editor.openRewriteThreadOwnWords() && editor.applyRewriteThreadOwnWords(editor.changeText(ordinal) + " "))
+        #expect(editor.proposal == before && editor.rewriteThreadDisplay?.versionLine == "1 of 1" && editor.rewriteThread.ownWords == nil)
+    }
+
+    /// ⌥E in the transcript opens the thread for your own words (↵ and F2 still open it for Claude); VoiceOver reads the
+    /// bubble, the field and the transcript's action.
+    @Test func optionEOpensYourOwnWordsAndVoiceOverNamesThem() throws {
+        let (editor, _, _, scenes) = try scene()
+        defer { scenes.forEach { $0.editor?.close() } }
+        let ordinal = try voiceOrdinal(editor)
+        editor.focusChange(ordinal)
+        let pane = try TranscriptPane(model: editor, size: NSSize(width: 652, height: 900))
+        defer { pane.close() }
+        pane.text.keyDown(with: key(120))
+        #expect(editor.rewriteThread.ownWords == nil, "F2 opens it for Claude")
+        pane.text.keyDown(with: NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .option, timestamp: 0, windowNumber: 0, context: nil,
+                                                  characters: "\u{00B4}", charactersIgnoringModifiers: "e", isARepeat: false, keyCode: 14)!)
+        #expect(editor.rewriteThread.ownWords?.ordinal == ordinal && editor.rewriteThread.text == editor.changeText(ordinal))
+        pane.update()
+        pane.text.layoutThreadNow()
+        pane.layout()
+        let thread = try #require(pane.text.threadAuditView)
+        thread.layoutSubtreeIfNeeded()
+        func field(_ view: NSView) -> RewriteThreadInputTextView? {
+            if let found = view as? RewriteThreadInputTextView { return found }
+            return view.subviews.lazy.compactMap(field).first
+        }
+        let input = try #require(field(thread))
+        #expect(input.accessibilityLabel() == "Your own words for change \(ordinal)" && input.ownWords && input.string == editor.changeText(ordinal))
+        let bubble = RewriteThreadBubble(title: RewriteThreadDisplay.ownWordsBubble, kind: .own, identifier: "", selected: true) {}
+        #expect(bubble.spokenLabel == "My own words")
+        pane.text.configureAccessibilityActions()
+        let actions = pane.text.accessibilityCustomActions()?.map(\.name) ?? []
+        #expect(actions.contains("Type your own words for change \(ordinal)") && actions.contains("Talk to Claude about change \(ordinal)"))
+    }
+
     private func key(_ code: UInt16, _ flags: NSEvent.ModifierFlags = [], _ characters: String = "") -> NSEvent {
         NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0, windowNumber: 0, context: nil, characters: characters,
                          charactersIgnoringModifiers: characters, isARepeat: false, keyCode: code)!

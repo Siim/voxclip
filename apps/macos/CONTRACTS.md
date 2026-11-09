@@ -1,5 +1,53 @@
 # macOS implementation contracts
 
+### 2026-11-09 — Your own words in the Rewrite thread: "✎ My own words" (track/v2-thread-own-words)
+
+ADR-R50's thread deleted `ChangeEditPopover`, so a change's words could be changed only by asking Claude, while design.md §6.3 promised "Each change can be edited before anything is paid for". The user approved restoring hand edits inside the thread (2026-11-09). See ADR-R50 "Update: your own words", design.md §6.3 "Talk back to Claude" → "Your own words", and ai.md §12.10.
+
+- **App.**
+  - `RewriteThread.Version.yours` and `Turn.Speaker.yours`. A `yours` turn is not in `messages`, so your words go to Claude only as a version.
+  - `RewriteThreadState.ownWords` (the key whose input takes your words; nil is Claude mode) and `draft` (the Claude text, given back). `follow` clears both.
+  - `RewriteThreadDisplay` has these new members:
+    - `retry`: Try Again shows only with a failed message;
+    - `yours` and `yoursLine` ("· your words");
+    - `ownWords` and `inputCostLine` ("Free · nothing is sent");
+    - the statics `ownWordsBubble` ("✎ My own words"), `ownWordsPlaceholder` ("Your exact words · ↵ applies · Esc cancels") and `ownWordsCostLine`. This is app copy, not part of the shared prompt.
+  - `EditorModel` has four new functions:
+    - `toggleRewriteThreadOwnWords` (the bubble);
+    - `openRewriteThreadOwnWords` (fills with `changeText`, moves `focusRequest`, unfolds);
+    - `leaveRewriteThreadOwnWords(focus:)`;
+    - `applyRewriteThreadOwnWords`: `editChange`, then `acceptThreadWords`, a version, the turn, next steps cleared, back to Claude. Empty is a cut. The recorded words leave the change out. The text's own words change nothing. A version's exact words show that version.
+  - `pressRewriteThreadBubble` handles the bubble. `sendRewriteThread` leaves your words first.
+  - `RewriteThreadView`:
+    - the bubble, last (`RewriteThreadBubble.Kind.own`, `selected`: `bg.selectedRow` with a `line.strong` edge, semibold, `.isSelected`, `spokenLabel` "My own words");
+    - "· your words" in the version row; the turn "You · your own words: “…”";
+    - the input's mode: `RewriteThreadInputTextView.ownWords`, the placeholder, the label "Your own words for change N", ↵ applies, Esc leaves (a second Esc folds), and ⌥←/⌥→ are left to the text.
+  - `TranscriptNSTextView`: `openThread(_:ownWords:)`, **⌥E** (`charactersIgnoringModifiers` "e", so it works on any layout and leaves ⌥E in the input free for accents), and the VoiceOver action "Type your own words for change N". Return and F2 still open Claude mode.
+- **Takes-eligibility decision: eligible.** Your words go through `acceptThreadWords`, so they are reviewed, priced and voiced at Keep from your text.
+  - The old popover's hand edits were not eligible. `takesFooter` said "Takes are made from the AI's words. Rewrite again…", because the session's hunks, review and take plan stayed the reply's while only the proposal's parts changed. No product reason is recorded.
+  - `acceptThreadWords` removes that limit.
+  - Matching the old rule is the smoke's I10 dead end. Without `acceptThreadWords`, S-thread-own fails I10, T14, I1, I5 and I9 at "Takes are made from the AI's words".
+  - The footer stays for any other route that leaves the parts unlike the reply's.
+- **Deleted.** Nothing.
+- **Tests.**
+  - App `RewriteThreadTests` (+5, 19 in all) covers these cases:
+    - the shown version fills the input and ↵ adds "3 of 3 · your words" with no request; the takes are eligible and the voice tokens are yours; the next request carries your words as a version, not a message; Keep has a step forward;
+    - Esc or the bubble again changes nothing, and a second Esc folds;
+    - empty makes a cut and the recorded words leave the change out;
+    - the text's own words change nothing;
+    - ⌥E (F2 stays Claude); VoiceOver for the field, the bubble and the action.
+  - Mutations turn tests red: no `acceptThreadWords`; no fill; ↵ sends to Claude; Esc folds; no cut; the field's label not mode-aware; no ⌥E; no `yours` flag. All 8 went red.
+  - Smoke `S-thread-own` (T11–T15, both passes, also in `MacUIIntegrationTests`): the bubble, type, ↵, nothing sent, keep, Use. The applied segment reads "…shoot fast footage straight through."
+- **Verification** (`VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`, serial under `nice -n 10`):
+  - Core 1,545 tests in 175 suites (the 2 known deadline issues), Media 649 in 85 (its UI harness runs the smoke passes with S-thread-own), App 1,063 in 82.
+  - `rewrite-smoke.sh` (DEBUG, no path): PASSED, 94 scenarios.
+  - Both `check_drift.py`, `validate.py` and the voice-lab unittests: tree clean.
+  - Long-expression build (250 ms, load average about 6): nothing flagged in touched files.
+- **Owed.**
+  - A real-window pass (`-uiSelfTest`): the bubble's selected look, and the field taking the keys and the cursor at the end after a click on the bubble.
+  - Windows: the bubble with its thread (apps/windows/CONTRACTS.md).
+  - Pre-existing and shared with Claude's versions: with paid takes, `editChange` asks to discard them, and the deferred edit then runs without `acceptThreadWords` or the thread's version. A thread rarely shows then, because only pending reviewable changes have one.
+
 ### 2026-11-09 — Talk back to Claude about a change, in a thread under its words (track/v2-rewrite-thread)
 
 The user asked (2026-11-09) for "the bubbles that help me to pick, if this text satisfies me, or the versions how I want to bend it", in the transcript. Their case was Clip 1, where Claude's rewrite made them sound happy about the scammer. The mockup choice was A with D's ‹ n of m › arrows and B's "3 more versions" bubble. See ADR-R50, design.md §6.3 "Talk back to Claude", ai.md §12.10.

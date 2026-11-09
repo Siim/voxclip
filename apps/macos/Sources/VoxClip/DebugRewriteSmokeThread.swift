@@ -13,6 +13,9 @@ import VoxClipCore
 //   thread, offscreen.
 // - S-thread-more: a steady bubble gives version 2; "3 more versions" gives versions 3–5 and shows 3; Undo (⌘⌫ in the
 //   thread's input) returns the recorded words, and the Rewrite ends with Done, nothing changed.
+// - S-thread-own: "✎ My own words" fills the input with version 1; the user types their sentence over it and presses ↵,
+//   which puts it in place as version 2, "your words", with no request; "✓ That's it, keep it" keeps it; then Use, the
+//   stubbed voice reading the user's words.
 
 extension DebugRewriteSmoke {
     /// The user's sentence about Clip 1 (2026-11-09).
@@ -22,6 +25,8 @@ extension DebugRewriteSmoke {
     nonisolated static let threadVersion2 = "film quick footage straight through."
     nonisolated static let threadMoreVersion2 = "film quick footage nonstop."
     nonisolated static let threadAlternatives = ["film quick footage without stopping.", "shoot quick footage straight through.", "film fast footage without breaks."]
+    /// The user's own words for S-thread-own: no word of the recorded ones either.
+    nonisolated static let threadOwnWords = "shoot fast footage straight through."
     nonisolated static func threadReply(_ text: String, note: String, steps: [String] = []) -> String {
         (try? JSONSerialization.data(withJSONObject: ["text": text, "note": note, "nextSteps": steps], options: [.sortedKeys]))
             .map { String(decoding: $0, as: UTF8.self) } ?? ""
@@ -50,6 +55,15 @@ extension DebugRewriteSmoke {
             try await harness.start()
             try await ThreadSmoke(harness).moreAndUndo()
             try await harness.finish()
+        },
+        Definition(id: "S-thread-own", title: "talk back to Claude: \u{201C}My own words\u{201D} puts the user's sentence in place with no request, keep it, Use",
+                   voiced: 1,
+                   fixture: Fixture(rewrites: [.passage(replace([twoChanges[0]]))], voice: RewriteSmokeVoiceScript(offset: -0.2))) { harness in
+            try await harness.start()
+            let smoke = ThreadSmoke(harness)
+            try await smoke.ownWords()
+            try await harness.finish()
+            smoke.appliedOwnWords()
         },
     ] }
 }
@@ -188,6 +202,56 @@ extension DebugRewriteSmoke {
                             && !runs.contains { $0.mark.ordinal == ordinal },
                           detail: "change \(ordinal) undone: the recorded words show (\(recorded)), its thread is gone")]
         }
+    }
+
+    /// S-thread-own.
+    func ownWords() async throws {
+        guard let editor = harness.editor else { throw DebugRewriteSmoke.Failure.setup("no editor") }
+        let ordinal = try voiceOrdinal(editor)
+        editor.focusChange(ordinal)
+        let first = editor.changeText(ordinal), before = syntheses
+        let bubble = RewriteThreadDisplay.ownWordsBubble
+        try await step("click [\(bubble)] in change \(ordinal)'s thread", { editor.pressRewriteThreadBubble(bubble) }) {
+            let display: RewriteThreadDisplay? = editor.rewriteThreadDisplay
+            let filled: Bool = editor.rewriteThread.text == first && display?.ownWords == true
+            let costLine: String = display?.inputCostLine ?? "no thread"
+            return [Check(invariant: "T11", passed: filled && costLine == RewriteThreadDisplay.ownWordsCostLine,
+                          detail: "the input holds version 1 (\(editor.rewriteThread.text)) for your own words; beside it: \(costLine)")]
+        }
+        try await step("type \u{201C}\(DebugRewriteSmoke.threadOwnWords)\u{201D} over it, press Return", {
+            type(DebugRewriteSmoke.threadOwnWords, key: 36, editor: editor)
+        }) {
+            let sent: [LLMRequest] = await followups()
+            let display: RewriteThreadDisplay? = editor.rewriteThreadDisplay
+            let inText: String = editor.changeText(ordinal)
+            let yours: Bool = display?.yoursLine != nil && display?.ownWords == false
+                && display?.turns.last == RewriteThread.Turn(speaker: .yours, text: DebugRewriteSmoke.threadOwnWords)
+            let placed: Bool = inText == DebugRewriteSmoke.threadOwnWords && display?.versionLine == "2 of 2" && yours
+            let eligible: Bool = harness.session?.reviewedVoiceOrdinals.contains(ordinal) == true && harness.session?.hasEditedChanges == false
+            var checks: [Check] = []
+            checks.append(Check(invariant: "T12", passed: placed, detail: "in the text: \(inText); \(display?.versionLine ?? "no thread") \(display?.yoursLine ?? "")"))
+            checks.append(Check(invariant: "T13", passed: sent.isEmpty && syntheses == before, detail: "\(sent.count) thread request(s), \(syntheses - before) syntheses: nothing sent"))
+            checks.append(Check(invariant: "T14", passed: eligible, detail: "your words are the Rewrite's words for change \(ordinal), voiced at Keep"))
+            return checks
+        }
+        let keep = editor.rewriteThreadDisplay?.keep ?? ""
+        try await step("click [\(keep)]", { editor.pressRewriteThreadBubble(keep) }) {
+            [Check(invariant: "T6", passed: editor.proposal?[ordinal]?.state == .kept && editor.proposal?.threads[ordinal] == nil
+                     && editor.changeText(ordinal) == DebugRewriteSmoke.threadOwnWords && syntheses == before,
+                   detail: "change \(ordinal) kept with your words; its thread is gone; nothing voiced yet")]
+        }
+    }
+
+    /// After Use: the applied voice reads the user's own words.
+    func appliedOwnWords() {
+        let segments = harness.editor?.project.voiceLab.segments ?? []
+        let spoken: [String] = segments.compactMap { $0.text?.new }
+        let read: Bool = spoken.contains { $0.contains("shoot fast footage straight through") }
+        let check = Check(invariant: "T15", passed: read, detail: "the applied voice reads: \(spoken)")
+        guard let last = harness.steps.popLast() else { return }
+        var step = DebugRewriteSmoke.Step(index: last.index, action: last.action, snapshot: last.snapshot, checks: last.checks + [check], capture: last.capture)
+        step.seconds = last.seconds; step.waits = last.waits
+        harness.steps.append(step)
     }
 
     /// The transcript with the thread as the editor draws it, offscreen, once (rewrite-smoke-S-thread-thread.png): the thread

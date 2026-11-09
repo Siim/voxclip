@@ -71,8 +71,8 @@ extension HeavyMediaTests {
         // S-claude-does-it-all drops a video and waits, then Export all (DebugRewriteSmokeClaudeMode.swift); it makes no takes.
         let realisticOnly = lengths == "exact" ? [] : ["S-ask-bleep-blur", "S-ask-overlay", "S-clip-controls", "S-claude-does-it-all"]
         // Talk back to Claude in the transcript (DebugRewriteSmokeThread.swift): a reply, the arrows and "That's it, keep it"
-        // to Use; "3 more versions" and Undo. Both passes.
-        let thread = ["S-thread", "S-thread-more"]
+        // to Use; "3 more versions" and Undo; "My own words", kept, to Use. Both passes.
+        let thread = ["S-thread", "S-thread-more", "S-thread-own"]
         var names: [String] = (1...15).map { (index: Int) -> String in "S\(index)" }
         for group in [own, guardScenarios, fitScenarios, makeIt, thread, realisticOnly] { names += group }
         let directory = try UIProcessHarness.run(mode: "-rewriteSmoke", name: "rewrite-smoke-\(lengths)",
