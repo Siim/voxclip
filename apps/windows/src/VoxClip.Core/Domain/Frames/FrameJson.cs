@@ -112,6 +112,118 @@ public static class FrameJson
     /// <summary>A JSON array of written values.</summary>
     public static JsonArray Array(IEnumerable<JsonNode> items) => new([.. items]);
 
+    // MARK: The Mac CLI's text
+
+    /// <summary><paramref name="node"/> as the Mac's <c>voxclip-cli</c> prints a JSON value: <c>JSONEncoder</c> with sorted keys
+    /// (ordinal) and unescaped slashes, compact, numbers as <see cref="SwiftNumber"/> writes them. No final newline.
+    /// shared/fixtures/clip-frames/analyze-frames-cli-cases.json pins it.</summary>
+    public static string MacText(JsonNode? node)
+    {
+        var text = new System.Text.StringBuilder();
+        WriteMac(text, node);
+        return text.ToString();
+    }
+
+    /// <summary>A number as Swift's <c>JSONEncoder</c> writes it: the Double's <c>description</c> (the shortest round-trip digits; an
+    /// exponent of two digits at least below 1e-4 and above 2^53, as <c>1.234e-05</c>) without a trailing <c>.0</c>, so 1 is "1"
+    /// and −0 is "-0".</summary>
+    public static string SwiftNumber(double value)
+    {
+        if (!double.IsFinite(value)) throw new ArgumentOutOfRangeException(nameof(value), "JSON has no infinities or NaN.");
+        if (value == 0) return double.IsNegative(value) ? "-0" : "0";
+        var sign = value < 0 ? "-" : "";
+        var shortest = Math.Abs(value).ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+        var marker = shortest.IndexOfAny(['E', 'e']);
+        var mantissa = marker < 0 ? shortest : shortest[..marker];
+        var exponent = marker < 0 ? 0 : int.Parse(shortest[(marker + 1)..], System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture);
+        var point = mantissa.IndexOf('.');
+        var whole = point < 0 ? mantissa : mantissa[..point];
+        var every = point < 0 ? mantissa : whole + mantissa[(point + 1)..];
+        var lead = every.Length - every.TrimStart('0').Length;
+        var digits = every.Trim('0');
+        if (digits.Length == 0) digits = "0";
+        var scientific = whole.Length - lead - 1 + exponent;
+        if (scientific < -4 || Math.Abs(value) > 9007199254740992.0)
+        {
+            var rest = digits.Length > 1 ? "." + digits[1..] : "";
+            return sign + digits[0] + rest + "e" + (scientific < 0 ? "-" : "+")
+                + Math.Abs(scientific).ToString("00", System.Globalization.CultureInfo.InvariantCulture);
+        }
+        if (scientific < 0) return sign + "0." + new string('0', -scientific - 1) + digits;
+        var integer = digits.Length > scientific + 1 ? digits[..(scientific + 1)] : digits.PadRight(scientific + 1, '0');
+        return sign + integer + (digits.Length > scientific + 1 ? "." + digits[(scientific + 1)..] : "");
+    }
+
+    private static void WriteMac(System.Text.StringBuilder text, JsonNode? node)
+    {
+        switch (node)
+        {
+            case null:
+                text.Append("null");
+                return;
+            case JsonObject value:
+                text.Append('{');
+                var first = true;
+                foreach (var key in value.Select(pair => pair.Key).Order(StringComparer.Ordinal))
+                {
+                    if (!first) text.Append(',');
+                    first = false;
+                    WriteMacString(text, key);
+                    text.Append(':');
+                    WriteMac(text, value[key]);
+                }
+                text.Append('}');
+                return;
+            case JsonArray items:
+                text.Append('[');
+                for (var index = 0; index < items.Count; index++)
+                {
+                    if (index > 0) text.Append(',');
+                    WriteMac(text, items[index]);
+                }
+                text.Append(']');
+                return;
+            case JsonValue value:
+                switch (value.GetValueKind())
+                {
+                    case JsonValueKind.String: WriteMacString(text, value.GetValue<string>()); return;
+                    case JsonValueKind.True: text.Append("true"); return;
+                    case JsonValueKind.False: text.Append("false"); return;
+                    case JsonValueKind.Null: text.Append("null"); return;
+                    case JsonValueKind.Number:
+                        // The Mac's JSONValue holds every number as a Double, integers too.
+                        text.Append(SwiftNumber(AsDouble(value) ?? throw new ArgumentException("A JSON number could not be read.", nameof(node))));
+                        return;
+                }
+                break;
+        }
+        throw new ArgumentException("Not a JSON value.", nameof(node));
+    }
+
+    /// <summary>A string as Swift's JSONWriter escapes it: quote, backslash and control characters; slashes and non-ASCII as they are.</summary>
+    private static void WriteMacString(System.Text.StringBuilder text, string value)
+    {
+        text.Append('"');
+        foreach (var character in value)
+        {
+            switch (character)
+            {
+                case '"': text.Append("\\\""); break;
+                case '\\': text.Append("\\\\"); break;
+                case '\n': text.Append("\\n"); break;
+                case '\r': text.Append("\\r"); break;
+                case '\t': text.Append("\\t"); break;
+                case '\b': text.Append("\\b"); break;
+                case '\f': text.Append("\\f"); break;
+                default:
+                    if (character < 0x20) text.Append("\\u").Append(((int)character).ToString("x4", System.Globalization.CultureInfo.InvariantCulture));
+                    else text.Append(character);
+                    break;
+            }
+        }
+        text.Append('"');
+    }
+
     // MARK: Reading
 
     /// <summary>A rect, or null when a side is missing or not a number.</summary>
