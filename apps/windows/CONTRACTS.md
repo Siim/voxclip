@@ -1,5 +1,47 @@
 # Windows fixed contracts
 
+### 2026-11-09 — Windows: the face models calibrated against the Mac's Vision, package W7 of "Windows sees the picture" (track/v2-win-frames-w7)
+
+ADR-R48 (Windows calibration) and /tmp/clipper-planning/research/windows-frame-analyzer.md (Question 2, "Expected accuracy", Risks 1–3, W7). **Result: the calibration fails 5 of the 6 acceptance lines on the held-out people, so the catalogue stays `enabled: false`.** The constants and every number are committed.
+
+- **Tool `tools/frames/calibrate/`** (new; README has the rerun steps):
+  - `manifest.json`: 37 people, 5,620 frames at 10 fps and 1,280 px from NASA public-domain video. It records nasa_id, asset URL, seconds and each decoded frame's SHA-256 (raw RGB24; ffmpeg 6.1.1, bicubic with `accurate_rnd+full_chroma_int+bitexact`). Split by person: 24 fit, 13 validation. Each segment is one continuous shot of its subject, checked by eye: no JPL, ESA or partner productions, children, stills, title cards or school-host feeds.
+  - `calibrate.py`: `measure`, `fit`, `write` and `pin`, resumable per subject, numbers only. A frame whose hash differs is refused, and the run stops below 10 GiB free.
+  - `windows-runner/`: a net10.0 developer console app on the shipped steps, ORT 1.19.2. It writes the raw numbers before the maps (mean eye ratios, mesh yaw and pitch, sharpness, luma, clipped share, width at 1,280, box, detector score, presence, roll) and exits 3 if any frame differs from `OnnxFrameFaces.Faces`; none did. It is not in the solution and never ships.
+  - `test_calibrate.py`: 4 tests on a synthetic paired set, numbers only: the fit is deterministic and recovers the maps, weights and pitch0 exactly; a perfect calibration agrees on every line; a gate is fitted only with evidence.
+- **Mac test-only harness** `apps/macos/Tests/VoxClipMediaTests/Frames/CalibrationVisionHarness.swift`: the production `AppleFrameVision` on the same bytes, after re-hashing them. It is `.enabled(if:)` on `VOXCLIP_CALIBRATION_FRAMES`, so it is skipped in CI and every normal run. Reference: macOS 27.0.1 (26A434), the post-fix request set.
+- **Catalogue** (`shared/catalog/frame-models.json`, the `calibration` block only, plus `enabledNote`):
+  - Constants: eye ratio a 0.7446, b 0.069; yaw 1.1694, −0.0004; pitch −0.9019, 0.0263; pitch0 0.11; w0 0.2739, w1 0.1218, w2 0.2468; quantile map (0.372→0.276, 0.442→0.429, 0.503→0.523, 0.558→0.607, 0.609→0.654).
+  - The gates are the study's fixed ones, because at most one fit face falls past any of them. The eyes-open span, facing span and sharpness range are also the study's.
+  - `evaluation` holds the acceptance lines, the fit split, the validation split pooled and per person, two diagnostics (faces from 100 px, same face only) and the manifest's SHA-256.
+  - **`status` stays `provisional` because the run failed.** The brief has `status: calibrated` on every run, but the schema and `FrameModelCatalog` refuse to enable only a provisional calibration, so "calibrated" must mean "passed".
+- **Numbers on the 13 held-out people** (needs → got):
+  - eyes ≥ 0.98 → **0.960**
+  - facing ≥ 0.95 → 0.980 (passes)
+  - quality at 0.25 ≥ 0.95 → **0.817**
+  - quality at 0.40 ≥ 0.85 → **0.823**
+  - opening ≥ 0.95 → **0.794** (1,436 scans; the Mac moves 124 starts, Windows 138)
+  - cover regret p90 ≤ 0.06 → **0.074** (median 0.022)
+  - Fit split: 0.948 / 0.964 / 0.937 / 0.863 / 0.846 / 0.097.
+- **Why it fails** (ADR-R48):
+  - A linear eye map tops out at 0.949 on the fit split. The misses are small, soft faces, where Vision itself is unsteady; from 100 px the eyes agree 0.978.
+  - Vision's quality is set per person and per shot, which the formula can't carry. Pearson is 0.58 on the fit split and 0.11 held out.
+  - On one held-out person, YuNet's largest box is a face in an on-screen graphic (150 of 220 frames). Without those frames, quality agrees 0.891 and 0.897, and the opening 0.878.
+- **Goldens re-pinned** (`OnnxFrameFacesTests`) from `face_golden_reference.py` with the new constants. With the old pins, 4 of 13 fail; with the new ones, 13 of 13 pass. The run used onnxruntime 1.22.1 in Python, not 1.19.2: no Python 3.12 venv was at hand. The rects match the previous 1.19.2 pins to all five decimals.
+- **`FrameModelCatalogTests`** pins the new constants. In `generate_face_fields.py`, the synthetic "one-eye-closed" mesh is now 0.30/0.02 (was 0.06) and "tipped back/down" is tan ±0.5 (was ±0.3). That keeps them closed and past the pitch limit under the new maps, and `frame-face-fields-cases.json` is regenerated.
+- **Verification** (macOS host, Release, `-m:1 -nodeReuse:false -p:UseSharedCompilation=false`, `VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`):
+  - Windows Core 3,438 (3,409 passed, 29 skipped, 0 failed). Windows Media 1,265 (1,096 passed, 169 skipped, 0 failed).
+  - Both `check_drift.py` scripts, `tools/schemas/validate.py`, the schema tests (6) and the calibration tests (4) pass, and the tree is clean after them.
+  - No assembly changed, so ReleaseBoundary is unchanged.
+- **Not done (outside the brief):**
+  - The W4 note's screen evaluation, which decides on the PP-OCRv4 fallback (needs Windows OCR on the VM).
+  - A CC0 render set for the goldens.
+- **For the lead:** enabling needs a Windows face-path change, then a rerun of this tool. Candidates:
+  - report eyes unknown for faces under about 100 px at 1,280, as Vision is unreliable there too;
+  - a quality term for face size, or a per-recording quality normalisation, because Vision's score is relative;
+  - drop a largest box that isn't the speaker, e.g. faces in on-screen graphics, or prefer the face the mesh sees best.
+- **Still owed:** W6 (the wiring, which waits on enabling); the native checks: goldens and speed on win-arm64 (VM), Windows OCR recall and speed at 1,280, and the App's output folder on a Windows build.
+
 ### 2026-11-09 — Windows: the face models, bundled, behind W5's seam, package W3 of "Windows sees the picture" (track/v2-win-frames-w3)
 
 ADR-R48 Windows and /tmp/clipper-planning/research/windows-frame-analyzer.md (Question 1, Hosting, W3). **User decision (2026-11-09): both models are bundled in the Windows app**, pinned and hash-checked with their LICENSE and NOTICE; the user accepted YuNet's WIDER FACE training-data risk. The catalogue stays `enabled: false` until W7's calibration passes.

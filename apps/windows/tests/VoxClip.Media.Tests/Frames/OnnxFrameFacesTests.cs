@@ -29,10 +29,10 @@ public sealed class OnnxFrameFacesTests
 
     private static readonly Dictionary<string, Golden> Goldens = new[]
     {
-        new Golden("kaminix.png", 1, 0.34820, 0.19791, 0.28278, 0.47544, 0.32615, 0.29228, 0.16100, 0.44609, 0.26923),
-        new Golden("saurabh.png", 1, 0.08746, 0.34599, 0.57775, 0.50103, 0.34256, 0.29615, 0.35766, -0.06165, 0.34681),
-        new Golden("amblard.png", 1, 0.42151, 0.37876, 0.37815, 0.35091, 0.32292, 0.39835, -0.51002, -0.12187, 0.24093),
-        new Golden("parham.png", 1, 0.43397, 0.16100, 0.42281, 0.40892, 0.30843, 0.43995, -0.61401, 0.29300, 0.17418),
+        new Golden("kaminix.png", 1, 0.34820, 0.19791, 0.28278, 0.47544, 0.34593, 0.31095, 0.17901, 0.29213, 0.43714),
+        new Golden("saurabh.png", 1, 0.08746, 0.34599, 0.57775, 0.50103, 0.36287, 0.31494, 0.39155, -0.02024, 0.61158),
+        new Golden("amblard.png", 1, 0.42151, 0.37876, 0.37815, 0.35091, 0.34259, 0.42049, -0.54621, -0.05729, 0.55266),
+        new Golden("parham.png", 1, 0.43397, 0.16100, 0.42281, 0.40892, 0.32763, 0.46345, -0.65860, 0.19795, 0.46594),
     }.ToDictionary(golden => golden.File);
 
     // Tolerances: the rect in picture fractions, eye ratios, angles in radians, quality.

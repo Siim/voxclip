@@ -136,3 +136,46 @@ small frames may be sent to the chosen AI. The cover is saved as `cover.jpg` nex
   tolerances, the per-millisecond cache, 320 px sheet JPEGs, the whole-video pass and `voxclip-cli analyze-frames` with the Mac's bytes; with
   no face models installed nothing is measured (exit 7), never an invented "no face". W3, W6 and W7 are owed.
 - **Windows** bundles both face models in the app, pinned and hash-checked with their LICENSE and NOTICE (the user's decision, 2026-11-09, accepting YuNet's WIDER FACE training-data risk), and measures faces with them (W3, track/v2-win-frames-w3); they stay off until W7's calibration passes.
+
+## Windows calibration (W7, track/v2-win-frames-w7, 2026-11-09)
+
+- **Set.** 37 people from US federal public-domain NASA video (images.nasa.gov; no JPL, ESA or partner productions):
+  studio and live interviews, crew profiles, space-station downlinks (two of them wide shots with faces about 55 px wide),
+  messages and science interviews. That is 5,620 frames at 10 fps and 1,280 px, of which Vision calls 583 eyes closed.
+  16.5 % of the faces are under 100 px wide, 3.5 % are dim (crop luma under 70) and four subjects wear glasses. The set has
+  no handheld or phone footage that could be verified as such. The frames are split by person: 24 fit, 13 held out.
+  `tools/frames/calibrate/manifest.json` pins each frame's SHA-256. No frame is kept.
+- **Reference.** This Mac's production `AppleFrameVision` (macOS 27.0.1, 26A434, the post-fix request set:
+  `VNDetectFaceRectanglesRequest` revision 3, then landmarks and capture quality on its largest face). The Windows side is
+  the shipped C# path, checked frame by frame against `OnnxFrameFaces`.
+- **Fit** (the study's order, fit split only): eye ratio 0.7446·mesh + 0.069; yaw 1.1694·mesh − 0.0004; pitch
+  −0.9019·mesh + 0.0263; pitch0 0.11; w0 0.2739, w1 0.1218, w2 0.2468; a five-point quantile map. The gates stay the study's,
+  because only one fit face falls past any of them.
+- **Fails.** On the held-out people:
+
+  | Line | Needs | Got |
+  |---|---|---|
+  | eyes | ≥ 0.98 | 0.960 |
+  | facing | ≥ 0.95 | 0.980 (passes) |
+  | quality at 0.25 | ≥ 0.95 | 0.817 |
+  | quality at 0.40 | ≥ 0.85 | 0.823 |
+  | opening | ≥ 0.95 | 0.794 |
+  | cover regret p90 | ≤ 0.06 | 0.074 |
+
+  The catalogue stays `enabled: false`, and the calibration stays `provisional` so that it can't be switched on. It still
+  holds the constants and every number, pooled and per person.
+- **Why.**
+  - **The eye line can't reach 0.98 with a linear map on this set.** The best threshold scores 0.949 on the fit split and
+    0.965 held out. The misses sit on small, soft faces, where Vision itself is unsteady: it calls eyes closed in 76 % of a
+    wide-shot astronaut's frames. On faces from 100 px the eyes agree 0.978.
+  - **Vision's quality is set per person and per shot,** as Risk 2 of the study said. Small in-station faces score 0.18–0.37
+    and studio faces 0.45–0.77. The formula's eyes, facing and sharpness terms don't carry that offset (pooled Pearson 0.58 on
+    the fit split, 0.11 held out). Fitting the sharpness range raised the fit split's agreement but lowered the held-out
+    people's, so it stays the study's.
+  - **On one held-out person, YuNet's largest box is not the speaker.** In a Demo-2 interview, a face in a graphic beside the
+    speaker is taken in 150 of 220 frames, and Vision doesn't see it. Without such frames, quality agrees 0.891 at 0.25 and
+    0.897 at 0.40, and the opening 0.878.
+- **What would change it:** a size-aware eye state on Windows, for example eyes unknown under about 100 px; a quality term for
+  face size and person; and a check that the measured face is the speaker. Each is a code change to the Windows face path,
+  which is outside this package. Rerun with `tools/frames/calibrate` (its README) after any of them, or when macOS or the
+  request set changes.

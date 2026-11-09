@@ -1,7 +1,7 @@
 {
   "schema": "voxclip-frame-models/1",
   "enabled": false,
-  "enabledNote": "Off until the calibration against the Mac (W7) passes. The licence decision is made: the user accepted YuNet's training-data terms (WIDER FACE) on 2026-11-09, and both files are bundled in the Windows app. While off, nothing loads these models outside tests and the developer override (VOXCLIP_FRAME_FACES=1).",
+  "enabledNote": "Off: the calibration against the Mac (W7) failed eyes, opening, quality025, quality040, coverRegretP90 on the held-out subjects (see calibration.evaluation). The licence decision is made: the user accepted YuNet's training-data terms (WIDER FACE) on 2026-11-09, and both files are bundled in the Windows app. While off, nothing loads these models outside tests and the developer override (VOXCLIP_FRAME_FACES=1).",
   "models": [
     {
       "id": "yunet2026may-facemeshv2-f16v1",
@@ -51,30 +51,91 @@
       "attribution": "YuNet by Shiqi Yu et al. (MIT). MediaPipe Face Mesh V2 by Google (Apache-2.0), converted from TFLite to ONNX; weights unchanged apart from the format.",
       "calibration": {
         "status": "provisional",
-        "basis": "Seed fit of /tmp/clipper-planning/research/windows-frame-analyzer.md: four public-domain NASA clips, 1,299 frames, against Apple Vision (face rectangles revision 3) on macOS 27. Every number below is provisional until the calibration package (W7) refits it against the post-fix Mac and sets status to calibrated. The gates and pitch0 are not fitted yet.",
-        "date": null,
-        "reference": null,
-        "eyeAspect": {"a": 0.721, "b": 0.058},
-        "yaw": {"a": 1.082, "b": -0.005},
-        "pitch": {"a": -1.466, "b": 0.014},
+        "basis": "Provisional: the acceptance against the Mac failed (see evaluation.failed), so this calibration cannot be enabled. Fitted by tools/frames/calibrate (W7) on 24 subjects of US federal public-domain NASA video and checked on 13 held-out subjects (split by subject; manifest tools/frames/calibrate/manifest.json, SHA-256 e28d44db2d066d351ff7cf9f5536fed7e049dcce9e23a3ee7dc4748095afdc10); no frames are kept. The study's fixed gates stay for minimumFaceWidth (1 fit faces narrower than the size gate), lumaLow (1 fit faces darker than the low luma gate), lumaHigh (0 fit faces brighter than the high luma gate), clippedFraction (0 fit faces more clipped than the clipping gate): a gate is fitted only from 30 faces past it. The sharpness range, eyes-open span and facing span are the study's; pitch0 and the weights are fitted.",
+        "date": "2026-11-09",
+        "reference": "Apple Vision, macOS 27.0.1 (26A434), AppleFrameVision request set with M1: VNDetectFaceRectanglesRequest revision 3, then VNDetectFaceLandmarksRequest and VNDetectFaceCaptureQualityRequest on its largest face, beside VNRecognizeTextRequest (fast) and VNDetectRectanglesRequest",
+        "eyeAspect": {"a": 0.7446, "b": 0.069},
+        "yaw": {"a": 1.1694, "b": -0.0004},
+        "pitch": {"a": -0.9019, "b": 0.0263},
         "quality": {
-          "w0": 0.154,
-          "w1": 0.413,
-          "w2": 0.026,
+          "w0": 0.2739,
+          "w1": 0.1218,
+          "w2": 0.2468,
           "eyesOpen": [0.12, 0.26],
           "facingSpan": 0.6,
-          "pitch0": 0.0,
+          "pitch0": 0.11,
           "sharpness": [30, 400],
-          "quantileMap": [],
-          "gates": {
-            "minimumFaceWidth": 40,
-            "luma": [40, 220],
-            "clippedBelow": 5,
-            "clippedAbove": 250,
-            "clippedFraction": 0.25
-          }
+          "quantileMap": [[0.372, 0.2759], [0.4416, 0.429], [0.5025, 0.5232], [0.558, 0.6069], [0.6088, 0.6543]],
+          "gates": {"minimumFaceWidth": 40, "luma": [40, 220], "clippedBelow": 5, "clippedAbove": 250, "clippedFraction": 0.25}
         },
-        "evaluation": null
+        "evaluation": {
+          "manifestSha256": "e28d44db2d066d351ff7cf9f5536fed7e049dcce9e23a3ee7dc4748095afdc10",
+          "acceptance": {
+            "eyes": 0.98,
+            "opening": 0.95,
+            "facing": 0.95,
+            "quality025": 0.95,
+            "quality040": 0.85,
+            "coverRegretP90": 0.06
+          },
+          "passed": false,
+          "failed": ["eyes", "opening", "quality025", "quality040", "coverRegretP90"],
+          "fit": {
+            "frames": 3800,
+            "facesInBoth": 3760,
+            "visionClosed": 414,
+            "facePresence": 0.9979,
+            "eyes": 0.9481,
+            "facing": 0.9638,
+            "quality025": 0.937,
+            "quality040": 0.8628,
+            "opening": 0.8456,
+            "openingScans": 3128,
+            "openingMoves": {"mac": 359, "windows": 389},
+            "coverWindows": 133,
+            "coverRegretMedian": 0.0238,
+            "coverRegretP90": 0.0971,
+            "qualityPearson": 0.5815,
+            "qualityMae": 0.0987
+          },
+          "validation": {
+            "frames": 1820,
+            "facesInBoth": 1803,
+            "visionClosed": 168,
+            "facePresence": 0.9989,
+            "eyes": 0.9601,
+            "facing": 0.98,
+            "quality025": 0.817,
+            "quality040": 0.8225,
+            "opening": 0.7939,
+            "openingScans": 1436,
+            "openingMoves": {"mac": 124, "windows": 138},
+            "coverWindows": 61,
+            "coverRegretMedian": 0.0222,
+            "coverRegretP90": 0.0739,
+            "qualityPearson": 0.1056,
+            "qualityMae": 0.1541
+          },
+          "perSubject": {
+            "s03": {"frames": 120, "facesInBoth": 119, "visionClosed": 7, "facePresence": 1.0, "eyes": 0.9664, "facing": 1.0, "quality025": 0.958, "quality040": 1.0, "opening": 0.9643, "openingScans": 84, "openingMoves": {"mac": 4, "windows": 2}, "coverWindows": 4, "coverRegretMedian": 0.0222, "coverRegretP90": 0.0368, "qualityPearson": 0.9458, "qualityMae": 0.0413},
+            "s05": {"frames": 120, "facesInBoth": 116, "visionClosed": 7, "facePresence": 0.9917, "eyes": 0.9397, "facing": 1.0, "quality025": 0.9483, "quality040": 0.9741, "opening": 1.0, "openingScans": 84, "openingMoves": {"mac": 0, "windows": 0}, "coverWindows": 3, "coverRegretMedian": 0.0152, "coverRegretP90": 0.0229, "qualityPearson": 0.8526, "qualityMae": 0.0841},
+            "s08": {"frames": 30, "facesInBoth": 30, "visionClosed": 1, "facePresence": 1.0, "eyes": 0.9667, "facing": 1.0, "quality025": 1.0, "quality040": 0.5, "opening": 0.6667, "openingScans": 18, "openingMoves": {"mac": 1, "windows": 0}, "coverWindows": 1, "coverRegretMedian": 0.007, "coverRegretP90": 0.007, "qualityPearson": 0.108, "qualityMae": 0.2819},
+            "s12": {"frames": 80, "facesInBoth": 80, "visionClosed": 9, "facePresence": 1.0, "eyes": 1.0, "facing": 0.875, "quality025": 0.975, "quality040": 0.925, "opening": 0.8393, "openingScans": 56, "openingMoves": {"mac": 1, "windows": 7}, "coverWindows": 3, "coverRegretMedian": 0.0679, "coverRegretP90": 0.0721, "qualityPearson": 0.6649, "qualityMae": 0.0452},
+            "s15": {"frames": 100, "facesInBoth": 100, "visionClosed": 15, "facePresence": 1.0, "eyes": 0.93, "facing": 0.98, "quality025": 0.89, "quality040": 0.71, "opening": 0.5469, "openingScans": 64, "openingMoves": {"mac": 8, "windows": 5}, "coverWindows": 3, "coverRegretMedian": 0.0111, "coverRegretP90": 0.0273, "qualityPearson": 0.3452, "qualityMae": 0.1003},
+            "s17": {"frames": 140, "facesInBoth": 140, "visionClosed": 6, "facePresence": 1.0, "eyes": 0.9786, "facing": 1.0, "quality025": 0.6643, "quality040": 0.85, "opening": 0.8462, "openingScans": 104, "openingMoves": {"mac": 11, "windows": 11}, "coverWindows": 4, "coverRegretMedian": 0.025, "coverRegretP90": 0.0649, "qualityPearson": 0.7354, "qualityMae": 0.0743},
+            "s19": {"frames": 190, "facesInBoth": 190, "visionClosed": 50, "facePresence": 1.0, "eyes": 0.8368, "facing": 1.0, "quality025": 0.6105, "quality040": 1.0, "opening": 0.7273, "openingScans": 154, "openingMoves": {"mac": 22, "windows": 51}, "coverWindows": 6, "coverRegretMedian": 0.0007, "coverRegretP90": 0.2532, "qualityPearson": 0.942, "qualityMae": 0.0353},
+            "s22": {"frames": 220, "facesInBoth": 220, "visionClosed": 26, "facePresence": 1.0, "eyes": 0.9682, "facing": 1.0, "quality025": 0.9864, "quality040": 0.9273, "opening": 0.9694, "openingScans": 196, "openingMoves": {"mac": 20, "windows": 15}, "coverWindows": 8, "coverRegretMedian": 0.0196, "coverRegretP90": 0.3242, "qualityPearson": 0.8546, "qualityMae": 0.0691},
+            "s25": {"frames": 220, "facesInBoth": 220, "visionClosed": 2, "facePresence": 1.0, "eyes": 0.9955, "facing": 1.0, "quality025": 0.3091, "quality040": 0.3136, "opening": 0.2959, "openingScans": 196, "openingMoves": {"mac": 0, "windows": 0}, "coverWindows": 8, "coverRegretMedian": 0.0146, "coverRegretP90": 0.0266, "qualityPearson": -0.8933, "qualityMae": 0.5545},
+            "s28": {"frames": 220, "facesInBoth": 215, "visionClosed": 27, "facePresence": 1.0, "eyes": 0.9907, "facing": 0.9814, "quality025": 0.9349, "quality040": 0.8744, "opening": 0.949, "openingScans": 196, "openingMoves": {"mac": 29, "windows": 31}, "coverWindows": 8, "coverRegretMedian": 0.0379, "coverRegretP90": 0.0694, "qualityPearson": 0.659, "qualityMae": 0.1019},
+            "s31": {"frames": 220, "facesInBoth": 215, "visionClosed": 15, "facePresence": 0.9955, "eyes": 0.9674, "facing": 0.9163, "quality025": 0.9442, "quality040": 0.7721, "opening": 0.7907, "openingScans": 172, "openingMoves": {"mac": 25, "windows": 14}, "coverWindows": 7, "coverRegretMedian": 0.0171, "coverRegretP90": 0.0216, "qualityPearson": 0.6553, "qualityMae": 0.2057},
+            "s34": {"frames": 50, "facesInBoth": 49, "visionClosed": 2, "facePresence": 1.0, "eyes": 1.0, "facing": 0.9592, "quality025": 0.9592, "quality040": 1.0, "opening": 0.9737, "openingScans": 38, "openingMoves": {"mac": 2, "windows": 1}, "coverWindows": 2, "coverRegretMedian": 0.074, "coverRegretP90": 0.111, "qualityPearson": 0.8114, "qualityMae": 0.0362},
+            "s37": {"frames": 110, "facesInBoth": 109, "visionClosed": 1, "facePresence": 1.0, "eyes": 0.9817, "facing": 1.0, "quality025": 0.9817, "quality040": 0.9725, "opening": 1.0, "openingScans": 74, "openingMoves": {"mac": 1, "windows": 1}, "coverWindows": 4, "coverRegretMedian": 0.0354, "coverRegretP90": 0.0699, "qualityPearson": 0.5412, "qualityMae": 0.172}
+          },
+          "diagnostics": {
+            "validationFacesFrom100px": {"frames": 1404, "facesInBoth": 1387, "visionClosed": 97, "facePresence": 0.9986, "eyes": 0.9776, "facing": 0.9755, "quality025": 0.8572, "quality040": 0.8053, "opening": 0.8124, "openingScans": 1114, "openingMoves": {"mac": 83, "windows": 71}, "coverWindows": 48, "coverRegretMedian": 0.0225, "coverRegretP90": 0.0733, "qualityPearson": -0.3783, "qualityMae": 0.1816},
+            "validationSameFace": {"frames": 1670, "facesInBoth": 1653, "visionClosed": 168, "facePresence": 0.9988, "eyes": 0.9564, "facing": 0.9782, "quality025": 0.8911, "quality040": 0.8972, "opening": 0.8783, "openingScans": 1298, "openingMoves": {"mac": 124, "windows": 138}, "coverWindows": 55, "coverRegretMedian": 0.0228, "coverRegretP90": 0.078, "qualityPearson": 0.661, "qualityMae": 0.0981}
+          }
+        }
       }
     }
   ]
