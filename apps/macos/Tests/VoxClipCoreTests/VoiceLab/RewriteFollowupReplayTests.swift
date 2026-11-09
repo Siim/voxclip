@@ -3,7 +3,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-/// shared/fixtures/rewrite-thread/request-cases.json: "Talk back to Claude" (design.md §6.3, ai.md §12.12, ADR-R50). Each
+/// shared/fixtures/rewrite-thread/request-cases.json: "Talk back to Claude" (design.md §6.3, ai.md §12.10, ADR-R50). Each
 /// request renders byte for byte as the independent generator renders it, and each stub reply checks as it expects.
 @Suite(.offlineFixtures) struct RewriteFollowupReplayTests {
     private static func fixture() throws -> JSONValue {

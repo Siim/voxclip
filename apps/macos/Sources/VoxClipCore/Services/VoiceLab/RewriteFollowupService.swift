@@ -1,6 +1,6 @@
 import Foundation
 
-/// Talk back to Claude about one change (design.md §6.3 "Talk back to Claude", ai.md §12.12, ADR-R50): one request on the
+/// Talk back to Claude about one change (design.md §6.3 "Talk back to Claude", ai.md §12.10, ADR-R50): one request on the
 /// chosen connector, answered with checked spoken words, a note and next steps. It never voices, prices or applies
 /// anything: the thread puts a new version in the change's place through the local edit, and only the version that is
 /// kept goes on to Rewrite's voice and price steps.

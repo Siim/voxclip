@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the Rewrite thread vectors (doc/design.md section 6.3 "Talk back to Claude", doc/spec/ai.md section 12.12,
+"""Generate the Rewrite thread vectors (doc/design.md section 6.3 "Talk back to Claude", doc/spec/ai.md section 12.10,
 ADR-R50): shared/fixtures/rewrite-thread/request-cases.json.
 
 Format voxclip-rewrite-thread-cases/1. Request cases whose expected system, cached block and instruction this script

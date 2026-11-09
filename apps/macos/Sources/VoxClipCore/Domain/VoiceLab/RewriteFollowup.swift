@@ -41,7 +41,7 @@ public struct RewriteFollowupReply: Sendable, Equatable {
     public init(texts: [String], note: String, nextSteps: [String]) { self.texts = texts; self.note = note; self.nextSteps = nextSteps }
 }
 
-/// shared/prompts/rewrite-followup.json (ai.md §12.12). Pure: the same inputs give the same strings, which
+/// shared/prompts/rewrite-followup.json (ai.md §12.10). Pure: the same inputs give the same strings, which
 /// shared/fixtures/rewrite-thread/request-cases.json pins.
 public struct RewriteFollowupPrompt: Sendable {
     public static let path = "prompts/rewrite-followup.json"

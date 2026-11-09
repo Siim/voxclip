@@ -1,5 +1,47 @@
 # macOS implementation contracts
 
+### 2026-11-09 — Talk back to Claude about a change, in a thread under its words (track/v2-rewrite-thread)
+
+The user asked (2026-11-09) for "the bubbles that help me to pick, if this text satisfies me, or the versions how I want to bend it", in the transcript. Their case was Clip 1, where Claude's rewrite made them sound happy about the scammer. The mockup choice was A with D's ‹ n of m › arrows and B's "3 more versions" bubble. See ADR-R50, design.md §6.3 "Talk back to Claude", ai.md §12.10.
+
+- **Shared.**
+  - `shared/prompts/rewrite-followup.json` (`promptVersion` 1) reuses `voice-rewrite.json`'s data-not-commands sentence and its "Why the length is fixed" paragraph word for word. It has two schemas, `rewrite_followup` `{text, note, nextSteps}` and `rewrite_followup_versions` `{alternatives, note, nextSteps}`, plus the limits, the steady bubbles and the keep bubble.
+  - "3 more versions" is one request with `alternatives`: one send, a few hundred tokens.
+  - `shared/fixtures/rewrite-thread/request-cases.json` (`voxclip-rewrite-thread-cases/1`, strings only) holds 5 request and 6 reply cases. It comes from `tools/fixtures/rewrite-thread/generate_request_cases.py`, which renders the requests on its own and asserts the reused rules.
+  - The vector's schema is `shared/schemas/rewrite-thread-cases.schema.json`. It is registered in `tools/schemas/validate.py` and check_drift's EXACT list. The prompt README has its row.
+- **Core.**
+  - `RewriteFollowupRequest`, `RewriteFollowupReply` and `RewriteFollowupPrompt` (`request`, `cachedBlock`, `instruction`, `reply` checks, `key`), and `RewriteFollowupService` (through `LLMRunner`).
+  - `VoiceLabDiffHunk` gets a public memberwise `init` (additive).
+- **App.**
+  - `RewriteThread.swift` (new):
+    - `RewriteThread` (versions with notes, the current one, turns, next steps), kept per change on `TranscriptProposal.threads` and cleared on Keep, Undo and Keep All.
+    - `RewriteThreadState` (`EditorModel.rewriteThread`: input text, request, error and Try Again, fold, measured height, the inline `ConnectorConfirmation`, the cached prompt).
+    - `RewriteThreadDisplay` and `RewriteThreadBackend`. `EditorModel.rewriteThreadBackend` is the stand-in seam for tests and the smoke; nil means `liveRewriteThreadBackend`, which asks `authorizeConnectorRequest(action: .rewrite)` into the thread's own confirmation under the AI lease.
+    - `sendRewriteThread`, `pressRewriteThreadBubble`, `retryRewriteThread`, `stopRewriteThread`, `receiveRewriteThread`, `switchRewriteThreadVersion`, `foldRewriteThread`, `openRewriteThreadInput`, `rewriteThreadSlot`, `recordedText` and `EditorModel.costLine` (Ask Claude's cost line now uses it).
+  - A thread shows only for the focused, pending, reviewable change of the open Rewrite's own proposal, while `capabilities.edit` holds and the wording fit is not running.
+  - `RewriteSession.acceptThreadWords` makes a version the reply's own words for its change (hunk, `replyParts`, review), so it is priced and voiced at Keep. Without it the change counted as hand-edited and the smoke stopped at "Takes are made from the AI's words."
+  - DEBUG `adopt(_:)` lets scenes own a proposal.
+  - `RewriteThreadView.swift` (new): the thread (frame A plus D's arrows), `RewriteThreadBubble`, and `RewriteThreadInputField` / `RewriteThreadInputTextView`. The input is AppKit, for ↵, ⇧↵, Esc, ⌥←/⌥→ while empty, and ⌘↩/⌘⌫ (also before menu key equivalents).
+  - The transcript keeps room for the thread:
+    - `TranscriptParagraphContent.threadGap` adds to that paragraph's spacing, and `threadEndsDocument` ends a last paragraph with a line break (TextKit 2 adds no spacing after the last paragraph).
+    - The renderer has `threadParagraph` and `threadAnchor`.
+    - `TranscriptNSTextView` gains `RewriteThreadHost`, `updateThread` after every layout and update, `openThread`, `settleThread`, and DEBUG `layoutThreadNow` / `threadAuditView`.
+    - ⌥←/⌥→ in the transcript switch versions once a thread has two.
+  - `PanelError.line` gives R1x's copy in one line. R1x uses the same strings.
+- **Deleted.** `ChangeEditPopover.swift` and the text view's popover (`showChangePopover`, `changePopoverVisible`, `popoverChange`). Return, F2, a click on new words, a change row's Return and VoiceOver's "Talk to Claude about change N" open the thread instead. Typing a change's words by hand is no longer offered on the Mac. `changeFit` stays, as the version row's tooltip.
+- **Tests.**
+  - Core `RewriteFollowupReplayTests` (5).
+  - App `RewriteThreadTests` (14): the slot and bubbles; room in the flow, also at the document's end, given back on Esc; every version and message in order; a reply through `editChange` voiceable at Keep; switching sends nothing and adds no undo; the same words; 3 more versions; keep bubble = Keep, ⌘⌫ = Undo; Esc and refocus; ✦ bubbles from the last reply only; error keeps text and Try Again; Stop; nothing priced or paid; the input's keys; the live send's inline confirmation; readiness copy in place.
+  - `TranscriptProposalTests`' Return and F2 cases now open the thread, and the pixel scene checks the thread's placement.
+  - Mutations turn tests red: only the newest message sent; no `editChange`; keep bubble not Keep; no fold; every next step shown; error clears the input; a thread for any change; no `acceptThreadWords`; no room; note uncut; steady bubble allowed; versions reversed. All 12 went red.
+  - Smoke: `S-thread` and `S-thread-more` (T1–T10) in both passes, also in `MacUIIntegrationTests`. `S-thread` writes `rewrite-smoke-S-thread-thread.png`.
+- **Verification:** see the report for this package (suite counts, smoke, long-expression build, check_drift and validate).
+- **Owed.**
+  - The live check with Claude Code (lead).
+  - A real-window pass of the thread's input focus and the inline confirmation (`-uiSelfTest`; DebugRewrite's R2 Return check now expects the thread).
+  - Windows: the thread, the prompt and the vector replay.
+  - The ✦ colour is the app's AI accent (`accentText`), not the mockup's orange: no new colours.
+
 ### 2026-11-09 — fal.ai's lip-sync results come back short: a tail margin, the result cut back, paid results never lost (track/v2-lipsync-length)
 
 The user's MVP46 run (2026-11-08, 33a21cd3): a 4K whole-clip revoice with sync-3, ≈ $1.60. fal.ai accepted and billed two attempts; both ended `cleanup-unconfirmed` ×2 and `LipsyncError case=invalidMedia`, and the card said "What was paid (≈ $0.04) is kept". The lead measured fal.ai's own sync-3 example: 135 frames in, **130 out**, frames aligned at the start, AAC resampled to 24 kHz. `LipsyncResultValidation` allowed one frame. ADR-R46 "Update 2026-11-09", voice-lab §9.3, §9.4 and §9.6, design.md (Stopped, the lip-sync row).
