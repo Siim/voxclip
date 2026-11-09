@@ -402,7 +402,8 @@ public actor FalLipsyncProvider: LipsyncProvider {
         let response: LipsyncHTTPResponse
         do { response = try await http.send(request(url, method: "DELETE", key: key), limit: LipsyncLimits.maximumJSONBytes, permit: nil) }
         catch {
-            await log("cleanup-unconfirmed reason=network")
+            // The error's case only (network, invalidResponse, unsafeURL, responseTooLarge…), never a URL or a key.
+            await log("cleanup-unconfirmed reason=\((error as? LipsyncError).map { "\($0)" } ?? "network")")
             return nil
         }
         guard response.status == 200 else {

@@ -177,7 +177,10 @@ private final class LipsyncHTTPTransfer: NSObject, URLSessionDataDelegate, @unch
             if state.cancelled { return (state.continuation, .failure(CancellationError())) }
             if let failure = state.failure { return (state.continuation, .failure(failure)) }
             guard error == nil, let response = state.response else { return (state.continuation, .failure(LipsyncError.network)) }
-            if response.expectedContentLength >= 0 && response.expectedContentLength != Int64(state.count) {
+            // URLSession hands over a compressed body decoded, while Content-Length (expectedContentLength) counts the
+            // encoded bytes, so the two only have to agree for an identity-encoded response.
+            let encoded = !(response.value(forHTTPHeaderField: "Content-Encoding") ?? "identity").lowercased().hasPrefix("identity")
+            if !encoded, response.expectedContentLength >= 0 && response.expectedContentLength != Int64(state.count) {
                 return (state.continuation, .failure(LipsyncError.invalidResponse))
             }
             return (state.continuation, .success(LipsyncHTTPResponse(status: response.statusCode, body: state.bytes, contentType: response.mimeType)))
