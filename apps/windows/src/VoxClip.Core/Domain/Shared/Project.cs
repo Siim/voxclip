@@ -71,7 +71,8 @@ public sealed record Project(string Format, int SchemaVersion, string Id, DateTi
         init => clipControls = value ?? [];
     }
     private IReadOnlyList<VoxClip.Core.Domain.Captions.CaptionTranslation> captionTranslations = [];
-    /// <summary>Default-empty schema-v4 translated captions (ai.md §18.2). Windows saves them unchanged and does not render them yet.</summary>
+    /// <summary>Default-empty schema-v4 translated captions (ai.md §18.2). Preview, export, the SRT and the CLI render them through
+    /// <c>CaptionTranslations.Shown</c>.</summary>
     [JsonIgnore]
     public IReadOnlyList<VoxClip.Core.Domain.Captions.CaptionTranslation> CaptionTranslations { get => captionTranslations; init => captionTranslations = value; }
     /// <summary>Serialization projection preserving the absent field shape of projects without translations.</summary>
