@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Windows OCR on frames (ADR-R48 Windows, W4's owed native check): the App's WindowsFrameText, QuadFinder and
+       FrameScreenScan on the drawn phone frames of frame-quad-cases.json and on rendered text frames, with the speed at 1,280 px.
+       It needs Windows.Media.Ocr, so it runs on a Windows PC or the VM only. A developer tool: not part of the solution, never ships. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AssemblyName>voxclip-ocr-probe</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../apps/windows/src/VoxClip.Core/VoxClip.Core.csproj" />
+    <Compile Include="../../../apps/windows/src/VoxClip.App/Services/WindowsFrameText.cs" Link="WindowsFrameText.cs" />
+  </ItemGroup>
+</Project>
