@@ -72,10 +72,10 @@ extension DebugRewriteSmoke {
     private var syntheses: Int { RewriteSmokeHTTP.script.withLock { $0.syntheses } }
     private func followups() async -> [LLMRequest] { await harness.connector?.followupRequests ?? [] }
     private func voiceOrdinal(_ editor: EditorModel) throws -> Int {
-        guard let ordinal = editor.proposal?.changes.first(where: { $0.kind == .voice })?.ordinal else {
-            throw DebugRewriteSmoke.Failure.setup("the Rewrite proposed no voice change")
+        if let proposal = editor.proposal {
+            for change in proposal.changes where change.kind == .voice { return change.ordinal }
         }
-        return ordinal
+        throw DebugRewriteSmoke.Failure.setup("the Rewrite proposed no voice change")
     }
     /// The thread's input as the user types into it: the text, then a key.
     private func type(_ text: String, key: UInt16, flags: NSEvent.ModifierFlags = [], editor: EditorModel) {
@@ -111,20 +111,27 @@ extension DebugRewriteSmoke {
             type(DebugRewriteSmoke.threadMessage, key: 36, editor: editor)
             await editor.rewriteThread.task?.value
         }) {
-            let sent = await followups()
-            let display = editor.rewriteThreadDisplay
-            var checks = [
-                Check(invariant: "T1", passed: shown?.ordinal == ordinal && shown?.versionLine == "1 of 1" && shown?.turns.isEmpty == true && shown?.steady.count == 3,
-                      detail: "the thread opened under change \(ordinal) with the bubbles and the input: \(shown.map { "\($0.versionLine), \($0.turns.count) turns" } ?? "none")"),
-                Check(invariant: "T2", passed: sent.count == 1 && sent[0].tag == "rewrite-followup"
-                        && Self.inOrder([recorded, first, DebugRewriteSmoke.threadMessage], in: sent[0].instruction),
-                      detail: "\(sent.count) thread request(s) carrying the recorded words, version 1 and the message in order"),
-                Check(invariant: "T3", passed: editor.changeText(ordinal) == DebugRewriteSmoke.threadVersion2 && display?.versionLine == "2 of 2"
-                        && display?.turns.last?.text == "The sale comes first now, and the rest follows it." && display?.steps == ["Say it in four words"],
-                      detail: "in the text: \(editor.changeText(ordinal)); \(display?.versionLine ?? "no thread"); \(display?.turns.map(\.text) ?? [])"),
-                Check(invariant: "T4", passed: syntheses == before && harness.session?.takePlan?.phrases.allSatisfy({ $0.takes.isEmpty }) != false,
-                      detail: "nothing voiced or paid in the thread (\(syntheses - before) syntheses)"),
-            ]
+            let sent: [LLMRequest] = await followups()
+            let display: RewriteThreadDisplay? = editor.rewriteThreadDisplay
+            // Typed one at a time: one array literal of these took the type checker over 250 ms.
+            let opened: Bool = shown?.ordinal == ordinal && shown?.versionLine == "1 of 1" && shown?.turns.isEmpty == true && shown?.steady.count == 3
+            let openedLine: String = shown.map { "\($0.versionLine), \($0.turns.count) turns" } ?? "none"
+            let carried: Bool = sent.count == 1 && sent[0].tag == "rewrite-followup"
+                && Self.inOrder([recorded, first, DebugRewriteSmoke.threadMessage], in: sent[0].instruction)
+            let inText: String = editor.changeText(ordinal)
+            let turns: [String] = display?.turns.map(\.text) ?? []
+            let placed: Bool = inText == DebugRewriteSmoke.threadVersion2 && display?.versionLine == "2 of 2"
+                && turns.last == "The sale comes first now, and the rest follows it." && display?.steps == ["Say it in four words"]
+            var noTakes = true
+            if let plan = harness.session?.takePlan {
+                for phrase in plan.phrases where !phrase.takes.isEmpty { noTakes = false }
+            }
+            let unpaid: Bool = syntheses == before && noTakes
+            var checks: [Check] = []
+            checks.append(Check(invariant: "T1", passed: opened, detail: "the thread opened under change \(ordinal) with the bubbles and the input: \(openedLine)"))
+            checks.append(Check(invariant: "T2", passed: carried, detail: "\(sent.count) thread request(s) carrying the recorded words, version 1 and the message in order"))
+            checks.append(Check(invariant: "T3", passed: placed, detail: "in the text: \(inText); \(display?.versionLine ?? "no thread"); \(turns)"))
+            checks.append(Check(invariant: "T4", passed: unpaid, detail: "nothing voiced or paid in the thread (\(syntheses - before) syntheses)"))
             checks.append(capture(editor, ordinal: ordinal))
             return checks
         }
