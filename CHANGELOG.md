@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- A take too long for its place no longer ends in "The new wording couldn't be priced." when Rewrite's shorter wording arrives while the take's matched video is still being prepared: the price waits for it.
 - Rewrite now voices a changed phrase that starts or ends right at a cut, crossfading from the audio before the cut, and a phrase that still can't be joined to the recording keeps its words with one line of why while the others are voiced. Before, "Voice Only the Changed Phrases" could stop after the AI's rewrite with "This change can't be placed in this take."
 - In a change's thread under a Rewrite, ✎ My own words (⌥E) lets you type the change's exact words yourself: Return puts them in place as a version with nothing sent, and Keep voices them just like Claude's.
 - On Windows, the face models now pick the speaker over a face in a graphic or on a screen, and don't guess the eyes of very small faces. Measured against the Mac again, they still don't match closely enough (eyes, picture quality, the opening frame and the cover), so they stay switched off.

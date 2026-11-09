@@ -337,10 +337,7 @@ import VoxClipMedia
     func prepareVideoChoices(at date: Date = Date()) async {
         // One preparation at a time: a caller arriving while one runs waits for it (then prepares newer choices, if
         // any) instead of returning early, so "prepare, then refresh lip sync" and Use never act on half-prepared video.
-        while let running = videoPreparation {
-            await running.value
-            if videoPreparation == running { videoPreparation = nil }
-        }
+        await settleVideoPreparation()
         guard needsVideoPreparation else { return }
         let task = Task { await runVideoPreparation(at: date) }
         videoPreparation = task
@@ -348,6 +345,13 @@ import VoxClipMedia
         if videoPreparation == task { videoPreparation = nil }
     }
     private var videoPreparation: Task<Void, Never>?
+    /// Waits for a running `prepareVideoChoices`, and for any newer choices the callers waiting on it prepared after it.
+    private func settleVideoPreparation() async {
+        while let running = videoPreparation {
+            await running.value
+            if videoPreparation == running { videoPreparation = nil }
+        }
+    }
 
     private func runVideoPreparation(at date: Date) async {
         var attempted = false
@@ -609,8 +613,14 @@ import VoxClipMedia
 
     /// Puts a new wording on one phrase and prices a take of it. A wording without the phrase's bridge words can't be
     /// placed or priced: it is refused, and the phrase keeps its words (false).
-    @discardableResult func prepareRewording(_ text: String, phrase index: Int) async -> Bool {
-        guard stillCurrent, phrases.indices.contains(index), phrases[index].blocked == nil, !generating, !preparing, !publishing, !preparingVideo else { return false }
+    /// A take that just landed starts its own video preparation (`autoChooseVideo` matching or cutting the video to it),
+    /// which publishes the take while it runs. The new wording replaces that video anyway, so the price waits for it to
+    /// settle instead of being refused over it (the measured round's "couldn't be priced" after a long take). `stillAsked`
+    /// is the caller's own check, made again after that wait: false refuses, with nothing changed.
+    @discardableResult func prepareRewording(_ text: String, phrase index: Int,
+                                             stillAsked: () -> Bool = { true }) async -> Bool {
+        await settleVideoPreparation()
+        guard stillAsked(), stillCurrent, phrases.indices.contains(index), phrases[index].blocked == nil, !generating, !preparing, !publishing, !preparingVideo else { return false }
         if let bridge = bridge(phrase: index), !bridge.keeps(text) { return false }
         phrases[index].audioTags = VoiceLabAudioTags.reanchored(phrases[index].audioTags, from: phrases[index].text, to: text)
         phrases[index].text = text

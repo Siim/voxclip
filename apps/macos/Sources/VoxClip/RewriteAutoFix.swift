@@ -393,7 +393,7 @@ extension RewriteSession {
                     return
                 }
                 takeQuotePhrase = id
-                guard await plan.prepareRewording(text, phrase: id) else {
+                guard await plan.prepareRewording(text, phrase: id, stillAsked: { current && takePlan === plan }) else {
                     if let bridge = plan.bridge(phrase: id), !bridge.keeps(text) {
                         autoFix.refused[id, default: []].append(VoiceLabFitTried(text: text, result: "missingBridge"))
                     }

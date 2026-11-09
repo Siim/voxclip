@@ -1,5 +1,36 @@
 # macOS implementation contracts
 
+### 2026-11-09 — The measured wording round's price waits for the take's own video (track/v2-measured-fit-race)
+
+A take too long for its place sometimes ended its measured wording round in "The new wording couldn't be priced.", with the plan's problem "The selected Voice Lab take or output plan changed." On hosted CI, `measuredRecoveryOffersWordingEvenWhenRetimeIsAvailable` ran into its 120 s limit in 2 of 4 runs. A single-thread cooperative pool (`LIBDISPATCH_COOPERATIVE_POOL_STRICT=1`) reproduced it every time. See voice-lab §8.2.2 "A reword waits for the take's own video".
+
+- **The race.**
+  - The take lands, and `ClipTakePlan.start` → `onMeasuredTakesChanged` → `RewriteSession.observeMeasuredTakes` runs.
+  - `autoChooseVideo` chooses Match, the take's only duration, and starts `Task { prepareVideoChoices() }`.
+  - In the same pass, the measured round starts: `measuredWork` → `rewordMeasuredTake` → fit service `prepare` → `propose` → `ClipTakePlan.prepareRewording`.
+  - When the reply arrived while `runVideoPreparation` was still in `publishSelection` (`publishing`) or the duration render (`preparingVideo`), `prepareRewording`'s busy guard returned false. That is the "couldn't be priced".
+  - The plan's problem came from that video preparation failing afterwards. The test fixture's `source.wav` doesn't match the project's content key, so `VoiceLabRenderPreflight.validate` reports "source identity". In the app, that preparation normally succeeds and the refusal alone is the bug.
+  - With `measured.text` left nil, the test's 3,000 × 10 ms poll ran out: 40 s locally, and past 120 s on a loaded 3-core runner.
+  - The path has no blocking work on the cooperative pool: `contentKey` reads at most 2 MB, and `CompositionBuilder.build` runs on its caller's actor. The strict pool only changed the interleaving.
+- **The fix (App).**
+  - `prepareRewording(_:phrase:stillAsked:)` first awaits `settleVideoPreparation()`: the running `prepareVideoChoices`, and any newer choices it went on to prepare. `prepareVideoChoices` uses the same helper.
+  - It then checks the caller's `stillAsked` and its own guards. The new wording clears that prepared video anyway.
+  - `rewordMeasuredTake` passes its `stillAsked`. A round the settled plan superseded (for example, the preparation left the phrase as recorded) ends quietly, as its earlier `stillAsked` exits do.
+  - The automatic fix's scoped reword (`RewriteAutoFix`) passes `current && takePlan === plan`. Your-own-words pricing keeps the default.
+  - Lip sync's and Use's publishes are still refused while busy. They are user clicks behind `takesBusy`.
+- **Tests.**
+  - New `measuredRewordingWaitsForTheTakesOwnVideoPreparation`: it holds the take's own Match preparation at its `prepareDurationRender` (a `ClipTakeBarrier`) until the round has its wording, so the overlap happens on every pool. It fails without the fix with "The new wording couldn't be priced."
+  - `measuredRecoveryOffersWordingEvenWhenRetimeIsAvailable` now waits with `TestDeadline.until(timeout: 30 s)` instead of 3,000 polls, so a regression fails in bounded wall-clock time with its diagnostics. No time limit was raised.
+- **Next package.** An automatic step that changes a phrase after a take lands must not refuse because the plan is publishing or preparing the take's own video. Await `settleVideoPreparation` (inside `ClipTakePlan`), then re-check the caller's own state.
+- **Verification.** (absolute `VOXCLIP_SHARED_DIR`, `VOXCLIP_NO_KEYCHAIN=1`, isolated `VOXCLIP_DATA_DIR`)
+  - **Red.** Before the fix, `measuredRecoveryOffersWordingEvenWhenRetimeIsAvailable` failed under the strict pool after 40.7 s ("couldn't be priced"). With the fix reverted, the new test fails on the default pool.
+  - **Strict and default pool.** The two measured tests plus `measuredAPIRoundWaitsForInlineApprovalAndNeverSynthesizes` (both arguments): 5/5 runs strict and 5/5 default.
+  - **Suites.** Core 1,548 / 176 suites (2 known issues), Media 649 / 85, App 1,065 / 82. App under `LIBDISPATCH_COOPERATIVE_POOL_STRICT=1`: 1,065 / 82.
+    - An earlier strict App run was cut off by the harness after about 986 results. Its one failure was `TranscriptProposalTests.thirtyChangesWriteOnlyTheirParagraphs`: the proposal scroll's DEBUG p95 was 120.09 ms against the 60 fps budget, while the Mac was in use. It passed in the full strict rerun.
+  - **Smoke.** `rewrite-smoke.sh` (DEBUG), second full run 96/96. The first run was 95/96: `S1-exact` step 1 stopped on a panel showing only [Stop]. It passed 3/3 alone and in the full rerun. S12 also passes under the strict pool.
+  - **Builds and checks.** The `-warn-long-expression-type-checking=250` build flags nothing. Both `check_drift.py`, `tools/schemas/validate.py` and the voice-lab unittests are clean.
+  - **Not run.** No real-window gate (nothing on a window path changed), no live or paid calls, no CI dispatch.
+
 ### 2026-11-09 — Your own words in the Rewrite thread: "✎ My own words" (track/v2-thread-own-words)
 
 ADR-R50's thread deleted `ChangeEditPopover`, so a change's words could be changed only by asking Claude, while design.md §6.3 promised "Each change can be edited before anything is paid for". The user approved restoring hand edits inside the thread (2026-11-09). See ADR-R50 "Update: your own words", design.md §6.3 "Talk back to Claude" → "Your own words", and ai.md §12.10.
