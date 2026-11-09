@@ -722,6 +722,15 @@ struct RewriteChange: Equatable, Sendable {
     @ObservationIgnored private var hasRun = false
     /// The transcript's proposal when it is this session's.
     var ownProposal: TranscriptProposal? { editor.proposal.flatMap { $0.id == proposalID ? $0 : nil } }
+    #if DEBUG
+    /// Makes `proposal` this session's own, as a reply's changes do (`showReplyInTranscript`): the DEBUG scenes and tests
+    /// that build a proposal directly, so its changes get their Rewrite thread.
+    func adopt(_ proposal: TranscriptProposal) {
+        proposalID = proposal.id
+        replyParts = Dictionary(proposal.changes.map { ($0.ordinal, $0.parts) }, uniquingKeysWith: { first, _ in first })
+        editor.proposal = proposal
+    }
+    #endif
     /// Takes the session's proposal out of the transcript.
     private func clearProposal() {
         if ownProposal != nil { editor.proposal = nil }

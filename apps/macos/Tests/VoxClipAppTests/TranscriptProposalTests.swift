@@ -7,7 +7,7 @@ import Testing
 
 /// Inline diff hunks (impl-plan V14), headless: a Rewrite proposal's changes in the
 /// transcript, the inserted runs in the range map, Keep, Undo and Keep All (item 7), the keys,
-/// the marker budget, the edit popover's local rediff, and C2's hunks from a canned reply. The
+/// the marker budget, the local rediff of a change's words, Return and F2 opening its Rewrite thread, and C2's hunks from a canned reply. The
 /// proposal scene (DebugTranscriptPixels.proposal) draws f3's changes offscreen and checks their
 /// pixels and buttons; one test runs it.
 @Suite("Transcript proposal hunks", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows are shown."), .offlineFixtures)
@@ -22,6 +22,14 @@ import Testing
         model.mediaResolved = true; model.refresh()
         model.activate(model.project.edits.clips[0])
         model.proposal = DebugTranscriptPixels.proposal(for: model)
+        return model
+    }
+    /// The same, with the proposal owned by an open Rewrite of the clip, as a reply's is: its changes get their thread.
+    private func threadedEditor() throws -> EditorModel {
+        let model = try editor()
+        let session = RewriteSession(editor: model, scope: .clip("hunk-clip"), envelope: nil, connector: nil)
+        model.openRewrite = session
+        if let proposal = model.proposal { session.adopt(proposal) }
         return model
     }
     private func id(_ model: EditorModel, _ index: Int) -> String { model.words[index].id }
@@ -92,7 +100,7 @@ import Testing
     }
 
     @Test func theKeysWalkKeepAndUndoTheFocusedChange() throws {
-        let model = try editor(); defer { model.close() }
+        let model = try threadedEditor(); defer { model.close() }
         let pane = try TranscriptPane(model: model, size: NSSize(width: 652, height: 488))
         defer { pane.close() }
         let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
@@ -111,22 +119,23 @@ import Testing
         text.keyDown(with: key(36, .command))
         undo.endUndoGrouping()
         #expect(undo.undoActionName == "Keep change 3" && model.proposalDisplay?.shown(3) == nil && model.proposalDisplay?.focused == 4, "⌘↩ keeps a cut as one step")
-        // Return on the focused change with nothing selected opens its edit popover.
+        // Return on the focused change with nothing selected opens its Rewrite thread, whose input takes the keys.
         model.selectedWordIDs = []
         pane.update()
+        var requests = model.rewriteThread.focusRequest
         text.keyDown(with: key(36, [], "\r"))
-        #expect(text.popoverChange == 4 && model.correctionID == nil)
-        text.hideChangePopover(refocus: false)
+        #expect(model.rewriteThread.focusRequest == requests + 1 && model.rewriteThreadDisplay?.ordinal == 4 && text.threadVisible && model.correctionID == nil)
         // Return on a word outside every change still corrects it.
+        requests = model.rewriteThread.focusRequest
         model.selectedWordIDs = [id(model, 40)]
         text.keyDown(with: key(36, [], "\r"))
-        #expect(text.popoverChange == nil && model.correctionID == id(model, 40))
+        #expect(model.rewriteThread.focusRequest == requests && model.correctionID == id(model, 40))
     }
 
     /// A click leaves a word selected almost always; walking the changes lets it go, so Return
     /// edits the change walked to, not the word (design.md §6.3.5).
     @Test func returnAfterWalkingEditsTheFocusedChangeNotAWordLeftSelected() throws {
-        let model = try editor(); defer { model.close() }
+        let model = try threadedEditor(); defer { model.close() }
         let pane = try TranscriptPane(model: model, size: NSSize(width: 652, height: 488))
         defer { pane.close() }
         let text = pane.text
@@ -136,9 +145,10 @@ import Testing
         text.keyDown(with: key(125, .option))
         #expect(model.proposalDisplay?.focused == 3 && model.selectedWordIDs.isEmpty, "⌥↓ lets go of a word outside the change")
         pane.update()
+        var requests = model.rewriteThread.focusRequest
         text.keyDown(with: key(36, [], "\r"))
-        #expect(text.popoverChange == 3 && model.correctionID == nil, "Return edits the change walked to")
-        text.hideChangePopover(refocus: false)
+        #expect(model.rewriteThread.focusRequest == requests + 1 && model.rewriteThreadDisplay?.ordinal == 3 && model.correctionID == nil,
+                "Return opens the thread of the change walked to")
         // A selection inside the change walked to stays.
         model.selectedWordIDs = [id(model, 61)]
         pane.update()
@@ -154,15 +164,15 @@ import Testing
         // A selection over several changes, as a Rewrite's scope is, edits the focused one.
         model.selectedWordIDs = Set((32...61).map { id(model, $0) })
         pane.update()
+        requests = model.rewriteThread.focusRequest
         text.keyDown(with: key(36, [], "\r"))
-        #expect(text.popoverChange == 1 && model.correctionID == nil)
-        text.hideChangePopover(refocus: false)
+        #expect(model.rewriteThread.focusRequest == requests + 1 && model.rewriteThreadDisplay?.ordinal == 1 && model.correctionID == nil)
     }
 
-    /// F2 on a focused change scrolled out of view brings it and its popover into view, so the
-    /// field that takes the keys is never off screen.
-    @Test func editingAChangeOutOfViewBringsItAndItsPopoverIntoView() throws {
-        let model = try editor(); defer { model.close() }
+    /// F2 on a focused change scrolled out of view brings it and its thread into view, so the
+    /// input that takes the keys is never off screen.
+    @Test func editingAChangeOutOfViewBringsItAndItsThreadIntoView() throws {
+        let model = try threadedEditor(); defer { model.close() }
         let pane = try TranscriptPane(model: model, size: NSSize(width: 652, height: 240))
         defer { pane.close() }
         let text = pane.text
@@ -171,10 +181,9 @@ import Testing
         let line = try #require(text.lineBox(atCharacter: range.location))
         #expect(!text.visibleRect.intersects(line), "change 1 starts out of view")
         text.keyDown(with: key(120))
-        let popover = try #require(text.changePopoverAuditView)
+        let thread = try #require(text.threadAuditView)
         let shown = try #require(text.lineBox(atCharacter: range.location))
-        #expect(text.popoverChange == 1 && text.visibleRect.contains(popover.frame) && text.visibleRect.intersects(shown), "\(popover.frame) in \(text.visibleRect)")
-        text.hideChangePopover(refocus: false)
+        #expect(model.rewriteThreadDisplay?.ordinal == 1 && text.visibleRect.contains(thread.frame) && text.visibleRect.intersects(shown), "\(thread.frame) in \(text.visibleRect)")
     }
 
     /// notes.md §5: after Keep the change is gone like a commit. Restoring its words or
@@ -334,7 +343,7 @@ import Testing
         #expect(model.text(model.words[77]) == "site." && model.text(model.words[87]) == "And" && model.proposalDisplay?.shown.isEmpty == true)
     }
 
-    @Test func theEditPopoverRediffsTheChangeLocally() throws {
+    @Test func aChangesNewWordsRediffLocally() throws {
         let model = try editor(); defer { model.close() }
         #expect(model.changeText(1) == "your source directory in the" && model.changeText(3) == "" && model.changeText(5) == "an automatic")
         model.editChange(2, text: "an interesting way")

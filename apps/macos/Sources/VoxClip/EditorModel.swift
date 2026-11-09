@@ -87,6 +87,10 @@ struct EditorRenderSnapshot {
     let clipStyleState = ClipStyleState()
     /// ✦ Ask Claude's field, run and Adjust state (design.md §6.8).
     let askClaude = AskClaudeState()
+    /// The Rewrite thread's input, request and fold for the focused change (design.md §6.3 "Talk back to Claude").
+    let rewriteThread = RewriteThreadState()
+    /// What answers the thread; nil asks the open Rewrite's AI (`liveRewriteThreadBackend`). Tests and the smoke stand it in.
+    @ObservationIgnored var rewriteThreadBackend: RewriteThreadBackend?
     var connectorSendVerb = "Rewrite"
     @ObservationIgnored lazy var transcription = InlineTranscription(model: self)
     var contextDemoSession: ContextDemoSession?

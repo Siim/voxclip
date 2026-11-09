@@ -156,12 +156,7 @@ extension EditorModel {
     }
 
     /// The cost line under the field: free on a CLI plan, a local server or Apple on-device; else what the key bills.
-    var askClaudeCostLine: String {
-        guard let provider = findConnector else { return "" }
-        if provider.cliName != nil { return provider.id == "claude-code" ? "Free on your Claude plan" : "Free on your ChatGPT plan" }
-        if provider.group == "apiKey" { return "Billed to your \(provider.label) key" }
-        return "Free on this Mac"
-    }
+    var askClaudeCostLine: String { Self.costLine(findConnector) }
 
     // MARK: Asking
 

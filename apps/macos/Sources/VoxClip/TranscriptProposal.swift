@@ -4,7 +4,8 @@ import VoxClipCore
 /// One change of a Rewrite proposal as the transcript shows it (ux/v2 notes.md §5, design.md
 /// §6.3.5): a diff hunk with its ordinal, "Change {i}" in the transcript and the panel alike.
 /// It is one or more §8.2 hunks: C2 gives one per change, and editing its words in the
-/// popover (`ChangeEditPopover`) may split it into several, which still keep and undo as one.
+/// change's place (`EditorModel.editChange`, a version from its thread) may split it into several, which still keep and
+/// undo as one.
 struct TranscriptChange: Equatable, Identifiable {
     /// The gutter glyph's precedence (notes.md §5): voice waveform > pencil > scissors.
     enum Kind: Int, Comparable {
@@ -132,6 +133,9 @@ struct TranscriptProposal: Equatable {
     var focused: Int?
     /// Moves when the focus moves by key or rotor, so the transcript scrolls the change into view.
     var revealRevision = 0
+    /// Each change's talk with Claude, by ordinal (design.md §6.3 "Talk back to Claude"): gone once the change is kept or
+    /// undone, and with the proposal.
+    var threads: [Int: RewriteThread] = [:]
 
     init(clipID: String?, title: String, changes: [TranscriptChange]) {
         self.clipID = clipID; self.title = title; self.changes = changes
@@ -355,8 +359,8 @@ extension EditorModel {
         return display
     }
 
-    /// The change's words as it would leave them: its span read through its parts. The edit
-    /// popover starts from it.
+    /// The change's words as it would leave them: its span read through its parts. A thread's
+    /// first version is these words.
     func changeText(_ ordinal: Int) -> String {
         guard let change = proposal?[ordinal] else { return "" }
         let reader = TranscriptChangeReader(self), layout = reader.layout(change)
@@ -423,6 +427,8 @@ extension EditorModel {
         proposal.focused = ordinal
         proposal.revealRevision += 1
         self.proposal = proposal
+        // Focusing a change again opens the thread Esc folded (design.md §6.3).
+        if rewriteThread.folded == RewriteThreadState.Key(proposal: proposal.id, ordinal: ordinal) { rewriteThread.folded = nil }
         let display = proposalDisplay
         let inside = !selectedWordIDs.isEmpty && selectedWordIDs.allSatisfy { display?.marks[$0]?.ordinal == ordinal }
         if !inside, !selectedWordIDs.isEmpty || !selectedPauseIDs.isEmpty { selectedWordIDs = []; selectedPauseIDs = [] }
@@ -477,6 +483,7 @@ extension EditorModel {
         if confirmPaidProposalChange({ [weak self] in _ = self?.keepChange(ordinal) }) { return false }
         let id = proposal.id, focused = proposal.focused
         proposal.changes[index].state = .kept
+        proposal.threads[ordinal] = nil
         // A cut's or fix's commands, or a voice change's free parts (an edit split it), apply with it.
         let free = commands(change)
         if !free.isEmpty {
@@ -497,6 +504,7 @@ extension EditorModel {
         if confirmPaidProposalChange({ [weak self] in _ = self?.excludeChange(ordinal) }) { return false }
         let order = proposalDisplay?.shown.map(\.ordinal) ?? []
         proposal.changes[index].state = .excluded
+        proposal.threads[ordinal] = nil
         self.proposal = proposal
         advanceFocus(after: ordinal, order: order)
         announce("Undid change \(ordinal)")
@@ -518,6 +526,7 @@ extension EditorModel {
         var reviews: [Int: ProposalReview] = [:]
         for index in proposal.changes.indices where proposal.changes[index].state == .pending {
             proposal.changes[index].state = .kept
+            proposal.threads[proposal.changes[index].ordinal] = nil
             reviews[proposal.changes[index].ordinal] = ProposalReview(before: .pending, after: .kept)
         }
         let free = kept.flatMap(commands)
@@ -554,8 +563,8 @@ extension EditorModel {
         }
     }
 
-    /// The edit popover's save (design.md §6.3.5): the local diff of the change's words and the
-    /// new text replaces its parts. Nothing is sent. An empty text turns it into a cut of its
+    /// New words in a change's place (design.md §6.3.5), as a version from its thread puts them (§6.3 "Talk back to
+    /// Claude"): the local diff of the change's words and the new text replaces its parts. Nothing is sent. An empty text turns it into a cut of its
     /// words; a text equal to them leaves nothing to change, so the change is left out.
     @discardableResult func editChange(_ ordinal: Int, text: String) -> Bool {
         openRewrite?.stopWordingFit(refresh: false)

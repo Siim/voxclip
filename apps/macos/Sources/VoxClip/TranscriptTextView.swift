@@ -121,12 +121,15 @@ import VoxClipCore
             var layout: Int, showsCuts: Bool, showsSurroundingContext: Bool, showPauses: Bool, textSize: Double, pauseThreshold: Double
             var scope: ClosedRange<Int>?, openEnds: [String], cutWords: Set<String>, cutPauses: Set<String>
             var proposal: TranscriptProposalDisplay?
+            /// The focused change's Rewrite thread and the room it needs under its paragraph.
+            var thread: EditorModel.RewriteThreadSlot?
             @MainActor init(model: EditorModel) {
                 layout = model.transcriptLayoutRevision; showsCuts = model.showsCuts; showPauses = model.showPauses; textSize = model.textSize
                 showsSurroundingContext = model.showsSurroundingContext
                 pauseThreshold = model.project.edits.pauseThresholdSeconds; scope = model.scopeBounds; openEnds = model.openFoldEnds
                 cutWords = model.cutWordIDs; cutPauses = model.cutPauseIDs
                 proposal = model.proposalDisplay
+                thread = model.rewriteThreadSlot(proposal)
             }
         }
         let model: EditorModel
@@ -475,6 +478,7 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
         updateSelectionLayer()
         updateCaret()
         updateProposalButtons()
+        updateThread()
         (enclosingScrollView as? TranscriptScrollView)?.overviewRuler.visibleSpan = visibleTakeSpan()
     }
     /// The laid-out line holding the character at `offset`, its fragment and the fragment's
@@ -667,13 +671,10 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
 
     private(set) var proposalLayer: TranscriptProposalLayer?
     private var rotorsShowProposal: Bool?
-    private var changePopover: NSHostingView<ChangeEditPopover>?
-    /// The change whose edit popover shows.
-    private(set) var popoverChange: Int?
-    var changePopoverVisible: Bool { changePopover?.isHidden == false }
-    #if DEBUG
-    var changePopoverAuditView: NSView? { changePopoverVisible ? changePopover : nil }
-    #endif
+    /// The focused change's Rewrite thread (design.md §6.3 "Talk back to Claude"), under its paragraph.
+    private(set) var threadHost: RewriteThreadHost?
+    private var threadRenderScheduled = false
+    var threadVisible: Bool { threadHost?.isHidden == false }
     /// Adds the focused change's Keep and Undo buttons above the text.
     func installProposalLayer() {
         guard proposalLayer == nil else { return }
@@ -723,6 +724,7 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
         TranscriptTextView.render(model, coordinator: coordinator)
         coordinator.updating = false
         updateProposalButtons()
+        updateThread()
     }
     /// The change whose new words lie under a point in this view.
     func insertedChange(at point: CGPoint) -> Int? {
@@ -741,40 +743,95 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
             return point.x >= left + glyphX(line, local: overlap.location - base) && point.x <= left + glyphX(line, local: NSMaxRange(overlap) - base)
         }?.change?.ordinal
     }
-    /// Shows a change's edit popover under its last line, or above its first when the pane has
-    /// no room below, with its words in the field. A change out of view (scrolled away, or a
-    /// new proposal's first) comes into view first, and so does the popover, whose field takes
-    /// the keys, so nothing is typed into a field off screen.
-    func showChangePopover(_ ordinal: Int) {
-        guard let model, let renderer, let range = renderer.changeRange(ordinal) else { return }
-        scrollRangeToVisible(range)
-        textLayoutManager?.textViewportLayoutController.layoutViewport()
-        guard let first = lineBox(atCharacter: range.location), let last = lineBox(atCharacter: max(range.location, NSMaxRange(range) - 1)) else { return }
-        hideFoldPopover(); hideSelectionBar(); hideChangePopover(refocus: false)
-        let view = ChangeEditPopover(ordinal: ordinal, words: model.changeText(ordinal), fit: { [weak model] text in model?.changeFit(ordinal, text: text) },
-                                     save: { [weak self] text in self?.hideChangePopover(); self?.model?.editChange(ordinal, text: text) },
-                                     reject: { [weak self] in self?.hideChangePopover(); self?.model?.excludeChange(ordinal) },
-                                     cancel: { [weak self] in self?.hideChangePopover() })
-        let host = NSHostingView(rootView: view)
-        addSubview(host)
-        changePopover = host
-        let size = host.fittingSize, visible = visibleRect
-        let start = textBox(of: NSRange(location: range.location, length: 0))?.minX ?? first.minX
-        let x = min(max(visible.minX + 4, start - 12), visible.maxX - size.width - 4)
-        let below = last.maxY + 2, above = first.minY - 2 - size.height
-        let y = below + size.height <= visible.maxY || above < visible.minY ? below : above
-        host.frame = CGRect(x: x, y: y, width: size.width, height: size.height)
-        scrollToVisible(host.frame)
-        popoverChange = ordinal
+    /// Places the focused change's thread under its paragraph's last line, indented to the text column, in the room the
+    /// renderer keeps there (`TranscriptParagraphContent.threadGap`); hidden while that line is outside the viewport. A
+    /// new height is kept and the paragraph written again on the next turn, never inside a layout.
+    func updateThread() {
+        guard let model, let renderer else { return }
+        guard model.rewriteThreadSlot(model.proposalDisplay) != nil, let anchor = renderer.threadAnchor,
+              let manager = textLayoutManager, let content = manager.textContentManager, let viewport = manager.textViewportLayoutController.viewportRange,
+              case let start = content.offset(from: content.documentRange.location, to: viewport.location),
+              case let end = content.offset(from: content.documentRange.location, to: viewport.endLocation),
+              anchor >= start, anchor <= end, let (fragment, line, _) = laidOutLine(atCharacter: anchor) else {
+            if threadHost?.isHidden == false { threadHost?.isHidden = true }
+            if let model = self.model, model.rewriteThreadSlot(model.proposalDisplay) != nil, model.rewriteThread.height == 0 { measureThread(model) }
+            return
+        }
+        let host = measureThread(model)
+        let origin = textContainerOrigin
+        let y = origin.y + fragment.layoutFragmentFrame.minY + line.typographicBounds.maxY + TranscriptRenderer.threadTop
+        let frame = CGRect(x: origin.x, y: y.rounded(), width: host.rootView.width, height: CGFloat(model.rewriteThread.height))
+        if host.frame != frame { host.frame = frame }
+        if host.isHidden { host.isHidden = false }
     }
-    func hideChangePopover(refocus: Bool = true) {
-        guard let host = changePopover else { return }
-        changePopover = nil; popoverChange = nil
-        host.removeFromSuperview()
-        if refocus { window?.makeFirstResponder(self) }
+    /// The thread's view at the text column's width and its height there; a changed height renders the transcript again.
+    @discardableResult private func measureThread(_ model: EditorModel) -> RewriteThreadHost {
+        let width = (textContainer?.containerSize.width ?? 480).rounded(.down)
+        let host: RewriteThreadHost
+        if let threadHost {
+            host = threadHost
+            if host.rootView.width != width { host.rootView = RewriteThreadView(model: model, width: width) }
+        } else {
+            host = RewriteThreadHost(rootView: RewriteThreadView(model: model, width: width))
+            host.isHidden = true
+            host.onResize = { [weak self] in self?.scheduleThreadRender() }
+            addSubview(host)
+            threadHost = host
+        }
+        let height = Double(host.fittingSize.height.rounded(.up))
+        if abs(model.rewriteThread.height - height) > 0.5 {
+            model.rewriteThread.height = height
+            scheduleThreadRender()
+        }
+        return host
     }
-    /// ⌘↩ keeps and ⌘⌫ undoes the focused change, ⌥↓ and ⌥↑ walk the changes, and F2, or
-    /// Return on the focused change or a selection in a change, edits it (impl-plan §3.2).
+    #if DEBUG
+    /// Measures and places the thread at once, its paragraph written with its room: the headless checks, which have no
+    /// main-actor turns to wait for.
+    func layoutThreadNow() { settleThread() }
+    var threadAuditView: NSView? { threadVisible ? threadHost : nil }
+    #endif
+    /// The thread's height changed: its paragraph is written again on the main actor's next turn.
+    private func scheduleThreadRender() {
+        guard !threadRenderScheduled else { return }
+        threadRenderScheduled = true
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            threadRenderScheduled = false
+            if let model, model.rewriteThreadSlot(model.proposalDisplay) != nil, let host = threadHost {
+                let height = Double(host.fittingSize.height.rounded(.up))
+                if abs(model.rewriteThread.height - height) > 0.5 { model.rewriteThread.height = height }
+            }
+            renderNow()
+        }
+    }
+    /// Return, F2, a click on a change's new words and VoiceOver's Talk to Claude: the change's thread opens and its
+    /// input takes the keys; the change and its thread come into view first. False where no thread shows.
+    @discardableResult func openThread(_ ordinal: Int) -> Bool {
+        guard let model else { return false }
+        if model.proposalDisplay?.focused != ordinal { model.focusChange(ordinal) }
+        guard model.openRewriteThreadInput() else { return false }
+        renderNow()
+        if let range = renderer?.changeRange(ordinal) { scrollRangeToVisible(range) }
+        settleThread()
+        if let host = threadHost, !host.isHidden { scrollToVisible(host.frame) }
+        return true
+    }
+    /// Measures the thread, writes its paragraph with that room and places it, now: outside a layout pass only (a key, a
+    /// click, a headless check).
+    private func settleThread() {
+        guard let model else { return }
+        threadRenderScheduled = true
+        defer { threadRenderScheduled = false }
+        for _ in 0..<2 {
+            measureThread(model)
+            renderNow()
+            textLayoutManager?.textViewportLayoutController.layoutViewport()
+        }
+        updateThread()
+    }
+    /// ⌘↩ keeps and ⌘⌫ undoes the focused change, ⌥↓ and ⌥↑ walk the changes, ⌥← and ⌥→ switch its
+    /// thread's versions, and F2, or Return on the focused change or a selection in a change, opens its thread (impl-plan §3.2).
     /// Returns false for any other key.
     private func handleChangeKey(_ event: NSEvent, model: EditorModel) -> Bool {
         guard let display = model.proposalDisplay else { return false }
@@ -784,13 +841,16 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
         case (.command, _) where returnKey: model.keepFocusedChange(); return true
         case (.command, 51): model.excludeFocusedChange(); return true
         case (.option, 125), (.option, 126): model.focusNextChange(event.keyCode == 125 ? 1 : -1); return true
+        case (.option, 123), (.option, 124):
+            // ⌥← and ⌥→ switch the focused change's versions once its thread has more than one; else they walk sentences.
+            guard let thread = model.rewriteThreadDisplay, thread.versions > 1 else { return false }
+            model.switchRewriteThreadVersion(by: event.keyCode == 123 ? -1 : 1); return true
         case ([], 120):
             guard let focused = display.focused, !display.actions.isEmpty else { return false }
-            showChangePopover(focused); return true
+            return openThread(focused)
         case ([], _) where returnKey:
             guard let ordinal = model.changeForReturn else { return false }
-            if ordinal != display.focused { model.focusChange(ordinal); renderNow() }
-            showChangePopover(ordinal); return true
+            return openThread(ordinal)
         default: return false
         }
     }
@@ -798,7 +858,7 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
     @objc func accessibleUndoChange() -> Bool { model?.excludeFocusedChange() ?? false }
     @objc func accessibleEditChange() -> Bool {
         guard let focused = model?.proposalDisplay?.focused else { return false }
-        showChangePopover(focused); return true
+        return openThread(focused)
     }
     /// Places the caret (impl-plan item 19): 2 × 19 at 15 pt, from 15 above the baseline to 4
     /// below, centred on the start of the playhead's word. Hidden while its line is offscreen.
@@ -917,7 +977,6 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
         if newSuperview == nil {
             hideSelectionBar()
             hideFoldPopover()
-            hideChangePopover(refocus: false)
             for token in scrollingTokens { NotificationCenter.default.removeObserver(token) }
             scrollingTokens = []
         }
@@ -935,7 +994,9 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
                 actions.append(NSAccessibilityCustomAction(name: action == .keep ? "Keep change \(focused)" : "Undo change \(focused)", target: self,
                                                            selector: action == .keep ? #selector(accessibleKeepChange) : #selector(accessibleUndoChange)))
             }
-            if !display.actions.isEmpty { actions.append(NSAccessibilityCustomAction(name: "Edit change \(focused)", target: self, selector: #selector(accessibleEditChange))) }
+            if model?.rewriteThreadDisplay != nil {
+                actions.append(NSAccessibilityCustomAction(name: "Talk to Claude about change \(focused)", target: self, selector: #selector(accessibleEditChange)))
+            }
         }
         setAccessibilityCustomActions(actions)
     }
@@ -1184,7 +1245,6 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
         }
         if event.keyCode == 53, model?.rewrite != nil { model?.closeRewrite(); return }
         guard let model, !hasMarkedText(), correction == nil else { super.keyDown(with: event); return }
-        if event.keyCode == 53, changePopoverVisible { hideChangePopover(); return }
         if event.keyCode == 53, foldPopoverVisible { hideFoldPopover(); return }
         if handleChangeKey(event, model: model) { return }
         if event.keyCode == 53, selectionBarVisible { hideSelectionBar(dismissed: true); return }
@@ -1226,15 +1286,14 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
     override func mouseDown(with event: NSEvent) {
         finishCorrection()
         hideFoldPopover()
-        hideChangePopover(refocus: false)
-        // A click on a proposed change's new words focuses it and opens its edit popover (design.md §6.3.5).
+        // A click on a proposed change's new words focuses it and opens its thread (design.md §6.3.5, §6.3).
         if event.clickCount == 1, event.modifierFlags.isDisjoint(with: [.shift, .command, .option, .control]), let model,
            let ordinal = insertedChange(at: convert(event.locationInWindow, from: nil)) {
             hideSelectionBar()
             window?.makeFirstResponder(self)
             model.focusChange(ordinal)
             renderNow()
-            if model.proposalDisplay?.actions.isEmpty == false { showChangePopover(ordinal) }
+            if model.proposalDisplay?.actions.isEmpty == false { openThread(ordinal) }
             return
         }
         // A click on a fold opens it and selects what it holds (notes.md §5).
@@ -1367,5 +1426,17 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
         default: return false
         }
         removeCorrectionField(refocus: true); updateCorrection(); return true
+    }
+}
+
+/// The Rewrite thread's hosting view: its size changes as turns, bubbles and input lines come and go, and the transcript
+/// keeps that much room under the paragraph.
+@MainActor final class RewriteThreadHost: NSHostingView<RewriteThreadView> {
+    var onResize: (() -> Void)?
+    required init(rootView: RewriteThreadView) { super.init(rootView: rootView) }
+    @MainActor @preconcurrency required init?(coder: NSCoder) { nil }
+    override func invalidateIntrinsicContentSize() {
+        super.invalidateIntrinsicContentSize()
+        onResize?()
     }
 }

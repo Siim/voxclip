@@ -122,6 +122,9 @@ struct TranscriptParagraphContent: Equatable {
     var firstWord: Int
     var start: Double
     var pieces: [Piece] = []
+    /// The room under the paragraph for the focused change's Rewrite thread (design.md §6.3): added to its paragraph
+    /// spacing, so the thread sits in the transcript's flow and the paragraphs after it move down.
+    var threadGap: Double = 0
 }
 
 /// The transcript's spans by display paragraph (impl-plan §3.1). Each paragraph keeps its
@@ -353,6 +356,15 @@ struct TranscriptAppearance: Equatable {
     private(set) var spacerID: String?
     /// The buttons the spacer makes room for.
     private(set) var spacerActions: [TranscriptChangeAction] = []
+    /// The paragraph the Rewrite thread stands under, by index, while one shows.
+    private(set) var threadParagraph: Int?
+    /// From the paragraph's last line to the thread.
+    static let threadTop: Double = 6
+    /// The last character of the paragraph the thread stands under, whose line it is placed from.
+    var threadAnchor: Int? {
+        guard let index = threadParagraph, paragraphs.indices.contains(index), blocks.indices.contains(index) else { return nil }
+        return paragraphs[index].offset + max(0, blocks[index].length - 1)
+    }
     /// One paragraph style per text size for every transcript in the process. Foundation
     /// shares equal attribute dictionaries between attributed strings, so with a new, equal
     /// style per rebuild a paragraph's runs could hold different style objects, and the
@@ -617,6 +629,13 @@ struct TranscriptAppearance: Equatable {
             result.append(content)
         }
         if let proposal { placeSpacer(in: &result, proposal: proposal) } else { spacerID = nil; spacerActions = [] }
+        // The thread's room under the focused change's last paragraph (design.md §6.3 "Talk back to Claude").
+        threadParagraph = nil
+        if let slot = model.rewriteThreadSlot(proposal),
+           let index = result.indices.last(where: { result[$0].pieces.contains { $0.change?.ordinal == slot.ordinal && $0.kind != .spacer } }) {
+            result[index].threadGap = slot.height + Self.threadTop
+            threadParagraph = index
+        }
         changeEnds = [:]
         for paragraph in result {
             for piece in paragraph.pieces where piece.kind != .spacer {
@@ -704,6 +723,12 @@ struct TranscriptAppearance: Equatable {
                 value.append(NSAttributedString(string: space, attributes: styles.body))
             }
             if let toolTip = piece.toolTip { value.addAttribute(.toolTip, value: toolTip, range: range) }
+        }
+        if content.threadGap > 0, let base = styles.body[.paragraphStyle] as? NSParagraphStyle,
+           let style = base.mutableCopy() as? NSMutableParagraphStyle {
+            // One style over the whole paragraph, so the storage's paragraph-style fixing has nothing to set again.
+            style.paragraphSpacing = base.paragraphSpacing + CGFloat(content.threadGap)
+            value.addAttribute(.paragraphStyle, value: style.copy() as? NSParagraphStyle ?? style, range: NSRange(location: 0, length: value.length))
         }
         return (value, spans)
     }
