@@ -1206,6 +1206,8 @@ struct RewriteChange: Equatable, Sendable {
     /// An error's type and case, with no associated text: "type=VoiceLabError case=permissionMissing",
     /// "type=ClipTakePlan.Failure case=placement.geometry.windowTooShort", or an NSError's domain and code.
     nonisolated static func failureKind(_ error: any Error) -> String {
+        // A lip-sync result's named check (its numbers are logged on their own line by the import).
+        if let check = error as? LipsyncResultCheck { return "type=LipsyncResultCheck case=\(check.name.rawValue)" }
         // The module and any "(unknown context at $…)" of a private type are dropped.
         let type = String(reflecting: Swift.type(of: error)).split(separator: ".").dropFirst()
             .filter { $0.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" } }.joined(separator: ".")

@@ -32,6 +32,8 @@ import VoxClipMedia
         /// Thrown by the lip sync itself (a job or its preparation).
         var lipsyncError: (any Error)?
         var lipsyncFactors: [Double] = []
+        /// The lip sync re-imported this billed attempt's kept result (nothing new paid).
+        var recoveredRequest: String?
         /// The order the paid and free steps ran in.
         var order: [String] = []
     }
@@ -72,7 +74,8 @@ import VoxClipMedia
             if stubs.holdLipsync { await withCheckedContinuation { stubs.held = $0 } }
             try Task.checkCancellation()
             if stubs.failLipsync { throw LipsyncError.http(503) }
-            return .init(model: model, usd: model == .sync3 ? Decimal(string: "4.13")! : Decimal(string: "1.55")!, factor: factor)
+            return .init(model: model, usd: model == .sync3 ? Decimal(string: "4.13")! : Decimal(string: "1.55")!, factor: factor,
+                         requestID: stubs.recoveredRequest, recovered: stubs.recoveredRequest != nil)
         }, lipsyncPrice: { model in model == .sync3 ? Decimal(string: "4.13") : Decimal(string: "1.55") },
            match: { _ in .init(take: 0.81, anchorBaseline: 0.54, realSpeech: 0.86) }, play: { _ in },
            use: { voice, synced, match in
@@ -212,6 +215,62 @@ import VoxClipMedia
         await session.waitForRun()
         #expect(session.phase == .review && stubs.voices.count == 1 && stubs.lipsyncs.count == 2)
         #expect(session.spent == Decimal(string: "1.61"))
+    }
+
+    /// MVP46: fal.ai billed a lip sync whose result failed its checks. The Stopped copy says what happened and that fal.ai
+    /// charged for it, the spent total includes it, its result is kept so Try Again is free, and a free re-import of it
+    /// is not counted twice.
+    @Test func aBilledLipSyncFailureNamesTheChargeAndTryAgainIsFree() async throws {
+        let shared = try SharedResources.locate()
+        let project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-whole-clip-" + UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let app = AppModel(settingsStore: RegressionSettingsStore(), locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path]))
+        let editor = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
+        defer { editor.close() }
+        let rewrite = RewriteSession(editor: editor, scope: .clip("clip-main"), envelope: nil, connector: nil)
+        let stubs = Stubs()
+        let short = LipsyncResultCheck.duration(LipsyncResultLength(got: 25.75, needed: 25.92, uploaded: 26.44, fps: 30))
+        stubs.lipsyncError = WholeClipRevoiceSession.LipsyncFailed(error: short, local: false, usd: Decimal(string: "1.55"),
+                                                                   requestID: "r-1", freeRetry: true)
+        let session = session(stubs)
+        rewrite.wholeClip = session
+        await session.refreshQuote()
+        session.start()
+        await session.waitForRun()
+        guard case .stopped(let line) = session.phase else { Issue.record("not stopped"); return }
+        let charge = VoiceLabCostPresentation.format(Decimal(string: "1.55")!)
+        #expect(line.hasPrefix("Couldn't lip sync: fal.ai's video came back 0.2 s shorter than the voice. fal.ai charged for the attempt (\(charge)). Its result is kept, so Try Again is free."), "\(line)")
+        #expect(line.contains("What was paid (\(VoiceLabCostPresentation.format(Decimal(string: "1.61")!)))"), "\(line)")
+        #expect(session.spent == Decimal(string: "1.61"))
+        #expect(session.retryUSD == 0)
+        let retry = try #require(rewrite.wholeClipStoppedActions().first)
+        #expect(retry.id == "wholeClipRetry" && retry.title == "Try Again · free", "\(retry.title)")
+        // The free re-import moves the charge into the ledger: still 1.61 in all.
+        stubs.lipsyncError = nil; stubs.recoveredRequest = "r-1"
+        session.start()
+        await session.waitForRun()
+        #expect(session.phase == .review && stubs.voices.count == 1)
+        #expect(session.spent == Decimal(string: "1.61"))
+    }
+
+    /// A billed failure whose result isn't kept: Try Again pays the lip sync again, and both charges count.
+    @Test func aBilledFailureWithNothingKeptPricesTryAgainAndCountsBothCharges() async {
+        let stubs = Stubs()
+        stubs.lipsyncError = WholeClipRevoiceSession.LipsyncFailed(error: LipsyncError.submissionUncertain, local: false,
+                                                                   usd: Decimal(string: "1.55"), requestID: nil, freeRetry: false)
+        let session = session(stubs)
+        await session.refreshQuote()
+        session.start()
+        await session.waitForRun()
+        guard case .stopped(let line) = session.phase else { Issue.record("not stopped"); return }
+        #expect(line.contains("fal.ai charged for the attempt") && !line.contains("Try Again is free"), "\(line)")
+        #expect(session.retryUSD == Decimal(string: "1.55"))
+        stubs.lipsyncError = nil
+        session.start()
+        await session.waitForRun()
+        #expect(session.phase == .review)
+        #expect(session.spent == Decimal(string: "3.16"))
     }
 
     @Test func theSync3UpgradeReRunsOnlyTheLipSync() async {

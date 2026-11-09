@@ -40,7 +40,8 @@ import VoxClipCore
                         Text("The lip-sync clip's colours differ slightly.").foregroundStyle(DesignValues.color("status.warning"))
                     }
                 case .failed(let reason, let price, let mayBill):
-                    Text("Couldn't lip sync phrase \(phrase + 1): \(reason)" + (mayBill ? " fal.ai may still charge \(price)." : " No upload or charge."))
+                    Text(RewriteLipsyncSession.failureLine(phrase: phrase, reason: reason, price: price, mayBill: mayBill,
+                                                          free: session.freeRetries.contains(phrase)))
                         .foregroundStyle(DesignValues.color("status.warning"))
                     approval(retry: true)
                     Text("or keep the original video")
@@ -65,15 +66,16 @@ import VoxClipCore
         } else if let offer = session.offers[phrase] {
             if !session.consentAccepted { Text(RewriteLipsyncSession.firstUse) }
             if let warning = session.capWarning(for: offer) { Text(warning).foregroundStyle(DesignValues.color("status.warning")) }
-            let seconds = offer.windows.reduce(0) { $0 + $1.seconds(sampleRate: offer.request.timeline.sampleRate) }
+            let seconds = offer.windows.reduce(0) { $0 + $1.uploadSeconds(sampleRate: offer.request.timeline.sampleRate) }
             let duration = String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), seconds)
             Text("Uploads this phrase's \(duration) s of video and its new audio to fal.ai (sync-3) with your key. Exports say “Lip movement generated with AI.”")
             let verb = retry ? "Try Again" : "Lip Sync"
+            let price = Self.price(offer, free: retry && session.freeRetries.contains(phrase))
             // Shown only while it can act: takes running or Use Takes waiting hide it (design.md: no disabled buttons).
             if !busy, !session.usingTakes {
-                Button("\(verb) · \(offer.price)") { session.start(offer); changed() }
+                Button("\(verb) · \(price)") { session.start(offer); changed() }
                     .accessibilityIdentifier("lipsync-approve-\(phrase)")
-                    .accessibilityLabel(Self.approveLabel(verb: verb, phrase: phrase, price: offer.price))
+                    .accessibilityLabel(Self.approveLabel(verb: verb, phrase: phrase, price: price))
             }
         } else if session.refreshing { ProgressView("Preparing lip-sync price…").controlSize(.small) }
         else { Text("Lip sync isn't ready for this part. Choose a passing take and its video duration.") }
@@ -83,7 +85,8 @@ import VoxClipCore
     private var buttonLabels: [String] {
         func approval(_ verb: String) -> [String] {
             if !session.keyAvailable { return [Self.settingsLabel] }
-            return session.offers[phrase].map { [Self.approveLabel(verb: verb, phrase: phrase, price: $0.price)] } ?? []
+            let free = verb == "Try Again" && session.freeRetries.contains(phrase)
+            return session.offers[phrase].map { [Self.approveLabel(verb: verb, phrase: phrase, price: Self.price($0, free: free))] } ?? []
         }
         switch session.states[phrase] {
         case .running: return [Self.cancelLabel(phrase)]
@@ -93,6 +96,8 @@ import VoxClipCore
         }
     }
     static let settingsLabel = "Open Settings, Voice Lab, add fal.ai key"
+    /// "free" for a Try Again that re-imports the kept paid result, else the offer's price.
+    static func price(_ offer: RewriteLipsyncSession.Offer, free: Bool) -> String { free ? "free" : offer.price }
     static func cancelLabel(_ phrase: Int) -> String { "Cancel lip sync, phrase \(phrase + 1)" }
     static func playLabel(_ phrase: Int) -> String { "Play lip-synced phrase \(phrase + 1)" }
     static func undoLabel(_ phrase: Int) -> String { "Undo lip sync, phrase \(phrase + 1), keep original video" }

@@ -7,7 +7,10 @@ public struct LipsyncRenderWindow: Sendable, Equatable {
     public var syncMode: SyncMode {
         outputEndSample - outputStartSample == source.endSample - source.startSample ? .cutOff : .remap
     }
+    /// The needed length: the voice's, what the imported result is cut back to.
     public func seconds(sampleRate: Double) -> Double { Double(outputEndSample - outputStartSample) / sampleRate }
+    /// What is uploaded and priced: the needed length and its tail margin (`LipsyncLimits.tailMarginSeconds`).
+    public func uploadSeconds(sampleRate: Double) -> Double { LipsyncLimits.uploadSeconds(seconds(sampleRate: sampleRate)) }
 
     public init(source: LipsyncWindow, plan: VoiceLabOutputPlan) throws {
         var start = Self.outputSample(source.startSample, plan: plan)
@@ -21,8 +24,10 @@ public struct LipsyncRenderWindow: Sendable, Equatable {
             source = LipsyncWindow(startSample: Self.sourceSample(start, plan: plan),
                 endSample: Self.sourceSample(end, plan: plan), phraseIDs: source.phraseIDs)
         }
+        // The upload is the window and its tail margin, at most `maximumUploadSeconds` together.
         guard end > start, Double(end - start) >= 3 * plan.sampleRate,
-              Double(end - start) <= 300 * plan.sampleRate else { throw LipsyncError.invalidInput }
+              LipsyncLimits.uploadSeconds(Double(end - start) / plan.sampleRate) <= LipsyncLimits.maximumUploadSeconds
+        else { throw LipsyncError.invalidInput }
         self.source = source; self.outputStartSample = start; self.outputEndSample = end
     }
 

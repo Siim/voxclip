@@ -1456,7 +1456,8 @@ extension ClipTakePlan {
         let catalog = try VoiceLabPriceCatalog.load(shared: SharedResources.locate())
         func offer(_ windows: [LipsyncRenderWindow]) throws -> RewriteLipsyncSession.Offer {
             let estimates = try windows.map {
-                try WholeClipRevoice.lipsyncPrice(videoSeconds: $0.seconds(sampleRate: plan.sampleRate), lipsync: model, catalog: catalog)
+                // Priced as uploaded: the window and its tail margin (LipsyncLimits.tailMarginSeconds).
+                try WholeClipRevoice.lipsyncPrice(videoSeconds: $0.uploadSeconds(sampleRate: plan.sampleRate), lipsync: model, catalog: catalog)
             }
             guard estimates.allSatisfy({ $0.usd != nil }) else { throw Failure.unknownSpend }
             let estimate = CostEstimate(provider: "fal", operation: "lipsync", units: estimates.reduce(0) { $0 + $1.units },

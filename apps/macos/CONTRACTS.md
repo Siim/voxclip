@@ -1,5 +1,51 @@
 # macOS implementation contracts
 
+### 2026-11-09 — fal.ai's lip-sync results come back short: a tail margin, the result cut back, paid results never lost (track/v2-lipsync-length)
+
+The user's MVP46 run (2026-11-08, 33a21cd3): a 4K whole-clip revoice with sync-3, ≈ $1.60. fal.ai accepted and billed two attempts; both ended `cleanup-unconfirmed` ×2 and `LipsyncError case=invalidMedia`, and the card said "What was paid (≈ $0.04) is kept". The lead measured fal.ai's own sync-3 example: 135 frames in, **130 out**, frames aligned at the start, AAC resampled to 24 kHz. `LipsyncResultValidation` allowed one frame. ADR-R46 "Update 2026-11-09", voice-lab §9.3, §9.4 and §9.6, design.md (Stopped, the lip-sync row).
+
+- **Core.**
+  - `LipsyncLimits.tailMarginSeconds` = max(0.4 s, 2 % of the needed length), `uploadSeconds`, `heldFrames` = 3, `maximumUploadSeconds` = 300. `LipsyncRenderWindow.uploadSeconds`; a window whose upload would pass 300 s is refused (about 294 s). `LipsyncWindow` and its shared vectors are unchanged.
+  - `LipsyncResultLength` (`trim`, `hold(frames:)`, `short(frames:)`, `long`, `shortFrames`, `droppedFrames`, `logLine`) and `LipsyncResultCheck` (named checks with `logLine` and `copy`).
+  - `FalLipsyncProvider`: `date()`, `note(_:)` (one redacted `lipsync` line), `refetch(requestID:model:to:)` (GET the queue result by request ID), `cleanup(requestID:)`. A shared payload delete logs `event=cleanup-unconfirmed status=…|reason=…`.
+  - No C# twin: Windows has no lip-sync provider, limits or approval. The shared pricing rules and fixtures are untouched; the Mac callers price `uploadSeconds`.
+- **Media.**
+  - `LipsyncWindowPreparation`: both uploads run the margin past the window (`LipsyncMezzanine.write(frames:)` holds the last frame; the WAV adds silence). `PreparedLipsyncWindow.neededSeconds` and `picture`. A mix up to 10 ms short at the timeline's end is accepted (the old `frames − 1` refused the smoke's whole clip).
+  - `LipsyncResultValidation.inspect` (named structural checks; measures the video track); `validate` keeps its `invalidMedia` contract for stored assets.
+  - `LipsyncResultConformer.conform(_:needed:uploaded:…)` → `Conformed`: checks the length, cuts back or holds, and always drops fal.ai's audio (`CompositionBuilder.build(includesSourceAudio:)`).
+  - `LipsyncAttemptStore` and `LipsyncAttempt` replace `LipsyncReceiptStore` (deleted): `VoiceLab/<project>/lipsync-attempts/<video>-<audio>.json` and `.mp4`, both 0600. `find` matches the exact hashes, else the audio hash plus `LipsyncPictureFingerprint`: the H.264 upload is not byte-identical when prepared again (measured), the WAV is.
+  - `LipsyncResultImporter.importResult(…neededSeconds:picture:…)` keeps the file after a failed import, leaves fal.ai's copy after a failed download, and throws `LipsyncAttemptFailure(error:attempt:freeRetry:)`. `importRecovered` imports the kept file or re-fetches it, and throws `LipsyncRecoveryFailed`.
+  - `LipsyncRun.execute(…mayPay:)` recovers first, once per attempt per process (`LipsyncRecoveryMemo`), and never pays when `mayPay` is false. `LipsyncNotSubmitted` wraps failures before the submit. A `package var detector` is a seam for tests and the smoke.
+  - DEBUG only: `LipsyncShortResultStandIn` and `LipsyncSmokeFalHTTP`.
+- **App.**
+  - `RewriteLipsyncSession`: `Offer.mayPay`, `freeRetries`, `failureLine`, `isLocal`. `Backend.run` takes `mayPay`. A billed failure's price is its attempt's.
+  - `RewriteLipsyncControls`: "Try Again · free", and the upload's seconds in the description.
+  - `WholeClipRevoiceSession`: `billedLipsyncs` (in `spent` and "What was paid"), `lipsyncKept`, `retryUSD`. `LipsyncFailed` gains `usd`, `requestID` and `freeRetry`; `Synced` gains `requestID` and `recovered`. `wholeClipPrimary(retry:)` reads "Try Again · free".
+  - `RewriteSession.failureKind` names a `LipsyncResultCheck` (`case=duration`).
+  - `ClipTakePlan` and `RewriteWholeClip` price the upload.
+  - The consent copy: "VoxClip asks fal.ai to delete the result after download, which your key's permissions must allow; uploads and results expire after one hour."
+  - `EditorModel.lipsyncSmoke` (DEBUG).
+- **Cleanup finding.** fal.ai documents the payload delete's 200 body exactly as the parser already read it, so the request and the parser were right. It needs a key with `models:requests:write` and `assets:write` (fal.ai's FULL preset) and never deletes input files. The MVP46 `cleanup-unconfirmed` is most likely a 403 from a narrower key; the status is logged now.
+  - `POST rest.fal.ai/storage/files/delete` is now on fal.ai's CDN page, with no documented response, so it is not called.
+  - The headers were checked against fal.ai's JS client 1.10.1: `X-Fal-Object-Lifecycle` at upload and `X-Fal-Object-Lifecycle-Preference` at submit, both one hour, kept. `X-Fal-Store-IO: 0` is not sent: it would cut the free re-fetch window.
+- **Tests.**
+  - Core: `LipsyncResultLengthRuleTests` (the margin, the 300 s bound, every outcome, the log line and copy, cut_off and remap, the documented delete body, a 403's status).
+  - Media: `LipsyncResultLengthTests` covers the example shape on the phrase path (sync-3, cut_off) and the whole-clip path (lipsync-2, remap), the dropped audio, a 3-frame hold, too short (`check=duration`, kept 0600, no URL, a free re-import with no second submit), a kept file after a restart, and a re-fetch by request ID. The native `LipsyncRun` tests cover the upload longer by the margin, priced, and cut back; a free Try Again after a failed download (same WAV, fingerprint match, one submit); and the held last frame. `LipsyncResultImporterTests` were updated (re-encoded without audio; a bad file is kept).
+  - App: `aBilledLipSyncFailureNamesTheChargeAndTryAgainIsFree`, `aBilledFailureWithNothingKeptPricesTryAgainAndCountsBothCharges`, `aKeptPaidResultMakesTryAgainFreeAndItNeverPays`, `aFailureBeforeTheSubmitClaimsNoCharge`.
+  - The reproduction commit (2d9344e7) is red. Mutations (margin 0, audio read back in, no keep, `mayPay` always true) turn 12 tests red.
+  - Smoke: `S-lipsync-fal-short` (LS1, LS2) and `S-revoice-whole-fal-short` (WF1) run the real run and import over the stood-in fal.ai, whose result is 5 frames short with 24 kHz AAC; both reach Use. W1 and WS1 price the margin.
+- **Verification** (`VOXCLIP_NO_KEYCHAIN=1`, absolute `VOXCLIP_SHARED_DIR`, isolated `VOXCLIP_DATA_DIR`, serial under `nice -n 10`):
+  - Core 1,540 tests in 174 suites (the 2 known deadline issues), Media 644 in 83, App 1,044 in 81.
+  - `rewrite-smoke.sh` (DEBUG, no path): PASSED, 88 scenarios.
+  - Both `check_drift.py`, `validate.py` and the voice-lab unittests: tree clean.
+  - Long-expression build (250 ms): the smoke's closure was split. The remaining flags are trivial expressions at about 350 ms under a load average of 70–155 on 14 cores (an untouched pre-existing line too).
+- **Owed.**
+  - The live check (lead).
+  - Whether fal.ai's tail drop grows with length: read `dropped_frames` in the log.
+  - Old `lipsync-receipts/` folders stay on disk, unread.
+  - The free retry is labelled from the last failure in this session. After a restart the chip is priced, but the run still recovers for free first.
+  - Windows: lip sync, as before.
+
 ### 2026-11-08 — Whole-clip revoice gets from Fit through the lip sync: 4K windows, the picture checked at Fit, your own pace by the picture (track/v2-wholeclip-lipsync)
 
 The user's MVP45 run (2026-11-08): "Clip 1 · 0:31.4 · 50 words", a 52-word voice of 0:20.2 for 0:31.3, Fit ✓ "laid out on the clip's pauses (−35.4%)", then "Couldn't lip sync: The job could not be completed." on every Try Again, logged only as `step=lipsync type=WholeClipRevoiceSession.Stop case=noVoice`, with no submission. ADR-R46 "Update 2026-11-08: your own pace, and Fit checks the picture (MVP45)", voice-lab §8.14 items 4–6, design.md "How should it sound?" (Running, Stopped).

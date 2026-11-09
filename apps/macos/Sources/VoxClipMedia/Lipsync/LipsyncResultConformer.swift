@@ -6,19 +6,22 @@ import Foundation
 import VoxClipCore
 
 enum LipsyncResultConformer {
-    static func conform(_ file: URL, duration: Double, fps: Double, width: Int, height: Int,
-                        reference: LipsyncUploadFile?) async throws -> (URL, Bool) {
-        let descriptor = open(file.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
-        guard descriptor >= 0 else { throw LipsyncError.unsafeFile }
-        defer { Darwin.close(descriptor) }
-        var info = stat()
-        guard fstat(descriptor, &info) == 0, info.st_mode & S_IFMT == S_IFREG,
-              info.st_size >= 12, info.st_size <= LipsyncLimits.maximumVideoBytes else { throw LipsyncError.invalidMedia }
-        try LipsyncResultValidation.inspectContainer(descriptor: descriptor, size: Int(info.st_size))
-        let probe = try await AVMediaProbe().probe(file)
-        guard let native = probe.video, let size = probe.orientedSize else { throw LipsyncError.invalidMedia }
-        _ = try await LipsyncResultValidation.validate(file: file, durationSeconds: duration,
-            fps: native.frameRate, width: size.width, height: size.height)
+    /// What `conform` made of a downloaded result: the file to store, the colour warning, and the length check it passed.
+    struct Conformed {
+        let url: URL
+        let colorWarning: Bool
+        let length: LipsyncResultLength
+    }
+
+    /// Checks a downloaded result and makes it the stored picture: `needed` long (the voice's), cut back from its start or
+    /// holding its last frame (`LipsyncResultLength`), at the window's size and rate, with only its picture (fal.ai's
+    /// audio is dropped). `uploaded` is what fal.ai was sent, the needed length and its tail margin. A failed check throws
+    /// `LipsyncResultCheck` with its numbers.
+    static func conform(_ file: URL, needed: Double, uploaded: Double, fps: Double, width: Int, height: Int,
+                        reference: LipsyncUploadFile?) async throws -> Conformed {
+        let native = try await LipsyncResultValidation.inspect(file: file)
+        let length = LipsyncResultLength(got: native.durationSeconds, needed: needed, uploaded: uploaded, fps: fps)
+        guard length.accepted else { throw LipsyncResultCheck.duration(length) }
         let referenceURL = file.deletingLastPathComponent().appendingPathComponent("reference.mp4")
         var correction: (scale: Double, bias: Double)?
         var referenceMean: Double?
@@ -36,24 +39,31 @@ enum LipsyncResultConformer {
                 }
             }
         }
-        guard native.width != width || native.height != height || abs(native.frameRate - fps) > 0.05 || correction != nil else {
+        // Already the stored picture: the window's size and rate, only a picture, and the needed length within half a frame.
+        let exact = abs(native.durationSeconds - needed) <= 0.5 / fps
+        guard native.width != width || native.height != height || abs(native.frameRate - fps) > 0.05 || correction != nil
+                || native.hasAudio || !exact else {
             let warning: Bool
             if let referenceMean { warning = abs(referenceMean - (try await meanLuma(file))) > 8 } else { warning = false }
-            return (file, warning)
+            return Conformed(url: file, colorWarning: warning, length: length)
         }
-        let total = Int64((duration * 48_000).rounded())
+        // The needed length from the start: a longer result is cut back, one a few frames short holds its last frame (the
+        // composition's tail and the mezzanine's frame count both hold it).
+        let total = Int64((needed * 48_000).rounded())
         let plan = EditPlan(sampleRate: 48_000, totalSamples: total,
             kept: [MediaInterval(startSample: 0, endSample: total)])
         let output = OutputSpec(size: PixelSize(width: width, height: height), fps: fps,
             videoBitrate: Int((0.33 * Double(width) * Double(height) * fps).rounded()))
         let request = RenderRequest(sourceURL: file, plan: plan, output: output)
-        let graph = try await CompositionBuilder().build(request, colorCorrection: correction, allowsFractionalFrameRate: true)
+        let graph = try await CompositionBuilder().build(request, colorCorrection: correction, allowsFractionalFrameRate: true,
+                                                         includesSourceAudio: false)
         let conformed = file.deletingLastPathComponent().appendingPathComponent("conformed.mp4")
+        let frames = Int((needed * fps - 1e-6).rounded(.up))
         try await LipsyncMezzanine.write(graph: graph, range: CMTimeRange(start: .zero,
-            duration: CMTime(value: total, timescale: 48_000)), output: output, to: conformed)
+            duration: CMTime(value: total, timescale: 48_000)), output: output, to: conformed, frames: frames)
         let warning: Bool
         if let referenceMean { warning = abs(referenceMean - (try await meanLuma(conformed))) > 8 } else { warning = false }
-        return (conformed, warning)
+        return Conformed(url: conformed, colorWarning: warning, length: length)
     }
 
     static func meanLuma(_ url: URL) async throws -> Double {

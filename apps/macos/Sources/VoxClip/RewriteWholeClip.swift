@@ -59,8 +59,9 @@ extension RewriteSession {
             return PanelAction(id: "wholeClipPatchPick", title: "Voice Only the Changed Phrases") { [weak self] in self?.patchInstead() }
         }
         guard let usd = session.quote?.wholeUSD else { return nil }
-        let remaining = max(0, usd - session.spent)
-        let price = remaining > 0 ? " · " + VoiceLabCostPresentation.format(remaining) : ""
+        // Try Again pays only what's left; a kept lip-sync result is re-imported for free ("Try Again · free").
+        let remaining = retry ? session.retryUSD ?? usd : max(0, usd - session.spent)
+        let price = remaining > 0 ? " · " + VoiceLabCostPresentation.format(remaining) : retry ? " · free" : ""
         return PanelAction(id: retry ? "wholeClipRetry" : "wholeClipRevoice", title: (retry ? "Try Again" : "Revoice Whole Clip") + price, priced: true) { [weak self] in
             self?.startWholeClip()
         }
@@ -194,7 +195,7 @@ extension RewriteSession {
             return try await wholeClipLipsync(voice, factor: factor, model: model, progress: progress)
         }, lipsyncPrice: { [weak self] model in
             guard let self, let catalog = wholeClipCatalog, let seconds = wholeClipLipsyncSeconds else { return nil }
-            return try WholeClipRevoice.lipsyncPrice(videoSeconds: seconds, lipsync: model, catalog: catalog).usd
+            return try WholeClipRevoice.lipsyncPrice(videoSeconds: LipsyncLimits.uploadSeconds(seconds), lipsync: model, catalog: catalog).usd
         }, match: { [weak self] voice in
             await self?.wholeClipMatch(voice)
         }, play: { [weak self] original in
@@ -256,12 +257,13 @@ extension RewriteSession {
         guard let catalog = wholeClipCatalog, let id = wholeClipID, let first = script.sentences.first, let last = script.sentences.last else {
             throw VoxClipError.sharedResourcesMissing
         }
-        // The lip sync is priced on the clip as edited, the video it gets, with Rewrite's one-second handles.
+        // The lip sync is priced on the clip as edited, the video it gets, with Rewrite's one-second handles and the upload's
+        // tail margin (LipsyncLimits.tailMarginSeconds).
         let final = try editor.voiceLabReviewProject(localCommands: localCommands)
         let edited = wholeClipEditedPlan(final)
         let seconds = (edited.map { $0.mapTime(last.end) - $0.mapTime(first.start) } ?? (last.end - first.start)) + 2
         let price = try WholeClipRevoice.price(characters: script.characters, ttsModel: VoiceLabWordingFit.modelID,
-                                               videoSeconds: seconds, lipsync: model, catalog: catalog)
+                                               videoSeconds: LipsyncLimits.uploadSeconds(seconds), lipsync: model, catalog: catalog)
         let patchCharacters = includedVoiceHunks.reduce(0) { $0 + $1.newTokens.joined(separator: " ").unicodeScalars.count }
         let patch = takePlan?.estimate?.usd ?? (try? VoiceLabPricing.estimate(operation: .elevenLabsTextToSpeech, model: VoiceLabWordingFit.modelID,
                                                                              units: Double(max(1, patchCharacters)), catalog: catalog))?.usd
@@ -468,14 +470,22 @@ extension RewriteSession {
         watcher.cancel()
         try Task.checkCancellation()
         for phrase in offer.phraseIDs where plan.lipsync.applied[phrase] == nil {
-            // The job's own error, with its real case for the log, and whether it failed on this Mac before fal.ai.
+            // The job's own error, with its real case for the log, whether it failed on this Mac before fal.ai, what fal.ai
+            // charged for it and whether its result is kept for a free Try Again.
             if case .failed(_, _, let mayBill) = plan.lipsync.states[phrase] {
-                throw Session.LipsyncFailed(error: plan.lipsync.errors[phrase] ?? LipsyncError.invalidResponse, local: !mayBill)
+                let error = plan.lipsync.errors[phrase] ?? LipsyncError.invalidResponse
+                let attempt = (error as? LipsyncAttemptFailure)?.attempt
+                throw Session.LipsyncFailed(error: error, local: RewriteLipsyncSession.isLocal(error),
+                    usd: mayBill ? attempt?.estimate.usd ?? offer.estimate.usd : nil, requestID: attempt?.requestID,
+                    freeRetry: plan.lipsync.freeRetries.contains(phrase))
             }
             throw CancellationError()
         }
-        // The record's retime is the picture's even speed-up from the Fit step (1 at the clip's own pace).
-        return .init(model: model, usd: offer.estimate.usd ?? 0, factor: factor)
+        let result = offer.phraseIDs.first.flatMap { plan.lipsync.applied[$0]?.result }
+        // The record's retime is the picture's even speed-up from the Fit step (1 at the clip's own pace). A re-imported
+        // kept result costs what its billed attempt was quoted.
+        return .init(model: model, usd: result?.provenance.estimate.usd ?? offer.estimate.usd ?? 0, factor: factor,
+                     requestID: result?.provenance.requestID, recovered: result?.recovered ?? false)
     }
 
     /// The anchor the baseline belongs to, named as Settings › Voices names it ("siim"), never the video's own voice.
